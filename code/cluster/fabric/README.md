@@ -2,7 +2,7 @@
 
 This directory is the maintained fabric surface for the repo.
 
-The archived NVIDIA course exports under [nvidia-advanced-networking-for-ai-infra](nvidia-advanced-networking-for-ai-infra) stay as source material only. The operator-facing entrypoints are:
+The archived NVIDIA course exports under `nvidia-advanced-networking-for-ai-infra` stay as source material only. The operator-facing entrypoints are:
 
 - [nvlink.md](nvlink.md)
 - [infiniband.md](infiniband.md)

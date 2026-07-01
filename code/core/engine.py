@@ -914,6 +914,11 @@ class BenchmarkDomain:
         from core.api import handlers
         return handlers.benchmark_overview({})
 
+    def opportunities(self, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Rank benchmark evidence by next optimization opportunity."""
+        from core.api import handlers
+        return handlers.benchmark_opportunities(params or {})
+
     def compare(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Compare two benchmark runs (baseline vs candidate)."""
         from core.api import handlers

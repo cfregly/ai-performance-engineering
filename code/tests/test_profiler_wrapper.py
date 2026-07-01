@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 from core.harness.benchmark_harness import BenchmarkConfig
@@ -54,7 +58,7 @@ def test_render_nsys_wrapper_contains_expected_config() -> None:
     assert 'Path(r"/tmp/example.py")' in wrapper
     assert "nsys_nvtx_include=['compute_kernel:profile/']" in wrapper
     assert "validity_profile='strict'" in wrapper
-    assert 'gpu_sm_clock_mhz=1500' in wrapper
+    assert "gpu_sm_clock_mhz=1500" in wrapper
     assert "_target_label = 'labs/moe_cuda_ptx:moe_layer'" in wrapper
     assert "_target_override_argv = ['--mode', 'fwd_bwd']" in wrapper
     assert "_apply_overrides(list(_target_override_argv))" in wrapper
@@ -113,3 +117,111 @@ def test_render_torch_wrapper_contains_expected_output_path() -> None:
     assert "_target_override_argv = ['--mode', 'fwd_bwd']" in wrapper
     assert "_apply_overrides(list(_target_override_argv))" in wrapper
     assert 'prof.export_chrome_trace(r"/tmp/trace.json")' in wrapper
+
+
+def test_profile_shell_zymtrace_sets_cuda_injection_and_manifest(tmp_path: Path) -> None:
+    profile_sh = Path("core/scripts/profiling/profile.sh").resolve()
+    injection_lib = tmp_path / "libzymtracecudaprofiler.so"
+    injection_lib.write_text("fake", encoding="utf-8")
+    marker_path = tmp_path / "env_marker.json"
+    output_root = tmp_path / "profiles"
+    workload = tmp_path / "workload.py"
+    workload.write_text(
+        "\n".join(
+            [
+                "import json",
+                "import os",
+                "from pathlib import Path",
+                "Path(os.environ['MARKER_PATH']).write_text(json.dumps({",
+                "    'cuda': os.environ.get('CUDA_INJECTION64_PATH'),",
+                "    'zymtrace': os.environ.get('ZYMTRACE_CUDA_INJECTION64_PATH'),",
+                "}), encoding='utf-8')",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "PYTHON": sys.executable,
+            "PYTHONPATH": str(Path.cwd()),
+            "MARKER_PATH": str(marker_path),
+            "ZYMTRACE_CUDA_INJECTION64_PATH": str(injection_lib),
+        }
+    )
+    env.pop("CUDA_INJECTION64_PATH", None)
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(profile_sh),
+            str(workload),
+            "--arch",
+            "sm_100",
+            "--tool",
+            "zymtrace",
+            "--output-root",
+            str(output_root),
+            "--python",
+            sys.executable,
+        ],
+        cwd=Path.cwd(),
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    assert marker["cuda"] == str(injection_lib.resolve())
+    assert marker["zymtrace"] == str(injection_lib.resolve())
+
+    manifests = list(output_root.glob("*/zymtrace_launch_manifest.json"))
+    assert len(manifests) == 1
+    manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
+    assert manifest["tool"] == "zymtrace"
+    assert manifest["cuda_injection64_path"] == str(injection_lib.resolve())
+    assert manifest["script"] == str(workload.resolve())
+
+
+def test_profile_shell_zymtrace_fails_for_explicit_missing_injection(tmp_path: Path) -> None:
+    profile_sh = Path("core/scripts/profiling/profile.sh").resolve()
+    workload = tmp_path / "workload.py"
+    workload.write_text("print('should not run')\n", encoding="utf-8")
+    missing_lib = tmp_path / "missing-libzymtrace.so"
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "PYTHON": sys.executable,
+            "PYTHONPATH": str(Path.cwd()),
+            "CUDA_INJECTION64_PATH": str(missing_lib),
+        }
+    )
+    env.pop("ZYMTRACE_CUDA_INJECTION64_PATH", None)
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(profile_sh),
+            str(workload),
+            "--arch",
+            "sm_100",
+            "--tool",
+            "zymtrace",
+            "--output-root",
+            str(tmp_path / "profiles"),
+            "--python",
+            sys.executable,
+        ],
+        cwd=Path.cwd(),
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "CUDA_INJECTION64_PATH is set but does not point to a file" in result.stderr

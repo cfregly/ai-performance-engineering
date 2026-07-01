@@ -184,6 +184,14 @@ _ROUTES: List[ApiRoute] = [
     ),
     ApiRoute(
         "GET",
+        "/api/benchmark/opportunities",
+        "benchmark.opportunities",
+        handlers.benchmark_opportunities,
+        engine_op="benchmark.opportunities",
+        mcp_tool="benchmark_opportunities",
+    ),
+    ApiRoute(
+        "GET",
         "/api/benchmark/history",
         "benchmark.history",
         handlers.benchmark_history,

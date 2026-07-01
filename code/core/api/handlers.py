@@ -102,6 +102,28 @@ def _parse_int_param(
     return value
 
 
+def _parse_float_param(
+    params: Dict[str, Any],
+    name: str,
+    default: float,
+    *,
+    minimum: Optional[float] = None,
+    maximum: Optional[float] = None,
+) -> float:
+    raw = params.get(name)
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return default
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be numeric") from exc
+    if minimum is not None and value < minimum:
+        raise ValueError(f"{name} must be >= {minimum}")
+    if maximum is not None and value > maximum:
+        raise ValueError(f"{name} must be <= {maximum}")
+    return value
+
+
 def _parse_optional_int_param(
     params: Dict[str, Any],
     name: str,
@@ -129,6 +151,22 @@ def _parse_str_param(params: Dict[str, Any], name: str) -> Optional[str]:
         return None
     value = str(value).strip()
     return value or None
+
+
+def _parse_bool_param(params: Dict[str, Any], name: str, default: bool = False) -> bool:
+    value = params.get(name)
+    if value is None or value == "":
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be boolean")
 
 
 def _parse_path_param(params: Dict[str, Any], name: str) -> Path:
@@ -176,7 +214,9 @@ def _status_bucket(value: Optional[str]) -> Optional[str]:
     return normalized
 
 
-def _build_summary(benchmarks: Sequence[Dict[str, Any]], raw_summary: Dict[str, Any]) -> Dict[str, Any]:
+def _build_summary(
+    benchmarks: Sequence[Dict[str, Any]], raw_summary: Dict[str, Any]
+) -> Dict[str, Any]:
     total = len(benchmarks)
     succeeded = sum(1 for b in benchmarks if _status_bucket(b.get("status")) == "succeeded")
     failed = sum(1 for b in benchmarks if _status_bucket(b.get("status")) == "failed")
@@ -185,7 +225,9 @@ def _build_summary(benchmarks: Sequence[Dict[str, Any]], raw_summary: Dict[str, 
     max_speedup = float(raw_summary.get("max_speedup", 0) or 0)
     min_speedup = float(raw_summary.get("min_speedup", 0) or 0)
     if not avg_speedup or not max_speedup or not min_speedup:
-        speedups = [float(b.get("speedup", 0) or 0) for b in benchmarks if b.get("speedup") is not None]
+        speedups = [
+            float(b.get("speedup", 0) or 0) for b in benchmarks if b.get("speedup") is not None
+        ]
         if speedups:
             avg_speedup = avg_speedup or sum(speedups) / len(speedups)
             max_speedup = max_speedup or max(speedups)
@@ -217,7 +259,14 @@ def _sort_benchmarks(
 ) -> List[Dict[str, Any]]:
     numeric_fields = {"speedup", "baseline_time_ms", "optimized_time_ms"}
     reverse = sort_dir == "desc"
-    if sort_field not in {"name", "chapter", "speedup", "baseline_time_ms", "optimized_time_ms", "status"}:
+    if sort_field not in {
+        "name",
+        "chapter",
+        "speedup",
+        "baseline_time_ms",
+        "optimized_time_ms",
+        "status",
+    }:
         raise ValueError(f"Unsupported sort_field: {sort_field}")
 
     def _key(item: Dict[str, Any]) -> Tuple:
@@ -319,7 +368,9 @@ def _load_run_file(path: Path) -> Dict[str, Any]:
             status = _normalize_status(str(status_raw))
             if status is None:
                 raise ValueError(f"Unsupported status '{status_raw}' in {path}")
-            baseline_time = _to_float(bench.get("baseline_time_ms"), "baseline_time_ms", allow_none=True)
+            baseline_time = _to_float(
+                bench.get("baseline_time_ms"), "baseline_time_ms", allow_none=True
+            )
             speedup = _to_float(bench.get("best_speedup"), "best_speedup", allow_none=False)
             if status == "succeeded" and baseline_time is None:
                 raise ValueError(f"Benchmark {chapter}:{name} missing timing metrics in {path}")
@@ -401,6 +452,119 @@ def benchmark_data(params: Dict[str, Any]) -> Dict[str, Any]:
             "sort_dir": sort_dir,
         },
     }
+
+
+def benchmark_opportunities(params: Dict[str, Any]) -> Dict[str, Any]:
+    from core.analysis.optimization_opportunities import (
+        analyze_opportunity_file,
+        apply_novelty_validation_feedback,
+        apply_run_queue_feedback,
+        discover_benchmark_target_catalog,
+        normalize_candidates,
+        rank_opportunities,
+        summarize_run_queue_root,
+    )
+
+    top = _parse_int_param(params, "top", 10, minimum=0, maximum=500)
+    top_n = None if top <= 0 else top
+    min_speedup = _parse_float_param(params, "min_speedup", 1.10, minimum=0.0)
+    target_speedup = _parse_float_param(params, "target_speedup", 1.50, minimum=0.0)
+    min_memory_savings_pct = _parse_float_param(
+        params,
+        "min_memory_savings_pct",
+        10.0,
+        minimum=0.0,
+        maximum=100.0,
+    )
+    slow_baseline_ms = _parse_float_param(params, "slow_baseline_ms", 100.0, minimum=0.0)
+    include_discovered_targets = _parse_bool_param(params, "include_discovered_targets", False)
+
+    data_file = _parse_str_param(params, "data_file")
+    catalog_file = _parse_str_param(params, "catalog_file")
+    run_queue_root = _parse_str_param(params, "run_queue_root")
+    novelty_queue_root = _parse_str_param(params, "novelty_queue_root")
+    bench_root = _parse_str_param(params, "bench_root")
+    catalog_path: Optional[Path] = None
+    if catalog_file:
+        catalog_path = Path(catalog_file).expanduser()
+        if not catalog_path.exists():
+            raise FileNotFoundError(f"catalog_file not found: {catalog_path}")
+        if not catalog_path.is_file():
+            raise ValueError(f"catalog_file must be a file: {catalog_path}")
+
+    if data_file:
+        path = Path(data_file).expanduser()
+        if not path.exists():
+            raise FileNotFoundError(f"data_file not found: {path}")
+        if not path.is_file():
+            raise ValueError(f"data_file must be a file: {path}")
+        discovered_targets = None
+        if include_discovered_targets:
+            if bench_root:
+                discovered_targets = discover_benchmark_target_catalog(
+                    Path(bench_root).expanduser()
+                ).get("targets", [])
+            else:
+                discovered_targets = get_engine().benchmark.targets().get("targets", [])
+        result = analyze_opportunity_file(
+            path.resolve(),
+            catalog_path=catalog_path.resolve() if catalog_path else None,
+            target_catalog=discovered_targets,
+            top_n=top_n,
+            min_speedup=min_speedup,
+            target_speedup=target_speedup,
+            min_memory_savings_pct=min_memory_savings_pct,
+            slow_baseline_ms=slow_baseline_ms,
+        )
+        if run_queue_root:
+            result = apply_run_queue_feedback(
+                result, summarize_run_queue_root(Path(run_queue_root).expanduser())
+            )
+        if novelty_queue_root:
+            result = apply_novelty_validation_feedback(
+                result, summarize_run_queue_root(Path(novelty_queue_root).expanduser())
+            )
+        return result
+
+    data = get_engine().benchmark.data()
+    if catalog_path is not None:
+        catalog_payload = json.loads(catalog_path.read_text(encoding="utf-8"))
+        data = dict(data)
+        data["target_catalog"] = catalog_payload
+    if include_discovered_targets:
+        data = dict(data)
+        if bench_root:
+            data["available_targets"] = discover_benchmark_target_catalog(
+                Path(bench_root).expanduser()
+            ).get("targets", [])
+        else:
+            data["available_targets"] = get_engine().benchmark.targets().get("targets", [])
+    result = rank_opportunities(
+        normalize_candidates(data),
+        top_n=top_n,
+        min_speedup=min_speedup,
+        target_speedup=target_speedup,
+        min_memory_savings_pct=min_memory_savings_pct,
+        slow_baseline_ms=slow_baseline_ms,
+    )
+    result["source"] = "engine benchmark data"
+    if catalog_path is not None:
+        result["target_catalog_source"] = str(catalog_path.resolve())
+    if include_discovered_targets:
+        result["discovered_target_source"] = (
+            str(Path(bench_root).expanduser().resolve())
+            if bench_root
+            else "engine benchmark targets"
+        )
+    if run_queue_root:
+        result = apply_run_queue_feedback(
+            result, summarize_run_queue_root(Path(run_queue_root).expanduser())
+        )
+    if novelty_queue_root:
+        result = apply_novelty_validation_feedback(
+            result, summarize_run_queue_root(Path(novelty_queue_root).expanduser())
+        )
+    return result
 
 
 def benchmark_contracts(_: Dict[str, Any]) -> Dict[str, Any]:
@@ -551,7 +715,9 @@ def benchmark_compare(params: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     regressions = sorted((d for d in deltas if d["delta"] < 0), key=lambda d: d["delta"])[:top]
-    improvements = sorted((d for d in deltas if d["delta"] > 0), key=lambda d: d["delta"], reverse=True)[:top]
+    improvements = sorted(
+        (d for d in deltas if d["delta"] > 0), key=lambda d: d["delta"], reverse=True
+    )[:top]
 
     added = [cand_map[key] for key in added_keys]
     removed = [base_map[key] for key in removed_keys]
@@ -615,7 +781,9 @@ def benchmark_e2e_sweep(params: Dict[str, Any]) -> Dict[str, Any]:
         "bench_root": Path(bench_root_raw).resolve() if bench_root_raw else None,
         "profile_type": str(params.get("profile", "minimal")),
         "suite_timeout": _parse_optional_int_param(params, "suite_timeout", minimum=0),
-        "full_sweep_suite_timeout": _parse_optional_int_param(params, "full_sweep_suite_timeout", minimum=0),
+        "full_sweep_suite_timeout": _parse_optional_int_param(
+            params, "full_sweep_suite_timeout", minimum=0
+        ),
         "timeout_seconds": _parse_optional_int_param(params, "timeout_seconds", minimum=1),
         "artifacts_dir": _parse_str_param(params, "artifacts_dir"),
         "validity_profile": str(params.get("validity_profile", "strict")),
@@ -627,10 +795,14 @@ def benchmark_e2e_sweep(params: Dict[str, Any]) -> Dict[str, Any]:
         "accept_regressions": bool(params.get("accept_regressions", False)),
         "update_expectations": bool(params.get("update_expectations", False)),
         "allow_mixed_provenance": bool(params.get("allow_mixed_provenance", False)),
-        "allow_portable_expectations_update": bool(params.get("allow_portable_expectations_update", False)),
+        "allow_portable_expectations_update": bool(
+            params.get("allow_portable_expectations_update", False)
+        ),
         "auto_resume": bool(params.get("auto_resume", True)),
         "max_auto_resumes": _parse_int_param(params, "max_auto_resumes", 3, minimum=0, maximum=100),
-        "watch_poll_interval_seconds": _parse_int_param(params, "watch_poll_interval_seconds", 15, minimum=1, maximum=3600),
+        "watch_poll_interval_seconds": _parse_int_param(
+            params, "watch_poll_interval_seconds", 15, minimum=1, maximum=3600
+        ),
         "run_id": run_id,
         "resume": bool(params.get("resume", False)),
         "dry_run": dry_run,
@@ -655,7 +827,9 @@ def benchmark_e2e_sweep(params: Dict[str, Any]) -> Dict[str, Any]:
         ticket["run_dir"] = str(run_dir)
         ticket["progress_path"] = str(e2e_progress_path(run_dir))
         ticket["actions"] = status_actions
-        ticket["preferred_progress_source"] = build_benchmark_e2e_progress_surface_hint(resolved_run_id)
+        ticket["preferred_progress_source"] = build_benchmark_e2e_progress_surface_hint(
+            resolved_run_id
+        )
         return ticket
 
     result = run_benchmark_e2e_sweep(**kwargs)
@@ -686,7 +860,9 @@ def benchmark_e2e_watch(params: Dict[str, Any]) -> Dict[str, Any]:
     return watch_benchmark_e2e_sweep_run(
         run_id=run_id,
         repo_root=repo_root,
-        poll_interval_seconds=_parse_int_param(params, "poll_interval_seconds", 15, minimum=1, maximum=3600),
+        poll_interval_seconds=_parse_int_param(
+            params, "poll_interval_seconds", 15, minimum=1, maximum=3600
+        ),
         max_auto_resumes=_parse_int_param(params, "max_auto_resumes", 3, minimum=0, maximum=100),
     )
 
@@ -851,6 +1027,7 @@ def ai_tools(_: Dict[str, Any]) -> Dict[str, Any]:
             "benchmark_llm_patch_loop",
             "benchmark_data",
             "benchmark_overview",
+            "benchmark_opportunities",
             "benchmark_history",
             "benchmark_trends",
             "benchmark_compare",

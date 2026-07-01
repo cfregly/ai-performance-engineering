@@ -70,11 +70,11 @@ DOMAIN TOOLS (organized by 10-domain model):
         inference_vllm, inference_quantization,
         inference_deploy, inference_estimate
 
-    Benchmark (19 tools):
+    Benchmark (20 tools):
         run_benchmarks, benchmark_e2e_sweep, benchmark_e2e_status, benchmark_e2e_watch,
         list_chapters, benchmark_targets, benchmark_report,
         benchmark_export, benchmark_compare_runs, benchmark_triage,
-        benchmark_data, benchmark_overview, benchmark_history,
+        benchmark_data, benchmark_overview, benchmark_opportunities, benchmark_history,
         benchmark_trends, benchmark_compare,
         benchmark_variants, benchmark_deep_dive_compare,
         benchmark_explore,
@@ -112,6 +112,7 @@ WORKFLOW EXAMPLES:
 import asyncio
 import json
 import os
+import shlex
 import sys
 import subprocess
 import traceback
@@ -131,6 +132,7 @@ try:
 except Exception:  # pragma: no cover - non-POSIX environments
     fcntl = None  # type: ignore[assignment]
 
+
 # Ensure repository root is on sys.path for imports (e.g., analysis.advanced_analysis).
 # In some launch modes mcp_server can be invoked from outside the repo checkout,
 # so discover the real workspace root defensively instead of trusting __file__ only.
@@ -149,7 +151,11 @@ def _discover_code_root() -> Path:
             root = candidate.resolve()
         except Exception:
             continue
-        if (root / "core").exists() and (root / "mcp").exists() and (root / "pyproject.toml").exists():
+        if (
+            (root / "core").exists()
+            and (root / "mcp").exists()
+            and (root / "pyproject.toml").exists()
+        ):
             return root
         if (root / ".git").exists() and (root / "core").exists():
             return root
@@ -171,10 +177,12 @@ def _load_mcp_env() -> None:
 
 _load_mcp_env()
 
+
 # MCP Protocol Types
 @dataclass
 class ToolDefinition:
     """MCP Tool definition."""
+
     name: str
     description: str
     input_schema: Dict[str, Any]
@@ -183,6 +191,7 @@ class ToolDefinition:
 @dataclass
 class ToolResult:
     """MCP Tool result."""
+
     content: List[Dict[str, Any]]
     is_error: bool = False
 
@@ -191,8 +200,10 @@ class ToolResult:
 # RESULT TYPE DEFINITIONS (TypedDict for type safety)
 # =============================================================================
 
+
 class ToolResultBase(TypedDict, total=False):
     """Base shape for all tool results."""
+
     success: bool
     error: NotRequired[str]
     context: NotRequired[Dict[str, Any]]
@@ -201,6 +212,7 @@ class ToolResultBase(TypedDict, total=False):
 
 class BenchmarkExportResult(ToolResultBase):
     """Result shape for benchmark export operations."""
+
     output: str
     format: str
     benchmarks_written: int
@@ -208,6 +220,7 @@ class BenchmarkExportResult(ToolResultBase):
 
 class JobStatusResult(ToolResultBase):
     """Result shape for job status queries."""
+
     job_id: str
     status: str
     tool: NotRequired[str]
@@ -220,12 +233,14 @@ class JobStatusResult(ToolResultBase):
 
 class SuggestionResult(ToolResultBase):
     """Result shape for tool suggestions."""
+
     suggestions: List[Dict[str, Any]]
     count: int
 
 
 class ContextResult(ToolResultBase):
     """Result shape for context provider tools."""
+
     context: Dict[str, Any]
 
 
@@ -237,14 +252,14 @@ _CONTEXT_PARAMS_SCHEMA: Dict[str, Any] = {
     "include_context": {
         "type": "boolean",
         "description": "Include full system context in the response",
-        "default": False
+        "default": False,
     },
     "context_level": {
         "type": "string",
         "description": "Context level: summary or full",
         "enum": ["summary", "full"],
-        "default": "summary"
-    }
+        "default": "summary",
+    },
 }
 
 # =============================================================================
@@ -277,10 +292,7 @@ def with_context_params(props: Dict[str, Any]) -> Dict[str, Any]:
 
 def extract_context_opts(params: Dict[str, Any]) -> Tuple[bool, str]:
     """Extract include_context and context_level from params."""
-    return (
-        bool(params.get("include_context", False)),
-        params.get("context_level", "summary")
-    )
+    return (bool(params.get("include_context", False)), params.get("context_level", "summary"))
 
 
 # =============================================================================
@@ -322,12 +334,8 @@ _SELECTION_HINTS: Dict[str, str] = {
         "First call for combined status + context; use status for a faster health-only check; "
         "use suggest_tools when you only need tool recommendations."
     ),
-    "status": (
-        "Health-only snapshot; use triage for context or system_full for full inventory."
-    ),
-    "suggest_tools": (
-        "Intent-to-tool mapping; use ask for answers or triage for system snapshot."
-    ),
+    "status": ("Health-only snapshot; use triage for context or system_full for full inventory."),
+    "suggest_tools": ("Intent-to-tool mapping; use ask for answers or triage for system snapshot."),
     "run_benchmarks": (
         "Run benchmarks; use benchmark_targets to discover targets and "
         "benchmark_deep_dive_compare for one-shot run+profile+diff."
@@ -339,8 +347,9 @@ _SELECTION_HINTS: Dict[str, str] = {
     "benchmark_deep_dive_compare": (
         "One-shot run+profile+diff; use run_benchmarks if you only want results without deep profiling."
     ),
-    "benchmark_triage": (
-        "Analyze a single run; use benchmark_compare_runs to compare two runs."
+    "benchmark_triage": ("Analyze a single run; use benchmark_compare_runs to compare two runs."),
+    "benchmark_opportunities": (
+        "Rank what to optimize next; use benchmark_triage for pass/fail triage or benchmark_compare_runs for before/after diffs."
     ),
     "benchmark_compare_runs": (
         "Compare baseline vs candidate runs; use benchmark_triage for single-run analysis."
@@ -369,12 +378,8 @@ _SELECTION_HINTS: Dict[str, str] = {
     "compare_ncu": (
         "Kernel metric comparison; use compare_nsys for timeline and profile_compare for narrative+flamegraph."
     ),
-    "ask": (
-        "Conceptual performance Q&A; use explain to interpret existing tool outputs."
-    ),
-    "explain": (
-        "Interpret tool outputs/results; use ask for general performance questions."
-    ),
+    "ask": ("Conceptual performance Q&A; use explain to interpret existing tool outputs."),
+    "explain": ("Interpret tool outputs/results; use ask for general performance questions."),
     "export_csv": (
         "Inline CSV payload; use benchmark_export for file output and benchmark_report for PDF/HTML."
     ),
@@ -460,7 +465,9 @@ def _expectations_from_name_and_schema(name: str, schema: Optional[Dict[str, Any
         notes.append("Typically fast, read-only snapshot.")
 
     if props and any(_property_implies_output(prop) for prop in props):
-        notes.append("May write files when output/path parameters are set (creates directories when needed).")
+        notes.append(
+            "May write files when output/path parameters are set (creates directories when needed)."
+        )
     if props and "include_context" in props:
         notes.append("Use include_context/context_level to attach system snapshot to the response.")
     return " ".join(notes)
@@ -494,13 +501,12 @@ HANDLERS: Dict[str, callable] = {}
 
 def register_tool(name: str, description: str, schema: Dict[str, Any] = None):
     """Decorator to register an MCP tool."""
+
     def decorator(func):
         tool_schema = schema or {"type": "object", "properties": {}}
         enriched_description = _enrich_description(name, description, tool_schema)
         TOOLS[name] = ToolDefinition(
-            name=name,
-            description=enriched_description,
-            input_schema=tool_schema
+            name=name, description=enriched_description, input_schema=tool_schema
         )
 
         def wrapper(*args, **kwargs):
@@ -522,6 +528,7 @@ def register_tool(name: str, description: str, schema: Dict[str, Any] = None):
 
         HANDLERS[name] = wrapper
         return func
+
     return decorator
 
 
@@ -556,6 +563,7 @@ def _build_context(level: str):
     """Build context at the requested level."""
     from core.perf_core import get_core
     from core.engine import get_engine
+
     engine = get_engine()
 
     if level == "summary":
@@ -574,7 +582,10 @@ def get_cached_context(level: str) -> Any:
     """Fetch cached context or rebuild if stale."""
     now = time.time()
     level = "full" if level == "full" else "summary"
-    if _CONTEXT_CACHE.get(level) is None or (now - _CONTEXT_TS.get(level, 0)) > _CONTEXT_TTL_SECONDS:
+    if (
+        _CONTEXT_CACHE.get(level) is None
+        or (now - _CONTEXT_TS.get(level, 0)) > _CONTEXT_TTL_SECONDS
+    ):
         _CONTEXT_CACHE[level] = _build_context(level)
         _CONTEXT_TS[level] = now
     return _CONTEXT_CACHE[level]
@@ -603,10 +614,7 @@ def attach_context_if_requested(result: Any, include_context: bool, context_leve
 
 
 def make_error(
-    msg: str,
-    include_context: bool = False,
-    context_level: str = "summary",
-    **extra: Any
+    msg: str, include_context: bool = False, context_level: str = "summary", **extra: Any
 ) -> Dict[str, Any]:
     """Build standardized error response with optional context attachment.
 
@@ -633,9 +641,7 @@ def make_error(
 
 
 def ensure_result(
-    result: Dict[str, Any],
-    include_context: bool,
-    context_level: str
+    result: Dict[str, Any], include_context: bool, context_level: str
 ) -> Dict[str, Any]:
     """Normalize result and optionally attach context - single exit point for handlers.
 
@@ -726,7 +732,11 @@ def _run_tools_cli(
     if isinstance(result, dict):
         returncode = int(result.get("returncode", 0) or 0)
         if returncode != 0 and not result.get("error"):
-            result["error"] = result.get("stderr") or result.get("stdout") or f"aisp tools {tool} failed with code {returncode}"
+            result["error"] = (
+                result.get("stderr")
+                or result.get("stdout")
+                or f"aisp tools {tool} failed with code {returncode}"
+            )
     return result
 
 
@@ -754,7 +764,9 @@ def _run_bench_cli(args: List[str], timeout: Optional[int] = _BENCH_CLI_TIMEOUT)
             "duration_seconds": round(time.time() - started_at, 2),
         }
         if proc.returncode != 0 and not result.get("error"):
-            result["error"] = proc.stderr or proc.stdout or f"bench CLI failed with code {proc.returncode}"
+            result["error"] = (
+                proc.stderr or proc.stdout or f"bench CLI failed with code {proc.returncode}"
+            )
         return result
     except subprocess.TimeoutExpired as exc:
         return {
@@ -841,7 +853,12 @@ def _resolve_benchmark_target_from_path(path_value: str) -> Tuple[Optional[str],
         return None, f"Path must be a benchmark file, not a directory: {path}"
 
     try:
-        from core.discovery import discover_all_chapters, discover_benchmarks, chapter_slug, get_bench_roots
+        from core.discovery import (
+            discover_all_chapters,
+            discover_benchmarks,
+            chapter_slug,
+            get_bench_roots,
+        )
     except Exception as exc:
         return None, f"Benchmark discovery import failed: {exc}"
 
@@ -1049,13 +1066,15 @@ def _default_benchmark_report_path(result: Dict[str, Any], fmt: str) -> Optional
     return None
 
 
-def _parse_event_message(message: Any) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[str]]:
+def _parse_event_message(
+    message: Any,
+) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[str]]:
     """Parse benchmark event lines encoded as `EVENT <name> <json-payload>`."""
     if not isinstance(message, str):
         return None, None, "event message is not a string"
     if not message.startswith("EVENT "):
         return None, None, "message is not an EVENT payload"
-    event_body = message[len("EVENT "):]
+    event_body = message[len("EVENT ") :]
     if " " not in event_body:
         return None, None, "event payload is missing a JSON body"
     event_name, payload_text = event_body.split(" ", 1)
@@ -1099,7 +1118,9 @@ def _extract_speedup_attribution(result: Dict[str, Any]) -> Optional[Dict[str, A
         "malformed_event_payloads": 0,
     }
 
-    for line_no, raw_line in enumerate(log_path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+    for line_no, raw_line in enumerate(
+        log_path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1
+    ):
         try:
             line_obj = json.loads(raw_line)
         except Exception as exc:
@@ -1180,16 +1201,24 @@ def _extract_speedup_attribution(result: Dict[str, Any]) -> Optional[Dict[str, A
         if baseline and optimized:
             confidence = "high"
             if not delta:
-                notes.append("Baseline and optimized NCU runs succeeded, but no overlapping attribution metrics were present.")
+                notes.append(
+                    "Baseline and optimized NCU runs succeeded, but no overlapping attribution metrics were present."
+                )
         elif baseline and not optimized:
             confidence = "partial"
-            notes.append("Baseline NCU metrics are available, but optimized NCU metrics were not captured.")
+            notes.append(
+                "Baseline NCU metrics are available, but optimized NCU metrics were not captured."
+            )
         elif optimized and not baseline:
             confidence = "partial"
-            notes.append("Optimized NCU metrics are available, but baseline NCU metrics were not captured.")
+            notes.append(
+                "Optimized NCU metrics are available, but baseline NCU metrics were not captured."
+            )
         else:
             confidence = "none"
-            notes.append("Neither baseline nor optimized NCU metrics were captured for this optimization.")
+            notes.append(
+                "Neither baseline nor optimized NCU metrics were captured for this optimization."
+            )
 
         items.append(
             {
@@ -1270,6 +1299,7 @@ def _maybe_run_post_benchmark_steps(
 
 def _default_run_id(kind: str, label: str, base_dir: Optional[Path]) -> str:
     from core.benchmark.artifact_manager import build_run_id
+
     return build_run_id(kind, label, base_dir=base_dir)
 
 
@@ -1304,7 +1334,9 @@ def _prepare_profile_run(
         base_dir = (CODE_ROOT / base_dir).resolve()
     run_label = label or "run"
     run_id = run_id_param or _default_run_id(f"profile-{tool_key}", run_label, base_dir)
-    artifact_manager = ArtifactManager(base_dir=base_dir, run_id=run_id, run_kind=f"profile-{tool_key}", run_label=run_label)
+    artifact_manager = ArtifactManager(
+        base_dir=base_dir, run_id=run_id, run_kind=f"profile-{tool_key}", run_label=run_label
+    )
     profile_dir = artifact_manager.profiles_dir / "tools" / slugify(tool_key) / slugify(run_label)
     profile_dir.mkdir(parents=True, exist_ok=True)
     return artifact_manager.run_dir, profile_dir, run_id
@@ -1358,8 +1390,7 @@ def _normalize_profile_command(command: Any) -> tuple[List[str], Optional[str]]:
 
         return (
             script_arg,
-            "command script not found; checked repo root and cwd: "
-            f"{script_arg}",
+            f"command script not found; checked repo root and cwd: {script_arg}",
         )
 
     exe_name = Path(normalized[0]).name.lower()
@@ -1405,7 +1436,9 @@ def _emit_progress_safe(recorder: Optional[ProgressRecorder], event: ProgressEve
         recorder.emit(event)
     except Exception as exc:
         try:
-            recorder_key = str(getattr(recorder, "progress_path", getattr(recorder, "run_id", "unknown")))
+            recorder_key = str(
+                getattr(recorder, "progress_path", getattr(recorder, "run_id", "unknown"))
+            )
         except Exception:
             recorder_key = "unknown"
         if recorder_key in _PROGRESS_EMIT_WARNED_PATHS:
@@ -1428,7 +1461,9 @@ def _emit_progress_safe(recorder: Optional[ProgressRecorder], event: ProgressEve
             )
 
 
-def _trim_value(value: Any, max_length: int = _PREVIEW_MAX_LENGTH, max_items: int = _PREVIEW_MAX_ITEMS) -> Any:
+def _trim_value(
+    value: Any, max_length: int = _PREVIEW_MAX_LENGTH, max_items: int = _PREVIEW_MAX_ITEMS
+) -> Any:
     """Lightly trim values so MCP responses stay readable without hiding detail (very high limits)."""
     if isinstance(value, str):
         if len(value) > max_length:
@@ -1683,7 +1718,9 @@ def _queue_runner_lock(queue_id: str, tool_name: str, queue_label: Optional[str]
         yield
         return
     if not _ensure_queue_artifacts():
-        raise RuntimeError("Queue runner unavailable: failed to initialize artifacts/parallel_runs.")
+        raise RuntimeError(
+            "Queue runner unavailable: failed to initialize artifacts/parallel_runs."
+        )
 
     lock_path = _QUEUE_DIR / "queue.runner.lock"
     timeout = _queue_runner_lock_timeout_seconds()
@@ -1730,7 +1767,9 @@ def _queue_runner_lock(queue_id: str, tool_name: str, queue_label: Optional[str]
                 _log_queue_event(
                     f"RUNNER_LOCK_RELEASE_WARN id={queue_id} tool={tool_name} label={queue_label} error={exc}"
                 )
-            _log_queue_event(f"RUNNER_LOCK_RELEASED id={queue_id} tool={tool_name} label={queue_label}")
+            _log_queue_event(
+                f"RUNNER_LOCK_RELEASED id={queue_id} tool={tool_name} label={queue_label}"
+            )
         try:
             lock_handle.close()
         except OSError as exc:
@@ -1823,7 +1862,9 @@ def _is_active_run_command(cmd: str) -> bool:
         return False
     if "core.benchmark.bench_commands" in cmd and " run " in f" {cmd} ":
         return True
-    if "bench run" in cmd and ("cli.aisp" in cmd or "aisp.py" in cmd or "python -m cli.aisp" in cmd):
+    if "bench run" in cmd and (
+        "cli.aisp" in cmd or "aisp.py" in cmd or "python -m cli.aisp" in cmd
+    ):
         return True
     if "bench" in tokens and "run" in tokens:
         exe = Path(tokens[0]).name
@@ -1839,7 +1880,9 @@ def _is_active_run_command(cmd: str) -> bool:
     return False
 
 
-def _active_run_processes(records: List[Dict[str, Any]], ignore_pids: set[int]) -> List[Dict[str, Any]]:
+def _active_run_processes(
+    records: List[Dict[str, Any]], ignore_pids: set[int]
+) -> List[Dict[str, Any]]:
     active: List[Dict[str, Any]] = []
     for rec in records:
         if rec["pid"] in ignore_pids:
@@ -1861,7 +1904,9 @@ def _active_run_processes(records: List[Dict[str, Any]], ignore_pids: set[int]) 
 
 def _wait_for_idle(poll_seconds: int = 5, timeout_seconds: Optional[int] = None) -> bool:
     logged = False
-    timeout = _queue_idle_timeout_seconds() if timeout_seconds is None else max(0, int(timeout_seconds))
+    timeout = (
+        _queue_idle_timeout_seconds() if timeout_seconds is None else max(0, int(timeout_seconds))
+    )
     start = time.monotonic()
     while True:
         records = _snapshot_processes()
@@ -1941,7 +1986,9 @@ def _run_with_queue(
     job_id: Optional[str] = None,
 ) -> Any:
     if not _ensure_queue_artifacts():
-        raise RuntimeError("Queue runner unavailable: failed to initialize artifacts/parallel_runs.")
+        raise RuntimeError(
+            "Queue runner unavailable: failed to initialize artifacts/parallel_runs."
+        )
     queue_id = job_id or f"{tool_name}-{uuid.uuid4().hex[:8]}"
     entry = {
         "queue_id": queue_id,
@@ -1981,8 +2028,12 @@ def _run_with_queue(
                         "active_process_count": len(active),
                         "active_processes": [rec.get("cmd", "") for rec in active[:5]],
                     }
-                    return _attach_queue_metadata(failure, retries, overlap_detected, idle_wait_timed_out)
-                _log_queue_event(f"RUN_START id={queue_id} tool={tool_name} label={queue_label} attempt={retries + 1}")
+                    return _attach_queue_metadata(
+                        failure, retries, overlap_detected, idle_wait_timed_out
+                    )
+                _log_queue_event(
+                    f"RUN_START id={queue_id} tool={tool_name} label={queue_label} attempt={retries + 1}"
+                )
                 start_ts = time.time()
                 stop_event = threading.Event()
                 overlap_event = threading.Event()
@@ -2030,7 +2081,9 @@ def _run_with_queue(
                             f"OVERLAP_NOT_REQUEUED id={queue_id} tool={tool_name} "
                             f"label={queue_label} reason=non_success_exit exit_code={exit_code}"
                         )
-                        result = _attach_queue_metadata(result, retries, overlap_detected, idle_wait_timed_out)
+                        result = _attach_queue_metadata(
+                            result, retries, overlap_detected, idle_wait_timed_out
+                        )
                         if isinstance(result, dict):
                             result.setdefault("queue", {})
                             result["queue"]["overlap_retry_limit"] = max_overlap_retries
@@ -2042,15 +2095,21 @@ def _run_with_queue(
                             f"OVERLAP_RETRY_EXHAUSTED id={queue_id} tool={tool_name} "
                             f"label={queue_label} retries={retries - 1} limit={max_overlap_retries}"
                         )
-                        result = _attach_queue_metadata(result, retries - 1, overlap_detected, idle_wait_timed_out)
+                        result = _attach_queue_metadata(
+                            result, retries - 1, overlap_detected, idle_wait_timed_out
+                        )
                         if isinstance(result, dict):
                             result.setdefault("queue", {})
                             result["queue"]["overlap_retry_limit"] = max_overlap_retries
                             result["queue"]["overlap_retry_exhausted"] = True
                         return result
-                    _log_queue_event(f"REQUEUE id={queue_id} tool={tool_name} label={queue_label} reason=overlap")
+                    _log_queue_event(
+                        f"REQUEUE id={queue_id} tool={tool_name} label={queue_label} reason=overlap"
+                    )
                     continue
-                result = _attach_queue_metadata(result, retries, overlap_detected, idle_wait_timed_out)
+                result = _attach_queue_metadata(
+                    result, retries, overlap_detected, idle_wait_timed_out
+                )
                 if isinstance(result, dict):
                     result.setdefault("queue", {})
                     result["queue"]["overlap_retry_limit"] = max_overlap_retries
@@ -2107,7 +2166,9 @@ def _build_enriched_tool_payload(
         "arguments": _sanitize_arguments(arguments),
         "arguments_details": _argument_details(arguments),
         "result": result,
-        "result_preview": _trim_value(result, max_length=_PREVIEW_MAX_LENGTH, max_items=_PREVIEW_MAX_ITEMS),
+        "result_preview": _trim_value(
+            result, max_length=_PREVIEW_MAX_LENGTH, max_items=_PREVIEW_MAX_ITEMS
+        ),
         "result_metadata": _result_metadata(result),
     }
     if server_info:
@@ -2119,9 +2180,7 @@ def _build_enriched_tool_payload(
     # Always provide a lightweight context snapshot for continuity.
     payload["context_summary"] = _context_snapshot()
 
-    payload["guidance"] = {
-        "next_steps": _default_next_steps(tool_name, status_is_error)
-    }
+    payload["guidance"] = {"next_steps": _default_next_steps(tool_name, status_is_error)}
     return payload
 
 
@@ -2142,6 +2201,7 @@ def _content_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
 # GPU TOOLS
 # =============================================================================
 
+
 @register_tool(
     "gpu_info",
     "Tags: gpu, info, snapshot, health-check, inventory, nvidia-smi. "
@@ -2149,15 +2209,16 @@ def _content_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     "Returns: {gpus: [{name, memory_total_gb, memory_used_gb, temperature_c, power_w, utilization_pct}], count}. "
     "⚡ FAST (~1s). USE FIRST when: Starting any performance investigation, verifying hardware before profiling. "
     "USE INSTEAD OF: Running nvidia-smi manually in terminal. "
-    "Example: \"Show GPU names, memory, temps\" or \"What GPUs do I have?\" or \"Check VRAM before loading model\". "
+    'Example: "Show GPU names, memory, temps" or "What GPUs do I have?" or "Check VRAM before loading model". '
     "WORKFLOW: gpu_info → status → recommend → specific optimization tools. "
     "NOT FOR: Feature detection (info_features), topology (gpu_topology), power throttling (gpu_power).",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_gpu_info(params: Dict[str, Any]) -> Dict[str, Any]:
     """Get GPU information."""
     from core.perf_core import get_core
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().gpu.info()
     return attach_context_if_requested(result, include_context, context_level)
@@ -2169,14 +2230,15 @@ def tool_gpu_info(params: Dict[str, Any]) -> Dict[str, Any]:
     "Run GPU memory bandwidth test measuring actual vs theoretical HBM bandwidth. "
     "Returns: {bandwidth_gbps, theoretical_gbps, efficiency_pct, test_size_mb}. "
     "USE when: Validating memory throughput matches GPU spec, diagnosing memory-bound kernels, checking for HBM/PCIe issues. "
-    "Example: \"Check H100 bandwidth vs spec\" or \"Why is my memory-bound kernel slow?\". "
+    'Example: "Check H100 bandwidth vs spec" or "Why is my memory-bound kernel slow?". '
     "NOT FOR: PCIe H2D/D2H bandwidth (use hw_pcie), GPU-to-GPU P2P (use hw_p2p). 🕐 MEDIUM (~10s). WORKFLOW: gpu_info → gpu_bandwidth → diagnose memory-bound.",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_gpu_bandwidth(params: Dict[str, Any]) -> Dict[str, Any]:
     """Run GPU bandwidth test."""
     from core.perf_core import get_core
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().gpu.bandwidth_test()
     return attach_context_if_requested(result, include_context, context_level)
@@ -2188,14 +2250,15 @@ def tool_gpu_bandwidth(params: Dict[str, Any]) -> Dict[str, Any]:
     "Get multi-GPU topology: NVLink/PCIe connections, NUMA affinity, P2P capability matrix. "
     "Returns: {gpu_count, connections: [{src, dst, type, bandwidth_gbps}], numa_nodes, p2p_matrix}. "
     "USE when: Planning tensor/pipeline parallelism, debugging P2P transfer issues, optimizing GPU placement. "
-    "Example: \"Show NVLink/PCIe layout on 8x GPU server\" or \"Which GPUs have NVLink?\". "
+    'Example: "Show NVLink/PCIe layout on 8x GPU server" or "Which GPUs have NVLink?". '
     "NOT FOR: Raw topology matrix output (use gpu_topology_matrix for nvidia-smi topo -m). ⚡ FAST (~2s). WORKFLOW: gpu_topology → distributed_plan → distributed_nccl.",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_gpu_topology(params: Dict[str, Any]) -> Dict[str, Any]:
     """Get GPU topology."""
     from core.perf_core import get_core
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().gpu.topology()
     return attach_context_if_requested(result, include_context, context_level)
@@ -2207,14 +2270,15 @@ def tool_gpu_topology(params: Dict[str, Any]) -> Dict[str, Any]:
     "Get GPU power and thermal status: current power draw, power limit, temperature, throttling state. "
     "Returns: {gpus: [{power_w, power_limit_w, headroom_w, temperature_c, throttling, fan_pct}]}. "
     "USE when: Checking for thermal/power throttling, verifying TDP headroom before heavy workloads. "
-    "Example: \"Are GPUs power-throttling right now?\" or \"How much thermal headroom do I have?\". "
+    'Example: "Are GPUs power-throttling right now?" or "How much thermal headroom do I have?". '
     "NOT FOR: General GPU info (use gpu_info), sustained power monitoring over time. ⚡ FAST (~1s). WORKFLOW: gpu_power → if throttling → reduce workload.",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_gpu_power(params: Dict[str, Any]) -> Dict[str, Any]:
     """Get GPU power info."""
     from core.perf_core import get_core
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().analyze.power()
     return attach_context_if_requested(result, include_context, context_level)
@@ -2224,20 +2288,22 @@ def tool_gpu_power(params: Dict[str, Any]) -> Dict[str, Any]:
 # SYSTEM TOOLS
 # =============================================================================
 
+
 @register_tool(
     "system_software",
     "Tags: software, versions, pytorch, cuda, python, driver, stack. "
     "Get software stack versions: PyTorch, CUDA toolkit, cuDNN, Python, NVIDIA driver. "
     "Returns: {pytorch_version, cuda_version, cudnn_version, python_version, driver_version, transformers_version}. "
     "USE when: Filing bug reports, checking compatibility, reproducing issues, verifying install. "
-    "Example: \"What PyTorch and CUDA versions are installed?\" or \"Is my CUDA version compatible with FlashAttention?\". "
+    'Example: "What PyTorch and CUDA versions are installed?" or "Is my CUDA version compatible with FlashAttention?". '
     "NOT FOR: Checking if dependencies import correctly (use system_dependencies). ⚡ FAST (~1s). WORKFLOW: system_software → check → verify compatibility.",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_system_software(params: Dict[str, Any]) -> Dict[str, Any]:
     """Get software information."""
     from core.perf_core import get_core
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().system.software()
     return attach_context_if_requested(result, include_context, context_level)
@@ -2249,14 +2315,15 @@ def tool_system_software(params: Dict[str, Any]) -> Dict[str, Any]:
     "Check health of ML/AI dependencies: torch, triton, flash-attn, transformers, vllm, etc. "
     "Returns: {dependencies: [{name, installed, importable, version, error}], healthy_count, broken_count}. "
     "USE when: Diagnosing import errors, checking if optional dependencies are available, debugging install issues. "
-    "Example: \"Why does torch.cuda fail to import?\" or \"Is flash-attn installed correctly?\". "
+    'Example: "Why does torch.cuda fail to import?" or "Is flash-attn installed correctly?". '
     "NOT FOR: Version numbers only (use system_software), general system health (use status). ⚡ FAST (~2s). WORKFLOW: system_dependencies → fix broken → retry.",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_system_dependencies(params: Dict[str, Any]) -> Dict[str, Any]:
     """Check dependency health."""
     from core.perf_core import get_core
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().system.dependencies()
     return attach_context_if_requested(result, include_context, context_level)
@@ -2268,13 +2335,14 @@ def tool_system_dependencies(params: Dict[str, Any]) -> Dict[str, Any]:
     "Inspect kernel parameters that commonly affect performance (swappiness, dirty ratios, NUMA balancing, net buffers). "
     "Returns: {parameters: [{name, path, current, recommended, description, needs_tuning}], quick_tune_commands}. "
     "USE when: Validating host tuning before benchmarks or diagnosing IO/NUMA slowdowns. "
-    "Example: \"Check system tuning parameters\" or \"Show swappiness and dirty ratios\". "
+    'Example: "Check system tuning parameters" or "Show swappiness and dirty ratios". '
     "NOT FOR: Software versions (use system_software). ⚡ FAST (~1s). WORKFLOW: system_parameters → apply quick_tune_commands.",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_system_parameters(params: Dict[str, Any]) -> Dict[str, Any]:
     """Inspect kernel parameters that impact performance."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().system.parameters()
     return attach_context_if_requested(result, include_context, context_level)
@@ -2286,13 +2354,14 @@ def tool_system_parameters(params: Dict[str, Any]) -> Dict[str, Any]:
     "Inspect container/cgroup limits (CPU quota, memory limit, cgroup version). "
     "Returns: {in_container, container_type, cgroup_version, cpu_limit, memory_limit_gb, recommendations}. "
     "USE when: Diagnosing throttling in containers or Kubernetes. "
-    "Example: \"Am I CPU throttled in this container?\" or \"Show cgroup limits\". "
+    'Example: "Am I CPU throttled in this container?" or "Show cgroup limits". '
     "NOT FOR: Hardware capabilities (use system_capabilities). ⚡ FAST (~1s).",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_system_container(params: Dict[str, Any]) -> Dict[str, Any]:
     """Inspect container/cgroup limits."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().system.container()
     return attach_context_if_requested(result, include_context, context_level)
@@ -2304,13 +2373,14 @@ def tool_system_container(params: Dict[str, Any]) -> Dict[str, Any]:
     "Analyze CPU/memory hierarchy (NUMA nodes, cache sizes, memory stats). "
     "Returns: {cpu, cache_hierarchy, memory, numa, tlb, recommendations}. "
     "USE when: Diagnosing host-bound workloads or dataloader bottlenecks. "
-    "Example: \"Show NUMA layout\" or \"Check CPU cache hierarchy\". "
+    'Example: "Show NUMA layout" or "Check CPU cache hierarchy". '
     "NOT FOR: GPU topology (use gpu_topology). ⚡ FAST (~1s).",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_system_cpu_memory(params: Dict[str, Any]) -> Dict[str, Any]:
     """Analyze CPU/memory hierarchy."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().system.cpu_memory()
     return attach_context_if_requested(result, include_context, context_level)
@@ -2322,13 +2392,14 @@ def tool_system_cpu_memory(params: Dict[str, Any]) -> Dict[str, Any]:
     "Snapshot key environment variables and working directory. "
     "Returns: {cwd, reported_keys, environment}. "
     "USE when: Debugging env-dependent behavior or verifying CUDA/NCCL settings. "
-    "Example: \"Show CUDA/NCCL env vars\". "
+    'Example: "Show CUDA/NCCL env vars". '
     "NOT FOR: Full system context (use system_context). ⚡ FAST (~1s).",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_system_env(params: Dict[str, Any]) -> Dict[str, Any]:
     """Snapshot environment variables relevant to performance."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().system.env()
     return attach_context_if_requested(result, include_context, context_level)
@@ -2340,13 +2411,14 @@ def tool_system_env(params: Dict[str, Any]) -> Dict[str, Any]:
     "Inspect network interfaces, InfiniBand status, and GPUDirect/NCCL env hints. "
     "Returns: {interfaces, infiniband, gpudirect_rdma, nccl_env}. "
     "USE when: Debugging multi-node networking or NCCL connectivity issues. "
-    "Example: \"Check InfiniBand status\" or \"Show NCCL network env\". "
+    'Example: "Check InfiniBand status" or "Show NCCL network env". '
     "NOT FOR: NCCL collective tuning (use distributed_nccl). ⚡ FAST (~1s).",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_system_network(params: Dict[str, Any]) -> Dict[str, Any]:
     """Inspect network/InfiniBand status."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().system.network()
     return attach_context_if_requested(result, include_context, context_level)
@@ -2359,11 +2431,26 @@ def tool_system_network(params: Dict[str, Any]) -> Dict[str, Any]:
     "Returns: {success, gpu_count, results:[{device, physical_index, locked, before/during/after clocks, error?}]}. "
     "⚡ FAST (~1-5s). USE when: You want to verify the host supports clock locking before running benchmarks. "
     "NOT FOR: Manually locking clocks; this tool uses the repo harness and resets clocks on exit.",
-    {"type": "object", "properties": with_context_params({
-        "sm_clock_mhz": {"type": "integer", "description": "Target SM clock in MHz (default: max)"},
-        "mem_clock_mhz": {"type": "integer", "description": "Target memory clock in MHz (default: max)"},
-        "devices": {"type": "array", "items": {"type": "integer"}, "description": "Optional list of CUDA device indices to check (default: all visible GPUs)"},
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "sm_clock_mhz": {
+                    "type": "integer",
+                    "description": "Target SM clock in MHz (default: max)",
+                },
+                "mem_clock_mhz": {
+                    "type": "integer",
+                    "description": "Target memory clock in MHz (default: max)",
+                },
+                "devices": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "Optional list of CUDA device indices to check (default: all visible GPUs)",
+                },
+            }
+        ),
+    },
 )
 def tool_clock_lock_check(params: Dict[str, Any]) -> Dict[str, Any]:
     """Validate harness clock locking works."""
@@ -2397,7 +2484,7 @@ def tool_clock_lock_check(params: Dict[str, Any]) -> Dict[str, Any]:
     "Returns: {stdout, stderr, returncode, duration_seconds, results_json (best-effort), run_dir (best-effort), speedup_attribution (best-effort), suggested_next_steps}. "
     "⚠️ SLOW: 2-30+ minutes depending on targets. ALWAYS run status first! "
     "USE when: Validating optimizations, generating benchmark data for comparison. "
-    "Example: \"Run ch07 benchmarks\" or \"Benchmark attention examples\". "
+    'Example: "Run ch07 benchmarks" or "Benchmark attention examples". '
     "SAFE WORKFLOW: "
     "1. status → verify GPU/CUDA ready "
     "2. list_chapters → see what's available "
@@ -2417,198 +2504,200 @@ def tool_clock_lock_check(params: Dict[str, Any]) -> Dict[str, Any]:
     "NOT FOR: Quick GPU health (use hw_speed first).",
     {
         "type": "object",
-        "properties": with_context_params({
-            "targets": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": (
-                    "Benchmark targets as chapter or chapter:example (or lab paths like labs/<lab>:example); "
-                    "discover via benchmark_targets or list_chapters. "
-                    "Examples: ['ch07'] or ['ch10:atomic_reduction']."
-                ),
-            },
-            "profile": {
-                "type": "string",
-                "description": "Profiling preset: none (no profiling), minimal (basic), deep_dive (full nsys/ncu profiling), or roofline",
-                "enum": ["none", "minimal", "deep_dive", "roofline"],
-                "default": "minimal"
-            },
-            "artifacts_dir": {
-                "type": "string",
-                "description": "Base directory for run artifacts (default: ./artifacts/runs).",
-            },
-            "run_id": {
-                "type": "string",
-                "description": "Run ID for artifacts (default: <timestamp>__bench__profile-<type>__targets-<...>)",
-            },
-            "iterations": {
-                "type": "integer",
-                "description": "Override benchmark iterations (all targets).",
-            },
-            "warmup": {
-                "type": "integer",
-                "description": "Override warmup iterations (all targets).",
-            },
-            "force_sync": {
-                "type": "boolean",
-                "description": "Force a device-wide synchronize immediately after benchmark_fn() (opt-in safeguard).",
-                "default": False,
-            },
-            "gpu_sm_clock_mhz": {
-                "type": "integer",
-                "description": (
-                    "Lock the SM application clock (MHz) for this run (recommended for SOL comparisons). "
-                    "Example: 1500 for B200/B200. Requires clock locking to be enabled in the harness."
-                ),
-            },
-            "gpu_mem_clock_mhz": {
-                "type": "integer",
-                "description": (
-                    "Lock the GPU memory (HBM) application clock (MHz) for this run. "
-                    "If omitted, the harness will lock memory to the max supported clock."
-                ),
-            },
-            "llm_analysis": {
-                "type": "boolean",
-                "description": "Enable LLM-powered analysis for benchmarks with <1.1x speedup. DISABLED BY DEFAULT (false) to avoid API costs. Only set to true when user explicitly requests: 'with LLM analysis', 'use AI insights', 'analyze with AI', 'get AI recommendations', or similar phrases. If user doesn't mention LLM/AI analysis, leave this false.",
-                "default": False
-            },
-            "apply_patches": {"type": "boolean"},
-            "force_llm": {
-                "type": "boolean",
-                "description": "Force LLM analysis on all benchmarks regardless of speedup (costs API credits).",
-                "default": False,
-            },
-            "rebenchmark_llm_patches": {
-                "type": "boolean",
-                "description": "Re-benchmark LLM-patched variants (requires apply_patches=true).",
-                "default": False,
-            },
-            "llm_explain": {
-                "type": "boolean",
-                "description": "Generate LLM explanations for best patches (requires rebenchmark_llm_patches=true).",
-                "default": False,
-            },
-            "precheck_only": {
-                "type": "boolean",
-                "description": "Return prerequisites and planned command without running",
-                "default": False
-            },
-            "dry_run": {
-                "type": "boolean",
-                "description": "Describe the bench run without executing it (alias: estimate_only)",
-                "default": False
-            },
-            "async": {
-                "type": "boolean",
-                "description": "Run in background and return job_id; poll with job_status",
-                "default": False
-            },
-            "timeout_seconds": {
-                "type": "integer",
-                "description": "Max runtime before returning with partial output; set 0/null for no timeout",
-                "default": 900
-            },
-            "timeout_multiplier": {
-                "type": "number",
-                "description": "Multiply all benchmark timeouts by this factor (e.g., 2.0 = double all timeouts).",
-                "default": 3.0
-            },
-            "nsys_timeout_seconds": {
-                "type": "integer",
-                "description": "Override Nsight Systems timeout in seconds (default from BenchmarkDefaults).",
-                "default": None
-            },
-            "ncu_timeout_seconds": {
-                "type": "integer",
-                "description": "Override Nsight Compute timeout in seconds (default from BenchmarkDefaults).",
-                "default": None
-            },
-            "ncu_metric_set": {
-                "type": "string",
-                "description": (
-                    "Nsight Compute metric preset: auto, minimal, deep_dive, or roofline. "
-                    "Default is minimal for safer profiling."
-                ),
-                "enum": ["auto", "minimal", "deep_dive", "roofline"],
-                "default": "minimal",
-            },
-            "ncu_replay_mode": {
-                "type": "string",
-                "description": (
-                    "Nsight Compute replay mode: kernel or application. "
-                    "Default is kernel for safer profiling on dynamic workloads."
-                ),
-                "enum": ["kernel", "application"],
-                "default": "kernel",
-            },
-            "validity_profile": {
-                "type": "string",
-                "description": (
-                    "Benchmark validity profile (`--validity-profile`, MCP field `validity_profile`): strict (default; fail-fast with full validity checks) or portable "
-                    "(explicit compatibility mode for hardware without full benchmark controls)."
-                ),
-                "enum": ["strict", "portable"],
-                "default": "strict",
-            },
-            "allow_portable_expectations_update": {
-                "type": "boolean",
-                "description": (
-                    "In the portable validity profile, expectation writes are disabled by default. "
-                    "Set this flag to allow expectation-file updates."
-                ),
-                "default": False,
-            },
-            "accept_regressions": {
-                "type": "boolean",
-                "description": (
-                    "Update expectation files when improvements are detected instead of flagging regressions."
-                ),
-                "default": False,
-            },
-            "allow_mixed_provenance": {
-                "type": "boolean",
-                "description": (
-                    "Allow expectation updates when provenance differs (commit/hardware/profile mismatch) without "
-                    "forcing updates. Does NOT accept regressions (use accept_regressions/update_expectations)."
-                ),
-                "default": False,
-            },
-            "update_expectations": {
-                "type": "boolean",
-                "description": (
-                    "Force-write observed metrics into expectation files (overrides regressions). "
-                    "Useful for refreshing baselines on new hardware."
-                ),
-                "default": False,
-            },
-            "only_cuda": {
-                "type": "boolean",
-                "description": "Run only CUDA binary benchmarks (Python wrappers).",
-                "default": False,
-            },
-            "only_python": {
-                "type": "boolean",
-                "description": "Run only Python benchmarks (skip CUDA binary wrappers).",
-                "default": False,
-            },
-            "auto_analyze": {
-                "type": "boolean",
-                "description": "Automatically run benchmark_triage after a successful run.",
-                "default": True,
-            },
-            "auto_report": {
-                "type": "boolean",
-                "description": "Automatically generate a benchmark report after a successful run.",
-                "default": True,
-            },
-            "report_format": {
-                "type": "string",
-                "description": "Report format used when auto_report=true (html or pdf).",
-                "enum": ["html", "pdf"],
-                "default": "html",
-            },
-        }),
+        "properties": with_context_params(
+            {
+                "targets": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Benchmark targets as chapter or chapter:example (or lab paths like labs/<lab>:example); "
+                        "discover via benchmark_targets or list_chapters. "
+                        "Examples: ['ch07'] or ['ch10:atomic_reduction']."
+                    ),
+                },
+                "profile": {
+                    "type": "string",
+                    "description": "Profiling preset: none (no profiling), minimal (basic), deep_dive (full nsys/ncu profiling), or roofline",
+                    "enum": ["none", "minimal", "deep_dive", "roofline"],
+                    "default": "minimal",
+                },
+                "artifacts_dir": {
+                    "type": "string",
+                    "description": "Base directory for run artifacts (default: ./artifacts/runs).",
+                },
+                "run_id": {
+                    "type": "string",
+                    "description": "Run ID for artifacts (default: <timestamp>__bench__profile-<type>__targets-<...>)",
+                },
+                "iterations": {
+                    "type": "integer",
+                    "description": "Override benchmark iterations (all targets).",
+                },
+                "warmup": {
+                    "type": "integer",
+                    "description": "Override warmup iterations (all targets).",
+                },
+                "force_sync": {
+                    "type": "boolean",
+                    "description": "Force a device-wide synchronize immediately after benchmark_fn() (opt-in safeguard).",
+                    "default": False,
+                },
+                "gpu_sm_clock_mhz": {
+                    "type": "integer",
+                    "description": (
+                        "Lock the SM application clock (MHz) for this run (recommended for SOL comparisons). "
+                        "Example: 1500 for B200/B200. Requires clock locking to be enabled in the harness."
+                    ),
+                },
+                "gpu_mem_clock_mhz": {
+                    "type": "integer",
+                    "description": (
+                        "Lock the GPU memory (HBM) application clock (MHz) for this run. "
+                        "If omitted, the harness will lock memory to the max supported clock."
+                    ),
+                },
+                "llm_analysis": {
+                    "type": "boolean",
+                    "description": "Enable LLM-powered analysis for benchmarks with <1.1x speedup. DISABLED BY DEFAULT (false) to avoid API costs. Only set to true when user explicitly requests: 'with LLM analysis', 'use AI insights', 'analyze with AI', 'get AI recommendations', or similar phrases. If user doesn't mention LLM/AI analysis, leave this false.",
+                    "default": False,
+                },
+                "apply_patches": {"type": "boolean"},
+                "force_llm": {
+                    "type": "boolean",
+                    "description": "Force LLM analysis on all benchmarks regardless of speedup (costs API credits).",
+                    "default": False,
+                },
+                "rebenchmark_llm_patches": {
+                    "type": "boolean",
+                    "description": "Re-benchmark LLM-patched variants (requires apply_patches=true).",
+                    "default": False,
+                },
+                "llm_explain": {
+                    "type": "boolean",
+                    "description": "Generate LLM explanations for best patches (requires rebenchmark_llm_patches=true).",
+                    "default": False,
+                },
+                "precheck_only": {
+                    "type": "boolean",
+                    "description": "Return prerequisites and planned command without running",
+                    "default": False,
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Describe the bench run without executing it (alias: estimate_only)",
+                    "default": False,
+                },
+                "async": {
+                    "type": "boolean",
+                    "description": "Run in background and return job_id; poll with job_status",
+                    "default": False,
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Max runtime before returning with partial output; set 0/null for no timeout",
+                    "default": 900,
+                },
+                "timeout_multiplier": {
+                    "type": "number",
+                    "description": "Multiply all benchmark timeouts by this factor (e.g., 2.0 = double all timeouts).",
+                    "default": 3.0,
+                },
+                "nsys_timeout_seconds": {
+                    "type": "integer",
+                    "description": "Override Nsight Systems timeout in seconds (default from BenchmarkDefaults).",
+                    "default": None,
+                },
+                "ncu_timeout_seconds": {
+                    "type": "integer",
+                    "description": "Override Nsight Compute timeout in seconds (default from BenchmarkDefaults).",
+                    "default": None,
+                },
+                "ncu_metric_set": {
+                    "type": "string",
+                    "description": (
+                        "Nsight Compute metric preset: auto, minimal, deep_dive, or roofline. "
+                        "Default is minimal for safer profiling."
+                    ),
+                    "enum": ["auto", "minimal", "deep_dive", "roofline"],
+                    "default": "minimal",
+                },
+                "ncu_replay_mode": {
+                    "type": "string",
+                    "description": (
+                        "Nsight Compute replay mode: kernel or application. "
+                        "Default is kernel for safer profiling on dynamic workloads."
+                    ),
+                    "enum": ["kernel", "application"],
+                    "default": "kernel",
+                },
+                "validity_profile": {
+                    "type": "string",
+                    "description": (
+                        "Benchmark validity profile (`--validity-profile`, MCP field `validity_profile`): strict (default; fail-fast with full validity checks) or portable "
+                        "(explicit compatibility mode for hardware without full benchmark controls)."
+                    ),
+                    "enum": ["strict", "portable"],
+                    "default": "strict",
+                },
+                "allow_portable_expectations_update": {
+                    "type": "boolean",
+                    "description": (
+                        "In the portable validity profile, expectation writes are disabled by default. "
+                        "Set this flag to allow expectation-file updates."
+                    ),
+                    "default": False,
+                },
+                "accept_regressions": {
+                    "type": "boolean",
+                    "description": (
+                        "Update expectation files when improvements are detected instead of flagging regressions."
+                    ),
+                    "default": False,
+                },
+                "allow_mixed_provenance": {
+                    "type": "boolean",
+                    "description": (
+                        "Allow expectation updates when provenance differs (commit/hardware/profile mismatch) without "
+                        "forcing updates. Does NOT accept regressions (use accept_regressions/update_expectations)."
+                    ),
+                    "default": False,
+                },
+                "update_expectations": {
+                    "type": "boolean",
+                    "description": (
+                        "Force-write observed metrics into expectation files (overrides regressions). "
+                        "Useful for refreshing baselines on new hardware."
+                    ),
+                    "default": False,
+                },
+                "only_cuda": {
+                    "type": "boolean",
+                    "description": "Run only CUDA binary benchmarks (Python wrappers).",
+                    "default": False,
+                },
+                "only_python": {
+                    "type": "boolean",
+                    "description": "Run only Python benchmarks (skip CUDA binary wrappers).",
+                    "default": False,
+                },
+                "auto_analyze": {
+                    "type": "boolean",
+                    "description": "Automatically run benchmark_triage after a successful run.",
+                    "default": True,
+                },
+                "auto_report": {
+                    "type": "boolean",
+                    "description": "Automatically generate a benchmark report after a successful run.",
+                    "default": True,
+                },
+                "report_format": {
+                    "type": "string",
+                    "description": "Report format used when auto_report=true (html or pdf).",
+                    "enum": ["html", "pdf"],
+                    "default": "html",
+                },
+            }
+        ),
         "required": ["targets"],
     },
 )
@@ -2640,6 +2729,7 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
     run_id = run_id_param.strip() if isinstance(run_id_param, str) else run_id_param
     if not run_id:
         from core.benchmark.artifact_manager import build_bench_run_label
+
         base_dir = Path(artifacts_dir) if artifacts_dir else CODE_ROOT / "artifacts" / "runs"
         if not base_dir.is_absolute():
             base_dir = (CODE_ROOT / base_dir).resolve()
@@ -2665,7 +2755,9 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
             ),
             "success": False,
         }
-    allow_portable_expectations_update = bool(params.get("allow_portable_expectations_update", False))
+    allow_portable_expectations_update = bool(
+        params.get("allow_portable_expectations_update", False)
+    )
     accept_regressions = bool(params.get("accept_regressions", False))
     allow_mixed_provenance = bool(params.get("allow_mixed_provenance", False))
     update_expectations = bool(params.get("update_expectations", False))
@@ -2782,11 +2874,7 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
         return queued
 
     llm_requested = bool(
-        llm_analysis
-        or force_llm
-        or apply_patches
-        or rebenchmark_llm_patches
-        or llm_explain
+        llm_analysis or force_llm or apply_patches or rebenchmark_llm_patches or llm_explain
     )
     if llm_requested:
         from core.llm import get_llm_status
@@ -2802,7 +2890,8 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
             return {
                 "error": "LLM analysis requested but no LLM backend is configured.",
                 "llm_status": llm_status,
-                "hint": llm_status.get("warning") or "Set an LLM API key/base URL in .env/.env.local.",
+                "hint": llm_status.get("warning")
+                or "Set an LLM API key/base URL in .env/.env.local.",
                 "success": False,
             }
 
@@ -2895,7 +2984,9 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
 
     def _execute_bench_cli_only() -> Dict[str, Any]:
         return _attach_bench_artifact_paths(
-            _run_bench_cli(args, timeout=timeout_seconds if timeout_seconds and timeout_seconds > 0 else None)
+            _run_bench_cli(
+                args, timeout=timeout_seconds if timeout_seconds and timeout_seconds > 0 else None
+            )
         )
 
     def _execute_benchmarks(queue_job_id: Optional[str] = None):
@@ -2933,40 +3024,48 @@ def _benchmark_next_steps(result: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     if returncode == 0:
         # Success path
-        steps.append({
-            "tool": "benchmark_triage",
-            "reason": "Analyze benchmark results and get optimization recommendations",
-            "priority": "high"
-        })
-        steps.append({
-            "tool": "benchmark_report",
-            "reason": "Generate shareable PDF/HTML report",
-            "params": {"format": "html"}
-        })
-        steps.append({
-            "tool": "benchmark_compare_runs",
-            "reason": "Compare with previous baseline if available",
-            "note": "Requires baseline benchmark_test_results.json"
-        })
-        steps.append({
-            "tool": "analyze_pareto",
-            "reason": "Find optimal throughput/latency/memory tradeoffs"
-        })
+        steps.append(
+            {
+                "tool": "benchmark_triage",
+                "reason": "Analyze benchmark results and get optimization recommendations",
+                "priority": "high",
+            }
+        )
+        steps.append(
+            {
+                "tool": "benchmark_report",
+                "reason": "Generate shareable PDF/HTML report",
+                "params": {"format": "html"},
+            }
+        )
+        steps.append(
+            {
+                "tool": "benchmark_compare_runs",
+                "reason": "Compare with previous baseline if available",
+                "note": "Requires baseline benchmark_test_results.json",
+            }
+        )
+        steps.append(
+            {"tool": "analyze_pareto", "reason": "Find optimal throughput/latency/memory tradeoffs"}
+        )
     else:
         # Failure path
-        steps.append({
-            "tool": "status",
-            "reason": "Check system health after benchmark failure",
-            "priority": "high"
-        })
-        steps.append({
-            "tool": "system_dependencies",
-            "reason": "Verify all dependencies are correctly installed"
-        })
-        steps.append({
-            "tool": "analyze_bottlenecks",
-            "reason": "Identify what might be causing issues"
-        })
+        steps.append(
+            {
+                "tool": "status",
+                "reason": "Check system health after benchmark failure",
+                "priority": "high",
+            }
+        )
+        steps.append(
+            {
+                "tool": "system_dependencies",
+                "reason": "Verify all dependencies are correctly installed",
+            }
+        )
+        steps.append(
+            {"tool": "analyze_bottlenecks", "reason": "Identify what might be causing issues"}
+        )
 
     return steps
 
@@ -2981,90 +3080,92 @@ def _benchmark_next_steps(result: Dict[str, Any]) -> List[Dict[str, Any]]:
     "Example: targets=['ch11:warp_specialization_multistream'].",
     {
         "type": "object",
-        "properties": with_context_params({
-            "targets": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": (
-                    "Benchmark targets as chapter or chapter:example; "
-                    "discover via benchmark_targets or list_chapters."
-                ),
-            },
-            "profile": {
-                "type": "string",
-                "description": "Profiling preset: none (no profiling), minimal (basic), deep_dive (full nsys/ncu profiling), or roofline",
-                "enum": ["none", "minimal", "deep_dive", "roofline"],
-                "default": "minimal",
-            },
-            "artifacts_dir": {
-                "type": "string",
-                "description": "Base directory for artifacts (bench creates a self-describing run dir underneath).",
-            },
-            "run_id": {
-                "type": "string",
-                "description": "Run ID for artifacts (default: <timestamp>__bench__profile-<type>__targets-<...>)",
-            },
-            "iterations": {
-                "type": "integer",
-                "description": "Override benchmark iterations (all targets).",
-            },
-            "warmup": {
-                "type": "integer",
-                "description": "Override warmup iterations (all targets).",
-            },
-            "llm_analysis": {
-                "type": "boolean",
-                "description": "Enable LLM-powered analysis (default true for this shortcut).",
-                "default": True,
-            },
-            "force_llm": {
-                "type": "boolean",
-                "description": "Force LLM analysis on all benchmarks regardless of speedup (default true for this shortcut).",
-                "default": True,
-            },
-            "apply_patches": {
-                "type": "boolean",
-                "description": "Apply LLM-suggested patches to create new optimized variants (default true for this shortcut).",
-                "default": True,
-            },
-            "rebenchmark_llm_patches": {
-                "type": "boolean",
-                "description": "Re-benchmark LLM-patched variants (default true for this shortcut).",
-                "default": True,
-            },
-            "llm_explain": {
-                "type": "boolean",
-                "description": "Generate LLM explanations for best patches (requires rebenchmark_llm_patches=true).",
-                "default": False,
-            },
-            "async": {
-                "type": "boolean",
-                "description": "Run in background and return job_id; poll with job_status",
-                "default": False,
-            },
-            "timeout_seconds": {
-                "type": "integer",
-                "description": "Max runtime before returning with partial output; set 0/null for no timeout",
-                "default": 900,
-            },
-            "validity_profile": {
-                "type": "string",
-                "description": (
-                    "Benchmark validity profile (`--validity-profile`, MCP field `validity_profile`): strict (default; fail-fast with full validity checks) or portable "
-                    "(explicit compatibility mode for hardware without full benchmark controls)."
-                ),
-                "enum": ["strict", "portable"],
-                "default": "strict",
-            },
-            "allow_portable_expectations_update": {
-                "type": "boolean",
-                "description": (
-                    "In the portable validity profile, expectation writes are disabled by default. "
-                    "Set this flag to allow expectation-file updates."
-                ),
-                "default": False,
-            },
-        }),
+        "properties": with_context_params(
+            {
+                "targets": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Benchmark targets as chapter or chapter:example; "
+                        "discover via benchmark_targets or list_chapters."
+                    ),
+                },
+                "profile": {
+                    "type": "string",
+                    "description": "Profiling preset: none (no profiling), minimal (basic), deep_dive (full nsys/ncu profiling), or roofline",
+                    "enum": ["none", "minimal", "deep_dive", "roofline"],
+                    "default": "minimal",
+                },
+                "artifacts_dir": {
+                    "type": "string",
+                    "description": "Base directory for artifacts (bench creates a self-describing run dir underneath).",
+                },
+                "run_id": {
+                    "type": "string",
+                    "description": "Run ID for artifacts (default: <timestamp>__bench__profile-<type>__targets-<...>)",
+                },
+                "iterations": {
+                    "type": "integer",
+                    "description": "Override benchmark iterations (all targets).",
+                },
+                "warmup": {
+                    "type": "integer",
+                    "description": "Override warmup iterations (all targets).",
+                },
+                "llm_analysis": {
+                    "type": "boolean",
+                    "description": "Enable LLM-powered analysis (default true for this shortcut).",
+                    "default": True,
+                },
+                "force_llm": {
+                    "type": "boolean",
+                    "description": "Force LLM analysis on all benchmarks regardless of speedup (default true for this shortcut).",
+                    "default": True,
+                },
+                "apply_patches": {
+                    "type": "boolean",
+                    "description": "Apply LLM-suggested patches to create new optimized variants (default true for this shortcut).",
+                    "default": True,
+                },
+                "rebenchmark_llm_patches": {
+                    "type": "boolean",
+                    "description": "Re-benchmark LLM-patched variants (default true for this shortcut).",
+                    "default": True,
+                },
+                "llm_explain": {
+                    "type": "boolean",
+                    "description": "Generate LLM explanations for best patches (requires rebenchmark_llm_patches=true).",
+                    "default": False,
+                },
+                "async": {
+                    "type": "boolean",
+                    "description": "Run in background and return job_id; poll with job_status",
+                    "default": False,
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Max runtime before returning with partial output; set 0/null for no timeout",
+                    "default": 900,
+                },
+                "validity_profile": {
+                    "type": "string",
+                    "description": (
+                        "Benchmark validity profile (`--validity-profile`, MCP field `validity_profile`): strict (default; fail-fast with full validity checks) or portable "
+                        "(explicit compatibility mode for hardware without full benchmark controls)."
+                    ),
+                    "enum": ["strict", "portable"],
+                    "default": "strict",
+                },
+                "allow_portable_expectations_update": {
+                    "type": "boolean",
+                    "description": (
+                        "In the portable validity profile, expectation writes are disabled by default. "
+                        "Set this flag to allow expectation-file updates."
+                    ),
+                    "default": False,
+                },
+            }
+        ),
         "required": ["targets"],
     },
 )
@@ -3173,6 +3274,7 @@ def tool_benchmark_deep_dive_compare(params: Dict[str, Any]) -> Dict[str, Any]:
     run_id = run_id_param.strip() if isinstance(run_id_param, str) else run_id_param
     if not run_id:
         from core.benchmark.artifact_manager import build_bench_run_label
+
         base_dir = Path(output_dir)
         if not base_dir.is_absolute():
             base_dir = (CODE_ROOT / base_dir).resolve()
@@ -3191,7 +3293,9 @@ def tool_benchmark_deep_dive_compare(params: Dict[str, Any]) -> Dict[str, Any]:
         )
     if _is_test_mode() and "validity_profile" not in params:
         validity_profile = "portable"
-    allow_portable_expectations_update = bool(params.get("allow_portable_expectations_update", False))
+    allow_portable_expectations_update = bool(
+        params.get("allow_portable_expectations_update", False)
+    )
     run_async = bool(params.get("async", False))
     timeout_param = params.get("timeout_seconds")
     timeout_seconds = None if timeout_param is None else int(timeout_param)
@@ -3203,7 +3307,9 @@ def tool_benchmark_deep_dive_compare(params: Dict[str, Any]) -> Dict[str, Any]:
     if path is not None and not isinstance(path, str):
         return make_error("path must be a string.", include_context, context_level)
     if path and targets:
-        return make_error("Provide either path or targets, not both.", include_context, context_level)
+        return make_error(
+            "Provide either path or targets, not both.", include_context, context_level
+        )
     if path:
         path_value = path.strip()
         if not path_value:
@@ -3292,7 +3398,9 @@ def tool_benchmark_deep_dive_compare(params: Dict[str, Any]) -> Dict[str, Any]:
         if bench_result.get("returncode", 0) != 0:
             return {
                 "error": "bench run failed",
-                "bench_result": {k: v for k, v in bench_result.items() if k not in {"stdout", "stderr"}},
+                "bench_result": {
+                    k: v for k, v in bench_result.items() if k not in {"stdout", "stderr"}
+                },
                 "results_json": results_json,
                 "run_dir": run_dir,
                 "success": False,
@@ -3301,7 +3409,9 @@ def tool_benchmark_deep_dive_compare(params: Dict[str, Any]) -> Dict[str, Any]:
         if not results_json or not run_dir:
             return {
                 "error": "bench run succeeded but results_json/run_dir could not be discovered from output",
-                "bench_result": {k: v for k, v in bench_result.items() if k not in {"stdout", "stderr"}},
+                "bench_result": {
+                    k: v for k, v in bench_result.items() if k not in {"stdout", "stderr"}
+                },
                 "success": False,
             }
 
@@ -3322,7 +3432,7 @@ def tool_benchmark_deep_dive_compare(params: Dict[str, Any]) -> Dict[str, Any]:
                 step="deep_dive_compare",
                 step_detail="analysis start",
                 percent_complete=0.0,
-            )
+            ),
         )
 
         raw = json.loads(results_path.read_text())
@@ -3340,7 +3450,11 @@ def tool_benchmark_deep_dive_compare(params: Dict[str, Any]) -> Dict[str, Any]:
                 optimizations = bench.get("optimizations", []) or []
 
                 # Select best succeeded optimization by speedup.
-                succeeded = [o for o in optimizations if isinstance(o, dict) and o.get("status") == "succeeded"]
+                succeeded = [
+                    o
+                    for o in optimizations
+                    if isinstance(o, dict) and o.get("status") == "succeeded"
+                ]
                 if not succeeded:
                     benchmark_analyses.append(
                         {
@@ -3412,7 +3526,9 @@ def tool_benchmark_deep_dive_compare(params: Dict[str, Any]) -> Dict[str, Any]:
                         baseline_paths["nsys"], profiles_dir, dest_stem=f"{safe_example}__baseline"
                     ),
                     "optimized_nsys_rep": _copy_profile(
-                        optimized_paths["nsys"], profiles_dir, dest_stem=f"{safe_example}__optimized"
+                        optimized_paths["nsys"],
+                        profiles_dir,
+                        dest_stem=f"{safe_example}__optimized",
                     ),
                     "baseline_ncu_rep": _copy_profile(
                         baseline_paths["ncu"], profiles_dir, dest_stem=f"{safe_example}__baseline"
@@ -3424,14 +3540,28 @@ def tool_benchmark_deep_dive_compare(params: Dict[str, Any]) -> Dict[str, Any]:
                         baseline_paths["torch"], profiles_dir, dest_stem=f"{safe_example}__baseline"
                     ),
                     "optimized_torch_trace": _copy_profile(
-                        optimized_paths["torch"], profiles_dir, dest_stem=f"{safe_example}__optimized"
+                        optimized_paths["torch"],
+                        profiles_dir,
+                        dest_stem=f"{safe_example}__optimized",
                     ),
                 }
 
                 # Run comparisons on the per-benchmark profiles_dir (contains only this pair).
-                nsys_comparison = profile_insights.compare_nsys_files(profiles_dir) if profiles_dir.exists() else None
-                ncu_comparison = profile_insights.compare_ncu_files(profiles_dir) if profiles_dir.exists() else None
-                profile_compare = profile_insights.generate_flamegraph_comparison(profiles_dir) if profiles_dir.exists() else None
+                nsys_comparison = (
+                    profile_insights.compare_nsys_files(profiles_dir)
+                    if profiles_dir.exists()
+                    else None
+                )
+                ncu_comparison = (
+                    profile_insights.compare_ncu_files(profiles_dir)
+                    if profiles_dir.exists()
+                    else None
+                )
+                profile_compare = (
+                    profile_insights.generate_flamegraph_comparison(profiles_dir)
+                    if profiles_dir.exists()
+                    else None
+                )
                 side_by_side_report = None
                 side_by_side_error = None
                 if profiles_dir.exists():
@@ -3487,7 +3617,7 @@ def tool_benchmark_deep_dive_compare(params: Dict[str, Any]) -> Dict[str, Any]:
                 step="deep_dive_compare",
                 step_detail="analysis complete",
                 percent_complete=100.0,
-            )
+            ),
         )
 
         return {
@@ -3616,7 +3746,8 @@ def _summarize_variant_profiles(
 
         variants.append(
             {
-                "name": patch.get("variant_name") or Path(str(rebench.get("patched_file") or "")).stem,
+                "name": patch.get("variant_name")
+                or Path(str(rebench.get("patched_file") or "")).stem,
                 "description": patch.get("description"),
                 "expected_speedup": expected_speedup,
                 "actual_speedup": actual_speedup,
@@ -3663,7 +3794,12 @@ def _summarize_utilization_deltas(
             continue
         delta = var_val - base_val
         delta_pct = (delta / base_val * 100.0) if base_val else 0.0
-        deltas[key] = {"baseline": float(base_val), "variant": float(var_val), "delta": delta, "delta_pct": delta_pct}
+        deltas[key] = {
+            "baseline": float(base_val),
+            "variant": float(var_val),
+            "delta": delta,
+            "delta_pct": delta_pct,
+        }
     return deltas
 
 
@@ -3725,7 +3861,9 @@ def _copy_baseline_benchmark(
 
     candidate = base_candidate
     counter = 2
-    while (chapter_dir / f"baseline_{candidate}.py").exists() or (chapter_dir / f"baseline_{candidate}.cu").exists():
+    while (chapter_dir / f"baseline_{candidate}.py").exists() or (
+        chapter_dir / f"baseline_{candidate}.cu"
+    ).exists():
         candidate = f"{base_candidate}_{counter}"
         counter += 1
 
@@ -3746,11 +3884,13 @@ def _copy_baseline_benchmark(
 
     friendly_pattern = re.compile(r"(friendly_name\s*=\s*)(['\"])([^'\"]+)(['\"])")
     if friendly_pattern.search(content):
+
         def _friendly_repl(match: re.Match) -> str:
             label = match.group(3)
             if "MCP Copy" in label:
                 return match.group(0)
             return f"{match.group(1)}{match.group(2)}{label} (MCP Copy){match.group(4)}"
+
         content = friendly_pattern.sub(_friendly_repl, content, count=1)
 
     if replaced:
@@ -4102,7 +4242,9 @@ def tool_benchmark_explore(params: Dict[str, Any]) -> Dict[str, Any]:
         )
     if _is_test_mode() and "validity_profile" not in params:
         validity_profile = "portable"
-    allow_portable_expectations_update = bool(params.get("allow_portable_expectations_update", False))
+    allow_portable_expectations_update = bool(
+        params.get("allow_portable_expectations_update", False)
+    )
 
     progress_path = _progress_path_in_dir(base_dir, str(run_id))
     progress_recorder = ProgressRecorder(run_id=str(run_id), progress_path=progress_path)
@@ -4123,6 +4265,7 @@ def tool_benchmark_explore(params: Dict[str, Any]) -> Dict[str, Any]:
     def _run() -> Dict[str, Any]:
         from core.discovery import chapter_slug, get_bench_roots
         from core.harness.run_benchmarks import check_nsys_available, check_ncu_available
+
         test_mode = _is_test_mode()
         effective_validity_profile = validity_profile
         if test_mode and "validity_profile" not in params:
@@ -4300,7 +4443,9 @@ def tool_benchmark_explore(params: Dict[str, Any]) -> Dict[str, Any]:
                             deep_entry,
                             max_variants=params.get("max_variants", 3),
                         )
-                        baseline_metrics = deep_dive_summary.get("baseline", {}).get("metrics", {}) or {}
+                        baseline_metrics = (
+                            deep_dive_summary.get("baseline", {}).get("metrics", {}) or {}
+                        )
                         for variant in deep_dive_summary.get("variants", []):
                             variant_metrics = variant.get("metrics", {}) or {}
                             variant["utilization_deltas"] = _summarize_utilization_deltas(
@@ -4337,7 +4482,9 @@ def tool_benchmark_explore(params: Dict[str, Any]) -> Dict[str, Any]:
             "progress_path": str(progress_path),
             "target_path": path,
         }
-        queued = _queue_job("benchmark_explore", _run, params, run_metadata=run_metadata, job_id=job_id)
+        queued = _queue_job(
+            "benchmark_explore", _run, params, run_metadata=run_metadata, job_id=job_id
+        )
         queued["run_id"] = run_id
         queued["progress_path"] = str(progress_path)
         queued["note"] = "Background variant study started; poll with job_status using job_id."
@@ -4364,11 +4511,17 @@ def _summarize_metric_deltas(metrics: List[Dict[str, Any]], limit: int = 5) -> L
     return [item[1] for item in ranked[:limit]]
 
 
-def _summarize_ncu_comparison(ncu_comparison: Optional[Dict[str, Any]], limit: int = 5) -> Dict[str, Any]:
+def _summarize_ncu_comparison(
+    ncu_comparison: Optional[Dict[str, Any]], limit: int = 5
+) -> Dict[str, Any]:
     if not ncu_comparison:
         return {}
     if "metrics" in ncu_comparison:
-        return {"top_metrics": _summarize_metric_deltas(ncu_comparison.get("metrics") or [], limit=limit)}
+        return {
+            "top_metrics": _summarize_metric_deltas(
+                ncu_comparison.get("metrics") or [], limit=limit
+            )
+        }
     kernel_rows = ncu_comparison.get("kernel_comparison") or []
     if not kernel_rows:
         return {}
@@ -4543,7 +4696,9 @@ def tool_benchmark_llm_patch_loop(params: Dict[str, Any]) -> Dict[str, Any]:
         )
     if _is_test_mode() and "validity_profile" not in params:
         validity_profile = "portable"
-    allow_portable_expectations_update = bool(params.get("allow_portable_expectations_update", False))
+    allow_portable_expectations_update = bool(
+        params.get("allow_portable_expectations_update", False)
+    )
     run_async = bool(params.get("async", False))
     timeout_param = params.get("timeout_seconds")
     timeout_seconds = None if timeout_param is None else int(timeout_param)
@@ -4575,7 +4730,9 @@ def tool_benchmark_llm_patch_loop(params: Dict[str, Any]) -> Dict[str, Any]:
         if bench_result.get("returncode", 0) != 0:
             return {
                 "error": "llm patch run failed",
-                "bench_result": {k: v for k, v in bench_result.items() if k not in {"stdout", "stderr"}},
+                "bench_result": {
+                    k: v for k, v in bench_result.items() if k not in {"stdout", "stderr"}
+                },
                 "results_json": results_json,
                 "run_dir": run_dir,
                 "success": False,
@@ -4584,7 +4741,9 @@ def tool_benchmark_llm_patch_loop(params: Dict[str, Any]) -> Dict[str, Any]:
         if not results_json or not run_dir:
             return {
                 "error": "bench run succeeded but results_json/run_dir could not be discovered",
-                "bench_result": {k: v for k, v in bench_result.items() if k not in {"stdout", "stderr"}},
+                "bench_result": {
+                    k: v for k, v in bench_result.items() if k not in {"stdout", "stderr"}
+                },
                 "success": False,
             }
 
@@ -4676,14 +4835,15 @@ def tool_benchmark_llm_patch_loop(params: Dict[str, Any]) -> Dict[str, Any]:
     "Get comprehensive system context: GPU info + software stack + hardware capabilities combined. "
     "Returns: {gpu, software, dependencies, capabilities} - all system info in one call. "
     "USE when: Need complete environment dump for analysis, sharing system state with others. "
-    "Example: \"Provide full context for LLM analysis\" or \"Dump entire system state\". "
+    'Example: "Provide full context for LLM analysis" or "Dump entire system state". '
     "PREFER triage or context_summary for quick checks; this is heavier. 🕐 SLOW (2-30+ min). NOT FOR: Quick GPU health (use hw_speed). ⚡ FAST (~2s). WORKFLOW: system_dependencies → fix broken → retry.",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_system_context(params: Dict[str, Any]) -> ContextResult:
     """Get full system context."""
     from core.perf_core import get_core
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result: ContextResult = {"success": True, "context": get_engine().system.context()}
     return attach_context_if_requested(result, include_context, context_level)
@@ -4695,14 +4855,15 @@ def tool_system_context(params: Dict[str, Any]) -> ContextResult:
     "Get hardware capabilities summary: compute capability, tensor cores, supported precisions. "
     "Returns: {compute_capability, sm_version, tensor_cores, supported_dtypes, max_shared_mem}. "
     "USE when: Checking if a feature (FP8, TF32, etc.) is supported, planning which optimizations to apply. "
-    "Example: \"What features does my GPU support?\" or \"Can I use FP8 on this hardware?\". "
+    'Example: "What features does my GPU support?" or "Can I use FP8 on this hardware?". '
     "PREFER info_features for detailed capability breakdown with TMA/cluster info. ⚡ FAST (~1s). WORKFLOW: system_capabilities → check features → recommend. NOT FOR: Version info (use system_software).",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_system_capabilities(params: Dict[str, Any]) -> Dict[str, Any]:
     """Get hardware capabilities."""
     from core.perf_core import get_core
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().system.capabilities()
     return attach_context_if_requested(result, include_context, context_level)
@@ -4714,36 +4875,57 @@ def tool_system_capabilities(params: Dict[str, Any]) -> Dict[str, Any]:
     "Fetch benchmark results with filtering/sorting/pagination (dashboard data view). "
     "Returns: {timestamp, summary, benchmarks, pagination, filters}. "
     "USE when: Building tables or filtering benchmark results. "
-    "Example: \"List failed benchmarks\" or \"Show top speedups\". "
+    'Example: "List failed benchmarks" or "Show top speedups". '
     "NOT FOR: Comparing two runs (use benchmark_compare). ⚡ FAST (~1s).",
-    {"type": "object", "properties": with_context_params({
-        "page": {"type": "integer", "description": "Page number (1-based)", "default": 1},
-        "page_size": {"type": "integer", "description": "Page size (1-500)", "default": 50},
-        "search": {"type": "string", "description": "Search substring for chapter/name"},
-        "sort_field": {
-            "type": "string",
-            "description": "Sort field",
-            "enum": ["name", "chapter", "speedup", "baseline_time_ms", "optimized_time_ms", "status"],
-            "default": "speedup",
-        },
-        "sort_dir": {"type": "string", "description": "Sort direction", "enum": ["asc", "desc"], "default": "desc"},
-        "status": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Filter by status (comma-separated string also accepted).",
-        },
-        "chapter": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Filter by chapter (comma-separated string also accepted).",
-        },
-        "benchmark": {"type": "string", "description": "Exact benchmark name filter"},
-        "optimization_goal": {"type": "string", "description": "Filter by optimization goal (performance/memory)"},
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "page": {"type": "integer", "description": "Page number (1-based)", "default": 1},
+                "page_size": {"type": "integer", "description": "Page size (1-500)", "default": 50},
+                "search": {"type": "string", "description": "Search substring for chapter/name"},
+                "sort_field": {
+                    "type": "string",
+                    "description": "Sort field",
+                    "enum": [
+                        "name",
+                        "chapter",
+                        "speedup",
+                        "baseline_time_ms",
+                        "optimized_time_ms",
+                        "status",
+                    ],
+                    "default": "speedup",
+                },
+                "sort_dir": {
+                    "type": "string",
+                    "description": "Sort direction",
+                    "enum": ["asc", "desc"],
+                    "default": "desc",
+                },
+                "status": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Filter by status (comma-separated string also accepted).",
+                },
+                "chapter": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Filter by chapter (comma-separated string also accepted).",
+                },
+                "benchmark": {"type": "string", "description": "Exact benchmark name filter"},
+                "optimization_goal": {
+                    "type": "string",
+                    "description": "Filter by optimization goal (performance/memory)",
+                },
+            }
+        ),
+    },
 )
 def tool_benchmark_data(params: Dict[str, Any]) -> Dict[str, Any]:
     """Fetch benchmark data with filters."""
     from core.api import handlers
+
     include_context, context_level = extract_context_opts(params)
     result = handlers.benchmark_data(params)
     return attach_context_if_requested(result, include_context, context_level)
@@ -4755,14 +4937,91 @@ def tool_benchmark_data(params: Dict[str, Any]) -> Dict[str, Any]:
     "Summarize the latest benchmark results (status counts, top speedups, per-chapter stats). "
     "Returns: {summary, status_counts, top_speedups, chapter_stats}. "
     "USE when: High-level dashboard summary. "
-    "Example: \"Give me the latest benchmark summary\". ⚡ FAST (~1s).",
-    {"type": "object", "properties": with_context_params({})}
+    'Example: "Give me the latest benchmark summary". ⚡ FAST (~1s).',
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_benchmark_overview(params: Dict[str, Any]) -> Dict[str, Any]:
     """Summarize latest benchmark results."""
     from core.api import handlers
+
     include_context, context_level = extract_context_opts(params)
     result = handlers.benchmark_overview(params)
+    return attach_context_if_requested(result, include_context, context_level)
+
+
+@register_tool(
+    "benchmark_opportunities",
+    "Tags: benchmark, opportunities, next-steps, optimization, radar, evidence. "
+    "Rank benchmark evidence by next optimization opportunity. "
+    "Returns: {summary, opportunities: [{target, priority, opportunity_type, score, evidence, recommended_experiments, next_command, experiment_blueprints, source_delta_terms, optimization_primitives}], frontier_discovery_map with diversity_queue and experiment_blueprints, innovation_hypotheses, source_transfer_map with reusable source-mined patterns and recipient targets, compound_primitive_hypotheses with source-backed multi-primitive experiments, novelty_primitive_pair_synthesis_plan with source-backed untried primitive pairs outside the fixed compound catalog, coverage_gap_map with negative-space signal/primitive/compound leads, cross_lane_bridge_map with multi-signal experiment bridges, novelty_queue with one ranked action list, novelty_experiment_playbooks with variant ladders/metrics/guardrails, novelty_mutation_plan with one-variable mutation candidates, novelty_mutation_budget_plan with information-gain mutation selection and deferral unlocks, novelty_budget_plan with risk-adjusted expected-value selection, mitigation steps, and backlog deferral reasons, novelty_decision_frontier with quick-proof/high-upside/de-risk/Pareto/deferred-unlock lanes, novelty_falsification_plan with null hypotheses/disproof checks/claim boundaries, novelty_ablation_plan with negative controls for isolating selected claims, novelty_reproducibility_plan with repeat counts/stability metrics/variance gates, novelty_instrumentation_plan with profiler tools/preflight checks/launch environment/artifact evidence, novelty_artifact_contract_plan with required control/candidate/profile/review files and package manifests, novelty_claim_packet_plan with bounded claim sections and blocked overclaims, optional novelty_evidence_audit_plan for supplied validation queue roots, optional novelty_recovery_plan with repair/rerun actions for failed jobs and missing artifacts, optional novelty_adaptive_decision_plan with per-lead continue/recover/review/backup decisions, optional novelty_learning_plan with rerank guidance and risk updates from validation outcomes, optional novelty_next_wave_plan with ordered recover/continue/review/mutation/backup/harvest-follow-up/learning campaign actions, optional novelty_harvest_plan with approved-and-audited pattern seeds and bounded follow-up experiments, novelty_validation_plan with control/candidate/profile/review jobs, risk-specific evidence gates, falsification evidence gates, ablation evidence gates, reproducibility evidence gates, instrumentation evidence gates, artifact-contract evidence gates, claim-packet evidence gates, and optional resume state, experiment_matrix, portfolio_plan, promotion_gates, run_queue with dispatch_groups and job evidence criteria}. CLI can also mine a source-derived frontier catalog via bench opportunity-catalog, write executable runbooks via --output-run-queue-sh, --output-novelty-validation-sh, and --output-novelty-next-wave-sh, summarize evidence markers via bench opportunity-run-summary, and overlay prior queue roots with run_queue_root or novelty_queue_root. "
+    "USE when: Deciding what target deserves the next deep-dive profile or optimization experiment. "
+    "Accepts raw benchmark_test_results.json, transformed analyzer JSON, or tier-1 summary.json via data_file. "
+    "WORKFLOW: run_benchmarks or run-tier1 → benchmark_opportunities → run the emitted next_command for the top target. "
+    "PREFER benchmark_triage for pass/fail triage and benchmark_compare_runs for before/after comparisons. ⚡ FAST (~1s).",
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "data_file": {
+                    "type": "string",
+                    "description": "Path to benchmark_test_results.json, analyzer JSON, or tier-1 summary.json. Defaults to current engine benchmark data.",
+                },
+                "catalog_file": {
+                    "type": "string",
+                    "description": "Optional JSON catalog of runnable targets. Targets absent from evidence are ranked as novel_frontier_probe opportunities.",
+                },
+                "include_discovered_targets": {
+                    "type": "boolean",
+                    "description": "Also compare evidence against discovered targets and rank unmeasured targets as frontier probes. With bench_root, discovery is source-mined into a richer catalog.",
+                    "default": False,
+                },
+                "bench_root": {
+                    "type": "string",
+                    "description": "Optional benchmark tree root to source-mine when include_discovered_targets is true.",
+                },
+                "run_queue_root": {
+                    "type": "string",
+                    "description": "Optional artifact root from a prior opportunity run queue. Overlays DONE, MANUAL_REVIEW_REQUIRED, APPROVED, and log diagnostic status to produce a resume plan and update promotion gates.",
+                },
+                "novelty_queue_root": {
+                    "type": "string",
+                    "description": "Optional artifact root from a prior novelty validation queue. Overlays lead-level DONE, MANUAL_REVIEW_REQUIRED, APPROVED, and log diagnostic status onto the novelty queue, budget plan, and validation resume plan.",
+                },
+                "top": {
+                    "type": "integer",
+                    "description": "Number of opportunities to return; use 0 for all",
+                    "default": 10,
+                },
+                "min_speedup": {
+                    "type": "number",
+                    "description": "Speedup below this is treated as flat",
+                    "default": 1.10,
+                },
+                "target_speedup": {
+                    "type": "number",
+                    "description": "Speedup below this is treated as compound-optimization headroom",
+                    "default": 1.50,
+                },
+                "min_memory_savings_pct": {
+                    "type": "number",
+                    "description": "Memory-focused targets below this savings threshold are prioritized",
+                    "default": 10.0,
+                },
+                "slow_baseline_ms": {
+                    "type": "number",
+                    "description": "Baseline runtime threshold that increases opportunity priority",
+                    "default": 100.0,
+                },
+            }
+        ),
+    },
+)
+def tool_benchmark_opportunities(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Rank benchmark evidence by next optimization opportunity."""
+    from core.api import handlers
+
+    include_context, context_level = extract_context_opts(params)
+    result = handlers.benchmark_opportunities(params)
     return attach_context_if_requested(result, include_context, context_level)
 
 
@@ -4772,12 +5031,13 @@ def tool_benchmark_overview(params: Dict[str, Any]) -> Dict[str, Any]:
     "List historical benchmark runs with summary stats. "
     "Returns: {total_runs, latest, runs: [{date, avg_speedup, max_speedup, benchmark_count, ...}]}. "
     "USE when: Building a history page or selecting runs to compare. "
-    "Example: \"List recent benchmark runs\". ⚡ FAST (~1s).",
-    {"type": "object", "properties": with_context_params({})}
+    'Example: "List recent benchmark runs". ⚡ FAST (~1s).',
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_benchmark_history(params: Dict[str, Any]) -> Dict[str, Any]:
     """List historical benchmark runs."""
     from core.api import handlers
+
     include_context, context_level = extract_context_opts(params)
     result = handlers.benchmark_history(params)
     return attach_context_if_requested(result, include_context, context_level)
@@ -4789,12 +5049,13 @@ def tool_benchmark_history(params: Dict[str, Any]) -> Dict[str, Any]:
     "Compute performance trends over time (avg/max speedup by run). "
     "Returns: {trend_points, best_ever}. "
     "USE when: Charting benchmark trends. "
-    "Example: \"Show benchmark speedup trends\". ⚡ FAST (~1s).",
-    {"type": "object", "properties": with_context_params({})}
+    'Example: "Show benchmark speedup trends". ⚡ FAST (~1s).',
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_benchmark_trends(params: Dict[str, Any]) -> Dict[str, Any]:
     """Compute benchmark trends."""
     from core.api import handlers
+
     include_context, context_level = extract_context_opts(params)
     result = handlers.benchmark_trends(params)
     return attach_context_if_requested(result, include_context, context_level)
@@ -4806,16 +5067,33 @@ def tool_benchmark_trends(params: Dict[str, Any]) -> Dict[str, Any]:
     "Compare two benchmark run JSON files (baseline vs candidate). "
     "Returns: {regressions, improvements, unchanged, summary}. "
     "USE when: Diffing results from two runs. "
-    "Example: \"Compare two benchmark result files\". ⚡ FAST (~1s).",
-    {"type": "object", "properties": with_context_params({
-        "baseline": {"type": "string", "description": "Path to baseline benchmark_test_results.json"},
-        "candidate": {"type": "string", "description": "Path to candidate benchmark_test_results.json"},
-        "top": {"type": "integer", "description": "Show top N regressions/improvements", "default": 10},
-    }), "required": ["baseline", "candidate"]}
+    'Example: "Compare two benchmark result files". ⚡ FAST (~1s).',
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "baseline": {
+                    "type": "string",
+                    "description": "Path to baseline benchmark_test_results.json",
+                },
+                "candidate": {
+                    "type": "string",
+                    "description": "Path to candidate benchmark_test_results.json",
+                },
+                "top": {
+                    "type": "integer",
+                    "description": "Show top N regressions/improvements",
+                    "default": 10,
+                },
+            }
+        ),
+        "required": ["baseline", "candidate"],
+    },
 )
 def tool_benchmark_compare(params: Dict[str, Any]) -> Dict[str, Any]:
     """Compare two benchmark runs."""
     from core.api import handlers
+
     include_context, context_level = extract_context_opts(params)
     result = handlers.benchmark_compare(params)
     return attach_context_if_requested(result, include_context, context_level)
@@ -4827,11 +5105,19 @@ def tool_benchmark_compare(params: Dict[str, Any]) -> Dict[str, Any]:
     "List benchmark targets in chapter:example format (e.g., 'ch07:flash_attention'). "
     "Returns: {targets: [{chapter, example, path}], count} or filtered by chapter. "
     "USE when: Finding exact target names to pass to run_benchmarks. "
-    "Example: \"List targets for ch07\" or \"What examples are in the attention chapter?\". "
+    'Example: "List targets for ch07" or "What examples are in the attention chapter?". '
     "PREFER list_chapters to see all chapters first. ⚡ FAST (~1s). WORKFLOW: benchmark_targets → run_benchmarks. NOT FOR: Running benchmarks (use run_benchmarks).",
-    {"type": "object", "properties": with_context_params({
-        "chapter": {"type": "string", "description": "Optional chapter or lab slug to filter (e.g., 'ch07', 'labs/decode')"},
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "chapter": {
+                    "type": "string",
+                    "description": "Optional chapter or lab slug to filter (e.g., 'ch07', 'labs/decode')",
+                },
+            }
+        ),
+    },
 )
 def tool_benchmark_targets(params: Dict[str, Any]) -> Dict[str, Any]:
     """List benchmark targets."""
@@ -4854,55 +5140,166 @@ def tool_benchmark_targets(params: Dict[str, Any]) -> Dict[str, Any]:
     "Writes top-level artifacts under artifacts/e2e_runs/<run_id>/. "
     "Supports async job tickets via async=true. "
     "For live progress, prefer benchmark_e2e_status over generic job_status because it joins child progress, watcher state, recent events, and PID liveness.",
-    {"type": "object", "properties": with_context_params({
-        "run_tier1": {"type": "boolean", "default": True, "description": "Run the canonical tier-1 suite stage"},
-        "run_full_sweep": {"type": "boolean", "default": False, "description": "Run the heavier discovered full benchmark sweep"},
-        "run_cluster": {"type": "boolean", "default": True, "description": "Run the cluster common-eval stage"},
-        "run_fabric": {"type": "boolean", "default": True, "description": "Run the dedicated fabric-eval stage"},
-        "cluster_preset": {
-            "type": "string",
-            "enum": ["common-answer-fast", "core-system", "modern-llm", "fabric-systems", "multinode-readiness"],
-            "default": "common-answer-fast",
-            "description": "Cluster common-eval preset to run",
-        },
-        "hosts": {"type": "array", "items": {"type": "string"}, "description": "Cluster host list; defaults to localhost"},
-        "labels": {"type": "array", "items": {"type": "string"}, "description": "Optional labels matching hosts"},
-        "ssh_user": {"type": "string", "description": "SSH user for non-local cluster runs"},
-        "ssh_key": {"type": "string", "description": "SSH key path for non-local cluster runs"},
-        "bench_root": {"type": "string", "description": "Benchmark discovery root (defaults to repo root)"},
-        "profile": {
-            "type": "string",
-            "enum": ["none", "minimal", "deep_dive", "roofline"],
-            "default": "minimal",
-            "description": "Profiling preset for benchmark stages",
-        },
-        "suite_timeout": {"type": "integer", "description": "Benchmark suite timeout in seconds", "default": 14400},
-        "full_sweep_suite_timeout": {"type": "integer", "description": "Aggregate suite timeout applied to each full-sweep bucket; default 0 disables the bucket-wide watchdog", "default": 0},
-        "timeout_seconds": {"type": "integer", "description": "Optional cluster stage timeout in seconds"},
-        "artifacts_dir": {"type": "string", "description": "Base directory for benchmark run artifacts"},
-        "run_id": {"type": "string", "description": "Explicit top-level e2e sweep run id"},
-        "validity_profile": {
-            "type": "string",
-            "enum": ["strict", "portable"],
-            "default": "strict",
-            "description": "Benchmark validity profile",
-        },
-        "single_gpu": {"type": "boolean", "default": False, "description": "Force single-GPU visibility for benchmark stages"},
-        "iterations": {"type": "integer", "description": "Override benchmark iterations"},
-        "warmup": {"type": "integer", "description": "Override benchmark warmup iterations"},
-        "gpu_sm_clock_mhz": {"type": "integer", "description": "Lock the SM application clock (MHz) for benchmark stages"},
-        "gpu_mem_clock_mhz": {"type": "integer", "description": "Lock the GPU memory application clock (MHz) for benchmark stages"},
-        "accept_regressions": {"type": "boolean", "default": False, "description": "Update expectations when improvements are detected instead of flagging regressions"},
-        "update_expectations": {"type": "boolean", "default": False, "description": "Force-write observed metrics into expectation files"},
-        "allow_mixed_provenance": {"type": "boolean", "default": False, "description": "Allow expectation writes when provenance differs without forcing updates"},
-        "allow_portable_expectations_update": {"type": "boolean", "default": False, "description": "Allow expectation writes while validity_profile=portable"},
-        "auto_resume": {"type": "boolean", "default": True, "description": "Launch a detached watcher that auto-resumes stale or aborted e2e runs using the stored contract"},
-        "max_auto_resumes": {"type": "integer", "default": 3, "description": "Maximum detached auto-resume attempts before the watcher gives up"},
-        "watch_poll_interval_seconds": {"type": "integer", "default": 15, "description": "Detached watcher poll interval in seconds"},
-        "resume": {"type": "boolean", "default": False, "description": "Resume an aborted e2e run. Requires run_id and preserves prior stage artifacts."},
-        "dry_run": {"type": "boolean", "default": False, "description": "Describe planned execution without running stages"},
-        "async": {"type": "boolean", "default": False, "description": "Run in background and return a job ticket"},
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "run_tier1": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Run the canonical tier-1 suite stage",
+                },
+                "run_full_sweep": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Run the heavier discovered full benchmark sweep",
+                },
+                "run_cluster": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Run the cluster common-eval stage",
+                },
+                "run_fabric": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Run the dedicated fabric-eval stage",
+                },
+                "cluster_preset": {
+                    "type": "string",
+                    "enum": [
+                        "common-answer-fast",
+                        "core-system",
+                        "modern-llm",
+                        "fabric-systems",
+                        "multinode-readiness",
+                    ],
+                    "default": "common-answer-fast",
+                    "description": "Cluster common-eval preset to run",
+                },
+                "hosts": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Cluster host list; defaults to localhost",
+                },
+                "labels": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional labels matching hosts",
+                },
+                "ssh_user": {
+                    "type": "string",
+                    "description": "SSH user for non-local cluster runs",
+                },
+                "ssh_key": {
+                    "type": "string",
+                    "description": "SSH key path for non-local cluster runs",
+                },
+                "bench_root": {
+                    "type": "string",
+                    "description": "Benchmark discovery root (defaults to repo root)",
+                },
+                "profile": {
+                    "type": "string",
+                    "enum": ["none", "minimal", "deep_dive", "roofline"],
+                    "default": "minimal",
+                    "description": "Profiling preset for benchmark stages",
+                },
+                "suite_timeout": {
+                    "type": "integer",
+                    "description": "Benchmark suite timeout in seconds",
+                    "default": 14400,
+                },
+                "full_sweep_suite_timeout": {
+                    "type": "integer",
+                    "description": "Aggregate suite timeout applied to each full-sweep bucket; default 0 disables the bucket-wide watchdog",
+                    "default": 0,
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Optional cluster stage timeout in seconds",
+                },
+                "artifacts_dir": {
+                    "type": "string",
+                    "description": "Base directory for benchmark run artifacts",
+                },
+                "run_id": {"type": "string", "description": "Explicit top-level e2e sweep run id"},
+                "validity_profile": {
+                    "type": "string",
+                    "enum": ["strict", "portable"],
+                    "default": "strict",
+                    "description": "Benchmark validity profile",
+                },
+                "single_gpu": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Force single-GPU visibility for benchmark stages",
+                },
+                "iterations": {"type": "integer", "description": "Override benchmark iterations"},
+                "warmup": {
+                    "type": "integer",
+                    "description": "Override benchmark warmup iterations",
+                },
+                "gpu_sm_clock_mhz": {
+                    "type": "integer",
+                    "description": "Lock the SM application clock (MHz) for benchmark stages",
+                },
+                "gpu_mem_clock_mhz": {
+                    "type": "integer",
+                    "description": "Lock the GPU memory application clock (MHz) for benchmark stages",
+                },
+                "accept_regressions": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Update expectations when improvements are detected instead of flagging regressions",
+                },
+                "update_expectations": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Force-write observed metrics into expectation files",
+                },
+                "allow_mixed_provenance": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Allow expectation writes when provenance differs without forcing updates",
+                },
+                "allow_portable_expectations_update": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Allow expectation writes while validity_profile=portable",
+                },
+                "auto_resume": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Launch a detached watcher that auto-resumes stale or aborted e2e runs using the stored contract",
+                },
+                "max_auto_resumes": {
+                    "type": "integer",
+                    "default": 3,
+                    "description": "Maximum detached auto-resume attempts before the watcher gives up",
+                },
+                "watch_poll_interval_seconds": {
+                    "type": "integer",
+                    "default": 15,
+                    "description": "Detached watcher poll interval in seconds",
+                },
+                "resume": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Resume an aborted e2e run. Requires run_id and preserves prior stage artifacts.",
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Describe planned execution without running stages",
+                },
+                "async": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Run in background and return a job ticket",
+                },
+            }
+        ),
+    },
 )
 def tool_benchmark_e2e_sweep(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.api import handlers
@@ -4918,16 +5315,34 @@ def tool_benchmark_e2e_sweep(params: Dict[str, Any]) -> Dict[str, Any]:
     "Inspect an end-to-end e2e run package and return one normalized status snapshot. "
     "Returns: {run_state, overall_status, inferred_state, progress_source, current, liveness, watcher, ledgers, actions}. "
     "⚡ FAST (~1s). USE when: You want the authoritative source of truth for a live or stalled run instead of manually joining summary/checkpoint/progress/events files. "
-    "Example: \"Status for run-e2e\" or \"Is my e2e run stale?\". "
+    'Example: "Status for run-e2e" or "Is my e2e run stale?". '
     "WORKFLOW: benchmark_e2e_sweep(async=true) → benchmark_e2e_status → benchmark_e2e_watch if needed. "
     "Prefer this tool whenever an e2e run is active; raw summary/checkpoint files may lag during long child stages. "
     "Selection: Read-only e2e run inspection; use benchmark_e2e_watch to arm detached auto-resume.",
-    {"type": "object", "properties": with_context_params({
-        "run_id": {"type": "string", "description": "Explicit e2e run id to inspect; defaults to the latest run."},
-        "repo_root": {"type": "string", "description": "Optional repository root override."},
-        "artifacts_dir": {"type": "string", "description": "Optional benchmark artifacts root override for child benchmark runs."},
-        "recent_events": {"type": "integer", "default": 10, "description": "How many recent top-level and child events to include."},
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "run_id": {
+                    "type": "string",
+                    "description": "Explicit e2e run id to inspect; defaults to the latest run.",
+                },
+                "repo_root": {
+                    "type": "string",
+                    "description": "Optional repository root override.",
+                },
+                "artifacts_dir": {
+                    "type": "string",
+                    "description": "Optional benchmark artifacts root override for child benchmark runs.",
+                },
+                "recent_events": {
+                    "type": "integer",
+                    "default": 10,
+                    "description": "How many recent top-level and child events to include.",
+                },
+            }
+        ),
+    },
 )
 def tool_benchmark_e2e_status(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.api import handlers
@@ -4945,12 +5360,31 @@ def tool_benchmark_e2e_status(params: Dict[str, Any]) -> Dict[str, Any]:
     "⚡ FAST to launch (~ms); the watcher continues running in the background. USE when: You want detached supervision for a long e2e run or need to re-arm auto-resume on an existing run. "
     "WORKFLOW: benchmark_e2e_sweep → benchmark_e2e_watch → benchmark_e2e_status. "
     "Selection: Detached supervision; use benchmark_e2e_status for read-only inspection.",
-    {"type": "object", "properties": with_context_params({
-        "run_id": {"type": "string", "description": "Explicit e2e run id to supervise; defaults to the latest run."},
-        "repo_root": {"type": "string", "description": "Optional repository root override."},
-        "poll_interval_seconds": {"type": "integer", "default": 15, "description": "Detached watcher poll interval in seconds."},
-        "max_auto_resumes": {"type": "integer", "default": 3, "description": "Maximum auto-resume attempts before the watcher gives up."},
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "run_id": {
+                    "type": "string",
+                    "description": "Explicit e2e run id to supervise; defaults to the latest run.",
+                },
+                "repo_root": {
+                    "type": "string",
+                    "description": "Optional repository root override.",
+                },
+                "poll_interval_seconds": {
+                    "type": "integer",
+                    "default": 15,
+                    "description": "Detached watcher poll interval in seconds.",
+                },
+                "max_auto_resumes": {
+                    "type": "integer",
+                    "default": 3,
+                    "description": "Maximum auto-resume attempts before the watcher gives up.",
+                },
+            }
+        ),
+    },
 )
 def tool_benchmark_e2e_watch(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.api import handlers
@@ -4966,29 +5400,39 @@ def tool_benchmark_e2e_watch(params: Dict[str, Any]) -> Dict[str, Any]:
     "Generate PDF/HTML report from benchmark results for sharing and documentation. "
     "Returns: {output_path, format, success} and writes report file. "
     "⚡ FAST (~5s). USE AFTER: run_benchmarks or benchmark_triage. "
-    "Example: \"Generate HTML report\" or \"Create PDF performance summary\". "
+    'Example: "Generate HTML report" or "Create PDF performance summary". '
     "FORMATS: "
     "• html: Interactive, best for sharing/web "
     "• pdf: Static, best for formal documentation. "
     "WORKFLOW: run_benchmarks → benchmark_triage → benchmark_report(format='html'). "
     "REQUIRES: benchmark_test_results.json from run_benchmarks.",
-    {"type": "object", "properties": with_context_params({
-        "data_file": {
-            "type": "string",
-            "description": (
-                "Path to benchmark_test_results.json from run_benchmarks "
-                "(typically artifacts/runs/<run_id>/benchmark_test_results.json; defaults to latest in artifacts/runs/)."
-            ),
-        },
-        "output": {
-            "type": "string",
-            "description": "Output file path (.pdf or .html); extension should match format.",
-            "default": "report.pdf",
-        },
-        "format": {"type": "string", "description": "Output format: pdf or html", "enum": ["pdf", "html"], "default": "pdf"},
-        "title": {"type": "string", "description": "Report title (optional)"},
-        "author": {"type": "string", "description": "Report author (optional)"},
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "data_file": {
+                    "type": "string",
+                    "description": (
+                        "Path to benchmark_test_results.json from run_benchmarks "
+                        "(typically artifacts/runs/<run_id>/benchmark_test_results.json; defaults to latest in artifacts/runs/)."
+                    ),
+                },
+                "output": {
+                    "type": "string",
+                    "description": "Output file path (.pdf or .html); extension should match format.",
+                    "default": "report.pdf",
+                },
+                "format": {
+                    "type": "string",
+                    "description": "Output format: pdf or html",
+                    "enum": ["pdf", "html"],
+                    "default": "pdf",
+                },
+                "title": {"type": "string", "description": "Report title (optional)"},
+                "author": {"type": "string", "description": "Report author (optional)"},
+            }
+        ),
+    },
 )
 def tool_benchmark_report(params: Dict[str, Any]) -> Dict[str, Any]:
     include_context, context_level = extract_context_opts(params)
@@ -4996,7 +5440,12 @@ def tool_benchmark_report(params: Dict[str, Any]) -> Dict[str, Any]:
     data_file = params.get("data_file")
     if data_file:
         if not Path(data_file).exists():
-            return make_error(f"data_file not found: {data_file}", include_context, context_level, data_file=data_file)
+            return make_error(
+                f"data_file not found: {data_file}",
+                include_context,
+                context_level,
+                data_file=data_file,
+            )
         args.extend(["--data-file", data_file])
     if params.get("output"):
         args.extend(["--output", params["output"]])
@@ -5028,22 +5477,32 @@ def tool_benchmark_report(params: Dict[str, Any]) -> Dict[str, Any]:
     "Export benchmark results to CSV/Markdown/JSON format for further analysis. "
     "Returns: {output_path, format, benchmarks_written, success}. "
     "USE when: Importing results into spreadsheets, documentation, or other tools. "
-    "Example: \"Export benchmarks to CSV\" or \"Convert results to markdown table\". "
+    'Example: "Export benchmarks to CSV" or "Convert results to markdown table". '
     "REQUIRES: Run run_benchmarks first to generate benchmark_test_results.json. ⚡ FAST (~2s). WORKFLOW: run_benchmarks → benchmark_export. NOT FOR: Reports (use benchmark_report).",
-    {"type": "object", "properties": with_context_params({
-        "data_file": {
-            "type": "string",
-            "description": (
-                "Path to benchmark_test_results.json from run_benchmarks "
-                "(typically artifacts/runs/<run_id>/benchmark_test_results.json; defaults to latest in artifacts/runs/)."
-            ),
-        },
-        "format": {"type": "string", "description": "Output format: csv, markdown, or json", "enum": ["csv", "markdown", "json"], "default": "csv"},
-        "output": {
-            "type": "string",
-            "description": "Output file path (defaults to benchmark_export.<format> if omitted).",
-        },
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "data_file": {
+                    "type": "string",
+                    "description": (
+                        "Path to benchmark_test_results.json from run_benchmarks "
+                        "(typically artifacts/runs/<run_id>/benchmark_test_results.json; defaults to latest in artifacts/runs/)."
+                    ),
+                },
+                "format": {
+                    "type": "string",
+                    "description": "Output format: csv, markdown, or json",
+                    "enum": ["csv", "markdown", "json"],
+                    "default": "csv",
+                },
+                "output": {
+                    "type": "string",
+                    "description": "Output file path (defaults to benchmark_export.<format> if omitted).",
+                },
+            }
+        ),
+    },
 )
 def tool_benchmark_export(params: Dict[str, Any]) -> BenchmarkExportResult:
     """Export benchmark results without spawning the bench CLI."""
@@ -5056,11 +5515,18 @@ def tool_benchmark_export(params: Dict[str, Any]) -> BenchmarkExportResult:
 
     valid_formats = {"csv", "markdown", "json"}
     if fmt not in valid_formats:
-        return make_error(f"format must be one of {sorted(valid_formats)}", include_context, context_level)
+        return make_error(
+            f"format must be one of {sorted(valid_formats)}", include_context, context_level
+        )
 
     data_path = Path(data_file) if data_file else None
     if data_path and not data_path.exists():
-        return make_error(f"data_file not found: {data_path}", include_context, context_level, data_file=str(data_path))
+        return make_error(
+            f"data_file not found: {data_path}",
+            include_context,
+            context_level,
+            data_file=str(data_path),
+        )
     output_path = Path(output) if output else Path(f"benchmark_export.{fmt}")
     _ensure_dir(output_path)
 
@@ -5081,6 +5547,7 @@ def tool_benchmark_export(params: Dict[str, Any]) -> BenchmarkExportResult:
             output_path.write_text("\n".join(lines))
         else:  # csv
             import csv
+
             with output_path.open("w", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow(["benchmark", "speedup", "baseline_ms", "type"])
@@ -5094,7 +5561,12 @@ def tool_benchmark_export(params: Dict[str, Any]) -> BenchmarkExportResult:
                         ]
                     )
     except Exception as exc:
-        return make_error(f"failed to export benchmarks: {exc}", include_context, context_level, output=str(output_path))
+        return make_error(
+            f"failed to export benchmarks: {exc}",
+            include_context,
+            context_level,
+            output=str(output_path),
+        )
 
     result: BenchmarkExportResult = {
         "output": str(output_path),
@@ -5111,7 +5583,7 @@ def tool_benchmark_export(params: Dict[str, Any]) -> BenchmarkExportResult:
     "Compare two benchmark runs showing speedup deltas, regressions, and improvements. "
     "Returns: {regressions: [...], improvements: [...], unchanged: [...], summary}. "
     "⚡ FAST (~1s). USE when: Comparing before/after optimization, detecting regressions. "
-    "Example: \"Compare baseline vs optimized\" or \"Show top 10 regressions\". "
+    'Example: "Compare baseline vs optimized" or "Show top 10 regressions". '
     "REQUIRES: Two benchmark_test_results.json files from separate runs. "
     "WORKFLOW: "
     "1. run_benchmarks (baseline) → save results "
@@ -5119,34 +5591,59 @@ def tool_benchmark_export(params: Dict[str, Any]) -> BenchmarkExportResult:
     "3. run_benchmarks (candidate) → save results "
     "4. benchmark_compare_runs(baseline=..., candidate=...) "
     "5. If regressions: analyze_bottlenecks on affected benchmarks.",
-    {"type": "object", "properties": with_context_params({
-        "baseline": {
-            "type": "string",
-            "description": "Path to baseline benchmark_test_results.json (e.g., artifacts/runs/<run_id>/benchmark_test_results.json)",
-        },
-        "candidate": {
-            "type": "string",
-            "description": "Path to candidate benchmark_test_results.json (e.g., artifacts/runs/<run_id>/benchmark_test_results.json)",
-        },
-        "top": {"type": "integer", "description": "Show top N regressions/improvements", "default": 10},
-    }), "required": ["baseline", "candidate"]}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "baseline": {
+                    "type": "string",
+                    "description": "Path to baseline benchmark_test_results.json (e.g., artifacts/runs/<run_id>/benchmark_test_results.json)",
+                },
+                "candidate": {
+                    "type": "string",
+                    "description": "Path to candidate benchmark_test_results.json (e.g., artifacts/runs/<run_id>/benchmark_test_results.json)",
+                },
+                "top": {
+                    "type": "integer",
+                    "description": "Show top N regressions/improvements",
+                    "default": 10,
+                },
+            }
+        ),
+        "required": ["baseline", "candidate"],
+    },
 )
 def tool_benchmark_compare_runs(params: Dict[str, Any]) -> Dict[str, Any]:
     include_context, context_level = extract_context_opts(params)
     baseline = params.get("baseline")
     candidate = params.get("candidate")
     if not baseline or not candidate:
-        return make_error("baseline and candidate benchmark files are required", include_context, context_level)
+        return make_error(
+            "baseline and candidate benchmark files are required", include_context, context_level
+        )
     if baseline and not Path(baseline).exists():
-        return make_error(f"baseline file not found: {baseline}", include_context, context_level, baseline=baseline)
+        return make_error(
+            f"baseline file not found: {baseline}",
+            include_context,
+            context_level,
+            baseline=baseline,
+        )
     if candidate and not Path(candidate).exists():
-        return make_error(f"candidate file not found: {candidate}", include_context, context_level, candidate=candidate)
+        return make_error(
+            f"candidate file not found: {candidate}",
+            include_context,
+            context_level,
+            candidate=candidate,
+        )
 
     args = [
         "compare-runs",
-        "--baseline", baseline,
-        "--candidate", candidate,
-        "--top", str(params.get("top", 10)),
+        "--baseline",
+        baseline,
+        "--candidate",
+        candidate,
+        "--top",
+        str(params.get("top", 10)),
     ]
     result = _run_bench_cli(args)
     if isinstance(result, dict) and "success" not in result:
@@ -5161,23 +5658,28 @@ def tool_benchmark_compare_runs(params: Dict[str, Any]) -> Dict[str, Any]:
     "🔍 POST-BENCHMARK ANALYSIS: Analyze benchmark results and get actionable recommendations. "
     "Returns: {summary, regressions, improvements, top_issues, recommended_tools, optimization_plan}. "
     "⚡ FAST (~2s). USE AFTER: run_benchmarks completes successfully. "
-    "Example: \"Analyze my benchmark results\" or \"What should I optimize based on benchmarks?\". "
+    'Example: "Analyze my benchmark results" or "What should I optimize based on benchmarks?". '
     "PROVIDES: "
     "• Summary of all benchmark results (pass/fail/speedup) "
     "• Identification of regressions and improvements "
     "• Specific tool recommendations based on findings "
     "• Prioritized optimization plan. "
     "WORKFLOW: run_benchmarks → benchmark_triage → implement recommendations → re-benchmark.",
-    {"type": "object", "properties": with_context_params({
-        "data_file": {
-            "type": "string",
-            "description": "Path to benchmark_test_results.json from run_benchmarks (defaults to latest in artifacts/)."
-        },
-        "baseline_file": {
-            "type": "string",
-            "description": "Optional baseline to compare against for regression detection"
-        },
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "data_file": {
+                    "type": "string",
+                    "description": "Path to benchmark_test_results.json from run_benchmarks (defaults to latest in artifacts/).",
+                },
+                "baseline_file": {
+                    "type": "string",
+                    "description": "Optional baseline to compare against for regression detection",
+                },
+            }
+        ),
+    },
 )
 def tool_benchmark_triage(params: Dict[str, Any]) -> Dict[str, Any]:
     """Analyze benchmark results and provide actionable recommendations."""
@@ -5204,9 +5706,10 @@ def tool_benchmark_triage(params: Dict[str, Any]) -> Dict[str, Any]:
     if not data_path or not data_path.exists():
         return make_error(
             "No benchmark results found. Run run_benchmarks first.",
-            include_context, context_level,
+            include_context,
+            context_level,
             searched_paths=[str(p) for p in search_paths] if not data_file else None,
-            hint="Specify data_file parameter or run run_benchmarks to generate results."
+            hint="Specify data_file parameter or run run_benchmarks to generate results.",
         )
 
     try:
@@ -5216,7 +5719,12 @@ def tool_benchmark_triage(params: Dict[str, Any]) -> Dict[str, Any]:
 
     benchmarks = data.get("benchmarks", [])
     if not benchmarks:
-        return make_error("Benchmark file contains no results", include_context, context_level, data_file=str(data_path))
+        return make_error(
+            "Benchmark file contains no results",
+            include_context,
+            context_level,
+            data_file=str(data_path),
+        )
 
     def _status_bucket(status: Any) -> str:
         normalized = str(status or "").strip().lower()
@@ -5246,24 +5754,30 @@ def tool_benchmark_triage(params: Dict[str, Any]) -> Dict[str, Any]:
     # Find regressions and improvements
     regressions = sorted(
         [
-            b for b in benchmarks
+            b
+            for b in benchmarks
             if _status_bucket(b.get("status")) == "succeeded" and b.get("speedup", 1.0) < 0.95
         ],
-        key=lambda x: x.get("speedup", 1.0)
+        key=lambda x: x.get("speedup", 1.0),
     )[:10]
 
     improvements = sorted(
         [
-            b for b in benchmarks
+            b
+            for b in benchmarks
             if _status_bucket(b.get("status")) == "succeeded" and b.get("speedup", 1.0) > 1.05
         ],
         key=lambda x: x.get("speedup", 1.0),
-        reverse=True
+        reverse=True,
     )[:10]
 
     # Identify patterns for recommendations
     slow_kernels = [b for b in benchmarks if b.get("baseline_time_ms", 0) > 100]
-    memory_issues = [b for b in benchmarks if "memory" in b.get("name", "").lower() or "oom" in str(b.get("error", "")).lower()]
+    memory_issues = [
+        b
+        for b in benchmarks
+        if "memory" in b.get("name", "").lower() or "oom" in str(b.get("error", "")).lower()
+    ]
     attention_benchmarks = [b for b in benchmarks if "attention" in b.get("name", "").lower()]
 
     # Build recommendations
@@ -5271,57 +5785,75 @@ def tool_benchmark_triage(params: Dict[str, Any]) -> Dict[str, Any]:
     optimization_plan = []
 
     if regressions:
-        recommended_tools.append({
-            "tool": "analyze_bottlenecks",
-            "reason": f"Identify root cause of {len(regressions)} regression(s)",
-            "priority": "high"
-        })
-        optimization_plan.append({
-            "step": 1,
-            "action": "Investigate regressions",
-            "details": f"Top regression: {regressions[0].get('chapter')}:{regressions[0].get('name')} ({regressions[0].get('speedup', 0):.2f}x)"
-        })
+        recommended_tools.append(
+            {
+                "tool": "analyze_bottlenecks",
+                "reason": f"Identify root cause of {len(regressions)} regression(s)",
+                "priority": "high",
+            }
+        )
+        optimization_plan.append(
+            {
+                "step": 1,
+                "action": "Investigate regressions",
+                "details": f"Top regression: {regressions[0].get('chapter')}:{regressions[0].get('name')} ({regressions[0].get('speedup', 0):.2f}x)",
+            }
+        )
 
     if slow_kernels:
-        recommended_tools.append({
-            "tool": "profile_nsys",
-            "reason": f"Profile {len(slow_kernels)} slow benchmark(s) (>100ms baseline)",
-            "params": {"preset": "light"}
-        })
-        optimization_plan.append({
-            "step": 2,
-            "action": "Profile slow operations",
-            "details": f"Slowest: {slow_kernels[0].get('chapter')}:{slow_kernels[0].get('name')} ({slow_kernels[0].get('baseline_time_ms', 0):.1f}ms)"
-        })
+        recommended_tools.append(
+            {
+                "tool": "profile_nsys",
+                "reason": f"Profile {len(slow_kernels)} slow benchmark(s) (>100ms baseline)",
+                "params": {"preset": "light"},
+            }
+        )
+        optimization_plan.append(
+            {
+                "step": 2,
+                "action": "Profile slow operations",
+                "details": f"Slowest: {slow_kernels[0].get('chapter')}:{slow_kernels[0].get('name')} ({slow_kernels[0].get('baseline_time_ms', 0):.1f}ms)",
+            }
+        )
 
     if attention_benchmarks:
-        avg_attention_speedup = sum(b.get("speedup", 1.0) for b in attention_benchmarks) / len(attention_benchmarks)
+        avg_attention_speedup = sum(b.get("speedup", 1.0) for b in attention_benchmarks) / len(
+            attention_benchmarks
+        )
         if avg_attention_speedup < 1.5:
-            recommended_tools.append({
-                "tool": "explain",
-                "reason": "Learn about FlashAttention optimization",
-                "params": {"concept": "flash-attention"}
-            })
+            recommended_tools.append(
+                {
+                    "tool": "explain",
+                    "reason": "Learn about FlashAttention optimization",
+                    "params": {"concept": "flash-attention"},
+                }
+            )
 
     if improvements:
-        recommended_tools.append({
-            "tool": "benchmark_report",
-            "reason": f"Document {len(improvements)} improvement(s) in shareable report",
-            "params": {"format": "html"}
-        })
+        recommended_tools.append(
+            {
+                "tool": "benchmark_report",
+                "reason": f"Document {len(improvements)} improvement(s) in shareable report",
+                "params": {"format": "html"},
+            }
+        )
 
     # Always suggest comparison if we have results
-    recommended_tools.append({
-        "tool": "benchmark_compare_runs",
-        "reason": "Compare with previous baseline for trend analysis",
-        "note": "Save current results as baseline for future comparisons"
-    })
+    recommended_tools.append(
+        {
+            "tool": "benchmark_compare_runs",
+            "reason": "Compare with previous baseline for trend analysis",
+            "note": "Save current results as baseline for future comparisons",
+        }
+    )
 
     # Add general optimization recommendations
-    recommended_tools.append({
-        "tool": "recommend",
-        "reason": "Get optimization playbook based on your hardware and goals"
-    })
+    recommended_tools.append(
+        {
+            "tool": "recommend",
+            "reason": "Get optimization playbook based on your hardware and goals",
+        }
+    )
 
     result = {
         "success": True,
@@ -5332,10 +5864,14 @@ def tool_benchmark_triage(params: Dict[str, Any]) -> Dict[str, Any]:
             "failed": failed,
             "skipped": skipped,
             "failure_classes": {
-                k: v for k, v in status_counts_raw.items() if k.startswith("failed_") or k == "failed"
+                k: v
+                for k, v in status_counts_raw.items()
+                if k.startswith("failed_") or k == "failed"
             },
             "pass_rate": f"{(passed / total) * 100:.1f}%" if total > 0 else "N/A",
-            "avg_speedup": sum(b.get("speedup", 1.0) for b in benchmarks) / total if total > 0 else 0,
+            "avg_speedup": sum(b.get("speedup", 1.0) for b in benchmarks) / total
+            if total > 0
+            else 0,
         },
         "regressions": [
             {
@@ -5365,17 +5901,19 @@ def tool_benchmark_triage(params: Dict[str, Any]) -> Dict[str, Any]:
 
     # Add top issues
     if regressions:
-        result["top_issues"].append({
-            "type": "regression",
-            "count": len(regressions),
-            "severity": "high" if any(b.get("speedup", 1.0) < 0.5 for b in regressions) else "medium"
-        })
+        result["top_issues"].append(
+            {
+                "type": "regression",
+                "count": len(regressions),
+                "severity": "high"
+                if any(b.get("speedup", 1.0) < 0.5 for b in regressions)
+                else "medium",
+            }
+        )
     if slow_kernels:
-        result["top_issues"].append({
-            "type": "slow_operations",
-            "count": len(slow_kernels),
-            "severity": "medium"
-        })
+        result["top_issues"].append(
+            {"type": "slow_operations", "count": len(slow_kernels), "severity": "medium"}
+        )
 
     return attach_context_if_requested(result, include_context, context_level)
 
@@ -5386,31 +5924,37 @@ def tool_benchmark_triage(params: Dict[str, Any]) -> Dict[str, Any]:
     "Identify performance bottlenecks: memory-bound, compute-bound, communication-bound, host-bound. "
     "Returns: {bottleneck_type, confidence, profile_data, llm_analysis, recommendations, availability}. "
     "⚡ FAST (~2-5s). USE FIRST when: Workload is slow and you don't know why. "
-    "Example: \"Why is my 7B model slow on 4xH100?\" or \"What's the bottleneck at batch 32, seq 4k?\". "
+    'Example: "Why is my 7B model slow on 4xH100?" or "What\'s the bottleneck at batch 32, seq 4k?". '
     "mode='both' (default) combines profiling data with LLM analysis for best results. "
     "WORKFLOW by bottleneck_type: "
     "• memory-bound → profile_memory, analyze_whatif(max_vram_gb=X) "
     "• compute-bound → profile_kernels, hw_tc "
     "• communication-bound → distributed_nccl, hw_nccl "
     "• host-bound → cpu_memory_analysis, data_loading NOT FOR: Kernel metrics (use profile_ncu).",
-    {"type": "object", "properties": with_context_params({
-        "analysis_type": {
-            "type": "string",
-            "description": "Focus area: bottleneck (general), memory, or compute",
-            "enum": ["bottleneck", "memory", "compute"],
-            "default": "bottleneck"
-        },
-        "mode": {
-            "type": "string",
-            "description": "Analysis mode: profile (data only), llm (AI analysis only), both (combined)",
-            "enum": ["profile", "llm", "both"],
-            "default": "both"
-        },
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "analysis_type": {
+                    "type": "string",
+                    "description": "Focus area: bottleneck (general), memory, or compute",
+                    "enum": ["bottleneck", "memory", "compute"],
+                    "default": "bottleneck",
+                },
+                "mode": {
+                    "type": "string",
+                    "description": "Analysis mode: profile (data only), llm (AI analysis only), both (combined)",
+                    "enum": ["profile", "llm", "both"],
+                    "default": "both",
+                },
+            }
+        ),
+    },
 )
 def tool_analyze_bottlenecks(params: Dict[str, Any]) -> Dict[str, Any]:
     """Analyze bottlenecks."""
     from core.engine import get_engine
+
     analysis_type = normalize_param("analysis_type", params.get("analysis_type"), "bottleneck")
     mode = normalize_param("mode", params.get("mode"), "both")
     include_context, context_level = extract_context_opts(params)
@@ -5445,18 +5989,19 @@ def tool_analyze_bottlenecks(params: Dict[str, Any]) -> Dict[str, Any]:
     "Find Pareto-optimal configurations: best throughput/latency/memory tradeoffs. "
     "Returns: {pareto_frontier: [{config, throughput, latency_ms, memory_gb}], dominated_configs, analysis}. "
     "⚡ FAST (~2s). USE AFTER: run_benchmarks with multiple configurations. "
-    "Example: \"Show Pareto frontier\" or \"What's the best throughput/latency tradeoff?\". "
+    'Example: "Show Pareto frontier" or "What\'s the best throughput/latency tradeoff?". '
     "PARETO EXPLAINED: Points on the frontier are 'optimal' - you can't improve one metric without sacrificing another. "
     "WORKFLOW: "
     "1. run_benchmarks with varied batch_size/seq_len configs "
     "2. analyze_pareto → find optimal operating points "
     "3. analyze_whatif → check if constraints are met. "
     "REQUIRES: benchmark_test_results.json with multiple configurations.",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_analyze_pareto(params: Dict[str, Any]) -> Dict[str, Any]:
     """Pareto analysis."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().analyze.pareto()
     return attach_context_if_requested(result, include_context, context_level)
@@ -5468,14 +6013,15 @@ def tool_analyze_pareto(params: Dict[str, Any]) -> Dict[str, Any]:
     "Analyze how performance scales with workload size, sequence length, batch size, or GPU count. "
     "Returns: {scaling_efficiency, projections: [{gpus, throughput, efficiency_pct}], bottleneck_at_scale}. "
     "⚡ FAST (~2s). USE when: Projecting performance to larger inputs, planning multi-GPU scaling. "
-    "Example: \"Predict throughput if I double sequence length\" or \"How does it scale from 2 to 4 GPUs?\". "
+    'Example: "Predict throughput if I double sequence length" or "How does it scale from 2 to 4 GPUs?". '
     "WORKFLOW: gpu_topology → analyze_scaling → distributed_plan. "
     "ALSO USE: predict_scaling for specific GPU count predictions.",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_analyze_scaling(params: Dict[str, Any]) -> Dict[str, Any]:
     """Scaling analysis."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().analyze.scaling()
     return attach_context_if_requested(result, include_context, context_level)
@@ -5487,14 +6033,15 @@ def tool_analyze_scaling(params: Dict[str, Any]) -> Dict[str, Any]:
     "Analyze which optimization techniques work well together and which conflict. "
     "Returns: {compatible_stacks: [...], conflicts: [{technique1, technique2, reason}], recommended_order}. "
     "⚡ FAST (~2s). USE when: Planning to combine multiple optimizations, checking for conflicts. "
-    "Example: \"Can FlashAttention + torch.compile + CUDA graphs coexist?\" or \"What's the best optimization order?\". "
+    'Example: "Can FlashAttention + torch.compile + CUDA graphs coexist?" or "What\'s the best optimization order?". '
     "WORKFLOW: recommend → analyze_stacking → apply compatible techniques. "
     "ALSO USE: optimize_techniques for full technique list, optimize_roi for prioritization.",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_analyze_stacking(params: Dict[str, Any]) -> Dict[str, Any]:
     """Stacking analysis."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().analyze.stacking()
     return attach_context_if_requested(result, include_context, context_level)
@@ -5506,31 +6053,37 @@ def tool_analyze_stacking(params: Dict[str, Any]) -> Dict[str, Any]:
     "What-if analysis: Find optimizations that meet your constraints (VRAM, latency, throughput). "
     "Returns: {feasible_configs: [...], recommended_optimizations, tradeoff_analysis}. "
     "⚡ FAST (~1s). USE when: Targeting specific SLA bounds, checking feasibility. "
-    "Example: \"Need <50ms latency with <24GB VRAM\" or \"Can I hit 2k tok/s?\". "
+    'Example: "Need <50ms latency with <24GB VRAM" or "Can I hit 2k tok/s?". '
     "CONSTRAINT EXAMPLES: "
     "• max_vram_gb=24: Fit on RTX 4090 / single A10G "
     "• max_latency_ms=50: Real-time chatbot SLA "
     "• min_throughput=1000: High-volume batch processing "
     "• Combine: max_vram_gb=48, max_latency_ms=100 (A6000 real-time). "
     "WORKFLOW: profile_memory → analyze_whatif → inference_quantization → verify.",
-    {"type": "object", "properties": with_context_params({
-        "max_vram_gb": {
-            "type": "number",
-            "description": "Maximum VRAM budget in GB (e.g., 24 for single 3090)"
-        },
-        "max_latency_ms": {
-            "type": "number",
-            "description": "Maximum acceptable latency in milliseconds (e.g., 50ms SLA)"
-        },
-        "min_throughput": {
-            "type": "number",
-            "description": "Minimum required throughput in tokens/sec or samples/sec"
-        },
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "max_vram_gb": {
+                    "type": "number",
+                    "description": "Maximum VRAM budget in GB (e.g., 24 for single 3090)",
+                },
+                "max_latency_ms": {
+                    "type": "number",
+                    "description": "Maximum acceptable latency in milliseconds (e.g., 50ms SLA)",
+                },
+                "min_throughput": {
+                    "type": "number",
+                    "description": "Minimum required throughput in tokens/sec or samples/sec",
+                },
+            }
+        ),
+    },
 )
 def tool_analyze_whatif(params: Dict[str, Any]) -> Dict[str, Any]:
     """What-if analysis."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().analyze.whatif(params)
     return attach_context_if_requested(result, include_context, context_level)
@@ -5539,6 +6092,7 @@ def tool_analyze_whatif(params: Dict[str, Any]) -> Dict[str, Any]:
 # =============================================================================
 # OPTIMIZATION TOOLS
 # =============================================================================
+
 
 @register_tool(
     "optimize",
@@ -5552,90 +6106,92 @@ def tool_analyze_whatif(params: Dict[str, Any]) -> Dict[str, Any]:
     "Example: path='ch10/baseline_atomic_reduction.py' or target='ch10:atomic_reduction'.",
     {
         "type": "object",
-        "properties": with_context_params({
-            "path": {
-                "type": "string",
-                "description": "Benchmark file path (baseline_*/optimized_* .py wrapper only)."
-            },
-            "target": {
-                "type": "string",
-                "description": "Benchmark target in chapter:example format."
-            },
-            "profile": {
-                "type": "string",
-                "description": "Profiling preset: none (no profiling), minimal (basic), deep_dive (full nsys/ncu profiling), or roofline",
-                "enum": ["none", "minimal", "deep_dive", "roofline"],
-                "default": "minimal",
-            },
-            "artifacts_dir": {
-                "type": "string",
-                "description": "Base directory for artifacts (bench creates a self-describing run dir underneath).",
-            },
-            "run_id": {
-                "type": "string",
-                "description": "Run ID for artifacts (default: <timestamp>__bench__profile-<type>__targets-<...>)",
-            },
-            "iterations": {
-                "type": "integer",
-                "description": "Override benchmark iterations (all targets).",
-            },
-            "warmup": {
-                "type": "integer",
-                "description": "Override warmup iterations (all targets).",
-            },
-            "llm_analysis": {
-                "type": "boolean",
-                "description": "Enable LLM-powered analysis (default true for this shortcut).",
-                "default": True,
-            },
-            "force_llm": {
-                "type": "boolean",
-                "description": "Force LLM analysis on all benchmarks regardless of speedup (default true for this shortcut).",
-                "default": True,
-            },
-            "apply_patches": {
-                "type": "boolean",
-                "description": "Apply LLM-suggested patches to create new optimized variants (default true for this shortcut).",
-                "default": True,
-            },
-            "rebenchmark_llm_patches": {
-                "type": "boolean",
-                "description": "Re-benchmark LLM-patched variants (default true for this shortcut).",
-                "default": True,
-            },
-            "llm_explain": {
-                "type": "boolean",
-                "description": "Generate LLM explanations for best patches (requires rebenchmark_llm_patches=true).",
-                "default": False,
-            },
-            "async": {
-                "type": "boolean",
-                "description": "Run in background and return job_id; poll with job_status",
-                "default": False,
-            },
-            "timeout_seconds": {
-                "type": "integer",
-                "description": "Max runtime before returning with partial output; set 0/null for no timeout",
-                "default": 900,
-            },
-            "validity_profile": {
-                "type": "string",
-                "description": (
-                    "Benchmark validity profile (`--validity-profile`, MCP field `validity_profile`): strict (default; fail-fast with full validity checks) or portable "
-                    "(explicit compatibility mode for hardware without full benchmark controls)."
-                ),
-                "enum": ["strict", "portable"],
-                "default": "strict",
-            },
-            "allow_portable_expectations_update": {
-                "type": "boolean",
-                "description": (
-                    "In the portable validity profile, expectation writes are disabled by default. "
-                    "Set this flag to allow expectation-file updates."
-                ),
-                "default": False,
-            },
-        }),
+        "properties": with_context_params(
+            {
+                "path": {
+                    "type": "string",
+                    "description": "Benchmark file path (baseline_*/optimized_* .py wrapper only).",
+                },
+                "target": {
+                    "type": "string",
+                    "description": "Benchmark target in chapter:example format.",
+                },
+                "profile": {
+                    "type": "string",
+                    "description": "Profiling preset: none (no profiling), minimal (basic), deep_dive (full nsys/ncu profiling), or roofline",
+                    "enum": ["none", "minimal", "deep_dive", "roofline"],
+                    "default": "minimal",
+                },
+                "artifacts_dir": {
+                    "type": "string",
+                    "description": "Base directory for artifacts (bench creates a self-describing run dir underneath).",
+                },
+                "run_id": {
+                    "type": "string",
+                    "description": "Run ID for artifacts (default: <timestamp>__bench__profile-<type>__targets-<...>)",
+                },
+                "iterations": {
+                    "type": "integer",
+                    "description": "Override benchmark iterations (all targets).",
+                },
+                "warmup": {
+                    "type": "integer",
+                    "description": "Override warmup iterations (all targets).",
+                },
+                "llm_analysis": {
+                    "type": "boolean",
+                    "description": "Enable LLM-powered analysis (default true for this shortcut).",
+                    "default": True,
+                },
+                "force_llm": {
+                    "type": "boolean",
+                    "description": "Force LLM analysis on all benchmarks regardless of speedup (default true for this shortcut).",
+                    "default": True,
+                },
+                "apply_patches": {
+                    "type": "boolean",
+                    "description": "Apply LLM-suggested patches to create new optimized variants (default true for this shortcut).",
+                    "default": True,
+                },
+                "rebenchmark_llm_patches": {
+                    "type": "boolean",
+                    "description": "Re-benchmark LLM-patched variants (default true for this shortcut).",
+                    "default": True,
+                },
+                "llm_explain": {
+                    "type": "boolean",
+                    "description": "Generate LLM explanations for best patches (requires rebenchmark_llm_patches=true).",
+                    "default": False,
+                },
+                "async": {
+                    "type": "boolean",
+                    "description": "Run in background and return job_id; poll with job_status",
+                    "default": False,
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Max runtime before returning with partial output; set 0/null for no timeout",
+                    "default": 900,
+                },
+                "validity_profile": {
+                    "type": "string",
+                    "description": (
+                        "Benchmark validity profile (`--validity-profile`, MCP field `validity_profile`): strict (default; fail-fast with full validity checks) or portable "
+                        "(explicit compatibility mode for hardware without full benchmark controls)."
+                    ),
+                    "enum": ["strict", "portable"],
+                    "default": "strict",
+                },
+                "allow_portable_expectations_update": {
+                    "type": "boolean",
+                    "description": (
+                        "In the portable validity profile, expectation writes are disabled by default. "
+                        "Set this flag to allow expectation-file updates."
+                    ),
+                    "default": False,
+                },
+            }
+        ),
     },
 )
 def tool_optimize(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -5647,7 +6203,9 @@ def tool_optimize(params: Dict[str, Any]) -> Dict[str, Any]:
     if target is not None and not isinstance(target, str):
         return make_error("target must be a string.", include_context, context_level)
     if path and target:
-        return make_error("Provide either path or target, not both.", include_context, context_level)
+        return make_error(
+            "Provide either path or target, not both.", include_context, context_level
+        )
     if not path and not target:
         return make_error("path or target is required.", include_context, context_level)
 
@@ -5676,40 +6234,45 @@ def tool_optimize(params: Dict[str, Any]) -> Dict[str, Any]:
     "Get prioritized optimization recommendations for your model configuration and goal. "
     "Returns: {recommendations: [{technique, priority, expected_speedup, effort}], playbook, warnings}. "
     "⚡ FAST (~1s). USE EARLY when: Starting optimization work, need a game plan. "
-    "Example: \"Recommend for 13B on 4xA100 focused on throughput\" or \"Low-latency 7B on single H100\". "
+    'Example: "Recommend for 13B on 4xA100 focused on throughput" or "Low-latency 7B on single H100". '
     "GOALS explained: "
     "• throughput → maximize tokens/sec (batch processing, training) "
     "• latency → minimize TTFT (real-time inference, chatbots) "
     "• memory → reduce VRAM (fit larger models, longer sequences). "
     "WORKFLOW: triage → recommend → optimize_roi → implement techniques → run_benchmarks.",
-    {"type": "object", "properties": with_context_params({
-        "model_size": {
-            "type": "number",
-            "description": "Model size in billions of parameters (7, 13, 70, etc.)",
-            "default": 7
-        },
-        "gpus": {
-            "type": "integer",
-            "description": "Number of GPUs available (1, 4, 8, etc.)",
-            "default": 1
-        },
-        "goal": {
-            "type": "string",
-            "description": "Primary optimization goal: throughput (tok/s), latency (TTFT), or memory (VRAM)",
-            "enum": ["throughput", "latency", "memory"],
-            "default": "throughput"
-        },
-    }), "required": []}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "model_size": {
+                    "type": "number",
+                    "description": "Model size in billions of parameters (7, 13, 70, etc.)",
+                    "default": 7,
+                },
+                "gpus": {
+                    "type": "integer",
+                    "description": "Number of GPUs available (1, 4, 8, etc.)",
+                    "default": 1,
+                },
+                "goal": {
+                    "type": "string",
+                    "description": "Primary optimization goal: throughput (tok/s), latency (TTFT), or memory (VRAM)",
+                    "enum": ["throughput", "latency", "memory"],
+                    "default": "throughput",
+                },
+            }
+        ),
+        "required": [],
+    },
 )
 def tool_recommend(params: Dict[str, Any]) -> Dict[str, Any]:
     """Get recommendations."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     goal = normalize_param("goal", params.get("goal"), "throughput")
     result = get_engine().optimize.recommend(
-        model_size=params.get("model_size", 7),
-        gpus=params.get("gpus", 1),
-        goal=goal
+        model_size=params.get("model_size", 7), gpus=params.get("gpus", 1), goal=goal
     )
     return attach_context_if_requested(result, include_context, context_level)
 
@@ -5720,13 +6283,14 @@ def tool_recommend(params: Dict[str, Any]) -> Dict[str, Any]:
     "Calculate ROI (return on investment) for optimization techniques: expected gain vs implementation effort. "
     "Returns: {ranked_techniques: [{name, expected_speedup, effort_hours, roi_score}], quick_wins, high_impact}. "
     "USE when: Prioritizing optimization work, deciding what to implement first, limited engineering time. "
-    "Example: \"Which optimizations give best ROI?\" or \"Rank techniques by cost vs gain\". "
+    'Example: "Which optimizations give best ROI?" or "Rank techniques by cost vs gain". '
     "ALSO USE: optimize_techniques for full technique details, recommend for goal-specific recs. ⚡ FAST (~1s). WORKFLOW: recommend → optimize_roi → prioritize.",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_optimize_roi(params: Dict[str, Any]) -> Dict[str, Any]:
     """Calculate optimization ROI."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().optimize.roi()
     return attach_context_if_requested(result, include_context, context_level)
@@ -5738,13 +6302,14 @@ def tool_optimize_roi(params: Dict[str, Any]) -> Dict[str, Any]:
     "Get catalog of all optimization techniques with details, requirements, and expected benefits. "
     "Returns: {techniques: [{name, category, description, requirements, expected_speedup, gotchas}], count}. "
     "USE when: Exploring what optimizations exist, learning about technique requirements, reference lookup. "
-    "Example: \"List all optimization techniques\" or \"What techniques exist for attention?\". "
+    'Example: "List all optimization techniques" or "What techniques exist for attention?". '
     "ALSO USE: optimize_roi for prioritization, analyze_stacking for compatibility. ⚡ FAST (~1s). WORKFLOW: optimize_techniques → choose → optimize_roi.",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_optimize_techniques(params: Dict[str, Any]) -> Dict[str, Any]:
     """Get all optimization techniques."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().optimize.all_techniques()
     return attach_context_if_requested(result, include_context, context_level)
@@ -5754,45 +6319,52 @@ def tool_optimize_techniques(params: Dict[str, Any]) -> Dict[str, Any]:
 # DISTRIBUTED TRAINING TOOLS
 # =============================================================================
 
+
 @register_tool(
     "distributed_plan",
     "Tags: distributed, dp, tp, pp, fsdp, parallelism, multi-gpu, multi-node, strategy, sharding. "
     "Plan parallelism strategy: recommend DP/TP/PP/FSDP layout for model size and GPU count. "
     "Returns: {recommended_layout: {tp, pp, dp}, memory_per_gpu_gb, communication_volume, rationale}. "
     "⚡ FAST (~1s). USE when: Setting up distributed training, choosing parallelism degrees. "
-    "Example: \"Plan 70B on 2 nodes x 4 GPUs\" or \"What TP/PP for 14B on 4 GPUs?\". "
+    'Example: "Plan 70B on 2 nodes x 4 GPUs" or "What TP/PP for 14B on 4 GPUs?". '
     "PARALLELISM explained: "
     "• TP (Tensor Parallel): Split layers across GPUs; needs NVLink; TP ≤ 8 typically "
     "• PP (Pipeline Parallel): Split model stages; good for multi-node "
     "• DP (Data Parallel): Replicate model; scale batch size "
     "• FSDP: Shard parameters + gradients; memory-efficient DP. "
     "WORKFLOW: distributed_plan → distributed_nccl → launch_plan → training.",
-    {"type": "object", "properties": with_context_params({
-        "model_size": {
-            "type": "number",
-            "description": "Model size in billions of parameters (7, 13, 70, etc.)",
-            "default": 7
-        },
-        "gpus": {
-            "type": "integer",
-            "description": "Total number of GPUs across all nodes",
-            "default": 8
-        },
-        "nodes": {
-            "type": "integer",
-            "description": "Number of nodes (1 for single-node, 2+ for multi-node)",
-            "default": 1
-        },
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "model_size": {
+                    "type": "number",
+                    "description": "Model size in billions of parameters (7, 13, 70, etc.)",
+                    "default": 7,
+                },
+                "gpus": {
+                    "type": "integer",
+                    "description": "Total number of GPUs across all nodes",
+                    "default": 8,
+                },
+                "nodes": {
+                    "type": "integer",
+                    "description": "Number of nodes (1 for single-node, 2+ for multi-node)",
+                    "default": 1,
+                },
+            }
+        ),
+    },
 )
 def tool_distributed_plan(params: Dict[str, Any]) -> Dict[str, Any]:
     """Plan parallelism."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().distributed.plan(
         model_size=params.get("model_size", 7),
         gpus=params.get("gpus", 8),
-        nodes=params.get("nodes", 1)
+        nodes=params.get("nodes", 1),
     )
     return attach_context_if_requested(result, include_context, context_level)
 
@@ -5803,21 +6375,24 @@ def tool_distributed_plan(params: Dict[str, Any]) -> Dict[str, Any]:
     "Get NCCL tuning recommendations: environment variables, IB settings, collective algorithms. "
     "Returns: {env_vars: {NCCL_*: value}, algorithm_hints, ib_recommendations, debug_tips}. "
     "USE when: Tuning NCCL for multi-node training, debugging collective performance, IB/RDMA setup. "
-    "Example: \"NCCL settings for 2-node 4xH100\" or \"Tune NCCL for InfiniBand\". "
+    'Example: "NCCL settings for 2-node 4xH100" or "Tune NCCL for InfiniBand". '
     "ALSO USE: hw_nccl for NCCL bandwidth testing, system_network for IB status. ⚡ FAST (~1s). WORKFLOW: distributed_plan → distributed_nccl → apply env vars.",
-    {"type": "object", "properties": with_context_params({
-        "nodes": {"type": "integer", "description": "Number of nodes", "default": 1},
-        "gpus": {"type": "integer", "description": "GPUs per node", "default": 8},
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "nodes": {"type": "integer", "description": "Number of nodes", "default": 1},
+                "gpus": {"type": "integer", "description": "GPUs per node", "default": 8},
+            }
+        ),
+    },
 )
 def tool_distributed_nccl(params: Dict[str, Any]) -> Dict[str, Any]:
     """Get NCCL tuning."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
-    result = get_engine().distributed.nccl(
-        nodes=params.get("nodes", 1),
-        gpus=params.get("gpus", 8)
-    )
+    result = get_engine().distributed.nccl(nodes=params.get("nodes", 1), gpus=params.get("gpus", 8))
     return attach_context_if_requested(result, include_context, context_level)
 
 
@@ -5825,64 +6400,72 @@ def tool_distributed_nccl(params: Dict[str, Any]) -> Dict[str, Any]:
 # INFERENCE TOOLS
 # =============================================================================
 
+
 @register_tool(
     "inference_vllm",
     "Tags: vllm, inference, serving, deployment, config, batching, kv-cache, production. "
     "Generate optimized vLLM configuration for inference serving (explicit model size required). "
     "Returns: {vllm_config|engine_comparison, launch_command, tips}. "
     "⚡ FAST (~1s). USE when: Deploying vLLM server, optimizing inference serving. "
-    "Example: \"vLLM settings for 7B low latency on A100\" or \"High-throughput 70B vLLM config\". "
+    'Example: "vLLM settings for 7B low latency on A100" or "High-throughput 70B vLLM config". '
     "TARGETS explained: "
     "• throughput: Large batches, high gpu_memory_utilization (~0.9), best for batch inference "
     "• latency: Small batches, lower memory util, continuous batching tuned for TTFT "
     "• memory: Maximize fit with conservative batching. "
     "WORKFLOW: gpu_info → inference_quantization → inference_vllm → inference_deploy. "
     "ALSO USE: inference_quantization for precision recommendations.",
-    {"type": "object", "properties": with_context_params({
-        "model": {
-            "type": "string",
-            "description": "Model name (e.g., 'meta-llama/Llama-3.1-70B')",
-            "default": "model"
-        },
-        "model_size": {
-            "type": "number",
-            "description": "Model size in billions of parameters (required).",
-        },
-        "gpus": {
-            "type": "integer",
-            "description": "Number of GPUs available",
-            "default": 1,
-        },
-        "gpu_memory_gb": {
-            "type": "number",
-            "description": "VRAM per GPU in GB",
-            "default": 80,
-        },
-        "target": {
-            "type": "string",
-            "description": "Optimization target: throughput, latency, or memory",
-            "enum": ["throughput", "latency", "memory"],
-            "default": "throughput"
-        },
-        "max_seq_length": {
-            "type": "integer",
-            "description": "Max sequence length for config sizing",
-            "default": 8192,
-        },
-        "quantization": {
-            "type": "string",
-            "description": "Optional quantization mode (awq/gptq/fp8/int8)",
-        },
-        "compare": {
-            "type": "boolean",
-            "description": "If true, return engine comparison instead of config",
-            "default": False,
-        },
-    }), "required": ["model_size"]}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "model": {
+                    "type": "string",
+                    "description": "Model name (e.g., 'meta-llama/Llama-3.1-70B')",
+                    "default": "model",
+                },
+                "model_size": {
+                    "type": "number",
+                    "description": "Model size in billions of parameters (required).",
+                },
+                "gpus": {
+                    "type": "integer",
+                    "description": "Number of GPUs available",
+                    "default": 1,
+                },
+                "gpu_memory_gb": {
+                    "type": "number",
+                    "description": "VRAM per GPU in GB",
+                    "default": 80,
+                },
+                "target": {
+                    "type": "string",
+                    "description": "Optimization target: throughput, latency, or memory",
+                    "enum": ["throughput", "latency", "memory"],
+                    "default": "throughput",
+                },
+                "max_seq_length": {
+                    "type": "integer",
+                    "description": "Max sequence length for config sizing",
+                    "default": 8192,
+                },
+                "quantization": {
+                    "type": "string",
+                    "description": "Optional quantization mode (awq/gptq/fp8/int8)",
+                },
+                "compare": {
+                    "type": "boolean",
+                    "description": "If true, return engine comparison instead of config",
+                    "default": False,
+                },
+            }
+        ),
+        "required": ["model_size"],
+    },
 )
 def tool_inference_vllm(params: Dict[str, Any]) -> Dict[str, Any]:
     """Generate vLLM config."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     target = normalize_param("target", params.get("target"), "throughput")
     model_size = params.get("model_size")
@@ -5905,51 +6488,58 @@ def tool_inference_vllm(params: Dict[str, Any]) -> Dict[str, Any]:
     "Generate inference deployment configuration (explicit model size required). "
     "Returns: {model, hardware, goal, engine, launch_command, report}. "
     "⚡ FAST (~1s). USE when: Planning inference deployments or generating launch commands. "
-    "Example: \"Deploy config for 70B on 4xA100\" or \"Get inference launch command\". "
+    'Example: "Deploy config for 70B on 4xA100" or "Get inference launch command". '
     "GOALS: throughput (batch), latency (TTFT), memory (fit). "
     "WORKFLOW: gpu_info → inference_quantization → inference_deploy. "
     "NOT FOR: vLLM-specific tuning (use inference_vllm).",
-    {"type": "object", "properties": with_context_params({
-        "model": {
-            "type": "string",
-            "description": "Model name (e.g., 'meta-llama/Llama-3.1-70B')",
-            "default": "model"
-        },
-        "model_size": {
-            "type": "number",
-            "description": "Model size in billions of parameters (required).",
-        },
-        "gpus": {
-            "type": "integer",
-            "description": "Number of GPUs available",
-            "default": 1,
-        },
-        "gpu_memory_gb": {
-            "type": "number",
-            "description": "VRAM per GPU in GB",
-            "default": 80,
-        },
-        "goal": {
-            "type": "string",
-            "description": "Optimization goal: throughput, latency, or memory",
-            "enum": ["throughput", "latency", "memory"],
-            "default": "throughput",
-        },
-        "target": {
-            "type": "string",
-            "description": "Alias for goal (throughput/latency/memory).",
-            "enum": ["throughput", "latency", "memory"],
-        },
-        "max_seq_length": {
-            "type": "integer",
-            "description": "Max sequence length for config sizing",
-            "default": 8192,
-        },
-    }), "required": ["model_size"]}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "model": {
+                    "type": "string",
+                    "description": "Model name (e.g., 'meta-llama/Llama-3.1-70B')",
+                    "default": "model",
+                },
+                "model_size": {
+                    "type": "number",
+                    "description": "Model size in billions of parameters (required).",
+                },
+                "gpus": {
+                    "type": "integer",
+                    "description": "Number of GPUs available",
+                    "default": 1,
+                },
+                "gpu_memory_gb": {
+                    "type": "number",
+                    "description": "VRAM per GPU in GB",
+                    "default": 80,
+                },
+                "goal": {
+                    "type": "string",
+                    "description": "Optimization goal: throughput, latency, or memory",
+                    "enum": ["throughput", "latency", "memory"],
+                    "default": "throughput",
+                },
+                "target": {
+                    "type": "string",
+                    "description": "Alias for goal (throughput/latency/memory).",
+                    "enum": ["throughput", "latency", "memory"],
+                },
+                "max_seq_length": {
+                    "type": "integer",
+                    "description": "Max sequence length for config sizing",
+                    "default": 8192,
+                },
+            }
+        ),
+        "required": ["model_size"],
+    },
 )
 def tool_inference_deploy(params: Dict[str, Any]) -> Dict[str, Any]:
     """Generate inference deployment config."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     payload = {
         "model": params.get("model", "model"),
@@ -5970,50 +6560,57 @@ def tool_inference_deploy(params: Dict[str, Any]) -> Dict[str, Any]:
     "Estimate inference throughput/latency based on model + hardware (explicit model size required). "
     "Returns: {model, hardware, goal, estimate: {throughput_tps, latency_ms, memory_gb}, engine}. "
     "⚡ FAST (~1s). USE when: Quickly sizing deployments or comparing hardware options. "
-    "Example: \"Estimate latency for 13B on 1xH100\". "
+    'Example: "Estimate latency for 13B on 1xH100". '
     "WORKFLOW: inference_deploy → inference_estimate. "
     "NOT FOR: Exact benchmarking (use run_benchmarks).",
-    {"type": "object", "properties": with_context_params({
-        "model": {
-            "type": "string",
-            "description": "Model name (e.g., 'meta-llama/Llama-3.1-70B')",
-            "default": "model"
-        },
-        "model_size": {
-            "type": "number",
-            "description": "Model size in billions of parameters (required).",
-        },
-        "gpus": {
-            "type": "integer",
-            "description": "Number of GPUs available",
-            "default": 1,
-        },
-        "gpu_memory_gb": {
-            "type": "number",
-            "description": "VRAM per GPU in GB",
-            "default": 80,
-        },
-        "goal": {
-            "type": "string",
-            "description": "Optimization goal: throughput, latency, or memory",
-            "enum": ["throughput", "latency", "memory"],
-            "default": "throughput",
-        },
-        "target": {
-            "type": "string",
-            "description": "Alias for goal (throughput/latency/memory).",
-            "enum": ["throughput", "latency", "memory"],
-        },
-        "max_seq_length": {
-            "type": "integer",
-            "description": "Max sequence length for config sizing",
-            "default": 8192,
-        },
-    }), "required": ["model_size"]}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "model": {
+                    "type": "string",
+                    "description": "Model name (e.g., 'meta-llama/Llama-3.1-70B')",
+                    "default": "model",
+                },
+                "model_size": {
+                    "type": "number",
+                    "description": "Model size in billions of parameters (required).",
+                },
+                "gpus": {
+                    "type": "integer",
+                    "description": "Number of GPUs available",
+                    "default": 1,
+                },
+                "gpu_memory_gb": {
+                    "type": "number",
+                    "description": "VRAM per GPU in GB",
+                    "default": 80,
+                },
+                "goal": {
+                    "type": "string",
+                    "description": "Optimization goal: throughput, latency, or memory",
+                    "enum": ["throughput", "latency", "memory"],
+                    "default": "throughput",
+                },
+                "target": {
+                    "type": "string",
+                    "description": "Alias for goal (throughput/latency/memory).",
+                    "enum": ["throughput", "latency", "memory"],
+                },
+                "max_seq_length": {
+                    "type": "integer",
+                    "description": "Max sequence length for config sizing",
+                    "default": 8192,
+                },
+            }
+        ),
+        "required": ["model_size"],
+    },
 )
 def tool_inference_estimate(params: Dict[str, Any]) -> Dict[str, Any]:
     """Estimate inference performance."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     payload = {
         "model": params.get("model", "model"),
@@ -6034,23 +6631,29 @@ def tool_inference_estimate(params: Dict[str, Any]) -> Dict[str, Any]:
     "Get quantization recommendations: precision format, method, expected accuracy/speedup tradeoffs. "
     "Returns: {recommended_format, alternatives: [{format, memory_reduction, speedup, accuracy_loss}], tips}. "
     "⚡ FAST (~1s). USE when: Choosing quantization format for inference. "
-    "Example: \"Should I use FP8 or INT8 for 70B inference?\" or \"Best quantization for 24GB VRAM?\". "
+    'Example: "Should I use FP8 or INT8 for 70B inference?" or "Best quantization for 24GB VRAM?". '
     "FORMATS explained: "
     "• FP8 (E4M3/E5M2): Best quality/speed; Hopper+ only (H100/H200); ~50% memory reduction "
     "• INT8: Good quality/speed; Ampere+ (A100/RTX30xx+); ~50% memory reduction "
     "• INT4 (AWQ/GPTQ): Max compression; ~75% memory reduction; slight quality loss "
     "• NF4 (bitsandbytes): Easy setup; ~75% reduction; QLoRA-friendly. "
     "WORKFLOW: gpu_info (check arch) → inference_quantization → inference_vllm.",
-    {"type": "object", "properties": with_context_params({
-        "model_size": {
-            "type": "number",
-            "description": "Model size in billions of parameters (affects memory savings calculation)"
-        },
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "model_size": {
+                    "type": "number",
+                    "description": "Model size in billions of parameters (affects memory savings calculation)",
+                },
+            }
+        ),
+    },
 )
 def tool_inference_quantization(params: Dict[str, Any]) -> Dict[str, Any]:
     """Quantization recommendations."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().inference.quantization(model_size=params.get("model_size"))
     return attach_context_if_requested(result, include_context, context_level)
@@ -6059,6 +6662,7 @@ def tool_inference_quantization(params: Dict[str, Any]) -> Dict[str, Any]:
 # =============================================================================
 # AI/LLM TOOLS
 # =============================================================================
+
 
 @register_tool(
     "ask",
@@ -6074,16 +6678,23 @@ def tool_inference_quantization(params: Dict[str, Any]) -> Dict[str, Any]:
     "REQUIRES: AI backend available (check with ai_status). "
     "VERSUS: explain (concept definitions), recommend (optimization playbooks), "
     "suggest_tools (which tool to use). WORKFLOW: ask for advice → specific tools for action. NOT FOR: Raw data (use domain tools).",
-    {"type": "object", "properties": with_context_params({
-        "question": {
-            "type": "string",
-            "description": "Your performance question in natural language"
-        },
-    }), "required": ["question"]}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "question": {
+                    "type": "string",
+                    "description": "Your performance question in natural language",
+                },
+            }
+        ),
+        "required": ["question"],
+    },
 )
 def tool_ask(params: Dict[str, Any]) -> Dict[str, Any]:
     """Ask a performance question."""
     from core.engine import get_engine
+
     question = params.get("question", "")
     include_context, context_level = extract_context_opts(params)
     result = get_engine().ai.ask(question)
@@ -6096,19 +6707,26 @@ def tool_ask(params: Dict[str, Any]) -> Dict[str, Any]:
     "Explain a GPU/AI performance concept with clear definition and book citations. "
     "Returns: {explanation, key_points: [...], citations: [...], related_concepts}. "
     "USE when: Learning what a technique/concept is, understanding terminology, comparing concepts. "
-    "Example: \"Explain tensor parallelism vs pipeline parallelism\" or \"What is FlashAttention?\". "
+    'Example: "Explain tensor parallelism vs pipeline parallelism" or "What is FlashAttention?". '
     "Good for: flash-attention, tensor-parallelism, FSDP, KV-cache, torch.compile, CUDA graphs. "
     "PREFER ask for 'why' or 'how' questions, optimize_techniques for technique catalog. ⚡ FAST (~3s). WORKFLOW: explain for concepts → ask for specific advice. NOT FOR: How-to questions (use ask).",
-    {"type": "object", "properties": with_context_params({
-        "concept": {
-            "type": "string",
-            "description": "The concept to explain (e.g., 'flash-attention', 'tensor parallelism')"
-        },
-    }), "required": ["concept"]}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "concept": {
+                    "type": "string",
+                    "description": "The concept to explain (e.g., 'flash-attention', 'tensor parallelism')",
+                },
+            }
+        ),
+        "required": ["concept"],
+    },
 )
 def tool_explain(params: Dict[str, Any]) -> Dict[str, Any]:
     """Explain a concept."""
     from core.engine import get_engine
+
     concept = params.get("concept", "")
     include_context, context_level = extract_context_opts(params)
     result = get_engine().ai.explain(concept)
@@ -6121,18 +6739,32 @@ def tool_explain(params: Dict[str, Any]) -> Dict[str, Any]:
     "Diagnose common training/distributed errors and suggest fixes. "
     "Returns: {issues_found, issues: [{category, severity, title, description, symptoms, root_causes, solutions, code_fix, env_vars}]}. "
     "⚡ FAST (~2s). USE when: You have an error message or symptoms and need actionable fixes. "
-    "Example: \"Diagnose NCCL timeout\" or \"Why am I OOMing on 24GB?\". "
+    'Example: "Diagnose NCCL timeout" or "Why am I OOMing on 24GB?". '
     "WORKFLOW: ai_troubleshoot → apply fixes → re-run. "
     "NOT FOR: General performance advice (use ask).",
-    {"type": "object", "properties": with_context_params({
-        "issue": {"type": "string", "description": "Error message or issue description"},
-        "symptoms": {"type": "array", "items": {"type": "string"}, "description": "Optional list of symptoms"},
-        "config": {"type": "object", "description": "Optional configuration context (model/hardware/parallelism)"},
-    }), "required": ["issue"]}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "issue": {"type": "string", "description": "Error message or issue description"},
+                "symptoms": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional list of symptoms",
+                },
+                "config": {
+                    "type": "object",
+                    "description": "Optional configuration context (model/hardware/parallelism)",
+                },
+            }
+        ),
+        "required": ["issue"],
+    },
 )
 def tool_ai_troubleshoot(params: Dict[str, Any]) -> Dict[str, Any]:
     """Diagnose common training/distributed errors."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     issue = params.get("issue")
     if not issue:
@@ -6151,14 +6783,15 @@ def tool_ai_troubleshoot(params: Dict[str, Any]) -> Dict[str, Any]:
     "Check AI/LLM backend availability: connectivity, API key status, model availability. "
     "Returns: {available, backend_type, model, api_key_set, error_if_any}. "
     "⚡ FAST (<1s). USE when: Verifying LLM connectivity before ask/explain. "
-    "Example: \"Is the LLM backend reachable?\" or \"Why is ask failing?\". "
+    'Example: "Is the LLM backend reachable?" or "Why is ask failing?". '
     "WORKFLOW: ai_status → if available → ask/explain. "
     "NOT FOR: General system health (use status).",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_ai_status(params: Dict[str, Any]) -> Dict[str, Any]:
     """Check AI status."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().ai.status()
     return attach_context_if_requested(result, include_context, context_level)
@@ -6168,19 +6801,21 @@ def tool_ai_status(params: Dict[str, Any]) -> Dict[str, Any]:
 # PROFILING TOOLS
 # =============================================================================
 
+
 @register_tool(
     "profile_flame",
     "Tags: profile, flame, hotspots, time, breakdown, visualization, call-stack. "
     "Get flame graph data showing execution time breakdown by function/operation. "
     "Returns: {flame_data, top_hotspots: [{function, time_pct, time_ms}], call_tree}. "
     "USE when: Identifying time hotspots, understanding where time is spent, visualizing call stacks. "
-    "Example: \"Show flame graph for my training loop\" or \"Where is time spent?\". "
+    'Example: "Show flame graph for my training loop" or "Where is time spent?". '
     "ALSO USE: profile_kernels for CUDA kernel breakdown, profile_nsys for full timeline. ⚡ FAST (~2s). WORKFLOW: profile_flame → hotspots → profile_kernels.",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_profile_flame(params: Dict[str, Any]) -> Dict[str, Any]:
     """Get flame graph."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().profile.flame_graph()
     return attach_context_if_requested(result, include_context, context_level)
@@ -6192,17 +6827,18 @@ def tool_profile_flame(params: Dict[str, Any]) -> Dict[str, Any]:
     "Get memory allocation timeline: VRAM usage over time, allocation spikes, potential leaks. "
     "Returns: {timeline: [{timestamp, allocated_gb, reserved_gb}], peak_usage, spikes, leak_suspects}. "
     "⚡ FAST (~2s). USE when: Debugging OOM, tracking memory spikes, finding leaks. "
-    "Example: \"Graph VRAM over time\" or \"Why am I running out of memory?\" or \"Find memory leak\". "
+    'Example: "Graph VRAM over time" or "Why am I running out of memory?" or "Find memory leak". '
     "COMMON OOM CAUSES: "
     "• Peak > VRAM: Reduce batch_size, use gradient checkpointing "
     "• Fragmentation: Use memory_efficient_attention, torch.cuda.empty_cache() "
     "• Leak: Check for growing tensor lists, unreleased intermediate tensors. "
     "WORKFLOW: profile_memory → analyze_whatif(max_vram_gb=X) → inference_quantization.",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_profile_memory(params: Dict[str, Any]) -> Dict[str, Any]:
     """Get memory timeline."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().profile.memory_timeline()
     return attach_context_if_requested(result, include_context, context_level)
@@ -6214,13 +6850,14 @@ def tool_profile_memory(params: Dict[str, Any]) -> Dict[str, Any]:
     "Get CUDA kernel execution breakdown: time per kernel, launch counts, occupancy hints. "
     "Returns: {kernels: [{name, total_time_ms, call_count, avg_time_us, occupancy}], total_gpu_time}. "
     "USE when: Identifying slow CUDA kernels, analyzing GPU time distribution, finding optimization targets. "
-    "Example: \"Which CUDA kernels are slow?\" or \"Kernel breakdown for attention\". "
+    'Example: "Which CUDA kernels are slow?" or "Kernel breakdown for attention". '
     "ALSO USE: profile_ncu for detailed kernel metrics, profile_roofline for bound analysis. ⚡ FAST (~2s). WORKFLOW: profile_kernels → slow kernels → profile_ncu.",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_profile_kernels(params: Dict[str, Any]) -> Dict[str, Any]:
     """Get kernel breakdown."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().profile.kernel_breakdown()
     return attach_context_if_requested(result, include_context, context_level)
@@ -6232,13 +6869,14 @@ def tool_profile_kernels(params: Dict[str, Any]) -> Dict[str, Any]:
     "Get roofline model analysis: compute vs memory bound positioning, arithmetic intensity, efficiency. "
     "Returns: {bound_type, arithmetic_intensity, achieved_flops, peak_flops, achieved_bandwidth, peak_bandwidth}. "
     "USE when: Determining if kernels are compute- or memory-bound, understanding optimization direction. "
-    "Example: \"Are my kernels memory-bound?\" or \"What's the arithmetic intensity of my workload?\". "
+    'Example: "Are my kernels memory-bound?" or "What\'s the arithmetic intensity of my workload?". '
     "Memory-bound → optimize memory access; Compute-bound → optimize math operations. ⚡ FAST (~2s). WORKFLOW: profile_roofline → if memory-bound → analyze_memory_patterns. NOT FOR: Running benchmarks (use hw_roofline).",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_profile_roofline(params: Dict[str, Any]) -> Dict[str, Any]:
     """Get roofline data."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().profile.roofline()
     return attach_context_if_requested(result, include_context, context_level)
@@ -6251,30 +6889,35 @@ def tool_profile_roofline(params: Dict[str, Any]) -> Dict[str, Any]:
     "Returns: {speedup, cuda_api_comparison, kernel_breakdown, flame_diff, side_by_side_report, html_output (if requested)}. "
     "Also generates a side-by-side Nsight Systems + Nsight Compute JSON report + narrative by default. "
     "USE when: Understanding optimization impact visually, presenting before/after comparison. "
-    "Example: \"Compare baseline vs optimized streams profiles\" or \"Why is the optimized code faster?\". "
+    'Example: "Compare baseline vs optimized streams profiles" or "Why is the optimized code faster?". '
     "Provide chapter (e.g., 'ch11') OR profiles_dir path (for example, benchmarks[].profiles_dir from benchmark_deep_dive_compare). "
     "If multiple pairs exist, provide pair to select one. Outputs interactive HTML if output_html set. "
     "Always returns nsys/ncu comparison metrics when profiles are captured; analyze metric deltas for regressions/improvements. "
     "🕐 MEDIUM (~5s). WORKFLOW: profile baseline → optimize → profile_compare. NOT FOR: Raw comparison (use compare_nsys/ncu).",
-    {"type": "object", "properties": with_context_params({
-        "chapter": {
-            "type": "string",
-            "description": "Chapter name (e.g., 'ch11', 'ch11-streams-comparison') - will find profile dir automatically"
-        },
-        "profiles_dir": {
-            "type": "string",
-            "description": "Direct path to a profile pair dir or a parent profiles dir (alternative to chapter)"
-        },
-        "output_html": {
-            "type": "string",
-            "description": "Path to write interactive HTML comparison (optional, great for sharing)",
-            "default": None
-        },
-        "pair": {
-            "type": "string",
-            "description": "Profile pair key to select when multiple exist"
-        },
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "chapter": {
+                    "type": "string",
+                    "description": "Chapter name (e.g., 'ch11', 'ch11-streams-comparison') - will find profile dir automatically",
+                },
+                "profiles_dir": {
+                    "type": "string",
+                    "description": "Direct path to a profile pair dir or a parent profiles dir (alternative to chapter)",
+                },
+                "output_html": {
+                    "type": "string",
+                    "description": "Path to write interactive HTML comparison (optional, great for sharing)",
+                    "default": None,
+                },
+                "pair": {
+                    "type": "string",
+                    "description": "Profile pair key to select when multiple exist",
+                },
+            }
+        ),
+    },
 )
 def tool_profile_compare(params: Dict[str, Any]) -> Dict[str, Any]:
     """Generate flame graph comparison between baseline and optimized profiles."""
@@ -6318,12 +6961,16 @@ def tool_profile_compare(params: Dict[str, Any]) -> Dict[str, Any]:
         nsys_comparison = profile_insights.compare_nsys_files(profiles_dir, pair_key=pair_key)
         ncu_comparison = profile_insights.compare_ncu_files(profiles_dir, pair_key=pair_key)
         if nsys_comparison is None and ncu_comparison is None:
-            return attach_context_if_requested({
-                "error": "No baseline/optimized nsys profiles found",
-                "profiles_dir": str(profiles_dir),
-                "hint": "Profile both baseline and optimized with: nsys profile --stats=true -o <name> python <script>.py",
-                "pair_health": pair_health,
-            }, include_context, context_level)
+            return attach_context_if_requested(
+                {
+                    "error": "No baseline/optimized nsys profiles found",
+                    "profiles_dir": str(profiles_dir),
+                    "hint": "Profile both baseline and optimized with: nsys profile --stats=true -o <name> python <script>.py",
+                    "pair_health": pair_health,
+                },
+                include_context,
+                context_level,
+            )
         result = {
             "warning": "No baseline/optimized nsys profiles found for flamegraph comparison.",
             "profiles_dir": str(profiles_dir),
@@ -6386,6 +7033,7 @@ def tool_profile_compare(params: Dict[str, Any]) -> Dict[str, Any]:
     # Optionally generate HTML
     if output_html:
         from cli.commands.profiling import _generate_comparison_html
+
         html_content = _generate_comparison_html(result, chapter or profiles_dir.name)
         Path(output_html).write_text(html_content)
         result["html_output"] = output_html
@@ -6405,7 +7053,7 @@ def tool_profile_compare(params: Dict[str, Any]) -> Dict[str, Any]:
     "Serialized via the MCP queue runner under artifacts/parallel_runs to prevent overlap. "
     "Returns: {output_path, success, run_details, nsys_metrics} and writes .nsys-rep file. "
     "USE when: Need detailed timeline view, understanding kernel launch patterns, API overhead. "
-    "Example: \"Profile python train.py with nsys\" or \"Capture timeline for batch 32 inference\". "
+    'Example: "Profile python train.py with nsys" or "Capture timeline for batch 32 inference". '
     "⚠️ SLOW: 1-10+ minutes depending on workload. ALWAYS use dry_run=true first to preview command. "
     "PRESETS: preset='light' (default) for quick/small traces, preset='full' for comprehensive data. "
     "Reliability knobs: wait_mode='primary' (default) and finalize_grace_seconds help finalize reports on timeout-prone captures. "
@@ -6415,79 +7063,105 @@ def tool_profile_compare(params: Dict[str, Any]) -> Dict[str, Any]:
     "COMPARE: compare_nsys auto-pairs baseline/optimized across subdirectories; pass pair if multiple pairs exist. "
     "FOR QUICK CHECKS: Use hw_speed or profile_kernels instead. NOT FOR: Kernel metrics (use profile_ncu). "
     "Analyze the returned nsys_metrics to explain timeline shifts and driver/API overhead changes.",
-    {"type": "object", "properties": with_context_params({
-        "command": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Command to profile (argv list), e.g., ['python', 'train.py', '--batch', '32']"
-        },
-        "output_name": {
-            "type": "string",
-            "description": "Label for the profile (used in profiles/tools/<tool>/<label>/ and output stem)",
-            "default": "mcp_nsys"
-        },
-        "run_id": {
-            "type": "string",
-            "description": "Run ID for the artifact directory (default: <timestamp>__profile-nsys__<label>)",
-        },
-        "output_dir": {
-            "type": "string",
-            "description": "Base directory for run artifacts (default: artifacts/runs)",
-            "default": "artifacts/runs"
-        },
-        "trace_cuda": {"type": "boolean", "default": True, "description": "Trace CUDA API calls"},
-        "trace_nvtx": {"type": "boolean", "default": True, "description": "Trace NVTX ranges"},
-        "trace_osrt": {"type": "boolean", "default": True, "description": "Trace OS runtime"},
-        "full_timeline": {"type": "boolean", "default": False, "description": "Trace cuda-hw, cublas, cusolver, cusparse, cudnn (richer timelines)"},
-        "trace_forks": {"type": "boolean", "default": False, "description": "Trace child processes before exec"},
-        "preset": {
-            "type": "string",
-            "description": "NSYS preset: light (default, smaller/faster) or full (adds cuda-hw/cublas/cusolver/cusparse/cudnn + fork tracing)",
-            "enum": ["light", "full"],
-            "default": "light"
-        },
-        "wait_mode": {
-            "type": "string",
-            "description": "NSYS --wait mode (primary or all). primary reduces finalize hangs on short runs.",
-            "enum": ["primary", "all"],
-            "default": "primary"
-        },
-        "finalize_grace_seconds": {
-            "type": "number",
-            "description": "Grace window after timeout SIGINT to allow NSYS to finalize a report.",
-            "default": 20.0
-        },
-        "force_lineinfo": {
-            "type": "boolean",
-            "description": "Force -lineinfo via NVCC/TORCH_NVCC_FLAGS to improve source mapping",
-            "default": True
-        },
-        "sanitize_python_startup": {
-            "type": "boolean",
-            "description": "Prefix a safe sitecustomize shim on PYTHONPATH to isolate profiler runs from host startup hooks",
-            "default": True
-        },
-        "precheck_only": {
-            "type": "boolean",
-            "description": "Return prerequisites without running (nsys/ncu/cuda availability, output path)",
-            "default": False
-        },
-        "dry_run": {
-            "type": "boolean",
-            "description": "Describe the capture without executing (alias: estimate_only)",
-            "default": False
-        },
-        "async": {
-            "type": "boolean",
-            "description": "Return a job ticket and run capture in background; poll with job_status",
-            "default": False
-        },
-        "timeout_seconds": {
-            "type": "integer",
-            "description": "Max runtime before returning partial output; set 0/null for no timeout",
-            "default": 300
-        },
-    }), "required": ["command"]}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "command": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Command to profile (argv list), e.g., ['python', 'train.py', '--batch', '32']",
+                },
+                "output_name": {
+                    "type": "string",
+                    "description": "Label for the profile (used in profiles/tools/<tool>/<label>/ and output stem)",
+                    "default": "mcp_nsys",
+                },
+                "run_id": {
+                    "type": "string",
+                    "description": "Run ID for the artifact directory (default: <timestamp>__profile-nsys__<label>)",
+                },
+                "output_dir": {
+                    "type": "string",
+                    "description": "Base directory for run artifacts (default: artifacts/runs)",
+                    "default": "artifacts/runs",
+                },
+                "trace_cuda": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Trace CUDA API calls",
+                },
+                "trace_nvtx": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Trace NVTX ranges",
+                },
+                "trace_osrt": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Trace OS runtime",
+                },
+                "full_timeline": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Trace cuda-hw, cublas, cusolver, cusparse, cudnn (richer timelines)",
+                },
+                "trace_forks": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Trace child processes before exec",
+                },
+                "preset": {
+                    "type": "string",
+                    "description": "NSYS preset: light (default, smaller/faster) or full (adds cuda-hw/cublas/cusolver/cusparse/cudnn + fork tracing)",
+                    "enum": ["light", "full"],
+                    "default": "light",
+                },
+                "wait_mode": {
+                    "type": "string",
+                    "description": "NSYS --wait mode (primary or all). primary reduces finalize hangs on short runs.",
+                    "enum": ["primary", "all"],
+                    "default": "primary",
+                },
+                "finalize_grace_seconds": {
+                    "type": "number",
+                    "description": "Grace window after timeout SIGINT to allow NSYS to finalize a report.",
+                    "default": 20.0,
+                },
+                "force_lineinfo": {
+                    "type": "boolean",
+                    "description": "Force -lineinfo via NVCC/TORCH_NVCC_FLAGS to improve source mapping",
+                    "default": True,
+                },
+                "sanitize_python_startup": {
+                    "type": "boolean",
+                    "description": "Prefix a safe sitecustomize shim on PYTHONPATH to isolate profiler runs from host startup hooks",
+                    "default": True,
+                },
+                "precheck_only": {
+                    "type": "boolean",
+                    "description": "Return prerequisites without running (nsys/ncu/cuda availability, output path)",
+                    "default": False,
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Describe the capture without executing (alias: estimate_only)",
+                    "default": False,
+                },
+                "async": {
+                    "type": "boolean",
+                    "description": "Return a job ticket and run capture in background; poll with job_status",
+                    "default": False,
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Max runtime before returning partial output; set 0/null for no timeout",
+                    "default": 300,
+                },
+            }
+        ),
+        "required": ["command"],
+    },
 )
 def tool_profile_nsys(params: Dict[str, Any]) -> Dict[str, Any]:
     """Run Nsight Systems profiling for an arbitrary command."""
@@ -6550,9 +7224,16 @@ def tool_profile_nsys(params: Dict[str, Any]) -> Dict[str, Any]:
     if not precheck["command_provided"]:
         return make_error("command is required", include_context, context_level, **precheck)
     if not automation.nsys_available:
-        return make_error("nsys is not installed or not on PATH", include_context, context_level, **precheck)
+        return make_error(
+            "nsys is not installed or not on PATH", include_context, context_level, **precheck
+        )
     if not cuda_check.get("ok", True):
-        return make_error(cuda_check.get("reason", "CUDA not available"), include_context, context_level, **precheck)
+        return make_error(
+            cuda_check.get("reason", "CUDA not available"),
+            include_context,
+            context_level,
+            **precheck,
+        )
 
     output_path = profile_dir / f"{output_name}.nsys-rep"
     if dry_run:
@@ -6599,7 +7280,9 @@ def tool_profile_nsys(params: Dict[str, Any]) -> Dict[str, Any]:
                 trace_forks=trace_forks,
                 preset=preset,
                 force_lineinfo=force_lineinfo,
-                timeout_seconds=timeout_seconds if timeout_seconds and timeout_seconds > 0 else None,
+                timeout_seconds=timeout_seconds
+                if timeout_seconds and timeout_seconds > 0
+                else None,
                 wait_mode=wait_mode,
                 finalize_grace_seconds=finalize_grace_seconds,
                 sanitize_python_startup=sanitize_python_startup,
@@ -6609,6 +7292,7 @@ def tool_profile_nsys(params: Dict[str, Any]) -> Dict[str, Any]:
         if path:
             try:
                 from core.profiling.metrics_extractor import extract_nsys_metrics
+
                 metrics_obj = extract_nsys_metrics(Path(path))
                 if hasattr(metrics_obj, "to_dict"):
                     nsys_metrics = metrics_obj.to_dict()
@@ -6630,15 +7314,19 @@ def tool_profile_nsys(params: Dict[str, Any]) -> Dict[str, Any]:
             "force_lineinfo": force_lineinfo,
             "sanitize_python_startup": sanitize_python_startup,
             "timeout_seconds": timeout_seconds if timeout_seconds and timeout_seconds > 0 else None,
-            "timeout_hit": bool(auto.last_run.get("timeout_hit")) if hasattr(auto, "last_run") else False,  # type: ignore[attr-defined]
-            "warning": "NSYS full timeline enabled: captures may run slower and produce large traces; set preset=light to keep it small." if preset == "full" or full_timeline else "Using light NSYS preset for safer/faster capture.",
+            "timeout_hit": bool(auto.last_run.get("timeout_hit"))
+            if hasattr(auto, "last_run")
+            else False,  # type: ignore[attr-defined]
+            "warning": "NSYS full timeline enabled: captures may run slower and produce large traces; set preset=light to keep it small."
+            if preset == "full" or full_timeline
+            else "Using light NSYS preset for safer/faster capture.",
             "error": auto.last_error if path is None else None,
             "run_details": getattr(auto, "last_run", {}),  # type: ignore[attr-defined]
             "nsys_metrics": nsys_metrics,
             "suggestions": [
                 "Use preset=full only for deep dives; keep light for routine runs.",
                 "If disk space is low, set TMPDIR to a directory with >200MB free before capturing.",
-                "If capture fails, try preset=light to reduce trace size."
+                "If capture fails, try preset=light to reduce trace size.",
             ],
             "run_id": run_id,
             "run_dir": str(run_dir),
@@ -6674,8 +7362,10 @@ def tool_profile_nsys(params: Dict[str, Any]) -> Dict[str, Any]:
 
     if run_async:
         job_id = f"profile_nsys-{uuid.uuid4().hex[:10]}"
+
         def _execute_capture_with_job():
             return _execute_capture_queued(job_id)
+
         run_metadata = {
             "run_id": run_id,
             "run_dir": str(run_dir),
@@ -6706,7 +7396,7 @@ def tool_profile_nsys(params: Dict[str, Any]) -> Dict[str, Any]:
     "Serialized via the MCP queue runner under artifacts/parallel_runs to prevent overlap. "
     "Returns: {output_path, success, run_details, ncu_metrics} and writes .ncu-rep file. "
     "USE when: Deep-diving into specific kernel performance, optimizing occupancy, memory access. "
-    "Example: \"Profile attention kernel with ncu\" or \"Get detailed metrics for matmul\". "
+    'Example: "Profile attention kernel with ncu" or "Get detailed metrics for matmul". '
     "⚠️ VERY SLOW: Replays kernels. Use kernel_filter to limit scope. Use dry_run=true first. "
     "metric_set selects the NCU --set; workload_type picks custom metrics (only when metric_set=full). "
     "workload_type: memory_bound (default, fast), compute_bound, tensor_core. "
@@ -6716,105 +7406,111 @@ def tool_profile_nsys(params: Dict[str, Any]) -> Dict[str, Any]:
     "COMPARE: compare_ncu auto-pairs baseline/optimized across subdirectories; pass pair if multiple pairs exist. "
     "Use launch_skip/launch_count to limit captures on many-launch benchmarks (e.g., 4096 batches). "
     "Analyze ncu_metrics to explain occupancy, throughput, and kernel-time shifts.",
-    {"type": "object", "properties": with_context_params({
-        "command": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Command to profile (argv list), e.g., ['python', 'train.py', '--batch', '32']"
-        },
-        "output_name": {
-            "type": "string",
-            "description": "Label for the profile (used in profiles/tools/<tool>/<label>/ and output stem)",
-            "default": "mcp_ncu"
-        },
-        "run_id": {
-            "type": "string",
-            "description": "Run ID for the artifact directory (default: <timestamp>__profile-ncu__<label>)",
-        },
-        "output_dir": {
-            "type": "string",
-            "description": "Base directory for run artifacts (default: artifacts/runs)",
-            "default": "artifacts/runs"
-        },
-        "workload_type": {
-            "type": "string",
-            "description": "Metric list selection for metric_set=full: memory_bound, compute_bound, tensor_core",
-            "enum": ["memory_bound", "compute_bound", "tensor_core"],
-            "default": "memory_bound"
-        },
-        "kernel_filter": {
-            "type": "string",
-            "description": "Optional kernel name filter (regex)"
-        },
-        "kernel_name_base": {
-            "type": "string",
-            "description": "Optional NCU kernel name base for filter matching (e.g., function, demangled)."
-        },
-        "nvtx_include": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Optional NVTX include filters (repeatable); useful with profile_from_start='off'.",
-            "default": []
-        },
-        "profile_from_start": {
-            "type": "string",
-            "description": "NCU profiling gate: on/off. Use off to gate capture until cudaProfilerStart.",
-            "enum": ["on", "off"],
-            "default": None
-        },
-        "force_lineinfo": {
-            "type": "boolean",
-            "description": "Force -lineinfo via NVCC/TORCH_NVCC_FLAGS to improve source mapping",
-            "default": True
-        },
-        "precheck_only": {
-            "type": "boolean",
-            "description": "Return prerequisites without running (nsys/ncu/cuda availability, output path)",
-            "default": False
-        },
-        "dry_run": {
-            "type": "boolean",
-            "description": "Describe the capture without executing (alias: estimate_only)",
-            "default": False
-        },
-        "async": {
-            "type": "boolean",
-            "description": "Return a job ticket and run capture in background; poll with job_status",
-            "default": False
-        },
-        "timeout_seconds": {
-            "type": "integer",
-            "description": "Max runtime before returning partial output; set 0/null for no timeout",
-            "default": 300
-        },
-        "pm_sampling_interval": {
-            "type": "integer",
-            "description": "Nsight Compute pm-sampling-interval (cycles). Increase to reduce overhead; omit for default.",
-            "default": None
-        },
-        "metric_set": {
-            "type": "string",
-            "description": "NCU --set selection: full, roofline, minimal, speed-of-light, basic. workload_type is used only when metric_set=full.",
-            "enum": ["full", "speed-of-light", "roofline", "minimal", "basic"],
-            "default": "full"
-        },
-        "launch_skip": {
-            "type": "integer",
-            "description": "Number of kernel launches to skip before profiling (prevents timeout on many-launch benchmarks).",
-            "default": None
-        },
-        "launch_count": {
-            "type": "integer",
-            "description": "Number of kernel launches to profile (None = all remaining).",
-            "default": None
-        },
-        "replay_mode": {
-            "type": "string",
-            "description": "NCU replay mode: application (profile all launches) or kernel (profile one instance per kernel)",
-            "enum": ["application", "kernel"],
-            "default": "application"
-        },
-    }), "required": ["command"]}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "command": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Command to profile (argv list), e.g., ['python', 'train.py', '--batch', '32']",
+                },
+                "output_name": {
+                    "type": "string",
+                    "description": "Label for the profile (used in profiles/tools/<tool>/<label>/ and output stem)",
+                    "default": "mcp_ncu",
+                },
+                "run_id": {
+                    "type": "string",
+                    "description": "Run ID for the artifact directory (default: <timestamp>__profile-ncu__<label>)",
+                },
+                "output_dir": {
+                    "type": "string",
+                    "description": "Base directory for run artifacts (default: artifacts/runs)",
+                    "default": "artifacts/runs",
+                },
+                "workload_type": {
+                    "type": "string",
+                    "description": "Metric list selection for metric_set=full: memory_bound, compute_bound, tensor_core",
+                    "enum": ["memory_bound", "compute_bound", "tensor_core"],
+                    "default": "memory_bound",
+                },
+                "kernel_filter": {
+                    "type": "string",
+                    "description": "Optional kernel name filter (regex)",
+                },
+                "kernel_name_base": {
+                    "type": "string",
+                    "description": "Optional NCU kernel name base for filter matching (e.g., function, demangled).",
+                },
+                "nvtx_include": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional NVTX include filters (repeatable); useful with profile_from_start='off'.",
+                    "default": [],
+                },
+                "profile_from_start": {
+                    "type": "string",
+                    "description": "NCU profiling gate: on/off. Use off to gate capture until cudaProfilerStart.",
+                    "enum": ["on", "off"],
+                    "default": None,
+                },
+                "force_lineinfo": {
+                    "type": "boolean",
+                    "description": "Force -lineinfo via NVCC/TORCH_NVCC_FLAGS to improve source mapping",
+                    "default": True,
+                },
+                "precheck_only": {
+                    "type": "boolean",
+                    "description": "Return prerequisites without running (nsys/ncu/cuda availability, output path)",
+                    "default": False,
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Describe the capture without executing (alias: estimate_only)",
+                    "default": False,
+                },
+                "async": {
+                    "type": "boolean",
+                    "description": "Return a job ticket and run capture in background; poll with job_status",
+                    "default": False,
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Max runtime before returning partial output; set 0/null for no timeout",
+                    "default": 300,
+                },
+                "pm_sampling_interval": {
+                    "type": "integer",
+                    "description": "Nsight Compute pm-sampling-interval (cycles). Increase to reduce overhead; omit for default.",
+                    "default": None,
+                },
+                "metric_set": {
+                    "type": "string",
+                    "description": "NCU --set selection: full, roofline, minimal, speed-of-light, basic. workload_type is used only when metric_set=full.",
+                    "enum": ["full", "speed-of-light", "roofline", "minimal", "basic"],
+                    "default": "full",
+                },
+                "launch_skip": {
+                    "type": "integer",
+                    "description": "Number of kernel launches to skip before profiling (prevents timeout on many-launch benchmarks).",
+                    "default": None,
+                },
+                "launch_count": {
+                    "type": "integer",
+                    "description": "Number of kernel launches to profile (None = all remaining).",
+                    "default": None,
+                },
+                "replay_mode": {
+                    "type": "string",
+                    "description": "NCU replay mode: application (profile all launches) or kernel (profile one instance per kernel)",
+                    "enum": ["application", "kernel"],
+                    "default": "application",
+                },
+            }
+        ),
+        "required": ["command"],
+    },
 )
 def tool_profile_ncu(params: Dict[str, Any]) -> Dict[str, Any]:
     """Run Nsight Compute profiling for an arbitrary command."""
@@ -6860,7 +7556,11 @@ def tool_profile_ncu(params: Dict[str, Any]) -> Dict[str, Any]:
     run_async = bool(params.get("async"))
     timeout_param = params.get("timeout_seconds")
     timeout_seconds = None if timeout_param is None else int(timeout_param)
-    sampling_param = params.get("pm_sampling_interval") if "pm_sampling_interval" in params else params.get("sampling_interval")
+    sampling_param = (
+        params.get("pm_sampling_interval")
+        if "pm_sampling_interval" in params
+        else params.get("sampling_interval")
+    )
     sampling_interval = None if sampling_param in (None, "") else int(sampling_param)
     metric_set = params.get("metric_set", "full")
     launch_skip_param = params.get("launch_skip")
@@ -6897,9 +7597,16 @@ def tool_profile_ncu(params: Dict[str, Any]) -> Dict[str, Any]:
     if not precheck["command_provided"]:
         return make_error("command is required", include_context, context_level, **precheck)
     if not automation.ncu_available:
-        return make_error("ncu is not installed or not on PATH", include_context, context_level, **precheck)
+        return make_error(
+            "ncu is not installed or not on PATH", include_context, context_level, **precheck
+        )
     if not cuda_check.get("ok", True):
-        return make_error(cuda_check.get("reason", "CUDA not available"), include_context, context_level, **precheck)
+        return make_error(
+            cuda_check.get("reason", "CUDA not available"),
+            include_context,
+            context_level,
+            **precheck,
+        )
     try:
         metric_set_resolved = automation._resolve_ncu_set(metric_set)  # type: ignore[attr-defined]
     except ValueError as exc:
@@ -6957,7 +7664,9 @@ def tool_profile_ncu(params: Dict[str, Any]) -> Dict[str, Any]:
                 nvtx_includes=nvtx_includes,
                 profile_from_start=profile_from_start,
                 force_lineinfo=force_lineinfo,
-                timeout_seconds=timeout_seconds if timeout_seconds and timeout_seconds > 0 else None,
+                timeout_seconds=timeout_seconds
+                if timeout_seconds and timeout_seconds > 0
+                else None,
                 sampling_interval=sampling_interval,
                 metric_set=metric_set,
                 launch_skip=launch_skip,
@@ -6974,6 +7683,7 @@ def tool_profile_ncu(params: Dict[str, Any]) -> Dict[str, Any]:
         if path:
             try:
                 from core.profiling.metrics_extractor import extract_ncu_metrics
+
                 metrics_obj = extract_ncu_metrics(Path(path))
                 if hasattr(metrics_obj, "to_dict"):
                     ncu_metrics = metrics_obj.to_dict()
@@ -7002,7 +7712,9 @@ def tool_profile_ncu(params: Dict[str, Any]) -> Dict[str, Any]:
             "kernel_name_base": kernel_name_base,
             "nvtx_include": nvtx_includes,
             "profile_from_start": profile_from_start,
-            "timeout_hit": bool(auto.last_run.get("timeout_hit")) if hasattr(auto, "last_run") else False,  # type: ignore[attr-defined]
+            "timeout_hit": bool(auto.last_run.get("timeout_hit"))
+            if hasattr(auto, "last_run")
+            else False,  # type: ignore[attr-defined]
             "error": auto.last_error if path is None else None,
             "run_details": run_details,
             "ncu_metrics": ncu_metrics,
@@ -7040,8 +7752,10 @@ def tool_profile_ncu(params: Dict[str, Any]) -> Dict[str, Any]:
 
     if run_async:
         job_id = f"profile_ncu-{uuid.uuid4().hex[:10]}"
+
         def _execute_capture_with_job():
             return _execute_capture_queued(job_id)
+
         run_metadata = {
             "run_id": run_id,
             "run_dir": str(run_dir),
@@ -7072,24 +7786,78 @@ def tool_profile_ncu(params: Dict[str, Any]) -> Dict[str, Any]:
     "Serialized via the MCP queue runner under artifacts/parallel_runs to prevent overlap. "
     "Returns: {trace_path, summary, torch_metrics, success} and writes Chrome trace JSON + summary. "
     "USE when: Profiling PyTorch code specifically, understanding autograd overhead, CPU/GPU interplay. "
-    "Example: \"Profile my training script with torch.profiler\" or \"Get PyTorch trace for train.py\". "
+    'Example: "Profile my training script with torch.profiler" or "Get PyTorch trace for train.py". '
     "Output viewable in chrome://tracing or Perfetto. Emits NVTX for nsys correlation. 🕐 SLOW (varies). WORKFLOW: profile_torch → analyze operators → optimize. NOT FOR: Timeline (use profile_nsys). "
     "Analyze torch_metrics to identify CPU/GPU hotspots and autograd overhead.",
-    {"type": "object", "properties": with_context_params({
-        "script": {"type": "string", "description": "Path to Python script to profile"},
-        "script_args": {"type": "array", "items": {"type": "string"}, "description": "Args forwarded to the script"},
-        "output_name": {"type": "string", "description": "Label for the capture (used in profiles/tools/<tool>/<label>/)", "default": "mcp_torch"},
-        "run_id": {"type": "string", "description": "Run ID for the artifact directory (default: <timestamp>__profile-torch__<label>)"},
-        "output_dir": {"type": "string", "description": "Base directory for run artifacts (default: artifacts/runs)", "default": "artifacts/runs"},
-        "mode": {"type": "string", "description": "Profiler preset", "enum": ["full", "memory", "flops", "modules", "blackwell"], "default": "full"},
-        "nvtx_label": {"type": "string", "description": "NVTX/record_function range label", "default": "torch_profile"},
-        "use_nvtx": {"type": "boolean", "description": "Emit NVTX range around the profiled run", "default": True},
-        "force_lineinfo": {"type": "boolean", "description": "Force -lineinfo in NVCC/TORCH_NVCC_FLAGS for better source mapping", "default": True},
-        "precheck_only": {"type": "boolean", "description": "Return prereqs without running", "default": False},
-        "dry_run": {"type": "boolean", "description": "Describe the capture without executing (alias: estimate_only)", "default": False},
-        "async": {"type": "boolean", "description": "Return a job ticket and run capture in background; poll with job_status", "default": False},
-        "timeout_seconds": {"type": "integer", "description": "Max runtime before returning partial output; set 0/null for no timeout", "default": 300},
-    }), "required": ["script"]}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "script": {"type": "string", "description": "Path to Python script to profile"},
+                "script_args": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Args forwarded to the script",
+                },
+                "output_name": {
+                    "type": "string",
+                    "description": "Label for the capture (used in profiles/tools/<tool>/<label>/)",
+                    "default": "mcp_torch",
+                },
+                "run_id": {
+                    "type": "string",
+                    "description": "Run ID for the artifact directory (default: <timestamp>__profile-torch__<label>)",
+                },
+                "output_dir": {
+                    "type": "string",
+                    "description": "Base directory for run artifacts (default: artifacts/runs)",
+                    "default": "artifacts/runs",
+                },
+                "mode": {
+                    "type": "string",
+                    "description": "Profiler preset",
+                    "enum": ["full", "memory", "flops", "modules", "blackwell"],
+                    "default": "full",
+                },
+                "nvtx_label": {
+                    "type": "string",
+                    "description": "NVTX/record_function range label",
+                    "default": "torch_profile",
+                },
+                "use_nvtx": {
+                    "type": "boolean",
+                    "description": "Emit NVTX range around the profiled run",
+                    "default": True,
+                },
+                "force_lineinfo": {
+                    "type": "boolean",
+                    "description": "Force -lineinfo in NVCC/TORCH_NVCC_FLAGS for better source mapping",
+                    "default": True,
+                },
+                "precheck_only": {
+                    "type": "boolean",
+                    "description": "Return prereqs without running",
+                    "default": False,
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Describe the capture without executing (alias: estimate_only)",
+                    "default": False,
+                },
+                "async": {
+                    "type": "boolean",
+                    "description": "Return a job ticket and run capture in background; poll with job_status",
+                    "default": False,
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Max runtime before returning partial output; set 0/null for no timeout",
+                    "default": 300,
+                },
+            }
+        ),
+        "required": ["script"],
+    },
 )
 def tool_profile_torch(params: Dict[str, Any]) -> Dict[str, Any]:
     """Run torch.profiler for a Python script and return summary + trace paths."""
@@ -7114,6 +7882,7 @@ def tool_profile_torch(params: Dict[str, Any]) -> Dict[str, Any]:
     script_args = params.get("script_args") or []
     if isinstance(script_args, str):
         import shlex as _shlex  # local import to avoid global side effects
+
         script_args = _shlex.split(script_args)
     force_lineinfo = bool(params.get("force_lineinfo", True))
     use_nvtx = bool(params.get("use_nvtx", True))
@@ -7126,6 +7895,7 @@ def tool_profile_torch(params: Dict[str, Any]) -> Dict[str, Any]:
 
     try:
         import torch  # noqa: F401
+
         torch_available = True
         cuda_available = torch.cuda.is_available()  # type: ignore[attr-defined]
         torch_error = None
@@ -7222,8 +7992,10 @@ def tool_profile_torch(params: Dict[str, Any]) -> Dict[str, Any]:
 
     if run_async:
         job_id = f"profile_torch-{uuid.uuid4().hex[:10]}"
+
         def _execute_capture_with_job():
             return _execute_capture_queued(job_id)
+
         run_metadata = {
             "run_id": run_id,
             "run_dir": str(run_dir),
@@ -7237,7 +8009,9 @@ def tool_profile_torch(params: Dict[str, Any]) -> Dict[str, Any]:
             run_metadata=run_metadata,
             job_id=job_id,
         )
-        queued["note"] = "Background torch.profiler capture started; poll with job_status using job_id."
+        queued["note"] = (
+            "Background torch.profiler capture started; poll with job_status using job_id."
+        )
         queued["mode"] = mode
         queued["nvtx_label"] = nvtx_label
         queued["run_id"] = run_id
@@ -7255,21 +8029,67 @@ def tool_profile_torch(params: Dict[str, Any]) -> Dict[str, Any]:
     "Serialized via the MCP queue runner under artifacts/parallel_runs to prevent overlap. "
     "Returns: {nsys_rep_path, trace_json_path, hta_report_path, analysis_summary, nsys_metrics}. "
     "USE when: Want automated analysis of trace data, finding GPU idle time, communication bottlenecks. "
-    "Example: \"Profile and analyze with HTA\" or \"Get holistic trace analysis for my script\". "
+    'Example: "Profile and analyze with HTA" or "Get holistic trace analysis for my script". '
     "Produces .nsys-rep + trace.json + hta_report.json with actionable insights. 🕐 MEDIUM (~30s). WORKFLOW: profile_torch → operators → optimize. NOT FOR: CUDA-level (use profile_nsys). "
     "Analyze nsys_metrics alongside analysis_summary to pinpoint idle gaps and API overhead.",
-    {"type": "object", "properties": with_context_params({
-        "command": {"type": "array", "items": {"type": "string"}, "description": "Command to profile (argv list)"},
-        "output_name": {"type": "string", "description": "Label for the capture (used in profiles/tools/<tool>/<label>/)", "default": "mcp_hta"},
-        "run_id": {"type": "string", "description": "Run ID for the artifact directory (default: <timestamp>__profile-hta__<label>)"},
-        "output_dir": {"type": "string", "description": "Base directory for run artifacts (default: artifacts/runs)", "default": "artifacts/runs"},
-        "preset": {"type": "string", "description": "nsys preset", "enum": ["light", "full"], "default": "full"},
-        "force_lineinfo": {"type": "boolean", "description": "Force -lineinfo for source/line mapping", "default": True},
-        "precheck_only": {"type": "boolean", "description": "Return prereqs without running", "default": False},
-        "dry_run": {"type": "boolean", "description": "Describe the capture without executing", "default": False},
-        "async": {"type": "boolean", "description": "Run in background and return job_id", "default": False},
-        "timeout_seconds": {"type": "integer", "description": "Max runtime before returning partial output; set 0/null for none", "default": 300},
-    }), "required": ["command"]}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "command": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Command to profile (argv list)",
+                },
+                "output_name": {
+                    "type": "string",
+                    "description": "Label for the capture (used in profiles/tools/<tool>/<label>/)",
+                    "default": "mcp_hta",
+                },
+                "run_id": {
+                    "type": "string",
+                    "description": "Run ID for the artifact directory (default: <timestamp>__profile-hta__<label>)",
+                },
+                "output_dir": {
+                    "type": "string",
+                    "description": "Base directory for run artifacts (default: artifacts/runs)",
+                    "default": "artifacts/runs",
+                },
+                "preset": {
+                    "type": "string",
+                    "description": "nsys preset",
+                    "enum": ["light", "full"],
+                    "default": "full",
+                },
+                "force_lineinfo": {
+                    "type": "boolean",
+                    "description": "Force -lineinfo for source/line mapping",
+                    "default": True,
+                },
+                "precheck_only": {
+                    "type": "boolean",
+                    "description": "Return prereqs without running",
+                    "default": False,
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Describe the capture without executing",
+                    "default": False,
+                },
+                "async": {
+                    "type": "boolean",
+                    "description": "Run in background and return job_id",
+                    "default": False,
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Max runtime before returning partial output; set 0/null for none",
+                    "default": 300,
+                },
+            }
+        ),
+        "required": ["command"],
+    },
 )
 def tool_profile_hta(params: Dict[str, Any]) -> Dict[str, Any]:
     """Run nsys + HTA analysis."""
@@ -7305,6 +8125,7 @@ def tool_profile_hta(params: Dict[str, Any]) -> Dict[str, Any]:
         nsight = NsightAutomation(profile_dir)
     try:
         import hta  # noqa: F401
+
         hta_available = True
     except Exception:
         hta_available = False
@@ -7321,7 +8142,9 @@ def tool_profile_hta(params: Dict[str, Any]) -> Dict[str, Any]:
     if precheck_only:
         return {"precheck_only": True, **precheck}
     if not nsight.nsys_available:
-        return make_error("nsys is not installed or not on PATH", include_context, context_level, **precheck)
+        return make_error(
+            "nsys is not installed or not on PATH", include_context, context_level, **precheck
+        )
     if dry_run:
         base = profile_dir / f"{output_name}.nsys-rep"
         return {
@@ -7364,6 +8187,7 @@ def tool_profile_hta(params: Dict[str, Any]) -> Dict[str, Any]:
         if nsys_rep_path:
             try:
                 from core.profiling.metrics_extractor import extract_nsys_metrics
+
                 metrics_obj = extract_nsys_metrics(Path(nsys_rep_path))
                 if hasattr(metrics_obj, "to_dict"):
                     nsys_metrics = metrics_obj.to_dict()
@@ -7409,8 +8233,10 @@ def tool_profile_hta(params: Dict[str, Any]) -> Dict[str, Any]:
 
     if run_async:
         job_id = f"profile_hta-{uuid.uuid4().hex[:10]}"
+
         def _execute_capture_with_job():
             return _execute_capture_queued(job_id)
+
         run_metadata = {
             "run_id": run_id,
             "run_dir": str(run_dir),
@@ -7440,19 +8266,25 @@ def tool_profile_hta(params: Dict[str, Any]) -> Dict[str, Any]:
     "Export benchmarks to CSV format for spreadsheet analysis or sharing. "
     "Returns: {csv: <csv_string>, detailed: bool}. "
     "USE when: Importing benchmark data into Excel/Sheets, sharing raw numbers. "
-    "Example: \"Export benchmarks to CSV\" or \"Get CSV of all results\". "
+    'Example: "Export benchmarks to CSV" or "Get CSV of all results". '
     "detailed=true includes all metrics; false gives summary columns only. 🕐 SLOW (varies). WORKFLOW: run_benchmarks → benchmark_export or export_csv. NOT FOR: PDF/HTML reports (use benchmark_report).",
-    {"type": "object", "properties": with_context_params({
-        "detailed": {
-            "type": "boolean",
-            "description": "Include all metrics (true) or summary only (false)",
-            "default": False
-        },
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "detailed": {
+                    "type": "boolean",
+                    "description": "Include all metrics (true) or summary only (false)",
+                    "default": False,
+                },
+            }
+        ),
+    },
 )
 def tool_export_csv(params: Dict[str, Any]) -> Dict[str, Any]:
     """Export benchmarks to CSV."""
     from core.engine import get_engine
+
     detailed = bool(params.get("detailed", False))
     include_context, context_level = extract_context_opts(params)
     export = get_engine().export.csv_detailed() if detailed else get_engine().export.csv()
@@ -7466,13 +8298,14 @@ def tool_export_csv(params: Dict[str, Any]) -> Dict[str, Any]:
     "Export benchmarks to PDF report format for printing or formal sharing. "
     "Returns: {pdf_base64: <base64_encoded_pdf>}. "
     "USE when: Creating printable reports, formal documentation, sharing with stakeholders. "
-    "Example: \"Generate PDF report\" or \"Create printable benchmark summary\". "
+    'Example: "Generate PDF report" or "Create printable benchmark summary". '
     "PREFER benchmark_report for more control over report options. 🕐 MEDIUM (~5s). WORKFLOW: run_benchmarks → benchmark_report or export_pdf. NOT FOR: Raw data (use export_csv).",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_export_pdf(params: Dict[str, Any]) -> Dict[str, Any]:
     """Export benchmarks to PDF."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     pdf_bytes = get_engine().export.pdf()
     result = {"pdf_base64": pdf_bytes if isinstance(pdf_bytes, str) else str(pdf_bytes)}
@@ -7485,13 +8318,14 @@ def tool_export_pdf(params: Dict[str, Any]) -> Dict[str, Any]:
     "Export benchmarks to interactive HTML report with charts and tables. "
     "Returns: {html: <html_string>}. "
     "USE when: Sharing interactive web-viewable reports, embedding in documentation. "
-    "Example: \"Generate HTML report\" or \"Create interactive benchmark visualization\". "
+    'Example: "Generate HTML report" or "Create interactive benchmark visualization". '
     "PREFER benchmark_report for more control over report options. ⚡ FAST (~2s). WORKFLOW: run_benchmarks → benchmark_report or export_html. NOT FOR: Raw data (use export_csv).",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_export_html(params: Dict[str, Any]) -> Dict[str, Any]:
     """Export benchmarks to HTML."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     html = get_engine().export.html()
     result = {"html": html}
@@ -7502,42 +8336,61 @@ def tool_export_html(params: Dict[str, Any]) -> Dict[str, Any]:
 # TEST TOOLS
 # =============================================================================
 
+
 @register_tool(
     "hw_speed",
     "Tags: speed, benchmark, gemm, memory, attention, quick-test, sanity-check. "
     "Run quick GPU speed tests: GEMM throughput, memory bandwidth, attention kernel. "
     "Returns: {tests: [{name, latency_ms, throughput, result}]}. "
     "USE when: Quick sanity check of GPU performance, verifying hardware is working correctly. "
-    "Example: \"Quick benchmark GPU speed\" or \"Run GEMM and memory tests\". "
+    'Example: "Quick benchmark GPU speed" or "Run GEMM and memory tests". '
     "type='all' runs everything; 'gemm'/'memory'/'attention' for specific tests. "
     "⚠️ Stresses GPU briefly. Use dry_run=true to preview what will run. 🕐 MEDIUM (~15s). WORKFLOW: status → hw_speed → verify GPU health. NOT FOR: Deep profiling (use profile_*).",
-    {"type": "object", "properties": with_context_params({
-        "type": {
-            "type": "string",
-            "description": "Test selection: all, gemm, memory, or attention",
-            "default": "all",
-            "enum": ["all", "gemm", "memory", "attention"]
-        },
-        "gemm_size": {"type": "integer", "description": "GEMM size", "default": 512},
-        "precision": {"type": "string", "description": "Precision (fp16/bf16/tf32/fp32/fp8)", "enum": ["fp16", "bf16", "tf32", "fp32", "fp8"], "default": "fp16"},
-        "mem_size_mb": {"type": "integer", "description": "Memory test size MB", "default": 16},
-        "mem_stride": {"type": "integer", "description": "Memory stride bytes", "default": 128},
-        "precheck_only": {
-            "type": "boolean",
-            "description": "Return prerequisites and planned command without running",
-            "default": False
-        },
-        "dry_run": {
-            "type": "boolean",
-            "description": "Describe the bench invocation without executing (alias: estimate_only)",
-            "default": False
-        },
-        "timeout_seconds": {
-            "type": "integer",
-            "description": "Max runtime before returning partial output; set 0/null for no timeout",
-            "default": 300
-        },
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "type": {
+                    "type": "string",
+                    "description": "Test selection: all, gemm, memory, or attention",
+                    "default": "all",
+                    "enum": ["all", "gemm", "memory", "attention"],
+                },
+                "gemm_size": {"type": "integer", "description": "GEMM size", "default": 512},
+                "precision": {
+                    "type": "string",
+                    "description": "Precision (fp16/bf16/tf32/fp32/fp8)",
+                    "enum": ["fp16", "bf16", "tf32", "fp32", "fp8"],
+                    "default": "fp16",
+                },
+                "mem_size_mb": {
+                    "type": "integer",
+                    "description": "Memory test size MB",
+                    "default": 16,
+                },
+                "mem_stride": {
+                    "type": "integer",
+                    "description": "Memory stride bytes",
+                    "default": 128,
+                },
+                "precheck_only": {
+                    "type": "boolean",
+                    "description": "Return prerequisites and planned command without running",
+                    "default": False,
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Describe the bench invocation without executing (alias: estimate_only)",
+                    "default": False,
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Max runtime before returning partial output; set 0/null for no timeout",
+                    "default": 300,
+                },
+            }
+        ),
+    },
 )
 def tool_hw_speed(params: Dict[str, Any]) -> Dict[str, Any]:
     """Run speed tests without invoking the bench CLI."""
@@ -7631,27 +8484,36 @@ def tool_hw_speed(params: Dict[str, Any]) -> Dict[str, Any]:
     "Run stride sweep to measure memory bandwidth at different access patterns (roofline data). "
     "Returns: {size_mb, rows: [(stride, bandwidth_gbps), ...]}. "
     "USE when: Understanding memory hierarchy performance, cache behavior, roofline positioning. "
-    "Example: \"Run roofline stride sweep\" or \"Measure bandwidth at different strides\". "
+    'Example: "Run roofline stride sweep" or "Measure bandwidth at different strides". '
     "Sweeps strides from 32 to 4096 bytes by default. ⚠️ Stresses memory subsystem. 🕐 MEDIUM (~20s). WORKFLOW: hw_roofline → profile_roofline. NOT FOR: Quick tests (use hw_speed).",
-    {"type": "object", "properties": with_context_params({
-        "size_mb": {"type": "integer", "description": "Buffer size MB", "default": 32},
-        "strides": {"type": "array", "items": {"type": "integer"}, "description": "Stride values"},
-        "precheck_only": {
-            "type": "boolean",
-            "description": "Return prerequisites and planned command without running",
-            "default": False
-        },
-        "dry_run": {
-            "type": "boolean",
-            "description": "Describe the bench invocation without executing (alias: estimate_only)",
-            "default": False
-        },
-        "timeout_seconds": {
-            "type": "integer",
-            "description": "Max runtime before returning partial output; set 0/null for no timeout",
-            "default": 300
-        },
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "size_mb": {"type": "integer", "description": "Buffer size MB", "default": 32},
+                "strides": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "Stride values",
+                },
+                "precheck_only": {
+                    "type": "boolean",
+                    "description": "Return prerequisites and planned command without running",
+                    "default": False,
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Describe the bench invocation without executing (alias: estimate_only)",
+                    "default": False,
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Max runtime before returning partial output; set 0/null for no timeout",
+                    "default": 300,
+                },
+            }
+        ),
+    },
 )
 def tool_hw_roofline(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.diagnostics import microbench
@@ -7709,31 +8571,37 @@ def tool_hw_roofline(params: Dict[str, Any]) -> Dict[str, Any]:
     "Run disk I/O benchmark measuring sequential read/write throughput. "
     "Returns: {read_mbps, write_mbps, file_size_mb, block_size_kb}. "
     "USE when: Checking if disk I/O is a bottleneck, verifying storage performance. "
-    "Example: \"Benchmark disk I/O\" or \"Is my storage fast enough for checkpointing?\". "
+    'Example: "Benchmark disk I/O" or "Is my storage fast enough for checkpointing?". '
     "Writes temp file to tmp_dir (or /tmp). ⚠️ Writes to disk. 🕐 MEDIUM (~10s). WORKFLOW: analyze_dataloader → if IO-bound → hw_disk. NOT FOR: GPU tests (use hw_speed).",
-    {"type": "object", "properties": with_context_params({
-        "file_size_mb": {"type": "integer", "default": 256},
-        "block_size_kb": {"type": "integer", "default": 1024},
-        "tmp_dir": {"type": "string"},
-        "precheck_only": {
-            "type": "boolean",
-            "description": "Return prerequisites and paths without running",
-            "default": False
-        },
-        "dry_run": {
-            "type": "boolean",
-            "description": "Describe the disk test without executing (alias: estimate_only)",
-            "default": False
-        },
-        "timeout_seconds": {
-            "type": "integer",
-            "description": "Max runtime before returning partial output; set 0/null for no timeout",
-            "default": 120
-        },
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "file_size_mb": {"type": "integer", "default": 256},
+                "block_size_kb": {"type": "integer", "default": 1024},
+                "tmp_dir": {"type": "string"},
+                "precheck_only": {
+                    "type": "boolean",
+                    "description": "Return prerequisites and paths without running",
+                    "default": False,
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Describe the disk test without executing (alias: estimate_only)",
+                    "default": False,
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Max runtime before returning partial output; set 0/null for no timeout",
+                    "default": 120,
+                },
+            }
+        ),
+    },
 )
 def tool_test_disk(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.diagnostics import microbench
+
     precheck_only = bool(params.get("precheck_only", False))
     dry_run = bool(params.get("dry_run") or params.get("estimate_only"))
     timeout_param = params.get("timeout_seconds")
@@ -7763,7 +8631,12 @@ def tool_test_disk(params: Dict[str, Any]) -> Dict[str, Any]:
         try:
             _ensure_dir(Path(tmp_dir))
         except Exception:
-            return make_error(f"failed to create tmp_dir: {tmp_dir}", include_context, context_level, tmp_dir=tmp_dir)
+            return make_error(
+                f"failed to create tmp_dir: {tmp_dir}",
+                include_context,
+                context_level,
+                tmp_dir=tmp_dir,
+            )
     result = microbench.disk_io_test(
         file_size_mb=int(params.get("file_size_mb", 256)),
         block_size_kb=int(params.get("block_size_kb", 1024)),
@@ -7779,30 +8652,36 @@ def tool_test_disk(params: Dict[str, Any]) -> Dict[str, Any]:
     "Run PCIe bandwidth benchmark measuring Host-to-Device and Device-to-Host transfer speeds. "
     "Returns: {h2d_gbps, d2h_gbps, size_mb, iters}. "
     "USE when: Checking PCIe bandwidth, diagnosing data transfer bottlenecks. "
-    "Example: \"Test PCIe bandwidth\" or \"How fast is H2D transfer?\". "
+    'Example: "Test PCIe bandwidth" or "How fast is H2D transfer?". '
     "NOT FOR: GPU memory bandwidth (use gpu_bandwidth), GPU-to-GPU (use hw_p2p). 🕐 MEDIUM (~10s). WORKFLOW: hw_pcie → if slow → check PCIe gen/width.",
-    {"type": "object", "properties": with_context_params({
-        "size_mb": {"type": "integer", "default": 256},
-        "iters": {"type": "integer", "default": 10},
-        "precheck_only": {
-            "type": "boolean",
-            "description": "Return prerequisites without running",
-            "default": False
-        },
-        "dry_run": {
-            "type": "boolean",
-            "description": "Describe the PCIe test without executing (alias: estimate_only)",
-            "default": False
-        },
-        "timeout_seconds": {
-            "type": "integer",
-            "description": "Max runtime before returning partial output; set 0/null for no timeout",
-            "default": 120
-        },
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "size_mb": {"type": "integer", "default": 256},
+                "iters": {"type": "integer", "default": 10},
+                "precheck_only": {
+                    "type": "boolean",
+                    "description": "Return prerequisites without running",
+                    "default": False,
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Describe the PCIe test without executing (alias: estimate_only)",
+                    "default": False,
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Max runtime before returning partial output; set 0/null for no timeout",
+                    "default": 120,
+                },
+            }
+        ),
+    },
 )
 def tool_test_pcie(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.diagnostics import microbench
+
     include_context, context_level = extract_context_opts(params)
     precheck_only = bool(params.get("precheck_only", False))
     dry_run = bool(params.get("dry_run") or params.get("estimate_only"))
@@ -7816,7 +8695,12 @@ def tool_test_pcie(params: Dict[str, Any]) -> Dict[str, Any]:
             "note": "Run status or triage first, then rerun without precheck_only.",
         }
     if not cuda_check.get("ok", True):
-        return make_error(cuda_check.get("reason", "CUDA not available"), include_context, context_level, cuda=cuda_check)
+        return make_error(
+            cuda_check.get("reason", "CUDA not available"),
+            include_context,
+            context_level,
+            cuda=cuda_check,
+        )
     if dry_run:
         return {
             "dry_run": True,
@@ -7838,30 +8722,36 @@ def tool_test_pcie(params: Dict[str, Any]) -> Dict[str, Any]:
     "Run GPU memory hierarchy test measuring bandwidth at specific stride pattern. "
     "Returns: {bandwidth_gbps, size_mb, stride, achieved_vs_peak_pct}. "
     "USE when: Understanding cache/memory hierarchy effects, optimizing memory access patterns. "
-    "Example: \"Test L2 cache effect\" or \"Measure bandwidth at 128-byte stride\". "
+    'Example: "Test L2 cache effect" or "Measure bandwidth at 128-byte stride". '
     "ALSO USE: hw_roofline for full stride sweep. 🕐 MEDIUM (~15s). WORKFLOW: hw_cache → profile_roofline.",
-    {"type": "object", "properties": with_context_params({
-        "size_mb": {"type": "integer", "default": 256},
-        "stride": {"type": "integer", "default": 128},
-        "precheck_only": {
-            "type": "boolean",
-            "description": "Return prerequisites without running",
-            "default": False
-        },
-        "dry_run": {
-            "type": "boolean",
-            "description": "Describe the test without executing (alias: estimate_only)",
-            "default": False
-        },
-        "timeout_seconds": {
-            "type": "integer",
-            "description": "Max runtime before returning partial output; set 0/null for no timeout",
-            "default": 120
-        },
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "size_mb": {"type": "integer", "default": 256},
+                "stride": {"type": "integer", "default": 128},
+                "precheck_only": {
+                    "type": "boolean",
+                    "description": "Return prerequisites without running",
+                    "default": False,
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Describe the test without executing (alias: estimate_only)",
+                    "default": False,
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Max runtime before returning partial output; set 0/null for no timeout",
+                    "default": 120,
+                },
+            }
+        ),
+    },
 )
 def tool_test_mem_hierarchy(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.diagnostics import microbench
+
     include_context, context_level = extract_context_opts(params)
     precheck_only = bool(params.get("precheck_only", False))
     dry_run = bool(params.get("dry_run") or params.get("estimate_only"))
@@ -7875,7 +8765,12 @@ def tool_test_mem_hierarchy(params: Dict[str, Any]) -> Dict[str, Any]:
             "note": "Run status or triage first, then rerun without precheck_only.",
         }
     if not cuda_check.get("ok", True):
-        return make_error(cuda_check.get("reason", "CUDA not available"), include_context, context_level, cuda=cuda_check)
+        return make_error(
+            cuda_check.get("reason", "CUDA not available"),
+            include_context,
+            context_level,
+            cuda=cuda_check,
+        )
     if dry_run:
         return {
             "dry_run": True,
@@ -7897,30 +8792,40 @@ def tool_test_mem_hierarchy(params: Dict[str, Any]) -> Dict[str, Any]:
     "Run Tensor Core throughput test measuring matmul performance at different precisions. "
     "Returns: {tflops, latency_ms, size, precision, efficiency_vs_peak_pct}. "
     "USE when: Verifying Tensor Core performance, comparing precision throughput. "
-    "Example: \"Test Tensor Core TFLOPS\" or \"Compare FP16 vs BF16 matmul speed\". "
+    'Example: "Test Tensor Core TFLOPS" or "Compare FP16 vs BF16 matmul speed". '
     "precision: fp16, bf16, tf32, fp32, fp8 (H100+ only). 🕐 MEDIUM (~15s). WORKFLOW: hw_tc → compare vs expected TFLOPS. NOT FOR: Memory tests (use gpu_bandwidth).",
-    {"type": "object", "properties": with_context_params({
-        "size": {"type": "integer", "default": 4096},
-        "precision": {"type": "string", "enum": ["fp16", "bf16", "tf32", "fp32", "fp8"], "default": "fp16"},
-        "precheck_only": {
-            "type": "boolean",
-            "description": "Return prerequisites without running",
-            "default": False
-        },
-        "dry_run": {
-            "type": "boolean",
-            "description": "Describe the test without executing (alias: estimate_only)",
-            "default": False
-        },
-        "timeout_seconds": {
-            "type": "integer",
-            "description": "Max runtime before returning partial output; set 0/null for no timeout",
-            "default": 120
-        },
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "size": {"type": "integer", "default": 4096},
+                "precision": {
+                    "type": "string",
+                    "enum": ["fp16", "bf16", "tf32", "fp32", "fp8"],
+                    "default": "fp16",
+                },
+                "precheck_only": {
+                    "type": "boolean",
+                    "description": "Return prerequisites without running",
+                    "default": False,
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Describe the test without executing (alias: estimate_only)",
+                    "default": False,
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Max runtime before returning partial output; set 0/null for no timeout",
+                    "default": 120,
+                },
+            }
+        ),
+    },
 )
 def tool_test_tensor_core(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.diagnostics import microbench
+
     include_context, context_level = extract_context_opts(params)
     precheck_only = bool(params.get("precheck_only", False))
     dry_run = bool(params.get("dry_run") or params.get("estimate_only"))
@@ -7935,7 +8840,12 @@ def tool_test_tensor_core(params: Dict[str, Any]) -> Dict[str, Any]:
             "note": "Run status or triage first, then rerun without precheck_only.",
         }
     if not cuda_check.get("ok", True):
-        return make_error(cuda_check.get("reason", "CUDA not available"), include_context, context_level, cuda=cuda_check)
+        return make_error(
+            cuda_check.get("reason", "CUDA not available"),
+            include_context,
+            context_level,
+            cuda=cuda_check,
+        )
     if dry_run:
         return {
             "dry_run": True,
@@ -7957,13 +8867,14 @@ def tool_test_tensor_core(params: Dict[str, Any]) -> Dict[str, Any]:
     "Run network throughput tests to check NIC and interconnect performance. "
     "Returns: {throughput_gbps, latency_ms, interface_info}. "
     "USE when: Checking host network bandwidth, interconnect performance for distributed training. "
-    "Example: \"Test network bandwidth\" or \"Check interconnect speed between nodes\". "
+    'Example: "Test network bandwidth" or "Check interconnect speed between nodes". '
     "ALSO USE: system_network for InfiniBand status, hw_nccl for NCCL collectives. 🕐 MEDIUM (~15s). WORKFLOW: hw_network → if slow → check NIC config.",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_test_network(params: Dict[str, Any]) -> Dict[str, Any]:
     """Run network tests."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     result = get_engine().test.network()
     return attach_context_if_requested(result, include_context, context_level)
@@ -7976,20 +8887,22 @@ def tool_test_network(params: Dict[str, Any]) -> Dict[str, Any]:
 # ADVANCED SYSTEM ANALYSIS TOOLS
 # =============================================================================
 
+
 @register_tool(
     "system_full",
     "Tags: system, full, audit, cpu, memory, container, kernel, comprehensive. "
     "Full system analysis: CPU/memory hierarchy, kernel params, container limits, tuning recommendations. "
     "Returns: {cpu_info, memory_hierarchy, system_params, container_limits, recommendations}. "
     "🕐 MEDIUM (~3s). USE when: Deep environment auditing, diagnosing host-side bottlenecks. "
-    "Example: \"Full system audit\" or \"Check host-side performance issues\". "
+    'Example: "Full system audit" or "Check host-side performance issues". '
     "WORKFLOW: triage → system_full → apply recommendations. "
     "NOT FOR: Quick checks (use status), GPU-specific (use gpu_info).",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_system_full(params: Dict[str, Any]) -> Dict[str, Any]:
     """Full system analysis bundle."""
     from core.perf_core_base import PerformanceCoreBase
+
     include_context, context_level = extract_context_opts(params)
     try:
         core = PerformanceCoreBase()
@@ -8006,22 +8919,32 @@ def tool_system_full(params: Dict[str, Any]) -> Dict[str, Any]:
     "Returns: {warp_divergence, bank_conflicts, memory_access, recommendations}. "
     "⚡ FAST (~2s). USE when: Debugging memory-bound kernels, optimizing memory access. "
     "Params: analysis_type='all'|'warp'|'bank'|'access' for specific analysis. "
-    "Example: \"Check for warp divergence\" or \"Analyze bank conflicts\". "
+    'Example: "Check for warp divergence" or "Analyze bank conflicts". '
     "WORKFLOW: profile_roofline (check if memory-bound) → analyze_memory_patterns → optimize. "
     "NOT FOR: High-level bottlenecks (use analyze_bottlenecks first).",
-    {"type": "object", "properties": with_context_params({
-        "analysis_type": {
-            "type": "string",
-            "enum": ["all", "warp", "bank", "access"],
-            "default": "all",
-            "description": "Type of memory analysis: warp divergence, bank conflicts, or memory access patterns"
-        },
-        "stride": {"type": "integer", "default": 1, "description": "Memory stride for analysis"},
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "analysis_type": {
+                    "type": "string",
+                    "enum": ["all", "warp", "bank", "access"],
+                    "default": "all",
+                    "description": "Type of memory analysis: warp divergence, bank conflicts, or memory access patterns",
+                },
+                "stride": {
+                    "type": "integer",
+                    "default": 1,
+                    "description": "Memory stride for analysis",
+                },
+            }
+        ),
+    },
 )
 def tool_analyze_memory_patterns(params: Dict[str, Any]) -> Dict[str, Any]:
     """Memory access pattern analysis."""
     from core.perf_core_base import PerformanceCoreBase
+
     include_context, context_level = extract_context_opts(params)
     analysis_type = normalize_param("analysis_type", params.get("analysis_type"), "all")
     stride = params.get("stride", 1)
@@ -8049,14 +8972,15 @@ def tool_analyze_memory_patterns(params: Dict[str, Any]) -> Dict[str, Any]:
     "DataLoader bottleneck analysis: worker efficiency, prefetch, throughput. "
     "Returns: {throughput, worker_efficiency, recommendations}. "
     "⚡ FAST (~2s). USE when: Diagnosing data loading bottlenecks in training. "
-    "Example: \"Is data loading the bottleneck?\" or \"Check DataLoader efficiency\". "
+    'Example: "Is data loading the bottleneck?" or "Check DataLoader efficiency". '
     "WORKFLOW: analyze_bottlenecks → if host-bound → analyze_dataloader → tune num_workers/prefetch. "
     "COMMON FIXES: Increase num_workers, enable pin_memory, use persistent_workers.",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_analyze_dataloader(params: Dict[str, Any]) -> Dict[str, Any]:
     """DataLoader bottleneck analysis."""
     from core.perf_core_base import PerformanceCoreBase
+
     include_context, context_level = extract_context_opts(params)
     try:
         core = PerformanceCoreBase()
@@ -8072,16 +8996,26 @@ def tool_analyze_dataloader(params: Dict[str, Any]) -> Dict[str, Any]:
     "Communication/compute overlap analysis for distributed training. "
     "Returns: {overlap_efficiency, compute_time, comm_time, recommendations}. "
     "⚡ FAST (~2s). USE when: Optimizing distributed training efficiency. "
-    "Example: \"Is communication overlapping compute?\" or \"Check allreduce overlap\". "
+    'Example: "Is communication overlapping compute?" or "Check allreduce overlap". '
     "WORKFLOW: distributed_plan → analyze_comm_overlap → distributed_nccl. "
     "NOT FOR: Single-GPU training (no communication to overlap).",
-    {"type": "object", "properties": with_context_params({
-        "model": {"type": "string", "default": "llama-3.1-70b", "description": "Model name for analysis"},
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "model": {
+                    "type": "string",
+                    "default": "llama-3.1-70b",
+                    "description": "Model name for analysis",
+                },
+            }
+        ),
+    },
 )
 def tool_analyze_comm_overlap(params: Dict[str, Any]) -> Dict[str, Any]:
     """Communication overlap analysis."""
     from core.perf_core_base import PerformanceCoreBase
+
     include_context, context_level = extract_context_opts(params)
     model = params.get("model", "llama-3.1-70b")
     try:
@@ -8098,18 +9032,32 @@ def tool_analyze_comm_overlap(params: Dict[str, Any]) -> Dict[str, Any]:
     "Cloud cost estimation for GPU fleets. "
     "Returns: {selection, cloud_comparison, recommendation, warnings}. "
     "⚡ FAST (~1s). USE when: Planning cloud deployments, comparing providers. "
-    "Example: \"Estimate 4xH100 monthly cost\" or \"Compare AWS vs GCP pricing\". "
+    'Example: "Estimate 4xH100 monthly cost" or "Compare AWS vs GCP pricing". '
     "WORKFLOW: distributed_plan → cost_estimate → choose provider. "
     "ALSO USE: analyze_energy for power/efficiency considerations.",
-    {"type": "object", "properties": with_context_params({
-        "gpu_type": {"type": "string", "default": "h100", "description": "GPU type (h100, a100, etc.)"},
-        "num_gpus": {"type": "integer", "default": 8, "description": "Number of GPUs"},
-        "hours_per_day": {"type": "number", "default": 8, "description": "Usage hours per day"},
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "gpu_type": {
+                    "type": "string",
+                    "default": "h100",
+                    "description": "GPU type (h100, a100, etc.)",
+                },
+                "num_gpus": {"type": "integer", "default": 8, "description": "Number of GPUs"},
+                "hours_per_day": {
+                    "type": "number",
+                    "default": 8,
+                    "description": "Usage hours per day",
+                },
+            }
+        ),
+    },
 )
 def tool_cost_estimate(params: Dict[str, Any]) -> Dict[str, Any]:
     """Cloud cost estimation."""
     from core.perf_core_base import PerformanceCoreBase
+
     include_context, context_level = extract_context_opts(params)
     try:
         core = PerformanceCoreBase()
@@ -8125,14 +9073,15 @@ def tool_cost_estimate(params: Dict[str, Any]) -> Dict[str, Any]:
     "Energy efficiency analysis: power consumption, efficiency metrics, green recommendations. "
     "Returns: {power_draw, efficiency_score, carbon_estimate, recommendations}. "
     "⚡ FAST (~2s). USE when: Optimizing for energy efficiency, reducing carbon footprint. "
-    "Example: \"What's my energy efficiency?\" or \"Estimate carbon footprint\". "
+    'Example: "What\'s my energy efficiency?" or "Estimate carbon footprint". '
     "WORKFLOW: gpu_power → analyze_energy → apply power-saving recommendations. "
     "ALSO USE: cost_estimate for cloud cost implications.",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_analyze_energy(params: Dict[str, Any]) -> Dict[str, Any]:
     """Energy efficiency analysis."""
     from core.perf_core_base import PerformanceCoreBase
+
     include_context, context_level = extract_context_opts(params)
     try:
         core = PerformanceCoreBase()
@@ -8148,18 +9097,24 @@ def tool_analyze_energy(params: Dict[str, Any]) -> Dict[str, Any]:
     "Generate launch commands for distributed training (torchrun, srun, etc.). "
     "Returns: {torchrun_cmd, srun_cmd, env_vars, tips}. "
     "⚡ FAST (~1s). USE when: Setting up distributed training launch. "
-    "Example: \"Generate torchrun command for 2 nodes\" or \"Slurm launch script\". "
+    'Example: "Generate torchrun command for 2 nodes" or "Slurm launch script". '
     "WORKFLOW: distributed_plan → launch_plan → run training. "
     "ALSO USE: cluster_slurm for full SLURM job scripts.",
-    {"type": "object", "properties": with_context_params({
-        "nodes": {"type": "integer", "default": 1, "description": "Number of nodes"},
-        "gpus_per_node": {"type": "integer", "default": 8, "description": "GPUs per node"},
-        "script": {"type": "string", "description": "Training script path"},
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "nodes": {"type": "integer", "default": 1, "description": "Number of nodes"},
+                "gpus_per_node": {"type": "integer", "default": 8, "description": "GPUs per node"},
+                "script": {"type": "string", "description": "Training script path"},
+            }
+        ),
+    },
 )
 def tool_launch_plan(params: Dict[str, Any]) -> Dict[str, Any]:
     """Generate launch plan."""
     from core.perf_core_base import PerformanceCoreBase
+
     include_context, context_level = extract_context_opts(params)
     try:
         core = PerformanceCoreBase()
@@ -8175,11 +9130,12 @@ def tool_launch_plan(params: Dict[str, Any]) -> Dict[str, Any]:
     "GPU feature detection: TMA, thread block clusters, async copy, etc. "
     "Returns: {features: {tma, clusters, async_copy, ...}, compute_capability}. "
     "⚡ FAST (~1s). USE when: Checking advanced GPU feature support. WORKFLOW: info_features → choose optimizations. NOT FOR: Basic GPU info (use gpu_info).",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_info_features(params: Dict[str, Any]) -> Dict[str, Any]:
     """GPU feature detection."""
     from core.perf_core_base import PerformanceCoreBase
+
     include_context, context_level = extract_context_opts(params)
     try:
         core = PerformanceCoreBase()
@@ -8234,14 +9190,34 @@ def tool_profile_compile_analysis(params: Dict[str, Any]) -> Dict[str, Any]:
     "Tags: ncu, nsight-compute, summary, kernels, top, hotspots. "
     "Summarize an existing Nsight Compute report, returning the top-N kernels with key utilization metrics. "
     "Returns: {kernels:[...], kernel_count, sort_by, total_time_sum_ms?}. "
-    "⚡ FAST (~1-10s). USE when: You want a quick \"what kernel should I tune next?\" table from an .ncu-rep. "
+    '⚡ FAST (~1-10s). USE when: You want a quick "what kernel should I tune next?" table from an .ncu-rep. '
     "WORKFLOW: ncu_summary → profile_ncu (scoped) → compare_ncu.",
-    {"type": "object", "properties": with_context_params({
-        "report_path": {"type": "string", "description": "Path to .ncu-rep or exported NCU raw CSV"},
-        "top_k": {"type": "integer", "default": 10, "description": "Number of kernels to return"},
-        "metrics": {"type": "array", "items": {"type": "string"}, "description": "Optional explicit NCU metric columns to request/parse"},
-        "timeout_seconds": {"type": "integer", "default": 60, "description": "Timeout for `ncu --import` when report_path is .ncu-rep"},
-    })},
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "report_path": {
+                    "type": "string",
+                    "description": "Path to .ncu-rep or exported NCU raw CSV",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "default": 10,
+                    "description": "Number of kernels to return",
+                },
+                "metrics": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional explicit NCU metric columns to request/parse",
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "default": 60,
+                    "description": "Timeout for `ncu --import` when report_path is .ncu-rep",
+                },
+            }
+        ),
+    },
 )
 def tool_ncu_summary(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.engine import get_engine
@@ -8274,13 +9250,22 @@ def tool_ncu_summary(params: Dict[str, Any]) -> Dict[str, Any]:
     "Quick Nsight Systems summary stats without full profile capture. "
     "Returns: {metrics: [...], count, report_path}. "
     "⚡ FAST (~3s). USE when: Quick nsys stats without full profiling. WORKFLOW: profile_nsys → nsys_summary. NOT FOR: Full profiling (use profile_nsys).",
-    {"type": "object", "properties": with_context_params({
-        "report_path": {"type": "string", "description": "Path to existing .nsys-rep file to summarize"},
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "report_path": {
+                    "type": "string",
+                    "description": "Path to existing .nsys-rep file to summarize",
+                },
+            }
+        ),
+    },
 )
 def tool_nsys_summary(params: Dict[str, Any]) -> Dict[str, Any]:
     """Quick nsys summary."""
     from core.perf_core_base import PerformanceCoreBase
+
     include_context, context_level = extract_context_opts(params)
     try:
         core = PerformanceCoreBase()
@@ -8297,18 +9282,28 @@ def tool_nsys_summary(params: Dict[str, Any]) -> Dict[str, Any]:
     "Predict performance scaling to more GPUs/larger batches. "
     "Returns: {current_perf, predicted_perf, scaling_efficiency, bottleneck_at_scale}. "
     "⚡ FAST (~2s). USE when: Planning scale-up, predicting multi-GPU performance. "
-    "Example: \"Predict 4-GPU scaling\" or \"How will throughput scale from 1 to 4 GPUs?\". "
+    'Example: "Predict 4-GPU scaling" or "How will throughput scale from 1 to 4 GPUs?". '
     "WORKFLOW: gpu_topology → predict_scaling → distributed_plan. "
     "NOTE: Scaling efficiency typically 80-90% for well-optimized workloads.",
-    {"type": "object", "properties": with_context_params({
-        "target_gpus": {"type": "integer", "default": 8, "description": "Target GPU count"},
-        "current_gpus": {"type": "integer", "default": 1, "description": "Current GPU count"},
-        "model_size": {"type": "number", "description": "Model size in billions"},
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "target_gpus": {"type": "integer", "default": 8, "description": "Target GPU count"},
+                "current_gpus": {
+                    "type": "integer",
+                    "default": 1,
+                    "description": "Current GPU count",
+                },
+                "model_size": {"type": "number", "description": "Model size in billions"},
+            }
+        ),
+    },
 )
 def tool_predict_scaling(params: Dict[str, Any]) -> Dict[str, Any]:
     """Predict scaling performance."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     try:
         engine = get_engine()
@@ -8317,8 +9312,10 @@ def tool_predict_scaling(params: Dict[str, Any]) -> Dict[str, Any]:
         result["prediction"] = {
             "target_gpus": params.get("target_gpus", 8),
             "current_gpus": params.get("current_gpus", 1),
-            "estimated_speedup": min(params.get("target_gpus", 8) / max(params.get("current_gpus", 1), 1) * 0.85, 7.5),
-            "note": "Scaling efficiency typically 80-90% for well-optimized workloads"
+            "estimated_speedup": min(
+                params.get("target_gpus", 8) / max(params.get("current_gpus", 1), 1) * 0.85, 7.5
+            ),
+            "note": "Scaling efficiency typically 80-90% for well-optimized workloads",
         }
         return attach_context_if_requested(result, include_context, context_level)
     except Exception as e:
@@ -8331,17 +9328,24 @@ def tool_predict_scaling(params: Dict[str, Any]) -> Dict[str, Any]:
     "Get raw GPU/NUMA topology matrix directly from nvidia-smi topo -m. "
     "Returns: {stdout: <nvidia-smi topo -m output>, returncode}. "
     "⚡ FAST (~1s). USE when: Need exact nvidia-smi topology output format. "
-    "Example: \"Show raw nvidia-smi topo output\" or \"Get NVLink matrix raw\". "
+    'Example: "Show raw nvidia-smi topo output" or "Get NVLink matrix raw". '
     "WORKFLOW: gpu_topology_matrix → parse manually if needed. "
     "NOT FOR: Parsed topology (use gpu_topology).",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_gpu_topology_matrix(params: Dict[str, Any]) -> Dict[str, Any]:
     """Raw GPU topology matrix from nvidia-smi."""
     include_context, context_level = extract_context_opts(params)
     try:
-        proc = subprocess.run(["nvidia-smi", "topo", "-m"], capture_output=True, text=True, timeout=5)
-        result = {"returncode": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr, "success": proc.returncode == 0}
+        proc = subprocess.run(
+            ["nvidia-smi", "topo", "-m"], capture_output=True, text=True, timeout=5
+        )
+        result = {
+            "returncode": proc.returncode,
+            "stdout": proc.stdout,
+            "stderr": proc.stderr,
+            "success": proc.returncode == 0,
+        }
         return attach_context_if_requested(result, include_context, context_level)
     except Exception as e:
         return make_error(f"nvidia-smi topo failed: {e}", include_context, context_level)
@@ -8358,15 +9362,28 @@ def tool_gpu_topology_matrix(params: Dict[str, Any]) -> Dict[str, Any]:
     "Auto-pairs baseline/optimized across subdirectories; if multiple pairs exist, provide pair to select one. "
     "Always returns ncu/nsys comparison metrics when profiles are captured; analyze metric deltas to explain speedups/regressions. "
     "WORKFLOW: profile_nsys → optimize → compare_nsys. NOT FOR: Kernel metrics (use compare_ncu).",
-    {"type": "object", "properties": with_context_params({
-        "profiles_dir": {"type": "string", "description": "Directory with baseline/optimized .nsys-rep files (pair dir or a parent dir; use pair to select a sub-pair)"},
-        "pair": {"type": "string", "description": "Profile pair key to select when multiple exist"},
-    }), "required": ["profiles_dir"]}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "profiles_dir": {
+                    "type": "string",
+                    "description": "Directory with baseline/optimized .nsys-rep files (pair dir or a parent dir; use pair to select a sub-pair)",
+                },
+                "pair": {
+                    "type": "string",
+                    "description": "Profile pair key to select when multiple exist",
+                },
+            }
+        ),
+        "required": ["profiles_dir"],
+    },
 )
 def tool_compare_nsys(params: Dict[str, Any]) -> Dict[str, Any]:
     """Compare Nsight Systems profiles."""
     from pathlib import Path
     from core import profile_insights
+
     include_context, context_level = extract_context_opts(params)
     profiles_dir = Path(params.get("profiles_dir", ""))
     pair_key = params.get("pair")
@@ -8416,15 +9433,28 @@ def tool_compare_nsys(params: Dict[str, Any]) -> Dict[str, Any]:
     "Rank-only kernel symbol alignment is flagged as low-confidence for tuning and surfaced with an advisory warning. "
     "Always returns nsys/ncu comparison metrics when profiles are captured; analyze metric deltas to explain speedups/regressions. "
     "WORKFLOW: profile_ncu → optimize → compare_ncu. NOT FOR: Timeline comparison (use compare_nsys).",
-    {"type": "object", "properties": with_context_params({
-        "profiles_dir": {"type": "string", "description": "Directory with baseline/optimized .ncu-rep files (pair dir or a parent dir; use pair to select a sub-pair)"},
-        "pair": {"type": "string", "description": "Profile pair key to select when multiple exist"},
-    }), "required": ["profiles_dir"]}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "profiles_dir": {
+                    "type": "string",
+                    "description": "Directory with baseline/optimized .ncu-rep files (pair dir or a parent dir; use pair to select a sub-pair)",
+                },
+                "pair": {
+                    "type": "string",
+                    "description": "Profile pair key to select when multiple exist",
+                },
+            }
+        ),
+        "required": ["profiles_dir"],
+    },
 )
 def tool_compare_ncu(params: Dict[str, Any]) -> Dict[str, Any]:
     """Compare Nsight Compute profiles."""
     from pathlib import Path
     from core import profile_insights
+
     include_context, context_level = extract_context_opts(params)
     profiles_dir = Path(params.get("profiles_dir", ""))
     pair_key = params.get("pair")
@@ -8479,7 +9509,7 @@ def tool_compare_ncu(params: Dict[str, Any]) -> Dict[str, Any]:
     "List all discoverable chapters and labs from the book curriculum. "
     "Returns: {chapters: [{name, path, description}], labs: [...]}. "
     "⚡ FAST (~1s). USE when: Exploring what content is available. WORKFLOW: list_chapters → benchmark_targets → run_benchmarks. NOT FOR: Running benchmarks (use run_benchmarks).",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_list_chapters(params: Dict[str, Any]) -> Dict[str, Any]:
     """List available chapters and labs."""
@@ -8494,9 +9524,9 @@ def tool_list_chapters(params: Dict[str, Any]) -> Dict[str, Any]:
     "Get quick context summary: GPU + software snapshot. "
     "Returns: {gpu, software, dependencies}. "
     "⚡ FAST (~1s). USE when: Need lightweight context attachment. "
-    "Example: \"Quick system snapshot\" or \"Get context for LLM analysis\". "
+    'Example: "Quick system snapshot" or "Get context for LLM analysis". '
     "NOT FOR: Full details (use context_full or system_full).",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_context_summary(params: Dict[str, Any]) -> Dict[str, Any]:
     """Get context summary."""
@@ -8511,9 +9541,9 @@ def tool_context_summary(params: Dict[str, Any]) -> Dict[str, Any]:
     "Get full comprehensive context: complete system state. "
     "Returns: {gpu, software, dependencies, capabilities, system_params}. "
     "🕐 MEDIUM (~3s). USE when: Need complete environment dump. "
-    "Example: \"Full context for debugging\" or \"Complete system state\". "
+    'Example: "Full context for debugging" or "Complete system state". '
     "NOT FOR: Quick checks (use context_summary or status).",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_context_full(params: Dict[str, Any]) -> Dict[str, Any]:
     """Get full context."""
@@ -8526,21 +9556,32 @@ def tool_context_full(params: Dict[str, Any]) -> Dict[str, Any]:
 # HARDWARE MICRO-BENCHMARK TOOLS
 # =============================================================================
 
+
 @register_tool(
     "hw_ib",
     "Tags: infiniband, ib, bandwidth, rdma, multi-node, interconnect. "
     "Get InfiniBand bandwidth test instructions and check if ib_write_bw is available. "
     "Returns: {ib_write_bw_available, instructions: {server_cmd, client_cmd}, alternative}. "
     "USE when: Testing InfiniBand bandwidth, verifying multi-node interconnect performance. "
-    "Example: \"How do I test InfiniBand bandwidth?\" or \"Is IB working correctly?\". "
+    'Example: "How do I test InfiniBand bandwidth?" or "Is IB working correctly?". '
     "Provides ib_write_bw commands; alternative is NCCL tests if perftest not installed. ⚡ FAST (~1s). WORKFLOW: hw_ib → hw_nccl. NOT FOR: Single-node (use hw_p2p).",
-    {"type": "object", "properties": with_context_params({
-        "size_mb": {"type": "integer", "description": "Transfer size in MB for test guidance", "default": 64},
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "size_mb": {
+                    "type": "integer",
+                    "description": "Transfer size in MB for test guidance",
+                    "default": 64,
+                },
+            }
+        ),
+    },
 )
 def tool_hw_ib(params: Dict[str, Any]) -> Dict[str, Any]:
     """InfiniBand bandwidth test guidance."""
     import shutil
+
     include_context, context_level = extract_context_opts(params)
 
     ib_write_bw = shutil.which("ib_write_bw")
@@ -8552,7 +9593,7 @@ def tool_hw_ib(params: Dict[str, Any]) -> Dict[str, Any]:
             "client": "ib_write_bw -d mlx5_0 <server_ip>",
             "install": "apt install perftest  # or yum install perftest",
         },
-        "alternative": "Use NCCL tests: all_reduce_perf -b 8M -e 256M -g 8"
+        "alternative": "Use NCCL tests: all_reduce_perf -b 8M -e 256M -g 8",
     }
     return attach_context_if_requested(result, include_context, context_level)
 
@@ -8563,18 +9604,48 @@ def tool_hw_ib(params: Dict[str, Any]) -> Dict[str, Any]:
     "Get NCCL collective bandwidth test command and check if nccl-tests is available. "
     "Returns: {tool_available, command, install_instructions, collectives_list}. "
     "USE when: Measuring collective communication bandwidth, benchmarking NCCL performance. "
-    "Example: \"Test NCCL all_reduce bandwidth\" or \"Benchmark 4-GPU allreduce\". "
+    'Example: "Test NCCL all_reduce bandwidth" or "Benchmark 4-GPU allreduce". '
     "Collectives: all_reduce, all_gather, reduce_scatter, broadcast, reduce, alltoall. ⚡ FAST (~1s). WORKFLOW: hw_nccl → tune NCCL env vars. NOT FOR: IB hardware (use hw_ib).",
-    {"type": "object", "properties": with_context_params({
-        "collective": {"type": "string", "description": "Collective type: all_reduce, all_gather, reduce_scatter, broadcast, reduce, alltoall", "enum": ["all_reduce", "all_gather", "reduce_scatter", "broadcast", "reduce", "alltoall"], "default": "all_reduce"},
-        "min_bytes": {"type": "string", "description": "Minimum message size (e.g., '8M')", "default": "8M"},
-        "max_bytes": {"type": "string", "description": "Maximum message size (e.g., '256M')", "default": "256M"},
-        "gpus": {"type": "integer", "description": "Number of GPUs to test with", "default": 8},
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "collective": {
+                    "type": "string",
+                    "description": "Collective type: all_reduce, all_gather, reduce_scatter, broadcast, reduce, alltoall",
+                    "enum": [
+                        "all_reduce",
+                        "all_gather",
+                        "reduce_scatter",
+                        "broadcast",
+                        "reduce",
+                        "alltoall",
+                    ],
+                    "default": "all_reduce",
+                },
+                "min_bytes": {
+                    "type": "string",
+                    "description": "Minimum message size (e.g., '8M')",
+                    "default": "8M",
+                },
+                "max_bytes": {
+                    "type": "string",
+                    "description": "Maximum message size (e.g., '256M')",
+                    "default": "256M",
+                },
+                "gpus": {
+                    "type": "integer",
+                    "description": "Number of GPUs to test with",
+                    "default": 8,
+                },
+            }
+        ),
+    },
 )
 def tool_hw_nccl(params: Dict[str, Any]) -> Dict[str, Any]:
     """NCCL collective bandwidth test guidance."""
     import shutil
+
     include_context, context_level = extract_context_opts(params)
 
     collective = normalize_param("collective", params.get("collective"), "all_reduce")
@@ -8586,7 +9657,14 @@ def tool_hw_nccl(params: Dict[str, Any]) -> Dict[str, Any]:
         "tool_available": bin_path is not None,
         "command": f"{bin_name} -b {params.get('min_bytes', '8M')} -e {params.get('max_bytes', '256M')} -g {params.get('gpus', 8)}",
         "install": "git clone https://github.com/NVIDIA/nccl-tests && cd nccl-tests && make MPI=1",
-        "collectives": ["all_reduce", "all_gather", "reduce_scatter", "broadcast", "reduce", "alltoall"]
+        "collectives": [
+            "all_reduce",
+            "all_gather",
+            "reduce_scatter",
+            "broadcast",
+            "reduce",
+            "alltoall",
+        ],
     }
     return attach_context_if_requested(result, include_context, context_level)
 
@@ -8597,16 +9675,26 @@ def tool_hw_nccl(params: Dict[str, Any]) -> Dict[str, Any]:
     "Run GPU-to-GPU P2P bandwidth test measuring NVLink or PCIe peer access speed. "
     "Returns: {results: [{src, dst, p2p_enabled, bandwidth_gbps}], gpu_count}. "
     "USE when: Verifying NVLink bandwidth, checking P2P connectivity, debugging tensor parallelism. "
-    "Example: \"Test GPU P2P bandwidth\" or \"Is NVLink working at full speed?\". "
+    'Example: "Test GPU P2P bandwidth" or "Is NVLink working at full speed?". '
     "REQUIRES: At least 2 GPUs. Tests first GPU pair by default. 🕐 MEDIUM (~20s). WORKFLOW: gpu_topology → hw_p2p. NOT FOR: Host-device (use hw_pcie).",
-    {"type": "object", "properties": with_context_params({
-        "size_mb": {"type": "integer", "description": "Transfer size in MB", "default": 256},
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "size_mb": {
+                    "type": "integer",
+                    "description": "Transfer size in MB",
+                    "default": 256,
+                },
+            }
+        ),
+    },
 )
 def tool_hw_p2p(params: Dict[str, Any]) -> Dict[str, Any]:
     """GPU P2P bandwidth test."""
     try:
         import torch
+
         include_context = bool(params.get("include_context", False))
         context_level = params.get("context_level", "summary")
 
@@ -8615,7 +9703,11 @@ def tool_hw_p2p(params: Dict[str, Any]) -> Dict[str, Any]:
 
         num_gpus = torch.cuda.device_count()
         if num_gpus < 2:
-            return {"success": False, "error": "P2P test requires at least 2 GPUs", "gpu_count": num_gpus}
+            return {
+                "success": False,
+                "error": "P2P test requires at least 2 GPUs",
+                "gpu_count": num_gpus,
+            }
 
         size_mb = params.get("size_mb", 256)
         size_bytes = size_mb * 1024 * 1024
@@ -8649,12 +9741,14 @@ def tool_hw_p2p(params: Dict[str, Any]) -> Dict[str, Any]:
                 elapsed_ms = start.elapsed_time(end)
                 bw_gbps = (size_bytes * iters / (elapsed_ms / 1000)) / 1e9
 
-                results.append({
-                    "src": i,
-                    "dst": j,
-                    "p2p_enabled": can_access,
-                    "bandwidth_gbps": round(bw_gbps, 2)
-                })
+                results.append(
+                    {
+                        "src": i,
+                        "dst": j,
+                        "p2p_enabled": can_access,
+                        "bandwidth_gbps": round(bw_gbps, 2),
+                    }
+                )
 
         result = {"success": True, "gpu_count": num_gpus, "results": results}
         return attach_context_if_requested(result, include_context, context_level)
@@ -8666,35 +9760,38 @@ def tool_hw_p2p(params: Dict[str, Any]) -> Dict[str, Any]:
 # CLUSTER TOOLS
 # =============================================================================
 
+
 @register_tool(
     "cluster_slurm",
     "Tags: slurm, batch, cluster, hpc, job-script, sbatch, multi-node. "
     "Generate SLURM job script for cluster submission with optimal settings. "
     "Returns: {script: <slurm_script_content>, filename_suggestion, notes}. "
     "USE when: Submitting training jobs to SLURM clusters, setting up multi-node runs. "
-    "Example: \"Create SLURM script for 2 nodes x 4 GPUs\" or \"Generate sbatch for 70B training\". "
+    'Example: "Create SLURM script for 2 nodes x 4 GPUs" or "Generate sbatch for 70B training". '
     "Includes: resource requests, NCCL env vars, torchrun launch command. ⚡ FAST (~1s). WORKFLOW: distributed_plan → cluster_slurm → submit. NOT FOR: torchrun only (use launch_plan).",
-    {"type": "object", "properties": with_context_params({
-        "model": {
-            "type": "string",
-            "description": "Model size for resource estimation (e.g., '7b', '70b')",
-            "default": "7b"
-        },
-        "nodes": {
-            "type": "integer",
-            "description": "Number of nodes to request",
-            "default": 1
-        },
-        "gpus": {
-            "type": "integer",
-            "description": "GPUs per node",
-            "default": 8
-        },
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "model": {
+                    "type": "string",
+                    "description": "Model size for resource estimation (e.g., '7b', '70b')",
+                    "default": "7b",
+                },
+                "nodes": {
+                    "type": "integer",
+                    "description": "Number of nodes to request",
+                    "default": 1,
+                },
+                "gpus": {"type": "integer", "description": "GPUs per node", "default": 8},
+            }
+        ),
+    },
 )
 def tool_cluster_slurm(params: Dict[str, Any]) -> Dict[str, Any]:
     """Generate SLURM script."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
     # Engine exposes SLURM generation under the distributed domain.
     result = get_engine().distributed.slurm(
@@ -8713,20 +9810,57 @@ def tool_cluster_slurm(params: Dict[str, Any]) -> Dict[str, Any]:
     "Returns: {success, mode, run_id, stdout/stderr, paths}. "
     "🕐 MEDIUM (varies). USE when: You want a reproducible cluster evaluation bundle under `cluster/results/`. "
     "Defaults to mode='smoke' for safety; use mode='full' with hosts to run the full suite.",
-    {"type": "object", "properties": with_context_params({
-        "mode": {"type": "string", "enum": ["smoke", "full"], "default": "smoke", "description": "smoke (local) or full (runs cluster suite)"},
-        "run_id": {"type": "string", "description": "RUN_ID prefix (default: YYYY-MM-DD)"},
-        "hosts": {"type": "array", "items": {"type": "string"}, "description": "Host list (required for mode=full)"},
-        "labels": {"type": "array", "items": {"type": "string"}, "description": "Optional labels (must match hosts count)"},
-        "ssh_user": {"type": "string", "description": "SSH user (full mode)"},
-        "ssh_key": {"type": "string", "description": "SSH key path (full mode)"},
-        "oob_if": {"type": "string", "description": "Out-of-band interface (full mode, multi-node)"},
-        "socket_ifname": {"type": "string", "description": "NCCL socket interface (full mode)"},
-        "nccl_ib_hca": {"type": "string", "description": "NCCL_IB_HCA allowlist (full mode)"},
-        "primary_label": {"type": "string", "description": "Label for single-node/local steps"},
-        "extra_args": {"type": "array", "items": {"type": "string"}, "description": "Extra args appended to run_cluster_eval_suite.sh"},
-        "timeout_seconds": {"type": "integer", "description": "Optional timeout in seconds (0/null = no timeout)"},
-    })},
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "mode": {
+                    "type": "string",
+                    "enum": ["smoke", "full"],
+                    "default": "smoke",
+                    "description": "smoke (local) or full (runs cluster suite)",
+                },
+                "run_id": {"type": "string", "description": "RUN_ID prefix (default: YYYY-MM-DD)"},
+                "hosts": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Host list (required for mode=full)",
+                },
+                "labels": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional labels (must match hosts count)",
+                },
+                "ssh_user": {"type": "string", "description": "SSH user (full mode)"},
+                "ssh_key": {"type": "string", "description": "SSH key path (full mode)"},
+                "oob_if": {
+                    "type": "string",
+                    "description": "Out-of-band interface (full mode, multi-node)",
+                },
+                "socket_ifname": {
+                    "type": "string",
+                    "description": "NCCL socket interface (full mode)",
+                },
+                "nccl_ib_hca": {
+                    "type": "string",
+                    "description": "NCCL_IB_HCA allowlist (full mode)",
+                },
+                "primary_label": {
+                    "type": "string",
+                    "description": "Label for single-node/local steps",
+                },
+                "extra_args": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Extra args appended to run_cluster_eval_suite.sh",
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Optional timeout in seconds (0/null = no timeout)",
+                },
+            }
+        ),
+    },
 )
 def tool_cluster_eval_suite(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import run_cluster_eval_suite
@@ -8744,7 +9878,9 @@ def tool_cluster_eval_suite(params: Dict[str, Any]) -> Dict[str, Any]:
             socket_ifname=params.get("socket_ifname"),
             nccl_ib_hca=params.get("nccl_ib_hca"),
             primary_label=params.get("primary_label"),
-            extra_args=params.get("extra_args") if isinstance(params.get("extra_args"), list) else None,
+            extra_args=params.get("extra_args")
+            if isinstance(params.get("extra_args"), list)
+            else None,
             timeout_seconds=params.get("timeout_seconds"),
         )
         return attach_context_if_requested(result, include_context, context_level)
@@ -8759,29 +9895,87 @@ def tool_cluster_eval_suite(params: Dict[str, Any]) -> Dict[str, Any]:
     "Presets: common-answer-fast, core-system, modern-llm, fabric-systems, multinode-readiness. "
     "Returns: {success, preset, artifact_roles, run_id, stdout/stderr}. "
     "🕐 MEDIUM (varies). USE when: You want one obvious entrypoint for standard evaluation output instead of composing suite flags manually.",
-    {"type": "object", "properties": with_context_params({
-        "preset": {"type": "string", "enum": ["common-answer-fast", "core-system", "modern-llm", "fabric-systems", "multinode-readiness"], "default": "core-system", "description": "Preset evaluation bundle"},
-        "run_id": {"type": "string", "description": "RUN_ID prefix (default: YYYY-MM-DD)"},
-        "hosts": {"type": "array", "items": {"type": "string"}, "description": "Host list"},
-        "labels": {"type": "array", "items": {"type": "string"}, "description": "Optional labels (must match hosts count)"},
-        "ssh_user": {"type": "string", "description": "SSH user"},
-        "ssh_key": {"type": "string", "description": "SSH key path"},
-        "oob_if": {"type": "string", "description": "Out-of-band interface for multi-node readiness and network-heavy presets"},
-        "socket_ifname": {"type": "string", "description": "NCCL socket interface"},
-        "nccl_ib_hca": {"type": "string", "description": "NCCL_IB_HCA allowlist"},
-        "nmx_url": {"type": "string", "description": "NMX base URL for fabric/NVLink management-plane checks"},
-        "nmx_token": {"type": "string", "description": "Optional NMX bearer token"},
-        "ib_mgmt_host": {"type": "string", "description": "InfiniBand management host for IB CLI verification"},
-        "ib_mgmt_user": {"type": "string", "description": "SSH user for the InfiniBand management host"},
-        "ib_mgmt_ssh_key": {"type": "string", "description": "SSH key path for the InfiniBand management host"},
-        "cumulus_hosts": {"type": "array", "items": {"type": "string"}, "description": "Cumulus/Spectrum-X switch hosts"},
-        "cumulus_user": {"type": "string", "description": "SSH user for Cumulus/Spectrum-X switches"},
-        "cumulus_ssh_key": {"type": "string", "description": "SSH key path for Cumulus/Spectrum-X switches"},
-        "primary_label": {"type": "string", "description": "Label for single-node/local steps"},
-        "coverage_baseline_run_id": {"type": "string", "description": "Optional baseline run id for coverage delta artifacts"},
-        "extra_args": {"type": "array", "items": {"type": "string"}, "description": "Extra args appended after preset flags"},
-        "timeout_seconds": {"type": "integer", "description": "Optional timeout in seconds (0/null = no timeout)"},
-    })},
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "preset": {
+                    "type": "string",
+                    "enum": [
+                        "common-answer-fast",
+                        "core-system",
+                        "modern-llm",
+                        "fabric-systems",
+                        "multinode-readiness",
+                    ],
+                    "default": "core-system",
+                    "description": "Preset evaluation bundle",
+                },
+                "run_id": {"type": "string", "description": "RUN_ID prefix (default: YYYY-MM-DD)"},
+                "hosts": {"type": "array", "items": {"type": "string"}, "description": "Host list"},
+                "labels": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional labels (must match hosts count)",
+                },
+                "ssh_user": {"type": "string", "description": "SSH user"},
+                "ssh_key": {"type": "string", "description": "SSH key path"},
+                "oob_if": {
+                    "type": "string",
+                    "description": "Out-of-band interface for multi-node readiness and network-heavy presets",
+                },
+                "socket_ifname": {"type": "string", "description": "NCCL socket interface"},
+                "nccl_ib_hca": {"type": "string", "description": "NCCL_IB_HCA allowlist"},
+                "nmx_url": {
+                    "type": "string",
+                    "description": "NMX base URL for fabric/NVLink management-plane checks",
+                },
+                "nmx_token": {"type": "string", "description": "Optional NMX bearer token"},
+                "ib_mgmt_host": {
+                    "type": "string",
+                    "description": "InfiniBand management host for IB CLI verification",
+                },
+                "ib_mgmt_user": {
+                    "type": "string",
+                    "description": "SSH user for the InfiniBand management host",
+                },
+                "ib_mgmt_ssh_key": {
+                    "type": "string",
+                    "description": "SSH key path for the InfiniBand management host",
+                },
+                "cumulus_hosts": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Cumulus/Spectrum-X switch hosts",
+                },
+                "cumulus_user": {
+                    "type": "string",
+                    "description": "SSH user for Cumulus/Spectrum-X switches",
+                },
+                "cumulus_ssh_key": {
+                    "type": "string",
+                    "description": "SSH key path for Cumulus/Spectrum-X switches",
+                },
+                "primary_label": {
+                    "type": "string",
+                    "description": "Label for single-node/local steps",
+                },
+                "coverage_baseline_run_id": {
+                    "type": "string",
+                    "description": "Optional baseline run id for coverage delta artifacts",
+                },
+                "extra_args": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Extra args appended after preset flags",
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Optional timeout in seconds (0/null = no timeout)",
+                },
+            }
+        ),
+    },
 )
 def tool_cluster_common_eval(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import run_cluster_common_eval
@@ -8803,12 +9997,16 @@ def tool_cluster_common_eval(params: Dict[str, Any]) -> Dict[str, Any]:
             ib_mgmt_host=params.get("ib_mgmt_host"),
             ib_mgmt_user=params.get("ib_mgmt_user"),
             ib_mgmt_ssh_key=params.get("ib_mgmt_ssh_key"),
-            cumulus_hosts=params.get("cumulus_hosts") if isinstance(params.get("cumulus_hosts"), list) else None,
+            cumulus_hosts=params.get("cumulus_hosts")
+            if isinstance(params.get("cumulus_hosts"), list)
+            else None,
             cumulus_user=params.get("cumulus_user"),
             cumulus_ssh_key=params.get("cumulus_ssh_key"),
             primary_label=params.get("primary_label"),
             coverage_baseline_run_id=params.get("coverage_baseline_run_id"),
-            extra_args=params.get("extra_args") if isinstance(params.get("extra_args"), list) else None,
+            extra_args=params.get("extra_args")
+            if isinstance(params.get("extra_args"), list)
+            else None,
             timeout_seconds=params.get("timeout_seconds"),
         )
         return attach_context_if_requested(result, include_context, context_level)
@@ -8823,29 +10021,80 @@ def tool_cluster_common_eval(params: Dict[str, Any]) -> Dict[str, Any]:
     "AI-workload correlation, and fabric scorecard. "
     "Returns: {success, entrypoint, artifact_roles, run_id, stdout/stderr}. "
     "🕐 MEDIUM (varies). USE when: You want the go-to cluster run for NVLink, InfiniBand, and Spectrum-X / RoCE characterization.",
-    {"type": "object", "properties": with_context_params({
-        "run_id": {"type": "string", "description": "RUN_ID prefix (default: YYYY-MM-DD)"},
-        "hosts": {"type": "array", "items": {"type": "string"}, "description": "Host list"},
-        "labels": {"type": "array", "items": {"type": "string"}, "description": "Optional labels (must match hosts count)"},
-        "ssh_user": {"type": "string", "description": "SSH user"},
-        "ssh_key": {"type": "string", "description": "SSH key path"},
-        "oob_if": {"type": "string", "description": "Out-of-band interface for multi-node fabric studies"},
-        "socket_ifname": {"type": "string", "description": "NCCL socket interface"},
-        "nccl_ib_hca": {"type": "string", "description": "NCCL_IB_HCA allowlist"},
-        "nmx_url": {"type": "string", "description": "NMX base URL for NVLink management-plane checks"},
-        "nmx_token": {"type": "string", "description": "Optional NMX bearer token"},
-        "ib_mgmt_host": {"type": "string", "description": "InfiniBand management host for IB CLI verification"},
-        "ib_mgmt_user": {"type": "string", "description": "SSH user for the InfiniBand management host"},
-        "ib_mgmt_ssh_key": {"type": "string", "description": "SSH key path for the InfiniBand management host"},
-        "cumulus_hosts": {"type": "array", "items": {"type": "string"}, "description": "Cumulus/Spectrum-X switch hosts"},
-        "cumulus_user": {"type": "string", "description": "SSH user for Cumulus/Spectrum-X switches"},
-        "cumulus_ssh_key": {"type": "string", "description": "SSH key path for Cumulus/Spectrum-X switches"},
-        "primary_label": {"type": "string", "description": "Label for single-node/local steps"},
-        "coverage_baseline_run_id": {"type": "string", "description": "Optional baseline run id for coverage delta artifacts"},
-        "extra_args": {"type": "array", "items": {"type": "string"}, "description": "Extra args appended after the fabric preset flags"},
-        "require_management_plane": {"type": "boolean", "default": False, "description": "Require configured management-plane endpoints for publish-grade fabric completeness"},
-        "timeout_seconds": {"type": "integer", "description": "Optional timeout in seconds (0/null = no timeout)"},
-    })},
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "run_id": {"type": "string", "description": "RUN_ID prefix (default: YYYY-MM-DD)"},
+                "hosts": {"type": "array", "items": {"type": "string"}, "description": "Host list"},
+                "labels": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional labels (must match hosts count)",
+                },
+                "ssh_user": {"type": "string", "description": "SSH user"},
+                "ssh_key": {"type": "string", "description": "SSH key path"},
+                "oob_if": {
+                    "type": "string",
+                    "description": "Out-of-band interface for multi-node fabric studies",
+                },
+                "socket_ifname": {"type": "string", "description": "NCCL socket interface"},
+                "nccl_ib_hca": {"type": "string", "description": "NCCL_IB_HCA allowlist"},
+                "nmx_url": {
+                    "type": "string",
+                    "description": "NMX base URL for NVLink management-plane checks",
+                },
+                "nmx_token": {"type": "string", "description": "Optional NMX bearer token"},
+                "ib_mgmt_host": {
+                    "type": "string",
+                    "description": "InfiniBand management host for IB CLI verification",
+                },
+                "ib_mgmt_user": {
+                    "type": "string",
+                    "description": "SSH user for the InfiniBand management host",
+                },
+                "ib_mgmt_ssh_key": {
+                    "type": "string",
+                    "description": "SSH key path for the InfiniBand management host",
+                },
+                "cumulus_hosts": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Cumulus/Spectrum-X switch hosts",
+                },
+                "cumulus_user": {
+                    "type": "string",
+                    "description": "SSH user for Cumulus/Spectrum-X switches",
+                },
+                "cumulus_ssh_key": {
+                    "type": "string",
+                    "description": "SSH key path for Cumulus/Spectrum-X switches",
+                },
+                "primary_label": {
+                    "type": "string",
+                    "description": "Label for single-node/local steps",
+                },
+                "coverage_baseline_run_id": {
+                    "type": "string",
+                    "description": "Optional baseline run id for coverage delta artifacts",
+                },
+                "extra_args": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Extra args appended after the fabric preset flags",
+                },
+                "require_management_plane": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Require configured management-plane endpoints for publish-grade fabric completeness",
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Optional timeout in seconds (0/null = no timeout)",
+                },
+            }
+        ),
+    },
 )
 def tool_cluster_fabric_eval(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import run_cluster_fabric_eval
@@ -8866,12 +10115,16 @@ def tool_cluster_fabric_eval(params: Dict[str, Any]) -> Dict[str, Any]:
             ib_mgmt_host=params.get("ib_mgmt_host"),
             ib_mgmt_user=params.get("ib_mgmt_user"),
             ib_mgmt_ssh_key=params.get("ib_mgmt_ssh_key"),
-            cumulus_hosts=params.get("cumulus_hosts") if isinstance(params.get("cumulus_hosts"), list) else None,
+            cumulus_hosts=params.get("cumulus_hosts")
+            if isinstance(params.get("cumulus_hosts"), list)
+            else None,
             cumulus_user=params.get("cumulus_user"),
             cumulus_ssh_key=params.get("cumulus_ssh_key"),
             primary_label=params.get("primary_label"),
             coverage_baseline_run_id=params.get("coverage_baseline_run_id"),
-            extra_args=params.get("extra_args") if isinstance(params.get("extra_args"), list) else None,
+            extra_args=params.get("extra_args")
+            if isinstance(params.get("extra_args"), list)
+            else None,
             require_management_plane=bool(params.get("require_management_plane", False)),
             timeout_seconds=params.get("timeout_seconds"),
         )
@@ -8886,14 +10139,38 @@ def tool_cluster_fabric_eval(params: Dict[str, Any]) -> Dict[str, Any]:
     "Build a lab-only NVLink/NMX partition workflow guide from live inventory. "
     "Returns: {success, entrypoint, commands, topology, partitions, recommendations}. "
     "⚡ FAST (~1-5s). USE when: You want exact create/update/delete/poll commands and Alpha/Beta partition seed locations without mutating the fabric.",
-    {"type": "object", "properties": with_context_params({
-        "nmx_url": {"type": "string", "description": "NMX base URL (for example https://<host> or https://<host>/nmx/v1)"},
-        "nmx_token": {"type": "string", "description": "Optional NMX token"},
-        "alpha_name": {"type": "string", "default": "AlphaPartition", "description": "Alpha partition name"},
-        "beta_name": {"type": "string", "default": "BetaPartition", "description": "Beta partition name"},
-        "alpha_size": {"type": "integer", "default": 4, "description": "Alpha partition GPU count"},
-        "beta_size": {"type": "integer", "default": 4, "description": "Beta partition GPU count"},
-    })},
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "nmx_url": {
+                    "type": "string",
+                    "description": "NMX base URL (for example https://<host> or https://<host>/nmx/v1)",
+                },
+                "nmx_token": {"type": "string", "description": "Optional NMX token"},
+                "alpha_name": {
+                    "type": "string",
+                    "default": "AlphaPartition",
+                    "description": "Alpha partition name",
+                },
+                "beta_name": {
+                    "type": "string",
+                    "default": "BetaPartition",
+                    "description": "Beta partition name",
+                },
+                "alpha_size": {
+                    "type": "integer",
+                    "default": 4,
+                    "description": "Alpha partition GPU count",
+                },
+                "beta_size": {
+                    "type": "integer",
+                    "default": 4,
+                    "description": "Beta partition GPU count",
+                },
+            }
+        ),
+    },
 )
 def tool_cluster_nmx_partition_lab(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import build_cluster_nmx_partition_lab
@@ -8919,13 +10196,36 @@ def tool_cluster_nmx_partition_lab(params: Dict[str, Any]) -> Dict[str, Any]:
     "Materialize a clean canonical cluster package from one primary run plus optional comparison and historical runs. "
     "Returns: {success, output_dir, package_manifest_path, package_readme_path, cleanup_keep_run_ids_path}. "
     "⚡ FAST (~1-10s). USE when: You want one agent-friendly bundle rooted at a single output directory without deleting source artifacts.",
-    {"type": "object", "properties": with_context_params({
-        "canonical_run_id": {"type": "string", "description": "Primary canonical run id to package"},
-        "comparison_run_ids": {"type": "array", "items": {"type": "string"}, "description": "Additional comparison/baseline run ids"},
-        "historical_run_ids": {"type": "array", "items": {"type": "string"}, "description": "Historical run ids to retain as references or include when present"},
-        "output_dir": {"type": "string", "description": "Package output directory (must not already contain files)"},
-        "timeout_seconds": {"type": "integer", "default": 300, "description": "Builder timeout in seconds"},
-    })},
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "canonical_run_id": {
+                    "type": "string",
+                    "description": "Primary canonical run id to package",
+                },
+                "comparison_run_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Additional comparison/baseline run ids",
+                },
+                "historical_run_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Historical run ids to retain as references or include when present",
+                },
+                "output_dir": {
+                    "type": "string",
+                    "description": "Package output directory (must not already contain files)",
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "default": 300,
+                    "description": "Builder timeout in seconds",
+                },
+            }
+        ),
+    },
 )
 def tool_cluster_build_canonical_package(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import build_canonical_package
@@ -8934,8 +10234,12 @@ def tool_cluster_build_canonical_package(params: Dict[str, Any]) -> Dict[str, An
     try:
         result = build_canonical_package(
             canonical_run_id=str(params.get("canonical_run_id") or ""),
-            comparison_run_ids=params.get("comparison_run_ids") if isinstance(params.get("comparison_run_ids"), list) else None,
-            historical_run_ids=params.get("historical_run_ids") if isinstance(params.get("historical_run_ids"), list) else None,
+            comparison_run_ids=params.get("comparison_run_ids")
+            if isinstance(params.get("comparison_run_ids"), list)
+            else None,
+            historical_run_ids=params.get("historical_run_ids")
+            if isinstance(params.get("historical_run_ids"), list)
+            else None,
             output_dir=params.get("output_dir"),
             timeout_seconds=int(params.get("timeout_seconds", 300) or 300),
         )
@@ -8950,18 +10254,56 @@ def tool_cluster_build_canonical_package(params: Dict[str, Any]) -> Dict[str, An
     "Promote one run-local cluster result tree into the published cluster package. "
     "Returns: {success, run_id, published_root, published_structured_dir, published_localhost_report_path, steps}. "
     "⚡ FAST (~1-30s). USE when: A run under `cluster/runs/<run_id>/` should become the published localhost package and materialized published artifact set.",
-    {"type": "object", "properties": with_context_params({
-        "run_id": {"type": "string", "description": "Run id under cluster/runs/<run_id>"},
-        "label": {"type": "string", "default": "localhost", "description": "Host label for localhost report rendering"},
-        "allow_run_ids": {"type": "array", "items": {"type": "string"}, "description": "Additional run ids to retain during cleanup/validation hygiene checks"},
-        "publish_report_path": {"type": "string", "description": "Published localhost report path"},
-        "publish_notes_path": {"type": "string", "description": "Published localhost notes path"},
-        "skip_render_localhost_report": {"type": "boolean", "default": False, "description": "Skip rendering run-local + published localhost report markdown"},
-        "skip_validate_localhost_report": {"type": "boolean", "default": False, "description": "Skip localhost report validation after promotion"},
-        "cleanup": {"type": "boolean", "default": False, "description": "Run cleanup_run_artifacts.sh after promotion using this run_id as canonical"},
-        "timeout_seconds": {"type": "integer", "default": 300, "description": "Promotion timeout in seconds"},
-        "repo_root": {"type": "string", "description": "Optional repository root override (tests/alternate trees); default is this checkout"},
-    })},
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "run_id": {"type": "string", "description": "Run id under cluster/runs/<run_id>"},
+                "label": {
+                    "type": "string",
+                    "default": "localhost",
+                    "description": "Host label for localhost report rendering",
+                },
+                "allow_run_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Additional run ids to retain during cleanup/validation hygiene checks",
+                },
+                "publish_report_path": {
+                    "type": "string",
+                    "description": "Published localhost report path",
+                },
+                "publish_notes_path": {
+                    "type": "string",
+                    "description": "Published localhost notes path",
+                },
+                "skip_render_localhost_report": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Skip rendering run-local + published localhost report markdown",
+                },
+                "skip_validate_localhost_report": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Skip localhost report validation after promotion",
+                },
+                "cleanup": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Run cleanup_run_artifacts.sh after promotion using this run_id as canonical",
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "default": 300,
+                    "description": "Promotion timeout in seconds",
+                },
+                "repo_root": {
+                    "type": "string",
+                    "description": "Optional repository root override (tests/alternate trees); default is this checkout",
+                },
+            }
+        ),
+    },
 )
 def tool_cluster_promote_run(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import promote_cluster_run
@@ -8976,11 +10318,15 @@ def tool_cluster_promote_run(params: Dict[str, Any]) -> Dict[str, Any]:
         result = promote_cluster_run(
             run_id=run_id,
             label=str(params.get("label") or "localhost"),
-            allow_run_ids=params.get("allow_run_ids") if isinstance(params.get("allow_run_ids"), list) else None,
+            allow_run_ids=params.get("allow_run_ids")
+            if isinstance(params.get("allow_run_ids"), list)
+            else None,
             publish_report_path=params.get("publish_report_path"),
             publish_notes_path=params.get("publish_notes_path"),
             skip_render_localhost_report=bool(params.get("skip_render_localhost_report", False)),
-            skip_validate_localhost_report=bool(params.get("skip_validate_localhost_report", False)),
+            skip_validate_localhost_report=bool(
+                params.get("skip_validate_localhost_report", False)
+            ),
             cleanup=bool(params.get("cleanup", False)),
             timeout_seconds=int(params.get("timeout_seconds", 300) or 300),
             repo_root=repo_root_val,
@@ -8997,19 +10343,60 @@ def tool_cluster_promote_run(params: Dict[str, Any]) -> Dict[str, Any]:
     "Returns: {success, run_id, repo_root, watcher_pid, watch_command, watch_status_path, launch_log_path, ...}. "
     "⚡ FAST to launch (~ms); the watcher may run until the watched PID exits. "
     "USE when: a long-running cluster job should auto-promote after exit without blocking the launcher.",
-    {"type": "object", "properties": with_context_params({
-        "run_id": {"type": "string", "description": "Run id under cluster/runs/<run_id>"},
-        "pid": {"type": "integer", "description": "Host PID to wait on before evaluating artifacts + promoting"},
-        "label": {"type": "string", "default": "localhost", "description": "Host label for localhost report rendering"},
-        "allow_run_ids": {"type": "array", "items": {"type": "string"}, "description": "Additional run ids to retain during cleanup/validation hygiene checks"},
-        "publish_report_path": {"type": "string", "description": "Published localhost report path"},
-        "publish_notes_path": {"type": "string", "description": "Published localhost notes path"},
-        "repo_root": {"type": "string", "description": "Optional repository root override (tests/alternate trees); default is this checkout"},
-        "skip_render_localhost_report": {"type": "boolean", "default": False, "description": "Skip rendering run-local + published localhost report markdown"},
-        "skip_validate_localhost_report": {"type": "boolean", "default": False, "description": "Skip localhost report validation after promotion"},
-        "cleanup": {"type": "boolean", "default": False, "description": "Run cleanup_run_artifacts.sh after promotion using this run_id as canonical"},
-        "poll_interval_seconds": {"type": "number", "default": 30.0, "description": "How often to poll whether the watched PID is still alive"},
-    })},
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "run_id": {"type": "string", "description": "Run id under cluster/runs/<run_id>"},
+                "pid": {
+                    "type": "integer",
+                    "description": "Host PID to wait on before evaluating artifacts + promoting",
+                },
+                "label": {
+                    "type": "string",
+                    "default": "localhost",
+                    "description": "Host label for localhost report rendering",
+                },
+                "allow_run_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Additional run ids to retain during cleanup/validation hygiene checks",
+                },
+                "publish_report_path": {
+                    "type": "string",
+                    "description": "Published localhost report path",
+                },
+                "publish_notes_path": {
+                    "type": "string",
+                    "description": "Published localhost notes path",
+                },
+                "repo_root": {
+                    "type": "string",
+                    "description": "Optional repository root override (tests/alternate trees); default is this checkout",
+                },
+                "skip_render_localhost_report": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Skip rendering run-local + published localhost report markdown",
+                },
+                "skip_validate_localhost_report": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Skip localhost report validation after promotion",
+                },
+                "cleanup": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Run cleanup_run_artifacts.sh after promotion using this run_id as canonical",
+                },
+                "poll_interval_seconds": {
+                    "type": "number",
+                    "default": 30.0,
+                    "description": "How often to poll whether the watched PID is still alive",
+                },
+            }
+        ),
+    },
 )
 def tool_cluster_watch_promote(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import watch_cluster_run_for_promotion
@@ -9030,11 +10417,15 @@ def tool_cluster_watch_promote(params: Dict[str, Any]) -> Dict[str, Any]:
             run_id=run_id,
             pid=pid,
             label=str(params.get("label") or "localhost"),
-            allow_run_ids=params.get("allow_run_ids") if isinstance(params.get("allow_run_ids"), list) else None,
+            allow_run_ids=params.get("allow_run_ids")
+            if isinstance(params.get("allow_run_ids"), list)
+            else None,
             publish_report_path=params.get("publish_report_path"),
             publish_notes_path=params.get("publish_notes_path"),
             skip_render_localhost_report=bool(params.get("skip_render_localhost_report", False)),
-            skip_validate_localhost_report=bool(params.get("skip_validate_localhost_report", False)),
+            skip_validate_localhost_report=bool(
+                params.get("skip_validate_localhost_report", False)
+            ),
             cleanup=bool(params.get("cleanup", False)),
             poll_interval_seconds=float(params.get("poll_interval_seconds", 30.0) or 30.0),
             repo_root=repo_root_val,
@@ -9050,15 +10441,43 @@ def tool_cluster_watch_promote(params: Dict[str, Any]) -> Dict[str, Any]:
     "Validate `cluster/field-report.md` and companion notes/template/runbook plus artifact hygiene. "
     "Returns: {success, returncode, stdout, stderr}. "
     "⚡ FAST (~1-10s). USE when: You updated the field report and want to ensure required sections and canonical artifacts are consistent.",
-    {"type": "object", "properties": with_context_params({
-        "report": {"type": "string", "description": "Path to field-report.md (default: cluster/field-report.md)"},
-        "notes": {"type": "string", "description": "Path to field-report-notes.md (default: cluster/field-report-notes.md)"},
-        "template": {"type": "string", "description": "Path to field-report-template.md (default: cluster/docs/field-report-template.md)"},
-        "runbook": {"type": "string", "description": "Path to advanced-runbook.md (default: cluster/docs/advanced-runbook.md)"},
-        "canonical_run_id": {"type": "string", "description": "Expected canonical run id (optional)"},
-        "allow_run_id": {"type": "array", "items": {"type": "string"}, "description": "Additional run id(s) allowed for hygiene checks (repeatable)"},
-        "timeout_seconds": {"type": "integer", "default": 120, "description": "Validator timeout in seconds"},
-    })},
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "report": {
+                    "type": "string",
+                    "description": "Path to field-report.md (default: cluster/field-report.md)",
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Path to field-report-notes.md (default: cluster/field-report-notes.md)",
+                },
+                "template": {
+                    "type": "string",
+                    "description": "Path to field-report-template.md (default: cluster/docs/field-report-template.md)",
+                },
+                "runbook": {
+                    "type": "string",
+                    "description": "Path to advanced-runbook.md (default: cluster/docs/advanced-runbook.md)",
+                },
+                "canonical_run_id": {
+                    "type": "string",
+                    "description": "Expected canonical run id (optional)",
+                },
+                "allow_run_id": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Additional run id(s) allowed for hygiene checks (repeatable)",
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "default": 120,
+                    "description": "Validator timeout in seconds",
+                },
+            }
+        ),
+    },
 )
 def tool_cluster_validate_field_report(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.cluster import validate_field_report_requirements
@@ -9086,14 +10505,15 @@ def tool_cluster_validate_field_report(params: Dict[str, Any]) -> Dict[str, Any]
     "🚀 QUICK STATUS CHECK: Fast snapshot of GPU, software, and AI backend health. "
     "Returns: {gpu_ok, software_ok, ai_backend_ok, warnings, summary, gpu_count, cuda_version}. "
     "⚡ VERY FAST (<1s). USE FIRST when: Starting any session, before slow operations. "
-    "Example: \"Quick status check\" or \"Is everything healthy?\" or \"Ready for profiling?\". "
+    'Example: "Quick status check" or "Is everything healthy?" or "Ready for profiling?". '
     "WORKFLOW: status → if issues → system_dependencies or gpu_info. "
     "NOT FOR: Full context (use triage), deep audit (use system_full).",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_status(params: Dict[str, Any]) -> Dict[str, Any]:
     """Get quick status."""
     from core.engine import get_engine
+
     include_context = bool(params.get("include_context", True))
     context_level = params.get("context_level", "summary")
     result = get_engine().status()
@@ -9106,18 +10526,19 @@ def tool_status(params: Dict[str, Any]) -> Dict[str, Any]:
     "🎯 START HERE: Quick triage = status check + context summary in one call. "
     "Returns: {status: {gpu_ok, software_ok, ai_backend_ok}, context: {gpu, software, dependencies}}. "
     "⚡ FAST (~1-2s). THE BEST FIRST CALL for any new performance investigation. "
-    "Example: \"Start with triage\" or \"Quick overview\" or \"What's my system like?\". "
+    'Example: "Start with triage" or "Quick overview" or "What\'s my system like?". '
     "PROVIDES: GPU model/count/VRAM, CUDA/PyTorch versions, dependency health, warnings. "
     "WORKFLOW: triage → recommend OR analyze_bottlenecks → specific tools. "
     "VERSUS OTHER ENTRY POINTS: "
     "• triage: status + context (recommended) "
     "• status: status only (faster, less info) "
     "• suggest_tools: tool recommendations based on intent. NOT FOR: Deep system audit (use system_full).",
-    {"type": "object", "properties": with_context_params({})}
+    {"type": "object", "properties": with_context_params({})},
 )
 def tool_triage(params: Dict[str, Any]) -> Dict[str, Any]:
     """Return quick status plus context summary to guide next actions."""
     from core.engine import get_engine
+
     engine = get_engine()
     result = {
         "success": True,
@@ -9134,7 +10555,7 @@ def tool_triage(params: Dict[str, Any]) -> Dict[str, Any]:
     "Check status of a background job started with async=true. "
     "Returns: {job_id, status: queued|running|completed|error, result (if completed), duration_ms, progress?}. "
     "⚡ FAST (<1s). USE when: Polling for completion of background jobs. "
-    "Example: \"Check job status\" or \"Is my benchmark done?\" or \"Poll nsys capture\". "
+    'Example: "Check job status" or "Is my benchmark done?" or "Poll nsys capture". '
     "STATUS VALUES: "
     "• 'queued' → Waiting for the MCP queue runner to start "
     "• 'running' → Job in progress, poll again in 10-30s "
@@ -9142,12 +10563,18 @@ def tool_triage(params: Dict[str, Any]) -> Dict[str, Any]:
     "• 'error' → Failed, check 'error' field for details. "
     "TOOLS SUPPORTING async=true: run_benchmarks, profile_nsys, profile_ncu, profile_torch, profile_hta. "
     "WORKFLOW: tool(async=true) → poll job_status(job_id) → [completed] benchmark_triage or nsys_summary.",
-    {"type": "object", "properties": with_context_params({
-        "job_id": {
-            "type": "string",
-            "description": "Job ID returned from tool call with async=true"
-        },
-    }), "required": ["job_id"]}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "job_id": {
+                    "type": "string",
+                    "description": "Job ID returned from tool call with async=true",
+                },
+            }
+        ),
+        "required": ["job_id"],
+    },
 )
 def tool_job_status(params: Dict[str, Any]) -> Dict[str, Any]:
     include_context, context_level = extract_context_opts(params)
@@ -9198,7 +10625,13 @@ def tool_job_status(params: Dict[str, Any]) -> Dict[str, Any]:
     waiting_for_queue_runner = "waiting for mcp queue runner" in note_text
     running_via_queue_runner = "running via mcp queue runner" in note_text
 
-    queue_managed_tools = {"run_benchmarks", "profile_nsys", "profile_ncu", "profile_torch", "profile_hta"}
+    queue_managed_tools = {
+        "run_benchmarks",
+        "profile_nsys",
+        "profile_ncu",
+        "profile_torch",
+        "profile_hta",
+    }
     queue_managed_job = str(payload.get("tool", "") or "") in queue_managed_tools
 
     if reported_status == "running" and (
@@ -9222,6 +10655,7 @@ def tool_job_status(params: Dict[str, Any]) -> Dict[str, Any]:
 # HUGGINGFACE TOOLS
 # =============================================================================
 
+
 @register_tool(
     "hf",
     "Tags: huggingface, hf, models, download, search, trending, hub. "
@@ -9230,27 +10664,29 @@ def tool_job_status(params: Dict[str, Any]) -> Dict[str, Any]:
     "Example: action='search', query='llama 2 7b' or action='trending', limit=5. "
     "WORKFLOW: hf(action='search') → hf(action='download'). "
     "NOT FOR: Model performance recommendations (use recommend).",
-    {"type": "object", "properties": with_context_params({
-        "action": {
-            "type": "string",
-            "enum": ["search", "trending", "download"],
-            "default": "search",
-            "description": "Operation: search, trending, or download"
-        },
-        "query": {
-            "type": "string",
-            "description": "Search query or model name for download"
-        },
-        "limit": {
-            "type": "integer",
-            "default": 10,
-            "description": "Max results to return"
-        },
-    })}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "action": {
+                    "type": "string",
+                    "enum": ["search", "trending", "download"],
+                    "default": "search",
+                    "description": "Operation: search, trending, or download",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Search query or model name for download",
+                },
+                "limit": {"type": "integer", "default": 10, "description": "Max results to return"},
+            }
+        ),
+    },
 )
 def tool_hf(params: Dict[str, Any]) -> Dict[str, Any]:
     """HuggingFace Hub operations."""
     from core.engine import get_engine
+
     include_context, context_level = extract_context_opts(params)
 
     action = normalize_param("action", params.get("action"), "search")
@@ -9265,7 +10701,9 @@ def tool_hf(params: Dict[str, Any]) -> Dict[str, Any]:
             result = engine.hf.trending(limit=limit)
         elif action == "download":
             if not query:
-                return make_error("query (model name) required for download", include_context, context_level)
+                return make_error(
+                    "query (model name) required for download", include_context, context_level
+                )
             result = engine.hf.download(query)
         else:
             return make_error(f"Unknown action: {action}", include_context, context_level)
@@ -9278,6 +10716,7 @@ def tool_hf(params: Dict[str, Any]) -> Dict[str, Any]:
 # =============================================================================
 # TOOLS (NON-BENCHMARK UTILITIES)
 # =============================================================================
+
 
 def _extract_tools_cli_args(
     params: Dict[str, Any],
@@ -9292,7 +10731,11 @@ def _extract_tools_cli_args(
     elif isinstance(raw_args, list) and all(isinstance(a, str) for a in raw_args):
         tool_args = raw_args
     else:
-        return None, None, make_error("args must be a list of strings", include_context, context_level)
+        return (
+            None,
+            None,
+            make_error("args must be a list of strings", include_context, context_level),
+        )
 
     timeout_param = params.get("timeout_seconds")
     timeout_seconds: Optional[int]
@@ -9302,7 +10745,11 @@ def _extract_tools_cli_args(
         try:
             timeout_seconds = int(timeout_param)
         except Exception:
-            return None, None, make_error("timeout_seconds must be an integer", include_context, context_level)
+            return (
+                None,
+                None,
+                make_error("timeout_seconds must be an integer", include_context, context_level),
+            )
 
     return tool_args, timeout_seconds, None
 
@@ -9312,10 +10759,23 @@ def _extract_tools_cli_args(
     "Tags: tools, kv-cache, memory, sizing, utility. "
     "Run the KV-cache size calculator (non-benchmark utility). "
     "Forwards args to `aisp tools kv-cache -- <args...>`.",
-    {"type": "object", "properties": with_context_params({
-        "args": {"type": "array", "items": {"type": "string"}, "description": "Arguments forwarded to the tool script."},
-        "timeout_seconds": {"type": "integer", "description": "Timeout for the tool invocation.", "default": 60},
-    })},
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "args": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Arguments forwarded to the tool script.",
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Timeout for the tool invocation.",
+                    "default": 60,
+                },
+            }
+        ),
+    },
 )
 def tool_tools_kv_cache(params: Dict[str, Any]) -> Dict[str, Any]:
     include_context, context_level = extract_context_opts(params)
@@ -9336,10 +10796,23 @@ def tool_tools_kv_cache(params: Dict[str, Any]) -> Dict[str, Any]:
     "Tags: tools, cost, power, throughput, utility. "
     "Run the cost-per-token calculator (non-benchmark utility). "
     "Forwards args to `aisp tools cost-per-token -- <args...>`.",
-    {"type": "object", "properties": with_context_params({
-        "args": {"type": "array", "items": {"type": "string"}, "description": "Arguments forwarded to the tool script."},
-        "timeout_seconds": {"type": "integer", "description": "Timeout for the tool invocation.", "default": 60},
-    })},
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "args": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Arguments forwarded to the tool script.",
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Timeout for the tool invocation.",
+                    "default": 60,
+                },
+            }
+        ),
+    },
 )
 def tool_tools_cost_per_token(params: Dict[str, Any]) -> Dict[str, Any]:
     include_context, context_level = extract_context_opts(params)
@@ -9360,10 +10833,23 @@ def tool_tools_cost_per_token(params: Dict[str, Any]) -> Dict[str, Any]:
     "Tags: tools, precision, accuracy, fp16, bf16, fp8, utility. "
     "Run the precision/accuracy comparison tool (non-benchmark utility). "
     "Forwards args to `aisp tools compare-precision -- <args...>`.",
-    {"type": "object", "properties": with_context_params({
-        "args": {"type": "array", "items": {"type": "string"}, "description": "Arguments forwarded to the tool script."},
-        "timeout_seconds": {"type": "integer", "description": "Timeout for the tool invocation.", "default": 300},
-    })},
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "args": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Arguments forwarded to the tool script.",
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Timeout for the tool invocation.",
+                    "default": 300,
+                },
+            }
+        ),
+    },
 )
 def tool_tools_compare_precision(params: Dict[str, Any]) -> Dict[str, Any]:
     include_context, context_level = extract_context_opts(params)
@@ -9384,10 +10870,23 @@ def tool_tools_compare_precision(params: Dict[str, Any]) -> Dict[str, Any]:
     "Tags: tools, cutlass, environment, discovery, utility. "
     "Run CUTLASS environment detection (non-benchmark utility). "
     "Forwards args to `aisp tools detect-cutlass -- <args...>`.",
-    {"type": "object", "properties": with_context_params({
-        "args": {"type": "array", "items": {"type": "string"}, "description": "Arguments forwarded to the tool script."},
-        "timeout_seconds": {"type": "integer", "description": "Timeout for the tool invocation.", "default": 30},
-    })},
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "args": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Arguments forwarded to the tool script.",
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Timeout for the tool invocation.",
+                    "default": 30,
+                },
+            }
+        ),
+    },
 )
 def tool_tools_detect_cutlass(params: Dict[str, Any]) -> Dict[str, Any]:
     include_context, context_level = extract_context_opts(params)
@@ -9408,10 +10907,23 @@ def tool_tools_detect_cutlass(params: Dict[str, Any]) -> Dict[str, Any]:
     "Tags: tools, hardware, capabilities, report, utility. "
     "Dump comprehensive hardware capability report (non-benchmark utility). "
     "Forwards args to `aisp tools dump-hw -- <args...>`.",
-    {"type": "object", "properties": with_context_params({
-        "args": {"type": "array", "items": {"type": "string"}, "description": "Arguments forwarded to the tool script."},
-        "timeout_seconds": {"type": "integer", "description": "Timeout for the tool invocation.", "default": 300},
-    })},
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "args": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Arguments forwarded to the tool script.",
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Timeout for the tool invocation.",
+                    "default": 300,
+                },
+            }
+        ),
+    },
 )
 def tool_tools_dump_hw(params: Dict[str, Any]) -> Dict[str, Any]:
     include_context, context_level = extract_context_opts(params)
@@ -9432,10 +10944,23 @@ def tool_tools_dump_hw(params: Dict[str, Any]) -> Dict[str, Any]:
     "Tags: tools, hardware, capabilities, probe, cache, utility. "
     "Probe GPU capabilities dynamically and cache results (non-benchmark utility). "
     "Forwards args to `aisp tools probe-hw -- <args...>`.",
-    {"type": "object", "properties": with_context_params({
-        "args": {"type": "array", "items": {"type": "string"}, "description": "Arguments forwarded to the tool script."},
-        "timeout_seconds": {"type": "integer", "description": "Timeout for the tool invocation.", "default": 600},
-    })},
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "args": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Arguments forwarded to the tool script.",
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Timeout for the tool invocation.",
+                    "default": 600,
+                },
+            }
+        ),
+    },
 )
 def tool_tools_probe_hw(params: Dict[str, Any]) -> Dict[str, Any]:
     include_context, context_level = extract_context_opts(params)
@@ -9454,6 +10979,7 @@ def tool_tools_probe_hw(params: Dict[str, Any]) -> Dict[str, Any]:
 # =============================================================================
 # UTILITY TOOLS
 # =============================================================================
+
 
 @register_tool(
     "benchmark_contracts",
@@ -9477,29 +11003,40 @@ def tool_benchmark_contracts(params: Dict[str, Any]) -> Dict[str, Any]:
     "Render BenchmarkRun YAML through the shared backend template renderer. "
     "Returns: {schema_version, template_path, applied_values, rendered_yaml}. "
     "⚡ FAST (<1s). USE when: You need a lockstep BenchmarkRun preview or want to script the same generator used by the dashboard.",
-    {"type": "object", "properties": with_context_params({
-        "name": {"type": "string", "description": "BenchmarkRun metadata.name override."},
-        "benchmarkClass": {"type": "string", "enum": ["publication_grade", "realism_grade"]},
-        "workloadType": {"type": "string", "enum": ["training", "inference", "mixed"]},
-        "schedulerPath": {"type": "string", "description": "Scheduler path identifier."},
-        "cadence": {"type": "string", "enum": ["canary", "nightly", "pre_release"]},
-        "model": {"type": "string", "description": "Model identifier."},
-        "precision": {"type": "string", "description": "Precision override."},
-        "batchingPolicy": {"type": "string", "description": "Batching policy override."},
-        "concurrencyModel": {"type": "string", "description": "Concurrency model override."},
-        "comparisonVariable": {
-            "type": "string",
-            "enum": [
-                "hardware_generation",
-                "runtime_version",
-                "scheduler_path",
-                "control_plane_path",
-                "driver_stack",
-                "network_topology",
-                "storage_stack",
-            ],
-        },
-    })},
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "name": {"type": "string", "description": "BenchmarkRun metadata.name override."},
+                "benchmarkClass": {
+                    "type": "string",
+                    "enum": ["publication_grade", "realism_grade"],
+                },
+                "workloadType": {"type": "string", "enum": ["training", "inference", "mixed"]},
+                "schedulerPath": {"type": "string", "description": "Scheduler path identifier."},
+                "cadence": {"type": "string", "enum": ["canary", "nightly", "pre_release"]},
+                "model": {"type": "string", "description": "Model identifier."},
+                "precision": {"type": "string", "description": "Precision override."},
+                "batchingPolicy": {"type": "string", "description": "Batching policy override."},
+                "concurrencyModel": {
+                    "type": "string",
+                    "description": "Concurrency model override.",
+                },
+                "comparisonVariable": {
+                    "type": "string",
+                    "enum": [
+                        "hardware_generation",
+                        "runtime_version",
+                        "scheduler_path",
+                        "control_plane_path",
+                        "driver_stack",
+                        "network_topology",
+                        "storage_stack",
+                    ],
+                },
+            }
+        ),
+    },
 )
 def tool_render_benchmark_run(params: Dict[str, Any]) -> Dict[str, Any]:
     include_context, context_level = extract_context_opts(params)
@@ -9508,7 +11045,8 @@ def tool_render_benchmark_run(params: Dict[str, Any]) -> Dict[str, Any]:
     overrides = {
         key: value
         for key, value in params.items()
-        if key in {
+        if key
+        in {
             "name",
             "benchmarkClass",
             "workloadType",
@@ -9523,6 +11061,7 @@ def tool_render_benchmark_run(params: Dict[str, Any]) -> Dict[str, Any]:
     }
     result = render_benchmark_run_yaml(overrides)
     return attach_context_if_requested(result, include_context, context_level)
+
 
 @register_tool(
     "suggest_tools",
@@ -9542,21 +11081,27 @@ def tool_render_benchmark_run(params: Dict[str, Any]) -> Dict[str, Any]:
     "Defaults to LLM-based routing; if no LLM backend is configured, "
     "automatically falls back to keyword heuristics with a WARNING. "
     "Set llm_routing=false to force heuristics (also returns a WARNING).",
-    {"type": "object", "properties": with_context_params({
-        "query": {
-            "type": "string",
-            "description": "Your intent, problem, or question in natural language"
-        },
-        "llm_routing": {
-            "type": "boolean",
-            "description": "Use LLM-based intent routing instead of keyword heuristics (requires LLM backend).",
-            "default": True,
-        },
-        "max_suggestions": {
-            "type": "integer",
-            "description": "Maximum number of suggestions to return (default: no limit for heuristics, 6 for LLM).",
-        },
-    }), "required": ["query"]}
+    {
+        "type": "object",
+        "properties": with_context_params(
+            {
+                "query": {
+                    "type": "string",
+                    "description": "Your intent, problem, or question in natural language",
+                },
+                "llm_routing": {
+                    "type": "boolean",
+                    "description": "Use LLM-based intent routing instead of keyword heuristics (requires LLM backend).",
+                    "default": True,
+                },
+                "max_suggestions": {
+                    "type": "integer",
+                    "description": "Maximum number of suggestions to return (default: no limit for heuristics, 6 for LLM).",
+                },
+            }
+        ),
+        "required": ["query"],
+    },
 )
 def tool_suggest_tools(params: Dict[str, Any]) -> Dict[str, Any]:
     """Return a ranked list of suggested tools given a query."""
@@ -9572,10 +11117,7 @@ def tool_suggest_tools(params: Dict[str, Any]) -> Dict[str, Any]:
     if max_suggestions is not None and max_suggestions < 1:
         return make_error("max_suggestions must be >= 1.", include_context, context_level)
 
-    tool_catalog = [
-        {"tool": name, "description": tool.description}
-        for name, tool in TOOLS.items()
-    ]
+    tool_catalog = [{"tool": name, "description": tool.description} for name, tool in TOOLS.items()]
 
     try:
         routing_result = suggest_tools_auto(
@@ -9604,6 +11146,7 @@ def tool_suggest_tools(params: Dict[str, Any]) -> Dict[str, Any]:
 # MCP PROTOCOL IMPLEMENTATION
 # =============================================================================
 
+
 class MCPServer:
     """MCP Server for AI Systems Performance."""
 
@@ -9620,11 +11163,7 @@ class MCPServer:
     def get_tool_list(self) -> List[Dict[str, Any]]:
         """Get list of available tools."""
         return [
-            {
-                "name": tool.name,
-                "description": tool.description,
-                "inputSchema": tool.input_schema
-            }
+            {"name": tool.name, "description": tool.description, "inputSchema": tool.input_schema}
             for tool in TOOLS.values()
         ]
 
@@ -9642,10 +11181,7 @@ class MCPServer:
                 server_info=server_info,
                 tool_meta=tool_meta,
             )
-            return ToolResult(
-                content=_content_from_payload(payload),
-                is_error=True
-            )
+            return ToolResult(content=_content_from_payload(payload), is_error=True)
 
         try:
             raw_result = HANDLERS[name](arguments)
@@ -9660,8 +11196,7 @@ class MCPServer:
                 tool_meta=tool_meta,
             )
             return ToolResult(
-                content=_content_from_payload(payload),
-                is_error=payload.get("status") == "error"
+                content=_content_from_payload(payload), is_error=payload.get("status") == "error"
             )
         except Exception as e:
             tb = traceback.format_exc()
@@ -9675,17 +11210,15 @@ class MCPServer:
                 server_info=server_info,
                 tool_meta=tool_meta,
             )
-            return ToolResult(
-                content=_content_from_payload(payload),
-                is_error=True
-            )
+            return ToolResult(content=_content_from_payload(payload), is_error=True)
 
     def _cleanup_stale_requests(self):
         """Remove requests that have timed out."""
         current_time = time.time()
         with self._request_lock:
             stale_ids = [
-                req_id for req_id, timestamp in self._request_timeouts.items()
+                req_id
+                for req_id, timestamp in self._request_timeouts.items()
                 if current_time - timestamp > self._timeout_seconds
             ]
             for req_id in stale_ids:
@@ -9711,7 +11244,7 @@ class MCPServer:
                     print(
                         f"[DEBUG] Duplicate request detected - ID: {msg_id}, "
                         f"Method: {method}, Previous: {existing.get('method')}",
-                        file=sys.stderr
+                        file=sys.stderr,
                     )
                 # Update timestamp but don't process again
                 self._request_timeouts[msg_id] = time.time()
@@ -9721,7 +11254,7 @@ class MCPServer:
             self._pending_requests[msg_id] = {
                 "method": method,
                 "params": params,
-                "received_at": time.time()
+                "received_at": time.time(),
             }
             self._request_timeouts[msg_id] = time.time()
             return False
@@ -9764,8 +11297,8 @@ class MCPServer:
                     "id": msg_id,
                     "error": {
                         "code": -32600,
-                        "message": "Invalid Request: message must be an object"
-                    }
+                        "message": "Invalid Request: message must be an object",
+                    },
                 }
             return None
 
@@ -9784,8 +11317,8 @@ class MCPServer:
                 "id": msg_id,
                 "error": {
                     "code": -32000,
-                    "message": "Duplicate request detected. This request was already processed."
-                }
+                    "message": "Duplicate request detected. This request was already processed.",
+                },
             }
 
         try:
@@ -9804,7 +11337,7 @@ class MCPServer:
                         self._pending_requests[msg_id] = current_req or {
                             "method": method,
                             "params": params,
-                            "received_at": time.time()
+                            "received_at": time.time(),
                         }
                         self._request_timeouts[msg_id] = current_timeout
 
@@ -9813,14 +11346,9 @@ class MCPServer:
                     "id": msg_id,
                     "result": {
                         "protocolVersion": "2024-11-05",
-                        "capabilities": {
-                            "tools": {}
-                        },
-                        "serverInfo": {
-                            "name": self.name,
-                            "version": self.version
-                        }
-                    }
+                        "capabilities": {"tools": {}},
+                        "serverInfo": {"name": self.name, "version": self.version},
+                    },
                 }
                 # Don't complete here - will be completed after sending response
                 return response
@@ -9829,9 +11357,7 @@ class MCPServer:
                 response = {
                     "jsonrpc": "2.0",
                     "id": msg_id,
-                    "result": {
-                        "tools": self.get_tool_list()
-                    }
+                    "result": {"tools": self.get_tool_list()},
                 }
                 # Don't complete here - will be completed after sending response
                 return response
@@ -9844,10 +11370,7 @@ class MCPServer:
                 response = {
                     "jsonrpc": "2.0",
                     "id": msg_id,
-                    "result": {
-                        "content": result.content,
-                        "isError": result.is_error
-                    }
+                    "result": {"content": result.content, "isError": result.is_error},
                 }
                 # Don't complete here - will be completed after sending response
                 return response
@@ -9858,10 +11381,7 @@ class MCPServer:
                 response = {
                     "jsonrpc": "2.0",
                     "id": msg_id,
-                    "error": {
-                        "code": -32601,
-                        "message": f"Method not found: {method}"
-                    }
+                    "error": {"code": -32601, "message": f"Method not found: {method}"},
                 }
                 # Don't complete here - will be completed after sending response
                 return response
@@ -9899,8 +11419,8 @@ class MCPServer:
                             "id": msg_id,
                             "error": {
                                 "code": -32600,
-                                "message": "Invalid Request: jsonrpc must be '2.0'"
-                            }
+                                "message": "Invalid Request: jsonrpc must be '2.0'",
+                            },
                         }
                         self._emit_stdio_json(
                             error_response,
@@ -9922,10 +11442,10 @@ class MCPServer:
                                 if os.environ.get("AISP_MCP_DEBUG"):
                                     print(
                                         f"[DEBUG] Skipping response for cleaned-up request ID: {response_id}",
-                                        file=sys.stderr
+                                        file=sys.stderr,
                                     )
                                 should_send = False
-                    
+
                     if should_send:
                         print(json.dumps(response), flush=True)
                         # Complete request after sending response
@@ -9934,7 +11454,7 @@ class MCPServer:
 
             except json.JSONDecodeError as e:
                 print(f"JSON decode error: {e}", file=sys.stderr)
-                line_preview = line[:200] if 'line' in locals() else "<unavailable>"
+                line_preview = line[:200] if "line" in locals() else "<unavailable>"
                 self._write_stdio_warning(
                     "Unable to recover request id from malformed JSON input; "
                     f"no parse error response emitted. line_preview={line_preview!r}"
@@ -9942,10 +11462,11 @@ class MCPServer:
             except Exception as e:
                 print(f"Error handling message: {e}", file=sys.stderr)
                 import traceback
+
                 print(traceback.format_exc(), file=sys.stderr)
                 # Try to send error response
                 try:
-                    msg_id = message.get("id") if 'message' in locals() else None
+                    msg_id = message.get("id") if "message" in locals() else None
                     if msg_id is not None:
                         # Only send error response if request is still tracked
                         with self._request_lock:
@@ -9955,8 +11476,8 @@ class MCPServer:
                                     "id": msg_id,
                                     "error": {
                                         "code": -32603,
-                                        "message": f"Internal error: {str(e)}"
-                                    }
+                                        "message": f"Internal error: {str(e)}",
+                                    },
                                 }
                                 if self._emit_stdio_json(
                                     error_response,

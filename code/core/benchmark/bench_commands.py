@@ -27,9 +27,26 @@ except ImportError:  # pragma: no cover - Typer is optional for docs builds
 
 # Ensure nvcc emits line tables for all benchmark builds
 import os  # noqa: E402
+
 os.environ["NVCCFLAGS"] = f"-lineinfo {os.environ.get('NVCCFLAGS', '')}".strip()
 
-from core.analysis.performance_analyzer import PerformanceAnalyzer, load_benchmark_data as load_benchmark_results
+from core.analysis.optimization_opportunities import (
+    analyze_opportunity_file,
+    apply_novelty_validation_feedback,
+    apply_run_queue_feedback,
+    discover_benchmark_target_catalog,
+    normalize_candidates,
+    rank_opportunities,
+    render_novelty_next_wave_shell,
+    render_novelty_validation_shell,
+    render_opportunities_markdown,
+    render_run_queue_shell,
+    summarize_run_queue_root,
+)
+from core.analysis.performance_analyzer import (
+    PerformanceAnalyzer,
+    load_benchmark_data as load_benchmark_results,
+)
 from core.plugins.loader import load_plugin_apps
 from core.utils.warning_filters import (
     suppress_known_cuda_capability_warnings,
@@ -100,7 +117,12 @@ from core.harness.validity_profile import (
 )
 from core.harness.progress import ProgressEvent, ProgressRecorder
 from core.profiling import profiler_config as profiler_config_mod
-from core.discovery import chapter_slug, discover_all_chapters, resolve_target_chapters, discover_benchmarks
+from core.discovery import (
+    chapter_slug,
+    discover_all_chapters,
+    resolve_target_chapters,
+    discover_benchmarks,
+)
 
 apply_env_defaults()
 
@@ -117,6 +139,10 @@ def _get_analyzer(data_file: Optional[Path] = None) -> PerformanceAnalyzer:
     """Shared analysis helper for CLI commands."""
     loader = (lambda: load_benchmark_results(data_file)) if data_file else load_benchmark_results
     return PerformanceAnalyzer(loader)
+
+
+def _discover_target_catalog(bench_root: Optional[Path] = None) -> List[Dict[str, Any]]:
+    return list(discover_benchmark_target_catalog(bench_root).get("targets", []))
 
 
 def _validate_output_format(fmt: str | None) -> str:
@@ -176,8 +202,7 @@ def _validate_ncu_replay_mode(mode: str | None) -> Optional[str]:
     valid = {"kernel", "application"}
     if normalized not in valid:
         message = (
-            f"Invalid Nsight Compute replay mode '{mode}'. "
-            "Choose from 'kernel' or 'application'."
+            f"Invalid Nsight Compute replay mode '{mode}'. Choose from 'kernel' or 'application'."
         )
         if TYPER_AVAILABLE and typer is not None:
             raise typer.BadParameter(message)
@@ -219,10 +244,7 @@ def _validate_deep_dive_mode(mode: str | None) -> str:
     normalized = mode.strip().lower()
     valid = {"auto", "always", "never"}
     if normalized not in valid:
-        message = (
-            f"Invalid deep-dive mode '{mode}'. "
-            "Choose from 'auto', 'always', or 'never'."
-        )
+        message = f"Invalid deep-dive mode '{mode}'. Choose from 'auto', 'always', or 'never'."
         if TYPER_AVAILABLE and typer is not None:
             raise typer.BadParameter(message)
         raise ValueError(message)
@@ -249,9 +271,7 @@ def _apply_suite_timeout(seconds: Optional[int]):
     previous_handler = signal.getsignal(sigalrm)
     previous_delay = 0.0
     previous_interval = 0.0
-    use_itimer = all(
-        hasattr(signal, attr) for attr in ("getitimer", "setitimer", "ITIMER_REAL")
-    )
+    use_itimer = all(hasattr(signal, attr) for attr in ("getitimer", "setitimer", "ITIMER_REAL"))
     if use_itimer:
         try:
             previous_delay, previous_interval = signal.getitimer(signal.ITIMER_REAL)
@@ -303,7 +323,9 @@ def _apply_suite_timeout(seconds: Optional[int]):
     return _restore
 
 
-def _read_progress_payload_for_heartbeat(progress_path: Path) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+def _read_progress_payload_for_heartbeat(
+    progress_path: Path,
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """Best-effort progress read for heartbeat telemetry without hiding corruption."""
     try:
         if not progress_path.exists():
@@ -498,7 +520,7 @@ def _execute_benchmarks(
     use_llm_cache: bool = True,
     llm_explain: bool = False,
     exit_on_failure: bool = True,
-    ) -> Dict[str, Any]:
+) -> Dict[str, Any]:
     """Execute selected benchmarks with optional profiling."""
     validity_profile = _validate_validity_profile(validity_profile)
     portable_mode = validity_profile == "portable"
@@ -528,7 +550,9 @@ def _execute_benchmarks(
     active_bench_root = Path(bench_root).resolve() if bench_root else repo_root
 
     if single_gpu:
-        os.environ["CUDA_VISIBLE_DEVICES"] = _select_single_gpu_visible(os.environ.get("CUDA_VISIBLE_DEVICES"))
+        os.environ["CUDA_VISIBLE_DEVICES"] = _select_single_gpu_visible(
+            os.environ.get("CUDA_VISIBLE_DEVICES")
+        )
 
     try:
         from core.harness.cuda_capabilities import set_force_pipeline
@@ -547,7 +571,9 @@ def _execute_benchmarks(
             stacklevel=2,
         )
 
-    artifact_base = Path(artifacts_dir) if artifacts_dir else default_artifacts_root(active_bench_root)
+    artifact_base = (
+        Path(artifacts_dir) if artifacts_dir else default_artifacts_root(active_bench_root)
+    )
     run_label = None
     if run_id is None:
         run_label = build_bench_run_label(targets or [], profile_type)
@@ -603,11 +629,7 @@ def _execute_benchmarks(
             "run_id": artifact_manager.run_id,
             "artifact_root": str(artifact_manager.run_dir),
             "output_json": str(output_json),
-            "output_markdown": (
-                str(output_md)
-                if output_format in ["markdown", "both"]
-                else None
-            ),
+            "output_markdown": (str(output_md) if output_format in ["markdown", "both"] else None),
             "manifest_path": None,
             "bench_root": str(active_bench_root),
             "total_failed": 0,
@@ -631,7 +653,9 @@ def _execute_benchmarks(
         sys.exit(1)
 
     try:
-        chapter_dirs, chapter_filters = resolve_target_chapters(targets, bench_root=active_bench_root)
+        chapter_dirs, chapter_filters = resolve_target_chapters(
+            targets, bench_root=active_bench_root
+        )
     except (ValueError, FileNotFoundError) as exc:
         logger.error(str(exc))
         sys.exit(1)
@@ -683,7 +707,6 @@ def _execute_benchmarks(
 
     restore_suite_timeout = _apply_suite_timeout(suite_timeout)
     try:
-
         progress_recorder = ProgressRecorder(
             run_id=artifact_manager.run_id,
             progress_path=artifact_manager.progress_dir / "run_progress.json",
@@ -759,7 +782,12 @@ def _execute_benchmarks(
         }
         # Long high-iteration timing phases can legitimately run for extended periods
         # without progress timestamp updates. Keep timing stale-abort as explicit opt-in.
-        if os.environ.get("AISP_STALE_WATCH_TIMING", "0").strip().lower() in {"1", "true", "yes", "on"}:
+        if os.environ.get("AISP_STALE_WATCH_TIMING", "0").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
             stale_phases.update({"baseline_timing", "optimized_timing"})
 
         def _snapshot_process_table() -> Dict[int, Tuple[int, str]]:
@@ -790,7 +818,9 @@ def _execute_benchmarks(
                 rows[pid] = (ppid, cmd)
             return rows
 
-        def _descendants_of(root_pid: int, table: Dict[int, Tuple[int, str]]) -> List[Tuple[int, str]]:
+        def _descendants_of(
+            root_pid: int, table: Dict[int, Tuple[int, str]]
+        ) -> List[Tuple[int, str]]:
             children: Dict[int, List[int]] = {}
             for pid, (ppid, _cmd) in table.items():
                 children.setdefault(ppid, []).append(pid)
@@ -892,7 +922,9 @@ def _execute_benchmarks(
 
         def _heartbeat_loop() -> None:
             while not heartbeat_stop.is_set():
-                payload, progress_warning = _read_progress_payload_for_heartbeat(progress_recorder.progress_path)
+                payload, progress_warning = _read_progress_payload_for_heartbeat(
+                    progress_recorder.progress_path
+                )
                 now = time.time()
                 if progress_warning:
                     if (
@@ -1005,6 +1037,7 @@ def _execute_benchmarks(
                     progress_warning=progress_warning,
                 )
                 heartbeat_stop.wait(60.0)
+
         heartbeat_thread = threading.Thread(target=_heartbeat_loop, daemon=True)
         heartbeat_thread.start()
 
@@ -1070,7 +1103,11 @@ def _execute_benchmarks(
             all_results.append(result)
             if output_format in ["json", "both"]:
                 with open(output_json, "w") as f:
-                    json.dump({"timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"), "results": all_results}, f, indent=2)
+                    json.dump(
+                        {"timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"), "results": all_results},
+                        f,
+                        indent=2,
+                    )
                 logger.info(f"JSON results checkpoint saved to: {output_json}")
 
         progress_recorder.emit(
@@ -1089,12 +1126,20 @@ def _execute_benchmarks(
 
         if manifests:
             with open(artifact_manager.manifest_path, "w") as f:
-                json.dump({"timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"), "manifests": manifests}, f, indent=2)
+                json.dump(
+                    {"timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"), "manifests": manifests},
+                    f,
+                    indent=2,
+                )
             logger.info(f"Manifest saved to: {artifact_manager.manifest_path}")
 
         if output_format in ["json", "both"]:
             with open(output_json, "w") as f:
-                json.dump({"timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"), "results": all_results}, f, indent=2)
+                json.dump(
+                    {"timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"), "results": all_results},
+                    f,
+                    indent=2,
+                )
             logger.info(f"JSON results saved to: {output_json}")
         if output_format in ["markdown", "both"]:
             generate_markdown_report(all_results, output_md, bench_root=active_bench_root)
@@ -1138,16 +1183,8 @@ def _execute_benchmarks(
             "run_id": artifact_manager.run_id,
             "artifact_root": str(artifact_manager.run_dir),
             "output_json": str(output_json),
-            "output_markdown": (
-                str(output_md)
-                if output_format in ["markdown", "both"]
-                else None
-            ),
-            "manifest_path": (
-                str(artifact_manager.manifest_path)
-                if manifests
-                else None
-            ),
+            "output_markdown": (str(output_md) if output_format in ["markdown", "both"] else None),
+            "manifest_path": (str(artifact_manager.manifest_path) if manifests else None),
             "bench_root": str(active_bench_root),
             "total_failed": total_failed,
             "total_successful": total_successful,
@@ -1163,13 +1200,45 @@ if TYPER_AVAILABLE:
     @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
     def run(
         ctx: typer.Context,
-        targets: Optional[List[str]] = Option(None, "--targets", "-t", help="Chapter(s) or chapter:example pairs to run. Repeat the flag for multiple targets. Omit or use 'all' for every chapter."),
-        bench_root: Optional[Path] = Option(None, "--bench-root", "-r", help="Root directory to scan for benchmarks (defaults to repo root)."),
-        output_format: str = Option("both", "--format", "-f", help="Output format: 'json', 'markdown', or 'both'", callback=_validate_output_format),
-        profile_type: str = Option("minimal", "--profile", "-p", help="Profiling preset: minimal (default), none, deep_dive, or roofline. Non-'none' enables nsys/ncu/PyTorch profiling.", callback=_validate_profile_type),
-        suite_timeout: Optional[int] = Option(14400, "--suite-timeout", help="Suite timeout in seconds (default: 14400 = 4 hours, 0 = disabled)"),
-        timeout_seconds: Optional[int] = Option(None, "--timeout-seconds", help="Override suite timeout in seconds (0 disables timeout)"),
-        timeout_multiplier: float = Option(3.0, "--timeout-multiplier", help="Multiply all benchmark timeouts by this factor (e.g., 2.0 = double all timeouts)"),
+        targets: Optional[List[str]] = Option(
+            None,
+            "--targets",
+            "-t",
+            help="Chapter(s) or chapter:example pairs to run. Repeat the flag for multiple targets. Omit or use 'all' for every chapter.",
+        ),
+        bench_root: Optional[Path] = Option(
+            None,
+            "--bench-root",
+            "-r",
+            help="Root directory to scan for benchmarks (defaults to repo root).",
+        ),
+        output_format: str = Option(
+            "both",
+            "--format",
+            "-f",
+            help="Output format: 'json', 'markdown', or 'both'",
+            callback=_validate_output_format,
+        ),
+        profile_type: str = Option(
+            "minimal",
+            "--profile",
+            "-p",
+            help="Profiling preset: minimal (default), none, deep_dive, or roofline. Non-'none' enables nsys/ncu/PyTorch profiling.",
+            callback=_validate_profile_type,
+        ),
+        suite_timeout: Optional[int] = Option(
+            14400,
+            "--suite-timeout",
+            help="Suite timeout in seconds (default: 14400 = 4 hours, 0 = disabled)",
+        ),
+        timeout_seconds: Optional[int] = Option(
+            None, "--timeout-seconds", help="Override suite timeout in seconds (0 disables timeout)"
+        ),
+        timeout_multiplier: float = Option(
+            3.0,
+            "--timeout-multiplier",
+            help="Multiply all benchmark timeouts by this factor (e.g., 2.0 = double all timeouts)",
+        ),
         validity_profile: str = Option(
             "strict",
             "--validity-profile",
@@ -1181,12 +1250,32 @@ if TYPER_AVAILABLE:
             "--allow-foreign-gpu-processes",
             help="Warn instead of fail when unrelated CUDA compute processes are active on the benchmark GPU. Use only on shared hosts when strict isolation is impossible.",
         ),
-        reproducible: bool = Option(False, "--reproducible", help="Enable reproducible mode: set all seeds to 42 and force deterministic algorithms (uses slower fallbacks; ops without deterministic support may error)."),
-        cold_start: bool = Option(False, "--cold-start", help="Reset GPU state between benchmarks for cold start measurements"),
-        force_sync: bool = Option(False, "--force-sync", help="Force a device-wide synchronize immediately after benchmark_fn() (opt-in safeguard)."),
-        iterations: Optional[int] = Option(None, "--iterations", help="Number of benchmark iterations (default: chapter-specific)"),
-        warmup: Optional[int] = Option(None, "--warmup", help="Number of warmup iterations (default: chapter-specific)"),
-        force_pipeline: bool = Option(False, "--force-pipeline", help="Force enable CUDA Pipeline API even on compute capability 12.0+ (may cause instability on Blackwell GPUs)"),
+        reproducible: bool = Option(
+            False,
+            "--reproducible",
+            help="Enable reproducible mode: set all seeds to 42 and force deterministic algorithms (uses slower fallbacks; ops without deterministic support may error).",
+        ),
+        cold_start: bool = Option(
+            False,
+            "--cold-start",
+            help="Reset GPU state between benchmarks for cold start measurements",
+        ),
+        force_sync: bool = Option(
+            False,
+            "--force-sync",
+            help="Force a device-wide synchronize immediately after benchmark_fn() (opt-in safeguard).",
+        ),
+        iterations: Optional[int] = Option(
+            None, "--iterations", help="Number of benchmark iterations (default: chapter-specific)"
+        ),
+        warmup: Optional[int] = Option(
+            None, "--warmup", help="Number of warmup iterations (default: chapter-specific)"
+        ),
+        force_pipeline: bool = Option(
+            False,
+            "--force-pipeline",
+            help="Force enable CUDA Pipeline API even on compute capability 12.0+ (may cause instability on Blackwell GPUs)",
+        ),
         gpu_sm_clock_mhz: Optional[int] = Option(
             None,
             "--gpu-sm-clock-mhz",
@@ -1215,14 +1304,25 @@ if TYPER_AVAILABLE:
                 "Run ID for artifact directory (default: <timestamp>__bench__profile-<type>__targets-<...>)."
             ),
         ),
-        log_level: str = Option("INFO", "--log-level", help="Log level: DEBUG, INFO, WARNING, ERROR"),
+        log_level: str = Option(
+            "INFO", "--log-level", help="Log level: DEBUG, INFO, WARNING, ERROR"
+        ),
         log_file: Optional[str] = Option(
             None,
             "--log-file",
             help="Path to log file (default: artifacts/runs/<run_id>/logs/benchmark.log)",
         ),
-        single_gpu: bool = Option(False, "--single-gpu", help="Force single-GPU visibility (sets CUDA_VISIBLE_DEVICES=0 for this run)."),
-        ncu_metric_set: str = Option("minimal", "--ncu-metric-set", help="Nsight Compute metric preset: auto, minimal, deep_dive, or roofline. Default is minimal for safer, lower-overhead profiling.", callback=_validate_ncu_metric_set),
+        single_gpu: bool = Option(
+            False,
+            "--single-gpu",
+            help="Force single-GPU visibility (sets CUDA_VISIBLE_DEVICES=0 for this run).",
+        ),
+        ncu_metric_set: str = Option(
+            "minimal",
+            "--ncu-metric-set",
+            help="Nsight Compute metric preset: auto, minimal, deep_dive, or roofline. Default is minimal for safer, lower-overhead profiling.",
+            callback=_validate_ncu_metric_set,
+        ),
         ncu_replay_mode: Optional[str] = Option(
             None,
             "--ncu-replay-mode",
@@ -1244,40 +1344,132 @@ if TYPER_AVAILABLE:
             "--pm-sampling-interval",
             help="Nsight Compute pm-sampling-interval (cycles between samples). Optional: set to reduce overhead; defaults to unset.",
         ),
-        only_cuda: bool = Option(False, "--only-cuda", help="Run only CUDA binary benchmarks (Python wrappers)."),
-        only_python: bool = Option(False, "--only-python", help="Run only Python benchmarks (skip CUDA binary wrappers)."),
-        accept_regressions: bool = Option(False, "--accept-regressions", help="Update expectation files when improvements are detected instead of flagging regressions."),
-        update_expectations: bool = Option(False, "--update-expectations", help="Force-write observed metrics into expectation files (overrides regressions). Useful for refreshing baselines on new hardware."),
+        only_cuda: bool = Option(
+            False, "--only-cuda", help="Run only CUDA binary benchmarks (Python wrappers)."
+        ),
+        only_python: bool = Option(
+            False, "--only-python", help="Run only Python benchmarks (skip CUDA binary wrappers)."
+        ),
+        accept_regressions: bool = Option(
+            False,
+            "--accept-regressions",
+            help="Update expectation files when improvements are detected instead of flagging regressions.",
+        ),
+        update_expectations: bool = Option(
+            False,
+            "--update-expectations",
+            help="Force-write observed metrics into expectation files (overrides regressions). Useful for refreshing baselines on new hardware.",
+        ),
         allow_portable_expectations_update: bool = Option(
             False,
             "--allow-portable-expectations-update",
             help=PORTABLE_EXPECTATIONS_UPDATE_HELP_TEXT,
         ),
-        allow_mixed_provenance: bool = Option(False, "--allow-mixed-provenance", help="Allow expectation updates when provenance differs (commit/hardware/profile mismatch) without forcing updates. Does NOT accept regressions (use --accept-regressions or --update-expectations)."),
-        launch_via: str = Option("python", "--launch-via", help="Launcher to use for benchmarks: python or torchrun."),
-        nproc_per_node: Optional[int] = Option(None, "--nproc-per-node", help="torchrun --nproc_per_node value."),
+        allow_mixed_provenance: bool = Option(
+            False,
+            "--allow-mixed-provenance",
+            help="Allow expectation updates when provenance differs (commit/hardware/profile mismatch) without forcing updates. Does NOT accept regressions (use --accept-regressions or --update-expectations).",
+        ),
+        launch_via: str = Option(
+            "python", "--launch-via", help="Launcher to use for benchmarks: python or torchrun."
+        ),
+        nproc_per_node: Optional[int] = Option(
+            None, "--nproc-per-node", help="torchrun --nproc_per_node value."
+        ),
         nnodes: Optional[str] = Option(None, "--nnodes", help="torchrun --nnodes value."),
-        rdzv_backend: Optional[str] = Option(None, "--rdzv-backend", help="torchrun rendezvous backend (defaults to c10d when nnodes is set)."),
-        rdzv_endpoint: Optional[str] = Option(None, "--rdzv-endpoint", help="torchrun rendezvous endpoint (host:port)."),
-        torchrun_env: Optional[List[str]] = Option(None, "--torchrun-env", help="Environment variables to forward into torchrun launches (repeatable)."),
-        target_extra_args: Optional[List[str]] = Option(None, "--target-extra-arg", help='Per-target extra args, format: target="--flag value". Repeatable.'),
+        rdzv_backend: Optional[str] = Option(
+            None,
+            "--rdzv-backend",
+            help="torchrun rendezvous backend (defaults to c10d when nnodes is set).",
+        ),
+        rdzv_endpoint: Optional[str] = Option(
+            None, "--rdzv-endpoint", help="torchrun rendezvous endpoint (host:port)."
+        ),
+        torchrun_env: Optional[List[str]] = Option(
+            None,
+            "--torchrun-env",
+            help="Environment variables to forward into torchrun launches (repeatable).",
+        ),
+        target_extra_args: Optional[List[str]] = Option(
+            None,
+            "--target-extra-arg",
+            help='Per-target extra args, format: target="--flag value". Repeatable.',
+        ),
         # LLM analysis and patching options
-        llm_analysis: bool = Option(False, "--llm-analysis", help="Enable LLM-powered analysis for benchmarks with <1.1x speedup. Requires API keys in .env.local"),
-        force_llm: bool = Option(False, "--force-llm", help="Force LLM analysis on ALL benchmarks regardless of speedup. Use to try improving even good results."),
-        llm_provider: Optional[str] = Option(None, "--llm-provider", help="LLM provider: 'anthropic' or 'openai'. Defaults to env LLM_PROVIDER."),
-        apply_llm_patches: bool = Option(False, "--apply-llm-patches", help="Apply LLM-suggested patches to create new optimized variants. Requires --llm-analysis."),
-        rebenchmark_llm_patches: bool = Option(False, "--rebenchmark-llm-patches", help="Re-benchmark LLM-patched variants. Requires --apply-llm-patches."),
-        patch_strategy: str = Option("ast", "--patch-strategy", help="Patch strategy: 'ast' (default, AST-based) or 'fuzzy' (text matching)."),
-        llm_patch_retries: int = Option(2, "--llm-patch-retries", help="Max retry attempts when LLM patch fails (syntax/runtime errors). Default: 2"),
-        no_llm_cache: bool = Option(False, "--no-llm-cache", help="Disable LLM analysis caching (always re-run LLM even if cached results exist)."),
-        llm_explain: bool = Option(False, "--llm-explain", help="Generate educational explanations for best patches (why it works, optimization techniques used). Requires --rebenchmark-llm-patches."),
+        llm_analysis: bool = Option(
+            False,
+            "--llm-analysis",
+            help="Enable LLM-powered analysis for benchmarks with <1.1x speedup. Requires API keys in .env.local",
+        ),
+        force_llm: bool = Option(
+            False,
+            "--force-llm",
+            help="Force LLM analysis on ALL benchmarks regardless of speedup. Use to try improving even good results.",
+        ),
+        llm_provider: Optional[str] = Option(
+            None,
+            "--llm-provider",
+            help="LLM provider: 'anthropic' or 'openai'. Defaults to env LLM_PROVIDER.",
+        ),
+        apply_llm_patches: bool = Option(
+            False,
+            "--apply-llm-patches",
+            help="Apply LLM-suggested patches to create new optimized variants. Requires --llm-analysis.",
+        ),
+        rebenchmark_llm_patches: bool = Option(
+            False,
+            "--rebenchmark-llm-patches",
+            help="Re-benchmark LLM-patched variants. Requires --apply-llm-patches.",
+        ),
+        patch_strategy: str = Option(
+            "ast",
+            "--patch-strategy",
+            help="Patch strategy: 'ast' (default, AST-based) or 'fuzzy' (text matching).",
+        ),
+        llm_patch_retries: int = Option(
+            2,
+            "--llm-patch-retries",
+            help="Max retry attempts when LLM patch fails (syntax/runtime errors). Default: 2",
+        ),
+        no_llm_cache: bool = Option(
+            False,
+            "--no-llm-cache",
+            help="Disable LLM analysis caching (always re-run LLM even if cached results exist).",
+        ),
+        llm_explain: bool = Option(
+            False,
+            "--llm-explain",
+            help="Generate educational explanations for best patches (why it works, optimization techniques used). Requires --rebenchmark-llm-patches.",
+        ),
         # Verification - BOTH enabled by default; without verification, benchmarks are meaningless
-        skip_input_verify: bool = Option(False, "--skip-input-verify", help="Skip input equivalence verification. WARNING: Without this check, benchmark comparisons may be invalid (different workloads)."),
-        skip_output_verify: bool = Option(False, "--skip-output-verify", help="Skip output correctness verification. WARNING: Without this check, optimizations may produce incorrect results."),
-        skip_verify: bool = Option(False, "--skip-verify", help="Skip BOTH input and output verification. Equivalent to --skip-input-verify --skip-output-verify."),
-        verify_phase: str = Option("gate", "--verify-phase", help="Verification enforcement phase: 'detect' (report only), 'quarantine' (exclude non-compliant from reports), 'gate' (default, fail on verification failure)"),
-        precheck_only: bool = Option(False, "--precheck-only", help="Validate targets and print planned command without running."),
-        dry_run: bool = Option(False, "--dry-run", help="Describe planned execution without running benchmarks."),
+        skip_input_verify: bool = Option(
+            False,
+            "--skip-input-verify",
+            help="Skip input equivalence verification. WARNING: Without this check, benchmark comparisons may be invalid (different workloads).",
+        ),
+        skip_output_verify: bool = Option(
+            False,
+            "--skip-output-verify",
+            help="Skip output correctness verification. WARNING: Without this check, optimizations may produce incorrect results.",
+        ),
+        skip_verify: bool = Option(
+            False,
+            "--skip-verify",
+            help="Skip BOTH input and output verification. Equivalent to --skip-input-verify --skip-output-verify.",
+        ),
+        verify_phase: str = Option(
+            "gate",
+            "--verify-phase",
+            help="Verification enforcement phase: 'detect' (report only), 'quarantine' (exclude non-compliant from reports), 'gate' (default, fail on verification failure)",
+        ),
+        precheck_only: bool = Option(
+            False,
+            "--precheck-only",
+            help="Validate targets and print planned command without running.",
+        ),
+        dry_run: bool = Option(
+            False, "--dry-run", help="Describe planned execution without running benchmarks."
+        ),
     ):
         """Run benchmarks - discover, run, and summarize results.
 
@@ -1289,14 +1481,22 @@ if TYPER_AVAILABLE:
         active_bench_root = Path(bench_root).resolve() if bench_root else repo_root
 
         combined_targets: List[str] = []
-        for arg in (list(targets) if targets else []):
+        for arg in list(targets) if targets else []:
             if arg:
                 combined_targets.append(arg)
         for extra in ctx.args or []:
             if not extra:
                 continue
             # Drop stray values that belong to other options when Click defers parsing.
-            if extra.lower() in {"none", "minimal", "deep_dive", "roofline", "json", "markdown", "both"}:
+            if extra.lower() in {
+                "none",
+                "minimal",
+                "deep_dive",
+                "roofline",
+                "json",
+                "markdown",
+                "both",
+            }:
                 continue
             combined_targets.append(extra)
         # Final cleanup: drop any falsy or duplicate entries
@@ -1308,7 +1508,7 @@ if TYPER_AVAILABLE:
         # Set verification enforcement phase
         if verify_phase:
             os.environ["VERIFY_ENFORCEMENT_PHASE"] = verify_phase.lower()
-        
+
         if precheck_only or dry_run:
             plan = {
                 "precheck_only": precheck_only,
@@ -1388,14 +1588,47 @@ if TYPER_AVAILABLE:
 
     @app.command("run-tier1")
     def run_tier1(
-        config: Optional[Path] = Option(None, "--config", help="Path to tier-1 suite YAML (defaults to configs/benchmark_suites/tier1.yaml)."),
-        history_root: Optional[Path] = Option(None, "--history-root", help="Directory to store tier-1 history artifacts (default: artifacts/history/tier1)."),
-        bench_root: Optional[Path] = Option(None, "--bench-root", "-r", help="Root directory to scan for benchmarks (defaults to repo root)."),
-        output_format: Optional[str] = Option(None, "--format", "-f", help="Output format override: json, markdown, or both.", callback=lambda value: _validate_output_format(value) if value is not None else None),
-        profile_type: Optional[str] = Option(None, "--profile", "-p", help="Profile override for the suite (defaults to tier-1 config).", callback=lambda value: _validate_profile_type(value) if value is not None else None),
-        suite_timeout: Optional[int] = Option(14400, "--suite-timeout", help="Suite timeout in seconds (default: 14400 = 4 hours, 0 = disabled)"),
-        timeout_seconds: Optional[int] = Option(None, "--timeout-seconds", help="Override suite timeout in seconds (0 disables timeout)"),
-        timeout_multiplier: float = Option(3.0, "--timeout-multiplier", help="Multiply all benchmark timeouts by this factor."),
+        config: Optional[Path] = Option(
+            None,
+            "--config",
+            help="Path to tier-1 suite YAML (defaults to configs/benchmark_suites/tier1.yaml).",
+        ),
+        history_root: Optional[Path] = Option(
+            None,
+            "--history-root",
+            help="Directory to store tier-1 history artifacts (default: artifacts/history/tier1).",
+        ),
+        bench_root: Optional[Path] = Option(
+            None,
+            "--bench-root",
+            "-r",
+            help="Root directory to scan for benchmarks (defaults to repo root).",
+        ),
+        output_format: Optional[str] = Option(
+            None,
+            "--format",
+            "-f",
+            help="Output format override: json, markdown, or both.",
+            callback=lambda value: _validate_output_format(value) if value is not None else None,
+        ),
+        profile_type: Optional[str] = Option(
+            None,
+            "--profile",
+            "-p",
+            help="Profile override for the suite (defaults to tier-1 config).",
+            callback=lambda value: _validate_profile_type(value) if value is not None else None,
+        ),
+        suite_timeout: Optional[int] = Option(
+            14400,
+            "--suite-timeout",
+            help="Suite timeout in seconds (default: 14400 = 4 hours, 0 = disabled)",
+        ),
+        timeout_seconds: Optional[int] = Option(
+            None, "--timeout-seconds", help="Override suite timeout in seconds (0 disables timeout)"
+        ),
+        timeout_multiplier: float = Option(
+            3.0, "--timeout-multiplier", help="Multiply all benchmark timeouts by this factor."
+        ),
         validity_profile: str = Option(
             "strict",
             "--validity-profile",
@@ -1403,30 +1636,77 @@ if TYPER_AVAILABLE:
             callback=_validate_validity_profile,
         ),
         reproducible: bool = Option(False, "--reproducible", help="Enable reproducible mode."),
-        cold_start: bool = Option(False, "--cold-start", help="Reset GPU state between benchmarks for cold-start measurements."),
-        force_sync: bool = Option(False, "--force-sync", help="Force a device-wide synchronize immediately after benchmark_fn()."),
-        iterations: Optional[int] = Option(None, "--iterations", help="Override benchmark iterations."),
-        warmup: Optional[int] = Option(None, "--warmup", help="Override benchmark warmup iterations."),
-        gpu_sm_clock_mhz: Optional[int] = Option(None, "--gpu-sm-clock-mhz", help="Lock the SM application clock (MHz) for this run."),
-        gpu_mem_clock_mhz: Optional[int] = Option(None, "--gpu-mem-clock-mhz", help="Lock the GPU memory application clock (MHz) for this run."),
-        artifacts_dir: Optional[str] = Option(None, "--artifacts-dir", help="Base directory for benchmark run artifacts."),
+        cold_start: bool = Option(
+            False,
+            "--cold-start",
+            help="Reset GPU state between benchmarks for cold-start measurements.",
+        ),
+        force_sync: bool = Option(
+            False,
+            "--force-sync",
+            help="Force a device-wide synchronize immediately after benchmark_fn().",
+        ),
+        iterations: Optional[int] = Option(
+            None, "--iterations", help="Override benchmark iterations."
+        ),
+        warmup: Optional[int] = Option(
+            None, "--warmup", help="Override benchmark warmup iterations."
+        ),
+        gpu_sm_clock_mhz: Optional[int] = Option(
+            None, "--gpu-sm-clock-mhz", help="Lock the SM application clock (MHz) for this run."
+        ),
+        gpu_mem_clock_mhz: Optional[int] = Option(
+            None,
+            "--gpu-mem-clock-mhz",
+            help="Lock the GPU memory application clock (MHz) for this run.",
+        ),
+        artifacts_dir: Optional[str] = Option(
+            None, "--artifacts-dir", help="Base directory for benchmark run artifacts."
+        ),
         run_id: Optional[str] = Option(None, "--run-id", help="Explicit run id."),
-        log_level: str = Option("INFO", "--log-level", help="Log level: DEBUG, INFO, WARNING, ERROR"),
+        log_level: str = Option(
+            "INFO", "--log-level", help="Log level: DEBUG, INFO, WARNING, ERROR"
+        ),
         log_file: Optional[str] = Option(None, "--log-file", help="Path to log file."),
         single_gpu: bool = Option(False, "--single-gpu", help="Force single-GPU visibility."),
-        accept_regressions: bool = Option(False, "--accept-regressions", help="Update expectation files when improvements are detected instead of flagging regressions."),
-        update_expectations: bool = Option(False, "--update-expectations", help="Force-write observed metrics into expectation files (overrides regressions). Useful for refreshing baselines on new hardware."),
-        allow_mixed_provenance: bool = Option(False, "--allow-mixed-provenance", help="Allow expectation updates when provenance differs (commit/hardware/profile mismatch) without forcing updates. Does NOT accept regressions (use --accept-regressions or --update-expectations)."),
-        ncu_metric_set: str = Option("minimal", "--ncu-metric-set", help="Nsight Compute metric preset.", callback=_validate_ncu_metric_set),
+        accept_regressions: bool = Option(
+            False,
+            "--accept-regressions",
+            help="Update expectation files when improvements are detected instead of flagging regressions.",
+        ),
+        update_expectations: bool = Option(
+            False,
+            "--update-expectations",
+            help="Force-write observed metrics into expectation files (overrides regressions). Useful for refreshing baselines on new hardware.",
+        ),
+        allow_mixed_provenance: bool = Option(
+            False,
+            "--allow-mixed-provenance",
+            help="Allow expectation updates when provenance differs (commit/hardware/profile mismatch) without forcing updates. Does NOT accept regressions (use --accept-regressions or --update-expectations).",
+        ),
+        ncu_metric_set: str = Option(
+            "minimal",
+            "--ncu-metric-set",
+            help="Nsight Compute metric preset.",
+            callback=_validate_ncu_metric_set,
+        ),
         ncu_replay_mode: Optional[str] = Option(
             None,
             "--ncu-replay-mode",
             help="Nsight Compute replay mode: kernel or application. If omitted, suite or benchmark-specific config applies.",
             callback=_validate_ncu_replay_mode,
         ),
-        nsys_timeout_seconds: Optional[int] = Option(None, "--nsys-timeout-seconds", help="Override Nsight Systems timeout in seconds."),
-        ncu_timeout_seconds: Optional[int] = Option(None, "--ncu-timeout-seconds", help="Override Nsight Compute timeout in seconds."),
-        allow_portable_expectations_update: bool = Option(False, "--allow-portable-expectations-update", help=PORTABLE_EXPECTATIONS_UPDATE_HELP_TEXT),
+        nsys_timeout_seconds: Optional[int] = Option(
+            None, "--nsys-timeout-seconds", help="Override Nsight Systems timeout in seconds."
+        ),
+        ncu_timeout_seconds: Optional[int] = Option(
+            None, "--ncu-timeout-seconds", help="Override Nsight Compute timeout in seconds."
+        ),
+        allow_portable_expectations_update: bool = Option(
+            False,
+            "--allow-portable-expectations-update",
+            help=PORTABLE_EXPECTATIONS_UPDATE_HELP_TEXT,
+        ),
     ):
         """Run the canonical tier-1 suite and write summary/history artifacts."""
         from core.benchmark.suites.tier1 import run_tier1_suite as _run_tier1_suite
@@ -1479,42 +1759,135 @@ if TYPER_AVAILABLE:
 
     @app.command("run-e2e")
     def run_e2e(
-        run_tier1: bool = Option(True, "--run-tier1/--no-run-tier1", help="Run the canonical tier-1 suite stage."),
-        run_full_sweep: bool = Option(False, "--run-full-sweep/--no-run-full-sweep", help="Run the heavier discovered full benchmark sweep."),
-        run_cluster: bool = Option(True, "--run-cluster/--no-run-cluster", help="Run the cluster common-eval stage."),
-        run_fabric: bool = Option(True, "--run-fabric/--no-run-fabric", help="Run the dedicated fabric-eval stage."),
-        cluster_preset: str = Option("common-answer-fast", "--cluster-preset", help="Cluster common-eval preset to run."),
-        bench_root: Optional[Path] = Option(None, "--bench-root", "-r", help="Root directory to scan for benchmarks (defaults to repo root)."),
-        hosts: Optional[List[str]] = Option(None, "--hosts", help="Cluster host list. Repeat the flag for multiple hosts; defaults to localhost."),
-        labels: Optional[List[str]] = Option(None, "--labels", help="Optional labels matching --hosts."),
-        ssh_user: Optional[str] = Option(None, "--ssh-user", help="SSH user for non-local cluster runs."),
-        ssh_key: Optional[str] = Option(None, "--ssh-key", help="SSH key path for non-local cluster runs."),
-        profile_type: str = Option("minimal", "--profile", "-p", help="Profiling preset: minimal (default), none, deep_dive, or roofline.", callback=_validate_profile_type),
-        suite_timeout: Optional[int] = Option(14400, "--suite-timeout", help="Benchmark suite timeout in seconds (default: 14400 = 4 hours, 0 = disabled)."),
-        full_sweep_suite_timeout: Optional[int] = Option(0, "--full-sweep-suite-timeout", help="Aggregate suite timeout applied to each full-sweep benchmark bucket. Default 0 disables the bucket-wide watchdog while preserving per-benchmark/profiler timeouts."),
-        timeout_seconds: Optional[int] = Option(None, "--timeout-seconds", help="Optional cluster stage timeout in seconds."),
-        artifacts_dir: Optional[str] = Option(None, "--artifacts-dir", help="Base directory for benchmark run artifacts."),
-        run_id: Optional[str] = Option(None, "--run-id", help="Explicit top-level e2e sweep run id."),
+        run_tier1: bool = Option(
+            True, "--run-tier1/--no-run-tier1", help="Run the canonical tier-1 suite stage."
+        ),
+        run_full_sweep: bool = Option(
+            False,
+            "--run-full-sweep/--no-run-full-sweep",
+            help="Run the heavier discovered full benchmark sweep.",
+        ),
+        run_cluster: bool = Option(
+            True, "--run-cluster/--no-run-cluster", help="Run the cluster common-eval stage."
+        ),
+        run_fabric: bool = Option(
+            True, "--run-fabric/--no-run-fabric", help="Run the dedicated fabric-eval stage."
+        ),
+        cluster_preset: str = Option(
+            "common-answer-fast", "--cluster-preset", help="Cluster common-eval preset to run."
+        ),
+        bench_root: Optional[Path] = Option(
+            None,
+            "--bench-root",
+            "-r",
+            help="Root directory to scan for benchmarks (defaults to repo root).",
+        ),
+        hosts: Optional[List[str]] = Option(
+            None,
+            "--hosts",
+            help="Cluster host list. Repeat the flag for multiple hosts; defaults to localhost.",
+        ),
+        labels: Optional[List[str]] = Option(
+            None, "--labels", help="Optional labels matching --hosts."
+        ),
+        ssh_user: Optional[str] = Option(
+            None, "--ssh-user", help="SSH user for non-local cluster runs."
+        ),
+        ssh_key: Optional[str] = Option(
+            None, "--ssh-key", help="SSH key path for non-local cluster runs."
+        ),
+        profile_type: str = Option(
+            "minimal",
+            "--profile",
+            "-p",
+            help="Profiling preset: minimal (default), none, deep_dive, or roofline.",
+            callback=_validate_profile_type,
+        ),
+        suite_timeout: Optional[int] = Option(
+            14400,
+            "--suite-timeout",
+            help="Benchmark suite timeout in seconds (default: 14400 = 4 hours, 0 = disabled).",
+        ),
+        full_sweep_suite_timeout: Optional[int] = Option(
+            0,
+            "--full-sweep-suite-timeout",
+            help="Aggregate suite timeout applied to each full-sweep benchmark bucket. Default 0 disables the bucket-wide watchdog while preserving per-benchmark/profiler timeouts.",
+        ),
+        timeout_seconds: Optional[int] = Option(
+            None, "--timeout-seconds", help="Optional cluster stage timeout in seconds."
+        ),
+        artifacts_dir: Optional[str] = Option(
+            None, "--artifacts-dir", help="Base directory for benchmark run artifacts."
+        ),
+        run_id: Optional[str] = Option(
+            None, "--run-id", help="Explicit top-level e2e sweep run id."
+        ),
         validity_profile: str = Option(
             "strict",
             "--validity-profile",
             help=VALIDITY_PROFILE_HELP_TEXT,
             callback=_validate_validity_profile,
         ),
-        single_gpu: bool = Option(False, "--single-gpu", help="Force single-GPU visibility for benchmark stages."),
-        iterations: Optional[int] = Option(None, "--iterations", help="Override benchmark iterations."),
-        warmup: Optional[int] = Option(None, "--warmup", help="Override benchmark warmup iterations."),
-        gpu_sm_clock_mhz: Optional[int] = Option(None, "--gpu-sm-clock-mhz", help="Lock the SM application clock (MHz) for benchmark stages."),
-        gpu_mem_clock_mhz: Optional[int] = Option(None, "--gpu-mem-clock-mhz", help="Lock the GPU memory application clock (MHz) for benchmark stages."),
-        accept_regressions: bool = Option(False, "--accept-regressions", help="Update expectation files when improvements are detected instead of flagging regressions."),
-        update_expectations: bool = Option(False, "--update-expectations", help="Force-write observed metrics into expectation files (overrides regressions). Useful for refreshing baselines on new hardware."),
-        allow_mixed_provenance: bool = Option(False, "--allow-mixed-provenance", help="Allow expectation updates when provenance differs (commit/hardware/profile mismatch) without forcing updates. Does NOT accept regressions (use --accept-regressions or --update-expectations)."),
-        allow_portable_expectations_update: bool = Option(False, "--allow-portable-expectations-update", help=PORTABLE_EXPECTATIONS_UPDATE_HELP_TEXT),
-        auto_resume: bool = Option(True, "--auto-resume/--no-auto-resume", help="Launch a detached watcher that auto-resumes stale or aborted e2e runs using the stored contract."),
-        max_auto_resumes: int = Option(3, "--max-auto-resumes", help="Maximum detached auto-resume attempts before the watcher gives up."),
-        watch_poll_interval_seconds: int = Option(15, "--watch-poll-interval-seconds", help="Detached watcher poll interval in seconds."),
-        resume: bool = Option(False, "--resume", help="Resume an aborted e2e run. Requires --run-id and preserves prior stage artifacts."),
-        dry_run: bool = Option(False, "--dry-run", help="Describe planned execution without running stages."),
+        single_gpu: bool = Option(
+            False, "--single-gpu", help="Force single-GPU visibility for benchmark stages."
+        ),
+        iterations: Optional[int] = Option(
+            None, "--iterations", help="Override benchmark iterations."
+        ),
+        warmup: Optional[int] = Option(
+            None, "--warmup", help="Override benchmark warmup iterations."
+        ),
+        gpu_sm_clock_mhz: Optional[int] = Option(
+            None,
+            "--gpu-sm-clock-mhz",
+            help="Lock the SM application clock (MHz) for benchmark stages.",
+        ),
+        gpu_mem_clock_mhz: Optional[int] = Option(
+            None,
+            "--gpu-mem-clock-mhz",
+            help="Lock the GPU memory application clock (MHz) for benchmark stages.",
+        ),
+        accept_regressions: bool = Option(
+            False,
+            "--accept-regressions",
+            help="Update expectation files when improvements are detected instead of flagging regressions.",
+        ),
+        update_expectations: bool = Option(
+            False,
+            "--update-expectations",
+            help="Force-write observed metrics into expectation files (overrides regressions). Useful for refreshing baselines on new hardware.",
+        ),
+        allow_mixed_provenance: bool = Option(
+            False,
+            "--allow-mixed-provenance",
+            help="Allow expectation updates when provenance differs (commit/hardware/profile mismatch) without forcing updates. Does NOT accept regressions (use --accept-regressions or --update-expectations).",
+        ),
+        allow_portable_expectations_update: bool = Option(
+            False,
+            "--allow-portable-expectations-update",
+            help=PORTABLE_EXPECTATIONS_UPDATE_HELP_TEXT,
+        ),
+        auto_resume: bool = Option(
+            True,
+            "--auto-resume/--no-auto-resume",
+            help="Launch a detached watcher that auto-resumes stale or aborted e2e runs using the stored contract.",
+        ),
+        max_auto_resumes: int = Option(
+            3,
+            "--max-auto-resumes",
+            help="Maximum detached auto-resume attempts before the watcher gives up.",
+        ),
+        watch_poll_interval_seconds: int = Option(
+            15, "--watch-poll-interval-seconds", help="Detached watcher poll interval in seconds."
+        ),
+        resume: bool = Option(
+            False,
+            "--resume",
+            help="Resume an aborted e2e run. Requires --run-id and preserves prior stage artifacts.",
+        ),
+        dry_run: bool = Option(
+            False, "--dry-run", help="Describe planned execution without running stages."
+        ),
     ):
         """Run tier1, optional full sweep, cluster common eval, and optional fabric eval in one orchestrated flow."""
         from core.benchmark.e2e_sweep import run_benchmark_e2e_sweep
@@ -1558,14 +1931,33 @@ if TYPER_AVAILABLE:
 
     @app.command("run-e2e-status")
     def run_e2e_status(
-        run_id: Optional[str] = Option(None, "--run-id", help="Explicit e2e run id to inspect; defaults to the latest run."),
-        artifacts_dir: Optional[str] = Option(None, "--artifacts-dir", help="Base directory for benchmark run artifacts."),
-        recent_events: int = Option(10, "--recent-events", help="How many recent top-level and child events to include."),
-        watch: bool = Option(False, "--watch", help="Continuously print status snapshots until the run reaches a terminal state."),
-        poll_interval_seconds: int = Option(15, "--poll-interval-seconds", help="Polling interval in seconds when --watch is enabled."),
-        as_json: bool = Option(False, "--json", help="Emit structured JSON instead of the concise text view."),
+        run_id: Optional[str] = Option(
+            None, "--run-id", help="Explicit e2e run id to inspect; defaults to the latest run."
+        ),
+        artifacts_dir: Optional[str] = Option(
+            None, "--artifacts-dir", help="Base directory for benchmark run artifacts."
+        ),
+        recent_events: int = Option(
+            10, "--recent-events", help="How many recent top-level and child events to include."
+        ),
+        watch: bool = Option(
+            False,
+            "--watch",
+            help="Continuously print status snapshots until the run reaches a terminal state.",
+        ),
+        poll_interval_seconds: int = Option(
+            15,
+            "--poll-interval-seconds",
+            help="Polling interval in seconds when --watch is enabled.",
+        ),
+        as_json: bool = Option(
+            False, "--json", help="Emit structured JSON instead of the concise text view."
+        ),
     ):
-        from core.benchmark.e2e_sweep import inspect_benchmark_e2e_sweep_run, render_benchmark_e2e_status_text
+        from core.benchmark.e2e_sweep import (
+            inspect_benchmark_e2e_sweep_run,
+            render_benchmark_e2e_status_text,
+        )
 
         last_rendered: Optional[str] = None
         while True:
@@ -1574,7 +1966,11 @@ if TYPER_AVAILABLE:
                 artifacts_dir=artifacts_dir,
                 recent_events_limit=recent_events,
             )
-            rendered = json.dumps(result, indent=2) if as_json else render_benchmark_e2e_status_text(result)
+            rendered = (
+                json.dumps(result, indent=2)
+                if as_json
+                else render_benchmark_e2e_status_text(result)
+            )
             if rendered != last_rendered:
                 typer.echo(rendered)
                 last_rendered = rendered
@@ -1592,15 +1988,28 @@ if TYPER_AVAILABLE:
 
     @app.command("watch-e2e")
     def watch_e2e(
-        run_id: Optional[str] = Option(None, "--run-id", help="Explicit e2e run id to supervise; defaults to the latest run."),
-        poll_interval_seconds: int = Option(15, "--poll-interval-seconds", help="Detached watcher poll interval in seconds."),
-        max_auto_resumes: int = Option(3, "--max-auto-resumes", help="Maximum detached auto-resume attempts before the watcher gives up."),
+        run_id: Optional[str] = Option(
+            None, "--run-id", help="Explicit e2e run id to supervise; defaults to the latest run."
+        ),
+        poll_interval_seconds: int = Option(
+            15, "--poll-interval-seconds", help="Detached watcher poll interval in seconds."
+        ),
+        max_auto_resumes: int = Option(
+            3,
+            "--max-auto-resumes",
+            help="Maximum detached auto-resume attempts before the watcher gives up.",
+        ),
     ):
-        from core.benchmark.e2e_sweep import resolve_latest_e2e_run_id, watch_benchmark_e2e_sweep_run
+        from core.benchmark.e2e_sweep import (
+            resolve_latest_e2e_run_id,
+            watch_benchmark_e2e_sweep_run,
+        )
 
         resolved_run_id = run_id or resolve_latest_e2e_run_id()
         if not resolved_run_id:
-            typer.echo(json.dumps({"success": False, "error": "No e2e runs found to watch."}, indent=2))
+            typer.echo(
+                json.dumps({"success": False, "error": "No e2e runs found to watch."}, indent=2)
+            )
             raise typer.Exit(code=1)
         result = watch_benchmark_e2e_sweep_run(
             run_id=resolved_run_id,
@@ -1623,20 +2032,65 @@ if TYPER_AVAILABLE:
                 "The tool then copies the wrapper and runs variants on the copy."
             ),
         ),
-        copy_tag: str = Option("mcp_copy", "--copy-tag", help="Suffix tag for copied baseline files (default: mcp_copy)."),
-        copy_cu: bool = Option(True, "--copy-cu/--no-copy-cu", help="Copy matching baseline_*.cu file if present."),
-        max_variants: int = Option(3, "--max-variants", help="Max number of LLM variants to report (clamped to 1-3)."),
-        deep_dive: str = Option("auto", "--deep-dive", help="Deep-dive mode: auto, always, or never.", callback=_validate_deep_dive_mode),
-        deep_dive_speedup_threshold: float = Option(1.05, "--deep-dive-speedup-threshold", help="Speedup threshold below which deep_dive is triggered in auto mode."),
-        artifacts_dir: Optional[str] = Option(None, "--artifacts-dir", help="Base directory for run artifacts (default: ./artifacts/runs)."),
-        run_id: Optional[str] = Option(None, "--run-id", help="Run ID for artifacts (default: <timestamp>__explore__<label>)."),
-        iterations: Optional[int] = Option(None, "--iterations", help="Override benchmark iterations for minimal profiling run."),
-        warmup: Optional[int] = Option(None, "--warmup", help="Override warmup iterations for minimal profiling run."),
-        timeout_seconds: Optional[int] = Option(0, "--timeout-seconds", help="Max runtime for minimal profiling run (0 disables timeout)."),
-        deep_dive_iterations: int = Option(1, "--deep-dive-iterations", help="Override iterations for deep_dive run (default: 1)."),
-        deep_dive_warmup: int = Option(5, "--deep-dive-warmup", help="Override warmup iterations for deep_dive run (default: 5)."),
-        deep_dive_timeout_seconds: Optional[int] = Option(0, "--deep-dive-timeout-seconds", help="Max runtime for deep_dive run (0 disables timeout)."),
-        update_expectations: bool = Option(True, "--update-expectations/--no-update-expectations", help="Force-write observed metrics into expectation files (recommended)."),
+        copy_tag: str = Option(
+            "mcp_copy",
+            "--copy-tag",
+            help="Suffix tag for copied baseline files (default: mcp_copy).",
+        ),
+        copy_cu: bool = Option(
+            True, "--copy-cu/--no-copy-cu", help="Copy matching baseline_*.cu file if present."
+        ),
+        max_variants: int = Option(
+            3, "--max-variants", help="Max number of LLM variants to report (clamped to 1-3)."
+        ),
+        deep_dive: str = Option(
+            "auto",
+            "--deep-dive",
+            help="Deep-dive mode: auto, always, or never.",
+            callback=_validate_deep_dive_mode,
+        ),
+        deep_dive_speedup_threshold: float = Option(
+            1.05,
+            "--deep-dive-speedup-threshold",
+            help="Speedup threshold below which deep_dive is triggered in auto mode.",
+        ),
+        artifacts_dir: Optional[str] = Option(
+            None,
+            "--artifacts-dir",
+            help="Base directory for run artifacts (default: ./artifacts/runs).",
+        ),
+        run_id: Optional[str] = Option(
+            None, "--run-id", help="Run ID for artifacts (default: <timestamp>__explore__<label>)."
+        ),
+        iterations: Optional[int] = Option(
+            None, "--iterations", help="Override benchmark iterations for minimal profiling run."
+        ),
+        warmup: Optional[int] = Option(
+            None, "--warmup", help="Override warmup iterations for minimal profiling run."
+        ),
+        timeout_seconds: Optional[int] = Option(
+            0,
+            "--timeout-seconds",
+            help="Max runtime for minimal profiling run (0 disables timeout).",
+        ),
+        deep_dive_iterations: int = Option(
+            1, "--deep-dive-iterations", help="Override iterations for deep_dive run (default: 1)."
+        ),
+        deep_dive_warmup: int = Option(
+            5,
+            "--deep-dive-warmup",
+            help="Override warmup iterations for deep_dive run (default: 5).",
+        ),
+        deep_dive_timeout_seconds: Optional[int] = Option(
+            0,
+            "--deep-dive-timeout-seconds",
+            help="Max runtime for deep_dive run (0 disables timeout).",
+        ),
+        update_expectations: bool = Option(
+            True,
+            "--update-expectations/--no-update-expectations",
+            help="Force-write observed metrics into expectation files (recommended).",
+        ),
         validity_profile: str = Option(
             "strict",
             "--validity-profile",
@@ -1648,7 +2102,9 @@ if TYPER_AVAILABLE:
             "--allow-portable-expectations-update",
             help=PORTABLE_EXPECTATIONS_UPDATE_HELP_TEXT,
         ),
-        async_run: bool = Option(False, "--async", help="Run in background and return job_id; poll with job_status."),
+        async_run: bool = Option(
+            False, "--async", help="Run in background and return job_id; poll with job_status."
+        ),
     ):
         """Copy a baseline benchmark, run LLM variants with profiling, and compare utilization."""
         from mcp.mcp_server import tool_benchmark_explore
@@ -1680,25 +2136,56 @@ if TYPER_AVAILABLE:
 
     @app.command("verify")
     def verify(
-        targets: Optional[List[str]] = Option(None, "--targets", "-t", help="Chapter(s) or chapter:example pairs to verify. Repeat the flag for multiple targets. Omit or use 'all' for every chapter."),
-        bench_root: Optional[Path] = Option(None, "--bench-root", "-r", help="Root directory to scan for benchmarks (defaults to repo root)."),
-        verify_phase: str = Option("gate", "--verify-phase", "-p", help="Verification enforcement phase: 'detect' (report only), 'quarantine' (exclude non-compliant), 'gate' (default, strict enforcement)"),
-        skip_jitter: bool = Option(False, "--skip-jitter", help="Skip jitter check (output changes when inputs are perturbed)"),
-        skip_fresh_input: bool = Option(False, "--skip-fresh-input", help="Skip fresh-input check (different seeds produce different outputs)"),
-        skip_workload: bool = Option(False, "--skip-workload", help="Skip workload invariant check (bytes/tokens/ops per iteration)"),
+        targets: Optional[List[str]] = Option(
+            None,
+            "--targets",
+            "-t",
+            help="Chapter(s) or chapter:example pairs to verify. Repeat the flag for multiple targets. Omit or use 'all' for every chapter.",
+        ),
+        bench_root: Optional[Path] = Option(
+            None,
+            "--bench-root",
+            "-r",
+            help="Root directory to scan for benchmarks (defaults to repo root).",
+        ),
+        verify_phase: str = Option(
+            "gate",
+            "--verify-phase",
+            "-p",
+            help="Verification enforcement phase: 'detect' (report only), 'quarantine' (exclude non-compliant), 'gate' (default, strict enforcement)",
+        ),
+        skip_jitter: bool = Option(
+            False,
+            "--skip-jitter",
+            help="Skip jitter check (output changes when inputs are perturbed)",
+        ),
+        skip_fresh_input: bool = Option(
+            False,
+            "--skip-fresh-input",
+            help="Skip fresh-input check (different seeds produce different outputs)",
+        ),
+        skip_workload: bool = Option(
+            False,
+            "--skip-workload",
+            help="Skip workload invariant check (bytes/tokens/ops per iteration)",
+        ),
         json_output: bool = Option(False, "--json", help="Output results as JSON"),
-        verbose: bool = Option(False, "--verbose", "-v", help="Verbose output with detailed comparison info"),
-        clear_cache: bool = Option(False, "--clear-cache", help="Clear golden output cache before verification"),
+        verbose: bool = Option(
+            False, "--verbose", "-v", help="Verbose output with detailed comparison info"
+        ),
+        clear_cache: bool = Option(
+            False, "--clear-cache", help="Clear golden output cache before verification"
+        ),
     ):
         """Verify benchmark pairs for correctness without measuring performance.
-        
+
         Runs verification checks on baseline/optimized benchmark pairs:
         - Input signature matching (same batch size, dtypes, shapes)
         - Output correctness (optimized produces same outputs as baseline)
         - Jitter check (outputs change when inputs are perturbed)
         - Fresh-input check (different seeds produce different outputs)
         - Workload invariant check (same bytes/tokens/ops per iteration)
-        
+
         Examples:
             aisp bench verify                     # Verify all chapters
             aisp bench verify -t ch11            # Verify chapter 11
@@ -1706,7 +2193,11 @@ if TYPER_AVAILABLE:
             aisp bench verify --json             # JSON output for CI
         """
         from core.benchmark.verify_runner import VerifyRunner, VerifyConfig
-        from core.benchmark.verification import EnforcementPhase, QuarantineReason, get_enforcement_phase
+        from core.benchmark.verification import (
+            EnforcementPhase,
+            QuarantineReason,
+            get_enforcement_phase,
+        )
         from core.benchmark.quarantine import QuarantineManager
         from core.discovery import chapter_slug, discover_benchmarks
         import importlib.util
@@ -1806,33 +2297,39 @@ if TYPER_AVAILABLE:
             return out
 
         for chapter_dir in chapter_dirs:
-            chapter_slug_name = chapter_slug(chapter_dir, active_bench_root, bench_root=active_bench_root)
+            chapter_slug_name = chapter_slug(
+                chapter_dir, active_bench_root, bench_root=active_bench_root
+            )
             allowed_examples = chapter_filters.get(chapter_slug_name, set())
 
-            typer.echo(f"\n{'='*60}")
+            typer.echo(f"\n{'=' * 60}")
             typer.echo(f"📋 Verifying {chapter_slug_name}")
-            typer.echo(f"{'='*60}")
+            typer.echo(f"{'=' * 60}")
 
             try:
                 pairs = discover_benchmarks(chapter_dir)
             except Exception as e:
                 typer.echo(f"  ⚠️  Could not find benchmark pairs: {e}")
                 skipped_count += 1
-                results.append({
-                    "chapter": chapter_slug_name,
-                    "status": "skipped",
-                    "reason": str(e),
-                })
+                results.append(
+                    {
+                        "chapter": chapter_slug_name,
+                        "status": "skipped",
+                        "reason": str(e),
+                    }
+                )
                 continue
 
             if not pairs:
                 typer.echo(f"  ⏭️  No benchmark pairs found")
                 skipped_count += 1
-                results.append({
-                    "chapter": chapter_slug_name,
-                    "status": "skipped",
-                    "reason": "No benchmark pairs found",
-                })
+                results.append(
+                    {
+                        "chapter": chapter_slug_name,
+                        "status": "skipped",
+                        "reason": "No benchmark pairs found",
+                    }
+                )
                 continue
 
             # De-dupe alias pairs: discover_benchmarks() yields both canonical entries (one baseline to N optimized)
@@ -1858,7 +2355,9 @@ if TYPER_AVAILABLE:
 
             for baseline_path in sorted(grouped.keys(), key=lambda p: p.as_posix()):
                 group = grouped[baseline_path]
-                base_example = str(group.get("base_example", baseline_path.stem.replace("baseline_", "", 1)))
+                base_example = str(
+                    group.get("base_example", baseline_path.stem.replace("baseline_", "", 1))
+                )
                 canonical_opts = list(group.get("optimized_paths", []))  # type: ignore[list-item]
                 if not canonical_opts:
                     continue
@@ -1887,7 +2386,9 @@ if TYPER_AVAILABLE:
                     load_reason = str(e)
                     load_skipped = load_reason.startswith("SKIPPED:")
                     for optimized_path in selected_opts:
-                        pair_name = f"{base_example}/{optimized_path.stem.replace('optimized_', '')}"
+                        pair_name = (
+                            f"{base_example}/{optimized_path.stem.replace('optimized_', '')}"
+                        )
                         typer.echo(f"\n  🔍 {pair_name}:")
                         typer.echo(f"      Baseline:  {baseline_path.name}")
                         typer.echo(f"      Optimized: {optimized_path.name}")
@@ -1897,17 +2398,23 @@ if TYPER_AVAILABLE:
                         else:
                             typer.echo(f"      ❌ ERROR: Failed to load baseline benchmark: {e}")
                             failed_count += 1
-                        results.append({
-                            "chapter": chapter_slug_name,
-                            "pair": pair_name,
-                            "status": "skipped" if load_skipped else "error",
-                            "reason": load_reason if load_skipped else f"Failed to load baseline benchmark: {e}",
-                        })
+                        results.append(
+                            {
+                                "chapter": chapter_slug_name,
+                                "pair": pair_name,
+                                "status": "skipped" if load_skipped else "error",
+                                "reason": load_reason
+                                if load_skipped
+                                else f"Failed to load baseline benchmark: {e}",
+                            }
+                        )
                     continue
 
                 baseline_result = verify_runner.verify_baseline(baseline, config=verify_config)
                 baseline_reason = _format_reason(baseline_result.reason)
-                baseline_skipped = (not baseline_result.passed) and baseline_reason.startswith("SKIPPED:")
+                baseline_skipped = (not baseline_result.passed) and baseline_reason.startswith(
+                    "SKIPPED:"
+                )
 
                 if not baseline_result.passed and not baseline_skipped:
                     if phase in (EnforcementPhase.QUARANTINE, EnforcementPhase.GATE):
@@ -1932,12 +2439,14 @@ if TYPER_AVAILABLE:
                             else:
                                 typer.echo(f"      ❌ FAILED: {baseline_reason}")
                                 failed_count += 1
-                            results.append({
-                                "chapter": chapter_slug_name,
-                                "pair": pair_name,
-                                "status": status,
-                                "reason": baseline_reason,
-                            })
+                            results.append(
+                                {
+                                    "chapter": chapter_slug_name,
+                                    "pair": pair_name,
+                                    "status": status,
+                                    "reason": baseline_reason,
+                                }
+                            )
                             continue
 
                         try:
@@ -1949,33 +2458,47 @@ if TYPER_AVAILABLE:
                                 typer.echo(f"      ⏭️  SKIPPED: {load_reason}")
                                 skipped_count += 1
                             else:
-                                typer.echo(f"      ❌ ERROR: Failed to load optimized benchmark: {e}")
+                                typer.echo(
+                                    f"      ❌ ERROR: Failed to load optimized benchmark: {e}"
+                                )
                                 failed_count += 1
-                            results.append({
-                                "chapter": chapter_slug_name,
-                                "pair": pair_name,
-                                "status": "skipped" if load_skipped else "error",
-                                "reason": load_reason if load_skipped else f"Failed to load optimized benchmark: {e}",
-                            })
+                            results.append(
+                                {
+                                    "chapter": chapter_slug_name,
+                                    "pair": pair_name,
+                                    "status": "skipped" if load_skipped else "error",
+                                    "reason": load_reason
+                                    if load_skipped
+                                    else f"Failed to load optimized benchmark: {e}",
+                                }
+                            )
                             continue
 
                         # Validate timing config matches (anti-gaming)
                         if not verify_config.skip_timing_validation:
-                            timing_valid, timing_error = verify_runner._validate_timing_config(baseline, optimized)  # noqa: SLF001
+                            timing_valid, timing_error = verify_runner._validate_timing_config(
+                                baseline, optimized
+                            )  # noqa: SLF001
                             if not timing_valid:
-                                typer.echo(f"      ❌ FAILED: {QuarantineReason.TIMING_CONFIG_MISMATCH.value}")
+                                typer.echo(
+                                    f"      ❌ FAILED: {QuarantineReason.TIMING_CONFIG_MISMATCH.value}"
+                                )
                                 if verbose and timing_error:
                                     typer.echo(f"         Details: {timing_error}")
                                 failed_count += 1
-                                results.append({
-                                    "chapter": chapter_slug_name,
-                                    "pair": pair_name,
-                                    "status": "failed",
-                                    "reason": QuarantineReason.TIMING_CONFIG_MISMATCH.value,
-                                    "details": timing_error,
-                                })
+                                results.append(
+                                    {
+                                        "chapter": chapter_slug_name,
+                                        "pair": pair_name,
+                                        "status": "failed",
+                                        "reason": QuarantineReason.TIMING_CONFIG_MISMATCH.value,
+                                        "details": timing_error,
+                                    }
+                                )
                                 if phase in (EnforcementPhase.QUARANTINE, EnforcementPhase.GATE):
-                                    quarantine_mgr.quarantine(str(optimized_path), QuarantineReason.TIMING_CONFIG_MISMATCH)
+                                    quarantine_mgr.quarantine(
+                                        str(optimized_path), QuarantineReason.TIMING_CONFIG_MISMATCH
+                                    )
                                 continue
 
                         # Run verification (baseline golden output already cached)
@@ -1985,11 +2508,13 @@ if TYPER_AVAILABLE:
                             quarantine_mgr.clear_quarantine(str(optimized_path))
                             typer.echo(f"      ✅ PASSED")
                             passed_count += 1
-                            results.append({
-                                "chapter": chapter_slug_name,
-                                "pair": pair_name,
-                                "status": "passed",
-                            })
+                            results.append(
+                                {
+                                    "chapter": chapter_slug_name,
+                                    "pair": pair_name,
+                                    "status": "passed",
+                                }
+                            )
                         else:
                             reason_str = _format_reason(result.reason)
                             is_skipped = reason_str.startswith("SKIPPED:")
@@ -2001,16 +2526,21 @@ if TYPER_AVAILABLE:
                                 failed_count += 1
                             if verbose and result.details:
                                 typer.echo(f"         Details: {result.details}")
-                            results.append({
-                                "chapter": chapter_slug_name,
-                                "pair": pair_name,
-                                "status": "skipped" if is_skipped else "failed",
-                                "reason": reason_str,
-                                "details": result.details,
-                            })
+                            results.append(
+                                {
+                                    "chapter": chapter_slug_name,
+                                    "pair": pair_name,
+                                    "status": "skipped" if is_skipped else "failed",
+                                    "reason": reason_str,
+                                    "details": result.details,
+                                }
+                            )
 
                             # Quarantine if in quarantine or gate phase
-                            if (not is_skipped) and phase in (EnforcementPhase.QUARANTINE, EnforcementPhase.GATE):
+                            if (not is_skipped) and phase in (
+                                EnforcementPhase.QUARANTINE,
+                                EnforcementPhase.GATE,
+                            ):
                                 qr = _to_quarantine_reason(result.reason)
                                 if qr is not None:
                                     quarantine_mgr.quarantine(str(optimized_path), qr)
@@ -2019,33 +2549,38 @@ if TYPER_AVAILABLE:
                         typer.echo(f"      ❌ ERROR: {e}")
                         if verbose:
                             import traceback
+
                             typer.echo(f"         {traceback.format_exc()}")
                         failed_count += 1
-                        results.append({
-                            "chapter": chapter_slug_name,
-                            "pair": pair_name,
-                            "status": "error",
-                            "reason": str(e),
-                        })
-        
+                        results.append(
+                            {
+                                "chapter": chapter_slug_name,
+                                "pair": pair_name,
+                                "status": "error",
+                                "reason": str(e),
+                            }
+                        )
+
         # Summary
-        typer.echo(f"\n{'='*60}")
+        typer.echo(f"\n{'=' * 60}")
         typer.echo(f"📊 VERIFICATION SUMMARY")
-        typer.echo(f"{'='*60}")
+        typer.echo(f"{'=' * 60}")
         typer.echo(f"  ✅ Passed:  {passed_count}")
         typer.echo(f"  ❌ Failed:  {failed_count}")
         typer.echo(f"  ⏭️  Skipped: {skipped_count}")
         typer.echo(f"  📈 Total:   {passed_count + failed_count + skipped_count}")
-        
+
         if failed_count > 0:
             typer.echo(f"\n  ⚠️  Phase: {phase.value}")
             if phase == EnforcementPhase.GATE:
-                typer.echo(f"  🚫 Gate mode: non-compliant benchmarks will block performance measurement")
+                typer.echo(
+                    f"  🚫 Gate mode: non-compliant benchmarks will block performance measurement"
+                )
             elif phase == EnforcementPhase.QUARANTINE:
                 typer.echo(f"  🏷️  Quarantine mode: non-compliant benchmarks excluded from reports")
             else:
                 typer.echo(f"  ℹ️  Detect mode: issues reported but not enforced")
-        
+
         if json_output:
             output = {
                 "summary": {
@@ -2055,10 +2590,12 @@ if TYPER_AVAILABLE:
                     "phase": phase.value,
                 },
                 "results": results,
-                "quarantine": {k: v.to_dict() for k, v in quarantine_mgr.get_all_records().items()} if hasattr(quarantine_mgr, 'get_all_records') else {},
+                "quarantine": {k: v.to_dict() for k, v in quarantine_mgr.get_all_records().items()}
+                if hasattr(quarantine_mgr, "get_all_records")
+                else {},
             }
             typer.echo("\n" + json.dumps(output, indent=2, default=str))
-        
+
         # Exit with error if failed and in gate mode
         if failed_count > 0 and phase == EnforcementPhase.GATE:
             raise typer.Exit(code=1)
@@ -2071,7 +2608,12 @@ if TYPER_AVAILABLE:
             "-c",
             help="Limit output to a single chapter (e.g., ch15 or labs/blackwell_matmul).",
         ),
-        bench_root: Optional[Path] = Option(None, "--bench-root", "-r", help="Root directory to scan for benchmarks (defaults to repo root)."),
+        bench_root: Optional[Path] = Option(
+            None,
+            "--bench-root",
+            "-r",
+            help="Root directory to scan for benchmarks (defaults to repo root).",
+        ),
     ):
         """List available benchmark targets in chapter:example format."""
         repo_root = Path(__file__).resolve().parents[2]
@@ -2100,7 +2642,12 @@ if TYPER_AVAILABLE:
 
     @app.command("list-chapters")
     def list_chapters(
-        bench_root: Optional[Path] = Option(None, "--bench-root", "-r", help="Root directory to scan for benchmarks (defaults to repo root)."),
+        bench_root: Optional[Path] = Option(
+            None,
+            "--bench-root",
+            "-r",
+            help="Root directory to scan for benchmarks (defaults to repo root).",
+        ),
     ):
         """List all discoverable chapters and labs."""
         repo_root = Path(__file__).resolve().parents[2]
@@ -2111,192 +2658,233 @@ if TYPER_AVAILABLE:
 
     @app.command("analyze")
     def analyze(
-        show_leaderboards: bool = Option(True, "--leaderboards/--no-leaderboards", help="Show separate speed/memory leaderboards"),
-        show_pareto: bool = Option(True, "--pareto/--no-pareto", help="Show Pareto-optimal benchmarks"),
-        show_tradeoffs: bool = Option(True, "--tradeoffs/--no-tradeoffs", help="Show cost-benefit trade-off analysis"),
-        show_recommendations: bool = Option(True, "--recommendations/--no-recommendations", help="Show constraint-based recommendations"),
-        show_chart: bool = Option(True, "--chart/--no-chart", help="Show ASCII trade-off scatter chart"),
+        show_leaderboards: bool = Option(
+            True, "--leaderboards/--no-leaderboards", help="Show separate speed/memory leaderboards"
+        ),
+        show_pareto: bool = Option(
+            True, "--pareto/--no-pareto", help="Show Pareto-optimal benchmarks"
+        ),
+        show_tradeoffs: bool = Option(
+            True, "--tradeoffs/--no-tradeoffs", help="Show cost-benefit trade-off analysis"
+        ),
+        show_recommendations: bool = Option(
+            True,
+            "--recommendations/--no-recommendations",
+            help="Show constraint-based recommendations",
+        ),
+        show_chart: bool = Option(
+            True, "--chart/--no-chart", help="Show ASCII trade-off scatter chart"
+        ),
         top_n: int = Option(5, "--top", "-n", help="Number of entries to show per category"),
         json_output: bool = Option(False, "--json", help="Output as JSON"),
-        data_file: Optional[Path] = Option(None, "--data-file", "-d", help="Path to benchmark_test_results.json"),
+        data_file: Optional[Path] = Option(
+            None, "--data-file", "-d", help="Path to benchmark_test_results.json"
+        ),
     ):
         """Analyze benchmark results: Pareto frontier, trade-offs, and recommendations."""
         analyzer = _get_analyzer(data_file)
-        
+
         results = {}
-        
+
         if show_leaderboards:
-            results['leaderboards'] = analyzer.get_categorized_leaderboards()
+            results["leaderboards"] = analyzer.get_categorized_leaderboards()
         if show_pareto:
-            results['pareto'] = analyzer.get_pareto_frontier()
+            results["pareto"] = analyzer.get_pareto_frontier()
         if show_tradeoffs:
-            results['tradeoffs'] = analyzer.get_tradeoff_analysis()
+            results["tradeoffs"] = analyzer.get_tradeoff_analysis()
         if show_recommendations:
-            results['recommendations'] = analyzer.get_constraint_recommendations()
-        
+            results["recommendations"] = analyzer.get_constraint_recommendations()
+
         if json_output:
             typer.echo(json.dumps(results, indent=2))
             return
-        
+
         # Pretty print results
         typer.echo("\n" + "=" * 70)
         typer.echo("📊 MULTI-METRIC BENCHMARK ANALYSIS")
         typer.echo("=" * 70)
-        
-        if show_leaderboards and 'leaderboards' in results:
-            boards = results['leaderboards'].get('leaderboards', {})
-            
+
+        if show_leaderboards and "leaderboards" in results:
+            boards = results["leaderboards"].get("leaderboards", {})
+
             # Speed leaderboard
-            speed = boards.get('speed', {})
+            speed = boards.get("speed", {})
             typer.echo(f"\n🚀 SPEED CHAMPIONS ({speed.get('count', 0)} benchmarks)")
             typer.echo("-" * 50)
-            for e in speed.get('entries', [])[:top_n]:
-                rank_icon = "🥇" if e['rank'] == 1 else "🥈" if e['rank'] == 2 else "🥉" if e['rank'] == 3 else f"#{e['rank']}"
+            for e in speed.get("entries", [])[:top_n]:
+                rank_icon = (
+                    "🥇"
+                    if e["rank"] == 1
+                    else "🥈"
+                    if e["rank"] == 2
+                    else "🥉"
+                    if e["rank"] == 3
+                    else f"#{e['rank']}"
+                )
                 typer.echo(f"  {rank_icon} {e['name']}: {e['primary_metric']}")
-            
+
             # Memory leaderboard
-            memory = boards.get('memory', {})
-            if memory.get('entries'):
+            memory = boards.get("memory", {})
+            if memory.get("entries"):
                 typer.echo(f"\n💾 MEMORY CHAMPIONS ({memory.get('count', 0)} benchmarks)")
                 typer.echo("-" * 50)
-                for e in memory.get('entries', [])[:top_n]:
-                    rank_icon = "🥇" if e['rank'] == 1 else "🥈" if e['rank'] == 2 else "🥉" if e['rank'] == 3 else f"#{e['rank']}"
-                    typer.echo(f"  {rank_icon} {e['name']}: {e['primary_metric']} ({e['secondary_metric']})")
-        
-        if show_pareto and 'pareto' in results:
-            pareto = results['pareto']
-            typer.echo(f"\n⭐ PARETO-OPTIMAL BENCHMARKS ({pareto.get('pareto_count', 0)} / {pareto.get('total_count', 0)})")
+                for e in memory.get("entries", [])[:top_n]:
+                    rank_icon = (
+                        "🥇"
+                        if e["rank"] == 1
+                        else "🥈"
+                        if e["rank"] == 2
+                        else "🥉"
+                        if e["rank"] == 3
+                        else f"#{e['rank']}"
+                    )
+                    typer.echo(
+                        f"  {rank_icon} {e['name']}: {e['primary_metric']} ({e['secondary_metric']})"
+                    )
+
+        if show_pareto and "pareto" in results:
+            pareto = results["pareto"]
+            typer.echo(
+                f"\n⭐ PARETO-OPTIMAL BENCHMARKS ({pareto.get('pareto_count', 0)} / {pareto.get('total_count', 0)})"
+            )
             typer.echo("-" * 50)
             typer.echo("  (No other benchmark is better on ALL metrics)")
-            for p in pareto.get('pareto_frontier', [])[:top_n]:
-                mem_str = f"-{p['memory_savings']:.0f}% mem" if p['memory_savings'] > 0 else "N/A"
+            for p in pareto.get("pareto_frontier", [])[:top_n]:
+                mem_str = f"-{p['memory_savings']:.0f}% mem" if p["memory_savings"] > 0 else "N/A"
                 typer.echo(f"  ⭐ {p['name']}")
                 typer.echo(f"      Speed: {p['speedup']:.2f}x | Memory: {mem_str}")
-        
-        if show_tradeoffs and 'tradeoffs' in results:
-            tradeoffs = results['tradeoffs']
+
+        if show_tradeoffs and "tradeoffs" in results:
+            tradeoffs = results["tradeoffs"]
             typer.echo(f"\n⚡ EFFICIENCY RANKINGS (Cost-Benefit Analysis)")
             typer.echo("-" * 50)
-            
+
             # Memory specialists
-            mem_specs = tradeoffs.get('memory_specialists', [])
+            mem_specs = tradeoffs.get("memory_specialists", [])
             if mem_specs:
                 typer.echo("  💾 Memory Efficiency:")
                 for t in mem_specs[:3]:
                     typer.echo(f"      {t['name']}: {t['benefit']} ({t['cost']})")
-            
+
             # Speed specialists
-            speed_specs = tradeoffs.get('speed_specialists', [])
+            speed_specs = tradeoffs.get("speed_specialists", [])
             if speed_specs:
                 typer.echo("  🚀 Speed Efficiency (top 3):")
                 for t in speed_specs[:3]:
                     typer.echo(f"      {t['name']}: {t['benefit']} (eff={t['efficiency_score']})")
-        
-        if show_recommendations and 'recommendations' in results:
-            recs = results['recommendations']
+
+        if show_recommendations and "recommendations" in results:
+            recs = results["recommendations"]
             typer.echo(f"\n🎯 RECOMMENDATIONS BY USE CASE")
             typer.echo("-" * 50)
-            for scenario in recs.get('scenarios', []):
+            for scenario in recs.get("scenarios", []):
                 typer.echo(f"\n  {scenario['icon']} {scenario['name']}")
                 typer.echo(f"     {scenario['description']}")
-                for r in scenario.get('recommendations', [])[:2]:
+                for r in scenario.get("recommendations", [])[:2]:
                     typer.echo(f"       → {r['name']}: {r['benefit']}")
-        
-        if show_chart and 'pareto' in results:
-            render_ascii_scatter_chart(results['pareto'])
-        
+
+        if show_chart and "pareto" in results:
+            render_ascii_scatter_chart(results["pareto"])
+
         typer.echo("\n" + "=" * 70)
         typer.echo("💡 Tip: Use --json for machine-readable output")
         typer.echo("=" * 70 + "\n")
-    
+
     def render_ascii_scatter_chart(pareto_data: dict, width: int = 60, height: int = 20):
         """Render an ASCII scatter chart of speed vs memory trade-offs."""
-        all_points = pareto_data.get('all_points', [])
-        pareto_points = pareto_data.get('pareto_frontier', [])
-        pareto_names = set(p['name'] for p in pareto_points)
-        
+        all_points = pareto_data.get("all_points", [])
+        pareto_points = pareto_data.get("pareto_frontier", [])
+        pareto_names = set(p["name"] for p in pareto_points)
+
         if not all_points:
             return
-        
+
         typer.echo(f"\n📈 SPEED vs MEMORY TRADE-OFF CHART")
         typer.echo("-" * 70)
-        
+
         # Filter to reasonable range for visualization (log scale for speed)
         import math
-        
+
         # Get ranges
-        speedups = [p['speedup'] for p in all_points if p['speedup'] > 0]
-        mem_savings = [p['memory_savings'] for p in all_points]
-        
+        speedups = [p["speedup"] for p in all_points if p["speedup"] > 0]
+        mem_savings = [p["memory_savings"] for p in all_points]
+
         if not speedups:
             typer.echo("  No data to display")
             return
-        
+
         # Use log scale for speedup (clamped)
         min_speedup = max(0.1, min(speedups))
         max_speedup = min(1000, max(speedups))  # Cap at 1000x for visualization
         min_mem = min(mem_savings) if mem_savings else 0
         max_mem = max(mem_savings) if mem_savings else 100
-        
+
         # Ensure some range
         if max_mem <= min_mem:
             max_mem = min_mem + 10
-        
+
         # Create grid
-        grid = [[' ' for _ in range(width)] for _ in range(height)]
-        
+        grid = [[" " for _ in range(width)] for _ in range(height)]
+
         # Plot points
         for p in all_points:
-            speedup = max(min_speedup, min(max_speedup, p['speedup']))
-            mem = p['memory_savings']
-            
+            speedup = max(min_speedup, min(max_speedup, p["speedup"]))
+            mem = p["memory_savings"]
+
             # Log scale for x (speedup)
             if speedup > 0:
-                x = int((math.log10(speedup) - math.log10(min_speedup)) / 
-                       (math.log10(max_speedup) - math.log10(min_speedup) + 0.001) * (width - 1))
+                x = int(
+                    (math.log10(speedup) - math.log10(min_speedup))
+                    / (math.log10(max_speedup) - math.log10(min_speedup) + 0.001)
+                    * (width - 1)
+                )
             else:
                 x = 0
-            
+
             # Linear scale for y (memory savings)
             y = int((mem - min_mem) / (max_mem - min_mem + 0.001) * (height - 1))
-            
+
             x = max(0, min(width - 1, x))
             y = max(0, min(height - 1, y))
             y = height - 1 - y  # Flip y axis
-            
+
             # Mark point
-            if p['name'] in pareto_names:
-                grid[y][x] = '★'  # Pareto optimal
-            elif grid[y][x] == ' ':
-                grid[y][x] = '·'  # Regular point
-            elif grid[y][x] == '·':
-                grid[y][x] = '○'  # Multiple points
-        
+            if p["name"] in pareto_names:
+                grid[y][x] = "★"  # Pareto optimal
+            elif grid[y][x] == " ":
+                grid[y][x] = "·"  # Regular point
+            elif grid[y][x] == "·":
+                grid[y][x] = "○"  # Multiple points
+
         # Draw chart
         typer.echo(f"  Memory")
         typer.echo(f"  Savings")
         typer.echo(f"  {max_mem:>5.0f}% ┌" + "─" * width + "┐")
-        
+
         for i, row in enumerate(grid):
             if i == 0 or i == height - 1 or i == height // 2:
                 label = f"{max_mem - (max_mem - min_mem) * i / (height - 1):>5.0f}%"
             else:
                 label = "      "
             typer.echo(f"  {label} │{''.join(row)}│")
-        
+
         typer.echo(f"  {min_mem:>5.0f}% └" + "─" * width + "┘")
-        
+
         # X-axis labels
-        typer.echo(f"         {min_speedup:<10.1f}x" + " " * (width - 25) + f"{max_speedup:>10.1f}x")
+        typer.echo(
+            f"         {min_speedup:<10.1f}x" + " " * (width - 25) + f"{max_speedup:>10.1f}x"
+        )
         typer.echo(f"                              Speedup (log scale) →")
-        
+
         # Legend
         typer.echo(f"\n  Legend: ★ = Pareto optimal  · = Regular  ○ = Multiple points")
 
     @app.command("summary")
     def summary(
         json_output: bool = Option(False, "--json", help="Output as JSON"),
-        data_file: Optional[Path] = Option(None, "--data-file", "-d", help="Path to benchmark_test_results.json"),
+        data_file: Optional[Path] = Option(
+            None, "--data-file", "-d", help="Path to benchmark_test_results.json"
+        ),
     ):
         """Show a quick summary of benchmark results."""
         data = load_benchmark_results(data_file)
@@ -2312,11 +2900,11 @@ if TYPER_AVAILABLE:
             "speed_optimizations": summary.get("speed_optimizations"),
             "timestamp": data.get("timestamp"),
         }
-        
+
         if json_output:
             typer.echo(json.dumps(payload, indent=2))
             return
-        
+
         typer.echo("\n" + "=" * 60)
         typer.echo("📜 BENCHMARK SUMMARY")
         typer.echo("=" * 60)
@@ -2324,26 +2912,295 @@ if TYPER_AVAILABLE:
         typer.echo(f"Average speedup:  {payload['avg_speedup']:.2f}x")
         typer.echo(f"Max speedup:      {payload['max_speedup']:.2f}x")
         if payload.get("successful") is not None:
-            typer.echo(f"Successful:       {payload['successful']} | Failed: {payload.get('failed', 0)}")
+            typer.echo(
+                f"Successful:       {payload['successful']} | Failed: {payload.get('failed', 0)}"
+            )
         if payload.get("memory_optimizations") is not None:
-            typer.echo(f"Memory-focused:   {payload['memory_optimizations']} | Speed-focused: {payload.get('speed_optimizations', 0)}")
+            typer.echo(
+                f"Memory-focused:   {payload['memory_optimizations']} | Speed-focused: {payload.get('speed_optimizations', 0)}"
+            )
         typer.echo(f"Timestamp:        {payload.get('timestamp', 'N/A')}")
+
+    @app.command("opportunities")
+    def opportunities(
+        data_file: Optional[Path] = Option(
+            None,
+            "--data-file",
+            "-d",
+            help="Path to benchmark_test_results.json, analyzer JSON, or tier-1 summary.json",
+        ),
+        catalog_file: Optional[Path] = Option(
+            None,
+            "--catalog-file",
+            help="Optional JSON catalog of runnable targets used to surface unmeasured frontier probes",
+        ),
+        include_discovered_targets: bool = Option(
+            False,
+            "--include-discovered-targets",
+            help="Also compare evidence against targets discovered from the benchmark tree",
+        ),
+        bench_root: Optional[Path] = Option(
+            None,
+            "--bench-root",
+            "-r",
+            help="Root directory to scan when --include-discovered-targets is set",
+        ),
+        top_n: int = Option(
+            10, "--top", "-n", help="Number of opportunities to return; use 0 for all"
+        ),
+        min_speedup: float = Option(
+            1.10, "--min-speedup", help="Speedup below this is treated as a flat optimization"
+        ),
+        target_speedup: float = Option(
+            1.50,
+            "--target-speedup",
+            help="Speedup below this is treated as compound-optimization headroom",
+        ),
+        min_memory_savings_pct: float = Option(
+            10.0,
+            "--min-memory-savings-pct",
+            help="Memory-focused targets below this savings threshold are prioritized",
+        ),
+        slow_baseline_ms: float = Option(
+            100.0,
+            "--slow-baseline-ms",
+            help="Baseline runtime threshold that increases opportunity priority",
+        ),
+        json_output: bool = Option(False, "--json", help="Output as JSON"),
+        output_json: Optional[Path] = Option(
+            None, "--output-json", help="Optional path to write the JSON result"
+        ),
+        output_md: Optional[Path] = Option(
+            None, "--output-md", help="Optional path to write the Markdown report"
+        ),
+        output_run_queue_sh: Optional[Path] = Option(
+            None,
+            "--output-run-queue-sh",
+            help="Optional path to write an executable shell runbook for the selected run queue",
+        ),
+        output_novelty_validation_sh: Optional[Path] = Option(
+            None,
+            "--output-novelty-validation-sh",
+            help="Optional path to write an executable shell runbook for the top novelty validation leads",
+        ),
+        output_novelty_next_wave_sh: Optional[Path] = Option(
+            None,
+            "--output-novelty-next-wave-sh",
+            help="Optional path to write an executable shell checklist for novelty next-wave actions",
+        ),
+        run_queue_root: Optional[Path] = Option(
+            None,
+            "--run-queue-root",
+            help="Optional artifact root from a prior opportunity run queue; overlays resume and promotion status",
+        ),
+        novelty_queue_root: Optional[Path] = Option(
+            None,
+            "--novelty-queue-root",
+            help="Optional artifact root from a prior novelty validation queue; overlays resume and review status",
+        ),
+    ):
+        """Rank benchmark evidence by next optimization opportunity.
+
+        This complements `bench triage`: triage focuses on pass/fail and regressions,
+        while opportunities ranks the next experiments that can produce novel wins.
+        """
+        normalized_top_n = None if top_n <= 0 else top_n
+        discovered_targets = (
+            _discover_target_catalog(bench_root) if include_discovered_targets else None
+        )
+        if data_file:
+            result = analyze_opportunity_file(
+                data_file,
+                catalog_path=catalog_file,
+                target_catalog=discovered_targets,
+                top_n=normalized_top_n,
+                min_speedup=min_speedup,
+                target_speedup=target_speedup,
+                min_memory_savings_pct=min_memory_savings_pct,
+                slow_baseline_ms=slow_baseline_ms,
+            )
+            if discovered_targets is not None:
+                result["discovered_target_source"] = str(
+                    Path(bench_root).resolve()
+                    if bench_root
+                    else Path(__file__).resolve().parents[2]
+                )
+        else:
+            data = load_benchmark_results(None)
+            if catalog_file:
+                data = dict(data)
+                data["target_catalog"] = json.loads(catalog_file.read_text(encoding="utf-8"))
+            if discovered_targets is not None:
+                data = dict(data)
+                data["available_targets"] = discovered_targets
+            candidates = normalize_candidates(data)
+            result = rank_opportunities(
+                candidates,
+                top_n=normalized_top_n,
+                min_speedup=min_speedup,
+                target_speedup=target_speedup,
+                min_memory_savings_pct=min_memory_savings_pct,
+                slow_baseline_ms=slow_baseline_ms,
+            )
+            result["source"] = "discovered benchmark artifacts"
+            if catalog_file:
+                result["target_catalog_source"] = str(catalog_file)
+            if discovered_targets is not None:
+                result["discovered_target_source"] = str(
+                    Path(bench_root).resolve()
+                    if bench_root
+                    else Path(__file__).resolve().parents[2]
+                )
+
+        if run_queue_root:
+            result = apply_run_queue_feedback(result, summarize_run_queue_root(run_queue_root))
+        if novelty_queue_root:
+            result = apply_novelty_validation_feedback(
+                result, summarize_run_queue_root(novelty_queue_root)
+            )
+
+        if output_json:
+            output_json.parent.mkdir(parents=True, exist_ok=True)
+            output_json.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+        markdown = render_opportunities_markdown(result)
+        if output_md:
+            output_md.parent.mkdir(parents=True, exist_ok=True)
+            output_md.write_text(markdown + "\n", encoding="utf-8")
+        if output_run_queue_sh:
+            output_run_queue_sh.parent.mkdir(parents=True, exist_ok=True)
+            output_run_queue_sh.write_text(render_run_queue_shell(result) + "\n", encoding="utf-8")
+            output_run_queue_sh.chmod(0o755)
+        if output_novelty_validation_sh:
+            output_novelty_validation_sh.parent.mkdir(parents=True, exist_ok=True)
+            output_novelty_validation_sh.write_text(
+                render_novelty_validation_shell(result) + "\n", encoding="utf-8"
+            )
+            output_novelty_validation_sh.chmod(0o755)
+        if output_novelty_next_wave_sh:
+            output_novelty_next_wave_sh.parent.mkdir(parents=True, exist_ok=True)
+            output_novelty_next_wave_sh.write_text(
+                render_novelty_next_wave_shell(result) + "\n", encoding="utf-8"
+            )
+            output_novelty_next_wave_sh.chmod(0o755)
+
+        if not result.get("opportunities"):
+            if json_output:
+                typer.echo(json.dumps(result, indent=2))
+            else:
+                typer.echo(
+                    "No benchmark opportunities found. Pass --data-file or run benchmarks first."
+                )
+            return
+
+        if json_output:
+            typer.echo(json.dumps(result, indent=2))
+            return
+
+        typer.echo(markdown)
+
+    @app.command("opportunity-catalog")
+    def opportunity_catalog(
+        bench_root: Optional[Path] = Option(
+            None,
+            "--bench-root",
+            "-r",
+            help="Benchmark tree root to scan; defaults to the repository code root",
+        ),
+        output_json: Optional[Path] = Option(
+            None, "--output-json", help="Optional path to write the mined catalog JSON"
+        ),
+        json_output: bool = Option(False, "--json", help="Output the full catalog as JSON"),
+        top_n: int = Option(
+            20, "--top", "-n", help="Number of catalog targets to preview in text mode"
+        ),
+    ):
+        """Mine runnable benchmark pairs into a frontier target catalog."""
+        catalog = discover_benchmark_target_catalog(bench_root)
+        if output_json:
+            output_json.parent.mkdir(parents=True, exist_ok=True)
+            output_json.write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
+        if json_output:
+            typer.echo(json.dumps(catalog, indent=2))
+            return
+
+        typer.echo(f"Catalog source: {catalog['source']}")
+        typer.echo(f"Targets: {catalog['target_count']}")
+        typer.echo(f"Motifs: {catalog.get('motif_counts', {})}")
+        typer.echo(f"Signals: {catalog.get('signal_counts', {})}")
+        for entry in list(catalog.get("targets", []))[: max(0, top_n)]:
+            signals = [
+                str(match.get("signal")) for match in entry.get("frontier_signal_matches", [])[:3]
+            ]
+            typer.echo(
+                f"- {entry.get('target')} [{entry.get('category')}] "
+                f"signals={','.join(signals) if signals else 'none'}"
+            )
+
+    @app.command("opportunity-run-summary")
+    def opportunity_run_summary(
+        run_queue_root: Path = Option(
+            ...,
+            "--run-queue-root",
+            "-r",
+            help="Root directory produced by an opportunity run queue script",
+        ),
+        json_output: bool = Option(False, "--json", help="Output as JSON"),
+    ):
+        """Summarize evidence produced by an opportunity run queue."""
+        summary = summarize_run_queue_root(run_queue_root)
+        if json_output:
+            typer.echo(json.dumps(summary, indent=2))
+            return
+
+        typer.echo(f"Run queue root: {summary['root']}")
+        typer.echo(f"Jobs: {summary['job_count']}")
+        typer.echo(f"Status counts: {summary['status_counts']}")
+        promotion = summary.get("promotion_summary", {})
+        typer.echo(
+            "Promotions: "
+            f"{promotion.get('claim_allowed_count', 0)} approved / "
+            f"{promotion.get('promotion_job_count', 0)} total"
+        )
+        for action in summary.get("next_actions", []):
+            typer.echo(f"- {action}")
 
     @app.command("triage")
     def triage(
-        data_file: Optional[Path] = Option(None, "--data-file", "-d", help="Path to benchmark_test_results.json"),
-        baseline_file: Optional[Path] = Option(None, "--baseline", "-b", help="Optional baseline for regression detection"),
-        auto_deep_dive: bool = Option(False, "--auto-deep-dive", help="Automatically run deep_dive profiling for top regressions."),
-        deep_dive_top_n: int = Option(3, "--deep-dive-top-n", help="Number of regressed benchmarks to deep-dive when --auto-deep-dive is set."),
-        deep_dive_iterations: int = Option(1, "--deep-dive-iterations", help="Iterations for deep-dive reruns."),
-        deep_dive_warmup: int = Option(5, "--deep-dive-warmup", help="Warmup iterations for deep-dive reruns."),
-        deep_dive_timeout_seconds: int = Option(900, "--deep-dive-timeout-seconds", help="Timeout for each deep-dive rerun."),
-        deep_dive_artifacts_dir: Optional[Path] = Option(None, "--deep-dive-artifacts-dir", help="Optional artifacts directory for deep-dive reruns."),
+        data_file: Optional[Path] = Option(
+            None, "--data-file", "-d", help="Path to benchmark_test_results.json"
+        ),
+        baseline_file: Optional[Path] = Option(
+            None, "--baseline", "-b", help="Optional baseline for regression detection"
+        ),
+        auto_deep_dive: bool = Option(
+            False,
+            "--auto-deep-dive",
+            help="Automatically run deep_dive profiling for top regressions.",
+        ),
+        deep_dive_top_n: int = Option(
+            3,
+            "--deep-dive-top-n",
+            help="Number of regressed benchmarks to deep-dive when --auto-deep-dive is set.",
+        ),
+        deep_dive_iterations: int = Option(
+            1, "--deep-dive-iterations", help="Iterations for deep-dive reruns."
+        ),
+        deep_dive_warmup: int = Option(
+            5, "--deep-dive-warmup", help="Warmup iterations for deep-dive reruns."
+        ),
+        deep_dive_timeout_seconds: int = Option(
+            900, "--deep-dive-timeout-seconds", help="Timeout for each deep-dive rerun."
+        ),
+        deep_dive_artifacts_dir: Optional[Path] = Option(
+            None,
+            "--deep-dive-artifacts-dir",
+            help="Optional artifacts directory for deep-dive reruns.",
+        ),
         json_output: bool = Option(False, "--json", help="Output as JSON"),
         top_n: int = Option(10, "--top", "-n", help="Number of items to show"),
     ):
         """Post-benchmark triage: analyze results and get actionable recommendations.
-        
+
         Use after running benchmarks to:
         - Identify regressions and improvements
         - Get specific tool recommendations
@@ -2351,11 +3208,11 @@ if TYPER_AVAILABLE:
         """
         data = load_benchmark_results(data_file)
         benchmarks = data.get("benchmarks", [])
-        
+
         if not benchmarks:
             typer.echo("❌ No benchmark results found. Run `aisp bench run` first.")
             raise typer.Exit(1)
-        
+
         def _status_bucket(status: object) -> str:
             normalized = str(status or "").strip().lower()
             if normalized in {"success", "ok"}:
@@ -2376,59 +3233,69 @@ if TYPER_AVAILABLE:
         failed = sum(1 for b in benchmarks if _status_bucket(b.get("status")) == "failed")
         skipped = sum(1 for b in benchmarks if _status_bucket(b.get("status")) == "skipped")
         avg_speedup = sum(b.get("speedup", 1.0) for b in benchmarks) / total if total > 0 else 0
-        
+
         regressions = sorted(
             [
-                b for b in benchmarks
+                b
+                for b in benchmarks
                 if _status_bucket(b.get("status")) == "succeeded" and b.get("speedup", 1.0) < 0.95
             ],
-            key=lambda x: x.get("speedup", 1.0)
+            key=lambda x: x.get("speedup", 1.0),
         )[:top_n]
-        
+
         improvements = sorted(
             [
-                b for b in benchmarks
+                b
+                for b in benchmarks
                 if _status_bucket(b.get("status")) == "succeeded" and b.get("speedup", 1.0) > 1.05
             ],
             key=lambda x: x.get("speedup", 1.0),
-            reverse=True
+            reverse=True,
         )[:top_n]
-        
+
         slow_kernels = [b for b in benchmarks if b.get("baseline_time_ms", 0) > 100]
-        
+
         # Build recommendations
         recommendations = []
         if regressions:
-            recommendations.append({
-                "tool": "aisp profile bottleneck",
-                "reason": f"Identify root cause of {len(regressions)} regression(s)",
-                "priority": "high"
-            })
+            recommendations.append(
+                {
+                    "tool": "aisp profile bottleneck",
+                    "reason": f"Identify root cause of {len(regressions)} regression(s)",
+                    "priority": "high",
+                }
+            )
         if slow_kernels:
-            recommendations.append({
-                "tool": "aisp profile nsys",
-                "reason": f"Profile {len(slow_kernels)} slow benchmark(s) (>100ms)",
-                "priority": "medium"
-            })
+            recommendations.append(
+                {
+                    "tool": "aisp profile nsys",
+                    "reason": f"Profile {len(slow_kernels)} slow benchmark(s) (>100ms)",
+                    "priority": "medium",
+                }
+            )
         if improvements:
-            recommendations.append({
-                "tool": "aisp bench report --output report.html",
-                "reason": f"Document {len(improvements)} improvement(s)",
-                "priority": "low"
-            })
-        recommendations.append({
-            "tool": "aisp bench compare-runs",
-            "reason": "Compare with previous baseline",
-            "priority": "medium"
-        })
-        
+            recommendations.append(
+                {
+                    "tool": "aisp bench report --output report.html",
+                    "reason": f"Document {len(improvements)} improvement(s)",
+                    "priority": "low",
+                }
+            )
+        recommendations.append(
+            {
+                "tool": "aisp bench compare-runs",
+                "reason": "Compare with previous baseline",
+                "priority": "medium",
+            }
+        )
+
         result = {
             "summary": {
                 "total": total,
                 "passed": passed,
                 "failed": failed,
                 "skipped": skipped,
-                "pass_rate": f"{(passed/total)*100:.1f}%" if total > 0 else "N/A",
+                "pass_rate": f"{(passed / total) * 100:.1f}%" if total > 0 else "N/A",
                 "avg_speedup": round(avg_speedup, 2),
             },
             "regressions": [
@@ -2454,7 +3321,9 @@ if TYPER_AVAILABLE:
         if auto_deep_dive and regressions:
             if deep_dive_top_n <= 0:
                 if TYPER_AVAILABLE and typer is not None:
-                    raise typer.BadParameter("--deep-dive-top-n must be >= 1 when --auto-deep-dive is enabled.")
+                    raise typer.BadParameter(
+                        "--deep-dive-top-n must be >= 1 when --auto-deep-dive is enabled."
+                    )
                 raise ValueError("--deep-dive-top-n must be >= 1 when --auto-deep-dive is enabled.")
             selected = regressions[:deep_dive_top_n]
             if not json_output:
@@ -2518,34 +3387,42 @@ if TYPER_AVAILABLE:
                 result["deep_dive_runs"].append(run_entry)
                 if not json_output:
                     typer.echo(f"     rc={proc.returncode} elapsed={elapsed_s:.1f}s")
-        
+
         if json_output:
             typer.echo(json.dumps(result, indent=2))
             return
-        
+
         # Pretty print
         typer.echo("\n" + "=" * 60)
         typer.echo("🔍 BENCHMARK TRIAGE")
         typer.echo("=" * 60)
-        
+
         s = result["summary"]
-        typer.echo(f"\n📊 Summary: {s['total']} benchmarks | {s['pass_rate']} pass rate | {s['avg_speedup']:.2f}x avg speedup")
-        
+        typer.echo(
+            f"\n📊 Summary: {s['total']} benchmarks | {s['pass_rate']} pass rate | {s['avg_speedup']:.2f}x avg speedup"
+        )
+
         if result["regressions"]:
             typer.echo(f"\n⚠️  REGRESSIONS ({len(result['regressions'])} found):")
             for r in result["regressions"]:
-                typer.echo(f"   • {r['benchmark']}: {r['speedup']:.2f}x ({r['baseline_ms']:.1f}ms baseline)")
+                typer.echo(
+                    f"   • {r['benchmark']}: {r['speedup']:.2f}x ({r['baseline_ms']:.1f}ms baseline)"
+                )
         else:
             typer.echo("\n✅ No regressions detected!")
-        
+
         if result["improvements"]:
             typer.echo(f"\n🚀 TOP IMPROVEMENTS ({len(result['improvements'])} found):")
             for i in result["improvements"]:
-                typer.echo(f"   • {i['benchmark']}: {i['speedup']:.2f}x ({i['baseline_ms']:.1f}ms baseline)")
-        
+                typer.echo(
+                    f"   • {i['benchmark']}: {i['speedup']:.2f}x ({i['baseline_ms']:.1f}ms baseline)"
+                )
+
         typer.echo(f"\n💡 RECOMMENDED NEXT STEPS:")
         for i, rec in enumerate(result["recommendations"], 1):
-            priority_icon = "🔴" if rec["priority"] == "high" else "🟡" if rec["priority"] == "medium" else "🟢"
+            priority_icon = (
+                "🔴" if rec["priority"] == "high" else "🟡" if rec["priority"] == "medium" else "🟢"
+            )
             typer.echo(f"   {i}. {priority_icon} {rec['tool']}")
             typer.echo(f"      └─ {rec['reason']}")
 
@@ -2565,18 +3442,24 @@ if TYPER_AVAILABLE:
                     typer.echo(f"   • {target}: skipped ({entry.get('reason', 'unknown')})")
                 else:
                     typer.echo(f"   • {target}: {status} rc={rc} elapsed={elapsed}s")
-        
+
         typer.echo()
 
     @app.command("expectations")
     def expectations(
         hardware: str = Option("b200", "--hardware", "-H", help="Hardware key (e.g., b200, h100)"),
         min_speedup: float = Option(1.05, "--min-speedup", help="Minimum improvement threshold"),
-        goal: str = Option("any", "--goal", help="Filter by optimization goal: speed, memory, or any"),
+        goal: str = Option(
+            "any", "--goal", help="Filter by optimization goal: speed, memory, or any"
+        ),
         json_output: bool = Option(False, "--json", help="Output as JSON"),
         show_all: bool = Option(False, "--all", help="Show all entries (not just below threshold)"),
-        multi_gpu_only: bool = Option(False, "--multi-gpu-only", help="Only show multi-GPU benchmarks"),
-        single_gpu_only: bool = Option(False, "--single-gpu-only", help="Only show single-GPU benchmarks"),
+        multi_gpu_only: bool = Option(
+            False, "--multi-gpu-only", help="Only show multi-GPU benchmarks"
+        ),
+        single_gpu_only: bool = Option(
+            False, "--single-gpu-only", help="Only show single-GPU benchmarks"
+        ),
         strict: bool = Option(False, "--strict", help="Exit non-zero if missing required metrics"),
     ):
         """Report expectation entries that miss a target improvement threshold."""
@@ -2586,7 +3469,9 @@ if TYPER_AVAILABLE:
         if min_speedup <= 0:
             raise typer.BadParameter("min_speedup must be positive")
         if multi_gpu_only and single_gpu_only:
-            raise typer.BadParameter("Choose either --multi-gpu-only or --single-gpu-only, not both")
+            raise typer.BadParameter(
+                "Choose either --multi-gpu-only or --single-gpu-only, not both"
+            )
 
         repo_root = Path(__file__).resolve().parents[2]
         files = _collect_expectations(hardware, repo_root)
@@ -2692,7 +3577,9 @@ if TYPER_AVAILABLE:
         }
 
         if json_output:
-            typer.echo(json.dumps({"summary": summary, "entries": entries, "missing": missing}, indent=2))
+            typer.echo(
+                json.dumps({"summary": summary, "entries": entries, "missing": missing}, indent=2)
+            )
         else:
             typer.echo("\n" + "=" * 60)
             typer.echo("📌 EXPECTATION THRESHOLD REPORT")
@@ -2731,58 +3618,68 @@ if TYPER_AVAILABLE:
     @app.command("whatif")
     def whatif(
         vram: Optional[float] = Option(None, "--vram", "-v", help="Max VRAM in GB (e.g., 24)"),
-        latency: Optional[float] = Option(None, "--latency", "-l", help="Max latency in ms (e.g., 50)"),
+        latency: Optional[float] = Option(
+            None, "--latency", "-l", help="Max latency in ms (e.g., 50)"
+        ),
         memory: Optional[float] = Option(None, "--memory", "-m", help="Max memory budget in GB"),
         json_output: bool = Option(False, "--json", help="Output as JSON"),
-        data_file: Optional[Path] = Option(None, "--data-file", "-d", help="Path to benchmark_test_results.json"),
+        data_file: Optional[Path] = Option(
+            None, "--data-file", "-d", help="Path to benchmark_test_results.json"
+        ),
     ):
         """What-If Solver: Find optimizations that fit your constraints."""
         analyzer = _get_analyzer(data_file)
         params = {}
         if vram:
-            params['vram'] = [str(vram)]
+            params["vram"] = [str(vram)]
         if latency:
-            params['latency'] = [str(latency)]
+            params["latency"] = [str(latency)]
         if memory:
-            params['memory_budget'] = [str(memory)]
-        
+            params["memory_budget"] = [str(memory)]
+
         results = analyzer.get_whatif_recommendations(params)
-        
+
         if json_output:
             typer.echo(json.dumps(results, indent=2))
             return
-        
+
         typer.echo("\n" + "=" * 60)
         typer.echo("🔍 WHAT-IF CONSTRAINT SOLVER")
         typer.echo("=" * 60)
-        
-        constraints = results.get('constraints', {})
+
+        constraints = results.get("constraints", {})
         active_constraints = [f"{k}={v}" for k, v in constraints.items() if v]
         if active_constraints:
             typer.echo(f"\nConstraints: {', '.join(active_constraints)}")
         else:
             typer.echo("\nNo constraints specified - showing all optimizations")
-        
-        typer.echo(f"Matching: {results.get('matching_count', 0)} / {results.get('total_benchmarks', 0)} benchmarks")
-        
-        if results.get('best_for_speed'):
-            typer.echo(f"\n🚀 Best for Speed: {results['best_for_speed']['name']} ({results['best_for_speed']['speedup']:.2f}x)")
-        if results.get('best_for_memory'):
-            mem = results['best_for_memory']
-            if mem['memory_savings_pct']:
+
+        typer.echo(
+            f"Matching: {results.get('matching_count', 0)} / {results.get('total_benchmarks', 0)} benchmarks"
+        )
+
+        if results.get("best_for_speed"):
+            typer.echo(
+                f"\n🚀 Best for Speed: {results['best_for_speed']['name']} ({results['best_for_speed']['speedup']:.2f}x)"
+            )
+        if results.get("best_for_memory"):
+            mem = results["best_for_memory"]
+            if mem["memory_savings_pct"]:
                 typer.echo(f"💾 Best for Memory: {mem['name']} (-{mem['memory_savings_pct']:.0f}%)")
-        
+
         typer.echo(f"\n📋 Top Recommendations:")
         typer.echo("-" * 60)
-        for i, r in enumerate(results.get('recommendations', [])[:8], 1):
-            mem_str = f"-{r['memory_savings_pct']:.0f}% mem" if r['memory_savings_pct'] else ""
+        for i, r in enumerate(results.get("recommendations", [])[:8], 1):
+            mem_str = f"-{r['memory_savings_pct']:.0f}% mem" if r["memory_savings_pct"] else ""
             typer.echo(f"  {i}. {r['name']}: {r['speedup']:.2f}x {mem_str}")
-    
+
     @app.command("stacking")
     def stacking(
         top_n: int = Option(5, "--top", "-n", help="Number of items to show per section"),
         json_output: bool = Option(False, "--json", help="Output as JSON"),
-        data_file: Optional[Path] = Option(None, "--data-file", "-d", help="Path to benchmark_test_results.json"),
+        data_file: Optional[Path] = Option(
+            None, "--data-file", "-d", help="Path to benchmark_test_results.json"
+        ),
     ):
         """Show which optimizations combine well together."""
         analyzer = _get_analyzer(data_file)
@@ -2791,134 +3688,152 @@ if TYPER_AVAILABLE:
         if json_output:
             typer.echo(json.dumps(results, indent=2))
             return
-        
+
         typer.echo("\n" + "=" * 60)
         typer.echo("🔗 OPTIMIZATION STACKING GUIDE")
         typer.echo("=" * 60)
-        
+
         typer.echo("\n✅ COMPATIBLE COMBINATIONS:")
         typer.echo("-" * 60)
-        for c in results.get('compatible_combinations', [])[:top_n]:
+        for c in results.get("compatible_combinations", [])[:top_n]:
             typer.echo(f"  {c['opt1']} + {c['opt2']}")
             typer.echo(f"    Synergy: {c['synergy']} | {c['benefit']}")
 
         typer.echo("\n❌ INCOMPATIBLE COMBINATIONS:")
         typer.echo("-" * 60)
-        for c in results.get('incompatible_combinations', [])[:top_n]:
+        for c in results.get("incompatible_combinations", [])[:top_n]:
             typer.echo(f"  {c['opt1']} + {c['opt2']}")
             typer.echo(f"    Reason: {c['reason']}")
 
         typer.echo("\n🎯 RECOMMENDED STACKS:")
         typer.echo("-" * 60)
-        for s in results.get('recommended_stacks', [])[:top_n]:
+        for s in results.get("recommended_stacks", [])[:top_n]:
             typer.echo(f"  {s['name']}:")
             typer.echo(f"    Stack: {' → '.join(s['stack'])}")
             typer.echo(f"    Expected: {s['expected_benefit']}")
-    
+
     @app.command("power")
     def power(
         top_n: int = Option(10, "--top", "-n", help="Number of entries to show"),
         json_output: bool = Option(False, "--json", help="Output as JSON"),
-        data_file: Optional[Path] = Option(None, "--data-file", "-d", help="Path to benchmark_test_results.json"),
+        data_file: Optional[Path] = Option(
+            None, "--data-file", "-d", help="Path to benchmark_test_results.json"
+        ),
     ):
         """Analyze power efficiency (ops/watt) of benchmarks."""
         analyzer = _get_analyzer(data_file)
         results = analyzer.get_power_efficiency()
-        
+
         if json_output:
             typer.echo(json.dumps(results, indent=2))
             return
-        
+
         typer.echo("\n" + "=" * 60)
         typer.echo("⚡ POWER EFFICIENCY ANALYSIS")
         typer.echo("=" * 60)
-        
+
         typer.echo(f"\nBenchmarks with power data: {results.get('total_benchmarks_with_power', 0)}")
         typer.echo(f"Average power: {results.get('avg_power_w', 0):.1f}W")
-        
-        if results.get('most_efficient'):
-            e = results['most_efficient']
+
+        if results.get("most_efficient"):
+            e = results["most_efficient"]
             typer.echo(f"\n🏆 Most Efficient: {e['name']}")
-            typer.echo(f"   {e['ops_per_watt']:.4f} ops/watt | {e['power_w']:.0f}W | {e['speedup']:.2f}x")
-        
+            typer.echo(
+                f"   {e['ops_per_watt']:.4f} ops/watt | {e['power_w']:.0f}W | {e['speedup']:.2f}x"
+            )
+
         typer.echo(f"\n📊 Efficiency Rankings (ops/watt):")
         typer.echo("-" * 60)
-        for i, e in enumerate(results.get('efficiency_rankings', [])[:top_n], 1):
+        for i, e in enumerate(results.get("efficiency_rankings", [])[:top_n], 1):
             typer.echo(f"  {i:2}. {e['name'][:40]:<40} {e['ops_per_watt']:.4f}")
-    
+
     @app.command("cost")
     def cost(
         top_n: int = Option(10, "--top", "-n", help="Number of entries to show"),
-        gpu: str = Option("B200", "--gpu", "-g", help="GPU type (B200, H100, A100, L40S, A10G, T4)"),
+        gpu: str = Option(
+            "B200", "--gpu", "-g", help="GPU type (B200, H100, A100, L40S, A10G, T4)"
+        ),
         rate: Optional[float] = Option(None, "--rate", "-r", help="Custom hourly rate in $/hr"),
         json_output: bool = Option(False, "--json", help="Output as JSON"),
-        data_file: Optional[Path] = Option(None, "--data-file", "-d", help="Path to benchmark_test_results.json"),
+        data_file: Optional[Path] = Option(
+            None, "--data-file", "-d", help="Path to benchmark_test_results.json"
+        ),
     ):
         """Calculate cost savings ($/token) for optimizations."""
         analyzer = _get_analyzer(data_file)
         results = analyzer.get_cost_analysis(gpu=gpu, custom_rate=rate)
-        
+
         if json_output:
             typer.echo(json.dumps(results, indent=2))
             return
-        
+
         typer.echo("\n" + "=" * 60)
         typer.echo("💰 COST ANALYSIS")
         typer.echo("=" * 60)
-        
-        typer.echo(f"\nAssuming: {results.get('assumed_gpu', 'B200')} @ ${results.get('hourly_rate', 0):.2f}/hr")
-        
-        if results.get('highest_savings'):
-            h = results['highest_savings']
+
+        typer.echo(
+            f"\nAssuming: {results.get('assumed_gpu', 'B200')} @ ${results.get('hourly_rate', 0):.2f}/hr"
+        )
+
+        if results.get("highest_savings"):
+            h = results["highest_savings"]
             typer.echo(f"\n🏆 Highest Savings: {h['name']}")
-            typer.echo(f"   ${h['baseline_cost_per_m']:.4f} → ${h['optimized_cost_per_m']:.4f} per 1M ops")
+            typer.echo(
+                f"   ${h['baseline_cost_per_m']:.4f} → ${h['optimized_cost_per_m']:.4f} per 1M ops"
+            )
             typer.echo(f"   Savings: ${h['savings_per_m']:.4f}/1M ops ({h['savings_pct']:.0f}%)")
-        
+
         typer.echo(f"\n📊 Cost Savings Rankings:")
         typer.echo("-" * 60)
         typer.echo(f"  {'Benchmark':<40} {'Savings':>10}")
         typer.echo("-" * 60)
-        for c in results.get('cost_rankings', [])[:top_n]:
+        for c in results.get("cost_rankings", [])[:top_n]:
             typer.echo(f"  {c['name'][:40]:<40} {c['savings_pct']:>8.0f}%")
-    
+
     @app.command("scaling")
     def scaling(
         json_output: bool = Option(False, "--json", help="Output as JSON"),
-        data_file: Optional[Path] = Option(None, "--data-file", "-d", help="Path to benchmark_test_results.json"),
+        data_file: Optional[Path] = Option(
+            None, "--data-file", "-d", help="Path to benchmark_test_results.json"
+        ),
     ):
         """Analyze how optimizations scale with workload size."""
         analyzer = _get_analyzer(data_file)
         results = analyzer.get_scaling_analysis()
-        
+
         if json_output:
             typer.echo(json.dumps(results, indent=2))
             return
-        
+
         typer.echo("\n" + "=" * 60)
         typer.echo("📈 SCALING ANALYSIS")
         typer.echo("=" * 60)
-        
+
         typer.echo(f"\n💡 Key Insight: {results.get('key_insight', '')}")
-        
+
         typer.echo("\n📊 Top Optimizations by Category:")
         typer.echo("-" * 60)
-        for cat, benchmarks in results.get('categories', {}).items():
+        for cat, benchmarks in results.get("categories", {}).items():
             if benchmarks:
                 typer.echo(f"\n  {cat.upper()}:")
                 for b in benchmarks[:3]:
                     typer.echo(f"    • {b['name']}: {b['speedup']:.2f}x")
-        
+
         typer.echo("\n🎯 Scaling Recommendations:")
         typer.echo("-" * 60)
-        for r in results.get('scaling_recommendations', []):
+        for r in results.get("scaling_recommendations", []):
             typer.echo(f"\n  {r['factor']}:")
             typer.echo(f"    {r['insight']}")
             typer.echo(f"    → {r['recommendation']}")
 
     @app.command("report")
     def report(
-        data_file: Optional[str] = Option(None, "--data-file", "-d", help="Path or URL to benchmark_test_results.json"),
-        output: Path = Option(Path("report.pdf"), "--output", "-o", help="Output file (.pdf or .html)"),
+        data_file: Optional[str] = Option(
+            None, "--data-file", "-d", help="Path or URL to benchmark_test_results.json"
+        ),
+        output: Path = Option(
+            Path("report.pdf"), "--output", "-o", help="Output file (.pdf or .html)"
+        ),
         format: str = Option("pdf", "--format", "-f", help="pdf or html"),
         title: str = Option("GPU Performance Report", "--title", help="Report title"),
         author: str = Option("AI Performance Engineering", "--author", help="Author/owner"),
@@ -2937,12 +3852,20 @@ if TYPER_AVAILABLE:
 
     @app.command("verify-report")
     def verify_report(
-        data_file: Optional[Path] = Option(None, "--data-file", "-d", help="Path to benchmark_test_results.json"),
-        output: Path = Option(Path("verification_report.html"), "--output", "-o", help="Output file (.html or .json)"),
+        data_file: Optional[Path] = Option(
+            None, "--data-file", "-d", help="Path to benchmark_test_results.json"
+        ),
+        output: Path = Option(
+            Path("verification_report.html"), "--output", "-o", help="Output file (.html or .json)"
+        ),
         format: str = Option("html", "--format", "-f", help="html or json"),
-        gpu: str = Option("", "--gpu", "-g", help="GPU name for theoretical peak (e.g., H100, B200)"),
+        gpu: str = Option(
+            "", "--gpu", "-g", help="GPU name for theoretical peak (e.g., H100, B200)"
+        ),
         title: str = Option("Benchmark Verification Report", "--title", help="Report title"),
-        quarantine: Optional[Path] = Option(None, "--quarantine", "-q", help="Path to quarantine.json"),
+        quarantine: Optional[Path] = Option(
+            None, "--quarantine", "-q", help="Path to quarantine.json"
+        ),
     ):
         """Generate verification report with anti-cheat status and theoretical peaks."""
         try:
@@ -2950,13 +3873,13 @@ if TYPER_AVAILABLE:
         except ImportError as exc:
             typer.echo(f"Verification report generation unavailable: {exc}", err=True)
             raise typer.Exit(code=1)
-        
+
         input_path = str(data_file) if data_file else "benchmark_test_results.json"
         fmt = format.lower()
         if fmt not in ("html", "json"):
             typer.echo("Format must be html or json", err=True)
             raise typer.Exit(code=1)
-        
+
         try:
             path = generate_verification_report(
                 input_path,
@@ -2978,25 +3901,29 @@ if TYPER_AVAILABLE:
     ):
         """Show theoretical peak performance for a GPU."""
         try:
-            from core.analysis.reporting.verification_report import get_theoretical_peak, GPU_THEORETICAL_PEAKS
+            from core.analysis.reporting.verification_report import (
+                get_theoretical_peak,
+                GPU_THEORETICAL_PEAKS,
+            )
         except ImportError as exc:
             typer.echo(f"Theoretical peak lookup unavailable: {exc}", err=True)
             raise typer.Exit(code=1)
-        
+
         if gpu.lower() == "list":
             typer.echo("Available GPUs:")
             for key in sorted(GPU_THEORETICAL_PEAKS.keys()):
                 p = GPU_THEORETICAL_PEAKS[key]
                 typer.echo(f"  {key}: {p.gpu_name} ({p.architecture})")
             return
-        
+
         peak = get_theoretical_peak(gpu)
         if not peak:
             typer.echo(f"GPU '{gpu}' not found. Use --gpu list to see available GPUs.", err=True)
             raise typer.Exit(code=1)
-        
+
         if json_output:
             import json as json_module
+
             typer.echo(json_module.dumps(peak.to_dict(), indent=2))
         else:
             typer.echo(f"\n🎯 Theoretical Peak: {peak.gpu_name}")
@@ -3022,7 +3949,9 @@ if TYPER_AVAILABLE:
     def quarantine_report(
         format: str = Option("text", "--format", "-f", help="text, markdown, or json"),
         output: Optional[Path] = Option(None, "--output", "-o", help="Output file"),
-        quarantine_file: Optional[Path] = Option(None, "--quarantine-file", help="Path to quarantine.json"),
+        quarantine_file: Optional[Path] = Option(
+            None, "--quarantine-file", help="Path to quarantine.json"
+        ),
     ):
         """Generate report of quarantined benchmarks."""
         try:
@@ -3035,15 +3964,15 @@ if TYPER_AVAILABLE:
         except ImportError as exc:
             typer.echo(f"Quarantine report generation unavailable: {exc}", err=True)
             raise typer.Exit(code=1)
-        
+
         # Initialize quarantine manager
         if quarantine_file:
             cache_dir = quarantine_file.parent
         else:
             cache_dir = Path("artifacts/verify_cache")
-        
+
         manager = QuarantineManager(cache_dir=cache_dir)
-        
+
         # Generate report
         if format == "text":
             report = generate_text_report(manager)
@@ -3054,7 +3983,7 @@ if TYPER_AVAILABLE:
         else:
             typer.echo("Format must be text, markdown, or json", err=True)
             raise typer.Exit(code=1)
-        
+
         # Output
         if output:
             output.write_text(report)
@@ -3064,7 +3993,9 @@ if TYPER_AVAILABLE:
 
     @app.command("export")
     def export(
-        data_file: Optional[Path] = Option(None, "--data-file", "-d", help="Path to benchmark_test_results.json"),
+        data_file: Optional[Path] = Option(
+            None, "--data-file", "-d", help="Path to benchmark_test_results.json"
+        ),
         format: str = Option("csv", "--format", "-f", help="csv, markdown, or json"),
         output: Optional[Path] = Option(None, "--output", "-o", help="Output file path"),
     ):
@@ -3106,11 +4037,16 @@ if TYPER_AVAILABLE:
 
     @app.command("compare-runs")
     def compare_runs(
-        baseline: Path = Option(..., "--baseline", "-b", help="Baseline benchmark_test_results.json"),
-        candidate: Path = Option(..., "--candidate", "-c", help="Candidate benchmark_test_results.json"),
+        baseline: Path = Option(
+            ..., "--baseline", "-b", help="Baseline benchmark_test_results.json"
+        ),
+        candidate: Path = Option(
+            ..., "--candidate", "-c", help="Candidate benchmark_test_results.json"
+        ),
         top: int = Option(10, "--top", "-n", help="Top regressions/improvements to show"),
     ):
         """Diff two benchmark JSON files and show speedup deltas."""
+
         def _load(path: Path) -> dict:
             with open(path) as f:
                 return json.load(f)
@@ -3135,7 +4071,9 @@ if TYPER_AVAILABLE:
             if not b:
                 continue
             delta = (c.get("best_speedup", 0) or 0) - (b.get("best_speedup", 0) or 0)
-            deltas.append((key, delta, b.get("best_speedup", 0) or 0, c.get("best_speedup", 0) or 0))
+            deltas.append(
+                (key, delta, b.get("best_speedup", 0) or 0, c.get("best_speedup", 0) or 0)
+            )
 
         deltas.sort(key=lambda x: x[1])
         regressions = [d for d in deltas if d[1] < 0][:top]
@@ -3150,19 +4088,24 @@ if TYPER_AVAILABLE:
             typer.echo(f"  {name}: {b:.2f}x → {c:.2f}x (Δ +{delta:.2f})")
 
         typer.echo("\nℹ️ Use --top to adjust output; full data available in JSON files.")
-    
+
     @app.command("tui")
     def tui(
-        simple: bool = Option(False, "--simple", "-s", help="Use simple menu instead of curses TUI"),
-        data_file: Optional[Path] = Option(None, "--data-file", "-d", help="Path to benchmark_test_results.json"),
+        simple: bool = Option(
+            False, "--simple", "-s", help="Use simple menu instead of curses TUI"
+        ),
+        data_file: Optional[Path] = Option(
+            None, "--data-file", "-d", help="Path to benchmark_test_results.json"
+        ),
     ):
         """Interactive Terminal UI for benchmark analysis."""
         if simple:
             _run_basic_menu(data_file)
             return
-        
+
         try:
             from cli.tui import run_tui
+
             run_tui(data_file)
         except KeyboardInterrupt:
             typer.echo("\nExiting...")
@@ -3174,11 +4117,11 @@ if TYPER_AVAILABLE:
             typer.echo(f"TUI error: {e}")
             typer.echo("Falling back to basic menu...")
             _run_basic_menu(data_file)
-    
+
     def _run_basic_menu(data_file: Optional[Path] = None):
         """Simple menu-based interface when rich TUI isn't available."""
         analyzer = _get_analyzer(data_file)
-        
+
         while True:
             typer.echo("\n" + "=" * 50)
             typer.echo("📊 BENCHMARK ANALYSIS MENU")
@@ -3193,97 +4136,103 @@ if TYPER_AVAILABLE:
             typer.echo("  8. Trade-off Chart (ASCII)")
             typer.echo("  q. Quit")
             typer.echo("-" * 50)
-            
+
             choice = input("Select option: ").strip().lower()
-            
-            if choice == 'q':
+
+            if choice == "q":
                 break
-            elif choice == '1':
+            elif choice == "1":
                 data = analyzer.get_categorized_leaderboards()
                 _print_leaderboards(data)
-            elif choice == '2':
+            elif choice == "2":
                 data = analyzer.get_pareto_frontier()
                 _print_pareto(data)
-            elif choice == '3':
+            elif choice == "3":
                 vram = input("Max VRAM (GB, or Enter to skip): ").strip()
                 latency = input("Max latency (ms, or Enter to skip): ").strip()
                 params = {}
                 if vram:
-                    params['vram'] = [vram]
+                    params["vram"] = [vram]
                 if latency:
-                    params['latency'] = [latency]
+                    params["latency"] = [latency]
                 data = analyzer.get_whatif_recommendations(params)
                 _print_whatif(data)
-            elif choice == '4':
+            elif choice == "4":
                 data = analyzer.get_optimization_stacking()
                 _print_stacking(data)
-            elif choice == '5':
+            elif choice == "5":
                 data = analyzer.get_power_efficiency()
                 _print_power(data)
-            elif choice == '6':
+            elif choice == "6":
                 data = analyzer.get_cost_analysis()
                 _print_cost(data)
-            elif choice == '7':
+            elif choice == "7":
                 data = analyzer.get_scaling_analysis()
                 _print_scaling(data)
-            elif choice == '8':
+            elif choice == "8":
                 data = analyzer.get_pareto_frontier()
                 render_ascii_scatter_chart(data)
-    
+
     def _run_interactive_tui():
         """Rich interactive TUI using curses or similar."""
         # For now, fall back to basic menu
         _run_basic_menu()
-    
+
     def _print_leaderboards(data):
-        boards = data.get('leaderboards', {})
+        boards = data.get("leaderboards", {})
         for name, board in boards.items():
             typer.echo(f"\n{board.get('title', name)}:")
-            for e in board.get('entries', [])[:5]:
+            for e in board.get("entries", [])[:5]:
                 typer.echo(f"  #{e['rank']} {e['name']}: {e['primary_metric']}")
-    
+
     def _print_pareto(data):
-        typer.echo(f"\n⭐ Pareto Optimal: {data.get('pareto_count', 0)} / {data.get('total_count', 0)}")
-        for p in data.get('pareto_frontier', [])[:5]:
+        typer.echo(
+            f"\n⭐ Pareto Optimal: {data.get('pareto_count', 0)} / {data.get('total_count', 0)}"
+        )
+        for p in data.get("pareto_frontier", [])[:5]:
             typer.echo(f"  ⭐ {p['name']}: {p['speedup']:.2f}x, {p['memory_savings']:.0f}% mem")
-    
+
     def _print_whatif(data):
         typer.echo(f"\nMatching: {data.get('matching_count', 0)} benchmarks")
-        for r in data.get('recommendations', [])[:5]:
+        for r in data.get("recommendations", [])[:5]:
             typer.echo(f"  • {r['name']}: {r['speedup']:.2f}x")
-    
+
     def _print_stacking(data):
         typer.echo("\n✅ Compatible:")
-        for c in data.get('compatible_combinations', [])[:3]:
+        for c in data.get("compatible_combinations", [])[:3]:
             typer.echo(f"  {c['opt1']} + {c['opt2']}: {c['benefit']}")
-    
+
     def _print_power(data):
         typer.echo(f"\nBenchmarks with power data: {data.get('total_benchmarks_with_power', 0)}")
-        for e in data.get('efficiency_rankings', [])[:5]:
+        for e in data.get("efficiency_rankings", [])[:5]:
             typer.echo(f"  {e['name']}: {e['ops_per_watt']:.4f} ops/W")
-    
+
     def _print_cost(data):
         typer.echo(f"\nAssuming ${data.get('hourly_rate', 0):.2f}/hr")
-        for c in data.get('cost_rankings', [])[:5]:
+        for c in data.get("cost_rankings", [])[:5]:
             typer.echo(f"  {c['name']}: {c['savings_pct']:.0f}% savings")
-    
+
     def _print_scaling(data):
-        for r in data.get('scaling_recommendations', [])[:3]:
+        for r in data.get("scaling_recommendations", [])[:3]:
             typer.echo(f"\n{r['factor']}: {r['recommendation']}")
 
     @app.command("audit")
     def audit(
-        chapter: Optional[str] = Option(None, "--chapter", "-c", help="Specific chapter to audit (e.g., ch10)"),
-        lab: Optional[str] = Option(None, "--lab", "-l", help="Specific lab to audit (e.g., decode_optimization)"),
+        chapter: Optional[str] = Option(
+            None, "--chapter", "-c", help="Specific chapter to audit (e.g., ch10)"
+        ),
+        lab: Optional[str] = Option(
+            None, "--lab", "-l", help="Specific lab to audit (e.g., decode_optimization)"
+        ),
         all_targets: bool = Option(False, "--all", "-a", help="Audit all chapters and labs"),
         verbose: bool = Option(False, "--verbose", "-v", help="Show detailed output"),
         json_output: bool = Option(False, "--json", help="Output as JSON"),
     ):
         """Audit benchmark verification compliance.
-        
+
         Uses Python introspection to correctly detect inherited methods
         (unlike grep-based approaches). This gives accurate coverage stats.
-        
+
         Example:
             aisp bench audit --all          # Audit everything
             aisp bench audit -c ch10        # Audit specific chapter
@@ -3291,22 +4240,27 @@ if TYPER_AVAILABLE:
         """
         import json as json_lib
         from core.scripts.audit_verification_compliance import (
-            audit_directory, print_summary, load_benchmark_class, check_compliance
+            audit_directory,
+            print_summary,
+            load_benchmark_class,
+            check_compliance,
         )
-        
+
         code_dir = Path(__file__).parent.parent.parent
 
         def _count_audit_results(results: dict[str, dict[str, object]]) -> tuple[int, int, int]:
             compliant = sum(1 for result in results.values() if result.get("status") == "compliant")
-            needs_work = sum(1 for result in results.values() if result.get("status") == "needs_work")
+            needs_work = sum(
+                1 for result in results.values() if result.get("status") == "needs_work"
+            )
             errors = sum(1 for result in results.values() if result.get("status") == "error")
             return compliant, needs_work, errors
-        
+
         total_compliant = 0
         total_needs_work = 0
         total_errors = 0
         all_results = {}
-        
+
         # Audit chapters
         if chapter:
             chapters = [chapter]
@@ -3314,12 +4268,12 @@ if TYPER_AVAILABLE:
             chapters = [f"ch{i:02d}" for i in range(1, 21)]
         else:
             chapters = []
-        
+
         for ch in chapters:
             chapter_dir = code_dir / ch
             if not chapter_dir.exists():
                 continue
-            
+
             results = audit_directory(chapter_dir)
             if results:
                 c, n, e = _count_audit_results(results)
@@ -3330,7 +4284,7 @@ if TYPER_AVAILABLE:
                     all_results[ch] = results
                 else:
                     print_summary(results, f"{ch.upper()}")
-        
+
         # Audit labs
         if lab:
             labs = [lab]
@@ -3342,12 +4296,12 @@ if TYPER_AVAILABLE:
                 labs = []
         else:
             labs = []
-        
+
         for lb in sorted(labs):
             lab_dir = code_dir / "labs" / lb
             if not lab_dir.exists():
                 continue
-            
+
             results = audit_directory(lab_dir)
             if results:
                 c, n, e = _count_audit_results(results)
@@ -3358,30 +4312,40 @@ if TYPER_AVAILABLE:
                     all_results[f"lab:{lb}"] = results
                 else:
                     print_summary(results, f"LAB: {lb}")
-        
+
         # Output
         if json_output:
-            typer.echo(json_lib.dumps({
-                "results": all_results,
-                "summary": {
-                    "compliant": total_compliant,
-                    "needs_work": total_needs_work,
-                    "errors": total_errors,
-                    "total": total_compliant + total_needs_work + total_errors,
-                    "coverage_pct": round(100 * total_compliant / max(1, total_compliant + total_needs_work), 1),
-                }
-            }, indent=2))
+            typer.echo(
+                json_lib.dumps(
+                    {
+                        "results": all_results,
+                        "summary": {
+                            "compliant": total_compliant,
+                            "needs_work": total_needs_work,
+                            "errors": total_errors,
+                            "total": total_compliant + total_needs_work + total_errors,
+                            "coverage_pct": round(
+                                100 * total_compliant / max(1, total_compliant + total_needs_work),
+                                1,
+                            ),
+                        },
+                    },
+                    indent=2,
+                )
+            )
         else:
-            typer.echo(f"\n{'='*60}")
+            typer.echo(f"\n{'=' * 60}")
             typer.echo("GRAND TOTAL")
-            typer.echo(f"{'='*60}")
+            typer.echo(f"{'=' * 60}")
             typer.echo(f"✅ Compliant: {total_compliant}")
             typer.echo(f"⚠️  Needs work: {total_needs_work}")
             typer.echo(f"❌ Errors: {total_errors}")
             typer.echo(f"Total: {total_compliant + total_needs_work + total_errors}")
-            
+
             coverage = (total_compliant / max(1, total_compliant + total_needs_work)) * 100
             typer.echo(f"\n📊 Coverage: {coverage:.1f}%")
+
+
 def main():
     """Entry point for CLI."""
     if not TYPER_AVAILABLE:

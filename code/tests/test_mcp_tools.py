@@ -85,6 +85,7 @@ CATEGORY_TOOLS: Dict[str, List[str]] = {
         "benchmark_triage",
         "benchmark_data",
         "benchmark_overview",
+        "benchmark_opportunities",
         "benchmark_history",
         "benchmark_trends",
         "benchmark_compare",
@@ -246,6 +247,11 @@ TOOL_PARAMS: Dict[str, Dict[str, Any]] = {
         "iterations": 1,
         "warmup": 5,
         "llm_analysis": False,
+    },
+    "benchmark_opportunities": {
+        "data_file": str(BENCH_FILE),
+        "top": 3,
+        "include_context": False,
     },
     "benchmark_e2e_sweep": {
         "run_tier1": False,
