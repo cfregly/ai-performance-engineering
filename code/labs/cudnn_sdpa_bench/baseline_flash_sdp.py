@@ -92,8 +92,10 @@ class SDPAAttentionModule(nn.Module):
         B, T, _ = x.shape
         qkv = self.qkv(x)
         qkv = qkv.view(B, T, 3, self.num_heads, self.hidden_dim // self.num_heads)
-        qkv = qkv.permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        q, k, v = qkv.unbind(dim=2)
+        q = q.transpose(1, 2)
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
         with _sdpa_context(self.backend):
             out = F.scaled_dot_product_attention(q, k, v, is_causal=False)
         out = out.transpose(1, 2).reshape(B, T, self.hidden_dim)

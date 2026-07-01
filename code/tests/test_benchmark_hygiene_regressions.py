@@ -5327,6 +5327,10 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    cudnn_sdpa_module = cudnn_sdpa_source.split("class SDPAAttentionModule", maxsplit=1)[1].split(
+        "class FlashSDPLabBenchmark",
+        maxsplit=1,
+    )[0]
     cudnn_sdpa_capture = cudnn_sdpa_source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def teardown",
         maxsplit=1,
@@ -5342,6 +5346,12 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "enable=self._enable_nvtx" in cudnn_sdpa_benchmark
     assert "parameter_count=self._payload_parameter_count" in cudnn_sdpa_capture
     assert "sum(p.numel()" not in cudnn_sdpa_capture
+    assert "q, k, v = qkv.unbind(dim=2)" in cudnn_sdpa_module
+    assert "q = q.transpose(1, 2)" in cudnn_sdpa_module
+    assert "k = k.transpose(1, 2)" in cudnn_sdpa_module
+    assert "v = v.transpose(1, 2)" in cudnn_sdpa_module
+    assert "qkv = qkv.permute(2, 0, 3, 1, 4)" not in cudnn_sdpa_module
+    assert "q, k, v = qkv[0], qkv[1], qkv[2]" not in cudnn_sdpa_module
 
     for relative_path in (
         "ch09/baseline_sdpa_attention.py",
