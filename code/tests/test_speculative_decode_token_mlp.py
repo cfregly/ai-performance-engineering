@@ -5,6 +5,9 @@ import pytest
 
 from ch15.speculative_decoding_benchmarks import SpeculativeDecodingBenchmark
 from ch15.speculative_decoding_common import TokenMLP as ChapterTokenMLP
+from labs.speculative_decode.baseline_speculative_decode import (
+    BaselineSpeculativeDecodeBenchmark,
+)
 from labs.speculative_decode.baseline_speculative_decode_trusted import (
     BaselineSpeculativeDecodeTrustedBenchmark,
 )
@@ -13,6 +16,9 @@ from labs.speculative_decode.baseline_speculative_decode_transition_table import
 )
 from labs.speculative_decode.optimized_speculative_decode_trusted import (
     OptimizedSpeculativeDecodeTrustedBenchmark,
+)
+from labs.speculative_decode.optimized_speculative_decode import (
+    OptimizedSpeculativeDecodeBenchmark,
 )
 from labs.speculative_decode.optimized_speculative_decode_transition_table import (
     OptimizedSpeculativeDecodeTransitionTableBenchmark,
@@ -143,6 +149,37 @@ def test_ch15_speculative_decode_fallback_matches_greedy_when_draft_rejects() ->
     assert torch.equal(outputs[0], outputs[1])
     assert metrics[1] is not None
     assert metrics[1]["speculative.acceptance_rate_pct"] < 100.0
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for lab speculative decode")
+def test_lab_speculative_decode_matches_greedy_when_draft_rejects() -> None:
+    workload = SpecDecodeWorkload(
+        vocab_size=128,
+        target_hidden=64,
+        target_layers=1,
+        draft_hidden=16,
+        speculative_k=4,
+        total_tokens=12,
+        tail_scale=1.0,
+        dtype=torch.float32,
+    )
+    baseline = BaselineSpeculativeDecodeBenchmark()
+    optimized = OptimizedSpeculativeDecodeBenchmark()
+    baseline.workload = workload
+    optimized.workload = workload
+    try:
+        baseline.setup()
+        optimized.setup()
+        baseline.benchmark_fn()
+        optimized.benchmark_fn()
+        torch.cuda.synchronize()
+
+        assert torch.equal(baseline.output, optimized.output)
+        optimized_metrics = optimized.get_custom_metrics()
+        assert optimized_metrics["speculative.acceptance_rate_pct"] < 100.0
+    finally:
+        baseline.teardown()
+        optimized.teardown()
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for trusted speculative decode")

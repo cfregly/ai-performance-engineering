@@ -34,10 +34,8 @@ class OptimizedSpeculativeDecodeTrustedBenchmark(OptimizedSpeculativeDecodeBench
             self.draft_model is None
             or self.input_ids is None
             or self._output_ids is None
-            or self._draft_ids is None
             or self._draft_next_values is None
             or self._draft_next_tokens is None
-            or self._draft_next_token_view is None
             or self._draft_logits is None
             or self._draft_logits_next is None
             or self._view_counts != self._expected_view_counts
@@ -53,13 +51,9 @@ class OptimizedSpeculativeDecodeTrustedBenchmark(OptimizedSpeculativeDecodeBench
         draft_forward_buffers = self._draft_forward_buffers
         output_step_views = self._output_step_views
         output_token_views = self._output_token_views
-        output_write_views = self._output_write_views
         speculation_step_ranges = self._speculation_step_ranges
-        draft_id_views = self._draft_id_views
-        draft_id_column_views = self._draft_id_column_views
         draft_next_values = self._draft_next_values
         draft_next_tokens = self._draft_next_tokens
-        draft_next_token_view = self._draft_next_token_view
         draft_logits = self._draft_logits
         draft_logits_next = self._draft_logits_next
         output_token_views[0].copy_(input_ids[:, 0])
@@ -75,16 +69,14 @@ class OptimizedSpeculativeDecodeTrustedBenchmark(OptimizedSpeculativeDecodeBench
                 k = wl.speculative_k if remaining >= wl.speculative_k else remaining
                 view_idx = k - 1
                 speculation_step_range = speculation_step_ranges[view_idx]
-                draft_window = draft_id_views[view_idx]
 
                 prev = output_step_views[pos]
                 for j in speculation_step_range:
                     draft_forward_into_prepared(prev, draft_logits, draft_forward_buffers)
                     torch.max(draft_logits_next, dim=-1, out=(draft_next_values, draft_next_tokens))
-                    draft_id_column_views[j].copy_(draft_next_tokens)
-                    prev = draft_next_token_view
+                    output_token_views[pos + j + 1].copy_(draft_next_tokens)
+                    prev = output_step_views[pos + j + 1]
 
-                output_write_views[view_idx][pos].copy_(draft_window)
                 draft_tokens += int(k)
                 pos += k
 
