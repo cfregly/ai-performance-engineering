@@ -4749,8 +4749,12 @@ def test_moe_cuda_naive_backend_skips_redundant_mask_any_sync() -> None:
     assert "out.index_add_(0, token_ids, y)" in naive_section
     assert "out[token_ids] += y * weights[token_ids, slot_ids].unsqueeze(-1)" not in naive_section
     assert "def _weight_outputs_in_place_if_safe" in source
-    assert "weighted = _weight_outputs_in_place_if_safe(y, weights.unsqueeze(-1))" in vectorized_section
-    assert "return weighted.sum(dim=1)" in vectorized_section
+    assert "def _sum_weighted_routes_in_place_if_safe" in source
+    assert "return _sum_weighted_routes_in_place_if_safe(y, weights.unsqueeze(-1))" in vectorized_section
+    assert "weighted = _weight_outputs_in_place_if_safe(out, weights)" in source
+    assert "reduced = weighted[:, 0, :]" in source
+    assert "reduced.add_(weighted[:, route_idx, :])" in source
+    assert "return weighted.sum(dim=1)" not in vectorized_section
     assert "(y * weights.unsqueeze(-1)).sum(dim=1)" not in vectorized_section
     assert "torch.relu_(h)" in source
     assert "torch.relu(h)" not in source
@@ -8615,7 +8619,10 @@ def test_moe_cuda_adaptive_router_weights_outputs_in_place_without_grad() -> Non
     assert "if torch.is_grad_enabled() and (fc2_out.requires_grad or gate_probs.requires_grad):" in helper_section
     assert "return (fc2_out * weights).sum(dim=1)" in helper_section
     assert "fc2_out.mul_(weights)" in helper_section
-    assert "return fc2_out.sum(dim=1)" in helper_section
+    assert "reduced = fc2_out[:, 0, :]" in helper_section
+    assert "for route_idx in range(1, fc2_out.shape[1]):" in helper_section
+    assert "reduced.add_(fc2_out[:, route_idx, :])" in helper_section
+    assert "return fc2_out.sum(dim=1)" not in helper_section
     assert "(fc2_out * gate_probs.unsqueeze(-1)).sum(dim=1)" not in source
 
 

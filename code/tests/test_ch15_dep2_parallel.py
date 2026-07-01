@@ -10,11 +10,14 @@ from ch15.dep2_parallel_common import Dep2Config, Dep2Workload
 def test_dep2_vectorized_flattens_replicas_without_stack() -> None:
     source = inspect.getsource(Dep2Workload.forward_vectorized)
     moe_source = inspect.getsource(Dep2Workload._moe_vectorized)
+    helper_source = inspect.getsource(Dep2Workload._moe_vectorized.__globals__["_sum_weighted_routes_in_place_if_safe"])
     assert "tokens = self.x.reshape(-1, self.cfg.hidden_size)" in source
     assert "torch.relu_(h)" in moe_source
     assert "torch.relu(h)" not in moe_source
-    assert "weighted = _weight_outputs_in_place_if_safe(y, weights.unsqueeze(-1))" in moe_source
-    assert "return weighted.sum(dim=1)" in moe_source
+    assert "return _sum_weighted_routes_in_place_if_safe(y, weights.unsqueeze(-1))" in moe_source
+    assert "reduced = weighted[:, 0, :]" in helper_source
+    assert "reduced.add_(weighted[:, route_idx, :])" in helper_source
+    assert "return weighted.sum(dim=1)" not in moe_source
     assert "(y * weights.unsqueeze(-1)).sum(dim=1)" not in moe_source
     assert "torch.stack(" not in source
     assert "for replica in range" not in source

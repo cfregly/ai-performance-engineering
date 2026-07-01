@@ -42,6 +42,16 @@ def _weight_outputs_in_place_if_safe(out: torch.Tensor, weights: torch.Tensor) -
     return out
 
 
+def _sum_weighted_routes_in_place_if_safe(out: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
+    weighted = _weight_outputs_in_place_if_safe(out, weights)
+    if torch.is_grad_enabled() and (out.requires_grad or weights.requires_grad):
+        return weighted.sum(dim=1)
+    reduced = weighted[:, 0, :]
+    for route_idx in range(1, weighted.shape[1]):
+        reduced.add_(weighted[:, route_idx, :])
+    return reduced
+
+
 class MoEBackendWorkload:
     def __init__(self, cfg: MoEBackendConfig, device: torch.device) -> None:
         self.cfg = cfg
@@ -76,8 +86,7 @@ class MoEBackendWorkload:
         h = torch.einsum("tki,tkij->tkj", x_exp, w1_sel)
         h = torch.relu_(h)
         y = torch.einsum("tkj,tkjh->tkh", h, w2_sel)
-        weighted = _weight_outputs_in_place_if_safe(y, weights.unsqueeze(-1))
-        return weighted.sum(dim=1)
+        return _sum_weighted_routes_in_place_if_safe(y, weights.unsqueeze(-1))
 
 
 @torch.inference_mode()

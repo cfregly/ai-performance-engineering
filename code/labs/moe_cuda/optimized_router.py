@@ -18,7 +18,10 @@ def _weighted_topk_sum_in_place_if_safe(fc2_out: torch.Tensor, gate_probs: torch
     if torch.is_grad_enabled() and (fc2_out.requires_grad or gate_probs.requires_grad):
         return (fc2_out * weights).sum(dim=1)
     fc2_out.mul_(weights)
-    return fc2_out.sum(dim=1)
+    reduced = fc2_out[:, 0, :]
+    for route_idx in range(1, fc2_out.shape[1]):
+        reduced.add_(fc2_out[:, route_idx, :])
+    return reduced
 
 
 class AdaptiveTopKMoE(nn.Module):
