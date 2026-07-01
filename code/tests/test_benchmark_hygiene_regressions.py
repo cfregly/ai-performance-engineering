@@ -4979,6 +4979,10 @@ def test_nvfp4_group_gemm_reuses_verification_output_buffer() -> None:
         "def benchmark_fn",
         maxsplit=1,
     )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
     capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def teardown",
         maxsplit=1,
@@ -4992,6 +4996,9 @@ def test_nvfp4_group_gemm_reuses_verification_output_buffer() -> None:
     assert "total_output_elements = sum(" in setup_section
     assert "self._verify_output = torch.empty(" in setup_section
     assert "dtype=torch.float16" in setup_section
+    assert "with torch.inference_mode():" in setup_section
+    assert "with torch.inference_mode(), torch.cuda.graph(graph):" in setup_section
+    assert "with torch.inference_mode():" in benchmark_section
     assert "if self._verify_output is None:" in capture_section
     assert "for group_output in self._last_output:" in capture_section
     assert "self._verify_output[offset:next_offset].copy_(flat_output)" in capture_section

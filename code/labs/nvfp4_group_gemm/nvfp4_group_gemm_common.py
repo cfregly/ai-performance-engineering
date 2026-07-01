@@ -238,13 +238,14 @@ class NVFP4GroupGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # a single graph launch in benchmark_fn().
         if self._capture_iter_graph:
             try:
-                out = None
-                for data in self.data_list:
-                    out = self._custom_kernel(data)
+                with torch.inference_mode():
+                    out = None
+                    for data in self.data_list:
+                        out = self._custom_kernel(data)
                 self._synchronize()
 
                 graph = torch.cuda.CUDAGraph()
-                with torch.cuda.graph(graph):
+                with torch.inference_mode(), torch.cuda.graph(graph):
                     out = None
                     for data in self.data_list:
                         out = self._custom_kernel(data)
@@ -263,14 +264,16 @@ class NVFP4GroupGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("setup() did not create inputs")
 
         if self._iter_graph is not None:
-            self._iter_graph.replay()
+            with torch.inference_mode():
+                self._iter_graph.replay()
             self._last_output = self._iter_graph_last_output
             if self._last_output is None:
                 raise RuntimeError("iter-graph capture did not produce output")
         else:
-            out: Optional[output_t] = None
-            for data in self.data_list:
-                out = self._custom_kernel(data)
+            with torch.inference_mode():
+                out: Optional[output_t] = None
+                for data in self.data_list:
+                    out = self._custom_kernel(data)
             self._last_output = out
             if self._last_output is None:
                 raise RuntimeError("custom_kernel did not produce output")
