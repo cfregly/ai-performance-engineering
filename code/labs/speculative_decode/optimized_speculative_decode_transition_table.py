@@ -17,6 +17,7 @@ class OptimizedSpeculativeDecodeTransitionTableBenchmark(OptimizedSpeculativeDec
         super().__init__()
         self.transition_chunk_tokens = 256
         self._transition_table: torch.Tensor | None = None
+        self._transition_current_token: torch.Tensor | None = None
         self._transition_next_token: torch.Tensor | None = None
         self._token_range = range(0)
         self._metrics.update({
@@ -32,6 +33,7 @@ class OptimizedSpeculativeDecodeTransitionTableBenchmark(OptimizedSpeculativeDec
         wl = self.workload
         chunk = int(self.transition_chunk_tokens)
         self._transition_table = torch.empty(wl.vocab_size, device=self.device, dtype=torch.long)
+        self._transition_current_token = torch.empty((1,), device=self.device, dtype=torch.long)
         self._transition_next_token = torch.empty((1,), device=self.device, dtype=torch.long)
         token_ids = torch.arange(wl.vocab_size, device=self.device, dtype=torch.long).view(1, wl.vocab_size)
         logits = torch.empty((1, chunk, wl.vocab_size), device=self.device, dtype=wl.dtype)
@@ -57,6 +59,7 @@ class OptimizedSpeculativeDecodeTransitionTableBenchmark(OptimizedSpeculativeDec
             self.input_ids is None
             or self._output_ids is None
             or self._transition_table is None
+            or self._transition_current_token is None
             or self._transition_next_token is None
             or self._view_counts != self._expected_view_counts
         ):
@@ -65,14 +68,17 @@ class OptimizedSpeculativeDecodeTransitionTableBenchmark(OptimizedSpeculativeDec
         wl = self.workload
         out = self._output_ids
         transition_table = self._transition_table
+        current_token = self._transition_current_token
         next_token = self._transition_next_token
         output_token_views = self._output_token_views
-        output_token_views[0].copy_(self.input_ids[:, 0])
+        current_token.copy_(self.input_ids[:, 0])
+        output_token_views[0].copy_(current_token)
 
         with self._nvtx_range("transition_table_speculative_decode"), torch.inference_mode():
             for t in self._token_range:
-                torch.index_select(transition_table, 0, output_token_views[t], out=next_token)
+                torch.index_select(transition_table, 0, current_token, out=next_token)
                 output_token_views[t + 1].copy_(next_token)
+                current_token, next_token = next_token, current_token
 
         self.output = out
         rounds = (wl.total_tokens + wl.speculative_k - 1) // wl.speculative_k
@@ -87,6 +93,7 @@ class OptimizedSpeculativeDecodeTransitionTableBenchmark(OptimizedSpeculativeDec
 
     def teardown(self) -> None:
         self._transition_table = None
+        self._transition_current_token = None
         self._transition_next_token = None
         self._token_range = range(0)
         super().teardown()

@@ -19185,7 +19185,13 @@ def test_labs_transition_table_speculative_decode_uses_lookup_hot_path() -> None
     assert "tokens = torch.empty" not in setup_section
     assert "self._transition_table[start:end].copy_" not in setup_section
     assert "self.draft_model = None" in setup_section
-    assert "torch.index_select(transition_table, 0, output_token_views[t], out=next_token)" in benchmark_section
+    assert "self._transition_current_token = torch.empty((1,), device=self.device, dtype=torch.long)" in setup_section
+    assert "current_token = self._transition_current_token" in benchmark_section
+    assert "current_token.copy_(self.input_ids[:, 0])" in benchmark_section
+    assert "output_token_views[0].copy_(current_token)" in benchmark_section
+    assert "torch.index_select(transition_table, 0, current_token, out=next_token)" in benchmark_section
+    assert "current_token, next_token = next_token, current_token" in benchmark_section
+    assert "torch.index_select(transition_table, 0, output_token_views[t], out=next_token)" not in benchmark_section
     assert "draft_forward_into" not in benchmark_section
     assert "target_forward_into" not in benchmark_section
     assert "match_host.copy_" not in benchmark_section
