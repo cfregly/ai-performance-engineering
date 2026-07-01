@@ -60,6 +60,7 @@ class OptimizedBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._model_dtype: Optional[torch.dtype] = None
         self.output: Optional[torch.Tensor] = None
         self._materialization_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.batch_size = 128
         self.hidden_dim = 2048  # Match baseline
         tokens = self.batch_size * self.hidden_dim
@@ -83,6 +84,7 @@ class OptimizedBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._refresh_model_input()
         self.output = None
         self._materialization_buffer = torch.empty((), device=self.device, dtype=self._model_dtype)
+        self._verify_output_buffer = torch.empty_like(self.x, dtype=torch.float32)
         
         # Warmup
         for _ in range(10):
@@ -108,10 +110,16 @@ class OptimizedBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 torch.sum(self.output, dim=(0, 1), out=self._materialization_buffer)
 
     def capture_verification_payload(self) -> None:
-        assert self.model is not None and self.x is not None and self.output is not None
+        assert (
+            self.model is not None
+            and self.x is not None
+            and self.output is not None
+            and self._verify_output_buffer is not None
+        )
+        self._verify_output_buffer.copy_(self.output, non_blocking=False)
         self._set_verification_payload(
             inputs={"x": self.x},
-            output=self.output.float(),
+            output=self._verify_output_buffer,
             batch_size=self.batch_size,
             parameter_count=self._payload_parameter_count,
             output_tolerance=(0.5, 6.0),
@@ -129,6 +137,7 @@ class OptimizedBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._x_model_dtype = None
         self._model_dtype = None
         self._materialization_buffer = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

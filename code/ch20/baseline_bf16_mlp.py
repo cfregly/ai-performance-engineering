@@ -53,6 +53,7 @@ class BaselineBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.x: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._materialization_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.batch_size = 128
         self.hidden_dim = 2048  # Smaller to make differences more visible
         tokens = self.batch_size * self.hidden_dim
@@ -71,6 +72,7 @@ class BaselineBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.x = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float32)
         self.output = None
         self._materialization_buffer = torch.empty((), device=self.device, dtype=torch.float32)
+        self._verify_output_buffer = torch.empty_like(self.x, dtype=torch.float32)
         # Warmup
         for _ in range(5):
             with torch.inference_mode():
@@ -86,10 +88,16 @@ class BaselineBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self.output = out
 
     def capture_verification_payload(self) -> None:
-        assert self.model is not None and self.x is not None and self.output is not None
+        assert (
+            self.model is not None
+            and self.x is not None
+            and self.output is not None
+            and self._verify_output_buffer is not None
+        )
+        self._verify_output_buffer.copy_(self.output, non_blocking=False)
         self._set_verification_payload(
             inputs={"x": self.x},
-            output=self.output.float(),
+            output=self._verify_output_buffer,
             batch_size=self.batch_size,
             parameter_count=self._payload_parameter_count,
             output_tolerance=(0.5, 6.0),
@@ -99,6 +107,7 @@ class BaselineBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = None
         self.x = None
         self._materialization_buffer = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

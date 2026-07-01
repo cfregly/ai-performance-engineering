@@ -8410,13 +8410,19 @@ def test_ch20_bf16_mlp_reuses_materialization_scalar() -> None:
             "def capture_verification_payload",
             maxsplit=1,
         )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
         teardown_section = source.split("def teardown", maxsplit=1)[1].split(
             "def get_config",
             maxsplit=1,
         )[0]
 
         assert "self._materialization_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
         assert allocation in setup_section
+        assert "self._verify_output_buffer = torch.empty_like(self.x, dtype=torch.float32)" in setup_section
         assert "assert self._materialization_buffer is not None" in benchmark_section
         assert "torch.sum(" in benchmark_section
         assert "dim=(0, 1)" in benchmark_section
@@ -8425,7 +8431,11 @@ def test_ch20_bf16_mlp_reuses_materialization_scalar() -> None:
         if relative.endswith("baseline_bf16_mlp.py"):
             assert "self.output = out" in benchmark_section
             assert "self.output = out.detach()" not in benchmark_section
+        assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "self.output.float()" not in capture_section
         assert "self._materialization_buffer = None" in teardown_section
+        assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_ch20_optimized_forward_paths_use_inference_mode() -> None:
