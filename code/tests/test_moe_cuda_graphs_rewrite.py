@@ -103,7 +103,7 @@ def test_graphable_bmm_fused_path_matches_dynamic_bmm_path() -> None:
         weight_workspace_ptr = experts._bmm_padded_weights.data_ptr()
         index_workspace_ptr = experts._bmm_padded_indices.data_ptr()
         unsort_workspace_ptr = experts._bmm_unsort.data_ptr()
-        reduced_workspace_ptr = experts._bmm_reduced.data_ptr()
+        restored_workspace_ptr = experts._bmm_restored.data_ptr()
         padded_token_index_view = next(iter(experts._bmm_padded_token_index_view_cache.values()))
         padded_weight_index_view = next(iter(experts._bmm_padded_column_index_cache.values()))
         sorted_weight_column_view = next(iter(experts._bmm_sorted_weight_column_cache.values()))
@@ -118,8 +118,8 @@ def test_graphable_bmm_fused_path_matches_dynamic_bmm_path() -> None:
     assert experts._bmm_padded_weights.data_ptr() == weight_workspace_ptr
     assert experts._bmm_padded_indices.data_ptr() == index_workspace_ptr
     assert experts._bmm_unsort.data_ptr() == unsort_workspace_ptr
-    assert experts._bmm_reduced.data_ptr() == reduced_workspace_ptr
-    assert dynamic_again.data_ptr() == reduced_workspace_ptr
+    assert experts._bmm_restored.data_ptr() == restored_workspace_ptr
+    assert dynamic_again.data_ptr() == restored_workspace_ptr
     assert next(iter(experts._bmm_padded_token_index_view_cache.values())) is padded_token_index_view
     assert next(iter(experts._bmm_padded_column_index_cache.values())) is padded_weight_index_view
     assert next(iter(experts._bmm_sorted_weight_column_cache.values())) is sorted_weight_column_view
@@ -205,7 +205,7 @@ def test_level5_bmm_path_reuses_padding_workspaces() -> None:
     assert "self._bmm_padded_weights: Optional[torch.Tensor] = None" in text
     assert "self._bmm_valid_out: Optional[torch.Tensor] = None" in text
     assert "self._bmm_restored: Optional[torch.Tensor] = None" in text
-    assert "self._bmm_reduced: Optional[torch.Tensor] = None" in text
+    assert "self._bmm_reduced: Optional[torch.Tensor] = None" not in text
     assert "self._bmm_flat_token_ids_cache: Dict[Tuple[int, int, torch.device], torch.Tensor] = {}" in text
     assert "self._bmm_position_ids_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}" in text
     assert "self._bmm_padded_token_index_view_cache: Dict[Tuple[int, int, int, torch.device], torch.Tensor] = {}" in text
@@ -236,9 +236,10 @@ def test_level5_bmm_path_reuses_padding_workspaces() -> None:
     assert "restored = valid_out.index_select(0, unsort)" in bmm_section
     assert '"_bmm_restored",' in bmm_section
     assert "torch.index_select(valid_out, 0, unsort, out=restored)" in bmm_section
-    assert '"_bmm_reduced",' in bmm_section
-    assert "torch.sum(restored, dim=1, out=reduced)" in bmm_section
-    assert "return restored.sum(dim=1)" in bmm_section
+    assert '"_bmm_reduced",' not in bmm_section
+    assert "return _sum_routes_in_place_if_safe(restored)" in bmm_section
+    assert "torch.sum(restored, dim=1, out=reduced)" not in bmm_section
+    assert "return restored.sum(dim=1)" not in bmm_section
     assert 'padded_tokens = self._bmm_workspace(' in bmm_section
     assert '"_bmm_padded_tokens",' in bmm_section
     assert 'padded_weights = self._bmm_workspace(' in bmm_section
@@ -320,6 +321,10 @@ def test_moe_expert_paths_weight_outputs_in_place_when_grad_disabled() -> None:
     assert "if torch.is_grad_enabled() and out.requires_grad:" in text
     assert "return out * weights" in text
     assert "out.mul_(weights)" in text
+    assert "def _sum_routes_in_place_if_safe" in text
+    assert "reduced = out[:, 0, :]" in text
+    assert "for route_idx in range(1, out.shape[1]):" in text
+    assert "reduced.add_(out[:, route_idx, :])" in text
 
     naive_section = text.split("def forward_naive", maxsplit=1)[1].split(
         "def forward_batched",
@@ -357,11 +362,12 @@ def test_moe_expert_paths_weight_outputs_in_place_when_grad_disabled() -> None:
     assert "out = _weight_routes_in_place_if_safe(out, flat_weights)" in graphable_section
     assert "out = out * expert_mask.unsqueeze(-1) * flat_weights" not in graphable_section
     assert "self._mem_out_buffer: Optional[torch.Tensor] = None" in text
-    assert "self._mem_reduced_buffer: Optional[torch.Tensor] = None" in text
+    assert "self._mem_reduced_buffer: Optional[torch.Tensor] = None" not in text
     assert 'out_flat = self._bmm_workspace(\n            "_mem_out_buffer",' in mem_section
     assert "torch.bmm(hidden.unsqueeze(1), w2_sel, out=out_flat.unsqueeze(1))" in mem_section
-    assert 'reduced = self._bmm_workspace(\n            "_mem_reduced_buffer",' in mem_section
-    assert "torch.sum(out, dim=1, out=reduced)" in mem_section
+    assert 'reduced = self._bmm_workspace(\n            "_mem_reduced_buffer",' not in mem_section
+    assert "return _sum_routes_in_place_if_safe(out)" in mem_section
+    assert "torch.sum(out, dim=1, out=reduced)" not in mem_section
     assert "out = torch.bmm(hidden.unsqueeze(1), w2_sel).squeeze(1)" not in mem_section
     assert "return out.sum(dim=1)" not in mem_section
 
@@ -434,7 +440,6 @@ def test_mem_efficient_moe_path_reuses_workspaces() -> None:
         gate_ptr = experts._gate_buffer.data_ptr()
         up_ptr = experts._up_buffer.data_ptr()
         out_ptr = experts._mem_out_buffer.data_ptr()
-        reduced_ptr = experts._mem_reduced_buffer.data_ptr()
         actual_reused = experts.forward_mem_efficient(x, expert_indices, expert_weights)
 
     torch.testing.assert_close(actual, expected, atol=1e-5, rtol=1e-5)
@@ -442,8 +447,7 @@ def test_mem_efficient_moe_path_reuses_workspaces() -> None:
     assert experts._gate_buffer.data_ptr() == gate_ptr
     assert experts._up_buffer.data_ptr() == up_ptr
     assert experts._mem_out_buffer.data_ptr() == out_ptr
-    assert experts._mem_reduced_buffer.data_ptr() == reduced_ptr
-    assert actual_reused.data_ptr() == reduced_ptr
+    assert actual_reused.data_ptr() == out_ptr
 
 
 def test_moe_inplace_weighted_paths_match_naive_reference() -> None:
@@ -509,15 +513,13 @@ def test_grouped_moe_path_matches_naive_reference() -> None:
         actual = experts.forward_grouped(x, expert_indices, expert_weights)
         first_output_ptr = experts._grouped_output.data_ptr()
         first_restored_ptr = experts._grouped_restored.data_ptr()
-        first_reduced_ptr = experts._grouped_reduced.data_ptr()
         actual_reused = experts.forward_grouped(x, expert_indices, expert_weights)
 
     torch.testing.assert_close(actual, expected, atol=1e-5, rtol=1e-5)
     torch.testing.assert_close(actual_reused, expected, atol=1e-5, rtol=1e-5)
     assert experts._grouped_output.data_ptr() == first_output_ptr
     assert experts._grouped_restored.data_ptr() == first_restored_ptr
-    assert experts._grouped_reduced.data_ptr() == first_reduced_ptr
-    assert actual_reused.data_ptr() == first_reduced_ptr
+    assert actual_reused.data_ptr() == first_restored_ptr
 
 
 def test_grouped_moe_path_uses_shared_bucket_helpers() -> None:
@@ -535,14 +537,15 @@ def test_grouped_moe_path_uses_shared_bucket_helpers() -> None:
     assert "return_expert_order_list=True" in grouped_section
     assert "self._grouped_output: Optional[torch.Tensor] = None" in text
     assert "self._grouped_restored: Optional[torch.Tensor] = None" in text
-    assert "self._grouped_reduced: Optional[torch.Tensor] = None" in text
+    assert "self._grouped_reduced: Optional[torch.Tensor] = None" not in text
     assert 'output = self._bmm_workspace(\n            "_grouped_output",' in grouped_section
     assert 'restored = self._bmm_workspace(\n            "_grouped_restored",' in grouped_section
-    assert 'reduced = self._bmm_workspace(\n            "_grouped_reduced",' in grouped_section
+    assert 'reduced = self._bmm_workspace(\n            "_grouped_reduced",' not in grouped_section
     assert "output = torch.empty(" not in grouped_section
     assert "restored = torch.empty(" not in grouped_section
     assert "return restored.view(batch_seq, top_k, -1).sum(dim=1)" not in grouped_section
-    assert "torch.sum(restored, dim=1, out=reduced)" in grouped_section
+    assert "return _sum_routes_in_place_if_safe(restored)" in grouped_section
+    assert "torch.sum(restored, dim=1, out=reduced)" not in grouped_section
     assert "torch.zeros(sorted_tokens.shape[0]" not in grouped_section
     assert "repeat_interleave" not in grouped_section
     assert "for expert_id, count in zip(expert_order_host, counts)" in grouped_section

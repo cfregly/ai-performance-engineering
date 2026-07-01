@@ -51,6 +51,15 @@ def _weight_routes_in_place_if_safe(out: torch.Tensor, weights: torch.Tensor) ->
     return out
 
 
+def _sum_routes_in_place_if_safe(out: torch.Tensor) -> torch.Tensor:
+    if torch.is_grad_enabled() and out.requires_grad:
+        return out.sum(dim=1)
+    reduced = out[:, 0, :]
+    for route_idx in range(1, out.shape[1]):
+        reduced.add_(out[:, route_idx, :])
+    return reduced
+
+
 def _silu_mul_in_place_if_safe(gate: torch.Tensor, up: torch.Tensor) -> torch.Tensor:
     if torch.is_grad_enabled() and gate.requires_grad:
         return F.silu(gate) * up
@@ -107,7 +116,6 @@ class MoEExperts(nn.Module):
         self._gate_buffer: Optional[torch.Tensor] = None
         self._up_buffer: Optional[torch.Tensor] = None
         self._mem_out_buffer: Optional[torch.Tensor] = None
-        self._mem_reduced_buffer: Optional[torch.Tensor] = None
         self._cuda_graph = None
         self._cuda_graph_stream: Optional[torch.cuda.Stream] = None
         self._cuda_graph_signature: Optional[Tuple[Tuple[int, ...], Tuple[int, ...], Tuple[int, ...], str, str, str, int]] = None
@@ -124,11 +132,9 @@ class MoEExperts(nn.Module):
         self._bmm_padded_weights: Optional[torch.Tensor] = None
         self._bmm_valid_out: Optional[torch.Tensor] = None
         self._bmm_restored: Optional[torch.Tensor] = None
-        self._bmm_reduced: Optional[torch.Tensor] = None
         self._graph_padded_tokens: Optional[torch.Tensor] = None
         self._grouped_output: Optional[torch.Tensor] = None
         self._grouped_restored: Optional[torch.Tensor] = None
-        self._grouped_reduced: Optional[torch.Tensor] = None
         self._bmm_flat_token_ids_cache: Dict[Tuple[int, int, torch.device], torch.Tensor] = {}
         self._bmm_position_ids_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}
         self._bmm_padded_token_index_view_cache: Dict[Tuple[int, int, int, torch.device], torch.Tensor] = {}
@@ -371,7 +377,7 @@ class MoEExperts(nn.Module):
         out = out.view(batch_seq, top_k, self.hidden_size)
 
         out = _weight_routes_in_place_if_safe(out, expert_weights.unsqueeze(-1))
-        return out.sum(dim=1)
+        return _sum_routes_in_place_if_safe(out)
     
     def forward_fused(
         self, x: torch.Tensor, expert_indices: torch.Tensor, expert_weights: torch.Tensor,
@@ -402,7 +408,7 @@ class MoEExperts(nn.Module):
         
         out = torch.einsum('bki,bkih->bkh', hidden, w2_sel)
         out = _weight_routes_in_place_if_safe(out, expert_weights.unsqueeze(-1))
-        return out.sum(dim=1)
+        return _sum_routes_in_place_if_safe(out)
     
     def forward_mem_efficient(
         self, x: torch.Tensor, expert_indices: torch.Tensor, expert_weights: torch.Tensor,
@@ -454,14 +460,7 @@ class MoEExperts(nn.Module):
         out = out_flat.view(batch_seq, top_k, self.hidden_size)
         
         out = _weight_routes_in_place_if_safe(out, expert_weights.unsqueeze(-1))
-        reduced = self._bmm_workspace(
-            "_mem_reduced_buffer",
-            (batch_seq, self.hidden_size),
-            device=x.device,
-            dtype=x.dtype,
-        )
-        torch.sum(out, dim=1, out=reduced)
-        return reduced
+        return _sum_routes_in_place_if_safe(out)
     
     def forward_grouped(
         self, x: torch.Tensor, expert_indices: torch.Tensor, expert_weights: torch.Tensor,
@@ -536,16 +535,7 @@ class MoEExperts(nn.Module):
         )
         restore_grouped_tokens(output, bucket_indices, batch_seq * top_k, out=restored)
         restored = restored.view(batch_seq, top_k, self.hidden_size)
-        if torch.is_grad_enabled() and restored.requires_grad:
-            return restored.sum(dim=1)
-        reduced = self._bmm_workspace(
-            "_grouped_reduced",
-            (batch_seq, self.hidden_size),
-            device=x.device,
-            dtype=restored.dtype,
-        )
-        torch.sum(restored, dim=1, out=reduced)
-        return reduced
+        return _sum_routes_in_place_if_safe(restored)
     
     def forward_bmm_fused(
         self, x: torch.Tensor, expert_indices: torch.Tensor, expert_weights: torch.Tensor,
@@ -707,16 +697,7 @@ class MoEExperts(nn.Module):
             )
             torch.index_select(valid_out, 0, unsort, out=restored)
         restored = restored.view(batch_seq, top_k, self.hidden_size)
-        if torch.is_grad_enabled() and restored.requires_grad:
-            return restored.sum(dim=1)
-        reduced = self._bmm_workspace(
-            "_bmm_reduced",
-            (batch_seq, self.hidden_size),
-            device=device,
-            dtype=restored.dtype,
-        )
-        torch.sum(restored, dim=1, out=reduced)
-        return reduced
+        return _sum_routes_in_place_if_safe(restored)
 
     def _forward_bmm_fused_graphable(
         self, x: torch.Tensor, expert_indices: torch.Tensor, expert_weights: torch.Tensor,
@@ -763,7 +744,7 @@ class MoEExperts(nn.Module):
 
         combined = out.sum(dim=0)
         restored = combined.view(batch_seq, top_k, self.hidden_size)
-        return restored.sum(dim=1)
+        return _sum_routes_in_place_if_safe(restored)
     
     def forward_cuda_graphs(
         self, x: torch.Tensor, expert_indices: torch.Tensor, expert_weights: torch.Tensor,
