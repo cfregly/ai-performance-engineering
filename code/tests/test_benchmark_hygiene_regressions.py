@@ -18977,6 +18977,12 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._view_counts = ()" in teardown_section
     assert "self._expected_view_counts = ()" in teardown_section
     assert "self._speculation_step_ranges = []" in teardown_section
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_buffer = torch.empty_like(self._output_ids, dtype=torch.float32)" in setup_section
+    assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "self.output.float()" not in capture_section
+    assert "self._verify_output_buffer = None" in teardown_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
     assert "def forward_into(self, token_ids: torch.Tensor, logits_out: torch.Tensor)" in common_source
@@ -19111,6 +19117,11 @@ def test_labs_baseline_speculative_decode_reuses_next_token_buffer() -> None:
     assert "torch.max(target_logits_next, dim=-1, out=(next_token_values, next_token_ids))" in benchmark_section
     assert "logits[:, 0, :]" not in benchmark_section
     assert ".argmax(" not in benchmark_section
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_buffer = torch.empty_like(self._output_ids, dtype=torch.float32)" in setup_section
+    assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "self.output.float()" not in capture_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
     assert "self._target_logits = None" in source
@@ -19118,6 +19129,7 @@ def test_labs_baseline_speculative_decode_reuses_next_token_buffer() -> None:
     assert "self._view_counts = (0, 0)" in teardown_section
     assert "self._expected_view_counts = (0, 0)" in teardown_section
     assert "self._token_range = range(0)" in teardown_section
+    assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_ch15_speculative_decode_common_uses_inference_mode_for_setup_mutations() -> None:

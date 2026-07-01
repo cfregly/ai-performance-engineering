@@ -34,6 +34,7 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._target_logits: Optional[torch.Tensor] = None
         self._target_logits_next: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
 
         tokens = float(self.workload.total_tokens)
@@ -60,6 +61,7 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
 
         self.input_ids = torch.randint(0, wl.vocab_size, (1, 1), device=self.device, dtype=torch.int64)
         self._output_ids = torch.empty((1, wl.total_tokens + 1), device=self.device, dtype=torch.int64)
+        self._verify_output_buffer = torch.empty_like(self._output_ids, dtype=torch.float32)
         self._output_step_views = [
             self._output_ids[:, token_idx : token_idx + 1] for token_idx in range(wl.total_tokens + 1)
         ]
@@ -109,11 +111,12 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.output = out
 
     def capture_verification_payload(self) -> None:
-        if self.input_ids is None or self.output is None:
+        if self.input_ids is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output, non_blocking=False)
         self._set_verification_payload(
             inputs={"input_ids": self.input_ids},
-            output=self.output.float(),
+            output=self._verify_output_buffer,
             batch_size=1,
             parameter_count=self._payload_parameter_count,
             precision_flags={"bf16": False, "fp16": False, "fp8": False, "tf32": torch.backends.cuda.matmul.allow_tf32},
@@ -134,6 +137,7 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._target_logits = None
         self._target_logits_next = None
         self.output = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
