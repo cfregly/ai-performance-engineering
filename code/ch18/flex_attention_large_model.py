@@ -87,6 +87,12 @@ class TransformerBlock(nn.Module):
         
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
+
+    def _project_qkv(self, x):
+        batch, seq_len, _ = x.shape
+        qkv = self.qkv(x).reshape(batch, seq_len, 3, self.n_heads, self.head_dim)
+        q, k, v = qkv.unbind(dim=2)
+        return q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
         
     def forward_with_baseline_attention(self, x):
         """Forward pass with baseline SDPA"""
@@ -94,9 +100,7 @@ class TransformerBlock(nn.Module):
         x = self.norm1(x)
         
         batch, seq_len, _ = x.shape
-        qkv = self.qkv(x).reshape(batch, seq_len, 3, self.n_heads, self.head_dim)
-        qkv = qkv.permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        q, k, v = self._project_qkv(x)
         
         # Baseline: scaled_dot_product_attention
         attn_out = torch.nn.functional.scaled_dot_product_attention(q, k, v)
@@ -119,9 +123,7 @@ class TransformerBlock(nn.Module):
         x = self.norm1(x)
         
         batch, seq_len, _ = x.shape
-        qkv = self.qkv(x).reshape(batch, seq_len, 3, self.n_heads, self.head_dim)
-        qkv = qkv.permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        q, k, v = self._project_qkv(x)
         
         # FlexAttention with sliding window
         if block_mask is None:

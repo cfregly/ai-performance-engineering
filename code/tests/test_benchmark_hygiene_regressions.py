@@ -9950,6 +9950,10 @@ def test_ch18_dynamic_flex_attention_mask_avoids_scalar_tensor_allocation() -> N
         "def test_configuration",
         maxsplit=1,
     )[0]
+    large_block_section = large_source.split("class TransformerBlock", maxsplit=1)[1].split(
+        "class BaselineModel",
+        maxsplit=1,
+    )[0]
     large_flex_section = large_source.split("class FlexAttentionModel", maxsplit=1)[1].split(
         "def estimate_memory",
         maxsplit=1,
@@ -9971,6 +9975,12 @@ def test_ch18_dynamic_flex_attention_mask_avoids_scalar_tensor_allocation() -> N
     assert "torch.tensor(h" not in dynamic_section
     assert "device=x.device" in large_flex_section
     assert ".to(x.device)" not in large_flex_section
+    assert "def _project_qkv(self, x):" in large_block_section
+    assert "q, k, v = qkv.unbind(dim=2)" in large_block_section
+    assert "return q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)" in large_block_section
+    assert large_block_section.count("q, k, v = self._project_qkv(x)") == 2
+    assert "qkv = qkv.permute(2, 0, 3, 1, 4)" not in large_block_section
+    assert "q, k, v = qkv[0], qkv[1], qkv[2]" not in large_block_section
 
 
 def test_ch18_flexattention_fallback_builds_sliding_window_mask_vectorized() -> None:
