@@ -8494,6 +8494,30 @@ def test_late_chapter_forward_wrappers_use_inference_mode() -> None:
         assert "torch.no_grad()" not in benchmark_section
 
 
+def test_ch18_optimized_tensor_cores_reuses_verification_buffer() -> None:
+    source = (REPO_ROOT / "ch18" / "optimized_tensor_cores.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_buffer = torch.empty_like(self.output_buffer, dtype=torch.float32)" in setup_section
+    assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "self.output.float()" not in capture_section
+    assert "self.output_buffer = None" in teardown_section
+    assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_ch20_bf16_mlp_uses_inplace_relu_activations() -> None:
     for relative in (
         "ch20/baseline_bf16_mlp.py",

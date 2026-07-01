@@ -35,6 +35,7 @@ class OptimizedTensorCoresBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # B200 sustains slightly better throughput for this path with BF16.
         self.dtype = torch.bfloat16
         self.output_buffer = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
             tokens_per_iteration=float(self.size * self.size),
@@ -54,6 +55,7 @@ class OptimizedTensorCoresBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.A_tc = self.A.to(self.dtype)
         self.B_tc = self.B.to(self.dtype)
         self.output_buffer = torch.empty((self.size, self.size), device=self.device, dtype=self.dtype)
+        self._verify_output_buffer = torch.empty_like(self.output_buffer, dtype=torch.float32)
         self._synchronize()
         self.register_workload_metadata(
             requests_per_iteration=self._workload.requests_per_iteration,
@@ -75,9 +77,12 @@ class OptimizedTensorCoresBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output")
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output, non_blocking=False)
         self._set_verification_payload(
             inputs={"A": self.A, "B": self.B},
-            output=self.output.float(),
+            output=self._verify_output_buffer,
             batch_size=1,
             parameter_count=0,
             precision_flags={
@@ -95,6 +100,8 @@ class OptimizedTensorCoresBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.B = None
         self.A_tc = None
         self.B_tc = None
+        self.output_buffer = None
+        self._verify_output_buffer = None
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:
