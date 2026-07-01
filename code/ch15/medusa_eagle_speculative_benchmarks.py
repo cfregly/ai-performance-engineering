@@ -103,6 +103,8 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._accept_prefix: Optional[torch.Tensor] = None
         self._accept_count_device: Optional[torch.Tensor] = None
         self._accept_count_host: Optional[torch.Tensor] = None
+        self._accept_count_device_scalar: Optional[torch.Tensor] = None
+        self._accept_count_host_scalar: Optional[torch.Tensor] = None
         self._greedy_next_values: Optional[torch.Tensor] = None
         self._greedy_next_tokens: Optional[torch.Tensor] = None
         self._draft_head_offsets: Optional[torch.Tensor] = None
@@ -133,6 +135,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._target_token_column_views: list[torch.Tensor] = []
         self._match_views: list[torch.Tensor] = []
         self._accept_prefix_views: list[torch.Tensor] = []
+        self._accept_prefix_row_views: list[torch.Tensor] = []
         self._draft_id_views: list[torch.Tensor] = []
         self._draft_id_column_views: list[torch.Tensor] = []
         self._speculation_step_ranges: list[range] = []
@@ -200,6 +203,8 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._accept_prefix = None
             self._accept_count_device = None
             self._accept_count_host = None
+            self._accept_count_device_scalar = None
+            self._accept_count_host_scalar = None
             self._draft_head_offsets = None
             self._draft_seed_buffer = None
             self._draft_block_values = None
@@ -225,6 +230,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._target_token_column_views = []
             self._match_views = []
             self._accept_prefix_views = []
+            self._accept_prefix_row_views = []
             self._draft_id_views = []
             self._draft_id_column_views = []
             self._speculation_step_ranges = []
@@ -250,6 +256,8 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device="cpu",
             pin_memory=torch.cuda.is_available(),
         )
+        self._accept_count_device_scalar = self._accept_count_device[0]
+        self._accept_count_host_scalar = self._accept_count_host[0]
         self._draft_head_offsets = torch.arange(wl.speculative_k, device=self.device, dtype=torch.int64).view(1, -1)
         self._draft_seed_buffer = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)
         self._draft_block_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)
@@ -306,6 +314,9 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._accept_prefix_views = [
             self._accept_prefix[:, :k] for k in range(1, wl.speculative_k + 1)
         ]
+        self._accept_prefix_row_views = [
+            self._accept_prefix[0, :k] for k in range(1, wl.speculative_k + 1)
+        ]
         self._draft_id_views = [self._draft_ids[:, :k] for k in range(1, wl.speculative_k + 1)]
         self._draft_id_column_views = [
             self._draft_ids[:, token_idx] for token_idx in range(wl.speculative_k)
@@ -330,6 +341,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             len(self._target_token_column_views),
             len(self._match_views),
             len(self._accept_prefix_views),
+            len(self._accept_prefix_row_views),
             len(self._draft_id_views),
             len(self._draft_id_column_views),
             len(self._speculation_step_ranges),
@@ -346,6 +358,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             wl.speculative_k,
             wl.speculative_k,
             verify_tail_count,
+            wl.speculative_k,
             wl.speculative_k,
             wl.speculative_k,
             wl.speculative_k,
@@ -427,6 +440,8 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._accept_prefix is None
             or self._accept_count_device is None
             or self._accept_count_host is None
+            or self._accept_count_device_scalar is None
+            or self._accept_count_host_scalar is None
             or self._draft_block_values is None
             or self._draft_block_tokens is None
             or self._target_next_values is None
@@ -494,9 +509,16 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     torch.eq(target_next, draft_window, out=matches)
                     accept_prefix = self._accept_prefix_views[view_idx]
                     torch.cumprod(matches, dim=-1, dtype=torch.int64, out=accept_prefix)
-                    torch.sum(accept_prefix[0], dim=0, out=self._accept_count_device[0])
-                    self._accept_count_host.copy_(self._accept_count_device, non_blocking=False)
-                    accept_k = int(self._accept_count_host[0])
+                    torch.sum(
+                        self._accept_prefix_row_views[view_idx],
+                        dim=0,
+                        out=self._accept_count_device_scalar,
+                    )
+                    self._accept_count_host_scalar.copy_(
+                        self._accept_count_device_scalar,
+                        non_blocking=False,
+                    )
+                    accept_k = int(self._accept_count_host_scalar)
 
                     if accept_k == k:
                         self._output_write_views[view_idx][pos].copy_(draft_window)
@@ -561,6 +583,8 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._accept_prefix = None
         self._accept_count_device = None
         self._accept_count_host = None
+        self._accept_count_device_scalar = None
+        self._accept_count_host_scalar = None
         self._greedy_next_values = None
         self._greedy_next_tokens = None
         self._draft_head_offsets = None
@@ -591,6 +615,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._target_token_column_views = []
         self._match_views = []
         self._accept_prefix_views = []
+        self._accept_prefix_row_views = []
         self._draft_id_views = []
         self._draft_id_column_views = []
         self._speculation_step_ranges = []
