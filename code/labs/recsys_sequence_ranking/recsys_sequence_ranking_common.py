@@ -55,6 +55,8 @@ class RankingInputs:
     sequence_lengths: torch.Tensor
     context_ids: torch.Tensor
     candidate_ids: torch.Tensor
+    sequence_ids_1d: torch.Tensor
+    candidate_ids_1d: torch.Tensor
     avg_sequence_length: float
     hot_candidate_share_pct: float
 
@@ -234,12 +236,16 @@ def build_inputs(workload: SequenceRankingWorkload, device: torch.device) -> Ran
     avg_sequence_length = float(lengths.to(torch.float32).mean())
     hot_candidate_share_pct = float((candidate_ids < hot_threshold).to(torch.float32).mean() * 100.0)
 
+    sequence_ids_device = sequence_ids.to(device=device, dtype=torch.int64)
+    candidate_ids_device = candidate_ids.to(device=device, dtype=torch.int64)
     return RankingInputs(
-        sequence_ids=sequence_ids.to(device=device, dtype=torch.int64),
+        sequence_ids=sequence_ids_device,
         sequence_mask=sequence_mask.to(device=device),
         sequence_lengths=lengths.to(device=device, dtype=torch.int64),
         context_ids=context_ids.to(device=device, dtype=torch.int64),
-        candidate_ids=candidate_ids.to(device=device, dtype=torch.int64),
+        candidate_ids=candidate_ids_device,
+        sequence_ids_1d=sequence_ids_device.view(-1),
+        candidate_ids_1d=candidate_ids_device.view(-1),
         avg_sequence_length=avg_sequence_length,
         hot_candidate_share_pct=hot_candidate_share_pct,
     )
@@ -499,7 +505,7 @@ def sequence_mean_vectorized(
         seq_emb = F.embedding(inputs.sequence_ids, state.item_embeddings)
         return (seq_emb * workspace.sequence_mask_float).sum(dim=1) * workspace.sequence_length_recip
 
-    flat_sequence_ids = inputs.sequence_ids.reshape(-1)
+    flat_sequence_ids = inputs.sequence_ids_1d
     sequence_rows = int(flat_sequence_ids.numel())
     embedding_dim = int(state.item_embeddings.shape[1])
     sequence_embedding_flat = workspace.sequence_embedding_flat[:sequence_rows]
@@ -562,7 +568,7 @@ def candidate_scores_torch(
     candidate_f32_buffer: torch.Tensor | None = None,
     user_vec_f32_buffer: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    flat_candidate_ids = inputs.candidate_ids.reshape(-1)
+    flat_candidate_ids = inputs.candidate_ids_1d
     candidate_rows = int(flat_candidate_ids.numel())
     embedding_dim = int(state.item_embeddings.shape[1])
     can_reuse_candidate_buffer = (

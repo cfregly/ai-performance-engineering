@@ -169,6 +169,7 @@ def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
     build_workspace_source = inspect.getsource(build_workspace)
     sequence_source = inspect.getsource(sequence_mean_vectorized)
     context_source = inspect.getsource(context_sum_vectorized)
+    candidate_source = inspect.getsource(candidate_scores_torch)
 
     fallback_sequence = sequence_mean_vectorized(inputs, state)
     workspace_sequence = sequence_mean_vectorized(inputs, state, workspace)
@@ -188,6 +189,10 @@ def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
     )
     assert workspace.context_flat_ids.shape == (workload.batch_size, workload.num_tables)
     assert workspace.context_flat_ids_1d.shape == (workload.batch_size * workload.num_tables,)
+    assert inputs.sequence_ids_1d.shape == (workload.batch_size * workload.seq_len,)
+    assert inputs.candidate_ids_1d.shape == (workload.batch_size * workload.num_candidates,)
+    assert inputs.sequence_ids_1d.data_ptr() == inputs.sequence_ids.data_ptr()
+    assert inputs.candidate_ids_1d.data_ptr() == inputs.candidate_ids.data_ptr()
     assert workspace.candidate_embedding_flat.shape == (
         workload.batch_size * workload.num_candidates,
         workload.embedding_dim,
@@ -197,6 +202,10 @@ def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
     assert ".expand(workload.batch_size, -1).clone()" not in build_workspace_source
     assert "out=sequence_embedding_flat" in sequence_source
     assert "out=context_embedding_flat" in context_source
+    assert "flat_sequence_ids = inputs.sequence_ids_1d" in sequence_source
+    assert "flat_candidate_ids = inputs.candidate_ids_1d" in candidate_source
+    assert "inputs.sequence_ids.reshape(-1)" not in sequence_source
+    assert "inputs.candidate_ids.reshape(-1)" not in candidate_source
     assert "state.context_embeddings[workspace.context_table_index, inputs.context_ids]" in context_source
     assert "prepare_context_workspace_for_inputs(inputs, state, workspace)" in context_source
     assert "workspace.context_flat_ids_1d[:context_rows]" in context_source
