@@ -18997,6 +18997,7 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "self._accept_prefix_views = [" in setup_section
     assert "self._draft_id_views = [" in setup_section
     assert "self._draft_id_column_views = [" in setup_section
+    assert "self._speculation_step_ranges = [range(k) for k in range(1, wl.speculative_k + 1)]" in setup_section
     assert "self._accept_prefix[:, :k] for k in range(1, wl.speculative_k + 1)" in setup_section
     assert "verify_tail_count = wl.speculative_k - 1 if wl.speculative_k > 1 else 0" in setup_section
     assert "self._view_counts = (" in setup_section
@@ -19012,6 +19013,7 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "len(self._draft_head_offset_views)" not in benchmark_section
     assert "len(self._verify_prev_tail_views)" not in benchmark_section
     assert "len(self._draft_id_column_views)" not in benchmark_section
+    assert "len(self._speculation_step_ranges)" not in benchmark_section
     assert "time.perf_counter" not in benchmark_section
     assert "draft_time_ms=None" in benchmark_section
     assert "verify_time_ms=None" in benchmark_section
@@ -19023,6 +19025,7 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "torch.add(prev.expand(-1, k), head_offsets, out=seed_tokens)" in seed_section
     assert "seed_tokens.remainder_(self.workload.vocab_size)" in seed_section
     assert "self.draft_model.forward_into(draft_seed, self._draft_logits_views[view_idx])" in benchmark_section
+    assert "speculation_step_range = self._speculation_step_ranges[view_idx]" in benchmark_section
     assert "self._verify_prev_first.copy_(self._output_token_views[pos])" in benchmark_section
     assert "self._verify_prev_tail_views[k - 2].copy_(self._draft_id_views[k - 2])" in benchmark_section
     assert "self._verify_prev_views[view_idx]" in benchmark_section
@@ -19033,6 +19036,8 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "target_next = self._target_token_views[view_idx]" in benchmark_section
     assert "draft_window = self._draft_id_views[view_idx]" in benchmark_section
     assert "torch.max(logits_d, dim=-1, out=(draft_values, draft_block))" in benchmark_section
+    assert "for j in speculation_step_range:" in benchmark_section
+    assert "for j in range(k):" not in benchmark_section
     assert "next_d = self._draft_block_token_column_views[j]" in benchmark_section
     assert "next_d = self._draft_id_column_views[j]" in benchmark_section
     assert "self._draft_id_column_views[j].copy_(next_d)" in benchmark_section
@@ -19065,6 +19070,7 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "sum(p.numel()" not in capture_section
     assert "self._view_counts = ()" in source
     assert "self._expected_view_counts = ()" in source
+    assert "self._speculation_step_ranges = []" in source
 
 
 def test_medusa_eagle_validation_batches_output_bounds_check() -> None:

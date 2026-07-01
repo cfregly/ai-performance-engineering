@@ -135,6 +135,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._accept_prefix_views: list[torch.Tensor] = []
         self._draft_id_views: list[torch.Tensor] = []
         self._draft_id_column_views: list[torch.Tensor] = []
+        self._speculation_step_ranges: list[range] = []
         self._view_counts: tuple[int, ...] = ()
         self._expected_view_counts: tuple[int, ...] = ()
         self._verify_summary_device: Optional[torch.Tensor] = None
@@ -226,6 +227,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._accept_prefix_views = []
             self._draft_id_views = []
             self._draft_id_column_views = []
+            self._speculation_step_ranges = []
             self._view_counts = (
                 len(self._output_step_views),
                 len(self._output_token_views),
@@ -308,6 +310,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._draft_id_column_views = [
             self._draft_ids[:, token_idx] for token_idx in range(wl.speculative_k)
         ]
+        self._speculation_step_ranges = [range(k) for k in range(1, wl.speculative_k + 1)]
         verify_tail_count = wl.speculative_k - 1 if wl.speculative_k > 1 else 0
         self._view_counts = (
             len(self._output_step_views),
@@ -329,6 +332,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             len(self._accept_prefix_views),
             len(self._draft_id_views),
             len(self._draft_id_column_views),
+            len(self._speculation_step_ranges),
         )
         self._expected_view_counts = (
             wl.total_tokens + 1,
@@ -342,6 +346,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             wl.speculative_k,
             wl.speculative_k,
             verify_tail_count,
+            wl.speculative_k,
             wl.speculative_k,
             wl.speculative_k,
             wl.speculative_k,
@@ -451,13 +456,14 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     remaining = wl.total_tokens - pos
                     k = wl.speculative_k if remaining >= wl.speculative_k else remaining
                     view_idx = k - 1
+                    speculation_step_range = self._speculation_step_ranges[view_idx]
 
                     draft_seed = self._draft_seed_tokens(self._output_step_views[pos], k, rounds)
                     logits_d = self.draft_model.forward_into(draft_seed, self._draft_logits_views[view_idx])
                     draft_values = self._draft_block_value_views[view_idx]
                     draft_block = self._draft_block_token_views[view_idx]
                     torch.max(logits_d, dim=-1, out=(draft_values, draft_block))
-                    for j in range(k):
+                    for j in speculation_step_range:
                         next_d = self._draft_block_token_column_views[j]
                         if self._should_perturb(rounds, j):
                             next_d = self._draft_id_column_views[j]
@@ -587,6 +593,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._accept_prefix_views = []
         self._draft_id_views = []
         self._draft_id_column_views = []
+        self._speculation_step_ranges = []
         self._view_counts = ()
         self._expected_view_counts = ()
         self._verify_summary_device = None
