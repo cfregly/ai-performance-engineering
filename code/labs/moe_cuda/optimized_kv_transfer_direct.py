@@ -65,7 +65,8 @@ class DirectKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)
         self._payload_meta = torch.tensor([self.hidden_size], dtype=torch.int64, device="cpu")
 
-        torch.matmul(self.input_chunks, self.weight, out=self.kv_dest)
+        with torch.inference_mode():
+            torch.matmul(self.input_chunks, self.weight, out=self.kv_dest)
         self._synchronize()
 
     def benchmark_fn(self) -> None:
@@ -73,7 +74,8 @@ class DirectKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Buffers not initialized")
 
         with nvtx_range("moe_cuda_kv_direct_destination", enable=self._enable_nvtx):
-            torch.matmul(self.input_chunks, self.weight, out=self.kv_dest)
+            with torch.inference_mode():
+                torch.matmul(self.input_chunks, self.weight, out=self.kv_dest)
         self.output = self._output_view
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")

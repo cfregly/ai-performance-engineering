@@ -7996,6 +7996,7 @@ def test_moe_cuda_kv_transfer_defers_verification_tensors_outside_hot_loop() -> 
             assert "len(self._copy_chunk_specs)" not in benchmark_section
             assert "for chunk, workspace_chunk, compute_event in self._compute_chunk_specs:" in benchmark_section
             assert "for workspace_chunk, dest_chunk, compute_event in self._copy_chunk_specs:" in benchmark_section
+            assert "with torch.inference_mode():" in benchmark_section
             assert "self.input_chunks[idx]" not in launch_compute_section
             assert "self.workspace[idx]" not in launch_compute_section
             assert "self._compute_chunk_specs = []" in teardown_section
@@ -8010,6 +8011,8 @@ def test_moe_cuda_kv_transfer_defers_verification_tensors_outside_hot_loop() -> 
             assert "self._graph_chunk_triplets: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []" in source
             assert "self._graph_chunk_triplets = list(" in setup_section
             assert "for input_chunk, workspace_chunk, dest_chunk in self._graph_chunk_triplets:" in graph_section
+            assert "with torch.inference_mode():" in graph_section
+            assert "with torch.inference_mode():" in benchmark_section
             assert "any(" not in graph_section
             assert "t is None for t in" not in graph_section
             assert "self.input_chunks[i]" not in graph_section
@@ -8046,6 +8049,8 @@ def test_moe_cuda_direct_kv_transfer_writes_matmul_into_destination() -> None:
     assert "self.kv_dest = torch.empty_like(self.input_chunks)" in setup_section
     assert "self.workspace" not in source
     assert "self._direct_chunk_specs" not in source
+    assert "with torch.inference_mode():" in setup_section
+    assert "with torch.inference_mode():" in benchmark_section
     assert "torch.matmul(self.input_chunks, self.weight, out=self.kv_dest)" in setup_section
     assert "torch.matmul(self.input_chunks, self.weight, out=self.kv_dest)" in benchmark_section
     assert "for input_chunk" not in benchmark_section
@@ -8087,10 +8092,12 @@ def test_moe_cuda_direct_graphed_kv_transfer_replays_destination_graph() -> None
     assert "super().setup()" in setup_section
     assert "self._maybe_capture_graph()" in setup_section
     assert "self.graph = torch.cuda.CUDAGraph()" in graph_section
+    assert "with torch.inference_mode():" in graph_section
     assert "with torch.cuda.graph(self.graph):" in graph_section
     assert "torch.matmul(self.input_chunks, self.weight, out=self.kv_dest)" in graph_section
     assert "for input_chunk" not in graph_section
     assert ".copy_(" not in graph_section
+    assert "with torch.inference_mode():" in benchmark_section
     assert "self.graph.replay()" in benchmark_section
     assert "moe_cuda_kv_direct_destination_graphed" in benchmark_section
     assert "self.output = self._output_view" in benchmark_section

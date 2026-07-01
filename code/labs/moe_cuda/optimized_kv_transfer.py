@@ -124,15 +124,16 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Chunk views not initialized")
 
         with nvtx_range("moe_cuda_kv_overlap", enable=self._enable_nvtx):
-            # Reduce Python overhead by issuing all compute on one stream context
-            # and all dependent copies on a second stream context.
-            with torch.cuda.stream(self.compute_stream):
-                for chunk, workspace_chunk, compute_event in self._compute_chunk_specs:
-                    self._launch_compute(chunk, workspace_chunk, compute_event)
-            with torch.cuda.stream(self.copy_stream):
-                for workspace_chunk, dest_chunk, compute_event in self._copy_chunk_specs:
-                    self._launch_copy(workspace_chunk, dest_chunk, compute_event)
-            torch.cuda.current_stream(self.device).wait_stream(self.copy_stream)
+            with torch.inference_mode():
+                # Reduce Python overhead by issuing all compute on one stream context
+                # and all dependent copies on a second stream context.
+                with torch.cuda.stream(self.compute_stream):
+                    for chunk, workspace_chunk, compute_event in self._compute_chunk_specs:
+                        self._launch_compute(chunk, workspace_chunk, compute_event)
+                with torch.cuda.stream(self.copy_stream):
+                    for workspace_chunk, dest_chunk, compute_event in self._copy_chunk_specs:
+                        self._launch_copy(workspace_chunk, dest_chunk, compute_event)
+                torch.cuda.current_stream(self.device).wait_stream(self.copy_stream)
         if self.kv_dest is None:
             raise RuntimeError("KV destination missing")
         self.output = self._output_view

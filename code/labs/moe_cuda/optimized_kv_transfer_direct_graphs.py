@@ -34,8 +34,9 @@ class DirectGraphedKVTransferBenchmark(DirectKVTransferBenchmark):
 
         self.graph = torch.cuda.CUDAGraph()
         torch.cuda.synchronize(self.device)
-        with torch.cuda.graph(self.graph):
-            torch.matmul(self.input_chunks, self.weight, out=self.kv_dest)
+        with torch.inference_mode():
+            with torch.cuda.graph(self.graph):
+                torch.matmul(self.input_chunks, self.weight, out=self.kv_dest)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -43,7 +44,8 @@ class DirectGraphedKVTransferBenchmark(DirectKVTransferBenchmark):
             raise RuntimeError("CUDA graph not captured (setup() must run)")
 
         with nvtx_range("moe_cuda_kv_direct_destination_graphed", enable=self._enable_nvtx):
-            self.graph.replay()
+            with torch.inference_mode():
+                self.graph.replay()
         self.output = self._output_view
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")

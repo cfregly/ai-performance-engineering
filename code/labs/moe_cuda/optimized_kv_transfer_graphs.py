@@ -81,8 +81,9 @@ class GraphedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         # Warmup to ensure cuBLAS/allocator state is initialized before graph capture.
         first_input, first_workspace, first_dest = self._graph_chunk_triplets[0]
-        torch.matmul(first_input, self.weight, out=first_workspace)
-        first_dest.copy_(first_workspace)
+        with torch.inference_mode():
+            torch.matmul(first_input, self.weight, out=first_workspace)
+            first_dest.copy_(first_workspace)
         torch.cuda.synchronize(self.device)
         
         self._maybe_capture_graph()
@@ -100,10 +101,11 @@ class GraphedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Capture the steady-state pipeline so replay avoids Python/launch overhead.
         self.graph = torch.cuda.CUDAGraph()
         torch.cuda.synchronize(self.device)
-        with torch.cuda.graph(self.graph):
-            for input_chunk, workspace_chunk, dest_chunk in self._graph_chunk_triplets:
-                torch.matmul(input_chunk, self.weight, out=workspace_chunk)
-                dest_chunk.copy_(workspace_chunk)
+        with torch.inference_mode():
+            with torch.cuda.graph(self.graph):
+                for input_chunk, workspace_chunk, dest_chunk in self._graph_chunk_triplets:
+                    torch.matmul(input_chunk, self.weight, out=workspace_chunk)
+                    dest_chunk.copy_(workspace_chunk)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -118,7 +120,8 @@ class GraphedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("CUDA graph not captured (setup() must run)")
 
         with nvtx_range("moe_cuda_kv_overlap_graphed", enable=self._enable_nvtx):
-            self.graph.replay()
+            with torch.inference_mode():
+                self.graph.replay()
         if self.kv_dest is None:
             raise RuntimeError("KV destination missing")
         self.output = self._output_view
