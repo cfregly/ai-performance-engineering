@@ -627,12 +627,18 @@ def test_ch04_comm_and_optimizer_payloads_cache_parameter_counts() -> None:
             assert "nn.Sequential(" not in build_block_section
             assert "self._fc1_buffer: Optional[torch.Tensor] = None" in torchcomms_common
             assert "self._fc2_buffer: Optional[torch.Tensor] = None" in torchcomms_common
+            assert "self._fc1_forward_view: Optional[torch.Tensor] = None" in torchcomms_common
+            assert "self._fc2_forward_view: Optional[torch.Tensor] = None" in torchcomms_common
             assert "self._fc1_weight_t: Optional[torch.Tensor] = None" in torchcomms_common
             assert "self._fc2_weight_t: Optional[torch.Tensor] = None" in torchcomms_common
             assert "def cache_weight_views(self) -> None:" in torchcomms_common
             assert "self._fc1_weight_t = self.fc1.weight.t()" in torchcomms_common
             assert "self._fc2_weight_t = self.fc2.weight.t()" in torchcomms_common
             assert "def _workspace(" in torchcomms_common
+            assert "def prepare_forward_buffers(self, x: torch.Tensor) -> None:" in torchcomms_common
+            assert "self._fc1_forward_view, self._fc2_forward_view = self._ensure_forward_buffers(x)" in torchcomms_common
+            assert "def forward_prepared(self, x: torch.Tensor) -> torch.Tensor:" in torchcomms_common
+            assert 'raise RuntimeError("forward_prepared() requires prepare_forward_buffers()")' in torchcomms_common
             assert "or buffer.numel() < numel" in torchcomms_common
             assert "return buffer[:numel].view(rows, width)" in torchcomms_common
             assert "self._fc1_buffer.shape != fc1_shape" not in torchcomms_common
@@ -643,6 +649,14 @@ def test_ch04_comm_and_optimizer_payloads_cache_parameter_counts() -> None:
             assert "torch.mm(fc1_out, self._fc2_weight_t, out=fc2_out)" in torchcomms_forward
             assert "self.fc1.weight.t()" not in torchcomms_forward
             assert "self.fc2.weight.t()" not in torchcomms_forward
+            assert "comm_block.prepare_forward_buffers(inputs)" in worker_section
+            assert "aux_block.prepare_forward_buffers(inputs)" in worker_section
+            assert "comm_block.forward_prepared(inputs)" in worker_section
+            assert "comm_block(inputs)" not in worker_section
+            assert "self._comm_block.prepare_forward_buffers(self._input)" in setup_section
+            assert "self._aux_block.prepare_forward_buffers(self._input)" in setup_section
+            assert "self._comm_block.forward_prepared(self._input)" in benchmark_section
+            assert "self._comm_block(self._input)" not in benchmark_section
             assert ".add_(aux_out)" in worker_section
             assert "comm_out.add_(aux_out)" in benchmark_section
             assert "self._output = comm_out" in benchmark_section
@@ -700,6 +714,8 @@ def test_ch04_torchcomms_block_reuses_larger_workspace_capacity() -> None:
         fc2_ptr = block._fc2_buffer.data_ptr()
 
         small = block(torch.randn(3, 4))
+        block.prepare_forward_buffers(torch.randn(8, 4))
+        prepared = block.forward_prepared(torch.randn(8, 4))
         assert block._fc1_buffer.data_ptr() == fc1_ptr
         assert block._fc2_buffer.data_ptr() == fc2_ptr
         assert block._fc1_buffer.numel() == 8 * 16
@@ -710,6 +726,8 @@ def test_ch04_torchcomms_block_reuses_larger_workspace_capacity() -> None:
     assert large.shape == (8, 4)
     assert small.shape == (3, 4)
     assert small.data_ptr() == fc2_ptr
+    assert prepared.shape == (8, 4)
+    assert prepared.data_ptr() == fc2_ptr
     assert grown.shape == (9, 4)
     assert block._fc1_buffer.numel() == 9 * 16
     assert block._fc2_buffer.numel() == 9 * 4
@@ -752,7 +770,11 @@ def test_ch04_ddp_nvlink_verification_reuses_output_buffers() -> None:
 
 def test_ch04_optimized_torchcomms_overlaps_aux_compute_before_comm_wait() -> None:
     for relative, aux_marker, output_marker in (
-        ("optimized_torchcomms.py", "aux_out = aux_block(inputs)", "reduced.add_(aux_out)"),
+        (
+            "optimized_torchcomms.py",
+            "aux_out = aux_block.forward_prepared(inputs)",
+            "reduced.add_(aux_out)",
+        ),
         (
             "optimized_torchcomms_multigpu.py",
             "for _ in aux_pass_range:",

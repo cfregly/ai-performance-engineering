@@ -77,11 +77,13 @@ def _run_worker(iters: int, warmup: int, batch: int, hidden: int) -> None:
     aux_block = _build_block(hidden, device)
     inputs = torch.randn(batch, hidden, device=device)
     comm_payload = torch.randn(batch, hidden * _COMM_PAYLOAD_MULT, device=device)
+    comm_block.prepare_forward_buffers(inputs)
+    aux_block.prepare_forward_buffers(inputs)
     comm_stream = torch.cuda.Stream(device=device)
     aux_pass_range = range(_AUX_PASSES)
     def _step() -> None:
         with torch.inference_mode():
-            comm_out = comm_block(inputs)
+            comm_out = comm_block.forward_prepared(inputs)
             current_stream = torch.cuda.current_stream()
             comm_stream.wait_stream(current_stream)
             with torch.cuda.stream(comm_stream):
@@ -89,7 +91,7 @@ def _run_worker(iters: int, warmup: int, batch: int, hidden: int) -> None:
                 payload_work = dist.all_reduce(comm_payload, op=dist.ReduceOp.AVG, async_op=True)
             aux_out = inputs
             for _ in aux_pass_range:
-                aux_out = aux_block(aux_out)
+                aux_out = aux_block.forward_prepared(aux_out)
             work.wait()
             payload_work.wait()
             current_stream.wait_stream(comm_stream)
@@ -157,15 +159,17 @@ class OptimizedTorchcommsBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.float32,
         )
+        self._comm_block.prepare_forward_buffers(self._input)
+        self._aux_block.prepare_forward_buffers(self._input)
 
     def benchmark_fn(self) -> None:
         if self._comm_block is None or self._aux_block is None or self._input is None:
             raise RuntimeError("setup() must run before benchmark_fn()")
         with torch.inference_mode():
-            comm_out = self._comm_block(self._input)
+            comm_out = self._comm_block.forward_prepared(self._input)
             aux_out = self._input
             for _ in self._aux_pass_range:
-                aux_out = self._aux_block(aux_out)
+                aux_out = self._aux_block.forward_prepared(aux_out)
             comm_out.add_(aux_out)
             self._output = comm_out
 
