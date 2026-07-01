@@ -24,7 +24,11 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 from core.utils.compile_utils import get_optimal_compile_mode
-from labs.moe_optimization_journey.moe_model import MoEExperts, MoELayer
+from labs.moe_optimization_journey.moe_model import (
+    MoEExperts,
+    MoELayer,
+    _sum_routes_in_place_if_safe,
+)
 from labs.moe_optimization_journey.moe_pad_quant_common import build_moe_pad_quant_model
 
 
@@ -167,16 +171,8 @@ def _vectorized_forward_grouped(
     )
     torch.index_select(flat_out, 0, slots, out=gathered)
     torch.mul(gathered, flat_w.unsqueeze(1), out=gathered)
-    reduced = _dispatch_matrix_buffer(
-        self,
-        "_dispatch_reduced",
-        rows=batch_seq,
-        hidden=self.hidden_size,
-        device=x.device,
-        dtype=x.dtype,
-    )
-    torch.sum(gathered.view(batch_seq, top_k, self.hidden_size), dim=1, out=reduced)
-    return reduced
+    gathered = gathered.view(batch_seq, top_k, self.hidden_size)
+    return _sum_routes_in_place_if_safe(gathered)
 
 
 class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -260,7 +256,6 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 module._dispatch_token_ids = None
                 module._dispatch_padded = None
                 module._dispatch_gathered = None
-                module._dispatch_reduced = None
                 module.forward_grouped = types.MethodType(
                     _vectorized_forward_grouped, module
                 )

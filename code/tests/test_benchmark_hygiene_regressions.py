@@ -18386,9 +18386,10 @@ def test_moe_pad_quant_vectorized_router_reuses_topk_token_ids() -> None:
     assert 'gathered = _dispatch_matrix_buffer(\n        self,\n        "_dispatch_gathered",' in vectorized_router
     assert "torch.index_select(flat_out, 0, slots, out=gathered)" in vectorized_router
     assert "torch.mul(gathered, flat_w.unsqueeze(1), out=gathered)" in vectorized_router
-    assert 'reduced = _dispatch_matrix_buffer(\n        self,\n        "_dispatch_reduced",' in vectorized_router
-    assert "torch.sum(gathered.view(batch_seq, top_k, self.hidden_size), dim=1, out=reduced)" in vectorized_router
-    assert "return reduced" in vectorized_router
+    assert "gathered = gathered.view(batch_seq, top_k, self.hidden_size)" in vectorized_router
+    assert "return _sum_routes_in_place_if_safe(gathered)" in vectorized_router
+    assert '"_dispatch_reduced"' not in source
+    assert "torch.sum(gathered.view(batch_seq, top_k, self.hidden_size), dim=1" not in vectorized_router
     assert "gathered = flat_out.index_select(0, slots)" not in vectorized_router
     assert "gathered.mul_(flat_w.unsqueeze(1))" not in vectorized_router
     assert "return gathered.view(batch_seq, top_k, self.hidden_size).sum(dim=1)" not in vectorized_router
@@ -18396,7 +18397,6 @@ def test_moe_pad_quant_vectorized_router_reuses_topk_token_ids() -> None:
     assert "module._dispatch_token_ids = None" in install_section
     assert "module._dispatch_padded = None" in install_section
     assert "module._dispatch_gathered = None" in install_section
-    assert "module._dispatch_reduced = None" in install_section
     assert "module._dispatch_capacity = capacity" in install_section
     assert "def _calibrate_vectorized_router_capacity" in source
     assert "capacities = self._calibrate_vectorized_router_capacity()" in source
