@@ -4421,6 +4421,8 @@ def test_ch04_optimized_nccl_reduction_buffers_skip_setup_zero_fill() -> None:
         "self._model_shard_view = model_out.view(self.num_shards, self._reduced_rows, self.hidden_dim)"
         in setup_section
     )
+    assert "self.model.prepare_forward_buffers(self.input)" in setup_section
+    assert "model_out = self.model.forward_prepared(self.input)" in setup_section
     assert "self._reduced_rows = self.batch_size // self.num_shards" in setup_section
     assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
     assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
@@ -4437,6 +4439,8 @@ def test_ch04_optimized_nccl_reduction_buffers_skip_setup_zero_fill() -> None:
     assert "for shard in" not in benchmark_section
     assert "shard_view = out.view(self.num_shards, self._reduced_rows, self.hidden_dim)" not in benchmark_section
     assert "torch.sum(self._model_shard_view, dim=0, out=self._output_buffer)" in benchmark_section
+    assert "self.model.forward_prepared(self.input)" in benchmark_section
+    assert "self.model(self.input)" not in benchmark_section
     assert "out = self.model(self.input)" not in benchmark_section
     assert "out.numel()" not in benchmark_section
     assert "self._bytes_transferred = float(" not in benchmark_section
@@ -4445,9 +4449,15 @@ def test_ch04_optimized_nccl_reduction_buffers_skip_setup_zero_fill() -> None:
     assert "sum(p.numel()" not in capture_section
     assert "self._fc1_buffer: Optional[torch.Tensor] = None" in common_source
     assert "self._fc2_buffer: Optional[torch.Tensor] = None" in common_source
+    assert "self._fc1_forward_view: Optional[torch.Tensor] = None" in common_source
+    assert "self._fc2_forward_view: Optional[torch.Tensor] = None" in common_source
     assert "self._fc1_weight_t: Optional[torch.Tensor] = None" in common_source
     assert "self._fc2_weight_t: Optional[torch.Tensor] = None" in common_source
     assert "def cache_weight_views(self) -> None:" in common_source
+    assert "def prepare_forward_buffers(self, x: torch.Tensor) -> None:" in common_source
+    assert "self._fc1_forward_view, self._fc2_forward_view = self._ensure_forward_buffers(x)" in common_source
+    assert "def forward_prepared(self, x: torch.Tensor) -> torch.Tensor:" in common_source
+    assert 'raise RuntimeError("forward_prepared() requires prepare_forward_buffers()")' in common_source
     assert "def _workspace(" in common_source
     assert "normalized_shape = tuple(int(dim) for dim in shape)" in common_source
     assert "or buffer.numel() < numel" in common_source
@@ -4471,6 +4481,8 @@ def test_ch04_reduction_mlp_reuses_larger_workspace_capacity() -> None:
         fc2_ptr = model._fc2_buffer.data_ptr()
 
         small = model(torch.randn(1, 3, 4))
+        model.prepare_forward_buffers(torch.randn(2, 8, 4))
+        prepared = model.forward_prepared(torch.randn(2, 8, 4))
         assert model._fc1_buffer.data_ptr() == fc1_ptr
         assert model._fc2_buffer.data_ptr() == fc2_ptr
         assert model._fc1_buffer.numel() == 2 * 8 * 6
@@ -4481,6 +4493,8 @@ def test_ch04_reduction_mlp_reuses_larger_workspace_capacity() -> None:
     assert large.shape == (2, 8, 4)
     assert small.shape == (1, 3, 4)
     assert small.data_ptr() == fc2_ptr
+    assert prepared.shape == (2, 8, 4)
+    assert prepared.data_ptr() == fc2_ptr
     assert grown.shape == (3, 7, 4)
     assert model._fc1_buffer.numel() == 3 * 7 * 6
     assert model._fc2_buffer.numel() == 3 * 7 * 4
@@ -4542,6 +4556,8 @@ def test_ch04_optimized_gpu_reduction_uses_single_gpu_sum_kernel() -> None:
         "self._model_shard_view = model_out.view(self.num_shards, self._reduced_rows, self.hidden_dim)"
         in setup_section
     )
+    assert "self.model.prepare_forward_buffers(self.input)" in setup_section
+    assert "model_out = self.model.forward_prepared(self.input)" in setup_section
     assert "self._reduction_buffer" not in source
     assert "get_config()" not in benchmark_section
     assert "get_nvtx_enabled(" not in benchmark_section
@@ -4551,6 +4567,8 @@ def test_ch04_optimized_gpu_reduction_uses_single_gpu_sum_kernel() -> None:
     assert "for shard in" not in benchmark_section
     assert "shard_view = out.view(self.num_shards, self._reduced_rows, self.hidden_dim)" not in benchmark_section
     assert "torch.sum(self._model_shard_view, dim=0, out=self._output_buffer)" in benchmark_section
+    assert "self.model.forward_prepared(self.input)" in benchmark_section
+    assert "self.model(self.input)" not in benchmark_section
     assert "self._output_buffer.copy_(" not in benchmark_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section

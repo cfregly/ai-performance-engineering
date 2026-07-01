@@ -69,8 +69,9 @@ class OptimizedGpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._reduced_rows = self.batch_size // self.num_shards
         self.output = None
         self._output_buffer = torch.empty((self._reduced_rows, self.hidden_dim), device=self.device)
+        self.model.prepare_forward_buffers(self.input)
         with torch.inference_mode():
-            model_out = self.model(self.input)
+            model_out = self.model.forward_prepared(self.input)
         self._model_shard_view = model_out.view(self.num_shards, self._reduced_rows, self.hidden_dim)
         torch.cuda.synchronize(self.device)
 
@@ -80,7 +81,7 @@ class OptimizedGpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with nvtx_range("optimized_gpu_reduction", enable=self._enable_nvtx):
             # Forward pass
             with torch.inference_mode():
-                self.model(self.input)
+                self.model.forward_prepared(self.input)
             
             # All-GPU reduction over a strided shard view, no CPU or Python shard loop.
             if self._output_buffer is None:

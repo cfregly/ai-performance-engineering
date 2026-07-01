@@ -68,8 +68,9 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Batch size must be divisible by num_shards")
         self._reduced_rows = self.batch_size // self.num_shards
         self._output_buffer = torch.empty(self._reduced_rows, self.hidden_dim, device=self.device)
+        self.model.prepare_forward_buffers(self.input)
         with torch.inference_mode():
-            model_out = self.model(self.input)
+            model_out = self.model.forward_prepared(self.input)
         self._model_shard_view = model_out.view(self.num_shards, self._reduced_rows, self.hidden_dim)
         element_size = self.input.element_size()
         self._bytes_transferred = float(
@@ -85,7 +86,7 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with nvtx_range("optimized_nccl", enable=self._enable_nvtx):
             # Forward pass
             with torch.inference_mode():
-                self.model(self.input)
+                self.model.forward_prepared(self.input)
             
             # All-GPU reduction over a strided shard view, no CPU or Python shard loop.
             if self._model_shard_view is None:
