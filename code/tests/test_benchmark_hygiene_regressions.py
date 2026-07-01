@@ -16626,6 +16626,7 @@ def test_ch17_dynamic_routing_vectorized_path_reuses_masks() -> None:
     post_timing_section = benchmark_section.split("elapsed_ms = self._record_stop(start)", maxsplit=1)[1]
     assert "rejects_tensor =" not in benchmark_section
     assert "offloaded_tensor =" not in benchmark_section
+    assert "with torch.inference_mode():" in vectorized_timed_section
     assert "torch.sum(self._admit_mask, dim=(), dtype=torch.int64, out=self._count_values[0])" in vectorized_timed_section
     assert "self._count_values[0].neg_().add_(self.batch_size)" in vectorized_timed_section
     assert "torch.sum(self._served_offload_mask, dim=(), dtype=torch.int64, out=self._count_values[1])" in vectorized_timed_section

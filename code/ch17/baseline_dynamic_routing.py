@@ -181,35 +181,36 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 or self._count_values is None
             ):
                 raise RuntimeError("Vectorized routing buffers not initialized")
-            self._queue_lengths.copy_(queue_lengths)
+            with torch.inference_mode():
+                self._queue_lengths.copy_(queue_lengths)
 
-            # Vectorized boolean operations reuse buffers to avoid hot-path allocation.
-            torch.sub(self._prompt_lengths, self._cached_lengths, out=self._remaining_lengths)
-            torch.gt(
-                self._remaining_lengths,
-                self.router.PREFILL_LENGTH_THRESHOLD,
-                out=self._long_prefill,
-            )
-            torch.lt(
-                self._queue_lengths,
-                self.router.PREFILL_QUEUE_MAX,
-                out=self._capacity_mask,
-            )
-            torch.logical_and(self._long_prefill, self._capacity_mask, out=self._offload_mask)
+                # Vectorized boolean operations reuse buffers to avoid hot-path allocation.
+                torch.sub(self._prompt_lengths, self._cached_lengths, out=self._remaining_lengths)
+                torch.gt(
+                    self._remaining_lengths,
+                    self.router.PREFILL_LENGTH_THRESHOLD,
+                    out=self._long_prefill,
+                )
+                torch.lt(
+                    self._queue_lengths,
+                    self.router.PREFILL_QUEUE_MAX,
+                    out=self._capacity_mask,
+                )
+                torch.logical_and(self._long_prefill, self._capacity_mask, out=self._offload_mask)
 
-            est_ttft = (
-                self.router.get_current_prefill_queue_length() * self.router.avg_prefill_time_per_req
-                + self.router.get_current_decode_queue_length() * self.router.avg_decode_time_per_req
-            )
-            if est_ttft > self.router.TTFT_SLO_MAX:
-                torch.ne(self._priorities, 0, out=self._admit_mask)
-            else:
-                self._admit_mask.fill_(True)
+                est_ttft = (
+                    self.router.get_current_prefill_queue_length() * self.router.avg_prefill_time_per_req
+                    + self.router.get_current_decode_queue_length() * self.router.avg_decode_time_per_req
+                )
+                if est_ttft > self.router.TTFT_SLO_MAX:
+                    torch.ne(self._priorities, 0, out=self._admit_mask)
+                else:
+                    self._admit_mask.fill_(True)
 
-            torch.sum(self._admit_mask, dim=(), dtype=torch.int64, out=self._count_values[0])
-            self._count_values[0].neg_().add_(self.batch_size)
-            torch.logical_and(self._admit_mask, self._offload_mask, out=self._served_offload_mask)
-            torch.sum(self._served_offload_mask, dim=(), dtype=torch.int64, out=self._count_values[1])
+                torch.sum(self._admit_mask, dim=(), dtype=torch.int64, out=self._count_values[0])
+                self._count_values[0].neg_().add_(self.batch_size)
+                torch.logical_and(self._admit_mask, self._offload_mask, out=self._served_offload_mask)
+                torch.sum(self._served_offload_mask, dim=(), dtype=torch.int64, out=self._count_values[1])
             count_values_ready = True
         else:
             # Python loop-based routing (sequential, one-at-a-time)
