@@ -20076,13 +20076,15 @@ def test_labs_transition_table_speculative_decode_uses_lookup_hot_path() -> None
     assert "self._draft_forward_buffers = None" in setup_section
     assert "self._forward_buffer_counts = (0, 0)" in setup_section
     assert "self._expected_forward_buffer_counts = (0, 0)" in setup_section
-    assert "self._transition_current_token = torch.empty((1,), device=self.device, dtype=torch.long)" in setup_section
-    assert "current_token = self._transition_current_token" in benchmark_section
-    assert "current_token.copy_(self.input_ids[:, 0])" in benchmark_section
-    assert "output_token_views[0].copy_(current_token)" in benchmark_section
-    assert "torch.index_select(transition_table, 0, current_token, out=next_token)" in benchmark_section
-    assert "current_token, next_token = next_token, current_token" in benchmark_section
+    assert "_transition_current_token" not in optimized_source
+    assert "_transition_next_token" not in optimized_source
+    assert "output_token_views[0].copy_(self.input_ids[:, 0])" in benchmark_section
+    assert "current_token = output_token_views[0]" in benchmark_section
+    assert "output_token = output_token_views[t + 1]" in benchmark_section
+    assert "torch.index_select(transition_table, 0, current_token, out=output_token)" in benchmark_section
+    assert "current_token = output_token" in benchmark_section
     assert "torch.index_select(transition_table, 0, output_token_views[t], out=next_token)" not in benchmark_section
+    assert "output_token_views[t + 1].copy_(next_token)" not in benchmark_section
     assert "draft_forward_into" not in benchmark_section
     assert "target_forward_into" not in benchmark_section
     assert "match_host.copy_" not in benchmark_section
