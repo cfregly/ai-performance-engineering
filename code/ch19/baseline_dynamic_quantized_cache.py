@@ -355,12 +355,13 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         current_stream = torch.cuda.current_stream(self.device)
         start_event.record(current_stream)
 
-        if self.use_fp32_baseline:
-            for _ in self._refresh_schedule_bits:
-                self._non_adaptive_cache_update()
-        else:
-            for bits in self._refresh_schedule_bits:
-                self._adaptive_cache_update(bits)
+        with torch.inference_mode():
+            if self.use_fp32_baseline:
+                for _ in self._refresh_schedule_bits:
+                    self._non_adaptive_cache_update()
+            else:
+                for bits in self._refresh_schedule_bits:
+                    self._adaptive_cache_update(bits)
 
         end_event.record(current_stream)
         self._pending_timing_pair = timing_pair

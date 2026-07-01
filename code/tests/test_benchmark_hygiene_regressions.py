@@ -1370,6 +1370,7 @@ def test_ch19_dynamic_quantized_cache_reuses_int8_source_buffer() -> None:
     assert "end_event.record(current_stream)" in benchmark_section
     assert "start_event.record()" not in benchmark_section
     assert "end_event.record()" not in benchmark_section
+    assert "with torch.inference_mode():" in benchmark_section
     assert "for bits in self._refresh_schedule_bits:" in benchmark_section
     assert "return self._empty_iteration_result" in benchmark_section
     assert "return {}" not in benchmark_section
