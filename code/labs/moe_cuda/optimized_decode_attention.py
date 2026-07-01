@@ -45,9 +45,6 @@ class OptimizedDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._q_version: Optional[int] = None
         self._k_version: Optional[int] = None
         self._v_version: Optional[int] = None
-        self._attn_layout_buffer: Optional[torch.Tensor] = None
-        self._attn_layout_bhld: Optional[torch.Tensor] = None
-        self._attn_out_view: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         tokens = self.batch * self.kv_seq
@@ -98,13 +95,6 @@ class OptimizedDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark)
             device=self.device,
             dtype=torch.float32,
         )
-        self._attn_layout_buffer = torch.empty(
-            (self.batch, 1, self.num_heads, self.head_dim),
-            device=self.device,
-            dtype=torch.bfloat16,
-        )
-        self._attn_layout_bhld = self._attn_layout_buffer.transpose(1, 2)
-        self._attn_out_view = self._attn_layout_buffer.view(self.batch, 1, self.num_heads * self.head_dim)
         self._latency_total_ms = 0.0
         self._latency_count = 0
         self._payload_meta = torch.tensor(
@@ -147,8 +137,6 @@ class OptimizedDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark)
             raise RuntimeError("Decode tensors missing")
         if self._q_bf16 is None or self._k_bf16 is None or self._v_bf16 is None:
             raise RuntimeError("BF16 decode tensors missing")
-        if self._attn_layout_bhld is None or self._attn_out_view is None:
-            raise RuntimeError("Decode output views missing")
 
         # Verification re-runs can perturb the FP32 source tensors in place. Refresh the
         # BF16 mirrors only for that path so steady-state measurements stay cache-only.
@@ -164,11 +152,9 @@ class OptimizedDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 q = self._q_bf16
                 k = self._k_bf16
                 v = self._v_bf16
-                layout_bhld = self._attn_layout_bhld
-                attn_out = self._attn_out_view
                 with prefer_sdpa_backends():
                     attn = F.scaled_dot_product_attention(q, k, v, dropout_p=0.0, is_causal=False)
-                layout_bhld.copy_(attn)
+                attn_out = attn.transpose(1, 2).reshape(attn.shape[0], attn.shape[2], -1)
                 end_event.record(current_stream)
                 self._pending_timing_pair = timing_pair
                 self.output = attn_out
@@ -211,9 +197,6 @@ class OptimizedDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._q_version = None
         self._k_version = None
         self._v_version = None
-        self._attn_layout_buffer = None
-        self._attn_layout_bhld = None
-        self._attn_out_view = None
         self.output = None
         self._verify_output_buffer = None
         self._payload_meta = None
