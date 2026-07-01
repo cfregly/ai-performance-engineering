@@ -838,12 +838,20 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
         output_idx = 0
         with torch.inference_mode():
             for pair in self._pairs:
+                same_device_handoff = pair.prefill_device == pair.decode_device
                 if self.overlap:
                     for req_idx, transfer_kv, transfer_seed in pair.transfer_slots:
-                        kv_cache, seed = pair.prefill_model.prefill(pair.prompts[req_idx])
-                        with torch.cuda.device(pair.decode_device):
-                            transfer_kv.copy_(kv_cache, non_blocking=True)
-                            transfer_seed.copy_(seed, non_blocking=True)
+                        if same_device_handoff:
+                            pair.prefill_model.prefill_into(
+                                pair.prompts[req_idx],
+                                transfer_kv,
+                                transfer_seed,
+                            )
+                        else:
+                            kv_cache, seed = pair.prefill_model.prefill(pair.prompts[req_idx])
+                            with torch.cuda.device(pair.decode_device):
+                                transfer_kv.copy_(kv_cache, non_blocking=True)
+                                transfer_seed.copy_(seed, non_blocking=True)
                         outputs[output_idx] = pair.decode_model.decode(
                             transfer_seed,
                             transfer_kv,
@@ -851,25 +859,35 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         )
                         output_idx += 1
                 else:
-                    kv_chunks, seed_chunks = _run_prefill(
-                        self.cfg,
-                        pair.prefill_model,
-                        pair.prompts,
-                        pair.prefill_kv_chunks,
-                        pair.prefill_seed_chunks,
-                    )
                     if pair.transfer_slot_counts != pair.expected_transfer_slot_counts:
                         raise RuntimeError("Transfer chunk slots not initialized")
-                    for req_idx, transfer_kv, transfer_seed in pair.transfer_slots:
-                        with torch.cuda.device(pair.decode_device):
-                            transfer_kv.copy_(
-                                kv_chunks[req_idx],
-                                non_blocking=True,
+                    if same_device_handoff:
+                        for req_idx, transfer_kv, transfer_seed in pair.transfer_slots:
+                            pair.prefill_model.prefill_into(
+                                pair.prompts[req_idx],
+                                transfer_kv,
+                                transfer_seed,
                             )
-                            transfer_seed.copy_(
-                                seed_chunks[req_idx],
-                                non_blocking=True,
-                            )
+                            pair.prefill_kv_chunks[req_idx] = transfer_kv
+                            pair.prefill_seed_chunks[req_idx] = transfer_seed
+                    else:
+                        kv_chunks, seed_chunks = _run_prefill(
+                            self.cfg,
+                            pair.prefill_model,
+                            pair.prompts,
+                            pair.prefill_kv_chunks,
+                            pair.prefill_seed_chunks,
+                        )
+                        for req_idx, transfer_kv, transfer_seed in pair.transfer_slots:
+                            with torch.cuda.device(pair.decode_device):
+                                transfer_kv.copy_(
+                                    kv_chunks[req_idx],
+                                    non_blocking=True,
+                                )
+                                transfer_seed.copy_(
+                                    seed_chunks[req_idx],
+                                    non_blocking=True,
+                                )
                     decoded = _run_decode(
                         self.cfg,
                         pair.decode_model,

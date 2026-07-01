@@ -14008,6 +14008,10 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert "len(pair.transfer_seed_chunks)" not in benchmark_section
     assert "len(pair.transfer_slots)" not in benchmark_section
     assert "len(kv_chunks)" not in benchmark_section
+    assert "same_device_handoff = pair.prefill_device == pair.decode_device" in benchmark_section
+    assert "pair.prefill_model.prefill_into(" in benchmark_section
+    assert "pair.prefill_kv_chunks[req_idx] = transfer_kv" in benchmark_section
+    assert "pair.prefill_seed_chunks[req_idx] = transfer_seed" in benchmark_section
     assert "pair.transfer_slot_counts != pair.expected_transfer_slot_counts" in benchmark_section
     assert "self._output_buffer: Optional[torch.Tensor] = None" in class_section
     assert "self._output_buffer = self._allocate_output_buffer()" in setup_section
