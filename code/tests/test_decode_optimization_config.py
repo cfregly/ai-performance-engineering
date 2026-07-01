@@ -92,12 +92,16 @@ def test_decode_common_caches_runtime_feature_handles() -> None:
     assert 'hasattr(torch.cuda, "graph_pool_trim")' not in teardown_section
 
 
-def test_decode_graph_capture_avoids_unused_full_vocab_output_copy() -> None:
+def test_decode_graph_capture_avoids_unused_full_vocab_output_and_token_copy() -> None:
     source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
         encoding="utf-8"
     )
     graph_section = source.split("def _capture_decode_graph", maxsplit=1)[1].split(
         "def _prefill", maxsplit=1
+    )[0]
+    loop_section = source.split("def _run_decode_loop", maxsplit=1)[1].split(
+        "# Core math",
+        maxsplit=1,
     )[0]
 
     assert "self.graph_logits" not in source
@@ -107,7 +111,13 @@ def test_decode_graph_capture_avoids_unused_full_vocab_output_copy() -> None:
     assert "self.graph_logits.copy_" not in graph_section
     assert "self.graph_next_token.copy_" not in graph_section
     assert "self.next_token_out = torch.empty_like" not in source
-    assert graph_section.count("self.current_tokens.copy_(next_token)") == 2
+    assert graph_section.count("self._run_decode_loop()") == 2
+    assert "tokens = self.current_tokens" in loop_section
+    assert "next_state, next_token = self.decode_fn(tokens, self.state_buffer)" in loop_section
+    assert "self.state_buffer.copy_(next_state)" in loop_section
+    assert "tokens = next_token" in loop_section
+    assert "self.current_tokens.copy_(next_token)" not in loop_section
+    assert graph_section.count("self.current_tokens.copy_(next_token)") == 0
     assert "if self.cfg.graph_full_iteration:\n                    self.current_tokens.copy_(next_token)" not in graph_section
 
 
@@ -253,6 +263,43 @@ def test_decode_step_reuses_full_vocab_logits_buffer_on_cpu() -> None:
     assert bench._decode_token_hidden.data_ptr() == token_hidden_ptr
     torch.testing.assert_close(bench._decode_token_hidden, expected_hidden)
     torch.testing.assert_close(next_token, expected_token)
+
+
+def test_decode_loop_hands_next_token_buffer_forward_on_cpu() -> None:
+    cfg = DecodeConfig(
+        batch_size=2,
+        prompt_tokens=4,
+        decode_tokens=3,
+        hidden_size=8,
+        vocab_size=16,
+    )
+    bench = DecodeBenchmark(cfg)
+    bench.device = torch.device("cpu")
+    torch.manual_seed(1234)
+    bench._init_model()
+    bench._init_buffers()
+    bench.decode_fn = bench._run_decode_step_math
+
+    with torch.inference_mode():
+        prompt = torch.tensor([[1, 2, 3, 4], [5, 6, 7, 8]], dtype=torch.long)
+        initial_state = bench._run_prefill_math(prompt)
+        initial_tokens = prompt[:, -1].clone()
+
+        copy_forward_state = initial_state.clone()
+        copy_forward_tokens = initial_tokens.clone()
+        for _ in range(cfg.decode_tokens):
+            next_state, next_token = bench._run_decode_step_math(
+                copy_forward_tokens,
+                copy_forward_state,
+            )
+            copy_forward_state.copy_(next_state)
+            copy_forward_tokens.copy_(next_token)
+
+        bench.state_buffer.copy_(initial_state)
+        bench.current_tokens.copy_(initial_tokens)
+        bench._run_decode_loop()
+
+    torch.testing.assert_close(bench.state_buffer, copy_forward_state)
 
 
 def test_candidate_logits_only_skips_full_vocab_logits_buffer_on_cpu() -> None:

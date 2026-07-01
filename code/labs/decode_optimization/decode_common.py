@@ -649,9 +649,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 for _ in range(2):
                     if self.cfg.graph_full_iteration:
                         _prime_decode_state()
-                    next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
-                    self.state_buffer.copy_(next_state)
-                    self.current_tokens.copy_(next_token)
+                    self._run_decode_loop()
             torch.cuda.synchronize()
             self.decode_graph = torch.cuda.CUDAGraph()
             if not self.cfg.graph_full_iteration:
@@ -661,13 +659,17 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             with torch.cuda.graph(self.decode_graph, stream=self.graph_stream):
                 if self.cfg.graph_full_iteration:
                     _prime_decode_state()
-                for _ in self._decode_step_range:
-                    next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
-                    self.state_buffer.copy_(next_state)
-                    self.current_tokens.copy_(next_token)
+                self._run_decode_loop()
             torch.cuda.synchronize()
         self.graph_includes_prefill = bool(self.cfg.graph_full_iteration)
         self._graph_error = None
+
+    def _run_decode_loop(self) -> None:
+        tokens = self.current_tokens
+        for _ in self._decode_step_range:
+            next_state, next_token = self.decode_fn(tokens, self.state_buffer)
+            self.state_buffer.copy_(next_state)
+            tokens = next_token
 
     # Core math - fp8_autocast, inference_mode, and SDPA contexts are hoisted by
     # benchmark loops to avoid per-token context-manager churn.
@@ -830,10 +832,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             prefill_state = self.prefill_fn(prompt)
             self.state_buffer.copy_(prefill_state)
             self.current_tokens.copy_(prompt_last_token)
-            for _ in self._decode_step_range:
-                next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
-                self.state_buffer.copy_(next_state)
-                self.current_tokens.copy_(next_token)
+            self._run_decode_loop()
 
     def _benchmark_prefetch_batches(self) -> None:
         if self.cfg.prefetch_batches != 2:
@@ -963,10 +962,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     self.decode_graph.replay()
             else:
                 with torch.cuda.stream(decode_stream):
-                    for _ in self._decode_step_range:
-                        next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
-                        self.state_buffer.copy_(next_state)
-                        self.current_tokens.copy_(next_token)
+                    self._run_decode_loop()
                 if self.compute_stream is not None:
                     current_stream.wait_stream(self.compute_stream)
             decode_end.record(timing_stream)

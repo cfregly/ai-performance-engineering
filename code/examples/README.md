@@ -8,6 +8,7 @@ This directory contains example scripts demonstrating the usage of the AI Perfor
 |------|-------------|
 | `optimize_examples.py` | Auto-optimizer usage examples |
 | `profiling_examples.py` | GPU profiling suite examples |
+| `zymtrace_gpu_smoke.py` | Timed CUDA workload for validating Zymtrace GPU capture |
 | `mcp_client_example.py` | MCP client lifecycle and tool-call examples |
 | `optimize_config.yaml` | Sample configuration file |
 
@@ -36,6 +37,12 @@ python examples/profiling_examples.py --example 6  # torch.compile
 
 # Run all examples
 python examples/profiling_examples.py --all
+```
+
+### Zymtrace GPU Smoke
+
+```bash
+core/scripts/profiling/profile.sh examples/zymtrace_gpu_smoke.py --tool zymtrace -- --seconds 30
 ```
 
 ### MCP Client Example
