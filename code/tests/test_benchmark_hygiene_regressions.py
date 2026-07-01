@@ -13682,6 +13682,10 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
             maxsplit=1,
         )[0]
         gather_section = source.split("def _gather_kv_into_buffers", maxsplit=1)[1].split(
+            "def _append_kv_into_buffers",
+            maxsplit=1,
+        )[0]
+        append_section = source.split("def _append_kv_into_buffers", maxsplit=1)[1].split(
             "def benchmark_fn",
             maxsplit=1,
         )[0]
@@ -13744,6 +13748,14 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         assert "self._v_gather_prefix_views[gathered_len - 1]" in gather_section
         assert "self._k_gather_buffer[:, idx : idx + 1, :].copy_" not in gather_section
         assert "self._v_gather_buffer[:, idx : idx + 1, :].copy_" not in gather_section
+        assert "def _append_kv_into_buffers(" in source
+        assert "step >= self._gather_view_count" in append_section
+        assert "tier = tiers[step]" in append_section
+        assert "self._k_gather_step_views[step].copy_(cache_k[step], non_blocking=non_blocking)" in append_section
+        assert "self._v_gather_step_views[step].copy_(cache_v[step], non_blocking=non_blocking)" in append_section
+        assert "self._k_gather_prefix_views[step]" in append_section
+        assert "self._v_gather_prefix_views[step]" in append_section
+        assert "for idx in range(" not in append_section
         assert "torch.cat(" not in benchmark_section
         assert ".to(self.device" not in benchmark_section
         assert ".append(" not in benchmark_section
@@ -13755,7 +13767,8 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         assert "len(self._tier_slots)" not in benchmark_section
         assert "len(self._decode_step_inputs)" not in benchmark_section
         assert "self._query_steps[step]" not in benchmark_section
-        assert "self._gather_kv_into_buffers(cache_k, cache_v, tiers, step + 1)" in benchmark_section
+        assert "self._append_kv_into_buffers(cache_k, cache_v, tiers, step)" in benchmark_section
+        assert "self._gather_kv_into_buffers(cache_k, cache_v, tiers, step + 1)" not in benchmark_section
         assert "self._cache_slot_count = 0" in teardown_section
         assert "self._host_slot_count = 0" in teardown_section
         assert "self._gather_view_count = 0" in teardown_section
@@ -13811,6 +13824,22 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         assert placed_v.data_ptr() == bench._host_value_slots[0].data_ptr()
         torch.testing.assert_close(placed_k, cache_k[1])
         torch.testing.assert_close(placed_v, cache_v[1])
+
+        bench._k_gather_buffer.zero_()
+        bench._v_gather_buffer.zero_()
+        appended_k, appended_v = bench._append_kv_into_buffers(
+            cache_k,
+            cache_v,
+            ["local", "peer", "host"],
+            1,
+        )
+
+        assert appended_k.data_ptr() == bench._k_gather_buffer.data_ptr()
+        assert appended_v.data_ptr() == bench._v_gather_buffer.data_ptr()
+        torch.testing.assert_close(appended_k[:, :1, :], torch.zeros_like(cache_k[0]))
+        torch.testing.assert_close(appended_k[:, 1:2, :], cache_k[1])
+        torch.testing.assert_close(appended_v[:, :1, :], torch.zeros_like(cache_v[0]))
+        torch.testing.assert_close(appended_v[:, 1:2, :], cache_v[1])
 
 
 def test_ch02_grace_coherent_memory_defers_verification_slice_clone() -> None:

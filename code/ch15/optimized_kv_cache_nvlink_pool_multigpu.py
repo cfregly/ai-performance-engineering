@@ -199,6 +199,29 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
             self._v_gather_prefix_views[gathered_len - 1],
         )
 
+    def _append_kv_into_buffers(
+        self,
+        cache_k: list[torch.Tensor],
+        cache_v: list[torch.Tensor],
+        tiers: list[str],
+        step: int,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if self._k_gather_buffer is None or self._v_gather_buffer is None:
+            raise RuntimeError("KV gather buffers not initialized")
+        if (
+            step >= self._gather_view_count
+            or self._gather_view_counts != self._expected_gather_view_counts
+        ):
+            raise RuntimeError("KV gather views not initialized")
+        tier = tiers[step]
+        non_blocking = tier != "local"
+        self._k_gather_step_views[step].copy_(cache_k[step], non_blocking=non_blocking)
+        self._v_gather_step_views[step].copy_(cache_v[step], non_blocking=non_blocking)
+        return (
+            self._k_gather_prefix_views[step],
+            self._v_gather_prefix_views[step],
+        )
+
     def benchmark_fn(self) -> None:
         assert self.model is not None
         assert self._query_steps is not None and self._key_steps is not None and self._value_steps is not None
@@ -215,7 +238,7 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
                 cache_v[step] = placed_v
                 tiers[step] = tier
 
-                k_all, v_all = self._gather_kv_into_buffers(cache_k, cache_v, tiers, step + 1)
+                k_all, v_all = self._append_kv_into_buffers(cache_k, cache_v, tiers, step)
                 out, _ = self.model(q, k_all, v_all)
                 self.output = out
 
