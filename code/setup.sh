@@ -2369,7 +2369,7 @@ PY
 # to invoke the probe with elevated privileges.
 echo ""
 echo "Refreshing GPU hardware capability cache..."
-if python3 "${PROJECT_ROOT}/core/scripts/utilities/probe_hardware_capabilities.py" 2>/tmp/probe_hardware.log; then
+if python3 "${PROJECT_ROOT}/core/scripts/utilities/probe_hardware_capabilities.py" --allow-unavailable 2>/tmp/probe_hardware.log; then
     cat /tmp/probe_hardware.log
 else
     cat /tmp/probe_hardware.log
@@ -3309,7 +3309,7 @@ fi
 echo ""
 
 echo "Capturing hardware capabilities..."
-if python3 "${PROJECT_ROOT}/core/scripts/utilities/probe_hardware_capabilities.py" 2>/tmp/probe_hardware.log; then
+if python3 "${PROJECT_ROOT}/core/scripts/utilities/probe_hardware_capabilities.py" --allow-unavailable 2>/tmp/probe_hardware.log; then
     cat /tmp/probe_hardware.log
     echo ""
     echo "Hardware capabilities summary:"

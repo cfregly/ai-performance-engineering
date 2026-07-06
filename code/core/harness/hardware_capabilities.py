@@ -107,8 +107,19 @@ class HardwareCapabilities:
 _probe_cache: Optional[Dict[str, Any]] = None
 
 
-def _run_probe_if_needed() -> None:
-    if PROBE_FILE.exists():
+def _torch_cuda_available() -> bool:
+    if torch is None:
+        return False
+    try:
+        return bool(torch.cuda.is_available())
+    except Exception:
+        return False
+
+
+def _run_probe_if_needed(*, force: bool = False) -> None:
+    if PROBE_FILE.exists() and not force:
+        return
+    if not _torch_cuda_available():
         return
 
     # Fail loudly if the probe script doesn't exist - no silent fallbacks
@@ -122,7 +133,7 @@ def _run_probe_if_needed() -> None:
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
     # Run the probe script - let errors propagate, no silent fallbacks
     subprocess.run([sys.executable, str(PROBE_SCRIPT)], check=True, timeout=180)
-    
+
     if not PROBE_FILE.exists():
         raise RuntimeError(
             f"Probe script ran but did not create expected output: {PROBE_FILE}\n"
@@ -130,16 +141,26 @@ def _run_probe_if_needed() -> None:
         )
 
 
+def _read_probe_devices() -> List[Dict[str, Any]]:
+    if not PROBE_FILE.exists():
+        return []
+    with PROBE_FILE.open("r", encoding="utf-8") as handle:
+        data = json.load(handle)
+    devices = data.get("devices", [])
+    # Backward compatibility: older stub used {"by_index": {...}}
+    if not devices and "by_index" in data:
+        devices = list(data["by_index"].values())
+    return list(devices)
+
+
 def _load_probe_data() -> Dict[str, Any]:
     global _probe_cache
     if _probe_cache is None:
         _run_probe_if_needed()
-        with PROBE_FILE.open("r", encoding="utf-8") as handle:
-            data = json.load(handle)
-        devices = data.get("devices", [])
-        # Backward compatibility: older stub used {"by_index": {...}}
-        if not devices and "by_index" in data:
-            devices = list(data["by_index"].values())
+        devices = _read_probe_devices()
+        if not devices and _torch_cuda_available():
+            _run_probe_if_needed(force=True)
+            devices = _read_probe_devices()
         by_index = {entry["device_index"]: entry for entry in devices}
         by_key: Dict[str, Any] = {}
         for entry in devices:

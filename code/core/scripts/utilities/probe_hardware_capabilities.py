@@ -3,19 +3,22 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import platform
 import shutil
 import subprocess
-import sys
 import tempfile
 import textwrap
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import torch
+try:
+    import torch
+except ModuleNotFoundError:  # pragma: no cover - exercised by portable hosts
+    torch = None  # type: ignore[assignment]
 
 REPO_ROOT = Path(__file__).resolve().parents[3]  # core/scripts/utilities -> core/scripts -> core -> repo_root
 ARTIFACTS_DIR = REPO_ROOT / "artifacts"
@@ -62,7 +65,7 @@ def _probe_tma_compiler_support(sm_tag: str) -> Tuple[bool, Optional[str]]:
         .version 9.0
         .target sm_{sm_name}
         .address_size 64
-        
+
         .visible .entry tma_probe() {{
             .reg .b64 %rd<2>;
             .reg .pred %p<2>;
@@ -140,7 +143,7 @@ def _probe_dsmem_support(sm_tag: str) -> Tuple[bool, Optional[str]]:
         #include <cuda_runtime.h>
         #include <cooperative_groups.h>
         namespace cg = cooperative_groups;
-        
+
         __global__ void dsmem_probe_kernel(int *out) {
             __shared__ int smem[32];  // Static shared memory for reliable DSMEM
             auto cluster = cg::this_cluster();
@@ -155,7 +158,7 @@ def _probe_dsmem_support(sm_tag: str) -> Tuple[bool, Optional[str]]:
             }
             cluster.sync();
         }
-        
+
         int main() {
             int *out = nullptr;
             if (cudaMalloc(&out, sizeof(int)) != cudaSuccess) {
@@ -346,9 +349,34 @@ def _probe_device(device_index: int) -> Dict[str, Any]:
     return entry
 
 
-def main() -> None:
+def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Probe CUDA hardware capabilities.")
+    parser.add_argument(
+        "--allow-unavailable",
+        action="store_true",
+        help=(
+            "Exit successfully without writing a cache when PyTorch or CUDA is unavailable. "
+            "Use this for portable preflight/setup paths; strict B200 runs should omit it."
+        ),
+    )
+    return parser.parse_args(argv)
+
+
+def _skip_or_raise(reason: str, *, allow_unavailable: bool) -> None:
+    if allow_unavailable:
+        print(f"SKIPPED: {reason}; hardware capability cache not refreshed.")
+        return
+    raise RuntimeError(reason)
+
+
+def main(argv: Optional[List[str]] = None) -> None:
+    args = parse_args(argv)
+    if torch is None:
+        _skip_or_raise("PyTorch is not installed", allow_unavailable=args.allow_unavailable)
+        return
     if not torch.cuda.is_available():
-        raise RuntimeError("CUDA not available - cannot probe hardware capabilities")
+        _skip_or_raise("CUDA not available", allow_unavailable=args.allow_unavailable)
+        return
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
     devices: List[Dict[str, Any]] = []
     for idx in range(torch.cuda.device_count()):
