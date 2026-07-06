@@ -347,6 +347,15 @@ using GemmKernelStage5N128C1 = cutlass::gemm::kernel::GemmUniversal<
     void>;
 
 using GemmAutoN64C1 = cutlass::gemm::device::GemmUniversalAdapter<GemmKernelAutoN64C1>;
+// Experimental StreamK lane for the decode shape (M=128): fills the 148-SM GPU by
+// splitting the K=16384 reduction across CTAs (the 112-CTA data-parallel grid leaves
+// 36 SMs idle). Gated by AISP_NVFP4_FORCE_STREAMK at runtime.
+using GemmKernelStreamKN64C1 = cutlass::gemm::kernel::GemmUniversal<
+    Shape<int, int, int, int>,
+    CollectiveMainloopAutoN64C1,
+    CollectiveEpilogueN64C1,
+    cutlass::gemm::StreamKScheduler>;
+using GemmStreamKN64C1 = cutlass::gemm::device::GemmUniversalAdapter<GemmKernelStreamKN64C1>;
 using GemmStage5N64C1 = cutlass::gemm::device::GemmUniversalAdapter<GemmKernelStage5N64C1>;
 using GemmStage6N64C1 = cutlass::gemm::device::GemmUniversalAdapter<GemmKernelStage6N64C1>;
 using GemmStage7N64C1 = cutlass::gemm::device::GemmUniversalAdapter<GemmKernelStage7N64C1>;

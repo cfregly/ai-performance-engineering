@@ -149,20 +149,17 @@ HALVE the CTAs to 56 (worse occupancy). The tile lever is therefore exhausted: a
 the valid tiles, N64 is occupancy-optimal at this shape (which is why the kernel's
 per-shape dispatch already pins the N64C1 lane for decode). The ONLY remaining
 occupancy lever is split-K / StreamK across the large K=16384 reduction (112*S CTAs +
-an epilogue reduce). I MEASURED it (2026-06-09): added a `cutlass::gemm::StreamKScheduler`
-lane to the kernel (the 4th `GemmUniversal` param; CUTLASS v4.3.2 has an SM100 StreamK
-scheduler, `sm100_tile_scheduler_stream_k.hpp`). It COMPILES + runs the decode shape
-(so StreamK IS compatible with the blockscaled NVFP4 1SM collective), but it is NOT a
-win: a 3-trial same-binary A/B at the decode shape (128/7168/16384, 3-iter bounded) is
-StreamK 15.79 us mean (15.62/16.23/15.53) vs the data-parallel N64 lane 15.14 us mean
-(15.37/15.10/14.94) -- StreamK is ~4% SLOWER. The K-split reduction overhead exceeds
-the occupancy gain at M=128. StreamK is also UNSTABLE on this path: it hangs / times out
-on the other two leaderboard shapes (128/4096/7168 and 128/7168/2048). VERDICT (now
-measured, not just argued): the data-parallel N64 lane is the practical optimum; the
-StreamK occupancy lever is REFUTED. This kernel is at its H4/P4 ceiling (it IS the
-production CUTLASS NVFP4 tensor-core path; the MMA atom is the FP4 tensor-core op); the
-decode-M residual is small-M-GEMM shape physics, not a closable gap. The experimental
-StreamK lane was reverted (a slower + unstable variant is not a keeper).
+an epilogue reduce). That is NOT a quick config flip: the kernel is
+`cutlass::gemm::kernel::GemmUniversal<..., void>` (the `void` 4th param = the default
+data-parallel scheduler), so StreamK requires swapping the TileScheduler template
+(a recompile) AND the blockscaled-NVFP4 1SM collective must support partial-K
+accumulation + the StreamK epilogue reduction (compatibility unverified). Production
+serving stacks apply exactly this per-shape (StreamK for under-filled small-M GEMMs);
+the book's example teaches the single dense path. VERDICT: this kernel is at the
+practical H4/P4 ceiling (it IS the production CUTLASS NVFP4 tensor-core path; the MMA
+atom is the FP4 tensor-core op); the decode-M residual is small-M-GEMM shape physics,
+and the only lever (StreamK) is a deep, uncertain, per-shape scheduler change banked
+here rather than patched into a teaching kernel.
 
 Companion data point, the repo's own hand-written tcgen05 dense GEMM
 (`ch10:matmul_tcgen05_vs_cublas`, the educational CUDA-C++ tcgen05 kernel): on
