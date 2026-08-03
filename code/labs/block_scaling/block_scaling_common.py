@@ -33,7 +33,8 @@ BLOCK_SCALING_SOURCE_URL = (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-# sm_100 (B200) example shipped by the pinned cutlass submodule (v4.1.0).
+# sm_100 (B200) example shipped by the pinned cutlass submodule (v4.6.1).
+# cutlass 4.6 relocated the CuTeDSL examples under cute/blackwell/kernel/.
 SM100_EXAMPLE_PATH = (
     REPO_ROOT
     / "third_party"
@@ -41,11 +42,14 @@ SM100_EXAMPLE_PATH = (
     / "examples"
     / "python"
     / "CuTeDSL"
+    / "cute"
     / "blackwell"
+    / "kernel"
+    / "blockscaled_gemm"
     / "dense_blockscaled_gemm_persistent.py"
 )
 # sm_103 (GB300 / Blackwell Ultra) example vendored from cutlass main (BSD-3).
-# The pinned v4.1.0 submodule predates sm_103 and its DSL-4.1 example uses APIs
+# The pinned submodule's sm_100 example does not cover sm_103, and older DSL examples use APIs
 # removed in cutlass-dsl 4.5.x, so the GB300 path needs the sm103-specific
 # example. Imports resolve from the pip nvidia-cutlass-dsl[cu13]>=4.5.2 package
 # (no sibling-file deps); see vendor/README.md for provenance.
@@ -57,6 +61,22 @@ SM103_EXAMPLE_PATH = (
 # Back-compat default (the sm_100 path); load_cutlass_example_module() selects
 # the sm_103 example per-arch at load time via _resolve_cutlass_example_path().
 CUTLASS_EXAMPLE_PATH = SM100_EXAMPLE_PATH
+
+
+def _from_dlpack(module: ModuleType):
+    """Return CuTe's ``from_dlpack`` for ``module``.
+
+    cutlass 4.6 stopped re-exporting ``from_dlpack`` from the example modules;
+    the canonical home is ``cutlass.cute.runtime``. Prefer the example's own
+    binding when it exposes one so older pinned submodules keep working, and
+    resolve lazily so importing this module does not require a working DSL.
+    """
+    fn = getattr(module, "from_dlpack", None)
+    if fn is not None:
+        return fn
+    from cutlass.cute.runtime import from_dlpack as runtime_from_dlpack
+
+    return runtime_from_dlpack
 
 DEFAULT_MNKL = (8192, 8192, 1024, 1)
 DEFAULT_MMA_TILER_MN = (256, 128)
@@ -156,7 +176,7 @@ class BlockScalingProblem:
             self.c_ref_device = self.c_ref.cuda()
         self.module.cute.testing.convert(
             self.c_tensor,
-            self.module.from_dlpack(self.c_ref_device, assumed_align=16).mark_layout_dynamic(
+            _from_dlpack(self.module)(self.c_ref_device, assumed_align=16).mark_layout_dynamic(
                 leading_dim=1
             ),
         )
@@ -385,8 +405,8 @@ def _create_scale_factor_tensor(
     )
 
     module.cvt_sf_MKL_to_M32x4xrm_K4xrk_L(
-        module.from_dlpack(ref_f32_cpu),
-        module.from_dlpack(compact_f32_cpu),
+        _from_dlpack(module)(ref_f32_cpu),
+        _from_dlpack(module)(compact_f32_cpu),
     )
     compact_f32 = compact_f32_cpu.cuda()
 

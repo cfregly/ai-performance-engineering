@@ -18,7 +18,7 @@
 # torchvision will be installed separately with --no-deps to prevent torch override
 
 # Optional: install upstream Triton if you author custom GPU kernels outside of
-triton==3.5.0
+triton==3.7.1
 
 # Build tooling compatibility
 packaging==25.0
@@ -55,7 +55,7 @@ kvikio-cu13==25.10.0
 # (sm_103/sm_103a/sm_103f) to the CuTe-DSL Arch enum, and the [cu13] extra pulls
 # the CUDA-13 backend libs. 4.3.0 (base-only) lacks sm_103a, so the Python
 # CuTe-DSL JIT labs (e.g. labs/block_scaling) cannot target GB300/sm_103.
-nvidia-cutlass-dsl[cu13]>=4.5.2
+nvidia-cutlass-dsl[cu13]>=4.6.1,<4.7
 
 # Development workflow
 jupyter==1.1.1
@@ -94,8 +94,8 @@ huggingface-hub==0.34.6  # Required by transformers 4.56.0 and tokenizers 0.22.2
 torchtitan==0.2.0
 # Tested benchmark-host serving ABI matrix (pin these together).
 # setup.sh may install torch from cached wheels; keep that install on this exact version.
-torch==2.9.1+cu130
-vllm==0.16.0
+torch==2.13.0+cu130
+vllm==0.26.0
 flashinfer-python==0.6.3
 # vLLM runtime dependencies for no-deps wheel installs on benchmark hosts.
 cbor2==5.8.0

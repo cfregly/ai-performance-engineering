@@ -322,12 +322,12 @@ PYTORCH_NIGHTLY_DATE="20251213"
 PYTORCH_TORCH_VERSION="2.10.0.dev${PYTORCH_NIGHTLY_DATE}+cu130"
 # PYTORCH_TORCHVISION_VERSION="0.25.0.dev${PYTORCH_NIGHTLY_DATE}+cu130"
 PYTORCH_TORCHAUDIO_VERSION="2.10.0.dev${PYTORCH_NIGHTLY_DATE}+cu130"
-PYTORCH_TORCHAO_VERSION="0.16.0.dev${PYTORCH_NIGHTLY_DATE}+cu130"
+PYTORCH_TORCHAO_VERSION="${PYTORCH_TORCHAO_VERSION:-0.18.0+cu130}"
 PYTORCH_TRITON_VERSION="3.6.0+git8fedd49b"
 PYTORCH_NIGHTLY_INDEX="https://download.pytorch.org/whl/nightly"
-PYTORCH_CU130_INDEX_ROOT="https://download.pytorch.org/whl/nightly/cu130"
+PYTORCH_CU130_INDEX_ROOT="${PYTORCH_CU130_INDEX_ROOT:-https://download.pytorch.org/whl/cu130}"
 PYTORCH_CU130_INDEX="${PYTORCH_CU130_INDEX_ROOT}"
-PYTORCH_TORCH_FIND_LINKS="${PYTORCH_TORCH_FIND_LINKS:-https://download.pytorch.org/whl/nightly/cu130/torch/}"
+PYTORCH_TORCH_FIND_LINKS="${PYTORCH_TORCH_FIND_LINKS:-https://download.pytorch.org/whl/cu130/torch/}"
 GPU_CLOCK_SERVICE_PATH="/etc/systemd/system/gpu-clock-pin.service"
 echo "Project root: $PROJECT_ROOT"
 cd "$PROJECT_ROOT"
@@ -2764,10 +2764,21 @@ else
 fi
 
 echo "Installing pinned vLLM runtime dependencies (required when vLLM is installed with --no-deps)..."
-if ! pip_install --no-cache-dir --upgrade --ignore-installed "${VLLM_RUNTIME_DEPS[@]}"; then
+# Hold torch across this install. These deps (compressed-tensors, xgrammar, ...)
+# declare a bare `torch` requirement, so without a constraint pip resolves it
+# from PyPI and overwrites the pinned cu130 build, downgrading nvidia-nccl-cu13
+# with it and breaking libtorch_cuda.so symbol resolution. The local build tag is
+# stripped because the dist version differs by index while PEP 440 `==X.Y.Z`
+# matches both plain and +local builds.
+VLLM_DEPS_CONSTRAINTS="$(mktemp -t vllm-deps-constraints.XXXXXX)"
+printf 'torch==%s\n' "${PYTORCH_TORCH_VERSION%%+*}" > "${VLLM_DEPS_CONSTRAINTS}"
+if ! pip_install --no-cache-dir --upgrade --ignore-installed \
+    -c "${VLLM_DEPS_CONSTRAINTS}" "${VLLM_RUNTIME_DEPS[@]}"; then
+    rm -f "${VLLM_DEPS_CONSTRAINTS}"
     echo "ERROR: Failed to install pinned vLLM runtime dependencies."
     exit 1
 fi
+rm -f "${VLLM_DEPS_CONSTRAINTS}"
 
 python3 <<PY
 import importlib
