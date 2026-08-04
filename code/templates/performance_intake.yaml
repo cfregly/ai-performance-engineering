@@ -67,6 +67,33 @@ current_baseline:
   cost_per_token_usd: null
   cost_per_request_usd: null
 
+hot_path_model:
+  path: "<module:function or benchmark target>"
+  phase: steady_state                       # setup | warmup | steady_state | teardown | end_to_end
+  invocation_frequency: per_request         # once | per_batch | per_request | per_token | per_rank | per_element
+  invocations_per_primary_unit: null         # e.g. calls per request, token, or training step
+  estimated_costs:
+    bytes_read: null
+    bytes_written: null
+    host_device_bytes: null
+    allocations_or_materializations: null
+    kernel_launches: null
+    synchronizations_or_locks: null
+    api_process_or_rpc_crossings: null
+    storage_or_network_operations: null
+  operation_cost_source: ""                 # current profile/artifact preferred; published tables are intuition only
+  expected_dominant_cost: ""
+  best_case_primary_kpi_improvement_pct: null
+
+evidence:
+  baseline_artifact: ""
+  profile_artifacts: []
+  allocation_or_memory_profile: ""
+  hardware_counter_artifacts: []
+  static_review_findings: []                 # hypotheses only; do not report these as measured wins
+
+candidate_optimizations: []                  # algorithm/work avoided | bulk_api | representation/locality | allocation/copy | sync/parallelism | generated_code
+
 known_issues_or_hypotheses: []
 
 risk_guardrails:

@@ -9,6 +9,12 @@
 - Treat convention changes as rare and deliberate. Only change a convention when the task explicitly requires it or the current convention is clearly wrong and the fix should apply broadly.
 - When you intentionally diverge from an existing convention, call out the prior convention, explain why it is insufficient, and make the convention change explicit in the task summary.
 
+## Performance Review Workflow (CRITICAL)
+- For performance-sensitive code, optimization proposals, hot-path reviews, or benchmark design, read and follow [`../.agents/skills/dean-performance-review/SKILL.md`](../.agents/skills/dean-performance-review/SKILL.md).
+- Treat static review as hypothesis generation. Do not claim a performance win without a representative baseline, correctness gate, repeated control/candidate measurements, and profiler or counter evidence for the proposed mechanism.
+- Start with algorithmic or structural work avoided, then API batching, representation/locality, allocations/copies, synchronization/parallelism, and generated-code size. Prefer the highest-level change supported by evidence.
+- Keep setup, warmup, steady-state, and teardown costs explicit. Moving work outside `benchmark_fn()` is valid only when the benchmark contract is steady-state replay and the excluded cost remains visible elsewhere.
+
 ## Safety (CRITICAL)
 - DO NOT run destructive git commands in this repo (including `git restore`, `git checkout`, `git reset --hard`, `git revert`, or mass file deletions) unless I explicitly ask.
 - NEVER restore/revert/checkout any file to `HEAD` or any commit. Always keep files as-is and include changes (even if unexpected).

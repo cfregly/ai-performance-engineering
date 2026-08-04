@@ -721,6 +721,7 @@ ENTRIES["README.md"] = Entry(
                 This repo now exposes one repeatable benchmarking methodology instead of leaving performance work as a collection of scripts.
 
                 Start with:
+                - [`../.agents/skills/dean-performance-review/SKILL.md`](../.agents/skills/dean-performance-review/SKILL.md) for the evidence-first optimization workflow adapted from Jeff Dean and Sanjay Ghemawat's performance guidance.
                 - [`docs/benchmark_methodology.md`](docs/benchmark_methodology.md) for the three-layer model (`micro`, `component`, `end_to_end`), bottleneck taxonomy, publication-vs-realism policy, and straggler playbook.
                 - [`docs/performance_warehouse.md`](docs/performance_warehouse.md) for the stable event schema, raw-versus-curated storage split, retention tiers, and telemetry lineage back to raw evidence.
                 - [`templates/performance_intake.yaml`](templates/performance_intake.yaml) for KPIs, constraints, and the variable under test.

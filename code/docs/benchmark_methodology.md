@@ -51,6 +51,19 @@ Compare one variable at a time. Valid candidates include:
 
 If more than one variable moves, the run is exploratory, not publication-grade.
 
+## Dean/Ghemawat Optimization Loop
+
+This repo adapts Jeff Dean and Sanjay Ghemawat's [Performance Hints](https://abseil.io/fast/hints.html) into an evidence loop for Python, PyTorch, CUDA, Triton, and distributed workloads. Their source document is centered on single-binary performance and mostly C++ examples; the categories transfer, but GPU and distributed claims still require repo-native measurements.
+
+1. **Estimate:** state invocation frequency and approximate bytes, allocations, launches, synchronizations, locks, and boundary crossings. Reject ideas whose best-case ceiling cannot move the primary KPI.
+2. **Measure:** capture a representative baseline and profile. A static code smell is a hypothesis, not proof that it matters.
+3. **Choose the highest-leverage class:** algorithm or work avoided; bulk API shape; compact/local representation; fewer allocations and copies; less synchronization or better parallelism; smaller generated code.
+4. **Change one mechanism:** preserve the frozen workload and keep the public interface stable when the optimization can live behind an encapsulation boundary.
+5. **Verify:** pass correctness first, then repeated paired measurements, profiler/counter attribution, and the artifact/provenance contract.
+6. **Bound the claim:** distinguish micro, component, and end-to-end effects and state excluded setup, warmup, compile, graph-capture, or teardown costs.
+
+The executable agent workflow lives in [`../../.agents/skills/dean-performance-review/SKILL.md`](../../.agents/skills/dean-performance-review/SKILL.md). The intake fields live in [`../templates/performance_intake.yaml`](../templates/performance_intake.yaml).
+
 ## Metrics By Workload Type
 ### Training
 Track these as primary metrics:
