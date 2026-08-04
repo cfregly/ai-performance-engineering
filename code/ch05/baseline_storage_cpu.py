@@ -16,7 +16,7 @@ from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, Workl
 class BaselineStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Storage -> pageable host -> GPU transfer on every benchmark iteration."""
 
-    allowed_benchmark_fn_antipatterns = ("host_transfer",)
+    allowed_benchmark_fn_antipatterns = ("host_transfer", "io", "tensor_construction")
     
     def __init__(self):
         super().__init__()

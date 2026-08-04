@@ -33,6 +33,29 @@ _ALLOCATION_CALLS = {
     ("torch", "zeros_like"),
 }
 
+_TENSOR_CONSTRUCTION_CALLS = {
+    ("torch", "as_tensor"),
+    ("torch", "from_numpy"),
+    ("torch", "tensor"),
+}
+
+_NUMPY_IO_CALLS = {
+    ("np", "load"),
+    ("np", "save"),
+    ("numpy", "load"),
+    ("numpy", "save"),
+}
+
+_LOGGING_METHODS = {
+    "critical",
+    "debug",
+    "error",
+    "exception",
+    "info",
+    "log",
+    "warning",
+}
+
 _COMPILE_CALLS = {
     ("torch", "compile"),
     ("compile_callable",),
@@ -270,6 +293,15 @@ def _is_cpu_target(node: ast.AST) -> bool:
         if target == ("torch", "device") and node.args:
             return _is_cpu_target(node.args[0])
     return False
+
+
+def _is_hot_path_logging_call(target: Tuple[str, ...]) -> bool:
+    if target == ("print",):
+        return True
+    if not target or target[-1] not in _LOGGING_METHODS:
+        return False
+    owner = target[:-1]
+    return bool(owner) and (owner[0] == "logging" or owner[-1] in {"log", "logger"})
 
 
 def _normalize_allowed_codes(allowed_codes: Optional[Iterable[str]]) -> set[str]:
@@ -762,6 +794,30 @@ def benchmark_fn_antipattern_warnings(
                 "benchmark_fn() allocates tensors via "
                 f"{'.'.join(target)}() (line {node.lineno}); preallocate reusable buffers in setup() "
                 "unless allocation cost is the benchmarked behavior",
+            ))
+            continue
+        if target in _TENSOR_CONSTRUCTION_CALLS:
+            findings.append((
+                "tensor_construction",
+                "benchmark_fn() constructs a tensor view or copy via "
+                f"{'.'.join(target)}() (line {node.lineno}); create or wrap stable inputs in "
+                "setup() unless construction/materialization is the benchmarked behavior",
+            ))
+            continue
+        if target in _NUMPY_IO_CALLS:
+            findings.append((
+                "io",
+                "benchmark_fn() performs NumPy file I/O via "
+                f"{'.'.join(target)}() (line {node.lineno}); keep storage I/O out of the timed "
+                "hot path unless it is the benchmarked behavior",
+            ))
+            continue
+        if _is_hot_path_logging_call(target):
+            findings.append((
+                "logging",
+                "benchmark_fn() emits output or invokes logging via "
+                f"{'.'.join(target)}() (line {node.lineno}); capture structured state and report "
+                "it after timing instead",
             ))
             continue
         if target in _COMPILE_CALLS:

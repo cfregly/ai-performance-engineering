@@ -17,7 +17,7 @@ from ch04.nccl_blackwell_config import (
     configure_nccl_for_multigpu,
     detect_b200_multigpu_topology,
 )
-from ch04.nvshmem_vs_nccl_benchmark import benchmark, init_distributed
+from ch04.nvshmem_vs_nccl_benchmark import BenchmarkResult, benchmark, init_distributed
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -46,11 +46,13 @@ def _configure_blackwell_nccl() -> None:
 class OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU(VerificationPayloadMixin, BaseBenchmark):
     multi_gpu_required = True
     allowed_benchmark_fn_antipatterns = ("random_input_regeneration", "sync")
+
     def __init__(self) -> None:
         super().__init__()
         self.register_workload_metadata(requests_per_iteration=1.0)
         self._verify_input: Optional[torch.Tensor] = None
         self._benchmark_args: Optional[argparse.Namespace] = None
+        self._benchmark_results: Optional[dict[str, list[BenchmarkResult]]] = None
         self._original_env: dict[str, Optional[str]] = {}
 
     def setup(self) -> None:
@@ -81,13 +83,9 @@ class OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU(VerificationPayloadMixin, BaseBenc
     def benchmark_fn(self) -> None:
         if self._benchmark_args is None:
             raise RuntimeError("setup() must initialize benchmark args before benchmark_fn()")
-        rank = init_distributed()
+        init_distributed()
         try:
-            results = benchmark(self._benchmark_args)
-            if rank == 0:
-                print("\nNVSHMEM Benchmark (optimized for NVLink 5.0 / NVLS / TCE)")
-                print("------------------------------------------------------")
-                print(f"Symmetric memory available: {bool(results['nvshmem'])}")
+            self._benchmark_results = benchmark(self._benchmark_args)
         finally:
             if dist.is_initialized():
                 dist.barrier()
@@ -102,6 +100,7 @@ class OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU(VerificationPayloadMixin, BaseBenc
                 os.environ[key] = value
         self._original_env = {}
         self._benchmark_args = None
+        self._benchmark_results = None
 
     def capture_verification_payload(self) -> None:
         if self._verify_input is None:
@@ -147,15 +146,18 @@ class OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU(VerificationPayloadMixin, BaseBenc
             name="optimized_nvshmem_vs_nccl_benchmark_multigpu",
         )
 
-
     def get_custom_metrics(self) -> Optional[dict]:
-        """Return domain-specific metrics using standardized helper."""
-        from core.benchmark.metrics import compute_memory_transfer_metrics
-        return compute_memory_transfer_metrics(
-            bytes_transferred=self._bytes_transferred if hasattr(self, '_bytes_transferred') else float(getattr(self, 'N', 1024) * 4),
-            elapsed_ms=getattr(self, '_last_elapsed_ms', None),
-            transfer_type="hbm",
-        )
+        """Return the NVSHMEM result captured by the measured collective sweep."""
+        results = (self._benchmark_results or {}).get("nvshmem", [])
+        if not results:
+            return None
+        result = results[0]
+        return {
+            "collective.message_bytes": float(result.bytes),
+            "collective.latency_us": float(result.latency_us),
+            "collective.bandwidth_gbps": float(result.bandwidth_gbps),
+        }
+
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU()
