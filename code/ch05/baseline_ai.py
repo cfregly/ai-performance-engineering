@@ -18,7 +18,12 @@ from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, Workl
 class BaselineAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Reads activations from storage synchronously before every tiny inference block."""
 
-    allowed_benchmark_fn_antipatterns = ("host_transfer", "sync")
+    allowed_benchmark_fn_antipatterns = (
+        "host_transfer",
+        "io",
+        "sync",
+        "tensor_construction",
+    )
 
     def __init__(self):
         super().__init__()

@@ -12,7 +12,7 @@ import torch
 import torch.distributed as dist
 
 from ch04.distributed_helper import run_main_with_skip_status
-from ch04.nvshmem_vs_nccl_benchmark import benchmark, init_distributed
+from ch04.nvshmem_vs_nccl_benchmark import BenchmarkResult, benchmark, init_distributed
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -26,11 +26,13 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 class NVSHMEMVsNCCLBenchmarkMultiGPU(VerificationPayloadMixin, BaseBenchmark):
     multi_gpu_required = True
     allowed_benchmark_fn_antipatterns = ("random_input_regeneration", "sync")
+
     def __init__(self) -> None:
         super().__init__()
         self.register_workload_metadata(requests_per_iteration=1.0)
         self._verify_input: Optional[torch.Tensor] = None
         self._benchmark_args: Optional[argparse.Namespace] = None
+        self._benchmark_results: Optional[dict[str, list[BenchmarkResult]]] = None
         self._original_env: dict[str, Optional[str]] = {}
 
     def setup(self) -> None:
@@ -63,7 +65,7 @@ class NVSHMEMVsNCCLBenchmarkMultiGPU(VerificationPayloadMixin, BaseBenchmark):
         init_distributed()
         try:
             self._benchmark_args.mode = "nccl"
-            benchmark(self._benchmark_args)
+            self._benchmark_results = benchmark(self._benchmark_args)
         finally:
             if dist.is_initialized():
                 dist.barrier()
@@ -78,6 +80,7 @@ class NVSHMEMVsNCCLBenchmarkMultiGPU(VerificationPayloadMixin, BaseBenchmark):
                 os.environ[key] = value
         self._original_env = {}
         self._benchmark_args = None
+        self._benchmark_results = None
 
     def capture_verification_payload(self) -> None:
         if self._verify_input is None:
@@ -102,6 +105,7 @@ class NVSHMEMVsNCCLBenchmarkMultiGPU(VerificationPayloadMixin, BaseBenchmark):
                 "collective_type": "nccl",
             },
         )
+
     def get_config(self) -> BenchmarkConfig:
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
             return BenchmarkConfig(iterations=1, warmup=5, measurement_timeout_seconds=300)
@@ -114,10 +118,6 @@ class NVSHMEMVsNCCLBenchmarkMultiGPU(VerificationPayloadMixin, BaseBenchmark):
             measurement_timeout_seconds=300,
         )
 
-    def teardown(self) -> None:
-        if torch.distributed.is_initialized():
-            torch.distributed.destroy_process_group()
-
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
         return TorchrunLaunchSpec(
             script_path=Path(__file__).resolve(),
@@ -126,15 +126,18 @@ class NVSHMEMVsNCCLBenchmarkMultiGPU(VerificationPayloadMixin, BaseBenchmark):
             name="baseline_nvshmem_vs_nccl_benchmark_multigpu",
         )
 
-
     def get_custom_metrics(self) -> Optional[dict]:
-        """Return domain-specific metrics using standardized helper."""
-        from core.benchmark.metrics import compute_memory_transfer_metrics
-        return compute_memory_transfer_metrics(
-            bytes_transferred=self._bytes_transferred if hasattr(self, '_bytes_transferred') else float(getattr(self, 'N', 1024) * 4),
-            elapsed_ms=getattr(self, '_last_elapsed_ms', None),
-            transfer_type="hbm",
-        )
+        """Return the NCCL result captured by the measured collective sweep."""
+        results = (self._benchmark_results or {}).get("nccl", [])
+        if not results:
+            return None
+        result = results[0]
+        return {
+            "collective.message_bytes": float(result.bytes),
+            "collective.latency_us": float(result.latency_us),
+            "collective.bandwidth_gbps": float(result.bandwidth_gbps),
+        }
+
 
 def get_benchmark() -> BaseBenchmark:
     return NVSHMEMVsNCCLBenchmarkMultiGPU()

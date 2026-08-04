@@ -6,6 +6,7 @@ Use this doc with [`docs/benchmark_methodology.md`](./benchmark_methodology.md).
 
 ## Quick Actions
 - Fill the intake in [`templates/performance_intake.yaml`](../templates/performance_intake.yaml).
+- Write the invocation-frequency and back-of-the-envelope cost model before choosing an optimization.
 - Freeze the workload in [`templates/benchmark_workload_spec.yaml`](../templates/benchmark_workload_spec.yaml).
 - If the run needs to survive CI, scheduling automation, or external publication review, copy [`templates/benchmark_run.yaml`](../templates/benchmark_run.yaml) and validate it with `python -m core.scripts.validate_benchmark_run --file <your-file>.yaml`.
 - Choose the benchmark layer: `micro`, `component`, or `end_to_end`.
@@ -29,6 +30,21 @@ Then copy [`templates/benchmark_workload_spec.yaml`](../templates/benchmark_work
 If the result is going to be scheduled declaratively or cited outside engineering, also copy [`templates/benchmark_run.yaml`](../templates/benchmark_run.yaml). That file adds the layer stack, distributed diagnosis policy, provenance requirements, and publication-vs-realism execution mode.
 
 Do not compare runs until the intake and workload spec are filled. Do not publish or automate a run until the `BenchmarkRun` file validates cleanly.
+
+## Estimate Before Editing
+
+The intake includes a small cost model adapted from Jeff Dean and Sanjay Ghemawat's [Performance Hints](https://abseil.io/fast/hints.html). Fill it with current-host or current-artifact costs when possible:
+
+- how often the path runs: setup, batch, request, token, rank, or element;
+- bytes moved and where they move;
+- allocations and materializations;
+- kernel launches, synchronizations, locks, and API/process/RPC boundaries;
+- storage and network operations;
+- expected dominant term and the largest plausible end-to-end improvement.
+
+This estimate is a filter, not a result. It helps reject changes whose theoretical ceiling cannot move the primary KPI. The baseline and profiler evidence still decide which hypothesis to implement.
+
+Rank candidates from structural to local: algorithm/work avoided, bulk API shape, representation/locality, allocation/copy removal, synchronization/parallelism, then code-generation or instruction-level tuning. Use the repo skill at [`../../.agents/skills/dean-performance-review/SKILL.md`](../../.agents/skills/dean-performance-review/SKILL.md) for the full review loop.
 
 ## Choose The Right Layer
 

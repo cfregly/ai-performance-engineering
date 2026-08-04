@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import ast
 import importlib.util
-from pathlib import Path
 import textwrap
+from pathlib import Path
 
 from core.benchmark.contract import BenchmarkContract
 from core.harness.validity_checks import (
     check_benchmark_fn_antipatterns,
     check_benchmark_fn_sync_calls,
 )
+from core.hot_path_checks import benchmark_fn_antipattern_warnings_for_class
 
 
 def _parse_class(source: str) -> ast.ClassDef:
@@ -324,6 +325,111 @@ def test_runtime_antipattern_check_detects_hot_path_allocations() -> None:
 
     assert not ok
     assert any("regenerates random inputs" in finding for finding in findings)
+
+
+def test_contract_warns_on_hot_path_logging() -> None:
+    class_node = _parse_class(
+        """
+        class AntiPatternBench:
+            def benchmark_fn(self):
+                print("timed output")
+                self.logger.info("timed log")
+        """
+    )
+
+    warnings = benchmark_fn_antipattern_warnings_for_class(class_node)
+
+    assert any("print()" in warning for warning in warnings)
+    assert any("self.logger.info()" in warning for warning in warnings)
+
+
+def test_contract_warns_on_hot_path_tensor_construction_and_numpy_io() -> None:
+    class_node = _parse_class(
+        """
+        class AntiPatternBench:
+            def benchmark_fn(self):
+                values = np.load(self.path)
+                return torch.from_numpy(values)
+        """
+    )
+
+    warnings = benchmark_fn_antipattern_warnings_for_class(class_node)
+
+    assert any("NumPy file I/O" in warning for warning in warnings)
+    assert any("constructs a tensor view or copy" in warning for warning in warnings)
+
+
+def test_contract_allows_declared_hot_path_tensor_construction_and_numpy_io() -> None:
+    class_node = _parse_class(
+        """
+        class StoragePathBench:
+            def benchmark_fn(self):
+                values = np.load(self.path)
+                return torch.from_numpy(values)
+        """
+    )
+
+    warnings = benchmark_fn_antipattern_warnings_for_class(
+        class_node,
+        allowed_codes=("io", "tensor_construction"),
+    )
+
+    assert not warnings
+
+
+def test_contract_covers_supported_tensor_numpy_and_logging_call_forms() -> None:
+    class_node = _parse_class(
+        """
+        class AntiPatternBench:
+            def benchmark_fn(self):
+                torch.tensor([1])
+                torch.as_tensor([1])
+                torch.from_numpy(self.values)
+                np.load(self.path)
+                np.save(self.path, self.values)
+                numpy.load(self.path)
+                numpy.save(self.path, self.values)
+                logging.info("module logger")
+                logger.warning("named logger")
+                self.log.error("instance log")
+                helper.info("ordinary API")
+        """
+    )
+
+    warnings = benchmark_fn_antipattern_warnings_for_class(class_node)
+
+    for target in (
+        "torch.tensor()",
+        "torch.as_tensor()",
+        "torch.from_numpy()",
+        "np.load()",
+        "np.save()",
+        "numpy.load()",
+        "numpy.save()",
+        "logging.info()",
+        "logger.warning()",
+        "self.log.error()",
+    ):
+        assert any(target in warning for warning in warnings)
+    assert not any("helper.info()" in warning for warning in warnings)
+
+
+def test_contract_allows_declared_hot_path_logging() -> None:
+    class_node = _parse_class(
+        """
+        class LoggingBench:
+            def benchmark_fn(self):
+                print("timed output")
+                self.logger.info("timed log")
+        """
+    )
+
+    warnings = benchmark_fn_antipattern_warnings_for_class(
+        class_node,
+        allowed_codes=("logging",),
+    )
+
+    assert not warnings
 
 
 def test_contract_warns_on_antipattern_inside_same_class_helper_called_by_benchmark_fn() -> None:
