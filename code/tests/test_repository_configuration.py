@@ -253,6 +253,7 @@ def test_default_lint_gate_is_strict_and_legacy_debt_is_explicit() -> None:
     assert "lint: lint-trusted" in makefile
     assert "lint-legacy-debt:" in makefile
     assert "check_benchmarks --include-unpaired --fail-on-warnings" in makefile
+    assert "ruff check . --select E9,F63,F7,F82" in makefile
     for path in (
         "core/optimization/campaign.py",
         "core/optimization/campaign_evidence.py",
@@ -272,6 +273,20 @@ def test_default_lint_gate_is_strict_and_legacy_debt_is_explicit() -> None:
     assert "flake8 core/" in legacy_recipe
     assert "core/benchmark/metrics.py core/profiling/profiler_config.py" in legacy_recipe
     assert "exit $$status" in legacy_recipe
+
+
+def test_ci_blocks_on_repository_wide_firstparty_correctness() -> None:
+    workflow = _load_workflow("benchmark-validation.yml")
+    steps = workflow["jobs"]["static-analysis"]["steps"]
+
+    matching_steps = [
+        step
+        for step in steps
+        if step.get("name") == "Run repository-wide first-party Ruff correctness checks"
+    ]
+    assert len(matching_steps) == 1
+    assert matching_steps[0]["working-directory"] == "code"
+    assert matching_steps[0]["run"] == "ruff check . --select E9,F63,F7,F82"
 
 
 def test_make_mypy_gates_use_configured_python_interpreter() -> None:

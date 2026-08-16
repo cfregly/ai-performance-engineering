@@ -263,6 +263,8 @@ def render_chapter(doc: fitz.Document, start0: int, end0: int, title: str,
 
     prev_kind = None
     prev_raw_end = ""  # last raw text emitted, for cross-page merge decisions
+    prev_page = start0
+    prev_y0 = -1.0
 
     def flush_para():
         nonlocal para

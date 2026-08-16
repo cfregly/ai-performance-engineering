@@ -30,6 +30,8 @@ Abuse Prevention:
   - Max tokens clamped to 1-4096
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os

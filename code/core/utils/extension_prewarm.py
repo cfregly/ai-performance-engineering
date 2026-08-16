@@ -273,8 +273,12 @@ def health_check(verbose: bool = True) -> bool:
     Returns:
         True if all checks pass, False otherwise
     """
-    _ensure_path()
-    
+    with _repo_import_context():
+        return _health_check_with_repo_imports(verbose=verbose)
+
+
+def _health_check_with_repo_imports(verbose: bool = True) -> bool:
+    """Run extension imports while the repository root is temporarily visible."""
     all_ok = True
     
     if verbose:

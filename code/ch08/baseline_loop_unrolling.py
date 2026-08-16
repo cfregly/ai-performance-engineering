@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 from ch08.loop_unrolling_benchmark_base import LoopUnrollingBenchmarkBase
 
 
@@ -28,4 +30,3 @@ class BaselineLoopUnrollingBenchmark(LoopUnrollingBenchmarkBase):
 
 def get_benchmark() -> LoopUnrollingBenchmarkBase:
     return BaselineLoopUnrollingBenchmark()
-

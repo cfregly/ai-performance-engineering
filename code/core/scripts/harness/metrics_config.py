@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List
+from typing import TYPE_CHECKING, Dict, Iterable, List
+
+if TYPE_CHECKING:
+    from core.scripts.harness.example_registry import Example
 
 
 BASE_NCU_METRICS: List[str] = [

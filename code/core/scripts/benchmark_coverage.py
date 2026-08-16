@@ -100,14 +100,14 @@ CHAPTER_TOPICS = {
 }
 
 
-def analyze_file(filepath: Path) -> Dict[str, bool]:
+def analyze_file(filepath: Path) -> Dict[str, bool | str | None]:
     """Analyze a Python file for benchmark patterns."""
     try:
         content = filepath.read_text()
     except Exception:
         return {}
     
-    return {
+    result: Dict[str, bool | str | None] = {
         "has_get_benchmark": "def get_benchmark(" in content,
         "has_get_custom_metrics": "def get_custom_metrics(" in content,
         "has_validate_result": "def validate_result(" in content,
@@ -115,7 +115,7 @@ def analyze_file(filepath: Path) -> Dict[str, bool]:
         "uses_helper": bool(re.search(r'compute_\w+_metrics\(', content)),
         "helper_name": None,
     }
-    
+
     # Find which helper is used
     match = re.search(r'(compute_\w+_metrics)\(', content)
     if match:
@@ -381,7 +381,7 @@ def main():
     
     args = parser.parse_args()
     
-    root = Path(__file__).parent.parent
+    root = Path(__file__).resolve().parents[2]
     report = generate_report(root)
     
     if args.json:
@@ -394,5 +394,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

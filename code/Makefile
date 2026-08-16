@@ -678,6 +678,9 @@ lint-trusted:
 	@echo "Running strict benchmark contract audit..."
 	$(PYTHON) -m core.scripts.linting.check_benchmarks --include-unpaired --fail-on-warnings
 	@echo ""
+	@echo "Running repository-wide first-party Ruff correctness checks..."
+	ruff check . --select E9,F63,F7,F82
+	@echo ""
 	@echo "Running focused autonomous campaign Ruff checks..."
 	ruff check $(AUTONOMOUS_RUFF_PATHS)
 	@echo ""

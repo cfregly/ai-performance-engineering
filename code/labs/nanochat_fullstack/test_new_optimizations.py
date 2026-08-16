@@ -6,6 +6,8 @@ Usage:
     python test_new_optimizations.py
 """
 
+import sys
+
 import torch
 
 from labs.nanochat_fullstack.nanochat.engine import Engine

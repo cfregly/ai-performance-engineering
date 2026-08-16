@@ -21,6 +21,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -958,6 +959,5 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-
 
 

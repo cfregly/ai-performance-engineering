@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
+from pathlib import Path
 from typing import Optional
 
 import pytest
@@ -86,6 +88,7 @@ def _make_cpu_harness() -> BenchmarkHarness:
         enable_profiling=False,
         enable_memory_tracking=False,
         use_subprocess=False,
+        enforce_environment_validation=False,
     )
     return BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=config)
 
@@ -175,6 +178,8 @@ class TorchrunSeedMutateBenchmark(_CpuBenchmarkBase):
 
 
 def test_seed_mutation_is_detected_in_torchrun_runs(tmp_path: Path):
+    if not sys.platform.startswith("linux"):
+        pytest.skip("torchrun benchmark validity requires Linux")
     if shutil.which("torchrun") is None:
         pytest.skip("torchrun not available in PATH")
 
@@ -196,6 +201,7 @@ def test_seed_mutation_is_detected_in_torchrun_runs(tmp_path: Path):
         launch_via=LaunchVia.TORCHRUN,
         nproc_per_node=1,
         multi_gpu_required=False,
+        enforce_environment_validation=False,
     )
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=config)
     result = harness.benchmark(TorchrunSeedMutateBenchmark(script))
@@ -236,6 +242,8 @@ class TorchrunSeedMutateModuleBenchmark(_CpuBenchmarkBase):
 
 
 def test_seed_mutation_is_detected_in_torchrun_module_runs(tmp_path: Path):
+    if not sys.platform.startswith("linux"):
+        pytest.skip("torchrun benchmark validity requires Linux")
     if shutil.which("torchrun") is None:
         pytest.skip("torchrun not available in PATH")
 
@@ -259,6 +267,7 @@ def test_seed_mutation_is_detected_in_torchrun_module_runs(tmp_path: Path):
         launch_via=LaunchVia.TORCHRUN,
         nproc_per_node=1,
         multi_gpu_required=False,
+        enforce_environment_validation=False,
     )
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=config)
     result = harness.benchmark(TorchrunSeedMutateModuleBenchmark("benchpkg.seed_mutate_module", tmp_path))

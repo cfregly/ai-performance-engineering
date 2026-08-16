@@ -20,7 +20,7 @@ def _configure_bind_nvml(monkeypatch: pytest.MonkeyPatch, fake_nvml: object) -> 
     monkeypatch.setattr(bind_numa_affinity, "_NVML_INIT_DONE", True)
     monkeypatch.setattr(bind_numa_affinity, "_ensure_nvml_initialized", lambda: None)
     monkeypatch.setattr(bind_numa_affinity, "_gpu_pci_bus", lambda _: "0000:17:00.0")
-    monkeypatch.setattr(bind_numa_affinity, "nvml", fake_nvml)
+    monkeypatch.setattr(bind_numa_affinity, "nvml", fake_nvml, raising=False)
 
 
 def test_bind_numa_affinity_prefers_explicit_nvml_numa_node(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -244,8 +244,18 @@ def test_setup_grace_affinity_does_not_guess_numa_node_when_mapping_is_unknown(
         "get_numa_topology",
         lambda: {0: {"cpus": [0, 1, 2, 3], "size_gb": 240, "gpus": []}},
     )
-    monkeypatch.setattr(grace_numa.os, "sched_getaffinity", lambda pid: {4, 5, 6, 7})
-    monkeypatch.setattr(grace_numa.os, "sched_setaffinity", lambda pid, cpus: sched_calls.append((pid, list(cpus))))
+    monkeypatch.setattr(
+        grace_numa.os,
+        "sched_getaffinity",
+        lambda pid: {4, 5, 6, 7},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        grace_numa.os,
+        "sched_setaffinity",
+        lambda pid, cpus: sched_calls.append((pid, list(cpus))),
+        raising=False,
+    )
 
     cpu_list, numa_node = grace_numa.setup_grace_affinity(gpu_id=0, num_workers=4, verbose=False)
 

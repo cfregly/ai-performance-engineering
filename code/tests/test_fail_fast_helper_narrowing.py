@@ -32,7 +32,11 @@ def test_check_ollama_returns_false_for_unreachable_host() -> None:
 
 
 def test_generate_tool_schema_falls_back_when_type_hints_cannot_resolve() -> None:
-    def sample_tool(missing: "MissingType", count: int, enabled: bool = False) -> None:
+    def sample_tool(
+        missing: "MissingType",  # noqa: F821 - unresolved type exercises the fallback
+        count: int,
+        enabled: bool = False,
+    ) -> None:
         return None
 
     schema = generate_tool_schema(sample_tool)

@@ -89,6 +89,10 @@ The remote worktree stayed tracked-clean. All three submodules matched their rec
 - A local strict dry run still discovers exactly 486 targets, split into 464 one-GPU targets and 22 two-GPU targets.
 - The resume regression proves that full-sweep asset policy stays nonblocking even when the optional TensorRT target is the only remaining unit.
 - The FlashAttention provider-selection regression passes locally. The full focused readiness set passes 80 tests with GPUs hidden.
+- The repository-wide first-party Ruff correctness gate passes for syntax errors, invalid control flow, and undefined names. Vendored `third_party` code is excluded. Deliberate negative-test fixtures carry inline exceptions.
+- The latest CPU-only first-party regression set passes 156 tests and skips 2 Linux-only torchrun cases on macOS. The source-inspection fixture set passes another 25 tests.
+- The benchmark coverage CLI now scans the repository root, records the matched metric helper, and reports 354 baseline or optimized files across 11 populated chapters and 46 labs.
+- The repository benchmark audit still checks 932 files with 0 errors and 0 warnings after these correctness fixes.
 
 ## Environment contract
 

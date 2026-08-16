@@ -47,6 +47,7 @@ exclude = [
     ".eggs",
     ".mypy_cache",
     "vendor",
+    "third_party",
     "third_party/mlperf_inference",
     "third_party/mlperf_training",
     "book",

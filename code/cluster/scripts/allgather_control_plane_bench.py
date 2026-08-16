@@ -202,13 +202,16 @@ def main() -> int:
     gathered_objects = [False for _ in range(world_size)]
 
     def _all_gather_object_fn() -> None:
+        nonlocal gathered_objects
         dist.all_gather_object(gathered_objects, True)
 
     def _all_gather_tensor_fn() -> None:
+        nonlocal done, gathered_tensors
         done.fill_(rank)
         dist.all_gather(gathered_tensors, done)
 
     def _all_reduce_tensor_fn() -> None:
+        nonlocal done
         done.fill_(1)
         dist.all_reduce(done, op=dist.ReduceOp.SUM)
 

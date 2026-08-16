@@ -149,7 +149,7 @@ def test_runtime_sync_check_detects_hot_path_synchronization() -> None:
 def test_runtime_sync_check_detects_stream_or_event_synchronization() -> None:
     class SyncBench:
         def benchmark_fn(self) -> None:
-            stream.synchronize()
+            stream.synchronize()  # noqa: F821 - undefined receiver is the inspected fixture
             self._poll_event.synchronize()
 
     ok, findings = check_benchmark_fn_sync_calls(SyncBench().benchmark_fn)
@@ -161,7 +161,7 @@ def test_runtime_sync_check_detects_stream_or_event_synchronization() -> None:
 def test_runtime_sync_check_detects_local_event_variable_synchronization() -> None:
     class SyncBench:
         def benchmark_fn(self) -> None:
-            end_event = torch.cuda.Event(enable_timing=True)
+            end_event = torch.cuda.Event(enable_timing=True)  # noqa: F821 - inspected fixture
             alias = end_event
             alias.synchronize()
 
@@ -210,7 +210,7 @@ def test_contract_warns_on_sync_inside_same_class_helper_called_by_benchmark_fn(
 def test_runtime_sync_check_detects_same_class_helper_synchronization() -> None:
     class SyncBench:
         def _helper(self) -> None:
-            torch.cuda.synchronize()
+            torch.cuda.synchronize()  # noqa: F821 - undefined module is the inspected fixture
 
         def benchmark_fn(self) -> None:
             self._helper()
@@ -236,7 +236,7 @@ def test_runtime_sync_check_ignores_clean_benchmark_fn() -> None:
 def test_runtime_sync_check_respects_allowlist() -> None:
     class AllowedBench:
         def benchmark_fn(self) -> None:
-            torch.cuda.synchronize()
+            torch.cuda.synchronize()  # noqa: F821 - undefined module is the inspected fixture
 
     ok, findings = check_benchmark_fn_sync_calls(
         AllowedBench().benchmark_fn,
@@ -319,7 +319,7 @@ def test_contract_warns_on_host_transfer_inside_benchmark_fn() -> None:
 def test_runtime_antipattern_check_detects_hot_path_allocations() -> None:
     class AntiPatternBench:
         def benchmark_fn(self) -> None:
-            torch.randn(8, 8)
+            torch.randn(8, 8)  # noqa: F821 - undefined module is the inspected fixture
 
     ok, findings = check_benchmark_fn_antipatterns(AntiPatternBench().benchmark_fn)
 
@@ -471,7 +471,7 @@ def test_contract_warns_on_antipattern_inside_same_class_helper_called_by_benchm
 def test_runtime_antipattern_check_detects_same_class_helper_antipattern() -> None:
     class AntiPatternBench:
         def _helper(self) -> None:
-            torch.randn(8, 8)
+            torch.randn(8, 8)  # noqa: F821 - undefined module is the inspected fixture
 
         def benchmark_fn(self) -> None:
             self._helper()
@@ -505,9 +505,9 @@ def test_runtime_antipattern_check_detects_imported_helper_object_antipattern() 
 def test_runtime_antipattern_check_detects_host_transfer() -> None:
     class AntiPatternBench:
         def benchmark_fn(self) -> None:
-            value.cpu()
-            value.item()
-            value.to("cpu")
+            value.cpu()  # noqa: F821 - undefined receiver is the inspected fixture
+            value.item()  # noqa: F821 - undefined receiver is the inspected fixture
+            value.to("cpu")  # noqa: F821 - undefined receiver is the inspected fixture
 
     ok, findings = check_benchmark_fn_antipatterns(AntiPatternBench().benchmark_fn)
 
@@ -520,7 +520,7 @@ def test_runtime_antipattern_check_detects_host_transfer() -> None:
 def test_runtime_antipattern_check_respects_allowlist() -> None:
     class AllowedBench:
         def benchmark_fn(self) -> None:
-            value.cpu()
+            value.cpu()  # noqa: F821 - undefined receiver is the inspected fixture
 
     ok, findings = check_benchmark_fn_antipatterns(
         AllowedBench().benchmark_fn,

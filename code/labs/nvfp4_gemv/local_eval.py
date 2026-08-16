@@ -38,6 +38,9 @@ import torch
 from core.harness.benchmark_harness import lock_gpu_clocks
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
 BENCHMARKS = (
     {"name": "case0", "m": 7168, "k": 16384, "l": 1, "seed": 1111},
     {"name": "case1", "m": 4096, "k": 7168, "l": 8, "seed": 1111},
