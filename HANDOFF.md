@@ -39,7 +39,19 @@ A CPU-hidden full test run at public commit `50dd8b2a13c0e01b5840c18ebfae855e3a0
 
 The five failures exposed two deterministic MCP fixture defects and three order-dependent subprocess failures. A clean first-failure probe then identified the exact remaining order defect. A repository hygiene test left `LD_PRELOAD` pointing at a deleted fake NCCL library. The dynamic loader warning replaced the expected CUDA benchmark skip reason.
 
-Post-run fixes now use isolated MCP fixture data, prevent generic cluster promotion from changing tracked files, run the generic fabric tool in readiness-only mode, report truthful readiness-only progress, defer chapter 18 vLLM environment setup until benchmark setup, and restore `LD_PRELOAD` after the explicit system-policy test. The complete CPU-hidden suite still needs one clean rerun from the next published checkpoint.
+Post-run fixes now use isolated MCP fixture data, prevent generic cluster promotion from changing tracked files, run the generic fabric tool in readiness-only mode, report truthful readiness-only progress, defer chapter 18 vLLM environment setup until benchmark setup, and restore `LD_PRELOAD` after the explicit system-policy test. The clean complete rerun is recorded below.
+
+The clean CPU-hidden rerun at source commit `9a1e5dbd21d16e5f7f90140109f18ce96b91a2ec` is complete:
+
+- 2,715 passed
+- 516 skipped by explicit capability gates
+- 0 failed
+- 12 warnings
+- 41.17025313025096 percent line coverage
+- 30,382 covered lines out of 73,796 statements
+- 426.56 seconds
+
+The remote worktree stayed tracked-clean. All three submodules matched their recorded commits. No GPU process ran during this gate.
 
 ## Completed validation
 
@@ -54,6 +66,7 @@ Post-run fixes now use isolated MCP fixture data, prevent generic cluster promot
 - The latest integrated cluster, progress, environment, chapter 18 import-isolation, CUDA wrapper, and profiler set passed 35 tests with GPUs hidden.
 - The exact leaking environment-test plus CUDA-wrapper order passed 2 tests after the fix.
 - The repository benchmark audit still checks 932 files with 0 errors and 0 warnings after the latest changes.
+- The complete CPU-hidden B200 suite passed 2,715 tests, skipped 516 capability-limited tests, and failed 0 tests. Coverage was 41.17025313025096 percent.
 - B200 Chapter 9 FP8 CUTLASS baseline, optimized, and verification builds compiled for SM100a. Verification checksums matched.
 - B200 Chapter 19 focused GPU tests passed.
 - One Chapter 9 timing probe was observed. It is not enough evidence for a performance claim.
