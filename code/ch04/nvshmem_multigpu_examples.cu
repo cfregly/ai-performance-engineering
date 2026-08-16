@@ -42,11 +42,12 @@
 #include <cstdlib>
 #include <chrono>
 
+#include "../core/common/nvtx_utils.cuh"
+
 // Include NVSHMEM headers (if available)
 #ifdef USE_NVSHMEM
 #include <nvshmem.h>
 #include <nvshmemx.h>
-#include "../core/common/nvtx_utils.cuh"
 #else
 // Define dummy types for educational purposes
 #define nvshmem_init()

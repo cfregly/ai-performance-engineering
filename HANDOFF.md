@@ -72,6 +72,8 @@ The same checkpoint adds `B006` and `B023` to the repository-wide first-party Ru
 
 GitHub Benchmark Validation passed all three jobs for commit `546c3ef8400b3ade687e72f8719bd56c9359cc00`. The dual-architecture job passed container setup, prerequisite installation, recursive checkout, CUTLASS installation, and CUDA architecture validation. It then exposed a second path defect. The compare script resolved its root as `code/core` and looked for `code/core/ch01`. The next checkpoint resolves `code` itself and includes an executable stub-`make` regression for all ten configured chapter directories.
 
+Commit `17dcc59b67910b7f5aedb4726f57ee8e5ecd59eb` fixes that path defect. Its dual-architecture run compiled Chapter 1 and Chapter 2 for `sm_100`, `sm_103`, `sm_120`, and `sm_121`. Chapter 4 then failed because five educational NVSHMEM builds called `NVTX_RANGE` while their NVTX helper include was guarded by `USE_NVSHMEM`. The next checkpoint makes the helper available in both the NVSHMEM and educational build paths.
+
 ## Completed validation
 
 - Repository benchmark audit checked 932 files with 0 errors and 0 warnings.
@@ -106,6 +108,8 @@ GitHub Benchmark Validation passed all three jobs for commit `546c3ef8400b3ade68
 - No B200 command, SSH probe, benchmark, or profiler ran while preparing this checkpoint.
 - GitHub Benchmark Validation passes its contract, dashboard, and static-analysis jobs at commit `546c3ef8400b3ade687e72f8719bd56c9359cc00`.
 - The dual-architecture compare-script root regression passes 17 repository-configuration tests locally. Its GitHub Actions rerun remains required after publication.
+- GitHub Benchmark Validation also passes all three jobs at commit `17dcc59b67910b7f5aedb4726f57ee8e5ecd59eb`.
+- The Chapter 4 NVSHMEM include contract and repository-configuration set passes 22 local tests. The strict Chapter 4 benchmark audit checks 107 files with 0 errors and 0 warnings.
 
 ## Environment contract
 

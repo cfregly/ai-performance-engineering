@@ -13,10 +13,11 @@
 #include <cstdlib>
 #include <cuda_runtime.h>
 
+#include "../core/common/nvtx_utils.cuh"
+
 #ifdef USE_NVSHMEM
 #include <nvshmem.h>
 #include <nvshmemx.h>
-#include "../core/common/nvtx_utils.cuh"
 #endif
 
 #define CUDA_CHECK(call)                                                     \

@@ -29,10 +29,11 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "../core/common/nvtx_utils.cuh"
+
 #ifdef USE_NVSHMEM
 #include <nvshmem.h>
 #include <nvshmemx.h>
-#include "../core/common/nvtx_utils.cuh"
 #endif
 
 #define CUDA_CHECK(expr)                                                     \

@@ -35,11 +35,12 @@
 #include <cmath>
 #include <algorithm>
 
+#include "../core/common/nvtx_utils.cuh"
+
 // NVSHMEM headers
 #ifdef USE_NVSHMEM
 #include <nvshmem.h>
 #include <nvshmemx.h>
-#include "../core/common/nvtx_utils.cuh"
 #else
 // Dummy definitions for educational compilation
 #define nvshmem_init()

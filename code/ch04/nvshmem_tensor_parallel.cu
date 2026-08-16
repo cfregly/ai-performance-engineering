@@ -63,11 +63,12 @@
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 
+#include "../core/common/nvtx_utils.cuh"
+
 // NVSHMEM includes (conditional)
 #ifdef USE_NVSHMEM
 #include <nvshmem.h>
 #include <nvshmemx.h>
-#include "../core/common/nvtx_utils.cuh"
 #endif
 
 // ============================================================================
