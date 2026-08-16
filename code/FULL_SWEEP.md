@@ -12,7 +12,7 @@ python -m cli.aisp bench run-e2e \
   --run-full-sweep \
   --run-fabric \
   --cluster-preset common-answer-fast \
-  --validity-profile portable
+  --validity-profile strict
 ```
 
 - Monitor the run continuously with the repo-native status surface:
@@ -82,7 +82,7 @@ python -m cli.aisp bench run-e2e \
   --run-full-sweep \
   --run-fabric \
   --cluster-preset common-answer-fast \
-  --validity-profile portable
+  --validity-profile strict
 ```
 
 - The run package records watcher metadata and status under:
@@ -95,7 +95,7 @@ python -m cli.aisp bench run-e2e \
   - do not force `succeeded` when the correct result is `partial`
   - capability-gated multi-GPU work must remain explicit `skipped` / `partial`
   - fabric should only be fully green when the underlying capability contract is truly satisfied
-- Keep benchmark and profiler validity checks strict except where the repo’s `portable` profile explicitly allows compatibility mode.
+- Keep benchmark and profiler validity checks strict. Use the `portable` profile only for an explicitly partial compatibility run after a strict run proves that the host cannot satisfy a capability gate.
 - Never disable `nsys` or `ncu`.
 
 ## While The Sweep Is Running

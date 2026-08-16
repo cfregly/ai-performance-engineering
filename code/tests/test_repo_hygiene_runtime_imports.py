@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import re
 import subprocess
 import sys
 import textwrap
 from pathlib import Path
+
+import core.env as core_env
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +38,56 @@ TRACKED_ENV_KEYS = (
     "LD_LIBRARY_PATH",
     "LD_PRELOAD",
 )
+
+
+def test_env_defaults_do_not_preload_system_nccl_over_wheel_runtime(
+    tmp_path: Path, monkeypatch
+) -> None:
+    wheel_lib_dir = tmp_path / "nvidia" / "nccl" / "lib"
+    wheel_lib_dir.mkdir(parents=True)
+    (wheel_lib_dir / "libnccl.so.2").touch()
+    system_nccl = tmp_path / "system" / "libnccl.so.2"
+    system_nccl.parent.mkdir()
+    system_nccl.touch()
+
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(core_env, "NCCL_LIBRARY_PATH", str(system_nccl))
+    monkeypatch.setattr(
+        core_env,
+        "_discover_nvidia_wheel_lib_dirs",
+        lambda: [str(wheel_lib_dir)],
+    )
+    monkeypatch.setenv("AISP_CUDNN_RUNTIME_POLICY", "auto")
+    monkeypatch.delenv("LD_PRELOAD", raising=False)
+
+    core_env._ensure_ld_preload()
+
+    assert os.environ.get("LD_PRELOAD") is None
+
+
+def test_env_defaults_preload_system_nccl_for_explicit_system_policy(
+    tmp_path: Path, monkeypatch
+) -> None:
+    wheel_lib_dir = tmp_path / "nvidia" / "nccl" / "lib"
+    wheel_lib_dir.mkdir(parents=True)
+    (wheel_lib_dir / "libnccl.so.2").touch()
+    system_nccl = tmp_path / "system" / "libnccl.so.2"
+    system_nccl.parent.mkdir()
+    system_nccl.touch()
+
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(core_env, "NCCL_LIBRARY_PATH", str(system_nccl))
+    monkeypatch.setattr(
+        core_env,
+        "_discover_nvidia_wheel_lib_dirs",
+        lambda: [str(wheel_lib_dir)],
+    )
+    monkeypatch.setenv("AISP_CUDNN_RUNTIME_POLICY", "system")
+    monkeypatch.delenv("LD_PRELOAD", raising=False)
+
+    core_env._ensure_ld_preload()
+
+    assert os.environ["LD_PRELOAD"] == str(system_nccl)
 
 
 def test_ch04_and_ch15_import_verification_payload_mixin_from_core() -> None:

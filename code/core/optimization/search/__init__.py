@@ -1,7 +1,7 @@
-"""
-🎯 Optimization Search Module
+"""Optimization search module.
 
-RL-based and LLM-guided optimization discovery for compound performance techniques.
+MCTS is an explicit heuristic simulator. It does not produce benchmark evidence.
+Use the campaign executor and trusted benchmark harness for measured experiments.
 
 Components:
 - MCTSOptimizer: Monte Carlo Tree Search for compound optimization discovery
@@ -10,31 +10,31 @@ Components:
 
 Usage:
     from core.optimization.search import search_optimal_config
-    
+
     result = search_optimal_config(
         model_config={"parameters_billions": 70, ...},
         hardware_config={"num_gpus": 8, "gpu_arch": "hopper", ...},
         optimization_goal="throughput",
-        budget=100
+        budget=100,
+        simulation=True,
     )
 """
 
-from .mcts_optimizer import (
-    MCTSOptimizer,
-    OptimizationAction,
-    OptimizationState,
-    OptimizationDomain,
-    ActionLibrary,
-    search_optimal_config,
-)
-
 from .llm_oracle import (
+    ContextCollector,
     LLMOracle,
     OptimizationSuggestion,
     OracleKnowledgeBase,
-    ContextCollector,
-    get_suggestions,
     ask_oracle,
+    get_suggestions,
+)
+from .mcts_optimizer import (
+    ActionLibrary,
+    MCTSOptimizer,
+    OptimizationAction,
+    OptimizationDomain,
+    OptimizationState,
+    search_optimal_config,
 )
 
 __all__ = [
@@ -53,4 +53,3 @@ __all__ = [
     "get_suggestions",
     "ask_oracle",
 ]
-

@@ -189,6 +189,10 @@ def test_ch05_host_staged_reduction_keeps_scalar_output_without_hot_path_clone()
     ):
         benchmark.device = torch.device("cpu")
         benchmark.data = data
+        benchmark._output_buffer = torch.empty((), dtype=data.dtype)
+        if isinstance(benchmark, BaselineHostStagedReductionBenchmark):
+            benchmark._host_buffer = benchmark._make_host_buffer(data)
+            benchmark._host_sum = torch.empty((), dtype=data.dtype)
         benchmark.benchmark_fn()
 
         assert benchmark.output is not None

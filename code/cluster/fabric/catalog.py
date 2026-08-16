@@ -5,12 +5,13 @@ import html
 import json
 import re
 from collections import Counter
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
-
+from typing import Any
 
 SCHEMA_VERSION = "2026-03-16"
 DEFAULT_SOURCE_ROOT = Path(__file__).resolve().parent / "nvidia-advanced-networking-for-ai-infra"
+DEFAULT_CATALOG_PATH = Path(__file__).resolve().parent / "fabric_command_catalog.json"
 
 _COMMAND_PREFIXES = (
     "ib",
@@ -429,7 +430,26 @@ def generate_catalog_entries(source_root: Path | None = None) -> list[dict[str, 
     return _dedupe_entries(entries)
 
 
+def _load_committed_catalog(*, run_id: str) -> dict[str, Any]:
+    if not DEFAULT_CATALOG_PATH.is_file():
+        raise FileNotFoundError(f"committed fabric catalog not found: {DEFAULT_CATALOG_PATH}")
+    payload = json.loads(DEFAULT_CATALOG_PATH.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or payload.get("schema_version") != SCHEMA_VERSION:
+        raise ValueError(
+            f"committed fabric catalog schema does not match {SCHEMA_VERSION}: {DEFAULT_CATALOG_PATH}"
+        )
+    entries = payload.get("entries")
+    if not isinstance(entries, list) or not entries:
+        raise ValueError(f"committed fabric catalog has no entries: {DEFAULT_CATALOG_PATH}")
+    payload["run_id"] = run_id or ""
+    payload["catalog_source"] = "committed_snapshot"
+    return payload
+
+
 def generate_catalog_payload(source_root: Path | None = None, *, run_id: str = "") -> dict[str, Any]:
+    if source_root is None and not DEFAULT_SOURCE_ROOT.exists():
+        return _load_committed_catalog(run_id=run_id)
+
     source = (source_root or DEFAULT_SOURCE_ROOT).resolve()
     entries = generate_catalog_entries(source)
     family_counts = Counter(entry["fabric_family"] for entry in entries)
@@ -439,6 +459,7 @@ def generate_catalog_payload(source_root: Path | None = None, *, run_id: str = "
     return {
         "schema_version": SCHEMA_VERSION,
         "run_id": run_id or "",
+        "catalog_source": "archived_source_extract",
         "fabric_family": "all",
         "collection_mode": "catalog_extract",
         "status": "ok",

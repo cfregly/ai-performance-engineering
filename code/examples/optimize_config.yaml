@@ -1,50 +1,25 @@
-# Auto-Optimizer Configuration
-# Copy to your project root as optimize_config.yaml
+# Example frozen workload contract for core.optimization.campaign.
+# Copy this file and replace every placeholder before initializing a campaign.
 
-llm:
-  provider: anthropic  # or 'openai'
-  model: null  # Uses default model for provider (claude-sonnet-4-20250514 / gpt-4o)
-  max_tokens: 16384
-  temperature: 0.1
-  # api_key: null  # Set via ANTHROPIC_API_KEY or OPENAI_API_KEY env var
-
-optimization:
-  max_iterations: 3
-  target_speedup: 1.2
-  techniques:
-    - torch_compile
-    - mixed_precision
-    - cuda_graphs
-    - kernel_fusion
-    - memory_optimization
-  fail_fast: true
-
-profiling:
-  warmup_iterations: 3
-  benchmark_iterations: 10
-  enable_memory_tracking: true
-  enable_trace: true
-  enable_flame_graph: true
-
-torch_compile:
-  mode: reduce-overhead  # 'default', 'reduce-overhead', 'max-autotune'
-  backend: inductor
-  fullgraph: false
-  dynamic: false
-
-mixed_precision:
-  dtype: bfloat16  # or 'float16'
-  enabled_ops:
-    - linear
-    - matmul
-    - conv2d
-    - attention
-
-output:
-  save_intermediate: true
-  generate_report: true
-  output_format: markdown  # or 'json', 'html'
-  output_dir: null  # Uses input directory if null
-
-
-
+schema_version: 1
+workload:
+  name: replace-with-benchmark-target
+  command:
+    - python
+    - -m
+    - cli.aisp
+    - bench
+    - run
+    - replace-with-target
+  primary_cases:
+    - representative
+  guard_cases:
+    - boundary
+measurement:
+  metric: latency_ms
+  direction: lower
+  warmup_iterations: 10
+  measured_iterations: 30
+correctness:
+  verifier: replace-with-verifier
+  required: true

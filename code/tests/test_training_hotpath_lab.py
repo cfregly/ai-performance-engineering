@@ -231,7 +231,7 @@ def test_padding_aware_transformer_expectation_entry_is_memory_goal() -> None:
 )
 def test_training_hotpath_setup_requires_cuda(factory) -> None:
     bench = factory()
-    with pytest.raises(RuntimeError, match="require CUDA"):
+    with pytest.raises(RuntimeError, match=r"requires? CUDA"):
         bench.setup()
 
 

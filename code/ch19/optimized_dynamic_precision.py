@@ -12,9 +12,9 @@ from ch19.dynamic_precision_benchmark_common import (
     DynamicPrecisionBenchmarkConfig,
     build_model,
     build_prompt,
-    decode_dynamic_precision,
+    decode_dynamic_precision_preallocated as decode_dynamic_precision,
 )
-from ch19.dynamic_precision_switching import DynamicPrecisionWorkspace
+from ch19.dynamic_precision_switching import DynamicPrecisionWorkspace, PrecisionStats
 
 
 class OptimizedDynamicPrecisionBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -51,6 +51,13 @@ class OptimizedDynamicPrecisionBenchmark(VerificationPayloadMixin, BaseBenchmark
             margin_values=torch.empty(self.cfg.batch_size, device=self.device, dtype=torch.float32),
             margin_mean=torch.empty((), device=self.device, dtype=torch.float32),
             ema_conf=torch.empty((), device=self.device, dtype=torch.float32),
+            stats=PrecisionStats(),
+        )
+        self._decode_workspace.next_token_flat = self._decode_workspace.next_token.view(
+            self.cfg.batch_size
+        )
+        self._decode_workspace.generated_token_views = self._decode_workspace.generated.unbind(
+            dim=1
         )
         self._verify_prompt_buffer = torch.empty(
             self.prompt.shape,
@@ -68,6 +75,7 @@ class OptimizedDynamicPrecisionBenchmark(VerificationPayloadMixin, BaseBenchmark
     def benchmark_fn(self) -> None:
         if self.model is None or self.prompt is None or self._decode_workspace is None:
             raise RuntimeError("dynamic_precision workload not initialized")
+        prior_invocations = self._decode_workspace.decode_invocations
         with torch.inference_mode():
             self.output, self.stats = decode_dynamic_precision(
                 self.model,
@@ -76,6 +84,14 @@ class OptimizedDynamicPrecisionBenchmark(VerificationPayloadMixin, BaseBenchmark
                 device=self.device,
                 workspace=self._decode_workspace,
             )
+        if self._decode_workspace.decode_invocations != prior_invocations + 1:
+            raise RuntimeError("dynamic_precision decode invocation was not executed")
+        if (
+            self.stats.decode_steps != self.cfg.max_steps
+            or self.stats.model_forwards != self.cfg.max_steps
+            or self.stats.policy_evaluations != self.cfg.max_steps
+        ):
+            raise RuntimeError("dynamic_precision mechanism counters are incomplete")
 
     def capture_verification_payload(self) -> None:
         if (
@@ -125,6 +141,14 @@ class OptimizedDynamicPrecisionBenchmark(VerificationPayloadMixin, BaseBenchmark
             "dynamic_precision.fp16_tokens": float(self.stats.fp16_tokens),
             "dynamic_precision.precision_switches": float(self.stats.precision_switches),
             "dynamic_precision.avg_confidence": float(self.stats.avg_confidence),
+            "dynamic_precision.decode_steps": float(self.stats.decode_steps),
+            "dynamic_precision.model_forwards": float(self.stats.model_forwards),
+            "dynamic_precision.policy_evaluations": float(self.stats.policy_evaluations),
+            "dynamic_precision.decode_invocations": float(
+                self._decode_workspace.decode_invocations
+                if self._decode_workspace is not None
+                else 0
+            ),
         }
 
     def get_config(self) -> BenchmarkConfig:

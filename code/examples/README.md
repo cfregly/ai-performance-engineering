@@ -6,24 +6,30 @@ This directory contains example scripts demonstrating the usage of the AI Perfor
 
 | File | Description |
 |------|-------------|
-| `optimize_examples.py` | Auto-optimizer usage examples |
+| `optimize_examples.py` | Evidence-first campaign initialization example |
 | `profiling_examples.py` | GPU profiling suite examples |
 | `zymtrace_gpu_smoke.py` | Timed CUDA workload for validating Zymtrace GPU capture |
 | `ch19_dynamic_precision_zymtrace_probe.py` | Timed Chapter 19 decode workload for Zymtrace GPU capture |
 | `mcp_client_example.py` | MCP client lifecycle and tool-call examples |
-| `optimize_config.yaml` | Sample configuration file |
+| `optimize_config.yaml` | Sample frozen workload contract |
 
 ## Running Examples
 
-### Auto-Optimizer Examples
+### Optimization campaign example
 
 ```bash
-# Show all examples (without running actual optimization)
-python examples/optimize_examples.py
-
-# Run actual optimization (requires LLM API key)
-python examples/optimize_examples.py --run-optimization
+python examples/optimize_examples.py \
+  --workspace /tmp/latency-campaign \
+  --objective "Reduce representative latency" \
+  --metric latency_ms \
+  --initial-control-commit "$(git rev-parse HEAD)" \
+  --primary-case representative \
+  --frozen-case boundary \
+  --workload-spec examples/optimize_config.yaml \
+  --environment-spec /path/to/environment.json
 ```
+
+This creates a fail-closed experiment template. Collect measurements with the trusted benchmark harness before recording an experiment.
 
 ### Profiling Examples
 
@@ -54,34 +60,21 @@ core/scripts/profiling/profile.sh examples/ch19_dynamic_precision_zymtrace_probe
 python examples/mcp_client_example.py
 ```
 
-## Configuration
+## Campaign workload contract
 
-Copy `optimize_config.yaml` to your project root to customize optimizer behavior:
+Copy `optimize_config.yaml` and replace every placeholder before initializing a campaign:
 
 ```bash
-cp examples/optimize_config.yaml ./optimize_config.yaml
-# Edit as needed
+cp examples/optimize_config.yaml /tmp/workload.yaml
 ```
-
-The optimizer will automatically find and use `optimize_config.yaml` if present.
 
 ## Prerequisites
 
-- Python 3.9+
+- Python 3.10+
 - PyTorch 2.0+ (for torch.compile and torch.profiler)
 - CUDA-capable GPU
-- API key for LLM provider (ANTHROPIC_API_KEY or OPENAI_API_KEY)
 
 ## Quick Start
-
-```python
-# Optimize a file
-from core.optimization.auto import AutoOptimizer
-
-optimizer = AutoOptimizer()
-result = optimizer.optimize_file("examples/optimize_examples.py", output_path="/tmp/optimize_examples_optimized.py")
-print(f"Speedup: {result.speedup:.2f}x")
-```
 
 ```python
 # Profile GPU code

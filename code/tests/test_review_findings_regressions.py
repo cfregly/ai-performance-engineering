@@ -73,8 +73,12 @@ def test_ch02_cublas_benchmark_fn_uses_shared_nvtx_helper_symmetrically() -> Non
     baseline_bench = _benchmark_section("ch02/baseline_cublas.py")
     optimized_bench = _benchmark_section("ch02/optimized_cublas.py")
 
-    assert 'with torch.inference_mode(), self._nvtx_range("baseline_cublas_fp32"):' in baseline_bench
-    assert 'with torch.inference_mode(), self._nvtx_range("optimized_cublas_tf32"):' in optimized_bench
+    assert (
+        'with torch.inference_mode(), self._nvtx_range("baseline_cublas_fp32"):' in baseline_bench
+    )
+    assert (
+        'with torch.inference_mode(), self._nvtx_range("optimized_cublas_tf32"):' in optimized_bench
+    )
     assert "torch.no_grad()" not in baseline_bench
     assert "torch.no_grad()" not in optimized_bench
     assert "core.profiling.nvtx_helper" not in optimized_bench
@@ -128,12 +132,19 @@ def test_ch06_ilp_benchmarks_defer_verification_clone_out_of_hot_path() -> None:
 
         assert "self._output_view0: Optional[torch.Tensor] = None" in source_text
         assert "self._output_view1: Optional[torch.Tensor] = None" in source_text
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source_text
         assert f"self._output_view0 = self._buf0[:{probe_size}]" in source_text
         assert f"self._output_view1 = self._buf1[:{probe_size}]" in source_text
+        assert "self._verify_output_buffer = torch.empty_like(self._output_view0)" in source_text
         assert ".clone()" not in benchmark_text
         assert "self.output = src[:" not in benchmark_text
-        assert "self.output = self._output_view0 if src is buf0 else self._output_view1" in benchmark_text
-        assert "output=self.output.detach().clone()" in capture_text
+        assert (
+            "self.output = self._output_view0 if src is buf0 else self._output_view1"
+            in benchmark_text
+        )
+        assert "self._verify_output_buffer.copy_(self.output)" in capture_text
+        assert "output=self._verify_output_buffer" in capture_text
+        assert ".clone()" not in capture_text
 
 
 def test_ch17_static_routing_reuses_verification_output_buffer() -> None:
@@ -219,7 +230,10 @@ def test_ch08_threshold_tma_bridge_workload_uses_larger_row_count() -> None:
     assert "rows: int = 1 << 26" in threshold_base_text
     assert "torch.full_like(self.inputs" not in validate_section
     assert "torch.zeros_like(self.inputs)" not in validate_section
-    assert "scale = torch.where(outer, THRESHOLD_OUTER_SCALE, THRESHOLD_INNER_SCALE)" in validate_section
+    assert (
+        "scale = torch.where(outer, THRESHOLD_OUTER_SCALE, THRESHOLD_INNER_SCALE)"
+        in validate_section
+    )
     assert "reference.copysign_(self.inputs)" in validate_section
     assert "reference.masked_fill_(active.logical_not_(), 0.0)" in validate_section
 
@@ -249,7 +263,10 @@ def test_ch08_mask_strategy_demo_reuses_output_workspaces() -> None:
     assert "result = zeros.clone()" not in mask_section
     assert "all_output = torch.empty_like(data)" in mask_section
     assert "active_output = torch.empty_like(data)" in mask_section
-    assert "active_data = torch.empty(active_indices.numel(), device=device, dtype=data.dtype)" in mask_section
+    assert (
+        "active_data = torch.empty(active_indices.numel(), device=device, dtype=data.dtype)"
+        in mask_section
+    )
     assert "active_scratch = torch.empty_like(active_data)" in mask_section
     assert "torch.sin(data, out=all_output)" in mask_section
     assert "torch.index_select(data, 0, active_indices, out=active_data)" in mask_section
@@ -343,10 +360,13 @@ def test_ch04_gradient_fusion_batches_reductions_per_timed_call() -> None:
     assert "for tensor in self._tail_tensors:" in common_text
     assert "torch.sum(self.fused_tensor, dim=None, out=sum_buffer)" in common_text
     assert "torch.sum(tensor, dim=None, out=sum_buffer)" in common_text
-    assert ".sum()" not in common_text.split("def benchmark_fn", maxsplit=1)[1].split(
-        "def capture_verification_payload",
-        maxsplit=1,
-    )[0]
+    assert (
+        ".sum()"
+        not in common_text.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+    )
 
 
 def test_ch08_tiling_bridge_comparison_batches_enough_inner_iterations() -> None:
@@ -359,7 +379,9 @@ def test_occupancy_tuning_low_warp_reference_schedule_uses_local_contract() -> N
     readme_text = _read("labs/occupancy_tuning/README.md")
     schedule_text = _read("labs/occupancy_tuning/triton_matmul_schedules.py")
 
-    assert "proton_matmul_bm64_bn64_bk32_nw2" not in INFORMATIONAL_BENCHMARKS.get("occupancy_tuning", set())
+    assert "proton_matmul_bm64_bn64_bk32_nw2" not in INFORMATIONAL_BENCHMARKS.get(
+        "occupancy_tuning", set()
+    )
     assert "verifying Proton vs Nsight agreement" in schedule_text
     assert "supplementary comparison schedule benchmark" in readme_text
     assert "canonical speed claims stay on" in readme_text
@@ -369,9 +391,15 @@ def test_nvfp4_group_gemm_shape_surface_uses_frontdoor_and_comparison_companions
     readme_text = _read("labs/nvfp4_group_gemm/README.md")
 
     assert "nvfp4_group_gemm" not in INFORMATIONAL_BENCHMARKS.get("nvfp4_group_gemm", set())
-    assert "nvfp4_group_gemm_g8_n7168_k2048" not in INFORMATIONAL_BENCHMARKS.get("nvfp4_group_gemm", set())
-    assert "nvfp4_group_gemm_g2_n3072_k4096" not in INFORMATIONAL_BENCHMARKS.get("nvfp4_group_gemm", set())
-    assert "nvfp4_group_gemm_g2_n4096_k1536" not in INFORMATIONAL_BENCHMARKS.get("nvfp4_group_gemm", set())
+    assert "nvfp4_group_gemm_g8_n7168_k2048" not in INFORMATIONAL_BENCHMARKS.get(
+        "nvfp4_group_gemm", set()
+    )
+    assert "nvfp4_group_gemm_g2_n3072_k4096" not in INFORMATIONAL_BENCHMARKS.get(
+        "nvfp4_group_gemm", set()
+    )
+    assert "nvfp4_group_gemm_g2_n4096_k1536" not in INFORMATIONAL_BENCHMARKS.get(
+        "nvfp4_group_gemm", set()
+    )
     assert "canonical local-contract speed benchmark" in readme_text
     assert "supplementary comparison benchmark" in readme_text
     assert "older strict all-case snapshots" in readme_text
@@ -390,8 +418,8 @@ def test_ch10_double_buffered_pipeline_baseline_is_book_aligned_naive_gemm() -> 
     assert "const bool full_tile =" in optimized_source
     assert "if (full_tile) {" in optimized_source
     assert "if (chunk_base + kk >= K)" in optimized_source
-    assert 'double_buffered=False' in baseline_wrapper
-    assert 'num_stages=1' in baseline_wrapper
+    assert "double_buffered=False" in baseline_wrapper
+    assert "num_stages=1" in baseline_wrapper
 
 
 def test_ch10_atomic_reduction_explicitly_reports_timed_memset_cost() -> None:
@@ -407,9 +435,15 @@ def test_ch12_conditional_graphs_optimized_path_keeps_runtime_condition_inside_g
     optimized_source = _read("ch12/optimized_cuda_graphs_conditional.cu")
 
     assert "conditional_dispatch_kernel" in optimized_source
-    assert "predicate_kernel<<<1, 1, 0, graph_stream>>>(d_condition, d_data, THRESHOLD);" in optimized_source
+    assert (
+        "predicate_kernel<<<1, 1, 0, graph_stream>>>(d_condition, d_data, THRESHOLD);"
+        in optimized_source
+    )
     assert "conditional_dispatch_kernel<<<grid, block, 0, graph_stream>>>(" in optimized_source
-    assert "expensive_kernel<<<grid, block, 0, graph_stream>>>(d_data, N, 1.01f);" not in optimized_source
+    assert (
+        "expensive_kernel<<<grid, block, 0, graph_stream>>>(d_data, N, 1.01f);"
+        not in optimized_source
+    )
 
 
 def test_ch14_cutlass_pair_is_renamed_to_explicit_cublas_vs_cutlass() -> None:
@@ -430,14 +464,18 @@ def test_ch14_model_compile_pair_uses_reduced_precision_name_not_bf16_alias() ->
 
     assert "BaselineModelCompileReducedPrecisionBenchmark" in baseline_source
     assert "OptimizedModelCompileReducedPrecisionBenchmark" in optimized_source
-    assert "signature_equivalence_group = \"ch14_model_compile_reduced_precision\"" in baseline_source
+    assert 'signature_equivalence_group = "ch14_model_compile_reduced_precision"' in baseline_source
     assert "model_compile_reduced_precision_optimized" in optimized_source
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for speculative decoding stability check")
+@pytest.mark.skipif(
+    not torch.cuda.is_available(), reason="CUDA required for speculative decoding stability check"
+)
 def test_ch15_speculative_decoding_acceptance_metrics_are_stable_run_to_run() -> None:
     def _run_acceptance_rate() -> float:
-        bench = SpeculativeDecodingBenchmark(use_speculative=True, label="speculative_decode_stability")
+        bench = SpeculativeDecodingBenchmark(
+            use_speculative=True, label="speculative_decode_stability"
+        )
         bench.workload = replace(
             bench.workload,
             target_hidden=512,
@@ -495,12 +533,16 @@ def test_ch18_split_paged_attention_targets_isolate_backend_from_layout() -> Non
 
     assert "class DensePagedAttnBase" in common_text
     assert "class LayoutPagedAttnBase" in common_text
-    assert 'metrics["paged_attn.backend_math"] = 1.0 if self.backend == "math" else 0.0' in common_text
+    assert (
+        'metrics["paged_attn.backend_math"] = 1.0 if self.backend == "math" else 0.0' in common_text
+    )
     assert "def _build_block_table" in common_text
     assert "return (block_ids.unsqueeze(0) - batch_offsets).remainder_(num_blocks)" in common_text
     assert "return torch.stack(" not in common_text
     assert "return create_block_mask(" in common_text
-    assert "dense masked decode versus block-table-driven FlexAttention sparse kernels" in readme_text
+    assert (
+        "dense masked decode versus block-table-driven FlexAttention sparse kernels" in readme_text
+    )
     assert "fused FlexAttention block-mask kernel" in readme_text
     assert "baseline_paged_attn_backend.py" in readme_text
     assert "baseline_paged_attn_layout.py" in readme_text
@@ -569,8 +611,8 @@ def test_reviewed_pair_fixes_remain_applied() -> None:
     assert "with torch.no_grad():" not in baseline_pipeline_bench
 
 
-def test_ch04_torchrun_wrappers_keep_entrypoints_and_side_effect_free_specs() -> None:
-    self_target_wrappers = [
+def test_ch04_torchrun_wrappers_delegate_to_dedicated_workers() -> None:
+    benchmark_wrappers = [
         "ch04/ddp_no_overlap.py",
         "ch04/ddp_overlap.py",
         "ch04/baseline_nvshmem_training_example_multigpu.py",
@@ -582,27 +624,39 @@ def test_ch04_torchrun_wrappers_keep_entrypoints_and_side_effect_free_specs() ->
         "ch04/baseline_nvshmem_vs_nccl_benchmark_multigpu.py",
         "ch04/optimized_nvshmem_vs_nccl_benchmark_multigpu.py",
     ]
-    side_effect_free_specs = self_target_wrappers + [
+    side_effect_free_specs = benchmark_wrappers + [
         "ch04/baseline_symmetric_memory_multigpu.py",
         "ch04/optimized_symmetric_memory_multigpu.py",
     ]
 
-    for rel_path in self_target_wrappers:
+    for rel_path in benchmark_wrappers:
         text = _read(rel_path)
-        assert 'if __name__ == "__main__":' in text
-        assert "run_main_with_skip_status(main)" in text
+        assert 'if __name__ == "__main__":' not in text
+        assert "run_main_with_skip_status(main)" not in text
 
     for rel_path in side_effect_free_specs:
         text = _read(rel_path)
-        spec_section = text.split("def get_torchrun_spec", 1)[1].split("def get_custom_metrics", 1)[0]
+        spec_section = text.split("def get_torchrun_spec", 1)[1].split("def get_custom_metrics", 1)[
+            0
+        ]
         assert "_prepare_verification_payload" not in spec_section
 
     for rel_path in (
         "ch04/baseline_nvshmem_pipeline_parallel_multigpu.py",
         "ch04/optimized_nvshmem_pipeline_parallel_multigpu.py",
     ):
-        spec_section = _read(rel_path).split("def get_torchrun_spec", 1)[1].split("def get_custom_metrics", 1)[0]
+        spec_section = (
+            _read(rel_path)
+            .split("def get_torchrun_spec", 1)[1]
+            .split("def get_custom_metrics", 1)[0]
+        )
         assert "config_arg_map" not in spec_section
+        assert '.with_name("nvshmem_worker.py")' in spec_section
+
+    assert '.with_name("ddp_worker.py")' in _read("ch04/ddp_no_overlap.py")
+    assert '.with_name("ddp_worker.py")' in _read("ch04/ddp_overlap.py")
+    assert 'if __name__ == "__main__":' in _read("ch04/ddp_worker.py")
+    assert 'if __name__ == "__main__":' in _read("ch04/nvshmem_worker.py")
 
 
 def test_ch13_pair_remediations_keep_canonical_and_informational_targets_split() -> None:
@@ -614,11 +668,11 @@ def test_ch13_pair_remediations_keep_canonical_and_informational_targets_split()
     memory_baseline = _read("ch13/baseline_memory_profiling.py")
     memory_optimized = _read("ch13/optimized_memory_profiling.py")
 
-    assert 'configure_tf32(' in baseline_quant
+    assert "configure_tf32(" in baseline_quant
     assert 'matmul_precision="highest"' in baseline_quant
     assert "restore_tf32(self._tf32_state)" in baseline_quant
     assert "torch.compile(self.model" not in canonical_quant
-    assert 'configure_tf32(' in canonical_quant
+    assert "configure_tf32(" in canonical_quant
     assert 'matmul_precision="highest"' in canonical_quant
     assert "restore_tf32(self._tf32_state)" in canonical_quant
     assert "torch.compile(self.model" in compiled_quant
@@ -630,7 +684,8 @@ def test_ch13_pair_remediations_keep_canonical_and_informational_targets_split()
     assert '"tf32": False' in canonical_quant
 
     assert "self._request_token_groups = [" in canonical_kv
-    assert "for request_id, seq_len, token_views in self._request_token_groups:" in canonical_kv
+    assert "for request_id, seq_len, token_steps in self._request_token_groups:" in canonical_kv
+    assert "for pos, token_view in token_steps:" in canonical_kv
     assert "self.output = hidden" in canonical_kv
     assert "self.output = hidden.detach()" not in canonical_kv
     assert "range(0, seq_len, self.block_size)" not in canonical_kv
@@ -652,7 +707,10 @@ def test_ch02_grace_coherent_memory_requires_grace_and_never_advertises_fallback
     rerun_text = _read("scripts/full_virtualized_rerun.py")
 
     for source in (baseline_source, optimized_source):
-        assert "SKIPPED: grace_coherent_memory requires Grace-Blackwell coherent memory support" in source
+        assert (
+            "SKIPPED: grace_coherent_memory requires Grace-Blackwell coherent memory support"
+            in source
+        )
         assert "using fallback path" not in source
 
     assert "falls back to a host/device transfer-strategy comparison" not in readme_text
@@ -682,18 +740,26 @@ def test_ch04_no_overlap_and_nvshmem_surfaces_do_not_advertise_single_gpu_fallba
     assert "stand-in for" not in ddp_no_overlap
     assert "stand-in for" not in ddp_overlap
     assert "stand-in for" not in baseline_no_overlap
-    assert 'if __name__ == "__main__":' in ddp_no_overlap
-    assert 'if __name__ == "__main__":' in ddp_overlap
-    assert "setup_single_gpu_env(\n            \"ddp_no_overlap\"" in ddp_no_overlap
-    assert "setup_single_gpu_env(\n            \"ddp_overlap\"" in ddp_overlap
-    ddp_no_overlap_spec = ddp_no_overlap.split("def get_torchrun_spec", 1)[1].split("def get_benchmark", 1)[0]
-    ddp_overlap_spec = ddp_overlap.split("def get_torchrun_spec", 1)[1].split("def get_benchmark", 1)[0]
+    assert 'if __name__ == "__main__":' not in ddp_no_overlap
+    assert 'if __name__ == "__main__":' not in ddp_overlap
+    assert 'setup_single_gpu_env(\n            "ddp_no_overlap"' in ddp_no_overlap
+    assert 'setup_single_gpu_env(\n            "ddp_overlap"' in ddp_overlap
+    ddp_no_overlap_spec = ddp_no_overlap.split("def get_torchrun_spec", 1)[1].split(
+        "def get_benchmark", 1
+    )[0]
+    ddp_overlap_spec = ddp_overlap.split("def get_torchrun_spec", 1)[1].split(
+        "def get_benchmark", 1
+    )[0]
     assert "_prepare_verification_payload()" not in ddp_no_overlap_spec
     assert "_prepare_verification_payload()" not in ddp_overlap_spec
     assert '"iterations": "--iterations"' in ddp_no_overlap_spec
     assert '"warmup": "--warmup"' in ddp_no_overlap_spec
     assert '"iterations": "--iterations"' in ddp_overlap_spec
     assert '"warmup": "--warmup"' in ddp_overlap_spec
+    assert '.with_name("ddp_worker.py")' in ddp_no_overlap_spec
+    assert '["--variant", "no-overlap"]' in ddp_no_overlap_spec
+    assert '.with_name("ddp_worker.py")' in ddp_overlap_spec
+    assert '["--variant", "overlap"]' in ddp_overlap_spec
     assert "SingleGPUTransferBenchmark" not in example_wrapper
     assert "SingleGPUTransferBenchmark" not in patterns_wrapper
     assert "SingleGPUTransferBenchmark" not in pipeline_wrapper
@@ -737,16 +803,23 @@ def test_ch01_training_loop_targets_keep_combined_and_fusion_only_stories_separa
 
     assert "self.model = self.model.half()" in performance
     assert "dtype = torch.float16" in performance
+    assert "self._model_dtype = dtype" in performance
     assert 'with self._nvtx_range("optimized_performance"):' in performance
-    assert '"fp16": model_dtype == torch.float16' in performance
+    assert '"fp16": self._model_dtype == torch.float16' in performance
 
     assert "self.model = self.model.half()" not in performance_fusion
     assert "dtype=torch.float32" in performance_fusion
     assert 'with self._nvtx_range("optimized_performance_fusion"):' in performance_fusion
     assert "performance_microbatches: int = 128" in workload_config
 
-    assert "| `performance` | FP16 math + fused microbatches | the combined goodput story |" in readme_text
-    assert "| `performance_fusion` | fused microbatches only | what launch amortization buys you without changing math precision |" in readme_text
+    assert (
+        "| `performance` | FP16 math + fused microbatches | the combined goodput story |"
+        in readme_text
+    )
+    assert (
+        "| `performance_fusion` | fused microbatches only | what launch amortization buys you without changing math precision |"
+        in readme_text
+    )
 
 
 def test_ch05_and_ch20_noncanonical_pairs_are_marked_informational() -> None:
@@ -781,14 +854,44 @@ def test_portable_rerun_ignores_informational_targets_for_expectation_queueing()
     assert _is_informational_benchmark("ch05", {"example": "ai"}) is True
     assert _is_informational_benchmark("ch12", {"example": "cuda_graphs_conditional"}) is True
     assert _is_informational_benchmark("ch20", {"example": "pipeline_sequential"}) is True
-    assert _is_informational_benchmark("labs_decode_optimization", {"example": "decode_pinned"}) is False
-    assert _is_informational_benchmark("labs_fullstack_cluster", {"example": "cluster_gemm_tcgen05"}) is False
-    assert _is_informational_benchmark("labs_nvfp4_group_gemm", {"example": "nvfp4_group_gemm"}) is False
-    assert _is_informational_benchmark("labs_nvfp4_group_gemm", {"example": "nvfp4_group_gemm_g8_n7168_k2048"}) is False
-    assert _is_informational_benchmark("labs_nvfp4_group_gemm", {"example": "nvfp4_group_gemm_g2_n3072_k4096"}) is False
-    assert _is_informational_benchmark("labs_nvfp4_group_gemm", {"example": "nvfp4_group_gemm_g2_n4096_k1536"}) is False
-    assert _is_informational_benchmark("labs_persistent_decode", {"example": "nvlink_offload"}) is False
-    assert _is_informational_benchmark("labs_persistent_decode", {"example": "paged_kv_offload"}) is False
+    assert (
+        _is_informational_benchmark("labs_decode_optimization", {"example": "decode_pinned"})
+        is False
+    )
+    assert (
+        _is_informational_benchmark("labs_fullstack_cluster", {"example": "cluster_gemm_tcgen05"})
+        is False
+    )
+    assert (
+        _is_informational_benchmark("labs_nvfp4_group_gemm", {"example": "nvfp4_group_gemm"})
+        is False
+    )
+    assert (
+        _is_informational_benchmark(
+            "labs_nvfp4_group_gemm", {"example": "nvfp4_group_gemm_g8_n7168_k2048"}
+        )
+        is False
+    )
+    assert (
+        _is_informational_benchmark(
+            "labs_nvfp4_group_gemm", {"example": "nvfp4_group_gemm_g2_n3072_k4096"}
+        )
+        is False
+    )
+    assert (
+        _is_informational_benchmark(
+            "labs_nvfp4_group_gemm", {"example": "nvfp4_group_gemm_g2_n4096_k1536"}
+        )
+        is False
+    )
+    assert (
+        _is_informational_benchmark("labs_persistent_decode", {"example": "nvlink_offload"})
+        is False
+    )
+    assert (
+        _is_informational_benchmark("labs_persistent_decode", {"example": "paged_kv_offload"})
+        is False
+    )
     assert _is_informational_benchmark("ch13", {"example": "kv_cache_naive"}) is False
 
 
@@ -858,9 +961,19 @@ def test_ch09_cutlass_fp8_pair_is_retuned_for_blackwell_sm100() -> None:
         assert "cutlass::arch::Sm90" not in source
 
     assert "KernelTmaWarpSpecialized1SmSm100" in baseline_source
-    assert "Shape<_128, _128, _64>" in baseline_source
+    assert "Shape<_128, _128, _128>" in baseline_source
+    assert "ClusterShape = Shape<_1, _1, _1>" in baseline_source
     assert "KernelTmaWarpSpecialized2SmSm100" in optimized_source
-    assert "Shape<_256, _128, _64>" in optimized_source
+    assert "Shape<_128, _256, _128>" in optimized_source
+    assert "ClusterShape = Shape<_2, _1, _1>" in optimized_source
+
+    for source in (baseline_source, optimized_source):
+        assert "using ElementA = cutlass::float_e4m3_t;" in source
+        assert "using ElementB = cutlass::float_e4m3_t;" in source
+        assert "AlignmentA = 128 / cutlass::sizeof_bits<ElementA>::value" in source
+        assert "AlignmentB = 128 / cutlass::sizeof_bits<ElementB>::value" in source
+        assert "Shape<_128, _128, _64>" not in source
+        assert "Shape<_256, _128, _64>" not in source
 
 
 def test_portable_rerun_reclassifies_multi_gpu_skip_records_on_load() -> None:
@@ -930,7 +1043,9 @@ def test_portable_rerun_reclassifies_nested_optimization_capability_skips(tmp_pa
     assert record["expected_unsupported_count"] == 1
 
 
-def test_portable_rerun_backfills_cumulative_expectation_writes_from_worker_log(tmp_path: Path) -> None:
+def test_portable_rerun_backfills_cumulative_expectation_writes_from_worker_log(
+    tmp_path: Path,
+) -> None:
     worker_log = tmp_path / "worker.log"
     worker_log.write_text(
         "\n".join(
@@ -949,7 +1064,9 @@ def test_portable_rerun_backfills_cumulative_expectation_writes_from_worker_log(
     assert state["written_expectation_total"] == 2
 
 
-def test_portable_rerun_persist_state_keeps_written_totals_without_worker_log(tmp_path: Path) -> None:
+def test_portable_rerun_persist_state_keeps_written_totals_without_worker_log(
+    tmp_path: Path,
+) -> None:
     paths = _queue_paths(tmp_path)
     state = {
         "target_records": {
@@ -974,28 +1091,24 @@ def test_portable_rerun_persist_state_keeps_written_totals_without_worker_log(tm
 
 
 def test_portable_rerun_uses_typed_expectation_keys_for_cuda_examples() -> None:
-    assert _expectation_example_key({"example": "cuda_graphs_conditional_enhanced", "type": "cuda"}) == (
-        "cuda_graphs_conditional_enhanced_cuda"
+    assert _expectation_example_key(
+        {"example": "cuda_graphs_conditional_enhanced", "type": "cuda"}
+    ) == ("cuda_graphs_conditional_enhanced_cuda")
+    assert (
+        _expectation_example_key({"example": "regional_triton", "type": "python"})
+        == "regional_triton"
     )
-    assert _expectation_example_key({"example": "regional_triton", "type": "python"}) == "regional_triton"
 
 
 def test_canonical_queue_batch_helper_tracks_planned_chapter_targets() -> None:
     helper = _read("scripts/canonical_queue_batches.py")
     registered_targets = _registered_targets()
-    queued_targets = [
-        target
-        for group in CHAPTER_EXPECTATION_BATCH.values()
-        for target in group
-    ] + list(CHAPTER_DRIFT_TRIAGE) + [
-        target
-        for group in CAPABILITY_VALIDATION_BATCH.values()
-        for target in group
-    ] + [
-        target
-        for group in LAB_FAMILY_BATCHES.values()
-        for target in group
-    ]
+    queued_targets = (
+        [target for group in CHAPTER_EXPECTATION_BATCH.values() for target in group]
+        + list(CHAPTER_DRIFT_TRIAGE)
+        + [target for group in CAPABILITY_VALIDATION_BATCH.values() for target in group]
+        + [target for group in LAB_FAMILY_BATCHES.values() for target in group]
+    )
 
     assert '"ch07:tma_bulk_tensor_2d"' in helper
     assert '"ch10:dsmem_reduction"' in helper
@@ -1048,8 +1161,8 @@ def test_ch14_flex_attention_sparse_uses_longer_and_sparser_window() -> None:
     for source in (baseline_text, optimized_text):
         assert "self.seq_len = 4096" in source
         assert "self.window_size = 128" in source
-    assert "scores.masked_fill_(~allowed_mask, float(\"-inf\"))" in baseline_text
-    assert "scores = scores.masked_fill(~allowed_mask, float(\"-inf\"))" not in baseline_text
+    assert 'scores.masked_fill_(~allowed_mask, float("-inf"))' in baseline_text
+    assert 'scores = scores.masked_fill(~allowed_mask, float("-inf"))' not in baseline_text
 
 
 def test_ch17_memory_uses_larger_replayed_transfer_workload() -> None:
@@ -1108,9 +1221,15 @@ def test_parameterized_graph_verification_capture_uses_fixed_request_slot() -> N
         "class ParameterizedGraphRecaptureBenchmark",
         maxsplit=1,
     )[0]
-    assert "self.host_inputs = [torch.empty(0) for _ in range(self.cfg.request_slots)]" in build_slots
-    assert "self.host_scales = [torch.empty(0) for _ in range(self.cfg.request_slots)]" in build_slots
-    assert "self.host_outputs = [torch.empty(0) for _ in range(self.cfg.request_slots)]" in build_slots
+    assert (
+        "self.host_inputs = [torch.empty(0) for _ in range(self.cfg.request_slots)]" in build_slots
+    )
+    assert (
+        "self.host_scales = [torch.empty(0) for _ in range(self.cfg.request_slots)]" in build_slots
+    )
+    assert (
+        "self.host_outputs = [torch.empty(0) for _ in range(self.cfg.request_slots)]" in build_slots
+    )
     assert "self.host_inputs[slot_idx] = host_input" in build_slots
     assert "self.host_scales[slot_idx] = host_scale" in build_slots
     assert "self.host_outputs[slot_idx] = host_output" in build_slots
@@ -1121,7 +1240,10 @@ def test_parameterized_graph_verification_capture_uses_fixed_request_slot() -> N
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
     assert "self._verify_input_buffer = torch.empty_like(self.host_inputs[0])" in setup_section
     assert "self._verify_scale_buffer = torch.empty_like(self.host_scales[0])" in setup_section
-    assert 'self._verify_output_buffer = torch.empty((2, 16), dtype=torch.float32, device="cpu")' in setup_section
+    assert (
+        'self._verify_output_buffer = torch.empty((2, 16), dtype=torch.float32, device="cpu")'
+        in setup_section
+    )
     assert "self._verify_output_buffer.copy_(host_output[:2, :16])" in output_slice
     assert "return self._verify_output_buffer" in output_slice
     assert "self._verify_input_buffer.copy_(self.host_inputs[slot_idx])" in capture_section
@@ -1143,7 +1265,9 @@ def test_parameterized_graph_residual_block_writes_directly_to_output_buffer() -
         maxsplit=1,
     )[0]
 
-    assert "def forward_into(self, x: torch.Tensor, scale: torch.Tensor, out: torch.Tensor)" in source
+    assert (
+        "def forward_into(self, x: torch.Tensor, scale: torch.Tensor, out: torch.Tensor)" in source
+    )
     assert "torch.mul(hidden, scale, out=out)" in source
     assert "out.add_(x)" in source
     assert "model.forward_into(device_input, device_scale, device_output)" in program_section
@@ -1279,7 +1403,10 @@ def test_ch10_flashattention3_pair_keeps_shared_warmup_and_unfused_qkv_structure
     assert "def _projection_workspace(" in optimized_source
     assert "def prepare_projection_buffers(self, x: torch.Tensor) -> None:" in optimized_source
     assert "def forward_prepared(" in optimized_source
-    assert 'raise RuntimeError("forward_prepared() requires prepare_projection_buffers()")' in optimized_source
+    assert (
+        'raise RuntimeError("forward_prepared() requires prepare_projection_buffers()")'
+        in optimized_source
+    )
     assert "self.model.prepare_projection_buffers(self.input)" in optimized_source
     assert "self.model.forward_prepared(self.input, is_causal=self.use_causal)" in optimized_source
     assert "or buffer.numel() < numel" in optimized_source
@@ -1295,7 +1422,10 @@ def test_ch10_flashattention3_pair_keeps_shared_warmup_and_unfused_qkv_structure
     assert "q_proj = torch.matmul(x, self._q_proj_weight_t, out=q_buffer)" in optimized_forward
     assert "k_proj = torch.matmul(x, self._k_proj_weight_t, out=k_buffer)" in optimized_forward
     assert "v_proj = torch.matmul(x, self._v_proj_weight_t, out=v_buffer)" in optimized_forward
-    assert "return torch.matmul(attn_output, self._out_proj_weight_t, out=output_buffer)" in optimized_forward
+    assert (
+        "return torch.matmul(attn_output, self._out_proj_weight_t, out=output_buffer)"
+        in optimized_forward
+    )
     assert "self.q_proj.weight.t()" not in optimized_forward
     assert "self.k_proj.weight.t()" not in optimized_forward
     assert "self.v_proj.weight.t()" not in optimized_forward
@@ -1368,7 +1498,9 @@ def test_ch10_flashattention3_projection_buffers_reuse_capacity() -> None:
     assert module._output_buffer.numel() == 5 * 5 * 8
 
 
-def test_persistent_decode_keeps_canonical_iteration_parity_and_marks_cuda_variant_informational() -> None:
+def test_persistent_decode_keeps_canonical_iteration_parity_and_marks_cuda_variant_informational() -> (
+    None
+):
     baseline_source = _read("labs/persistent_decode/baseline_persistent_decode.py")
     triton_source = _read("labs/persistent_decode/optimized_persistent_decode_triton.py")
     cuda_source = _read("labs/persistent_decode/optimized_persistent_decode_cuda.py")
@@ -1384,7 +1516,9 @@ def test_persistent_decode_keeps_canonical_iteration_parity_and_marks_cuda_varia
     assert "paged_kv_offload" not in INFORMATIONAL_BENCHMARKS.get("persistent_decode", set())
 
 
-def test_decode_optimization_keeps_decode_streams_canonical_and_marks_decode_pinned_local_contract() -> None:
+def test_decode_optimization_keeps_decode_streams_canonical_and_marks_decode_pinned_local_contract() -> (
+    None
+):
     baseline_source = _read("labs/decode_optimization/baseline_decode.py")
     pinned_baseline = _read("labs/decode_optimization/baseline_decode_pinned.py")
     pinned_source = _read("labs/decode_optimization/optimized_decode_pinned.py")

@@ -4,7 +4,7 @@
 Usage (on the GB300 pod, GPU 1 only, under flock /tmp/gpu1.lock):
     export CUDA_VISIBLE_DEVICES=1
     cd /work/ai-performance-engineering/code
-    python labs/custom_vs_cublas/bench_dual_2sm_nvfp4.py [--size 8192] \
+    python -m labs.custom_vs_cublas.bench_dual_2sm_nvfp4 [--size 8192] \
         [--interleave N] [--nvfp4 N,S,MB,K,RG,TE,DH ...] [--gates]
 
 Arms:
@@ -29,14 +29,8 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
-_LAB_DIR = Path(__file__).resolve().parent
-_CODE_ROOT = _LAB_DIR.parents[1]
-if str(_CODE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_CODE_ROOT))
-
-import torch  # noqa: E402
+import torch
 
 # Calibrated from the warmed cuBLASLt NVFP4 asymptote at run time (B61);
 # this constant is only the fallback denominator until calibrate overwrites.

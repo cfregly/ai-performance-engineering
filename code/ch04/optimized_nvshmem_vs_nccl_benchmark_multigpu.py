@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
+import argparse
 import os
+from pathlib import Path
 from typing import Optional
 
-import argparse
 import torch
 import torch.distributed as dist
-from ch04.distributed_helper import run_main_with_skip_status
+
 from ch04.nccl_blackwell_config import (
     configure_nccl_for_blackwell,
     configure_nccl_for_gb200_gb300,
@@ -18,6 +17,7 @@ from ch04.nccl_blackwell_config import (
     detect_b200_multigpu_topology,
 )
 from ch04.nvshmem_vs_nccl_benchmark import BenchmarkResult, benchmark, init_distributed
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -25,7 +25,6 @@ from core.harness.benchmark_harness import (
     TorchrunLaunchSpec,
 )
 from core.optimization.symmetric_memory_patch import symmetric_memory_available
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 
 
 def _configure_blackwell_nccl() -> None:
@@ -59,7 +58,9 @@ class OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU(VerificationPayloadMixin, BaseBenc
         if torch.cuda.device_count() < 2:
             raise RuntimeError("SKIPPED: nvshmem_vs_nccl_benchmark requires >=2 GPUs")
         if not symmetric_memory_available():
-            raise RuntimeError("SKIPPED: nvshmem_vs_nccl_benchmark requires NVSHMEM or SymmetricMemory support")
+            raise RuntimeError(
+                "SKIPPED: nvshmem_vs_nccl_benchmark requires NVSHMEM or SymmetricMemory support"
+            )
         _configure_blackwell_nccl()
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
@@ -117,7 +118,9 @@ class OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU(VerificationPayloadMixin, BaseBenc
                 "fp16": False,
                 "bf16": False,
                 "fp8": False,
-                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32
+                if torch.cuda.is_available()
+                else False,
             },
             output_tolerance=(0.1, 1.0),
             signature_overrides={
@@ -140,8 +143,28 @@ class OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU(VerificationPayloadMixin, BaseBenc
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
         return TorchrunLaunchSpec(
-            script_path=Path(__file__).resolve(),
-            script_args=[],
+            script_path=Path(__file__).resolve().with_name("nvshmem_worker.py"),
+            script_args=[
+                "--workload",
+                "collective",
+                "--variant",
+                "optimized",
+                "--min-bytes",
+                "1048576",
+                "--max-bytes",
+                "1048576",
+                "--steps",
+                "1",
+                "--iterations",
+                "500",
+                "--mode",
+                "nvshmem",
+            ],
+            env={
+                "AISP_DISABLE_SYMMETRIC_MEMORY": "0",
+                "AISP_BROADCAST_OVERLAP": "1",
+                "AISP_BROADCAST_COMPUTE_PASSES": "8",
+            },
             multi_gpu_required=True,
             name="optimized_nvshmem_vs_nccl_benchmark_multigpu",
         )
@@ -161,16 +184,3 @@ class OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU(VerificationPayloadMixin, BaseBenc
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU()
-
-
-def main() -> None:
-    bench = OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU()
-    bench.setup()
-    try:
-        bench.benchmark_fn()
-    finally:
-        bench.teardown()
-
-
-if __name__ == "__main__":
-    raise SystemExit(run_main_with_skip_status(main))

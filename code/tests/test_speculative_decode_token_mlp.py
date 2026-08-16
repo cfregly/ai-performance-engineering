@@ -170,6 +170,7 @@ def test_ch15_speculative_decode_fallback_matches_greedy_when_draft_rejects() ->
     metrics = []
     for use_speculative in (False, True):
         bench = SpeculativeDecodingBenchmark(use_speculative=use_speculative, label="fallback_check")
+        bench.allow_cpu = True
         bench.workload = replace(bench.workload, **workload_overrides)
         try:
             bench.setup()

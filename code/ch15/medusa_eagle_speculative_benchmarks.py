@@ -16,6 +16,7 @@ from ch15.speculative_decoding_common import (
 )
 from core.benchmark.metrics import compute_speculative_decoding_metrics
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.benchmark.wrapper_utils import attach_benchmark_metadata
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 

@@ -3,7 +3,7 @@
 Verify CUTLASS setup for Blackwell (SM100a) compatibility.
 
 This script checks:
-1. CUTLASS version in third_party/cutlass is >= 4.3.0
+1. CUTLASS version in third_party/cutlass is >= 4.5.2
 2. TransformerEngine's bundled CUTLASS is symlinked to the top-level CUTLASS
 3. SM100a-specific headers exist
 4. No duplicate/conflicting CUTLASS installations
@@ -113,8 +113,8 @@ def main() -> int:
         print(f"   Version: {ver_str}")
         print(f"   SM100 Headers: {'✓ Present' if main_info.has_sm100_headers else '✗ MISSING'}")
         
-        if main_info.version < (4, 3, 0):
-            issues.append(f"Main CUTLASS is {ver_str}, need >= 4.3.0 for SM100a support")
+        if main_info.version < (4, 5, 2):
+            issues.append(f"Main CUTLASS is {ver_str}, need >= 4.5.2 for the validated Blackwell setup")
         
         if not main_info.has_sm100_headers:
             issues.append("Main CUTLASS is missing SM100a headers")
@@ -217,9 +217,9 @@ def main() -> int:
    ln -s ../../../cutlass TransformerEngine/3rdparty/cutlass
 """)
         
-        if any("4.3.0" in i for i in issues):
+        if any("4.5.2" in i for i in issues):
             print("""
-2. Update main CUTLASS to 4.3.0:
+2. Update main CUTLASS to 4.5.2:
    
    ./core/scripts/install_cutlass.sh
 """)

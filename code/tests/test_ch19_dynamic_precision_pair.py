@@ -14,11 +14,13 @@ from ch19.dynamic_precision_benchmark_common import (
     build_model,
     build_prompt,
     decode_dynamic_precision,
+    decode_dynamic_precision_preallocated,
     decode_fixed_precision,
     decode_host_policy_baseline,
 )
 from ch19.dynamic_precision_switching import (
     DynamicPrecisionWorkspace,
+    PrecisionStats,
     compute_entropy,
     decode_with_dynamic_precision,
     should_use_low_precision,
@@ -394,11 +396,8 @@ def test_dynamic_precision_decode_uses_model_direct_confidence(monkeypatch: pyte
 
     assert torch.equal(cached_tokens, fixed_tokens)
     assert torch.equal(cached_tokens_again, fixed_tokens)
-    assert sequence_calls == 3
+    assert sequence_calls == 4
     assert memory_queries == 0
-    assert workspace.direct_cache_prompt_ptr == prompt.data_ptr()
-    assert workspace.direct_cache_prompt_shape == tuple(prompt.shape)
-    assert workspace.direct_cache_max_steps == cfg.max_steps
 
     fp4_tokens, fp4_stats = decode_with_dynamic_precision(
         model,
@@ -572,6 +571,78 @@ def test_dynamic_precision_decoders_accept_reusable_workspaces_on_cpu() -> None:
         workspace=dynamic_workspace,
     )
     assert dynamic_workspace.generated_token_views is dynamic_token_views
+
+
+def test_preallocated_dynamic_precision_executes_model_and_policy_every_call() -> None:
+    cfg = DynamicPrecisionBenchmarkConfig(
+        batch_size=2,
+        prompt_len=8,
+        max_steps=4,
+        vocab_size=64,
+        hidden_dim=64,
+    )
+    device = torch.device("cpu")
+    prompt = build_prompt(cfg, device)
+    model = build_model(cfg, device, dtype=torch.float32)
+    expected = decode_fixed_precision(
+        model,
+        prompt,
+        max_steps=cfg.max_steps,
+        device=device,
+    )
+    output_shape = (cfg.batch_size, cfg.prompt_len + cfg.max_steps)
+    workspace = DynamicPrecisionWorkspace(
+        generated=torch.empty(output_shape, device=device, dtype=prompt.dtype),
+        next_token=torch.empty((cfg.batch_size, 1), device=device, dtype=prompt.dtype),
+        next_token_values=torch.empty(
+            (cfg.batch_size, 1), device=device, dtype=torch.float32
+        ),
+        next_token_flat=torch.empty(cfg.batch_size, device=device, dtype=prompt.dtype),
+        generated_token_views=None,
+        top2_values=torch.empty((cfg.batch_size, 2), device=device, dtype=torch.float32),
+        top2_indices=torch.empty((cfg.batch_size, 2), device=device, dtype=torch.long),
+        margin_values=torch.empty(cfg.batch_size, device=device, dtype=torch.float32),
+        margin_mean=torch.empty((), device=device, dtype=torch.float32),
+        ema_conf=torch.empty((), device=device, dtype=torch.float32),
+        stats=PrecisionStats(),
+    )
+    workspace.next_token_flat = workspace.next_token.view(cfg.batch_size)
+    workspace.generated_token_views = workspace.generated.unbind(dim=1)
+    forward_calls = 0
+
+    def count_forward(_module, _args, _output):
+        nonlocal forward_calls
+        forward_calls += 1
+
+    handle = model.register_forward_hook(count_forward)
+    try:
+        first, first_stats = decode_dynamic_precision_preallocated(
+            model,
+            prompt,
+            max_steps=cfg.max_steps,
+            device=device,
+            workspace=workspace,
+        )
+        first_copy = first.clone()
+        second, second_stats = decode_dynamic_precision_preallocated(
+            model,
+            prompt,
+            max_steps=cfg.max_steps,
+            device=device,
+            workspace=workspace,
+        )
+    finally:
+        handle.remove()
+
+    assert torch.equal(first_copy, second)
+    assert torch.equal(second, expected)
+    assert forward_calls == 2 * cfg.max_steps
+    assert workspace.decode_invocations == 2
+    for stats in (first_stats, second_stats):
+        assert stats.decode_steps == cfg.max_steps
+        assert stats.model_forwards == cfg.max_steps
+        assert stats.policy_evaluations == cfg.max_steps
+        assert stats.total_tokens == cfg.batch_size * cfg.max_steps
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for chapter 19 dynamic-precision benchmark pair")

@@ -232,8 +232,6 @@ class OptimizedFP8CalibrationFree:
     
     def run(self) -> torch.Tensor:
         """Execute FP8 forward pass without calibration."""
-        torch.cuda.synchronize()
-        
         x = self.input
         
         if self.use_te:
@@ -245,20 +243,27 @@ class OptimizedFP8CalibrationFree:
             # Custom FP8
             for layer in self.layers:
                 x = layer(x)
-        
-        torch.cuda.synchronize()
-        
-        # Check output validity
-        if torch.isnan(x).any():
+
+        self._last_output = x
+        self.output_slice = x[:1, :1, : min(16, x.shape[-1])]
+        return self.output_slice
+
+    def finalize_output(self) -> torch.Tensor:
+        """Validate and materialize the last output after timed execution."""
+        if self._last_output is None:
+            raise RuntimeError("run() must execute before finalize_output()")
+        if torch.isnan(self._last_output).any():
             logger.error("NaN detected in output!")
             self._last_output = None
             if self._nan_output is None:
                 raise RuntimeError("setup() must initialize NaN output sentinel")
             self.output_slice = self._nan_output
             return self.output_slice
-        
-        self._last_output = x
-        self.output_slice = x[:1, :1, : min(16, x.shape[-1])]
+        self.output_slice = self._last_output[
+            :1,
+            :1,
+            : min(16, self._last_output.shape[-1]),
+        ]
         return self.output_slice
     
     def cleanup(self):
@@ -303,6 +308,7 @@ def run_benchmark(
     )
     
     benchmark.run()
+    benchmark.finalize_output()
     if benchmark._last_output is not None:
         benchmark.output_mean = scalar_tensor_to_float(benchmark._last_output.abs().mean())
     benchmark.cleanup()
@@ -321,8 +327,6 @@ def run_benchmark(
 
 class _FP8CalibrationFreeBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Wrapper benchmark for calibration-free FP8."""
-
-    allowed_benchmark_fn_antipatterns = ("host_transfer", "sync")
 
     def __init__(self) -> None:
         super().__init__()
@@ -362,6 +366,7 @@ class _FP8CalibrationFreeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._verify_nan_output_buffer is None
         ):
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._output = self._impl.finalize_output()
         if self._output.ndim == 0:
             verify_output = self._verify_nan_output_buffer
             verify_output.copy_(self._output, non_blocking=False)

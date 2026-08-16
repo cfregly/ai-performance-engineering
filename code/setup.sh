@@ -61,8 +61,64 @@
 
 set -e  # Exit on any error
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+resolve_setup_directory() {
+    local source_path="${BASH_SOURCE[0]}"
+    local source_dir
+    while [ -L "${source_path}" ]; do
+        source_dir="$(cd -P "$(dirname "${source_path}")" && pwd -P)"
+        source_path="$(readlink "${source_path}")"
+        if [[ "${source_path}" != /* ]]; then
+            source_path="${source_dir}/${source_path}"
+        fi
+    done
+    cd -P "$(dirname "${source_path}")" && pwd -P
+}
+
+discover_repository_root() {
+    local candidate="$1"
+    while [ "${candidate}" != "/" ]; do
+        if [ -e "${candidate}/.git" ]; then
+            printf '%s\n' "${candidate}"
+            return 0
+        fi
+        candidate="$(dirname "${candidate}")"
+    done
+    return 1
+}
+
+SCRIPT_DIR="$(resolve_setup_directory)"
 PROJECT_ROOT="${SCRIPT_DIR}"
+if ! REPOSITORY_ROOT="$(discover_repository_root "${PROJECT_ROOT}")"; then
+    REPOSITORY_ROOT="${PROJECT_ROOT}"
+fi
+
+bootstrap_repository_checkout() {
+    if [ ! -e "${REPOSITORY_ROOT}/.git" ]; then
+        return 0
+    fi
+    if ! command -v git >/dev/null 2>&1; then
+        echo "ERROR: Git is required to prepare repository submodules." >&2
+        return 1
+    fi
+
+    # Under sudo, Git sees the checkout as owned by another user. Mark the
+    # physical repository root safe before any command reads repository data.
+    git config --global --add safe.directory "${REPOSITORY_ROOT}"
+    if [ -d "${PROJECT_ROOT}/vendor/pytorch-src" ]; then
+        git config --global --add safe.directory "${PROJECT_ROOT}/vendor/pytorch-src"
+    fi
+    if [ -f "${REPOSITORY_ROOT}/.gitmodules" ]; then
+        echo "Synchronizing submodules from ${REPOSITORY_ROOT}/.gitmodules..."
+        git -C "${REPOSITORY_ROOT}" submodule sync --recursive
+        git -C "${REPOSITORY_ROOT}" submodule update --init --recursive
+    fi
+}
+
+bootstrap_repository_checkout
+if [ "${AISP_SETUP_BOOTSTRAP_ONLY:-0}" = "1" ]; then
+    printf 'Repository bootstrap complete: %s\n' "${REPOSITORY_ROOT}"
+    exit 0
+fi
 
 # =============================================================================
 # Logging + Disk Hygiene (always-on logging, keep disk usage tidy)
@@ -249,20 +305,20 @@ VLLM_WHEEL_PATTERN="${VLLM_WHEEL_PATTERN:-${VLLM_WHEEL_DIR}/vllm-*-${PYTHON_ABI_
 # Source of truth for pinned versions lives here (dependency_versions.json removed)
 # =============================================================================
 #
-# CUTLASS 4.3.0 - Required for SM100a (Blackwell) support
+# CUTLASS 4.5.2 - Validated for SM100a (Blackwell) and SM103a support
 #   - Provides: tmem_allocator_sm100.hpp, mma_sm100_umma.hpp, copy_traits_sm100.hpp
 #   - Uses the release tag with corrected version metadata
 #
 # TransformerEngine v2.9 - Stable release with CUDA 13 wheels
 #   - IMPORTANT: TE v2.9 still bundles CUTLASS 4.2.0
 #   - CUTLASS 4.2.0 LACKS SM100a headers - symlink workaround REQUIRED
-#   - We replace TE's bundled CUTLASS with our 4.3.0 via symlink
+#   - We replace TE's bundled CUTLASS with our 4.5.2 via symlink
 #   - Check: make verify-cutlass
 #
 # When to remove symlink workaround:
-#   - When TE bundles CUTLASS >= 4.3.0 with SM100a headers
+#   - When TE bundles CUTLASS >= 4.5.2 with the validated Blackwell headers
 #   - Run: python core/scripts/check_upstream_versions.py --check-te-cutlass
-#   - If "TE main bundles: CUTLASS 4.3.0+" appears, symlink may be removable
+#   - Remove the override only after the bundled version passes make verify-cutlass
 #
 # MLPerf v6 source trees
 #   - Inference README explicitly recommends the master branch for v6.0 submissions.
@@ -276,9 +332,9 @@ TE_VERSION="v2.9"
 TE_BUNDLED_CUTLASS_VERSION="4.2.0"  # What TE bundles (needs symlink override)
 TE_SRC_DIR="${TE_SRC_DIR:-${THIRD_PARTY_DIR}/TransformerEngine-src}"
 CUTLASS_REPO_URL="${CUTLASS_REPO_URL:-https://github.com/NVIDIA/cutlass.git}"
-# CUTLASS 4.3.0 release tag
-CUTLASS_REF="${CUTLASS_REF:-v4.3.0}"
-CUTLASS_TARGET_VERSION="${CUTLASS_TARGET_VERSION:-4.3.0}"
+# CUTLASS 4.5.2 release tag
+CUTLASS_REF="${CUTLASS_REF:-v4.5.2}"
+CUTLASS_TARGET_VERSION="${CUTLASS_TARGET_VERSION:-4.5.2}"
 CUTLASS_SRC_DIR="${CUTLASS_SRC_DIR:-${THIRD_PARTY_DIR}/cutlass}"
 MLPERF_INFERENCE_REPO_URL="${MLPERF_INFERENCE_REPO_URL:-https://github.com/mlcommons/inference.git}"
 MLPERF_INFERENCE_GIT_REF="${MLPERF_INFERENCE_GIT_REF:-master}"
@@ -292,18 +348,6 @@ GPU_COMPUTE_SM_NUM=""
 VLLM_PREBUILT_INSTALLED=0
 export PROJECT_ROOT REQUIRED_DRIVER_VERSION PYTHON_TARGET_VERSION PYTHON_TARGET_MAJOR PYTHON_TARGET_MINOR PYTHON_TARGET_BIN PYTHON_ABI_TAG PYTHON_DIST_PACKAGES PIP_ROOT_USER_ACTION
 
-if command -v git >/dev/null 2>&1; then
-    git config --global --add safe.directory "${PROJECT_ROOT}" >/dev/null 2>&1 || true
-    if [ -d "${PROJECT_ROOT}/vendor/pytorch-src" ]; then
-        git config --global --add safe.directory "${PROJECT_ROOT}/vendor/pytorch-src" >/dev/null 2>&1 || true
-    fi
-    if git -C "${PROJECT_ROOT}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        if [ -f "${PROJECT_ROOT}/.gitmodules" ]; then
-            git -C "${PROJECT_ROOT}" submodule sync --recursive >/dev/null 2>&1 || true
-            git -C "${PROJECT_ROOT}" submodule update --init --recursive >/dev/null 2>&1 || true
-        fi
-    fi
-fi
 PYTORCH_REPO_URL="${PYTORCH_REPO_URL:-https://github.com/pytorch/pytorch.git}"
 PYTORCH_COMMIT="${PYTORCH_COMMIT:-main}"
 PYTORCH_SRC_DIR="${PYTORCH_SRC_DIR:-${THIRD_PARTY_DIR}/pytorch-src}"
@@ -2179,10 +2223,10 @@ if [ ! -d "${TE_SRC_DIR}/.git" ]; then
     rm -rf "${TE_SRC_DIR}"
     git clone --recursive "${TE_REPO_URL}" "${TE_SRC_DIR}"
 fi
-git -C "${TE_SRC_DIR}" fetch --all --tags --prune --force >/dev/null 2>&1 || true
-git -C "${TE_SRC_DIR}" checkout "${TE_GIT_COMMIT}" >/dev/null 2>&1 || true
-git -C "${TE_SRC_DIR}" submodule sync --recursive >/dev/null 2>&1 || true
-git -C "${TE_SRC_DIR}" submodule update --init --recursive >/dev/null 2>&1 || true
+git -C "${TE_SRC_DIR}" fetch --all --tags --prune --force
+git -C "${TE_SRC_DIR}" checkout "${TE_GIT_COMMIT}"
+git -C "${TE_SRC_DIR}" submodule sync --recursive
+git -C "${TE_SRC_DIR}" submodule update --init --recursive
 
 # =============================================================================
 # CRITICAL: CUTLASS Version Override for Blackwell (SM100a) Support
@@ -2190,7 +2234,7 @@ git -C "${TE_SRC_DIR}" submodule update --init --recursive >/dev/null 2>&1 || tr
 # TransformerEngine ${TE_VERSION} bundles CUTLASS ${TE_BUNDLED_CUTLASS_VERSION} which LACKS SM100a headers.
 # We MUST replace TE's bundled CUTLASS with our standalone CUTLASS ${CUTLASS_TARGET_VERSION}.
 #
-# Required SM100a headers (only in CUTLASS 4.3.0+):
+# Required SM100a headers in the validated CUTLASS 4.5.2 source:
 #   - cute/arch/tmem_allocator_sm100.hpp
 #   - cute/arch/mma_sm100_umma.hpp
 #   - cute/atom/copy_traits_sm100.hpp
@@ -3260,23 +3304,23 @@ if [ $compile_status -ne 0 ]; then
     exit 1
 fi
 
-# Step 11: Install CUTLASS 4.3+ Backend for torch.compile
+# Step 11: Install the validated CUTLASS 4.5.2 backend for torch.compile
 echo ""
-echo "Step 11: Installing CUTLASS 4.3+ Backend (nvidia-cutlass-dsl)..."
+echo "Step 11: Installing CUTLASS 4.5.2 Backend (nvidia-cutlass-dsl)..."
 echo "================================================================="
 
-# Install CUTLASS DSL 4.2+ and CUDA Python bindings system-wide
+# Install the validated CUTLASS DSL and CUDA Python bindings system-wide
 # The Python package (nvidia-cutlass-dsl) includes:
 #   - Python API for torch.compile CUTLASS backend
 #   - C++ headers for direct CUDA C++ kernel development
 #   - All CUTLASS library headers (1000+ header files)
 echo "Installing nvidia-cutlass-dsl and cuda-python (pinned versions)..."
-pip_install --no-cache-dir --upgrade --ignore-installed "nvidia-cutlass-dsl==4.3.0" "cuda-python==13.0.3"
+pip_install --no-cache-dir --upgrade --ignore-installed "nvidia-cutlass-dsl[cu13]==4.5.2" "cuda-python==13.0.3"
 pip_install --no-cache-dir --upgrade --force-reinstall --no-deps "cuda-bindings==13.0.3"
 
 if [ $? -eq 0 ]; then
     echo "CUTLASS backend packages installed (pinned versions)"
-    echo "   - nvidia-cutlass-dsl==4.3.0: CUTLASS kernels for torch.compile"
+    echo "   - nvidia-cutlass-dsl[cu13]==4.5.2: CUTLASS kernels for torch.compile"
     
     # Verify PyTorch CUDA after CUTLASS installation
     echo ""

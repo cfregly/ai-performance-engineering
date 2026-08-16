@@ -4,7 +4,7 @@
 Usage (on the GB300 pod, GPU 2 only):
     export CUDA_VISIBLE_DEVICES=2
     cd /work/ai-performance-engineering/code
-    python labs/custom_vs_cublas/bench_dual_cta.py [--size 8192] [--sweep] [--interleave N]
+    python -m labs.custom_vs_cublas.bench_dual_cta [--size 8192] [--sweep] [--interleave N]
 
 Reports CUDA-event kernel time, TFLOPS, and % of GB300 FP16 dense SoL
 (3.75 PFLOPS), plus max relative error vs torch.matmul.
@@ -20,15 +20,8 @@ arms equally. Use this mode for any perf claim.
 from __future__ import annotations
 
 import argparse
-import sys
-from pathlib import Path
 
-_LAB_DIR = Path(__file__).resolve().parent
-_CODE_ROOT = _LAB_DIR.parents[1]
-if str(_CODE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_CODE_ROOT))
-
-import torch  # noqa: E402
+import torch
 
 GB300_FP16_PEAK_TFLOPS = 3750.0
 

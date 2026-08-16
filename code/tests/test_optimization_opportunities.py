@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import shlex
+import subprocess
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from core.analysis.optimization_opportunities import (
@@ -17,10 +22,12 @@ from core.analysis.optimization_opportunities import (
     render_opportunities_markdown,
     render_run_queue_shell,
     summarize_run_queue_root,
+    validate_run_queue_job_directory,
 )
 from core.api import handlers
 from core.api.handlers import benchmark_opportunities
 from core.api.registry import get_routes
+from core.benchmark import bench_commands
 from core.benchmark.bench_commands import app
 from core.benchmark.contracts_surface import render_benchmark_run_yaml
 from mcp.mcp_server import MCPServer
@@ -70,11 +77,123 @@ def _write_run_queue_job(
         (job_dir / "stderr.log").write_text(stderr, encoding="utf-8")
     if review is not None:
         (job_dir / "promotion_review.md").write_text(review, encoding="utf-8")
+    if done or approved:
+        _write_required_contract_files(root, payload, job_dir=job_dir)
 
 
-def _write_required_contract_files(root: Path, job: dict) -> None:
-    job_dir = root / str(job["id"])
+def _valid_benchmark_result_payload() -> dict:
+    return {
+        "timestamp": "2026-07-01T00:00:00Z",
+        "results": [
+            {
+                "chapter": "test",
+                "status": "completed",
+                "benchmarks": [
+                    {
+                        "example": "example",
+                        "baseline_time_ms": 10.0,
+                        "baseline_file": "baseline_example.py",
+                        "status": "succeeded",
+                        "optimizations": [
+                            {
+                                "file": "optimized_example.py",
+                                "status": "succeeded",
+                                "time_ms": 9.0,
+                                "input_verification": {"passed": True},
+                                "verification": {"passed": True},
+                            }
+                        ],
+                    }
+                ],
+                "manifests": [
+                    {
+                        "variant": variant,
+                        "manifest": {
+                            "schemaVersion": "1.0",
+                            "git": {"commit": "a" * 40, "dirty": False},
+                            "config": {"validity_profile": "strict"},
+                            "collection_warnings": [],
+                            "runtime_capability_limitations": [],
+                        },
+                    }
+                    for variant in ("baseline", "optimized")
+                ],
+                "summary": {"total_benchmarks": 1, "successful": 1, "failed": 0},
+            }
+        ],
+    }
+
+
+def _write_required_contract_files(
+    root: Path, job: dict, *, job_dir: Path | None = None
+) -> None:
+    job_dir = job_dir or root / str(job["id"])
     job_dir.mkdir(parents=True, exist_ok=True)
+    result_payload = _valid_benchmark_result_payload()
+    source_result_path = job_dir / "source_result.json"
+    source_result_path.write_text(json.dumps(result_payload), encoding="utf-8")
+
+    declares_execution_contract = any(
+        key in job for key in ("repeat_count", "comparison_policy", "result_artifact")
+    )
+    repeat_path = job_dir / "repeat_run_manifest.json"
+    if declares_execution_contract:
+        comparison_policy = str(job.get("comparison_policy") or "single_command")
+        declared_repeats = int(job.get("repeat_count") or 1)
+        result_artifact = str(job.get("result_artifact") or "source_result.json")
+        repeat_runs = []
+        for sequence in range(1, declared_repeats + 1):
+            if comparison_policy == "paired_interleaved":
+                order = (
+                    ["control", "candidate"]
+                    if sequence % 2 == 1
+                    else ["candidate", "control"]
+                )
+            else:
+                order = ["job"]
+            role_payloads = {}
+            for role in order:
+                role_dir = job_dir / "repeats" / f"{sequence:03d}" / role
+                result_path = role_dir / result_artifact
+                result_path.parent.mkdir(parents=True, exist_ok=True)
+                result_path.write_text(json.dumps(result_payload), encoding="utf-8")
+                (role_dir / "exit_code").write_text("0\n", encoding="utf-8")
+                result_hash = hashlib.sha256(result_path.read_bytes()).hexdigest()
+                role_payloads[role] = {
+                    "exit_code": 0,
+                    "result": {
+                        "path": str(result_path.relative_to(job_dir)),
+                        "sha256": result_hash,
+                    },
+                }
+            repeat_runs.append(
+                {
+                    "sequence": sequence,
+                    "order": order,
+                    "roles": role_payloads,
+                }
+            )
+        repeat_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "aisp.queue-repeat-manifest/v1",
+                    "declared_repeat_count": declared_repeats,
+                    "executed_repeat_count": declared_repeats,
+                    "comparison_policy": comparison_policy,
+                    "runs": repeat_runs,
+                }
+            ),
+            encoding="utf-8",
+        )
+        (job_dir / "EXIT_CODE").write_text("0\n", encoding="utf-8")
+        if job.get("require_distinct_source"):
+            (job_dir / "source_identity.tsv").write_text(
+                "role\troot\tcommit\n"
+                f"control\t/control\t{'a' * 40}\n"
+                f"candidate\t/candidate\t{'b' * 40}\n",
+                encoding="utf-8",
+            )
+
     contract = job.get("artifact_contract") or {}
     stage_contracts = contract.get("stage_contracts") or [contract]
     for stage_contract in stage_contracts:
@@ -84,9 +203,74 @@ def _write_required_contract_files(root: Path, job: dict) -> None:
             "stage"
         ):
             continue
+        result_hash = hashlib.sha256(source_result_path.read_bytes()).hexdigest()
+        repeat_hash = hashlib.sha256(repeat_path.read_bytes()).hexdigest()
         for filename in stage_contract.get("required_files", []) or []:
             path = job_dir / str(filename)
-            if not path.exists():
+            if path.exists():
+                continue
+            if filename == "artifact_contract.json":
+                path.write_text(json.dumps(stage_contract), encoding="utf-8")
+            elif filename in {"artifact_contract_manifest.json", "profile_artifacts.json"}:
+                path.write_text(
+                    json.dumps(
+                        {
+                            "artifacts": [
+                                {"path": source_result_path.name, "sha256": result_hash}
+                            ]
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            elif filename == "profiler_preflight_manifest.json":
+                path.write_text(
+                    json.dumps(
+                        {
+                            "schema_version": "aisp.profiler-preflight/v1",
+                            "checks": [
+                                {"check": "fixture", "required": True, "status": "passed"}
+                            ],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            elif filename == "output_verification_record.json":
+                path.write_text(
+                    json.dumps(
+                        {
+                            "passed": True,
+                            "source_result": {
+                                "path": source_result_path.name,
+                                "sha256": result_hash,
+                            },
+                            "source_result_sha256": result_hash,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            elif filename == "control_candidate_comparison.json":
+                path.write_text(
+                    json.dumps(
+                        {
+                            "comparison_policy": "paired_interleaved",
+                            "correctness_passed": True,
+                            "repeat_manifest_sha256": repeat_hash,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            elif filename == "claim_decision.json":
+                path.write_text(
+                    json.dumps({"claim_allowed": True, "reviewer": "test-reviewer"}),
+                    encoding="utf-8",
+                )
+            elif filename in {"DONE", "MANUAL_REVIEW_REQUIRED"}:
+                path.write_text("2026-07-01T00:00:00Z\n", encoding="utf-8")
+            elif filename == "APPROVED":
+                path.write_text("approved after evidence review\n", encoding="utf-8")
+            elif path.suffix == ".json":
+                path.write_text(json.dumps({"artifact": filename}), encoding="utf-8")
+            else:
                 path.write_text(f"{filename}\n", encoding="utf-8")
 
 
@@ -143,7 +327,7 @@ def test_opportunity_radar_ranks_flat_slow_targets_first(tmp_path: Path) -> None
     assert opportunities[1]["target"] == "ch09:cutlass_fp8_gemm"
     assert result["execution_plan"]["phases"][0]["name"] == "deep_profile_headroom"
     assert result["execution_plan"]["next_commands"][0].endswith(
-        "ch15:kv_decode_cache --profile deep_dive --verify-output"
+        "ch15:kv_decode_cache --profile deep_dive"
     )
 
 
@@ -267,8 +451,46 @@ def test_bench_opportunities_cli_uses_catalog_for_frontier_targets(tmp_path: Pat
     assert payload["opportunities"][0]["target"] == "labs/flexattention:flex_prefill"
     assert payload["opportunities"][0]["opportunity_type"] == "novel_frontier_probe"
     assert payload["opportunities"][0]["next_command"].endswith(
-        "labs/flexattention:flex_prefill --profile minimal --verify-output"
+        "labs/flexattention:flex_prefill --profile minimal"
     )
+
+
+def test_catalog_rejects_executable_target_without_running_it(tmp_path: Path) -> None:
+    data_file = tmp_path / "benchmark_test_results.json"
+    data_file.write_text(json.dumps({"benchmarks": []}), encoding="utf-8")
+    sentinel = tmp_path / "catalog_target_executed"
+    executable_suffix = shlex.join(
+        [
+            "python3",
+            "-c",
+            f"from pathlib import Path; Path({str(sentinel)!r}).write_text('bad')",
+        ]
+    )
+    catalog_file = tmp_path / "targets.json"
+    catalog_file.write_text(
+        json.dumps([{"target": f"labs/flexattention:flex_prefill; {executable_suffix}"}]),
+        encoding="utf-8",
+    )
+    output_script = tmp_path / "run_queue.sh"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "opportunities",
+            "--data-file",
+            str(data_file),
+            "--catalog-file",
+            str(catalog_file),
+            "--output-run-queue-sh",
+            str(output_script),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert isinstance(result.exception, ValueError)
+    assert "one concrete chapter:example token" in str(result.exception)
+    assert not output_script.exists()
+    assert not sentinel.exists()
 
 
 def test_bench_opportunities_cli_writes_executable_run_queue_script(tmp_path: Path) -> None:
@@ -303,6 +525,88 @@ def test_bench_opportunities_cli_writes_executable_run_queue_script(tmp_path: Pa
     assert "labs/flexattention:flex_prefill" in script
     assert "MANUAL_REVIEW_REQUIRED" in script
     assert output_script.stat().st_mode & 0o111
+
+
+def test_queue_command_routes_one_target_to_real_typer_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ranked = rank_opportunities(
+        normalize_candidates(
+            {
+                "benchmarks": [],
+                "target_catalog": [
+                    {"target": "labs/flexattention:flex_prefill", "category": "attention"}
+                ],
+            }
+        ),
+        top_n=1,
+    )
+    job = ranked["run_queue"]["jobs"][0]
+    job_dir = tmp_path / "queue-job"
+    role_dir = job_dir / "repeats" / "001" / "job"
+    role_dir.mkdir(parents=True)
+    expanded = str(job["command"]).split(" && ", maxsplit=1)[1].replace(
+        "$AISP_EXPERIMENT_ARTIFACT_DIR", str(role_dir)
+    )
+    argv = shlex.split(expanded)
+    cli_args = argv[argv.index("run") :]
+    captured: dict[str, object] = {}
+
+    def fake_execute(**kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        artifacts_dir = Path(str(kwargs["artifacts_dir"]))
+        run_id = str(kwargs["run_id"])
+        result_path = artifacts_dir / run_id / "results" / "benchmark_test_results.json"
+        result_path.parent.mkdir(parents=True, exist_ok=True)
+        result_path.write_text(
+            json.dumps(_valid_benchmark_result_payload()), encoding="utf-8"
+        )
+        return {"output_json": str(result_path)}
+
+    monkeypatch.setattr(bench_commands, "_execute_benchmarks", fake_execute)
+
+    invocation = CliRunner().invoke(app, cli_args)
+
+    assert invocation.exit_code == 0, invocation.output
+    assert captured["targets"] == ["labs/flexattention:flex_prefill"]
+    assert captured["verify_input"] is True
+    assert captured["verify_output"] is True
+    assert "--output" not in argv
+    assert "--verify-output" not in argv
+    result_path = role_dir / str(job["result_artifact"])
+    assert result_path.is_file()
+    result_hash = hashlib.sha256(result_path.read_bytes()).hexdigest()
+    (job_dir / "job.json").write_text(json.dumps(job), encoding="utf-8")
+    (job_dir / "DONE").write_text("2026-07-01T00:00:00Z\n", encoding="utf-8")
+    (job_dir / "EXIT_CODE").write_text("0\n", encoding="utf-8")
+    (role_dir / "exit_code").write_text("0\n", encoding="utf-8")
+    (job_dir / "repeat_run_manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "aisp.queue-repeat-manifest/v1",
+                "declared_repeat_count": 1,
+                "executed_repeat_count": 1,
+                "comparison_policy": "single_command",
+                "runs": [
+                    {
+                        "sequence": 1,
+                        "order": ["job"],
+                        "roles": {
+                            "job": {
+                                "exit_code": 0,
+                                "result": {
+                                    "path": str(result_path.relative_to(job_dir)),
+                                    "sha256": result_hash,
+                                },
+                            }
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert validate_run_queue_job_directory(job_dir) == []
 
 
 def test_bench_opportunities_cli_writes_executable_novelty_validation_script(
@@ -826,7 +1130,7 @@ def test_coverage_gap_map_surfaces_underintroduced_primitives() -> None:
     assert primitive_gap["introduced_target_count"] == 0
     assert primitive_gap["sample_targets"][0]["target"] == "labs/decode:kv_layout_probe"
     assert primitive_gap["first_probe_command"].endswith(
-        "labs/decode:kv_layout_probe --profile minimal --verify-output"
+        "labs/decode:kv_layout_probe --profile minimal"
     )
     assert "one optimized variant" in primitive_gap["recommended_action"]
 
@@ -970,7 +1274,7 @@ def test_cross_lane_bridge_map_promotes_multi_signal_experiments() -> None:
     assert bridge["direct_support_count"] == 1
     assert {"communication_overlap", "kv_cache_layout"} <= set(bridge["present_primitives"])
     assert bridge["validation_commands"][1].endswith(
-        "labs/distributed_decode:tp_decode_overlap --profile deep_dive --verify-output"
+        "labs/distributed_decode:tp_decode_overlap --profile deep_dive"
     )
     assert "decode metrics improve" in bridge["acceptance_gate"]
 
@@ -1521,11 +1825,11 @@ def test_opportunity_execution_plan_orders_evidence_repair_before_experiments() 
         "deep_profile_headroom",
     ]
     assert phases[0]["items"][0]["command"].endswith(
-        "ch04:gradient_fusion --profile minimal --verify-output"
+        "ch04:gradient_fusion --profile minimal"
     )
     assert phases[0]["items"][0]["benchmark_run"]["overrides"]["workloadType"] == "training"
     assert phases[1]["items"][0]["command"].endswith(
-        "ch15:kv_decode_cache --profile deep_dive --verify-output"
+        "ch15:kv_decode_cache --profile deep_dive"
     )
 
     markdown = render_opportunities_markdown(result)
@@ -1597,7 +1901,7 @@ def test_opportunity_radar_clusters_transferable_innovation_hypotheses() -> None
     assert attention["support_count"] == 2
     assert "KV page/block size" in " ".join(attention["transfer_experiments"])
     assert attention["validation_commands"][0].endswith(
-        "ch15:kv_decode_cache --profile minimal --verify-output"
+        "ch15:kv_decode_cache --profile minimal"
     )
 
     markdown = render_opportunities_markdown(result)
@@ -1739,16 +2043,208 @@ def test_render_run_queue_shell_preserves_dependencies_and_manual_gates() -> Non
     script = render_run_queue_shell(result)
 
     assert "require_dependency labs-flexattention-flex-prefill-control" in script
-    assert (
-        "bash -lc 'python -m cli.aisp bench run --targets labs/flexattention:flex_prefill --profile minimal --verify-output'"
-        in script
+    assert 'cd "${AISP_CONTROL_CWD:-$AISP_RUN_QUEUE_CWD}"' in script
+    assert "AISP_CANDIDATE_CWD" in script
+    assert "labs/flexattention:flex_prefill --profile minimal" in script
+    assert all(
+        "--verify-output" not in str(job.get("command") or "")
+        for job in result["run_queue"]["jobs"]
     )
+    assert "--artifacts-dir" in script
+    assert "queue_benchmark/results/benchmark_test_results.json" in script
+    assert "paired_interleaved" in script
+    assert "repeat_run_manifest.json" in script
     assert "promotion_review.md" in script
     assert "first verified minimal-profile run succeeds" in script
     assert "MANUAL_REVIEW_REQUIRED" in script
     assert "APPROVED" in script
     assert "skip: DONE already exists" in script
     assert "manual review pending" in script
+
+
+def test_generated_shell_reruns_invalid_done_and_blocks_dependency(tmp_path: Path) -> None:
+    queue_root = tmp_path / "queue"
+    upstream_sentinel = tmp_path / "upstream_reran"
+    dependent_sentinel = tmp_path / "dependent_ran"
+    upstream = {
+        "id": "upstream",
+        "target": "test:upstream",
+        "stage": "control",
+        "command": shlex.join(
+            [
+                "python3",
+                "-c",
+                (
+                    "from pathlib import Path; "
+                    f"Path({str(upstream_sentinel)!r}).write_text('reran'); "
+                    "raise SystemExit(7)"
+                ),
+            ]
+        ),
+        "depends_on": [],
+        "repeat_count": 1,
+        "comparison_policy": "single_command",
+        "result_artifact": "result.json",
+    }
+    dependent = {
+        "id": "dependent",
+        "target": "test:dependent",
+        "stage": "control",
+        "command": shlex.join(
+            [
+                "python3",
+                "-c",
+                f"from pathlib import Path; Path({str(dependent_sentinel)!r}).write_text('bad')",
+            ]
+        ),
+        "depends_on": ["upstream"],
+        "repeat_count": 1,
+        "comparison_policy": "single_command",
+        "result_artifact": "result.json",
+    }
+    upstream_dir = queue_root / "upstream"
+    upstream_dir.mkdir(parents=True)
+    (upstream_dir / "DONE").write_text("2026-07-01T00:00:00Z\n", encoding="utf-8")
+    (upstream_dir / "EXIT_CODE").write_text("0\n", encoding="utf-8")
+    (upstream_dir / "repeat_run_manifest.json").write_text("{}\n", encoding="utf-8")
+    script = render_run_queue_shell({"run_queue": {"jobs": [upstream, dependent]}})
+    env = os.environ.copy()
+    env.update(
+        {
+            "AISP_RUN_QUEUE_CWD": str(Path.cwd()),
+            "AISP_RUN_QUEUE_ROOT": str(queue_root),
+            "PYTHONPATH": str(Path.cwd()),
+        }
+    )
+
+    completed = subprocess.run(
+        ["bash"],
+        input=script,
+        cwd=Path.cwd(),
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 1
+    assert upstream_sentinel.exists()
+    assert not dependent_sentinel.exists()
+    assert (queue_root / "upstream" / "FAILED").is_file()
+    assert (queue_root / "dependent" / "BLOCKED").is_file()
+    assert "rerun: existing completion evidence is invalid" in completed.stdout
+    assert "blocked: dependency is not complete" in completed.stdout
+    assert "Invalid completion evidence" in completed.stderr
+    assert "EXIT_CODE records failure 7" in completed.stderr
+
+
+def test_generated_shell_canonicalizes_relative_root_across_two_worktrees(
+    tmp_path: Path,
+) -> None:
+    control_root = tmp_path / "control"
+    candidate_root = tmp_path / "candidate"
+    control_root.mkdir()
+
+    def git(*args: str, cwd: Path = control_root) -> None:
+        subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+
+    git("init", "-b", "main")
+    git("config", "user.name", "Queue Test")
+    git("config", "user.email", "queue@example.com")
+    (control_root / ".gitignore").write_text("artifacts/\n", encoding="utf-8")
+    (control_root / "source.txt").write_text("control\n", encoding="utf-8")
+    git("add", ".gitignore", "source.txt")
+    git("commit", "-m", "control")
+    git("branch", "candidate")
+    git("worktree", "add", str(candidate_root), "candidate")
+    (candidate_root / "source.txt").write_text("candidate\n", encoding="utf-8")
+    git("add", "source.txt", cwd=candidate_root)
+    git("commit", "-m", "candidate", cwd=candidate_root)
+
+    payload_literal = repr(_valid_benchmark_result_payload())
+    writer = shlex.join(
+        [
+            "python3",
+            "-c",
+            (
+                "import json, os; from pathlib import Path; "
+                "path = Path(os.environ['AISP_EXPERIMENT_ARTIFACT_DIR']) / 'result.json'; "
+                "path.parent.mkdir(parents=True, exist_ok=True); "
+                f"path.write_text(json.dumps({payload_literal}))"
+            ),
+        ]
+    )
+    control_command = f'cd "${{AISP_CONTROL_CWD:-$AISP_RUN_QUEUE_CWD}}" && {writer}'
+    candidate_command = (
+        'cd "${AISP_CANDIDATE_CWD:?Set AISP_CANDIDATE_CWD}" && ' + writer
+    )
+    control_job = {
+        "id": "relative-control",
+        "target": "test:relative",
+        "stage": "control",
+        "command": control_command,
+        "depends_on": [],
+        "repeat_count": 1,
+        "comparison_policy": "single_command",
+        "result_artifact": "result.json",
+    }
+    candidate_job = {
+        "id": "relative-candidate",
+        "target": "test:relative",
+        "stage": "candidate",
+        "command": candidate_command,
+        "paired_control_command": control_command,
+        "depends_on": ["relative-control"],
+        "repeat_count": 1,
+        "comparison_policy": "paired_interleaved",
+        "require_distinct_source": True,
+        "result_artifact": "result.json",
+    }
+    script = render_run_queue_shell(
+        {"run_queue": {"jobs": [control_job, candidate_job]}}
+    )
+    env = os.environ.copy()
+    env.pop("AISP_RUN_QUEUE_ROOT", None)
+    env.update(
+        {
+            "AISP_CONTROL_CWD": ".",
+            "AISP_CANDIDATE_CWD": "../candidate",
+            "PYTHONPATH": str(Path.cwd()),
+        }
+    )
+
+    completed = subprocess.run(
+        ["bash"],
+        input=script,
+        cwd=control_root,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    run_roots = list((control_root / "artifacts" / "opportunity_run_queue").iterdir())
+    assert len(run_roots) == 1
+    run_root = run_roots[0]
+    assert run_root.is_absolute()
+    assert (run_root / "relative-control" / "DONE").is_file()
+    assert (run_root / "relative-candidate" / "DONE").is_file()
+    assert (
+        run_root
+        / "relative-candidate"
+        / "repeats"
+        / "001"
+        / "candidate"
+        / "result.json"
+    ).is_file()
+    assert not (candidate_root / "artifacts" / "opportunity_run_queue").exists()
 
 
 def test_render_novelty_validation_shell_preserves_dependencies_and_review_gates() -> None:
@@ -1780,10 +2276,14 @@ def test_render_novelty_validation_shell_preserves_dependencies_and_review_gates
     assert "AISP_NOVELTY_QUEUE_ROOT" in script
     assert "Novelty validation root" in script
     assert "require_dependency" in script
-    assert (
-        "bash -lc 'python -m cli.aisp bench run --targets labs/distributed_decode:tp_decode_overlap --profile minimal --verify-output'"
-        in script
+    assert 'cd "${AISP_CONTROL_CWD:-$AISP_RUN_QUEUE_CWD}"' in script
+    assert "AISP_CANDIDATE_CWD" in script
+    assert "labs/distributed_decode:tp_decode_overlap --profile minimal" in script
+    assert all(
+        "--verify-output" not in str(job.get("command") or "")
+        for job in result["novelty_validation_plan"]["jobs"]
     )
+    assert "paired_interleaved" in script
     assert "Novelty Review" in script
     assert "Claim boundary:" in script
     assert "Falsification checks:" in script
@@ -1932,6 +2432,28 @@ def test_summarize_run_queue_root_classifies_runbook_evidence(tmp_path: Path) ->
     assert summary["jobs"][1]["stderr_tail"].endswith("injection library not found\n")
     assert summary["jobs"][1]["diagnostic_signals"][0]["signal"] == "zymtrace_injection_missing"
     assert "zymtrace_injection_missing" in summary["next_actions"][0]
+
+
+def test_summarize_rejects_approved_marker_on_execution_job(tmp_path: Path) -> None:
+    root = tmp_path / "queue"
+    _write_run_queue_job(
+        root,
+        "execution-job",
+        {
+            "id": "execution-job",
+            "target": "test:execution",
+            "stage": "control",
+            "command": "true",
+        },
+        approved=True,
+    )
+
+    summary = summarize_run_queue_root(root)
+
+    job = summary["jobs"][0]
+    assert job["status"] == "failed_or_incomplete"
+    assert "APPROVED is allowed only for a manual review stage" in job["completion_errors"]
+    assert summary["review_summary"]["claim_allowed_count"] == 0
 
 
 def test_bench_opportunity_run_summary_cli_outputs_json(tmp_path: Path) -> None:

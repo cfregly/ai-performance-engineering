@@ -5,32 +5,49 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 import webbrowser
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
+from urllib.parse import urlsplit
 
 import typer
+
+from core.api.registry import ApiRoute, get_routes
+from core.api.response import build_response
+
 try:
-    from fastapi import FastAPI, Request
+    from fastapi import FastAPI, HTTPException, Request
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import JSONResponse, StreamingResponse
+    from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+
     _FASTAPI_AVAILABLE = True
 except Exception:  # pragma: no cover - fallback for minimal test environments
     _FASTAPI_AVAILABLE = False
 
-    class Request:  # type: ignore[override]
+    class Request:  # type: ignore[no-redef]
         pass
 
-    class JSONResponse:  # type: ignore[override]
+    class HTTPException(Exception):  # type: ignore[no-redef]  # noqa: N818
+        def __init__(self, status_code: int, detail: str) -> None:
+            super().__init__(detail)
+            self.status_code = status_code
+            self.detail = detail
+
+    class JSONResponse:  # type: ignore[no-redef]
         def __init__(self, content: Any, **_: Any) -> None:
             self.content = content
 
-    class StreamingResponse:  # type: ignore[override]
+    class StreamingResponse:  # type: ignore[no-redef]
         def __init__(self, content: Any, **_: Any) -> None:
             self.content = content
 
-    class CORSMiddleware:  # type: ignore[override]
+    class FileResponse:  # type: ignore[no-redef]
+        def __init__(self, path: Any, **_: Any) -> None:
+            self.path = path
+
+    class CORSMiddleware:  # type: ignore[no-redef]
         pass
 
     class _StubRoute:
@@ -38,7 +55,7 @@ except Exception:  # pragma: no cover - fallback for minimal test environments
             self.path = path
             self.methods = methods
 
-    class FastAPI:  # type: ignore[override]
+    class FastAPI:  # type: ignore[no-redef]
         def __init__(self, *_: Any, **__: Any) -> None:
             self.routes: list[_StubRoute] = []
 
@@ -59,17 +76,79 @@ except Exception:  # pragma: no cover - fallback for minimal test environments
 
             return decorator
 
-from core.api.registry import ApiRoute, get_routes
-from core.api.response import build_response
+
+CAMPAIGN_ROOT_ENV = "AISP_DASHBOARD_CAMPAIGN_ROOT"
+UI_ORIGINS_ENV = "AISP_DASHBOARD_ALLOWED_ORIGINS"
+DEFAULT_UI_ORIGINS = ("http://127.0.0.1:3000", "http://localhost:3000")
+_campaign_root_override: Path | None = None
+
+
+def _allowed_ui_origins(raw_value: str | None = None) -> list[str]:
+    raw = raw_value if raw_value is not None else os.environ.get(UI_ORIGINS_ENV, "")
+    origins = [item.strip().rstrip("/") for item in raw.split(",") if item.strip()]
+    if not origins:
+        origins = list(DEFAULT_UI_ORIGINS)
+    for origin in origins:
+        parsed = urlsplit(origin)
+        if (
+            origin == "*"
+            or parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError(f"invalid dashboard UI origin: {origin}")
+    return list(dict.fromkeys(origins))
+
+
+def _configure_campaign_root(root: Path | None) -> None:
+    global _campaign_root_override
+    if root is None:
+        _campaign_root_override = None
+        return
+    resolved = Path(root).expanduser().resolve()
+    if not resolved.is_dir():
+        raise ValueError(f"Campaign root must be an existing directory: {resolved}")
+    _campaign_root_override = resolved
+
+
+def _configured_campaign_root() -> Path:
+    if _campaign_root_override is not None:
+        return _campaign_root_override
+    raw_root = os.environ.get(CAMPAIGN_ROOT_ENV, "").strip()
+    if not raw_root:
+        raise RuntimeError(
+            f"Campaign API is disabled until {CAMPAIGN_ROOT_ENV} or --campaign-root is set"
+        )
+    resolved = Path(raw_root).expanduser().resolve()
+    if not resolved.is_dir():
+        raise RuntimeError(f"Configured campaign root is not a directory: {resolved}")
+    return resolved
+
+
+def _resolve_campaign_workspace(workspace: str) -> Path:
+    root = _configured_campaign_root()
+    raw_workspace = str(workspace).strip()
+    if not raw_workspace:
+        raise ValueError("workspace is required")
+    requested = Path(raw_workspace).expanduser()
+    candidate = requested if requested.is_absolute() else root / requested
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(root):
+        raise PermissionError("campaign workspace is outside the configured campaign root")
+    if not resolved.is_dir():
+        raise FileNotFoundError(f"campaign workspace not found: {resolved}")
+    return resolved
 
 
 fastapi_app = FastAPI(title="AISP Dashboard API", version="1.0")
 fastapi_app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_ui_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 
@@ -83,8 +162,8 @@ def _configure_engine(data_file: Path | None) -> None:
         raise ValueError(f"Dashboard data file must be a file: {path}")
     path = path.resolve()
 
-    from core.analysis.performance_analyzer import PerformanceAnalyzer, load_benchmark_data
     import core.engine as engine
+    from core.analysis.performance_analyzer import PerformanceAnalyzer, load_benchmark_data
     from core.perf_core import get_core
 
     handler = get_core(data_file=path, refresh=True)
@@ -100,7 +179,7 @@ def _parse_bool(value: Any) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
-def _collect_params(request: Request, body: Dict[str, Any] | None) -> Dict[str, Any]:
+def _collect_params(request: Request, body: dict[str, Any] | None) -> dict[str, Any]:
     params = dict(request.query_params)
     if body:
         params.update(body)
@@ -120,17 +199,27 @@ def _exception_type_name(exc: BaseException) -> str:
 def _make_endpoint(route: ApiRoute):
     async def _endpoint(request: Request) -> JSONResponse:
         started = time.time()
-        body: Dict[str, Any] | None = None
+        body: dict[str, Any] | None = None
         if request.method in {"POST", "PUT"}:
             try:
                 payload = await request.json()
-                if isinstance(payload, dict):
-                    body = payload
-                else:
-                    body = {"body": payload}
+                body = payload if isinstance(payload, dict) else {"body": payload}
             except Exception:
                 body = None
         params = _collect_params(request, body)
+        if route.name == "optimization.campaign":
+            try:
+                params["workspace"] = str(
+                    _resolve_campaign_workspace(str(params.get("workspace") or ""))
+                )
+            except PermissionError as exc:
+                raise HTTPException(status_code=403, detail=str(exc)) from exc
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            except RuntimeError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
         include_context = _parse_bool(params.get("include_context"))
         context_level = str(params.get("context_level", "summary"))
 
@@ -172,11 +261,31 @@ def _register_routes() -> None:
 _register_routes()
 
 
+@fastapi_app.get("/api/optimization/campaign/artifact")
+async def campaign_artifact(workspace: str, artifact: str) -> FileResponse:
+    """Serve one hash-valid artifact declared by a campaign ledger."""
+
+    from core.optimization.campaign_dashboard import resolve_campaign_artifact
+
+    try:
+        resolved_workspace = _resolve_campaign_workspace(workspace)
+        path = resolve_campaign_artifact(resolved_workspace, artifact)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return FileResponse(path, filename=path.name)
+
+
 @fastapi_app.get("/api/gpu/stream")
 async def gpu_stream(
     request: Request,
     interval: float = 5.0,
-    max_events: Optional[int] = None,
+    max_events: int | None = None,
 ) -> StreamingResponse:
     if interval <= 0:
         raise ValueError("interval must be > 0")
@@ -224,12 +333,15 @@ def cli_main() -> None:
 def serve_dashboard(
     port: int = 6970,
     data_file: Path | None = None,
+    campaign_root: Path | None = None,
     open_browser: bool = True,
     host: str = "127.0.0.1",
     log_level: str = "info",
 ) -> None:
     """Start the dashboard API server."""
     _configure_engine(data_file)
+    if campaign_root is not None:
+        _configure_campaign_root(campaign_root)
     if open_browser:
         browser_host = host
         if host in {"0.0.0.0", "::"}:
@@ -241,7 +353,7 @@ def serve_dashboard(
         import uvicorn
     except ImportError as exc:
         raise RuntimeError("uvicorn is required to run the dashboard API server") from exc
-    uvicorn.run("dashboard.api.server:fastapi_app", host=host, port=port, log_level=log_level)
+    uvicorn.run(fastapi_app, host=host, port=port, log_level=log_level)
 
 
 @cli.command("serve")
@@ -249,7 +361,17 @@ def cli_serve(
     port: int = typer.Option(6970, "--port", "-p", help="Port to run the server on"),
     host: str = typer.Option("127.0.0.1", "--host", help="Bind host"),
     log_level: str = typer.Option("info", "--log-level", help="Uvicorn log level"),
-    data_file: Optional[Path] = typer.Option(None, "--data", "-d", help="Path to benchmark_test_results.json"),
+    data_file: Optional[Path] = typer.Option(  # noqa: UP045 - Typer 0.12 compatibility
+        None,
+        "--data",
+        "-d",
+        help="Path to benchmark_test_results.json",
+    ),
+    campaign_root: Optional[Path] = typer.Option(  # noqa: UP045 - Typer 0.12 compatibility
+        None,
+        "--campaign-root",
+        help=f"Restrict campaign API access to this directory (or set {CAMPAIGN_ROOT_ENV}).",
+    ),
     open_browser: bool = typer.Option(False, "--open-browser", help="Open browser to the backend URL"),
 ) -> None:
     """Start the dashboard API server."""
@@ -258,6 +380,7 @@ def cli_serve(
         host=host,
         log_level=log_level,
         data_file=data_file,
+        campaign_root=campaign_root,
         open_browser=open_browser,
     )
 

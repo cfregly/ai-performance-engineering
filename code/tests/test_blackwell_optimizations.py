@@ -412,7 +412,9 @@ class TestNumericalCorrectness:
         pipeline_source = inspect.getsource(blackwell.BlackwellInferencePipeline)
         assert "self._next_token_buffer: Optional[torch.Tensor] = None" in pipeline_source
         assert "def _next_token_from_logits" in pipeline_source
-        assert "torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))" in pipeline_source
+        assert "values = self._next_token_values[:batch_size]" in pipeline_source
+        assert "tokens = self._next_token_buffer[:batch_size]" in pipeline_source
+        assert "torch.max(logits_last, dim=-1, keepdim=True, out=(values, tokens))" in pipeline_source
         assert "self._generated_token_buffer: Optional[torch.Tensor] = None" in pipeline_source
         assert "def _generated_output_buffer" in pipeline_source
         assert "self._generated_token_buffer = torch.empty(" in pipeline_source

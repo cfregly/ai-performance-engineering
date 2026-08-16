@@ -1821,11 +1821,14 @@ def _collect_profile_role_files(
     suffix: str,
     name_predicate: Optional[Callable[[Path], bool]] = None,
 ) -> Tuple[List[Path], List[Path]]:
-    def _safe_mtime(path: Path) -> float:
+    def _safe_mtime_ns(path: Path) -> int:
         try:
-            return path.stat().st_mtime
+            return path.stat().st_mtime_ns
         except Exception:
-            return 0.0
+            return 0
+
+    def _capture_order(path: Path) -> Tuple[int, str]:
+        return (_safe_mtime_ns(path), str(path.absolute()))
 
     files = list(profiles_dir.glob(f"*{suffix}"))
     files.extend(list(profiles_dir.rglob(f"*{suffix}")))
@@ -1874,7 +1877,7 @@ def _collect_profile_role_files(
     # are absent, infer baseline/optimized from capture time to keep compare
     # tools usable without symlink-based layouts.
     if not baseline_files and not optimized_files and len(unclassified) == 2:
-        ordered = sorted(unclassified, key=_safe_mtime)
+        ordered = sorted(unclassified, key=_capture_order)
         baseline_files = [ordered[0]]
         optimized_files = [ordered[1]]
 
@@ -1883,7 +1886,7 @@ def _collect_profile_role_files(
     # force deterministic baseline/optimized assignment by capture time.
     all_files = baseline_files + optimized_files + unclassified
     if len(all_files) == 2 and (not baseline_files or not optimized_files):
-        ordered = sorted(all_files, key=_safe_mtime)
+        ordered = sorted(all_files, key=_capture_order)
         baseline_files = [ordered[0]]
         optimized_files = [ordered[1]]
     return baseline_files, optimized_files

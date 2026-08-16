@@ -42,7 +42,7 @@ class OptimizedHostStagedReductionBenchmark(VerificationPayloadMixin, BaseBenchm
             or self._output_buffer.device != self.data.device
             or self._output_buffer.dtype != self.data.dtype
         ):
-            self._output_buffer = torch.empty((), device=self.data.device, dtype=self.data.dtype)
+            raise RuntimeError("setup() must initialize the reduction output buffer")
         return self._output_buffer
     
     def benchmark_fn(self) -> None:

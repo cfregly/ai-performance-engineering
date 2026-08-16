@@ -3,18 +3,18 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 import ssl
 import subprocess
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-import re
 from statistics import mean
-from typing import Any, Callable
+from typing import Any
 
-from cluster.fabric.catalog import DEFAULT_SOURCE_ROOT, SCHEMA_VERSION, generate_catalog_payload
-
+from cluster.fabric.catalog import SCHEMA_VERSION, generate_catalog_payload
 
 CommandRunner = Callable[..., dict[str, Any]]
 
@@ -1505,7 +1505,7 @@ def build_fabric_payloads(
     mgmt = management or make_management_config(ssh_user=ssh_user, ssh_key=ssh_key)
     command_runner = runner or default_command_runner
 
-    catalog = generate_catalog_payload(source_root or DEFAULT_SOURCE_ROOT, run_id=run_id)
+    catalog = generate_catalog_payload(source_root, run_id=run_id)
     capability_matrix = _build_capability_matrix(
         run_id=run_id,
         structured_dir=structured_dir,

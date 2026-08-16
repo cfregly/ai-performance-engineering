@@ -126,8 +126,9 @@ using ElementAccumulator = float;
 using ArchTag = cutlass::arch::Sm100;
 using OperatorClass = cutlass::arch::OpClassTensorOp;
 
-// Baseline uses a smaller Blackwell-native 1SM tile.
-using TileShape = Shape<_128, _128, _64>;   // (M, N, K)
+// CUTLASS 4.5.2 supports a K=128 MMA tile for dense FP8 x FP8 on SM100.
+// Keep the baseline on the smaller 1SM 128x128 tile.
+using TileShape = Shape<_128, _128, _128>;  // (M, N, K)
 using ClusterShape = Shape<_1, _1, _1>;
 
 using EpilogueSchedule = cutlass::epilogue::collective::EpilogueScheduleAuto;

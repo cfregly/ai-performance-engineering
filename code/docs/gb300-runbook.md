@@ -54,7 +54,7 @@ Bring-up steps:
    tcgen05 labs).
 3. Install the harness Python deps on top of the NGC torch (do NOT reinstall
    torch/triton/vllm; keep the NGC CUDA-13 build so CUPTI/nsys/ncu stay intact):
-   `pip install --ignore-installed nvidia-ml-py psutil GPUtil py-cpuinfo hypothesis pytest nvidia-cutlass-dsl==4.3.0`
+   `pip install --ignore-installed nvidia-ml-py psutil GPUtil py-cpuinfo hypothesis pytest 'nvidia-cutlass-dsl[cu13]==4.5.2'`
    (the NGC image already provides typer, pydantic, pyyaml, rich, numpy; the
    Debian-packaged PyYAML cannot be replaced, so skip the `pyyaml==6.0.2` pin).
 4. Run the hardware probe once: `python core/scripts/utilities/probe_hardware_capabilities.py`.
@@ -2087,7 +2087,7 @@ flagged NVFP4 GEMM as "4.4 s / broken"; the real number is microseconds (above).
 ## Open issues found on GB300 (tier1)
 - `labs/block_scaling:block_scaling`: RESOLVED (2026-06-09). Was a CUTLASS DSL
   leading-dim stride assertion under pinned `nvidia-cutlass-dsl==4.3.0` (no sm_103
-  in the DSL `Arch` enum). Fixed by pinning `nvidia-cutlass-dsl[cu13]>=4.5.2`,
+  in the DSL `Arch` enum). Fixed by pinning `nvidia-cutlass-dsl[cu13]==4.5.2`,
   vendoring the sm_103 example, and making `block_scaling_common.py` arch-aware.
   Validated on GB300: verify 0.0 abs error, 1.96x speedup (software BF16 dequant
   0.0867 ms -> hardware NVFP4 blockscaled 0.0443 ms). See the toolchain-skew note
@@ -2143,7 +2143,7 @@ Full root cause + fix for each:
   support sm_103a and works; only the Python DSL JIT lags.
 
   COMPLETE FIX (all 3 parts DONE + validated on GB300, 2026-06-09):
-  1. cutlass-dsl: `nvidia-cutlass-dsl[cu13]>=4.5.2` in requirements_latest.txt.
+  1. cutlass-dsl: `nvidia-cutlass-dsl[cu13]==4.5.2` in requirements_latest.txt.
      4.5.2 adds `sm_103`/`sm_103a`/`sm_103f` to the `Arch` enum (4.3.0/4.4.2 lack
      them); the `[cu13]` extra pulls the CUDA-13 backend.
   2. Vendored (not a submodule bump) the sm_103-specific example to

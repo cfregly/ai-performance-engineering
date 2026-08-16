@@ -42,7 +42,7 @@ def _short_desc(description: str) -> str:
             desc = desc[len("Tags:"):].strip()
     # Use first sentence as summary
     sentence = desc.split(". ", 1)[0].strip()
-    return sentence or desc
+    return (sentence or desc).replace("; ", ", ")
 
 
 def _classify(name: str) -> str:
@@ -100,7 +100,7 @@ def render_mcp_tool_block() -> str:
         lines.append(f"### {category} ({len(tools)})")
         for name in tools:
             desc = _short_desc(TOOLS[name].description)
-            lines.append(f"- `{name}` — {desc}")
+            lines.append(f"- `{name}`: {desc}")
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"

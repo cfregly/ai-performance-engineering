@@ -6,29 +6,32 @@ A modern, high-performance dashboard for GPU benchmark visualization and optimiz
 
 ### Prerequisites
 
-- Node.js 18+ 
-- The Python backend server running on port 6970
+- Node.js 24 or newer
+- Python 3.10 or newer
 
 ### Installation
 
 ```bash
 cd dashboard/web
-npm install
+npm ci
 ```
 
 ### Development
 
-1. Start the Python backend server (in another terminal):
+From the `code/` directory, start the API and Next.js UI together:
+
 ```bash
-python -m dashboard.api.server serve --port 6970
+make dashboard
 ```
 
-2. Start the Next.js development server:
-```bash
-npm run dev
-```
+The API listens on [http://127.0.0.1:6970](http://127.0.0.1:6970). The UI listens on [http://127.0.0.1:3000](http://127.0.0.1:3000) and proxies `/api/*` to the API.
 
-3. Open [http://localhost:3000](http://localhost:3000)
+To run either process by itself:
+
+```bash
+make dashboard-api
+make dashboard-web
+```
 
 ### Production Build
 

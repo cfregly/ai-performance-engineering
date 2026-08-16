@@ -2,21 +2,18 @@
 
 from __future__ import annotations
 
-import argparse
-from functools import partial
-from pathlib import Path
 import time
-
+from pathlib import Path
 from typing import Optional
 
 import torch
-from core.utils.compile_utils import enable_tf32, compile_model
 import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
 
+from ch04.distributed_helper import setup_single_gpu_env
 from core.benchmark.gpu_requirements import require_min_gpus
-from core.common.device_utils import require_cuda_device
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness import arch_config as _arch_config_patch  # noqa: F401
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -25,20 +22,16 @@ from core.harness.benchmark_harness import (
     TorchrunLaunchSpec,
     WorkloadMetadata,
 )
-from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
-
+from core.utils.compile_utils import enable_tf32
 
 # Ensure consistent TF32 state before any operations (new API only)
 enable_tf32()
 
-resolve_device = partial(require_cuda_device, "CUDA required for ch04", local_rank_env="LOCAL_RANK")
-
 
 class MultiLayerNet(nn.Module):
     """Multi-layer network for benchmarking."""
-    
+
     def __init__(self, size: int) -> None:
         super().__init__()
         self.fc1 = nn.Linear(size, size)
@@ -53,11 +46,12 @@ class MultiLayerNet(nn.Module):
 
 class OptimizedOverlapDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Overlap-enabled DDP benchmark with real bucketed collectives."""
+
     multi_gpu_required = True
-    
+
     def __init__(self):
         super().__init__()
-        self.device = resolve_device()
+        self.device = torch.device("cuda")
         self.model = None
         self.optimizer = None
         self.data = None
@@ -75,7 +69,7 @@ class OptimizedOverlapDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(tokens),
         )
-    
+
     def setup(self) -> None:
         """Setup real DDP with overlap optimizations."""
         require_min_gpus(2, "ddp_overlap.py")
@@ -88,14 +82,15 @@ class OptimizedOverlapDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dist.init_process_group(backend="nccl", device_id=local_rank)
             self.initialized = True
         self.device = torch.device(f"cuda:{local_rank}")
-        
+
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         model = MultiLayerNet(self.hidden_size).to(self.device)
-        
+
         # Enable DDP with gradient_as_bucket_view for overlap
         if self.world_size > 1:
             from torch.nn.parallel import DistributedDataParallel as DDP
+
             self.model = DDP(
                 model,
                 device_ids=[self.device.index],
@@ -105,7 +100,7 @@ class OptimizedOverlapDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
         else:
             self.model = model
-        
+
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self.optimizer = optim.SGD(self.model.parameters(), lr=0.01)
         config = getattr(self, "_config", None) or self.get_config()
@@ -114,7 +109,7 @@ class OptimizedOverlapDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.data = torch.randn(self.batch_size, self.hidden_size, device=self.device)
         self.target = torch.randn(self.batch_size, 1, device=self.device)
         torch.cuda.synchronize()
-    
+
     def benchmark_fn(self) -> None:
         """Benchmark a step that overlaps gradient synchronization with backward."""
         with nvtx_range("overlap_ddp", enable=self._enable_nvtx):
@@ -127,7 +122,9 @@ class OptimizedOverlapDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def capture_verification_payload(self) -> None:
         if self.data is None or self.target is None or self.output is None:
-            raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
+            raise RuntimeError(
+                "setup() and benchmark_fn() must be called before capture_verification_payload()"
+            )
         self._set_verification_payload(
             inputs={"data": self.data, "target": self.target},
             output=self.output,
@@ -137,12 +134,13 @@ class OptimizedOverlapDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "fp16": False,
                 "bf16": False,
                 "fp8": False,
-                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32
+                if torch.cuda.is_available()
+                else False,
             },
             output_tolerance=(0.1, 1.0),
         )
 
-    
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
         if dist.is_initialized() and self.initialized:
@@ -153,7 +151,7 @@ class OptimizedOverlapDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.target = None
         torch.cuda.empty_cache()
         self._config = None
-    
+
     def get_config(self) -> BenchmarkConfig:
         """Return benchmark configuration."""
         return BenchmarkConfig(
@@ -165,7 +163,7 @@ class OptimizedOverlapDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
             enable_profiling=False,
             multi_gpu_required=True,
         )
-    
+
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""
         if self.model is None:
@@ -187,15 +185,18 @@ class OptimizedOverlapDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
 
-
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
         from core.benchmark.metrics import compute_memory_transfer_metrics
+
         return compute_memory_transfer_metrics(
-            bytes_transferred=self._bytes_transferred if hasattr(self, '_bytes_transferred') else float(getattr(self, 'N', 1024) * 4),
-            elapsed_ms=getattr(self, '_last_elapsed_ms', None),
+            bytes_transferred=self._bytes_transferred
+            if hasattr(self, "_bytes_transferred")
+            else float(getattr(self, "N", 1024) * 4),
+            elapsed_ms=getattr(self, "_last_elapsed_ms", None),
             transfer_type="hbm",
         )
+
     def get_verify_output(self) -> torch.Tensor:
         """Return output tensor for verification comparison."""
         return super().get_verify_output()
@@ -223,10 +224,10 @@ class OptimizedOverlapDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
         return TorchrunLaunchSpec(
-            script_path=Path(__file__).resolve(),
-            script_args=[],
+            script_path=Path(__file__).resolve().with_name("ddp_worker.py"),
+            script_args=["--variant", "overlap"],
             multi_gpu_required=True,
-            name="optimized_no_overlap",
+            name="optimized_overlap",
             config_arg_map={
                 "iterations": "--iterations",
                 "warmup": "--warmup",
@@ -237,15 +238,6 @@ class OptimizedOverlapDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
     return OptimizedOverlapDdpBenchmark()
-
-
-def _parse_args():
-    parser = argparse.ArgumentParser(description="DDP with communication overlap benchmark.")
-    parser.add_argument("--iterations", type=int, default=20, help="Number of measurement iterations.")
-    parser.add_argument("--warmup", type=int, default=5, help="Number of warmup iterations.")
-    parser.add_argument("--enable-profiling", action="store_true", help="Enable profiling for the run.")
-    parser.add_argument("--enable-memory-tracking", action="store_true", help="Track GPU memory usage.")
-    return parser.parse_args()
 
 
 def _run_worker(iterations: int, warmup: int) -> None:
@@ -276,12 +268,3 @@ def _run_worker(iterations: int, warmup: int) -> None:
             print(f"rank0 time_per_iter_ms: {(elapsed / iterations) * 1000.0:.3f}")
     finally:
         bench.teardown()
-
-
-def main() -> None:
-    args = _parse_args()
-    _run_worker(args.iterations, args.warmup)
-
-
-if __name__ == "__main__":
-    raise SystemExit(run_main_with_skip_status(main))

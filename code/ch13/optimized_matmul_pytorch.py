@@ -1,8 +1,8 @@
 """optimized_matmul_pytorch.py - PyTorch matmul with fused eager epilogue.
 
 Uses the same FP16 compute dtype as the eager baseline, but replaces the
-`matmul -> add -> relu -> add -> mul` chain with an `addmm`-based epilogue
-that stays on the fast cuBLAS path on current B200 stacks.
+`matmul -> add -> relu -> add -> mul` chain with a compiled fused epilogue
+after the cuBLAS matmul.
 """
 
 from __future__ import annotations

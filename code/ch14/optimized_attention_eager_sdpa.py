@@ -85,6 +85,11 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
             device=self.device,
             dtype=self.dtype,
         )
+        self._output_buffer = torch.empty(
+            (self.batch, self.seq_len, self.embed_dim * self.repeat_passes),
+            device=self.device,
+            dtype=self.dtype,
+        )
         self._ensure_output_buffer(
             self.batch,
             self.seq_len,
@@ -114,7 +119,7 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
             or self._output_buffer.device != device
             or self._output_buffer.dtype != dtype
         ):
-            self._output_buffer = torch.empty(output_shape, device=device, dtype=dtype)
+            raise RuntimeError("setup() must initialize the fused-attention output buffer")
         return self._output_buffer
 
     def _attention(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:

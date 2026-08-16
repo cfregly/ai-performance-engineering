@@ -1,16 +1,15 @@
-"""
-CLI entry point for auto-optimizer.
+"""Fail-closed entry point for the retired automatic optimizer."""
 
-Usage:
-    python -m core.optimization.auto code.py --output optimized.py
-    python -m core.optimization.auto https://github.com/user/repo --target model.py
-    python -m core.optimization.auto --scan . --threshold 1.1
-"""
+import sys
 
-from .optimizer import main
+from . import MIGRATION_MESSAGE
+
+
+def main() -> int:
+    """Explain the supported measured optimization path."""
+    print(f"ERROR: {MIGRATION_MESSAGE}", file=sys.stderr)
+    return 2
+
 
 if __name__ == "__main__":
-    main()
-
-
-
+    raise SystemExit(main())

@@ -18,7 +18,8 @@ from labs.recsys_sequence_ranking.recsys_sequence_ranking_common import (
     build_model_state,
     build_workspace,
     default_workload,
-    optimized_forward,
+    ensure_triton_compat,
+    optimized_forward_preallocated as optimized_forward,
     prepare_workspace_for_inputs,
     ranking_metrics,
     requests_per_iteration,
@@ -72,6 +73,8 @@ class OptimizedSequenceRankingBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.output = None
 
         self.score_backend = resolve_score_backend(self.workload.score_backend)
+        if TRITON_AVAILABLE:
+            ensure_triton_compat()
         self.compile_enabled = self._should_enable_compile()
         self.compiled_tower = None
         if self.compile_enabled and self.state is not None:

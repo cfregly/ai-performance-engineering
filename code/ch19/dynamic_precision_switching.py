@@ -50,6 +50,21 @@ class PrecisionStats:
     fp4_tokens: int = 0
     precision_switches: int = 0
     avg_confidence: float = 0.0
+    decode_steps: int = 0
+    model_forwards: int = 0
+    policy_evaluations: int = 0
+
+    def reset(self) -> None:
+        """Reset counters before a new decode invocation."""
+        self.total_tokens = 0
+        self.fp16_tokens = 0
+        self.fp8_tokens = 0
+        self.fp4_tokens = 0
+        self.precision_switches = 0
+        self.avg_confidence = 0.0
+        self.decode_steps = 0
+        self.model_forwards = 0
+        self.policy_evaluations = 0
     
     @property
     def fp8_ratio(self) -> float:
@@ -95,10 +110,8 @@ class DynamicPrecisionWorkspace:
     margin_values: Optional[torch.Tensor] = None
     margin_mean: Optional[torch.Tensor] = None
     ema_conf: Optional[torch.Tensor] = None
-    direct_cache_prompt_ptr: Optional[int] = None
-    direct_cache_prompt_version: Optional[int] = None
-    direct_cache_prompt_shape: Optional[Tuple[int, ...]] = None
-    direct_cache_max_steps: Optional[int] = None
+    stats: Optional[PrecisionStats] = None
+    decode_invocations: int = 0
 
 
 # Safe Transformer Engine (TE) FP8 autocast import
@@ -324,23 +337,8 @@ def decode_with_dynamic_precision(
     stats = PrecisionStats() if collect_stats else None
 
     if use_direct_sequence and max_steps > 0:
-        prompt_version = int(getattr(prompt, "_version", 0))
-        prompt_shape = tuple(prompt.shape)
-        can_reuse_direct_output = (
-            workspace is not None
-            and workspace.direct_cache_prompt_ptr == prompt.data_ptr()
-            and workspace.direct_cache_prompt_version == prompt_version
-            and workspace.direct_cache_prompt_shape == prompt_shape
-            and workspace.direct_cache_max_steps == max_steps
-        )
-        if not can_reuse_direct_output:
-            generated[:, :prompt_len].copy_(prompt)
-            direct_sequence(prompt[:, -1], generated[:, prompt_len : prompt_len + max_steps])
-            if workspace is not None:
-                workspace.direct_cache_prompt_ptr = prompt.data_ptr()
-                workspace.direct_cache_prompt_version = prompt_version
-                workspace.direct_cache_prompt_shape = prompt_shape
-                workspace.direct_cache_max_steps = max_steps
+        generated[:, :prompt_len].copy_(prompt)
+        direct_sequence(prompt[:, -1], generated[:, prompt_len : prompt_len + max_steps])
         if stats:
             direct_conf_value = 16.0
             stats_precision_mode = default_mode

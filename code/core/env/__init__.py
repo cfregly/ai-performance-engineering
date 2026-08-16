@@ -500,12 +500,17 @@ def _prepend_if_missing(key: str, prefix: str) -> None:
 
 
 def _ensure_ld_preload() -> None:
-    # On aarch64 hosts, preloading distro NCCL often conflicts with the NCCL
-    # bundled in modern CUDA wheels (e.g., undefined symbol ncclWaitSignal).
-    # Prefer wheel-resolved libraries over forcing a system preload.
+    # Preloading distro NCCL can conflict with the NCCL bundled in modern CUDA
+    # wheels. Prefer the wheel runtime unless the caller explicitly selected
+    # the system runtime policy.
     import platform
     if platform.machine() in ("aarch64", "arm64"):
         return
+
+    if _runtime_policy() != "system":
+        for lib_dir in _discover_nvidia_wheel_lib_dirs():
+            if any(Path(lib_dir).glob("libnccl.so*")):
+                return
 
     os.environ.setdefault("LD_PRELOAD", "")
     preload_entries = [segment for segment in os.environ["LD_PRELOAD"].split(os.pathsep) if segment]

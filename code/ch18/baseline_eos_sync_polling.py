@@ -7,6 +7,7 @@ from core.benchmark.hf_decoder_cache_benchmark import (  # noqa: E402
     HFDecoderCacheConfig,
     attach_benchmark_metadata,
 )
+from ch18.eos_sync_polling_benchmark import PreallocatedEOSSyncPollingBenchmark
 
 
 def get_benchmark() -> HFDecoderCacheBenchmark:
@@ -26,6 +27,6 @@ def get_benchmark() -> HFDecoderCacheBenchmark:
         warmup=8,
         label="baseline_eos_sync_polling",
     )
-    return attach_benchmark_metadata(HFDecoderCacheBenchmark(cfg), __file__)  # type: ignore[return-value]
-
+    benchmark = PreallocatedEOSSyncPollingBenchmark(cfg)
+    return attach_benchmark_metadata(benchmark, __file__)  # type: ignore[return-value]
 

@@ -1,242 +1,38 @@
-# 🚀 Auto-Optimizer
+# Optimization input adapters
 
-**LLM-powered GPU code optimization tool** that automatically profiles, analyzes, and optimizes PyTorch/CUDA code.
+The former automatic optimizer execution path has been removed. It accepted one-off timings, estimated CPU and GPU splits, and could overwrite candidates without the repository's correctness and provenance gates. It must not produce benchmark results or promote code.
 
-## Features
-
-- **Multi-source input**: Optimize local files, GitHub repos, or existing benchmark pairs
-- **Intelligent profiling**: Automatic bottleneck detection using torch.profiler
-- **LLM-powered analysis**: Uses Claude/GPT to suggest optimizations
-- **Iterative refinement**: Multiple optimization passes with validation
-- **Safe patching**: AST-based code modification with syntax validation
-
-## Quick Start
+Use the trusted benchmark harness to collect repeated control and candidate measurements. Record those measurements with the campaign controller:
 
 ```bash
-# Optimize a single file
-python -m core.optimization.auto examples/optimize_examples.py --output /tmp/optimize_examples_optimized.py
-
-# Optimize from a repo (replace "." with a Git URL)
-python -m core.optimization.auto . --target ch07/baseline_memory_access.py
-
-# Scan and optimize all underperforming benchmarks
-python -m core.optimization.auto --scan . --threshold 1.1
-
-# Use OpenAI instead of Anthropic
-python -m core.optimization.auto examples/optimize_examples.py --provider openai --model gpt-4o
+python -m core.optimization.campaign --help
 ```
 
-## CLI Reference
+The full workflow is documented in [Autoresearch campaigns](../../../docs/autoresearch_campaigns.md).
 
-```
-usage: python -m core.optimization.auto [-h] [--output OUTPUT] [--target TARGET]
-                                [--scan] [--threshold THRESHOLD]
-                                [--provider {anthropic,openai}] [--model MODEL]
-                                [--iterations ITERATIONS] [--verbose] [--quiet]
-                                [input]
+## Retained adapters
 
-positional arguments:
-  input                 File path, directory, or repo URL to optimize
-
-options:
-  -h, --help            Show help message
-  --output, -o OUTPUT   Output file/directory path
-  --target, -t TARGET   Target files in repo (can specify multiple)
-  --scan                Scan directory for benchmark pairs to optimize
-  --threshold THRESHOLD Speedup threshold for --scan (default: 1.1)
-  --provider            LLM provider: anthropic or openai (default: anthropic)
-  --model MODEL         LLM model to use
-  --iterations N        Max optimization iterations (default: 3)
-  --verbose, -v         Verbose output (default: true)
-  --quiet, -q           Suppress output
-```
-
-## Python API
-
-### Basic Usage
+The package keeps source discovery and output adapters for campaign integrations:
 
 ```python
-from core.optimization.auto import AutoOptimizer
-
-optimizer = AutoOptimizer(
-    llm_provider="anthropic",
-    model="claude-sonnet-4-20250514",
-    max_iterations=3,
-    target_speedup=1.2,
-)
-
-# Optimize a single file
-result = optimizer.optimize_file(
-    "examples/optimize_examples.py",
-    output_path="/tmp/optimize_examples_optimized.py"
-)
-
-print(f"Speedup: {result.speedup:.2f}x")
-print(f"Techniques: {result.techniques_applied}")
-print(result.explanation)
+from core.optimization.auto import BenchmarkAdapter, FileAdapter, RepoAdapter
 ```
 
-### Optimize a Repository (Local or Remote)
+These adapters read and write code. They do not benchmark, verify, gate, or promote a candidate.
 
-```python
-results = optimizer.optimize_repo(
-    ".",
-    target_files=["ch07/baseline_memory_access.py", "ch07/optimized_memory_access.py"],
-    branch="main",
-    output_dir="/tmp/optimized/"
-)
+## Fail-closed behavior
 
-for file_path, result in results.items():
-    print(f"{file_path}: {result.speedup:.2f}x")
-```
-
-### Scan and Optimize Benchmarks
-
-```python
-results = optimizer.scan_and_optimize(
-    directory=".",
-    threshold=1.05,  # Only optimize if current speedup < 1.05x
-    pattern="optimized_*.py"
-)
-```
-
-## Input Adapters
-
-The optimizer supports multiple input sources through adapters:
-
-### FileAdapter
-```python
-from core.optimization.auto import FileAdapter
-
-adapter = FileAdapter(
-    paths=["ch07/baseline_memory_access.py", "ch07/optimized_memory_access.py"],
-    output_dir="/tmp/optimized/",
-    suffix="_optimized"
-)
-```
-
-### RepoAdapter
-```python
-from core.optimization.auto import RepoAdapter
-
-adapter = RepoAdapter(
-    repo_url=".",
-    target_files=["ch07/baseline_memory_access.py"],  # Optional, auto-detects GPU files
-    branch="main"
-)
-```
-
-### BenchmarkAdapter
-```python
-from core.optimization.auto import BenchmarkAdapter
-
-adapter = BenchmarkAdapter(
-    directory="./benchmarks/",
-    threshold=1.1,
-    pattern="optimized_*.py"
-)
-```
-
-## Configuration File
-
-Create `./optimize_config.yaml` for persistent settings (see `examples/optimize_config.yaml`):
-
-```yaml
-llm:
-  provider: anthropic
-  model: claude-sonnet-4-20250514
-  max_tokens: 16384
-
-optimization:
-  max_iterations: 3
-  target_speedup: 1.2
-  techniques:
-    - torch_compile
-    - mixed_precision
-    - cuda_graphs
-    - kernel_fusion
-
-profiling:
-  warmup_iterations: 3
-  benchmark_iterations: 10
-  
-output:
-  save_intermediate: true
-  generate_report: true
-```
-
-## Output
-
-### OptimizationResult
-
-```python
-@dataclass
-class OptimizationResult:
-    success: bool              # Whether optimization improved performance
-    original_code: str         # Original source code
-    optimized_code: str        # Optimized source code
-    original_time_ms: float    # Original execution time
-    optimized_time_ms: float   # Optimized execution time
-    speedup: float             # Performance improvement ratio
-    techniques_applied: List[str]  # Applied optimization techniques
-    explanation: str           # Human-readable explanation
-    profile_data: Dict         # Detailed profiling data
-    patches_applied: List[Dict]    # Applied code patches
-    errors: List[str]          # Any errors encountered
-```
-
-## Optimization Techniques
-
-The optimizer can apply various GPU optimization techniques:
-
-| Technique | Description |
-|-----------|-------------|
-| `torch.compile` | JIT compilation with kernel fusion |
-| Mixed Precision | BF16/FP16 for Tensor Core utilization |
-| CUDA Graphs | Reduce kernel launch overhead |
-| Memory Optimization | Efficient memory access patterns |
-| Kernel Fusion | Combine multiple operations |
-| Async Operations | Overlap compute and memory transfers |
-
-## Environment Variables
+Every former module invocation exits with status 2 and prints the supported migration path:
 
 ```bash
-# LLM API keys
-export ANTHROPIC_API_KEY="your-key"
-export OPENAI_API_KEY="your-key"
-
-# Cache directory
-export AUTO_OPTIMIZER_CACHE="~/.cache/auto-optimizer"
-
-# Logging level
-export AUTO_OPTIMIZER_LOG_LEVEL="INFO"
+python -m core.optimization.auto
 ```
 
-## Examples
+A measured campaign needs all of the following before promotion:
 
-See [`examples/optimize_examples.py`](../../../examples/optimize_examples.py) for more usage examples.
-
-## Troubleshooting
-
-### Common Issues
-
-1. **"No benchmark class found"**: Ensure your file has a class inheriting from `BaseBenchmark`
-2. **"LLM analysis failed"**: Check API key and network connection
-3. **"Patch application failed"**: Review the generated patch for syntax issues
-
-### Debug Mode
-
-```bash
-python -m core.optimization.auto ch07/baseline_memory_access.py --verbose 2>&1 | tee optimize.log
-```
-
-## Architecture
-
-```
-core/optimization/auto/
-├── __init__.py          # Public API exports
-├── __main__.py          # CLI entry point
-├── optimizer.py         # Core AutoOptimizer class
-├── input_adapters.py    # File/Repo/Benchmark adapters
-└── README.md            # This file
-```
+- a frozen workload and environment contract
+- repeated control and candidate trials
+- explicit correctness evidence
+- per-case regression gates
+- hashed artifacts and Git provenance
+- review through the campaign promotion frontier

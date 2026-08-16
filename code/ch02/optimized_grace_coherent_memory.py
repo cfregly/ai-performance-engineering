@@ -12,8 +12,8 @@ import torch
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
-    BenchmarkHarness,
     BenchmarkConfig,
+    BenchmarkHarness,
     BenchmarkMode,
     WorkloadMetadata,
 )
@@ -96,33 +96,34 @@ def _cpus_for_numa_node(numa_node: int) -> List[int]:
 
 class OptimizedGraceCoherentMemory:
     """Optimized coherent memory with cache-aware access patterns."""
-    
+
     # Thresholds based on Grace-Blackwell coherency fabric performance
-    ZERO_COPY_THRESHOLD_MB = 4    # Use zero-copy for <4MB
-    ASYNC_THRESHOLD_MB = 64        # Use async pinned for 4-64MB
-    
+    ZERO_COPY_THRESHOLD_MB = 4  # Use zero-copy for <4MB
+    ASYNC_THRESHOLD_MB = 64  # Use async pinned for 4-64MB
+
     def __init__(self, size_mb: int = 256, iterations: int = 100):
         if not torch.cuda.is_available():
             raise RuntimeError(_CUDA_SKIP_REASON)
         self.size_mb = size_mb
         self.iterations = iterations
         self.device = torch.device("cuda")
-        
+
         # Check if we're on Grace-Blackwell
         self.is_grace_blackwell = self._detect_grace_blackwell()
         if not self.is_grace_blackwell:
             raise RuntimeError(_GRACE_SKIP_REASON)
-        
+
         # Select optimal strategy based on size
         self.strategy = self._select_strategy()
         logger.info(f"Selected strategy: {self.strategy} for {size_mb}MB")
-    
+
     def _detect_grace_blackwell(self) -> bool:
         """Detect if running on Grace-Blackwell platform."""
         try:
             import platform
+
             props = torch.cuda.get_device_properties(0)
-            is_arm_host = platform.machine() in ('aarch64', 'arm64')
+            is_arm_host = platform.machine() in ("aarch64", "arm64")
             # Grace-Blackwell coherent memory needs a Grace (ARM) host paired with
             # a Blackwell-class GPU. GB200/GB300 GPUs report CC 10.x (B200=10.0,
             # B300=10.3); GB10 reports CC 12.x. A non-Grace (x86) B200/B300 host has
@@ -132,9 +133,9 @@ class OptimizedGraceCoherentMemory:
                 return True
         except Exception as e:
             logger.debug(f"Grace-Blackwell detection failed: {e}")
-        
+
         return False
-    
+
     def _select_strategy(self) -> str:
         """Select optimal transfer strategy based on size."""
         # On Grace-Blackwell the NVLink-C2C fabric is cache-coherent, so a GPU-resident
@@ -143,16 +144,18 @@ class OptimizedGraceCoherentMemory:
         # which beats async-pinned transfers at every size. The old size threshold was a
         # PCIe-era heuristic; on coherent hardware zero-copy is the right strategy throughout.
         return "zero_copy"
-    
+
     def _bind_numa_node(self):
         """Bind to NUMA node closest to GPU (Grace-Blackwell specific)."""
         if not self.is_grace_blackwell:
             return
-        
+
         gpu_id = torch.cuda.current_device()
         numa_node = _gpu_numa_node_from_sysfs(gpu_id)
         if numa_node is None:
-            logger.info("GPU NUMA node unavailable for GPU %s; leaving process affinity unchanged", gpu_id)
+            logger.info(
+                "GPU NUMA node unavailable for GPU %s; leaving process affinity unchanged", gpu_id
+            )
             return
 
         # Try to pin this process' CPU affinity to the NUMA node's CPUs
@@ -173,14 +176,14 @@ class OptimizedGraceCoherentMemory:
                 logger.info(f"Set NUMA memory preference to node {numa_node}")
         except Exception as e:  # pragma: no cover - optional path
             logger.debug(f"NUMA memory binding skipped: {e}")
-    
+
     def setup(self):
         """Initialize data structures with optimal memory type."""
         num_elements = (self.size_mb * 1024 * 1024) // 4  # float32
-        
+
         # Bind to optimal NUMA node
         self._bind_numa_node()
-        
+
         if self.strategy == "zero_copy":
             # Zero-copy coherent buffer: a GPU-resident allocation the CPU reads directly
             # over NVLink-C2C, so no per-iteration H2D/D2H transfer is needed. Initialize
@@ -192,24 +195,24 @@ class OptimizedGraceCoherentMemory:
             # cpu_data is the same coherent buffer (CPU-visible); no separate host copy.
             self.cpu_data = self.gpu_data
             logger.info(f"Using zero-copy coherent GPU buffer ({self.size_mb}MB)")
-        
+
         elif self.strategy == "async_pinned":
             # Pinned memory with async copies
             self.cpu_data = torch.randn(num_elements, dtype=torch.float32).pin_memory()
             self.gpu_data = torch.zeros(num_elements, dtype=torch.float32, device=self.device)
-            
+
             # Create stream for async copies
             self.stream = torch.cuda.Stream()
             logger.info(f"Using async pinned memory ({self.size_mb}MB)")
-    
+
     def run_step(self) -> float:
         """Execute one transfer step using the selected coherent-memory strategy."""
         torch.cuda.synchronize()
         start = time.perf_counter()
-        
+
         if self.strategy == "zero_copy":
             self.gpu_data.mul_(2.0).add_(1.0)
-        
+
         elif self.strategy == "async_pinned":
             current_stream = torch.cuda.current_stream()
             with torch.cuda.stream(self.stream):
@@ -220,32 +223,23 @@ class OptimizedGraceCoherentMemory:
             with torch.cuda.stream(self.stream):
                 self.cpu_data.copy_(self.gpu_data, non_blocking=True)
             self.stream.synchronize()
-        
+
         torch.cuda.synchronize()
         end = time.perf_counter()
-        
-        elapsed = end - start
-        
-        # Calculate bandwidth (zero-copy only counts once since data isn't moved)
-        if self.strategy == "zero_copy":
-            bandwidth_gb_s = (self.size_mb / 1024) / elapsed
-        else:
-            bandwidth_gb_s = (self.size_mb / 1024) * 2 / elapsed  # H2D + D2H
-        
-        logger.info(f"Optimized bandwidth ({self.strategy}): {bandwidth_gb_s:.2f} GB/s")
-        return elapsed
-    
+        return end - start
+
     def cleanup(self):
         """Clean up resources."""
         del self.cpu_data
         del self.gpu_data
-        if hasattr(self, 'stream'):
+        if hasattr(self, "stream"):
             del self.stream
         torch.cuda.empty_cache()
 
 
 class OptimizedGraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Harness-friendly wrapper around the optimized coherent memory path."""
+
     allowed_benchmark_fn_antipatterns = ("sync", "host_transfer")
 
     def __init__(self, size_mb: int = 256, iterations: int = 100):
@@ -270,14 +264,14 @@ class OptimizedGraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
         # Seed FIRST for deterministic verification
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
-        
+
         self._impl.setup()
         self._verify_output_buffer = torch.empty_like(self._impl.cpu_data[:1000])
         self.register_workload_metadata(
             requests_per_iteration=self._workload.requests_per_iteration,
             bytes_per_iteration=self._workload.bytes_per_iteration,
         )
-        
+
         # Ensure gpu_data has actual values for verification (strategies other than
         # zero_copy start with zeros in gpu_data before the first copy in run())
         if self._impl.strategy != "zero_copy":
@@ -312,7 +306,9 @@ class OptimizedGraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
                 "fp16": False,
                 "bf16": False,
                 "fp8": False,
-                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32
+                if torch.cuda.is_available()
+                else False,
             },
             output_tolerance=(1e-3, 1e-3),
         )
@@ -347,6 +343,7 @@ class OptimizedGraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
     def get_custom_metrics(self) -> Optional[dict]:
         """Return memory transfer metrics for grace_coherent_memory."""
         from core.benchmark.metrics import compute_memory_transfer_metrics
+
         multiplier = 1 if self._impl.strategy == "zero_copy" else 2
         bytes_transferred = float(self.size_mb * 1024 * 1024 * multiplier)
         return compute_memory_transfer_metrics(
@@ -366,13 +363,10 @@ def get_benchmark() -> BaseBenchmark:
 
 
 def run_benchmark(
-    size_mb: int = 256,
-    iterations: int = 100,
-    profile: str = "none",
-    **kwargs
+    size_mb: int = 256, iterations: int = 100, profile: str = "none", **kwargs
 ) -> Dict[str, Any]:
     """Run optimized Grace coherent memory benchmark."""
-    
+
     benchmark = OptimizedGraceCoherentMemoryBenchmark(size_mb=size_mb, iterations=iterations)
     harness = BenchmarkHarness(
         mode=BenchmarkMode.CUSTOM,
@@ -386,8 +380,12 @@ def run_benchmark(
 
     return {
         "mean_time_ms": result.timing.mean_ms if result.timing else 0.0,
-        "is_grace_blackwell": getattr(benchmark, "_impl", None).is_grace_blackwell if hasattr(benchmark, "_impl") else False,
-        "strategy": getattr(benchmark, "_impl", None).strategy if hasattr(benchmark, "_impl") else "",
+        "is_grace_blackwell": getattr(benchmark, "_impl", None).is_grace_blackwell
+        if hasattr(benchmark, "_impl")
+        else False,
+        "strategy": getattr(benchmark, "_impl", None).strategy
+        if hasattr(benchmark, "_impl")
+        else "",
         "size_mb": size_mb,
         "iterations": iterations,
     }

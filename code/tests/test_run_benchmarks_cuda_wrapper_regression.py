@@ -13,6 +13,9 @@ class _DummyExpectationsStore:
     def save(self) -> None:
         return None
 
+    def get_entry(self, _key: str) -> None:
+        return None
+
 
 def test_test_chapter_impl_uses_cuda_wrapper_detector_without_nameerror(tmp_path, monkeypatch):
     chapter_dir = tmp_path / "ch03"

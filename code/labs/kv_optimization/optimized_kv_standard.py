@@ -24,6 +24,11 @@ from core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _allocate_scale_buffer(x: torch.Tensor, numel: int) -> torch.Tensor:
+    """Allocate a resizable scratch buffer for interactive, untimed use."""
+    return torch.empty(numel, dtype=x.dtype, device=x.device)
+
+
 class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
     """Optimized FP8 compressed KV cache."""
 
@@ -70,6 +75,8 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._k_quantized_layer_view: Optional[torch.Tensor] = None
         self._v_quantized_layer_view: Optional[torch.Tensor] = None
         self._scale_abs_buffer: Optional[torch.Tensor] = None
+        self._scale_buffer_allocator = _allocate_scale_buffer
+        self._require_preallocated_scale_buffer = False
         self._output_view: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self._seq_lengths_host: list[int] = [0] * batch_size
@@ -151,6 +158,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         )
         self._v_quantized_step = torch.empty_like(self._k_quantized_step)
         self._scale_abs_buffer = torch.empty_like(self._generated_k_steps[0])
+        self._require_preallocated_scale_buffer = True
         self._k_quantized_layer_view = self._k_quantized_step.unsqueeze(1)
         self._v_quantized_layer_view = self._v_quantized_step.unsqueeze(1)
         self._output_view = self.kv_cache[:1, :1, :, :, :1, : min(8, self.head_dim)]
@@ -196,7 +204,9 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
             or self._scale_abs_buffer.dtype != x.dtype
             or self._scale_abs_buffer.numel() < numel
         ):
-            self._scale_abs_buffer = torch.empty(numel, dtype=x.dtype, device=x.device)
+            if self._require_preallocated_scale_buffer:
+                raise RuntimeError("Preallocated scale buffer does not match the decode step")
+            self._scale_abs_buffer = self._scale_buffer_allocator(x, numel)
         abs_buffer = self._scale_abs_buffer[:numel].view(shape)
         torch.abs(x, out=abs_buffer)
         absmax = abs_buffer.amax().float()
@@ -407,6 +417,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._k_quantized_layer_view = None
         self._v_quantized_layer_view = None
         self._scale_abs_buffer = None
+        self._require_preallocated_scale_buffer = False
         self._output_view = None
         self._verify_output_buffer = None
         self.output = None

@@ -237,6 +237,14 @@ _ROUTES: List[ApiRoute] = [
     ),
     ApiRoute(
         "GET",
+        "/api/optimization/campaign",
+        "optimization.campaign",
+        handlers.optimization_campaign,
+        description="Read a hashed optimization campaign ledger for manual review.",
+        meta=True,
+    ),
+    ApiRoute(
+        "GET",
         "/api/benchmark/targets",
         "benchmark.targets",
         handlers.benchmark_targets,

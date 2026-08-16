@@ -1,6 +1,8 @@
 # AI Performance Engineering - Blackwell Requirements
 # Target: Blackwell B200 (SM100) with PyTorch 2.9.1+cu130, CUDA 13.0, Triton 3.5.0
 # All versions are pinned to exact versions for reproducible builds
+# uv.lock contains only the repository's Python compatibility metadata. It is
+# not a resolved dependency lock. This file remains the environment source.
 #
 # GB300 / Blackwell Ultra (sm_103) note (verified 2026-06-09): the validated, working
 # GB300 toolchain is the NGC torch 2.12 base (CUDA 13; arch_list sm_100 + compute_120,
@@ -51,11 +53,12 @@ cuda-python==13.0.3
 kvikio-cu13==25.10.0
 
 # CUTLASS backend for torch.compile (includes Python API and C++ headers).
-# Use the [cu13] extra and >=4.5.2: 4.5.x adds the Blackwell Ultra arches
+# Use the [cu13] extra and exactly 4.5.2. This is the version validated for the
+# Blackwell B200 and GB300 setup. It adds the Blackwell Ultra arches
 # (sm_103/sm_103a/sm_103f) to the CuTe-DSL Arch enum, and the [cu13] extra pulls
 # the CUDA-13 backend libs. 4.3.0 (base-only) lacks sm_103a, so the Python
 # CuTe-DSL JIT labs (e.g. labs/block_scaling) cannot target GB300/sm_103.
-nvidia-cutlass-dsl[cu13]>=4.5.2
+nvidia-cutlass-dsl[cu13]==4.5.2
 
 # Development workflow
 jupyter==1.1.1
@@ -67,6 +70,10 @@ flake8==7.3.0
 mypy==1.18.2
 pre-commit==4.0.1
 pytest==8.3.4
+# CI repeats these exact test pins because its CPU runner does not install the
+# full CUDA environment from this file.
+pytest-cov==7.1.0
+coverage[toml]==7.15.2
 hypothesis==6.148.2  # Property-based testing for benchmark integrity tests
 pyyaml==6.0.2
 pydantic==2.12.4

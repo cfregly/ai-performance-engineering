@@ -24,16 +24,20 @@ def test_optimized_streams_compute_reuses_preallocated_result_buffers() -> None:
     assert "self._scratch1: Optional[torch.Tensor] = None" in source
     assert "self._scratch_pair: Optional[tuple[torch.Tensor, torch.Tensor]] = None" in source
     assert "self._chunk_triplets: List[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []" in source
+    assert "self._pipeline_steps: List[" in source
     assert "self._scratch0 = torch.empty(self.N, dtype=torch.float32, device=self.device)" in source
     assert "self._scratch1 = torch.empty(self.N, dtype=torch.float32, device=self.device)" in source
     assert "self._scratch_pair = (self._scratch0, self._scratch1)" in source
     assert "self._chunk_triplets = list(zip(self.host_data, self.device_data, self.results, strict=True))" in source
+    assert "self._pipeline_steps.append((device_chunk, result_chunk, next_transfer))" in source
     assert "with torch.inference_mode(), self._nvtx_range(\"streams_pipelined\"):" in benchmark_section
     assert "chunks = self._chunk_triplets" in benchmark_section
+    assert "pipeline_steps = self._pipeline_steps" in benchmark_section
     assert "first_device.copy_(first_host, non_blocking=True)" in benchmark_section
-    assert "for i, (_, device_chunk, result_chunk) in enumerate(chunks):" in benchmark_section
+    assert "for device_chunk, result_chunk, next_transfer in pipeline_steps:" in benchmark_section
     assert "next_device.copy_(next_host, non_blocking=True)" in benchmark_section
     assert "self._compute(device_chunk, result_chunk)" in benchmark_section
+    assert "enumerate(chunks)" not in benchmark_section
     assert "self.device_data[i]" not in benchmark_section
     assert "self.host_data[i]" not in benchmark_section
     assert "self.results[i]" not in benchmark_section

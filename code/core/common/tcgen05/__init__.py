@@ -4,15 +4,23 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
+import sys
+import tempfile
+from collections.abc import Sequence
+from contextlib import suppress
 from functools import lru_cache
 from pathlib import Path
-from typing import Sequence
 
 import torch
 from torch.utils.cpp_extension import load
 
-from core.benchmark.tcgen05_requirements import ensure_tcgen05_supported
+from core.benchmark.tcgen05_requirements import (
+    SUPPORTED_TCGEN05_CAPABILITIES,
+    ensure_tcgen05_capability_supported,
+    ensure_tcgen05_supported,
+)
 from core.harness.hardware_capabilities import detect_capabilities
 
 try:  # Ensure TORCH_CUDA_ARCH_LIST stays clamped for GB-series hosts.
@@ -21,7 +29,6 @@ except ImportError:  # pragma: no cover - optional bootstrap
     arch_config = None  # type: ignore[assignment]
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_CUTLASS_INCLUDES: list[Path] = []
 # For SM100 (Blackwell) tcgen05/TMEM kernels, prefer the standalone CUTLASS which has
 # the required SM100-specific headers (mma_sm100_umma.hpp, tmem_allocator_sm100.hpp).
 # TransformerEngine's bundled CUTLASS may not include these newer headers.
@@ -32,63 +39,109 @@ _SM100_CUTLASS_CANDIDATES = (
 _FALLBACK_CUTLASS_CANDIDATES = (
     _REPO_ROOT / "third_party" / "TransformerEngine" / "3rdparty" / "cutlass" / "include",
 )
-# Compute capability helper (prefer probed capabilities, fallback to torch)
-def _current_compute_capability() -> tuple[int, int]:
+_SUPPORTED_TCGEN05_TARGETS = {
+    (10, 0): "100a",
+    (10, 3): "103a",
+}
+if frozenset(_SUPPORTED_TCGEN05_TARGETS) != SUPPORTED_TCGEN05_CAPABILITIES:
+    raise RuntimeError("tcgen05 capability and CUDA target tables are inconsistent")
+
+# These are the CUTLASS headers included directly by the tcgen05 sources loaded
+# from this module. Checking them here gives a clear skip before PyTorch mutates
+# an extension cache or launches Ninja.
+_REQUIRED_CUTLASS_HEADERS = (
+    Path("cutlass/arch/barrier.h"),
+    Path("cutlass/cutlass.h"),
+    Path("cutlass/detail/collective/moe_stride_utils.hpp"),
+    Path("cutlass/epilogue/collective/collective_builder.hpp"),
+    Path("cutlass/gemm/collective/collective_builder.hpp"),
+    Path("cutlass/gemm/device/gemm_universal_adapter.h"),
+    Path("cutlass/gemm/dispatch_policy.hpp"),
+    Path("cutlass/gemm/kernel/gemm_universal.hpp"),
+    Path("cutlass/half.h"),
+    Path("cute/arch/cluster_sm90.hpp"),
+    Path("cute/arch/copy_sm90_tma.hpp"),
+    Path("cute/arch/mma_sm100_umma.hpp"),
+    Path("cute/arch/tmem_allocator_sm100.hpp"),
+    Path("cute/atom/copy_traits_sm90_tma.hpp"),
+    Path("cute/atom/mma_traits_sm100.hpp"),
+    Path("cute/numeric/integral_constant.hpp"),
+    Path("cute/tensor.hpp"),
+)
+
+
+def _detect_compute_capability() -> tuple[int, int] | None:
+    """Return the visible CUDA compute capability without requiring a GPU at import time."""
+    if not torch.cuda.is_available():
+        return None
     cap = detect_capabilities()
     if cap is not None:
         parts = cap.compute_capability.split(".")
         major = int(parts[0])
         minor = int(parts[1]) if len(parts) > 1 else 0
         return major, minor
-    if torch.cuda.is_available():
-        return torch.cuda.get_device_capability()
-    raise RuntimeError("CUDA hardware capabilities unavailable and no CUDA device detected.")
+    return torch.cuda.get_device_capability()
 
-# Check if we have SM100+ GPU - if so, prefer the full CUTLASS
-_sm100_gpu = False
-major_cc, minor_cc = _current_compute_capability()
-_sm100_gpu = major_cc >= 10
 
-_candidates = _SM100_CUTLASS_CANDIDATES + _FALLBACK_CUTLASS_CANDIDATES if _sm100_gpu else \
-              _FALLBACK_CUTLASS_CANDIDATES + _SM100_CUTLASS_CANDIDATES
-for _cand in _candidates:
-    if _cand.exists():
-        _CUTLASS_INCLUDES = [_cand]
-        break
+def _current_compute_capability() -> tuple[int, int]:
+    """Return a supported tcgen05 capability or fail closed when a loader is invoked."""
+    capability = _detect_compute_capability()
+    if capability is None:
+        raise RuntimeError(
+            "SKIPPED: tcgen05 extension loading requires a visible CUDA device "
+            "with a detectable compute capability."
+        )
+    ensure_tcgen05_capability_supported(
+        capability,
+        module_name="tcgen05 extension loading",
+    )
+    return capability
+
+
+def _cutlass_includes_for_capability(
+    capability: tuple[int, int],
+) -> tuple[Path, ...]:
+    ensure_tcgen05_capability_supported(
+        capability,
+        module_name="tcgen05 extension loading",
+    )
+    candidates = _SM100_CUTLASS_CANDIDATES + _FALLBACK_CUTLASS_CANDIDATES
+    checked: list[str] = []
+    for candidate in candidates:
+        if not candidate.is_dir():
+            checked.append(f"{candidate} (not a directory)")
+            continue
+        missing = [
+            header for header in _REQUIRED_CUTLASS_HEADERS if not (candidate / header).is_file()
+        ]
+        if not missing:
+            return (candidate,)
+        missing_names = ", ".join(str(header) for header in missing)
+        checked.append(f"{candidate} (missing {missing_names})")
+
+    details = "; ".join(checked)
+    raise RuntimeError(
+        "SKIPPED: tcgen05 extension loading requires a valid CUTLASS include "
+        f"directory with its required SM100 headers. Checked: {details}."
+    )
+
+
 _CLANG_HOST = _REPO_ROOT / "third_party" / "llvm" / "bin" / "clang++"
 
-# Build fingerprint version - bump this when changing build logic
-_BUILD_FINGERPRINT_VERSION = "v2"
+# Build fingerprint version. Bump this when changing build logic.
+_BUILD_FINGERPRINT_VERSION = "v3"
 
 
 def _tcgen05_cuda_flags() -> list[str]:
+    capability = _current_compute_capability()
+    cutlass_includes = _cutlass_includes_for_capability(capability)
     flags = [
         "-std=c++20",
     ]
-    for inc in _CUTLASS_INCLUDES:
+    for inc in cutlass_includes:
         flags.append(f"-I{inc}")
-    # For Blackwell we need the architecture-specific 'a' suffix to enable
-    # tcgen05/TMEM. Blackwell Ultra (CC 10.3, GB300/B300) is sm_103a; an sm_100a
-    # cubin is architecture-locked and will NOT load on an sm_103 device, so the
-    # exact target matters. Base Blackwell (CC 10.0, B200/GB200) stays sm_100a.
-    major, minor = _current_compute_capability()
-    if major == 10 and minor >= 3:
-        flags.append("-gencode=arch=compute_103a,code=sm_103a")
-    elif major >= 10:
-        flags.append("-gencode=arch=compute_100a,code=sm_100a")
-    else:
-        # Fallback for older architectures
-        caps: list[tuple[int, int]] = [(10, 0)]
-        if major >= 12:
-            caps.insert(0, (12, 0))
-        elif (major, minor) not in caps:
-            caps.insert(0, (major, minor))
-        seen = set()
-        for maj, minr in caps:
-            if (maj, minr) in seen:
-                continue
-            seen.add((maj, minr))
-            flags.append(f"-gencode=arch=compute_{maj}{minr},code=sm_{maj}{minr}")
+    target = _SUPPORTED_TCGEN05_TARGETS[capability]
+    flags.append(f"-gencode=arch=compute_{target},code=sm_{target}")
     if _CLANG_HOST.exists():
         flags.append(f"-ccbin={_CLANG_HOST}")
     return flags
@@ -97,10 +150,9 @@ def _tcgen05_cuda_flags() -> list[str]:
 def _get_cuda_version() -> str:
     """Get CUDA toolkit version string for fingerprinting."""
     try:
-        if hasattr(torch.version, 'cuda') and torch.version.cuda:
+        if hasattr(torch.version, "cuda") and torch.version.cuda:
             return torch.version.cuda
-        import os
-        cuda_home = os.environ.get('CUDA_HOME', os.environ.get('CUDA_PATH', ''))
+        cuda_home = os.environ.get("CUDA_HOME", os.environ.get("CUDA_PATH", ""))
         if cuda_home:
             return cuda_home
     except Exception:
@@ -110,20 +162,19 @@ def _get_cuda_version() -> str:
 
 def _get_env_fingerprint() -> str:
     """Get relevant environment variables for fingerprinting."""
-    import os
-    env_vars = ['TORCH_CUDA_ARCH_LIST', 'CUDA_HOME', 'CUDA_PATH', 'MAX_JOBS', 'CC', 'CXX']
+    env_vars = ["TORCH_CUDA_ARCH_LIST", "CUDA_HOME", "CUDA_PATH", "MAX_JOBS", "CC", "CXX"]
     parts = []
     for var in sorted(env_vars):
-        val = os.environ.get(var, '')
+        val = os.environ.get(var, "")
         if val:
             parts.append(f"{var}={val}")
     return "|".join(parts) if parts else "default"
 
 
-def _get_include_dir_fingerprint() -> str:
-    """Get fingerprint of CUTLASS include directories based on modification times."""
-    hasher = hashlib.md5()
-    for inc_dir in _CUTLASS_INCLUDES:
+def _get_include_dir_fingerprint(include_dirs: Sequence[Path]) -> str:
+    """Fingerprint broad CUTLASS metadata outside Ninja's header dependency graph."""
+    hasher = hashlib.sha256()
+    for inc_dir in include_dirs:
         if inc_dir.exists():
             try:
                 mtime = inc_dir.stat().st_mtime
@@ -139,94 +190,134 @@ def _get_include_dir_fingerprint() -> str:
 
 def _compute_build_fingerprint(sources: Sequence[Path], cuda_flags: list[str]) -> str:
     """Compute a hash fingerprint of all build inputs.
-    
+
     This includes:
     - Source file contents
     - All compiler flags (including include paths)
     - Build fingerprint version (for manual invalidation)
-    - Python/torch/CUDA version
+    - Python, torch, and CUDA versions
     - GPU architecture
     - Environment variables
-    - Include directory modification times (catches header updates)
-    
-    When any of these change, the cache should be invalidated.
+    - Broad include directory metadata
+
+    PyTorch and Ninja still inspect their generated header dependency graph on
+    every load. The manual fingerprint does not replace that dependency check.
     """
     hasher = hashlib.sha256()
-    
+
     # Include fingerprint version for manual cache invalidation
     hasher.update(f"version:{_BUILD_FINGERPRINT_VERSION}\n".encode())
-    
+
     # Include torch version
     hasher.update(f"torch:{torch.__version__}\n".encode())
-    
+
+    # The workspace build directory is shared across Python environments.
+    hasher.update(f"python:{sys.implementation.cache_tag}\n".encode())
+
     # Include CUDA version - important for toolkit upgrades
     hasher.update(f"cuda:{_get_cuda_version()}\n".encode())
-    
+
     # Include environment variables
     hasher.update(f"env:{_get_env_fingerprint()}\n".encode())
-    
+
     # Include GPU architecture
-    major, minor = _current_compute_capability()
+    capability = _current_compute_capability()
+    major, minor = capability
+    cutlass_includes = _cutlass_includes_for_capability(capability)
     hasher.update(f"gpu_arch:sm_{major}{minor}\n".encode())
-    
+
     # Include all compiler flags (sorted for consistency)
     for flag in sorted(cuda_flags):
         hasher.update(f"flag:{flag}\n".encode())
-    
+
     # Include source file contents
     for src in sorted(sources):
         if src.exists():
             hasher.update(f"source:{src}:\n".encode())
             hasher.update(src.read_bytes())
             hasher.update(b"\n")
-    
-    # Include CUTLASS include path and its fingerprint (catches header updates)
-    for inc in _CUTLASS_INCLUDES:
+
+    # Include CUTLASS path and broad metadata. Ninja tracks individual headers.
+    for inc in cutlass_includes:
         hasher.update(f"include:{inc}\n".encode())
-    hasher.update(f"inc_fp:{_get_include_dir_fingerprint()}\n".encode())
-    
+    hasher.update(f"inc_fp:{_get_include_dir_fingerprint(cutlass_includes)}\n".encode())
+
     return hasher.hexdigest()[:16]  # Short hash is sufficient
 
 
-def _check_and_invalidate_cache(name: str, sources: Sequence[Path], cuda_flags: list[str]) -> None:
+def _check_and_invalidate_cache(
+    name: str,
+    sources: Sequence[Path],
+    cuda_flags: list[str],
+) -> str:
     """Check if cached build matches current inputs; invalidate if not.
-    
+
     This prevents stale cache issues when include paths, compiler flags,
-    or source files change.
+    or source files change. Return the fingerprint to record after a successful
+    PyTorch/Ninja build.
     """
     build_dir = _get_extension_build_dir(name)
     fingerprint_file = build_dir / ".build_fingerprint"
     current_fingerprint = _compute_build_fingerprint(sources, cuda_flags)
-    
+
     # Check if we have a cached build with a matching fingerprint
     if fingerprint_file.exists():
         try:
             stored = json.loads(fingerprint_file.read_text())
-            if stored.get("fingerprint") == current_fingerprint:
-                return  # Cache is valid
-        except (json.JSONDecodeError, KeyError):
-            pass  # Invalid fingerprint file, treat as cache miss
-    
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            stored = None
+        if isinstance(stored, dict) and stored.get("fingerprint") == current_fingerprint:
+            return current_fingerprint
+
     # Cache miss or fingerprint mismatch - invalidate cache
     if build_dir.exists():
-        try:
-            shutil.rmtree(build_dir)
-        except Exception:
-            pass  # Best effort cleanup
-    
-    # Ensure build directory exists and write new fingerprint
+        shutil.rmtree(build_dir)
+
+    # PyTorch expects an existing build_directory. The fingerprint is written
+    # only after load() completes successfully.
     build_dir.mkdir(parents=True, exist_ok=True)
-    fingerprint_file.write_text(json.dumps({
-        "fingerprint": current_fingerprint,
-        "sources": [str(s) for s in sources],
+    return current_fingerprint
+
+
+def _write_build_fingerprint(
+    name: str,
+    sources: Sequence[Path],
+    cuda_flags: list[str],
+    fingerprint: str,
+) -> None:
+    """Atomically record build inputs after PyTorch successfully loads the extension."""
+    build_dir = _get_extension_build_dir(name)
+    build_dir.mkdir(parents=True, exist_ok=True)
+    fingerprint_file = build_dir / ".build_fingerprint"
+    payload = {
+        "fingerprint": fingerprint,
+        "sources": [str(source) for source in sources],
         "cuda_flags": cuda_flags,
-    }))
+    }
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=build_dir,
+            prefix=".build_fingerprint.",
+            delete=False,
+        ) as temporary_file:
+            json.dump(payload, temporary_file, sort_keys=True)
+            temporary_file.write("\n")
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+            temporary_path = Path(temporary_file.name)
+        temporary_path.replace(fingerprint_file)
+    finally:
+        if temporary_path is not None:
+            with suppress(FileNotFoundError):
+                temporary_path.unlink()
 
 
 def _get_extension_build_dir(name: str) -> Path:
     """Get the torch extension build directory for a given extension name."""
     # torch extensions default to ~/.cache/torch_extensions or TORCH_EXTENSIONS_DIR
-    import os
     base = os.environ.get("TORCH_EXTENSIONS_DIR")
     if base:
         return Path(base) / name
@@ -236,47 +327,27 @@ def _get_extension_build_dir(name: str) -> Path:
 
 def _clean_stale_build(name: str) -> None:
     """Remove stale build artifacts if .so is missing but build.ninja exists."""
-    import shutil
     build_dir = _get_extension_build_dir(name)
     ninja_file = build_dir / "build.ninja"
     so_file = build_dir / f"{name}.so"
-    
+
     if ninja_file.exists() and not so_file.exists():
         # Stale build directory - ninja exists but .so missing means build failed
-        try:
-            shutil.rmtree(build_dir)
-        except Exception:
-            pass  # Best effort cleanup
+        shutil.rmtree(build_dir)
 
 
 def _load_extension(name: str, sources: Sequence[Path]):
     cuda_flags = _tcgen05_cuda_flags()
-    
+
     # Check if cached build matches current inputs; invalidate if not
     # This prevents stale cache issues when include paths or flags change
-    _check_and_invalidate_cache(name, sources, cuda_flags)
-    
+    current_fingerprint = _check_and_invalidate_cache(name, sources, cuda_flags)
+
     # Clean up stale build artifacts (incomplete builds)
     _clean_stale_build(name)
-    
-    build_dir = _get_extension_build_dir(name)
-    so_path = build_dir / f"{name}.so"
-    if so_path.exists():
-        try:
-            import importlib.util
-            import sys
 
-            spec = importlib.util.spec_from_file_location(name, so_path)
-            if spec is None or spec.loader is None:
-                raise RuntimeError(f"Unable to load extension module from {so_path}")
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[name] = module
-            spec.loader.exec_module(module)
-            return module
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to load existing tcgen05 extension '{name}' from {so_path}: {e}"
-            ) from e
+    build_dir = _get_extension_build_dir(name)
+    build_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         module = load(
@@ -286,39 +357,40 @@ def _load_extension(name: str, sources: Sequence[Path]):
             extra_cflags=["-std=c++20"],
             extra_ldflags=["-lcuda"],
             verbose=False,
+            build_directory=str(build_dir),
         )
-        
-        # After successful load, update fingerprint file to mark cache as valid
-        fingerprint_file = build_dir / ".build_fingerprint"
-        current_fingerprint = _compute_build_fingerprint(sources, cuda_flags)
-        fingerprint_file.write_text(json.dumps({
-            "fingerprint": current_fingerprint,
-            "sources": [str(s) for s in sources],
-            "cuda_flags": cuda_flags,
-        }))
-        
-        return module
     except Exception as e:
         # On failure, retry with verbose=True to capture build errors
         error_msg = str(e)
         if "cannot open shared object file" in error_msg or "No such file" in error_msg:
             # Clean up and retry with verbose output
             _clean_stale_build(name)
+            build_dir.mkdir(parents=True, exist_ok=True)
             try:
-                return load(
+                module = load(
                     name=name,
                     sources=[str(src) for src in sources],
                     extra_cuda_cflags=cuda_flags,
                     extra_cflags=["-std=c++20"],
                     extra_ldflags=["-lcuda"],
                     verbose=True,  # Show build errors on retry
+                    build_directory=str(build_dir),
                 )
             except Exception as retry_e:
                 raise RuntimeError(
                     f"Failed to build tcgen05 extension '{name}'. "
                     f"Build errors (see above). Original error: {retry_e}"
                 ) from retry_e
-        raise
+        else:
+            raise
+
+    _write_build_fingerprint(
+        name,
+        sources,
+        cuda_flags,
+        current_fingerprint,
+    )
+    return module
 
 
 @lru_cache(None)
@@ -330,7 +402,9 @@ def load_matmul_tcgen05_module():
 @lru_cache(None)
 def load_tiling_tcgen05_module():
     """Compile (if needed) and return the Chapter 8 tcgen05 tiling extension."""
-    return _load_extension("ch08_tiling_tcgen05_ext", [_REPO_ROOT / "ch08" / "tiling_kernels_tcgen05.cu"])
+    return _load_extension(
+        "ch08_tiling_tcgen05_ext", [_REPO_ROOT / "ch08" / "tiling_kernels_tcgen05.cu"]
+    )
 
 
 @lru_cache(None)
@@ -342,7 +416,9 @@ def load_tcgen05_basic_module():
 @lru_cache(None)
 def load_tcgen05_pipelined_module():
     """Compile (if needed) and return the Chapter 9 pipelined tcgen05 matmul extension."""
-    return _load_extension("ch09_tcgen05_pipelined_ext", [_REPO_ROOT / "ch09" / "tcgen05_pipelined.cu"])
+    return _load_extension(
+        "ch09_tcgen05_pipelined_ext", [_REPO_ROOT / "ch09" / "tcgen05_pipelined.cu"]
+    )
 
 
 @lru_cache(None)
@@ -354,7 +430,9 @@ def load_tcgen05_cluster_module():
 @lru_cache(None)
 def load_tcgen05_warp_specialized_module():
     """Compile (if needed) and return the Chapter 10 warp-specialized tcgen05 matmul extension."""
-    return _load_extension("ch10_tcgen05_warp_specialized_ext", [_REPO_ROOT / "ch10" / "tcgen05_warp_specialized.cu"])
+    return _load_extension(
+        "ch10_tcgen05_warp_specialized_ext", [_REPO_ROOT / "ch10" / "tcgen05_warp_specialized.cu"]
+    )
 
 
 @lru_cache(None)
@@ -375,7 +453,9 @@ def load_tcgen05_warpgroup_specialized_module():
     )
 
 
-def matmul_tcgen05(a: torch.Tensor, b: torch.Tensor, *, module_name: str = "tcgen05 matmul") -> torch.Tensor:
+def matmul_tcgen05(
+    a: torch.Tensor, b: torch.Tensor, *, module_name: str = "tcgen05 matmul"
+) -> torch.Tensor:
     """Execute the CUTLASS tcgen05 GEMM after ensuring hardware/toolchain support."""
     ensure_tcgen05_supported(loader=load_matmul_tcgen05_module, module_name=module_name)
     module = load_matmul_tcgen05_module()

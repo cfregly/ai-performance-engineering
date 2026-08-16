@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
 import json
 import math
 import os
@@ -422,7 +421,6 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._router_requests: List[Request] = []
         self._router_request_count: int = 0
         self._router_batch_range = range(0)
-        self._router_devnull = None
         self._mem_logger: Optional[GpuMemoryLogger] = None
         self._mem_log_path: Optional[Path] = None
         self._nvlink_warned: bool = False
@@ -549,7 +547,17 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ]
         self._router_request_count = cfg.batch_size
         self._router_batch_range = range(cfg.batch_size)
-        self._router_devnull = open(os.devnull, "w")
+        self._prefill_next_values = torch.empty(
+            (cfg.batch_size, 1),
+            dtype=cfg.dtype_obj,
+            device=self.device,
+        )
+        self._prefill_next_tokens = torch.empty(
+            (cfg.batch_size, 1),
+            dtype=torch.long,
+            device=self.device,
+        )
+        self.spec_decoder.prepare_workspaces(cfg.batch_size, cfg.dtype_obj, self.device)
         # Force eager path so verification can capture decode tokens deterministically.
         self.graph_mode = GraphMode.EAGER
         self._refresh_router_metrics()
@@ -593,25 +601,44 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
             self.router.update_worker_metrics("decode", f"decode-{idx}", metrics)
 
+    def _route_request_stage(self, request: Request) -> Optional[str]:
+        """Apply the router policy without its diagnostic stdout writes."""
+        router = self.router
+        estimated_ttft = (
+            router.get_current_prefill_queue_length() * router.avg_prefill_time_per_req
+            + router.get_current_decode_queue_length() * router.avg_decode_time_per_req
+        )
+        if estimated_ttft > router.TTFT_SLO_MAX and request.priority == Priority.LOW:
+            return None
+
+        prompt_length = len(request.prompt_tokens)
+        should_offload = router.should_offload_prefill(
+            prompt_length,
+            request.prefix_cached_length,
+            router.get_current_prefill_queue_length(),
+        )
+        if should_offload and router.select_best_worker(router.prefill_workers) is not None:
+            return "prefill"
+        if router.select_best_worker(router.decode_workers) is not None:
+            return "decode"
+        return None
+
     def _prefill_next_token_from_logits(self, logits: torch.Tensor) -> torch.Tensor:
         last_logits = logits if logits.dim() == 2 else logits[:, -1, :]
         shape = (last_logits.shape[0], 1)
+        if self._prefill_next_values is None or self._prefill_next_tokens is None:
+            raise RuntimeError("setup() must initialize prefill token-selection buffers")
         if (
-            self._prefill_next_values is None
-            or self._prefill_next_values.device != last_logits.device
+            self._prefill_next_values.device != last_logits.device
             or self._prefill_next_values.dtype != last_logits.dtype
             or self._prefill_next_values.size(0) < shape[0]
             or self._prefill_next_values.size(1) != shape[1]
-        ):
-            self._prefill_next_values = torch.empty(shape, dtype=last_logits.dtype, device=last_logits.device)
-        if (
-            self._prefill_next_tokens is None
             or self._prefill_next_tokens.device != last_logits.device
             or self._prefill_next_tokens.dtype != torch.long
             or self._prefill_next_tokens.size(0) < shape[0]
             or self._prefill_next_tokens.size(1) != shape[1]
         ):
-            self._prefill_next_tokens = torch.empty(shape, device=last_logits.device, dtype=torch.long)
+            raise RuntimeError("Prefill token-selection buffers do not match the logits workload")
         values = self._prefill_next_values[: shape[0]]
         tokens = self._prefill_next_tokens[: shape[0]]
         torch.max(last_logits, dim=-1, keepdim=True, out=(values, tokens))
@@ -626,8 +653,6 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             return
         if self.graph_mode == GraphMode.EAGER:
             return
-        if self.spec_decoder is not None:
-            self.spec_decoder.prepare_workspaces(cfg.batch_size, cfg.dtype_obj, self.device)
         if self._prefill_next_values is None:
             self._prefill_next_values = torch.empty(
                 (cfg.batch_size, 1),
@@ -851,21 +876,18 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         router_requests = self._router_requests
         if self._router_request_count != cfg.batch_size:
             raise RuntimeError("setup() must initialize router requests")
-        if self._router_devnull is None:
-            raise RuntimeError("setup() must initialize router stdout sink")
         iteration = self._iteration
         route_timestamp = time.time()
-        with contextlib.redirect_stdout(self._router_devnull):
-            for idx in self._router_batch_range:
-                req = router_requests[idx]
-                req.id = f"req-{iteration}-{idx}"
-                req.timestamp = route_timestamp
-                req.prefix_cached_length = prefix_cache_lengths[(idx + iteration) % prefix_count]
-                stage, _ = self.router.route_request(req)
-                if stage == "prefill":
-                    prefill_assignments += 1
-                else:
-                    decode_assignments += 1
+        for idx in self._router_batch_range:
+            req = router_requests[idx]
+            req.id = f"req-{iteration}-{idx}"
+            req.timestamp = route_timestamp
+            req.prefix_cached_length = prefix_cache_lengths[(idx + iteration) % prefix_count]
+            stage = self._route_request_stage(req)
+            if stage == "prefill":
+                prefill_assignments += 1
+            else:
+                decode_assignments += 1
 
         ttft_times = self._iteration_ttft_times
         tpot_times = self._iteration_tpot_times
@@ -1080,9 +1102,8 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._router_requests = []
         self._router_request_count = 0
         self._router_batch_range = range(0)
-        if self._router_devnull is not None:
-            self._router_devnull.close()
-            self._router_devnull = None
+        self._prefill_next_values = None
+        self._prefill_next_tokens = None
         if self._cuda_available:
             torch.cuda.empty_cache()
         if self._mem_logger is not None:

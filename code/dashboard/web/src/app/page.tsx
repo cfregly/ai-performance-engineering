@@ -148,14 +148,14 @@ export default function Dashboard() {
     ? (previousRun.successful / previousRun.benchmark_count) * 100
     : null;
 
-  const lastUpdated = useMemo(() => {
+  const lastUpdated = (() => {
     if (!overview?.timestamp) return '—';
     try {
       return new Date(overview.timestamp).toLocaleString();
     } catch {
       return overview.timestamp;
     }
-  }, [overview?.timestamp]);
+  })();
 
   const handleChartSelect = (selection: { type: 'benchmark' | 'chapter'; name: string }) => {
     setChartFilter({ type: selection.type, value: selection.name });

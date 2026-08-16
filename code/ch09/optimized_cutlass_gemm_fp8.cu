@@ -122,12 +122,8 @@ using ElementAccumulator = float;
 using ArchTag = cutlass::arch::Sm100;
 using OperatorClass = cutlass::arch::OpClassTensorOp;
 
-// 2SM Blackwell tile with a DEEP K=128 tile. Swept on GB300 at 4096^3 FP8: the
-// default 256x128x64 (2481 TFLOPS) is tile-limited; deepening K (64 -> 128)
-// amortizes the FP8 mainloop and is the dominant lever. 128x256x128 peaks at 3429
-// TFLOPS = 45.7% FP8 SoL, 1.38x the default and 1.12x over cuBLAS-FP8
-// (torch._scaled_mm = 3054). Sweep: 256x128x64 2481, 128x256x64 2492, 256x256x64
-// 3007, 256x256x128 3353, 128x256x128 3429 (best), 128x128x128 2756, 128x256x256 3332.
+// CUTLASS 4.5.2 supports this dense FP8 x FP8 tile with the SM100 2SM
+// warp-specialized schedule. Relative B200 performance remains unmeasured.
 using TileShape = Shape<_128, _256, _128>;   // (M, N, K)
 using ClusterShape = Shape<_2, _1, _1>;
 

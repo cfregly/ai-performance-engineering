@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -85,9 +86,12 @@ def test_profile_sh_zymtrace_tool_sets_cuda_injection_env(tmp_path: Path) -> Non
 
     assert proc.returncode == 0, proc.stderr
     assert str(injection_lib) in proc.stdout
-    manifests = list(output_root.glob("*_show_zymtrace_env/zymtrace_cuda_env.txt"))
+    manifests = list(output_root.glob("*_show_zymtrace_env/zymtrace_launch_manifest.json"))
     assert manifests
-    assert f"CUDA_INJECTION64_PATH={injection_lib}" in manifests[-1].read_text(encoding="utf-8")
+    manifest = json.loads(manifests[-1].read_text(encoding="utf-8"))
+    assert manifest["cuda_injection64_path"] == str(injection_lib)
+    assert manifest["environment"]["CUDA_INJECTION64_PATH"] == str(injection_lib)
+    assert manifest["environment"]["ZYMTRACE_CUDA_INJECTION64_PATH"] == str(injection_lib)
 
 
 def test_ch20_example_registry_uses_module_launch_for_ai_kernel_generator() -> None:

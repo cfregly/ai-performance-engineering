@@ -103,6 +103,7 @@ def _extend_cache_buffer(
     cache: torch.Tensor,
     chunk_kv: torch.Tensor,
     kv_buffers: Dict[int, torch.Tensor],
+    allow_allocation: bool = True,
 ) -> torch.Tensor:
     current_kv_len = cache.size(1)
     next_kv_len = current_kv_len + chunk_kv.size(1)
@@ -114,20 +115,36 @@ def _extend_cache_buffer(
         or kv_buffer.dtype != chunk_kv.dtype
         or kv_buffer.size(1) < next_kv_len
     ):
-        buffer_tokens = max(cfg.context_window, next_kv_len)
-        kv_buffer = torch.empty(
-            cfg.batch_size,
-            buffer_tokens,
-            cfg.hidden_size,
-            device=target_device,
-            dtype=chunk_kv.dtype,
-        )
+        if not allow_allocation:
+            raise RuntimeError(
+                f"Preallocated KV append buffer missing or too small for request {request_id}"
+            )
+        kv_buffer = _CACHE_APPEND_BUFFER_ALLOCATOR(cfg, device=target_device)
         kv_buffers[request_id] = kv_buffer
 
     if current_kv_len and cache.data_ptr() != kv_buffer.data_ptr():
         kv_buffer[:, :current_kv_len].copy_(cache)
     kv_buffer[:, current_kv_len:next_kv_len].copy_(chunk_kv, non_blocking=True)
     return kv_buffer[:, :next_kv_len]
+
+
+def _allocate_cache_append_buffer(
+    cfg: CacheAwareDisaggMultiGPUConfig,
+    *,
+    device: torch.device,
+) -> torch.Tensor:
+    """Allocate a decode-rank request buffer before timed iterations."""
+    kv_buffer = torch.empty(
+        cfg.batch_size,
+        cfg.context_window,
+        cfg.hidden_size,
+        device=device,
+        dtype=cfg.dtype,
+    )
+    return kv_buffer
+
+
+_CACHE_APPEND_BUFFER_ALLOCATOR = _allocate_cache_append_buffer
 
 
 def _world_size_hint() -> int:
@@ -477,6 +494,12 @@ def _run_torchrun_worker(
 
     active_caches: Dict[int, torch.Tensor] = {}
     kv_buffers: Dict[int, torch.Tensor] = {}
+    if rank >= prefill_ranks:
+        for plan in plans:
+            kv_buffers[plan.global_request_idx] = _allocate_cache_append_buffer(
+                cfg,
+                device=device,
+            )
     local_metrics = {
         "cache_hits": 0.0,
         "cache_misses": 0.0,
@@ -553,6 +576,7 @@ def _run_torchrun_worker(
                         cache=base,
                         chunk_kv=recv_chunk,
                         kv_buffers=kv_buffers,
+                        allow_allocation=False,
                     )
                 _sync_and_barrier(device)
 
@@ -982,6 +1006,13 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._active_caches = {rank: {} for rank in self._decode_models}
         self._active_cache_count = len(self._active_caches)
         self._kv_buffer_pools = {rank: {} for rank in self._decode_models}
+        for rank, pool in self._kv_buffer_pools.items():
+            device = self._decode_device_for_rank(rank)
+            for plan in self._request_plans:
+                pool[plan.global_request_idx] = _allocate_cache_append_buffer(
+                    self.cfg,
+                    device=device,
+                )
         self._kv_buffer_pool_count = len(self._kv_buffer_pools)
 
         with torch.inference_mode():
@@ -1108,6 +1139,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
                         cache=cache,
                         chunk_kv=chunk_kv,
                         kv_buffers=kv_buffers[target_rank],
+                        allow_allocation=False,
                     )
                     metrics["kv_transfer_bytes"] += _tensor_nbytes(chunk_kv)
                     current_owner = target_rank

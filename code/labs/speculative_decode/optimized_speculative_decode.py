@@ -18,10 +18,12 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 from labs.speculative_decode.speculative_decode_common import (
+    TRITON_AVAILABLE,
     TokenMLP,
-    accept_prefix_length,
+    accept_prefix_length_prepared as accept_prefix_length,
     build_draft_from_target,
     default_workload,
+    ensure_triton_compat,
     scale_tail_dims_,
 )
 
@@ -223,6 +225,8 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         ]
         self._forward_buffer_counts = (1, len(self._target_forward_buffers))
         self._expected_forward_buffer_counts = (1, wl.speculative_k)
+        if TRITON_AVAILABLE:
+            ensure_triton_compat()
         self.output = None
         for key in self._metrics:
             self._metrics[key] = 0.0

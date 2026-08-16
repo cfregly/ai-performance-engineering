@@ -7,6 +7,7 @@ import type {
   BenchmarkE2EStatusSnapshot,
   BenchmarkRunGeneratorDefaults,
   BenchmarkRunRenderResult,
+  CampaignDashboardResult,
 } from '@/types';
 
 const API_BASE = '/api';
@@ -141,6 +142,11 @@ export async function getTier1TargetHistory(params: Record<string, unknown>) {
 export async function getBenchmarkCompare(params: Record<string, unknown>) {
   const query = buildQuery(params);
   return fetchAPI(`/benchmark/compare${query}`);
+}
+
+export async function getOptimizationCampaign(workspace: string) {
+  const query = buildQuery({ workspace });
+  return fetchAPI<CampaignDashboardResult>(`/optimization/campaign${query}`);
 }
 
 export async function getGpuInfo() {

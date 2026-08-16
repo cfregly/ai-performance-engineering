@@ -190,13 +190,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _fallback_tier1_representative_rows() -> Sequence[Tuple[str, float, float, str]]:
+    canonical_summary = "artifacts/history/tier1/20260329_e2e_truthful_canonical_main_4a8c827a__tier1/summary.json"
     return (
-        ("labs/block_scaling:block_scaling", 0.198, 1.76, "artifacts/runs/20260305_222139__bench__profile_none_targets_labs_block_scaling_block_scaling/..."),
-        ("labs/flashattention4:flashattention4_alibi", 5.562, 14.45, "artifacts/runs/20260306_023114__bench__profile_none_targets_labs_flashattention4_flashattention4_alibi/..."),
-        ("labs/persistent_decode:persistent_decode", 1.411, 11.94, "artifacts/runs/20260302_full_strict_all_singlegpu/..."),
-        ("labs/kv_optimization:kv_standard", 1687.906, 1.57, "artifacts/runs/20260302_full_strict_all_singlegpu/..."),
-        ("ch04:gradient_fusion", 3.931, 67.63, "artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/..."),
-        ("labs/real_world_models:llama_3_1_8b", 13.143, 2.49, "artifacts/runs/20260302_full_strict_all_singlegpu/..."),
+        ("labs/block_scaling:block_scaling", 0.197, 1.76, canonical_summary),
+        ("labs/flashattention4:flashattention4_alibi", 5.637, 17.20, canonical_summary),
+        ("labs/persistent_decode:persistent_decode", 1.322, 14.65, canonical_summary),
+        ("labs/kv_optimization:kv_standard", 1613.038, 1.68612124, canonical_summary),
+        ("ch04:gradient_fusion", 54.484, 168.70, canonical_summary),
+        ("labs/real_world_models:llama_3_1_8b", 12.761, 2.434376, canonical_summary),
     )
 
 
@@ -254,7 +255,11 @@ def _render_current_representative_deltas_body(repo_root: Optional[Path] = None)
     def _fallback_body(warnings: Optional[Sequence[str]] = None) -> str:
         rows = _fallback_tier1_representative_rows()
         lines = [
-            "These are measured results from current validated benchmark artifacts in `artifacts/runs/`, not aspirational target numbers.",
+            "These numbers are taken from the latest canonical tier-1 history summary rather than from hand-maintained README text.",
+            "",
+            "Source artifact: `artifacts/history/tier1/20260329_e2e_truthful_canonical_main_4a8c827a__tier1/summary.json`",
+            "",
+            "Representative suite speedup: `8.22x` geomean, `8.54x` median, `34.41x` arithmetic average.",
             "",
         ]
         if warnings:
@@ -698,6 +703,35 @@ ENTRIES["README.md"] = Entry(
             ),
         ),
         MarkdownSection(
+            "Optimization Opportunity Radar",
+            dedent(
+                """\
+                After a run, use the opportunity radar to decide what deserves the next profiling or experiment slot:
+
+                ```bash
+                python -m cli.aisp bench opportunities --data-file artifacts/history/tier1/<run_id>/summary.json --top 10
+                python -m cli.aisp bench opportunities --data-file benchmark_test_results.json --json
+                python -m cli.aisp bench opportunity-catalog --bench-root . --output-json target_catalog.json
+                python -m cli.aisp bench opportunities --data-file benchmark_test_results.json --catalog-file target_catalog.json --top 20
+                python -m cli.aisp bench opportunities --data-file benchmark_test_results.json --include-discovered-targets --top 20
+                python -m cli.aisp bench opportunities --data-file benchmark_test_results.json --output-run-queue-sh artifacts/opportunity_run_queue.sh
+                python -m cli.aisp bench opportunities --data-file benchmark_test_results.json --output-novelty-validation-sh artifacts/novelty_validation_queue.sh
+                python -m cli.aisp bench opportunities --data-file benchmark_test_results.json --novelty-queue-root artifacts/novelty_validation_queue/<run_id> --output-novelty-next-wave-sh artifacts/novelty_next_wave.sh
+                python -m cli.aisp bench opportunity-run-summary --run-queue-root artifacts/opportunity_run_queue/<run_id> --json
+                python -m cli.aisp bench opportunities --data-file benchmark_test_results.json --run-queue-root artifacts/opportunity_run_queue/<run_id> --json
+                python -m cli.aisp bench opportunities --data-file benchmark_test_results.json --novelty-queue-root artifacts/novelty_validation_queue/<run_id> --json
+                ```
+
+                The radar accepts raw `benchmark_test_results.json`, transformed analyzer JSON, or tier-1 `summary.json` files. It ranks flat wins, regressions, weak memory cases, missing evidence, compound-optimization candidates, optional catalog-only frontier targets, and discovered-but-unmeasured runnable targets. `opportunity-catalog` mines the benchmark tree into a reusable frontier catalog with source-derived motifs, matched terms, signal rationales, baseline-vs-optimized delta terms, and optimized-side primitives such as CUDA Graph replay, TMA, FP8/FP4 paths, communication overlap, KV-cache layout, and vectorized memory access. Frontier probes are scored by high-leverage signals such as serving decode, distributed fabric, attention/KV layout, emerging precision, memory movement, runtime launch, storage, and control-plane disaggregation instead of falling back to alphabetical order. The output includes a phased execution plan with validation commands, BenchmarkRun render commands, target-level experiments, motif-level innovation hypotheses, a source-transfer map that proposes reusable source-mined patterns and recipient targets, compound primitive hypotheses that pair source-backed tactics not yet present together on a target, a novelty primitive-pair synthesis plan that proposes source-backed untried pairs outside the fixed compound catalog, a coverage gap map that turns under-covered signals/primitives/compound stacks into negative-space experiment leads, a cross-lane bridge map that makes multi-signal experiments explicit, a novelty queue that merges frontier probes, transfers, compound ideas, coverage gaps, and bridge leads into one ranked action list, novelty experiment playbooks with variant ladders/metrics/guardrails/profiler tools for top leads, a novelty mutation plan that expands playbooks into one-variable variant candidates, a novelty mutation budget plan that selects a small operator-diverse mutation batch with information-gain scores and unlock conditions, a risk-adjusted novelty budget plan that balances expected value, cost, risk, type diversity, and target diversity while emitting mitigation steps plus deferral reasons for backlog leads, a novelty decision frontier that separates quick proofs, high-upside bets, de-risk-first work, Pareto-efficient options, and deferred unlocks, a novelty falsification plan that declares null hypotheses, disproof checks, and claim boundaries before promotion, a novelty ablation plan that assigns negative controls to isolate selected claims, a novelty reproducibility plan that assigns repeat counts, stability metrics, and variance gates, a novelty instrumentation plan that defines profiler tools, launch environment, preflight checks, and artifact evidence, a novelty artifact contract plan that defines the required control/candidate/profile/review files and package manifests, a novelty claim packet plan that turns evidence into bounded claim text while listing blocked overclaims, an advisory novelty validation plan with control/candidate/profile/review jobs plus risk-specific, falsification-specific, ablation-specific, reproducibility-specific, instrumentation-specific, artifact-contract, and claim-packet required evidence for top leads, an optional novelty evidence audit plan that compares a supplied validation queue root against the artifact contract, an optional novelty recovery plan that converts failed logs and missing files into concrete repair/rerun actions, an optional novelty adaptive decision plan that decides whether to run, repair, review, approve, or use a backlog replacement, an optional novelty learning plan that turns validation outcomes into rerank guidance and risk updates, an optional novelty harvest plan that converts approved-and-audited claims into reusable patterns and bounded follow-up experiments, a frontier discovery map with diversity queue and experiment blueprints, an experiment matrix with controls/metrics/guardrails, a portfolio plan that selects a diverse first batch under a small experiment budget, promotion gates that block claims until required evidence is present, and a dependency-aware run queue with dispatch groups plus per-job artifact and success criteria.
+
+                `--output-run-queue-sh` writes a resumable executable runbook that records each job's `job.json`, `command.txt`, stdout/stderr logs, dependency markers, and manual promotion-review checklists under `AISP_RUN_QUEUE_ROOT`. `--output-novelty-validation-sh` writes the same artifact pattern for the top novelty-validation leads under `AISP_NOVELTY_QUEUE_ROOT`, keeping control/candidate/profile/review evidence separate from the main portfolio queue, writing each job's `artifact_contract.json` beside its `job.json`, and creating review-time `claim_packet.json` plus `claim_packet.md` files. Re-running either script skips jobs with `DONE`, preserves pending manual reviews, and treats `APPROVED` reviews as completed evidence. `opportunity-run-summary` reads the resulting `DONE`, `MANUAL_REVIEW_REQUIRED`, and `APPROVED` markers, adds diagnostic signatures for common failed-log patterns such as missing Zymtrace injection, and keeps the raw stdout/stderr paths attached. Passing the same root back to `bench opportunities --run-queue-root` overlays main-queue artifact state onto the fresh radar result, marks the next runnable jobs, and updates promotion gates only for approved reviews. Passing a novelty validation root with `--novelty-queue-root` overlays lead-level validation status onto the novelty queue, mutation budget, budget plan, validation plan, artifact contracts, and claim packets, then emits a novelty evidence audit that marks missing contract files as promotion blockers, a novelty recovery plan with concrete repair and rerun actions, a novelty adaptive decision plan that decides whether each selected lead should continue, recover, review, or yield to a backup lead, a novelty learning plan with explicit score/risk guidance for the next rerank, a novelty harvest plan that turns approved-and-audited claims into reusable pattern seeds plus follow-up experiments, and a novelty next-wave plan that orders recover/continue/review/mutation/backup/harvest-follow-up/learning actions into the next campaign. `--output-novelty-next-wave-sh` writes that next-wave campaign as an executable checklist under `AISP_NOVELTY_NEXT_WAVE_ROOT`, preserving per-action JSON/Markdown, recovery logs, rerun logs, and manual action markers.
+
+                For direct script profiling, `core/scripts/profiling/profile.sh <script.py> --tool zymtrace` launches the workload with `CUDA_INJECTION64_PATH`/`ZYMTRACE_CUDA_INJECTION64_PATH` resolved and writes `zymtrace_launch_manifest.json` beside the profile artifacts. `--tool all` includes Zymtrace automatically when the injection library is available.
+
+                The same surface is exposed through dashboard API `GET /api/benchmark/opportunities` and MCP tool `benchmark_opportunities` for agent-driven optimization loops."""
+            ),
+        ),
+        MarkdownSection(
             "Lab Navigation",
             dedent(
                 """\
@@ -723,6 +757,7 @@ ENTRIES["README.md"] = Entry(
                 Start with:
                 - [`../.agents/skills/dean-performance-review/SKILL.md`](../.agents/skills/dean-performance-review/SKILL.md) for the evidence-first optimization workflow adapted from Jeff Dean and Sanjay Ghemawat's performance guidance.
                 - [`docs/benchmark_methodology.md`](docs/benchmark_methodology.md) for the three-layer model (`micro`, `component`, `end_to_end`), bottleneck taxonomy, publication-vs-realism policy, and straggler playbook.
+                - [`docs/autoresearch_campaigns.md`](docs/autoresearch_campaigns.md) for append-only experiment ledgers, diverse idea beams, per-case promotion gates, failed-experiment priors, and worktree provenance.
                 - [`docs/performance_warehouse.md`](docs/performance_warehouse.md) for the stable event schema, raw-versus-curated storage split, retention tiers, and telemetry lineage back to raw evidence.
                 - [`templates/performance_intake.yaml`](templates/performance_intake.yaml) for KPIs, constraints, and the variable under test.
                 - [`templates/benchmark_workload_spec.yaml`](templates/benchmark_workload_spec.yaml) for the frozen workload definition and measurement policy.
@@ -1342,6 +1377,7 @@ ENTRIES["ch04"] = chapter_entry(
         ("`baseline_gradient_compression_fp16_comm_only.py`, `optimized_gradient_compression_fp16_comm_only.py`, `baseline_gradient_compression_int8_comm_only.py`, `optimized_gradient_compression_int8_comm_only.py`, `baseline_gradient_compression_fp16_comm_only_multigpu.py`, `optimized_gradient_compression_fp16_comm_only_multigpu.py`, `baseline_gradient_compression_int8_comm_only_multigpu.py`, `optimized_gradient_compression_int8_comm_only_multigpu.py`", "Communication-only gradient compression benchmarks with pre-quantized buffers (single GPU and multi-GPU FP16/INT8 paths)."),
         ("`baseline_pipeline_parallel.py`, `optimized_pipeline_parallel_1f1b.py`, `baseline_tensor_parallel.py`, `optimized_tensor_parallel_async.py`, `baseline_torchcomms.py`, `optimized_torchcomms.py`, `baseline_pipeline_parallel_multigpu.py`, `optimized_pipeline_parallel_multigpu_1f1b.py`, `baseline_tensor_parallel_multigpu.py`, `optimized_tensor_parallel_multigpu.py`, `baseline_tensor_parallel_allgather_multigpu.py`, `optimized_tensor_parallel_allgather_multigpu.py`, `baseline_torchcomms_multigpu.py`, `optimized_torchcomms_multigpu.py`", "Pipeline/tensor-parallel and torchcomms overlap studies (single- and multi-GPU)."),
         ("`baseline_nvshmem_pipeline_parallel_multigpu.py`, `optimized_nvshmem_pipeline_parallel_multigpu.py`, `baseline_nvshmem_training_example_multigpu.py`, `optimized_nvshmem_training_example_multigpu.py`", "NVSHMEM/symmetric-memory samples that require real multi-GPU launch plus symmetric-memory support; unsupported hosts fail fast with `SKIPPED:`."),
+        ("`ddp_worker.py`, `nvshmem_worker.py`", "Dedicated `torchrun` entrypoints for the DDP and NVSHMEM benchmark wrappers. Harness-discovered benchmark modules stay import-only, while the standalone teaching modules keep their direct command-line paths."),
         ("`baseline_symmetric_memory_perf.py`, `optimized_symmetric_memory_perf.py`, `baseline_symmetric_memory_multigpu.py`, `optimized_symmetric_memory_multigpu.py`, `baseline_symmetric_memory_perf_multigpu.py`, `optimized_symmetric_memory_perf_multigpu.py`", "Symmetric memory utilities and perf probes for KV cache and optimizer shards."),
         ("`compare.py`, `requirements.txt`, `expectations_{hardware_key}.json`, `bandwidth_benchmark_suite_multigpu.py`, `nccl_benchmark.py`", "Harness driver plus standalone NCCL/NVLink sweepers for topology bring-up."),
     ],
@@ -2298,6 +2334,7 @@ ENTRIES["ch13"] = chapter_entry(
         ("`baseline_dataloader_default.py`, `optimized_dataloader_default.py`, `baseline_memory_profiling.py`, `optimized_memory_profiling.py`, `memory_profiling.py`", "DataLoader/memory studies that explain how to read allocator stats and fix leaks."),
         ("`baseline_attention_standard.py`, `optimized_attention_standard.py`, `baseline_long_context_attention.py`, `optimized_long_context_attention.py`, `baseline_arithmetic_intensity.py`, `optimized_arithmetic_intensity.py`, `baseline_matmul_pytorch.py`, `optimized_matmul_pytorch.py`", "Attention and matmul microbenchmarks tuned purely within PyTorch, including long-context Flash SDP."),
         ("`baseline_context_parallel_multigpu.py`, `optimized_context_parallel_multigpu.py`, `context_parallel_benchmark_common.py`", "Context-parallel attention benchmarks comparing all-gather vs ring-style streaming across ranks."),
+        ("`baseline_sequence_parallel_multigpu.py`, `optimized_sequence_parallel_multigpu.py`, `sequence_parallel_benchmark_common.py`", "Sequence-parallel TP+SP hybrid benchmark contrasting per-layer full-sequence all-gather against keeping activations sequence-sharded between tensor-parallel layers."),
         ("`baseline_expert_parallel_multigpu.py`, `optimized_expert_parallel_multigpu.py`, `expert_parallel_common.py`", "Expert-parallel all-to-all benchmarks contrasting per-iteration list allocations vs pre-allocated all_to_all_single."),
         ("`context_parallelism.py`, `fsdp_example.py`", "Context and FSDP sharding demos for scaling beyond a single GPU. (Tools; not benchmark targets.)"),
         ("`baseline_precisionfp8*.py`, `optimized_precisionfp8*.py`, `baseline_precisionmixed.py`, `optimized_precisionmixed.py`, `compiled_autograd.py`", "Precision-management suites covering Transformer Engine, torchao FP8 recipe demos, and compiled autograd recipes."),
@@ -2597,7 +2634,10 @@ ENTRIES["ch16"] = chapter_entry(
                 Those targets answer different questions:
                 - `flash_sdp`: better attention backend choice
                 - `flashinfer_block_sparse`: structured sparsity payoff
-                - `runtime_scheduler`: queueing and scheduling overhead reduction"""
+                - `runtime_scheduler`: queueing and scheduling overhead reduction
+
+                This chapter now also includes a first-class post-training quantization target family:
+                - `awq_gptq_smoothquant`: reference dense serving path versus explicit AWQ, GPTQ, and SmoothQuant benchmark variants"""
             ),
         ),
         MarkdownSection(
@@ -2623,6 +2663,7 @@ ENTRIES["ch16"] = chapter_entry(
         ("`inference_optimizations_blackwell.py`, `inference_profiling.py`, `inference_server_load_test.py`, `inference_serving_multigpu.py`", "Top-level orchestration scripts for profiling and load testing multi-GPU inference deployments."),
         ("`baseline_flash_sdp.py`, `optimized_flash_sdp.py`, `baseline_dense_attention_flash.py`, `optimized_dense_attention_flash.py`, `optimized_dense_attention_flash_blackwell_variant.py`", "Attention kernels that compare naive implementations versus Flash backends, including an explicit non-canonical hardware variant for the Blackwell-tagged dense-attention path."),
         ("`baseline_piece_graphs.py`, `optimized_piece_graphs.py`, `baseline_regional_compilation.py`, `optimized_regional_compilation.py`", "Piecewise graph capture and regional compilation for stable low-latency decode, with explicit steady-state replay metrics such as `regional_compilation.capture_ms`, `regional_compilation.graph_bucket_count`, and `regional_compilation.steady_state_only`."),
+        ("`baseline_awq_gptq_smoothquant.py`, `optimized_awq_gptq_smoothquant_awq.py`, `optimized_awq_gptq_smoothquant_gptq.py`, `optimized_awq_gptq_smoothquant_smoothquant.py`, `awq_gptq_smoothquant_benchmarks.py`", "First-class post-training quantization benchmark family comparing a dense reference MLP against explicit AWQ, GPTQ, and SmoothQuant serving-style transforms."),
         ("`fp8_transformer_engine.py`, `test_fp8_quantization_real.py`, `symmetric_memory_inference.py`, `multi_gpu_validation.py`", "Serving-time FP8 and symmetric-memory validations to guarantee accuracy and NVLink efficiency."),
         ("`moe_performance_benchmark.py`, `synthetic_moe_inference_benchmark.py`, `moe_workload.py`", "MoE inference harnesses that stress router placement and per-expert batching."),
         ("`cache_monitoring.py`, `dcgm_prometheus_exporter.py`, `scheduler.py`, `perplexity_eval.py`", "Telemetry, scheduling, and accuracy utilities wired into the inference pipeline."),
@@ -3101,12 +3142,14 @@ ENTRIES["ch20"] = chapter_entry(
             "Measured Delta",
             dedent(
                 """\
-                Representative validated results from `artifacts/runs/20260303_163946__bench__profile_minimal_targets_20/`:
+                Representative validated results:
 
                 | Target | Baseline | Optimized | Measured delta | What changed |
                 | --- | ---: | ---: | ---: | --- |
-                | `integrated_kv_cache` | `456.705 ms` | `67.381 ms` | `6.78x` | integrated KV-cache and overlap path |
+                | `integrated_kv_cache` | `986.812 ms` | `139.676 ms` | `7.07x` | block-wise paged KV-cache integration across the end-to-end loop |
                 | `bf16_mlp` | `0.616 ms` | `0.234 ms` | `2.63x` | BF16 precision policy on the same eager MLP graph |
+
+                The current `integrated_kv_cache` proof point comes from `artifacts/runs/20260328_162954__bench__profile_minimal_targets_ch20_integrated_kv_cache/`. The `bf16_mlp` row remains from `artifacts/runs/20260303_163946__bench__profile_minimal_targets_20/`.
 
                 This chapter is the best place to check whether wins compose. `pipeline_sequential` now remains available as an informational overlap demo, while canonical chapter claims focus on the pairs that still hold up as end-to-end improvements. The AI-assisted kernel-generation thread is represented here by `ai_kernel_generator.py` plus the verifier helpers, even though the full manuscript chapter covers a broader RL/AlphaTensor narrative than the current harness surface."""
             ),
@@ -3148,7 +3191,7 @@ ENTRIES["ch20"] = chapter_entry(
     contents=[
         ("`baseline_bf16_mlp.py`, `optimized_bf16_mlp.py`, `ai_kernel_generator.py`, `core/optimization/inductor_guard.py`", "Precision-policy workload plus the shared Inductor cudagraph guard used by the compiled end-to-end paths."),
         ("`baseline_pipeline_sequential.py`, `optimized_pipeline_sequential.py`, `baseline_end_to_end_bandwidth.py`, `optimized_end_to_end_bandwidth.py`", "Pipeline and bandwidth case studies showing how optimizations interact across stages. `pipeline_sequential` currently remains informational after the fairness refresh."),
-        ("`baseline_integrated_kv_cache.py`, `optimized_integrated_kv_cache.py`", "Integrated KV-cache demos that merge allocator, overlap, and NVLink pooling tricks."),
+        ("`baseline_integrated_kv_cache.py`, `optimized_integrated_kv_cache.py`", "Integrated KV-cache demos contrasting naive per-token cache handling with the restored block-wise paged-cache path used by the end-to-end benchmark."),
         ("`baseline_memory_standard.py`, `optimized_memory_standard.py`", "Memory-focused harness verifying allocator changes at system level."),
         ("`baseline_training_single.py`, `optimized_training_single.py`, `test.cu`, `Makefile`", "Single-device training case study plus CUDA kernels used in the final report."),
         ("`compare.py`, `arch_config.py`, `expectations_{hardware_key}.json`", "Harness driver, architecture settings, and expectation baselines."),
@@ -3156,7 +3199,7 @@ ENTRIES["ch20"] = chapter_entry(
     validation=[
         "`python -m ch20.compare` emits per-stage summaries that show each optimized variant meeting or exceeding stored expectations.",
         "`python -m ch20.ai_kernel_generator --emit test.cu` produces CUDA kernels that compile via `nvcc` and integrate into the harness without manual edits.",
-        "`python -m cli.aisp bench run --targets ch20:integrated_kv_cache --profile deep_dive` is the stronger canonical end-to-end overlap proof after the fairness refresh.",
+        "`python -m cli.aisp bench run --targets ch20:integrated_kv_cache --profile deep_dive` is the stronger canonical end-to-end paged-cache proof after restoring block-wise processing in the optimized path.",
     ],
     notes=[
         "`core/optimization/inductor_guard.py` is the canonical helper for gating Inductor cudagraph features in the compiled chapter 20 paths.",
@@ -3258,6 +3301,7 @@ ENTRIES["labs/blackwell_matmul"] = lab_entry(
     notes=[
         "`run_blackwell_matmul.py` accepts `--variant baseline|pipeline|tma|cluster` plus `--size` to mirror the blog walkthrough.",
         "TMA kernels require CUDA 13.0+ and SM100/103 hardware; on GB10 they log a warning and skip execution.",
+        "For a schedule-design companion to this implementation-heavy matmul lab, see `labs/software_pipelining`, which makes ring-buffer reuse and dependency legality explicit in a smaller benchmark and analyzer surface.",
     ],
 )
 
@@ -3411,7 +3455,8 @@ ENTRIES["labs/cutlass_profiler_kernel_selector"] = lab_entry(
     title="Lab - CUTLASS Profiler Kernel Selector",
     summary=dedent(
         """\
-        Automates CUTLASS profiler sweeps for transformer-style GEMMs, records Triton or custom kernel results, and compares everything so you can prove custom kernels beat the fastest stock CUTLASS option."""
+        Automates CUTLASS profiler sweeps for transformer-style GEMMs, records Triton or custom kernel results, and compares everything so you can prove custom kernels beat the fastest stock CUTLASS option.
+        This is a workflow-oriented matrix/playbook lab, not currently a clean benchmark-pair lab."""
     ),
     goals=[
         "Generate per-shape CUTLASS profiler logs and store the best kernel metadata.",
@@ -3782,6 +3827,7 @@ ENTRIES["labs/decode_optimization"] = lab_entry(
                 """\
                 - pinned inputs and dual-stream decode variants
                 - `torch.compile` and CUDA Graph decode paths
+                - setup-time prefill-state reuse for static-prefix serving paths
                 - FP8/FP4 and warp-specialized kernels where the hardware supports them
                 - static-cache HuggingFace loop for the cache-policy pair"""
             ),
@@ -3800,9 +3846,10 @@ ENTRIES["labs/decode_optimization"] = lab_entry(
                 | `decode_warp_specialized` | `38.386 ms` | `14.963 ms` | `2.57x` |
                 | `decode_double_buffer_tma` | `0.173 ms` | `0.081 ms` | `2.14x` |
                 | `decode_device_resident` | `11.487 ms` | `2.340 ms` | `4.91x` |
+                | `decode_prefix_state_cache` | `1.761 ms` | `1.018 ms` | `1.73x` |
                 | `decode_candidate_logits` | `8.866 ms` | `6.335 ms` | `1.40x` |
 
-                The `decode_device_resident` row is from `artifacts/runs/codex_decode_device_resident_20260630_204000/`; the optimized path reports zero prompt/payload copies per iteration. The `decode_candidate_logits` row is from `artifacts/runs/codex_decode_candidate_logits_forced_20260630_210000/`; the optimized path reduces the effective logits vocabulary from `131072` to `1`. This is the useful shape of the lab: some decode optimizations are huge, some are modest, and the lab keeps them separated instead of averaging them into a fake single story."""
+                The `decode_device_resident` row is from `artifacts/runs/codex_decode_device_resident_20260630_204000/`; the optimized path reports zero prompt/payload copies per iteration. The `decode_prefix_state_cache` row is from the B200/Zymtrace run `artifacts/runs/20260701_132419__bench__profile_none_targets_labs_decode_optimization_decode_prefix_state_cache/`; the optimized path reports zero prefill computes per iteration and reduces TTFT from about `0.91 ms` to `0.12 ms`. The `decode_candidate_logits` row is from `artifacts/runs/codex_decode_candidate_logits_forced_20260630_210000/`; the optimized path reduces the effective logits vocabulary from `131072` to `1`. This is the useful shape of the lab: some decode optimizations are huge, some are modest, and the lab keeps them separated instead of averaging them into a fake single story."""
             ),
         ),
         MarkdownSection(
@@ -3819,6 +3866,7 @@ ENTRIES["labs/decode_optimization"] = lab_entry(
                 ```bash
                 python -m cli.aisp bench run --targets labs/decode_optimization:decode --profile deep_dive --single-gpu
                 python -m cli.aisp bench run --targets labs/decode_optimization:decode_device_resident --profile deep_dive --single-gpu
+                python -m cli.aisp bench run --targets labs/decode_optimization:decode_prefix_state_cache --profile deep_dive --single-gpu
                 python -m cli.aisp bench run --targets labs/decode_optimization:decode_candidate_logits --profile deep_dive --single-gpu
                 python -m cli.aisp bench run --targets labs/decode_optimization:decode_hf_cache --profile deep_dive --single-gpu
                 python -m cli.aisp bench run --targets labs/decode_optimization:decode_warp_specialized --profile deep_dive --single-gpu
@@ -3845,11 +3893,13 @@ ENTRIES["labs/decode_optimization"] = lab_entry(
         "Validate Triton warp-specialized decode kernels against Python math and harness expectations.",
         "Observe NVLink-C2C behavior by scaling the decode loop across available GPUs.",
         "Show when a prefix-cache/device-resident request path can remove recurring prompt-side H2D staging.",
+        "Show when a static-prefix request path can reuse prefill state instead of recomputing it per decode request.",
         "Show when guided decoding can avoid full-vocabulary logits by scoring only legal candidates.",
     ],
     contents=[
         ("`baseline_decode.py`, `optimized_decode_pinned.py`, `optimized_decode_streams.py`, `optimized_decode_compile.py`, `optimized_decode_graph.py`, `optimized_decode_graph_full.py`, `optimized_decode_ultimate.py`", "Serving-path decode variants that isolate host, stream, compile, and graph effects."),
         ("`baseline_decode_device_resident.py`, `optimized_decode_device_resident.py`", "Prefix-cache-style serving variant that seeds prompt-side inputs once and skips recurring H2D staging in the decode hot path."),
+        ("`baseline_decode_prefix_state_cache.py`, `optimized_decode_prefix_state_cache.py`", "Static-prefix serving variant that keeps prompt tensors resident and reuses the setup-time prefill state during short decode."),
         ("`baseline_decode_candidate_logits.py`, `optimized_decode_candidate_logits.py`", "Guided/constrained decode variant that compares full-vocabulary scoring plus candidate filtering with direct candidate-only projection."),
         ("`baseline_decode_hf_cache.py`, `optimized_decode_hf_cache.py`", "Real HuggingFace decoder-loop comparison: dynamic cache + per-step EOS sync vs static cache + compiled decode + batched EOS polling."),
         ("`baseline_decode_fp8.py`, `optimized_decode_fp8.py`, `baseline_decode_fp4.py`, `optimized_decode_fp4.py`", "Prefill-focused low-precision decode comparisons on hardware that supports them, including the intentional BF16/nn.Linear versus FP8/Transformer Engine TELinear path."),
@@ -3862,6 +3912,7 @@ ENTRIES["labs/decode_optimization"] = lab_entry(
         "FP8/FP4 runs use a prefill-focused workload (`decode_tokens=0`) to surface tensor-core benefits; outputs remain within tolerance.",
         "Warp-specialized Triton kernel is validated against a workload-matched eager baseline; the expectation file stays green.",
         "`decode_device_resident` emits zero prompt/payload copies per iteration on the optimized path while preserving the same model output.",
+        "`decode_prefix_state_cache` emits zero prefill computes per iteration on the optimized path while preserving the same short-decode output.",
         "`decode_candidate_logits` emits the same constrained-token decode output while reducing the effective logits vocabulary from the full vocabulary to the candidate set.",
         "The multi-GPU demo exercises NVLink-C2C without graph-capture failures when launched via `torchrun`.",
     ],
@@ -3869,6 +3920,7 @@ ENTRIES["labs/decode_optimization"] = lab_entry(
         "All targets emit TTFT, TPOT mean, decode time, total time, and tokens/sec in `custom_metrics` for easy diffing.",
         "`decode_pinned` is a supplementary local-contract stepping-stone target that now isolates pageable vs pinned staging on the same large host payload; use `decode_streams` when you want the lab's canonical pinned-host plus overlap speed claim.",
         "`decode_device_resident` is a larger serving-contract optimization: it applies when routing and prefix-cache policy keep prompt-side buffers resident on the GPU between decode iterations.",
+        "`decode_prefix_state_cache` is a larger serving-contract optimization: it applies when a stable prompt prefix can be prefetched once and reused for low-latency short decode requests.",
         "`decode_candidate_logits` models grammar, schema, or router-constrained serving where the legal next-token set is known before the lm_head projection.",
         "FP4 requires NVFP4-capable Blackwell hardware; unsupported platforms fail fast.",
         "The HF cache pair reproduces the main idea from Chaim Rand's token-generation optimization write-up while keeping the harness contract intact.",
@@ -4078,7 +4130,10 @@ ENTRIES["labs/block_scaling"] = lab_entry(
             On this B200, the harness run:
             - `python -m cli.aisp bench run -t labs/block_scaling:block_scaling -p none --iterations 10 --warmup 5 --timeout-seconds 900 --single-gpu`
             - reported `0.198 ms` baseline, `0.113 ms` optimized, and `1.76x` speedup
-            - updated `labs/block_scaling/expectations_b200.json` from `1.669x` to `1.762x`"""
+            - keeps the headline harness story at roughly `1.76x`, while the local gating floor is `1.75x`
+            - treats the older `1.784x` single-run best as historical context, not as the current tier1 gate
+
+            Three clean `--profile minimal --single-gpu --validity-profile portable` reruns on this host landed at `1.7590x`, `1.7562x`, and `1.7659x`, so the lab now records that repeated-harness band truthfully instead of implicitly gating on the stale single-run peak."""
         ),
     ],
     notes=[
@@ -4257,6 +4312,7 @@ ENTRIES["labs/flashattention4"] = lab_entry(
     ],
     notes=[
         "Sources: Colfax Research's FlashAttention-4 article (`https://research.colfax-intl.com/flashattention-4-algorithm-and-kernel-pipelining-co-design-for-asymmetric-hardware-scaling/`) and the PyTorch FlexAttention + FlashAttention-4 integration post (`https://pytorch.org/blog/flexattention-flashattention-4-fast-and-flexible/`).",
+        "For a smaller, schedule-first explanation surface, see `labs/software_pipelining`, which models same-iteration, loop-carried, and anti-dependency constraints without requiring a full FA4 kernel.",
         "Colfax reports up to `1605 TFLOPs/s` on B200 BF16 at roughly `71%` utilization, plus up to `1.3x` over cuDNN 9.13 and `2.7x` over Triton for forward passes.",
         "The PyTorch post reports `1.6x-3.2x` forward speedup over Triton for standard dense/causal attention on GB200, `1.2x-2.1x` for ALiBi, and `1.4x-2.1x` for sliding-window attention.",
         "The local PyTorch/Triton stack needs a quoted backend literal for the experimental FLASH backend; the lab handles that workaround internally and falls back automatically if needed.",
@@ -6064,6 +6120,7 @@ ENTRIES["labs/moe_cuda"] = lab_entry(
                 """\
                 - staged decode kernels
                 - overlapped and graph-assisted KV transfer
+                - batched direct KV destination writes for serving layouts that colocate compute and KV placement
                 - backend and router kernels tuned for Blackwell-friendly execution"""
             ),
         ),
@@ -6077,13 +6134,13 @@ ENTRIES["labs/moe_cuda"] = lab_entry(
                 | --- | ---: | ---: | ---: |
                 | `decode_attention` | `0.259 ms` | `0.207 ms` | `1.25x` |
                 | `kv_transfer` | `1.224 ms` | `1.085 ms` | `1.13x` |
-                | `kv_transfer_direct` | baseline transfer path | direct KV writes | destination-placement variant |
+                | `kv_transfer_direct` | baseline transfer path | batched direct KV writes | destination-placement + launch-removal variant |
                 | `kv_transfer_graphs` | `1.224 ms` | `0.315 ms` | `3.88x` |
                 | `kv_transfer_direct_graphs` | baseline transfer path | direct KV writes + graph replay | destination + launch-removal variant |
                 | `moe_backend_selection` | `1.747 ms` | `0.308 ms` | `5.67x` |
                 | `router` | `67.265 ms` | `8.674 ms` | `7.75x` |
 
-                That spread is the point of the lab. Not every MoE subsystem gets the same win: overlap-only KV transfer is a modest directional step, direct destination placement removes the copy when the serving layout allows it, and graphed direct placement removes most of the remaining launch overhead. The router/backend work is still where the biggest local payoff is showing up."""
+                That spread is the point of the lab. Not every MoE subsystem gets the same win: overlap-only KV transfer is a modest directional step, direct destination placement removes the copy when the serving layout allows it, batched direct placement removes per-chunk launches, and graphed direct placement removes most of the remaining scheduling overhead. The router/backend work is still where the biggest local payoff is showing up."""
             ),
         ),
         MarkdownSection(
@@ -6175,6 +6232,7 @@ ENTRIES["labs/moe_parallelism"] = lab_entry(
         "baseline/optimized harness targets."
     ),
     notes=[
+        "This is a workflow-oriented scenario and playbook lab, not a benchmark-pair lab.",
         "Baseline vs optimized here are *planning* scenarios (different designs), not comparable performance benchmarks.",
         "`plan.py` centralizes scenario definitions so you only update one file when adding a new topology.",
     ],

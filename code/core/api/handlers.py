@@ -179,6 +179,16 @@ def _parse_path_param(params: Dict[str, Any], name: str) -> Path:
     return path.resolve()
 
 
+def _parse_directory_param(params: Dict[str, Any], name: str) -> Path:
+    raw = _require_param(params, name)
+    path = Path(str(raw)).expanduser()
+    if not path.exists():
+        raise FileNotFoundError(f"{name} not found: {path}")
+    if not path.is_dir():
+        raise ValueError(f"{name} must be a directory: {path}")
+    return path.resolve()
+
+
 def _parse_list_param(params: Dict[str, Any], name: str) -> Optional[List[str]]:
     value = params.get(name)
     if value is None:
@@ -747,6 +757,15 @@ def benchmark_compare(params: Dict[str, Any]) -> Dict[str, Any]:
         "removed_benchmarks": removed,
         "status_transitions": status_transitions,
     }
+
+
+def optimization_campaign(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a read-only campaign ledger projection for promotion review."""
+
+    from core.optimization.campaign_dashboard import build_campaign_dashboard
+
+    workspace = _parse_directory_param(params, "workspace")
+    return build_campaign_dashboard(workspace)
 
 
 def benchmark_targets(_: Dict[str, Any]) -> Dict[str, Any]:

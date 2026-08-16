@@ -1032,6 +1032,172 @@ def candidate_scores_triton(
     return out
 
 
+def _sequence_context_user_input_triton_prepared(
+    inputs: RankingInputs,
+    state: RankingModelState,
+    out: torch.Tensor,
+    workspace: RankingWorkspace,
+) -> torch.Tensor:
+    """Launch the fused pool after setup has applied Triton compatibility."""
+    if not TRITON_AVAILABLE or not inputs.sequence_ids.is_cuda or not inputs.context_ids.is_cuda:
+        raise RuntimeError("Prepared Triton user-input pooling requires CUDA and Triton")
+    grid = (
+        inputs.sequence_ids.shape[0],
+        triton.cdiv(state.item_embeddings.shape[1], 64),
+    )
+    _sequence_context_user_input_kernel[grid](
+        inputs.sequence_ids,
+        state.item_embeddings,
+        workspace.sequence_mask_float,
+        workspace.sequence_length_recip,
+        inputs.context_ids,
+        state.context_embeddings,
+        out,
+        state.item_embeddings.shape[1],
+        inputs.sequence_ids.stride(0),
+        inputs.sequence_ids.stride(1),
+        state.item_embeddings.stride(0),
+        state.item_embeddings.stride(1),
+        workspace.sequence_mask_float.stride(0),
+        workspace.sequence_mask_float.stride(1),
+        workspace.sequence_length_recip.stride(0),
+        inputs.context_ids.stride(0),
+        inputs.context_ids.stride(1),
+        state.context_embeddings.stride(0),
+        state.context_embeddings.stride(1),
+        state.context_embeddings.stride(2),
+        out.stride(0),
+        out.stride(1),
+        SEQ_LEN=inputs.sequence_ids.shape[1],
+        NUM_TABLES=inputs.context_ids.shape[1],
+        BLOCK_D=64,
+    )
+    return out
+
+
+def _candidate_scores_triton_prepared(
+    user_vec: torch.Tensor,
+    inputs: RankingInputs,
+    state: RankingModelState,
+    out: torch.Tensor,
+) -> torch.Tensor:
+    """Launch prepared Triton scoring without setup or logging work."""
+    if not TRITON_AVAILABLE or not user_vec.is_cuda:
+        raise RuntimeError("Prepared Triton candidate scoring requires CUDA and Triton")
+    if not user_vec.is_contiguous():
+        raise RuntimeError("Prepared Triton candidate scoring requires contiguous user vectors")
+    grid = (inputs.candidate_ids.shape[0], triton.cdiv(inputs.candidate_ids.shape[1], 64))
+    _candidate_dot_kernel[grid](
+        user_vec,
+        state.item_embeddings,
+        inputs.candidate_ids,
+        out,
+        inputs.candidate_ids.shape[0],
+        inputs.candidate_ids.shape[1],
+        user_vec.shape[1],
+        user_vec.stride(0),
+        user_vec.stride(1),
+        state.item_embeddings.stride(0),
+        state.item_embeddings.stride(1),
+        inputs.candidate_ids.stride(0),
+        inputs.candidate_ids.stride(1),
+        out.stride(0),
+        out.stride(1),
+        BLOCK_C=64,
+        BLOCK_D=32,
+    )
+    return out
+
+
+def optimized_forward_preallocated(
+    inputs: RankingInputs,
+    state: RankingModelState,
+    *,
+    compiled_tower: nn.Module | None = None,
+    score_backend: str,
+    workspace: RankingWorkspace | None = None,
+) -> torch.Tensor:
+    """Run the optimized route with a workspace prepared before timing."""
+    if workspace is None:
+        raise RuntimeError("Prepared ranking requires a RankingWorkspace")
+    if workspace.sequence_metadata_key != _sequence_metadata_key(inputs):
+        raise RuntimeError("Sequence workspace metadata is stale")
+    if workspace.context_metadata_key != _context_metadata_key(inputs, state):
+        raise RuntimeError("Context workspace metadata is stale")
+
+    use_fused_triton = (
+        TRITON_AVAILABLE
+        and inputs.sequence_ids.is_cuda
+        and inputs.context_ids.is_cuda
+        and state.item_embeddings.is_cuda
+        and state.context_embeddings.is_cuda
+        and inputs.sequence_ids.shape[1] > 0
+        and inputs.context_ids.shape[1] > 0
+        and not (
+            torch.is_grad_enabled()
+            and (state.item_embeddings.requires_grad or state.context_embeddings.requires_grad)
+        )
+    )
+    if use_fused_triton:
+        user_input = _sequence_context_user_input_triton_prepared(
+            inputs,
+            state,
+            workspace.sequence_accum,
+            workspace,
+        )
+    else:
+        sequence_rows = int(inputs.sequence_ids_1d.numel())
+        embedding_dim = int(state.item_embeddings.shape[1])
+        sequence_embedding_flat = workspace.sequence_embedding_flat[:sequence_rows]
+        torch.index_select(
+            state.item_embeddings,
+            0,
+            inputs.sequence_ids_1d,
+            out=sequence_embedding_flat,
+        )
+        seq_emb = sequence_embedding_flat.view(
+            inputs.sequence_ids.shape[0],
+            inputs.sequence_ids.shape[1],
+            embedding_dim,
+        )
+        seq_emb.mul_(workspace.sequence_mask_float)
+        torch.sum(seq_emb, dim=1, out=workspace.sequence_accum)
+        workspace.sequence_accum.mul_(workspace.sequence_length_recip)
+
+        batch_size, num_tables = inputs.context_ids.shape
+        context_rows = int(inputs.context_ids.numel())
+        context_embedding_flat = workspace.context_embedding_flat[:context_rows]
+        flat_context_embeddings = state.context_embeddings.view(-1, embedding_dim)
+        torch.index_select(
+            flat_context_embeddings,
+            0,
+            workspace.context_flat_ids_1d[:context_rows],
+            out=context_embedding_flat,
+        )
+        context_vecs = context_embedding_flat.view(batch_size, num_tables, embedding_dim)
+        torch.sum(context_vecs, dim=1, out=workspace.context_accum)
+        user_input = workspace.sequence_accum.add_(workspace.context_accum)
+
+    tower = compiled_tower if compiled_tower is not None else state.tower
+    user_vec = tower(user_input)
+    if score_backend == "triton":
+        return _candidate_scores_triton_prepared(
+            user_vec,
+            inputs,
+            state,
+            workspace.score_output,
+        )
+    return candidate_scores_torch(
+        user_vec,
+        inputs,
+        state,
+        workspace.score_output,
+        workspace.candidate_embedding_flat,
+        workspace.candidate_embedding_f32,
+        workspace.user_vec_f32,
+    )
+
+
 def user_input_vectorized(
     inputs: RankingInputs,
     state: RankingModelState,

@@ -11,6 +11,11 @@ import torch.nn.functional as F
 
 from ch19.dynamic_precision_switching import (
     DynamicPrecisionWorkspace,
+    PrecisionMode,
+    PrecisionStats,
+    _memory_utilization_percent,
+    _precision_context,
+    _simulate_fp4_quantize,
     decode_with_dynamic_precision,
 )
 
@@ -383,6 +388,98 @@ def decode_host_policy_baseline(
 
 
 @torch.inference_mode()
+def decode_host_policy_baseline_preallocated(
+    model: nn.Module,
+    tokens: torch.Tensor,
+    *,
+    max_steps: int,
+    device: torch.device,
+    workspace: FixedDecodeWorkspace,
+) -> torch.Tensor:
+    """Run the host-policy baseline using only setup-owned buffers.
+
+    The host copy and per-step synchronization are the baseline mechanism being
+    compared. Optional allocation fallbacks remain available through
+    ``decode_host_policy_baseline`` for interactive examples, but are excluded
+    from the benchmark entry point.
+    """
+    prompt = tokens.to(device, non_blocking=True)
+    batch_size, prompt_len = prompt.shape
+    generated_shape = (batch_size, prompt_len + max_steps)
+    generated = workspace.generated
+    next_token = workspace.next_token
+    next_token_values = workspace.next_token_values
+    next_token_flat = workspace.next_token_flat
+    generated_token_views = workspace.generated_token_views
+    host_logits_buffer = workspace.host_logits_buffer
+    policy_metrics_buffer = workspace.policy_metrics_buffer
+    policy_metric_values = workspace.policy_metric_values
+    policy_top2_values = workspace.policy_top2_values
+    policy_top2_indices = workspace.policy_top2_indices
+
+    if generated.shape != generated_shape or generated.device != prompt.device or generated.dtype != prompt.dtype:
+        raise ValueError("workspace.generated does not match decode shape/device/dtype")
+    if next_token.shape != (batch_size, 1) or next_token.device != prompt.device or next_token.dtype != prompt.dtype:
+        raise ValueError("workspace.next_token does not match decode shape/device/dtype")
+    if next_token_values is None or next_token_values.shape != (batch_size, 1):
+        raise ValueError("workspace.next_token_values is not prepared")
+    if next_token_flat is None or next_token_flat.shape != (batch_size,):
+        raise ValueError("workspace.next_token_flat is not prepared")
+    if generated_token_views is None or len(generated_token_views) != generated.shape[1]:
+        raise ValueError("workspace.generated_token_views is not prepared")
+    if host_logits_buffer is None or host_logits_buffer.shape != (batch_size, model.vocab_size):
+        raise ValueError("workspace.host_logits_buffer is not prepared")
+    if policy_metrics_buffer is None or policy_metrics_buffer.shape != (4,):
+        raise ValueError("workspace.policy_metrics_buffer is not prepared")
+    if policy_metric_values is None or len(policy_metric_values) != 4:
+        raise ValueError("workspace.policy_metric_values is not prepared")
+    if policy_top2_values is None or policy_top2_values.shape != (batch_size, 2):
+        raise ValueError("workspace.policy_top2_values is not prepared")
+    if policy_top2_indices is None or policy_top2_indices.shape != (batch_size, 2):
+        raise ValueError("workspace.policy_top2_indices is not prepared")
+
+    generated[:, :prompt_len].copy_(prompt)
+    current_len = prompt_len
+    for _ in range(max_steps):
+        logits = model(input_ids=generated[:, :current_len])
+        if hasattr(logits, "logits"):
+            logits = logits.logits
+        last_step_logits = logits if logits.dim() == 2 else logits[:, -1, :]
+
+        host_logits_buffer.copy_(
+            last_step_logits,
+            non_blocking=host_logits_buffer.is_pinned(),
+        )
+        if device.type == "cuda":
+            torch.cuda.synchronize(device)
+        log_probs = torch.log_softmax(host_logits_buffer, dim=-1)
+        probs = log_probs.exp()
+        policy_metrics_buffer[1].copy_(probs.max(dim=-1).values.mean())
+        probs.mul_(log_probs)
+        policy_metrics_buffer[0].copy_(-probs.sum(dim=-1).mean())
+        torch.topk(
+            host_logits_buffer,
+            k=2,
+            dim=-1,
+            out=(policy_top2_values, policy_top2_indices),
+        )
+        policy_metrics_buffer[2].copy_(policy_top2_values.mean())
+        policy_metrics_buffer[3].copy_(policy_top2_values[:, 0].mean())
+        for metric_idx in range(4):
+            policy_metric_values[metric_idx] = float(policy_metrics_buffer[metric_idx])
+
+        torch.max(
+            last_step_logits,
+            dim=-1,
+            keepdim=True,
+            out=(next_token_values, next_token),
+        )
+        generated_token_views[current_len].copy_(next_token_flat)
+        current_len += 1
+    return generated[:, :current_len].contiguous()
+
+
+@torch.inference_mode()
 def decode_dynamic_precision(
     model: nn.Module,
     tokens: torch.Tensor,
@@ -409,3 +506,115 @@ def decode_dynamic_precision(
         collect_stats=True,
         workspace=workspace,
     )
+
+
+@torch.inference_mode()
+def decode_dynamic_precision_preallocated(
+    model: nn.Module,
+    tokens: torch.Tensor,
+    *,
+    max_steps: int,
+    device: torch.device,
+    workspace: DynamicPrecisionWorkspace,
+) -> Tuple[torch.Tensor, PrecisionStats]:
+    """Run the benchmark's prepared dynamic-precision decode route.
+
+    The benchmark must execute a model forward and a precision-policy decision
+    for every generated token. Only storage is reused across invocations.
+    """
+    prompt = tokens.to(device, non_blocking=True)
+    batch_size, prompt_len = prompt.shape
+    generated = workspace.generated
+    next_token = workspace.next_token
+    next_token_values = workspace.next_token_values
+    next_token_flat = workspace.next_token_flat
+    generated_token_views = workspace.generated_token_views
+    top2_values = workspace.top2_values
+    top2_indices = workspace.top2_indices
+    margin_values = workspace.margin_values
+    margin_mean = workspace.margin_mean
+    ema_conf = workspace.ema_conf
+    stats = workspace.stats
+    generated_shape = (batch_size, prompt_len + max_steps)
+    if generated.shape != generated_shape or generated.device != prompt.device or generated.dtype != prompt.dtype:
+        raise ValueError("workspace.generated does not match decode shape/device/dtype")
+    if next_token.shape != (batch_size, 1) or next_token.device != prompt.device:
+        raise ValueError("workspace.next_token does not match decode shape/device")
+    if next_token_values is None or next_token_values.shape != (batch_size, 1):
+        raise ValueError("workspace.next_token_values is not prepared")
+    if next_token_flat is None or next_token_flat.shape != (batch_size,):
+        raise ValueError("workspace.next_token_flat is not prepared")
+    if generated_token_views is None or len(generated_token_views) != generated.shape[1]:
+        raise ValueError("workspace.generated_token_views is not prepared")
+    if top2_values is None or top2_values.shape != (batch_size, 2):
+        raise ValueError("workspace.top2_values is not prepared")
+    if top2_indices is None or top2_indices.shape != (batch_size, 2):
+        raise ValueError("workspace.top2_indices is not prepared")
+    if margin_values is None or margin_values.shape != (batch_size,):
+        raise ValueError("workspace.margin_values is not prepared")
+    if margin_mean is None or margin_mean.shape != ():
+        raise ValueError("workspace.margin_mean is not prepared")
+    if ema_conf is None or ema_conf.shape != ():
+        raise ValueError("workspace.ema_conf is not prepared")
+    if stats is None:
+        raise ValueError("workspace.stats is not prepared")
+
+    stats.reset()
+    workspace.decode_invocations += 1
+    generated[:, :prompt_len].copy_(prompt)
+    current_len = prompt_len
+    precision_mode = PrecisionMode.BF16
+    confidence_total = 0.0
+    alpha = 0.2
+
+    for step in range(max_steps):
+        with _precision_context(device, precision_mode, True, False):
+            logits = model(input_ids=generated[:, :current_len])
+            if hasattr(logits, "logits"):
+                logits = logits.logits
+        stats.model_forwards += 1
+        last_step_logits = logits if logits.dim() == 2 else logits[:, -1, :]
+        if precision_mode == PrecisionMode.FP4:
+            last_step_logits = _simulate_fp4_quantize(last_step_logits)
+
+        torch.topk(
+            last_step_logits,
+            k=2,
+            dim=-1,
+            out=(top2_values, top2_indices),
+        )
+        torch.sub(top2_values[:, 0], top2_values[:, 1], out=margin_values)
+        torch.mean(margin_values, out=margin_mean)
+        if step == 0:
+            ema_conf.copy_(margin_mean)
+        else:
+            ema_conf.mul_(1 - alpha).add_(margin_mean, alpha=alpha)
+        confidence = float(ema_conf)
+        confidence_total += confidence
+        stats.policy_evaluations += 1
+
+        torch.max(
+            last_step_logits,
+            dim=-1,
+            keepdim=True,
+            out=(next_token_values, next_token),
+        )
+        generated_token_views[current_len].copy_(next_token_flat)
+        current_len += 1
+
+        stats.record_tokens(precision_mode, batch_size)
+        stats.decode_steps += 1
+        memory_utilization = _memory_utilization_percent(device)
+        desired_mode = precision_mode
+        if precision_mode == PrecisionMode.FP4:
+            if confidence < 0.0 or memory_utilization < 0.0:
+                desired_mode = PrecisionMode.BF16
+        elif confidence >= 0.0 and memory_utilization >= 0.0:
+            desired_mode = PrecisionMode.FP4
+        if desired_mode != precision_mode:
+            precision_mode = desired_mode
+            stats.precision_switches += 1
+
+    if stats.policy_evaluations:
+        stats.avg_confidence = confidence_total / stats.policy_evaluations
+    return generated[:, :current_len].contiguous(), stats

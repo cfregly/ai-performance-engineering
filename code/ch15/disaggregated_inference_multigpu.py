@@ -70,12 +70,6 @@ def is_cuda_usable() -> bool:
 
 HAS_USABLE_CUDA = is_cuda_usable()
 
-if not HAS_USABLE_CUDA:
-    raise RuntimeError(
-        "Chapter 15 requires an NVIDIA GPU with compute capability up to sm121. "
-        "No supported GPU was detected."
-    )
-
 PREFERRED_SDP_BACKENDS: Tuple[SDPBackend, ...] = (
     SDPBackend.CUDNN_ATTENTION,
     SDPBackend.FLASH_ATTENTION,

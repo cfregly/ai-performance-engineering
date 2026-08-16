@@ -52,14 +52,14 @@ class BaselineHostStagedReductionBenchmark(VerificationPayloadMixin, BaseBenchma
             or self._host_buffer.shape != self.data.shape
             or self._host_buffer.dtype != self.data.dtype
         ):
-            self._host_buffer = self._make_host_buffer(self.data)
+            raise RuntimeError("setup() must initialize the host staging buffer")
         return self._host_buffer
 
     def _host_sum_for_data(self) -> torch.Tensor:
         if self.data is None:
             raise RuntimeError("Data not initialized")
         if self._host_sum is None or self._host_sum.dtype != self.data.dtype:
-            self._host_sum = torch.empty((), dtype=self.data.dtype)
+            raise RuntimeError("setup() must initialize the host reduction buffer")
         return self._host_sum
 
     def _output_for_data(self) -> torch.Tensor:
@@ -70,7 +70,7 @@ class BaselineHostStagedReductionBenchmark(VerificationPayloadMixin, BaseBenchma
             or self._output_buffer.device != self.data.device
             or self._output_buffer.dtype != self.data.dtype
         ):
-            self._output_buffer = torch.empty((), device=self.data.device, dtype=self.data.dtype)
+            raise RuntimeError("setup() must initialize the device output buffer")
         return self._output_buffer
 
     def benchmark_fn(self) -> None:

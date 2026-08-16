@@ -1,0 +1,69 @@
+name: Dual-Architecture Compare Builds
+
+on:
+  push:
+    paths:
+      - "code/ch*/**"
+      - "code/core/**"
+      - "code/Makefile"
+      - ".gitmodules"
+      - ".github/workflows/dual-arch-compare.yml"
+  pull_request:
+    paths:
+      - "code/ch*/**"
+      - "code/core/**"
+      - "code/Makefile"
+      - ".gitmodules"
+      - ".github/workflows/dual-arch-compare.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dual-arch-compare-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: code
+
+jobs:
+  compare-builds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    container:
+      image: nvidia/cuda:13.0.0-devel-ubuntu22.04
+    env:
+      # CUDA 13.0 supports these repository targets. Hosted runners do not have
+      # a GPU, so compare builds must not invoke runtime architecture detection.
+      ARCH_LIST: "sm_100 sm_103 sm_120 sm_121"
+      AUTO_ARCH_DETECTION: "0"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential git make python3
+
+      - name: Materialize the validated CUTLASS source
+        run: bash core/scripts/install_cutlass.sh v4.5.2
+
+      - name: Verify configured CUDA architecture targets
+        shell: bash
+        run: |
+          supported_codes="$(nvcc --list-gpu-code)"
+          for architecture in ${ARCH_LIST}; do
+            if ! grep -Fqx "${architecture}" <<<"${supported_codes}"; then
+              echo "CUDA 13.0 does not support configured target ${architecture}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Run dual-architecture compare builds
+        run: bash core/scripts/ci/run_compare_builds.sh

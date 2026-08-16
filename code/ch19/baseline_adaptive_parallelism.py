@@ -11,7 +11,7 @@ from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, Workl
 from ch19.adaptive_parallelism_benchmark_common import (
     AdaptiveParallelismBenchmarkConfig,
     build_workload,
-    classify_baseline,
+    classify_baseline_preallocated as classify_baseline,
     materialize_baseline_feature_rows,
 )
 

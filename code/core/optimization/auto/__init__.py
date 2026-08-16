@@ -1,39 +1,24 @@
-"""
-Auto-Optimizer Module
+"""Input adapters retained from the retired automatic optimizer prototype."""
 
-A general-purpose GPU code optimizer that works on:
-- Standalone Python files with GPU code
-- External repos (clone → analyze → optimize)
-- Existing benchmark pairs (baseline_ / optimized_)
-- Code from stdin/clipboard
+from .input_adapters import (
+    BenchmarkAdapter,
+    CodeSource,
+    FileAdapter,
+    RepoAdapter,
+    detect_input_type,
+)
 
-Usage:
-    python -m core.optimization.auto code.py --output optimized_code.py
-    python -m core.optimization.auto https://github.com/user/repo --target src/model.py
-    python -m core.optimization.auto --scan --threshold 1.1
-"""
-
-from .optimizer import AutoOptimizer
-from .input_adapters import FileAdapter, RepoAdapter, BenchmarkAdapter
-from .config import (
-    OptimizerConfig,
-    LLMConfig,
-    OptimizationConfig,
-    ProfilingConfig,
-    load_config,
-    generate_config_template,
+MIGRATION_MESSAGE = (
+    "The AutoOptimizer execution path has been retired because it does not satisfy the "
+    "benchmark evidence contract. Use `python -m core.optimization.campaign --help` "
+    "with measurements from the trusted benchmark harness."
 )
 
 __all__ = [
-    'AutoOptimizer',
-    'FileAdapter',
-    'RepoAdapter',
-    'BenchmarkAdapter',
-    'OptimizerConfig',
-    'LLMConfig',
-    'OptimizationConfig',
-    'ProfilingConfig',
-    'load_config',
-    'generate_config_template',
+    "BenchmarkAdapter",
+    "CodeSource",
+    "FileAdapter",
+    "MIGRATION_MESSAGE",
+    "RepoAdapter",
+    "detect_input_type",
 ]
-

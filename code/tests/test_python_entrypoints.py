@@ -24,7 +24,11 @@ def test_build_repo_python_env_prepends_repo_root_and_dedupes() -> None:
         extra_pythonpath=["/extra", "/existing"],
     )
 
-    assert env["PYTHONPATH"].split(os.pathsep) == ["/tmp/repo", "/extra", "/existing"]
+    assert env["PYTHONPATH"].split(os.pathsep) == [
+        str(repo_root.resolve()),
+        str(Path("/extra").resolve()),
+        str(Path("/existing").resolve()),
+    ]
 
 
 def test_build_python_entry_command_supports_module_launch() -> None:

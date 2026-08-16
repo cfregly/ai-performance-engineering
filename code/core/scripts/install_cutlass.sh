@@ -2,7 +2,7 @@
 # Fetch and install the requested CUTLASS release into third_party/cutlass.
 set -euo pipefail
 
-REF="${1:-${CUTLASS_REF:-8cd5bef43a2b0d3f9846b026c271593c6e4a8e8a}}"
+REF="${1:-${CUTLASS_REF:-v4.5.2}}"
 REPO="${CUTLASS_REPO:-https://github.com/NVIDIA/cutlass.git}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"

@@ -313,6 +313,7 @@ def test_flashattention_capture_verification_payload_uses_small_cpu_slice() -> N
         block_size=128,
     )
     bench.output = torch.randn(2, 8, 256, 32)
+    bench._verify_output_buffer = torch.empty(1, 1, 128, 16, dtype=torch.float32)
 
     bench.capture_verification_payload()
 

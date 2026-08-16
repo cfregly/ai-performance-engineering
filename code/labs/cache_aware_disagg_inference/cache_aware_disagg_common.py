@@ -83,6 +83,7 @@ def _extend_cache_buffer(
     cache: torch.Tensor,
     chunk_kv: torch.Tensor,
     kv_buffers: Dict[int, torch.Tensor],
+    allow_allocation: bool = True,
 ) -> torch.Tensor:
     prefix, append_view = _reserve_cache_append_buffer(
         cfg,
@@ -92,6 +93,7 @@ def _extend_cache_buffer(
         append_device=chunk_kv.device,
         append_dtype=chunk_kv.dtype,
         kv_buffers=kv_buffers,
+        allow_allocation=allow_allocation,
     )
     append_view.copy_(chunk_kv)
     return prefix
@@ -106,6 +108,7 @@ def _reserve_cache_append_buffer(
     append_device: torch.device,
     append_dtype: torch.dtype,
     kv_buffers: Dict[int, torch.Tensor],
+    allow_allocation: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     current_kv_len = cache.size(1)
     next_kv_len = current_kv_len + append_tokens
@@ -116,11 +119,12 @@ def _reserve_cache_append_buffer(
         or kv_buffer.dtype != append_dtype
         or kv_buffer.size(1) < next_kv_len
     ):
-        buffer_tokens = max(cfg.context_window, next_kv_len)
-        kv_buffer = torch.empty(
-            cfg.batch_size,
-            buffer_tokens,
-            cfg.hidden_size,
+        if not allow_allocation:
+            raise RuntimeError(
+                f"Preallocated KV append buffer missing or too small for request {request_id}"
+            )
+        kv_buffer = _CACHE_APPEND_BUFFER_ALLOCATOR(
+            cfg,
             device=append_device,
             dtype=append_dtype,
         )
@@ -129,6 +133,50 @@ def _reserve_cache_append_buffer(
     if current_kv_len and cache.data_ptr() != kv_buffer.data_ptr():
         kv_buffer[:, :current_kv_len].copy_(cache)
     return kv_buffer[:, :next_kv_len], kv_buffer[:, current_kv_len:next_kv_len]
+
+
+def _allocate_cache_append_buffer(
+    cfg: CacheAwareDisaggConfig,
+    *,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    """Allocate a full request buffer during setup, never during timing."""
+    kv_buffer = torch.empty(
+        cfg.batch_size,
+        cfg.context_window,
+        cfg.hidden_size,
+        device=device,
+        dtype=dtype,
+    )
+    return kv_buffer
+
+
+_CACHE_APPEND_BUFFER_ALLOCATOR = _allocate_cache_append_buffer
+
+
+def _allocate_reload_buffer_pair(
+    cfg: CacheAwareDisaggConfig,
+    *,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    return (
+        torch.empty(
+            cfg.batch_size,
+            cfg.context_window,
+            cfg.hidden_size,
+            device=device,
+            dtype=dtype,
+        ),
+        torch.empty(
+            cfg.batch_size,
+            cfg.context_window,
+            cfg.hidden_size,
+            device=device,
+            dtype=dtype,
+        ),
+    )
 
 
 class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -189,6 +237,8 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._pending_metrics: Dict[str, float] = {}
         self._kv_buffers: Dict[int, torch.Tensor] = {}
         self._reload_buffers: Dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
+        self._require_preallocated_reload_buffers = False
+        self._reload_buffer_allocator = _allocate_reload_buffer_pair
         self._worker_caches: List[Dict[int, torch.Tensor]] = []
         self._worker_cache_count = 0
         self._owners: Dict[int, int] = {}
@@ -314,6 +364,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
             for plan in self.request_plans
         }
+        self._require_preallocated_reload_buffers = True
         self._prefill_seed_buffer = torch.empty(
             self.cfg.batch_size,
             self.cfg.hidden_size,
@@ -401,22 +452,14 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or reload_buffers[0].dtype != source.dtype
             or reload_buffers[0].size(1) < required_tokens
         ):
-            buffer_tokens = max(self.cfg.context_window, required_tokens)
-            reload_buffers = (
-                torch.empty(
-                    self.cfg.batch_size,
-                    buffer_tokens,
-                    self.cfg.hidden_size,
-                    device=source.device,
-                    dtype=source.dtype,
-                ),
-                torch.empty(
-                    self.cfg.batch_size,
-                    buffer_tokens,
-                    self.cfg.hidden_size,
-                    device=source.device,
-                    dtype=source.dtype,
-                ),
+            if self._require_preallocated_reload_buffers:
+                raise RuntimeError(
+                    f"Preallocated reload buffers missing or too small for request {request_idx}"
+                )
+            reload_buffers = self._reload_buffer_allocator(
+                self.cfg,
+                device=source.device,
+                dtype=source.dtype,
             )
             self._reload_buffers[request_idx] = reload_buffers
         return reload_buffers
@@ -574,6 +617,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         append_device=chunk.device,
                         append_dtype=chunk.dtype,
                         kv_buffers=kv_buffers,
+                        allow_allocation=False,
                     )
                     _, seed = self.prefill_model.prefill_into(
                         chunk,
@@ -706,6 +750,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._pending_metrics = {}
         self._kv_buffers = {}
         self._reload_buffers = {}
+        self._require_preallocated_reload_buffers = False
         self._worker_caches = []
         self._worker_cache_count = 0
         self._owners = {}

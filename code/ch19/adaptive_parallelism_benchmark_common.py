@@ -141,6 +141,58 @@ def classify_baseline(
     return strategy_ids_cpu.to(device=device)
 
 
+def classify_baseline_preallocated(
+    workload: Dict[str, torch.Tensor],
+    *,
+    device: torch.device,
+    feature_rows: torch.Tensor,
+    feature_rows_cpu: torch.Tensor,
+    refresh_feature_rows: bool,
+    strategy_ids_cpu: torch.Tensor,
+    result: torch.Tensor,
+) -> torch.Tensor:
+    """Run the baseline router with caller-owned timed-path buffers.
+
+    The public ``classify_baseline`` helper keeps its convenient optional-buffer
+    API for examples. Benchmarks use this strict entry point so a missing or
+    mismatched setup buffer fails before an allocator can enter the timed path.
+    """
+    del device
+    num_rows = workload["seq_len"].numel()
+    if feature_rows.shape != (num_rows, 6):
+        raise ValueError("feature_rows does not match the routing workload")
+    if feature_rows_cpu.shape != (num_rows, 6) or feature_rows_cpu.device.type != "cpu":
+        raise ValueError("feature_rows_cpu does not match the routing workload")
+    if strategy_ids_cpu.shape != (num_rows,) or strategy_ids_cpu.device.type != "cpu":
+        raise ValueError("strategy_ids_cpu does not match the routing workload")
+    if result.shape != (num_rows,) or result.device != workload["seq_len"].device:
+        raise ValueError("result does not match the routing workload")
+
+    if refresh_feature_rows:
+        feature_rows[:, 0].copy_(workload["seq_len"])
+        feature_rows[:, 1].copy_(workload["gpu_mem_util"])
+        feature_rows[:, 2].copy_(workload["concurrent_reqs"])
+        feature_rows[:, 3].copy_(workload["batch_size"])
+        feature_rows[:, 4].copy_(workload["prefill_tokens"])
+        feature_rows[:, 5].copy_(workload["decode_tokens"])
+        feature_rows_cpu.copy_(feature_rows)
+
+    for row_idx in range(num_rows):
+        feature_row = feature_rows_cpu[row_idx]
+        config = choose_worker_pool(
+            seq_len=int(feature_row[0]),
+            gpu_mem_util=float(feature_row[1]),
+            concurrent_reqs=int(feature_row[2]),
+            batch_size=int(feature_row[3]),
+            prefill_tokens=int(feature_row[4]),
+            decode_tokens=int(feature_row[5]),
+        )
+        strategy_ids_cpu[row_idx] = STRATEGY_TO_ID[config.strategy]
+
+    result.copy_(strategy_ids_cpu, non_blocking=result.is_cuda)
+    return result
+
+
 def classify_vectorized(workload: Dict[str, torch.Tensor]) -> torch.Tensor:
     """Vectorized implementation of the same routing rules."""
     seq_len = workload["seq_len"]

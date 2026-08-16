@@ -7,9 +7,11 @@ https://chaimrand.medium.com/optimizing-token-generation-in-pytorch-decoder-mode
 from __future__ import annotations
 
 from core.benchmark.hf_decoder_cache_benchmark import (
-    HFDecoderCacheBenchmark,
     HFDecoderCacheConfig,
     attach_benchmark_metadata,
+)
+from labs.decode_optimization.hf_cache_preallocated import (
+    PreallocatedHFDecoderCacheBenchmark as HFDecoderCacheBenchmark,
 )
 
 
@@ -31,4 +33,3 @@ def get_benchmark() -> HFDecoderCacheBenchmark:
         label="optimized_decode_hf_cache",
     )
     return attach_benchmark_metadata(HFDecoderCacheBenchmark(cfg), __file__)  # type: ignore[return-value]
-

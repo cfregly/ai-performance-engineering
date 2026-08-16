@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import torch
 
@@ -19,7 +19,6 @@ from core.scripts.validate_benchmark_pairs import (
     validate_all_pairs,
     validate_pair,
 )
-
 
 _DISTRIBUTED_ENV_KEYS = ("RANK", "WORLD_SIZE", "LOCAL_RANK", "MASTER_ADDR", "MASTER_PORT")
 
@@ -51,7 +50,9 @@ class _DummyPayloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def capture_verification_payload(self) -> None:
         if self.x is None or self.y is None:
-            raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
+            raise RuntimeError(
+                "setup() and benchmark_fn() must run before capture_verification_payload()"
+            )
         self._set_verification_payload(
             inputs={"x": self.x},
             output=self.y,
@@ -92,7 +93,9 @@ def test_ci_compliance_checker_accepts_payload_mixin_inheritance(tmp_path: Path)
         "        return None\n"
     )
     issues = check_file_compliance(file_path)
-    assert not any("get_input_signature" in issue.message and issue.severity == "error" for issue in issues)
+    assert not any(
+        "get_input_signature" in issue.message and issue.severity == "error" for issue in issues
+    )
 
 
 def test_ci_compliance_checker_accepts_local_benchmark_base_inheritance(tmp_path: Path) -> None:
@@ -134,10 +137,26 @@ def test_ci_compliance_checker_accepts_imported_benchmark_base_inheritance(tmp_p
 def test_ch04_torchrun_multigpu_pairs_skip_cleanly_on_single_gpu_hosts() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     cases = [
-        ("pipeline_parallel_multigpu_1f1b", "baseline_pipeline_parallel_multigpu.py", "optimized_pipeline_parallel_multigpu_1f1b.py"),
-        ("tensor_parallel_allgather_multigpu", "baseline_tensor_parallel_allgather_multigpu.py", "optimized_tensor_parallel_allgather_multigpu.py"),
-        ("tensor_parallel_multigpu", "baseline_tensor_parallel_multigpu.py", "optimized_tensor_parallel_multigpu.py"),
-        ("torchcomms_multigpu", "baseline_torchcomms_multigpu.py", "optimized_torchcomms_multigpu.py"),
+        (
+            "pipeline_parallel_multigpu_1f1b",
+            "baseline_pipeline_parallel_multigpu.py",
+            "optimized_pipeline_parallel_multigpu_1f1b.py",
+        ),
+        (
+            "tensor_parallel_allgather_multigpu",
+            "baseline_tensor_parallel_allgather_multigpu.py",
+            "optimized_tensor_parallel_allgather_multigpu.py",
+        ),
+        (
+            "tensor_parallel_multigpu",
+            "baseline_tensor_parallel_multigpu.py",
+            "optimized_tensor_parallel_multigpu.py",
+        ),
+        (
+            "torchcomms_multigpu",
+            "baseline_torchcomms_multigpu.py",
+            "optimized_torchcomms_multigpu.py",
+        ),
     ]
 
     for example_name, baseline_name, optimized_name in cases:
@@ -182,28 +201,81 @@ def test_ch04_no_overlap_torchrun_specs_use_public_target_names() -> None:
     baseline_spec = BaselineNoOverlapBenchmark().get_torchrun_spec()
     optimized_spec = OptimizedOverlapDdpBenchmark().get_torchrun_spec()
 
+    worker_path = (Path(__file__).resolve().parents[1] / "ch04" / "ddp_worker.py").resolve()
     assert baseline_spec.script_path is not None
-    assert Path(baseline_spec.script_path).resolve() == (Path(__file__).resolve().parents[1] / "ch04" / "ddp_no_overlap.py").resolve()
+    assert Path(baseline_spec.script_path).resolve() == worker_path
+    assert baseline_spec.script_args == ["--variant", "no-overlap"]
     assert baseline_spec.name == "baseline_no_overlap"
     assert baseline_spec.config_arg_map == {"iterations": "--iterations", "warmup": "--warmup"}
     assert optimized_spec.script_path is not None
-    assert Path(optimized_spec.script_path).resolve() == (Path(__file__).resolve().parents[1] / "ch04" / "ddp_overlap.py").resolve()
-    assert optimized_spec.name == "optimized_no_overlap"
+    assert Path(optimized_spec.script_path).resolve() == worker_path
+    assert optimized_spec.script_args == ["--variant", "overlap"]
+    assert optimized_spec.name == "optimized_overlap"
     assert optimized_spec.config_arg_map == {"iterations": "--iterations", "warmup": "--warmup"}
 
 
 def test_ch04_additional_torchrun_specs_build_without_side_effects() -> None:
     cases = [
-        ("ch04.baseline_nvshmem_training_example_multigpu", "NVSHMEMTrainingExampleMultiGPU", "ch04/baseline_nvshmem_training_example_multigpu.py", {}),
-        ("ch04.optimized_nvshmem_training_example_multigpu", "OptimizedNVSHMEMTrainingExampleMultiGPU", "ch04/optimized_nvshmem_training_example_multigpu.py", {}),
-        ("ch04.baseline_nvshmem_training_patterns_multigpu", "NVSHMEMTrainingPatternsMultiGPU", "ch04/baseline_nvshmem_training_patterns_multigpu.py", {}),
-        ("ch04.optimized_nvshmem_training_patterns_multigpu", "OptimizedNVSHMEMTrainingPatternsMultiGPU", "ch04/optimized_nvshmem_training_patterns_multigpu.py", {}),
-        ("ch04.baseline_nvshmem_pipeline_parallel_multigpu", "NVSHMEMPipelineParallelMultiGPU", "ch04/baseline_nvshmem_pipeline_parallel_multigpu.py", {}),
-        ("ch04.optimized_nvshmem_pipeline_parallel_multigpu", "OptimizedNVSHMEMPipelineParallelMultiGPU", "ch04/optimized_nvshmem_pipeline_parallel_multigpu.py", {}),
-        ("ch04.baseline_nvshmem_vs_nccl_benchmark_multigpu", "NVSHMEMVsNCCLBenchmarkMultiGPU", "ch04/baseline_nvshmem_vs_nccl_benchmark_multigpu.py", {}),
-        ("ch04.optimized_nvshmem_vs_nccl_benchmark_multigpu", "OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU", "ch04/optimized_nvshmem_vs_nccl_benchmark_multigpu.py", {}),
-        ("ch04.baseline_symmetric_memory_multigpu", "SymmetricMemoryMultiGPU", "ch04/symmetric_memory_example.py", {}),
-        ("ch04.optimized_symmetric_memory_multigpu", "OptimizedSymmetricMemoryMultiGPU", "ch04/symmetric_memory_example.py", {}),
+        (
+            "ch04.baseline_nvshmem_training_example_multigpu",
+            "NVSHMEMTrainingExampleMultiGPU",
+            "ch04/nvshmem_worker.py",
+            {},
+        ),
+        (
+            "ch04.optimized_nvshmem_training_example_multigpu",
+            "OptimizedNVSHMEMTrainingExampleMultiGPU",
+            "ch04/nvshmem_worker.py",
+            {},
+        ),
+        (
+            "ch04.baseline_nvshmem_training_patterns_multigpu",
+            "NVSHMEMTrainingPatternsMultiGPU",
+            "ch04/nvshmem_worker.py",
+            {},
+        ),
+        (
+            "ch04.optimized_nvshmem_training_patterns_multigpu",
+            "OptimizedNVSHMEMTrainingPatternsMultiGPU",
+            "ch04/nvshmem_worker.py",
+            {},
+        ),
+        (
+            "ch04.baseline_nvshmem_pipeline_parallel_multigpu",
+            "NVSHMEMPipelineParallelMultiGPU",
+            "ch04/nvshmem_worker.py",
+            {},
+        ),
+        (
+            "ch04.optimized_nvshmem_pipeline_parallel_multigpu",
+            "OptimizedNVSHMEMPipelineParallelMultiGPU",
+            "ch04/nvshmem_worker.py",
+            {},
+        ),
+        (
+            "ch04.baseline_nvshmem_vs_nccl_benchmark_multigpu",
+            "NVSHMEMVsNCCLBenchmarkMultiGPU",
+            "ch04/nvshmem_worker.py",
+            {},
+        ),
+        (
+            "ch04.optimized_nvshmem_vs_nccl_benchmark_multigpu",
+            "OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU",
+            "ch04/nvshmem_worker.py",
+            {},
+        ),
+        (
+            "ch04.baseline_symmetric_memory_multigpu",
+            "SymmetricMemoryMultiGPU",
+            "ch04/symmetric_memory_example.py",
+            {},
+        ),
+        (
+            "ch04.optimized_symmetric_memory_multigpu",
+            "OptimizedSymmetricMemoryMultiGPU",
+            "ch04/symmetric_memory_example.py",
+            {},
+        ),
     ]
 
     repo_root = Path(__file__).resolve().parents[1]
@@ -217,13 +289,77 @@ def test_ch04_additional_torchrun_specs_build_without_side_effects() -> None:
         assert spec.config_arg_map == expected_config_arg_map
 
 
-def test_ch04_ddp_entrypoints_emit_explicit_skips_without_torchrun_env() -> None:
-    repo_root = Path(__file__).resolve().parents[1]
-    cases = ["ch04.ddp_no_overlap", "ch04.ddp_overlap"]
+def test_ch04_nvshmem_torchrun_specs_preserve_variant_contracts() -> None:
+    from ch04.baseline_nvshmem_pipeline_parallel_multigpu import (
+        NVSHMEMPipelineParallelMultiGPU,
+    )
+    from ch04.baseline_nvshmem_training_example_multigpu import (
+        NVSHMEMTrainingExampleMultiGPU,
+    )
+    from ch04.baseline_nvshmem_training_patterns_multigpu import (
+        NVSHMEMTrainingPatternsMultiGPU,
+    )
+    from ch04.baseline_nvshmem_vs_nccl_benchmark_multigpu import (
+        NVSHMEMVsNCCLBenchmarkMultiGPU,
+    )
+    from ch04.optimized_nvshmem_pipeline_parallel_multigpu import (
+        OptimizedNVSHMEMPipelineParallelMultiGPU,
+    )
+    from ch04.optimized_nvshmem_training_example_multigpu import (
+        OptimizedNVSHMEMTrainingExampleMultiGPU,
+    )
+    from ch04.optimized_nvshmem_training_patterns_multigpu import (
+        OptimizedNVSHMEMTrainingPatternsMultiGPU,
+    )
+    from ch04.optimized_nvshmem_vs_nccl_benchmark_multigpu import (
+        OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU,
+    )
 
-    for module_name in cases:
+    baseline_pipeline = NVSHMEMPipelineParallelMultiGPU().get_torchrun_spec()
+    optimized_pipeline = OptimizedNVSHMEMPipelineParallelMultiGPU().get_torchrun_spec()
+    assert baseline_pipeline.script_args[:4] == [
+        "--workload",
+        "pipeline",
+        "--variant",
+        "baseline",
+    ]
+    assert optimized_pipeline.script_args[:4] == [
+        "--workload",
+        "pipeline",
+        "--variant",
+        "optimized",
+    ]
+    assert baseline_pipeline.script_args[4:] == optimized_pipeline.script_args[4:]
+    assert baseline_pipeline.env["AISP_SYMMEM_PIPELINE_ASYNC"] == "0"
+    assert optimized_pipeline.env["AISP_SYMMEM_PIPELINE_ASYNC"] == "1"
+
+    baseline_training = NVSHMEMTrainingExampleMultiGPU().get_torchrun_spec()
+    optimized_training = OptimizedNVSHMEMTrainingExampleMultiGPU().get_torchrun_spec()
+    assert baseline_training.script_args[4:] == optimized_training.script_args[4:]
+    assert baseline_training.env["AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS"] == "0"
+    assert optimized_training.env["AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS"] == "1"
+
+    baseline_patterns = NVSHMEMTrainingPatternsMultiGPU().get_torchrun_spec()
+    optimized_patterns = OptimizedNVSHMEMTrainingPatternsMultiGPU().get_torchrun_spec()
+    assert baseline_patterns.script_args[4:] == optimized_patterns.script_args[4:]
+    assert baseline_patterns.env["AISP_GRAD_SYNC_NAIVE"] == "1"
+    assert optimized_patterns.env["AISP_GRAD_SYNC_NAIVE"] == "0"
+
+    baseline_collective = NVSHMEMVsNCCLBenchmarkMultiGPU().get_torchrun_spec()
+    optimized_collective = OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU().get_torchrun_spec()
+    assert baseline_collective.script_args[-1] == "nccl"
+    assert optimized_collective.script_args[-1] == "nvshmem"
+    assert baseline_collective.env["AISP_BROADCAST_OVERLAP"] == "0"
+    assert optimized_collective.env["AISP_BROADCAST_OVERLAP"] == "1"
+
+
+def test_ch04_ddp_worker_emits_explicit_skips_without_torchrun_env() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    cases = ["no-overlap", "overlap"]
+
+    for variant in cases:
         completed = subprocess.run(
-            [sys.executable, "-m", module_name],
+            [sys.executable, "-m", "ch04.ddp_worker", "--variant", variant],
             cwd=repo_root,
             capture_output=True,
             text=True,
@@ -233,28 +369,41 @@ def test_ch04_ddp_entrypoints_emit_explicit_skips_without_torchrun_env() -> None
         assert completed.returncode == 3
         combined = "\n".join(part for part in (completed.stdout, completed.stderr) if part)
         assert "SKIPPED:" in combined
-        assert (
-            "torchrun/distributed launch context" in combined
-            or "Requires >= 2 GPUs" in combined
-        )
+        assert "torchrun/distributed launch context" in combined or "Requires >= 2 GPUs" in combined
 
 
-def test_ch04_nvshmem_wrapper_entrypoints_emit_explicit_skips_on_unsupported_hosts() -> None:
+def test_ch04_nvshmem_workers_emit_explicit_skips_on_unsupported_hosts() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     cases = [
-        "ch04.baseline_nvshmem_training_example_multigpu",
-        "ch04.optimized_nvshmem_training_example_multigpu",
-        "ch04.baseline_nvshmem_training_patterns_multigpu",
-        "ch04.optimized_nvshmem_training_patterns_multigpu",
-        "ch04.baseline_nvshmem_pipeline_parallel_multigpu",
-        "ch04.optimized_nvshmem_pipeline_parallel_multigpu",
-        "ch04.baseline_nvshmem_vs_nccl_benchmark_multigpu",
-        "ch04.optimized_nvshmem_vs_nccl_benchmark_multigpu",
+        ["-m", "ch04.nvshmem_training_example", "--demo", "pipeline"],
+        ["-m", "ch04.nvshmem_training_patterns", "--pattern", "gradient"],
+        ["-m", "ch04.nvshmem_pipeline_parallel_multigpu", "--schedule", "1f1b"],
+        ["-m", "ch04.nvshmem_vs_nccl_benchmark", "--mode", "nccl"],
+        [
+            "-m",
+            "ch04.nvshmem_worker",
+            "--workload",
+            "pipeline",
+            "--variant",
+            "baseline",
+            "--schedule",
+            "1f1b",
+        ],
+        [
+            "-m",
+            "ch04.nvshmem_worker",
+            "--workload",
+            "collective",
+            "--variant",
+            "optimized",
+            "--mode",
+            "nvshmem",
+        ],
     ]
 
-    for module_name in cases:
+    for command in cases:
         completed = subprocess.run(
-            [sys.executable, "-m", module_name],
+            [sys.executable, *command],
             cwd=repo_root,
             capture_output=True,
             text=True,
@@ -267,16 +416,26 @@ def test_ch04_nvshmem_wrapper_entrypoints_emit_explicit_skips_on_unsupported_hos
         assert (
             "requires >=2 GPUs" in combined
             or "requires >= 2 GPUs" in combined
+            or "Requires >= 2 GPUs" in combined
             or "torchrun/distributed launch context" in combined
             or "requires NVSHMEM or SymmetricMemory support" in combined
+            or "requires CUDA" in combined
         )
 
 
 def test_ch04_nvshmem_pairs_skip_cleanly_on_single_gpu_or_missing_symmem() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     cases = [
-        ("nvshmem_training_example", "baseline_nvshmem_training_example.py", "optimized_nvshmem_training_example.py"),
-        ("nvshmem_training_patterns", "baseline_nvshmem_training_patterns.py", "optimized_nvshmem_training_patterns.py"),
+        (
+            "nvshmem_training_example",
+            "baseline_nvshmem_training_example.py",
+            "optimized_nvshmem_training_example.py",
+        ),
+        (
+            "nvshmem_training_patterns",
+            "baseline_nvshmem_training_patterns.py",
+            "optimized_nvshmem_training_patterns.py",
+        ),
     ]
 
     for example_name, baseline_name, optimized_name in cases:

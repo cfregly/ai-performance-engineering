@@ -36,7 +36,9 @@ def build_repo_python_env(
         entries.append(str(Path(entry).resolve()))
     existing = env.get("PYTHONPATH", "")
     if existing:
-        entries.extend(part for part in existing.split(os.pathsep) if part.strip())
+        entries.extend(
+            str(Path(part).resolve()) for part in existing.split(os.pathsep) if part.strip()
+        )
     env["PYTHONPATH"] = os.pathsep.join(_dedupe_entries(entries))
     return env
 

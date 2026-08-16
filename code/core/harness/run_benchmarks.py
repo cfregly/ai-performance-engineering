@@ -96,7 +96,12 @@ try:
 except ImportError:  # pragma: no cover - optional dependency during docs builds
     detect_supported_arch = None  # type: ignore[assignment]
 from core.benchmark.timing_parser import parse_kernel_time_ms
-from core.analysis.llm_patch_promotion import promote_best_llm_patch
+from core.analysis.llm_patch_promotion import select_best_verified_llm_patch
+from core.harness.llm_patch_worker import (
+    WorkerProtocolError,
+    run_llm_patch_worker,
+    sha256_file,
+)
 from core.benchmark.expectations import (
     ExpectationsStore,
     ExpectationEntry,
@@ -214,8 +219,8 @@ PROGRESS_PHASES = {
     "expectations": 11,
     "llm_analysis": 12,
     "llm_patch_apply": 13,
-    "llm_patch_rebenchmark": 14,
-    "llm_patch_verify": 15,
+    "llm_patch_verify": 14,
+    "llm_patch_rebenchmark": 15,
     "llm_explain": 16,
     "complete": 17,
 }
@@ -9351,19 +9356,56 @@ def _test_chapter_impl(
                                 
                                 for patch in benchmarkable:
                                     patch_name = _patch_label(patch)
-                                    emit_progress(
-                                        "llm_patch_rebenchmark",
-                                        step=f"{chapter_name}:{bench_result['example']}",
-                                        step_detail=f"rebenchmark start {patch_name}",
-                                    )
-                                    rebench_result = _rebenchmark_patched_variant(
+                                    verify_result = _verify_patched_benchmark(
+                                        str(optimized_file),
                                         patch['patched_file'],
-                                        iterations=iterations or 3,
-                                        warmup=warmup or 1,
-                                        enable_profiling=enable_profiling,
-                                        profile_type=profile_type,
-                                        profile_output_dir=profiling_output_dir / "llm_patches" if profiling_output_dir else None,
                                     )
+                                    patch['verification'] = verify_result
+                                    emit_progress(
+                                        "llm_patch_verify",
+                                        step=f"{chapter_name}:{bench_result['example']}",
+                                        step_detail=f"verify {'ok' if verify_result.get('verified') else 'failed'} {patch_name}",
+                                    )
+                                    if verify_result.get('verified') is True:
+                                        llm_patch_metrics['patches_verified'] += 1
+                                        logger.info("      ✓ Verified: output matches original")
+                                        emit_progress(
+                                            "llm_patch_rebenchmark",
+                                            step=f"{chapter_name}:{bench_result['example']}",
+                                            step_detail=f"rebenchmark start {patch_name}",
+                                        )
+                                        rebench_result = _rebenchmark_patched_variant(
+                                            patch['patched_file'],
+                                            original_file=str(optimized_file),
+                                            verification=verify_result,
+                                            iterations=iterations or 3,
+                                            warmup=warmup or 1,
+                                            enable_profiling=enable_profiling,
+                                            profile_type=profile_type,
+                                            profile_output_dir=profiling_output_dir / "llm_patches" if profiling_output_dir else None,
+                                            timeout_multiplier=timeout_multiplier,
+                                            validity_profile=validity_profile,
+                                            enforce_environment_validation=enforce_environment_validation,
+                                            allow_virtualization=allow_virtualization,
+                                            allow_foreign_gpu_processes=allow_foreign_gpu_processes,
+                                            single_gpu=single_gpu,
+                                        )
+                                    else:
+                                        llm_patch_metrics['patches_verification_failed'] += 1
+                                        verify_errors = verify_result.get('errors') or []
+                                        verify_error = (
+                                            verify_errors[0]
+                                            if verify_errors
+                                            else verify_result.get('verification_type', 'verification failed')
+                                        )
+                                        logger.warning(f"      ⚠ Verification: {verify_error}")
+                                        rebench_result = {
+                                            'success': False,
+                                            'error': f"Candidate timing blocked: {verify_error}",
+                                            'error_type': 'verification_failed',
+                                            'patched_file': patch['patched_file'],
+                                            'timing_started': False,
+                                        }
                                     patch['rebenchmark_result'] = rebench_result
                                     emit_progress(
                                         "llm_patch_rebenchmark",
@@ -9378,25 +9420,6 @@ def _test_chapter_impl(
                                         if patch_time and baseline_time > 0:
                                             patch['actual_speedup'] = baseline_time / patch_time
                                             logger.info(f"      ✓ {patch.get('variant_name', 'patch')}: {patch_time:.3f}ms ({patch['actual_speedup']:.2f}x vs baseline)")
-                                        
-                                        # Auto-verify patched output matches original
-                                        if optimized_file.exists() and optimized_file.is_file():
-                                            verify_result = _verify_patched_benchmark(
-                                                str(optimized_file),
-                                                patch['patched_file'],
-                                            )
-                                            patch['verification'] = verify_result
-                                            emit_progress(
-                                                "llm_patch_verify",
-                                                step=f"{chapter_name}:{bench_result['example']}",
-                                                step_detail=f"verify {'ok' if verify_result.get('verified') else 'failed'} {patch_name}",
-                                            )
-                                            if verify_result.get('verified'):
-                                                llm_patch_metrics['patches_verified'] += 1
-                                                logger.info(f"      ✓ Verified: output matches original")
-                                            elif verify_result.get('errors'):
-                                                llm_patch_metrics['patches_verification_failed'] += 1
-                                                logger.warning(f"      ⚠ Verification: {verify_result['errors'][0]}")
                                     else:
                                         # Rebenchmark failed - try iterative refinement
                                         error_info = rebench_result
@@ -9429,20 +9452,61 @@ def _test_chapter_impl(
                                                         refined_path = Path(patch['patched_file']).with_suffix('.refined.py')
                                                         refined_path.write_text(refined_code)
                                                         
-                                                        # Try rebenchmark again
-                                                        emit_progress(
-                                                            "llm_patch_rebenchmark",
-                                                            step=f"{chapter_name}:{bench_result['example']}",
-                                                            step_detail=f"refine rebenchmark attempt {attempt + 1} {patch_name}",
-                                                        )
-                                                        refined_result = _rebenchmark_patched_variant(
+                                                        refined_verify_result = _verify_patched_benchmark(
+                                                            str(optimized_file),
                                                             str(refined_path),
-                                                            iterations=iterations or 3,
-                                                            warmup=warmup or 1,
-                                                            enable_profiling=enable_profiling,
-                                                            profile_type=profile_type,
-                                                            profile_output_dir=profiling_output_dir / "llm_patches" if profiling_output_dir else None,
                                                         )
+                                                        patch['verification'] = refined_verify_result
+                                                        emit_progress(
+                                                            "llm_patch_verify",
+                                                            step=f"{chapter_name}:{bench_result['example']}",
+                                                            step_detail=f"refine verify {'ok' if refined_verify_result.get('verified') else 'failed'} {patch_name}",
+                                                        )
+                                                        if refined_verify_result.get('verified') is True:
+                                                            llm_patch_metrics['patches_verified'] += 1
+                                                            logger.info("      ✓ Refined patch verified")
+                                                            emit_progress(
+                                                                "llm_patch_rebenchmark",
+                                                                step=f"{chapter_name}:{bench_result['example']}",
+                                                                step_detail=f"refine rebenchmark attempt {attempt + 1} {patch_name}",
+                                                            )
+                                                            refined_result = _rebenchmark_patched_variant(
+                                                                str(refined_path),
+                                                                original_file=str(optimized_file),
+                                                                verification=refined_verify_result,
+                                                                iterations=iterations or 3,
+                                                                warmup=warmup or 1,
+                                                                enable_profiling=enable_profiling,
+                                                                profile_type=profile_type,
+                                                                profile_output_dir=profiling_output_dir / "llm_patches" if profiling_output_dir else None,
+                                                                timeout_multiplier=timeout_multiplier,
+                                                                validity_profile=validity_profile,
+                                                                enforce_environment_validation=enforce_environment_validation,
+                                                                allow_virtualization=allow_virtualization,
+                                                                allow_foreign_gpu_processes=allow_foreign_gpu_processes,
+                                                                single_gpu=single_gpu,
+                                                            )
+                                                        else:
+                                                            llm_patch_metrics['patches_verification_failed'] += 1
+                                                            refined_verify_errors = refined_verify_result.get('errors') or []
+                                                            refined_verify_error = (
+                                                                refined_verify_errors[0]
+                                                                if refined_verify_errors
+                                                                else refined_verify_result.get(
+                                                                    'verification_type',
+                                                                    'verification failed',
+                                                                )
+                                                            )
+                                                            logger.warning(
+                                                                f"      ⚠ Refined verification: {refined_verify_error}"
+                                                            )
+                                                            refined_result = {
+                                                                'success': False,
+                                                                'error': f"Candidate timing blocked: {refined_verify_error}",
+                                                                'error_type': 'verification_failed',
+                                                                'patched_file': str(refined_path),
+                                                                'timing_started': False,
+                                                            }
                                                         emit_progress(
                                                             "llm_patch_rebenchmark",
                                                             step=f"{chapter_name}:{bench_result['example']}",
@@ -9460,25 +9524,6 @@ def _test_chapter_impl(
                                                             if patch_time and baseline_time > 0:
                                                                 patch['actual_speedup'] = baseline_time / patch_time
                                                                 logger.info(f"      ✓ Refined {patch.get('variant_name', 'patch')}: {patch_time:.3f}ms ({patch['actual_speedup']:.2f}x)")
-                                                            
-                                                            # Verify refined patch
-                                                            if optimized_file.exists() and optimized_file.is_file():
-                                                                verify_result = _verify_patched_benchmark(
-                                                                    str(optimized_file),
-                                                                    str(refined_path),
-                                                                )
-                                                                patch['verification'] = verify_result
-                                                                emit_progress(
-                                                                    "llm_patch_verify",
-                                                                    step=f"{chapter_name}:{bench_result['example']}",
-                                                                    step_detail=f"verify {'ok' if verify_result.get('verified') else 'failed'} {patch_name}",
-                                                                )
-                                                                if verify_result.get('verified'):
-                                                                    llm_patch_metrics['patches_verified'] += 1
-                                                                    logger.info(f"      ✓ Verified: output matches original")
-                                                                elif verify_result.get('errors'):
-                                                                    llm_patch_metrics['patches_verification_failed'] += 1
-                                                                    logger.warning(f"      ⚠ Verification: {verify_result['errors'][0]}")
                                                             break
                                                         else:
                                                             # Update error info for next attempt
@@ -9491,14 +9536,34 @@ def _test_chapter_impl(
                                     llm_patch_metrics['patches_refined'] += refined_count
                                 
                                 # Auto-select best patch
-                                best_patch = _select_best_patch(benchmarkable, baseline_time)
+                                incumbent_time = (
+                                    best_opt.get('time_ms') if best_opt else baseline_time
+                                )
+                                best_patch = _select_best_patch(
+                                    benchmarkable,
+                                    baseline_time,
+                                    incumbent_time,
+                                )
                                 if best_patch:
+                                    best_verification = best_patch.get('verification', {})
+                                    best_timing = best_patch.get('rebenchmark_result', {})
+                                    best_patch['promotable'] = bool(
+                                        best_verification.get('promotable') is True
+                                        and best_timing.get('promotable') is True
+                                    )
                                     bench_result['best_llm_patch'] = {
                                         'variant_name': best_patch.get('variant_name'),
                                         'patched_file': best_patch.get('patched_file'),
+                                        'candidate_artifact': best_patch.get('patched_file'),
                                         'actual_speedup': best_patch.get('actual_speedup'),
-                                        'median_ms': best_patch.get('rebenchmark_result', {}).get('median_ms'),
+                                        'incumbent_speedup': best_patch.get('incumbent_speedup'),
+                                        'median_ms': best_timing.get('median_ms'),
                                         'refined': best_patch.get('refined', False),
+                                        'verification': best_verification,
+                                        'execution_policy': best_timing.get('execution_policy'),
+                                        'promotable': best_patch['promotable'],
+                                        'manual_promotion_required': True,
+                                        'promotion_status': 'awaiting_campaign_gate',
                                     }
                                     llm_patch_metrics['best_patches_selected'] += 1
                                     if best_patch.get('actual_speedup'):
@@ -9549,13 +9614,10 @@ def _test_chapter_impl(
                                                     step_detail=f"explain failed {_patch_label(best_patch)}",
                                                 )
 
-                                    promoted_file = promote_best_llm_patch(
-                                        best_patch,
-                                        bench_result,
-                                        chapter_dir,
+                                    logger.info(
+                                        "    Candidate retained at %s. Manual campaign-gate promotion is required.",
+                                        best_patch.get('patched_file'),
                                     )
-                                    if promoted_file:
-                                        bench_result['best_llm_patch']['promoted_file'] = promoted_file
                 else:
                     emit_progress(
                         "llm_analysis",
@@ -9951,147 +10013,161 @@ def _apply_llm_patches_for_benchmark(
 
 def _rebenchmark_patched_variant(
     patched_file: str,
+    *,
+    original_file: str,
+    verification: Dict[str, Any],
     iterations: int = 3,
     warmup: int = 1,
     enable_profiling: bool = False,
     profile_type: str = "none",
     profile_output_dir: Optional[Path] = None,
+    worker_timeout_seconds: Optional[float] = None,
+    timeout_multiplier: float = 3.0,
+    validity_profile: str = "strict",
+    enforce_environment_validation: bool = True,
+    allow_virtualization: bool = False,
+    allow_foreign_gpu_processes: bool = False,
+    single_gpu: bool = False,
 ) -> Dict[str, Any]:
-    """Re-benchmark a patched variant file.
-    
-    Returns:
-        Dict with keys:
-            - success: bool
-            - time_ms, median_ms, min_ms, iterations (if success)
-            - error: str (if failure)
-            - error_type: str (if failure, e.g., 'import_error', 'runtime_error', 'cuda_error')
-            - profile_path: str (if profiling enabled)
-    """
-    import importlib.util
-    import traceback
-    from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkConfig
-    
-    path = Path(patched_file)
-    if not path.exists():
-        return {'success': False, 'error': f"File not found: {patched_file}", 'error_type': 'file_not_found'}
-    
-    # Try to load the module
-    try:
-        spec = importlib.util.spec_from_file_location("patched_module", path)
-        if not spec or not spec.loader:
-            return {'success': False, 'error': f"Could not load module spec: {patched_file}", 'error_type': 'import_error'}
-        
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-    except SyntaxError as e:
-        return {'success': False, 'error': f"Syntax error: {e}", 'error_type': 'syntax_error', 'patched_file': patched_file}
-    except Exception as e:
-        return {'success': False, 'error': f"Import error: {e}", 'error_type': 'import_error', 'patched_file': patched_file}
-    
-    # Find benchmark class (exclude BaseBenchmark itself)
-    from core.harness.benchmark_harness import BaseBenchmark
-    benchmark_class = None
-    for name in dir(module):
-        obj = getattr(module, name)
-        if isinstance(obj, type) and issubclass(obj, BaseBenchmark) and obj is not BaseBenchmark:
-            benchmark_class = obj
-            break
-    
-    if not benchmark_class:
-        return {'success': False, 'error': f"No benchmark class found in: {patched_file}", 'error_type': 'class_not_found', 'patched_file': patched_file}
-    
-    # Try to run the benchmark
-    try:
-        config = BenchmarkConfig(
-            iterations=iterations,
-            warmup=warmup,
-            use_subprocess=False,
-        )
-        
-        benchmark = benchmark_class()
-        harness = BenchmarkHarness(config=config)
-        
-        result = harness.benchmark(benchmark)
-        
-        # Extract timing from result
-        timing = getattr(result, 'timing', None)
-        
-        response = {
-            'success': True,
-            'time_ms': timing.median_ms if timing else None,
-            'median_ms': timing.median_ms if timing else None,
-            'min_ms': timing.min_ms if timing else None,
-            'iterations': timing.iterations if timing else iterations,
-            'patched_file': patched_file,
-        }
-        
-        # Profile the patched variant if requested.
-        if enable_profiling and profile_type != "none":
-            patch_name = Path(patched_file).stem
-            profile_env = _harden_profile_env(None, repo_root, path.parent)
-
-            if profile_output_dir:
-                profile_output_dir.mkdir(parents=True, exist_ok=True)
-
-            profile_preset = str(profile_type).lower()
-            config = replace(config, profile_type=profile_preset)
-            profiler_config = build_profiler_config_from_benchmark(config)
-
-            if check_nsys_available():
-                try:
-                    import subprocess
-                    nsys_output = (
-                        profile_output_dir / f"{patch_name}_nsys.nsys-rep"
-                        if profile_output_dir
-                        else Path(f"{patch_name}_nsys.nsys-rep")
-                    )
-                    cmd = profiler_config.get_nsys_command(
-                        str(nsys_output.with_suffix("")),
-                        patched_file,
-                        python_executable=sys.executable,
-                    )
-                    subprocess.run(cmd, capture_output=True, timeout=120, env=profile_env)
-                    if nsys_output.exists():
-                        response["nsys_profile"] = str(nsys_output)
-                except Exception as e:
-                    logger.warning(f"Failed to profile patch with nsys: {e}")
-
-            if check_ncu_available():
-                try:
-                    import subprocess
-                    ncu_output = (
-                        profile_output_dir / f"{patch_name}_ncu.ncu-rep"
-                        if profile_output_dir
-                        else Path(f"{patch_name}_ncu.ncu-rep")
-                    )
-                    cmd = profiler_config.get_ncu_command(
-                        str(ncu_output.with_suffix("")),
-                        patched_file,
-                        python_executable=sys.executable,
-                    )
-                    cmd.insert(1, "--force-overwrite")
-                    subprocess.run(cmd, capture_output=True, timeout=300, env=profile_env)
-                    if ncu_output.exists():
-                        response["ncu_profile"] = str(ncu_output)
-                except Exception as e:
-                    logger.warning(f"Failed to profile patch with ncu: {e}")
-        
-        return response
-    except Exception as e:
-        error_str = str(e)
-        error_type = 'runtime_error'
-        if 'CUDA' in error_str or 'cuda' in error_str:
-            error_type = 'cuda_error'
-        elif 'AttributeError' in str(type(e).__name__):
-            error_type = 'attribute_error'
-        
+    """Time a generated variant only after a matching worker verification."""
+    if verification.get("verified") is not True:
         return {
-            'success': False,
-            'error': f"{type(e).__name__}: {error_str}",
-            'error_type': error_type,
-            'traceback': traceback.format_exc()[-1000:],  # Last 1000 chars of traceback
-            'patched_file': patched_file,
+            "success": False,
+            "error": "Candidate timing blocked because verification did not pass",
+            "error_type": "verification_failed",
+            "patched_file": patched_file,
+            "timing_started": False,
         }
+    verification_details = verification.get("details")
+    execution_policy = (
+        verification_details.get("execution_policy")
+        if isinstance(verification_details, dict)
+        else None
+    )
+    if (
+        not isinstance(execution_policy, dict)
+        or execution_policy.get("hardened_os_sandbox") is not True
+        or execution_policy.get("promotable") is not True
+        or not isinstance(execution_policy.get("sandbox_backend"), str)
+        or not execution_policy.get("sandbox_backend")
+    ):
+        return {
+            "success": False,
+            "error": "Candidate timing requires hardened OS sandbox verification",
+            "error_type": "sandbox_attestation_missing",
+            "patched_file": patched_file,
+            "timing_started": False,
+            "non_promotable": True,
+        }
+    if enable_profiling and profile_type != "none":
+        return {
+            "success": False,
+            "error": "Generated-code profiling has no hardened OS sandbox backend",
+            "error_type": "sandboxed_profiler_unavailable",
+            "patched_file": patched_file,
+            "timing_started": False,
+            "non_promotable": True,
+        }
+
+    original_path = Path(original_file).resolve()
+    path = Path(patched_file).resolve()
+    try:
+        original_digest = sha256_file(original_path)
+        candidate_digest = sha256_file(path)
+    except WorkerProtocolError as exc:
+        return {
+            "success": False,
+            "error": str(exc),
+            "error_type": exc.code,
+            "patched_file": patched_file,
+            "timing_started": False,
+        }
+
+    defaults = get_defaults()
+    measurement_timeout = float(
+        getattr(defaults, "measurement_timeout_seconds", 1200) or 1200
+    )
+    setup_timeout = float(getattr(defaults, "setup_timeout_seconds", 300) or 300)
+    worker_timeout = worker_timeout_seconds or (
+        (setup_timeout * timeout_multiplier)
+        + (measurement_timeout * timeout_multiplier * 2)
+        + 60
+    )
+    worker_response = run_llm_patch_worker(
+        {
+            "action": "benchmark",
+            "original_file": str(original_path),
+            "original_sha256": original_digest,
+            "candidate_file": str(path),
+            "candidate_sha256": candidate_digest,
+            "verification_attestation": verification,
+            "iterations": iterations,
+            "warmup": warmup,
+            "measurement_timeout_seconds": measurement_timeout,
+            "timeout_multiplier": timeout_multiplier,
+            "validity_profile": validity_profile,
+            "enforce_environment_validation": enforce_environment_validation,
+            "allow_virtualization": allow_virtualization,
+            "allow_foreign_gpu_processes": allow_foreign_gpu_processes,
+            "single_gpu": single_gpu,
+        },
+        repo_root=repo_root,
+        timeout_seconds=worker_timeout,
+    )
+    if worker_response.get("success") is not True:
+        return {
+            "success": False,
+            "error": str(worker_response.get("error") or "Patch timing worker failed"),
+            "error_type": str(worker_response.get("error_type") or "worker_failed"),
+            "patched_file": patched_file,
+            "timing_started": worker_response.get("timing_started") is True,
+            "worker_failure": worker_response,
+            "non_promotable": True,
+        }
+    response = worker_response.get("result")
+    timing_policy = worker_response.get("execution_policy")
+    if (
+        not isinstance(response, dict)
+        or response.get("success") is not True
+        or not isinstance(timing_policy, dict)
+        or timing_policy.get("hardened_os_sandbox") is not True
+        or timing_policy.get("promotable") is not True
+        or timing_policy.get("sandbox_backend") != execution_policy.get("sandbox_backend")
+    ):
+        return {
+            "success": False,
+            "error": "Patch timing worker returned an invalid result or sandbox attestation",
+            "error_type": "worker_invalid_result",
+            "patched_file": patched_file,
+            "timing_started": False,
+            "non_promotable": True,
+        }
+    median_ms = response.get("median_ms")
+    min_ms = response.get("min_ms")
+    if (
+        not isinstance(median_ms, (int, float))
+        or isinstance(median_ms, bool)
+        or not math.isfinite(float(median_ms))
+        or float(median_ms) <= 0
+        or not isinstance(min_ms, (int, float))
+        or isinstance(min_ms, bool)
+        or not math.isfinite(float(min_ms))
+        or float(min_ms) <= 0
+        or response.get("candidate_sha256") != candidate_digest
+        or response.get("timing_isolated_subprocess") is not True
+    ):
+        return {
+            "success": False,
+            "error": "Patch timing worker returned invalid timing or provenance",
+            "error_type": "worker_invalid_result",
+            "patched_file": patched_file,
+            "timing_started": True,
+        }
+
+    response["timing_started"] = True
+    response["execution_policy"] = timing_policy
+    response["promotable"] = True
+    return response
 
 
 def _verify_inputs_match(
@@ -10406,8 +10482,100 @@ def _verify_patched_benchmark(
     original_file: str,
     patched_file: str,
     test_shape: tuple = (256, 256),
+    *,
+    worker_timeout_seconds: Optional[float] = None,
 ) -> Dict[str, Any]:
-    """Verify that a patched benchmark produces the same output as the original.
+    """Verify a generated variant in a disposable worker process."""
+    original_path = Path(original_file).resolve()
+    candidate_path = Path(patched_file).resolve()
+    try:
+        original_digest = sha256_file(original_path)
+        candidate_digest = sha256_file(candidate_path)
+    except WorkerProtocolError as exc:
+        return {
+            "verified": False,
+            "verification_type": exc.code,
+            "errors": [str(exc)],
+            "details": {"worker_boundary": "not_started"},
+        }
+
+    defaults = get_defaults()
+    measurement_timeout = float(
+        getattr(defaults, "measurement_timeout_seconds", 1200) or 1200
+    )
+    setup_timeout = float(getattr(defaults, "setup_timeout_seconds", 300) or 300)
+    worker_timeout = worker_timeout_seconds or ((setup_timeout * 2) + measurement_timeout + 60)
+    worker_response = run_llm_patch_worker(
+        {
+            "action": "verify",
+            "original_file": str(original_path),
+            "original_sha256": original_digest,
+            "candidate_file": str(candidate_path),
+            "candidate_sha256": candidate_digest,
+            "test_shape": list(test_shape),
+        },
+        repo_root=repo_root,
+        timeout_seconds=worker_timeout,
+    )
+    if worker_response.get("success") is not True:
+        error_type = str(worker_response.get("error_type") or "worker_failed")
+        error = str(worker_response.get("error") or "Patch verification worker failed")
+        return {
+            "verified": False,
+            "verification_type": error_type,
+            "errors": [error],
+            "details": {
+                "worker_boundary": "failed",
+                "worker_failure": worker_response,
+            },
+        }
+    verification = worker_response.get("result")
+    execution_policy = worker_response.get("execution_policy")
+    if (
+        not isinstance(verification, dict)
+        or type(verification.get("verified")) is not bool
+        or not isinstance(verification.get("errors"), list)
+        or not all(isinstance(item, str) for item in verification.get("errors", []))
+    ):
+        return {
+            "verified": False,
+            "verification_type": "worker_invalid_result",
+            "errors": ["Patch verification worker returned an invalid result"],
+            "details": {"worker_boundary": "invalid_result"},
+        }
+    if (
+        not isinstance(execution_policy, dict)
+        or execution_policy.get("hardened_os_sandbox") is not True
+        or execution_policy.get("promotable") is not True
+        or not isinstance(execution_policy.get("sandbox_backend"), str)
+        or not execution_policy.get("sandbox_backend")
+    ):
+        return {
+            "verified": False,
+            "verification_type": "sandbox_attestation_missing",
+            "errors": ["Patch verification worker returned no hardened sandbox attestation"],
+            "details": {"worker_boundary": "invalid_result"},
+        }
+    details = verification.setdefault("details", {})
+    if not isinstance(details, dict):
+        return {
+            "verified": False,
+            "verification_type": "worker_invalid_result",
+            "errors": ["Patch verification worker returned invalid details"],
+            "details": {"worker_boundary": "invalid_result"},
+        }
+    details["worker_boundary"] = "subprocess"
+    details["execution_policy"] = execution_policy
+    verification["promotable"] = True
+    return verification
+
+
+def _verify_patched_benchmark_in_worker(
+    original_file: str,
+    patched_file: str,
+    test_shape: tuple = (256, 256),
+) -> Dict[str, Any]:
+    """Verify outputs inside the LLM patch worker process.
     
     Uses the kernel verification tools to compare outputs.
     
@@ -10423,6 +10591,13 @@ def _verify_patched_benchmark(
             - errors: List[str] (if any verification errors)
             - details: Dict (additional info)
     """
+    if os.environ.get("AISP_LLM_PATCH_WORKER") != "1" or not os.environ.get(
+        "AISP_LLM_PATCH_SANDBOX_ACTIVE"
+    ):
+        raise RuntimeError(
+            "Generated patch verification may run only in an OS-sandboxed patch worker"
+        )
+
     import importlib.util
     import torch
     import traceback
@@ -10961,31 +11136,23 @@ Respond with the COMPLETE corrected code in a ```python code block.
 def _select_best_patch(
     patches: List[Dict[str, Any]],
     baseline_time_ms: float,
+    incumbent_time_ms: float,
 ) -> Optional[Dict[str, Any]]:
     """Select the best patch based on rebenchmark results.
     
-    Returns the patch with the best speedup, or None if no patches succeeded.
+    Returns the fastest verified patch that improves on the current incumbent.
     """
-    successful = [p for p in patches if p.get('rebenchmark_result', {}).get('success')]
-    
-    if not successful:
+    best = select_best_verified_llm_patch(
+        patches,
+        baseline_time_ms,
+        incumbent_time_ms,
+    )
+
+    if best is None:
         return None
-    
-    # Calculate speedup for each patch
-    for p in successful:
-        rebench = p['rebenchmark_result']
-        patch_time = rebench.get('median_ms')
-        if patch_time and baseline_time_ms > 0:
-            p['actual_speedup'] = baseline_time_ms / patch_time
-        else:
-            p['actual_speedup'] = 0
-    
-    # Sort by speedup descending
-    successful.sort(key=lambda x: x.get('actual_speedup', 0), reverse=True)
-    
-    best = successful[0]
+
     logger.info(f"    🏆 Best patch: {best.get('variant_name', 'unknown')} with {best.get('actual_speedup', 0):.2f}x speedup")
-    
+
     return best
 
 

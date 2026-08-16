@@ -98,6 +98,24 @@ def accept_prefix_length(matches: torch.Tensor, out: torch.Tensor) -> torch.Tens
     return out
 
 
+def accept_prefix_length_prepared(matches: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
+    """Compute accepted prefix after setup has applied Triton compatibility."""
+    if matches.numel() == 0:
+        out.zero_()
+        return out
+    if TRITON_AVAILABLE and matches.is_cuda:
+        _accept_prefix_length_kernel[(1,)](
+            matches,
+            out,
+            matches.stride(-1),
+            K=matches.shape[-1],
+        )
+        return out
+    prefix = torch.cumprod(matches, dim=-1, dtype=torch.int64)
+    torch.sum(prefix.reshape(-1), dim=0, out=out)
+    return out
+
+
 class TokenMLP(nn.Module):
     """Position-independent toy LM: next-token logits from token ids."""
 

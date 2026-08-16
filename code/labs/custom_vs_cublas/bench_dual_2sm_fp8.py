@@ -4,7 +4,7 @@
 Usage (on the GB300 pod, GPU 2 only, under flock /tmp/gpu2.lock):
     export CUDA_VISIBLE_DEVICES=2
     cd /work/ai-performance-engineering/code
-    python labs/custom_vs_cublas/bench_dual_2sm_fp8.py [--size 8192] \
+    python -m labs.custom_vs_cublas.bench_dual_2sm_fp8 [--size 8192] \
         [--interleave N] [--fp8 N,S,WS,MB,K,P,RG,TE ...] [--with-fp16]
 
 Arms:
@@ -29,15 +29,8 @@ Reference matmul runs with TF32 disabled.
 from __future__ import annotations
 
 import argparse
-import sys
-from pathlib import Path
 
-_LAB_DIR = Path(__file__).resolve().parent
-_CODE_ROOT = _LAB_DIR.parents[1]
-if str(_CODE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_CODE_ROOT))
-
-import torch  # noqa: E402
+import torch
 
 # Real-SoL ceiling is CALIBRATED from the cuBLASLt FP8 asymptote (B61
 # method), not from a marketing number; this constant is only the fallback

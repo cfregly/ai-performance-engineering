@@ -3,7 +3,30 @@
 # Common development tasks for the codebase.
 # Run `make help` to see available targets.
 
-.PHONY: help test lint validate coverage check all clean
+.PHONY: help test lint lint-trusted lint-legacy-debt validate coverage check all clean dashboard dashboard-api dashboard-web
+
+PYTHON ?= python3
+DASHBOARD_API_PORT ?= 6970
+DASHBOARD_WEB_PORT ?= 3000
+DASHBOARD_CONCURRENTLY ?= dashboard/web/node_modules/.bin/concurrently
+
+AUTONOMOUS_RUFF_PATHS = \
+	core/optimization/campaign.py \
+	core/optimization/campaign_evidence.py \
+	core/optimization/evidence_validation.py \
+	core/harness/llm_patch_worker.py \
+	core/optimization/search/mcts_optimizer.py \
+	core/analysis/llm_patch_promotion.py \
+	tests/test_optimization_campaign.py \
+	tests/test_campaign_evidence.py \
+	tests/test_llm_patch_worker.py \
+	tests/test_mcts_optimizer.py \
+	tests/test_llm_patch_promotion.py \
+	tests/test_repository_configuration.py
+
+AUTONOMOUS_MYPY_PATHS = \
+	core/optimization/campaign.py \
+	core/analysis/llm_patch_promotion.py
 
 # Default target
 help:
@@ -93,7 +116,6 @@ help:
 	@echo "  llm-advisor-inference  LLM advisor for inference"
 	@echo ""
 	@echo "🧠 INTELLIGENT OPTIMIZER (GOAL=xxx MODEL=xxx)"
-	@echo "  smart-optimize         Auto-profile + LLM analysis"
 	@echo "  smart-vllm             Optimize live vLLM server"
 	@echo "  smart-tgi              Optimize live TGI server"
 	@echo "  smart-discover         Discover compound optimizations"
@@ -106,7 +128,6 @@ help:
 	@echo "  perf-ask               LLM Q&A (QUESTION='why slow?')"
 	@echo "  perf-explain           Book + LLM explanation (TOPIC=xxx)"
 	@echo "  perf-troubleshoot      Error diagnosis (ERROR='CUDA OOM')"
-	@echo "  perf-optimize          Auto-optimization with LLM"
 	@echo "  perf-recommend         Parallelism recommendations"
 	@echo "  perf-benchmark         Run benchmark (TARGET=ch08:matmul)"
 	@echo "  perf-monitor           Real-time GPU monitoring"
@@ -114,23 +135,16 @@ help:
 	@echo "  troubleshoot-nccl      Quick: NCCL timeout troubleshoot"
 	@echo ""
 	@echo "UI & TUI"
-	@echo "  dashboard              Start web dashboard (localhost:8765)"
+	@echo "  dashboard              Start API :6970 and Next UI :3000"
+	@echo "  dashboard-api          Start only the Python API"
+	@echo "  dashboard-web          Start only the Next UI"
 	@echo "  tui                    Start terminal UI"
 	@echo ""
 	@echo "ADVANCED OPTIMIZATION"
-	@echo "  playbooks              List optimization playbooks"
-	@echo "  playbook-apply         Apply playbook (PLAYBOOK=inference-speed)"
-	@echo "  whatif                 What-if performance simulation"
-	@echo "  auto-optimize          Auto-discover optimizations"
-	@echo "  leaderboard            Performance leaderboard"
-	@echo "  kernel-efficiency      Kernel efficiency analysis"
-	@echo "  stacking               Compound optimization stacking"
-	@echo "  tradeoffs              Multi-objective tradeoff analysis"
-	@echo "  ask                    Ask AI assistant (Q='your question')"
-	@echo "  generate-patch         Generate optimization code patches"
-	@echo "  history                Historical performance trends"
-	@echo "  roi                    ROI calculator (COST=10000)"
-	@echo "  report                 Generate full performance report"
+	@echo "  campaign-init          Create a campaign (requires CONTROL_COMMIT)"
+	@echo "  campaign-report        Regenerate campaign reports"
+	@echo "  campaign-beam          Show the active diverse experiment beam"
+	@echo "  campaign-gate          Evaluate an experiment for promotion"
 	@echo ""
 	@echo "COMPARISON & MONITORING"
 	@echo "  compare                A/B comparison (A=baseline B=optimized)"
@@ -165,7 +179,8 @@ help:
 	@echo "  test                   Run all pytest tests"
 	@echo "  test-fast              Run tests without slow markers"
 	@echo "  validate               Validate benchmark imports"
-	@echo "  lint                   Run linters"
+	@echo "  lint                   Run the blocking trusted-surface lint gate"
+	@echo "  lint-legacy-debt       Inventory all known legacy lint debt and fail"
 	@echo "  audit                  Audit for silent fallbacks"
 	@echo "  check                  Run all validation checks"
 	@echo ""
@@ -449,10 +464,6 @@ cluster-diagnose:
 llm-advisor-inference:
 	@python -m core.optimization.parallelism_planner llm-advisor $(or $(MODEL),llama-3.1-70b) --goal=latency --inference
 
-# Intelligent Optimizer - THE BRAIN of the optimization system
-smart-optimize:
-	@python -m core.unified_api optimize --goal=$(or $(GOAL),throughput)
-
 smart-vllm:
 	@python -m core.unified_api vllm --url=$(or $(URL),http://localhost:8000)
 
@@ -473,8 +484,22 @@ smart-status:
 
 # Dashboard
 dashboard:
-	@echo "Starting dashboard at http://localhost:8765"
-	@python -m dashboard.api.server serve
+	@test -x "$(DASHBOARD_CONCURRENTLY)" || (echo "Run npm ci in dashboard/web first" >&2; exit 2)
+	@echo "Starting dashboard API at http://127.0.0.1:$(DASHBOARD_API_PORT)"
+	@echo "Starting dashboard UI at http://127.0.0.1:$(DASHBOARD_WEB_PORT)"
+	@BACKEND_PORT="$(DASHBOARD_API_PORT)" "$(DASHBOARD_CONCURRENTLY)" \
+		--kill-others-on-fail \
+		--names api,web \
+		"$(PYTHON) -m dashboard.api.server serve --port $(DASHBOARD_API_PORT)" \
+		"npm --prefix dashboard/web run dev -- --port $(DASHBOARD_WEB_PORT)"
+
+dashboard-api:
+	@echo "Starting dashboard API at http://127.0.0.1:$(DASHBOARD_API_PORT)"
+	@$(PYTHON) -m dashboard.api.server serve --port $(DASHBOARD_API_PORT)
+
+dashboard-web:
+	@echo "Starting dashboard UI at http://127.0.0.1:$(DASHBOARD_WEB_PORT)"
+	@BACKEND_PORT="$(DASHBOARD_API_PORT)" npm --prefix dashboard/web run dev -- --port $(DASHBOARD_WEB_PORT)
 
 # TUI (Terminal UI)
 tui:
@@ -499,10 +524,6 @@ perf-explain:
 # Troubleshoot errors (ERROR="CUDA OOM")
 perf-troubleshoot:
 	@python -m cli.perf troubleshoot $(ERROR)
-
-# Auto-optimization with LLM
-perf-optimize:
-	@python -m cli.perf optimize --auto $(if $(MODEL),--model $(MODEL))
 
 # Parallelism recommendations
 perf-recommend:
@@ -530,65 +551,40 @@ troubleshoot-nan:
 	@python -m cli.perf troubleshoot "loss is NaN"
 
 # =============================================================================
-# Advanced Optimization Features (Complete UI Parity)
+# Evidence-first optimization campaigns
 # =============================================================================
 
-# Optimization playbooks
-playbooks:
-	@python -m cli.advanced_cli playbooks
+campaign-init:
+	@test -n "$(WORKSPACE)" || (echo "WORKSPACE is required" >&2; exit 2)
+	@test -n "$(OBJECTIVE)" || (echo "OBJECTIVE is required" >&2; exit 2)
+	@test -n "$(METRIC)" || (echo "METRIC is required" >&2; exit 2)
+	@test -n "$(CONTROL_COMMIT)" || (echo "CONTROL_COMMIT is required" >&2; exit 2)
+	@test -n "$(PRIMARY_CASE)" || (echo "PRIMARY_CASE is required" >&2; exit 2)
+	@test -n "$(FROZEN_CASE)" || (echo "FROZEN_CASE is required" >&2; exit 2)
+	@test -n "$(WORKLOAD_SPEC)" || (echo "WORKLOAD_SPEC is required" >&2; exit 2)
+	@test -n "$(ENVIRONMENT_SPEC)" || (echo "ENVIRONMENT_SPEC is required" >&2; exit 2)
+	@$(PYTHON) -m core.optimization.campaign init "$(WORKSPACE)" \
+		--objective "$(OBJECTIVE)" \
+		--metric "$(METRIC)" \
+		--initial-control-commit "$(CONTROL_COMMIT)" \
+		--direction "$(or $(DIRECTION),lower)" \
+		--primary-case "$(PRIMARY_CASE)" \
+		--frozen-case "$(FROZEN_CASE)" \
+		--workload-spec "$(WORKLOAD_SPEC)" \
+		--environment-spec "$(ENVIRONMENT_SPEC)"
 
-playbook-apply:
-	@python -m cli.advanced_cli playbooks --apply $(or $(PLAYBOOK),inference-speed)
+campaign-report:
+	@test -n "$(WORKSPACE)" || (echo "WORKSPACE is required" >&2; exit 2)
+	@$(PYTHON) -m core.optimization.campaign report "$(WORKSPACE)"
 
-# What-if simulation
-whatif:
-	@python -m cli.advanced_cli whatif
+campaign-beam:
+	@test -n "$(WORKSPACE)" || (echo "WORKSPACE is required" >&2; exit 2)
+	@$(PYTHON) -m core.optimization.campaign beam "$(WORKSPACE)"
 
-whatif-fp8:
-	@python -m cli.advanced_cli whatif --fp8 --compile --flash-attn
-
-# Auto-optimization
-auto-optimize:
-	@python -m cli.advanced_cli auto-optimize --dry-run
-
-auto-optimize-apply:
-	@python -m cli.advanced_cli auto-optimize --apply
-
-# Leaderboard
-leaderboard:
-	@python -m cli.advanced_cli leaderboard
-
-# Kernel efficiency
-kernel-efficiency:
-	@python -m cli.advanced_cli kernel-efficiency
-
-# Stacking analysis (compound optimizations)
-stacking:
-	@python -m cli.advanced_cli stacking
-
-# Tradeoffs analysis
-tradeoffs:
-	@python -m cli.advanced_cli tradeoffs
-
-# LLM assistant
-ask:
-	@python -m cli.advanced_cli ask "$(or $(Q),How can I improve performance?)"
-
-# Generate optimization patches
-generate-patch:
-	@python -m cli.advanced_cli generate-patch
-
-# Historical trends
-history:
-	@python -m cli.advanced_cli history
-
-# ROI calculator
-roi:
-	@python -m cli.advanced_cli roi --current-cost $(or $(COST),10000)
-
-# Full report generation
-report:
-	@python -m cli.advanced_cli report --output performance_report.html
+campaign-gate:
+	@test -n "$(WORKSPACE)" || (echo "WORKSPACE is required" >&2; exit 2)
+	@test -n "$(EXPERIMENT_ID)" || (echo "EXPERIMENT_ID is required" >&2; exit 2)
+	@$(PYTHON) -m core.optimization.campaign gate "$(WORKSPACE)" "$(EXPERIMENT_ID)"
 
 # =============================================================================
 # Comparison & Monitoring
@@ -672,22 +668,32 @@ cluster-recommend:
 
 # Generate vLLM config
 inference-config:
-	@python -m core.optimization.auto config --model $(or $(MODEL),llama-70b) --target $(or $(TARGET),balanced)
+	@$(PYTHON) -m cli.aisp inference vllm --model-size $(or $(MODEL_SIZE),70) --target $(or $(TARGET),throughput)
 
-# Benchmark inference endpoint
-inference-benchmark:
-	@python -m core.optimization.auto benchmark --endpoint $(or $(ENDPOINT),http://localhost:8000)
+lint: lint-trusted
 
-# RLHF training configuration
-rlhf-config:
-	@python -m core.optimization.auto rlhf --model-params $(or $(MODEL_PARAMS),70) --algorithm $(or $(ALGO),ppo)
-
-lint:
-	@echo "Running flake8..."
-	-flake8 core/ --max-line-length=120 --ignore=E501,W503
+# This is the blocking gate used by CI and `make check`. The full legacy tree is
+# tracked separately because its existing debt is not a useful signal for new work.
+lint-trusted:
+	@echo "Running strict benchmark contract audit..."
+	$(PYTHON) -m core.scripts.linting.check_benchmarks --include-unpaired --fail-on-warnings
 	@echo ""
-	@echo "Running mypy..."
-	-mypy core/benchmark/metrics.py core/profiling/profiler_config.py --ignore-missing-imports
+	@echo "Running focused autonomous campaign Ruff checks..."
+	ruff check $(AUTONOMOUS_RUFF_PATHS)
+	@echo ""
+	@echo "Running focused autonomous campaign mypy checks..."
+	$(PYTHON) -m mypy $(AUTONOMOUS_MYPY_PATHS)
+
+# This target records the old all-core checks without making them look clean.
+# It runs both tools, reports all current findings, and returns a failure if either fails.
+lint-legacy-debt:
+	@status=0; \
+	echo "Running the legacy full-core flake8 debt inventory..."; \
+	flake8 core/ --max-line-length=120 --ignore=E501,W503 || status=1; \
+	echo ""; \
+	echo "Running the legacy profiler mypy debt inventory..."; \
+	$(PYTHON) -m mypy core/benchmark/metrics.py core/profiling/profiler_config.py --ignore-missing-imports || status=1; \
+	exit $$status
 
 metrics:
 	python core/scripts/update_custom_metrics.py --analyze

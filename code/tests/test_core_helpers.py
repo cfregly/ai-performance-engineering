@@ -1,5 +1,6 @@
 import json
 import inspect
+import os
 import shutil
 import subprocess
 import sys
@@ -725,8 +726,11 @@ def test_profile_insights_ncu_two_file_mtime_fallback(tmp_path: Path):
     second = tmp_path / "capture_b_ncu.csv"
     first.write_text("Metric Name,Metric Value\nsm__throughput,17\n")
     second.write_text("Metric Name,Metric Value\nsm__throughput,31\n")
-    # Ensure stable mtime ordering across fast filesystems.
-    second.touch()
+    # Equal mtimes model filesystems whose timestamp resolution cannot
+    # distinguish consecutive captures. The path tie-break stays stable.
+    shared_mtime_ns = first.stat().st_mtime_ns
+    os.utime(first, ns=(shared_mtime_ns, shared_mtime_ns))
+    os.utime(second, ns=(shared_mtime_ns, shared_mtime_ns))
 
     comparison = profile_insights.compare_ncu_files(tmp_path)
     assert comparison is not None

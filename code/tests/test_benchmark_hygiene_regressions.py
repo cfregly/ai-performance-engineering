@@ -2550,7 +2550,10 @@ def test_ch04_nvshmem_wrappers_cache_env_outside_hot_path() -> None:
         assert "self._original_env = {}" in teardown_section
         assert "os.environ" not in benchmark_section
         for env_key in env_keys:
-            assert f'"{env_key}": os.environ.get("{env_key}")' in setup_section
+            assert re.search(
+                rf'"{env_key}"\s*:\s*os\.environ\.get\(\s*"{env_key}"\s*\)',
+                setup_section,
+            )
             assert f'os.environ["{env_key}"] =' in setup_section
 
         if relative_path.endswith("nvshmem_vs_nccl_benchmark_multigpu.py"):
@@ -6516,6 +6519,7 @@ def test_ch19_dynamic_precision_benchmarks_reuse_decode_workspaces() -> None:
     assert "self._decode_workspace = DynamicPrecisionWorkspace(" in optimized_setup
     assert "top2_values=torch.empty(" in optimized_setup
     assert "ema_conf=torch.empty(" in optimized_setup
+    assert "stats=PrecisionStats()" in optimized_setup
     assert "self._verify_prompt_buffer: Optional[torch.Tensor] = None" in optimized_source
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in optimized_source
     assert "self._verify_prompt_buffer = torch.empty(" in optimized_setup
@@ -6524,6 +6528,9 @@ def test_ch19_dynamic_precision_benchmarks_reuse_decode_workspaces() -> None:
     assert "workspace=self._decode_workspace" in optimized_benchmark
     assert "with torch.inference_mode():" in optimized_benchmark
     assert "torch.empty(" not in optimized_benchmark
+    assert "self.stats.decode_steps != self.cfg.max_steps" in optimized_benchmark
+    assert "self.stats.model_forwards != self.cfg.max_steps" in optimized_benchmark
+    assert "self.stats.policy_evaluations != self.cfg.max_steps" in optimized_benchmark
     assert "self._verify_prompt_buffer.copy_(self.prompt, non_blocking=False)" in optimized_capture
     assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in optimized_capture
     assert "inputs={\"prompt\": self._verify_prompt_buffer}" in optimized_capture
@@ -6593,7 +6600,7 @@ def test_ch19_decode_loops_preallocate_token_buffers() -> None:
         + common_source.count("next_token_values = torch.empty(\n                (batch_size, 1),")
     ) == 2
     assert "next_token_values.device != last_step_logits.device" not in common_source
-    assert common_source.count("generated_token_views[current_len].copy_(next_token_flat)") == 2
+    assert common_source.count("generated_token_views[current_len].copy_(next_token_flat)") == 4
     assert "generated[:, current_len : current_len + 1].copy_(next_token)" not in common_source
     assert "def initial_incremental_embedding_sum" in common_source
     assert "def append_incremental_embedding" in common_source
@@ -6626,14 +6633,11 @@ def test_ch19_decode_loops_preallocate_token_buffers() -> None:
     assert "token_count = batch_size * direct_stats_steps" in switching_source
     assert "needs_memory_check = enable_fp4 and (" in switching_source
     assert "_memory_utilization_percent(device) if needs_memory_check else 0.0" in switching_source
-    assert "direct_cache_prompt_ptr: Optional[int] = None" in switching_source
-    assert "direct_cache_prompt_version: Optional[int] = None" in switching_source
-    assert "direct_cache_prompt_shape: Optional[Tuple[int, ...]] = None" in switching_source
-    assert "direct_cache_max_steps: Optional[int] = None" in switching_source
-    assert "can_reuse_direct_output = (" in switching_source
-    assert "workspace.direct_cache_prompt_ptr == prompt.data_ptr()" in switching_source
-    assert "workspace.direct_cache_prompt_version == prompt_version" in switching_source
-    assert "if not can_reuse_direct_output:" in switching_source
+    assert "direct_cache_prompt_ptr" not in switching_source
+    assert "direct_cache_prompt_version" not in switching_source
+    assert "direct_cache_prompt_shape" not in switching_source
+    assert "direct_cache_max_steps" not in switching_source
+    assert "can_reuse_direct_output" not in switching_source
     assert "direct_sequence(prompt[:, -1], generated[:, prompt_len : prompt_len + max_steps])" in switching_source
     assert "direct_next_token(source_token, out=next_token_flat)" in switching_source
     assert "direct_confidence_margin(source_token, out=margin_mean)" in switching_source
@@ -10676,7 +10680,7 @@ def test_ch18_vllm_v1_wrappers_reuse_token_id_buffers() -> None:
         benchmark._metrics = {}
         benchmark.output = None
         benchmark._last_token_ids = None
-        benchmark._token_id_buffer = None
+        benchmark._token_id_buffer = torch.empty(16, dtype=torch.int32)
 
         benchmark.benchmark_fn()
         first_ptr = benchmark._token_id_buffer.data_ptr()
@@ -10700,6 +10704,7 @@ def test_ch18_vllm_v1_wrappers_reuse_token_id_buffers() -> None:
         )
 
         assert "self._token_id_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._token_id_buffer = torch.empty(_TOKEN_PREVIEW_CAPACITY, dtype=torch.int32)" in source
         assert "self._batch_size_tensor: Optional[torch.Tensor] = None" in source
         assert "self._max_tokens_tensor: Optional[torch.Tensor] = None" in source
         assert "self._batch_size_tensor = torch.empty((), dtype=torch.int64)" in source
@@ -10935,7 +10940,8 @@ def test_dynamic_router_wrappers_defer_metric_tensors_outside_hot_loop() -> None
         assert "from labs.dynamic_router import vllm_runner" not in benchmark_section
         assert "metric_values = [" not in benchmark_section
         assert "self._metric_values = metric_values" in capture_section
-        assert "self.output = torch.tensor(metric_values, dtype=torch.float32).unsqueeze(0)" in capture_section
+        assert "self.output = metric_row_buffer(self, metric_values)" in capture_section
+        assert "torch.tensor(" not in capture_section
         if relative.endswith("topology_probe.py"):
             assert "self.snapshot = topo" in benchmark_section
             assert "if self.snapshot is None:" in capture_section
@@ -22567,10 +22573,10 @@ def test_ch13_quantized_linears_scale_outputs_in_place() -> None:
             "optimized_quantization.py",
             "class Int8MLP",
             (
-                "torch.abs(x, out=self._input_scaled_buffer)",
-                "torch.div(x, input_scale, out=self._input_scaled_buffer)",
-                "self._input_int8_buffer.copy_(self._input_scaled_buffer)",
-                "output = self._output_float_buffer",
+                "torch.abs(x, out=input_scaled)",
+                "torch.div(x, input_scale, out=input_scaled)",
+                "input_int8.copy_(input_scaled)",
+                "output = self._output_float_buffer[:rows]",
                 "output.copy_(out_int32)",
                 "output.mul_(input_scale * self.weight_scale)",
             ),
@@ -22734,7 +22740,8 @@ def test_ch13_fp8_perchannel_bench_caches_weight_quantization() -> None:
     assert "torch.no_grad()" not in setup_section
     assert "self.ref_model = nn.Linear" not in setup_section
     assert "ref_output = self.ref_model(self.x)" not in benchmark_section
-    assert "self.output = self.model(self.x).detach()" in benchmark_section
+    assert "self.output = self.model(self.x)" in benchmark_section
+    assert ".detach()" not in benchmark_section
     assert "weight_q = self._weight_q" in forward_section
     assert "weight_scale = self._weight_scale" in forward_section
     assert "output_q.mul_(input_scale)" in forward_section
@@ -22958,7 +22965,7 @@ def test_midchapter_wrappers_reuse_verification_output_buffers() -> None:
     assert "self._verify_input = self.x.detach().clone()" not in ch12_setup
 
 
-def test_optimized_benchmarks_hoist_nvtx_helpers() -> None:
+def test_optimized_benchmarks_resolve_nvtx_helpers_outside_hot_path() -> None:
     for relative in (
         "ch03/optimized_pinned_prefetch_mlp.py",
         "ch04/optimized_cpu_reduction.py",
@@ -22990,8 +22997,9 @@ def test_optimized_benchmarks_hoist_nvtx_helpers() -> None:
             maxsplit=1,
         )[0]
 
-        assert "from core.profiling.nvtx_helper import" in pre_benchmark
         assert "from core.profiling.nvtx_helper import" not in benchmark_section
+        if "nvtx_range(" in benchmark_section and "self._nvtx_range(" not in benchmark_section:
+            assert "from core.profiling.nvtx_helper import" in pre_benchmark
 
 
 def test_benchmark_functions_do_not_import_nvtx_helpers_in_hot_path() -> None:
@@ -23777,7 +23785,9 @@ def test_ch13_matmul_pair_reuses_output_buffers_without_collapsing_epilogue_cont
     assert "out.mul_(scale)" in baseline_helper
     assert "torch.matmul(self.A, self.B)" not in baseline_source
     assert "torch.relu(out + self.bias)" not in baseline_source
-    assert "torch.addmm(bias, A, B, out=out)" in optimized_helper
+    assert "torch.mm(A, B, out=out)" in optimized_helper
+    assert "extension.matmul_epilogue_(out, bias, residual, scale)" in optimized_helper
+    assert "torch.addmm(" not in optimized_helper
     for setup_section, benchmark_section, capture_section in (
         (baseline_setup, baseline_benchmark, baseline_capture),
         (optimized_setup, optimized_benchmark, optimized_capture),
@@ -23868,8 +23878,10 @@ def test_moe_cuda_graphs_journey_uses_real_graph_capture_and_correct_leveling() 
     )[0]
     assert "self.output = logits" in benchmark_hot_section
     assert "self.output = logits[:, :1, : min(8, logits.shape[-1])]" not in benchmark_hot_section
-    assert "output_slice = self.output[:, :1, : min(8, self.output.shape[-1])]" in benchmark_capture
-    assert "output=output_slice.detach().float().clone()" in benchmark_capture
+    assert "output_slice = self.output[" in benchmark_capture
+    assert "self._verify_output_buffer.copy_(output_slice)" in benchmark_capture
+    assert "output=self._verify_output_buffer" in benchmark_capture
+    assert ".float().clone()" not in benchmark_capture
     assert ".float().clone()" not in benchmark_source.split("def capture_verification_payload", maxsplit=1)[0]
     assert "Level6CUDAGraphs" in cuda_graph_source
     assert "LEVEL = 6" in cuda_graph_source
@@ -24091,10 +24103,16 @@ def test_decode_common_reuses_cached_decode_step_range() -> None:
         "def finalize_iteration_metrics",
         maxsplit=1,
     )[0]
+    decode_loop_section = source.split("def _run_decode_loop", maxsplit=1)[1].split(
+        "# Core math",
+        maxsplit=1,
+    )[0]
 
     assert "self._decode_step_range = range(self.cfg.decode_tokens)" in init_section
+    assert "for _ in self._decode_step_range:" in decode_loop_section
+    assert "for _ in range(self.cfg.decode_tokens):" not in decode_loop_section
     for section in (graph_section, prefill_decode_section, benchmark_section):
-        assert "for _ in self._decode_step_range:" in section
+        assert "self._run_decode_loop()" in section
         assert "for _ in range(self.cfg.decode_tokens):" not in section
 
 
@@ -24354,7 +24372,7 @@ def test_cache_aware_disagg_reuses_prompt_chunks_in_hot_loop() -> None:
     assert "self._prompt_chunk_count = len(self._prompt_chunks)" in setup_section
     assert "self._request_event_group_count = len(self._request_event_groups)" in setup_section
     assert "self._request_event_count = len(self._request_event_pool)" in setup_section
-    assert "self._last_output_count = len(self._last_outputs)" in setup_section
+    assert "self._last_output_count = self._output_stack.size(0)" in setup_section
     assert "self._warm_request_count = sum(1 for plan in self.request_plans if plan.is_warm)" in setup_section
     assert "prompt_chunks = self._prompt_chunks" in benchmark_section
     assert "Prompt chunk views not initialized" in benchmark_section
@@ -24791,15 +24809,6 @@ def test_ch17_monolithic_decode_fast_paths_single_token() -> None:
 
 def test_ch03_pageable_copy_is_not_marked_informational() -> None:
     assert "pageable_copy" not in INFORMATIONAL_BENCHMARKS.get("ch03", set())
-
-
-def test_clean_all_benchmark_pairs_tracker_is_rebaselined() -> None:
-    tracker = REPO_ROOT / ".cursor" / "plans" / "clean_all_benchmark_pairs_6db4c258.plan.md"
-    text = tracker.read_text(encoding="utf-8")
-
-    assert "status: pending" not in text
-    assert "Rebaselined on 2026-03-16 against current repo truth" in text
-    assert "tests/test_benchmark_hygiene_regressions.py" in text
 
 
 def test_run_benchmarks_reaps_orphaned_benchmark_processes_from_older_runs() -> None:

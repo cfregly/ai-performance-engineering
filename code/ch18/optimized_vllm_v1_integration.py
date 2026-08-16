@@ -45,6 +45,7 @@ _SERVING_STACK = get_serving_stack_pins()
 _SERVING_STACK_LIB_DIRS = configure_serving_stack_runtime_env()
 _SERVING_STACK_CACHE_DIRS = configure_serving_stack_cache_env()
 _SERVING_STACK_PRELOADED_LIBS = preload_serving_stack_shared_libs()
+_TOKEN_PREVIEW_CAPACITY = 16
 
 
 def _is_vllm_abi_mismatch_error(exc: BaseException) -> bool:
@@ -177,7 +178,7 @@ class OptimizedVLLMV1Integration:
         }
 
     def _store_token_preview(self, token_ids: Sequence[int]) -> List[int]:
-        preview_count = min(16, len(token_ids))
+        preview_count = min(_TOKEN_PREVIEW_CAPACITY, len(token_ids))
         preview = self._token_id_preview
         if len(preview) < preview_count:
             preview.extend([0] * (preview_count - len(preview)))
@@ -307,9 +308,6 @@ class OptimizedVLLMV1Integration:
         throughput = total_tokens / elapsed
         mean_latency_ms = (elapsed / len(self.prompts)) * 1000
         
-        logger.info("Throughput: %.2f tokens/sec", throughput)
-        logger.info("Mean latency: %.2f ms", mean_latency_ms)
-
         metrics = self._result_payload
         metrics["mean_latency_ms"] = mean_latency_ms
         metrics["throughput_tokens_per_sec"] = throughput
@@ -317,6 +315,17 @@ class OptimizedVLLMV1Integration:
         metrics["token_ids"] = token_ids
         metrics["runtime_mode"] = self._runtime_mode
         return metrics
+
+    def report_metrics(self) -> None:
+        """Log the last structured result after harness timing is complete."""
+        logger.info(
+            "Throughput: %.2f tokens/sec",
+            self._result_payload["throughput_tokens_per_sec"],
+        )
+        logger.info(
+            "Mean latency: %.2f ms",
+            self._result_payload["mean_latency_ms"],
+        )
     
     def cleanup(self):
         """Clean up resources."""
@@ -357,7 +366,7 @@ class OptimizedVLLMV1IntegrationBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._metrics = {}
         self.output = None
         self._last_token_ids = None
-        self._token_id_buffer = None
+        self._token_id_buffer = torch.empty(_TOKEN_PREVIEW_CAPACITY, dtype=torch.int32)
         self._batch_size_tensor = torch.empty((), dtype=torch.int64)
         self._max_tokens_tensor = torch.empty((), dtype=torch.int64)
         self._batch_size_tensor.fill_(int(self.runner.batch_size))
@@ -365,9 +374,12 @@ class OptimizedVLLMV1IntegrationBenchmark(VerificationPayloadMixin, BaseBenchmar
 
     def _materialize_token_ids(self, token_ids: Sequence[int]) -> torch.Tensor:
         num_ids = len(token_ids)
-        if self._token_id_buffer is None or self._token_id_buffer.numel() < num_ids:
-            self._token_id_buffer = torch.empty(num_ids, dtype=torch.int32)
-        token_view = self._token_id_buffer.narrow(0, 0, num_ids)
+        token_buffer = self._token_id_buffer
+        if token_buffer is None:
+            raise RuntimeError("setup() must initialize the token ID buffer")
+        if num_ids > token_buffer.numel():
+            raise RuntimeError("Runner returned more token IDs than the preview buffer can hold")
+        token_view = token_buffer.narrow(0, 0, num_ids)
         for index, token_id in enumerate(token_ids):
             token_view[index] = int(token_id)
         return token_view
@@ -400,6 +412,7 @@ class OptimizedVLLMV1IntegrationBenchmark(VerificationPayloadMixin, BaseBenchmar
 
     def teardown(self) -> None:
         self.runner.cleanup()
+        self._token_id_buffer = None
         self._batch_size_tensor = None
         self._max_tokens_tensor = None
         super().teardown()
@@ -430,6 +443,7 @@ class OptimizedVLLMV1IntegrationBenchmark(VerificationPayloadMixin, BaseBenchmar
         ).to_dict()
 
     def get_custom_metrics(self) -> Dict[str, Any]:
+        self.runner.report_metrics()
         return self._metrics
 
 

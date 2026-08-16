@@ -1,4 +1,6 @@
 import json
+import sys
+from types import SimpleNamespace
 
 import pytest
 from typer.testing import CliRunner
@@ -6,8 +8,9 @@ from typer.testing import CliRunner
 import core.engine as engine_module
 from core.api.handlers import ai_execute, ai_tools
 from core.api.registry import get_dashboard_mcp_tools
-from core.perf_core import PerfCore
 from core.engine import get_engine, reset_engine
+from core.optimization.campaign import CampaignConfig, CampaignWorkspace
+from core.perf_core import PerfCore
 from dashboard.api import server
 from tests.http_client import asgi_request
 
@@ -67,6 +70,126 @@ def test_dashboard_http_compare_route_returns_error_envelope() -> None:
     assert payload["success"] is False
     assert payload["error_type"] == "value_error"
     assert "baseline is required" in payload["error"]
+
+
+def test_dashboard_cors_allows_only_configured_ui_origins() -> None:
+    pytest.importorskip("fastapi")
+    allowed_origin = server._allowed_ui_origins()[0]
+
+    allowed = asgi_request(
+        server.fastapi_app,
+        "GET",
+        "/api/benchmark/compare",
+        headers={"Origin": allowed_origin},
+    )
+    denied = asgi_request(
+        server.fastapi_app,
+        "GET",
+        "/api/benchmark/compare",
+        headers={"Origin": "https://evil.example"},
+    )
+
+    assert allowed.headers["access-control-allow-origin"] == allowed_origin
+    assert "access-control-allow-origin" not in denied.headers
+    with pytest.raises(ValueError, match="invalid dashboard UI origin"):
+        server._allowed_ui_origins("*")
+
+
+def test_campaign_api_restricts_workspaces_to_configured_root(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("fastapi")
+    campaign_root = tmp_path / "campaigns"
+    campaign_root.mkdir()
+    allowed_workspace = campaign_root / "allowed"
+    CampaignWorkspace.initialize(
+        allowed_workspace,
+        CampaignConfig(
+            objective="Verify campaign API boundaries.",
+            primary_metric="latency_ms",
+            initial_control_commit="a" * 40,
+            primary_cases=["common"],
+            frozen_cases=["common"],
+            workload_spec="workload.json",
+            workload_sha256="b" * 64,
+            environment_spec="environment.json",
+            environment_sha256="c" * 64,
+        ),
+    )
+    outside_workspace = tmp_path / "outside"
+    outside_workspace.mkdir()
+    monkeypatch.setenv(server.CAMPAIGN_ROOT_ENV, str(campaign_root))
+    server._configure_campaign_root(None)
+
+    allowed = asgi_request(
+        server.fastapi_app,
+        "GET",
+        "/api/optimization/campaign",
+        params={"workspace": "allowed"},
+    )
+    denied = asgi_request(
+        server.fastapi_app,
+        "GET",
+        "/api/optimization/campaign",
+        params={"workspace": str(outside_workspace)},
+    )
+    denied_traversal = asgi_request(
+        server.fastapi_app,
+        "GET",
+        "/api/optimization/campaign",
+        params={"workspace": "../outside"},
+    )
+    denied_artifact = asgi_request(
+        server.fastapi_app,
+        "GET",
+        "/api/optimization/campaign/artifact",
+        params={"workspace": str(outside_workspace), "artifact": "secret.txt"},
+    )
+
+    assert allowed.status_code == 200
+    assert allowed.json()["status"] == "ok"
+    assert denied.status_code == 403
+    assert denied_traversal.status_code == 403
+    assert denied_artifact.status_code == 403
+
+
+def test_campaign_api_requires_an_explicit_server_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("fastapi")
+    monkeypatch.delenv(server.CAMPAIGN_ROOT_ENV, raising=False)
+    server._configure_campaign_root(None)
+
+    response = asgi_request(
+        server.fastapi_app,
+        "GET",
+        "/api/optimization/campaign",
+        params={"workspace": "campaign"},
+    )
+
+    assert response.status_code == 503
+    assert "Campaign API is disabled" in response.json()["detail"]
+
+
+def test_serve_uses_the_app_with_its_configured_campaign_root(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = []
+    fake_uvicorn = SimpleNamespace(run=lambda app, **kwargs: calls.append((app, kwargs)))
+    monkeypatch.setitem(sys.modules, "uvicorn", fake_uvicorn)
+    campaign_root = tmp_path / "campaigns"
+    campaign_root.mkdir()
+
+    try:
+        server.serve_dashboard(
+            campaign_root=campaign_root,
+            open_browser=False,
+        )
+
+        assert calls[0][0] is server.fastapi_app
+        assert server._configured_campaign_root() == campaign_root.resolve()
+    finally:
+        server._configure_campaign_root(None)
 
 
 def test_ai_tools_only_lists_dashboard_mcp_subset() -> None:

@@ -15,6 +15,7 @@ from ch15.speculative_decoding_common import (
     accept_prefix_length,
     build_draft_from_target,
     default_workload,
+    prepare_accept_prefix_length,
     resolve_speculative_decode_dtype,
     scale_tail_dims_,
 )
@@ -270,6 +271,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         if self.target_model is None:
             raise RuntimeError("Target model not initialized")
+        prepare_accept_prefix_length()
         self.draft_model = build_draft_from_target(self.target_model, wl.draft_hidden)
         # Preserve the existing compile gate for environments that compare compiled module forwards.
         # The decode hot path below uses prepared helper methods so logits and hidden workspaces stay

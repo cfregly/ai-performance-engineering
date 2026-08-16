@@ -96,7 +96,9 @@ def test_root_readme_preserves_evidence_first_sections() -> None:
     assert "## Tier-1 Canonical Suite" in markdown
     assert "## Current Representative Deltas" in markdown
     assert "## Profiler Evidence" in markdown
+    assert "## Optimization Opportunity Radar" in markdown
     assert "## Lab Navigation" in markdown
+    assert "`docs/autoresearch_campaigns.md`" in markdown
     assert "`labs/parameterized_cuda_graphs`" in markdown
     assert markdown.index("## Tier-1 Canonical Suite") < markdown.index("## Learning Goals")
 

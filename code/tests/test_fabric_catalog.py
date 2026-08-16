@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from cluster.fabric.catalog import generate_catalog_payload
 
 
 def test_generate_catalog_payload_extracts_key_commands_and_lab_only_markers() -> None:
     payload = generate_catalog_payload(run_id="2026-03-16_fabric_catalog")
+    assert payload["run_id"] == "2026-03-16_fabric_catalog"
+    assert payload["catalog_source"] == "committed_snapshot"
     entries = payload["entries"]
     assert entries
 
@@ -38,3 +44,8 @@ def test_generate_catalog_payload_covers_all_fabric_families() -> None:
     payload = generate_catalog_payload(run_id="2026-03-16_fabric_catalog")
     families = {entry["fabric_family"] for entry in payload["entries"]}
     assert {"nvlink", "infiniband", "spectrum-x"} <= families
+
+
+def test_generate_catalog_payload_rejects_an_explicit_missing_source(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="fabric source root not found"):
+        generate_catalog_payload(tmp_path / "missing", run_id="explicit-missing-source")

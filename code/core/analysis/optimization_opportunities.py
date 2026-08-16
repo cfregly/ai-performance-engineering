@@ -18,6 +18,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from core.optimization.evidence_validation import validate_evidence_artifact
+
 DEFAULT_MIN_SPEEDUP = 1.10
 DEFAULT_TARGET_SPEEDUP = 1.50
 DEFAULT_MIN_MEMORY_SAVINGS_PCT = 10.0
@@ -25,6 +27,15 @@ DEFAULT_SLOW_BASELINE_MS = 100.0
 DEFAULT_PORTFOLIO_BUDGET = 5
 PRIORITY_RANK = {"high": 3, "medium": 2, "low": 1}
 FRONTIER_CATALOG_KEYS = ("target_catalog", "available_targets", "benchmark_targets")
+BENCHMARK_TARGET_PATTERN = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9_.-]*(?:/[A-Za-z0-9][A-Za-z0-9_.-]*)*"
+    r":[A-Za-z0-9][A-Za-z0-9_.-]*$"
+)
+QUEUE_BENCHMARK_RUN_ID = "queue_benchmark"
+QUEUE_BENCHMARK_RESULT_ARTIFACT = (
+    f"{QUEUE_BENCHMARK_RUN_ID}/results/benchmark_test_results.json"
+)
+MANUAL_REVIEW_STAGES = frozenset({"manual_review", "promotion_review"})
 
 OPTIMIZATION_PRIMITIVE_SPECS = [
     {
@@ -620,6 +631,18 @@ def _split_target(target: str) -> tuple[str, str]:
     return chapter.strip(), example.strip()
 
 
+def _validate_benchmark_target(value: Any) -> str:
+    """Return one concrete benchmark target or reject unsafe catalog input."""
+
+    target = str(value or "").strip()
+    if not BENCHMARK_TARGET_PATTERN.fullmatch(target):
+        raise ValueError(
+            "benchmark target must be one concrete chapter:example token using only "
+            "letters, digits, '_', '-', '.', and '/'"
+        )
+    return target
+
+
 def _normal_goal(value: Any) -> str:
     goal = str(value or "speed").strip().lower()
     if goal in {"performance", "latency"}:
@@ -717,6 +740,7 @@ def _candidate_from_catalog_entry(entry: Any) -> BenchmarkCandidate:
     target = str(row.get("target") or "")
     if not target and (row.get("chapter") or row.get("example")):
         target = f"{row.get('chapter', '')}:{row.get('example', '')}"
+    target = _validate_benchmark_target(target)
     chapter, example = _split_target(target)
     story = row.get("story_metadata") if isinstance(row.get("story_metadata"), dict) else {}
     story = dict(story)
@@ -1186,14 +1210,14 @@ def _recommended_experiments(candidate: BenchmarkCandidate, opportunity_type: st
     experiments: list[str] = []
     if opportunity_type == "novel_frontier_probe":
         experiments.append(
-            "Run the target with `--profile minimal --verify-output` to establish first clean evidence before optimizing it."
+            "Run the target with `--profile minimal` to establish first clean evidence. Input and output verification stay enabled by default."
         )
         experiments.append(
             "If the first run is clean, rerun with `--profile deep_dive` and compare its dominant bottleneck against nearby motif clusters."
         )
     if opportunity_type in {"restore_benchmark_evidence", "repair_regression"}:
         experiments.append(
-            "Run the target with `--profile minimal --verify-output` to restore a clean baseline/optimized comparison."
+            "Run the target with `--profile minimal` to restore a clean baseline and optimized comparison. Input and output verification stay enabled by default."
         )
         experiments.append(
             "If it still fails, run `bench verify` on the baseline and optimized wrappers before changing expectations."
@@ -1366,8 +1390,50 @@ def _rationale(candidate: BenchmarkCandidate, opportunity_type: str) -> str:
     return "The target already has a win, but its runtime and theme suggest remaining headroom worth profiling after higher-priority gaps."
 
 
+def _profile_command_argv(target: str, profile: str) -> list[str]:
+    target = _validate_benchmark_target(target)
+    if profile not in {"none", "minimal", "deep_dive", "roofline"}:
+        raise ValueError(f"unsupported benchmark profile: {profile}")
+    return [
+        "python",
+        "-m",
+        "cli.aisp",
+        "bench",
+        "run",
+        "--targets",
+        target,
+        "--profile",
+        profile,
+    ]
+
+
 def _profile_command(target: str, profile: str) -> str:
-    return f"python -m cli.aisp bench run --targets {target} --profile {profile} --verify-output"
+    return shlex.join(_profile_command_argv(target, profile))
+
+
+def _queue_profile_command(target: str, profile: str, *, role: str) -> str:
+    """Build a file-producing command bound to a declared source worktree."""
+
+    if role == "control":
+        working_directory = '"${AISP_CONTROL_CWD:-$AISP_RUN_QUEUE_CWD}"'
+    elif role == "candidate":
+        working_directory = (
+            '"${AISP_CANDIDATE_CWD:?Set AISP_CANDIDATE_CWD to a clean candidate worktree}"'
+        )
+    else:
+        raise ValueError(f"unsupported queue command role: {role}")
+    command = shlex.join(
+        [
+            *_profile_command_argv(target, profile),
+            "--format",
+            "json",
+        ]
+    )
+    return (
+        f"cd {working_directory} && {command} "
+        '--artifacts-dir "$AISP_EXPERIMENT_ARTIFACT_DIR" '
+        f"--run-id {shlex.quote(QUEUE_BENCHMARK_RUN_ID)}"
+    )
 
 
 def _profiler_recipe(signal: str, tools: Iterable[str]) -> dict[str, Any]:
@@ -2047,9 +2113,7 @@ def _primitive_pair_reason(left: str, right: str) -> str:
         return "Host/device staging and device-side async movement may form one end-to-end copy pipeline."
     if "torch_compile_reduce_overhead" in pair and "persistent_kernel" in pair:
         return "Compilation can remove framework overhead while persistent kernels attack remaining launch and residency overhead."
-    return (
-        "The pair is source-backed but absent from the fixed compound catalog, so it is worth one isolated synthesis probe."
-    )
+    return "The pair is source-backed but absent from the fixed compound catalog, so it is worth one isolated synthesis probe."
 
 
 def _build_primitive_pair_synthesis_plan(
@@ -2841,7 +2905,9 @@ def _playbook_variant_ladder(lead: dict[str, Any]) -> list[dict[str, Any]]:
     target = str(lead.get("target") or "")
     lead_type = str(lead.get("lead_type") or "")
     control_command = _profile_command(target, "minimal") if target else lead.get("command")
-    candidate_command = lead.get("command") or control_command
+    candidate_command = (
+        _queue_profile_command(target, "minimal", role="candidate") if target else None
+    )
     deep_command = _profile_command(target, "deep_dive") if target else None
     if lead_type == "cross_lane_bridge":
         middle = [
@@ -3320,7 +3386,9 @@ def _mutation_required_evidence(mutation: dict[str, Any]) -> list[str]:
     if operator == "taxonomy_only_recompute":
         evidence.append("coverage state is recomputed without new candidate artifacts")
     if operator in {"lane_a_only", "lane_b_only", "bridge_interaction_toggle"}:
-        evidence.append("bridge lane metrics are captured separately before interpreting interaction")
+        evidence.append(
+            "bridge lane metrics are captured separately before interpreting interaction"
+        )
     if operator in {"sham_transfer_control", "recipient_shape_transfer"}:
         evidence.append("source and recipient workload contracts are recorded separately")
     return evidence
@@ -3377,7 +3445,9 @@ def _build_novelty_mutation_budget_plan(
     ]
     for card in cards:
         card["lead_selection_state"] = (
-            "selected_lead" if str(card.get("lead_id") or "") in selected_lead_ids else "backlog_lead"
+            "selected_lead"
+            if str(card.get("lead_id") or "") in selected_lead_ids
+            else "backlog_lead"
         )
     cards.sort(
         key=lambda row: (
@@ -3437,7 +3507,9 @@ def _build_novelty_mutation_budget_plan(
         cost = int(card.get("cost_units") or 0)
         if card.get("lead_selection_state") != "selected_lead":
             reason = "lead_not_in_selected_budget"
-            unlock = "Promote the parent lead or run this mutation only as an isolated backup probe."
+            unlock = (
+                "Promote the parent lead or run this mutation only as an isolated backup probe."
+            )
         elif lead_id in selected_leads and operator in selected_operators:
             reason = "lead_and_operator_already_represented"
             unlock = "Run the selected mutation evidence before spending another slot on this lead/operator."
@@ -3675,7 +3747,9 @@ def _novelty_ablation_controls(lead: dict[str, Any]) -> list[dict[str, Any]]:
     lead_type = str(lead.get("lead_type") or "")
     target = str(lead.get("target") or "")
     control_command = _profile_command(target, "minimal") if target else lead.get("command")
-    candidate_command = lead.get("command") or control_command
+    candidate_command = (
+        _queue_profile_command(target, "minimal", role="candidate") if target else None
+    )
     controls = [
         {
             "control_id": _slug(f"{lead_id}-same-workload-replay", max_len=96),
@@ -4146,9 +4220,7 @@ def _build_novelty_artifact_contract_plan(
                     "claim_decision.json",
                     "APPROVED",
                 ],
-                evidence=[
-                    "review packet cites every stage artifact before APPROVED is created"
-                ],
+                evidence=["review packet cites every stage artifact before APPROVED is created"],
             ),
         ]
         required_file_count += sum(
@@ -4491,11 +4563,7 @@ def _build_novelty_budget_plan(
         allow_target_repeat = False
         if best is None:
             best = next(
-                (
-                    card
-                    for card in cards
-                    if str(card.get("lead_type") or "unknown") == lead_type
-                ),
+                (card for card in cards if str(card.get("lead_type") or "unknown") == lead_type),
                 None,
             )
             allow_target_repeat = True
@@ -4908,8 +4976,16 @@ def _build_novelty_validation_plan(
         candidate_id = job_ids["candidate"]
         profile_id = job_ids["profile"]
         review_id = job_ids["review"]
-        control_command = _profile_command(target, "minimal") if target else lead.get("command")
-        candidate_command = lead.get("command") or control_command
+        control_command = (
+            _queue_profile_command(target, "minimal", role="control")
+            if target
+            else lead.get("command")
+        )
+        candidate_command = (
+            _queue_profile_command(target, "minimal", role="candidate") if target else None
+        )
+        if target and control_command == candidate_command:
+            raise ValueError(f"novelty lead {lead_id} has no distinct candidate command")
         jobs.append(
             {
                 "id": control_id,
@@ -4919,6 +4995,9 @@ def _build_novelty_validation_plan(
                 "stage": "control",
                 "command": control_command,
                 "depends_on": [],
+                "repeat_count": 1,
+                "comparison_policy": "single_command",
+                "result_artifact": QUEUE_BENCHMARK_RESULT_ARTIFACT,
                 "experiment_playbook_id": playbook_id,
                 "artifact_label": _slug(f"novelty-control-{target or lead_id}", max_len=48),
                 "artifact_contract_id": artifact_contract.get("contract_id"),
@@ -4934,6 +5013,10 @@ def _build_novelty_validation_plan(
                 "target": target,
                 "stage": stage_name,
                 "command": candidate_command,
+                "paired_control_command": control_command,
+                "comparison_policy": "paired_interleaved",
+                "require_distinct_source": True,
+                "result_artifact": QUEUE_BENCHMARK_RESULT_ARTIFACT,
                 "depends_on": [control_id],
                 "experiment_playbook_id": playbook_id,
                 "experiment_variables": list(playbook.get("variables", []) or []),
@@ -4967,8 +5050,16 @@ def _build_novelty_validation_plan(
                 "lead_type": lead.get("lead_type"),
                 "target": target,
                 "stage": "deep_profile",
-                "command": _profile_command(target, "deep_dive") if target else None,
+                "command": (
+                    _queue_profile_command(target, "deep_dive", role="candidate")
+                    if target
+                    else None
+                ),
                 "depends_on": [candidate_id],
+                "repeat_count": 1,
+                "comparison_policy": "single_command",
+                "require_distinct_source": True,
+                "result_artifact": QUEUE_BENCHMARK_RESULT_ARTIFACT,
                 "experiment_playbook_id": playbook_id,
                 "profiler_tools": list(
                     instrumentation.get("required_profiler_tools", [])
@@ -5319,7 +5410,11 @@ def _portfolio_item(card: dict[str, Any]) -> dict[str, Any]:
             if card.get("experiment_blueprints")
             else None
         ),
-        "command": first_variant.get("validation_command") or card.get("control_command"),
+        "command": (
+            _queue_profile_command(str(card.get("target") or ""), "minimal", role="candidate")
+            if card.get("target")
+            else None
+        ),
         "acceptance_gate": card.get("acceptance_gate"),
     }
 
@@ -5595,24 +5690,29 @@ def _build_dispatch_groups(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _build_run_queue(
     portfolio: dict[str, Any], matrix: dict[str, Any], promotion_gates: dict[str, Any]
 ) -> dict[str, Any]:
-    card_by_target = {str(card.get("target")): card for card in matrix.get("cards", [])}
     gate_by_target = {str(gate.get("target")): gate for gate in promotion_gates.get("gates", [])}
     jobs: list[dict[str, Any]] = []
     for item in portfolio.get("selected", []) or []:
         target = str(item.get("target") or "")
         if not target:
             continue
-        card = card_by_target.get(target, {})
         gate = gate_by_target.get(target, {})
         control_id = _job_id(target, "control")
         candidate_id = _job_id(target, str(item.get("first_variant") or "candidate"))
+        control_command = _queue_profile_command(target, "minimal", role="control")
+        candidate_command = _queue_profile_command(target, "minimal", role="candidate")
+        if control_command == candidate_command:
+            raise ValueError(f"target {target} has no distinct candidate command")
         jobs.append(
             {
                 "id": control_id,
                 "target": target,
                 "stage": "control",
-                "command": card.get("control_command"),
+                "command": control_command,
                 "depends_on": [],
+                "repeat_count": 1,
+                "comparison_policy": "single_command",
+                "result_artifact": QUEUE_BENCHMARK_RESULT_ARTIFACT,
                 "artifact_label": _slug(f"control-{target}", max_len=48),
                 "promotion_gate": gate.get("promotion_state"),
             }
@@ -5623,8 +5723,13 @@ def _build_run_queue(
                 "target": target,
                 "stage": "candidate",
                 "variant": item.get("first_variant"),
-                "command": item.get("command"),
+                "command": candidate_command,
+                "paired_control_command": control_command,
                 "depends_on": [control_id],
+                "repeat_count": 3,
+                "comparison_policy": "paired_interleaved",
+                "require_distinct_source": True,
+                "result_artifact": QUEUE_BENCHMARK_RESULT_ARTIFACT,
                 "experiment_blueprint_ids": item.get("experiment_blueprint_ids", []),
                 "experiment_blueprint": item.get("first_experiment_blueprint"),
                 "artifact_label": _slug(
@@ -5641,8 +5746,12 @@ def _build_run_queue(
                     "target": target,
                     "stage": "profile_followup",
                     "variant": "frontier_deep_dive_followup",
-                    "command": _profile_command(target, "deep_dive"),
+                    "command": _queue_profile_command(target, "deep_dive", role="candidate"),
                     "depends_on": [candidate_id],
+                    "repeat_count": 1,
+                    "comparison_policy": "single_command",
+                    "require_distinct_source": True,
+                    "result_artifact": QUEUE_BENCHMARK_RESULT_ARTIFACT,
                     "artifact_label": _slug(f"profile-{target}", max_len=48),
                     "promotion_gate": gate.get("promotion_state"),
                 }
@@ -6015,9 +6124,7 @@ def render_opportunities_markdown(result: dict[str, Any]) -> str:
         lines.append(
             f"Syntheses: `{synthesis_plan.get('synthesis_count')}`; primitive pairs: `{synthesis_plan.get('primitive_pair_count')}`"
         )
-        if synthesis_plan.get("available_synthesis_count") != synthesis_plan.get(
-            "synthesis_count"
-        ):
+        if synthesis_plan.get("available_synthesis_count") != synthesis_plan.get("synthesis_count"):
             lines.append(
                 f"Available before limit: `{synthesis_plan.get('available_synthesis_count')}`"
             )
@@ -6549,9 +6656,7 @@ def render_opportunities_markdown(result: dict[str, Any]) -> str:
             lines.append("")
             lines.append("Blocked harvests:")
             for item in blocked_harvests[:3]:
-                lines.append(
-                    f"- `{item.get('lead_id')}`: {item.get('blocker')}"
-                )
+                lines.append(f"- `{item.get('lead_id')}`: {item.get('blocker')}")
         lines.append("")
 
     novelty_plan = result.get("novelty_validation_plan") or {}
@@ -6717,9 +6822,7 @@ def _claim_packet_markdown_lines(claim_packet: dict[str, Any], target: str) -> l
     ]
     if sections:
         for section in sections:
-            lines.append(
-                f"- [ ] `{section.get('section')}`: {section.get('must_include')}"
-            )
+            lines.append(f"- [ ] `{section.get('section')}`: {section.get('must_include')}")
             sources = [str(item) for item in section.get("evidence_sources", []) or []]
             if sources:
                 lines.append(f"  Evidence sources: {', '.join(sources[:4])}")
@@ -6754,21 +6857,179 @@ def _render_job_plan_shell(
     """Render dependency-ordered jobs as an evidence-preserving shell runbook."""
 
     jobs = queue.get("jobs") or []
+    validator_root = Path(__file__).resolve().parents[2]
     lines = [
         "#!/usr/bin/env bash",
-        "set -euo pipefail",
+        "set -uo pipefail",
         "",
-        'AISP_RUN_QUEUE_CWD="${AISP_RUN_QUEUE_CWD:-$(pwd)}"',
-        f'{root_env_var}="${{{root_env_var}:-{default_root}}}"',
+        'export AISP_RUN_QUEUE_CWD="${AISP_RUN_QUEUE_CWD:-$(pwd)}"',
+        'AISP_RUN_QUEUE_CWD="$(cd "$AISP_RUN_QUEUE_CWD" && pwd -P)"',
+        "export AISP_RUN_QUEUE_CWD",
+        'if [[ -z "${AISP_QUEUE_VALIDATOR_ROOT:-}" ]]; then',
+        '  if [[ -f "$AISP_RUN_QUEUE_CWD/core/analysis/optimization_opportunities.py" ]]; then',
+        '    AISP_QUEUE_VALIDATOR_ROOT="$AISP_RUN_QUEUE_CWD"',
+        "  else",
+        f"    AISP_QUEUE_VALIDATOR_ROOT={_shell_quote(validator_root)}",
+        "  fi",
+        "fi",
+        "export AISP_QUEUE_VALIDATOR_ROOT",
+        'export AISP_CONTROL_CWD="${AISP_CONTROL_CWD:-$AISP_RUN_QUEUE_CWD}"',
+        f'export {root_env_var}="${{{root_env_var}:-{default_root}}}"',
+        "queue_failures=0",
         f'mkdir -p "${root_env_var}"',
+        f'{root_env_var}="$(cd "${root_env_var}" && pwd -P)"',
+        f"export {root_env_var}",
         f'echo "{root_label}: ${root_env_var}"',
+        "",
+        "validate_job_completion() {",
+        '  local job_dir="$1"',
+        '  (cd "$AISP_RUN_QUEUE_CWD" && PYTHONPATH="$AISP_QUEUE_VALIDATOR_ROOT${PYTHONPATH:+:$PYTHONPATH}" python3 - "$job_dir" <<\'PY\'',
+        "import sys",
+        "from pathlib import Path",
+        "",
+        "from core.analysis.optimization_opportunities import (",
+        "    validate_run_queue_job_directory,",
+        ")",
+        "",
+        "errors = validate_run_queue_job_directory(Path(sys.argv[1]))",
+        "if errors:",
+        "    for error in errors:",
+        "        print(f'Invalid completion evidence: {error}', file=sys.stderr)",
+        "    raise SystemExit(1)",
+        "PY",
+        "  )",
+        "}",
         "",
         "require_dependency() {",
         f'  local dep_dir="${root_env_var}/$1"',
-        '  if [[ ! -f "$dep_dir/DONE" && ! -f "$dep_dir/APPROVED" ]]; then',
-        '    echo "Missing completed dependency: $1" >&2',
-        "    exit 1",
+        '  if ! validate_job_completion "$dep_dir"; then',
+        '    echo "Missing or invalid completed dependency: $1" >&2',
+        "    return 1",
         "  fi",
+        "  return 0",
+        "}",
+        "",
+        "verify_distinct_candidate_source() {",
+        '  if [[ -z "${AISP_CANDIDATE_CWD:-}" ]]; then',
+        '    echo "AISP_CANDIDATE_CWD is required for a candidate job" >&2',
+        "    return 1",
+        "  fi",
+        "  local control_root candidate_root control_commit candidate_commit",
+        '  control_root="$(git -C "$AISP_CONTROL_CWD" rev-parse --show-toplevel 2>/dev/null)" || return 1',
+        '  candidate_root="$(git -C "$AISP_CANDIDATE_CWD" rev-parse --show-toplevel 2>/dev/null)" || return 1',
+        '  if [[ "$control_root" == "$candidate_root" ]]; then',
+        '    echo "Control and candidate must use distinct worktrees" >&2',
+        "    return 1",
+        "  fi",
+        '  if [[ -n "$(git -C "$control_root" status --porcelain --untracked-files=normal)" ]]; then',
+        '    echo "Control worktree must be clean" >&2',
+        "    return 1",
+        "  fi",
+        '  if [[ -n "$(git -C "$candidate_root" status --porcelain --untracked-files=normal)" ]]; then',
+        '    echo "Candidate worktree must be clean" >&2',
+        "    return 1",
+        "  fi",
+        '  control_commit="$(git -C "$control_root" rev-parse HEAD)" || return 1',
+        '  candidate_commit="$(git -C "$candidate_root" rev-parse HEAD)" || return 1',
+        '  if [[ "$control_commit" == "$candidate_commit" ]]; then',
+        '    echo "Control and candidate revisions must differ" >&2',
+        "    return 1",
+        "  fi",
+        "  printf 'role\\troot\\tcommit\\ncontrol\\t%s\\t%s\\ncandidate\\t%s\\t%s\\n' \\",
+        '    "$control_root" "$control_commit" "$candidate_root" "$candidate_commit"',
+        "}",
+        "",
+        "write_repeat_manifest() {",
+        '  python3 - "$1" "$2" "$3" "$4" <<\'PY\'',
+        "import hashlib",
+        "import json",
+        "import sys",
+        "from pathlib import Path",
+        "",
+        "job_dir = Path(sys.argv[1]).resolve()",
+        "declared = int(sys.argv[2])",
+        "policy = sys.argv[3]",
+        "result_artifact = sys.argv[4]",
+        "runs = []",
+        "for sequence in range(1, declared + 1):",
+        "    repeat_dir = job_dir / 'repeats' / f'{sequence:03d}'",
+        "    order_path = repeat_dir / 'order.txt'",
+        "    order = order_path.read_text(encoding='utf-8').split()",
+        "    roles = {}",
+        "    for role in order:",
+        "        role_dir = repeat_dir / role",
+        "        exit_code = int((role_dir / 'exit_code').read_text(encoding='utf-8').strip())",
+        "        role_payload = {'exit_code': exit_code}",
+        "        result_path = role_dir / result_artifact if result_artifact else None",
+        "        if result_path is not None and result_path.is_file():",
+        "            role_payload['result'] = {",
+        "                'path': str(result_path.relative_to(job_dir)),",
+        "                'sha256': hashlib.sha256(result_path.read_bytes()).hexdigest(),",
+        "            }",
+        "        roles[role] = role_payload",
+        "    runs.append({'sequence': sequence, 'order': order, 'roles': roles})",
+        "payload = {",
+        "    'schema_version': 'aisp.queue-repeat-manifest/v1',",
+        "    'declared_repeat_count': declared,",
+        "    'executed_repeat_count': len(runs),",
+        "    'comparison_policy': policy,",
+        "    'runs': runs,",
+        "}",
+        "(job_dir / 'repeat_run_manifest.json').write_text(",
+        "    json.dumps(payload, indent=2, sort_keys=True) + '\\n', encoding='utf-8'",
+        ")",
+        "PY",
+        "}",
+        "",
+        "run_evidence_job() {",
+        '  local job_dir="$1" repeat_count="$2" policy="$3" result_artifact="$4"',
+        '  local job_command="$5" paired_control_command="$6"',
+        "  local job_rc=0 repeat_index role role_command role_rc roles",
+        '  mkdir -p "$job_dir/repeats"',
+        '  : > "$job_dir/stdout.log"',
+        '  : > "$job_dir/stderr.log"',
+        "  for ((repeat_index = 1; repeat_index <= repeat_count; repeat_index++)); do",
+        '    repeat_dir="$job_dir/repeats/$(printf \'%03d\' "$repeat_index")"',
+        '    mkdir -p "$repeat_dir"',
+        '    if [[ "$policy" == "paired_interleaved" ]]; then',
+        '      if (( repeat_index % 2 == 1 )); then roles="control candidate"; else roles="candidate control"; fi',
+        '    elif [[ "$policy" == "single_command" ]]; then',
+        '      roles="job"',
+        "    else",
+        '      echo "Unsupported comparison policy: $policy" >> "$job_dir/stderr.log"',
+        "      return 96",
+        "    fi",
+        '    printf \'%s\\n\' "$roles" > "$repeat_dir/order.txt"',
+        "    for role in $roles; do",
+        '      role_dir="$repeat_dir/$role"',
+        '      mkdir -p "$role_dir"',
+        '      export AISP_EXPERIMENT_REPEAT_INDEX="$repeat_index"',
+        '      export AISP_EXPERIMENT_ROLE="$role"',
+        '      export AISP_EXPERIMENT_ARTIFACT_DIR="$role_dir"',
+        '      if [[ "$role" == "control" ]]; then role_command="$paired_control_command"; else role_command="$job_command"; fi',
+        '      printf \'%s\\n\' "$role_command" > "$role_dir/command.txt"',
+        '      if (cd "$AISP_RUN_QUEUE_CWD" && bash -lc "$role_command") >"$role_dir/stdout.log" 2>"$role_dir/stderr.log"; then',
+        "        role_rc=0",
+        "      else",
+        "        role_rc=$?",
+        "      fi",
+        '      if [[ "$role_rc" -eq 0 && -n "$result_artifact" && ! -f "$role_dir/$result_artifact" ]]; then',
+        '        echo "Required result artifact missing: $result_artifact" >> "$role_dir/stderr.log"',
+        "        role_rc=97",
+        "      fi",
+        '      printf \'%s\\n\' "$role_rc" > "$role_dir/exit_code"',
+        '      printf \'== repeat %s role %s ==\\n\' "$repeat_index" "$role" >> "$job_dir/stdout.log"',
+        '      cat "$role_dir/stdout.log" >> "$job_dir/stdout.log"',
+        '      cat "$role_dir/stderr.log" >> "$job_dir/stderr.log"',
+        '      if [[ "$role_rc" -ne 0 && "$job_rc" -eq 0 ]]; then job_rc="$role_rc"; fi',
+        "    done",
+        "  done",
+        '  if ! write_repeat_manifest "$job_dir" "$repeat_count" "$policy" "$result_artifact"; then',
+        '    echo "Failed to write repeat manifest" >> "$job_dir/stderr.log"',
+        '    if [[ "$job_rc" -eq 0 ]]; then job_rc=98; fi',
+        "  fi",
+        '  printf \'%s\\n\' "$job_rc" > "$job_dir/EXIT_CODE"',
+        '  return "$job_rc"',
         "}",
         "",
     ]
@@ -6785,14 +7046,10 @@ def _render_job_plan_shell(
         depends_on = [str(dep) for dep in job.get("depends_on", [])]
         job_json = json.dumps(job, indent=2, sort_keys=True)
         artifact_contract = (
-            job.get("artifact_contract")
-            if isinstance(job.get("artifact_contract"), dict)
-            else None
+            job.get("artifact_contract") if isinstance(job.get("artifact_contract"), dict) else None
         )
         artifact_contract_json = (
-            json.dumps(artifact_contract, indent=2, sort_keys=True)
-            if artifact_contract
-            else None
+            json.dumps(artifact_contract, indent=2, sort_keys=True) if artifact_contract else None
         )
         claim_packet = (
             job.get("claim_packet") if isinstance(job.get("claim_packet"), dict) else None
@@ -6806,10 +7063,11 @@ def _render_job_plan_shell(
                 f"echo '==> {job_id} [{stage}] {target}'",
                 f'job_dir="${root_env_var}/{job_id}"',
                 'mkdir -p "$job_dir"',
+                "job_ready=1",
             ]
         )
         for dependency in depends_on:
-            lines.append(f"require_dependency {_shell_quote(dependency)}")
+            lines.append(f"require_dependency {_shell_quote(dependency)} || job_ready=0")
 
         lines.extend(
             [
@@ -6836,19 +7094,76 @@ def _render_job_plan_shell(
             )
 
         if command:
+            repeat_count = int(job.get("repeat_count") or 0)
+            comparison_policy = str(job.get("comparison_policy") or "")
+            paired_control_command = str(job.get("paired_control_command") or "")
+            result_artifact = str(job.get("result_artifact") or "")
+            policy_valid = comparison_policy in {"single_command", "paired_interleaved"}
+            repeat_valid = repeat_count > 0
+            comparison_valid = comparison_policy != "paired_interleaved" or bool(
+                paired_control_command
+            )
             lines.extend(
                 [
-                    'if [[ -f "$job_dir/DONE" ]]; then',
-                    '  echo "  skip: DONE already exists"',
+                    'if [[ -f "$job_dir/DONE" || -f "$job_dir/APPROVED" ]] && validate_job_completion "$job_dir"; then',
+                    '  echo "  skip: DONE already exists and evidence is valid"',
+                    'elif [[ "$job_ready" -ne 1 ]]; then',
+                    '  date -u +"%Y-%m-%dT%H:%M:%SZ" > "$job_dir/BLOCKED"',
+                    '  echo "  blocked: dependency is not complete"',
                     "else",
+                    '  if [[ -f "$job_dir/DONE" || -f "$job_dir/APPROVED" ]]; then',
+                    '    echo "  rerun: existing completion evidence is invalid"',
+                    "  fi",
+                    '  rm -f "$job_dir/BLOCKED" "$job_dir/FAILED" "$job_dir/APPROVED"',
                     f"  printf '%s\\n' {_shell_quote(command)} > \"$job_dir/command.txt\"",
-                    f'  (cd "$AISP_RUN_QUEUE_CWD" && bash -lc {_shell_quote(command)}) >"$job_dir/stdout.log" 2>"$job_dir/stderr.log"',
-                    '  date -u +"%Y-%m-%dT%H:%M:%SZ" > "$job_dir/DONE"',
-                    '  echo "  logs: $job_dir/stdout.log $job_dir/stderr.log"',
                     "fi",
                     "",
                 ]
             )
+            insertion = len(lines) - 2
+            execution_lines: list[str] = []
+            if not (policy_valid and repeat_valid and comparison_valid):
+                execution_lines.extend(
+                    [
+                        '  echo "Invalid or incomplete repeat/comparison policy" > "$job_dir/stderr.log"',
+                        "  printf '94\\n' > \"$job_dir/EXIT_CODE\"",
+                        '  date -u +"%Y-%m-%dT%H:%M:%SZ" > "$job_dir/FAILED"',
+                        "  queue_failures=$((queue_failures + 1))",
+                    ]
+                )
+            else:
+                if job.get("require_distinct_source"):
+                    execution_lines.extend(
+                        [
+                            '  if ! verify_distinct_candidate_source > "$job_dir/source_identity.tsv" 2> "$job_dir/source_identity_error.log"; then',
+                            "    printf '95\\n' > \"$job_dir/EXIT_CODE\"",
+                            '    date -u +"%Y-%m-%dT%H:%M:%SZ" > "$job_dir/FAILED"',
+                            "    queue_failures=$((queue_failures + 1))",
+                            "  else",
+                        ]
+                    )
+                    indent = "    "
+                else:
+                    indent = "  "
+                execution_lines.extend(
+                    [
+                        f'{indent}if run_evidence_job "$job_dir" {repeat_count} {_shell_quote(comparison_policy)} {_shell_quote(result_artifact)} {_shell_quote(command)} {_shell_quote(paired_control_command)}; then',
+                        f'{indent}  date -u +"%Y-%m-%dT%H:%M:%SZ" > "$job_dir/DONE"',
+                        f'{indent}  if validate_job_completion "$job_dir"; then',
+                        f'{indent}    echo "  logs: $job_dir/stdout.log $job_dir/stderr.log"',
+                        f"{indent}  else",
+                        f'{indent}    date -u +"%Y-%m-%dT%H:%M:%SZ" > "$job_dir/FAILED"',
+                        f"{indent}    queue_failures=$((queue_failures + 1))",
+                        f"{indent}  fi",
+                        f"{indent}else",
+                        f'{indent}  date -u +"%Y-%m-%dT%H:%M:%SZ" > "$job_dir/FAILED"',
+                        f"{indent}  queue_failures=$((queue_failures + 1))",
+                        f"{indent}fi",
+                    ]
+                )
+                if job.get("require_distinct_source"):
+                    execution_lines.append("  fi")
+            lines[insertion:insertion] = execution_lines
             continue
 
         evidence = [str(item) for item in job.get("required_evidence", [])]
@@ -6874,18 +7189,20 @@ def _render_job_plan_shell(
         ]
         launch_environment = [str(item) for item in job.get("launch_environment", []) or []]
         artifact_contract = (
-            job.get("artifact_contract")
-            if isinstance(job.get("artifact_contract"), dict)
-            else {}
+            job.get("artifact_contract") if isinstance(job.get("artifact_contract"), dict) else {}
         )
-        claim_packet = (
-            job.get("claim_packet") if isinstance(job.get("claim_packet"), dict) else {}
-        )
+        claim_packet = job.get("claim_packet") if isinstance(job.get("claim_packet"), dict) else {}
         lines.extend(
             [
-                'if [[ -f "$job_dir/APPROVED" ]]; then',
+                'if [[ "$job_ready" -ne 1 ]]; then',
+                '  date -u +"%Y-%m-%dT%H:%M:%SZ" > "$job_dir/BLOCKED"',
+                '  echo "  blocked: dependency is not complete"',
+                'elif [[ -f "$job_dir/APPROVED" ]] && validate_job_completion "$job_dir"; then',
                 '  echo "  approved: $job_dir/APPROVED"',
                 'elif [[ -f "$job_dir/MANUAL_REVIEW_REQUIRED" ]]; then',
+                '  if [[ -f "$job_dir/APPROVED" ]]; then',
+                '    echo "  approval remains invalid: complete the declared review evidence"',
+                "  fi",
                 '  echo "  manual review pending: $job_dir/promotion_review.md"',
                 "else",
             ]
@@ -7000,7 +7317,16 @@ def _render_job_plan_shell(
             ]
         )
 
-    lines.extend([f'echo "{completion_message}"', ""])
+    lines.extend(
+        [
+            f'echo "{completion_message}"',
+            'if [[ "$queue_failures" -ne 0 ]]; then',
+            '  echo "Queue completed with $queue_failures failed job(s)." >&2',
+            "  exit 1",
+            "fi",
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -7032,9 +7358,7 @@ def render_novelty_validation_shell(result: dict[str, Any]) -> str:
     )
 
 
-def _next_wave_action_markdown_lines(
-    wave: dict[str, Any], item: dict[str, Any]
-) -> list[str]:
+def _next_wave_action_markdown_lines(wave: dict[str, Any], item: dict[str, Any]) -> list[str]:
     title = item.get("title") or item.get("lead_id") or item.get("item_id") or "next-wave action"
     lines = [
         f"# Novelty Next Wave Action: {title}",
@@ -7092,11 +7416,12 @@ def render_novelty_next_wave_shell(result: dict[str, Any]) -> str:
     plan_json = json.dumps(plan, indent=2, sort_keys=True)
     lines = [
         "#!/usr/bin/env bash",
-        "set -euo pipefail",
+        "set -uo pipefail",
         "",
         'AISP_NEXT_WAVE_CWD="${AISP_NEXT_WAVE_CWD:-$(pwd)}"',
         'AISP_NOVELTY_NEXT_WAVE_ROOT="${AISP_NOVELTY_NEXT_WAVE_ROOT:-artifacts/novelty_next_wave/$(date -u +%Y%m%d_%H%M%S)}"',
         'mkdir -p "$AISP_NOVELTY_NEXT_WAVE_ROOT"',
+        "next_wave_failures=0",
         'echo "Novelty next-wave root: $AISP_NOVELTY_NEXT_WAVE_ROOT"',
         "cat > \"$AISP_NOVELTY_NEXT_WAVE_ROOT/novelty_next_wave_plan.json\" <<'JSON'",
         plan_json,
@@ -7124,7 +7449,9 @@ def render_novelty_next_wave_shell(result: dict[str, Any]) -> str:
             ]
         )
         for index, item in enumerate(wave.get("items", []) or [], start=1):
-            item_id = str(item.get("item_id") or item.get("action_id") or item.get("job_id") or index)
+            item_id = str(
+                item.get("item_id") or item.get("action_id") or item.get("job_id") or index
+            )
             item_dir_name = f"{index:02d}-{_slug(item_id, max_len=64)}"
             item_json = json.dumps(item, indent=2, sort_keys=True)
             action_lines = _next_wave_action_markdown_lines(wave, item)
@@ -7144,31 +7471,52 @@ def render_novelty_next_wave_shell(result: dict[str, Any]) -> str:
                     'if [[ -f "$item_dir/DONE" ]]; then',
                     '  echo "     skip: DONE already exists"',
                     "else",
+                    '  rm -f "$item_dir/FAILED"',
+                    "  item_rc=0",
                 ]
             )
             if recovery_command:
                 lines.extend(
                     [
                         f"  printf '%s\\n' {_shell_quote(recovery_command)} > \"$item_dir/recovery_command.txt\"",
-                        f'  (cd "$AISP_NEXT_WAVE_CWD" && bash -lc {_shell_quote(recovery_command)}) >"$item_dir/recovery_stdout.log" 2>"$item_dir/recovery_stderr.log"',
+                        f'  if (cd "$AISP_NEXT_WAVE_CWD" && bash -lc {_shell_quote(recovery_command)}) >"$item_dir/recovery_stdout.log" 2>"$item_dir/recovery_stderr.log"; then :; else item_rc=$?; fi',
                     ]
                 )
             if command and command != recovery_command:
                 lines.extend(
                     [
                         f"  printf '%s\\n' {_shell_quote(command)} > \"$item_dir/command.txt\"",
-                        f'  (cd "$AISP_NEXT_WAVE_CWD" && bash -lc {_shell_quote(command)}) >"$item_dir/stdout.log" 2>"$item_dir/stderr.log"',
+                        '  if [[ "$item_rc" -eq 0 ]]; then',
+                        f'    if (cd "$AISP_NEXT_WAVE_CWD" && bash -lc {_shell_quote(command)}) >"$item_dir/stdout.log" 2>"$item_dir/stderr.log"; then :; else item_rc=$?; fi',
+                        "  fi",
                     ]
                 )
             if recovery_command or command:
-                lines.append('  date -u +"%Y-%m-%dT%H:%M:%SZ" > "$item_dir/DONE"')
-            else:
-                lines.append(
-                    '  date -u +"%Y-%m-%dT%H:%M:%SZ" > "$item_dir/MANUAL_ACTION_REQUIRED"'
+                lines.extend(
+                    [
+                        '  printf \'%s\\n\' "$item_rc" > "$item_dir/EXIT_CODE"',
+                        '  if [[ "$item_rc" -eq 0 ]]; then',
+                        '    date -u +"%Y-%m-%dT%H:%M:%SZ" > "$item_dir/DONE"',
+                        "  else",
+                        '    date -u +"%Y-%m-%dT%H:%M:%SZ" > "$item_dir/FAILED"',
+                        "    next_wave_failures=$((next_wave_failures + 1))",
+                        "  fi",
+                    ]
                 )
+            else:
+                lines.append('  date -u +"%Y-%m-%dT%H:%M:%SZ" > "$item_dir/MANUAL_ACTION_REQUIRED"')
             lines.extend(["fi", ""])
 
-    lines.extend(['echo "Novelty next-wave script complete."', ""])
+    lines.extend(
+        [
+            'echo "Novelty next-wave script complete."',
+            'if [[ "$next_wave_failures" -ne 0 ]]; then',
+            '  echo "Next wave completed with $next_wave_failures failed item(s)." >&2',
+            "  exit 1",
+            "fi",
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -7267,6 +7615,85 @@ def _run_queue_next_actions(jobs: list[dict[str, Any]]) -> list[str]:
     return actions
 
 
+def _job_stage_required_files(job: dict[str, Any]) -> list[str]:
+    contract = job.get("artifact_contract")
+    if not isinstance(contract, dict):
+        return []
+    stage = str(job.get("stage") or "")
+    job_id = str(job.get("id") or "")
+    stage_contracts = contract.get("stage_contracts")
+    if isinstance(stage_contracts, list):
+        matches = [
+            item
+            for item in stage_contracts
+            if isinstance(item, dict)
+            and str(item.get("stage") or "") == stage
+            and str(item.get("job_id") or "") == job_id
+        ]
+    else:
+        matches = [contract]
+    return list(
+        dict.fromkeys(
+            str(filename)
+            for item in matches
+            for filename in item.get("required_files", []) or []
+            if filename
+        )
+    )
+
+
+def validate_run_queue_job_directory(job_dir: Path) -> list[str]:
+    """Validate the marker and evidence that make one queue job complete."""
+
+    job_dir = Path(job_dir).resolve()
+    errors: list[str] = []
+    job_validation = validate_evidence_artifact(job_dir / "job.json", job_dir)
+    errors.extend(job_validation.errors)
+    job = _read_json_file(job_dir / "job.json")
+    stage = str(job.get("stage") or "")
+    done_path = job_dir / "DONE"
+    approved_path = job_dir / "APPROVED"
+
+    if stage in MANUAL_REVIEW_STAGES:
+        if not approved_path.is_file():
+            errors.append("manual review job is missing APPROVED")
+            return errors
+        approval_validation = validate_evidence_artifact(approved_path, job_dir)
+        errors.extend(approval_validation.errors)
+        for filename in _job_stage_required_files(job):
+            validation = validate_evidence_artifact(job_dir / filename, job_dir)
+            errors.extend(f"{filename}: {error}" for error in validation.errors)
+        return errors
+
+    if approved_path.exists():
+        errors.append("APPROVED is allowed only for a manual review stage")
+    if not done_path.is_file():
+        errors.append("execution job is missing DONE")
+        return errors
+    done_validation = validate_evidence_artifact(done_path, job_dir)
+    errors.extend(done_validation.errors)
+    declares_execution_contract = any(
+        key in job for key in ("repeat_count", "comparison_policy", "result_artifact")
+    )
+    if not declares_execution_contract:
+        return errors
+    exit_code_path = job_dir / "EXIT_CODE"
+    try:
+        exit_code = int(exit_code_path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        errors.append("EXIT_CODE is missing or invalid")
+    else:
+        if exit_code != 0:
+            errors.append(f"EXIT_CODE records failure {exit_code}")
+    repeat_validation = validate_evidence_artifact(job_dir / "repeat_run_manifest.json", job_dir)
+    errors.extend(repeat_validation.errors)
+    if job.get("require_distinct_source"):
+        source_identity = job_dir / "source_identity.tsv"
+        if not source_identity.is_file() or source_identity.stat().st_size == 0:
+            errors.append("source_identity.tsv is missing or empty")
+    return errors
+
+
 def summarize_run_queue_root(root: Path) -> dict[str, Any]:
     """Summarize evidence state from a runbook artifact root."""
 
@@ -7278,7 +7705,11 @@ def summarize_run_queue_root(root: Path) -> dict[str, Any]:
     for job_dir in job_dirs:
         job = _read_json_file(job_dir / "job.json")
         job_id = str(job.get("id") or job_dir.name)
-        if (job_dir / "DONE").exists() or (job_dir / "APPROVED").exists():
+        has_completion_marker = (job_dir / "DONE").exists() or (job_dir / "APPROVED").exists()
+        completion_errors = (
+            validate_run_queue_job_directory(job_dir) if has_completion_marker else []
+        )
+        if has_completion_marker and not completion_errors:
             completed_ids.add(job_id)
         stdout_tail = _tail_text(job_dir / "stdout.log")
         stderr_tail = _tail_text(job_dir / "stderr.log")
@@ -7298,6 +7729,9 @@ def summarize_run_queue_root(root: Path) -> dict[str, Any]:
                 "done": (job_dir / "DONE").exists(),
                 "approved": (job_dir / "APPROVED").exists(),
                 "manual_review_required": (job_dir / "MANUAL_REVIEW_REQUIRED").exists(),
+                "failed": (job_dir / "FAILED").exists(),
+                "blocked": (job_dir / "BLOCKED").exists(),
+                "completion_errors": completion_errors,
                 "stdout_log": str(job_dir / "stdout.log")
                 if (job_dir / "stdout.log").exists()
                 else None,
@@ -7320,13 +7754,17 @@ def summarize_run_queue_root(root: Path) -> dict[str, Any]:
             dependency for dependency in job["depends_on"] if dependency not in completed_ids
         ]
         job["missing_dependencies"] = missing_dependencies
-        if job["approved"]:
+        if job["completion_errors"]:
+            status = "failed_or_incomplete"
+        elif job["approved"]:
             status = "approved"
         elif job["manual_review_required"]:
             status = "manual_review_required"
+        elif job["failed"]:
+            status = "failed_or_incomplete"
         elif job["done"]:
             status = "completed"
-        elif missing_dependencies:
+        elif job["blocked"] or missing_dependencies:
             status = "blocked_by_dependency"
         elif job["command"] and (job["stderr_log"] or job["stdout_log"]):
             status = "failed_or_incomplete"
@@ -7487,18 +7925,24 @@ def _audit_required_files(
     job_dir_value = str((evidence_job or {}).get("job_dir") or "")
     present_files: list[str] = []
     missing_files: list[str] = []
+    invalid_files: list[str] = []
+    artifact_validations: list[dict[str, Any]] = []
     if job_dir_value:
         job_dir = Path(job_dir_value)
         for filename in required_files:
-            if (job_dir / filename).exists():
+            validation = validate_evidence_artifact(job_dir / filename, job_dir)
+            artifact_validations.append(validation.to_dict())
+            if not (job_dir / filename).is_file():
+                missing_files.append(filename)
+            elif validation.valid:
                 present_files.append(filename)
             else:
-                missing_files.append(filename)
+                invalid_files.append(filename)
     else:
         missing_files = list(required_files)
     if not evidence_job:
         status = "missing_job"
-    elif missing_files:
+    elif missing_files or invalid_files:
         status = "incomplete"
     else:
         status = "complete"
@@ -7510,8 +7954,11 @@ def _audit_required_files(
         "required_file_count": len(required_files),
         "present_file_count": len(present_files),
         "missing_file_count": len(missing_files),
+        "invalid_file_count": len(invalid_files),
         "present_files": present_files,
         "missing_files": missing_files,
+        "invalid_files": invalid_files,
+        "artifact_validations": artifact_validations,
         "audit_status": status,
     }
 
@@ -7539,13 +7986,17 @@ def _build_novelty_evidence_audit_plan(
         if not lead_id:
             continue
         stage_audits = [
-            _audit_required_files(stage_contract, evidence_by_id.get(str(stage_contract.get("job_id"))))
+            _audit_required_files(
+                stage_contract, evidence_by_id.get(str(stage_contract.get("job_id")))
+            )
             for stage_contract in contract.get("stage_contracts", []) or []
             if isinstance(stage_contract, dict)
         ]
         required_count = sum(int(item.get("required_file_count") or 0) for item in stage_audits)
         present_count = sum(int(item.get("present_file_count") or 0) for item in stage_audits)
         missing_count = sum(int(item.get("missing_file_count") or 0) for item in stage_audits)
+        invalid_count = sum(int(item.get("invalid_file_count") or 0) for item in stage_audits)
+        incomplete_count = missing_count + invalid_count
         missing_stage_count = sum(
             1 for item in stage_audits if item.get("audit_status") != "complete"
         )
@@ -7563,22 +8014,29 @@ def _build_novelty_evidence_audit_plan(
                 if len(missing_files) > 4:
                     preview = f"{preview}, ..."
                 promotion_blockers.append(f"{stage} missing required files: {preview}")
+            invalid_files = stage_audit.get("invalid_files") or []
+            if invalid_files:
+                stage = stage_audit.get("stage")
+                preview = ", ".join(str(item) for item in invalid_files[:4])
+                if len(invalid_files) > 4:
+                    preview = f"{preview}, ..."
+                promotion_blockers.append(f"{stage} has invalid evidence files: {preview}")
         if claim_packet and review_stage.get("audit_status") != "complete":
-            promotion_blockers.append("claim packet remains blocked until review artifacts are complete")
+            promotion_blockers.append(
+                "claim packet remains blocked until review artifacts are complete"
+            )
         approved_jobs = [
-            item
-            for item in stage_audits
-            if str(item.get("job_status") or "") == "approved"
+            item for item in stage_audits if str(item.get("job_status") or "") == "approved"
         ]
-        if missing_count == 0 and approved_jobs:
+        if incomplete_count == 0 and approved_jobs:
             audit_status = "approved_and_audited"
-        elif missing_count == 0 and stage_audits:
+        elif incomplete_count == 0 and stage_audits:
             audit_status = "evidence_packet_complete"
         elif present_count:
             audit_status = "evidence_packet_incomplete"
         else:
             audit_status = "not_started"
-        if approved_jobs and missing_count:
+        if approved_jobs and incomplete_count:
             audit_status = "approved_with_missing_artifacts"
         lead_audits.append(
             {
@@ -7592,6 +8050,7 @@ def _build_novelty_evidence_audit_plan(
                 "required_file_count": required_count,
                 "present_file_count": present_count,
                 "missing_file_count": missing_count,
+                "invalid_file_count": invalid_count,
                 "missing_stage_count": missing_stage_count,
                 "stage_audits": stage_audits,
                 "promotion_blockers": promotion_blockers,
@@ -7606,8 +8065,11 @@ def _build_novelty_evidence_audit_plan(
         ),
         "present_file_count": sum(int(item.get("present_file_count") or 0) for item in lead_audits),
         "missing_file_count": sum(int(item.get("missing_file_count") or 0) for item in lead_audits),
+        "invalid_file_count": sum(int(item.get("invalid_file_count") or 0) for item in lead_audits),
         "policy": (
-            "Audit novelty validation queue artifacts against the declared artifact contract. DONE and APPROVED markers are not sufficient when required files are missing."
+            "Audit novelty validation queue artifacts against the declared artifact contract. "
+            "DONE and APPROVED markers are not sufficient when required files are missing, "
+            "malformed, or not bound to their declared hashes."
         ),
         "lead_audits": lead_audits,
     }
@@ -7736,9 +8198,7 @@ def _build_novelty_recovery_plan(
         if str(job.get("evidence_status") or job.get("status") or "") != "failed_or_incomplete":
             continue
         signals = [
-            signal
-            for signal in job.get("diagnostic_signals", []) or []
-            if isinstance(signal, dict)
+            signal for signal in job.get("diagnostic_signals", []) or [] if isinstance(signal, dict)
         ]
         if not signals:
             signals = [
@@ -7813,9 +8273,8 @@ def _build_novelty_adaptive_decision_plan(
     """Decide whether each selected novelty lead should run, recover, review, or yield a slot."""
 
     ready_job_ids = {
-        str(job_id) for job_id in (novelty_validation_plan.get("resume_plan") or {}).get(
-            "ready_job_ids", []
-        )
+        str(job_id)
+        for job_id in (novelty_validation_plan.get("resume_plan") or {}).get("ready_job_ids", [])
     }
     jobs_by_lead: dict[str, list[dict[str, Any]]] = {}
     for job in novelty_validation_plan.get("jobs", []) or []:
@@ -7844,7 +8303,9 @@ def _build_novelty_adaptive_decision_plan(
             or feedback.get("failed_job_ids")
         ]
         artifact_actions = [
-            action for action in actions if action.get("issue_type") == "missing_artifact_contract_files"
+            action
+            for action in actions
+            if action.get("issue_type") == "missing_artifact_contract_files"
         ]
         validation_status = str(feedback.get("validation_status") or "not_started")
         audit_status = str(feedback.get("evidence_audit_status") or "not_started")
@@ -7852,7 +8313,9 @@ def _build_novelty_adaptive_decision_plan(
         if validation_status == "approved_after_manual_review":
             disposition = "claim_ready"
             slot_state = "complete"
-            next_step = "Use the approved claim packet; do not rerun unless new evidence invalidates it."
+            next_step = (
+                "Use the approved claim packet; do not rerun unless new evidence invalidates it."
+            )
         elif validation_status == "manual_review_required":
             disposition = "finish_manual_review"
             slot_state = "review"
@@ -7987,7 +8450,9 @@ def _build_novelty_learning_plan(
             learning_state = "infrastructure_or_validation_blocked"
             expected_value_adjustment = -3.0
             rerank_action = "hold_selected_slot_until_recovery"
-            next_validation_focus = "Resolve failed job diagnostics before spending downstream profile/review work."
+            next_validation_focus = (
+                "Resolve failed job diagnostics before spending downstream profile/review work."
+            )
         elif disposition == "repair_artifact_packet":
             learning_state = "artifact_hygiene_blocked"
             expected_value_adjustment = -1.5
@@ -8002,7 +8467,9 @@ def _build_novelty_learning_plan(
             learning_state = "validated_claim_ready"
             expected_value_adjustment = 4.0
             rerank_action = "extract_reusable_pattern"
-            next_validation_focus = "Use the approved claim packet to seed transfer or compound hypotheses."
+            next_validation_focus = (
+                "Use the approved claim packet to seed transfer or compound hypotheses."
+            )
         elif disposition == "run_next_validation_job":
             learning_state = "evidence_in_progress"
             expected_value_adjustment = 0.5
@@ -8048,7 +8515,9 @@ def _build_novelty_learning_plan(
         }
         for item in replacement_candidates
     ]
-    adjustment_counts = Counter(str(item.get("learning_state") or "unknown") for item in lead_adjustments)
+    adjustment_counts = Counter(
+        str(item.get("learning_state") or "unknown") for item in lead_adjustments
+    )
     blocked_count = sum(
         1
         for item in lead_adjustments
@@ -8484,10 +8953,7 @@ def _build_novelty_harvest_plan(
             dict.fromkeys(
                 [
                     *[str(job_id) for job_id in feedback.get("completed_job_ids", []) or []],
-                    *[
-                        str(job_id)
-                        for job_id in feedback.get("approved_review_job_ids", []) or []
-                    ],
+                    *[str(job_id) for job_id in feedback.get("approved_review_job_ids", []) or []],
                 ]
             )
         )

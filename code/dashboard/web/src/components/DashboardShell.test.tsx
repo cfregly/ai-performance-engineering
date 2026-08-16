@@ -22,9 +22,10 @@ describe('DashboardShell navigation', () => {
     );
 
     expect(screen.getByRole('link', { name: /contracts/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /campaign/i })).toBeInTheDocument();
   });
 
-  it('routes to the contracts tab on 0 shortcut', async () => {
+  it('routes to the contracts tab on C shortcut', async () => {
     const user = userEvent.setup();
 
     render(
@@ -33,8 +34,22 @@ describe('DashboardShell navigation', () => {
       </DashboardShell>
     );
 
-    await user.keyboard('0');
+    await user.keyboard('C');
 
     expect(push).toHaveBeenCalledWith('/contracts');
+  });
+
+  it('routes to the campaign tab on A shortcut', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <DashboardShell title="Test Dashboard">
+        <div>content</div>
+      </DashboardShell>
+    );
+
+    await user.keyboard('A');
+
+    expect(push).toHaveBeenCalledWith('/campaign');
   });
 });

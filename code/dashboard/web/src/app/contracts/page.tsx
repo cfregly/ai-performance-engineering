@@ -58,10 +58,6 @@ const FALLBACK_FORM: GeneratorForm = {
   comparisonVariable: 'runtime_version',
 };
 
-function contractIcon(kind: BenchmarkContractEntry['kind']) {
-  return kind === 'yaml' ? FileCode2 : FileText;
-}
-
 function fallbackInterfaceEntries(summary?: BenchmarkContractsSummary | null): BenchmarkContractInterfaceEntry[] {
   if (summary?.interface_entries?.length) {
     return summary.interface_entries;
@@ -136,7 +132,6 @@ function SurfaceCard({
   onCopyPath: (path: string) => void;
   onCopyLink: (anchor: string) => void;
 }) {
-  const Icon = contractIcon(entry.kind);
   const summary = entry.summary;
   const anchor = `contract-${entry.name}`;
 
@@ -145,7 +140,11 @@ function SurfaceCard({
       <div className="card-header items-start gap-3">
         <div className="flex items-start gap-3">
           <div className="p-2 rounded-lg bg-white/5 border border-white/10">
-            <Icon className="w-4 h-4 text-accent-primary" />
+            {entry.kind === 'yaml' ? (
+              <FileCode2 className="w-4 h-4 text-accent-primary" />
+            ) : (
+              <FileText className="w-4 h-4 text-accent-primary" />
+            )}
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">

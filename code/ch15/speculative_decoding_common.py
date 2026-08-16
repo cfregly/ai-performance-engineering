@@ -73,6 +73,13 @@ if TRITON_AVAILABLE:
         tl.store(out_ptr, accepted)
 
 
+def prepare_accept_prefix_length() -> None:
+    """Prepare optional Triton compatibility before benchmark timing starts."""
+
+    if TRITON_AVAILABLE:
+        ensure_triton_compat()
+
+
 def accept_prefix_length(matches: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
     """Write the contiguous accepted-token prefix length for a [1, K] match row."""
 
@@ -80,7 +87,6 @@ def accept_prefix_length(matches: torch.Tensor, out: torch.Tensor) -> torch.Tens
         out.zero_()
         return out
     if TRITON_AVAILABLE and matches.is_cuda:
-        ensure_triton_compat()
         _accept_prefix_length_kernel[(1,)](
             matches,
             out,

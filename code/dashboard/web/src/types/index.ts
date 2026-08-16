@@ -748,6 +748,96 @@ export interface BenchmarkCompareResult {
   status_transitions: Record<string, number>;
 }
 
+export interface CampaignGateDecision {
+  decision: 'promote' | 'park' | 'reject' | 'inconclusive' | string;
+  reasons: string[];
+  aggregate_control?: number | null;
+  aggregate_candidate?: number | null;
+  improvement_pct?: number | null;
+  improvement_ci_pct?: number[] | null;
+  case_improvements_pct?: Record<string, number>;
+  case_improvement_ci_pct?: Record<string, number[]>;
+  confidence_method?: string | null;
+  confidence_level?: number | null;
+  confidence_required?: boolean;
+  minimum_trials?: number;
+}
+
+export interface CampaignCaseRow {
+  case_id: string;
+  primary: boolean;
+  frozen: boolean;
+  control_median: number;
+  candidate_median: number;
+  improvement_pct: number;
+  improvement_ci_pct?: number[] | null;
+  control_trials: number;
+  candidate_trials: number;
+  frozen_case_violation: boolean;
+}
+
+export interface CampaignArtifact {
+  role: 'raw' | 'profile' | string;
+  path: string;
+  sha256?: string | null;
+  downloadable: boolean;
+}
+
+export interface CampaignExperimentSummary {
+  experiment_id: string;
+  parent_id?: string | null;
+  beam: string;
+  hypothesis: string;
+  status: string;
+  correctness: string;
+  primary_case: string;
+  changed_surface: string[];
+  mechanism: string;
+  outcome: string;
+  next_step: string;
+  recorded_at: string;
+  revision: number;
+  is_incumbent: boolean;
+  gate: CampaignGateDecision;
+  cases: CampaignCaseRow[];
+  artifacts: CampaignArtifact[];
+  provenance: Record<string, unknown>;
+}
+
+export interface CampaignIncumbent {
+  commit: string;
+  source: 'initial_control' | 'promoted_experiment' | string;
+  experiment_id?: string | null;
+  recorded_at: string;
+  experiment?: CampaignExperimentSummary | null;
+}
+
+export interface CampaignDashboardResult {
+  workspace: string;
+  config: Record<string, any>;
+  budget: {
+    completed_experiments: number;
+    duration_s: number;
+    cost_usd: number;
+    exhausted: string[];
+    can_schedule: boolean;
+    [key: string]: unknown;
+  };
+  counts: {
+    experiments: number;
+    measured: number;
+    promoted: number;
+    parked: number;
+    rejected: number;
+    crashed: number;
+  };
+  incumbent: CampaignIncumbent;
+  latest_measured?: CampaignExperimentSummary | null;
+  active_beam: CampaignExperimentSummary[];
+  frontier: CampaignExperimentSummary[];
+  experiments: CampaignExperimentSummary[];
+}
+
 export interface Tab {
   id: string;
   label: string;

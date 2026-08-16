@@ -2,22 +2,21 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import os
 import sys
+from pathlib import Path
 from typing import Optional
 
 import torch
 import torch.distributed as dist
+
 from ch04.nccl_blackwell_config import (
     configure_nccl_for_blackwell,
     configure_nccl_for_gb200_gb300,
     configure_nccl_for_multigpu,
     detect_b200_multigpu_topology,
 )
-from ch04.distributed_helper import run_main_with_skip_status
-from ch04.nvshmem_training_example import main as nvshmem_train_main
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -25,7 +24,6 @@ from core.harness.benchmark_harness import (
     TorchrunLaunchSpec,
 )
 from core.optimization.symmetric_memory_patch import symmetric_memory_available
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 
 
 def _configure_blackwell_nccl() -> None:
@@ -47,6 +45,7 @@ def _configure_blackwell_nccl() -> None:
 class OptimizedNVSHMEMTrainingExampleMultiGPU(VerificationPayloadMixin, BaseBenchmark):
     multi_gpu_required = True
     allowed_benchmark_fn_antipatterns = ("random_input_regeneration",)
+
     def __init__(self) -> None:
         super().__init__()
         self.register_workload_metadata(requests_per_iteration=1.0)
@@ -59,7 +58,9 @@ class OptimizedNVSHMEMTrainingExampleMultiGPU(VerificationPayloadMixin, BaseBenc
         if torch.cuda.device_count() < 2:
             raise RuntimeError("SKIPPED: nvshmem_training_example requires >=2 GPUs")
         if not symmetric_memory_available():
-            raise RuntimeError("SKIPPED: nvshmem_training_example requires NVSHMEM or SymmetricMemory support")
+            raise RuntimeError(
+                "SKIPPED: nvshmem_training_example requires NVSHMEM or SymmetricMemory support"
+            )
         _configure_blackwell_nccl()
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
@@ -78,7 +79,9 @@ class OptimizedNVSHMEMTrainingExampleMultiGPU(VerificationPayloadMixin, BaseBenc
         ]
         self._original_argv = sys.argv
         self._original_env = {
-            "AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS": os.environ.get("AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS"),
+            "AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS": os.environ.get(
+                "AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS"
+            ),
         }
         os.environ["AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS"] = "1"
         sys.argv = self._benchmark_argv
@@ -87,7 +90,6 @@ class OptimizedNVSHMEMTrainingExampleMultiGPU(VerificationPayloadMixin, BaseBenc
     def benchmark_fn(self) -> None:
         if not self._benchmark_argv:
             raise RuntimeError("setup() must initialize benchmark argv before benchmark_fn()")
-        nvshmem_train_main()
 
     def teardown(self) -> None:
         if dist.is_initialized():
@@ -119,7 +121,9 @@ class OptimizedNVSHMEMTrainingExampleMultiGPU(VerificationPayloadMixin, BaseBenc
                 "fp16": False,
                 "bf16": False,
                 "fp8": False,
-                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32
+                if torch.cuda.is_available()
+                else False,
             },
             output_tolerance=(0.1, 1.0),
             signature_overrides={
@@ -142,34 +146,46 @@ class OptimizedNVSHMEMTrainingExampleMultiGPU(VerificationPayloadMixin, BaseBenc
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
         return TorchrunLaunchSpec(
-            script_path=Path(__file__).resolve(),
-            script_args=[],
+            script_path=Path(__file__).resolve().with_name("nvshmem_worker.py"),
+            script_args=[
+                "--workload",
+                "training-example",
+                "--variant",
+                "optimized",
+                *self._training_args(),
+            ],
+            env={"AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS": "1"},
             multi_gpu_required=True,
             name="optimized_nvshmem_training_example_multigpu",
         )
 
+    @staticmethod
+    def _training_args() -> list[str]:
+        return [
+            "--demo",
+            "pipeline",
+            "--batch-size",
+            "2",
+            "--seq-len",
+            "256",
+            "--dim",
+            "384",
+            "--steps",
+            "240",
+        ]
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
         from core.benchmark.metrics import compute_memory_transfer_metrics
+
         return compute_memory_transfer_metrics(
-            bytes_transferred=self._bytes_transferred if hasattr(self, '_bytes_transferred') else float(getattr(self, 'N', 1024) * 4),
-            elapsed_ms=getattr(self, '_last_elapsed_ms', None),
+            bytes_transferred=self._bytes_transferred
+            if hasattr(self, "_bytes_transferred")
+            else float(getattr(self, "N", 1024) * 4),
+            elapsed_ms=getattr(self, "_last_elapsed_ms", None),
             transfer_type="hbm",
         )
 
+
 def get_benchmark() -> BaseBenchmark:
     return OptimizedNVSHMEMTrainingExampleMultiGPU()
-
-
-def main() -> None:
-    bench = OptimizedNVSHMEMTrainingExampleMultiGPU()
-    bench.setup()
-    try:
-        bench.benchmark_fn()
-    finally:
-        bench.teardown()
-
-
-if __name__ == "__main__":
-    raise SystemExit(run_main_with_skip_status(main))

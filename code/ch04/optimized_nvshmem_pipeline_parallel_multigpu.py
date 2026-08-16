@@ -5,30 +5,28 @@ Uses symmetric-memory handoff on the 1F1B schedule to reduce pipeline stalls.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import os
 import sys
+from pathlib import Path
 from typing import Optional
 
 import torch
 import torch.distributed as dist
+
 from ch04.nccl_blackwell_config import (
     configure_nccl_for_blackwell,
     configure_nccl_for_gb200_gb300,
     configure_nccl_for_multigpu,
     detect_b200_multigpu_topology,
 )
-from ch04.distributed_helper import run_main_with_skip_status
-from core.optimization.symmetric_memory_patch import symmetric_memory_available
-from ch04.nvshmem_pipeline_parallel_multigpu import main as nvshmem_main
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     LaunchVia,
     TorchrunLaunchSpec,
 )
-from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.optimization.symmetric_memory_patch import symmetric_memory_available
 
 
 def _configure_blackwell_nccl() -> None:
@@ -54,6 +52,7 @@ class OptimizedNVSHMEMPipelineParallelMultiGPU(VerificationPayloadMixin, BaseBen
     multi_gpu_required = True
     preferred_ncu_replay_mode = "kernel"
     allowed_benchmark_fn_antipatterns = ("host_transfer", "random_input_regeneration", "sync")
+
     def __init__(self) -> None:
         super().__init__()
         self.register_workload_metadata(requests_per_iteration=1.0)
@@ -66,7 +65,9 @@ class OptimizedNVSHMEMPipelineParallelMultiGPU(VerificationPayloadMixin, BaseBen
         if torch.cuda.device_count() < 2:
             raise RuntimeError("SKIPPED: nvshmem_pipeline_parallel_multigpu requires >=2 GPUs")
         if not symmetric_memory_available():
-            raise RuntimeError("SKIPPED: nvshmem_pipeline_parallel_multigpu requires NVSHMEM or SymmetricMemory support")
+            raise RuntimeError(
+                "SKIPPED: nvshmem_pipeline_parallel_multigpu requires NVSHMEM or SymmetricMemory support"
+            )
         # NCCL tuning helps the real symmetric-memory pipeline path on supported hosts.
         _configure_blackwell_nccl()
         torch.manual_seed(42)
@@ -99,8 +100,9 @@ class OptimizedNVSHMEMPipelineParallelMultiGPU(VerificationPayloadMixin, BaseBen
             raise RuntimeError("setup() must initialize benchmark argv before benchmark_fn()")
         use_symmem = _enable_symmem_pipeline()
         if not use_symmem:
-            raise RuntimeError("SKIPPED: nvshmem_pipeline_parallel_multigpu requires NVSHMEM or SymmetricMemory support")
-        nvshmem_main()
+            raise RuntimeError(
+                "SKIPPED: nvshmem_pipeline_parallel_multigpu requires NVSHMEM or SymmetricMemory support"
+            )
 
     def teardown(self) -> None:
         if dist.is_initialized():
@@ -132,7 +134,9 @@ class OptimizedNVSHMEMPipelineParallelMultiGPU(VerificationPayloadMixin, BaseBen
                 "fp16": False,
                 "bf16": False,
                 "fp8": False,
-                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32
+                if torch.cuda.is_available()
+                else False,
             },
             output_tolerance=(0.1, 1.0),
             signature_overrides={
@@ -155,34 +159,49 @@ class OptimizedNVSHMEMPipelineParallelMultiGPU(VerificationPayloadMixin, BaseBen
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
         return TorchrunLaunchSpec(
-            script_path=Path(__file__).resolve(),
-            script_args=[],
+            script_path=Path(__file__).resolve().with_name("nvshmem_worker.py"),
+            script_args=[
+                "--workload",
+                "pipeline",
+                "--variant",
+                "optimized",
+                *self._pipeline_args(),
+            ],
+            env={
+                "AISP_DISABLE_SYMMEM_PIPELINE": "0",
+                "AISP_SYMMEM_PIPELINE_ASYNC": "1",
+            },
             multi_gpu_required=True,
             name="optimized_nvshmem_pipeline_parallel_multigpu",
         )
 
+    @staticmethod
+    def _pipeline_args() -> list[str]:
+        return [
+            "--schedule",
+            "1f1b",
+            "--batch-size",
+            "64",
+            "--num-microbatches",
+            "4",
+            "--seq-len",
+            "16",
+            "--hidden-dim",
+            "32",
+        ]
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
         from core.benchmark.metrics import compute_memory_transfer_metrics
+
         return compute_memory_transfer_metrics(
-            bytes_transferred=self._bytes_transferred if hasattr(self, '_bytes_transferred') else float(getattr(self, 'N', 1024) * 4),
-            elapsed_ms=getattr(self, '_last_elapsed_ms', None),
+            bytes_transferred=self._bytes_transferred
+            if hasattr(self, "_bytes_transferred")
+            else float(getattr(self, "N", 1024) * 4),
+            elapsed_ms=getattr(self, "_last_elapsed_ms", None),
             transfer_type="hbm",
         )
 
+
 def get_benchmark() -> BaseBenchmark:
     return OptimizedNVSHMEMPipelineParallelMultiGPU()
-
-
-def main() -> None:
-    bench = OptimizedNVSHMEMPipelineParallelMultiGPU()
-    bench.setup()
-    try:
-        bench.benchmark_fn()
-    finally:
-        bench.teardown()
-
-
-if __name__ == "__main__":
-    raise SystemExit(run_main_with_skip_status(main))

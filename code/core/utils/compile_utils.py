@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import importlib
 import logging
+import os
 import threading
 import warnings
 from collections import defaultdict
-from functools import lru_cache
-from typing import Any, Callable, Dict, Optional, Tuple, TypeVar, cast
-import os
+from collections.abc import Callable
 from contextlib import contextmanager
+from functools import lru_cache
+from typing import Any, Dict, Optional, Tuple, TypeVar, cast
 
 import torch
 
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 _LEGACY_TF32_PATCHED = False
 
 
+@lru_cache(maxsize=1)
 def _configure_compiler_defaults() -> None:
     """Enable Blackwell-friendly torch.compile defaults (TMA, autotune, unique kernel names)."""
     # First, configure inductor config if available (this sets unique_kernel_names
@@ -79,10 +81,6 @@ def _configure_compiler_defaults() -> None:
             triton_cfg.unique_kernel_names = True
         except Exception:
             pass
-
-
-_configure_compiler_defaults()
-
 
 def _patch_legacy_tf32_attributes() -> None:
     """
@@ -272,6 +270,7 @@ def compile_callable(fn: _CallableT, **kwargs: Any) -> _CallableT:
     """
     err_on_graph_break = kwargs.pop("error_on_graph_break", None)
     use_nested_region = kwargs.pop("nested_compile_region", False)
+    _configure_compiler_defaults()
     compile_fn = _get_torch_compile()
     chosen_mode, extra = _normalize_compile_kwargs(kwargs)
     target_fn = maybe_nested_compile_region(fn) if use_nested_region else fn

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import torch
 
@@ -11,26 +11,47 @@ try:  # Ensure TORCH_CUDA_ARCH_LIST gets clamped to sm_120 on GB10.
 except ImportError:  # pragma: no cover - optional during import bootstrap
     arch_config = None  # type: ignore[assignment]
 
-from core.benchmark.blackwell_requirements import ensure_blackwell_tma_supported
+from core.benchmark.blackwell_requirements import (  # noqa: E402, I001
+    ensure_blackwell_tma_supported,
+)
+
+
+SUPPORTED_TCGEN05_CAPABILITIES = frozenset({(10, 0), (10, 3)})
+
+
+def ensure_tcgen05_capability_supported(
+    capability: tuple[int, int],
+    *,
+    module_name: str = "tcgen05 kernel",
+) -> None:
+    """Raise a SKIPPED error unless an exact, validated tcgen05 target is visible."""
+    if capability in SUPPORTED_TCGEN05_CAPABILITIES:
+        return
+
+    major, minor = capability
+    sm_version = f"sm_{major}{minor}"
+    if major < 10:
+        reason = "requires SM100-class Tensor Cores"
+    elif capability == (12, 0):
+        reason = "has no natively validated SM120 implementation"
+    elif capability == (12, 1):
+        reason = "is not supported on sm_121 (GB10)"
+    else:
+        reason = f"does not support {sm_version}. Validated targets are sm_100 and sm_103"
+    raise RuntimeError(f"SKIPPED: {module_name} {reason}.")
 
 
 def ensure_tcgen05_supported(
-    loader: Optional[Callable[[], object]] = None,
+    loader: Callable[[], object] | None = None,
     *,
     module_name: str = "tcgen05 kernel",
 ) -> None:
     """Raise a SKIPPED error if tcgen05 kernels cannot run."""
     ensure_blackwell_tma_supported(module_name)
-    major, minor = torch.cuda.get_device_capability()
-    if major < 10:
-        raise RuntimeError(
-            "SKIPPED: tcgen05 kernels require SM100-class Tensor Cores."
-        )
-    # GB10 (sm_121) is not a supported target for tcgen05 kernels.
-    if major == 12 and minor == 1:
-        raise RuntimeError(
-            "SKIPPED: tcgen05 kernels are not supported on sm_121 (GB10)."
-        )
+    ensure_tcgen05_capability_supported(
+        torch.cuda.get_device_capability(),
+        module_name=module_name,
+    )
     if loader is None:
         return
     try:
@@ -40,10 +61,10 @@ def ensure_tcgen05_supported(
 
 
 def check_tcgen05_support(
-    loader: Optional[Callable[[], object]] = None,
+    loader: Callable[[], object] | None = None,
     *,
     module_name: str = "tcgen05 kernel",
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """Return (is_supported, reason) without raising on SKIPPED errors."""
     try:
         ensure_tcgen05_supported(loader=loader, module_name=module_name)

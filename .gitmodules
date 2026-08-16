@@ -2,9 +2,11 @@
 	path = code/third_party/cutlass
 	url = https://github.com/NVIDIA/cutlass.git
 	ignore = untracked
-[submodule "third_party/TransformerEngine"]
-	path = third_party/TransformerEngine
-	url = https://github.com/NVIDIA/TransformerEngine.git
-[submodule "code/labs/nanochat"]
-	path = code/labs/nanochat
-	url = git@github.com:cfregly/nanochat.git
+[submodule "code/tools/nccl-tests"]
+	path = code/tools/nccl-tests
+	url = https://github.com/NVIDIA/nccl-tests.git
+	ignore = untracked
+[submodule "code/cluster/tools/nccl-tests"]
+	path = code/cluster/tools/nccl-tests
+	url = https://github.com/NVIDIA/nccl-tests.git
+	ignore = untracked

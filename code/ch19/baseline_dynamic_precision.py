@@ -13,11 +13,14 @@ from ch19.dynamic_precision_benchmark_common import (
     FixedDecodeWorkspace,
     build_model,
     build_prompt,
-    decode_host_policy_baseline,
+    decode_host_policy_baseline_preallocated as decode_host_policy_baseline,
 )
 
 
 class BaselineDynamicPrecisionBenchmark(VerificationPayloadMixin, BaseBenchmark):
+    # Host-visible policy synchronization is the behavior this baseline measures.
+    allowed_benchmark_fn_antipatterns = ("sync",)
+
     def __init__(self, cfg: Optional[DynamicPrecisionBenchmarkConfig] = None) -> None:
         super().__init__()
         self.cfg = cfg or DynamicPrecisionBenchmarkConfig()
@@ -54,6 +57,12 @@ class BaselineDynamicPrecisionBenchmark(VerificationPayloadMixin, BaseBenchmark)
             policy_metric_values=[0.0] * 4,
             policy_top2_values=torch.empty((self.cfg.batch_size, 2), device="cpu", dtype=torch.float32),
             policy_top2_indices=torch.empty((self.cfg.batch_size, 2), device="cpu", dtype=torch.long),
+        )
+        self._decode_workspace.next_token_flat = self._decode_workspace.next_token.view(
+            self.cfg.batch_size
+        )
+        self._decode_workspace.generated_token_views = self._decode_workspace.generated.unbind(
+            dim=1
         )
         self._verify_prompt_buffer = torch.empty(
             self.prompt.shape,
