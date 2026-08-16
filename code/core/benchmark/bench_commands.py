@@ -668,6 +668,7 @@ def _execute_benchmarks(
         only_cuda=bool(only_cuda),
         only_python=bool(only_python),
         target_extra_args=parsed_extra_args,
+        enforce_external_assets=len(chapter_dirs) == 1,
     )
     if preflight_issues:
         for issue in preflight_issues:
@@ -680,7 +681,23 @@ def _execute_benchmarks(
             issues=preflight_issues,
         )
         event_logger.close()
-        sys.exit(1)
+        if exit_on_failure:
+            sys.exit(1)
+        return {
+            "run_id": artifact_manager.run_id,
+            "artifact_root": str(artifact_manager.run_dir),
+            "output_json": str(output_json),
+            "output_markdown": (str(output_md) if output_format in ["markdown", "both"] else None),
+            "manifest_path": None,
+            "bench_root": str(active_bench_root),
+            "total_failed": 1,
+            "total_successful": 0,
+            "total_skipped": 0,
+            "results": [],
+            "preflight_failed": True,
+            "preflight_issues": list(preflight_issues),
+            "error": "Benchmark preflight failed: " + " | ".join(preflight_issues),
+        }
 
     def _classify_target_dir(path: Path) -> str:
         try:

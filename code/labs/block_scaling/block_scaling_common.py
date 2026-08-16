@@ -15,13 +15,13 @@ scaling tutorial while fitting into this repo's lab conventions:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from functools import lru_cache
 import importlib.util
 import io
 import os
-from pathlib import Path
 from contextlib import redirect_stdout
+from dataclasses import dataclass, replace
+from functools import lru_cache
+from pathlib import Path
 from types import ModuleType
 from typing import Any, Optional
 
@@ -34,6 +34,8 @@ BLOCK_SCALING_SOURCE_URL = (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 # sm_100 (B200) example shipped by the pinned cutlass submodule (v4.1.0).
+# Its deprecated cute.make_fragment calls need a compatibility alias when the
+# example runs against the pinned nvidia-cutlass-dsl 4.5.2 runtime.
 SM100_EXAMPLE_PATH = (
     REPO_ROOT
     / "third_party"
@@ -50,9 +52,7 @@ SM100_EXAMPLE_PATH = (
 # example. Imports resolve from the pip nvidia-cutlass-dsl[cu13]>=4.5.2 package
 # (no sibling-file deps); see vendor/README.md for provenance.
 SM103_EXAMPLE_PATH = (
-    Path(__file__).resolve().parent
-    / "vendor"
-    / "sm103_dense_blockscaled_gemm_persistent.py"
+    Path(__file__).resolve().parent / "vendor" / "sm103_dense_blockscaled_gemm_persistent.py"
 )
 # Back-compat default (the sm_100 path); load_cutlass_example_module() selects
 # the sm_103 example per-arch at load time via _resolve_cutlass_example_path().
@@ -297,6 +297,23 @@ def _resolve_cutlass_example_path() -> Path:
     return CUTLASS_EXAMPLE_PATH
 
 
+def _ensure_cute_fragment_compatibility(module: ModuleType) -> None:
+    """Bridge the CUTLASS 4.1 example to the pinned CuTe 4.5 API."""
+    cute_module = getattr(module, "cute", None)
+    if cute_module is None:
+        raise RuntimeError("The CUTLASS block scaling example did not expose cutlass.cute")
+    if hasattr(cute_module, "make_fragment"):
+        return
+
+    make_rmem_tensor = getattr(cute_module, "make_rmem_tensor", None)
+    if make_rmem_tensor is None:
+        raise RuntimeError(
+            "The CUTLASS CuTe runtime exposes neither make_fragment nor "
+            "make_rmem_tensor; nvidia-cutlass-dsl==4.5.2 is required"
+        )
+    cute_module.make_fragment = make_rmem_tensor
+
+
 def load_cutlass_example_module() -> ModuleType:
     """Load the NVIDIA CUTLASS blockscaled example as a Python module."""
     example_path = _resolve_cutlass_example_path()
@@ -310,6 +327,7 @@ def load_cutlass_example_module() -> ModuleType:
         raise ImportError(f"Unable to create import spec for {example_path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    _ensure_cute_fragment_compatibility(module)
     # The sm_103 example imports cutlass.torch locally inside run(); the lab's
     # build_problem accesses it as module.cutlass_torch (the sm_100 example
     # exposed it at module level), so expose it here when absent.
@@ -593,8 +611,12 @@ def build_problem(
 
     baseline_a = a_ref.to(device="cuda", dtype=config.software_dtype).permute(2, 0, 1).contiguous()
     baseline_b = b_ref.to(device="cuda", dtype=config.software_dtype).permute(2, 0, 1).contiguous()
-    baseline_sfa = sfa_ref.to(device="cuda", dtype=config.software_dtype).permute(2, 0, 1).contiguous()
-    baseline_sfb = sfb_ref.to(device="cuda", dtype=config.software_dtype).permute(2, 0, 1).contiguous()
+    baseline_sfa = (
+        sfa_ref.to(device="cuda", dtype=config.software_dtype).permute(2, 0, 1).contiguous()
+    )
+    baseline_sfb = (
+        sfb_ref.to(device="cuda", dtype=config.software_dtype).permute(2, 0, 1).contiguous()
+    )
 
     current_stream = module.cutlass_torch.default_stream()
     compiled_gemm = None

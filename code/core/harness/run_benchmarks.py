@@ -11868,6 +11868,7 @@ def _preflight_target_coverage_and_assets(
     only_cuda: bool,
     only_python: bool,
     target_extra_args: Dict[str, List[str]],
+    enforce_external_assets: bool = True,
 ) -> List[str]:
     issues: List[str] = []
 
@@ -11909,7 +11910,11 @@ def _preflight_target_coverage_and_assets(
                 f"(requested examples={examples}, only_cuda={only_cuda}, only_python={only_python})."
             )
 
-        if chapter_name == "labs_trtllm_phi_3_5_moe" and not only_cuda:
+        if (
+            enforce_external_assets
+            and chapter_name == "labs_trtllm_phi_3_5_moe"
+            and not only_cuda
+        ):
             model_override = _resolve_target_override_path(
                 target_extra_args,
                 chapter_name=chapter_name,
@@ -12237,6 +12242,7 @@ def main():
         only_cuda=bool(args.only_cuda),
         only_python=bool(args.only_python),
         target_extra_args=extra_arg_map,
+        enforce_external_assets=len(chapter_dirs) == 1,
     )
     if preflight_issues:
         for issue in preflight_issues:

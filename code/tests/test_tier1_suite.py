@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 import core.benchmark.bench_commands as bench_commands
+import core.harness.run_benchmarks as run_benchmarks_module
 from cli.aisp import app
 from core.analysis.history_index import update_history_index
 from core.analysis.regressions import compare_suite_summaries
@@ -514,6 +515,119 @@ def test_execute_benchmarks_sets_owner_run_id_env(tmp_path: Path, monkeypatch) -
     )
 
     assert os.environ["AISP_BENCHMARK_OWNER_RUN_ID"] == "tier1_owner_env_smoke"
+
+
+def test_execute_benchmarks_batch_preflight_is_structured_and_defers_external_assets(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    synthetic_issue = "synthetic batch preflight failure"
+
+    monkeypatch.setattr(bench_commands, "BENCHMARK_AVAILABLE", True)
+    monkeypatch.setattr(bench_commands, "TEST_FUNCTIONS_AVAILABLE", True)
+    monkeypatch.setattr(bench_commands, "dump_environment_and_capabilities", lambda: None)
+    monkeypatch.setattr(
+        bench_commands,
+        "resolve_target_chapters",
+        lambda targets, bench_root: (
+            [bench_root / "labs" / "trtllm_phi_3_5_moe", bench_root / "ch04"],
+            {},
+        ),
+    )
+
+    def _fake_preflight(*args, **kwargs):
+        captured.update(kwargs)
+        return [synthetic_issue]
+
+    monkeypatch.setattr(
+        bench_commands,
+        "_preflight_target_coverage_and_assets",
+        _fake_preflight,
+    )
+
+    result = bench_commands._execute_benchmarks(
+        targets=[
+            "labs/trtllm_phi_3_5_moe:trtllm_phi_3_5_moe",
+            "ch04:gradient_fusion",
+        ],
+        bench_root=tmp_path,
+        output_format="json",
+        profile_type="none",
+        artifacts_dir=str(tmp_path / "artifacts"),
+        run_id="batch_preflight_smoke",
+        exit_on_failure=False,
+    )
+
+    assert captured["enforce_external_assets"] is False
+    assert result["preflight_failed"] is True
+    assert result["preflight_issues"] == [synthetic_issue]
+    assert result["total_failed"] == 1
+    assert result["error"] == f"Benchmark preflight failed: {synthetic_issue}"
+
+    captured.clear()
+    monkeypatch.setattr(
+        bench_commands,
+        "resolve_target_chapters",
+        lambda targets, bench_root: (
+            [bench_root / "labs" / "trtllm_phi_3_5_moe"],
+            {},
+        ),
+    )
+    direct_result = bench_commands._execute_benchmarks(
+        targets=["labs/trtllm_phi_3_5_moe:trtllm_phi_3_5_moe"],
+        bench_root=tmp_path,
+        output_format="json",
+        profile_type="none",
+        artifacts_dir=str(tmp_path / "artifacts"),
+        run_id="direct_preflight_smoke",
+        exit_on_failure=False,
+    )
+
+    assert captured["enforce_external_assets"] is True
+    assert direct_result["preflight_failed"] is True
+
+
+def test_external_asset_preflight_is_deferred_for_mixed_batches(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    chapter_dir = Path(run_benchmarks_module.__file__).resolve().parents[2] / "labs" / "trtllm_phi_3_5_moe"
+    filters = {"labs/trtllm_phi_3_5_moe": {"trtllm_phi_3_5_moe"}}
+    missing_model = tmp_path / "missing-model"
+    missing_engine = tmp_path / "missing-engine"
+
+    monkeypatch.setattr(
+        run_benchmarks_module,
+        "_resolve_phi35_model_path",
+        lambda override: missing_model,
+    )
+    monkeypatch.setattr(
+        run_benchmarks_module,
+        "_resolve_phi35_engine_path",
+        lambda override: missing_engine,
+    )
+
+    direct_issues = run_benchmarks_module._preflight_target_coverage_and_assets(
+        [chapter_dir],
+        filters,
+        only_cuda=False,
+        only_python=False,
+        target_extra_args={},
+        enforce_external_assets=True,
+    )
+    batch_issues = run_benchmarks_module._preflight_target_coverage_and_assets(
+        [chapter_dir],
+        filters,
+        only_cuda=False,
+        only_python=False,
+        target_extra_args={},
+        enforce_external_assets=False,
+    )
+
+    assert any("missing model assets" in issue for issue in direct_issues)
+    assert any("missing TensorRT-LLM engine artifacts" in issue for issue in direct_issues)
+    assert batch_issues == []
 
 
 def test_bench_run_defaults_bench_root_to_repo_root(tmp_path: Path, monkeypatch) -> None:

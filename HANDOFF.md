@@ -26,7 +26,20 @@ Run with `--no-auto-resume`. This prevents a stopped sweep from restarting while
 
 ## Current resume point
 
-The strict full sweep has not started. No target is partially complete. All 486 discovered targets remain.
+GPU ownership was yielded on 2026-08-16. Another task owns both B200 GPUs. Do not launch, resume, profile, or isolate a GPU target until that task finishes and GPU ownership is returned.
+
+The paused run ID is `20260816_autoresearch_b200_full_13de588b7`. Its orchestrator is not live. The normalized status reports a stale running package with resume available. No benchmark or profiler child from this run remains.
+
+Tier 1 completed all six targets before the pause. Four succeeded. Two exposed defects:
+
+- `labs/block_scaling:block_scaling` failed because the CUTLASS 4.1 example called `cute.make_fragment`, which the pinned CUTLASS DSL 4.5.2 runtime replaced with `cute.make_rmem_tensor`. The baseline completed at 0.117482032 ms and all baseline profilers succeeded. The local compatibility fix and CPU regression tests are complete. B200 verification remains.
+- `labs/flashattention4:flashattention4_alibi` passed input and output verification, but measured 3.429079 ms for the baseline and 3.572818 ms for the optimized path. The 0.959769x result did not meet the 1.05x speed gate. Both variants produced Nsight Systems, Nsight Compute, and PyTorch profiles. This remains an open benchmark-contract investigation.
+
+The other tier 1 targets succeeded: `labs/persistent_decode:persistent_decode`, `labs/kv_optimization:kv_standard`, `ch04:gradient_fusion`, and `labs/real_world_models:llama_3_1_8b`.
+
+The full sweep then stopped before its first target. Batch preflight treated missing optional Phi-3.5-MoE model and TensorRT-LLM engine files as a global failure. The local fix now preserves direct single-target asset checks, defers optional asset checks in mixed batches to the target's existing truthful `SKIPPED` path, and returns structured preflight failures when callers disable process exit.
+
+The strict 486-target full sweep has not run any target. No target is partially complete. All 486 discovered targets remain. Resume the same run ID only after the published checkpoint is installed on the B200 worktree and GPU ownership is returned. Because tier 1 ended with failures, resume will rerun tier 1 before entering the full sweep.
 
 The dry-run inventory contains 464 single-GPU lane targets and 22 two-GPU lane targets. Some target names contain `multigpu` but remain in the single-GPU lane because their benchmark contract explicitly supports one visible GPU. The lane recorded below is authoritative.
 
@@ -70,6 +83,9 @@ The remote worktree stayed tracked-clean. All three submodules matched their rec
 - B200 Chapter 9 FP8 CUTLASS baseline, optimized, and verification builds compiled for SM100a. Verification checksums matched.
 - B200 Chapter 19 focused GPU tests passed.
 - One Chapter 9 timing probe was observed. It is not enough evidence for a performance claim.
+- The paused strict tier 1 run completed 6 targets with 4 successes and 2 diagnosed failures. The full sweep did not start a target.
+- The CUTLASS block-scaling compatibility tests pass 3 CPU-only cases.
+- The mixed-batch preflight regression passes locally and proves that direct asset checks remain strict while batch execution can record target-level skips.
 
 ## Environment contract
 
@@ -149,15 +165,20 @@ Use the same `$RUN_ID` after reviewing the normalized status and confirming no o
 
 ## Remaining validation phases
 
-1. Rerun the full CPU-hidden pytest suite with coverage.
-2. Fix every collection or test failure that reproduces in isolation.
-3. Run the strict 486-target sweep below.
-4. Run the two-GPU lane only when both GPUs are free.
-5. Record honest `passed`, `failed`, `skipped`, or `partial` status for every target.
-6. Compare candidate and control on representative Chapter 9 and Chapter 19 cases with repeated trials.
-7. Audit manifests, hashes, environment evidence, profiler evidence, and no-regression gates.
-8. Update this handoff with the exact completed and remaining target sets.
-9. Commit, push, merge to `main`, push `main`, and verify remote tips.
+1. Keep all B200 GPU work stopped until the other task releases both GPUs.
+2. Finish the FlashAttention ALiBi contract investigation with the saved tier 1 profiler evidence.
+3. Run local CPU-safe regression, audit, lint, and coverage work for every changed file.
+4. Install the published checkpoint on the B200 worktree after GPU ownership returns.
+5. Rerun the full CPU-hidden pytest suite with coverage before GPU timing.
+6. Resume the same run ID with `--resume --no-auto-resume`.
+7. Verify the block-scaling CUTLASS fix on B200 and rerun the corrected attention target.
+8. Run the strict 486-target sweep.
+9. Run the two-GPU lane only when both GPUs are free.
+10. Record honest `passed`, `failed`, `skipped`, or `partial` status for every target.
+11. Compare candidate and control on representative Chapter 9 and Chapter 19 cases with repeated trials.
+12. Audit manifests, hashes, environment evidence, profiler evidence, and no-regression gates.
+13. Update this handoff with the exact completed and remaining target sets.
+14. Commit, push, merge to `main`, push `main`, and verify remote tips.
 
 "100 percent coverage" means every discovered target has a terminal status and every reachable code path has measured coverage. It does not permit turning unsupported hardware or missing fabric into a false pass.
 
