@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import torch
 
+import labs.flashattention4.flashattention4_common as flash_common
 from labs.flashattention4.baseline_flashattention4_dense import (
     BaselineFlashAttention4DenseBenchmark,
 )
@@ -220,6 +221,32 @@ def test_select_lowest_latency_provider_prefers_smallest_median() -> None:
         }
     )
     assert winner == "cudnn_sdpa"
+
+
+def test_auto_flex_mode_uses_measured_provider_selection(monkeypatch) -> None:
+    selected_kernel = flash_common.FlashAttention4Kernel(
+        fn=lambda q, k, v: q,
+        provider="flex_tma",
+        kernel_options={"USE_TMA": True},
+        notes=(),
+    )
+    selection = flash_common.FlashAttention4Selection(
+        kernel=selected_kernel,
+        candidate_median_ms={"flash_backend": 1.1, "flex_tma": 0.9},
+        candidate_errors={},
+    )
+    monkeypatch.setattr(
+        flash_common,
+        "resolve_best_available_attention_kernel",
+        lambda inputs, config: selection,
+    )
+
+    resolved = flash_common.resolve_flashattention4_kernel(
+        SimpleNamespace(),
+        flash_common.FlashAttention4Config(mode="alibi", backend="auto"),
+    )
+
+    assert resolved is selected_kernel
 
 
 def test_provider_id_encoding_is_stable() -> None:

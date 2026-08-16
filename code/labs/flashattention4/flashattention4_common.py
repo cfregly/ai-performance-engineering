@@ -944,6 +944,9 @@ def resolve_flashattention4_kernel(
     config: FlashAttention4Config,
 ) -> FlashAttention4Kernel:
     """Resolve the best compiled provider for the current runtime."""
+    if config.backend == "auto" and not mode_supports_cudnn_sdpa(config.mode):
+        return resolve_best_available_attention_kernel(inputs, config).kernel
+
     candidates: list[tuple[str, dict[str, Any]]] = []
     provider_options = get_flashattention4_candidate_kernel_options(config, device=inputs.q.device)
 

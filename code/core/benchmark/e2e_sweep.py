@@ -17,7 +17,7 @@ import threading
 import time
 import traceback
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlencode
 
 try:
@@ -4265,6 +4265,7 @@ def run_benchmark_e2e_sweep(
                                     nsys_timeout_seconds=nsys_timeout_seconds,
                                     ncu_timeout_seconds=ncu_timeout_seconds,
                                     exit_on_failure=False,
+                                    enforce_external_assets=False,
                                 ),
                                 bucket=bucket_name,
                             )

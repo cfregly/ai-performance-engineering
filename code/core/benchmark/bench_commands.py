@@ -520,6 +520,7 @@ def _execute_benchmarks(
     use_llm_cache: bool = True,
     llm_explain: bool = False,
     exit_on_failure: bool = True,
+    enforce_external_assets: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Execute selected benchmarks with optional profiling."""
     validity_profile = _validate_validity_profile(validity_profile)
@@ -668,7 +669,11 @@ def _execute_benchmarks(
         only_cuda=bool(only_cuda),
         only_python=bool(only_python),
         target_extra_args=parsed_extra_args,
-        enforce_external_assets=len(chapter_dirs) == 1,
+        enforce_external_assets=(
+            len(chapter_dirs) == 1
+            if enforce_external_assets is None
+            else bool(enforce_external_assets)
+        ),
     )
     if preflight_issues:
         for issue in preflight_issues:

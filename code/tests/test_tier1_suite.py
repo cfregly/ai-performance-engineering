@@ -557,6 +557,7 @@ def test_execute_benchmarks_batch_preflight_is_structured_and_defers_external_as
         artifacts_dir=str(tmp_path / "artifacts"),
         run_id="batch_preflight_smoke",
         exit_on_failure=False,
+        enforce_external_assets=False,
     )
 
     assert captured["enforce_external_assets"] is False
@@ -582,6 +583,7 @@ def test_execute_benchmarks_batch_preflight_is_structured_and_defers_external_as
         artifacts_dir=str(tmp_path / "artifacts"),
         run_id="direct_preflight_smoke",
         exit_on_failure=False,
+        enforce_external_assets=True,
     )
 
     assert captured["enforce_external_assets"] is True

@@ -1695,6 +1695,7 @@ def test_run_benchmark_e2e_sweep_resume_canonicalizes_lab_unit_names(
     assert len(execute_calls) == 1
     assert execute_calls[0]["run_id"] == "e2e_resume_labs__full_sweep__single__resume1"
     assert execute_calls[0]["targets"] == ["labs/trtllm_phi_3_5_moe:trtllm_phi_3_5_moe"]
+    assert execute_calls[0]["enforce_external_assets"] is False
     full_stage = next(stage for stage in result["stages"] if stage["name"] == "full_sweep")
     assert full_stage["attempts"][0]["status"] == "aborted"
     assert full_stage["attempts"][0]["completed_units"] == ["labs/async_input_pipeline"]

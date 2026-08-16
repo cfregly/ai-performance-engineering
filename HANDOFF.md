@@ -33,7 +33,7 @@ The paused run ID is `20260816_autoresearch_b200_full_13de588b7`. Its orchestrat
 Tier 1 completed all six targets before the pause. Four succeeded. Two exposed defects:
 
 - `labs/block_scaling:block_scaling` failed because the CUTLASS 4.1 example called `cute.make_fragment`, which the pinned CUTLASS DSL 4.5.2 runtime replaced with `cute.make_rmem_tensor`. The baseline completed at 0.117482032 ms and all baseline profilers succeeded. The local compatibility fix and CPU regression tests are complete. B200 verification remains.
-- `labs/flashattention4:flashattention4_alibi` passed input and output verification, but measured 3.429079 ms for the baseline and 3.572818 ms for the optimized path. The 0.959769x result did not meet the 1.05x speed gate. Both variants produced Nsight Systems, Nsight Compute, and PyTorch profiles. This remains an open benchmark-contract investigation.
+- `labs/flashattention4:flashattention4_alibi` passed input and output verification, but measured 3.429079 ms for the baseline and 3.572818 ms for the optimized path. The 0.959769x result did not meet the 1.05x speed gate. Both variants produced Nsight Systems, Nsight Compute, and PyTorch profiles. The local fix now measures all correct compiled providers for Flex-only auto modes instead of accepting the first valid provider. B200 verification remains.
 
 The other tier 1 targets succeeded: `labs/persistent_decode:persistent_decode`, `labs/kv_optimization:kv_standard`, `ch04:gradient_fusion`, and `labs/real_world_models:llama_3_1_8b`.
 
@@ -86,6 +86,9 @@ The remote worktree stayed tracked-clean. All three submodules matched their rec
 - The paused strict tier 1 run completed 6 targets with 4 successes and 2 diagnosed failures. The full sweep did not start a target.
 - The CUTLASS block-scaling compatibility tests pass 3 CPU-only cases.
 - The mixed-batch preflight regression passes locally and proves that direct asset checks remain strict while batch execution can record target-level skips.
+- A local strict dry run still discovers exactly 486 targets, split into 464 one-GPU targets and 22 two-GPU targets.
+- The resume regression proves that full-sweep asset policy stays nonblocking even when the optional TensorRT target is the only remaining unit.
+- The FlashAttention provider-selection regression passes locally. The full focused readiness set passes 80 tests with GPUs hidden.
 
 ## Environment contract
 
