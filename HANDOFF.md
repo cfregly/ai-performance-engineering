@@ -6,7 +6,7 @@ Updated: 2026-08-16
 
 Apply the evidence discipline from [Sankalp's autoresearch writeup](https://sankalp.bearblog.dev/autoresearch/) and [Mike's QR v2 writeup](https://ml-mike.com/writing/qr_v2/) to this repository. Validate every discovered benchmark target on the remote B200 host. Keep correctness, provenance, per-case regression limits, and promotion evidence bound to each result.
 
-This checkpoint starts from public commit `112782087ca058b3e0bfe102fdcc3947fd1fe8c9`. Use `git rev-parse HEAD` after checkout to identify the checkpoint commit that contains this file.
+The commit that contains this file is the authoritative checkpoint. Run `git rev-parse HEAD` after checkout and record that commit in every validation artifact.
 
 ## GPU yield rule
 
@@ -30,14 +30,16 @@ The strict full sweep has not started. No target is partially complete. All 486 
 
 The dry-run inventory contains 464 single-GPU lane targets and 22 two-GPU lane targets. Some target names contain `multigpu` but remain in the single-GPU lane because their benchmark contract explicitly supports one visible GPU. The lane recorded below is authoritative.
 
-A prior CPU-hidden full test run completed before the latest focused fixes:
+A CPU-hidden full test run at public commit `50dd8b2a13c0e01b5840c18ebfae855e3a004ee1` completed before the latest focused fixes:
 
-- 2,613 passed
+- 2,703 passed
 - 516 skipped
-- 73 failed
+- 5 failed
 - 41 percent line coverage
 
-Post-run fixes addressed the lazy tcgen05 import boundary, TorchInductor import-time environment mutation, fabric catalog fallback, Make interpreter selection, CUDA wrapper fixtures, NVSHMEM launch tests, and training hotpath guards. The complete CPU-hidden suite still needs one clean rerun after the current source checkpoint.
+The five failures exposed two deterministic MCP fixture defects and three order-dependent subprocess failures. A clean first-failure probe then identified the exact remaining order defect. A repository hygiene test left `LD_PRELOAD` pointing at a deleted fake NCCL library. The dynamic loader warning replaced the expected CUDA benchmark skip reason.
+
+Post-run fixes now use isolated MCP fixture data, prevent generic cluster promotion from changing tracked files, run the generic fabric tool in readiness-only mode, report truthful readiness-only progress, defer chapter 18 vLLM environment setup until benchmark setup, and restore `LD_PRELOAD` after the explicit system-policy test. The complete CPU-hidden suite still needs one clean rerun from the next published checkpoint.
 
 ## Completed validation
 
@@ -48,6 +50,10 @@ Post-run fixes addressed the lazy tcgen05 import boundary, TorchInductor import-
 - Root workflow YAML parsed. All workflow run blocks and setup shell scripts passed syntax checks.
 - `make lint` passed when Make used the configured Python interpreter.
 - Chapter 8 and Chapter 10 tcgen05 source audits checked 80 files with 0 errors and 0 warnings.
+- The complete MCP catalog passed 157 tests with GPUs hidden. Every generic tool call now checks that tracked Git state is unchanged.
+- The latest integrated cluster, progress, environment, chapter 18 import-isolation, CUDA wrapper, and profiler set passed 35 tests with GPUs hidden.
+- The exact leaking environment-test plus CUDA-wrapper order passed 2 tests after the fix.
+- The repository benchmark audit still checks 932 files with 0 errors and 0 warnings after the latest changes.
 - B200 Chapter 9 FP8 CUTLASS baseline, optimized, and verification builds compiled for SM100a. Verification checksums matched.
 - B200 Chapter 19 focused GPU tests passed.
 - One Chapter 9 timing probe was observed. It is not enough evidence for a performance claim.

@@ -58,11 +58,15 @@ def test_env_defaults_do_not_preload_system_nccl_over_wheel_runtime(
         lambda: [str(wheel_lib_dir)],
     )
     monkeypatch.setenv("AISP_CUDNN_RUNTIME_POLICY", "auto")
-    monkeypatch.delenv("LD_PRELOAD", raising=False)
+    original_ld_preload = os.environ.get("LD_PRELOAD")
 
-    core_env._ensure_ld_preload()
+    with monkeypatch.context() as env_patch:
+        env_patch.setenv("LD_PRELOAD", "")
+        core_env._ensure_ld_preload()
 
-    assert os.environ.get("LD_PRELOAD") is None
+        assert os.environ["LD_PRELOAD"] == ""
+
+    assert os.environ.get("LD_PRELOAD") == original_ld_preload
 
 
 def test_env_defaults_preload_system_nccl_for_explicit_system_policy(
@@ -83,11 +87,15 @@ def test_env_defaults_preload_system_nccl_for_explicit_system_policy(
         lambda: [str(wheel_lib_dir)],
     )
     monkeypatch.setenv("AISP_CUDNN_RUNTIME_POLICY", "system")
-    monkeypatch.delenv("LD_PRELOAD", raising=False)
+    original_ld_preload = os.environ.get("LD_PRELOAD")
 
-    core_env._ensure_ld_preload()
+    with monkeypatch.context() as env_patch:
+        env_patch.setenv("LD_PRELOAD", "")
+        core_env._ensure_ld_preload()
 
-    assert os.environ["LD_PRELOAD"] == str(system_nccl)
+        assert os.environ["LD_PRELOAD"] == str(system_nccl)
+
+    assert os.environ.get("LD_PRELOAD") == original_ld_preload
 
 
 def test_ch04_and_ch15_import_verification_payload_mixin_from_core() -> None:

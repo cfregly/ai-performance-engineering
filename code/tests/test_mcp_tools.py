@@ -1,21 +1,24 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import shutil
+import subprocess
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-import time
 from typing import Any, Dict, Iterable, List
 from unittest.mock import patch
 
 import pytest
 
-import json
-
 import mcp.mcp_server as mcp_server
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+CLUSTER_FABRIC_FIXTURE_RUN_ID = f"mcp_cluster_fabric_readiness_{time.time_ns()}"
+CLUSTER_FABRIC_FIXTURE_RUN_DIR = REPO_ROOT / "cluster" / "runs" / CLUSTER_FABRIC_FIXTURE_RUN_ID
 ARTIFACT_RUNS_DIR = REPO_ROOT / "artifacts" / "runs"
 ARTIFACT_DIR = ARTIFACT_RUNS_DIR
 E2E_RUNS_DIR = REPO_ROOT / "artifacts" / "e2e_runs"
@@ -393,10 +396,11 @@ TOOL_PARAMS: Dict[str, Dict[str, Any]] = {
         "include_context": False,
     },
     "cluster_fabric_eval": {
-        "run_id": "mcp_cluster_smoke_test",
+        "run_id": CLUSTER_FABRIC_FIXTURE_RUN_ID,
         "hosts": ["localhost"],
         "labels": ["localhost"],
         "extra_args": [
+            "--multinode-readiness-check-only",
             "--skip-bootstrap-nodes",
             "--disable-fp4",
             "--health-suite",
@@ -437,7 +441,6 @@ TOOL_PARAMS: Dict[str, Dict[str, Any]] = {
         "include_context": False,
     },
     "cluster_promote_run": {
-        "run_id": "mcp_cluster_smoke_test",
         "skip_render_localhost_report": True,
         "skip_validate_localhost_report": True,
         "include_context": False,
@@ -593,6 +596,7 @@ def prepare_artifacts() -> None:
     }
     for path in sorted(current_generated_copies - existing_generated_copies):
         path.unlink(missing_ok=True)
+    shutil.rmtree(CLUSTER_FABRIC_FIXTURE_RUN_DIR, ignore_errors=True)
 
 
 @pytest.fixture()
@@ -620,6 +624,37 @@ def _call_with_timeout(server: mcp_server.MCPServer, case: ToolCase) -> mcp_serv
         return fut.result(timeout=case.timeout)
 
 
+def _tracked_worktree_state() -> tuple[bytes, bytes] | None:
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        check=False,
+    )
+    diff = subprocess.run(
+        ["git", "diff", "HEAD", "--binary", "--no-ext-diff", "--"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        check=False,
+    )
+    if head.returncode != 0 or diff.returncode != 0:
+        return None
+    return head.stdout.strip(), diff.stdout
+
+
+def _call_without_tracked_writes(
+    server: mcp_server.MCPServer,
+    case: ToolCase,
+) -> mcp_server.ToolResult:
+    before = _tracked_worktree_state()
+    try:
+        return _call_with_timeout(server, case)
+    finally:
+        after = _tracked_worktree_state()
+        if before is not None:
+            assert after == before, f"{case.name} modified tracked repository files"
+
+
 def _wait_for_job_terminal_status(
     server: mcp_server.MCPServer,
     job_id: str,
@@ -645,6 +680,23 @@ def test_expected_tool_registration_matches_catalog():
     registered = set(mcp_server.TOOLS.keys())
     assert expected == registered, "Tool catalog must mirror MCP server registry"
     assert 100 <= len(expected) <= 120
+
+
+def test_generic_cluster_promotion_case_cannot_publish(server: mcp_server.MCPServer) -> None:
+    params = TOOL_PARAMS["cluster_promote_run"]
+    assert "run_id" not in params
+
+    result = server.call_tool("cluster_promote_run", params)
+    payload = _payload_from_result(result)
+
+    assert payload["status"] == "error"
+    assert payload["result"]["success"] is False
+    assert "run_id is required" in payload["result"]["error"]
+
+
+def test_generic_cluster_fabric_case_runs_readiness_only() -> None:
+    extra_args = TOOL_PARAMS["cluster_fabric_eval"]["extra_args"]
+    assert "--multinode-readiness-check-only" in extra_args
 
 
 def test_optimize_path_resolution():
@@ -780,7 +832,7 @@ FAST_TOOL_CASES = [case for case in ALL_TOOL_CASES if not case.slow]
 
 @pytest.mark.parametrize("case", FAST_TOOL_CASES, ids=_case_ids(FAST_TOOL_CASES))
 def test_tool_call_returns_json_envelope(server: mcp_server.MCPServer, case: ToolCase):
-    result = server.call_tool(case.name, case.params)
+    result = _call_without_tracked_writes(server, case)
     payload = _payload_from_result(result)
     assert payload["tool"] == case.name
     assert payload["status"] in {"ok", "error"}
@@ -816,12 +868,18 @@ def test_known_bad_tool_request_returns_structured_error(server: mcp_server.MCPS
     assert payload["result"]["error_type"]
 
 
-def test_benchmark_report_returns_structured_error_when_output_dir_init_fails() -> None:
+def test_benchmark_report_returns_structured_error_when_output_dir_init_fails(
+    tmp_path: Path,
+) -> None:
+    data_file = tmp_path / "benchmark_test_results.json"
+    data_file.write_text(json.dumps({"benchmarks": []}), encoding="utf-8")
+    output_path = tmp_path / "blocked" / "report.pdf"
+
     with patch.object(mcp_server, "_ensure_dir", side_effect=OSError("mkdir boom")):
         result = mcp_server.tool_benchmark_report(
             {
-                "data_file": str(BENCH_FILE),
-                "output": str(REPO_ROOT / "artifacts" / "blocked" / "report.pdf"),
+                "data_file": str(data_file),
+                "output": str(output_path),
                 "format": "pdf",
             }
         )
@@ -867,7 +925,7 @@ def test_mcp_protocol_round_trip(server: mcp_server.MCPServer):
 
 @pytest.mark.parametrize("case", SLOW_TOOL_CASES, ids=_case_ids(SLOW_TOOL_CASES))
 def test_slow_tools_opt_in_execution(server: mcp_server.MCPServer, case: ToolCase):
-    result = _call_with_timeout(server, case)
+    result = _call_without_tracked_writes(server, case)
     payload = _payload_from_result(result)
     assert payload["tool"] == case.name
     assert payload["status"] in {"ok", "error"}
@@ -891,9 +949,27 @@ def test_slow_tools_opt_in_execution(server: mcp_server.MCPServer, case: ToolCas
         tool_result = payload["result"]
         if tool_result.get("returncode", 1) == 0 and tool_result.get("results_json"):
             assert "triage" in tool_result
-        queue_log = QUEUE_DIR / "queue.log"
-        assert queue_log.exists()
-        assert "RUN_START" in queue_log.read_text()
+        queue = tool_result.get("queue")
+        if queue is None:
+            assert tool_result.get("cuda", {}).get("ok") is False
+        else:
+            queue_log = Path(queue["queue_log"])
+            assert queue_log.exists()
+            assert "tool=run_benchmarks" in queue_log.read_text(encoding="utf-8")
+    if case.name == "cluster_fabric_eval":
+        tool_result = payload["result"]
+        assert tool_result["success"] is True
+        assert tool_result["returncode"] == 0
+        assert "--multinode-readiness-check-only" in tool_result["command"]
+        readiness_path = (
+            Path(tool_result["structured_dir"])
+            / f"{CLUSTER_FABRIC_FIXTURE_RUN_ID}_multinode_readiness.json"
+        )
+        readiness = json.loads(readiness_path.read_text(encoding="utf-8"))
+        assert readiness["status"] == "not_applicable"
+        assert Path(tool_result["manifest_path"]).is_file()
+        assert not Path(tool_result["suite_steps_path"]).exists()
+        assert not list(Path(tool_result["structured_dir"]).glob("*fabric_scorecard*.json"))
     if case.name == "profile_nsys":
         tool_result = payload["result"]
         if tool_result.get("success"):
@@ -943,9 +1019,10 @@ def test_slow_tools_opt_in_execution(server: mcp_server.MCPServer, case: ToolCas
 
 def test_benchmark_export_runs_inprocess(server: mcp_server.MCPServer, tmp_path: Path):
     # Ensure a minimal benchmark file exists for the export tool.
-    BENCH_FILE.write_text(json.dumps({"benchmarks": []}))
+    data_file = tmp_path / "benchmark_test_results.json"
+    data_file.write_text(json.dumps({"benchmarks": []}), encoding="utf-8")
     output_path = tmp_path / "export.json"
-    params = {"data_file": str(BENCH_FILE), "format": "json", "output": str(output_path)}
+    params = {"data_file": str(data_file), "format": "json", "output": str(output_path)}
     result = server.call_tool("benchmark_export", params)
     payload = _payload_from_result(result)
     assert payload["tool"] == "benchmark_export"

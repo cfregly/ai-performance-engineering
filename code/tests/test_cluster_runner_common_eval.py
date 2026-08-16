@@ -151,6 +151,32 @@ def test_run_cluster_common_eval_fabric_systems_composes_expected_flags(monkeypa
     ]
 
 
+def test_run_cluster_fabric_eval_readiness_only_reports_emitted_artifacts(monkeypatch) -> None:
+    captured: Dict[str, Any] = {}
+
+    def fake_run_cluster_eval_suite(**kwargs: Any) -> Dict[str, Any]:
+        captured.update(kwargs)
+        return {"success": True, "run_id": kwargs.get("run_id"), "command": ["fake"]}
+
+    monkeypatch.setattr(cluster_runner, "run_cluster_eval_suite", fake_run_cluster_eval_suite)
+
+    result = cluster_runner.run_cluster_fabric_eval(
+        run_id="2026-03-16_fabric_readiness",
+        hosts=["node-a", "node-b"],
+        labels=["node-a", "node-b"],
+        extra_args=["--multinode-readiness-check-only"],
+    )
+
+    assert result["success"] is True
+    assert result["artifact_roles"] == ["multinode_readiness", "manifest"]
+    assert captured["extra_args"] == [
+        "--modern-llm-profile",
+        "--no-strict-canonical-completeness",
+        "--run-fabric-eval",
+        "--multinode-readiness-check-only",
+    ]
+
+
 def test_run_cluster_fabric_eval_adds_management_plane_flag(monkeypatch) -> None:
     captured: Dict[str, Any] = {}
 
@@ -188,6 +214,25 @@ def test_run_cluster_fabric_eval_adds_management_plane_flag(monkeypatch) -> None
     assert captured["cumulus_user"] == "cumulus"
     assert captured["cumulus_ssh_key"] == "/tmp/cumulus-key"
     assert captured["extra_args"] == ["--skip-render-localhost-report", "--require-management-plane"]
+
+
+def test_cluster_suite_planned_steps_readiness_only_reports_emitted_steps() -> None:
+    planned_steps = cluster_runner._cluster_suite_planned_steps(
+        run_id="2026-03-16_fabric_readiness",
+        hosts=["node-a", "node-b"],
+        labels=["node-a", "node-b"],
+        primary_label="node-a",
+        extra_args=[
+            "--modern-llm-profile",
+            "--run-fabric-eval",
+            "--multinode-readiness-check-only",
+        ],
+        coverage_baseline_run_id=None,
+        oob_if="eth0",
+        socket_ifname="eth0",
+    )
+
+    assert planned_steps == ["multinode_readiness", "manifest_refresh"]
 
 
 def test_cluster_suite_progress_current_uses_suite_steps_and_inflight_log(tmp_path: Path) -> None:

@@ -231,6 +231,38 @@ def test_queue_manifest_and_log_warnings_are_one_time(monkeypatch, capsys, tmp_p
         mcp_server._QUEUE_ARTIFACT_WARNED_KEYS.update(original)
 
 
+def test_run_with_queue_records_start_and_returns_artifact_paths(
+    monkeypatch, tmp_path: Path
+) -> None:
+    queue_dir = tmp_path / "queue"
+    queue_script = queue_dir / "bench_queue.sh"
+    queue_log = queue_dir / "queue.log"
+
+    monkeypatch.setattr(mcp_server, "_QUEUE_DIR", queue_dir)
+    monkeypatch.setattr(mcp_server, "_QUEUE_SCRIPT_PATH", queue_script)
+    monkeypatch.setattr(mcp_server, "_QUEUE_LOG_PATH", queue_log)
+    monkeypatch.setattr(mcp_server, "_wait_for_idle", lambda: True)
+
+    def _wait_for_stop(stop_event, _overlap_event, **_kwargs) -> None:
+        stop_event.wait(timeout=1.0)
+
+    monkeypatch.setattr(mcp_server, "_monitor_overlap", _wait_for_stop)
+
+    result = mcp_server._run_with_queue(
+        "run_benchmarks",
+        lambda: {"success": True, "returncode": 0},
+        queue_label="bench run ch10:atomic_reduction",
+        queue_payload={"targets": ["ch10:atomic_reduction"]},
+    )
+
+    assert result["queue"]["queue_log"] == str(queue_log)
+    assert result["queue"]["queue_script"] == str(queue_script)
+    log_text = queue_log.read_text(encoding="utf-8")
+    assert "RUN_START" in log_text
+    assert "tool=run_benchmarks" in log_text
+    assert "RUN_END" in log_text
+
+
 def test_progress_phases_include_llm() -> None:
     phases = run_benchmarks.PROGRESS_PHASES
     for key in (

@@ -125,6 +125,7 @@ def _cluster_suite_progress_state(
         "render_localhost_report_mode": "auto",
         "check_ib_sharp": False,
         "modern_llm_profile": False,
+        "multinode_readiness_check_only": False,
         "coverage_baseline": bool(str(coverage_baseline_run_id or "").strip()),
     }
     explicit_vllm_override = False
@@ -220,6 +221,8 @@ def _cluster_suite_progress_state(
             state["check_ib_sharp"] = True
         elif arg == "--modern-llm-profile":
             state["modern_llm_profile"] = True
+        elif arg == "--multinode-readiness-check-only":
+            state["multinode_readiness_check_only"] = True
         elif arg in {
             "--model",
             "--tp",
@@ -303,6 +306,9 @@ def _cluster_suite_planned_steps(
         oob_if=oob_if,
         socket_ifname=socket_ifname,
     )
+    if state["multinode_readiness_check_only"]:
+        return ["multinode_readiness", "manifest_refresh"]
+
     steps: List[str] = []
     host_count = int(state["host_count"])
     labels_resolved = list(state["labels"])
@@ -894,6 +900,7 @@ _COMMON_EVAL_PRESETS: Dict[str, Dict[str, Any]] = {
         ],
         "artifact_roles": [
             "multinode_readiness",
+            "manifest",
         ],
     },
 }
@@ -1107,6 +1114,10 @@ def run_cluster_common_eval(
     if extra_args:
         merged_extra_args.extend(str(arg) for arg in extra_args if str(arg).strip())
 
+    artifact_roles = list(preset_payload["artifact_roles"])
+    if "--multinode-readiness-check-only" in merged_extra_args:
+        artifact_roles = ["multinode_readiness", "manifest"]
+
     result = run_cluster_eval_suite(
         mode="full",
         run_id=run_id,
@@ -1124,7 +1135,7 @@ def run_cluster_common_eval(
     return {
         "preset": preset_name,
         "preset_description": preset_payload["description"],
-        "artifact_roles": list(preset_payload["artifact_roles"]),
+        "artifact_roles": artifact_roles,
         "coverage_baseline_run_id": coverage_baseline_run_id,
         **result,
     }

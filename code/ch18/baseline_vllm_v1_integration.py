@@ -7,99 +7,95 @@ Demonstrates basic vLLM v1 usage without advanced features like:
 - Prefix caching
 """
 
+from __future__ import annotations
+
 import importlib
 import importlib.metadata
 import os
 import random
 import time
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Optional
 
 import torch
-
-from core.utils.python_entrypoints import build_repo_python_env, install_local_module_override
-
-repo_root = Path(__file__).resolve().parents[1]
-hack_path = repo_root / "hack"
-
-os.environ.update(build_repo_python_env(repo_root, base_env=os.environ, extra_pythonpath=[hack_path]))
-install_local_module_override("numba", hack_path / "numba")
-import numba  # noqa: F401
-
+from core.benchmark.verification import PrecisionFlags, simple_signature
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.harness.serving_stack import (
+    ServingStackPins,
     configure_serving_stack_cache_env,
     configure_serving_stack_runtime_env,
     get_serving_stack_pins,
     preload_serving_stack_shared_libs,
 )
-from core.benchmark.verification import PrecisionFlags, simple_signature
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.utils.logger import get_logger
+from core.utils.python_entrypoints import build_repo_python_env, install_local_module_override
+
 from ch18.vllm_process_cleanup import shutdown_vllm_runtime
 
 logger = get_logger(__name__)
-_SERVING_STACK = get_serving_stack_pins()
-_SERVING_STACK_LIB_DIRS = configure_serving_stack_runtime_env()
-_SERVING_STACK_CACHE_DIRS = configure_serving_stack_cache_env()
-_SERVING_STACK_PRELOADED_LIBS = preload_serving_stack_shared_libs()
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_HACK_PATH = _REPO_ROOT / "hack"
 _TOKEN_PREVIEW_CAPACITY = 16
 
 
 def _is_vllm_abi_mismatch_error(exc: BaseException) -> bool:
     text = str(exc).lower()
     return (
-        ("undefined symbol" in text and ("vllm/_c.abi3.so" in text or "vllm._c" in text))
-        or "c10_cuda_check_implementation" in text
-    )
+        "undefined symbol" in text and ("vllm/_c.abi3.so" in text or "vllm._c" in text)
+    ) or "c10_cuda_check_implementation" in text
 
 
-def _dist_version(name: str) -> Optional[str]:
+def _dist_version(name: str) -> str | None:
     try:
         return importlib.metadata.version(name)
     except importlib.metadata.PackageNotFoundError:
         return None
 
 
-def _assert_serving_stack_versions() -> None:
-    if torch.__version__ != _SERVING_STACK.torch_version:
+def _assert_serving_stack_versions(serving_stack: ServingStackPins) -> None:
+    if torch.__version__ != serving_stack.torch_version:
         raise RuntimeError(
             "FAIL FAST: Serving stack mismatch for torch "
-            f"(expected {_SERVING_STACK.torch_version}, got {torch.__version__}). "
-            f"Remediation: pin and reinstall {_SERVING_STACK.pinned_stack_str}."
+            f"(expected {serving_stack.torch_version}, got {torch.__version__}). "
+            f"Remediation: pin and reinstall {serving_stack.pinned_stack_str}."
         )
     vllm_version = _dist_version("vllm")
-    if vllm_version != _SERVING_STACK.vllm_version:
+    if vllm_version != serving_stack.vllm_version:
         raise RuntimeError(
             "FAIL FAST: Serving stack mismatch for vllm "
-            f"(expected {_SERVING_STACK.vllm_version}, got {vllm_version}). "
-            f"Remediation: pin and reinstall {_SERVING_STACK.pinned_stack_str}."
+            f"(expected {serving_stack.vllm_version}, got {vllm_version}). "
+            f"Remediation: pin and reinstall {serving_stack.pinned_stack_str}."
         )
     flashinfer_version = _dist_version("flashinfer-python")
-    if flashinfer_version != _SERVING_STACK.flashinfer_version:
+    if flashinfer_version != serving_stack.flashinfer_version:
         raise RuntimeError(
             "FAIL FAST: Serving stack mismatch for flashinfer-python "
-            f"(expected {_SERVING_STACK.flashinfer_version}, got {flashinfer_version}). "
-            f"Remediation: pin and reinstall {_SERVING_STACK.pinned_stack_str}."
+            f"(expected {serving_stack.flashinfer_version}, got {flashinfer_version}). "
+            f"Remediation: pin and reinstall {serving_stack.pinned_stack_str}."
         )
 
 
-def _assert_vllm_runtime_ready(import_error: Optional[BaseException]) -> None:
-    _assert_serving_stack_versions()
+def _assert_vllm_runtime_ready(
+    import_error: BaseException | None,
+    serving_stack: ServingStackPins,
+) -> None:
+    _assert_serving_stack_versions(serving_stack)
     if import_error is not None:
         if _is_vllm_abi_mismatch_error(import_error):
             raise RuntimeError(
                 "FAIL FAST: vLLM ABI mismatch detected while importing vLLM. "
-                f"Remediation: pin and reinstall {_SERVING_STACK.pinned_stack_str}. "
+                f"Remediation: pin and reinstall {serving_stack.pinned_stack_str}. "
                 "Then verify with: "
-                "`python -c \"import importlib, importlib.metadata as md, torch, vllm; "
+                '`python -c "import importlib, importlib.metadata as md, torch, vllm; '
                 "importlib.import_module('vllm._C'); "
                 "print(torch.__version__, md.version('vllm'), vllm.__version__)\"`. "
                 f"Original error: {import_error}"
             )
         raise RuntimeError(
-            "FAIL FAST: vLLM import failed before benchmark setup. "
-            f"Remediation: pin and reinstall {_SERVING_STACK.pinned_stack_str}. "
+            "FAIL FAST: vLLM import failed during benchmark setup. "
+            f"Remediation: pin and reinstall {serving_stack.pinned_stack_str}. "
             f"Original error: {import_error}"
         )
     try:
@@ -108,18 +104,48 @@ def _assert_vllm_runtime_ready(import_error: Optional[BaseException]) -> None:
         if _is_vllm_abi_mismatch_error(exc):
             raise RuntimeError(
                 "FAIL FAST: vLLM ABI mismatch detected while loading vllm._C. "
-                f"Remediation: pin and reinstall {_SERVING_STACK.pinned_stack_str}. "
+                f"Remediation: pin and reinstall {serving_stack.pinned_stack_str}. "
                 "Then verify with: "
-                "`python -c \"import importlib, importlib.metadata as md, torch, vllm; "
+                '`python -c "import importlib, importlib.metadata as md, torch, vllm; '
                 "importlib.import_module('vllm._C'); "
                 "print(torch.__version__, md.version('vllm'), vllm.__version__)\"`. "
                 f"Original error: {exc}"
             ) from exc
         raise RuntimeError(
             "FAIL FAST: vllm._C failed to import. "
-            f"Remediation: pin and reinstall {_SERVING_STACK.pinned_stack_str}. "
+            f"Remediation: pin and reinstall {serving_stack.pinned_stack_str}. "
             f"Original error: {exc}"
         ) from exc
+
+
+def _prepare_vllm_runtime() -> tuple[type[Any], type[Any], type[Any], ServingStackPins]:
+    """Prepare the serving process immediately before importing vLLM."""
+    serving_stack = get_serving_stack_pins()
+    os.environ.update(
+        build_repo_python_env(
+            _REPO_ROOT,
+            base_env=os.environ,
+            extra_pythonpath=[_HACK_PATH],
+        )
+    )
+    install_local_module_override("numba", _HACK_PATH / "numba")
+    configure_serving_stack_runtime_env()
+    configure_serving_stack_cache_env()
+    preload_serving_stack_shared_libs()
+    _assert_serving_stack_versions(serving_stack)
+
+    try:
+        vllm_module = importlib.import_module("vllm")
+        inputs_module = importlib.import_module("vllm.inputs.data")
+        llm_cls = vllm_module.LLM
+        sampling_params_cls = vllm_module.SamplingParams
+        tokens_prompt_cls = inputs_module.TokensPrompt
+    except Exception as exc:
+        _assert_vllm_runtime_ready(exc, serving_stack)
+        raise AssertionError("unreachable") from exc
+
+    _assert_vllm_runtime_ready(None, serving_stack)
+    return llm_cls, sampling_params_cls, tokens_prompt_cls, serving_stack
 
 
 def _fixed_kv_cache_memory_bytes() -> int:
@@ -131,22 +157,10 @@ def _fixed_kv_cache_memory_bytes() -> int:
     """
     return 2 * 1024**3  # 2 GiB is sufficient for opt-125m @ max_model_len=512
 
-# Check for vLLM
-try:
-    from vllm import LLM, SamplingParams
-    from vllm.inputs.data import TokensPrompt
-    VLLM_AVAILABLE = True
-    _IMPORT_ERROR: Optional[BaseException] = None
-except Exception as exc:
-    LLM = SamplingParams = TokensPrompt = None  # type: ignore[assignment]
-    VLLM_AVAILABLE = False
-    _IMPORT_ERROR = exc
-    logger.warning("vLLM import failed during module load: %s", exc)
-
 
 class BaselineVLLMV1Integration:
     """Baseline vLLM v1 without optimizations."""
-    
+
     def __init__(
         self,
         model_name: str = "facebook/opt-125m",
@@ -163,15 +177,18 @@ class BaselineVLLMV1Integration:
                 "(use_vllm=False is unsupported)."
             )
         self.use_vllm = True
-        self._token_id_preview: List[int] = []
-        self._result_payload: Dict[str, Any] = {
+        self._llm_cls: type[Any] | None = None
+        self._sampling_params_cls: type[Any] | None = None
+        self._tokens_prompt_cls: type[Any] | None = None
+        self._token_id_preview: list[int] = []
+        self._result_payload: dict[str, Any] = {
             "mean_latency_ms": 0.0,
             "throughput_tokens_per_sec": 0.0,
             "total_tokens": 0,
             "token_ids": self._token_id_preview,
         }
 
-    def _store_token_preview(self, token_ids: Sequence[int]) -> List[int]:
+    def _store_token_preview(self, token_ids: Sequence[int]) -> list[int]:
         preview_count = min(_TOKEN_PREVIEW_CAPACITY, len(token_ids))
         preview = self._token_id_preview
         if len(preview) < preview_count:
@@ -182,8 +199,11 @@ class BaselineVLLMV1Integration:
             preview[index] = int(token_ids[index])
         return preview
 
-    def _new_llm(self) -> "LLM":
-        return LLM(
+    def _new_llm(self) -> Any:
+        llm_cls = self._llm_cls
+        if llm_cls is None:
+            raise RuntimeError("setup() must prepare the vLLM runtime before model creation")
+        return llm_cls(
             model=self.model_name,
             enforce_eager=True,  # Disable CUDA graphs (baseline)
             enable_prefix_caching=False,  # Disable prefix caching
@@ -195,13 +215,18 @@ class BaselineVLLMV1Integration:
             tensor_parallel_size=1,  # Single GPU to avoid coordination issues
             max_model_len=512,  # Limit context length to reduce memory
         )
-    
-    def setup(self):
+
+    def setup(self) -> None:
         """Initialize vLLM model."""
+        (
+            self._llm_cls,
+            self._sampling_params_cls,
+            self._tokens_prompt_cls,
+            _serving_stack,
+        ) = _prepare_vllm_runtime()
         random.seed(42)
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
-        _assert_vllm_runtime_ready(_IMPORT_ERROR)
         import gc
 
         # Force cleanup before vLLM initialization to avoid resource conflicts
@@ -210,7 +235,7 @@ class BaselineVLLMV1Integration:
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
 
-        last_engine_error: Optional[RuntimeError] = None
+        last_engine_error: RuntimeError | None = None
         for attempt in range(2):
             try:
                 # Baseline: no CUDA graphs, no prefix caching.
@@ -225,7 +250,8 @@ class BaselineVLLMV1Integration:
                 last_engine_error = e
                 if attempt == 0:
                     logger.warning(
-                        "Baseline eager vLLM init failed on first attempt; forcing cleanup and retrying once: %s",
+                        "Baseline eager vLLM init failed on first attempt. "
+                        "Forcing cleanup and retrying once: %s",
                         error_msg,
                     )
                     gc.collect()
@@ -249,12 +275,14 @@ class BaselineVLLMV1Integration:
         # Build pre-tokenized prompts so CPU tokenization doesn't dominate, and so
         # prefix caching (in the optimized variant) can skip meaningful prefill.
         tokenizer = self.llm.get_tokenizer()
-        base_ids = tokenizer.encode("Once upon a time in a land far away, ", add_special_tokens=False)
+        base_ids = tokenizer.encode(
+            "Once upon a time in a land far away, ", add_special_tokens=False
+        )
         if not base_ids:
             raise RuntimeError("Tokenizer returned empty token IDs for baseline prefix")
 
         max_prompt_len = 512 - self.max_tokens
-        suffix_ids: List[List[int]] = []
+        suffix_ids: list[list[int]] = []
         for i in range(self.batch_size):
             ids = tokenizer.encode(f"there was a {i}.", add_special_tokens=False)
             if not ids:
@@ -262,45 +290,53 @@ class BaselineVLLMV1Integration:
             suffix_ids.append(ids)
         max_suffix = max(len(ids) for ids in suffix_ids)
         if max_suffix >= max_prompt_len:
-            raise RuntimeError("Suffix length exceeds max prompt length; reduce max_tokens or suffix text.")
+            raise RuntimeError(
+                "Suffix length exceeds max prompt length; reduce max_tokens or suffix text."
+            )
 
         target_prefix_len = max_prompt_len - max_suffix
         repeats = (target_prefix_len + len(base_ids) - 1) // len(base_ids)
         prefix_ids = (base_ids * repeats)[:target_prefix_len]
 
+        tokens_prompt_cls = self._tokens_prompt_cls
+        if tokens_prompt_cls is None:
+            raise RuntimeError("setup() did not prepare vLLM TokensPrompt")
         self.prompts = [
-            TokensPrompt(prompt_token_ids=prefix_ids + suffix_ids[i])
+            tokens_prompt_cls(prompt_token_ids=prefix_ids + suffix_ids[i])
             for i in range(self.batch_size)
         ]
-        
+
         # Sampling parameters
-        self.sampling_params = SamplingParams(
+        sampling_params_cls = self._sampling_params_cls
+        if sampling_params_cls is None:
+            raise RuntimeError("setup() did not prepare vLLM SamplingParams")
+        self.sampling_params = sampling_params_cls(
             max_tokens=self.max_tokens,
             temperature=0.0,
             top_p=1.0,
             seed=42,
         )
-    
-    def run(self) -> Dict[str, Any]:
+
+    def run(self) -> dict[str, Any]:
         """Execute baseline vLLM inference."""
         torch.cuda.synchronize()
         start = time.perf_counter()
-        
+
         # Generate
         outputs = self.llm.generate(self.prompts, self.sampling_params, use_tqdm=False)
-        
+
         torch.cuda.synchronize()
         end = time.perf_counter()
-        
+
         elapsed = end - start
-        
+
         # Calculate metrics
         total_tokens = sum(len(output.outputs[0].token_ids) for output in outputs)
         first_ids = outputs[0].outputs[0].token_ids if outputs else []
         token_ids = self._store_token_preview(first_ids)
         throughput = total_tokens / elapsed
         mean_latency_ms = (elapsed / len(self.prompts)) * 1000
-        
+
         metrics = self._result_payload
         metrics["mean_latency_ms"] = mean_latency_ms
         metrics["throughput_tokens_per_sec"] = throughput
@@ -318,10 +354,10 @@ class BaselineVLLMV1Integration:
             "Mean latency: %.2f ms",
             self._result_payload["mean_latency_ms"],
         )
-    
-    def cleanup(self):
+
+    def cleanup(self) -> None:
         """Clean up resources."""
-        if hasattr(self, 'llm'):
+        if hasattr(self, "llm"):
             try:
                 shutdown_vllm_runtime(self.llm, logger=logger.warning)
             finally:
@@ -331,6 +367,7 @@ class BaselineVLLMV1Integration:
 
 class BaselineVLLMV1IntegrationBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Harness wrapper for the baseline vLLM integration."""
+
     allowed_benchmark_fn_antipatterns = ("sync",)
 
     def __init__(self):
@@ -344,7 +381,7 @@ class BaselineVLLMV1IntegrationBenchmark(VerificationPayloadMixin, BaseBenchmark
         # Keep NCU replay scoped to kernel to avoid repeated full application
         # replays that can exceed benchmark timeout budgets.
         self.preferred_ncu_replay_mode = "kernel"
-        self._metrics: Dict[str, Any] = {}
+        self._metrics: dict[str, Any] = {}
         self.output: Optional[torch.Tensor] = None
         self._last_token_ids: Optional[torch.Tensor] = None
         self._token_id_buffer: Optional[torch.Tensor] = None
@@ -400,7 +437,12 @@ class BaselineVLLMV1IntegrationBenchmark(VerificationPayloadMixin, BaseBenchmark
             output=self.output,
             batch_size=self.runner.batch_size,
             parameter_count=0,
-            precision_flags={"fp16": False, "bf16": True, "fp8": False, "tf32": torch.backends.cuda.matmul.allow_tf32},
+            precision_flags={
+                "fp16": False,
+                "bf16": True,
+                "fp8": False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32,
+            },
             output_tolerance=(0.0, 0.0),
         )
 
@@ -436,7 +478,7 @@ class BaselineVLLMV1IntegrationBenchmark(VerificationPayloadMixin, BaseBenchmark
             precision_flags=PrecisionFlags(bf16=True, tf32=tf32_enabled),
         ).to_dict()
 
-    def get_custom_metrics(self) -> Dict[str, Any]:
+    def get_custom_metrics(self) -> dict[str, Any]:
         self.runner.report_metrics()
         return self._metrics
 
