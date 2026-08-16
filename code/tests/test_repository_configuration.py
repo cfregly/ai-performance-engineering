@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import configparser
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -81,6 +82,51 @@ def test_dual_arch_workflow_is_gpu_independent_and_cuda_13_bounded() -> None:
     assert "ARCH_LIST ?= $(CUDA_13_ARCH_LIST)" in arch_makefile
     assert "sm_122" not in arch_makefile
     assert "sm_123" not in arch_makefile
+
+
+def test_dual_arch_compare_script_resolves_chapters_from_code_root(
+    tmp_path: Path,
+) -> None:
+    script = CODE_ROOT / "core" / "scripts" / "ci" / "run_compare_builds.sh"
+    stub_bin = tmp_path / "bin"
+    stub_bin.mkdir()
+    make_stub = stub_bin / "make"
+    make_stub.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "printf '%s\\n' \"$PWD\" >> \"${COMPARE_BUILD_LOG:?}\"\n",
+        encoding="utf-8",
+    )
+    make_stub.chmod(0o755)
+    build_log = tmp_path / "compare-build-directories.txt"
+    env = os.environ.copy()
+    env["PATH"] = f"{stub_bin}{os.pathsep}{env['PATH']}"
+    env["COMPARE_BUILD_LOG"] = str(build_log)
+
+    subprocess.run(
+        ["bash", str(script)],
+        cwd=tmp_path,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    expected_chapters = [
+        "ch01",
+        "ch02",
+        "ch04",
+        "ch06",
+        "ch07",
+        "ch08",
+        "ch09",
+        "ch10",
+        "ch11",
+        "ch12",
+    ]
+    assert build_log.read_text(encoding="utf-8").splitlines() == [
+        str(CODE_ROOT / chapter) for chapter in expected_chapters
+    ]
 
 
 def test_nested_workflows_are_non_executable_pointers() -> None:

@@ -70,6 +70,8 @@ The published checkpoint `8fcd714c6d3b6b04f1b1ee1ddf601d8540cadcb5` then exposed
 
 The same checkpoint adds `B006` and `B023` to the repository-wide first-party Ruff gate. Mutable defaults and deferred loop callbacks are now blocking in local `make lint` and GitHub Actions. The local fixes bind benchmark operands at callback creation, construct the symmetric-memory default inside each call, and bind delayed request completion data before starting its timer.
 
+GitHub Benchmark Validation passed all three jobs for commit `546c3ef8400b3ade687e72f8719bd56c9359cc00`. The dual-architecture job passed container setup, prerequisite installation, recursive checkout, CUTLASS installation, and CUDA architecture validation. It then exposed a second path defect. The compare script resolved its root as `code/core` and looked for `code/core/ch01`. The next checkpoint resolves `code` itself and includes an executable stub-`make` regression for all ten configured chapter directories.
+
 ## Completed validation
 
 - Repository benchmark audit checked 932 files with 0 errors and 0 warnings.
@@ -102,6 +104,8 @@ The same checkpoint adds `B006` and `B023` to the repository-wide first-party Ru
 - The blocking silent-fallback audit reports 0 findings in its CI categories.
 - Literal `make lint` passes in a clean Python 3.12 environment with Ruff 0.8.4, mypy 1.18.2, and NumPy 2.1.2.
 - No B200 command, SSH probe, benchmark, or profiler ran while preparing this checkpoint.
+- GitHub Benchmark Validation passes its contract, dashboard, and static-analysis jobs at commit `546c3ef8400b3ade687e72f8719bd56c9359cc00`.
+- The dual-architecture compare-script root regression passes 17 repository-configuration tests locally. Its GitHub Actions rerun remains required after publication.
 
 ## Environment contract
 
