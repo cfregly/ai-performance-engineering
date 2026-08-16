@@ -14,6 +14,7 @@ import json
 import math
 import re
 from dataclasses import asdict, dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -910,7 +911,7 @@ def resolve_best_available_attention_kernel(
                 continue
 
             timing = measure_flashattention4_latency(
-                lambda: _run_candidate_kernel(kernel, inputs),
+                partial(_run_candidate_kernel, kernel, inputs),
                 warmup=selection_warmup,
                 iterations=selection_iterations,
             )

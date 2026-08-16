@@ -223,6 +223,57 @@ def test_select_lowest_latency_provider_prefers_smallest_median() -> None:
     assert winner == "cudnn_sdpa"
 
 
+def test_best_available_timing_callbacks_bind_each_candidate(monkeypatch) -> None:
+    inputs = SimpleNamespace(
+        q=torch.empty(0),
+        k=torch.empty(0),
+        v=torch.empty(0),
+    )
+    providers = ("flex_tma", "flex_compiled")
+    callbacks = []
+
+    monkeypatch.setattr(
+        flash_common,
+        "get_flashattention4_candidate_kernel_options",
+        lambda config, device: {provider: {} for provider in providers},
+    )
+    monkeypatch.setattr(
+        flash_common,
+        "best_available_candidate_providers",
+        lambda mode, include_flash_backend: providers,
+    )
+
+    def _fake_compile(inputs, config, *, provider):
+        return flash_common.FlashAttention4Kernel(
+            fn=lambda q, k, v, provider=provider: provider,
+            provider=provider,
+            kernel_options={},
+            notes=(),
+        )
+
+    monkeypatch.setattr(flash_common, "compile_flashattention4_provider", _fake_compile)
+    monkeypatch.setattr(
+        flash_common,
+        "_candidate_matches_reference",
+        lambda inputs, kernel, reference_output: (True, reference_output, "ok"),
+    )
+
+    def _capture_callback(callback, *, warmup, iterations):
+        callbacks.append(callback)
+        return SimpleNamespace(median_ms=float(len(callbacks)))
+
+    monkeypatch.setattr(flash_common, "measure_flashattention4_latency", _capture_callback)
+
+    flash_common.resolve_best_available_attention_kernel(
+        inputs,
+        flash_common.FlashAttention4Config(mode="alibi"),
+        selection_warmup=0,
+        selection_iterations=1,
+    )
+
+    assert [callback() for callback in callbacks] == list(providers)
+
+
 def test_auto_flex_mode_uses_measured_provider_selection(monkeypatch) -> None:
     selected_kernel = flash_common.FlashAttention4Kernel(
         fn=lambda q, k, v: q,

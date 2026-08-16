@@ -60,10 +60,19 @@ def test_dual_arch_workflow_is_gpu_independent_and_cuda_13_bounded() -> None:
         "ARCH_LIST": "sm_100 sm_103 sm_120 sm_121",
         "AUTO_ARCH_DETECTION": "0",
     }
+    steps = compare_job["steps"]
+    bootstrap_step = next(
+        step for step in steps if step["name"] == "Install checkout prerequisites"
+    )
+    checkout_index = next(
+        index for index, step in enumerate(steps) if step["name"] == "Checkout repository"
+    )
+    bootstrap_index = steps.index(bootstrap_step)
+    assert bootstrap_index < checkout_index
+    assert bootstrap_step["working-directory"] == "/"
+    assert "ca-certificates git" in bootstrap_step["run"]
     verify_step = next(
-        step
-        for step in compare_job["steps"]
-        if step["name"] == "Verify configured CUDA architecture targets"
+        step for step in steps if step["name"] == "Verify configured CUDA architecture targets"
     )
     assert "nvcc --list-gpu-code" in verify_step["run"]
 
@@ -253,7 +262,7 @@ def test_default_lint_gate_is_strict_and_legacy_debt_is_explicit() -> None:
     assert "lint: lint-trusted" in makefile
     assert "lint-legacy-debt:" in makefile
     assert "check_benchmarks --include-unpaired --fail-on-warnings" in makefile
-    assert "ruff check . --select E9,F63,F7,F82" in makefile
+    assert "ruff check . --select E9,F63,F7,F82,B006,B023" in makefile
     for path in (
         "core/optimization/campaign.py",
         "core/optimization/campaign_evidence.py",
@@ -286,7 +295,7 @@ def test_ci_blocks_on_repository_wide_firstparty_correctness() -> None:
     ]
     assert len(matching_steps) == 1
     assert matching_steps[0]["working-directory"] == "code"
-    assert matching_steps[0]["run"] == "ruff check . --select E9,F63,F7,F82"
+    assert matching_steps[0]["run"] == "ruff check . --select E9,F63,F7,F82,B006,B023"
 
 
 def test_make_mypy_gates_use_configured_python_interpreter() -> None:

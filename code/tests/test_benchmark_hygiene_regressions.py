@@ -10675,7 +10675,7 @@ def test_ch18_vllm_v1_wrappers_reuse_token_id_buffers() -> None:
         benchmark.runner = SimpleNamespace(
             batch_size=8,
             max_tokens=128,
-            run=lambda: {"token_ids": next(token_batches)},
+            run=lambda batches=token_batches: {"token_ids": next(batches)},
         )
         benchmark._metrics = {}
         benchmark.output = None

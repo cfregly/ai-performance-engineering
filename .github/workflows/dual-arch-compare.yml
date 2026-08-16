@@ -41,6 +41,12 @@ jobs:
       AUTO_ARCH_DETECTION: "0"
 
     steps:
+      - name: Install checkout prerequisites
+        working-directory: /
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -49,7 +55,7 @@ jobs:
       - name: Install build dependencies
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends build-essential git make python3
+          apt-get install -y --no-install-recommends build-essential make python3
 
       - name: Materialize the validated CUTLASS source
         run: bash core/scripts/install_cutlass.sh v4.5.2

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 from datetime import datetime, timezone
+from functools import partial
 import getpass
 import json
 import os
@@ -4236,7 +4237,8 @@ def run_benchmark_e2e_sweep(
                                 "full_sweep",
                                 bucket_run_id,
                                 bucket_progress_path,
-                                lambda: _invoke_execute_benchmarks(
+                                partial(
+                                    _invoke_execute_benchmarks,
                                     targets=remaining_targets,
                                     bench_root=active_bench_root,
                                     output_format=output_format,

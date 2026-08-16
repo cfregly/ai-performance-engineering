@@ -345,7 +345,9 @@ def benchmark_fp8_vs_fp16() -> None:
         B_fp16 = torch.randn(K, N, device="cuda", dtype=torch.float16)
         
         # Use Triton's benchmarking - handles warmup, sync, outliers automatically
-        fp16_time = triton.testing.do_bench(lambda: tiled_matmul(A_fp16, B_fp16), rep=100)
+        fp16_time = triton.testing.do_bench(
+            lambda a=A_fp16, b=B_fp16: tiled_matmul(a, b), rep=100
+        )
         
         C_fp16 = tiled_matmul(A_fp16, B_fp16)  # For numerical comparison
         
@@ -359,7 +361,9 @@ def benchmark_fp8_vs_fp16() -> None:
             B_fp8 = B_fp16.to(FP8_E4M3_DTYPE)
             
             # Use Triton's benchmarking - handles warmup, sync, outliers automatically
-            fp8_time = triton.testing.do_bench(lambda: matmul_fp8(A_fp8, B_fp8), rep=100)
+            fp8_time = triton.testing.do_bench(
+                lambda a=A_fp8, b=B_fp8: matmul_fp8(a, b), rep=100
+            )
             
             C_fp8 = matmul_fp8(A_fp8, B_fp8)  # For numerical comparison
             
@@ -484,9 +488,15 @@ def benchmark_persistent_vs_standard():
         B_fp32 = B.float()
         
         # Use Triton's benchmarking - handles warmup, sync, outliers automatically
-        persistent_descriptor_time = triton.testing.do_bench(lambda: persistent_matmul_descriptor(A, B), rep=100)
-        persistent_queue_time = triton.testing.do_bench(lambda: persistent_matmul_queue(A, B), rep=100)
-        torch_time = triton.testing.do_bench(lambda: torch.matmul(A_fp32, B_fp32), rep=100)
+        persistent_descriptor_time = triton.testing.do_bench(
+            lambda a=A, b=B: persistent_matmul_descriptor(a, b), rep=100
+        )
+        persistent_queue_time = triton.testing.do_bench(
+            lambda a=A, b=B: persistent_matmul_queue(a, b), rep=100
+        )
+        torch_time = triton.testing.do_bench(
+            lambda a=A_fp32, b=B_fp32: torch.matmul(a, b), rep=100
+        )
         
         flops = 2 * M * N * K
         persistent_descriptor_tflops = flops / (persistent_descriptor_time * 1e-3) / 1e12

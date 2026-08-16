@@ -591,7 +591,9 @@ def benchmark_multigpu_bandwidth(
     for size in sizes:
         tensor = torch.randn(size, device=device, dtype=torch.float32)
         bytes_transferred = tensor.numel() * tensor.element_size()
-        elapsed = _bench(lambda: dist.all_reduce(tensor, op=dist.ReduceOp.SUM))
+        elapsed = _bench(
+            lambda tensor=tensor: dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+        )
         algo_factor = 2.0 * (world_size - 1) / world_size
         bandwidth_gbs = (bytes_transferred * algo_factor * num_iters) / elapsed / 1e9
         results[f"allreduce_{bytes_transferred/1e6:.1f}MB"] = bandwidth_gbs
@@ -610,7 +612,9 @@ def benchmark_multigpu_bandwidth(
             tensor = torch.randn(size, device=device, dtype=torch.float32)
             bytes_transferred = tensor.numel() * tensor.element_size()
             elapsed = _bench(
-                lambda: dist.send(tensor, dst=1) if rank == 0 else dist.recv(tensor, src=0)
+                lambda tensor=tensor: (
+                    dist.send(tensor, dst=1) if rank == 0 else dist.recv(tensor, src=0)
+                )
             )
             bandwidth_gbs = (bytes_transferred * num_iters) / elapsed / 1e9
             if rank == 0:
@@ -627,7 +631,9 @@ def benchmark_multigpu_bandwidth(
         tensor = torch.randn(size, device=device, dtype=torch.float32)
         out = [torch.empty_like(tensor) for _ in range(world_size)]
         bytes_transferred = tensor.numel() * tensor.element_size()
-        elapsed = _bench(lambda: dist.all_gather(out, tensor))
+        elapsed = _bench(
+            lambda out=out, tensor=tensor: dist.all_gather(out, tensor)
+        )
         bandwidth_gbs = (
             bytes_transferred * (world_size - 1) * num_iters / elapsed / 1e9
         )
@@ -646,7 +652,11 @@ def benchmark_multigpu_bandwidth(
         output = torch.empty(size, device=device, dtype=torch.float32)
         reducescatter_input = tensor.view(world_size, size)
         bytes_transferred = tensor.numel() * tensor.element_size()
-        elapsed = _bench(lambda: dist.reduce_scatter_tensor(output, reducescatter_input))
+        elapsed = _bench(
+            lambda output=output, reducescatter_input=reducescatter_input: (
+                dist.reduce_scatter_tensor(output, reducescatter_input)
+            )
+        )
         bandwidth_gbs = (bytes_transferred * num_iters) / elapsed / 1e9
         results[f"reducescatter_{bytes_transferred/1e6:.1f}MB"] = bandwidth_gbs
         if rank == 0:
@@ -708,7 +718,9 @@ def benchmark_multi_node_bandwidth(
     for size in sizes:
         tensor = torch.randn(size, device=device, dtype=torch.float32)
         bytes_transferred = tensor.numel() * tensor.element_size()
-        elapsed = _bench(lambda: dist.all_reduce(tensor, op=dist.ReduceOp.SUM))
+        elapsed = _bench(
+            lambda tensor=tensor: dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+        )
         algo_factor = 2.0 * (world_size - 1) / world_size
         bandwidth_gbs = (bytes_transferred * algo_factor * num_iters) / elapsed / 1e9
         results[f"allreduce_{bytes_transferred/1e6:.1f}MB"] = bandwidth_gbs

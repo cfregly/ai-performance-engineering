@@ -431,10 +431,12 @@ class OptimizedFlashAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self._external_flash_func = flash_attn_func
                 self._selected_engine_name = engine_name
                 self._selected_backend_name = engine_name
-                self._attention_runner = lambda x: self.model.forward_external_flash_prepared(
-                    x,
-                    flash_attn_func,
-                    is_causal=self.use_causal,
+                self._attention_runner = (
+                    lambda x, flash_func=flash_attn_func: self.model.forward_external_flash_prepared(
+                        x,
+                        flash_func,
+                        is_causal=self.use_causal,
+                    )
                 )
                 return True
             except Exception:

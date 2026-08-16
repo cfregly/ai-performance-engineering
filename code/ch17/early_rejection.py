@@ -359,6 +359,25 @@ class QoSController:
         print(f"  Avg TTFT: {self.metrics.avg_prefill_time_per_req:.1f}ms")
         print(f"  Avg TPOT: {self.metrics.avg_decode_time_per_req:.1f}ms")
 
+
+def _schedule_completion(
+    qos: QoSController,
+    request: Request,
+    actual_ttft: float,
+    actual_tpot: float,
+    delay_seconds: float = 0.1,
+) -> threading.Timer:
+    """Schedule a request completion with values fixed at submission time."""
+    completion_timer = threading.Timer(
+        delay_seconds,
+        qos.complete_request,
+        args=(request, actual_ttft, actual_tpot),
+    )
+    completion_timer.daemon = True
+    completion_timer.start()
+    return completion_timer
+
+
 def simulate_load_spike():
     """Simulate a realistic load spike scenario."""
     qos = QoSController()
@@ -429,13 +448,9 @@ def simulate_load_spike():
                 # Simulate request processing
                 actual_ttft = qos._estimate_ttft(request) + random.uniform(-10, 20)
                 actual_tpot = qos.metrics.avg_decode_time_per_req + random.uniform(-5, 10)
-                
-                # Complete request after a short delay
-                def complete_later():
-                    time.sleep(0.1)  # Simulate processing time
-                    qos.complete_request(request, actual_ttft, actual_tpot)
-                
-                threading.Thread(target=complete_later, daemon=True).start()
+
+                # Complete the request after a short delay.
+                _schedule_completion(qos, request, actual_ttft, actual_tpot)
             
             # Wait between requests based on rate
             time.sleep(1.0 / scenario['request_rate'])

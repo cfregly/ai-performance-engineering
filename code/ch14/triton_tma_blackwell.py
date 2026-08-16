@@ -12,6 +12,7 @@ Highlights:
 """
 
 import os
+from collections.abc import Sequence
 import torch
 import triton
 import triton.language as tl
@@ -335,7 +336,7 @@ def tma_gemm_bias_silu(A: torch.Tensor, B: torch.Tensor, bias: torch.Tensor) -> 
 # ============================================================================
 
 def benchmark_tma_vs_standard(
-    sizes: list[int] = [1024, 2048, 4096, 8192],
+    sizes: Sequence[int] = (1024, 2048, 4096, 8192),
     dtype: torch.dtype = torch.float16,
     num_iters: int = 100,
 ) -> dict:
@@ -371,8 +372,20 @@ def benchmark_tma_vs_standard(
         dst_tma = torch.empty_like(src)
         dst_std = torch.empty_like(src)
         
-        tma_time = triton.testing.do_bench(lambda: tma_copy_2d(src, dst_tma), rep=num_iters) / 1000.0
-        std_time = triton.testing.do_bench(lambda: dst_std.copy_(src), rep=num_iters) / 1000.0
+        tma_time = (
+            triton.testing.do_bench(
+                lambda source=src, destination=dst_tma: tma_copy_2d(source, destination),
+                rep=num_iters,
+            )
+            / 1000.0
+        )
+        std_time = (
+            triton.testing.do_bench(
+                lambda source=src, destination=dst_std: destination.copy_(source),
+                rep=num_iters,
+            )
+            / 1000.0
+        )
         
         bytes_transferred = size * size * src.element_size() * 2
         tma_bw = bytes_transferred / tma_time / 1e12
@@ -393,8 +406,20 @@ def benchmark_tma_vs_standard(
         B_fp32 = B.float()
         bias = torch.randn(size, device=device, dtype=dtype)
 
-        tma_gemm_time = triton.testing.do_bench(lambda: tma_gemm(A, B), rep=num_iters) / 1000.0
-        torch_gemm_time = triton.testing.do_bench(lambda: torch.matmul(A_fp32, B_fp32), rep=num_iters) / 1000.0
+        tma_gemm_time = (
+            triton.testing.do_bench(
+                lambda a=A, b=B: tma_gemm(a, b),
+                rep=num_iters,
+            )
+            / 1000.0
+        )
+        torch_gemm_time = (
+            triton.testing.do_bench(
+                lambda a=A_fp32, b=B_fp32: torch.matmul(a, b),
+                rep=num_iters,
+            )
+            / 1000.0
+        )
 
         C_tma = tma_gemm(A, B)
         C_torch = torch.matmul(A_fp32, B_fp32)
@@ -406,7 +431,8 @@ def benchmark_tma_vs_standard(
 
         # Bias + SiLU variant
         tma_bias_time = triton.testing.do_bench(
-            lambda: tma_gemm_bias_silu(A, B, bias), rep=num_iters
+            lambda a=A, b=B, bias_value=bias: tma_gemm_bias_silu(a, b, bias_value),
+            rep=num_iters,
         ) / 1000.0
         bias_flops = flops + size * size * 6  # rough add+exp+mul cost
         tma_bias_tflops = bias_flops / tma_bias_time / 1e12

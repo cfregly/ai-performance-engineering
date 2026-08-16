@@ -312,7 +312,7 @@ def benchmark_symmetric_ring(tensor: torch.Tensor, iterations: int = 100) -> flo
 
 
 def benchmark_multigpu_symmetric_memory(
-    tensor_sizes: list = [(1024,), (1024 * 256,), (1024 * 1024,)],
+    tensor_sizes: list | None = None,
     iterations: int = 100
 ) -> dict:
     """
@@ -326,6 +326,9 @@ def benchmark_multigpu_symmetric_memory(
     Returns:
         Performance metrics
     """
+    if tensor_sizes is None:
+        tensor_sizes = [(1024,), (1024 * 256,), (1024 * 1024,)]
+
     rank = dist.get_rank()
     world_size = dist.get_world_size()
     device = torch.device("cuda", torch.cuda.current_device())

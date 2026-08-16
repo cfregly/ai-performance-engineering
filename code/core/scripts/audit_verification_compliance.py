@@ -15,9 +15,8 @@ import ast
 import contextlib
 import importlib.abc
 import importlib.util
-import os
+import io
 import sys
-import tempfile
 import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -31,30 +30,19 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @contextlib.contextmanager
-def _capture_process_output() -> List[str]:
-    """Capture Python and subprocess stdout/stderr during benchmark import/load."""
+def _capture_python_output() -> List[str]:
+    """Capture Python stream writes without replacing process file descriptors.
+
+    Native writes and child-process output remain attached to the caller's file
+    descriptors. This avoids process-wide descriptor mutation during an audit.
+    """
     captured: List[str] = []
-    sys.stdout.flush()
-    sys.stderr.flush()
-    stdout_fd = os.dup(1)
-    stderr_fd = os.dup(2)
-    with tempfile.TemporaryFile(mode="w+b") as stdout_tmp, tempfile.TemporaryFile(mode="w+b") as stderr_tmp:
-        try:
-            os.dup2(stdout_tmp.fileno(), 1)
-            os.dup2(stderr_tmp.fileno(), 2)
-            yield captured
-        finally:
-            sys.stdout.flush()
-            sys.stderr.flush()
-            os.dup2(stdout_fd, 1)
-            os.dup2(stderr_fd, 2)
-            os.close(stdout_fd)
-            os.close(stderr_fd)
-            stdout_tmp.seek(0)
-            stderr_tmp.seek(0)
-            combined = stdout_tmp.read().decode("utf-8", errors="replace")
-            combined += stderr_tmp.read().decode("utf-8", errors="replace")
-            captured.extend(line.strip() for line in combined.splitlines() if line.strip())
+    stdout_buffer = io.StringIO()
+    stderr_buffer = io.StringIO()
+    with contextlib.redirect_stdout(stdout_buffer), contextlib.redirect_stderr(stderr_buffer):
+        yield captured
+    combined = stdout_buffer.getvalue() + stderr_buffer.getvalue()
+    captured.extend(line.strip() for line in combined.splitlines() if line.strip())
 
 
 def _module_name_for_path(filepath: Path) -> str:
@@ -291,7 +279,7 @@ def load_benchmark_class(filepath: Path) -> Optional[Tuple[Any, str, List[str]]]
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
         with _with_sibling_import_finder(filepath.parent):
-            with _capture_process_output() as captured_output:
+            with _capture_python_output() as captured_output:
                 spec.loader.exec_module(module)
 
                 # Look for get_benchmark factory function
@@ -455,7 +443,7 @@ def audit_directory(directory: Path) -> Dict[str, Dict[str, Any]]:
             }
             continue
         
-        benchmark, class_name, load_output = result
+        benchmark, class_name, python_load_output = result
         compliance = check_compliance(benchmark)
         compliance.update(source_flags)
         
@@ -474,8 +462,8 @@ def audit_directory(directory: Path) -> Dict[str, Dict[str, Any]]:
         is_compliant = all(compliance.get(m, False) for m in critical_methods)
 
         warnings: List[str] = []
-        if load_output:
-            warnings.append("Benchmark emitted output during audit load.")
+        if python_load_output:
+            warnings.append("Benchmark emitted Python output during audit load.")
         if compliance.get("backend_toggles_present", False):
             warnings.append("Backend policy toggles detected in benchmark file.")
         if compliance.get("determinism_toggles_present", False):
@@ -488,7 +476,7 @@ def audit_directory(directory: Path) -> Dict[str, Dict[str, Any]]:
             "class_name": class_name,
             "compliance": compliance,
             "warnings": warnings,
-            "load_output": load_output,
+            "python_load_output": python_load_output,
         }
     
     return results

@@ -66,6 +66,10 @@ The clean CPU-hidden rerun at source commit `9a1e5dbd21d16e5f7f90140109f18ce96b9
 
 The remote worktree stayed tracked-clean. All three submodules matched their recorded commits. No GPU process ran during this gate.
 
+The published checkpoint `8fcd714c6d3b6b04f1b1ee1ddf601d8540cadcb5` then exposed two CI-only defects. The dual-architecture CUDA container did not include Git before checkout, so recursive submodule checkout could not start. The verification auditor also redirected process file descriptors, which the blocking silent-fallback audit correctly rejected. The next checkpoint installs Git before checkout and captures Python output with scoped stream redirection.
+
+The same checkpoint adds `B006` and `B023` to the repository-wide first-party Ruff gate. Mutable defaults and deferred loop callbacks are now blocking in local `make lint` and GitHub Actions. The local fixes bind benchmark operands at callback creation, construct the symmetric-memory default inside each call, and bind delayed request completion data before starting its timer.
+
 ## Completed validation
 
 - Repository benchmark audit checked 932 files with 0 errors and 0 warnings.
@@ -93,6 +97,11 @@ The remote worktree stayed tracked-clean. All three submodules matched their rec
 - The latest CPU-only first-party regression set passes 156 tests and skips 2 Linux-only torchrun cases on macOS. The source-inspection fixture set passes another 25 tests.
 - The benchmark coverage CLI now scans the repository root, records the matched metric helper, and reports 354 baseline or optimized files across 11 populated chapters and 46 labs.
 - The repository benchmark audit still checks 932 files with 0 errors and 0 warnings after these correctness fixes.
+- The latest local focused set passes 99 tests for repository configuration, verification loading, silent fallbacks, warning filters, deferred callbacks, FlashAttention provider selection, end-to-end sweep state, and Chapter 10 backend selection.
+- The expanded repository-wide Ruff gate passes `E9`, `F63`, `F7`, `F82`, `B006`, and `B023`.
+- The blocking silent-fallback audit reports 0 findings in its CI categories.
+- Literal `make lint` passes in a clean Python 3.12 environment with Ruff 0.8.4, mypy 1.18.2, and NumPy 2.1.2.
+- No B200 command, SSH probe, benchmark, or profiler ran while preparing this checkpoint.
 
 ## Environment contract
 
@@ -173,19 +182,20 @@ Use the same `$RUN_ID` after reviewing the normalized status and confirming no o
 ## Remaining validation phases
 
 1. Keep all B200 GPU work stopped until the other task releases both GPUs.
-2. Finish the FlashAttention ALiBi contract investigation with the saved tier 1 profiler evidence.
-3. Run local CPU-safe regression, audit, lint, and coverage work for every changed file.
-4. Install the published checkpoint on the B200 worktree after GPU ownership returns.
-5. Rerun the full CPU-hidden pytest suite with coverage before GPU timing.
-6. Resume the same run ID with `--resume --no-auto-resume`.
-7. Verify the block-scaling CUTLASS fix on B200 and rerun the corrected attention target.
-8. Run the strict 486-target sweep.
-9. Run the two-GPU lane only when both GPUs are free.
-10. Record honest `passed`, `failed`, `skipped`, or `partial` status for every target.
-11. Compare candidate and control on representative Chapter 9 and Chapter 19 cases with repeated trials.
-12. Audit manifests, hashes, environment evidence, profiler evidence, and no-regression gates.
-13. Update this handoff with the exact completed and remaining target sets.
-14. Commit, push, merge to `main`, push `main`, and verify remote tips.
+2. Publish the current local CI and callback-safety checkpoint to `main` and verify its GitHub Actions runs.
+3. Continue CPU-safe regression, audit, lint, and coverage work while the GPUs remain occupied.
+4. Finish the FlashAttention ALiBi contract investigation with the saved tier 1 profiler evidence.
+5. Install the published checkpoint on the B200 worktree after GPU ownership returns.
+6. Rerun the full CPU-hidden pytest suite with coverage before GPU timing.
+7. Resume the same run ID with `--resume --no-auto-resume`.
+8. Verify the block-scaling CUTLASS fix on B200 and rerun the corrected attention target.
+9. Run the strict 486-target sweep.
+10. Run the two-GPU lane only when both GPUs are free.
+11. Record honest `passed`, `failed`, `skipped`, or `partial` status for every target.
+12. Compare candidate and control on representative Chapter 9 and Chapter 19 cases with repeated trials.
+13. Audit manifests, hashes, environment evidence, profiler evidence, and no-regression gates.
+14. Update this handoff with the exact completed and remaining target sets.
+15. Commit, push, merge to `main`, push `main`, and verify remote tips.
 
 "100 percent coverage" means every discovered target has a terminal status and every reachable code path has measured coverage. It does not permit turning unsupported hardware or missing fabric into a false pass.
 

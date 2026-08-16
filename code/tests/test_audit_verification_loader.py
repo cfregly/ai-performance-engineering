@@ -4,11 +4,71 @@ from pathlib import Path
 
 import torch
 
-from core.scripts.audit_verification_compliance import audit_directory
+from core.scripts.audit_verification_compliance import (
+    audit_directory,
+    load_benchmark_class,
+)
 
 
 def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
+
+
+def test_audit_loader_captures_python_output_without_process_fd_hijacking(
+    tmp_path: Path,
+) -> None:
+    benchmark_path = tmp_path / "baseline_output.py"
+    _write(
+        benchmark_path,
+        (
+            "import sys\n"
+            "print('import stdout')\n"
+            "print('import stderr', file=sys.stderr)\n"
+            "class _Bench:\n"
+            "    pass\n"
+            "def get_benchmark():\n"
+            "    print('factory stdout')\n"
+            "    return _Bench()\n"
+        ),
+    )
+
+    loaded = load_benchmark_class(benchmark_path)
+
+    assert loaded is not None
+    _, class_name, captured = loaded
+    assert class_name == "_Bench"
+    assert captured == ["import stdout", "factory stdout", "import stderr"]
+
+
+def test_audit_loader_leaves_native_and_child_output_on_process_descriptors(
+    tmp_path: Path,
+    capfd,
+) -> None:
+    benchmark_path = tmp_path / "baseline_process_output.py"
+    _write(
+        benchmark_path,
+        (
+            "import os\n"
+            "import subprocess\n"
+            "import sys\n"
+            "print('python stdout')\n"
+            "os.write(1, b'native stdout\\n')\n"
+            "subprocess.run([sys.executable, '-c', \"print('child stdout')\"], check=True)\n"
+            "class _Bench:\n"
+            "    pass\n"
+            "def get_benchmark():\n"
+            "    return _Bench()\n"
+        ),
+    )
+
+    loaded = load_benchmark_class(benchmark_path)
+    process_output = capfd.readouterr()
+
+    assert loaded is not None
+    _, _, captured = loaded
+    assert captured == ["python stdout"]
+    assert "native stdout" in process_output.out
+    assert "child stdout" in process_output.out
 
 
 def test_audit_loader_resolves_sibling_imports(tmp_path: Path) -> None:
