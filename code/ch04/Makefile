@@ -121,7 +121,7 @@ compare: clean
 	@echo "========================================"
 	@echo "Building Chapter 4 NVSHMEM samples for both architectures..."
 	@echo "========================================"
-	@for arch in $(ARCH_LIST); do \
+	@set -e; for arch in $(ARCH_LIST); do \
 		echo ""; \
 		echo ">>> Building $${arch}..."; \
 		$(MAKE) ARCH=$${arch} nvshmem; \
@@ -140,8 +140,7 @@ gb300: ARCH=sm_103
 gb300: clean nvshmem
 
 clean:
-	rm -f $(addsuffix _sm100,$(NVSHMEM_TARGETS)) $(addsuffix _sm121,$(NVSHMEM_TARGETS))
-	rm -f $(addsuffix _verify_sm100,$(NVSHMEM_TARGETS)) $(addsuffix _verify_sm121,$(NVSHMEM_TARGETS))
+	rm -f *_sm100 *_sm103 *_sm120 *_sm121 *_sm122 *_sm123
 	rm -f *.o
 	@echo "Cleaned Chapter 4 NVSHMEM binaries"
 

@@ -2,6 +2,7 @@ name: Dual-Architecture Compare Builds
 
 on:
   push:
+    branches: [main, develop]
     paths:
       - "code/ch*/**"
       - "code/core/**"
@@ -9,6 +10,7 @@ on:
       - ".gitmodules"
       - ".github/workflows/dual-arch-compare.yml"
   pull_request:
+    branches: [main, develop]
     paths:
       - "code/ch*/**"
       - "code/core/**"
@@ -39,23 +41,22 @@ jobs:
       # a GPU, so compare builds must not invoke runtime architecture detection.
       ARCH_LIST: "sm_100 sm_103 sm_120 sm_121"
       AUTO_ARCH_DETECTION: "0"
+      COMPARE_BUILD_JOBS: "2"
 
     steps:
       - name: Install checkout prerequisites
         working-directory: /
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates git
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            ca-certificates \
+            git \
+            make \
+            python3
 
       - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Install build dependencies
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends build-essential make python3
+        uses: actions/checkout@v7
 
       - name: Materialize the validated CUTLASS source
         run: bash core/scripts/install_cutlass.sh v4.5.2
@@ -65,8 +66,13 @@ jobs:
         run: |
           supported_codes="$(nvcc --list-gpu-code)"
           for architecture in ${ARCH_LIST}; do
-            if ! grep -Fqx "${architecture}" <<<"${supported_codes}"; then
-              echo "CUDA 13.0 does not support configured target ${architecture}" >&2
+            case "${architecture}" in
+              sm_100) gpu_code=sm_100a ;;
+              sm_103) gpu_code=sm_103a ;;
+              *) gpu_code="${architecture}" ;;
+            esac
+            if ! grep -Fqx "${gpu_code}" <<<"${supported_codes}"; then
+              echo "CUDA 13.0 does not support emitted target ${gpu_code}" >&2
               exit 1
             fi
           done

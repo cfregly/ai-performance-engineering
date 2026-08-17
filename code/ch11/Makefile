@@ -10,10 +10,9 @@ SUFFIX = $(TARGET_SUFFIX)
 
 # Auto-detect all .cu files and derive targets (no manual list maintenance)
 CUDA_SOURCES := $(wildcard *.cu)
-# Filter out files that require external build systems (PyTorch extensions, driver files)
+# Filter out files that require the PyTorch extension build system.
 EXTENSION_SOURCES := $(wildcard *_extension.cu)
-DRIVER_SOURCES := baseline_warp_specialized_two_pipelines_driver.cu optimized_warp_specialized_two_pipelines_driver.cu
-EXCLUDE_SOURCES := $(EXTENSION_SOURCES) $(DRIVER_SOURCES)
+EXCLUDE_SOURCES := $(EXTENSION_SOURCES)
 STANDALONE_SOURCES := $(filter-out $(EXCLUDE_SOURCES),$(CUDA_SOURCES))
 BASE_TARGETS := $(STANDALONE_SOURCES:.cu=)
 TARGETS := $(addsuffix $(SUFFIX), $(BASE_TARGETS))
@@ -59,7 +58,7 @@ compare: clean
 	@echo "========================================"
 	@echo "Building BOTH architectures for comparison..."
 	@echo "========================================"
-	@for arch in $(ARCH_LIST); do \
+	@set -e; for arch in $(ARCH_LIST); do \
 		echo ""; \
 		echo ">>> Building $${arch}..."; \
 		$(MAKE) ARCH=$${arch} all; \

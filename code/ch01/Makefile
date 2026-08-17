@@ -33,7 +33,7 @@ test: all
 	./baseline_gemm$(SUFFIX) || echo "Note: Run baseline_gemm manually"
 
 compare: clean
-	@for arch in $(ARCH_LIST); do \
+	@set -e; for arch in $(ARCH_LIST); do \
 		echo ">>> Building $${arch}..."; \
 		$(MAKE) ARCH=$${arch} all; \
 	done

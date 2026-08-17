@@ -68,7 +68,7 @@ compare: clean
 	@echo "========================================"
 	@echo "Building Chapter 9 samples for both architectures..."
 	@echo "========================================"
-	@for arch in $(ARCH_LIST); do \
+	@set -e; for arch in $(ARCH_LIST); do \
 		echo ""; \
 		echo ">>> Building $${arch}..."; \
 		$(MAKE) ARCH=$${arch} all; \

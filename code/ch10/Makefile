@@ -11,7 +11,13 @@ COMMON_HEADERS = ../core/common/headers/arch_detection.cuh ../core/common/header
 # Auto-detect all .cu files and derive targets
 CUDA_SOURCES := $(wildcard *.cu)
 # Filter out files that require external build systems (PyTorch extensions)
-EXTENSION_SOURCES := $(wildcard *_extension.cu) matmul_tcgen05.cu tcgen05_blackwell.cu
+EXTENSION_SOURCES := \
+	$(wildcard *_extension.cu) \
+	matmul_tcgen05.cu \
+	tcgen05_cluster.cu \
+	tcgen05_warp_specialized.cu \
+	tcgen05_warp_specialized_cutlass.cu \
+	tcgen05_warpgroup_specialized.cu
 STANDALONE_SOURCES := $(filter-out $(EXTENSION_SOURCES),$(CUDA_SOURCES))
 BASE_TARGETS := $(STANDALONE_SOURCES:.cu=)
 TARGETS := $(addsuffix $(SUFFIX), $(BASE_TARGETS))
@@ -138,7 +144,7 @@ gb300: ARCH=sm_103
 gb300: clean all
 
 compare: clean
-	@for arch in $(ARCH_LIST); do \
+	@set -e; for arch in $(ARCH_LIST); do \
 		echo ">>> Building $${arch}..."; \
 		$(MAKE) ARCH=$${arch} all; \
 	done

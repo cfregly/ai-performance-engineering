@@ -28,7 +28,7 @@ all: $(TARGETS)
 	$(NVCC) $(NVCC_FLAGS) -DVERIFY=1 -o $@ $< $(CUDA_NVTX_LDFLAGS)
 
 compare: clean
-	@for arch in $(ARCH_LIST); do \
+	@set -e; for arch in $(ARCH_LIST); do \
 		echo ">>> Building $${arch}..."; \
 		$(MAKE) ARCH=$${arch} all; \
 	done

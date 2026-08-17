@@ -74,7 +74,7 @@ gb300: ARCH=sm_103
 gb300: clean all
 
 compare: clean
-	@for arch in $(ARCH_LIST); do \
+	@set -e; for arch in $(ARCH_LIST); do \
 		echo ">>> Building $${arch}..."; \
 		$(MAKE) ARCH=$${arch} all; \
 	done

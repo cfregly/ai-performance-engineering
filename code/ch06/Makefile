@@ -42,7 +42,7 @@ compare: clean
 	@echo "========================================"
 	@echo "Building Chapter 6 samples for both architectures..."
 	@echo "========================================"
-	@for arch in $(ARCH_LIST); do \
+	@set -e; for arch in $(ARCH_LIST); do \
 		echo ""; \
 		echo ">>> Building $${arch}..."; \
 		$(MAKE) ARCH=$${arch} all; \
@@ -102,5 +102,5 @@ profile-all: all
 	done
 
 clean:
-	rm -f $(addsuffix _sm100,$(BASE_TARGETS)) $(addsuffix _sm103,$(BASE_TARGETS)) $(addsuffix _sm121,$(BASE_TARGETS)) *.o *.so *.a
+	rm -f *_sm100 *_sm103 *_sm120 *_sm121 *_sm122 *_sm123 *.o *.so *.a
 	rm -f nsys_profile_* ncu_profile_* hta_profile_* perf.data_* comprehensive_*

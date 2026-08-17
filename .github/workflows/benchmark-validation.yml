@@ -59,13 +59,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           submodules: recursive
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -98,6 +98,10 @@ jobs:
             tests/test_benchmark_fn_sync_detection.py \
             tests/test_benchmark_linter.py \
             tests/test_tier1_suite.py \
+            tests/test_tier1_history_restore.py \
+            tests/test_promote_tier1_history.py \
+            tests/test_update_history_index_cli.py \
+            tests/test_benchmark_e2e_sweep.py \
             tests/test_run_manifest_provenance.py \
             tests/test_environment_validation_enforcement.py \
             tests/test_audit_silent_fallbacks.py \
@@ -108,6 +112,8 @@ jobs:
             tests/test_campaign_evidence.py \
             tests/test_llm_patch_worker.py \
             tests/test_mcts_optimizer.py \
+            tests/test_ch10_makefile_contract.py \
+            tests/test_dual_arch_make_contract.py \
             tests/test_repository_configuration.py \
             tests/test_setup_bootstrap.py \
             tests/test_dashboard_server.py \
@@ -120,6 +126,7 @@ jobs:
         run: |
           bash -n setup.sh
           bash -n core/scripts/install_cutlass.sh
+          bash -n core/scripts/ci/run_compare_builds.sh
           bash -n ch03/numa_topology_script.sh
           bash -n ch03/cpu_gpu_numa_optimizations.sh
 
@@ -138,10 +145,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -180,10 +187,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm
