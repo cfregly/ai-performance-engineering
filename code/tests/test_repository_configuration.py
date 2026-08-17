@@ -112,13 +112,17 @@ def test_dual_arch_workflow_is_gpu_independent_and_cuda_13_bounded() -> None:
     verify_step = next(
         step for step in steps if step["name"] == "Verify configured CUDA architecture targets"
     )
-    assert "nvcc --list-gpu-code" in verify_step["run"]
-    assert "sm_100) gpu_code=sm_100a" in verify_step["run"]
-    assert "sm_103) gpu_code=sm_103a" in verify_step["run"]
+    assert "nvcc --list-gpu-code" not in verify_step["run"]
+    assert "make --no-print-directory" in verify_step["run"]
+    assert 'ARCH="${architecture}"' in verify_step["run"]
+    assert "verify-cuda-arch-target" in verify_step["run"]
 
     arch_makefile = (CODE_ROOT / "core" / "common" / "cuda_arch.mk").read_text(encoding="utf-8")
     assert "CUDA_13_ARCH_LIST := sm_100 sm_103 sm_120 sm_121" in arch_makefile
     assert "ARCH_LIST ?= $(CUDA_13_ARCH_LIST)" in arch_makefile
+    assert "CUDA_ARCH_PROBE_SOURCE" in arch_makefile
+    assert "verify-cuda-arch-target:" in arch_makefile
+    assert "$(CUDA_NVCC_ARCH_FLAGS) -c" in arch_makefile
     assert "sm_122" not in arch_makefile
     assert "sm_123" not in arch_makefile
 

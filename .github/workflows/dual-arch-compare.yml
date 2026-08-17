@@ -64,17 +64,13 @@ jobs:
       - name: Verify configured CUDA architecture targets
         shell: bash
         run: |
-          supported_codes="$(nvcc --list-gpu-code)"
+          # The compiler's code-list command omits feature-specific a and f targets.
+          # Compile the exact flags emitted by the shared Make configuration.
           for architecture in ${ARCH_LIST}; do
-            case "${architecture}" in
-              sm_100) gpu_code=sm_100a ;;
-              sm_103) gpu_code=sm_103a ;;
-              *) gpu_code="${architecture}" ;;
-            esac
-            if ! grep -Fqx "${gpu_code}" <<<"${supported_codes}"; then
-              echo "CUDA 13.0 does not support emitted target ${gpu_code}" >&2
-              exit 1
-            fi
+            make --no-print-directory \
+              -C ch01 \
+              ARCH="${architecture}" \
+              verify-cuda-arch-target
           done
 
       - name: Run dual-architecture compare builds

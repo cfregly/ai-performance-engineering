@@ -23,6 +23,12 @@ COMPARE_CHAPTERS = (
     "ch12",
 )
 ARCHITECTURES = ("sm_100", "sm_103", "sm_120", "sm_121")
+EXPECTED_GENCODE = {
+    "sm_100": "-gencode arch=compute_100a,code=[sm_100a,compute_100a]",
+    "sm_103": "-gencode arch=compute_103a,code=[sm_103a,compute_103a]",
+    "sm_120": "-gencode arch=compute_120,code=[sm_120,compute_120]",
+    "sm_121": "-gencode arch=compute_121,code=[sm_121,compute_121]",
+}
 MAIN_PATTERN = re.compile(r"\bint\s+main\s*\(")
 INTENTIONAL_NON_STANDALONE_MAIN_SOURCES = {
     "ch04": {"nvshmem_ibgda_microbench.cu"},
@@ -31,6 +37,78 @@ INTENTIONAL_NON_STANDALONE_MAIN_SOURCES = {
         "helper_optimized_dynamic_parallelism.cu",
     },
 }
+
+
+@pytest.mark.parametrize("architecture", ARCHITECTURES)
+def test_cuda_arch_probe_emits_the_exact_makefile_target(architecture: str) -> None:
+    result = subprocess.run(
+        ["make", "-n", f"ARCH={architecture}", "verify-cuda-arch-target"],
+        cwd=CODE_ROOT / "ch01",
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert EXPECTED_GENCODE[architecture] in result.stdout
+    assert "cuda_arch_probe.cu" in result.stdout
+    assert " -c " in result.stdout
+
+
+def test_cuda_arch_probe_fails_closed_and_cleans_output(tmp_path: Path) -> None:
+    output_log = tmp_path / "probe-output.txt"
+    nvcc_stub = tmp_path / "nvcc-stub"
+    nvcc_stub.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "output=\n"
+        'while [[ "$#" -gt 0 ]]; do\n'
+        '  if [[ "$1" == "-o" ]]; then\n'
+        '    output="$2"\n'
+        "    break\n"
+        "  fi\n"
+        "  shift\n"
+        "done\n"
+        'printf \'%s\\n\' "$output" > "${CUDA_ARCH_PROBE_OUTPUT_LOG:?}"\n'
+        "printf '%s\\n' partial > \"$output\"\n"
+        "exit 42\n",
+        encoding="utf-8",
+    )
+    nvcc_stub.chmod(0o755)
+    env = os.environ.copy()
+    env["CUDA_ARCH_PROBE_OUTPUT_LOG"] = str(output_log)
+
+    result = subprocess.run(
+        [
+            "make",
+            "--no-print-directory",
+            f"ARCH={ARCHITECTURES[0]}",
+            f"NVCC={nvcc_stub}",
+            "verify-cuda-arch-target",
+        ],
+        cwd=CODE_ROOT / "ch01",
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    probe_output = Path(output_log.read_text(encoding="utf-8").strip())
+    assert result.returncode != 0
+    assert not probe_output.exists()
+
+
+def test_cuda_arch_probe_is_not_a_chapter_default_goal() -> None:
+    result = subprocess.run(
+        ["make", "-qp", f"ARCH={ARCHITECTURES[0]}"],
+        cwd=CODE_ROOT / "ch01",
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode in {0, 1}
+    default_goal = next(
+        line for line in result.stdout.splitlines() if line.startswith(".DEFAULT_GOAL :=")
+    )
+    assert "verify-cuda-arch-target" not in default_goal
 
 
 @pytest.mark.parametrize("chapter", COMPARE_CHAPTERS)

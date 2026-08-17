@@ -106,6 +106,8 @@ CUDA_CXX_STANDARD ?= 17
 CUDA_NVCC_BASE_FLAGS ?= -O3 -std=c++$(CUDA_CXX_STANDARD) $(CUDA_ARCH_GENCODE) --expt-relaxed-constexpr -Xcompiler -fPIC
 CUDA_NVCC_ARCH_FLAGS := $(CUDA_NVCC_BASE_FLAGS) $(HOST_ARCH_FLAGS)
 
+CUDA_ARCH_PROBE_SOURCE := $(abspath $(CUDA_COMMON_DIR)/../scripts/ci/cuda_arch_probe.cu)
+
 # Control whether binaries get suffixed with architecture-specific suffixes.
 USE_ARCH_SUFFIX ?= 1
 ifeq ($(USE_ARCH_SUFFIX),1)
@@ -116,6 +118,13 @@ endif
 
 $(NVTX_STUB_LIB):
 	$(PYTHON) $(NVTX_STUB_SCRIPT) --output $@
+
+.PHONY: verify-cuda-arch-target
+verify-cuda-arch-target:
+	@set -eu; \
+	probe_output="$$(mktemp)"; \
+	trap 'rm -f "$$probe_output"' EXIT HUP INT TERM; \
+	$(NVCC) $(CUDA_NVCC_ARCH_FLAGS) -c "$(CUDA_ARCH_PROBE_SOURCE)" -o "$$probe_output"
 
 # NVTX profiling helpers are opt-in. Set NVTX_ENABLED=1 to enable.
 NVTX_ENABLED ?= 0
