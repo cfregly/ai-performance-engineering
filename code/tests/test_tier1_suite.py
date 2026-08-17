@@ -6,12 +6,14 @@ from pathlib import Path
 
 import core.benchmark.bench_commands as bench_commands
 import core.harness.run_benchmarks as run_benchmarks_module
+import pytest
 from cli.aisp import app
-from core.analysis.history_index import update_history_index
+from core.analysis.history_index import resolve_history_entry_path, update_history_index
 from core.analysis.regressions import compare_suite_summaries
 from core.analysis.trends import build_trend_snapshot
 from core.benchmark.suites.tier1 import (
     _confirm_speedup_regressions,
+    _tier1_baseline_eligible,
     build_tier1_suite_summary,
     load_tier1_suite,
     run_tier1_suite,
@@ -148,34 +150,50 @@ def test_build_tier1_suite_summary_and_history_artifacts(tmp_path: Path) -> None
     assert summary["summary"]["median_speedup"] > 0
     assert summary["summary"]["representative_speedup"] == summary["summary"]["geomean_speedup"]
 
-    block_scaling = next(target for target in summary["targets"] if target["key"] == "block_scaling")
+    block_scaling = next(
+        target for target in summary["targets"] if target["key"] == "block_scaling"
+    )
     assert block_scaling["best_speedup"] == 1.45
     assert block_scaling["best_optimized_time_ms"] == 0.1074 / 1.45
-    assert block_scaling["artifacts"]["nsys_rep"] == "artifacts/block_scaling.nsys-rep"
+    assert block_scaling["artifacts"]["nsys_rep"] == (
+        "tier1_run_a/artifacts/block_scaling.nsys-rep"
+    )
 
-    summary_path = tmp_path / "summary.json"
-    regression_md_path = tmp_path / "regression_summary.md"
-    regression_json_path = tmp_path / "regression_summary.json"
-    trend_snapshot_path = tmp_path / "trend_snapshot.json"
+    history_root = tmp_path / "history"
+    run_dir = history_root / "tier1_run_a"
+    run_dir.mkdir(parents=True)
+    summary_path = run_dir / "summary.json"
+    regression_md_path = run_dir / "regression_summary.md"
+    regression_json_path = run_dir / "regression_summary.json"
+    trend_snapshot_path = run_dir / "trend_snapshot.json"
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     regression_md_path.write_text("# placeholder\n", encoding="utf-8")
     regression_json_path.write_text("{}", encoding="utf-8")
+    trend_snapshot_path.write_text("{}", encoding="utf-8")
 
     updated_index = update_history_index(
-        history_root=tmp_path / "history",
+        history_root=history_root,
         suite=suite,
         summary=summary,
         summary_path=summary_path,
         regression_summary_path=regression_md_path,
         regression_json_path=regression_json_path,
         trend_snapshot_path=trend_snapshot_path,
+        run_accepted=True,
     )
 
     assert updated_index["suite_name"] == "tier1"
+    assert updated_index["history_root"] == "."
     assert len(updated_index["runs"]) == 1
-    assert updated_index["runs"][0]["regression_json_path"] == str(regression_json_path)
+    assert updated_index["runs"][0]["summary_path"] == "tier1_run_a/summary.json"
+    assert updated_index["runs"][0]["regression_json_path"] == (
+        "tier1_run_a/regression_summary.json"
+    )
     assert updated_index["runs"][0]["median_speedup"] == summary["summary"]["median_speedup"]
-    assert updated_index["runs"][0]["representative_speedup"] == summary["summary"]["representative_speedup"]
+    assert (
+        updated_index["runs"][0]["representative_speedup"]
+        == summary["summary"]["representative_speedup"]
+    )
 
     trend = build_trend_snapshot(updated_index)
     assert trend["run_count"] == 1
@@ -183,6 +201,217 @@ def test_build_tier1_suite_summary_and_history_artifacts(tmp_path: Path) -> None
     assert trend["best_speedup_seen"] == summary["summary"]["max_speedup"]
     assert trend["representative_speedup"] == summary["summary"]["representative_speedup"]
     assert trend["avg_median_speedup"] == summary["summary"]["median_speedup"]
+
+
+def test_trend_snapshot_excludes_ineligible_evidence_from_canonical_headlines() -> None:
+    trend = build_trend_snapshot(
+        {
+            "suite_name": "tier1",
+            "runs": [
+                {
+                    "run_id": "tier1_anchor",
+                    "run_accepted": True,
+                    "baseline_eligible": True,
+                    "avg_speedup": 2.0,
+                    "median_speedup": 2.0,
+                    "geomean_speedup": 2.0,
+                    "representative_speedup": 2.0,
+                    "max_speedup": 2.0,
+                },
+                {
+                    "run_id": "tier1_external_import",
+                    "run_accepted": False,
+                    "baseline_eligible": False,
+                    "avg_speedup": 1000.0,
+                    "median_speedup": 1000.0,
+                    "geomean_speedup": 1000.0,
+                    "representative_speedup": 1000.0,
+                    "max_speedup": 1000.0,
+                },
+            ],
+        }
+    )
+
+    assert trend["run_count"] == 1
+    assert trend["evidence_run_count"] == 2
+    assert trend["best_speedup_seen"] == 2.0
+    assert trend["latest_run_id"] == "tier1_anchor"
+    assert trend["latest_evidence_run_id"] == "tier1_external_import"
+
+
+def test_trend_snapshot_orders_runs_by_parsed_time_and_run_id() -> None:
+    trend = build_trend_snapshot(
+        {
+            "suite_name": "tier1",
+            "runs": [
+                {
+                    "run_id": "run_b",
+                    "generated_at": "2026-08-17T00:00:00Z",
+                    "run_accepted": True,
+                    "baseline_eligible": True,
+                },
+                {
+                    "run_id": "run_earlier",
+                    "generated_at": "2026-08-17T00:30:00+01:00",
+                    "run_accepted": False,
+                    "baseline_eligible": False,
+                },
+                {
+                    "run_id": "run_a",
+                    "generated_at": "2026-08-17T02:00:00+02:00",
+                    "run_accepted": True,
+                    "baseline_eligible": True,
+                },
+            ],
+        }
+    )
+
+    assert [row["run_id"] for row in trend["evidence_history"]] == [
+        "run_earlier",
+        "run_a",
+        "run_b",
+    ]
+    assert trend["latest_run_id"] == "run_b"
+    assert trend["latest_evidence_run_id"] == "run_b"
+
+
+def test_build_tier1_suite_summary_uses_portable_evidence_references(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    suite = load_tier1_suite()
+    run_id = "tier1_portable"
+    run_root = tmp_path / "artifacts" / "runs" / run_id
+    result_json = run_root / "results" / "benchmark_test_results.json"
+    result_json.parent.mkdir(parents=True)
+    _write_result_payload(result_json, block_scaling_speedup=1.45, flash_speedup=14.45)
+    payload = json.loads(result_json.read_text(encoding="utf-8"))
+    block_scaling = payload["results"][0]["benchmarks"][0]
+    block_scaling["nsys_rep"] = str(run_root / "profiles" / "block_scaling.nsys-rep")
+    block_scaling["baseline_file"] = str(Path.cwd() / "labs" / "block_scaling" / "baseline.py")
+    result_json.write_text(json.dumps(payload), encoding="utf-8")
+    manifest_path = run_root / "manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    report_path = run_root / "report.md"
+    report_path.write_text("# report\n", encoding="utf-8")
+    monkeypatch.setenv("GITHUB_SHA", "a" * 40)
+
+    summary = build_tier1_suite_summary(
+        result_json,
+        suite,
+        run_id=run_id,
+        manifest_path=manifest_path,
+        report_path=report_path,
+        evidence_artifact_name="tier1-evidence-123-1",
+    )
+
+    target = next(item for item in summary["targets"] if item["key"] == "block_scaling")
+    assert summary["source_result_json"] == ("tier1_portable/results/benchmark_test_results.json")
+    assert summary["source_manifest_json"] == "tier1_portable/manifest.json"
+    assert summary["source_markdown_report"] == "tier1_portable/report.md"
+    assert summary["source_git_commit"] == "a" * 40
+    assert summary["evidence_artifact_name"] == "tier1-evidence-123-1"
+    assert target["baseline_file"] == "labs/block_scaling/baseline.py"
+    assert target["artifacts"]["nsys_rep"] == ("tier1_portable/profiles/block_scaling.nsys-rep")
+    assert str(tmp_path) not in json.dumps(summary)
+
+
+def test_history_index_paths_survive_history_root_relocation(tmp_path: Path) -> None:
+    history_root = tmp_path / "original" / "history"
+    run_dir = history_root / "run_a"
+    run_dir.mkdir(parents=True)
+    summary_path = run_dir / "summary.json"
+    summary_path.write_text("{}", encoding="utf-8")
+
+    relocated_root = tmp_path / "relocated" / "history"
+    relocated_root.parent.mkdir()
+    history_root.rename(relocated_root)
+
+    resolved = resolve_history_entry_path(
+        relocated_root,
+        "run_a/summary.json",
+        run_id="run_a",
+    )
+
+    assert resolved == relocated_root / "run_a" / "summary.json"
+    assert resolved.read_text(encoding="utf-8") == "{}"
+
+
+def test_legacy_absolute_history_path_relocates_by_run_id(tmp_path: Path) -> None:
+    history_root = tmp_path / "history"
+    run_dir = history_root / "run_a"
+    run_dir.mkdir(parents=True)
+    summary_path = run_dir / "summary.json"
+    summary_path.write_text("{}", encoding="utf-8")
+
+    resolved = resolve_history_entry_path(
+        history_root,
+        Path("/retired/runner/workspace/history/run_a/summary.json"),
+        run_id="run_a",
+    )
+
+    assert resolved == summary_path
+
+
+def test_portable_history_path_rejects_escape(tmp_path: Path) -> None:
+    history_root = tmp_path / "history"
+    history_root.mkdir()
+
+    try:
+        resolve_history_entry_path(history_root, "../outside.json", run_id="run_a")
+    except ValueError as exc:
+        assert "escapes" in str(exc)
+        assert str(history_root) not in str(exc)
+        assert "outside.json" not in str(exc)
+    else:
+        raise AssertionError("history path escape was accepted")
+
+
+@pytest.mark.parametrize("run_id", ["../outside", "/tmp/outside", ".", "..", "bad/run"])
+def test_benchmark_run_id_rejects_unsafe_components(run_id: str) -> None:
+    with pytest.raises(ValueError, match="Run id must start"):
+        bench_commands._validate_run_id(run_id)
+
+
+def test_run_tier1_rejects_history_run_collision_before_benchmark(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    history_root = tmp_path / "history"
+    (history_root / "tier1_existing").mkdir(parents=True)
+
+    def _unexpected_execute(**kwargs):
+        raise AssertionError("benchmark must not run after a history collision")
+
+    monkeypatch.setattr(bench_commands, "_execute_benchmarks", _unexpected_execute)
+
+    with pytest.raises(ValueError, match="Refusing to overwrite existing Tier-1 history run"):
+        run_tier1_suite(
+            history_root=history_root,
+            bench_root=tmp_path,
+            run_id="tier1_existing",
+        )
+
+
+def test_run_tier1_rejects_evidence_run_collision_before_benchmark(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    artifacts_root = tmp_path / "artifacts"
+    (artifacts_root / "tier1_existing").mkdir(parents=True)
+
+    def _unexpected_execute(**kwargs):
+        raise AssertionError("benchmark must not run after an evidence collision")
+
+    monkeypatch.setattr(bench_commands, "_execute_benchmarks", _unexpected_execute)
+
+    with pytest.raises(ValueError, match="Refusing to overwrite existing Tier-1 evidence run"):
+        run_tier1_suite(
+            history_root=tmp_path / "history",
+            bench_root=tmp_path,
+            artifacts_dir=str(artifacts_root),
+            run_id="tier1_existing",
+        )
 
 
 def test_compare_suite_summaries_detects_speedup_regression_and_new_targets(tmp_path: Path) -> None:
@@ -194,8 +423,16 @@ def test_compare_suite_summaries_detects_speedup_regression_and_new_targets(tmp_
 
     baseline_summary = build_tier1_suite_summary(baseline_json, suite, run_id="tier1_old")
     current_summary = build_tier1_suite_summary(current_json, suite, run_id="tier1_new")
-    llama_baseline = next(target for target in baseline_summary["targets"] if target["target"] == "labs/real_world_models:llama_3_1_8b")
-    llama_current = next(target for target in current_summary["targets"] if target["target"] == "labs/real_world_models:llama_3_1_8b")
+    llama_baseline = next(
+        target
+        for target in baseline_summary["targets"]
+        if target["target"] == "labs/real_world_models:llama_3_1_8b"
+    )
+    llama_current = next(
+        target
+        for target in current_summary["targets"]
+        if target["target"] == "labs/real_world_models:llama_3_1_8b"
+    )
     llama_baseline["best_speedup"] = 2.49
     llama_baseline["best_optimized_time_ms"] = 13.143 / 2.49
     llama_current["best_speedup"] = 2.20
@@ -214,6 +451,103 @@ def test_compare_suite_summaries_detects_speedup_regression_and_new_targets(tmp_
     )
 
 
+def test_compare_suite_summaries_detects_common_mode_optimized_latency_regression() -> None:
+    baseline = {
+        "run_id": "tier1_anchor",
+        "targets": [
+            {
+                "target": "ch01:demo",
+                "status": "succeeded",
+                "optimization_goal": "performance",
+                "best_speedup": 2.0,
+                "best_optimized_time_ms": 50.0,
+            }
+        ],
+    }
+    current = {
+        "run_id": "tier1_slower",
+        "targets": [
+            {
+                "target": "ch01:demo",
+                "status": "succeeded",
+                "optimization_goal": "performance",
+                "best_speedup": 2.0,
+                "best_optimized_time_ms": 100.0,
+            }
+        ],
+    }
+
+    comparison = compare_suite_summaries(current, baseline)
+
+    assert any(
+        row["target"] == "ch01:demo" and row["reason"] == "optimized_latency"
+        for row in comparison["regressions"]
+    )
+
+
+def test_subthreshold_decline_does_not_move_anchor_before_cumulative_regression() -> None:
+    def _summary(run_id: str, speedup: float, optimized_ms: float) -> dict:
+        return {
+            "run_id": run_id,
+            "targets": [
+                {
+                    "target": "ch01:demo",
+                    "status": "succeeded",
+                    "optimization_goal": "performance",
+                    "best_speedup": speedup,
+                    "best_optimized_time_ms": optimized_ms,
+                }
+            ],
+        }
+
+    anchor = _summary("tier1_anchor", 2.0, 50.0)
+    first_drift = _summary("tier1_first_drift", 1.92, 52.0)
+    cumulative_drift = _summary("tier1_cumulative_drift", 1.84, 54.5)
+
+    first_comparison = compare_suite_summaries(first_drift, anchor)
+    assert not first_comparison["regressions"]
+    assert first_comparison["anchor_declines"]
+    assert not _tier1_baseline_eligible(
+        run_accepted=True,
+        comparison=first_comparison,
+        accept_comparison=False,
+    )
+
+    cumulative_comparison = compare_suite_summaries(cumulative_drift, anchor)
+    assert cumulative_comparison["regressions"]
+
+
+def test_unratified_improvement_outlier_does_not_replace_anchor() -> None:
+    def _summary(run_id: str, speedup: float, optimized_ms: float) -> dict:
+        return {
+            "run_id": run_id,
+            "targets": [
+                {
+                    "target": "ch01:demo",
+                    "status": "succeeded",
+                    "optimization_goal": "performance",
+                    "best_speedup": speedup,
+                    "best_optimized_time_ms": optimized_ms,
+                }
+            ],
+        }
+
+    anchor = _summary("tier1_anchor", 2.0, 50.0)
+    outlier = _summary("tier1_outlier", 2.2, 45.45)
+    normal = _summary("tier1_normal", 2.0, 50.0)
+
+    outlier_comparison = compare_suite_summaries(outlier, anchor)
+    assert outlier_comparison["improvements"]
+    assert not _tier1_baseline_eligible(
+        run_accepted=True,
+        comparison=outlier_comparison,
+        accept_comparison=False,
+    )
+
+    normal_comparison = compare_suite_summaries(normal, anchor)
+    assert not normal_comparison["regressions"]
+
+
 def test_build_tier1_suite_summary_raises_clear_error_for_malformed_results(tmp_path: Path) -> None:
     suite = load_tier1_suite()
     result_json = tmp_path / "results.json"
@@ -227,7 +561,7 @@ def test_build_tier1_suite_summary_raises_clear_error_for_malformed_results(tmp_
         raise AssertionError("Expected malformed result JSON to raise ValueError")
 
     assert "tier-1 benchmark result JSON" in message
-    assert str(result_json) in message
+    assert str(result_json) not in message
 
 
 def test_compare_suite_summaries_ignores_small_absolute_speedup_drift(tmp_path: Path) -> None:
@@ -282,7 +616,9 @@ def test_compare_suite_summaries_uses_memory_goal_for_kv_target(tmp_path: Path) 
     )
 
 
-def test_compare_suite_summaries_tracks_memory_regression_for_memory_goal_target(tmp_path: Path) -> None:
+def test_compare_suite_summaries_tracks_memory_regression_for_memory_goal_target(
+    tmp_path: Path,
+) -> None:
     suite = load_tier1_suite()
     baseline_json = tmp_path / "baseline.json"
     current_json = tmp_path / "current.json"
@@ -312,7 +648,50 @@ def test_compare_suite_summaries_tracks_memory_regression_for_memory_goal_target
     )
 
 
-def test_confirm_speedup_regressions_suppresses_unconfirmed_noise(tmp_path: Path, monkeypatch) -> None:
+def test_compare_suite_summaries_detects_common_mode_optimized_memory_regression() -> None:
+    baseline = {
+        "run_id": "tier1_memory_anchor",
+        "targets": [
+            {
+                "target": "labs/kv_optimization:kv_standard",
+                "status": "succeeded",
+                "optimization_goal": "memory",
+                "baseline_memory_mb": 1024.0,
+                "best_memory_savings_pct": 50.0,
+                "best_optimized_memory_mb": 512.0,
+            }
+        ],
+    }
+    current = {
+        "run_id": "tier1_memory_slower",
+        "targets": [
+            {
+                "target": "labs/kv_optimization:kv_standard",
+                "status": "succeeded",
+                "optimization_goal": "memory",
+                "baseline_memory_mb": 2048.0,
+                "best_memory_savings_pct": 50.0,
+                "best_optimized_memory_mb": 1024.0,
+            }
+        ],
+    }
+
+    comparison = compare_suite_summaries(current, baseline)
+
+    assert any(
+        row["target"] == "labs/kv_optimization:kv_standard"
+        and row["reason"] == "optimized_memory"
+        for row in comparison["regressions"]
+    )
+
+
+def _run_llama_speedup_recheck(
+    tmp_path: Path,
+    monkeypatch,
+    *,
+    recheck_status: str | None,
+    recheck_speedup: float = 2.55,
+) -> dict[str, object]:
     suite = load_tier1_suite()
     baseline_json = tmp_path / "baseline.json"
     current_json = tmp_path / "current.json"
@@ -333,8 +712,19 @@ def test_confirm_speedup_regressions_suppresses_unconfirmed_noise(tmp_path: Path
         recheck_json,
         block_scaling_speedup=1.62,
         flash_speedup=14.45,
-        llama_speedup=2.55,
+        llama_speedup=recheck_speedup,
     )
+    recheck_payload = json.loads(recheck_json.read_text(encoding="utf-8"))
+    llama_result = next(
+        chapter
+        for chapter in recheck_payload["results"]
+        if chapter["chapter"] == "labs_real_world_models"
+    )
+    if recheck_status is None:
+        llama_result["benchmarks"] = []
+    else:
+        llama_result["benchmarks"][0]["status"] = recheck_status
+    recheck_json.write_text(json.dumps(recheck_payload, indent=2), encoding="utf-8")
 
     baseline_summary = build_tier1_suite_summary(baseline_json, suite, run_id="tier1_old")
     current_summary = build_tier1_suite_summary(current_json, suite, run_id="tier1_new")
@@ -358,7 +748,7 @@ def test_confirm_speedup_regressions_suppresses_unconfirmed_noise(tmp_path: Path
 
     monkeypatch.setattr(bench_commands, "_execute_benchmarks", _fake_execute_benchmarks)
 
-    updated = _confirm_speedup_regressions(
+    return _confirm_speedup_regressions(
         comparison=comparison,
         current_summary=current_summary,
         previous_summary=baseline_summary,
@@ -411,6 +801,13 @@ def test_confirm_speedup_regressions_suppresses_unconfirmed_noise(tmp_path: Path
         llm_explain=False,
     )
 
+
+def test_confirm_speedup_regressions_suppresses_unconfirmed_noise(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    updated = _run_llama_speedup_recheck(tmp_path, monkeypatch, recheck_status="succeeded")
+
     assert not any(
         row["target"] == "labs/real_world_models:llama_3_1_8b" and row["reason"] == "speedup"
         for row in updated["regressions"]
@@ -421,6 +818,188 @@ def test_confirm_speedup_regressions_suppresses_unconfirmed_noise(tmp_path: Path
         for row in updated["suppressed_regressions"]
     )
     assert updated["rechecks"][0]["confirmed_regression"] is False
+    assert updated["regression_rechecks_path"] == "suite_run/regression_rechecks.json"
+
+
+def test_confirm_speedup_regressions_keeps_regression_when_recheck_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    updated = _run_llama_speedup_recheck(tmp_path, monkeypatch, recheck_status="failed_runtime")
+
+    assert any(
+        row["target"] == "labs/real_world_models:llama_3_1_8b" and row["reason"] == "speedup"
+        for row in updated["regressions"]
+    )
+    assert not updated["suppressed_regressions"]
+    assert updated["rechecks"][0]["recheck_summary"]["status"] == "failed_runtime"
+    assert updated["rechecks"][0]["confirmed_regression"] is True
+
+
+def test_confirm_speedup_regressions_keeps_regression_when_recheck_target_is_missing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    updated = _run_llama_speedup_recheck(tmp_path, monkeypatch, recheck_status=None)
+
+    assert any(
+        row["target"] == "labs/real_world_models:llama_3_1_8b" and row["reason"] == "speedup"
+        for row in updated["regressions"]
+    )
+    assert not updated["suppressed_regressions"]
+    assert updated["rechecks"][0]["recheck_summary"]["status"] == "missing"
+    assert updated["rechecks"][0]["confirmed_regression"] is True
+
+
+def test_confirm_speedup_regressions_keeps_regression_when_recheck_metrics_are_invalid(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    updated = _run_llama_speedup_recheck(
+        tmp_path,
+        monkeypatch,
+        recheck_status="succeeded",
+        recheck_speedup=0.0,
+    )
+
+    assert any(
+        row["target"] == "labs/real_world_models:llama_3_1_8b" and row["reason"] == "speedup"
+        for row in updated["regressions"]
+    )
+    assert not updated["suppressed_regressions"]
+    assert updated["rechecks"][0]["recheck_summary"]["status"] == "succeeded"
+    assert updated["rechecks"][0]["recheck_metrics_valid"] is False
+    assert updated["rechecks"][0]["confirmed_regression"] is True
+
+
+def test_recheck_suppression_does_not_advance_original_regressed_summary(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    comparison = _run_llama_speedup_recheck(
+        tmp_path,
+        monkeypatch,
+        recheck_status="succeeded",
+        recheck_speedup=2.49,
+    )
+
+    assert comparison["suppressed_regressions"]
+    assert not comparison["regressions"]
+    assert _tier1_baseline_eligible(
+        run_accepted=True,
+        comparison=comparison,
+        accept_comparison=False,
+    ) is False
+    assert _tier1_baseline_eligible(
+        run_accepted=True,
+        comparison=comparison,
+        accept_comparison=True,
+    ) is False
+
+
+def test_run_tier1_rejects_preexisting_suppressed_anchor(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    suite = load_tier1_suite()
+    history_root = tmp_path / "history"
+    prior_run_id = "tier1_suppressed_anchor"
+    prior_run_dir = history_root / prior_run_id
+    prior_run_dir.mkdir(parents=True)
+
+    prior_result = tmp_path / "prior_results.json"
+    current_result = tmp_path / "current_results.json"
+    _write_result_payload(prior_result, block_scaling_speedup=1.60, flash_speedup=12.0)
+    _write_result_payload(current_result, block_scaling_speedup=1.61, flash_speedup=12.1)
+    prior_summary = build_tier1_suite_summary(prior_result, suite, run_id=prior_run_id)
+    (prior_run_dir / "summary.json").write_text(
+        json.dumps(prior_summary, indent=2),
+        encoding="utf-8",
+    )
+    (prior_run_dir / "regression_summary.md").write_text("# suppressed\n", encoding="utf-8")
+    (prior_run_dir / "regression_summary.json").write_text(
+        json.dumps(
+            {
+                "baseline_run_id": "tier1_older_anchor",
+                "anchor_declines": [],
+                "missing_targets": [],
+                "regressions": [],
+                "suppressed_regressions": [
+                    {
+                        "target": "labs/real_world_models:llama_3_1_8b",
+                        "reason": "speedup",
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (history_root / "index.json").write_text(
+        json.dumps(
+            {
+                "suite_name": suite.name,
+                "suite_version": suite.version,
+                "history_root": ".",
+                "runs": [
+                    {
+                        "run_id": prior_run_id,
+                        "generated_at": "2026-08-16T00:00:00Z",
+                        "summary_path": f"{prior_run_id}/summary.json",
+                        "regression_summary_path": (
+                            f"{prior_run_id}/regression_summary.md"
+                        ),
+                        "regression_json_path": (
+                            f"{prior_run_id}/regression_summary.json"
+                        ),
+                        "run_accepted": True,
+                        "baseline_eligible": True,
+                        "baseline_acceptance": "accept_history_anchor",
+                        "baseline_acceptance_actor": "reviewer",
+                        "baseline_acceptance_note": "legacy acceptance",
+                        "baseline_acceptance_workflow_run": (
+                            "https://github.com/example/repo/actions/runs/1"
+                        ),
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    source_commit = "a" * 40
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps({"git": {"commit": source_commit, "dirty": False}}),
+        encoding="utf-8",
+    )
+    report_path = tmp_path / "report.md"
+    report_path.write_text("# report\n", encoding="utf-8")
+    monkeypatch.setenv("GITHUB_SHA", source_commit)
+
+    def _fake_execute_benchmarks(**kwargs):
+        return {
+            "run_id": "tier1_current",
+            "output_json": str(current_result),
+            "manifest_path": str(manifest_path),
+            "output_markdown": str(report_path),
+            "total_failed": 0,
+        }
+
+    monkeypatch.setattr(bench_commands, "_execute_benchmarks", _fake_execute_benchmarks)
+
+    result = run_tier1_suite(
+        history_root=history_root,
+        bench_root=tmp_path,
+        profile_type="minimal",
+        output_format="json",
+        artifacts_dir=str(tmp_path / "artifacts"),
+        run_id="tier1_current",
+    )
+
+    assert result["comparison"]["baseline_run_id"] is None
+    assert result["history_integrity_failed"] is True
+    assert any("suppressed regressions" in warning for warning in result["warnings"])
 
 
 def test_run_tier1_suite_surfaces_history_warnings(tmp_path: Path, monkeypatch) -> None:
@@ -437,7 +1016,11 @@ def test_run_tier1_suite_surfaces_history_warnings(tmp_path: Path, monkeypatch) 
     report_path = tmp_path / "report.md"
     report_path.write_text("# report\n", encoding="utf-8")
 
+    benchmark_called = False
+
     def _fake_execute_benchmarks(**kwargs):
+        nonlocal benchmark_called
+        benchmark_called = True
         return {
             "run_id": "tier1_history_warning_demo",
             "output_json": str(result_json),
@@ -448,22 +1031,18 @@ def test_run_tier1_suite_surfaces_history_warnings(tmp_path: Path, monkeypatch) 
 
     monkeypatch.setattr(bench_commands, "_execute_benchmarks", _fake_execute_benchmarks)
 
-    result = run_tier1_suite(
-        history_root=history_root,
-        bench_root=tmp_path,
-        profile_type="minimal",
-        output_format="json",
-        artifacts_dir=str(tmp_path / "artifacts"),
-        run_id="tier1_history_warning_demo",
-    )
+    with pytest.raises(ValueError, match="JSONDecodeError"):
+        run_tier1_suite(
+            history_root=history_root,
+            bench_root=tmp_path,
+            profile_type="minimal",
+            output_format="json",
+            artifacts_dir=str(tmp_path / "artifacts"),
+            run_id="tier1_history_warning_demo",
+        )
 
-    assert result["warnings"]
-    assert any(str(bad_index) in warning for warning in result["warnings"])
-    assert result["comparison"]["warnings"]
-    assert any(str(bad_index) in warning for warning in result["comparison"]["warnings"])
-    regression_text = Path(result["regression_summary_path"]).read_text(encoding="utf-8")
-    assert "## Warnings" in regression_text
-    assert str(bad_index) in regression_text
+    assert benchmark_called is False
+    assert bad_index.read_text(encoding="utf-8") == "{not-json"
 
 
 def test_tier1_doc_mentions_current_targets_and_artifacts() -> None:
@@ -594,7 +1173,9 @@ def test_external_asset_preflight_is_deferred_for_mixed_batches(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    chapter_dir = Path(run_benchmarks_module.__file__).resolve().parents[2] / "labs" / "trtllm_phi_3_5_moe"
+    chapter_dir = (
+        Path(run_benchmarks_module.__file__).resolve().parents[2] / "labs" / "trtllm_phi_3_5_moe"
+    )
     filters = {"labs/trtllm_phi_3_5_moe": {"trtllm_phi_3_5_moe"}}
     missing_model = tmp_path / "missing-model"
     missing_engine = tmp_path / "missing-engine"
@@ -696,18 +1277,34 @@ def test_bench_run_passes_explicit_ncu_replay_mode(tmp_path: Path, monkeypatch) 
     assert captured["ncu_replay_mode"] == "application"
 
 
+def _complete_tier1_cli_result(tmp_path: Path, *, run_id: str = "tier1_smoke") -> dict:
+    return {
+        "run_accepted": True,
+        "baseline_eligible": True,
+        "execution": {"run_id": run_id, "total_failed": 0},
+        "summary": {
+            "summary": {
+                "target_count": 1,
+                "succeeded": 1,
+                "failed": 0,
+                "skipped": 0,
+                "missing": 0,
+            }
+        },
+        "comparison": {"regressions": [], "missing_targets": []},
+        "summary_path": tmp_path / "summary.json",
+        "regression_summary_path": tmp_path / "regressions.json",
+        "trend_snapshot_path": tmp_path / "trend.json",
+        "history_root": tmp_path / "history",
+    }
+
+
 def test_run_tier1_defaults_ncu_replay_mode_to_none(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     def _fake_run_tier1_suite(**kwargs):
         captured.update(kwargs)
-        return {
-            "execution": {"run_id": "tier1_smoke", "total_failed": 0},
-            "summary_path": tmp_path / "summary.json",
-            "regression_summary_path": tmp_path / "regressions.json",
-            "trend_snapshot_path": tmp_path / "trend.json",
-            "history_root": tmp_path / "history",
-        }
+        return _complete_tier1_cli_result(tmp_path)
 
     monkeypatch.setattr("core.benchmark.suites.tier1.run_tier1_suite", _fake_run_tier1_suite)
 
@@ -729,13 +1326,7 @@ def test_run_tier1_passes_explicit_ncu_replay_mode(tmp_path: Path, monkeypatch) 
 
     def _fake_run_tier1_suite(**kwargs):
         captured.update(kwargs)
-        return {
-            "execution": {"run_id": "tier1_smoke", "total_failed": 0},
-            "summary_path": tmp_path / "summary.json",
-            "regression_summary_path": tmp_path / "regressions.json",
-            "trend_snapshot_path": tmp_path / "trend.json",
-            "history_root": tmp_path / "history",
-        }
+        return _complete_tier1_cli_result(tmp_path)
 
     monkeypatch.setattr("core.benchmark.suites.tier1.run_tier1_suite", _fake_run_tier1_suite)
 
@@ -759,13 +1350,7 @@ def test_run_tier1_passes_expectation_write_flags(tmp_path: Path, monkeypatch) -
 
     def _fake_run_tier1_suite(**kwargs):
         captured.update(kwargs)
-        return {
-            "execution": {"run_id": "tier1_smoke", "total_failed": 0},
-            "summary_path": tmp_path / "summary.json",
-            "regression_summary_path": tmp_path / "regressions.json",
-            "trend_snapshot_path": tmp_path / "trend.json",
-            "history_root": tmp_path / "history",
-        }
+        return _complete_tier1_cli_result(tmp_path)
 
     monkeypatch.setattr("core.benchmark.suites.tier1.run_tier1_suite", _fake_run_tier1_suite)
 
@@ -787,17 +1372,36 @@ def test_run_tier1_passes_expectation_write_flags(tmp_path: Path, monkeypatch) -
     assert captured["allow_mixed_provenance"] is True
 
 
-def test_run_tier1_cli_exits_nonzero_when_suite_summary_reports_failures(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize("option", ["--accept-history-anchor", "--acceptance-note"])
+def test_run_tier1_cli_does_not_advertise_post_benchmark_promotion_options(
+    option: str,
+) -> None:
+    args = ["bench", "run-tier1", option]
+    if option == "--acceptance-note":
+        args.append("reviewed")
+
+    result = CliRunner().invoke(app, args)
+
+    assert result.exit_code != 0
+    assert "No such option" in result.stdout
+
+
+def test_run_tier1_cli_exits_nonzero_when_suite_summary_reports_failures(
+    tmp_path: Path, monkeypatch
+) -> None:
     def _fake_run_tier1_suite(**kwargs):
         return {
             "execution": {"run_id": "tier1_failed_smoke", "total_failed": 0},
             "summary": {
                 "summary": {
+                    "target_count": 6,
                     "failed": 1,
                     "skipped": 0,
                     "succeeded": 5,
+                    "missing": 0,
                 }
             },
+            "comparison": {"regressions": [], "missing_targets": []},
             "summary_path": tmp_path / "summary.json",
             "regression_summary_path": tmp_path / "regressions.json",
             "trend_snapshot_path": tmp_path / "trend.json",
@@ -817,3 +1421,103 @@ def test_run_tier1_cli_exits_nonzero_when_suite_summary_reports_failures(tmp_pat
 
     assert result.exit_code == 1, result.stdout
     assert '"run_id": "tier1_failed_smoke"' in result.stdout
+
+
+def test_run_tier1_cli_exits_nonzero_when_baseline_metrics_are_ineligible(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    ineligible_result = _complete_tier1_cli_result(
+        tmp_path,
+        run_id="tier1_invalid_metrics",
+    )
+    ineligible_result["baseline_eligible"] = False
+    ineligible_result["run_accepted"] = False
+    monkeypatch.setattr(
+        "core.benchmark.suites.tier1.run_tier1_suite",
+        lambda **kwargs: ineligible_result,
+    )
+
+    result = CliRunner().invoke(app, ["bench", "run-tier1"])
+
+    assert result.exit_code == 1, result.stdout
+    assert '"run_id": "tier1_invalid_metrics"' in result.stdout
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda result: result.pop("summary"),
+        lambda result: result["summary"].pop("summary"),
+        lambda result: result["summary"]["summary"].update(target_count=0, succeeded=0),
+        lambda result: result["summary"]["summary"].update(skipped=1, succeeded=0),
+        lambda result: result["summary"]["summary"].update(missing=1, succeeded=0),
+        lambda result: result["summary"]["summary"].update(failed=-1),
+        lambda result: result["summary"]["summary"].update(succeeded=0),
+        lambda result: result["execution"].update(total_failed=1),
+        lambda result: result.pop("comparison"),
+        lambda result: result["comparison"].update(regressions=[{"target": "ch01:demo"}]),
+        lambda result: result["comparison"].update(missing_targets=[{"target": "ch01:old"}]),
+        lambda result: result.update(history_integrity_failed=True),
+        lambda result: result.update(run_accepted=False, baseline_eligible=False),
+    ],
+)
+def test_tier1_result_failure_count_fails_closed(
+    tmp_path: Path,
+    mutation,
+) -> None:
+    result = _complete_tier1_cli_result(tmp_path)
+    mutation(result)
+
+    assert bench_commands._tier1_result_failure_count(result) > 0
+
+
+def test_tier1_result_failure_count_allows_explicitly_accepted_comparison(
+    tmp_path: Path,
+) -> None:
+    result = _complete_tier1_cli_result(tmp_path)
+    result["comparison"] = {
+        "regressions": [{"target": "ch01:demo"}],
+        "missing_targets": [{"target": "ch01:old"}],
+    }
+
+    assert (
+        bench_commands._tier1_result_failure_count(
+            result,
+            allow_comparison_regressions=True,
+        )
+        == 0
+    )
+
+
+def test_tier1_result_failure_count_accepts_run_that_does_not_advance_baseline(
+    tmp_path: Path,
+) -> None:
+    result = _complete_tier1_cli_result(tmp_path)
+    result["baseline_eligible"] = False
+
+    assert bench_commands._tier1_result_failure_count(result) == 0
+
+
+@pytest.mark.parametrize(
+    "comparison",
+    [
+        {},
+        {"regressions": [], "missing_targets": None},
+        {"regressions": None, "missing_targets": []},
+    ],
+)
+def test_tier1_result_failure_count_rejects_malformed_accepted_comparison(
+    tmp_path: Path,
+    comparison: dict,
+) -> None:
+    result = _complete_tier1_cli_result(tmp_path)
+    result["comparison"] = comparison
+
+    assert (
+        bench_commands._tier1_result_failure_count(
+            result,
+            allow_comparison_regressions=True,
+        )
+        > 0
+    )

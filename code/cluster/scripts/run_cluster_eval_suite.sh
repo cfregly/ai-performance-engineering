@@ -3750,6 +3750,19 @@ if [[ "$RENDER_LOCALHOST_REPORT" -eq 1 ]]; then
     --publish-notes "${ROOT_DIR}/field-report-localhost-notes.md"
 fi
 
+# Rewrite the canonical manifest after every recorded suite step and report
+# artifact is stable. This direct call is intentionally not redirected into
+# the run tree, so every listed file keeps the digest captured here.
+final_manifest_args=("${manifest_args[@]}" --finalize)
+if ! python3 "${ROOT_DIR}/scripts/write_manifest.py" "${final_manifest_args[@]}"; then
+  echo "ERROR: final manifest write failed: ${MANIFEST_PATH}" >&2
+  fail=1
+fi
+if [[ ! -f "${MANIFEST_PATH}" ]]; then
+  echo "ERROR: suite completed without a final manifest: ${MANIFEST_PATH}" >&2
+  fail=1
+fi
+
 echo ""
 echo "========================================"
 echo "Suite Complete"

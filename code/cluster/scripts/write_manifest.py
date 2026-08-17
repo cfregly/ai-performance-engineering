@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -30,17 +32,81 @@ def _read_json_if_exists(path: Path) -> Optional[Any]:
         return None
 
 
+def _git_provenance(worktree: Path) -> Dict[str, Any]:
+    commit: Optional[str] = None
+    dirty: Optional[bool] = None
+    errors: List[str] = []
+    try:
+        commit_probe = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(worktree),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        raw_commit = str(commit_probe.stdout or "").strip()
+        if commit_probe.returncode != 0:
+            errors.append(f"git rev-parse exited with code {commit_probe.returncode}")
+        elif re.fullmatch(r"[0-9a-fA-F]{40}", raw_commit) is None:
+            errors.append("git rev-parse returned a malformed commit")
+        else:
+            commit = raw_commit
+    except subprocess.TimeoutExpired:
+        errors.append("git rev-parse timed out")
+    except (FileNotFoundError, OSError, subprocess.SubprocessError) as exc:
+        errors.append(f"git rev-parse failed: {type(exc).__name__}")
+
+    try:
+        status_probe = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=normal"],
+            cwd=str(worktree),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        if status_probe.returncode != 0:
+            errors.append(f"git status exited with code {status_probe.returncode}")
+        else:
+            dirty = bool(str(status_probe.stdout or "").strip())
+    except subprocess.TimeoutExpired:
+        errors.append("git status timed out")
+    except (FileNotFoundError, OSError, subprocess.SubprocessError) as exc:
+        errors.append(f"git status failed: {type(exc).__name__}")
+
+    return {
+        "commit": commit,
+        "dirty": dirty,
+        "probe_ok": not errors and commit is not None and dirty is not None,
+        "errors": errors,
+    }
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Write a manifest JSON for a cluster eval RUN_ID.")
-    p.add_argument("--root", default="", help="Cluster root (default: inferred from this script location)")
+    p.add_argument(
+        "--root", default="", help="Cluster root (default: inferred from this script location)"
+    )
     p.add_argument("--run-id", required=True, help="RUN_ID prefix")
-    p.add_argument("--run-dir", default="", help="Explicit run directory (default: <cluster_root>/runs/<run_id> when present)")
+    p.add_argument(
+        "--run-dir",
+        default="",
+        help="Explicit run directory (default: <cluster_root>/runs/<run_id> when present)",
+    )
     p.add_argument("--hosts", default="", help="Comma-separated host list (optional)")
-    p.add_argument("--labels", default="", help="Comma-separated labels (optional; must match host count)")
+    p.add_argument(
+        "--labels", default="", help="Comma-separated labels (optional; must match host count)"
+    )
     p.add_argument(
         "--include-figures",
         action="store_true",
         help="Include figure artifacts in the manifest.",
+    )
+    p.add_argument(
+        "--finalize",
+        action="store_true",
+        help="Emit terminal succeeded or partial status after all suite steps are stable.",
     )
     return p.parse_args()
 
@@ -142,16 +208,49 @@ def _artifact_role_for(rel_path: str) -> str | None:
 def _suite_steps_summary(run_dir: Path, run_id: str) -> Dict[str, Any]:
     suite_steps_path = run_dir / "structured" / f"{run_id}_suite_steps.json"
     payload = _read_json_if_exists(suite_steps_path)
-    steps = payload if isinstance(payload, list) else []
-    failed_steps: List[Dict[str, Any]] = []
+    malformed_steps: List[Dict[str, Any]] = []
+    if suite_steps_path.exists() and not isinstance(payload, list):
+        malformed_steps.append(
+            {
+                "name": None,
+                "exit_code": None,
+                "status": "invalid_suite_steps_payload",
+                "log": None,
+            }
+        )
+    recorded_steps = payload if isinstance(payload, list) else []
+    latest_by_name: Dict[str, Dict[str, Any]] = {}
+    for step in recorded_steps:
+        if not isinstance(step, dict):
+            malformed_steps.append(
+                {
+                    "name": None,
+                    "exit_code": None,
+                    "status": "invalid_suite_step",
+                    "log": None,
+                }
+            )
+            continue
+        name = str(step.get("name") or "").strip()
+        if name:
+            latest_by_name[name] = step
+        else:
+            malformed_steps.append(
+                {
+                    "name": None,
+                    "exit_code": None,
+                    "status": "suite_step_name_missing",
+                    "log": step.get("log_path") or step.get("log"),
+                }
+            )
+    steps = list(latest_by_name.values())
+    failed_steps: List[Dict[str, Any]] = list(malformed_steps)
     completed_steps = 0
     for step in steps:
-        if not isinstance(step, dict):
-            continue
         try:
-            exit_code = int(step.get("exit_code", 0) or 0)
-        except Exception:
-            exit_code = 0
+            exit_code = int(step["exit_code"])
+        except (KeyError, TypeError, ValueError):
+            exit_code = None
         if exit_code == 0:
             completed_steps += 1
         else:
@@ -160,11 +259,12 @@ def _suite_steps_summary(run_dir: Path, run_id: str) -> Dict[str, Any]:
                     "name": step.get("name"),
                     "exit_code": exit_code,
                     "status": step.get("status"),
-                    "log": step.get("log"),
+                    "log": step.get("log_path") or step.get("log"),
                 }
             )
     return {
         "suite_steps_path": str(suite_steps_path) if suite_steps_path.exists() else None,
+        "recorded_attempt_count": len(recorded_steps),
         "step_count": len(steps),
         "completed_step_count": completed_steps,
         "failed_step_count": len(failed_steps),
@@ -175,7 +275,11 @@ def _suite_steps_summary(run_dir: Path, run_id: str) -> Dict[str, Any]:
 def _progress_summary(run_dir: Path) -> Dict[str, Any]:
     progress_path = run_dir / "progress" / "run_progress.json"
     payload = _read_json_if_exists(progress_path)
-    current = payload.get("current") if isinstance(payload, dict) and isinstance(payload.get("current"), dict) else {}
+    current = (
+        payload.get("current")
+        if isinstance(payload, dict) and isinstance(payload.get("current"), dict)
+        else {}
+    )
     metrics = current.get("metrics") if isinstance(current.get("metrics"), dict) else {}
     return {
         "progress_path": str(progress_path) if progress_path.exists() else None,
@@ -208,7 +312,8 @@ def _fabric_scorecard_summary(run_dir: Path, run_id: str) -> Dict[str, Any]:
     degraded_families = [
         name
         for name, values in families.items()
-        if str((values or {}).get("completeness") or "") not in {"full_stack_verified", "runtime_verified"}
+        if str((values or {}).get("completeness") or "")
+        not in {"full_stack_verified", "runtime_verified"}
     ]
     return {
         "scorecard_path": str(scorecard_path),
@@ -218,7 +323,12 @@ def _fabric_scorecard_summary(run_dir: Path, run_id: str) -> Dict[str, Any]:
     }
 
 
-def _semantic_manifest_fields(run_dir: Optional[Path], run_id: str) -> Dict[str, Any]:
+def _semantic_manifest_fields(
+    run_dir: Optional[Path],
+    run_id: str,
+    *,
+    finalize: bool,
+) -> Dict[str, Any]:
     if run_dir is None:
         return {
             "status": None,
@@ -238,17 +348,22 @@ def _semantic_manifest_fields(run_dir: Optional[Path], run_id: str) -> Dict[str,
         issues.append(f"{suite['failed_step_count']} suite step(s) failed")
     if fabric.get("scorecard_status") == "partial":
         issues.append("fabric completeness is partial for one or more families")
+    if str(fabric.get("scorecard_status") or "").strip().lower() in {"error", "failed"}:
+        issues.append("fabric scorecard reported a failed stage")
 
-    if suite["failed_step_count"]:
+    if suite["failed_step_count"] or str(fabric.get("scorecard_status") or "").strip().lower() in {
+        "error",
+        "failed",
+    }:
         suite_status = "failed"
         success = False
+    elif not finalize:
+        suite_status = "running" if suite["step_count"] else "unknown"
+        success = None
     elif fabric.get("scorecard_status") == "partial":
         suite_status = "partial"
         success = True
-    elif str(progress.get("status") or "") == "running":
-        suite_status = "running"
-        success = None
-    elif str(progress.get("status") or "") == "completed" or suite["step_count"]:
+    elif suite["step_count"]:
         suite_status = "succeeded"
         success = True
     else:
@@ -275,6 +390,7 @@ def build_manifest_payload(
     include_figures: bool,
     hosts: List[str],
     labels: List[str],
+    finalize: bool = False,
 ) -> Tuple[Dict[str, Any], Path]:
     if run_dir is not None:
         paths = _collect_run_dir_paths(run_dir, include_figures)
@@ -307,14 +423,16 @@ def build_manifest_payload(
         label = labels[i] if labels else _sanitize_label(h)
         nodes.append({"label": label, "host": h})
 
-    semantic = _semantic_manifest_fields(run_dir, run_id)
+    semantic = _semantic_manifest_fields(run_dir, run_id, finalize=finalize)
     manifest: Dict[str, Any] = {
         "manifest_version": 2,
         "run_id": run_id,
         "artifact_root": artifact_root,
         "manifest_mode": manifest_mode,
+        "finalized": bool(finalize),
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "nodes": nodes,
+        "git": _git_provenance(cluster_root),
         "status": semantic["status"],
         "suite_status": semantic["suite_status"],
         "success": semantic["success"],
@@ -353,11 +471,18 @@ def main() -> int:
         include_figures=args.include_figures,
         hosts=hosts,
         labels=labels,
+        finalize=args.finalize,
     )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
     print(out_path)
+    if args.finalize and (
+        manifest.get("status") not in {"succeeded", "partial", "failed"}
+        or manifest.get("success") not in {True, False}
+        or manifest.get("git", {}).get("probe_ok") is not True
+    ):
+        return 2
     return 0
 
 

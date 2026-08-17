@@ -51,8 +51,40 @@ def test_active_workflows_live_at_git_root() -> None:
         assert defaults["run"]["working-directory"] == "code"
 
 
+def test_workflows_use_current_node24_action_majors() -> None:
+    expected_actions = {
+        "actions/checkout": "v7",
+        "actions/download-artifact": "v7",
+        "actions/setup-node": "v7",
+        "actions/setup-python": "v7",
+        "actions/upload-artifact": "v7",
+    }
+    observed_actions: set[str] = set()
+
+    workflow_paths = sorted({*WORKFLOW_ROOT.glob("*.yml"), *WORKFLOW_ROOT.glob("*.yaml")})
+    assert workflow_paths
+
+    for workflow_path in workflow_paths:
+        payload = _load_workflow(workflow_path.name)
+        jobs = payload["jobs"]
+        assert isinstance(jobs, dict)
+        for job in jobs.values():
+            for step in job.get("steps", []):
+                action_ref = step.get("uses")
+                if not isinstance(action_ref, str) or not action_ref.startswith("actions/"):
+                    continue
+                action_name, version = action_ref.split("@", maxsplit=1)
+                assert version == expected_actions[action_name]
+                observed_actions.add(action_name)
+
+    assert observed_actions == set(expected_actions)
+
+
 def test_dual_arch_workflow_is_gpu_independent_and_cuda_13_bounded() -> None:
     payload = _load_workflow("dual-arch-compare.yml")
+    triggers = payload["on"]
+    assert triggers["push"]["branches"] == ["main", "develop"]
+    assert triggers["pull_request"]["branches"] == ["main", "develop"]
     jobs = payload["jobs"]
     assert isinstance(jobs, dict)
     compare_job = jobs["compare-builds"]
@@ -60,6 +92,7 @@ def test_dual_arch_workflow_is_gpu_independent_and_cuda_13_bounded() -> None:
     assert compare_job["env"] == {
         "ARCH_LIST": "sm_100 sm_103 sm_120 sm_121",
         "AUTO_ARCH_DETECTION": "0",
+        "COMPARE_BUILD_JOBS": "2",
     }
     steps = compare_job["steps"]
     bootstrap_step = next(
@@ -71,17 +104,264 @@ def test_dual_arch_workflow_is_gpu_independent_and_cuda_13_bounded() -> None:
     bootstrap_index = steps.index(bootstrap_step)
     assert bootstrap_index < checkout_index
     assert bootstrap_step["working-directory"] == "/"
-    assert "ca-certificates git" in bootstrap_step["run"]
+    for package in ("build-essential", "ca-certificates", "git", "make", "python3"):
+        assert package in bootstrap_step["run"]
+    assert not any(step["name"] == "Install build dependencies" for step in steps)
+    checkout_step = steps[checkout_index]
+    assert "with" not in checkout_step
     verify_step = next(
         step for step in steps if step["name"] == "Verify configured CUDA architecture targets"
     )
     assert "nvcc --list-gpu-code" in verify_step["run"]
+    assert "sm_100) gpu_code=sm_100a" in verify_step["run"]
+    assert "sm_103) gpu_code=sm_103a" in verify_step["run"]
 
     arch_makefile = (CODE_ROOT / "core" / "common" / "cuda_arch.mk").read_text(encoding="utf-8")
     assert "CUDA_13_ARCH_LIST := sm_100 sm_103 sm_120 sm_121" in arch_makefile
     assert "ARCH_LIST ?= $(CUDA_13_ARCH_LIST)" in arch_makefile
     assert "sm_122" not in arch_makefile
     assert "sm_123" not in arch_makefile
+
+
+def test_tier1_runner_is_attested_and_hardware_pinned() -> None:
+    payload = _load_workflow("tier1-nightly.yml")
+    assert payload["permissions"] == {"actions": "read", "contents": "read"}
+    bootstrap_input = payload["on"]["workflow_dispatch"]["inputs"]["bootstrap_history"]
+    assert bootstrap_input["type"] == "boolean"
+    assert bootstrap_input["default"] == "false"
+    acceptance_input = payload["on"]["workflow_dispatch"]["inputs"]["accept_history_anchor"]
+    assert acceptance_input["type"] == "boolean"
+    assert acceptance_input["default"] == "false"
+    note_input = payload["on"]["workflow_dispatch"]["inputs"]["acceptance_note"]
+    assert note_input["type"] == "string"
+    assert note_input["default"] == ""
+    tier1_job = payload["jobs"]["tier1"]
+    assert "concurrency" not in payload
+    assert tier1_job["concurrency"] == {
+        "group": "tier1-nightly-producer",
+        "cancel-in-progress": "false",
+        "queue": "max",
+    }
+    assert payload["defaults"]["run"]["shell"] == "bash"
+    assert tier1_job["runs-on"] == [
+        "self-hosted",
+        "linux",
+        "x64",
+        "gpu",
+        "b200",
+        "node24-actions",
+    ]
+    assert tier1_job["env"] == {
+        "TIER1_EXPECTED_GPU_NAME": "NVIDIA B200",
+        "TIER1_ARTIFACT_SUFFIX": "${{ github.run_id }}-${{ github.run_attempt }}",
+        "TIER1_ACCEPT_HISTORY_ANCHOR": "${{ inputs.accept_history_anchor || false }}",
+        "TIER1_ACCEPTANCE_NOTE": "${{ inputs.acceptance_note || '' }}",
+    }
+    assert "needs" not in tier1_job
+    assert tier1_job["outputs"] == {
+        "run_id": "${{ steps.compute_run_id.outputs.run_id }}",
+        "artifact_suffix": "${{ steps.compute_run_id.outputs.artifact_suffix }}",
+        "candidate_history_artifact_id": (
+            "${{ steps.upload_tier1_candidate_history.outputs.artifact-id }}"
+        ),
+        "evidence_artifact_id": "${{ steps.upload_tier1_evidence.outputs.artifact-id }}",
+        "evidence_artifact_name": (
+            "tier1-evidence-${{ steps.compute_run_id.outputs.artifact_suffix }}"
+        ),
+        "evidence_artifact_digest": ("${{ steps.upload_tier1_evidence.outputs.artifact-digest }}"),
+        "evidence_identity_bound": "${{ steps.bind_evidence.outcome }}",
+    }
+    preflight = next(step for step in tier1_job["steps"] if step["name"] == "GPU preflight")["run"]
+    assert '"--query-gpu=name,mig.mode.current"' in preflight
+    assert 'name != expected or mig_mode != "Disabled"' in preflight
+    steps = tier1_job["steps"]
+    run_id_index = next(
+        index for index, step in enumerate(steps) if step["name"] == "Compute run id"
+    )
+    preflight_index = next(
+        index for index, step in enumerate(steps) if step["name"] == "GPU preflight"
+    )
+    assert run_id_index == 0
+    assert steps[run_id_index]["id"] == "compute_run_id"
+    assert steps[run_id_index]["working-directory"] == "/"
+    assert "GITHUB_OUTPUT" in steps[run_id_index]["run"]
+    assert run_id_index < preflight_index
+    branch_step = steps[1]
+    assert branch_step["name"] == "Validate canonical request"
+    assert branch_step["working-directory"] == "/"
+    assert "refs/heads/main" in branch_step["run"]
+    assert "Scheduled Tier-1 runs cannot accept a new history anchor" in branch_step["run"]
+    assert "acceptance_note requires accept_history_anchor" in branch_step["run"]
+    assert "bootstrap_history requires protected anchor acceptance" in branch_step["run"]
+
+    setup_index = next(index for index, step in enumerate(steps) if step["name"] == "Set up Python")
+    restore_index = next(
+        index for index, step in enumerate(steps) if step["name"] == "Restore latest Tier-1 history"
+    )
+    dependency_index = next(
+        index for index, step in enumerate(steps) if step["name"] == "Install Python dependencies"
+    )
+    assert setup_index < restore_index < dependency_index
+    restore_step = steps[restore_index]
+    assert restore_step["env"] == {
+        "GITHUB_TOKEN": "${{ github.token }}",
+        "BOOTSTRAP_HISTORY": "${{ inputs.bootstrap_history || false }}",
+    }
+    assert "python -m core.scripts.ci.restore_tier1_history" in restore_step["run"]
+    assert "--destination artifacts/history/tier1" in restore_step["run"]
+    assert "--allow-bootstrap" in restore_step["run"]
+    assert "--allow-anchor-renewal" in restore_step["run"]
+
+    benchmark_step = next(step for step in steps if step["name"] == "Run canonical tier-1 suite")
+    assert benchmark_step["id"] == "run_tier1"
+    assert benchmark_step["continue-on-error"] == (
+        "${{ env.TIER1_ACCEPT_HISTORY_ANCHOR == 'true' }}"
+    )
+    assert benchmark_step["env"] == {
+        "AISP_TIER1_EVIDENCE_ARTIFACT_NAME": ("tier1-evidence-${{ env.TIER1_ARTIFACT_SUFFIX }}")
+    }
+    assert "--history-anchor-candidate" in benchmark_step["run"]
+    assert "--accept-history-anchor" not in benchmark_step["run"]
+    assert "--acceptance-note" not in benchmark_step["run"]
+    assert "--update-expectations" not in benchmark_step["run"]
+    assert "| tee /tmp/tier1_run.json" in benchmark_step["run"]
+
+    identity_step = next(
+        step for step in steps if step["name"] == "Bind immutable Tier-1 evidence identity"
+    )
+    assert identity_step["id"] == "bind_evidence"
+    assert identity_step["if"] == ("${{ always() && steps.run_tier1.outcome != 'skipped' }}")
+    assert 'payload["run_id"] = run_id' in identity_step["run"]
+    assert "source_manifest_json" in identity_step["run"]
+    assert "source_result_json" in identity_step["run"]
+    assert 'payload["git"] = manifest_git' in identity_step["run"]
+    assert 'summary["source_manifest_git_commit"] = expected_commit' in identity_step["run"]
+    assert 'summary["source_git_dirty"] = False' in identity_step["run"]
+
+    summary_step = next(step for step in steps if step["name"] == "Summarize tier-1 results")
+    assert summary_step["working-directory"] == "/"
+    assert "History root: `artifacts/history/tier1`" in summary_step["run"]
+
+    evidence_step = next(
+        step for step in steps if step["name"] == "Upload Tier-1 evidence artifact"
+    )
+    candidate_step = next(
+        step for step in steps if step["name"] == "Upload Tier-1 candidate history artifact"
+    )
+    assert steps.index(evidence_step) < steps.index(candidate_step)
+    assert evidence_step["id"] == "upload_tier1_evidence"
+    assert evidence_step["if"] == "${{ always() && steps.run_tier1.outcome != 'skipped' }}"
+    assert "code/artifacts/runs/${{ env.RUN_ID }}" in evidence_step["with"]["path"]
+    assert "code/artifacts/runs/${{ env.RUN_ID }}__recheck__*" in evidence_step["with"]["path"]
+    assert evidence_step["with"]["retention-days"] == "90"
+    assert evidence_step["with"]["name"] == ("tier1-evidence-${{ env.TIER1_ARTIFACT_SUFFIX }}")
+    assert candidate_step["if"] == (
+        "${{ always() && steps.run_tier1.outcome != 'skipped' && "
+        "steps.upload_tier1_evidence.outcome == 'success' }}"
+    )
+    assert candidate_step["with"]["name"] == (
+        "tier1-candidate-history-${{ env.TIER1_ARTIFACT_SUFFIX }}"
+    )
+    assert candidate_step["with"]["retention-days"] == "90"
+
+    publisher_job = payload["jobs"]["publish-history"]
+    assert publisher_job["needs"] == "tier1"
+    assert publisher_job["concurrency"] == {
+        "group": "tier1-history-publication",
+        "cancel-in-progress": "false",
+        "queue": "max",
+    }
+    assert "needs.tier1.outputs.candidate_history_artifact_id != ''" in publisher_job["if"]
+    assert "needs.tier1.outputs.evidence_identity_bound == 'success'" in publisher_job["if"]
+    publisher_steps = publisher_job["steps"]
+    publisher_restore = next(
+        step for step in publisher_steps if step["name"] == "Restore live Tier-1 canonical history"
+    )
+    assert "python -m core.scripts.ci.restore_tier1_history" in publisher_restore["run"]
+    publisher_merge = next(
+        step for step in publisher_steps if step["name"] == "Merge immutable Tier-1 evidence row"
+    )
+    assert "python -m core.scripts.benchmarks.merge_tier1_history" in publisher_merge["run"]
+    assert "--canonical-history-root /tmp/tier1-live" in publisher_merge["run"]
+    publisher_upload = next(
+        step for step in publisher_steps if step["name"] == "Upload Tier-1 history artifact"
+    )
+    assert publisher_upload["with"]["path"] == "/tmp/tier1-published"
+    assert publisher_upload["with"]["retention-days"] == "90"
+
+    authorization_job = payload["jobs"]["authorize-history-anchor"]
+    assert authorization_job["needs"] == "tier1"
+    assert authorization_job["environment"] == "tier1-canonical-acceptance"
+    assert "needs.tier1.result == 'success'" in authorization_job["if"]
+    assert authorization_job["steps"][0]["working-directory"] == "/"
+
+    promotion_job = payload["jobs"]["promote-history-anchor"]
+    assert promotion_job["needs"] == ["tier1", "authorize-history-anchor"]
+    assert promotion_job["concurrency"] == {
+        "group": "tier1-history-publication",
+        "cancel-in-progress": "false",
+        "queue": "max",
+    }
+    assert "environment" not in promotion_job
+    assert "needs.tier1.result == 'success'" in promotion_job["if"]
+    assert "needs['authorize-history-anchor'].result == 'success'" in promotion_job["if"]
+    promotion_steps = promotion_job["steps"]
+    download_step = next(
+        step
+        for step in promotion_steps
+        if step["name"] == "Download immutable Tier-1 candidate history"
+    )
+    assert download_step["uses"] == "actions/download-artifact@v7"
+    assert download_step["with"] == {
+        "artifact-ids": "${{ env.TIER1_CANDIDATE_HISTORY_ARTIFACT_ID }}",
+        "merge-multiple": "true",
+        "path": "/tmp/tier1-candidate",
+    }
+    evidence_download_step = next(
+        step
+        for step in promotion_steps
+        if step["name"] == "Download immutable Tier-1 benchmark evidence"
+    )
+    assert evidence_download_step["with"] == {
+        "artifact-ids": "${{ env.TIER1_EVIDENCE_ARTIFACT_ID }}",
+        "merge-multiple": "true",
+        "path": "/tmp/tier1-evidence",
+    }
+    live_restore_step = next(
+        step for step in promotion_steps if step["name"] == "Restore live Tier-1 canonical history"
+    )
+    assert live_restore_step["env"] == {
+        "GITHUB_TOKEN": "${{ github.token }}",
+        "BOOTSTRAP_HISTORY": "${{ inputs.bootstrap_history || false }}",
+    }
+    assert "python -m core.scripts.ci.restore_tier1_history" in live_restore_step["run"]
+    assert "--destination /tmp/tier1-live" in live_restore_step["run"]
+    assert "--allow-anchor-renewal" in live_restore_step["run"]
+    checkout_step = next(step for step in promotion_steps if step["name"] == "Checkout repository")
+    assert checkout_step["with"] == {
+        "ref": "${{ github.sha }}",
+        "persist-credentials": "false",
+    }
+    ratify_step = next(
+        step for step in promotion_steps if step["name"] == "Ratify immutable Tier-1 candidate"
+    )
+    assert "python -m core.scripts.benchmarks.promote_tier1_history" in ratify_step["run"]
+    assert "--canonical-history-root /tmp/tier1-live" in ratify_step["run"]
+    assert "--output-history-root /tmp/tier1-ratified" in ratify_step["run"]
+    assert "--requester" in ratify_step["run"]
+    assert "--note" in ratify_step["run"]
+    assert "--workflow-run" in ratify_step["run"]
+    assert "--expected-git-commit" in ratify_step["run"]
+    assert "--expected-evidence-artifact" in ratify_step["run"]
+    assert "--expected-evidence-digest" in ratify_step["run"]
+    final_history_step = next(
+        step
+        for step in promotion_steps
+        if step["name"] == "Upload ratified Tier-1 history artifact"
+    )
+    assert final_history_step["with"]["name"] == ("tier1-history-${{ env.TIER1_ARTIFACT_SUFFIX }}")
+    assert final_history_step["with"]["path"] == "/tmp/tier1-ratified"
+    assert final_history_step["with"]["retention-days"] == "90"
 
 
 def test_dual_arch_compare_script_resolves_chapters_from_code_root(
@@ -94,7 +374,7 @@ def test_dual_arch_compare_script_resolves_chapters_from_code_root(
     make_stub.write_text(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
-        "printf '%s\\n' \"$PWD\" >> \"${COMPARE_BUILD_LOG:?}\"\n",
+        'printf \'%s|%s\\n\' "$PWD" "$*" >> "${COMPARE_BUILD_LOG:?}"\n',
         encoding="utf-8",
     )
     make_stub.chmod(0o755)
@@ -102,6 +382,7 @@ def test_dual_arch_compare_script_resolves_chapters_from_code_root(
     env = os.environ.copy()
     env["PATH"] = f"{stub_bin}{os.pathsep}{env['PATH']}"
     env["COMPARE_BUILD_LOG"] = str(build_log)
+    env["COMPARE_BUILD_JOBS"] = "2"
 
     subprocess.run(
         ["bash", str(script)],
@@ -125,8 +406,25 @@ def test_dual_arch_compare_script_resolves_chapters_from_code_root(
         "ch12",
     ]
     assert build_log.read_text(encoding="utf-8").splitlines() == [
-        str(CODE_ROOT / chapter) for chapter in expected_chapters
+        f"{CODE_ROOT / chapter}|--jobs=2 compare" for chapter in expected_chapters
     ]
+
+
+def test_dual_arch_compare_script_rejects_invalid_parallelism(tmp_path: Path) -> None:
+    script = CODE_ROOT / "core" / "scripts" / "ci" / "run_compare_builds.sh"
+    env = os.environ.copy()
+    env["COMPARE_BUILD_JOBS"] = "0"
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 2
+    assert "COMPARE_BUILD_JOBS must be a positive integer" in result.stderr
 
 
 def test_nested_workflows_are_non_executable_pointers() -> None:
@@ -152,10 +450,17 @@ def test_benchmark_validation_has_blocking_campaign_checks() -> None:
     assert "tests/test_campaign_evidence.py" in contract_command
     assert "tests/test_llm_patch_worker.py" in contract_command
     assert "tests/test_mcts_optimizer.py" in contract_command
+    assert "tests/test_ch10_makefile_contract.py" in contract_command
+    assert "tests/test_dual_arch_make_contract.py" in contract_command
     assert "test_ch04_nvshmem_torchrun_specs_preserve_variant_contracts" in contract_command
     assert "tests/test_llm_patch_promotion.py" in contract_command
     assert "tests/test_repository_configuration.py" in contract_command
     assert "continue-on-error" not in contract_step
+
+    shell_step = next(
+        step for step in validate_steps if step["name"] == "Validate shell entrypoints"
+    )
+    assert "bash -n core/scripts/ci/run_compare_builds.sh" in shell_step["run"]
 
     audit_step = next(
         step

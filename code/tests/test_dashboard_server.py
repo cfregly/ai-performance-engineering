@@ -42,7 +42,9 @@ def test_dashboard_cli_has_serve_command():
     assert "Start the dashboard API server." in result.output
 
 
-def test_dashboard_http_benchmark_overview_route_returns_success_envelope(sample_benchmark_results_file):
+def test_dashboard_http_benchmark_overview_route_returns_success_envelope(
+    sample_benchmark_results_file,
+):
     pytest.importorskip("fastapi")
 
     reset_engine()
@@ -272,6 +274,8 @@ def test_engine_exposes_tier1_history_and_trends(tmp_path, sample_benchmark_resu
                 "history": [
                     {
                         "run_id": "20260309_010000_tier1_local",
+                        "run_accepted": True,
+                        "baseline_eligible": True,
                         "generated_at": "2026-03-09T01:00:00",
                         "avg_speedup": 12.5,
                         "median_speedup": 12.5,
@@ -293,14 +297,20 @@ def test_engine_exposes_tier1_history_and_trends(tmp_path, sample_benchmark_resu
             {
                 "suite_name": "tier1",
                 "suite_version": 1,
-                "history_root": str(history_root),
+                "history_root": ".",
                 "runs": [
-                    {
-                        "run_id": "20260309_010000_tier1_local",
-                        "summary_path": str(summary_path),
-                        "regression_summary_path": str(run_dir / "regression_summary.md"),
-                        "regression_json_path": str(regression_path),
-                        "trend_snapshot_path": str(trend_path),
+                        {
+                            "run_id": "20260309_010000_tier1_local",
+                            "run_accepted": True,
+                            "baseline_eligible": True,
+                            "summary_path": "20260309_010000_tier1_local/summary.json",
+                        "regression_summary_path": (
+                            "20260309_010000_tier1_local/regression_summary.md"
+                        ),
+                        "regression_json_path": (
+                            "20260309_010000_tier1_local/regression_summary.json"
+                        ),
+                        "trend_snapshot_path": ("20260309_010000_tier1_local/trend_snapshot.json"),
                     }
                 ],
             }
@@ -322,15 +332,17 @@ def test_engine_exposes_tier1_history_and_trends(tmp_path, sample_benchmark_resu
     assert history["latest_run_id"] == "20260309_010000_tier1_local"
     assert history["latest"]["run"]["representative_speedup"] == 12.5
     assert history["latest"]["improvements"][0]["key"] == "flashattention4_alibi"
-    assert history["latest"]["run"]["regression_summary_json_path"] == str(regression_path)
+    assert history["latest"]["run"]["regression_summary_json_path"] == (
+        "20260309_010000_tier1_local/regression_summary.json"
+    )
     assert trends["latest_run_id"] == "20260309_010000_tier1_local"
     assert trends["best_speedup_seen"] == 12.5
     assert target_history["selected_key"] == "flashattention4_alibi"
     assert target_history["run_count"] == 1
     assert target_history["history"][0]["target"] == "labs/flashattention4:flashattention4_alibi"
     assert target_history["history"][0]["best_speedup"] == 12.5
-    assert target_history["history"][0]["artifacts"]["baseline_nsys_rep"].endswith(
-        "/artifacts/runs/demo/profiles/flash.nsys-rep"
+    assert target_history["history"][0]["artifacts"]["baseline_nsys_rep"] == (
+        "artifacts/runs/demo/profiles/flash.nsys-rep"
     )
 
     reset_engine()

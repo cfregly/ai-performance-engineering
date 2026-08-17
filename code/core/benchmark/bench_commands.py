@@ -68,6 +68,12 @@ except Exception as exc:
 LLM_CAPABLE = True
 
 
+def _validate_run_id(run_id: Optional[str]) -> Optional[str]:
+    if run_id is None:
+        return None
+    return validate_run_id(run_id)
+
+
 def _expand_multi_value_option(option_names: List[str]) -> None:
     """Allow passing `--option value1 value2` by rewriting argv."""
     argv = sys.argv
@@ -104,11 +110,12 @@ from core.benchmark.artifact_manager import (
     default_artifacts_root,
     build_bench_run_label,
     build_run_id,
+    validate_run_id,
 )
 from dataclasses import replace
 
 from core.benchmark.defaults import BenchmarkDefaults, get_defaults, set_defaults
-from core.benchmark.run_manifest import get_gpu_state
+from core.benchmark.run_manifest import get_git_info, get_gpu_state
 from core.harness.validity_profile import (
     VALIDITY_PROFILE_CHOICES,
     VALIDITY_PROFILE_HELP_TEXT,
@@ -158,25 +165,72 @@ def _validate_output_format(fmt: str | None) -> str:
     return normalized
 
 
-def _tier1_result_failure_count(result: Dict[str, Any]) -> int:
+def _tier1_result_failure_count(
+    result: Dict[str, Any],
+    *,
+    allow_comparison_regressions: bool = False,
+) -> int:
+    failure_count = 1 if result.get("history_integrity_failed") else 0
+    if result.get("run_accepted") is not True:
+        failure_count = max(failure_count, 1)
     summary_payload = result.get("summary")
-    if isinstance(summary_payload, dict):
+    if not isinstance(summary_payload, dict):
+        failure_count = max(failure_count, 1)
+    else:
         summary_counts = summary_payload.get("summary")
-        if isinstance(summary_counts, dict):
+        if not isinstance(summary_counts, dict):
+            failure_count = max(failure_count, 1)
+        else:
             try:
-                return int(summary_counts.get("failed", 0) or 0)
+                summary_failed = int(summary_counts.get("failed", 0) or 0)
+                summary_skipped = int(summary_counts.get("skipped", 0) or 0)
+                summary_missing = int(summary_counts.get("missing", 0) or 0)
+                summary_incomplete = summary_failed + summary_skipped + summary_missing
+                target_count = int(summary_counts.get("target_count", 0) or 0)
+                succeeded = int(summary_counts.get("succeeded", 0) or 0)
+                if (
+                    min(
+                        summary_failed,
+                        summary_skipped,
+                        summary_missing,
+                        target_count,
+                        succeeded,
+                    )
+                    < 0
+                    or target_count <= 0
+                    or succeeded != target_count
+                ):
+                    summary_incomplete = max(summary_incomplete, 1)
+                failure_count = max(failure_count, summary_incomplete)
             except (TypeError, ValueError):
-                pass
+                failure_count = max(failure_count, 1)
     execution = result.get("execution")
-    if isinstance(execution, dict):
+    if not isinstance(execution, dict):
+        failure_count = max(failure_count, 1)
+    else:
         try:
-            return int(execution.get("total_failed", 0) or 0)
+            failure_count = max(
+                failure_count,
+                int(execution.get("total_failed", 0) or 0),
+            )
         except (TypeError, ValueError):
-            pass
+            failure_count = max(failure_count, 1)
     try:
-        return int(result.get("total_failed", 0) or 0)
+        failure_count = max(failure_count, int(result.get("total_failed", 0) or 0))
     except (TypeError, ValueError):
-        return 0
+        failure_count = max(failure_count, 1)
+
+    comparison = result.get("comparison")
+    if not isinstance(comparison, dict):
+        failure_count = max(failure_count, 1)
+    else:
+        regressions = comparison.get("regressions")
+        missing_targets = comparison.get("missing_targets")
+        if not isinstance(regressions, list) or not isinstance(missing_targets, list):
+            failure_count = max(failure_count, 1)
+        elif not allow_comparison_regressions:
+            failure_count += len(regressions) + len(missing_targets)
+    return failure_count
 
 
 def _validate_ncu_metric_set(metric_set: str) -> str:
@@ -572,6 +626,8 @@ def _execute_benchmarks(
             stacklevel=2,
         )
 
+    explicit_run_id = run_id is not None
+    run_id = _validate_run_id(run_id)
     artifact_base = (
         Path(artifacts_dir) if artifacts_dir else default_artifacts_root(active_bench_root)
     )
@@ -579,12 +635,17 @@ def _execute_benchmarks(
     if run_id is None:
         run_label = build_bench_run_label(targets or [], profile_type)
         run_id = build_run_id("bench", run_label, base_dir=artifact_base)
+    run_id = _validate_run_id(run_id)
+    planned_run_dir = artifact_base / run_id
+    if explicit_run_id and (planned_run_dir.is_symlink() or planned_run_dir.exists()):
+        raise ValueError(f"Refusing to overwrite existing benchmark run {run_id!r}")
     artifact_manager = ArtifactManager(
         base_dir=artifact_base,
         run_id=run_id,
         run_kind="bench",
         run_label=run_label,
     )
+    run_git_info = dict(get_git_info())
     # Propagate a stable run marker before any helper subprocesses launch so
     # same-run profiler/isolated children can be attributed correctly.
     os.environ["AISP_BENCHMARK_OWNER_RUN_ID"] = artifact_manager.run_id
@@ -1126,7 +1187,11 @@ def _execute_benchmarks(
             if output_format in ["json", "both"]:
                 with open(output_json, "w") as f:
                     json.dump(
-                        {"timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"), "results": all_results},
+                        {
+                            "run_id": artifact_manager.run_id,
+                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                            "results": all_results,
+                        },
                         f,
                         indent=2,
                     )
@@ -1149,7 +1214,12 @@ def _execute_benchmarks(
         if manifests:
             with open(artifact_manager.manifest_path, "w") as f:
                 json.dump(
-                    {"timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"), "manifests": manifests},
+                    {
+                        "run_id": artifact_manager.run_id,
+                        "git": run_git_info,
+                        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                        "manifests": manifests,
+                    },
                     f,
                     indent=2,
                 )
@@ -1158,7 +1228,11 @@ def _execute_benchmarks(
         if output_format in ["json", "both"]:
             with open(output_json, "w") as f:
                 json.dump(
-                    {"timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"), "results": all_results},
+                    {
+                        "run_id": artifact_manager.run_id,
+                        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                        "results": all_results,
+                    },
                     f,
                     indent=2,
                 )
@@ -1691,6 +1765,11 @@ if TYPER_AVAILABLE:
         ),
         log_file: Optional[str] = Option(None, "--log-file", help="Path to log file."),
         single_gpu: bool = Option(False, "--single-gpu", help="Force single-GPU visibility."),
+        history_anchor_candidate: bool = Option(
+            False,
+            "--history-anchor-candidate",
+            help="Record immutable candidate evidence for later protected history ratification.",
+        ),
         accept_regressions: bool = Option(
             False,
             "--accept-regressions",
@@ -1756,6 +1835,7 @@ if TYPER_AVAILABLE:
             log_level=log_level,
             log_file=log_file,
             single_gpu=single_gpu,
+            history_anchor_candidate=history_anchor_candidate,
             accept_regressions=accept_regressions,
             update_expectations=update_expectations,
             allow_mixed_provenance=allow_mixed_provenance,
@@ -1764,19 +1844,36 @@ if TYPER_AVAILABLE:
             nsys_timeout_seconds=nsys_timeout_seconds,
             ncu_timeout_seconds=ncu_timeout_seconds,
         )
+        history_root_path = Path(result["history_root"]).resolve()
+
+        def _portable_history_output(path_value: Any) -> str:
+            path = Path(path_value).resolve()
+            try:
+                return path.relative_to(history_root_path).as_posix()
+            except ValueError:
+                return path.name
+
         typer.echo(
             json.dumps(
                 {
                     "run_id": result["execution"]["run_id"],
-                    "summary_path": str(result["summary_path"]),
-                    "regression_summary_path": str(result["regression_summary_path"]),
-                    "trend_snapshot_path": str(result["trend_snapshot_path"]),
-                    "history_root": str(result["history_root"]),
+                    "summary_path": _portable_history_output(result["summary_path"]),
+                    "regression_summary_path": _portable_history_output(
+                        result["regression_summary_path"]
+                    ),
+                    "trend_snapshot_path": _portable_history_output(result["trend_snapshot_path"]),
+                    "history_root": ".",
                 },
                 indent=2,
             )
         )
-        if _tier1_result_failure_count(result) > 0:
+        if (
+            _tier1_result_failure_count(
+                result,
+                allow_comparison_regressions=False,
+            )
+            > 0
+        ):
             raise typer.Exit(code=1)
 
     @app.command("run-e2e")

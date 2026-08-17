@@ -11,6 +11,18 @@ from pathlib import Path
 from typing import Optional, Sequence
 import re
 
+SAFE_RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+
+
+def validate_run_id(run_id: str) -> str:
+    """Return a filesystem-safe run id or raise before any artifact write."""
+    if not SAFE_RUN_ID.fullmatch(run_id):
+        raise ValueError(
+            "Run id must start with a letter or digit and contain only letters, digits, dots, "
+            "underscores, or hyphens"
+        )
+    return run_id
+
 
 def default_artifacts_root(repo_root: Optional[Path] = None) -> Path:
     """Return the standard artifacts root for run outputs."""
@@ -100,6 +112,7 @@ class ArtifactManager:
         
         if run_id is None:
             run_id = build_run_id(run_kind or "run", run_label, base_dir=Path(base_dir))
+        run_id = validate_run_id(run_id)
         
         self.base_dir = Path(base_dir)
         self.run_id = run_id
@@ -110,7 +123,7 @@ class ArtifactManager:
     
     def _create_structure(self) -> None:
         """Create the directory structure."""
-        self.run_dir.mkdir(parents=True, exist_ok=True)
+        self.run_dir.mkdir(parents=True, exist_ok=False)
         (self.run_dir / "results").mkdir(exist_ok=True)
         (self.run_dir / "profiles").mkdir(exist_ok=True)
         (self.run_dir / "reports").mkdir(exist_ok=True)

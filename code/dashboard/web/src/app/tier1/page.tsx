@@ -15,6 +15,7 @@ import { DashboardShell } from '@/components/DashboardShell';
 import { StatsCard } from '@/components/StatsCard';
 import { useToast } from '@/components/Toast';
 import { getTier1History, getTier1TargetHistory, getTier1Trends } from '@/lib/api';
+import { isTier1ReleaseReady, tier1CanonicalRunCount } from '@/lib/tier1';
 import type { Tier1Delta, Tier1History, Tier1TargetHistory, Tier1TargetSummary, Tier1Trends } from '@/types';
 import { BarChart3, Clock3, Gauge, ShieldCheck } from 'lucide-react';
 
@@ -107,51 +108,63 @@ function Tier1PageInner() {
     loadTier1();
   }, [loadTier1]);
 
-  const latestRun = history?.latest?.run ?? null;
-  const latestSummary = (history?.latest?.summary ?? {}) as Record<string, number>;
+  const canonicalLatest = history?.latest_accepted ?? history?.latest;
+  const latestEvidence = history?.latest;
+  const latestRun = canonicalLatest?.run ?? null;
+  const latestEvidenceRun = latestEvidence?.run ?? null;
+  const latestSummary = (canonicalLatest?.summary ?? {}) as Record<string, number>;
   const latestTargets = useMemo(
     () =>
-      [...(history?.latest?.targets ?? [])]
+      [...(canonicalLatest?.targets ?? [])]
         .sort((a, b) => (b.best_speedup || 0) - (a.best_speedup || 0))
         .slice(0, 8),
-    [history?.latest?.targets]
+    [canonicalLatest?.targets]
   );
   const chartData = trends?.history ?? [];
-  const latestRegressions = (history?.latest?.regressions ?? []).slice(0, 6);
-  const latestImprovements = (history?.latest?.improvements ?? []).slice(0, 6);
-  const latestRegressionCount = history?.latest?.regressions?.length ?? 0;
-  const latestImprovementCount = history?.latest?.improvements?.length ?? 0;
-  const latestMissingCount = history?.latest?.missing_targets?.length ?? 0;
-  const latestNewTargetCount = history?.latest?.new_targets?.length ?? 0;
-  const releaseReady =
-    (latestRun?.failed ?? 0) === 0 &&
-    (latestRun?.missing ?? 0) === 0 &&
-    latestRegressionCount === 0;
+  const latestRegressions = (canonicalLatest?.regressions ?? []).slice(0, 6);
+  const latestImprovements = (canonicalLatest?.improvements ?? []).slice(0, 6);
+  const latestRegressionCount = canonicalLatest?.regressions?.length ?? 0;
+  const latestImprovementCount = canonicalLatest?.improvements?.length ?? 0;
+  const latestMissingCount = latestEvidence?.missing_targets?.length ?? 0;
+  const latestAnchorHoldCount = latestEvidence?.anchor_declines?.length ?? 0;
+  const latestSuppressedRegressionCount = latestEvidence?.suppressed_regressions?.length ?? 0;
+  const latestNewTargetCount = latestEvidence?.new_targets?.length ?? 0;
+  const releaseRegressionCount = latestEvidence?.regressions?.length ?? 0;
+  const releaseReady = isTier1ReleaseReady(history);
   const targetOptions = useMemo(
     () =>
-      [...(history?.latest?.targets ?? [])].sort((a, b) =>
+      [...(canonicalLatest?.targets ?? [])].sort((a, b) =>
         String(a.target || a.key || '').localeCompare(String(b.target || b.key || ''))
       ),
-    [history?.latest?.targets]
+    [canonicalLatest?.targets]
   );
   const selectedTargetParam = (searchParams?.get('target') || '').trim();
   const targetKeyByTarget = useMemo(() => {
     const mapping = new Map<string, string>();
-    for (const target of history?.latest?.targets ?? []) {
+    for (const target of canonicalLatest?.targets ?? []) {
       if (target.target && target.key) {
         mapping.set(target.target, target.key);
       }
     }
     return mapping;
-  }, [history?.latest?.targets]);
+  }, [canonicalLatest?.targets]);
   const targetChartData = targetHistory?.history ?? [];
   const currentPath = pathname || '/tier1';
   const blockerRows = useMemo(() => {
     const blockers: Tier1Delta[] = [];
+    if (history?.latest?.run && history.latest.run.run_accepted !== true) {
+      blockers.push({ reason: 'run_not_accepted' });
+    }
     blockers.push(...(history?.latest?.regressions ?? []));
+    blockers.push(...(history?.latest?.suppressed_regressions ?? []));
     blockers.push(...(history?.latest?.missing_targets ?? []));
     return blockers.slice(0, 6);
-  }, [history?.latest?.regressions, history?.latest?.missing_targets]);
+  }, [
+    history?.latest?.regressions,
+    history?.latest?.suppressed_regressions,
+    history?.latest?.missing_targets,
+    history?.latest?.run,
+  ]);
   const selectedTargetUrl = useMemo(() => {
     if (!selectedTargetKey) {
       return '';
@@ -270,7 +283,7 @@ function Tier1PageInner() {
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             <StatsCard
               title="Canonical Runs"
-              value={history.total_runs}
+              value={tier1CanonicalRunCount(history)}
               subtitle={history.latest_run_id || '—'}
               icon={Clock3}
             />
@@ -374,14 +387,14 @@ function Tier1PageInner() {
                 {releaseReady ? 'Ready' : 'Needs attention'}
               </span>
             </div>
-            <div className="card-body grid grid-cols-1 md:grid-cols-5 gap-4 text-sm text-white/70">
+            <div className="card-body grid grid-cols-1 md:grid-cols-6 gap-4 text-sm text-white/70">
               <div>
                 <div className="text-xs uppercase text-white/40 mb-1">Failed targets</div>
-                <div className="text-white">{latestRun?.failed ?? 0}</div>
+                <div className="text-white">{latestEvidenceRun?.failed ?? 0}</div>
               </div>
               <div>
                 <div className="text-xs uppercase text-white/40 mb-1">Regressions</div>
-                <div className="text-accent-danger">{latestRegressionCount}</div>
+                <div className="text-accent-danger">{releaseRegressionCount}</div>
               </div>
               <div>
                 <div className="text-xs uppercase text-white/40 mb-1">Missing</div>
@@ -394,10 +407,24 @@ function Tier1PageInner() {
               <div>
                 <div className="text-xs uppercase text-white/40 mb-1">Run health</div>
                 <div className="text-white">
-                  {latestRun?.succeeded ?? 0}/{latestRun?.target_count ?? 0} succeeded
+                  {latestEvidenceRun?.succeeded ?? 0}/{latestEvidenceRun?.target_count ?? 0} succeeded
                 </div>
               </div>
-              <div className="md:col-span-5 pt-2 border-t border-white/10">
+              <div>
+                <div className="text-xs uppercase text-white/40 mb-1">Baseline state</div>
+                <div className="text-white">
+                  {latestSuppressedRegressionCount > 0
+                    ? `Review ${latestSuppressedRegressionCount} recheck${latestSuppressedRegressionCount === 1 ? '' : 's'}`
+                    : latestEvidenceRun?.baseline_eligible
+                    ? 'Ratified'
+                    : latestEvidenceRun?.run_accepted
+                      ? latestAnchorHoldCount > 0
+                        ? `Held on ${latestAnchorHoldCount} decline${latestAnchorHoldCount === 1 ? '' : 's'}`
+                        : 'Prior anchor retained'
+                      : 'Not accepted'}
+                </div>
+              </div>
+              <div className="md:col-span-6 pt-2 border-t border-white/10">
                 <div className="text-xs uppercase text-white/40 mb-2">Top blockers</div>
                 {blockerRows.length === 0 ? (
                   <div className="text-white/50">No blocking regressions or missing targets in the latest canonical run.</div>
@@ -665,21 +692,19 @@ function Tier1PageInner() {
                       <div className="text-white break-words">{targetHistory.latest?.best_optimization || '—'}</div>
                     </div>
                     <div className="rounded-lg border border-white/10 p-4">
-                      <div className="text-xs uppercase text-white/40 mb-2">Selected Run Artifacts</div>
+                      <div className="text-xs uppercase text-white/40 mb-2">Selected Run Artifact References</div>
                       <div className="space-y-2 text-sm">
                         {Object.entries(targetHistory.latest?.artifacts || {}).length === 0 ? (
-                          <div className="text-white/50">No artifact links for this target.</div>
+                          <div className="text-white/50">No artifact references for this target.</div>
                         ) : (
                           Object.entries(targetHistory.latest?.artifacts || {}).map(([name, path]) => (
-                            <a
+                            <div
                               key={name}
-                              href={`file://${path}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="block text-accent-primary hover:text-accent-secondary break-all"
+                              className="rounded border border-white/10 p-2 break-all"
                             >
-                              {artifactLabel(name)}
-                            </a>
+                              <div className="text-accent-primary">{artifactLabel(name)}</div>
+                              <div className="mt-1 text-xs text-white/50">{path}</div>
+                            </div>
                           ))
                         )}
                       </div>

@@ -570,6 +570,8 @@ export interface BenchmarkTrends {
 
 export interface Tier1RunSummary {
   run_id: string;
+  run_accepted: boolean;
+  baseline_eligible: boolean;
   generated_at?: string | null;
   suite_name?: string;
   suite_version?: number;
@@ -605,6 +607,7 @@ export interface Tier1TargetSummary {
   optimization_goal?: string | null;
   baseline_memory_mb?: number | null;
   best_memory_savings_pct?: number | null;
+  best_optimized_memory_mb?: number | null;
   baseline_p75_ms?: number | null;
   baseline_file?: string | null;
   artifacts?: Record<string, string>;
@@ -618,6 +621,9 @@ export interface Tier1LatestRunDetails {
   improvements: Tier1Delta[];
   new_targets: Tier1Delta[];
   missing_targets: Tier1Delta[];
+  anchor_declines: Tier1Delta[];
+  suppressed_regressions: Tier1Delta[];
+  rechecks: Record<string, unknown>[];
 }
 
 export interface Tier1Delta {
@@ -635,9 +641,13 @@ export interface Tier1History {
   suite_version?: number;
   history_root?: string;
   total_runs: number;
+  accepted_runs?: number;
+  latest_evidence_run_id?: string | null;
   latest_run_id?: string | null;
   runs: Tier1RunSummary[];
   latest: Tier1LatestRunDetails;
+  latest_accepted: Tier1LatestRunDetails;
+  warnings: string[];
 }
 
 export interface Tier1TrendPoint {
@@ -668,6 +678,8 @@ export interface Tier1Trends {
 
 export interface Tier1TargetHistoryPoint {
   run_id: string;
+  run_accepted?: boolean;
+  baseline_eligible?: boolean;
   generated_at?: string | null;
   key?: string | null;
   target?: string | null;
@@ -691,9 +703,12 @@ export interface Tier1TargetHistory {
   category?: string | null;
   rationale?: string | null;
   run_count: number;
+  evidence_run_count?: number;
   best_speedup_seen?: number;
   latest?: Tier1TargetHistoryPoint | null;
+  latest_evidence?: Tier1TargetHistoryPoint | null;
   history: Tier1TargetHistoryPoint[];
+  evidence_history?: Tier1TargetHistoryPoint[];
 }
 
 export interface BenchmarkCompareDelta {

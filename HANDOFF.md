@@ -1,6 +1,6 @@
 # B200 autoresearch handoff
 
-Updated: 2026-08-16
+Updated: 2026-08-17
 
 ## Goal
 
@@ -28,7 +28,7 @@ Run with `--no-auto-resume`. This prevents a stopped sweep from restarting while
 
 GPU ownership was yielded on 2026-08-16. Another task owns both B200 GPUs. Do not launch, resume, profile, or isolate a GPU target until that task finishes and GPU ownership is returned.
 
-The paused run ID is `20260816_autoresearch_b200_full_13de588b7`. Its orchestrator is not live. The normalized status reports a stale running package with resume available. No benchmark or profiler child from this run remains.
+The paused run ID is `20260816_autoresearch_b200_full_13de588b7`. Its orchestrator is not live. No benchmark or profiler child from this run remains. Keep this package as historical evidence. Do not resume it after installing the next checkpoint. The new resume contract requires the stored clean commit and execution provenance to match the current checkout, so a resumed run cannot combine measurements from two source revisions.
 
 Tier 1 completed all six targets before the pause. Four succeeded. Two exposed defects:
 
@@ -39,7 +39,7 @@ The other tier 1 targets succeeded: `labs/persistent_decode:persistent_decode`, 
 
 The full sweep then stopped before its first target. Batch preflight treated missing optional Phi-3.5-MoE model and TensorRT-LLM engine files as a global failure. The local fix now preserves direct single-target asset checks, defers optional asset checks in mixed batches to the target's existing truthful `SKIPPED` path, and returns structured preflight failures when callers disable process exit.
 
-The strict 486-target full sweep has not run any target. No target is partially complete. All 486 discovered targets remain. Resume the same run ID only after the published checkpoint is installed on the B200 worktree and GPU ownership is returned. Because tier 1 ended with failures, resume will rerun tier 1 before entering the full sweep.
+The strict 486-target full sweep has not run any target. No target is partially complete. All 486 discovered targets remain. After GPU ownership returns, install the published checkpoint in a clean worktree and start a new run ID with `--no-auto-resume`. Do not carry completion credit from the paused package. Tier 1 and the full sweep must both run on the same published commit.
 
 The dry-run inventory contains 464 single-GPU lane targets and 22 two-GPU lane targets. Some target names contain `multigpu` but remain in the single-GPU lane because their benchmark contract explicitly supports one visible GPU. The lane recorded below is authoritative.
 
@@ -73,6 +73,20 @@ The same checkpoint adds `B006` and `B023` to the repository-wide first-party Ru
 GitHub Benchmark Validation passed all three jobs for commit `546c3ef8400b3ade687e72f8719bd56c9359cc00`. The dual-architecture job passed container setup, prerequisite installation, recursive checkout, CUTLASS installation, and CUDA architecture validation. It then exposed a second path defect. The compare script resolved its root as `code/core` and looked for `code/core/ch01`. The next checkpoint resolves `code` itself and includes an executable stub-`make` regression for all ten configured chapter directories.
 
 Commit `17dcc59b67910b7f5aedb4726f57ee8e5ecd59eb` fixes that path defect. Its dual-architecture run compiled Chapter 1 and Chapter 2 for `sm_100`, `sm_103`, `sm_120`, and `sm_121`. Chapter 4 then failed because five educational NVSHMEM builds called `NVTX_RANGE` while their NVTX helper include was guarded by `USE_NVSHMEM`. The next checkpoint makes the helper available in both the NVSHMEM and educational build paths.
+
+Commit `ec5af42d73257d6df68e8cabe70ff1076fdaf7c8` fixes the Chapter 4 NVTX include contract. GitHub Benchmark Validation passed all three jobs for that commit. Its duplicated branch and main dual-architecture runs each reached the 45 minute job limit. The branch log completed Chapters 1, 2, 4, 6, 7, and 8 for all four configured architectures. It also completed Chapter 9 for `sm_100`, `sm_103`, and `sm_120`. The job was compiling the `sm_121` Chapter 9 targets when GitHub canceled it at 45 minutes and 3 seconds. No compiler error appeared before cancellation.
+
+The next checkpoint removes that throughput bottleneck and closes two evidence gaps. It runs two independent compiler jobs at a time while keeping chapters and architectures sequential. It changes the compare set from 652 to 648 compile and link commands by excluding four PyTorch extension translation units, restoring the Chapter 10 Blackwell standalone program, and restoring both omitted Chapter 11 driver programs. A source-based contract now requires every standalone CUDA source with a real `main` to appear in the dry build. Every chapter compare loop stops after any architecture failure. Clean targets cover every configured architecture, so a repeated compare cannot accept a stale binary. The workflow also skips unused submodules, combines package installation, and checks the emitted `sm_100a` and `sm_103a` codes.
+
+All active root actions now use their Node 24 compatible version 7 releases. The dual workflow runs automatically only on pushes to `main` or `develop` and on pull requests targeting those branches. This avoids duplicate direct feature-branch builds.
+
+Tier 1 now requires the fixed `["self-hosted","linux","x64","gpu","b200","node24-actions"]` labels. Apply `node24-actions` only after confirming runner version 2.327.1 or newer. Apply `b200` only after confirming that every visible GPU reports the exact name `NVIDIA B200` and has MIG disabled. The workflow checks both fields again before it records canonical history. It computes the run id before repository setup, uses Bash pipe failure handling for the benchmark command, and skips artifact upload when the benchmark step never starts. GitHub currently reports zero registered self-hosted runners for this repository. Tier 1 will remain queued until an eligible runner is registered and labeled. This fail-closed state is intentional. Register and attest the runner before operational signoff or any Tier 1 dispatch.
+
+The `tier1-canonical-acceptance` GitHub environment is configured with a required reviewer and a custom deployment policy that permits only `main`. The environment gate runs after the candidate evidence upload. The recorded requester identifies who started the dispatch, not who approved the environment deployment.
+
+After runner attestation, start canonical history with one manual `main` branch dispatch that sets `bootstrap_history` and `accept_history_anchor` to `true` and supplies a nonblank `acceptance_note`. The B200 job uploads candidate history and raw evidence first. The protected `tier1-canonical-acceptance` environment then gates post-benchmark promotion. Later runs leave `bootstrap_history` false. They restore cumulative history and verify the retained evidence for its latest eligible baseline before benchmark setup. Normal evidence publication and reviewed promotion share a short publication lock. Each publication restores the newest canonical state after the benchmark has finished, so a long producer cannot replace a newer reviewed anchor with stale history. Each concurrency group retains at most 100 pending jobs, and GitHub does not guarantee strict dispatch order. A failed, skipped, incomplete, or target-deleting run remains recorded but cannot replace the accepted anchor. Normal publication also keeps a confirmed regression ineligible. A confirmed regression may replace the anchor only through the protected `accept_history_anchor` path with a requester, public override reason, exact Actions workflow run URL, immutable evidence, and environment approval. The accepted entry records the public note as the override reason. A regression cleared only by a recheck remains rejected. Candidate, evidence, and history artifacts have 90 day retention. Restore fails closed on archive integrity, incomplete discovery, and workflow, branch, commit, repository, or digest provenance mismatch. Structural fallback is limited to packages from a workflow run that GitHub proves did not succeed.
+
+Renew the accepted anchor before its evidence reaches 60 days old by running the same reviewed manual acceptance path with a new complete evidence-bound candidate. Normal restore stops at that boundary. If the old evidence reaches the 90 day hard expiry, use an audited bootstrap recovery instead of bypassing the provenance gate.
 
 ## Completed validation
 
@@ -110,6 +124,13 @@ Commit `17dcc59b67910b7f5aedb4726f57ee8e5ecd59eb` fixes that path defect. Its du
 - The dual-architecture compare-script root regression passes 17 repository-configuration tests locally. Its GitHub Actions rerun remains required after publication.
 - GitHub Benchmark Validation also passes all three jobs at commit `17dcc59b67910b7f5aedb4726f57ee8e5ecd59eb`.
 - The Chapter 4 NVSHMEM include contract and repository-configuration set passes 22 local tests. The strict Chapter 4 benchmark audit checks 107 files with 0 errors and 0 warnings.
+- GitHub Benchmark Validation passes all three jobs at commit `ec5af42d73257d6df68e8cabe70ff1076fdaf7c8`.
+- The measured sequential dual build completed six whole chapters across four architectures and three of four Chapter 9 architectures before the exact 45 minute timeout. No compiler error preceded cancellation.
+- The latest local workflow, Tier 1 history, end-to-end outcome, cluster manifest, dashboard history, Make contract, and Chapter 10 standalone set passes 367 CPU-hidden tests.
+- Forty chapter and architecture Make dry runs pass for `sm_100`, `sm_103`, `sm_120`, and `sm_121`.
+- Literal `make lint` passes in Python 3.12.13 with Ruff 0.8.4, mypy 1.18.2, and NumPy 2.1.2. It checks 932 benchmark files with 0 errors and 0 warnings.
+- The Node 24 action metadata check covers every root `.yml` and `.yaml` workflow. The fixed Tier 1 labels and exact B200 preflight prevent an unverified or different self-hosted runner from recording canonical history.
+- No B200 command, SSH probe, benchmark, or profiler ran during this CI checkpoint.
 
 ## Environment contract
 
@@ -176,34 +197,41 @@ The normalized status is the preferred source. Capture these run files before yi
 
 Generated run artifacts remain ignored by Git. Record their hashes and terminal status in the campaign ledger or this handoff. Do not force-add raw profiler output or generated binaries.
 
-## Resume command
+## New-run command after this checkpoint
 
-Use the same `$RUN_ID` after reviewing the normalized status and confirming no other task owns the GPUs.
+Choose a new `$RUN_ID` after reviewing the historical paused package and confirming no other task owns the GPUs. Run from the clean published checkpoint.
 
 ```bash
 "$B200_PYTHON" -m cli.aisp bench run-e2e \
   --run-id "$RUN_ID" \
-  --resume \
+  --run-full-sweep \
+  --run-fabric \
+  --cluster-preset common-answer-fast \
+  --validity-profile strict \
+  --profile minimal \
+  --iterations 5 \
+  --warmup 1 \
   --no-auto-resume
 ```
 
 ## Remaining validation phases
 
 1. Keep all B200 GPU work stopped until the other task releases both GPUs.
-2. Publish the current local CI and callback-safety checkpoint to `main` and verify its GitHub Actions runs.
+2. Publish the current Node 24 and dual-build evidence checkpoint to `main` and verify its GitHub Actions runs.
 3. Continue CPU-safe regression, audit, lint, and coverage work while the GPUs remain occupied.
-4. Finish the FlashAttention ALiBi contract investigation with the saved tier 1 profiler evidence.
-5. Install the published checkpoint on the B200 worktree after GPU ownership returns.
-6. Rerun the full CPU-hidden pytest suite with coverage before GPU timing.
-7. Resume the same run ID with `--resume --no-auto-resume`.
-8. Verify the block-scaling CUTLASS fix on B200 and rerun the corrected attention target.
-9. Run the strict 486-target sweep.
-10. Run the two-GPU lane only when both GPUs are free.
-11. Record honest `passed`, `failed`, `skipped`, or `partial` status for every target.
-12. Compare candidate and control on representative Chapter 9 and Chapter 19 cases with repeated trials.
-13. Audit manifests, hashes, environment evidence, profiler evidence, and no-regression gates.
-14. Update this handoff with the exact completed and remaining target sets.
-15. Commit, push, merge to `main`, push `main`, and verify remote tips.
+4. Register and attest one eligible Tier 1 runner. If no compatible canonical history exists, make one manual `main` dispatch with `bootstrap_history` and `accept_history_anchor` set to `true`, plus a public `acceptance_note`.
+5. Finish the FlashAttention ALiBi contract investigation with the saved tier 1 profiler evidence.
+6. Install the published checkpoint on the B200 worktree after GPU ownership returns.
+7. Rerun the full CPU-hidden pytest suite with coverage before GPU timing.
+8. Start a new run ID with the strict command above and `--no-auto-resume`.
+9. Verify the block-scaling CUTLASS fix on B200 and rerun the corrected attention target.
+10. Run the strict 486-target sweep.
+11. Run the two-GPU lane only when both GPUs are free.
+12. Record honest `passed`, `failed`, `skipped`, or `partial` status for every target.
+13. Compare candidate and control on representative Chapter 9 and Chapter 19 cases with repeated trials.
+14. Audit manifests, hashes, environment evidence, profiler evidence, and no-regression gates.
+15. Update this handoff with the exact completed and remaining target sets.
+16. Commit, push, merge to `main`, push `main`, and verify remote tips.
 
 "100 percent coverage" means every discovered target has a terminal status and every reachable code path has measured coverage. It does not permit turning unsupported hardware or missing fabric into a false pass.
 

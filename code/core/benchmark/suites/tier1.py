@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 import math
+import os
 import re
 import statistics
 from pathlib import Path
@@ -15,6 +16,44 @@ import yaml
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
+
+
+def _source_git_provenance(
+    manifest_path: Optional[Path],
+) -> tuple[Optional[str], Optional[bool], Optional[str]]:
+    manifest_commit: Optional[str] = None
+    manifest_dirty: Optional[bool] = None
+    if manifest_path is not None:
+        try:
+            manifest_payload = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+            manifest_git = manifest_payload.get("git") if isinstance(manifest_payload, dict) else None
+            if isinstance(manifest_git, dict):
+                raw_manifest_commit = str(manifest_git.get("commit") or "").strip()
+                if re.fullmatch(r"[0-9a-fA-F]{40}", raw_manifest_commit):
+                    manifest_commit = raw_manifest_commit.lower()
+                if isinstance(manifest_git.get("dirty"), bool):
+                    manifest_dirty = manifest_git["dirty"]
+        except Exception:
+            pass
+
+    environment_commit = str(os.environ.get("GITHUB_SHA") or "").strip()
+    if re.fullmatch(r"[0-9a-fA-F]{40}", environment_commit):
+        source_commit = environment_commit.lower()
+        return source_commit, manifest_dirty, manifest_commit
+    try:
+        from core.benchmark.run_manifest import get_git_info
+
+        git_info = get_git_info()
+        local_commit = str(git_info.get("commit") or "").strip()
+        local_dirty = git_info.get("dirty")
+        if manifest_dirty is None and isinstance(local_dirty, bool):
+            manifest_dirty = local_dirty
+    except Exception:
+        return None, manifest_dirty, manifest_commit
+    source_commit = (
+        local_commit.lower() if re.fullmatch(r"[0-9a-fA-F]{40}", local_commit) else None
+    )
+    return source_commit, manifest_dirty, manifest_commit
 
 
 @dataclass(frozen=True)
@@ -81,13 +120,13 @@ def _load_json_object(
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
-        message = f"Failed to read {label} {path}: {exc}"
+        message = f"Failed to read {label} ({type(exc).__name__})"
         if required:
             raise ValueError(message) from exc
         return None, message
 
     if not isinstance(payload, dict):
-        message = f"Expected JSON object in {label} {path}, got {type(payload).__name__}"
+        message = f"Expected JSON object in {label}, got {type(payload).__name__}"
         if required:
             raise ValueError(message)
         return None, message
@@ -118,18 +157,62 @@ def _find_best_optimization_name(benchmark: Dict[str, Any]) -> Optional[str]:
         optimizations,
         key=lambda entry: float(entry.get("speedup", 0.0) or 0.0),
     )
-    if math.isclose(float(best_entry.get("speedup", 0.0) or 0.0), best_speedup, rel_tol=1e-6, abs_tol=1e-6):
+    if math.isclose(
+        float(best_entry.get("speedup", 0.0) or 0.0), best_speedup, rel_tol=1e-6, abs_tol=1e-6
+    ):
         return str(best_entry.get("technique") or best_entry.get("file") or "")
     return str(best_entry.get("technique") or best_entry.get("file") or "")
 
 
-def _artifact_refs(benchmark: Dict[str, Any]) -> Dict[str, str]:
+def _portable_relative_path(path: Path) -> Optional[str]:
+    if path.is_absolute() or ".." in path.parts:
+        return None
+    parts = tuple(part for part in path.parts if part not in ("", "."))
+    return Path(*parts).as_posix() if parts else None
+
+
+def _portable_evidence_path(value: Any, *, run_id: str) -> Optional[str]:
+    if value is None or not str(value).strip():
+        return None
+    path = Path(str(value))
+    if path.is_absolute():
+        parts = path.parts
+        matching_indexes = [index for index, part in enumerate(parts) if part == run_id]
+        if not matching_indexes:
+            return None
+        return _portable_relative_path(Path(*parts[matching_indexes[-1] :]))
+
+    parts = tuple(part for part in path.parts if part not in ("", "."))
+    if ".." in parts:
+        return None
+    if run_id in parts:
+        parts = parts[parts.index(run_id) :]
+    else:
+        parts = (run_id, *parts)
+    return _portable_relative_path(Path(*parts)) if parts else None
+
+
+def _portable_repo_source_path(value: Any) -> Optional[str]:
+    if value is None or not str(value).strip():
+        return None
+    path = Path(str(value))
+    if not path.is_absolute():
+        return _portable_relative_path(path)
+    try:
+        return path.resolve().relative_to(_repo_root().resolve()).as_posix()
+    except ValueError:
+        return None
+
+
+def _artifact_refs(benchmark: Dict[str, Any], *, run_id: str) -> Dict[str, str]:
     refs: Dict[str, str] = {}
     for key, value in benchmark.items():
         if not isinstance(value, str):
             continue
         if key.endswith(("_rep", "_trace", "_json")) and value:
-            refs[key] = value
+            portable = _portable_evidence_path(value, run_id=run_id)
+            if portable:
+                refs[key] = portable
     return refs
 
 
@@ -138,6 +221,137 @@ def _geometric_mean(values: Iterable[float]) -> float:
     if not positive:
         return 0.0
     return math.exp(sum(math.log(value) for value in positive) / len(positive))
+
+
+def _optional_finite_metric(value: Any, *, label: str) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"Tier-1 benchmark returned a non-numeric {label}")
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError(f"Tier-1 benchmark returned a non-finite {label}")
+    return parsed
+
+
+def _summary_is_complete(summary: Dict[str, Any]) -> bool:
+    counts = summary.get("summary")
+    if not isinstance(counts, dict):
+        return False
+    try:
+        target_count = int(counts.get("target_count", 0) or 0)
+        succeeded = int(counts.get("succeeded", 0) or 0)
+        failed = int(counts.get("failed", 0) or 0)
+        skipped = int(counts.get("skipped", 0) or 0)
+        missing = int(counts.get("missing", 0) or 0)
+    except (TypeError, ValueError):
+        return False
+    targets = summary.get("targets")
+    return (
+        target_count > 0
+        and succeeded == target_count
+        and failed == 0
+        and skipped == 0
+        and missing == 0
+        and isinstance(targets, list)
+        and len(targets) == target_count
+        and all(
+            isinstance(target, dict) and target.get("status") == "succeeded" for target in targets
+        )
+    )
+
+
+def _summary_has_baseline_metrics(summary: Dict[str, Any]) -> bool:
+    if not _summary_is_complete(summary):
+        return False
+    targets = summary.get("targets")
+    if not isinstance(targets, list) or not targets:
+        return False
+    for target in targets:
+        if not isinstance(target, dict) or target.get("status") != "succeeded":
+            return False
+        try:
+            baseline_time = float(target.get("baseline_time_ms", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return False
+        if not math.isfinite(baseline_time) or baseline_time <= 0.0:
+            return False
+        goal = str(target.get("optimization_goal") or "performance").strip().lower()
+        metric_name = "best_memory_savings_pct" if goal == "memory" else "best_speedup"
+        try:
+            metric = float(target.get(metric_name, 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return False
+        if not math.isfinite(metric) or (goal != "memory" and metric <= 0.0):
+            return False
+        if goal == "memory":
+            try:
+                optimized_memory = float(target.get("best_optimized_memory_mb", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                return False
+            if not math.isfinite(optimized_memory) or optimized_memory <= 0.0:
+                return False
+        else:
+            try:
+                optimized_time = float(target.get("best_optimized_time_ms", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                return False
+            if not math.isfinite(optimized_time) or optimized_time <= 0.0:
+                return False
+    return True
+
+
+def _tier1_run_accepted(
+    summary: Dict[str, Any],
+    comparison: Dict[str, Any],
+    *,
+    history_warnings: Iterable[str],
+    accept_comparison: bool,
+) -> bool:
+    source_git_commit = str(summary.get("source_git_commit") or "")
+    source_manifest_git_commit = str(summary.get("source_manifest_git_commit") or "")
+    return (
+        _summary_has_baseline_metrics(summary)
+        and re.fullmatch(r"[0-9a-fA-F]{40}", source_git_commit) is not None
+        and source_manifest_git_commit == source_git_commit
+        and summary.get("source_git_dirty") is False
+        and not list(history_warnings)
+        and (
+            accept_comparison
+            or (not comparison.get("regressions") and not comparison.get("missing_targets"))
+        )
+    )
+
+
+def _tier1_baseline_eligible(
+    *,
+    run_accepted: bool,
+    comparison: Dict[str, Any],
+    accept_comparison: bool,
+    allow_initial_anchor: bool = True,
+) -> bool:
+    if not run_accepted:
+        return False
+    if accept_comparison:
+        return not comparison.get("suppressed_regressions")
+    return (
+        allow_initial_anchor
+        and comparison.get("baseline_run_id") is None
+        and not comparison.get("suppressed_regressions")
+        and not comparison.get("anchor_declines")
+    )
+
+
+def _tier1_baseline_acceptance(
+    *,
+    baseline_eligible: bool,
+    accept_history_anchor: bool,
+) -> Optional[str]:
+    if not baseline_eligible:
+        return None
+    if accept_history_anchor:
+        return "accept_history_anchor"
+    return "clean"
 
 
 def _single_target_suite(suite: Tier1SuiteDefinition, target: Tier1Target) -> Tier1SuiteDefinition:
@@ -224,7 +438,7 @@ def _confirm_speedup_regressions(
     target_map = suite.by_target()
 
     for regression in regressions:
-        if regression.get("reason") != "speedup":
+        if regression.get("reason") not in {"optimized_latency", "speedup"}:
             confirmed.append(regression)
             continue
         target_name = str(regression.get("target") or "")
@@ -288,19 +502,46 @@ def _confirm_speedup_regressions(
             Path(recheck_execution["output_json"]),
             _single_target_suite(suite, target),
             run_id=recheck_execution["run_id"],
-            manifest_path=Path(recheck_execution["manifest_path"]) if recheck_execution.get("manifest_path") else None,
-            report_path=Path(recheck_execution["output_markdown"]) if recheck_execution.get("output_markdown") else None,
+            manifest_path=Path(recheck_execution["manifest_path"])
+            if recheck_execution.get("manifest_path")
+            else None,
+            report_path=Path(recheck_execution["output_markdown"])
+            if recheck_execution.get("output_markdown")
+            else None,
         )
         recheck_target = recheck_summary["targets"][0]
         recheck_comparison = compare_suite_summaries(recheck_summary, previous_summary)
+        recheck_regressions = [
+            row
+            for row in recheck_comparison.get("regressions", [])
+            if row.get("target") == target_name
+        ]
+        recheck_succeeded = recheck_target.get("status") == "succeeded"
+        try:
+            recheck_speedup = float(recheck_target.get("best_speedup", 0.0) or 0.0)
+            recheck_optimized_time_ms = float(
+                recheck_target.get("best_optimized_time_ms", 0.0) or 0.0
+            )
+            recheck_metrics_valid = (
+                math.isfinite(recheck_speedup)
+                and recheck_speedup > 0.0
+                and math.isfinite(recheck_optimized_time_ms)
+                and recheck_optimized_time_ms > 0.0
+            )
+        except (TypeError, ValueError):
+            recheck_metrics_valid = False
         recheck_record = {
             "target": target_name,
             "recheck_run_id": recheck_execution["run_id"],
-            "recheck_output_json": recheck_execution["output_json"],
+            "recheck_output_json": _portable_evidence_path(
+                recheck_execution["output_json"],
+                run_id=recheck_execution["run_id"],
+            ),
             "recheck_summary": recheck_target,
-            "confirmed_regression": any(
-                row.get("target") == target_name and row.get("reason") == "speedup"
-                for row in recheck_comparison.get("regressions", [])
+            "recheck_regressions": recheck_regressions,
+            "recheck_metrics_valid": recheck_metrics_valid,
+            "confirmed_regression": (
+                not recheck_succeeded or not recheck_metrics_valid or bool(recheck_regressions)
             ),
         }
         rechecks.append(recheck_record)
@@ -324,8 +565,11 @@ def _confirm_speedup_regressions(
 
     recheck_path = suite_run_dir / "regression_rechecks.json"
     recheck_path.parent.mkdir(parents=True, exist_ok=True)
-    recheck_path.write_text(json.dumps(rechecks, indent=2), encoding="utf-8")
-    comparison["regression_rechecks_path"] = str(recheck_path)
+    recheck_path.write_text(
+        json.dumps(rechecks, indent=2, allow_nan=False),
+        encoding="utf-8",
+    )
+    comparison["regression_rechecks_path"] = str(recheck_path.relative_to(suite_run_dir.parent))
     return comparison
 
 
@@ -336,6 +580,7 @@ def build_tier1_suite_summary(
     run_id: str,
     manifest_path: Optional[Path] = None,
     report_path: Optional[Path] = None,
+    evidence_artifact_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     payload, _ = _load_json_object(
         Path(result_json_path),
@@ -343,7 +588,9 @@ def build_tier1_suite_summary(
         required=True,
     )
     if payload is None:
-        raise ValueError(f"tier-1 benchmark result JSON reader returned no payload for {result_json_path}")
+        raise ValueError(
+            f"tier-1 benchmark result JSON reader returned no payload for {result_json_path}"
+        )
     target_map = suite.by_target()
 
     chapter_results = {
@@ -369,6 +616,27 @@ def build_tier1_suite_summary(
             )
             continue
 
+        baseline_time_ms = _optional_finite_metric(
+            bench.get("baseline_time_ms"),
+            label=f"baseline_time_ms for {target.target}",
+        )
+        best_speedup = _optional_finite_metric(
+            bench.get("best_speedup"),
+            label=f"best_speedup for {target.target}",
+        )
+        baseline_memory_mb = _optional_finite_metric(
+            bench.get("baseline_memory_mb"),
+            label=f"baseline_memory_mb for {target.target}",
+        )
+        best_memory_savings_pct = _optional_finite_metric(
+            bench.get("best_memory_savings_pct"),
+            label=f"best_memory_savings_pct for {target.target}",
+        )
+        baseline_p75_ms = _optional_finite_metric(
+            bench.get("baseline_p75_ms"),
+            label=f"baseline_p75_ms for {target.target}",
+        )
+
         targets.append(
             {
                 "key": target.key,
@@ -376,30 +644,45 @@ def build_tier1_suite_summary(
                 "category": target.category,
                 "rationale": target.rationale,
                 "status": bench.get("status", "unknown"),
-                "baseline_time_ms": bench.get("baseline_time_ms"),
-                "best_speedup": bench.get("best_speedup"),
+                "baseline_time_ms": baseline_time_ms,
+                "best_speedup": best_speedup,
                 "best_optimized_time_ms": (
-                    float(bench.get("baseline_time_ms", 0.0) or 0.0)
-                    / float(bench.get("best_speedup", 0.0) or 1.0)
-                    if float(bench.get("baseline_time_ms", 0.0) or 0.0) > 0.0
-                    and float(bench.get("best_speedup", 0.0) or 0.0) > 0.0
+                    baseline_time_ms / best_speedup
+                    if baseline_time_ms is not None
+                    and best_speedup is not None
+                    and baseline_time_ms > 0.0
+                    and best_speedup > 0.0
                     else None
                 ),
                 "best_optimization": _find_best_optimization_name(bench),
                 "optimization_goal": bench.get("optimization_goal"),
-                "baseline_memory_mb": bench.get("baseline_memory_mb"),
-                "best_memory_savings_pct": bench.get("best_memory_savings_pct"),
-                "baseline_p75_ms": bench.get("baseline_p75_ms"),
-                "baseline_file": bench.get("baseline_file"),
-                "artifacts": _artifact_refs(bench),
+                "baseline_memory_mb": baseline_memory_mb,
+                "best_memory_savings_pct": best_memory_savings_pct,
+                "best_optimized_memory_mb": (
+                    baseline_memory_mb * (1.0 - best_memory_savings_pct / 100.0)
+                    if baseline_memory_mb is not None
+                    and best_memory_savings_pct is not None
+                    and baseline_memory_mb > 0.0
+                    else None
+                ),
+                "baseline_p75_ms": baseline_p75_ms,
+                "baseline_file": _portable_repo_source_path(bench.get("baseline_file")),
+                "artifacts": _artifact_refs(bench, run_id=run_id),
             }
         )
 
-    speedups = [float(target.get("best_speedup", 0.0) or 0.0) for target in targets if target.get("status") == "succeeded"]
+    speedups = [
+        float(target.get("best_speedup", 0.0) or 0.0)
+        for target in targets
+        if target.get("status") == "succeeded"
+    ]
     succeeded = sum(1 for target in targets if target.get("status") == "succeeded")
     failed = sum(1 for target in targets if str(target.get("status", "")).startswith("failed"))
     skipped = sum(1 for target in targets if str(target.get("status", "")).startswith("skipped"))
     missing = sum(1 for target in targets if target.get("status") == "missing")
+    source_git_commit, source_git_dirty, source_manifest_git_commit = (
+        _source_git_provenance(manifest_path)
+    )
 
     return {
         "suite_name": suite.name,
@@ -407,9 +690,13 @@ def build_tier1_suite_summary(
         "description": suite.description,
         "run_id": run_id,
         "generated_at": payload.get("timestamp"),
-        "source_result_json": str(Path(result_json_path)),
-        "source_manifest_json": str(manifest_path) if manifest_path else None,
-        "source_markdown_report": str(report_path) if report_path else None,
+        "source_result_json": _portable_evidence_path(result_json_path, run_id=run_id),
+        "source_manifest_json": _portable_evidence_path(manifest_path, run_id=run_id),
+        "source_markdown_report": _portable_evidence_path(report_path, run_id=run_id),
+        "source_git_commit": source_git_commit,
+        "source_git_dirty": source_git_dirty,
+        "source_manifest_git_commit": source_manifest_git_commit,
+        "evidence_artifact_name": evidence_artifact_name,
         "targets": targets,
         "summary": {
             "target_count": len(targets),
@@ -449,6 +736,9 @@ def run_tier1_suite(
     log_level: str = "INFO",
     log_file: Optional[str] = None,
     single_gpu: bool = False,
+    accept_history_anchor: bool = False,
+    acceptance_note: Optional[str] = None,
+    history_anchor_candidate: bool = False,
     accept_regressions: bool = False,
     update_expectations: bool = False,
     allow_mixed_provenance: bool = False,
@@ -476,12 +766,52 @@ def run_tier1_suite(
     use_llm_cache: bool = True,
     llm_explain: bool = False,
 ) -> Dict[str, Any]:
-    from core.analysis.history_index import load_history_index_with_warnings, update_history_index
+    from core.analysis.history_index import (
+        build_updated_history_index,
+        load_history_index_with_warnings,
+        resolve_history_entry_path,
+        update_history_index,
+    )
     from core.analysis.regressions import compare_suite_summaries, render_regression_summary
     from core.analysis.trends import build_trend_snapshot
-    from core.benchmark.bench_commands import _execute_benchmarks
+    from core.benchmark.artifact_manager import default_artifacts_root
+    from core.benchmark.bench_commands import _execute_benchmarks, _validate_run_id
 
     suite = load_tier1_suite(config_path)
+    if accept_history_anchor:
+        raise ValueError(
+            "Tier-1 history anchors must be ratified from immutable post-benchmark evidence"
+        )
+    if acceptance_note:
+        raise ValueError("Tier-1 acceptance notes are valid only during post-benchmark ratification")
+    history_root_path = Path(history_root or (_repo_root() / suite.history_root)).resolve()
+    validated_run_id = _validate_run_id(run_id)
+    preflight_index, preflight_warnings = load_history_index_with_warnings(
+        history_root_path / "index.json"
+    )
+    if preflight_warnings:
+        raise ValueError(
+            "Refusing to run Tier-1 with invalid canonical history: "
+            + " | ".join(preflight_warnings)
+        )
+    if validated_run_id is not None:
+        planned_run_dir = history_root_path / validated_run_id
+        active_bench_root = Path(bench_root).resolve() if bench_root else _repo_root()
+        artifact_base = (
+            Path(artifacts_dir) if artifacts_dir else default_artifacts_root(active_bench_root)
+        )
+        planned_evidence_dir = artifact_base.resolve() / validated_run_id
+        if planned_run_dir.is_symlink() or planned_run_dir.exists() or any(
+            isinstance(entry, dict) and entry.get("run_id") == validated_run_id
+            for entry in preflight_index.get("runs", [])
+        ):
+            raise ValueError(
+                f"Refusing to overwrite existing Tier-1 history run {validated_run_id!r}"
+            )
+        if planned_evidence_dir.is_symlink() or planned_evidence_dir.exists():
+            raise ValueError(
+                f"Refusing to overwrite existing Tier-1 evidence run {validated_run_id!r}"
+            )
     execution = _execute_benchmarks(
         targets=suite.target_strings(),
         bench_root=bench_root,
@@ -499,7 +829,7 @@ def run_tier1_suite(
         gpu_sm_clock_mhz=gpu_sm_clock_mhz,
         gpu_mem_clock_mhz=gpu_mem_clock_mhz,
         artifacts_dir=artifacts_dir,
-        run_id=run_id,
+        run_id=validated_run_id,
         log_level=log_level,
         log_file=log_file,
         single_gpu=single_gpu,
@@ -532,39 +862,209 @@ def run_tier1_suite(
         exit_on_failure=False,
     )
 
-    history_root_path = Path(history_root or (_repo_root() / suite.history_root)).resolve()
-    suite_run_dir = history_root_path / execution["run_id"]
-    suite_run_dir.mkdir(parents=True, exist_ok=True)
+    execution_run_id = _validate_run_id(str(execution["run_id"]))
+    if execution_run_id is None:
+        raise ValueError("Tier-1 benchmark execution returned no run id")
+    suite_run_dir = history_root_path / execution_run_id
+    if suite_run_dir.is_symlink() or suite_run_dir.exists() or any(
+        isinstance(entry, dict) and entry.get("run_id") == execution_run_id
+        for entry in preflight_index.get("runs", [])
+    ):
+        raise ValueError(f"Refusing to overwrite existing Tier-1 history run {execution_run_id!r}")
+    suite_run_dir.mkdir(parents=True, exist_ok=False)
 
     summary = build_tier1_suite_summary(
         Path(execution["output_json"]),
         suite,
         run_id=execution["run_id"],
         manifest_path=Path(execution["manifest_path"]) if execution.get("manifest_path") else None,
-        report_path=Path(execution["output_markdown"]) if execution.get("output_markdown") else None,
+        report_path=Path(execution["output_markdown"])
+        if execution.get("output_markdown")
+        else None,
+        evidence_artifact_name=os.environ.get("AISP_TIER1_EVIDENCE_ARTIFACT_NAME"),
     )
     summary_path = suite_run_dir / "summary.json"
-    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    summary_path.write_text(
+        json.dumps(summary, indent=2, allow_nan=False),
+        encoding="utf-8",
+    )
 
     index_path = history_root_path / "index.json"
     history_warnings: List[str] = []
     previous_index, index_warnings = load_history_index_with_warnings(index_path)
     history_warnings.extend(index_warnings)
     previous_summary = None
+    suite_identity_reset = False
     for entry in reversed(previous_index.get("runs", [])):
+        entry_run_id = str(entry.get("run_id") or "").strip() or None
+        if entry_run_id == execution["run_id"]:
+            continue
+        eligibility = entry.get("baseline_eligible")
+        if eligibility is False:
+            continue
         previous_summary_path_raw = str(entry.get("summary_path") or "").strip()
         if not previous_summary_path_raw:
-            continue
-        previous_summary_path = Path(previous_summary_path_raw)
-        if previous_summary_path.exists():
-            previous_summary, previous_summary_warning = _load_json_object(
-                previous_summary_path,
-                label="previous tier-1 summary",
+            history_warnings.append(
+                f"Tier-1 history entry {entry_run_id or '<unknown>'} has no summary_path"
             )
-            if previous_summary_warning:
-                history_warnings.append(previous_summary_warning)
+            continue
+        try:
+            previous_summary_path = resolve_history_entry_path(
+                history_root_path,
+                previous_summary_path_raw,
+                run_id=entry_run_id,
+            )
+        except ValueError as exc:
+            history_warnings.append(str(exc))
+            continue
+        if previous_summary_path is None:
+            continue
+        if not previous_summary_path.exists():
+            history_warnings.append(
+                f"Indexed previous tier-1 summary for {entry_run_id or '<unknown>'} is missing"
+            )
+            continue
+        candidate_summary, previous_summary_warning = _load_json_object(
+            previous_summary_path,
+            label="previous tier-1 summary",
+        )
+        if previous_summary_warning:
+            history_warnings.append(previous_summary_warning)
+            continue
+        if candidate_summary is not None and (
+            candidate_summary.get("suite_name") != suite.name
+            or candidate_summary.get("suite_version") != suite.version
+        ):
+            if history_anchor_candidate:
+                suite_identity_reset = True
+            else:
+                history_warnings.append(
+                    f"Indexed Tier-1 baseline {entry_run_id or '<unknown>'} has a different suite identity"
+                )
+            continue
+        if candidate_summary is None or not _summary_has_baseline_metrics(candidate_summary):
+            if entry.get("baseline_eligible") is True:
+                history_warnings.append(
+                    f"Indexed Tier-1 baseline {entry_run_id or '<unknown>'} is missing "
+                    "complete finite metrics"
+                )
+            continue
+
+        regression_path_raw = entry.get("regression_json_path") or entry.get(
+            "regression_summary_json_path"
+        )
+        if not regression_path_raw:
+            history_warnings.append(
+                f"Indexed Tier-1 baseline {entry_run_id or '<unknown>'} has no regression JSON"
+            )
+            continue
+        try:
+            regression_path = resolve_history_entry_path(
+                history_root_path,
+                regression_path_raw,
+                run_id=entry_run_id,
+            )
+        except ValueError as exc:
+            history_warnings.append(str(exc))
+            continue
+        if regression_path is None or not regression_path.exists():
+            history_warnings.append(
+                "Indexed previous tier-1 regression summary for "
+                f"{entry_run_id or '<unknown>'} is missing"
+            )
+            continue
+        candidate_comparison, comparison_warning = _load_json_object(
+            regression_path,
+            label="previous tier-1 regression summary",
+        )
+        if comparison_warning:
+            history_warnings.append(comparison_warning)
+            continue
+        if candidate_comparison is None or not all(
+            isinstance(candidate_comparison.get(key, []), list)
+            for key in (
+                "anchor_declines",
+                "missing_targets",
+                "regressions",
+                "suppressed_regressions",
+            )
+        ):
+            history_warnings.append(
+                f"Indexed Tier-1 baseline {entry_run_id or '<unknown>'} has malformed results"
+            )
+            continue
+        if candidate_comparison.get("suppressed_regressions"):
+            if eligibility is True or entry.get("run_accepted") is True:
+                history_warnings.append(
+                    f"Indexed Tier-1 baseline {entry_run_id or '<unknown>'} contains "
+                    "suppressed regressions and cannot be an anchor"
+                )
+            continue
+        comparison_has_anchor_changes = any(
+            candidate_comparison.get(key)
+            for key in (
+                "anchor_declines",
+                "missing_targets",
+                "regressions",
+                "suppressed_regressions",
+            )
+        )
+        acceptance = entry.get("baseline_acceptance")
+        explicit_acceptance = acceptance in {
+            "accept_history_anchor",
+            "accept_regressions",
+            "update_expectations",
+        }
+        blocking_comparison_changes = bool(
+            candidate_comparison.get("regressions")
+            or candidate_comparison.get("missing_targets")
+        )
+        entry_run_accepted = entry.get("run_accepted")
+        if entry_run_accepted is False:
+            continue
+        if blocking_comparison_changes and not explicit_acceptance:
+            if eligibility is True or entry_run_accepted is True:
+                history_warnings.append(
+                    f"Indexed Tier-1 baseline {entry_run_id or '<unknown>'} has invalid acceptance"
+                )
+            continue
+        inferred_run_accepted = not blocking_comparison_changes or explicit_acceptance
+        if entry_run_accepted is None:
+            entry_run_accepted = inferred_run_accepted
+        if eligibility is None:
+            if not (
+                entry_run_accepted
+                and not comparison_has_anchor_changes
+                and candidate_comparison.get("baseline_run_id") is None
+            ):
                 continue
-            break
+        elif eligibility is True:
+            if not entry_run_accepted:
+                history_warnings.append(
+                    f"Indexed Tier-1 baseline {entry_run_id or '<unknown>'} was not accepted"
+                )
+                continue
+            if comparison_has_anchor_changes and not explicit_acceptance:
+                history_warnings.append(
+                    f"Indexed Tier-1 baseline {entry_run_id or '<unknown>'} lacks acceptance"
+                )
+                continue
+            if (
+                candidate_comparison.get("baseline_run_id") is not None
+                and not explicit_acceptance
+            ):
+                history_warnings.append(
+                    f"Indexed Tier-1 baseline {entry_run_id or '<unknown>'} was not ratified"
+                )
+                continue
+
+        previous_summary = candidate_summary
+        break
+
+    if previous_index.get("runs") and previous_summary is None and not (
+        history_anchor_candidate and suite_identity_reset and not history_warnings
+    ):
+        history_warnings.append("Tier-1 history contains runs but no eligible prior baseline")
 
     regression_summary_path = suite_run_dir / "regression_summary.md"
     comparison = compare_suite_summaries(summary, previous_summary)
@@ -627,32 +1127,77 @@ def run_tier1_suite(
         encoding="utf-8",
     )
     regression_json_path = suite_run_dir / "regression_summary.json"
-    regression_json_path.write_text(json.dumps(comparison, indent=2), encoding="utf-8")
-
-    updated_index = update_history_index(
-        history_root=history_root_path,
-        suite=suite,
-        summary=summary,
-        summary_path=summary_path,
-        regression_summary_path=regression_summary_path,
-        regression_json_path=regression_json_path,
+    regression_json_path.write_text(
+        json.dumps(comparison, indent=2, allow_nan=False),
+        encoding="utf-8",
     )
+
+    accepted_comparison = False
+    run_accepted = _tier1_run_accepted(
+        summary,
+        comparison,
+        history_warnings=history_warnings,
+        accept_comparison=accepted_comparison,
+    )
+    baseline_eligible = _tier1_baseline_eligible(
+        run_accepted=run_accepted,
+        comparison=comparison,
+        accept_comparison=accepted_comparison,
+        allow_initial_anchor=not history_anchor_candidate,
+    )
+    baseline_acceptance = _tier1_baseline_acceptance(
+        baseline_eligible=baseline_eligible,
+        accept_history_anchor=False,
+    )
+
+    try:
+        updated_index = build_updated_history_index(
+            history_root=history_root_path,
+            suite=suite,
+            summary=summary,
+            summary_path=summary_path,
+            regression_summary_path=regression_summary_path,
+            regression_json_path=regression_json_path,
+            run_accepted=run_accepted,
+            baseline_eligible=baseline_eligible,
+            baseline_acceptance=baseline_acceptance,
+            baseline_acceptance_actor=None,
+            baseline_acceptance_note=None,
+            baseline_acceptance_workflow_run=None,
+        )
+    except ValueError as exc:
+        history_warnings.append(str(exc))
+        updated_index = previous_index
     run_warnings = list(history_warnings)
     run_warnings.extend(updated_index.get("warnings", []))
 
     trend_snapshot = build_trend_snapshot(updated_index)
     trend_snapshot_path = suite_run_dir / "trend_snapshot.json"
-    trend_snapshot_path.write_text(json.dumps(trend_snapshot, indent=2), encoding="utf-8")
-
-    updated_index = update_history_index(
-        history_root=history_root_path,
-        suite=suite,
-        summary=summary,
-        summary_path=summary_path,
-        regression_summary_path=regression_summary_path,
-        regression_json_path=regression_json_path,
-        trend_snapshot_path=trend_snapshot_path,
+    trend_snapshot_path.write_text(
+        json.dumps(trend_snapshot, indent=2, allow_nan=False),
+        encoding="utf-8",
     )
+
+    try:
+        updated_index = update_history_index(
+            history_root=history_root_path,
+            suite=suite,
+            summary=summary,
+            summary_path=summary_path,
+            regression_summary_path=regression_summary_path,
+            regression_json_path=regression_json_path,
+            trend_snapshot_path=trend_snapshot_path,
+            run_accepted=run_accepted,
+            baseline_eligible=baseline_eligible,
+            baseline_acceptance=baseline_acceptance,
+            baseline_acceptance_actor=None,
+            baseline_acceptance_note=None,
+            baseline_acceptance_workflow_run=None,
+        )
+    except ValueError as exc:
+        history_warnings.append(str(exc))
+        run_warnings.append(str(exc))
+    run_warnings.extend(updated_index.get("warnings", []))
 
     return {
         "suite": suite,
@@ -665,5 +1210,9 @@ def run_tier1_suite(
         "index": updated_index,
         "history_root": history_root_path,
         "comparison": comparison,
+        "history_integrity_failed": bool(history_warnings),
+        "run_accepted": run_accepted,
+        "baseline_eligible": baseline_eligible,
+        "baseline_acceptance": baseline_acceptance,
         "warnings": list(dict.fromkeys(run_warnings)),
     }

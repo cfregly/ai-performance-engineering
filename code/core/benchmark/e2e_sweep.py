@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import contextlib
+from collections import Counter
 from datetime import datetime, timezone
 from functools import partial
 import getpass
+import hashlib
 import json
 import os
 import re
@@ -26,10 +28,15 @@ try:
 except Exception:  # pragma: no cover - non-POSIX environments
     fcntl = None  # type: ignore[assignment]
 
-from core.benchmark.artifact_manager import build_run_id
+from core.benchmark.artifact_manager import build_run_id, validate_run_id
 from core.benchmark.expectations import detect_expectation_key
 from core.benchmark.run_manifest import get_git_info
-from core.discovery import chapter_slug, discover_all_chapters, discover_benchmarks, is_cuda_binary_benchmark_file
+from core.discovery import (
+    chapter_slug,
+    discover_all_chapters,
+    discover_benchmarks,
+    is_cuda_binary_benchmark_file,
+)
 from core.harness.progress import ProgressEvent, ProgressRecorder
 from core.harness.validity_checks import detect_execution_environment
 from core.harness.validity_profile import normalize_validity_profile
@@ -39,6 +46,12 @@ _STATE_HEARTBEAT_SECONDS = 60.0
 _E2E_WATCHER_POLL_SECONDS = 15
 _E2E_WATCHER_MAX_AUTO_RESUMES = 3
 _E2E_WATCHER_SUPERVISED_ENV = "AISP_E2E_WATCHER_SUPERVISED"
+_E2E_CONTRACT_SCHEMA_VERSION = "1.0"
+_REPO_ROOT_LOCATOR = "<repo-root>"
+_BENCH_ROOT_LOCATOR = "<bench-root>"
+_ARTIFACTS_DIR_LOCATOR = "<artifacts-dir>"
+_LOG_FILE_LOCATOR = "<log-file>"
+_GIT_COMMIT_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 
 
 class _E2EAbort(BaseException):
@@ -54,12 +67,45 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _validated_clean_git_commit(
+    *,
+    repo_root: Path,
+    git_info: Optional[Dict[str, Any]] = None,
+) -> Tuple[Optional[str], Optional[str]]:
+    """Return the exact clean commit after an independent porcelain-status probe."""
+
+    info = dict(git_info or get_git_info())
+    commit = str(info.get("commit") or "").strip()
+    if _GIT_COMMIT_RE.fullmatch(commit) is None:
+        return None, "Git provenance is missing a valid 40-hex commit"
+    if info.get("dirty") is not False:
+        return None, "Git provenance reports a dirty worktree"
+    try:
+        status = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=normal"],
+            cwd=str(Path(repo_root).resolve()),
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return None, "Independent Git status probe timed out"
+    except (FileNotFoundError, OSError, subprocess.SubprocessError) as exc:
+        return None, f"Independent Git status probe failed: {type(exc).__name__}"
+    if status.returncode != 0:
+        return None, f"Independent Git status probe exited with code {status.returncode}"
+    if str(status.stdout or "").strip():
+        return None, "Independent Git status probe found a dirty worktree"
+    return commit, None
+
+
 def e2e_runs_root(repo_root: Optional[Path] = None) -> Path:
     return Path(repo_root or _repo_root()) / "artifacts" / "e2e_runs"
 
 
 def e2e_run_dir(run_id: str, repo_root: Optional[Path] = None) -> Path:
-    return e2e_runs_root(repo_root) / run_id
+    return e2e_runs_root(repo_root) / validate_run_id(run_id)
 
 
 def e2e_progress_path(run_dir: Path) -> Path:
@@ -84,8 +130,8 @@ def _watch_e2e_sweep_script() -> Path:
 
 def resolve_e2e_run_id(run_id: Optional[str] = None, *, repo_root: Optional[Path] = None) -> str:
     if run_id and str(run_id).strip():
-        return str(run_id).strip()
-    return build_run_id("benchmark_e2e_sweep", base_dir=e2e_runs_root(repo_root))
+        return validate_run_id(str(run_id).strip())
+    return validate_run_id(build_run_id("benchmark_e2e_sweep", base_dir=e2e_runs_root(repo_root)))
 
 
 def resolve_latest_e2e_run_id(*, repo_root: Optional[Path] = None) -> Optional[str]:
@@ -133,7 +179,9 @@ def _json_safe(value: Any) -> Any:
 
 def _write_json(path: Path, payload: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=_json_default), encoding="utf-8")
+    path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True, default=_json_default), encoding="utf-8"
+    )
 
 
 def _read_json_if_exists(path: Path) -> Optional[Dict[str, Any]]:
@@ -188,7 +236,7 @@ def _pid_is_live(pid: Optional[int]) -> bool:
 
 def _append_event(events_path: Path, event: str, **fields: Any) -> None:
     events_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"ts": _utc_now(), "event": event, **fields}
+    payload = {"ts": _utc_now(), "event": event, **_sanitize_persisted_value(fields)}
     with events_path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, default=_json_default) + "\n")
 
@@ -304,6 +352,18 @@ def _normalize_cluster_hosts_and_labels(
 
 def _with_e2e_cluster_extra_args(extra_args: Optional[List[str]]) -> Optional[List[str]]:
     merged = [str(arg) for arg in (extra_args or []) if str(arg).strip()]
+    for raw_arg in merged:
+        normalized = raw_arg.strip()
+        if any(
+            normalized == flag
+            or normalized.startswith(f"{flag}=")
+            or normalized.startswith(f"{flag} ")
+            for flag in _SENSITIVE_EXTRA_ARG_FLAGS
+        ):
+            raise ValueError(
+                "Credential flags are not allowed in extra_cluster_args. "
+                "Use the named credential options instead."
+            )
     render_flags = {"--render-localhost-report", "--skip-render-localhost-report"}
     if not any(flag in render_flags for flag in merged):
         merged.append("--skip-render-localhost-report")
@@ -316,7 +376,9 @@ def _visible_gpu_count(*, single_gpu: bool) -> int:
 
     visible = os.environ.get("CUDA_VISIBLE_DEVICES")
     if visible and visible.strip():
-        devices = [token.strip() for token in visible.split(",") if token.strip() and token.strip() != "-1"]
+        devices = [
+            token.strip() for token in visible.split(",") if token.strip() and token.strip() != "-1"
+        ]
         if devices:
             return len(devices)
 
@@ -388,11 +450,13 @@ def discover_benchmark_e2e_inventory(bench_root: Optional[Path] = None) -> Dict[
     repo_root = _repo_root()
     active_bench_root = Path(bench_root).resolve() if bench_root else repo_root
     discovered = _iter_discovered_targets(active_bench_root)
-    single_gpu_targets = sorted(entry["target"] for entry in discovered if not entry.get("multi_gpu"))
+    single_gpu_targets = sorted(
+        entry["target"] for entry in discovered if not entry.get("multi_gpu")
+    )
     multi_gpu_targets = sorted(entry["target"] for entry in discovered if entry.get("multi_gpu"))
     return {
         "generated_at": _utc_now(),
-        "bench_root": str(active_bench_root),
+        "bench_root_identity": _bench_root_identity(active_bench_root),
         "targets": discovered,
         "single_gpu": single_gpu_targets,
         "multi_gpu": multi_gpu_targets,
@@ -431,14 +495,283 @@ def _invoke_run_cluster_fabric_eval(**kwargs: Any) -> Dict[str, Any]:
 def _result_path_exists(path_value: Optional[str]) -> bool:
     if not path_value:
         return False
-    return Path(path_value).exists()
+    path = Path(path_value)
+    try:
+        return path.is_file() and path.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _read_json_object_artifact(
+    path_value: Any,
+    *,
+    artifact_name: str,
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    path = Path(str(path_value or ""))
+    if not _result_path_exists(str(path)):
+        return None, f"missing or empty required artifact: {artifact_name}"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return None, f"failed to parse {artifact_name}: {exc}"
+    if not isinstance(payload, dict):
+        return None, f"invalid {artifact_name}: expected a JSON object"
+    return payload, None
+
+
+def _configured_tier1_history_root(repo_root: Path) -> Path:
+    config_path = Path(repo_root).resolve() / "configs" / "benchmark_suites" / "tier1.yaml"
+    if not config_path.is_file():
+        return Path(repo_root).resolve() / "artifacts" / "history" / "tier1"
+    from core.benchmark.suites.tier1 import load_tier1_suite
+
+    configured = Path(load_tier1_suite(config_path).history_root)
+    if configured.is_absolute():
+        return configured.resolve()
+    return (Path(repo_root).resolve() / configured).resolve()
+
+
+def _require_exact_file_path(
+    path_value: Any,
+    *,
+    expected_path: Path,
+    artifact_name: str,
+) -> Optional[str]:
+    raw = str(path_value or "").strip()
+    if not raw:
+        return f"missing required artifact path: {artifact_name}"
+    candidate = Path(raw)
+    try:
+        candidate_resolved = candidate.resolve(strict=True)
+        expected_resolved = Path(expected_path).resolve(strict=True)
+    except OSError:
+        return f"missing required artifact: {artifact_name}"
+    if candidate.is_symlink() or candidate_resolved != expected_resolved:
+        return f"invalid {artifact_name}: path is not the expected run artifact"
+    if not candidate_resolved.is_file() or candidate_resolved.stat().st_size <= 0:
+        return f"missing or empty required artifact: {artifact_name}"
+    return None
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _benchmark_manifest_identity_error(
+    manifest: Dict[str, Any],
+    *,
+    expected_run_id: str,
+    expected_git_commit: str,
+) -> Optional[str]:
+    if manifest.get("run_id") != expected_run_id:
+        return "benchmark manifest run_id does not match the owning attempt"
+    git_payload = manifest.get("git")
+    if not isinstance(git_payload, dict):
+        return "benchmark manifest is missing Git provenance"
+    if str(git_payload.get("commit") or "") != expected_git_commit:
+        return "benchmark manifest Git commit does not match the E2E commit"
+    if git_payload.get("dirty") is not False:
+        return "benchmark manifest Git provenance is dirty"
+    entries = manifest.get("manifests")
+    if not isinstance(entries, list) or not entries:
+        return "benchmark manifest has no per-benchmark evidence"
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict) or not isinstance(entry.get("manifest"), dict):
+            return f"benchmark manifest entry {index} is malformed"
+        entry_git = entry["manifest"].get("git")
+        if not isinstance(entry_git, dict):
+            return f"benchmark manifest entry {index} is missing Git provenance"
+        if str(entry_git.get("commit") or "") != expected_git_commit:
+            return f"benchmark manifest entry {index} has a different Git commit"
+        if entry_git.get("dirty") is not False:
+            return f"benchmark manifest entry {index} has dirty Git provenance"
+    return None
+
+
+def _validate_benchmark_run_manifest(
+    *,
+    expected_run_id: str,
+    repo_root: Path,
+    artifacts_dir: Optional[str],
+    expected_git_commit: str,
+) -> Optional[str]:
+    expected_run_dir = _benchmark_run_dir(
+        expected_run_id,
+        repo_root=Path(repo_root).resolve(),
+        artifacts_dir=artifacts_dir,
+    )
+    expected_path = expected_run_dir / "manifest.json"
+    path_error = _require_exact_file_path(
+        expected_path,
+        expected_path=expected_path,
+        artifact_name="benchmark manifest",
+    )
+    if path_error:
+        return path_error
+    payload, error = _read_json_object_artifact(
+        expected_path,
+        artifact_name="benchmark manifest",
+    )
+    if error:
+        return error
+    identity_error = _benchmark_manifest_identity_error(
+        payload,
+        expected_run_id=expected_run_id,
+        expected_git_commit=expected_git_commit,
+    )
+    if identity_error:
+        return identity_error
+    output_path = expected_run_dir / "results" / "benchmark_test_results.json"
+    output, output_error = _read_json_object_artifact(
+        output_path,
+        artifact_name="benchmark output JSON",
+    )
+    if output_error:
+        return output_error
+    if output.get("run_id") != expected_run_id:
+        return "benchmark output run_id does not match the owning attempt"
+    return None
+
+
+def _validate_tier1_artifacts(
+    result: Dict[str, Any],
+    *,
+    expected_run_id: Optional[str] = None,
+    repo_root: Optional[Path] = None,
+    artifacts_dir: Optional[str] = None,
+    expected_git_commit: Optional[str] = None,
+) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
+    binding_requested = any(
+        value is not None for value in (expected_run_id, repo_root, expected_git_commit)
+    )
+    if binding_requested and (not expected_run_id or repo_root is None or not expected_git_commit):
+        return None, None, "invalid Tier-1 evidence-binding context"
+
+    expected_paths: Dict[str, Path] = {}
+    if binding_requested:
+        execution = result.get("execution")
+        if not isinstance(execution, dict) or execution.get("run_id") != expected_run_id:
+            return None, None, "Tier-1 execution run_id does not match the owning attempt"
+        try:
+            history_root = _configured_tier1_history_root(Path(repo_root))
+        except Exception as exc:
+            return None, None, f"failed to resolve configured Tier-1 history root: {exc}"
+        raw_history_root = str(result.get("history_root") or "").strip()
+        if not raw_history_root:
+            return None, None, "Tier-1 result is missing history_root"
+        try:
+            if Path(raw_history_root).resolve(strict=True) != history_root.resolve(strict=True):
+                return None, None, "Tier-1 history_root does not match the configured root"
+        except OSError:
+            return None, None, "Tier-1 history_root is missing"
+        run_history_root = history_root / str(expected_run_id)
+        if history_root.is_symlink() or run_history_root.is_symlink():
+            return None, None, "Tier-1 history path may not be a symlink"
+        expected_paths = {
+            "summary_path": run_history_root / "summary.json",
+            "regression_summary_path": run_history_root / "regression_summary.md",
+            "regression_json_path": run_history_root / "regression_summary.json",
+            "trend_snapshot_path": run_history_root / "trend_snapshot.json",
+        }
+        for field_name, expected_path in expected_paths.items():
+            path_error = _require_exact_file_path(
+                result.get(field_name),
+                expected_path=expected_path,
+                artifact_name=field_name,
+            )
+            if path_error:
+                return None, None, path_error
+        manifest_error = _validate_benchmark_run_manifest(
+            expected_run_id=str(expected_run_id),
+            repo_root=Path(repo_root),
+            artifacts_dir=artifacts_dir,
+            expected_git_commit=str(expected_git_commit),
+        )
+        if manifest_error:
+            return None, None, manifest_error
+
+    summary, error = _read_json_object_artifact(
+        result.get("summary_path"), artifact_name="summary_path"
+    )
+    if error:
+        return None, None, error
+    if not isinstance(summary.get("targets"), list) or not isinstance(summary.get("summary"), dict):
+        return None, None, "invalid summary_path: missing targets or summary"
+    summary_counts = summary["summary"]
+    for field_name in ("target_count", "succeeded", "failed", "skipped", "missing"):
+        value = summary_counts.get(field_name)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            return None, None, f"invalid summary_path: {field_name} must be a nonnegative integer"
+    targets = summary["targets"]
+    if not targets:
+        return None, None, "invalid summary_path: targets must not be empty"
+    if any(not isinstance(target, dict) for target in targets):
+        return None, None, "invalid summary_path: every target must be an object"
+    observed_counts = {
+        "succeeded": sum(target.get("status") == "succeeded" for target in targets),
+        "failed": sum(str(target.get("status") or "").startswith("failed") for target in targets),
+        "skipped": sum(str(target.get("status") or "").startswith("skipped") for target in targets),
+        "missing": sum(target.get("status") == "missing" for target in targets),
+    }
+    if summary_counts.get("target_count") != len(targets):
+        return None, None, "invalid summary_path: target_count does not match targets"
+    for field_name, observed in observed_counts.items():
+        if summary_counts.get(field_name) != observed:
+            return None, None, f"invalid summary_path: {field_name} does not match target statuses"
+    if sum(observed_counts.values()) != len(targets):
+        unknown_count = len(targets) - sum(observed_counts.values())
+        return None, None, f"{unknown_count} benchmark target(s) reported unknown"
+    if binding_requested:
+        if summary.get("run_id") != expected_run_id:
+            return None, None, "Tier-1 summary run_id does not match the owning attempt"
+        if str(summary.get("source_git_commit") or "") != expected_git_commit:
+            return None, None, "Tier-1 summary source Git commit does not match the E2E commit"
+        if str(summary.get("source_manifest_git_commit") or "") != expected_git_commit:
+            return None, None, "Tier-1 summary manifest Git commit does not match the E2E commit"
+        if summary.get("source_git_dirty") is not False:
+            return None, None, "Tier-1 summary source Git provenance is dirty"
+
+    comparison, error = _read_json_object_artifact(
+        result.get("regression_json_path"), artifact_name="regression_json_path"
+    )
+    if error:
+        return None, None, error
+    for field_name in ("regressions", "missing_targets"):
+        if not isinstance(comparison.get(field_name), list):
+            return None, None, f"invalid regression_json_path: {field_name} must be a list"
+    if binding_requested and comparison.get("current_run_id") != expected_run_id:
+        return None, None, "Tier-1 comparison current_run_id does not match the owning attempt"
+
+    trend, error = _read_json_object_artifact(
+        result.get("trend_snapshot_path"), artifact_name="trend_snapshot_path"
+    )
+    if error:
+        return None, None, error
+    if (
+        not isinstance(trend.get("run_count"), int)
+        or isinstance(trend.get("run_count"), bool)
+        or not isinstance(trend.get("history"), list)
+        or not isinstance(trend.get("evidence_history"), list)
+    ):
+        return None, None, "invalid trend_snapshot_path: malformed trend snapshot"
+
+    regression_summary_path = result.get("regression_summary_path")
+    if not _result_path_exists(regression_summary_path):
+        return None, None, "missing or empty required artifact: regression_summary_path"
+    return summary, comparison, None
 
 
 def _group_targets_by_unit(targets: List[str]) -> List[Dict[str, Any]]:
     units: List[Dict[str, Any]] = []
     index_by_name: Dict[str, int] = {}
     for target in targets:
-        unit_name = _canonical_unit_name(str(target).split(":", 1)[0].strip() or str(target).strip())
+        unit_name = _canonical_unit_name(
+            str(target).split(":", 1)[0].strip() or str(target).strip()
+        )
         if unit_name not in index_by_name:
             index_by_name[unit_name] = len(units)
             units.append({"name": unit_name, "targets": []})
@@ -455,15 +788,141 @@ def _canonical_unit_name(unit_name: Optional[str]) -> str:
     return value
 
 
-def _completed_units_from_attempts(attempts: List[Dict[str, Any]], *, ordered_units: List[str]) -> List[str]:
-    ordered_units = [_canonical_unit_name(unit) for unit in ordered_units]
-    completed_lookup = {
-        _canonical_unit_name(unit)
-        for attempt in attempts
-        for unit in (attempt.get("completed_units") or [])
-        if _canonical_unit_name(unit)
+def _canonical_target_name(target: object) -> str:
+    value = str(target or "").strip()
+    if not value:
+        return ""
+    if ":" not in value:
+        return _canonical_unit_name(value)
+    unit_name, example = value.split(":", 1)
+    return f"{_canonical_unit_name(unit_name)}:{example.strip()}"
+
+
+def _completed_units_from_target_outcomes(
+    targets: List[str],
+    benchmark_summary: Optional[Dict[str, Any]],
+) -> List[str]:
+    if not isinstance(benchmark_summary, dict):
+        return []
+    canonical_targets = [_canonical_target_name(target) for target in targets]
+    if any(not target for target in canonical_targets) or len(canonical_targets) != len(
+        set(canonical_targets)
+    ):
+        return []
+    raw_outcomes = benchmark_summary.get("target_outcomes")
+    if not isinstance(raw_outcomes, list):
+        return []
+    outcome_rows = [outcome for outcome in raw_outcomes if isinstance(outcome, dict)]
+    if len(outcome_rows) != len(raw_outcomes):
+        return []
+    observed_targets = [_canonical_target_name(outcome.get("target")) for outcome in outcome_rows]
+    if (
+        any(not target for target in observed_targets)
+        or len(observed_targets) != len(set(observed_targets))
+        or any(target not in set(canonical_targets) for target in observed_targets)
+    ):
+        return []
+    status_by_target = {
+        target: str(outcome.get("status") or "unknown")
+        for target, outcome in zip(observed_targets, outcome_rows)
     }
-    return [unit for unit in ordered_units if unit in completed_lookup]
+    completed_units: List[str] = []
+    for unit in _group_targets_by_unit(targets):
+        expected_targets = [_canonical_target_name(target) for target in unit.get("targets", [])]
+        if not expected_targets or any(
+            status_by_target.get(target) != "succeeded" for target in expected_targets
+        ):
+            break
+        completed_units.append(unit["name"])
+    return completed_units
+
+
+def _completed_units_from_attempts(
+    attempts: List[Dict[str, Any]], *, frozen_targets: List[str]
+) -> List[str]:
+    canonical_frozen_targets = [_canonical_target_name(target) for target in frozen_targets]
+    if any(not target for target in canonical_frozen_targets) or len(
+        canonical_frozen_targets
+    ) != len(set(canonical_frozen_targets)):
+        return []
+    frozen_units = _group_targets_by_unit(canonical_frozen_targets)
+    completed_lookup: set[str] = set()
+    for attempt in attempts:
+        requested = attempt.get("verified_targets")
+        benchmark_summary = attempt.get("benchmark_summary")
+        if not isinstance(requested, list) or not isinstance(benchmark_summary, dict):
+            completed_lookup.clear()
+            continue
+        canonical_requested = [_canonical_target_name(target) for target in requested]
+        if any(not target for target in canonical_requested) or len(canonical_requested) != len(
+            set(canonical_requested)
+        ):
+            completed_lookup.clear()
+            continue
+
+        start_index: Optional[int] = None
+        for index in range(len(frozen_units)):
+            suffix = [
+                _canonical_target_name(target)
+                for unit in frozen_units[index:]
+                for target in unit.get("targets", [])
+            ]
+            if canonical_requested == suffix:
+                start_index = index
+                break
+        if start_index is None:
+            completed_lookup.clear()
+            continue
+
+        for unit in frozen_units[start_index:]:
+            completed_lookup.discard(str(unit["name"]))
+        completed_prefix = _completed_units_from_target_outcomes(
+            canonical_requested,
+            benchmark_summary,
+        )
+        for unit_name in completed_prefix:
+            completed_lookup.add(_canonical_unit_name(unit_name))
+
+    completed_units: List[str] = []
+    for unit in frozen_units:
+        unit_name = str(unit["name"])
+        if unit_name not in completed_lookup:
+            break
+        completed_units.append(unit_name)
+    return completed_units
+
+
+def _verified_full_sweep_attempts(
+    attempts: List[Dict[str, Any]],
+    *,
+    repo_root: Path,
+    artifacts_dir: Optional[str],
+    expected_git_commit: str,
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    verified: List[Dict[str, Any]] = []
+    issues: List[str] = []
+    for attempt in attempts:
+        if not isinstance(attempt.get("verified_targets"), list) or not isinstance(
+            attempt.get("benchmark_summary"), dict
+        ):
+            continue
+        attempt_run_id = str(attempt.get("run_id") or "").strip()
+        try:
+            validated_attempt_run_id = validate_run_id(attempt_run_id)
+        except ValueError:
+            issues.append("full-sweep attempt has an unsafe run_id")
+            continue
+        evidence_error = _validate_benchmark_run_manifest(
+            expected_run_id=validated_attempt_run_id,
+            repo_root=repo_root,
+            artifacts_dir=artifacts_dir,
+            expected_git_commit=expected_git_commit,
+        )
+        if evidence_error:
+            issues.append(f"{validated_attempt_run_id}: {evidence_error}")
+            continue
+        verified.append(attempt)
+    return verified, issues
 
 
 def _remaining_targets_after_completed_units(
@@ -472,7 +931,9 @@ def _remaining_targets_after_completed_units(
     completed_units: List[str],
 ) -> List[str]:
     grouped_units = _group_targets_by_unit(targets)
-    completed_lookup = {_canonical_unit_name(unit) for unit in completed_units if _canonical_unit_name(unit)}
+    completed_lookup = {
+        _canonical_unit_name(unit) for unit in completed_units if _canonical_unit_name(unit)
+    }
     first_incomplete_index: Optional[int] = None
     for index, unit in enumerate(grouped_units):
         if unit["name"] not in completed_lookup:
@@ -492,7 +953,9 @@ def _remaining_units_after_completed_units(
     completed_units: List[str],
 ) -> List[str]:
     ordered_units = [_canonical_unit_name(unit) for unit in ordered_units]
-    completed_lookup = {_canonical_unit_name(unit) for unit in completed_units if _canonical_unit_name(unit)}
+    completed_lookup = {
+        _canonical_unit_name(unit) for unit in completed_units if _canonical_unit_name(unit)
+    }
     first_incomplete_index: Optional[int] = None
     for index, unit in enumerate(ordered_units):
         if unit not in completed_lookup:
@@ -510,7 +973,9 @@ def _resolve_targets_for_units(
 ) -> Tuple[List[str], List[str]]:
     grouped_targets: Dict[str, List[str]] = {}
     for target in available_targets:
-        unit_name = _canonical_unit_name(str(target).split(":", 1)[0].strip() or str(target).strip())
+        unit_name = _canonical_unit_name(
+            str(target).split(":", 1)[0].strip() or str(target).strip()
+        )
         grouped_targets.setdefault(unit_name, []).append(str(target))
 
     resolved_targets: List[str] = []
@@ -525,7 +990,9 @@ def _resolve_targets_for_units(
     return resolved_targets, missing_units
 
 
-def _benchmark_stage_details_from_output(output_json_path: Optional[str]) -> Optional[Dict[str, Any]]:
+def _benchmark_stage_details_from_output(
+    output_json_path: Optional[str],
+) -> Optional[Dict[str, Any]]:
     if not output_json_path or not Path(output_json_path).exists():
         return None
     try:
@@ -538,14 +1005,20 @@ def _benchmark_stage_details_from_output(output_json_path: Optional[str]) -> Opt
     status_counts: Dict[str, int] = {}
     failed_benchmarks: List[Dict[str, Any]] = []
     skipped_benchmarks: List[Dict[str, Any]] = []
+    target_outcomes: List[Dict[str, Any]] = []
     results = payload.get("results") or []
     for chapter_entry in results:
-        chapter_name = str((chapter_entry or {}).get("chapter") or "").strip() or None
+        chapter_name = _canonical_unit_name((chapter_entry or {}).get("chapter")) or None
         for benchmark in (chapter_entry or {}).get("benchmarks", []) or []:
             status = str((benchmark or {}).get("status") or "unknown").strip() or "unknown"
             status_counts[status] = status_counts.get(status, 0) + 1
             example = str((benchmark or {}).get("example") or "").strip()
-            target = f"{chapter_name}:{example}" if chapter_name and example else example or chapter_name or "<unknown>"
+            target = (
+                f"{chapter_name}:{example}"
+                if chapter_name and example
+                else example or chapter_name or "<unknown>"
+            )
+            target_outcomes.append({"target": target, "status": status})
             if status.startswith("failed"):
                 error_detail = str(
                     (benchmark or {}).get("error")
@@ -585,10 +1058,13 @@ def _benchmark_stage_details_from_output(output_json_path: Optional[str]) -> Opt
         "status_counts": status_counts,
         "failed_benchmarks": failed_benchmarks,
         "skipped_benchmarks": skipped_benchmarks,
+        "target_outcomes": target_outcomes,
     }
 
 
-def _benchmark_stage_details_from_suite_summary(summary_payload: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def _benchmark_stage_details_from_suite_summary(
+    summary_payload: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
     if not isinstance(summary_payload, dict):
         return None
     targets = summary_payload.get("targets")
@@ -598,12 +1074,17 @@ def _benchmark_stage_details_from_suite_summary(summary_payload: Optional[Dict[s
     status_counts: Dict[str, int] = {}
     failed_benchmarks: List[Dict[str, Any]] = []
     skipped_benchmarks: List[Dict[str, Any]] = []
+    target_outcomes: List[Dict[str, Any]] = []
     for target_payload in targets:
         if not isinstance(target_payload, dict):
             continue
         status = str(target_payload.get("status") or "unknown").strip() or "unknown"
         status_counts[status] = status_counts.get(status, 0) + 1
-        target = str(target_payload.get("target") or target_payload.get("key") or "<unknown>").strip() or "<unknown>"
+        target = (
+            str(target_payload.get("target") or target_payload.get("key") or "<unknown>").strip()
+            or "<unknown>"
+        )
+        target_outcomes.append({"target": target, "status": status})
         if status.startswith("failed"):
             failure_entry = {
                 "target": target,
@@ -636,6 +1117,7 @@ def _benchmark_stage_details_from_suite_summary(summary_payload: Optional[Dict[s
         "status_counts": status_counts,
         "failed_benchmarks": failed_benchmarks,
         "skipped_benchmarks": skipped_benchmarks,
+        "target_outcomes": target_outcomes,
     }
 
 
@@ -644,7 +1126,9 @@ def _benchmark_stage_details(result: Dict[str, Any]) -> Optional[Dict[str, Any]]
     output_json_path = result.get("output_json")
     if output_json_path is None and isinstance(execution, dict):
         output_json_path = execution.get("output_json")
-    benchmark_details = _benchmark_stage_details_from_output(str(output_json_path) if output_json_path else None)
+    benchmark_details = _benchmark_stage_details_from_output(
+        str(output_json_path) if output_json_path else None
+    )
     if benchmark_details is not None:
         return benchmark_details
 
@@ -661,26 +1145,97 @@ def _benchmark_stage_details(result: Dict[str, Any]) -> Optional[Dict[str, Any]]
         summary_payload = json.loads(Path(str(summary_path)).read_text(encoding="utf-8"))
     except Exception:
         return None
-    return _benchmark_stage_details_from_suite_summary(summary_payload if isinstance(summary_payload, dict) else None)
+    return _benchmark_stage_details_from_suite_summary(
+        summary_payload if isinstance(summary_payload, dict) else None
+    )
 
 
 def _benchmark_stage_status(
     result: Dict[str, Any],
     *,
     required_paths: List[str],
+    required_targets: Optional[List[str]] = None,
+    require_complete: bool = False,
+    allow_comparison_regressions: bool = False,
+    expected_run_id: Optional[str] = None,
+    repo_root: Optional[Path] = None,
+    artifacts_dir: Optional[str] = None,
+    expected_git_commit: Optional[str] = None,
 ) -> Tuple[str, List[str], Optional[Dict[str, Any]]]:
     issues: List[str] = []
     if result.get("error"):
         issues.append(str(result["error"]))
         return "failed", issues, None
 
-    missing = [path_key for path_key in required_paths if not _result_path_exists(result.get(path_key))]
+    missing = [
+        path_key for path_key in required_paths if not _result_path_exists(result.get(path_key))
+    ]
     if missing:
         issues.append(f"missing required artifacts: {', '.join(missing)}")
         return "failed", issues, None
 
-    benchmark_details = _benchmark_stage_details(result)
-    execution = result.get("execution") if isinstance(result.get("execution"), dict) else {}
+    validated_result = dict(result)
+    if require_complete:
+        summary, comparison, artifact_error = _validate_tier1_artifacts(
+            result,
+            expected_run_id=expected_run_id,
+            repo_root=repo_root,
+            artifacts_dir=artifacts_dir,
+            expected_git_commit=expected_git_commit,
+        )
+        if artifact_error:
+            return "failed", [artifact_error], None
+        validated_result["summary"] = summary
+        validated_result["comparison"] = comparison
+
+    benchmark_details = _benchmark_stage_details(validated_result)
+    execution = (
+        validated_result.get("execution")
+        if isinstance(validated_result.get("execution"), dict)
+        else {}
+    )
+    if required_targets is not None:
+        requested = [
+            _canonical_target_name(target)
+            for target in required_targets
+            if _canonical_target_name(target)
+        ]
+        outcomes = (
+            benchmark_details.get("target_outcomes", [])
+            if isinstance(benchmark_details, dict)
+            else []
+        )
+        observed = [
+            _canonical_target_name(outcome.get("target"))
+            for outcome in outcomes
+            if isinstance(outcome, dict) and _canonical_target_name(outcome.get("target"))
+        ]
+        requested_counts = Counter(requested)
+        observed_counts = Counter(observed)
+        if observed_counts != requested_counts:
+            missing_targets = sorted((requested_counts - observed_counts).elements())
+            unexpected_targets = sorted((observed_counts - requested_counts).elements())
+            if missing_targets:
+                issues.append("missing terminal benchmark outcomes: " + ", ".join(missing_targets))
+            if unexpected_targets:
+                issues.append(
+                    "unexpected terminal benchmark outcomes: " + ", ".join(unexpected_targets)
+                )
+            if not issues:
+                issues.append("benchmark terminal outcomes did not match the requested targets")
+            return "failed", issues, benchmark_details
+        non_success = sorted(
+            {
+                f"{_canonical_target_name(outcome.get('target'))}={str(outcome.get('status') or 'unknown')}"
+                for outcome in outcomes
+                if isinstance(outcome, dict)
+                and _canonical_target_name(outcome.get("target")) in requested_counts
+                and str(outcome.get("status") or "unknown") != "succeeded"
+            }
+        )
+        if non_success:
+            issues.append("non-success terminal benchmark outcomes: " + ", ".join(non_success))
+            return "failed", issues, benchmark_details
     if benchmark_details is not None:
         total_failed = sum(
             count
@@ -699,13 +1254,55 @@ def _benchmark_stage_status(
     if total_failed > 0:
         failed_benchmarks = (benchmark_details or {}).get("failed_benchmarks") or []
         if failed_benchmarks:
-            issues.extend(
-                f"{entry['target']}: {entry['error']}"
-                for entry in failed_benchmarks
-            )
+            issues.extend(f"{entry['target']}: {entry['error']}" for entry in failed_benchmarks)
         else:
             issues.append(f"{total_failed} benchmark target(s) failed")
         return "failed", issues, benchmark_details
+
+    if require_complete:
+        from core.benchmark.bench_commands import _tier1_result_failure_count
+
+        status_counts = (benchmark_details or {}).get("status_counts") or {}
+        incomplete_statuses = {
+            str(status): int(count or 0)
+            for status, count in status_counts.items()
+            if str(status) != "succeeded" and int(count or 0) > 0
+        }
+        reported_skipped = total_skipped
+        for skipped_source in (result, execution):
+            try:
+                reported_skipped = max(
+                    reported_skipped,
+                    int(skipped_source.get("total_skipped", 0) or 0),
+                )
+            except (TypeError, ValueError):
+                reported_skipped = max(reported_skipped, 1)
+        failure_count = _tier1_result_failure_count(
+            validated_result,
+            allow_comparison_regressions=allow_comparison_regressions,
+        )
+        if failure_count > 0 or incomplete_statuses or reported_skipped > 0:
+            for status, count in sorted(incomplete_statuses.items()):
+                issues.append(f"{count} benchmark target(s) reported {status}")
+            if reported_skipped > 0 and not any(
+                status.startswith("skipped") for status in incomplete_statuses
+            ):
+                issues.append(f"{reported_skipped} benchmark target(s) skipped")
+
+            comparison = validated_result.get("comparison")
+            regressions = comparison.get("regressions") if isinstance(comparison, dict) else None
+            if isinstance(regressions, list) and regressions:
+                issues.append(f"{len(regressions)} benchmark comparison regression(s) detected")
+
+            execution_failed = int(execution.get("total_failed", 0) or 0) if execution else 0
+            if execution_failed > 0:
+                issues.append(f"benchmark execution reported {execution_failed} failure(s)")
+
+            if not issues:
+                issues.append(
+                    f"Tier-1 result reported {failure_count} failed or incomplete outcome(s)"
+                )
+            return "failed", issues, benchmark_details
 
     if total_skipped > 0:
         issues.append(f"{total_skipped} benchmark target(s) skipped")
@@ -724,13 +1321,26 @@ def _fabric_scorecard_details(result: Dict[str, Any]) -> Optional[Dict[str, Any]
     if not scorecard_path.exists():
         return None
 
-    try:
-        payload = json.loads(scorecard_path.read_text(encoding="utf-8"))
-    except Exception as exc:
+    payload, error = _read_json_object_artifact(
+        scorecard_path,
+        artifact_name="fabric scorecard",
+    )
+    if error:
         return {
             "path": str(scorecard_path),
             "status": "error",
-            "error": f"Failed to parse fabric scorecard: {exc}",
+            "error": error,
+        }
+    if (
+        payload.get("schema_version") is None
+        or str(payload.get("run_id") or "") != str(run_id)
+        or not isinstance(payload.get("families"), dict)
+        or not isinstance(payload.get("summary"), dict)
+    ):
+        return {
+            "path": str(scorecard_path),
+            "status": "error",
+            "error": "invalid fabric scorecard: missing schema, run identity, families, or summary",
         }
 
     families = payload.get("families") or {}
@@ -747,18 +1357,137 @@ def _fabric_scorecard_details(result: Dict[str, Any]) -> Optional[Dict[str, Any]
     }
 
 
-def _cluster_stage_status(result: Dict[str, Any]) -> Tuple[str, List[str], Optional[Dict[str, Any]]]:
+def _cluster_manifest_files_error(
+    manifest: Dict[str, Any],
+    *,
+    run_dir: Path,
+) -> Optional[str]:
+    files = manifest.get("files")
+    summary = manifest.get("summary")
+    if not isinstance(files, list) or not isinstance(summary, dict):
+        return "invalid manifest_path: missing files or summary"
+    if any(not isinstance(raw_path, str) or not raw_path.strip() for raw_path in files):
+        return "invalid manifest_path: every file must be a nonempty relative path"
+    if len(files) != len(set(files)):
+        return "invalid manifest_path: duplicate file entries"
+    file_count = summary.get("file_count")
+    if not isinstance(file_count, int) or isinstance(file_count, bool) or file_count != len(files):
+        return "invalid manifest_path: summary.file_count does not match files"
+    hashes = summary.get("sha256")
+    if not isinstance(hashes, dict) or set(hashes) != set(files):
+        return "invalid manifest_path: summary.sha256 keys do not match files"
+
+    canonical_run_dir = Path(run_dir).resolve()
+    if not canonical_run_dir.is_dir() or Path(run_dir).is_symlink():
+        return "invalid cluster run_dir"
+    for raw_path in files:
+        relative = Path(raw_path)
+        if relative.is_absolute() or ".." in relative.parts:
+            return f"invalid manifest file path: {raw_path}"
+        candidate = canonical_run_dir / relative
+        try:
+            resolved = candidate.resolve(strict=True)
+            resolved.relative_to(canonical_run_dir)
+        except (OSError, ValueError):
+            return f"manifest file is missing or outside run_dir: {raw_path}"
+        if candidate.is_symlink() or not resolved.is_file():
+            return f"manifest file is not a regular in-run artifact: {raw_path}"
+        expected_digest = hashes.get(raw_path)
+        if (
+            not isinstance(expected_digest, str)
+            or re.fullmatch(r"[0-9a-fA-F]{64}", expected_digest) is None
+            or _sha256_file(resolved) != expected_digest.lower()
+        ):
+            return f"manifest SHA256 mismatch: {raw_path}"
+    return None
+
+
+def _cluster_stage_status(
+    result: Dict[str, Any],
+    *,
+    require_scorecard: bool = False,
+    expected_run_id: Optional[str] = None,
+    repo_root: Optional[Path] = None,
+    expected_git_commit: Optional[str] = None,
+) -> Tuple[str, List[str], Optional[Dict[str, Any]]]:
     issues: List[str] = []
     if not result.get("success", False):
         error = result.get("error") or result.get("stderr") or "cluster stage failed"
         issues.append(str(error))
         return "failed", issues, None
 
-    if not _result_path_exists(result.get("manifest_path")):
-        issues.append("missing required artifacts: manifest_path")
+    run_dir = Path(str(result.get("run_dir") or ""))
+    if expected_run_id is not None or repo_root is not None:
+        if not expected_run_id or repo_root is None:
+            return "failed", ["invalid cluster evidence-binding context"], None
+        if result.get("run_id") != expected_run_id:
+            return "failed", ["cluster result run_id does not match the owning attempt"], None
+        expected_run_dir = Path(repo_root).resolve() / "cluster" / "runs" / str(expected_run_id)
+        expected_manifest_path = expected_run_dir / "manifest.json"
+        try:
+            if run_dir.resolve(strict=True) != expected_run_dir.resolve(strict=True):
+                return "failed", ["cluster run_dir does not match the owning attempt"], None
+        except OSError:
+            return "failed", ["cluster run_dir is missing"], None
+        if run_dir.is_symlink():
+            return "failed", ["cluster run_dir may not be a symlink"], None
+        path_error = _require_exact_file_path(
+            result.get("manifest_path"),
+            expected_path=expected_manifest_path,
+            artifact_name="manifest_path",
+        )
+        if path_error:
+            return "failed", [path_error], None
+
+    manifest, manifest_error = _read_json_object_artifact(
+        result.get("manifest_path"),
+        artifact_name="manifest_path",
+    )
+    if manifest_error:
+        issues.append(manifest_error)
+        return "failed", issues, None
+    if (
+        not isinstance(manifest.get("manifest_version"), int)
+        or str(manifest.get("run_id") or "") != str(result.get("run_id") or "")
+        or not isinstance(manifest.get("files"), list)
+        or not isinstance(manifest.get("summary"), dict)
+    ):
+        issues.append("invalid manifest_path: missing version, run identity, files, or summary")
+        return "failed", issues, None
+    if manifest.get("finalized") is not True:
+        issues.append("cluster manifest is not finalized")
+        return "failed", issues, None
+    manifest_status = str(manifest.get("status") or "").strip().lower()
+    suite_status = str(manifest.get("suite_status") or "").strip().lower()
+    if manifest_status != suite_status:
+        issues.append("cluster manifest status and suite_status do not match")
+        return "failed", issues, None
+    if manifest_status not in {"succeeded", "partial"}:
+        issues.append(f"cluster manifest is not terminal: {manifest_status or 'missing'}")
+        return "failed", issues, None
+    if manifest.get("success") is not True:
+        issues.append("cluster manifest success must be true")
+        return "failed", issues, None
+    if expected_git_commit is not None:
+        manifest_git = manifest.get("git")
+        if not isinstance(manifest_git, dict):
+            issues.append("cluster manifest is missing Git provenance")
+            return "failed", issues, None
+        if str(manifest_git.get("commit") or "") != expected_git_commit:
+            issues.append("cluster manifest Git commit does not match the E2E commit")
+            return "failed", issues, None
+        if manifest_git.get("dirty") is not False:
+            issues.append("cluster manifest Git provenance is dirty")
+            return "failed", issues, None
+    files_error = _cluster_manifest_files_error(manifest, run_dir=run_dir)
+    if files_error:
+        issues.append(files_error)
         return "failed", issues, None
 
     scorecard = _fabric_scorecard_details(result)
+    if require_scorecard and scorecard is None:
+        issues.append("missing required artifact: fabric scorecard")
+        return "failed", issues, None
     if scorecard:
         scorecard_status = str(scorecard.get("status") or "").strip().lower()
         if scorecard_status in {"error", "failed"}:
@@ -772,26 +1501,39 @@ def _cluster_stage_status(result: Dict[str, Any]) -> Tuple[str, List[str], Optio
                 issues.append("fabric scorecard reported partial runtime verification")
             return "partial", issues, scorecard
         if scorecard_status not in {"", "ok"}:
-            issues.append(str(scorecard.get("error") or f"unexpected fabric scorecard status: {scorecard_status}"))
+            issues.append(
+                str(
+                    scorecard.get("error")
+                    or f"unexpected fabric scorecard status: {scorecard_status}"
+                )
+            )
             return "failed", issues, scorecard
         if degraded:
             issues.append("fabric completeness is partial for one or more families")
             return "partial", issues, scorecard
 
+    if manifest_status == "partial":
+        issues.append("cluster manifest reported partial completion")
+        return "partial", issues, scorecard
     return "succeeded", issues, scorecard
 
 
 def _roll_up_overall_status(stage_statuses: List[str]) -> str:
     relevant = [status for status in stage_statuses if status not in {"skipped", "planned"}]
     if not relevant:
-        return "succeeded"
+        return "failed"
+    if any(
+        status not in {"aborted", "failed", "partial", "skipped_duplicate", "succeeded"}
+        for status in relevant
+    ):
+        return "failed"
     if any(status == "aborted" for status in relevant):
         return "aborted"
     if any(status == "failed" for status in relevant):
         return "failed"
     if any(status == "partial" for status in relevant):
         return "partial"
-    if relevant and all(status == "skipped_duplicate" for status in relevant):
+    if all(status == "skipped_duplicate" for status in relevant):
         return "skipped_duplicate"
     return "succeeded"
 
@@ -868,7 +1610,9 @@ def _planned_stage_entries(
             reason=None if run_cluster else "disabled by flag",
         ),
     ]
-    fabric_duplicate = run_fabric and run_cluster and cluster_preset.strip().lower() == "fabric-systems"
+    fabric_duplicate = (
+        run_fabric and run_cluster and cluster_preset.strip().lower() == "fabric-systems"
+    )
     fabric_status = "planned" if run_fabric else "skipped"
     fabric_reason = None if run_fabric else "disabled by flag"
     if fabric_duplicate:
@@ -931,9 +1675,7 @@ def _enabled_stages(stages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def _completed_enabled_stage_count(stages: List[Dict[str, Any]]) -> int:
     return sum(
-        1
-        for stage in _enabled_stages(stages)
-        if stage.get("status") not in {"planned", "running"}
+        1 for stage in _enabled_stages(stages) if stage.get("status") not in {"planned", "running"}
     )
 
 
@@ -997,7 +1739,11 @@ def _emit_live_progress(
     current_stage = child_stage_name or _current_stage_name(stages)
     if current_stage and enabled:
         phase_index = next(
-            (idx for idx, stage in enumerate(enabled, start=1) if stage.get("name") == current_stage),
+            (
+                idx
+                for idx, stage in enumerate(enabled, start=1)
+                if stage.get("name") == current_stage
+            ),
             1,
         )
     elif enabled:
@@ -1028,7 +1774,9 @@ def _emit_live_progress(
         total_phases=total_phases,
         step=step,
         step_detail=step_detail,
-        percent_complete=_progress_percent(stages, run_state=run_state, child_percent=child_percent),
+        percent_complete=_progress_percent(
+            stages, run_state=run_state, child_percent=child_percent
+        ),
         artifacts=[str(path) for path in artifact_paths.values()],
         metrics={
             "run_state": run_state,
@@ -1067,9 +1815,7 @@ def _render_summary_markdown(summary: Dict[str, Any]) -> str:
     ]
     for stage in summary.get("stages", []):
         notes = stage.get("reason") or "; ".join(stage.get("issues", [])) or ""
-        lines.append(
-            f"| `{stage['name']}` | `{stage['status']}` | `{stage['run_id']}` | {notes} |"
-        )
+        lines.append(f"| `{stage['name']}` | `{stage['status']}` | `{stage['run_id']}` | {notes} |")
     lines.extend(
         [
             "",
@@ -1096,7 +1842,9 @@ def _render_summary_markdown(summary: Dict[str, Any]) -> str:
         if ledgers.get("active_issue_ledger_json"):
             lines.append(f"- Active issue ledger JSON: `{ledgers.get('active_issue_ledger_json')}`")
         if ledgers.get("active_issue_ledger_md"):
-            lines.append(f"- Active issue ledger Markdown: `{ledgers.get('active_issue_ledger_md')}`")
+            lines.append(
+                f"- Active issue ledger Markdown: `{ledgers.get('active_issue_ledger_md')}`"
+            )
     historical_failure_ledger = summary.get("historical_failure_ledger")
     if isinstance(historical_failure_ledger, dict):
         ledger_summary = historical_failure_ledger.get("summary") or {}
@@ -1177,8 +1925,316 @@ def _stage_attempt_entry(
     return payload
 
 
+_SENSITIVE_CONTRACT_FIELDS = (
+    "ssh_key",
+    "nmx_token",
+    "ib_mgmt_ssh_key",
+    "cumulus_ssh_key",
+)
+
+_SENSITIVE_EXTRA_ARG_FLAGS = (
+    "--ssh-key",
+    "--nmx-token",
+    "--ib-mgmt-ssh-key",
+    "--cumulus-ssh-key",
+)
+
+_PATH_CONTRACT_FIELDS = (
+    "artifacts_dir",
+    "log_file",
+)
+
+_E2E_CONTRACT_REQUIRED_FIELDS = (
+    "schema_version",
+    "run_tier1",
+    "run_full_sweep",
+    "run_cluster",
+    "run_fabric",
+    "cluster_preset",
+    "hosts",
+    "labels",
+    "ssh_user",
+    "ssh_key_configured",
+    "oob_if",
+    "socket_ifname",
+    "nccl_ib_hca",
+    "nmx_url",
+    "nmx_token_configured",
+    "ib_mgmt_host",
+    "ib_mgmt_user",
+    "ib_mgmt_ssh_key_configured",
+    "cumulus_hosts",
+    "cumulus_user",
+    "cumulus_ssh_key_configured",
+    "primary_label",
+    "coverage_baseline_run_id",
+    "extra_cluster_args",
+    "bench_root_identity",
+    "profile_type",
+    "output_format",
+    "suite_timeout",
+    "full_sweep_suite_timeout",
+    "timeout_multiplier",
+    "timeout_seconds",
+    "validity_profile",
+    "allow_portable_expectations_update",
+    "reproducible",
+    "cold_start",
+    "force_synchronize",
+    "iterations",
+    "warmup",
+    "gpu_sm_clock_mhz",
+    "gpu_mem_clock_mhz",
+    "artifacts_dir_identity",
+    "log_level",
+    "log_file_identity",
+    "single_gpu",
+    "accept_regressions",
+    "update_expectations",
+    "allow_mixed_provenance",
+    "ncu_metric_set",
+    "ncu_replay_mode",
+    "nsys_timeout_seconds",
+    "ncu_timeout_seconds",
+    "auto_resume",
+    "max_auto_resumes",
+    "watch_poll_interval_seconds",
+)
+
+_AUTO_RESUME_UNSUPPORTED_DEFAULTS: Dict[str, Any] = {
+    "oob_if": None,
+    "socket_ifname": None,
+    "nccl_ib_hca": None,
+    "nmx_url": None,
+    "ib_mgmt_host": None,
+    "ib_mgmt_user": None,
+    "cumulus_hosts": [],
+    "cumulus_user": None,
+    "primary_label": None,
+    "coverage_baseline_run_id": None,
+    "extra_cluster_args": ["--skip-render-localhost-report"],
+    "output_format": "both",
+    "timeout_multiplier": 3.0,
+    "reproducible": False,
+    "cold_start": False,
+    "force_synchronize": False,
+    "log_level": "INFO",
+    "artifacts_dir_identity": None,
+    "log_file_identity": None,
+    "ncu_metric_set": "minimal",
+    "ncu_replay_mode": None,
+    "nsys_timeout_seconds": None,
+    "ncu_timeout_seconds": None,
+}
+
+
+def _bench_root_identity(value: Any) -> str:
+    normalized = str(Path(str(value)).resolve())
+    return "sha256:" + hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def _path_identity(value: Any) -> Optional[str]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    normalized = str(Path(text).expanduser().resolve())
+    return "sha256:" + hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def _sanitize_e2e_contract_values(values: Dict[str, Any]) -> Dict[str, Any]:
+    sanitized = dict(values)
+    raw_bench_root = sanitized.pop("bench_root", None)
+    if raw_bench_root is not None:
+        sanitized["bench_root_identity"] = _bench_root_identity(raw_bench_root)
+    for field_name in _PATH_CONTRACT_FIELDS:
+        if field_name not in sanitized:
+            continue
+        raw_path = sanitized.pop(field_name)
+        sanitized[f"{field_name}_identity"] = _path_identity(raw_path)
+    for field_name in _SENSITIVE_CONTRACT_FIELDS:
+        configured_name = f"{field_name}_configured"
+        if field_name in sanitized:
+            sanitized.setdefault(configured_name, bool(sanitized.pop(field_name)))
+    return _json_safe(sanitized)
+
+
+def _sanitize_persisted_value(
+    value: Any,
+    *,
+    sensitive_values: Optional[List[Any]] = None,
+    repo_root: Optional[Path] = None,
+    private_bench_root: Optional[Path] = None,
+    private_artifacts_dir: Optional[Path] = None,
+    private_log_file: Optional[Path] = None,
+) -> Any:
+    secrets: List[str] = []
+    for item in sensitive_values or []:
+        text = str(item or "")
+        if not text:
+            continue
+        secrets.append(text)
+        if "/" in text or text.startswith((".", "~")):
+            with contextlib.suppress(Exception):
+                secrets.append(str(Path(text).expanduser().resolve()))
+    secrets = list(dict.fromkeys(secrets))
+    path_replacements: List[Tuple[str, str]] = []
+    for raw_value, resolved_value, locator in (
+        (
+            private_artifacts_dir,
+            private_artifacts_dir.resolve() if private_artifacts_dir else None,
+            _ARTIFACTS_DIR_LOCATOR,
+        ),
+        (
+            private_log_file,
+            private_log_file.resolve() if private_log_file else None,
+            _LOG_FILE_LOCATOR,
+        ),
+        (
+            repo_root,
+            repo_root.resolve() if repo_root else None,
+            _REPO_ROOT_LOCATOR,
+        ),
+        (
+            private_bench_root,
+            private_bench_root.resolve() if private_bench_root else None,
+            _BENCH_ROOT_LOCATOR,
+        ),
+    ):
+        for candidate in (raw_value, resolved_value):
+            text = str(candidate or "").strip()
+            if text:
+                path_replacements.append((text, locator))
+    unique_path_replacements: Dict[str, str] = {}
+    for private_path, locator in path_replacements:
+        unique_path_replacements.setdefault(private_path, locator)
+    path_replacements = sorted(
+        unique_path_replacements.items(),
+        key=lambda entry: len(entry[0]),
+        reverse=True,
+    )
+
+    def _sanitize(item: Any) -> Any:
+        if isinstance(item, dict):
+            public: Dict[str, Any] = {}
+            for raw_key, raw_value in item.items():
+                key = str(raw_key)
+                if key in _SENSITIVE_CONTRACT_FIELDS:
+                    public[f"{key}_configured"] = bool(raw_value)
+                    continue
+                if key == "bench_root":
+                    if raw_value is not None:
+                        public["bench_root_identity"] = _bench_root_identity(raw_value)
+                    continue
+                if key in _PATH_CONTRACT_FIELDS:
+                    public[f"{key}_identity"] = _path_identity(raw_value)
+                    continue
+                public[key] = _sanitize(raw_value)
+            return public
+        if isinstance(item, (list, tuple)):
+            return [_sanitize(entry) for entry in item]
+        if isinstance(item, Path):
+            item = str(item)
+        if isinstance(item, str):
+            sanitized = item
+            for secret in secrets:
+                sanitized = sanitized.replace(secret, "<redacted>")
+            for private_path, locator in path_replacements:
+                sanitized = sanitized.replace(private_path, locator)
+            return sanitized
+        return item
+
+    return _json_safe(_sanitize(value))
+
+
+def _restore_persisted_path_locators(
+    value: Any,
+    *,
+    repo_root: Path,
+    bench_root: Path,
+    artifacts_dir: Optional[str],
+    log_file: Optional[str],
+) -> Any:
+    replacements = {
+        _REPO_ROOT_LOCATOR: str(Path(repo_root).resolve()),
+        _BENCH_ROOT_LOCATOR: str(Path(bench_root).resolve()),
+        _ARTIFACTS_DIR_LOCATOR: str(Path(artifacts_dir).expanduser().resolve())
+        if artifacts_dir
+        else None,
+        _LOG_FILE_LOCATOR: str(Path(log_file).expanduser().resolve()) if log_file else None,
+    }
+
+    def _restore(item: Any) -> Any:
+        if isinstance(item, dict):
+            return {str(key): _restore(raw_value) for key, raw_value in item.items()}
+        if isinstance(item, list):
+            return [_restore(entry) for entry in item]
+        if isinstance(item, str):
+            restored = item
+            for locator, resolved_path in replacements.items():
+                if locator not in restored:
+                    continue
+                if resolved_path is None:
+                    raise ValueError(f"Cannot restore persisted path locator {locator}")
+                restored = restored.replace(locator, resolved_path)
+            return restored
+        return item
+
+    return _json_safe(_restore(value))
+
+
+def _public_cluster_host_config(hosts: Dict[str, Any]) -> Dict[str, Any]:
+    return _sanitize_persisted_value(hosts)
+
+
 def _build_e2e_contract(**kwargs: Any) -> Dict[str, Any]:
-    return _json_safe(kwargs)
+    contract = _sanitize_e2e_contract_values(kwargs)
+    contract["schema_version"] = _E2E_CONTRACT_SCHEMA_VERSION
+    return contract
+
+
+def _auto_resume_reconstruction_error(
+    contract: Optional[Dict[str, Any]],
+    *,
+    repo_root: Optional[Path] = None,
+) -> Optional[str]:
+    stored = _sanitize_e2e_contract_values(dict(contract or {}))
+    if stored.get("schema_version") != _E2E_CONTRACT_SCHEMA_VERSION:
+        return "stored resume contract schema is missing or unsupported"
+    missing_fields = [
+        field_name for field_name in _E2E_CONTRACT_REQUIRED_FIELDS if field_name not in stored
+    ]
+    if missing_fields:
+        return "stored resume contract is missing required field(s): " + ", ".join(missing_fields)
+    enabled_remote_stage = bool(stored.get("run_cluster") or stored.get("run_fabric"))
+    if enabled_remote_stage:
+        configured_hosts = [str(host) for host in (stored.get("hosts") or [])]
+        if configured_hosts and not all(_is_local_host(host) for host in configured_hosts):
+            return "non-local hosts require an SSH key that is not persisted"
+        required_credentials = [
+            field_name
+            for field_name in (f"{name}_configured" for name in _SENSITIVE_CONTRACT_FIELDS)
+            if stored.get(field_name) is True
+        ]
+        if required_credentials:
+            return "credentials are required but are not persisted: " + ", ".join(
+                required_credentials
+            )
+
+    bench_root_identity = stored.get("bench_root_identity")
+    if bench_root_identity:
+        active_root = Path(repo_root or _repo_root()).resolve()
+        if str(bench_root_identity) != _bench_root_identity(active_root):
+            return "custom bench root cannot be reconstructed from its path-free identity"
+
+    unsupported = []
+    for field_name, default_value in _AUTO_RESUME_UNSUPPORTED_DEFAULTS.items():
+        if field_name not in stored:
+            continue
+        if _json_safe(stored.get(field_name)) != _json_safe(default_value):
+            unsupported.append(field_name)
+    if unsupported:
+        return "execution options cannot be reconstructed by run-e2e CLI: " + ", ".join(unsupported)
+    return None
 
 
 def _cli_shell_join(cmd: List[str]) -> str:
@@ -1204,8 +2260,11 @@ def build_benchmark_e2e_resume_command(
     *,
     contract: Optional[Dict[str, Any]],
     python_executable: Optional[str] = None,
+    repo_root: Optional[Path] = None,
 ) -> List[str]:
     stored = dict(contract or {})
+    if _auto_resume_reconstruction_error(stored, repo_root=repo_root):
+        return []
     cmd: List[str] = [
         python_executable or sys.executable,
         "-m",
@@ -1227,6 +2286,9 @@ def build_benchmark_e2e_resume_command(
         ("update_expectations", "--update-expectations", None, False),
         ("allow_mixed_provenance", "--allow-mixed-provenance", None, False),
         ("allow_portable_expectations_update", "--allow-portable-expectations-update", None, False),
+        ("reproducible", "--reproducible", None, False),
+        ("cold_start", "--cold-start", None, False),
+        ("force_synchronize", "--force-synchronize", None, False),
         ("auto_resume", "--auto-resume", "--no-auto-resume", True),
     ]
     for field_name, positive_flag, negative_flag, default_value in boolean_pairs:
@@ -1240,9 +2302,7 @@ def build_benchmark_e2e_resume_command(
 
     scalar_flags = [
         ("cluster_preset", "--cluster-preset"),
-        ("bench_root", "--bench-root"),
         ("ssh_user", "--ssh-user"),
-        ("ssh_key", "--ssh-key"),
         ("profile_type", "--profile"),
         ("suite_timeout", "--suite-timeout"),
         ("full_sweep_suite_timeout", "--full-sweep-suite-timeout"),
@@ -1330,13 +2390,17 @@ def build_benchmark_e2e_progress_surface_hint(
     )
 
 
-def attach_benchmark_e2e_status_hints(payload: Dict[str, Any], run_id: Optional[str]) -> Dict[str, Any]:
+def attach_benchmark_e2e_status_hints(
+    payload: Dict[str, Any], run_id: Optional[str]
+) -> Dict[str, Any]:
     resolved_run_id = str(run_id or payload.get("run_id") or "").strip()
     if not resolved_run_id:
         return _json_safe(payload)
     enriched = dict(payload)
     enriched.setdefault("actions", build_benchmark_e2e_status_actions(resolved_run_id))
-    enriched.setdefault("preferred_progress_source", build_benchmark_e2e_progress_surface_hint(resolved_run_id))
+    enriched.setdefault(
+        "preferred_progress_source", build_benchmark_e2e_progress_surface_hint(resolved_run_id)
+    )
     return _json_safe(enriched)
 
 
@@ -1358,7 +2422,11 @@ def _stage_snapshot(stage: Dict[str, Any]) -> Dict[str, Any]:
     benchmark_summary = None
     if isinstance(latest_attempt, dict):
         benchmark_summary = latest_attempt.get("benchmark_summary")
-    if benchmark_summary is None and isinstance(latest_attempt, dict) and isinstance(latest_attempt.get("result"), dict):
+    if (
+        benchmark_summary is None
+        and isinstance(latest_attempt, dict)
+        and isinstance(latest_attempt.get("result"), dict)
+    ):
         benchmark_summary = _benchmark_stage_details(latest_attempt["result"])
     if benchmark_summary is None:
         benchmark_summary = stage.get("benchmark_summary")
@@ -1377,8 +2445,15 @@ def _stage_snapshot(stage: Dict[str, Any]) -> Dict[str, Any]:
                 continue
             bucket = str(attempt.get("bucket") or "").strip()
             run_id = str(attempt.get("run_id") or "").strip() or None
-            attempt_artifacts = attempt.get("artifacts") if isinstance(attempt.get("artifacts"), dict) else {}
-            for entry in attempt_summary.get(summary_key) or []:
+            attempt_artifacts = (
+                attempt.get("artifacts") if isinstance(attempt.get("artifacts"), dict) else {}
+            )
+            entries = list(attempt_summary.get(summary_key) or [])
+            if summary_key == "target_outcomes" and not entries:
+                entries = list(attempt_summary.get("failed_benchmarks") or []) + list(
+                    attempt_summary.get("skipped_benchmarks") or []
+                )
+            for entry in entries:
                 if not isinstance(entry, dict):
                     continue
                 merged = dict(entry)
@@ -1394,20 +2469,19 @@ def _stage_snapshot(stage: Dict[str, Any]) -> Dict[str, Any]:
                 latest_by_target_bucket[(target, str(merged.get("bucket") or "").strip())] = merged
         return list(latest_by_target_bucket.values())
 
-    aggregated_failed_benchmarks = _collect_attempt_entries("failed_benchmarks")
-    aggregated_skipped_benchmarks = _collect_attempt_entries("skipped_benchmarks")
+    aggregated_target_outcomes = _collect_attempt_entries("target_outcomes")
+    aggregated_failed_benchmarks = [
+        entry
+        for entry in aggregated_target_outcomes
+        if str(entry.get("status") or "").startswith("failed")
+    ]
+    aggregated_skipped_benchmarks = [
+        entry for entry in aggregated_target_outcomes if str(entry.get("status") or "") == "skipped"
+    ]
     aggregated_status_counts: Dict[str, int] = {}
-    for attempt in attempts:
-        if not isinstance(attempt, dict):
-            continue
-        attempt_summary = attempt.get("benchmark_summary")
-        if not isinstance(attempt_summary, dict):
-            continue
-        for key, value in dict(attempt_summary.get("status_counts") or {}).items():
-            try:
-                aggregated_status_counts[str(key)] = aggregated_status_counts.get(str(key), 0) + int(value)
-            except (TypeError, ValueError):
-                continue
+    for entry in aggregated_target_outcomes:
+        status = str(entry.get("status") or "unknown")
+        aggregated_status_counts[status] = aggregated_status_counts.get(status, 0) + 1
 
     payload = {
         "name": stage.get("name"),
@@ -1416,23 +2490,31 @@ def _stage_snapshot(stage: Dict[str, Any]) -> Dict[str, Any]:
         "run_id": stage.get("run_id"),
         "issues": _dedupe_strings(list(stage.get("issues") or [])),
         "attempt_count": len(attempts),
-        "latest_attempt_run_id": latest_attempt.get("run_id") if isinstance(latest_attempt, dict) else None,
-        "latest_attempt_status": latest_attempt.get("status") if isinstance(latest_attempt, dict) else None,
-        "latest_attempt_bucket": latest_attempt.get("bucket") if isinstance(latest_attempt, dict) else None,
-        "latest_attempt_active_unit": latest_attempt.get("active_unit") if isinstance(latest_attempt, dict) else None,
+        "latest_attempt_run_id": latest_attempt.get("run_id")
+        if isinstance(latest_attempt, dict)
+        else None,
+        "latest_attempt_status": latest_attempt.get("status")
+        if isinstance(latest_attempt, dict)
+        else None,
+        "latest_attempt_bucket": latest_attempt.get("bucket")
+        if isinstance(latest_attempt, dict)
+        else None,
+        "latest_attempt_active_unit": latest_attempt.get("active_unit")
+        if isinstance(latest_attempt, dict)
+        else None,
         "latest_attempt_completed_units": list(latest_attempt.get("completed_units") or [])
         if isinstance(latest_attempt, dict)
         else [],
     }
-    if isinstance(benchmark_summary, dict):
-        payload["status_counts"] = dict(benchmark_summary.get("status_counts") or {})
-    elif aggregated_status_counts:
+    if aggregated_target_outcomes:
         payload["status_counts"] = aggregated_status_counts
-    if aggregated_failed_benchmarks:
+    elif isinstance(benchmark_summary, dict):
+        payload["status_counts"] = dict(benchmark_summary.get("status_counts") or {})
+    if aggregated_target_outcomes:
         payload["failed_benchmarks"] = aggregated_failed_benchmarks
     elif isinstance(benchmark_summary, dict):
         payload["failed_benchmarks"] = list(benchmark_summary.get("failed_benchmarks") or [])
-    if aggregated_skipped_benchmarks:
+    if aggregated_target_outcomes:
         payload["skipped_benchmarks"] = aggregated_skipped_benchmarks
     elif isinstance(benchmark_summary, dict):
         payload["skipped_benchmarks"] = list(benchmark_summary.get("skipped_benchmarks") or [])
@@ -1452,7 +2534,9 @@ def _effective_stage_snapshot_status(snapshot: Dict[str, Any]) -> str:
     return stored_status
 
 
-def _apply_effective_stage_snapshot_statuses(stage_snapshots: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _apply_effective_stage_snapshot_statuses(
+    stage_snapshots: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
     effective_snapshots: List[Dict[str, Any]] = []
     for snapshot in stage_snapshots:
         effective_status = _effective_stage_snapshot_status(snapshot)
@@ -1501,7 +2585,8 @@ def _reported_failures_from_child_events(
             "stage": stage_name,
             "bucket": bucket,
             "status": str(payload.get("status") or "").strip() or "unknown",
-            "error": str(payload.get("error") or payload.get("failure_reason") or "").strip() or None,
+            "error": str(payload.get("error") or payload.get("failure_reason") or "").strip()
+            or None,
             "failure_reason": str(payload.get("failure_reason") or "").strip() or None,
             "best_speedup": payload.get("best_speedup"),
             "best_memory_savings_pct": payload.get("best_memory_savings_pct"),
@@ -1516,7 +2601,9 @@ def _reported_failures_from_child_events(
         for entry in latest_by_target.values()
         if str(entry.get("status") or "").startswith("failed")
     ]
-    failures.sort(key=lambda entry: (str(entry.get("timestamp") or ""), str(entry.get("target") or "")))
+    failures.sort(
+        key=lambda entry: (str(entry.get("timestamp") or ""), str(entry.get("target") or ""))
+    )
     return failures
 
 
@@ -1633,13 +2720,16 @@ def _issue_groups(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     reported_rows = [
         row
         for row in rows
-        if isinstance(row, dict) and str(row.get("issue_id") or "").strip().startswith("reported_")
+        if isinstance(row, dict)
+        and str(row.get("issue_id") or "").strip().startswith("reported_")
         and str(row.get("status") or "").strip() != "resolved"
     ]
     grouped: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
     for row in reported_rows:
         stage = str(row.get("stage") or "unknown").strip() or "unknown"
-        benchmark_status = str(row.get("benchmark_status") or row.get("status") or "unknown").strip() or "unknown"
+        benchmark_status = (
+            str(row.get("benchmark_status") or row.get("status") or "unknown").strip() or "unknown"
+        )
         signature_key, signature_label, hint = _issue_signature(_issue_error_text(row))
         key = (stage, benchmark_status, signature_key)
         bucket = str(row.get("bucket") or "").strip() or None
@@ -1667,9 +2757,13 @@ def _issue_groups(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if target and target not in entry["sample_targets"] and len(entry["sample_targets"]) < 5:
             entry["sample_targets"].append(target)
         if reported_at:
-            if not entry.get("first_reported_at") or reported_at < str(entry.get("first_reported_at")):
+            if not entry.get("first_reported_at") or reported_at < str(
+                entry.get("first_reported_at")
+            ):
                 entry["first_reported_at"] = reported_at
-            if not entry.get("last_reported_at") or reported_at > str(entry.get("last_reported_at")):
+            if not entry.get("last_reported_at") or reported_at > str(
+                entry.get("last_reported_at")
+            ):
                 entry["last_reported_at"] = reported_at
 
     groups = sorted(
@@ -1684,7 +2778,9 @@ def _issue_groups(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     for group in groups:
         groups_by_stage.setdefault(str(group.get("stage") or "unknown"), []).append(group)
     for stage_groups in groups_by_stage.values():
-        has_signal_group = any(str(group.get("signature_key") or "") == "received_sighup" for group in stage_groups)
+        has_signal_group = any(
+            str(group.get("signature_key") or "") == "received_sighup" for group in stage_groups
+        )
         if not has_signal_group:
             continue
         for group in stage_groups:
@@ -1739,13 +2835,17 @@ def _issue_summary(
             "active_issue_count": len(active_rows),
             "active_unresolved_count": len(active_rows),
             "active_reported_issue_count": sum(
-                1 for row in active_rows if str(row.get("issue_id") or "").strip().startswith("reported_")
+                1
+                for row in active_rows
+                if str(row.get("issue_id") or "").strip().startswith("reported_")
             ),
             "active_issue_group_count": len(active_issue_groups),
             "historical_issue_count": len(historical_rows),
             "historical_unresolved_count": len(historical_rows),
             "historical_reported_issue_count": sum(
-                1 for row in historical_rows if str(row.get("issue_id") or "").strip().startswith("reported_")
+                1
+                for row in historical_rows
+                if str(row.get("issue_id") or "").strip().startswith("reported_")
             ),
             "historical_issue_group_count": len(historical_issue_groups),
         },
@@ -1770,7 +2870,9 @@ def _render_issue_evidence(row: Dict[str, Any]) -> str:
     status_command = str(verification.get("status_command") or "").strip()
     if status_command:
         evidence.append("`run-e2e-status`")
-    evidence_paths = row.get("evidence_paths") if isinstance(row.get("evidence_paths"), dict) else {}
+    evidence_paths = (
+        row.get("evidence_paths") if isinstance(row.get("evidence_paths"), dict) else {}
+    )
     events_path = str(evidence_paths.get("events_path") or "").strip()
     if events_path:
         evidence.append(f"`{Path(events_path).name}`")
@@ -1808,8 +2910,8 @@ def _render_active_issue_ledger_markdown(ledger: Dict[str, Any]) -> str:
         lines.append("")
     lines.extend(
         [
-        "| Issue | Stage | Status | Symptom | Root cause | Evidence |",
-        "| --- | --- | --- | --- | --- | --- |",
+            "| Issue | Stage | Status | Symptom | Root cause | Evidence |",
+            "| --- | --- | --- | --- | --- | --- |",
         ]
     )
     for row in ledger.get("rows") or []:
@@ -1823,6 +2925,7 @@ def _render_active_issue_ledger_markdown(ledger: Dict[str, Any]) -> str:
 def _sync_active_issue_ledger(
     *,
     run_dir: Path,
+    repo_root: Path,
     run_id: str,
     actions: Dict[str, Any],
     status_paths: Dict[str, Any],
@@ -1892,37 +2995,57 @@ def _sync_active_issue_ledger(
         for failure in list(active_failures or [])
     }
     issue_summary = _issue_summary(rows, run_id=run_id, active_issue_ids=active_issue_ids)
-    ledger_payload = {
-        "schema_version": "1.0",
-        "preferred_collection_key": "rows",
-        "collection_aliases": {"issues": "rows"},
-        "summary": dict(issue_summary["summary"]),
-        "rows": rows,
-        "issue_groups": list(issue_summary["issue_groups"]),
-        "active_issue_groups": list(issue_summary["active_issue_groups"]),
-        "historical_issue_groups": list(issue_summary["historical_issue_groups"]),
-    }
+    ledger_payload = _sanitize_persisted_value(
+        {
+            "schema_version": "1.0",
+            "preferred_collection_key": "rows",
+            "collection_aliases": {"issues": "rows"},
+            "summary": dict(issue_summary["summary"]),
+            "rows": rows,
+            "issue_groups": list(issue_summary["issue_groups"]),
+            "active_issue_groups": list(issue_summary["active_issue_groups"]),
+            "historical_issue_groups": list(issue_summary["historical_issue_groups"]),
+        },
+        repo_root=repo_root,
+    )
     _write_json(active_issue_json, ledger_payload)
-    active_issue_md.write_text(_render_active_issue_ledger_markdown(ledger_payload), encoding="utf-8")
-    return {
-        "active_issue_ledger_json": str(active_issue_json),
-        "active_issue_ledger_md": str(active_issue_md),
-        "historical_failure_ledger_json": str(historical_issue_json) if historical_issue_json.exists() else None,
-        "historical_failure_ledger_md": str(historical_issue_md) if historical_issue_md.exists() else None,
-        "summary": dict(ledger_payload["summary"]),
-        "rows": rows,
-        "issue_groups": list(ledger_payload["issue_groups"]),
-        "active_issue_groups": list(ledger_payload["active_issue_groups"]),
-        "historical_issue_groups": list(ledger_payload["historical_issue_groups"]),
-    }
+    active_issue_md.write_text(
+        _render_active_issue_ledger_markdown(ledger_payload), encoding="utf-8"
+    )
+    return _sanitize_persisted_value(
+        {
+            "active_issue_ledger_json": str(active_issue_json),
+            "active_issue_ledger_md": str(active_issue_md),
+            "historical_failure_ledger_json": str(historical_issue_json)
+            if historical_issue_json.exists()
+            else None,
+            "historical_failure_ledger_md": str(historical_issue_md)
+            if historical_issue_md.exists()
+            else None,
+            "summary": dict(ledger_payload["summary"]),
+            "rows": rows,
+            "issue_groups": list(ledger_payload["issue_groups"]),
+            "active_issue_groups": list(ledger_payload["active_issue_groups"]),
+            "historical_issue_groups": list(ledger_payload["historical_issue_groups"]),
+        },
+        repo_root=repo_root,
+    )
 
 
 def _existing_ledger_refs(run_dir: Path) -> Dict[str, Optional[str]]:
     return {
-        "active_issue_ledger_json": str(run_dir / "active_issue_ledger.json") if (run_dir / "active_issue_ledger.json").exists() else None,
-        "active_issue_ledger_md": str(run_dir / "active_issue_ledger.md") if (run_dir / "active_issue_ledger.md").exists() else None,
-        "historical_failure_ledger_json": str(run_dir / "historical_failure_ledger.json") if (run_dir / "historical_failure_ledger.json").exists() else None,
-        "historical_failure_ledger_md": str(run_dir / "historical_failure_ledger.md") if (run_dir / "historical_failure_ledger.md").exists() else None,
+        "active_issue_ledger_json": str(run_dir / "active_issue_ledger.json")
+        if (run_dir / "active_issue_ledger.json").exists()
+        else None,
+        "active_issue_ledger_md": str(run_dir / "active_issue_ledger.md")
+        if (run_dir / "active_issue_ledger.md").exists()
+        else None,
+        "historical_failure_ledger_json": str(run_dir / "historical_failure_ledger.json")
+        if (run_dir / "historical_failure_ledger.json").exists()
+        else None,
+        "historical_failure_ledger_md": str(run_dir / "historical_failure_ledger.md")
+        if (run_dir / "historical_failure_ledger.md").exists()
+        else None,
     }
 
 
@@ -1938,7 +3061,11 @@ def inspect_benchmark_e2e_sweep_run(
     recent_events_limit: int = 10,
 ) -> Dict[str, Any]:
     root = Path(repo_root or _repo_root()).resolve()
-    resolved_run_id = resolve_e2e_run_id(run_id, repo_root=root) if run_id else resolve_latest_e2e_run_id(repo_root=root)
+    resolved_run_id = (
+        resolve_e2e_run_id(run_id, repo_root=root)
+        if run_id
+        else resolve_latest_e2e_run_id(repo_root=root)
+    )
     if not resolved_run_id:
         return {
             "success": False,
@@ -2002,7 +3129,9 @@ def inspect_benchmark_e2e_sweep_run(
         or summary.get("overall_status")
         or "unknown"
     )
-    stored_resume_available = bool(checkpoint.get("resume_available", summary.get("resume_available", False)))
+    stored_resume_available = bool(
+        checkpoint.get("resume_available", summary.get("resume_available", False))
+    )
     resume_available = stored_resume_available
     orchestrator_pid = metrics.get("orchestrator_pid")
     if orchestrator_pid is None:
@@ -2038,7 +3167,7 @@ def inspect_benchmark_e2e_sweep_run(
             resume_available = summary_path.exists() or checkpoint_path.exists()
             if resume_available:
                 status_notes.append(
-                    "stored resume_available was false; corrected to true for stale running package"
+                    "stored resume_available was false. Corrected to true for stale running package"
                 )
     elif str(run_state) == "aborted":
         inferred_state = "aborted_terminal"
@@ -2070,7 +3199,9 @@ def inspect_benchmark_e2e_sweep_run(
                 "output_json": str(benchmark_paths["output_json"]),
             }
             if benchmark_paths["events"].exists():
-                recent_child_events = _tail_records(benchmark_paths["events"], limit=recent_events_limit)
+                recent_child_events = _tail_records(
+                    benchmark_paths["events"], limit=recent_events_limit
+                )
                 child_reported_failures = _reported_failures_from_child_events(
                     benchmark_paths["events"],
                     stage_name=current_stage_name,
@@ -2088,7 +3219,11 @@ def inspect_benchmark_e2e_sweep_run(
     watcher_live = _pid_is_live(watcher_pid)
     stored_watch_state = watcher.get("watch_state")
     effective_watch_state = stored_watch_state
-    if not watcher_live and str(stored_watch_state or "").strip() in {"watching", "resuming", "launched"}:
+    if not watcher_live and str(stored_watch_state or "").strip() in {
+        "watching",
+        "resuming",
+        "launched",
+    }:
         effective_watch_state = "stale_dead"
         status_notes.append(
             f"stored watcher watch_state `{stored_watch_state}` corrected to `stale_dead` because the watcher pid is not live"
@@ -2131,7 +3266,9 @@ def inspect_benchmark_e2e_sweep_run(
     if not progress_source_path:
         progress_source_path = str(progress_path)
     child_progress_available = False
-    child_progress_candidate = child_artifacts.get("progress_path") if isinstance(child_artifacts, dict) else None
+    child_progress_candidate = (
+        child_artifacts.get("progress_path") if isinstance(child_artifacts, dict) else None
+    )
     if isinstance(child_progress_candidate, str) and child_progress_candidate.strip():
         child_progress_available = Path(child_progress_candidate).exists()
     has_live_child_progress = bool(
@@ -2141,7 +3278,11 @@ def inspect_benchmark_e2e_sweep_run(
         and (child_progress_available or recent_child_events)
     )
     surfaced_failures = list(child_reported_failures or [])
-    if not surfaced_failures and not has_live_child_progress and not (str(run_state) == "running" and orchestrator_live):
+    if (
+        not surfaced_failures
+        and not has_live_child_progress
+        and not (str(run_state) == "running" and orchestrator_live)
+    ):
         surfaced_failures = list(aggregate_failures)
 
     recent_events = _tail_records(events_path, limit=recent_events_limit)
@@ -2149,24 +3290,32 @@ def inspect_benchmark_e2e_sweep_run(
         resolved_run_id,
         contract=contract,
         python_executable=sys.executable,
+        repo_root=root,
     )
+    resume_blocked_reason = _auto_resume_reconstruction_error(contract, repo_root=root)
+    stored_provenance = checkpoint.get("provenance")
+    if not isinstance(stored_provenance, dict):
+        stored_provenance = summary.get("provenance")
+    stored_git = stored_provenance.get("git") if isinstance(stored_provenance, dict) else None
+    current_git = get_git_info()
+    if isinstance(stored_git, dict) and bool(stored_git.get("dirty")):
+        resume_blocked_reason = "stored worktree is dirty"
+    elif bool(current_git.get("dirty")):
+        resume_blocked_reason = "current worktree is dirty"
+    if resume_blocked_reason:
+        resume_command = []
+        status_notes.append(f"auto-resume blocked: {resume_blocked_reason}")
     progress_source_kind = "checkpoint_summary"
     progress_source_label = "Checkpoint and summary"
-    progress_source_reason = (
-        "Run is terminal or does not currently expose fresher child progress, so checkpoint/summary are the active status records."
-    )
+    progress_source_reason = "Run is terminal or does not currently expose fresher child progress, so checkpoint/summary are the active status records."
     if has_live_child_progress:
         progress_source_kind = "live_child_progress"
         progress_source_label = "Live child progress"
-        progress_source_reason = (
-            "Current progress is mirrored from the active child run and cross-checked with top-level progress plus orchestrator liveness."
-        )
+        progress_source_reason = "Current progress is mirrored from the active child run and cross-checked with top-level progress plus orchestrator liveness."
     elif str(run_state) == "running" and progress_timestamp:
         progress_source_kind = "top_level_progress"
         progress_source_label = "Top-level progress"
-        progress_source_reason = (
-            "Current progress comes from top-level progress.json because no child run progress path is attached for the active stage."
-        )
+        progress_source_reason = "Current progress comes from top-level progress.json because no child run progress path is attached for the active stage."
     progress_source = _json_safe(
         {
             "kind": progress_source_kind,
@@ -2193,6 +3342,7 @@ def inspect_benchmark_e2e_sweep_run(
     }
     ledgers = _sync_active_issue_ledger(
         run_dir=run_dir,
+        repo_root=root,
         run_id=resolved_run_id,
         actions=actions,
         status_paths=status_paths,
@@ -2233,9 +3383,13 @@ def inspect_benchmark_e2e_sweep_run(
             )
             effective_overall_status = rolled_up_status
 
-    return _json_safe(
+    inspection_success = str(inferred_state) == "running_live" or (
+        str(inferred_state) == "completed" and effective_overall_status == "succeeded"
+    )
+
+    return _sanitize_persisted_value(
         {
-            "success": True,
+            "success": inspection_success,
             "run_id": resolved_run_id,
             "run_dir": str(run_dir),
             "run_state": run_state,
@@ -2293,13 +3447,15 @@ def inspect_benchmark_e2e_sweep_run(
                 **actions,
                 "resume_command": resume_command,
                 "resume_command_shell": _cli_shell_join(resume_command),
+                "resume_blocked_reason": resume_blocked_reason,
             },
-        }
+        },
+        repo_root=root,
     )
 
 
 def render_benchmark_e2e_status_text(status: Dict[str, Any]) -> str:
-    if not status.get("success", False):
+    if not status.get("run_id"):
         return json.dumps(status, indent=2, sort_keys=True)
     current = status.get("current") or {}
     liveness = status.get("liveness") or {}
@@ -2313,7 +3469,9 @@ def render_benchmark_e2e_status_text(status: Dict[str, Any]) -> str:
     if stored_overall_status and stored_overall_status != status.get("overall_status"):
         lines.append(f"stored_overall_status={stored_overall_status}")
     stored_resume_available = status.get("stored_resume_available")
-    if stored_resume_available is not None and stored_resume_available != status.get("resume_available"):
+    if stored_resume_available is not None and stored_resume_available != status.get(
+        "resume_available"
+    ):
         lines.append(f"stored_resume_available={stored_resume_available}")
     progress_source = status.get("progress_source") or {}
     if progress_source.get("kind"):
@@ -2335,22 +3493,27 @@ def render_benchmark_e2e_status_text(status: Dict[str, Any]) -> str:
             f"watcher_pid={watcher.get('watcher_pid')} watcher_state={watcher.get('watch_state')} "
             f"auto_resume_count={watcher.get('auto_resume_count')}"
         )
-        if watcher.get("stored_watch_state") and watcher.get("stored_watch_state") != watcher.get("watch_state"):
+        if watcher.get("stored_watch_state") and watcher.get("stored_watch_state") != watcher.get(
+            "watch_state"
+        ):
             lines.append(f"stored_watcher_state={watcher.get('stored_watch_state')}")
     reported_failures = list(current.get("reported_failures") or [])
     if reported_failures:
         lines.append(f"reported_failures={len(reported_failures)}")
         preview = ", ".join(
-            f"{entry.get('target')}[{entry.get('status')}]"
-            for entry in reported_failures[:5]
+            f"{entry.get('target')}[{entry.get('status')}]" for entry in reported_failures[:5]
         )
         if preview:
             lines.append(f"reported_failure_preview={preview}")
     ledgers = status.get("ledgers") or {}
     ledger_summary = dict(ledgers.get("summary") or {})
     if ledger_summary:
-        active_issue_count = ledger_summary.get("active_issue_count", ledger_summary.get("issue_count"))
-        active_unresolved_count = ledger_summary.get("active_unresolved_count", ledger_summary.get("unresolved_count"))
+        active_issue_count = ledger_summary.get(
+            "active_issue_count", ledger_summary.get("issue_count")
+        )
+        active_unresolved_count = ledger_summary.get(
+            "active_unresolved_count", ledger_summary.get("unresolved_count")
+        )
         lines.append(
             "active_issue_counts="
             + f"issues={active_issue_count} "
@@ -2454,14 +3617,20 @@ def watch_benchmark_e2e_sweep_foreground(
     max_auto_resumes: int = _E2E_WATCHER_MAX_AUTO_RESUMES,
 ) -> Dict[str, Any]:
     root = Path(repo_root or _repo_root()).resolve()
+
+    def _public(payload: Dict[str, Any]) -> Dict[str, Any]:
+        return _sanitize_persisted_value(payload, repo_root=root)
+
     run_dir = e2e_run_dir(run_id, root)
     if not run_dir.exists():
-        return {
-            "success": False,
-            "run_id": run_id,
-            "run_dir": str(run_dir),
-            "error": f"Missing run dir: {run_dir}",
-        }
+        return _public(
+            {
+                "success": False,
+                "run_id": run_id,
+                "run_dir": str(run_dir),
+                "error": f"Missing run dir: {run_dir}",
+            }
+        )
 
     watch_status_path = e2e_watcher_status_path(run_dir)
     events_path = run_dir / "events.jsonl"
@@ -2487,13 +3656,51 @@ def watch_benchmark_e2e_sweep_foreground(
                     snapshot=snapshot,
                 ),
             )
-            return {
-                "success": True,
-                "run_id": run_id,
-                "watch_state": watch_state,
-                "auto_resume_count": auto_resume_count,
-                "watcher_status_path": str(watch_status_path),
-            }
+            return _public(
+                {
+                    "success": snapshot.get("success") is True,
+                    "run_id": run_id,
+                    "watch_state": watch_state,
+                    "auto_resume_count": auto_resume_count,
+                    "watcher_status_path": str(watch_status_path),
+                    **(
+                        {}
+                        if snapshot.get("success") is True
+                        else {
+                            "error": (
+                                "E2E run completed with terminal status "
+                                f"{snapshot.get('overall_status') or 'unknown'}"
+                            )
+                        }
+                    ),
+                }
+            )
+
+        if inferred_state == "aborted_terminal":
+            watch_state = "failed"
+            _write_json(
+                watch_status_path,
+                _watcher_status_payload(
+                    run_id=run_id,
+                    watcher_pid=os.getpid(),
+                    watch_state=watch_state,
+                    poll_interval_seconds=poll_interval_seconds,
+                    max_auto_resumes=max_auto_resumes,
+                    auto_resume_count=auto_resume_count,
+                    last_action=last_action,
+                    snapshot=snapshot,
+                ),
+            )
+            return _public(
+                {
+                    "success": False,
+                    "run_id": run_id,
+                    "watch_state": watch_state,
+                    "auto_resume_count": auto_resume_count,
+                    "watcher_status_path": str(watch_status_path),
+                    "error": "E2E run ended in a non-resumable aborted state",
+                }
+            )
 
         if inferred_state in {"running_stale", "aborted_resume_available"}:
             if auto_resume_count >= max_auto_resumes:
@@ -2522,23 +3729,58 @@ def watch_benchmark_e2e_sweep_foreground(
                         snapshot=snapshot,
                     ),
                 )
-                return {
-                    "success": False,
-                    "run_id": run_id,
-                    "watch_state": watch_state,
-                    "auto_resume_count": auto_resume_count,
-                    "watcher_status_path": str(watch_status_path),
-                    "error": f"max_auto_resumes={max_auto_resumes} exhausted",
-                }
+                return _public(
+                    {
+                        "success": False,
+                        "run_id": run_id,
+                        "watch_state": watch_state,
+                        "auto_resume_count": auto_resume_count,
+                        "watcher_status_path": str(watch_status_path),
+                        "error": f"max_auto_resumes={max_auto_resumes} exhausted",
+                    }
+                )
 
             resume_command = list(snapshot.get("actions", {}).get("resume_command") or [])
             if not resume_command:
-                watch_state = "resume_missing"
+                blocked_reason = str(
+                    snapshot.get("actions", {}).get("resume_blocked_reason")
+                    or "missing resume command"
+                )
+                watch_state = "resume_blocked"
                 last_action = {
                     "timestamp": _utc_now(),
                     "action": "auto_resume_skipped",
-                    "reason": "missing resume command",
+                    "reason": blocked_reason,
                 }
+                _append_event(
+                    events_path,
+                    "auto_resume_blocked",
+                    run_id=run_id,
+                    reason=blocked_reason,
+                )
+                _write_json(
+                    watch_status_path,
+                    _watcher_status_payload(
+                        run_id=run_id,
+                        watcher_pid=os.getpid(),
+                        watch_state=watch_state,
+                        poll_interval_seconds=poll_interval_seconds,
+                        max_auto_resumes=max_auto_resumes,
+                        auto_resume_count=auto_resume_count,
+                        last_action=last_action,
+                        snapshot=snapshot,
+                    ),
+                )
+                return _public(
+                    {
+                        "success": False,
+                        "run_id": run_id,
+                        "watch_state": watch_state,
+                        "auto_resume_count": auto_resume_count,
+                        "watcher_status_path": str(watch_status_path),
+                        "error": blocked_reason,
+                    }
+                )
             else:
                 watch_state = "resuming"
                 auto_resume_count += 1
@@ -2719,7 +3961,9 @@ def _benchmark_run_dir(
     repo_root: Path,
     artifacts_dir: Optional[str],
 ) -> Path:
-    artifacts_root = Path(artifacts_dir).resolve() if artifacts_dir else (repo_root / "artifacts" / "runs")
+    artifacts_root = (
+        Path(artifacts_dir).resolve() if artifacts_dir else (repo_root / "artifacts" / "runs")
+    )
     return artifacts_root / run_id
 
 
@@ -2752,7 +3996,9 @@ def _load_benchmark_run_start(
     repo_root: Path,
     artifacts_dir: Optional[str],
 ) -> Optional[Dict[str, Any]]:
-    events_path = _benchmark_run_event_paths(run_id, repo_root=repo_root, artifacts_dir=artifacts_dir)["events"]
+    events_path = _benchmark_run_event_paths(
+        run_id, repo_root=repo_root, artifacts_dir=artifacts_dir
+    )["events"]
     for payload in _read_jsonl(events_path):
         if payload.get("event_type") == "run_start":
             return payload
@@ -2765,7 +4011,9 @@ def _load_benchmark_unit_progress(
     repo_root: Path,
     artifacts_dir: Optional[str],
 ) -> Dict[str, Any]:
-    events_path = _benchmark_run_event_paths(run_id, repo_root=repo_root, artifacts_dir=artifacts_dir)["events"]
+    events_path = _benchmark_run_event_paths(
+        run_id, repo_root=repo_root, artifacts_dir=artifacts_dir
+    )["events"]
     completed_units: List[str] = []
     started_units: List[str] = []
     for payload in _read_jsonl(events_path):
@@ -2776,7 +4024,24 @@ def _load_benchmark_unit_progress(
         if event_type == "chapter_start" and unit_name not in started_units:
             started_units.append(unit_name)
         elif event_type == "chapter_end" and unit_name not in completed_units:
-            completed_units.append(unit_name)
+            try:
+                failed = int(payload.get("failed", -1))
+                total_benchmarks = int(payload.get("total_benchmarks", -1))
+                successful = int(payload.get("successful", -1))
+                skipped_hardware = int(payload.get("skipped_hardware", -1))
+                skipped_distributed = int(payload.get("skipped_distributed", -1))
+                informational = int(payload.get("informational", -1))
+            except (TypeError, ValueError):
+                continue
+            if (
+                failed == 0
+                and total_benchmarks > 0
+                and successful == total_benchmarks
+                and skipped_hardware == 0
+                and skipped_distributed == 0
+                and informational == 0
+            ):
+                completed_units.append(unit_name)
     active_unit = None
     for unit_name in started_units:
         if unit_name not in completed_units:
@@ -2811,6 +4076,19 @@ def _attach_benchmark_attempt_state(
         "output_json": str(benchmark_paths["output_json"]),
         "progress_path": str(benchmark_paths["progress"]),
     }
+    attempt.pop("benchmark_summary", None)
+    attempt.pop("verified_targets", None)
+    run_start = _load_benchmark_run_start(
+        run_id,
+        repo_root=repo_root,
+        artifacts_dir=artifacts_dir,
+    )
+    if isinstance(run_start, dict):
+        requested_targets = run_start.get("targets")
+        if isinstance(requested_targets, list) and all(
+            isinstance(target, str) and target.strip() for target in requested_targets
+        ):
+            attempt["verified_targets"] = list(requested_targets)
     benchmark_summary = _benchmark_stage_details_from_output(str(benchmark_paths["output_json"]))
     if benchmark_summary is not None:
         attempt["benchmark_summary"] = benchmark_summary
@@ -2820,8 +4098,21 @@ def _attach_benchmark_attempt_state(
             repo_root=repo_root,
             artifacts_dir=artifacts_dir,
         )
-        attempt["completed_units"] = unit_progress.get("completed_units") or []
-        attempt["active_unit"] = unit_progress.get("active_unit")
+        completed_units: List[str] = []
+        if benchmark_summary is not None:
+            completed_units = _completed_units_from_target_outcomes(
+                list(attempt.get("targets") or []),
+                benchmark_summary,
+            )
+        attempt["completed_units"] = completed_units
+        attempt["active_unit"] = next(
+            (
+                unit
+                for unit in unit_progress.get("started_units", [])
+                if unit not in completed_units
+            ),
+            None,
+        )
 
 
 def _mark_attempt_aborted(
@@ -2857,12 +4148,20 @@ def _normalize_incomplete_attempts_for_resume(
     for stage in stages:
         if not stage.get("enabled"):
             continue
+        stage_name = str(stage.get("name") or "")
         changed = False
         for attempt in stage.get("attempts") or []:
+            if stage_name == "full_sweep":
+                _attach_benchmark_attempt_state(
+                    stage_name,
+                    attempt,
+                    repo_root=repo_root,
+                    artifacts_dir=artifacts_dir,
+                )
             if str(attempt.get("status") or "") != "running":
                 continue
             _mark_attempt_aborted(
-                str(stage.get("name") or ""),
+                stage_name,
                 attempt,
                 reason=reason,
                 repo_root=repo_root,
@@ -2873,6 +4172,142 @@ def _normalize_incomplete_attempts_for_resume(
             stage["status"] = _compute_stage_status_from_attempts(stage)
 
 
+def _revalidate_full_sweep_stage_from_frozen_plan(
+    stage: Dict[str, Any],
+    frozen_plan: Dict[str, Any],
+    *,
+    repo_root: Path,
+    artifacts_dir: Optional[str],
+    expected_git_commit: str,
+) -> None:
+    if not stage.get("enabled"):
+        return
+    exact_coverage = False
+    saw_targets = False
+    evidence_issues: List[str] = []
+    for bucket_name, target_key in (
+        ("single_gpu", "single_gpu_targets"),
+        ("multi_gpu", "multi_gpu_targets"),
+    ):
+        frozen_targets = list(frozen_plan.get(target_key) or [])
+        if not frozen_targets:
+            continue
+        saw_targets = True
+        expected_units = [str(unit["name"]) for unit in _group_targets_by_unit(frozen_targets)]
+        verified_attempts, bucket_evidence_issues = _verified_full_sweep_attempts(
+            _bucket_attempts(stage, bucket_name),
+            repo_root=repo_root,
+            artifacts_dir=artifacts_dir,
+            expected_git_commit=expected_git_commit,
+        )
+        evidence_issues.extend(bucket_evidence_issues)
+        completed_units = _completed_units_from_attempts(
+            verified_attempts,
+            frozen_targets=frozen_targets,
+        )
+        if completed_units != expected_units:
+            exact_coverage = False
+            break
+        exact_coverage = True
+    if saw_targets and exact_coverage:
+        return
+    if str(stage.get("status") or "") in {"succeeded", "skipped_duplicate"}:
+        stage["status"] = "aborted"
+        issue = "stored full-sweep success lacks exact frozen-target evidence"
+        issues = list(stage.get("issues") or [])
+        if issue not in issues:
+            issues.append(issue)
+        for evidence_issue in evidence_issues:
+            if evidence_issue not in issues:
+                issues.append(evidence_issue)
+        stage["issues"] = issues
+
+
+def _latest_stage_attempt(stage: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    attempts = [attempt for attempt in (stage.get("attempts") or []) if isinstance(attempt, dict)]
+    return attempts[-1] if attempts else None
+
+
+def _downgrade_unverified_stage_success(
+    stage: Dict[str, Any],
+    *,
+    reason: str,
+) -> None:
+    stage["status"] = "aborted"
+    issues = list(stage.get("issues") or [])
+    if reason not in issues:
+        issues.append(reason)
+    stage["issues"] = issues
+
+
+def _revalidate_resumed_terminal_stages(
+    stages: List[Dict[str, Any]],
+    *,
+    repo_root: Path,
+    artifacts_dir: Optional[str],
+    expected_git_commit: str,
+    allow_comparison_regressions: bool = False,
+) -> None:
+    for stage_name in ("tier1", "cluster", "fabric"):
+        stage = _find_stage(stages, stage_name)
+        if not stage.get("enabled") or str(stage.get("status") or "") != "succeeded":
+            continue
+        attempt = _latest_stage_attempt(stage)
+        if attempt is None or str(attempt.get("status") or "") != "succeeded":
+            _downgrade_unverified_stage_success(
+                stage,
+                reason=f"stored {stage_name} success lacks a successful attempt",
+            )
+            continue
+        expected_attempt_run_id = str(attempt.get("run_id") or "").strip()
+        try:
+            expected_attempt_run_id = validate_run_id(expected_attempt_run_id)
+        except ValueError:
+            _downgrade_unverified_stage_success(
+                stage,
+                reason=f"stored {stage_name} success has an unsafe attempt run_id",
+            )
+            continue
+        result = dict(stage.get("result") or {})
+        result.update(dict(attempt.get("result") or {}))
+        for source in (stage.get("artifacts"), attempt.get("artifacts")):
+            if isinstance(source, dict):
+                for key, value in source.items():
+                    result.setdefault(str(key), value)
+
+        if stage_name == "tier1":
+            status, issues, _details = _benchmark_stage_status(
+                result,
+                required_paths=[
+                    "summary_path",
+                    "regression_summary_path",
+                    "regression_json_path",
+                    "trend_snapshot_path",
+                ],
+                require_complete=True,
+                allow_comparison_regressions=allow_comparison_regressions,
+                expected_run_id=expected_attempt_run_id,
+                repo_root=repo_root,
+                artifacts_dir=artifacts_dir,
+                expected_git_commit=expected_git_commit,
+            )
+        else:
+            status, issues, _details = _cluster_stage_status(
+                result,
+                require_scorecard=stage_name == "fabric",
+                expected_run_id=expected_attempt_run_id,
+                repo_root=repo_root,
+                expected_git_commit=expected_git_commit,
+            )
+        if status == "succeeded":
+            continue
+        detail = ". ".join(issues) if issues else f"revalidated status was {status}"
+        _downgrade_unverified_stage_success(
+            stage,
+            reason=f"stored {stage_name} success failed resume revalidation: {detail}",
+        )
+
+
 def _summarize_inventory_for_summary(inventory: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "counts": dict(inventory.get("counts") or {}),
@@ -2881,7 +4316,9 @@ def _summarize_inventory_for_summary(inventory: Dict[str, Any]) -> Dict[str, Any
     }
 
 
-def _build_frozen_full_sweep_plan(single_targets: List[str], multi_targets: List[str]) -> Dict[str, Any]:
+def _build_frozen_full_sweep_plan(
+    single_targets: List[str], multi_targets: List[str]
+) -> Dict[str, Any]:
     return {
         "single_gpu_targets": list(single_targets),
         "single_gpu_units": [entry["name"] for entry in _group_targets_by_unit(single_targets)],
@@ -2917,7 +4354,6 @@ def _recover_legacy_resume_state(
     stage_run_ids: Dict[str, str],
     inventory: Dict[str, Any],
     planned_stages: List[Dict[str, Any]],
-    requested_contract: Dict[str, Any],
     repo_root: Path,
     artifacts_dir: Optional[str],
 ) -> Dict[str, Any]:
@@ -2954,7 +4390,21 @@ def _recover_legacy_resume_state(
             repo_root=repo_root,
             artifacts_dir=artifacts_dir,
         )
-        benchmark_summary = _benchmark_stage_details_from_output(str(benchmark_paths["output_json"]))
+        benchmark_summary = _benchmark_stage_details_from_output(
+            str(benchmark_paths["output_json"])
+        )
+        completed_units = _completed_units_from_target_outcomes(
+            single_targets,
+            benchmark_summary,
+        )
+        active_unit = next(
+            (
+                unit
+                for unit in unit_progress.get("started_units", [])
+                if unit not in completed_units
+            ),
+            None,
+        )
         full_sweep_stage["status"] = "aborted"
         full_sweep_stage["attempts"] = [
             _stage_attempt_entry(
@@ -2963,8 +4413,8 @@ def _recover_legacy_resume_state(
                 status="aborted",
                 targets=single_targets,
                 units=[entry["name"] for entry in _group_targets_by_unit(single_targets)],
-                completed_units=unit_progress.get("completed_units") or [],
-                active_unit=unit_progress.get("active_unit"),
+                completed_units=completed_units,
+                active_unit=active_unit,
                 artifacts={
                     "run_dir": str(benchmark_paths["run_dir"]),
                     "events_path": str(benchmark_paths["events"]),
@@ -2975,7 +4425,8 @@ def _recover_legacy_resume_state(
                 issues=[
                     entry["error"]
                     for entry in (benchmark_summary or {}).get("failed_benchmarks", [])
-                ] or ["full_sweep single bucket aborted before stage completion"],
+                ]
+                or ["full_sweep single bucket aborted before stage completion"],
                 recovered=True,
             )
         ]
@@ -2988,7 +4439,13 @@ def _recover_legacy_resume_state(
             list(inventory.get("multi_gpu") or []),
         )
     }
-    recovered_contract = dict(requested_contract)
+    legacy_manifest = _read_json_if_exists(run_dir / "manifest.json") or {}
+    manifest_contract = legacy_manifest.get("contract")
+    recovered_contract = (
+        _sanitize_e2e_contract_values(dict(manifest_contract))
+        if isinstance(manifest_contract, dict)
+        else {}
+    )
     if single_run_start:
         for key in (
             "profile_type",
@@ -3009,7 +4466,11 @@ def _recover_legacy_resume_state(
             if recovered_value is not None:
                 recovered_contract[key] = recovered_value
         recovered_contract["run_tier1"] = bool(
-            stage_statuses.get("tier1") or any(payload.get("event") == "stage_started" and payload.get("stage") == "tier1" for payload in _read_jsonl(events_path))
+            stage_statuses.get("tier1")
+            or any(
+                payload.get("event") == "stage_started" and payload.get("stage") == "tier1"
+                for payload in _read_jsonl(events_path)
+            )
         )
         recovered_contract["run_full_sweep"] = True
     return {
@@ -3017,6 +4478,7 @@ def _recover_legacy_resume_state(
         "stages": stages,
         "contract": recovered_contract,
         "frozen_plan": frozen_plan,
+        "provenance": _json_safe(legacy_manifest.get("provenance") or {}),
         "legacy_recovered": True,
     }
 
@@ -3028,7 +4490,6 @@ def _load_resume_state(
     stage_run_ids: Dict[str, str],
     inventory: Dict[str, Any],
     planned_stages: List[Dict[str, Any]],
-    requested_contract: Dict[str, Any],
     repo_root: Path,
     artifacts_dir: Optional[str],
 ) -> Dict[str, Any]:
@@ -3041,7 +4502,6 @@ def _load_resume_state(
         stage_run_ids=stage_run_ids,
         inventory=inventory,
         planned_stages=planned_stages,
-        requested_contract=requested_contract,
         repo_root=repo_root,
         artifacts_dir=artifacts_dir,
     )
@@ -3099,6 +4559,34 @@ def _validate_resume_contract(
     requested: Dict[str, Any],
     stored: Dict[str, Any],
 ) -> Optional[str]:
+    requested = _sanitize_e2e_contract_values(requested)
+    stored = _sanitize_e2e_contract_values(stored)
+
+    schema_mismatches: List[str] = []
+    for label, contract in (("requested", requested), ("stored", stored)):
+        schema_version = contract.get("schema_version")
+        if schema_version != _E2E_CONTRACT_SCHEMA_VERSION:
+            rendered = "missing" if schema_version is None else repr(schema_version)
+            schema_mismatches.append(
+                f"{label} schema_version is {rendered}, expected {_E2E_CONTRACT_SCHEMA_VERSION!r}"
+            )
+    if schema_mismatches:
+        return "Resume contract mismatch: " + ", ".join(schema_mismatches)
+
+    missing_requested = [
+        field_name for field_name in _E2E_CONTRACT_REQUIRED_FIELDS if field_name not in requested
+    ]
+    missing_stored = [
+        field_name for field_name in _E2E_CONTRACT_REQUIRED_FIELDS if field_name not in stored
+    ]
+    if missing_requested or missing_stored:
+        details: List[str] = []
+        if missing_requested:
+            details.append("requested missing required field(s): " + ", ".join(missing_requested))
+        if missing_stored:
+            details.append("stored missing required field(s): " + ", ".join(missing_stored))
+        return "Resume contract mismatch: " + ". ".join(details)
+
     def _timeout_is_compatible(field_name: str, requested_value: Any, stored_value: Any) -> bool:
         if field_name != "suite_timeout":
             return False
@@ -3114,67 +4602,55 @@ def _validate_resume_contract(
             return False
 
     fields_to_validate = [
-        "profile_type",
-        "validity_profile",
-        "single_gpu",
-        "bench_root",
-        "run_tier1",
-        "run_full_sweep",
-        "run_cluster",
-        "run_fabric",
-        "cluster_preset",
-        "hosts",
-        "labels",
-        "ssh_user",
-        "ssh_key",
-        "oob_if",
-        "socket_ifname",
-        "nccl_ib_hca",
-        "nmx_url",
-        "nmx_token",
-        "ib_mgmt_host",
-        "ib_mgmt_user",
-        "ib_mgmt_ssh_key",
-        "cumulus_hosts",
-        "cumulus_user",
-        "cumulus_ssh_key",
-        "primary_label",
-        "coverage_baseline_run_id",
-        "timeout_seconds",
-        "suite_timeout",
-        "full_sweep_suite_timeout",
-        "timeout_multiplier",
-        "accept_regressions",
-        "update_expectations",
-        "allow_mixed_provenance",
-        "allow_portable_expectations_update",
-        "iterations",
-        "warmup",
-        "gpu_sm_clock_mhz",
-        "gpu_mem_clock_mhz",
-        "ncu_metric_set",
-        "ncu_replay_mode",
-        "nsys_timeout_seconds",
-        "ncu_timeout_seconds",
-        "auto_resume",
-        "max_auto_resumes",
-        "watch_poll_interval_seconds",
+        field_name for field_name in _E2E_CONTRACT_REQUIRED_FIELDS if field_name != "schema_version"
     ]
     mismatches: List[str] = []
     for field_name in fields_to_validate:
-        if field_name not in stored:
-            continue
         requested_value = _json_safe(requested.get(field_name))
         stored_value = _json_safe(stored.get(field_name))
         if _timeout_is_compatible(field_name, requested_value, stored_value):
             continue
         if requested_value != stored_value:
-            mismatches.append(
-                f"{field_name}: requested={requested_value!r}, original={stored_value!r}"
-            )
+            mismatches.append(field_name)
     if not mismatches:
         return None
-    return "Resume contract mismatch: " + "; ".join(mismatches)
+    return "Resume contract mismatch for field(s): " + ", ".join(mismatches)
+
+
+def _validate_resume_provenance(
+    *,
+    current: Dict[str, Any],
+    stored: Dict[str, Any],
+) -> Optional[str]:
+    fields = (
+        "expectation_hardware_key",
+        "execution_environment",
+        "gpu_count",
+        "bench_root_identity",
+    )
+    mismatches: List[str] = []
+    current_git = current.get("git")
+    stored_git = stored.get("git")
+    if not isinstance(current_git, dict) or not isinstance(stored_git, dict):
+        mismatches.append("git provenance is missing")
+    else:
+        if bool(stored_git.get("dirty")):
+            mismatches.append("stored worktree is dirty")
+        if bool(current_git.get("dirty")):
+            mismatches.append("current worktree is dirty")
+        for field_name in ("commit", "dirty"):
+            if field_name not in stored_git or _json_safe(stored_git.get(field_name)) != _json_safe(
+                current_git.get(field_name)
+            ):
+                mismatches.append(f"git.{field_name} changed")
+    for field_name in fields:
+        if field_name not in stored or _json_safe(stored.get(field_name)) != _json_safe(
+            current.get(field_name)
+        ):
+            mismatches.append(f"{field_name} changed")
+    if not mismatches:
+        return None
+    return "Resume provenance mismatch: " + ", ".join(mismatches)
 
 
 def _build_checkpoint_payload(
@@ -3355,7 +4831,16 @@ def run_benchmark_e2e_sweep(
 ) -> Dict[str, Any]:
     repo_root = _repo_root()
     active_bench_root = Path(bench_root).resolve() if bench_root else repo_root
-    normalized_validity_profile = normalize_validity_profile(validity_profile, field_name="validity_profile")
+    private_bench_root = (
+        active_bench_root if active_bench_root.resolve() != repo_root.resolve() else None
+    )
+    private_artifacts_dir = (
+        Path(artifacts_dir).expanduser() if str(artifacts_dir or "").strip() else None
+    )
+    private_log_file = Path(log_file).expanduser() if str(log_file or "").strip() else None
+    normalized_validity_profile = normalize_validity_profile(
+        validity_profile, field_name="validity_profile"
+    )
     if resume and not str(run_id or "").strip():
         return _json_safe(
             {
@@ -3367,6 +4852,22 @@ def run_benchmark_e2e_sweep(
         )
     resolved_run_id = resolve_e2e_run_id(run_id, repo_root=repo_root)
     run_dir = e2e_run_dir(resolved_run_id, repo_root)
+    if not resume and (run_dir.is_symlink() or run_dir.exists()):
+        return _sanitize_persisted_value(
+            {
+                "success": False,
+                "run_id": resolved_run_id,
+                "run_dir": str(run_dir),
+                "run_state": "completed",
+                "overall_status": "failed",
+                "resume_available": False,
+                "error": f"Refusing to overwrite existing E2E run {resolved_run_id!r}",
+            },
+            repo_root=repo_root,
+            private_bench_root=private_bench_root,
+            private_artifacts_dir=private_artifacts_dir,
+            private_log_file=private_log_file,
+        )
     manifest_path = run_dir / "manifest.json"
     summary_path = run_dir / "summary.json"
     summary_markdown_path = run_dir / "summary.md"
@@ -3374,8 +4875,29 @@ def run_benchmark_e2e_sweep(
     checkpoint_path = e2e_checkpoint_path(run_dir)
     target_inventory_path = run_dir / "target_inventory.json"
     events_path = run_dir / "events.jsonl"
+    sensitive_values = [ssh_key, nmx_token, ib_mgmt_ssh_key, cumulus_ssh_key]
+
+    def _sanitize_run_value(value: Any) -> Any:
+        return _sanitize_persisted_value(
+            value,
+            sensitive_values=sensitive_values,
+            repo_root=repo_root,
+            private_bench_root=private_bench_root,
+            private_artifacts_dir=private_artifacts_dir,
+            private_log_file=private_log_file,
+        )
+
+    def _append_run_event(event: str, **fields: Any) -> None:
+        _append_event(
+            events_path,
+            event,
+            **_sanitize_run_value(fields),
+        )
+
     generated_at = _utc_now()
-    progress_recorder = None if dry_run else ProgressRecorder(run_id=resolved_run_id, progress_path=progress_path)
+    progress_recorder = (
+        None if dry_run else ProgressRecorder(run_id=resolved_run_id, progress_path=progress_path)
+    )
     progress_emit_lock = threading.Lock()
     artifact_paths = {
         "manifest_path": manifest_path,
@@ -3440,22 +4962,45 @@ def run_benchmark_e2e_sweep(
             "provenance": {
                 "generated_at": generated_at,
                 "git": get_git_info(),
-                "bench_root": str(active_bench_root),
+                "bench_root_identity": _bench_root_identity(active_bench_root),
             },
         }
-        safe_failure = _json_safe(failure_payload)
+        safe_failure = _sanitize_run_value(failure_payload)
         if not dry_run:
             run_dir.mkdir(parents=True, exist_ok=True)
             _write_json(target_inventory_path, inventory)
             _write_json(summary_path, safe_failure)
-            summary_markdown_path.write_text(_render_summary_markdown(safe_failure), encoding="utf-8")
+            summary_markdown_path.write_text(
+                _render_summary_markdown(safe_failure), encoding="utf-8"
+            )
             _write_json(manifest_path, {**safe_failure, "inventory": inventory})
         return attach_benchmark_e2e_status_hints(safe_failure, resolved_run_id)
     gpu_count = _visible_gpu_count(single_gpu=single_gpu)
-    cluster_extra_args = _with_e2e_cluster_extra_args(extra_cluster_args)
+    try:
+        cluster_extra_args = _with_e2e_cluster_extra_args(extra_cluster_args)
+    except ValueError as exc:
+        cluster_extra_args = _with_e2e_cluster_extra_args(None)
+        extra_args_error = str(exc)
+        expectation_error = (
+            f"{expectation_error}. {extra_args_error}" if expectation_error else extra_args_error
+        )
+    current_git_info = dict(get_git_info())
+    validated_git_commit: Optional[str] = None
+    git_preflight_error: Optional[str] = None
+    if not dry_run:
+        validated_git_commit, git_preflight_error = _validated_clean_git_commit(
+            repo_root=repo_root,
+            git_info=current_git_info,
+        )
+        if git_preflight_error:
+            expectation_error = (
+                f"{expectation_error}. {git_preflight_error}"
+                if expectation_error
+                else git_preflight_error
+            )
     provenance = {
         "generated_at": generated_at,
-        "git": get_git_info(),
+        "git": current_git_info,
         "expectation_hardware_key": detect_expectation_key(),
         "execution_environment": {
             "kind": environment.kind,
@@ -3463,7 +5008,7 @@ def run_benchmark_e2e_sweep(
             "dmi_product_name": environment.dmi_product_name,
         },
         "gpu_count": gpu_count,
-        "bench_root": str(active_bench_root),
+        "bench_root_identity": _bench_root_identity(active_bench_root),
     }
     requested_contract = _build_e2e_contract(
         run_tier1=run_tier1,
@@ -3488,8 +5033,10 @@ def run_benchmark_e2e_sweep(
         cumulus_ssh_key=cumulus_ssh_key,
         primary_label=primary_label,
         coverage_baseline_run_id=coverage_baseline_run_id,
+        extra_cluster_args=list(cluster_extra_args or []),
         bench_root=str(active_bench_root),
         profile_type=profile_type,
+        output_format=output_format,
         suite_timeout=suite_timeout,
         full_sweep_suite_timeout=full_sweep_suite_timeout,
         timeout_multiplier=timeout_multiplier,
@@ -3543,15 +5090,22 @@ def run_benchmark_e2e_sweep(
             "contract": requested_contract,
         }
         if not dry_run:
-            _append_event(events_path, "run_failed_preflight", error=expectation_error, run_id=resolved_run_id)
+            _append_run_event(
+                "run_failed_preflight", error=expectation_error, run_id=resolved_run_id
+            )
             run_dir.mkdir(parents=True, exist_ok=True)
             _write_json(target_inventory_path, inventory)
-            _write_json(summary_path, _json_safe(result))
-            summary_markdown_path.write_text(_render_summary_markdown(_json_safe(result)), encoding="utf-8")
-            _write_json(manifest_path, {**_json_safe(result), "inventory": inventory})
-        return attach_benchmark_e2e_status_hints(_json_safe(result), resolved_run_id)
+            safe_result = _sanitize_run_value(result)
+            _write_json(summary_path, safe_result)
+            summary_markdown_path.write_text(
+                _render_summary_markdown(safe_result), encoding="utf-8"
+            )
+            _write_json(manifest_path, {**safe_result, "inventory": inventory})
+        return attach_benchmark_e2e_status_hints(_sanitize_run_value(result), resolved_run_id)
 
-    def _materialize_stages(loaded_stages: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    def _materialize_stages(
+        loaded_stages: Optional[List[Dict[str, Any]]] = None,
+    ) -> List[Dict[str, Any]]:
         loaded_by_name = {
             str(stage.get("name")): dict(stage)
             for stage in (loaded_stages or [])
@@ -3575,7 +5129,7 @@ def run_benchmark_e2e_sweep(
     if resume:
         if not checkpoint_path.exists() and not events_path.exists():
             return attach_benchmark_e2e_status_hints(
-                _json_safe(
+                _sanitize_run_value(
                     {
                         "success": False,
                         "run_id": resolved_run_id,
@@ -3607,29 +5161,32 @@ def run_benchmark_e2e_sweep(
             stage_run_ids=stage_run_ids,
             inventory=inventory,
             planned_stages=planned_stages,
-            requested_contract=requested_contract,
             repo_root=repo_root,
             artifacts_dir=artifacts_dir,
         )
-        stale_reason = _normalize_stale_running_resume_state(
-            resume_state,
-            repo_root=repo_root,
-            artifacts_dir=artifacts_dir,
-        )
-        if stale_reason:
-            _append_event(
-                events_path,
-                "run_recovered_aborted",
-                run_id=resolved_run_id,
-                error=stale_reason,
-            )
         mismatch_error = _validate_resume_contract(
             requested=requested_contract,
             stored=resume_state.get("contract") or {},
         )
+        if mismatch_error is None:
+            mismatch_error = _validate_resume_provenance(
+                current=provenance,
+                stored=resume_state.get("provenance") or {},
+            )
+        if mismatch_error is None:
+            try:
+                resume_state = _restore_persisted_path_locators(
+                    resume_state,
+                    repo_root=repo_root,
+                    bench_root=active_bench_root,
+                    artifacts_dir=artifacts_dir,
+                    log_file=log_file,
+                )
+            except ValueError as exc:
+                mismatch_error = f"Resume contract mismatch: {exc}"
         if mismatch_error:
             return attach_benchmark_e2e_status_hints(
-                _json_safe(
+                _sanitize_run_value(
                     {
                         "success": False,
                         "run_id": resolved_run_id,
@@ -3648,12 +5205,23 @@ def run_benchmark_e2e_sweep(
                         "target_inventory_path": str(target_inventory_path),
                         "events_path": str(events_path),
                         "inventory": _summarize_inventory_for_summary(inventory),
-                        "stages": _json_safe(resume_state.get("stages") or planned_stages),
+                        "stages": _sanitize_run_value(resume_state.get("stages") or planned_stages),
                         "provenance": provenance,
                         "contract": requested_contract,
                     }
                 ),
                 resolved_run_id,
+            )
+        stale_reason = _normalize_stale_running_resume_state(
+            resume_state,
+            repo_root=repo_root,
+            artifacts_dir=artifacts_dir,
+        )
+        if stale_reason:
+            _append_run_event(
+                "run_recovered_aborted",
+                run_id=resolved_run_id,
+                error=stale_reason,
             )
         generated_at = str(resume_state.get("generated_at") or generated_at)
         frozen_plan = _json_safe(resume_state.get("frozen_plan") or frozen_plan)
@@ -3664,8 +5232,22 @@ def run_benchmark_e2e_sweep(
             artifacts_dir=artifacts_dir,
             reason="resume superseded unfinished attempt",
         )
-        stored_contract = dict(resume_state.get("contract") or {})
-        requested_contract = _json_safe({**stored_contract, **requested_contract})
+        if run_full_sweep and not dry_run:
+            _revalidate_full_sweep_stage_from_frozen_plan(
+                _find_stage(stages, "full_sweep"),
+                dict(frozen_plan.get("full_sweep") or {}),
+                repo_root=repo_root,
+                artifacts_dir=artifacts_dir,
+                expected_git_commit=str(validated_git_commit),
+            )
+        if not dry_run:
+            _revalidate_resumed_terminal_stages(
+                stages,
+                repo_root=repo_root,
+                artifacts_dir=artifacts_dir,
+                expected_git_commit=str(validated_git_commit),
+                allow_comparison_regressions=accept_regressions or update_expectations,
+            )
     else:
         stages = _materialize_stages()
 
@@ -3682,7 +5264,9 @@ def run_benchmark_e2e_sweep(
     def _current_overall_status() -> str:
         if run_state == "aborted":
             return "aborted"
-        statuses = [str(stage.get("status") or "planned") for stage in stages if stage.get("enabled")]
+        statuses = [
+            str(stage.get("status") or "planned") for stage in stages if stage.get("enabled")
+        ]
         if run_state == "running":
             if any(status == "aborted" for status in statuses):
                 return "aborted"
@@ -3696,8 +5280,9 @@ def run_benchmark_e2e_sweep(
     def _persist_state() -> Dict[str, Any]:
         updated_at = _utc_now()
         overall_status = _current_overall_status()
-        success = run_state == "completed" and overall_status not in {"failed", "aborted"}
+        success = run_state == "completed" and overall_status == "succeeded"
         watcher = _watcher_summary(run_dir)
+        public_hosts = _sanitize_run_value(cluster_host_config)
         summary_payload = _build_summary_payload(
             run_id=resolved_run_id,
             run_dir=run_dir,
@@ -3710,7 +5295,7 @@ def run_benchmark_e2e_sweep(
             error=error,
             contract=requested_contract,
             inventory=inventory,
-            hosts=cluster_host_config,
+            hosts=public_hosts,
             provenance=provenance,
             stages=stages,
             artifact_paths=artifact_paths,
@@ -3734,7 +5319,7 @@ def run_benchmark_e2e_sweep(
             contract=requested_contract,
             inventory=inventory,
             frozen_plan=frozen_plan,
-            hosts=cluster_host_config,
+            hosts=public_hosts,
             provenance=provenance,
             stages=stages,
             artifact_paths=artifact_paths,
@@ -3745,27 +5330,31 @@ def run_benchmark_e2e_sweep(
             current_stage_run_id=current_stage_event_run_id,
             current_bucket=current_bucket,
         )
+        summary_payload = _sanitize_run_value(summary_payload)
+        checkpoint_payload = _sanitize_run_value(checkpoint_payload)
         if not dry_run:
             run_dir.mkdir(parents=True, exist_ok=True)
             _write_json(target_inventory_path, inventory)
             _write_json(checkpoint_path, _json_safe(checkpoint_payload))
             _write_json(summary_path, _json_safe(summary_payload))
-            summary_markdown_path.write_text(_render_summary_markdown(_json_safe(summary_payload)), encoding="utf-8")
+            summary_markdown_path.write_text(
+                _render_summary_markdown(_json_safe(summary_payload)), encoding="utf-8"
+            )
             _write_json(
                 manifest_path,
                 {
                     **_json_safe(summary_payload),
                     "inventory": inventory,
                     "checkpoint": _json_safe(checkpoint_payload),
-                    "frozen_plan": _json_safe(frozen_plan),
+                    "frozen_plan": _sanitize_run_value(frozen_plan),
                 },
             )
             _emit_live_progress(
                 progress_recorder,
-                stages=stages,
+                stages=_sanitize_run_value(stages),
                 run_state=run_state,
                 overall_status=overall_status,
-                artifact_paths=artifact_paths,
+                artifact_paths=_sanitize_run_value(artifact_paths),
                 emit_lock=progress_emit_lock,
                 orchestrator_pid=os.getpid(),
             )
@@ -3783,12 +5372,12 @@ def run_benchmark_e2e_sweep(
             return
         _emit_live_progress(
             progress_recorder,
-            stages=stages,
+            stages=_sanitize_run_value(stages),
             run_state=run_state,
             overall_status=_current_overall_status(),
-            artifact_paths=artifact_paths,
+            artifact_paths=_sanitize_run_value(artifact_paths),
             emit_lock=progress_emit_lock,
-            child_progress=child_progress,
+            child_progress=_sanitize_run_value(child_progress),
             child_stage_name=stage_name,
             child_run_id=child_run_id,
             child_bucket=bucket,
@@ -3843,13 +5432,17 @@ def run_benchmark_e2e_sweep(
             )
 
     def _start_stage(stage_name: str, event_run_id: str) -> None:
-        nonlocal current_stage_name, current_stage_started_at, current_stage_event_run_id, current_bucket
+        nonlocal \
+            current_stage_name, \
+            current_stage_started_at, \
+            current_stage_event_run_id, \
+            current_bucket
         current_stage_name = stage_name
         current_stage_started_at = time.monotonic()
         current_stage_event_run_id = event_run_id
         current_bucket = None
         _replace_stage(stages, name=stage_name, status="running")
-        _append_event(events_path, "stage_started", stage=stage_name, run_id=event_run_id)
+        _append_run_event("stage_started", stage=stage_name, run_id=event_run_id)
         _persist_state()
 
     def _finish_stage(
@@ -3863,7 +5456,11 @@ def run_benchmark_e2e_sweep(
         issues: Optional[List[str]] = None,
         duration_ms: Optional[int] = None,
     ) -> None:
-        nonlocal current_stage_name, current_stage_started_at, current_stage_event_run_id, current_bucket
+        nonlocal \
+            current_stage_name, \
+            current_stage_started_at, \
+            current_stage_event_run_id, \
+            current_bucket
         stage = _find_stage(stages, stage_name)
         _replace_stage(
             stages,
@@ -3877,8 +5474,7 @@ def run_benchmark_e2e_sweep(
             duration_ms=duration_ms,
             attempts=stage.get("attempts") or [],
         )
-        _append_event(
-            events_path,
+        _append_run_event(
             "stage_finished",
             stage=stage_name,
             status=status,
@@ -3891,7 +5487,11 @@ def run_benchmark_e2e_sweep(
         _persist_state()
 
     def _abort_current_stage(message: str) -> None:
-        nonlocal current_stage_name, current_stage_started_at, current_stage_event_run_id, current_bucket
+        nonlocal \
+            current_stage_name, \
+            current_stage_started_at, \
+            current_stage_event_run_id, \
+            current_bucket
         if not current_stage_name:
             return
         stage = _find_stage(stages, current_stage_name)
@@ -3920,8 +5520,7 @@ def run_benchmark_e2e_sweep(
             if current_stage_started_at is not None
             else stage.get("duration_ms"),
         )
-        _append_event(
-            events_path,
+        _append_run_event(
             "stage_finished",
             stage=current_stage_name,
             status="aborted",
@@ -3936,7 +5535,7 @@ def run_benchmark_e2e_sweep(
 
     if dry_run:
         return attach_benchmark_e2e_status_hints(
-            _json_safe(
+            _sanitize_run_value(
                 {
                     "success": True,
                     "dry_run": True,
@@ -3955,7 +5554,7 @@ def run_benchmark_e2e_sweep(
                     "target_inventory_path": str(target_inventory_path),
                     "events_path": str(events_path),
                     "inventory": _summarize_inventory_for_summary(inventory),
-                    "hosts": cluster_host_config,
+                    "hosts": _sanitize_run_value(cluster_host_config),
                     "provenance": provenance,
                     "contract": requested_contract,
                     "stages": stages,
@@ -3967,7 +5566,7 @@ def run_benchmark_e2e_sweep(
 
     run_dir.mkdir(parents=True, exist_ok=True)
     _write_json(target_inventory_path, inventory)
-    _append_event(events_path, "run_resumed" if resume else "run_started", run_id=resolved_run_id)
+    _append_run_event("run_resumed" if resume else "run_started", run_id=resolved_run_id)
     _persist_state()
     if auto_resume and not dry_run and not os.environ.get(_E2E_WATCHER_SUPERVISED_ENV):
         watcher_info = watch_benchmark_e2e_sweep_run(
@@ -3977,8 +5576,7 @@ def run_benchmark_e2e_sweep(
             max_auto_resumes=max_auto_resumes,
         )
         if watcher_info.get("success"):
-            _append_event(
-                events_path,
+            _append_run_event(
                 "watcher_armed",
                 run_id=resolved_run_id,
                 watcher_pid=watcher_info.get("watcher_pid"),
@@ -4070,7 +5668,18 @@ def run_benchmark_e2e_sweep(
                     )
                 tier1_status, tier1_issues, tier1_benchmark_summary = _benchmark_stage_status(
                     tier1_result,
-                    required_paths=["summary_path", "regression_summary_path", "trend_snapshot_path"],
+                    required_paths=[
+                        "summary_path",
+                        "regression_summary_path",
+                        "regression_json_path",
+                        "trend_snapshot_path",
+                    ],
+                    require_complete=True,
+                    allow_comparison_regressions=accept_regressions or update_expectations,
+                    expected_run_id=tier1_run_id,
+                    repo_root=repo_root,
+                    artifacts_dir=artifacts_dir,
+                    expected_git_commit=str(validated_git_commit),
                 )
                 tier1_attempt.update(
                     {
@@ -4081,11 +5690,15 @@ def run_benchmark_e2e_sweep(
                         "artifacts": {
                             "summary_path": tier1_result.get("summary_path"),
                             "regression_summary_path": tier1_result.get("regression_summary_path"),
+                            "regression_json_path": tier1_result.get("regression_json_path"),
                             "trend_snapshot_path": tier1_result.get("trend_snapshot_path"),
                             "history_root": tier1_result.get("history_root"),
                         },
                         "issues": tier1_issues,
-                        "duration_ms": int((time.monotonic() - (current_stage_started_at or time.monotonic())) * 1000),
+                        "duration_ms": int(
+                            (time.monotonic() - (current_stage_started_at or time.monotonic()))
+                            * 1000
+                        ),
                     }
                 )
                 if tier1_benchmark_summary is not None:
@@ -4108,8 +5721,12 @@ def run_benchmark_e2e_sweep(
                 full_stage_issues: List[str] = []
                 full_stage_result: Dict[str, Any] = {"buckets": {}}
                 bucket_outcomes: List[str] = []
-                single_targets = list((frozen_plan.get("full_sweep") or {}).get("single_gpu_targets") or [])
-                multi_targets = list((frozen_plan.get("full_sweep") or {}).get("multi_gpu_targets") or [])
+                single_targets = list(
+                    (frozen_plan.get("full_sweep") or {}).get("single_gpu_targets") or []
+                )
+                multi_targets = list(
+                    (frozen_plan.get("full_sweep") or {}).get("multi_gpu_targets") or []
+                )
                 if not single_targets and not multi_targets:
                     full_stage_issues.append("no benchmark targets discovered for full sweep")
                     full_status = "failed"
@@ -4122,29 +5739,53 @@ def run_benchmark_e2e_sweep(
                         if not all_targets:
                             continue
                         current_bucket_targets = list(
-                            inventory.get("single_gpu" if bucket_name == "single_gpu" else "multi_gpu") or []
+                            inventory.get(
+                                "single_gpu" if bucket_name == "single_gpu" else "multi_gpu"
+                            )
+                            or []
                         )
                         all_units = list(
                             (frozen_plan.get("full_sweep") or {}).get(
-                                "single_gpu_units" if bucket_name == "single_gpu" else "multi_gpu_units"
+                                "single_gpu_units"
+                                if bucket_name == "single_gpu"
+                                else "multi_gpu_units"
                             )
                             or [entry["name"] for entry in _group_targets_by_unit(all_targets)]
                         )
                         bucket_attempts = _bucket_attempts(full_stage, bucket_name)
-                        completed_units = _completed_units_from_attempts(bucket_attempts, ordered_units=all_units)
-                        remaining_units = _remaining_units_after_completed_units(
-                            all_units,
+                        verified_bucket_attempts, _prior_evidence_issues = (
+                            _verified_full_sweep_attempts(
+                                bucket_attempts,
+                                repo_root=repo_root,
+                                artifacts_dir=artifacts_dir,
+                                expected_git_commit=str(validated_git_commit),
+                            )
+                        )
+                        completed_units = _completed_units_from_attempts(
+                            verified_bucket_attempts,
+                            frozen_targets=all_targets,
+                        )
+                        remaining_targets = _remaining_targets_after_completed_units(
+                            all_targets,
                             completed_units=completed_units,
                         )
-                        remaining_targets, missing_units = _resolve_targets_for_units(
-                            current_bucket_targets,
-                            ordered_units=remaining_units,
+                        current_target_lookup = {
+                            _canonical_target_name(target) for target in current_bucket_targets
+                        }
+                        missing_units = list(
+                            dict.fromkeys(
+                                _canonical_unit_name(target.split(":", 1)[0])
+                                for target in remaining_targets
+                                if _canonical_target_name(target) not in current_target_lookup
+                            )
                         )
                         if bucket_name == "multi_gpu" and gpu_count < 2:
                             skip_reason = f"requires >=2 visible GPUs; detected {gpu_count}"
                             if not bucket_attempts:
                                 skip_attempt = _stage_attempt_entry(
-                                    run_id=_bucket_attempt_run_id(stage_run_ids["full_sweep"], bucket_name, 0),
+                                    run_id=_bucket_attempt_run_id(
+                                        stage_run_ids["full_sweep"], bucket_name, 0
+                                    ),
                                     bucket=bucket_name,
                                     status="skipped",
                                     targets=all_targets,
@@ -4164,13 +5805,13 @@ def run_benchmark_e2e_sweep(
                                 "reason": skip_reason,
                                 "attempts": bucket_attempts,
                             }
-                            full_stage_issues.append(f"multi-GPU bucket skipped because only {gpu_count} visible GPU(s) were detected")
+                            full_stage_issues.append(
+                                f"multi-GPU bucket skipped because only {gpu_count} visible GPU(s) were detected"
+                            )
                             bucket_outcomes.append("partial")
                             continue
                         if missing_units:
-                            missing_issue = (
-                                f"resume could not resolve current benchmark targets for unit(s): {', '.join(missing_units)}"
-                            )
+                            missing_issue = f"resume could not resolve current benchmark targets for unit(s): {', '.join(missing_units)}"
                             full_stage_result["buckets"][bucket_name] = {
                                 "targets": all_targets,
                                 "status": "failed",
@@ -4183,19 +5824,21 @@ def run_benchmark_e2e_sweep(
                             continue
                         if not remaining_targets:
                             latest_attempt = bucket_attempts[-1] if bucket_attempts else None
-                            if latest_attempt is not None:
-                                latest_status = str(latest_attempt.get("status") or "succeeded")
-                                full_stage_result["buckets"][bucket_name] = {
-                                    "targets": all_targets,
-                                    "status": latest_status,
-                                    "attempts": bucket_attempts,
-                                    "latest_attempt_run_id": latest_attempt.get("run_id"),
-                                }
-                                bucket_outcomes.append("partial" if latest_status == "skipped" else latest_status)
+                            full_stage_result["buckets"][bucket_name] = {
+                                "targets": all_targets,
+                                "status": "succeeded",
+                                "attempts": bucket_attempts,
+                                "latest_attempt_run_id": (
+                                    latest_attempt.get("run_id") if latest_attempt else None
+                                ),
+                            }
+                            bucket_outcomes.append("succeeded")
                             continue
 
                         attempt_index = len(bucket_attempts)
-                        bucket_run_id = _bucket_attempt_run_id(stage_run_ids["full_sweep"], bucket_name, attempt_index)
+                        bucket_run_id = _bucket_attempt_run_id(
+                            stage_run_ids["full_sweep"], bucket_name, attempt_index
+                        )
                         bucket_command = [
                             "python",
                             "-m",
@@ -4211,8 +5854,12 @@ def run_benchmark_e2e_sweep(
                             *sum([["-t", target] for target in remaining_targets], []),
                         ]
                         if full_sweep_suite_timeout is not None:
-                            bucket_command.extend(["--suite-timeout", str(full_sweep_suite_timeout)])
-                        attempt_units = [entry["name"] for entry in _group_targets_by_unit(remaining_targets)]
+                            bucket_command.extend(
+                                ["--suite-timeout", str(full_sweep_suite_timeout)]
+                            )
+                        attempt_units = [
+                            entry["name"] for entry in _group_targets_by_unit(remaining_targets)
+                        ]
                         bucket_attempt = _stage_attempt_entry(
                             run_id=bucket_run_id,
                             bucket=bucket_name,
@@ -4232,7 +5879,9 @@ def run_benchmark_e2e_sweep(
                             repo_root=repo_root,
                             artifacts_dir=artifacts_dir,
                         )["progress"]
-                        with _benchmark_queue_lock(f"full_sweep_{bucket_name}", bucket_run_id, repo_root=repo_root):
+                        with _benchmark_queue_lock(
+                            f"full_sweep_{bucket_name}", bucket_run_id, repo_root=repo_root
+                        ):
                             bucket_result = _run_with_stage_progress_mirror(
                                 "full_sweep",
                                 bucket_run_id,
@@ -4271,14 +5920,21 @@ def run_benchmark_e2e_sweep(
                                 ),
                                 bucket=bucket_name,
                             )
-                        bucket_status, bucket_issues, bucket_benchmark_summary = _benchmark_stage_status(
-                            bucket_result,
-                            required_paths=["output_json"],
+                        bucket_status, bucket_issues, bucket_benchmark_summary = (
+                            _benchmark_stage_status(
+                                bucket_result,
+                                required_paths=["output_json"],
+                                required_targets=remaining_targets,
+                            )
                         )
                         unit_progress = _load_benchmark_unit_progress(
                             bucket_run_id,
                             repo_root=repo_root,
                             artifacts_dir=artifacts_dir,
+                        )
+                        completed_units = _completed_units_from_target_outcomes(
+                            remaining_targets,
+                            bucket_benchmark_summary,
                         )
                         benchmark_paths = _benchmark_run_event_paths(
                             bucket_run_id,
@@ -4298,13 +5954,56 @@ def run_benchmark_e2e_sweep(
                                     "progress_path": str(benchmark_paths["progress"]),
                                 },
                                 "issues": bucket_issues,
-                                "duration_ms": int((time.monotonic() - (current_stage_started_at or time.monotonic())) * 1000),
-                                "completed_units": unit_progress.get("completed_units") or [],
-                                "active_unit": unit_progress.get("active_unit"),
+                                "duration_ms": int(
+                                    (
+                                        time.monotonic()
+                                        - (current_stage_started_at or time.monotonic())
+                                    )
+                                    * 1000
+                                ),
+                                "completed_units": completed_units,
+                                "active_unit": (
+                                    unit_progress.get("active_unit")
+                                    if unit_progress.get("active_unit") not in completed_units
+                                    else None
+                                ),
                             }
                         )
                         if bucket_benchmark_summary is not None:
                             bucket_attempt["benchmark_summary"] = bucket_benchmark_summary
+                        _attach_benchmark_attempt_state(
+                            "full_sweep",
+                            bucket_attempt,
+                            repo_root=repo_root,
+                            artifacts_dir=artifacts_dir,
+                        )
+                        verified_bucket_attempts, evidence_issues = _verified_full_sweep_attempts(
+                            _bucket_attempts(full_stage, bucket_name),
+                            repo_root=repo_root,
+                            artifacts_dir=artifacts_dir,
+                            expected_git_commit=str(validated_git_commit),
+                        )
+                        exact_completed_units = _completed_units_from_attempts(
+                            verified_bucket_attempts,
+                            frozen_targets=all_targets,
+                        )
+                        expected_completed_units = [
+                            str(unit["name"]) for unit in _group_targets_by_unit(all_targets)
+                        ]
+                        if exact_completed_units != expected_completed_units:
+                            bucket_status = "failed"
+                            exact_issue = (
+                                "full-sweep bucket lacks one successful terminal outcome for "
+                                "every frozen target"
+                            )
+                            if exact_issue not in bucket_issues:
+                                bucket_issues.append(exact_issue)
+                            for evidence_issue in evidence_issues:
+                                if evidence_issue not in bucket_issues:
+                                    bucket_issues.append(evidence_issue)
+                            bucket_attempt["status"] = "failed"
+                            bucket_attempt["returncode"] = 1
+                            bucket_attempt["issues"] = bucket_issues
                         full_stage_result["buckets"][bucket_name] = {
                             "targets": all_targets,
                             "status": bucket_status,
@@ -4334,7 +6033,9 @@ def run_benchmark_e2e_sweep(
                     result=full_stage_result,
                     artifacts={"target_inventory_path": str(target_inventory_path)},
                     issues=full_stage_issues,
-                    duration_ms=int((time.monotonic() - (current_stage_started_at or time.monotonic())) * 1000),
+                    duration_ms=int(
+                        (time.monotonic() - (current_stage_started_at or time.monotonic())) * 1000
+                    ),
                 )
 
         if run_cluster:
@@ -4377,7 +6078,12 @@ def run_benchmark_e2e_sweep(
                         timeout_seconds=timeout_seconds,
                     ),
                 )
-                cluster_status, cluster_issues, cluster_scorecard = _cluster_stage_status(cluster_result)
+                cluster_status, cluster_issues, cluster_scorecard = _cluster_stage_status(
+                    cluster_result,
+                    expected_run_id=cluster_run_id,
+                    repo_root=repo_root,
+                    expected_git_commit=str(validated_git_commit),
+                )
                 cluster_attempt.update(
                     {
                         "status": cluster_status,
@@ -4391,7 +6097,10 @@ def run_benchmark_e2e_sweep(
                             "fabric_scorecard": cluster_scorecard,
                         },
                         "issues": cluster_issues,
-                        "duration_ms": int((time.monotonic() - (current_stage_started_at or time.monotonic())) * 1000),
+                        "duration_ms": int(
+                            (time.monotonic() - (current_stage_started_at or time.monotonic()))
+                            * 1000
+                        ),
                     }
                 )
                 _finish_stage(
@@ -4405,7 +6114,9 @@ def run_benchmark_e2e_sweep(
                     duration_ms=cluster_attempt.get("duration_ms"),
                 )
 
-        fabric_duplicate = run_fabric and run_cluster and cluster_preset.strip().lower() == "fabric-systems"
+        fabric_duplicate = (
+            run_fabric and run_cluster and cluster_preset.strip().lower() == "fabric-systems"
+        )
         fabric_stage = _find_stage(stages, "fabric")
         if fabric_duplicate:
             if fabric_stage.get("status") != "skipped_duplicate":
@@ -4461,7 +6172,13 @@ def run_benchmark_e2e_sweep(
                     timeout_seconds=timeout_seconds,
                 ),
             )
-            fabric_status, fabric_issues, fabric_scorecard = _cluster_stage_status(fabric_result)
+            fabric_status, fabric_issues, fabric_scorecard = _cluster_stage_status(
+                fabric_result,
+                require_scorecard=True,
+                expected_run_id=fabric_run_id,
+                repo_root=repo_root,
+                expected_git_commit=str(validated_git_commit),
+            )
             fabric_attempt.update(
                 {
                     "status": fabric_status,
@@ -4475,7 +6192,9 @@ def run_benchmark_e2e_sweep(
                         "fabric_scorecard": fabric_scorecard,
                     },
                     "issues": fabric_issues,
-                    "duration_ms": int((time.monotonic() - (current_stage_started_at or time.monotonic())) * 1000),
+                    "duration_ms": int(
+                        (time.monotonic() - (current_stage_started_at or time.monotonic())) * 1000
+                    ),
                 }
             )
             _finish_stage(
@@ -4489,10 +6208,18 @@ def run_benchmark_e2e_sweep(
                 duration_ms=fabric_attempt.get("duration_ms"),
             )
 
+        final_git_commit, final_git_error = _validated_clean_git_commit(
+            repo_root=repo_root,
+            git_info=dict(get_git_info()),
+        )
+        if final_git_error:
+            raise RuntimeError(f"Final Git provenance validation failed: {final_git_error}")
+        if final_git_commit != validated_git_commit:
+            raise RuntimeError("Git commit changed during the E2E run")
+
         run_state = "completed"
         resume_available = False
-        _append_event(
-            events_path,
+        _append_run_event(
             "run_finished",
             run_id=resolved_run_id,
             overall_status=_roll_up_overall_status(
@@ -4501,7 +6228,7 @@ def run_benchmark_e2e_sweep(
             success=_roll_up_overall_status(
                 [str(stage.get("status") or "planned") for stage in stages if stage.get("enabled")]
             )
-            not in {"failed", "aborted"},
+            == "succeeded",
         )
         run_finished_event_emitted = True
         return attach_benchmark_e2e_status_hints(_persist_state(), resolved_run_id)
@@ -4532,8 +6259,7 @@ def run_benchmark_e2e_sweep(
             signal.signal(signum, handler)
 
     if not run_finished_event_emitted:
-        _append_event(
-            events_path,
+        _append_run_event(
             "run_finished",
             run_id=resolved_run_id,
             overall_status="aborted",

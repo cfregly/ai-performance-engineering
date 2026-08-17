@@ -153,8 +153,7 @@ def _build_synthetic_parallelism_topology(total_gpus: int, num_nodes: int):
 
     numa_nodes = max(1, len(node_gpu_indices))
     numa_distance_matrix = [
-        [10 if src == dst else 20 for dst in range(numa_nodes)]
-        for src in range(numa_nodes)
+        [10 if src == dst else 20 for dst in range(numa_nodes)] for src in range(numa_nodes)
     ]
 
     network_interfaces: List[Dict[str, Any]] = []
@@ -227,7 +226,9 @@ class PerformanceCoreBase:
     def analyzer(self) -> PerformanceAnalyzer:
         if not hasattr(self, "_analyzer") or self._analyzer is None:
             data_path = getattr(self, "data_file", None)
-            self._analyzer = PerformanceAnalyzer(lambda: load_benchmark_results(data_path, self.bench_roots))
+            self._analyzer = PerformanceAnalyzer(
+                lambda: load_benchmark_results(data_path, self.bench_roots)
+            )
         return self._analyzer
 
     # ------------------------------------------------------------------
@@ -266,11 +267,13 @@ class PerformanceCoreBase:
             total_time = kernel_data.get("summary", {}).get("total_time_us", 0)
             if total_time > 0:
                 for kernel in kernel_data.get("kernels", [])[:10]:
-                    hta_data.setdefault("top_kernels", []).append({
-                        "name": kernel.get("name"),
-                        "time_us": kernel.get("time_us"),
-                        "pct": kernel.get("time_us", 0) / total_time * 100 if total_time else 0,
-                    })
+                    hta_data.setdefault("top_kernels", []).append(
+                        {
+                            "name": kernel.get("name"),
+                            "time_us": kernel.get("time_us"),
+                            "pct": kernel.get("time_us", 0) / total_time * 100 if total_time else 0,
+                        }
+                    )
             if kernel_data.get("by_type"):
                 top_type = max(kernel_data["by_type"].items(), key=lambda x: x[1])
                 hta_data.setdefault("recommendations", []).append(
@@ -353,29 +356,37 @@ class PerformanceCoreBase:
                 if "baseline_time_ms" in bench and "optimized_time_ms" in bench:
                     baseline_ms = bench["baseline_time_ms"]
                     optimized_ms = bench["optimized_time_ms"]
-                    speedup = bench.get("speedup", baseline_ms / optimized_ms if optimized_ms else 0)
+                    speedup = bench.get(
+                        "speedup", baseline_ms / optimized_ms if optimized_ms else 0
+                    )
                     ai_estimate = bench.get("arithmetic_intensity", None)
 
-                    roofline_data["baseline_points"].append({
-                        "name": bench.get("name", ""),
-                        "intensity": ai_estimate or 0.5,
-                        "performance_tflops": bench.get("baseline_tflops", 0),
-                    })
-                    roofline_data["optimized_points"].append({
-                        "name": bench.get("name", ""),
-                        "intensity": ai_estimate or 0.5,
-                        "performance_tflops": bench.get("optimized_tflops", 0),
-                        "speedup": speedup,
-                    })
+                    roofline_data["baseline_points"].append(
+                        {
+                            "name": bench.get("name", ""),
+                            "intensity": ai_estimate or 0.5,
+                            "performance_tflops": bench.get("baseline_tflops", 0),
+                        }
+                    )
+                    roofline_data["optimized_points"].append(
+                        {
+                            "name": bench.get("name", ""),
+                            "intensity": ai_estimate or 0.5,
+                            "performance_tflops": bench.get("optimized_tflops", 0),
+                            "speedup": speedup,
+                        }
+                    )
 
-                    roofline_data["benchmark_details"].append({
-                        "name": bench.get("name", ""),
-                        "chapter": bench.get("chapter", ""),
-                        "arithmetic_intensity": ai_estimate,
-                        "baseline_gflops": bench.get("baseline_tflops", 0) * 1000,
-                        "optimized_gflops": bench.get("optimized_tflops", 0) * 1000,
-                        "speedup": speedup,
-                    })
+                    roofline_data["benchmark_details"].append(
+                        {
+                            "name": bench.get("name", ""),
+                            "chapter": bench.get("chapter", ""),
+                            "arithmetic_intensity": ai_estimate,
+                            "baseline_gflops": bench.get("baseline_tflops", 0) * 1000,
+                            "optimized_gflops": bench.get("optimized_tflops", 0) * 1000,
+                            "speedup": speedup,
+                        }
+                    )
             roofline_data["has_real_data"] = len(roofline_data["baseline_points"]) > 0
         except (AttributeError, TypeError, ValueError) as exc:
             roofline_data.setdefault("warnings", []).append(
@@ -434,11 +445,15 @@ class PerformanceCoreBase:
             "has_profiles": False,
         }
 
-        baseline_files = list(directory.glob("baseline_*.py")) + list(directory.glob("baseline_*.cu"))
+        baseline_files = list(directory.glob("baseline_*.py")) + list(
+            directory.glob("baseline_*.cu")
+        )
         for baseline in baseline_files:
             name = baseline.stem.replace("baseline_", "")
             file_type = "python" if baseline.suffix == ".py" else "cuda"
-            optimized_files = list(directory.glob(f"optimized_{name}*.py")) + list(directory.glob(f"optimized_{name}*.cu"))
+            optimized_files = list(directory.glob(f"optimized_{name}*.py")) + list(
+                directory.glob(f"optimized_{name}*.cu")
+            )
             benchmark_info = {
                 "name": name,
                 "type": file_type,
@@ -522,14 +537,18 @@ class PerformanceCoreBase:
         date = timestamp.split("T")[0] if "T" in timestamp else timestamp.split(" ")[0]
 
         if not summary.get("avg_speedup"):
-            speedups = [b.get("speedup", 0) or 0 for b in benchmarks if b.get("speedup") is not None]
+            speedups = [
+                b.get("speedup", 0) or 0 for b in benchmarks if b.get("speedup") is not None
+            ]
             summary["avg_speedup"] = sum(speedups) / len(speedups) if speedups else 0
             summary["max_speedup"] = max(speedups) if speedups else 0
 
         benchmark_count = summary.get("total_benchmarks") or len(benchmarks)
         successful = summary.get("successful")
         if successful is None:
-            successful = sum(1 for b in benchmarks if str(b.get("status", "")).lower() == "succeeded")
+            successful = sum(
+                1 for b in benchmarks if str(b.get("status", "")).lower() == "succeeded"
+            )
         failed = summary.get("failed")
         if failed is None and benchmark_count is not None and successful is not None:
             failed = max(0, benchmark_count - successful)
@@ -620,7 +639,8 @@ class PerformanceCoreBase:
 
         avg_speedup = (
             sum(p.get("avg_speedup", 0) or 0 for p in trend_points) / len(trend_points)
-            if trend_points else 0
+            if trend_points
+            else 0
         )
 
         result = {
@@ -666,43 +686,109 @@ class PerformanceCoreBase:
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except Exception as exc:
-            return None, f"Failed to read JSON artifact {path}: {exc}"
+            return None, f"Failed to read Tier-1 JSON artifact ({type(exc).__name__})"
         if not isinstance(payload, dict):
-            return None, f"Expected JSON object in {path}, got {type(payload).__name__}"
+            return None, f"Expected Tier-1 JSON object, got {type(payload).__name__}"
         return payload, None
 
-    def _resolve_repo_path_string(self, raw_path: Optional[str]) -> Optional[str]:
+    @staticmethod
+    def _portable_tier1_history_path(history_root: Path, path: Optional[Path]) -> Optional[str]:
+        if path is None:
+            return None
+        try:
+            return path.resolve().relative_to(history_root.resolve()).as_posix()
+        except ValueError:
+            return None
+
+    def _resolve_tier1_evidence_reference(
+        self,
+        raw_path: Optional[str],
+        *,
+        run_id: Optional[str],
+        evidence_artifact_name: Optional[str],
+    ) -> Optional[str]:
         if not raw_path:
             return None
         path = Path(raw_path)
-        if not path.is_absolute():
-            path = (CODE_ROOT / path).resolve()
-        return str(path)
+        if path.is_absolute():
+            if not path.is_file():
+                return None
+            try:
+                return path.resolve().relative_to(CODE_ROOT.resolve()).as_posix()
+            except ValueError:
+                return None
+        if ".." in path.parts:
+            return None
+        if path.parts[:1] == ("artifacts",):
+            return path.as_posix()
+        if run_id and run_id not in {".", ".."} and re.fullmatch(r"[A-Za-z0-9_.-]+", run_id):
+            runs_root = (CODE_ROOT / "artifacts" / "runs").resolve()
+            local_path = (
+                (runs_root / path).resolve()
+                if path.parts[:1] == (run_id,)
+                else (runs_root / run_id / path).resolve()
+            )
+            try:
+                local_path.relative_to(runs_root)
+            except ValueError:
+                local_path = None
+            if local_path is not None and local_path.is_file():
+                return local_path.relative_to(CODE_ROOT.resolve()).as_posix()
+        if evidence_artifact_name:
+            return f"artifact://{evidence_artifact_name}/{path.as_posix()}"
+        return path.as_posix()
 
     def get_tier1_history_runs(self) -> dict:
         """Return canonical tier-1 history with latest-run details."""
-        from core.analysis.history_index import load_history_index_with_warnings
+        from core.analysis.history_index import (
+            load_history_index_with_warnings,
+            resolve_history_entry_path,
+        )
+        from core.analysis.trends import sort_history_runs
 
         history_root = self._tier1_history_root()
         index_path = history_root / "index.json"
         index, index_warnings = load_history_index_with_warnings(index_path)
-        run_entries = index.get("runs", []) or []
+        run_entries = sort_history_runs(index.get("runs", []) or [])
 
         runs: List[dict] = []
         latest_summary: Optional[dict] = None
         latest_regression: Optional[dict] = None
         latest_run: Optional[dict] = None
+        latest_accepted_summary: Optional[dict] = None
+        latest_accepted_regression: Optional[dict] = None
+        latest_accepted_run: Optional[dict] = None
         warnings_list: List[str] = list(index_warnings)
 
         for entry in run_entries:
-            summary_path = Path(entry.get("summary_path") or "")
+            run_id = str(entry.get("run_id") or "").strip() or None
             regression_path_raw = (
-                entry.get("regression_summary_json_path")
-                or entry.get("regression_json_path")
-                or ""
+                entry.get("regression_summary_json_path") or entry.get("regression_json_path") or ""
             )
-            regression_path = Path(regression_path_raw)
-            trend_path = Path(entry.get("trend_snapshot_path") or "")
+            try:
+                summary_path = resolve_history_entry_path(
+                    history_root,
+                    entry.get("summary_path"),
+                    run_id=run_id,
+                )
+                regression_path = resolve_history_entry_path(
+                    history_root,
+                    regression_path_raw,
+                    run_id=run_id,
+                )
+                regression_summary_path = resolve_history_entry_path(
+                    history_root,
+                    entry.get("regression_summary_path"),
+                    run_id=run_id,
+                )
+                trend_path = resolve_history_entry_path(
+                    history_root,
+                    entry.get("trend_snapshot_path"),
+                    run_id=run_id,
+                )
+            except ValueError as exc:
+                warnings_list.append(str(exc))
+                continue
             summary_payload, summary_warning = self._load_json_if_exists(summary_path)
             regression_payload, regression_warning = self._load_json_if_exists(regression_path)
             if summary_warning:
@@ -713,12 +799,24 @@ class PerformanceCoreBase:
                 continue
 
             summary = summary_payload.get("summary", {}) or {}
+            evidence_artifact_name = (
+                str(summary_payload.get("evidence_artifact_name") or "").strip() or None
+            )
+            resolved_run_id = (
+                str(summary_payload.get("run_id") or entry.get("run_id") or "").strip() or None
+            )
             run = {
-                "run_id": summary_payload.get("run_id") or entry.get("run_id"),
+                "run_id": resolved_run_id,
+                "run_accepted": entry.get("run_accepted") is True,
+                "baseline_eligible": entry.get("baseline_eligible") is True,
                 "generated_at": summary_payload.get("generated_at"),
                 "suite_name": summary_payload.get("suite_name", index.get("suite_name", "tier1")),
-                "suite_version": summary_payload.get("suite_version", index.get("suite_version", 1)),
-                "target_count": int(summary.get("target_count", len(summary_payload.get("targets", []) or [])) or 0),
+                "suite_version": summary_payload.get(
+                    "suite_version", index.get("suite_version", 1)
+                ),
+                "target_count": int(
+                    summary.get("target_count", len(summary_payload.get("targets", []) or [])) or 0
+                ),
                 "succeeded": int(summary.get("succeeded", 0) or 0),
                 "failed": int(summary.get("failed", 0) or 0),
                 "skipped": int(summary.get("skipped", 0) or 0),
@@ -728,11 +826,35 @@ class PerformanceCoreBase:
                 "geomean_speedup": float(summary.get("geomean_speedup", 0) or 0),
                 "representative_speedup": float(summary.get("representative_speedup", 0) or 0),
                 "max_speedup": float(summary.get("max_speedup", 0) or 0),
-                "summary_path": str(summary_path) if summary_path else None,
-                "regression_summary_path": str(Path(entry.get("regression_summary_path"))) if entry.get("regression_summary_path") else None,
-                "regression_summary_json_path": str(regression_path) if regression_path else None,
-                "trend_snapshot_path": str(trend_path) if trend_path else None,
-                "source_result_json": summary_payload.get("source_result_json"),
+                "summary_path": self._portable_tier1_history_path(history_root, summary_path),
+                "regression_summary_path": self._portable_tier1_history_path(
+                    history_root,
+                    regression_summary_path,
+                ),
+                "regression_summary_json_path": self._portable_tier1_history_path(
+                    history_root,
+                    regression_path,
+                ),
+                "trend_snapshot_path": self._portable_tier1_history_path(
+                    history_root,
+                    trend_path,
+                ),
+                "source_result_json": self._resolve_tier1_evidence_reference(
+                    summary_payload.get("source_result_json"),
+                    run_id=resolved_run_id,
+                    evidence_artifact_name=evidence_artifact_name,
+                ),
+                "source_manifest_json": self._resolve_tier1_evidence_reference(
+                    summary_payload.get("source_manifest_json"),
+                    run_id=resolved_run_id,
+                    evidence_artifact_name=evidence_artifact_name,
+                ),
+                "source_markdown_report": self._resolve_tier1_evidence_reference(
+                    summary_payload.get("source_markdown_report"),
+                    run_id=resolved_run_id,
+                    evidence_artifact_name=evidence_artifact_name,
+                ),
+                "evidence_artifact_name": evidence_artifact_name,
                 "improvement_count": len((regression_payload or {}).get("improvements", []) or []),
                 "regression_count": len((regression_payload or {}).get("regressions", []) or []),
             }
@@ -740,39 +862,78 @@ class PerformanceCoreBase:
             latest_summary = summary_payload
             latest_regression = regression_payload
             latest_run = run
+            if run["run_accepted"] or run["baseline_eligible"]:
+                latest_accepted_summary = summary_payload
+                latest_accepted_regression = regression_payload
+                latest_accepted_run = run
+
+        def _latest_details(
+            run: Optional[dict],
+            summary: Optional[dict],
+            regression: Optional[dict],
+        ) -> dict:
+            return {
+                "run": run,
+                "summary": summary.get("summary", {}) if summary else {},
+                "targets": summary.get("targets", []) if summary else [],
+                "regressions": (regression or {}).get("regressions", []),
+                "improvements": (regression or {}).get("improvements", []),
+                "new_targets": (regression or {}).get("new_targets", []),
+                "missing_targets": (regression or {}).get("missing_targets", []),
+                "anchor_declines": (regression or {}).get("anchor_declines", []),
+                "suppressed_regressions": (regression or {}).get(
+                    "suppressed_regressions", []
+                ),
+                "rechecks": (regression or {}).get("rechecks", []),
+            }
 
         return {
             "suite_name": index.get("suite_name", "tier1"),
             "suite_version": index.get("suite_version", 1),
-            "history_root": str(history_root),
+            "history_root": "artifacts/history/tier1",
             "total_runs": len(runs),
-            "latest_run_id": latest_run.get("run_id") if latest_run else None,
+            "accepted_runs": sum(bool(run["run_accepted"]) for run in runs),
+            "latest_evidence_run_id": runs[-1].get("run_id") if runs else None,
+            "latest_run_id": (
+                latest_accepted_run.get("run_id") if latest_accepted_run else None
+            ),
             "runs": runs,
-            "latest": {
-                "run": latest_run,
-                "summary": latest_summary.get("summary", {}) if latest_summary else {},
-                "targets": latest_summary.get("targets", []) if latest_summary else [],
-                "regressions": (latest_regression or {}).get("regressions", []),
-                "improvements": (latest_regression or {}).get("improvements", []),
-                "new_targets": (latest_regression or {}).get("new_targets", []),
-                "missing_targets": (latest_regression or {}).get("missing_targets", []),
-            },
+            "latest": _latest_details(latest_run, latest_summary, latest_regression),
+            "latest_accepted": _latest_details(
+                latest_accepted_run,
+                latest_accepted_summary,
+                latest_accepted_regression,
+            ),
             "warnings": warnings_list,
         }
 
     def get_tier1_trends(self) -> dict:
         """Return canonical tier-1 trend data."""
-        from core.analysis.history_index import load_history_index_with_warnings
-        from core.analysis.trends import build_trend_snapshot
+        from core.analysis.history_index import (
+            load_history_index_with_warnings,
+            resolve_history_entry_path,
+        )
+        from core.analysis.trends import build_trend_snapshot, sort_history_runs
 
         history_root = self._tier1_history_root()
         index_path = history_root / "index.json"
         index, index_warnings = load_history_index_with_warnings(index_path)
         trend_path_str = None
-        runs = index.get("runs", []) or []
+        runs = sort_history_runs(index.get("runs", []) or [])
+        latest_entry = runs[-1] if runs else None
         if runs:
             trend_path_str = runs[-1].get("trend_snapshot_path")
-        trend_path = Path(trend_path_str) if trend_path_str else None
+        try:
+            trend_path = resolve_history_entry_path(
+                history_root,
+                trend_path_str,
+                run_id=(
+                    str(latest_entry.get("run_id") or "").strip() or None if latest_entry else None
+                ),
+            )
+        except ValueError as exc:
+            trend_path = None
+            index_warnings.append(str(exc))
         trend_payload, trend_warning = self._load_json_if_exists(trend_path)
         if trend_payload:
             result = dict(trend_payload)
@@ -788,28 +949,46 @@ class PerformanceCoreBase:
             result.setdefault("warnings", []).append(trend_warning)
         return result
 
-    def get_tier1_target_history(self, *, key: Optional[str] = None, target: Optional[str] = None) -> dict:
+    def get_tier1_target_history(
+        self, *, key: Optional[str] = None, target: Optional[str] = None
+    ) -> dict:
         """Return canonical tier-1 history for a single benchmark target."""
-        from core.analysis.history_index import load_history_index_with_warnings
+        from core.analysis.history_index import (
+            load_history_index_with_warnings,
+            resolve_history_entry_path,
+        )
+        from core.analysis.trends import sort_history_runs
 
-        selected_key = (key or "").strip() or None
-        selected_target = (target or "").strip() or None
-        if not selected_key and not selected_target:
+        query_key = (key or "").strip() or None
+        query_target = (target or "").strip() or None
+        if not query_key and not query_target:
             raise ValueError("tier1 target history requires 'key' or 'target'")
+        selected_key = query_key
+        selected_target = query_target
 
         history_root = self._tier1_history_root()
         index_path = history_root / "index.json"
         index, index_warnings = load_history_index_with_warnings(index_path)
-        run_entries = index.get("runs", []) or []
+        run_entries = sort_history_runs(index.get("runs", []) or [])
 
         points: List[dict] = []
+        evidence_points: List[dict] = []
         latest_point: Optional[dict] = None
+        latest_evidence_point: Optional[dict] = None
         category: Optional[str] = None
         rationale: Optional[str] = None
         warnings_list: List[str] = list(index_warnings)
 
         for entry in run_entries:
-            summary_path = Path(entry.get("summary_path") or "")
+            try:
+                summary_path = resolve_history_entry_path(
+                    history_root,
+                    entry.get("summary_path"),
+                    run_id=str(entry.get("run_id") or "").strip() or None,
+                )
+            except ValueError as exc:
+                warnings_list.append(str(exc))
+                continue
             summary_payload, summary_warning = self._load_json_if_exists(summary_path)
             if summary_warning:
                 warnings_list.append(summary_warning)
@@ -818,19 +997,19 @@ class PerformanceCoreBase:
             for target_payload in summary_payload.get("targets", []) or []:
                 if not isinstance(target_payload, dict):
                     continue
-                if selected_key and str(target_payload.get("key") or "").strip() != selected_key:
+                if query_key and str(target_payload.get("key") or "").strip() != query_key:
                     continue
-                if selected_target and str(target_payload.get("target") or "").strip() != selected_target:
+                if (
+                    query_target
+                    and str(target_payload.get("target") or "").strip() != query_target
+                ):
                     continue
-
-                selected_key = selected_key or str(target_payload.get("key") or "").strip() or None
-                selected_target = selected_target or str(target_payload.get("target") or "").strip() or None
-                category = category or str(target_payload.get("category") or "").strip() or None
-                rationale = rationale or str(target_payload.get("rationale") or "").strip() or None
 
                 point = {
                     "run_id": summary_payload.get("run_id") or entry.get("run_id"),
                     "generated_at": summary_payload.get("generated_at"),
+                    "run_accepted": entry.get("run_accepted") is True,
+                    "baseline_eligible": entry.get("baseline_eligible") is True,
                     "key": target_payload.get("key"),
                     "target": target_payload.get("target"),
                     "category": target_payload.get("category"),
@@ -845,11 +1024,41 @@ class PerformanceCoreBase:
                         name: resolved
                         for name, path in (target_payload.get("artifacts") or {}).items()
                         if isinstance(path, str)
-                        and (resolved := self._resolve_repo_path_string(path)) is not None
+                        and (
+                            resolved := self._resolve_tier1_evidence_reference(
+                                path,
+                                run_id=(
+                                    str(
+                                        summary_payload.get("run_id") or entry.get("run_id") or ""
+                                    ).strip()
+                                    or None
+                                ),
+                                evidence_artifact_name=(
+                                    str(summary_payload.get("evidence_artifact_name") or "").strip()
+                                    or None
+                                ),
+                            )
+                        )
+                        is not None
                     },
                 }
-                points.append(point)
-                latest_point = point
+                evidence_points.append(point)
+                latest_evidence_point = point
+                if point["run_accepted"] or point["baseline_eligible"]:
+                    selected_key = (
+                        query_key or str(target_payload.get("key") or "").strip() or None
+                    )
+                    selected_target = (
+                        query_target or str(target_payload.get("target") or "").strip() or None
+                    )
+                    category = (
+                        str(target_payload.get("category") or "").strip() or category
+                    )
+                    rationale = (
+                        str(target_payload.get("rationale") or "").strip() or rationale
+                    )
+                    points.append(point)
+                    latest_point = point
                 break
 
         best_speedup_seen = 0.0
@@ -862,15 +1071,18 @@ class PerformanceCoreBase:
         return {
             "suite_name": index.get("suite_name", "tier1"),
             "suite_version": index.get("suite_version", 1),
-            "history_root": str(history_root),
+            "history_root": "artifacts/history/tier1",
             "selected_key": selected_key,
             "selected_target": selected_target,
             "category": category,
             "rationale": rationale,
             "run_count": len(points),
+            "evidence_run_count": len(evidence_points),
             "best_speedup_seen": best_speedup_seen,
             "latest": latest_point,
+            "latest_evidence": latest_evidence_point,
             "history": points,
+            "evidence_history": evidence_points,
             "warnings": warnings_list,
         }
 
@@ -1012,12 +1224,16 @@ class PerformanceCoreBase:
                         )
                 topology["gpu_count"] = len(topology["gpus"])
 
-            result = subprocess.run(["nvidia-smi", "topo", "-m"], capture_output=True, text=True, timeout=10)
+            result = subprocess.run(
+                ["nvidia-smi", "topo", "-m"], capture_output=True, text=True, timeout=10
+            )
             if result.returncode == 0:
                 lines = result.stdout.strip().split("\n")
                 topology["topology_raw"] = result.stdout
                 for line in lines:
-                    if "GPU" in line and ("NV" in line or "PIX" in line or "PHB" in line or "SYS" in line):
+                    if "GPU" in line and (
+                        "NV" in line or "PIX" in line or "PHB" in line or "SYS" in line
+                    ):
                         topology["nvlink_available"] = "NV" in line
                         parts = line.split()
                         row = []
@@ -1075,9 +1291,16 @@ class PerformanceCoreBase:
         return topology
 
     def get_nvlink_status(self) -> dict:
-        nvlink = {"available": False, "links_per_gpu": {}, "total_bandwidth_gbs": 0, "link_details": []}
+        nvlink = {
+            "available": False,
+            "links_per_gpu": {},
+            "total_bandwidth_gbs": 0,
+            "link_details": [],
+        }
         try:
-            result = subprocess.run(["nvidia-smi", "nvlink", "--status"], capture_output=True, text=True, timeout=10)
+            result = subprocess.run(
+                ["nvidia-smi", "nvlink", "--status"], capture_output=True, text=True, timeout=10
+            )
             if result.returncode == 0:
                 nvlink["available"] = True
                 nvlink["raw_output"] = result.stdout
@@ -1095,10 +1318,14 @@ class PerformanceCoreBase:
                         link_count += 1
                         bw_match = re.search(r"(\\d+)\\s*GB/s", line)
                         if bw_match:
-                            nvlink["link_details"].append({"gpu": current_gpu, "bandwidth_gbs": int(bw_match.group(1))})
+                            nvlink["link_details"].append(
+                                {"gpu": current_gpu, "bandwidth_gbs": int(bw_match.group(1))}
+                            )
                 if current_gpu is not None:
                     nvlink["links_per_gpu"][current_gpu] = link_count
-                nvlink["total_bandwidth_gbs"] = sum(l.get("bandwidth_gbs", 0) for l in nvlink["link_details"])
+                nvlink["total_bandwidth_gbs"] = sum(
+                    l.get("bandwidth_gbs", 0) for l in nvlink["link_details"]
+                )
             else:
                 stderr = result.stderr.strip()
                 if stderr:
@@ -1172,7 +1399,12 @@ class PerformanceCoreBase:
             "issues": [],
             "warnings": [],
             "cutlass": {"version": None, "path": None, "sm100_headers": False},
-            "transformer_engine": {"version": None, "cutlass_symlink": False, "cutlass_symlink_target": None, "cutlass_sm100_headers": False},
+            "transformer_engine": {
+                "version": None,
+                "cutlass_symlink": False,
+                "cutlass_symlink_target": None,
+                "cutlass_sm100_headers": False,
+            },
             "nvidia_cutlass_dsl": {"version": None, "path": None},
         }
 
@@ -1193,7 +1425,9 @@ class PerformanceCoreBase:
                         patch = int(re.findall(r"\\d+", line)[0])
                 result["cutlass"]["version"] = f"{major}.{minor}.{patch}"
             except (IndexError, OSError, ValueError) as exc:
-                result["warnings"].append(f"Failed to parse CUTLASS version from {version_h}: {exc}")
+                result["warnings"].append(
+                    f"Failed to parse CUTLASS version from {version_h}: {exc}"
+                )
 
             # SM100 headers check
             sm100_header = cutlass_path / "include" / "cutlass" / "arch" / "sm100_smem_selector.h"
@@ -1211,12 +1445,16 @@ class PerformanceCoreBase:
                 if cutlass_link.exists():
                     result["transformer_engine"]["cutlass_symlink"] = cutlass_link.is_symlink()
                     try:
-                        result["transformer_engine"]["cutlass_symlink_target"] = str(cutlass_link.resolve())
+                        result["transformer_engine"]["cutlass_symlink_target"] = str(
+                            cutlass_link.resolve()
+                        )
                     except (OSError, RuntimeError) as exc:
                         result["warnings"].append(
                             f"Failed to resolve transformer_engine CUTLASS symlink {cutlass_link}: {exc}"
                         )
-                    sm100_header_te = cutlass_link / "include" / "cutlass" / "arch" / "sm100_smem_selector.h"
+                    sm100_header_te = (
+                        cutlass_link / "include" / "cutlass" / "arch" / "sm100_smem_selector.h"
+                    )
                     result["transformer_engine"]["cutlass_sm100_headers"] = sm100_header_te.exists()
 
         # NVIDIA Cutlass DSL (optional)
@@ -1233,7 +1471,15 @@ class PerformanceCoreBase:
         updates = {"outdated": [], "errors": []}
         try:
             result = subprocess.run(
-                [os.environ.get("PYTHON_BIN", "python"), "-m", "pip", "list", "--outdated", "--format", "json"],
+                [
+                    os.environ.get("PYTHON_BIN", "python"),
+                    "-m",
+                    "pip",
+                    "list",
+                    "--outdated",
+                    "--format",
+                    "json",
+                ],
                 capture_output=True,
                 text=True,
                 timeout=20,
@@ -1306,11 +1552,15 @@ class PerformanceCoreBase:
 
         recommendations = [
             "Pad shared-memory leading dimension by +1 to break stride aliasing",
-            "Use 8-byte banking mode for fp64/int64 data" if element_size >= 8 else "Keep element size at 4 bytes where possible",
+            "Use 8-byte banking mode for fp64/int64 data"
+            if element_size >= 8
+            else "Keep element size at 4 bytes where possible",
             "Restructure accesses so consecutive threads hit consecutive addresses",
         ]
         if stride_bytes % 128 == 0:
-            recommendations.append("Stride maps every thread to the same bank; add padding or adjust tile shape")
+            recommendations.append(
+                "Stride maps every thread to the same bank; add padding or adjust tile shape"
+            )
 
         return {
             "stride_elements": stride,
@@ -1346,7 +1596,9 @@ class PerformanceCoreBase:
             "Group threads with similar control flow (data reordering) to reduce divergence",
         ]
         if not uses_predication:
-            recommendations.append("Use warp intrinsics (__shfl_sync, __ballot_sync) to avoid branches")
+            recommendations.append(
+                "Use warp intrinsics (__shfl_sync, __ballot_sync) to avoid branches"
+            )
 
         return {
             "input_size": len(snippet),
@@ -1381,7 +1633,9 @@ class PerformanceCoreBase:
         if misaligned:
             recommendations.append("Align starting address to 128 bytes to maximize coalescing")
         if stride_bytes > 128:
-            recommendations.append("Large stride causes scattered loads; consider tiling or transpose")
+            recommendations.append(
+                "Large stride causes scattered loads; consider tiling or transpose"
+            )
 
         return {
             "stride_elements": stride,
@@ -1397,14 +1651,19 @@ class PerformanceCoreBase:
 
     def get_container_limits(self) -> dict:
         """Inspect container/cgroup limits with concrete values."""
-        in_container = os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv") or bool(
-            os.environ.get("KUBERNETES_SERVICE_HOST")
+        in_container = (
+            os.path.exists("/.dockerenv")
+            or os.path.exists("/run/.containerenv")
+            or bool(os.environ.get("KUBERNETES_SERVICE_HOST"))
         )
         container_type = (
-            "docker" if os.path.exists("/.dockerenv") else
-            "podman" if os.path.exists("/run/.containerenv") else
-            "kubernetes" if os.environ.get("KUBERNETES_SERVICE_HOST") else
-            "baremetal"
+            "docker"
+            if os.path.exists("/.dockerenv")
+            else "podman"
+            if os.path.exists("/run/.containerenv")
+            else "kubernetes"
+            if os.environ.get("KUBERNETES_SERVICE_HOST")
+            else "baremetal"
         )
 
         cgroup_v2 = os.path.exists("/sys/fs/cgroup/cgroup.controllers")
@@ -1421,7 +1680,7 @@ class PerformanceCoreBase:
                 if os.path.exists(mem_max_path):
                     raw = Path(mem_max_path).read_text().strip()
                     if raw != "max":
-                        mem_limit_gb = int(raw) / (1024 ** 3)
+                        mem_limit_gb = int(raw) / (1024**3)
             else:
                 quota_path = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
                 period_path = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
@@ -1434,15 +1693,19 @@ class PerformanceCoreBase:
                 if Path(mem_path).exists():
                     raw = Path(mem_path).read_text().strip()
                     if raw.isdigit():
-                        mem_limit_gb = int(raw) / (1024 ** 3)
+                        mem_limit_gb = int(raw) / (1024**3)
         except Exception as exc:
             errors.append(str(exc))
 
         recommendations = []
         if in_container and cpu_limit and cpu_limit != "max":
-            recommendations.append("Increase CPU quota for dataloader/compilation steps if throttling is observed")
+            recommendations.append(
+                "Increase CPU quota for dataloader/compilation steps if throttling is observed"
+            )
         if in_container and mem_limit_gb and mem_limit_gb < 32:
-            recommendations.append("Memory limit is low; increase container memory to avoid OOM during compilation")
+            recommendations.append(
+                "Memory limit is low; increase container memory to avoid OOM during compilation"
+            )
 
         return {
             "in_container": in_container,
@@ -1604,13 +1867,25 @@ class PerformanceCoreBase:
             for line in lines:
                 if ":" in line:
                     key, val = line.split(":", 1)
-                    if any(k in key for k in ["MemTotal", "MemFree", "MemAvailable", "Buffers", "Cached", "SwapTotal"]):
+                    if any(
+                        k in key
+                        for k in [
+                            "MemTotal",
+                            "MemFree",
+                            "MemAvailable",
+                            "Buffers",
+                            "Cached",
+                            "SwapTotal",
+                        ]
+                    ):
                         memory[key.strip()] = val.strip()
         except Exception as exc:
             errors.append(f"meminfo: {exc}")
 
         try:
-            result = subprocess.run(["numactl", "--hardware"], capture_output=True, text=True, timeout=5)
+            result = subprocess.run(
+                ["numactl", "--hardware"], capture_output=True, text=True, timeout=5
+            )
             if result.returncode == 0:
                 for line in result.stdout.splitlines():
                     if "node" in line and "cpus" in line:
@@ -1653,13 +1928,43 @@ class PerformanceCoreBase:
         params = [
             ("/proc/sys/vm/swappiness", "Swappiness", "Lower favors RAM over swap", "10"),
             ("/proc/sys/vm/dirty_ratio", "Dirty Ratio", "Max % of RAM for dirty pages", "20"),
-            ("/proc/sys/vm/dirty_background_ratio", "Dirty Background", "Start background writeback", "5"),
-            ("/proc/sys/kernel/sched_migration_cost_ns", "Sched Migration Cost", "Task migration threshold", "500000"),
-            ("/proc/sys/kernel/numa_balancing", "NUMA Balancing", "Automatic NUMA page migration", "1"),
-            ("/proc/sys/net/core/rmem_max", "Net RX Buffer Max", "Max receive buffer size", "16777216"),
-            ("/proc/sys/net/core/wmem_max", "Net TX Buffer Max", "Max send buffer size", "16777216"),
+            (
+                "/proc/sys/vm/dirty_background_ratio",
+                "Dirty Background",
+                "Start background writeback",
+                "5",
+            ),
+            (
+                "/proc/sys/kernel/sched_migration_cost_ns",
+                "Sched Migration Cost",
+                "Task migration threshold",
+                "500000",
+            ),
+            (
+                "/proc/sys/kernel/numa_balancing",
+                "NUMA Balancing",
+                "Automatic NUMA page migration",
+                "1",
+            ),
+            (
+                "/proc/sys/net/core/rmem_max",
+                "Net RX Buffer Max",
+                "Max receive buffer size",
+                "16777216",
+            ),
+            (
+                "/proc/sys/net/core/wmem_max",
+                "Net TX Buffer Max",
+                "Max send buffer size",
+                "16777216",
+            ),
             ("/proc/sys/fs/file-max", "File Descriptors Max", "System-wide FD limit", "1000000"),
-            ("/proc/sys/kernel/perf_event_paranoid", "Perf Paranoid", "Performance counter access", "1"),
+            (
+                "/proc/sys/kernel/perf_event_paranoid",
+                "Perf Paranoid",
+                "Performance counter access",
+                "1",
+            ),
         ]
 
         readings = []
@@ -1699,7 +2004,9 @@ class PerformanceCoreBase:
     def get_comm_overlap_analysis(self, model: str = "llama-3.1-70b") -> dict:
         """Estimate communication/computation overlap opportunities."""
         try:
-            from core.optimization.parallelism_planner.distributed_training import CommunicationOverlapAnalyzer
+            from core.optimization.parallelism_planner.distributed_training import (
+                CommunicationOverlapAnalyzer,
+            )
             from core.optimization.parallelism_planner.model_analyzer import ModelAnalyzer
 
             analyzer = ModelAnalyzer()
@@ -1716,7 +2023,9 @@ class PerformanceCoreBase:
                 arch = analyzer.analyze("llama-3.1-70b")
                 model_name = "llama-3.1-70b"
 
-            params_b = getattr(arch, "total_params_billion", None) or getattr(arch, "active_params_billion", None)
+            params_b = getattr(arch, "total_params_billion", None) or getattr(
+                arch, "active_params_billion", None
+            )
             params_b = float(params_b) if params_b else 70.0
 
             topo = self.get_gpu_topology()
@@ -1783,7 +2092,10 @@ class PerformanceCoreBase:
         try:
             from dataclasses import asdict
 
-            from core.optimization.parallelism_planner.distributed_training import NCCLTuningAdvisor, NCCLConfig
+            from core.optimization.parallelism_planner.distributed_training import (
+                NCCLTuningAdvisor,
+                NCCLConfig,
+            )
 
             advisor = NCCLTuningAdvisor()
             if diagnose:
@@ -1896,7 +2208,9 @@ class PerformanceCoreBase:
 
         warnings = []
         if matched_gpu["slug"] not in gpu_type_norm:
-            warnings.append(f"Unrecognized gpu_type '{gpu_type}', using {matched_gpu['name']} pricing.")
+            warnings.append(
+                f"Unrecognized gpu_type '{gpu_type}', using {matched_gpu['name']} pricing."
+            )
 
         return {
             "success": True,
@@ -1928,7 +2242,10 @@ class PerformanceCoreBase:
                     break
 
         if not power_file or not throughput_file:
-            return {"success": False, "error": "Missing power/throughput artifacts for energy analysis"}
+            return {
+                "success": False,
+                "error": "Missing power/throughput artifacts for energy analysis",
+            }
 
         try:
             power_data = pea.load_power_metrics(power_file)
@@ -1958,16 +2275,20 @@ class PerformanceCoreBase:
         comparison = []
 
         for precision in precisions:
-            batch_info = self._calculate_batch_for_params(int(model_params), vram_free_gb, precision)
-            comparison.append({
-                "precision": precision.upper(),
-                "weight_memory_gb": batch_info["weight_memory_gb"],
-                "can_run": batch_info["can_run"],
-                "inference_batch": batch_info["inference"]["recommended_batch_size"],
-                "inference_max": batch_info["inference"]["max_batch_size"],
-                "training_batch": batch_info["training"]["recommended_batch_size"],
-                "training_max": batch_info["training"]["max_batch_size"],
-            })
+            batch_info = self._calculate_batch_for_params(
+                int(model_params), vram_free_gb, precision
+            )
+            comparison.append(
+                {
+                    "precision": precision.upper(),
+                    "weight_memory_gb": batch_info["weight_memory_gb"],
+                    "can_run": batch_info["can_run"],
+                    "inference_batch": batch_info["inference"]["recommended_batch_size"],
+                    "inference_max": batch_info["inference"]["max_batch_size"],
+                    "training_batch": batch_info["training"]["recommended_batch_size"],
+                    "training_max": batch_info["training"]["max_batch_size"],
+                }
+            )
 
         return {
             "model_name": model_name,
@@ -1998,7 +2319,9 @@ class PerformanceCoreBase:
         try:
             from dataclasses import asdict, is_dataclass
 
-            from core.optimization.parallelism_planner.distributed_training import VLLMConfigGenerator
+            from core.optimization.parallelism_planner.distributed_training import (
+                VLLMConfigGenerator,
+            )
 
             generator = VLLMConfigGenerator()
             if compare:
@@ -2026,18 +2349,26 @@ class PerformanceCoreBase:
     def generate_deploy_config(self, params: dict) -> dict:
         """Generate inference deployment config using explicit model size."""
         try:
-            from core.optimization.parallelism_planner.inference_optimization import get_inference_optimization_report
+            from core.optimization.parallelism_planner.inference_optimization import (
+                get_inference_optimization_report,
+            )
         except Exception as exc:
             return {"success": False, "error": f"inference_optimization import failed: {exc}"}
 
         model = params.get("model")
         model_params_b = params.get("model_params_b") or params.get("model_size")
         if model_params_b is None:
-            return {"success": False, "error": "model_params_b/model_size is required for deploy config."}
+            return {
+                "success": False,
+                "error": "model_params_b/model_size is required for deploy config.",
+            }
         try:
             model_params_b = float(model_params_b)
         except (TypeError, ValueError):
-            return {"success": False, "error": "model_params_b must be a number (billions of parameters)."}
+            return {
+                "success": False,
+                "error": "model_params_b must be a number (billions of parameters).",
+            }
 
         gpu_info = self.get_gpu_info()
         gpu_memory_gb = params.get("gpu_memory_gb")
@@ -2050,7 +2381,9 @@ class PerformanceCoreBase:
         model_config = {
             "name": model or "model",
             "parameters_billions": model_params_b,
-            "max_sequence_length": int(params.get("max_seq_length") or params.get("max_sequence_length") or 8192),
+            "max_sequence_length": int(
+                params.get("max_seq_length") or params.get("max_sequence_length") or 8192
+            ),
         }
         hardware_config = {
             "gpu_arch": gpu_info.get("name", "unknown"),
@@ -2153,7 +2486,11 @@ class PerformanceCoreBase:
     def get_hardware_capabilities(self) -> dict:
         """Return probed hardware capability records."""
         try:
-            from core.harness.hardware_capabilities import detect_capabilities, all_capability_records, format_capability_report
+            from core.harness.hardware_capabilities import (
+                detect_capabilities,
+                all_capability_records,
+                format_capability_report,
+            )
 
             cap = detect_capabilities()
             records = all_capability_records()
@@ -2192,7 +2529,9 @@ class PerformanceCoreBase:
             gpu_id = torch.cuda.current_device() if torch.cuda.is_available() else 0
             loader_kwargs = optimize_data_loading_for_grace(gpu_id=gpu_id, verbose=False)
             cpu_info = detect_grace_cpu()
-            cpu_affinity, numa_node = setup_grace_affinity(gpu_id, loader_kwargs["num_workers"], verbose=False)
+            cpu_affinity, numa_node = setup_grace_affinity(
+                gpu_id, loader_kwargs["num_workers"], verbose=False
+            )
 
             return {
                 "success": True,
@@ -2259,7 +2598,9 @@ class PerformanceCoreBase:
             return f"{num/1e3:.1f}K"
         return str(num)
 
-    def _calculate_batch_for_params(self, params: int, vram_free_gb: float, precision: str = "fp16") -> dict:
+    def _calculate_batch_for_params(
+        self, params: int, vram_free_gb: float, precision: str = "fp16"
+    ) -> dict:
         """Calculate batch size recommendations for a model with given param count."""
         precision_bytes = {
             "fp32": 4,
@@ -2270,7 +2611,7 @@ class PerformanceCoreBase:
         }
         bytes_per_param = precision_bytes.get(precision, 2)
 
-        weight_mem_gb = (params * bytes_per_param) / (1024 ** 3)
+        weight_mem_gb = (params * bytes_per_param) / (1024**3)
         inference_mem_gb = weight_mem_gb * 1.2
         training_mem_gb = weight_mem_gb * 3.5
 
@@ -2288,8 +2629,14 @@ class PerformanceCoreBase:
         else:
             mem_per_sample_mb = 100
 
-        max_batch_inference = int(available_inference * 1024 / mem_per_sample_mb) if available_inference > 0 else 0
-        max_batch_training = int(available_training * 1024 / (mem_per_sample_mb * 2)) if available_training > 0 else 0
+        max_batch_inference = (
+            int(available_inference * 1024 / mem_per_sample_mb) if available_inference > 0 else 0
+        )
+        max_batch_training = (
+            int(available_training * 1024 / (mem_per_sample_mb * 2))
+            if available_training > 0
+            else 0
+        )
 
         def round_to_power_of_2(n: int) -> int:
             if n <= 0:
@@ -2303,8 +2650,16 @@ class PerformanceCoreBase:
         recommended_inference = round_to_power_of_2(max_batch_inference)
         recommended_training = round_to_power_of_2(max_batch_training)
 
-        util_inference = (recommended_inference * mem_per_sample_mb / 1024) / vram_free_gb * 100 if vram_free_gb > 0 else 0
-        util_training = (recommended_training * mem_per_sample_mb * 2 / 1024) / vram_free_gb * 100 if vram_free_gb > 0 else 0
+        util_inference = (
+            (recommended_inference * mem_per_sample_mb / 1024) / vram_free_gb * 100
+            if vram_free_gb > 0
+            else 0
+        )
+        util_training = (
+            (recommended_training * mem_per_sample_mb * 2 / 1024) / vram_free_gb * 100
+            if vram_free_gb > 0
+            else 0
+        )
 
         can_run = weight_mem_gb < vram_free_gb
 
@@ -2323,151 +2678,175 @@ class PerformanceCoreBase:
                 "utilization_pct": round(min(util_training, 100), 1),
             },
             "memory_per_sample_mb": mem_per_sample_mb,
-            "suggestions": self._get_optimization_suggestions(params, vram_free_gb, precision, can_run),
+            "suggestions": self._get_optimization_suggestions(
+                params, vram_free_gb, precision, can_run
+            ),
         }
 
-    def _get_optimization_suggestions(self, params: int, vram_gb: float, precision: str, can_run: bool) -> list:
+    def _get_optimization_suggestions(
+        self, params: int, vram_gb: float, precision: str, can_run: bool
+    ) -> list:
         """Get optimization suggestions for running the model."""
         suggestions = []
 
         if not can_run:
-            suggestions.append({
-                "type": "critical",
-                "text": "Model too large for available VRAM",
-                "solutions": [
-                    "Use quantization (INT8, INT4)",
-                    "Use model parallelism across multiple GPUs",
-                    "Try a smaller model variant",
-                ],
-            })
+            suggestions.append(
+                {
+                    "type": "critical",
+                    "text": "Model too large for available VRAM",
+                    "solutions": [
+                        "Use quantization (INT8, INT4)",
+                        "Use model parallelism across multiple GPUs",
+                        "Try a smaller model variant",
+                    ],
+                }
+            )
 
         if precision == "fp32":
-            suggestions.append({
-                "type": "optimization",
-                "text": "Switch to FP16/BF16 for 2x memory savings",
-                "benefit": "Double your batch size or fit larger models",
-            })
+            suggestions.append(
+                {
+                    "type": "optimization",
+                    "text": "Switch to FP16/BF16 for 2x memory savings",
+                    "benefit": "Double your batch size or fit larger models",
+                }
+            )
 
         if params > 7e9 and precision in ["fp32", "fp16", "bf16"]:
-            suggestions.append({
-                "type": "optimization",
-                "text": "Consider INT8 quantization for 4x memory savings",
-                "benefit": "Minimal accuracy loss, major memory reduction",
-            })
+            suggestions.append(
+                {
+                    "type": "optimization",
+                    "text": "Consider INT8 quantization for 4x memory savings",
+                    "benefit": "Minimal accuracy loss, major memory reduction",
+                }
+            )
 
         if params > 20e9:
-            suggestions.append({
-                "type": "advanced",
-                "text": "Use Flash Attention 2 for efficient attention",
-                "benefit": "Reduce memory usage and improve speed",
-            })
-            suggestions.append({
-                "type": "advanced",
-                "text": "Enable gradient checkpointing for training",
-                "benefit": "Trade compute for memory to train larger batches",
-            })
+            suggestions.append(
+                {
+                    "type": "advanced",
+                    "text": "Use Flash Attention 2 for efficient attention",
+                    "benefit": "Reduce memory usage and improve speed",
+                }
+            )
+            suggestions.append(
+                {
+                    "type": "advanced",
+                    "text": "Enable gradient checkpointing for training",
+                    "benefit": "Trade compute for memory to train larger batches",
+                }
+            )
 
         return suggestions
 
     def get_cost_savings_header(self, ops_per_day: int = 1_000_000) -> dict:
         """
         Calculate aggregate $ savings for the header display.
-        
+
         This is the FRONT AND CENTER metric that translates performance
         gains into business value using public cloud GPU pricing.
-        
+
         Args:
             ops_per_day: Assumed operations per day (default: 1M for enterprise scale)
-        
+
         Returns:
             Dictionary with total savings and breakdown
         """
         from core.costs import GPU_PRICING, detect_gpu_pricing
-        
+
         data = self.load_benchmark_data()
         benchmarks = self._flatten_benchmarks(data)
         gpu_info = self.get_gpu_info()
-        
+
         # Detect GPU and get hourly rate
         gpu_name = gpu_info.get("name", "B200")
         hourly_rate = detect_gpu_pricing(gpu_name)
-        
+
         # Find which GPU type we matched
         detected_gpu = "B200"  # default
         for gpu_type in GPU_PRICING:
             if gpu_type.lower() in gpu_name.lower():
                 detected_gpu = gpu_type
                 break
-        
+
         total_baseline_time_ms = 0.0
         total_optimized_time_ms = 0.0
         total_time_saved_ms = 0.0
         successful_optimizations = 0
         savings_breakdown = []
-        
+
         for b in benchmarks:
             if b.get("status") != "succeeded":
                 continue
-            
+
             speedup = b.get("speedup", 1.0)
             baseline_ms = b.get("baseline_time_ms", 0)
             optimized_ms = b.get("optimized_time_ms", baseline_ms)
-            
+
             if baseline_ms <= 0 or optimized_ms <= 0 or speedup <= 1.0:
                 continue
-            
+
             time_saved_ms = baseline_ms - optimized_ms
             if time_saved_ms <= 0:
                 continue
-            
+
             successful_optimizations += 1
             total_baseline_time_ms += baseline_ms
             total_optimized_time_ms += optimized_ms
             total_time_saved_ms += time_saved_ms
-            
+
             # Calculate savings for this benchmark
             # Time saved percentage = (baseline - optimized) / baseline
             time_saved_pct = (time_saved_ms / baseline_ms) * 100
-            
+
             # Ops per hour at baseline rate
             baseline_ops_per_hour = 3_600_000 / baseline_ms if baseline_ms > 0 else 0
             optimized_ops_per_hour = 3_600_000 / optimized_ms if optimized_ms > 0 else 0
-            
+
             # Cost per million ops
-            baseline_cost_per_m = (hourly_rate / baseline_ops_per_hour) * 1_000_000 if baseline_ops_per_hour > 0 else 0
-            optimized_cost_per_m = (hourly_rate / optimized_ops_per_hour) * 1_000_000 if optimized_ops_per_hour > 0 else 0
+            baseline_cost_per_m = (
+                (hourly_rate / baseline_ops_per_hour) * 1_000_000
+                if baseline_ops_per_hour > 0
+                else 0
+            )
+            optimized_cost_per_m = (
+                (hourly_rate / optimized_ops_per_hour) * 1_000_000
+                if optimized_ops_per_hour > 0
+                else 0
+            )
             savings_per_m = baseline_cost_per_m - optimized_cost_per_m
-            
+
             # Daily savings based on ops_per_day
             daily_savings = (savings_per_m / 1_000_000) * ops_per_day
             monthly_savings = daily_savings * 30
             yearly_savings = daily_savings * 365
-            
-            savings_breakdown.append({
-                "name": f"{b.get('chapter', 'unknown')}:{b.get('name', 'unknown')}",
-                "speedup": round(speedup, 2),
-                "time_saved_pct": round(time_saved_pct, 1),
-                "monthly_savings_usd": round(monthly_savings, 2),
-                "yearly_savings_usd": round(yearly_savings, 2),
-            })
-        
+
+            savings_breakdown.append(
+                {
+                    "name": f"{b.get('chapter', 'unknown')}:{b.get('name', 'unknown')}",
+                    "speedup": round(speedup, 2),
+                    "time_saved_pct": round(time_saved_pct, 1),
+                    "monthly_savings_usd": round(monthly_savings, 2),
+                    "yearly_savings_usd": round(yearly_savings, 2),
+                }
+            )
+
         # Sort by monthly savings (highest first)
         savings_breakdown.sort(key=lambda x: x["monthly_savings_usd"], reverse=True)
-        
+
         # Calculate aggregate savings
         total_monthly_savings = sum(s["monthly_savings_usd"] for s in savings_breakdown)
         total_yearly_savings = sum(s["yearly_savings_usd"] for s in savings_breakdown)
-        
+
         # Average time saved percentage across all optimizations
         avg_time_saved_pct = 0.0
         if total_baseline_time_ms > 0:
             avg_time_saved_pct = (total_time_saved_ms / total_baseline_time_ms) * 100
-        
+
         # Average speedup
         avg_speedup = 0.0
         if successful_optimizations > 0:
             avg_speedup = sum(s["speedup"] for s in savings_breakdown) / successful_optimizations
-        
+
         return {
             "total_monthly_savings_usd": round(total_monthly_savings, 2),
             "total_yearly_savings_usd": round(total_yearly_savings, 2),
@@ -2530,19 +2909,21 @@ class PerformanceCoreBase:
                     chapter_name = None
                     if rel_parts and rel_parts[0] == "bench" and len(rel_parts) >= 2:
                         chapter_name = rel_parts[1]
-                    pairs.append({
-                        "chapter": chapter_name or subdir.name,
-                        "name": f"{run_dir.name}/{rel.as_posix()}",
-                        "path": str(subdir),
-                        "run_id": run_dir.name,
-                        "type": "run_profiles",
-                        "has_nsys": bool(baseline_nsys and optimized_nsys),
-                        "has_ncu": bool(baseline_ncu and optimized_ncu),
-                        "baseline_nsys": [f.name for f in baseline_nsys],
-                        "optimized_nsys": [f.name for f in optimized_nsys],
-                        "baseline_ncu": [f.name for f in baseline_ncu],
-                        "optimized_ncu": [f.name for f in optimized_ncu],
-                    })
+                    pairs.append(
+                        {
+                            "chapter": chapter_name or subdir.name,
+                            "name": f"{run_dir.name}/{rel.as_posix()}",
+                            "path": str(subdir),
+                            "run_id": run_dir.name,
+                            "type": "run_profiles",
+                            "has_nsys": bool(baseline_nsys and optimized_nsys),
+                            "has_ncu": bool(baseline_ncu and optimized_ncu),
+                            "baseline_nsys": [f.name for f in baseline_nsys],
+                            "optimized_nsys": [f.name for f in optimized_nsys],
+                            "baseline_ncu": [f.name for f in baseline_ncu],
+                            "optimized_ncu": [f.name for f in optimized_ncu],
+                        }
+                    )
 
         return {"pairs": pairs, "count": len(pairs)}
 
@@ -2553,7 +2934,7 @@ class PerformanceCoreBase:
         include_ncu_details: bool = False,
     ) -> dict:
         """Compare baseline vs optimized profiles for a chapter.
-        
+
         Integrates file-level comparison with metric-level analysis to provide:
         - Raw nsys/ncu comparisons
         - Structured metric diff (what improved, regressed, unchanged)
@@ -2561,19 +2942,19 @@ class PerformanceCoreBase:
         - Prioritized recommendations
         """
         from core import profile_insights
-        
+
         # Find the chapter directory
         chapter_dir = self._find_profile_directory(chapter)
-        
+
         if not chapter_dir:
             return {"error": f"Chapter not found: {chapter}", "chapter": chapter}
-        
+
         # Get nsys comparison
         nsys_comparison = profile_insights.compare_nsys_files(chapter_dir, pair_key=pair_key)
         if nsys_comparison and nsys_comparison.get("error"):
             nsys_comparison["chapter"] = chapter
             return nsys_comparison
-        
+
         # Get ncu comparison
         ncu_comparison = profile_insights.compare_ncu_files(
             chapter_dir,
@@ -2583,7 +2964,7 @@ class PerformanceCoreBase:
         if ncu_comparison and ncu_comparison.get("error"):
             ncu_comparison["chapter"] = chapter
             return ncu_comparison
-        
+
         # Generate recommendations
         result = {
             "chapter": chapter,
@@ -2591,24 +2972,24 @@ class PerformanceCoreBase:
             "nsys_comparison": nsys_comparison,
             "ncu_comparison": ncu_comparison,
         }
-        
+
         recommendations = profile_insights.generate_recommendations_from_profiles(result)
         result["recommendations"] = recommendations
-        
+
         # NEW: Integrate metric-level analysis using _diff_metrics
         metric_analysis = self._analyze_metric_diff(ncu_comparison, nsys_comparison)
         if metric_analysis:
             result["metric_analysis"] = metric_analysis
-        
+
         return result
-    
+
     def _analyze_metric_diff(
         self,
         ncu_comparison: Optional[dict],
         nsys_comparison: Optional[dict],
     ) -> Optional[dict]:
         """Internal: Apply metric-level diff analysis to profile comparison.
-        
+
         Extracts baseline/optimized metrics and runs structured analysis
         to identify what improved, regressed, and any bottleneck shifts.
         """
@@ -2616,14 +2997,14 @@ class PerformanceCoreBase:
             from core.analysis import _diff_metrics, ProfileComparison
         except ImportError:
             return None  # Analysis module not available
-        
+
         if not ncu_comparison or "metrics" not in ncu_comparison:
             return None
-        
+
         # Convert ncu_comparison metrics list to dicts
         baseline_metrics: dict = {}
         optimized_metrics: dict = {}
-        
+
         for m in ncu_comparison.get("metrics", []):
             name = m.get("name", "")
             if not name:
@@ -2636,14 +3017,16 @@ class PerformanceCoreBase:
                 optimized_metrics[name] = float(str(m.get("optimized", 0)).replace(",", ""))
             except (ValueError, TypeError):
                 pass
-        
+
         if not baseline_metrics or not optimized_metrics:
             return None
-        
+
         # Try to extract timing from metrics or nsys comparison
         baseline_time_us = self._extract_kernel_time(baseline_metrics, nsys_comparison, "baseline")
-        optimized_time_us = self._extract_kernel_time(optimized_metrics, nsys_comparison, "optimized")
-        
+        optimized_time_us = self._extract_kernel_time(
+            optimized_metrics, nsys_comparison, "optimized"
+        )
+
         # Run metric diff analysis
         try:
             comparison: ProfileComparison = _diff_metrics(
@@ -2652,7 +3035,7 @@ class PerformanceCoreBase:
                 baseline_time_us=baseline_time_us,
                 optimized_time_us=optimized_time_us,
             )
-            
+
             return {
                 "speedup": comparison.speedup,
                 "baseline_time_us": comparison.baseline_time_us,
@@ -2683,7 +3066,7 @@ class PerformanceCoreBase:
             }
         except Exception:
             return None
-    
+
     def _extract_kernel_time(
         self,
         metrics: dict,
@@ -2699,7 +3082,7 @@ class PerformanceCoreBase:
             "Duration",
             "Kernel Duration",
         ]
-        
+
         for key in time_keys:
             if key in metrics and metrics[key] > 0:
                 # Convert to microseconds if needed (cycles need conversion)
@@ -2707,7 +3090,7 @@ class PerformanceCoreBase:
                     # Rough estimate: assume 1.5GHz clock
                     return metrics[key] / 1500.0
                 return metrics[key]
-        
+
         # Fallback: try to get from nsys comparison
         if nsys_comparison and "metrics" in nsys_comparison:
             for m in nsys_comparison["metrics"]:
@@ -2719,7 +3102,7 @@ class PerformanceCoreBase:
                             return val
                     except (ValueError, TypeError):
                         pass
-        
+
         # Default fallback
         return 1000.0 if version == "baseline" else 500.0
 
@@ -2747,16 +3130,19 @@ class PerformanceCoreBase:
                 "impact": "Higher occupancy often means better GPU utilization",
             },
         ]
-        
+
         # Check what profiles are available
         pairs = self.list_deep_profile_pairs()
         if pairs.get("count", 0) > 0:
-            recommendations.insert(0, {
-                "title": f"{pairs['count']} Profile Pairs Available",
-                "description": "Select a chapter to view detailed baseline vs optimized comparison",
-                "impact": "Ready for analysis",
-            })
-        
+            recommendations.insert(
+                0,
+                {
+                    "title": f"{pairs['count']} Profile Pairs Available",
+                    "description": "Select a chapter to view detailed baseline vs optimized comparison",
+                    "impact": "Ready for analysis",
+                },
+            )
+
         return {"recommendations": recommendations, "profile_count": pairs.get("count", 0)}
 
     def _find_profile_directory(self, chapter: str) -> Optional[Path]:
