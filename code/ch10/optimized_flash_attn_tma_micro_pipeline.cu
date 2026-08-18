@@ -1,7 +1,7 @@
 // optimized_flash_attn_tma_micro_pipeline.cu
 //
 // FlashAttention-style micro-pipeline using TMA (Tensor Memory Accelerator).
-// Double-buffered PREFETCH (K/V tiles) overlapped with COMPUTE using
+// Three-stage PREFETCH (K/V tiles) overlapped with COMPUTE using
 // cp.async.bulk.tensor for global->shared transfers with mbarrier completion.
 // Targets SM90+ (Hopper/Blackwell) for TMA bulk tensor operations.
 
@@ -20,8 +20,8 @@
 #if CUDART_VERSION < 13000
 int main() {
     NVTX_RANGE("main");
-    std::printf("SKIP: requires CUDA 13.0+ for TMA bulk tensor\nTIME_MS: 0.0\n");
-    return 0;
+    std::printf("SKIPPED: requires CUDA 13.0+ for TMA bulk tensor\n");
+    return 3;
 }
 #else
 
@@ -37,6 +37,8 @@ constexpr int TILE_KV = 32;    // rows per tile (K/V)
 constexpr int THREADS = 128;
 constexpr int STAGES  = 3;     // deeper buffer to hide TMA latency
 constexpr int ITERS   = 10;
+constexpr size_t DYNAMIC_SMEM_BYTES =
+    2ull * STAGES * TILE_KV * D_HEAD * sizeof(float);
 
 inline bool make_2d_tensor_map_col_row(
     CUtensorMap& desc,
@@ -79,7 +81,7 @@ inline bool make_2d_tensor_map_col_row(
     return res == CUDA_SUCCESS;
 }
 
-// TMA kernel with double-buffered K/V prefetch
+// TMA kernel with three-stage K/V prefetch
 template <int TILE_M, int TILE_N>
 __global__ void flash_attn_tma_kernel(
     const __grid_constant__ CUtensorMap k_desc,
@@ -94,9 +96,12 @@ __global__ void flash_attn_tma_kernel(
 
     constexpr size_t TILE_BYTES = size_t(TILE_M) * TILE_N * sizeof(float);
     
-    // Aligned shared memory for TMA
-    __shared__ alignas(128) float smem_k[STAGES][TILE_M][TILE_N];
-    __shared__ alignas(128) float smem_v[STAGES][TILE_M][TILE_N];
+    // K/V stages use opt-in dynamic shared memory because their combined
+    // footprint is exactly 48 KiB before barrier and score storage.
+    extern __shared__ __align__(128) unsigned char smem_raw[];
+    using stage_tile = float[TILE_M][TILE_N];
+    auto* smem_k = reinterpret_cast<stage_tile*>(smem_raw);
+    auto* smem_v = reinterpret_cast<stage_tile*>(smem_raw + STAGES * TILE_BYTES);
     __shared__ alignas(block_barrier) unsigned char bar_storage[STAGES][sizeof(block_barrier)];
     
     block_barrier* bars[STAGES];
@@ -220,8 +225,8 @@ __global__ void flash_attn_tma_kernel(
 int main() {
     int count = 0;
     if (cudaGetDeviceCount(&count) != cudaSuccess || count == 0) {
-        std::printf("SKIP: No CUDA device found.\nTIME_MS: 0.0\n");
-        return 0;
+        std::printf("SKIPPED: No CUDA device found.\n");
+        return 3;
     }
 
     cudaDeviceProp prop{};
@@ -229,15 +234,44 @@ int main() {
     const int sm_version = prop.major * 10 + prop.minor;
     
     if (sm_version < 90) {
-        std::printf("SKIP: Requires SM90+ for TMA (found SM%d.%d)\nTIME_MS: 0.0\n",
+        std::printf("SKIPPED: Requires SM90+ for TMA (found SM%d.%d)\n",
                     prop.major, prop.minor);
-        return 0;
+        return 3;
     }
     
     if (!cuda_tma::device_supports_tma()) {
-        std::printf("SKIP: TMA not supported on this device\nTIME_MS: 0.0\n");
-        return 0;
+        std::printf("SKIPPED: TMA not supported on this device\n");
+        return 3;
     }
+
+    cudaFuncAttributes kernel_attributes{};
+    check_cuda(
+        cudaFuncGetAttributes(
+            &kernel_attributes,
+            flash_attn_tma_kernel<TILE_KV, D_HEAD>),
+        "get kernel attributes");
+    int max_shared_bytes = 0;
+    check_cuda(
+        cudaDeviceGetAttribute(
+            &max_shared_bytes,
+            cudaDevAttrMaxSharedMemoryPerBlockOptin,
+            0),
+        "get opt-in shared-memory limit");
+    const size_t required_shared_bytes =
+        DYNAMIC_SMEM_BYTES + kernel_attributes.sharedSizeBytes;
+    if (required_shared_bytes > static_cast<size_t>(max_shared_bytes)) {
+        std::printf(
+            "SKIPPED: TMA pipeline requires %zu bytes of shared memory, device permits %d\n",
+            required_shared_bytes,
+            max_shared_bytes);
+        return 3;
+    }
+    check_cuda(
+        cudaFuncSetAttribute(
+            flash_attn_tma_kernel<TILE_KV, D_HEAD>,
+            cudaFuncAttributeMaxDynamicSharedMemorySize,
+            static_cast<int>(DYNAMIC_SMEM_BYTES)),
+        "set dynamic shared-memory limit");
 
     const int seq_len = SEQ_LEN;
     const int d_head = D_HEAD;
@@ -267,9 +301,9 @@ int main() {
     // Create TMA descriptors
     auto encode = load_cuTensorMapEncodeTiled();
     if (!encode) {
-        std::printf("SKIP: Failed to load cuTensorMapEncodeTiled\nTIME_MS: 0.0\n");
+        std::printf("SKIPPED: Failed to load cuTensorMapEncodeTiled\n");
         cudaFree(d_q); cudaFree(d_k); cudaFree(d_v); cudaFree(d_o);
-        return 0;
+        return 3;
     }
 
     CUtensorMap k_desc{}, v_desc{};
@@ -280,9 +314,9 @@ int main() {
                                     box_w, box_h, CU_TENSOR_MAP_SWIZZLE_NONE) ||
         !make_2d_tensor_map_col_row(v_desc, encode, d_v, d_head, seq_len, d_head,
                                     box_w, box_h, CU_TENSOR_MAP_SWIZZLE_NONE)) {
-        std::printf("SKIP: Failed to encode TMA descriptors\nTIME_MS: 0.0\n");
+        std::printf("SKIPPED: Failed to encode TMA descriptors\n");
         cudaFree(d_q); cudaFree(d_k); cudaFree(d_v); cudaFree(d_o);
-        return 0;
+        return 3;
     }
 
     cudaStream_t stream;
@@ -292,7 +326,7 @@ int main() {
     const dim3 grid(seq_len);
 
     // Warmup
-    flash_attn_tma_kernel<TILE_KV, D_HEAD><<<grid, block, 0, stream>>>(
+    flash_attn_tma_kernel<TILE_KV, D_HEAD><<<grid, block, DYNAMIC_SMEM_BYTES, stream>>>(
         k_desc, v_desc, d_q, d_o, seq_len, d_head);
     check_cuda(cudaStreamSynchronize(stream), "warmup sync");
     check_cuda(cudaGetLastError(), "warmup error check");
@@ -304,7 +338,7 @@ int main() {
     check_cuda(cudaEventRecord(start, stream), "record start");
     for (int i = 0; i < ITERS; ++i) {
         NVTX_RANGE("compute_kernel");
-        flash_attn_tma_kernel<TILE_KV, D_HEAD><<<grid, block, 0, stream>>>(
+        flash_attn_tma_kernel<TILE_KV, D_HEAD><<<grid, block, DYNAMIC_SMEM_BYTES, stream>>>(
             k_desc, v_desc, d_q, d_o, seq_len, d_head);
     }
     check_cuda(cudaEventRecord(stop, stream), "record stop");

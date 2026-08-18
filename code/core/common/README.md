@@ -12,7 +12,7 @@ Shared headers, CUDA build flags, and Python utilities that keep every chapter a
 ## Directory Layout
 | Path | Description |
 | --- | --- |
-| `cuda_arch.mk`, `cuda13_demo_runner.cuh` | Makefile includes and helper headers for dual-arch (sm100/sm121) builds and CUDA 13 samples. |
+| `cuda_arch.mk`, `cuda13_demo_runner.cuh` | Makefile includes and helper headers for SM100, SM103, SM120, or SM121 builds and CUDA 13 samples. |
 | `headers/arch_detection.cuh`, `headers/tma_helpers.cuh` | Device feature probes plus TMA helpers shared by CUDA benchmarks and extensions. |
 | `tcgen05/` | SM100 (tcgen05/TMEM) kernel loaders and wrappers used by the tcgen05 benchmarks. |
 | `async_input_pipeline.py`, `moe_parallelism_plan.py`, `device_utils.py` | Shared Python helpers pulled into both core and labs. |
@@ -37,7 +37,7 @@ Shared headers, CUDA build flags, and Python utilities that keep every chapter a
 ## Validation Checklist
 - `python - <<'PY'\nfrom core.env import dump_environment_and_capabilities\ndump_environment_and_capabilities()\nPY` prints CUDA paths, NCCL preload, and TMA/pipeline support.
 - `python - <<'PY'\nfrom pathlib import Path\nfrom core.utils.chapter_compare_template import discover_benchmarks\nprint(len(discover_benchmarks(Path(\"ch01\"))))\nPY` confirms harness discovery works end-to-end.
-- Building any chapter extension after including `cuda_arch.mk` emits both `sm_100` and `sm_121` code objects, verifying dual-arch flags are active.
+- Build each configured `ARCH` separately after including `cuda_arch.mk`. The hosted compare workflow verifies `sm_100`, `sm_103`, `sm_120`, and `sm_121` in four independent builds.
 
 ## Notes
 - Env defaults create `.torch_extensions/` and `.torch_inductor/` under the current workspace to avoid `/tmp` contention during repeated runs.

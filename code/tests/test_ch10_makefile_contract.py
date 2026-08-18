@@ -107,3 +107,33 @@ def test_tma_multicast_unsupported_target_uses_the_cuda_skip_contract() -> None:
     assert '"SKIPPED:' in unsupported_branch
     assert "return 3;" in unsupported_branch
     assert "TIME_MS" not in unsupported_branch
+
+
+def test_flash_attention_tma_pipeline_uses_opt_in_dynamic_shared_memory() -> None:
+    source = (CHAPTER_ROOT / "optimized_flash_attn_tma_micro_pipeline.cu").read_text(
+        encoding="utf-8"
+    )
+    wrapper = (CHAPTER_ROOT / "optimized_flash_attn_tma_micro_pipeline.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "constexpr int STAGES  = 3;" in source
+    assert "extern __shared__ __align__(128) unsigned char smem_raw[];" in source
+    assert "smem_raw + STAGES * TILE_BYTES" in source
+    assert "cudaDevAttrMaxSharedMemoryPerBlockOptin" in source
+    assert "DYNAMIC_SMEM_BYTES + kernel_attributes.sharedSizeBytes" in source
+    assert "cudaFuncAttributeMaxDynamicSharedMemorySize" in source
+    assert "static_cast<int>(DYNAMIC_SMEM_BYTES)" in source
+    assert source.count("<<<grid, block, DYNAMIC_SMEM_BYTES, stream>>>") == 2
+    assert "num_stages=3" in wrapper
+
+
+def test_flash_attention_tma_pipeline_uses_the_cuda_skip_contract() -> None:
+    source = (CHAPTER_ROOT / "optimized_flash_attn_tma_micro_pipeline.cu").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"SKIP:' not in source
+    assert "TIME_MS: 0.0" not in source
+    assert source.count('"SKIPPED:') == 7
+    assert source.count("return 3;") == 7
