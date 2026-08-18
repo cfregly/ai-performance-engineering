@@ -1,7 +1,11 @@
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+from core.benchmark import cuda_binary_benchmark
 from core.benchmark.cuda_binary_benchmark import _run_subprocess_capture
 from core.harness import run_benchmarks
 
@@ -15,6 +19,73 @@ class _DummyExpectationsStore:
 
     def get_entry(self, _key: str) -> None:
         return None
+
+
+@pytest.mark.parametrize(
+    ("capability", "architecture"),
+    [
+        ((10, 0), "sm_100"),
+        ((10, 3), "sm_103"),
+        ((12, 0), "sm_120"),
+        ((12, 1), "sm_121"),
+    ],
+)
+def test_cuda_binary_arch_detection_uses_exact_supported_capabilities(
+    capability: tuple[int, int],
+    architecture: str,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(cuda_binary_benchmark.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(
+        cuda_binary_benchmark.torch.cuda,
+        "get_device_capability",
+        lambda: capability,
+    )
+
+    assert cuda_binary_benchmark.detect_supported_arch() == architecture
+
+
+@pytest.mark.parametrize("capability", [(9, 0), (10, 1), (12, 2)])
+def test_cuda_binary_arch_detection_rejects_unconfigured_capabilities(
+    capability: tuple[int, int],
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(cuda_binary_benchmark.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(
+        cuda_binary_benchmark.torch.cuda,
+        "get_device_capability",
+        lambda: capability,
+    )
+
+    with pytest.raises(RuntimeError, match="Unsupported compute capability"):
+        cuda_binary_benchmark.detect_supported_arch()
+
+
+def test_cuda_binary_wrapper_preserves_exit_three_skip_reason(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    executable = tmp_path / "skip_cuda_binary"
+    executable.touch()
+    benchmark = object.__new__(cuda_binary_benchmark.CudaBinaryBenchmark)
+    benchmark.exec_path = executable
+    benchmark.chapter_dir = tmp_path
+    benchmark.timeout_seconds = 5
+    benchmark.run_args = []
+
+    monkeypatch.setattr(
+        cuda_binary_benchmark,
+        "_run_subprocess_capture",
+        lambda args, **_kwargs: subprocess.CompletedProcess(
+            args=args,
+            returncode=3,
+            stdout="SKIPPED: unsupported architecture\n",
+            stderr="",
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="SKIPPED: unsupported architecture"):
+        benchmark._run_once()
 
 
 def test_test_chapter_impl_uses_cuda_wrapper_detector_without_nameerror(tmp_path, monkeypatch):
@@ -44,7 +115,9 @@ def test_test_chapter_impl_uses_cuda_wrapper_detector_without_nameerror(tmp_path
     monkeypatch.setattr(run_benchmarks, "reset_cuda_state", lambda **_kwargs: None)
     monkeypatch.setattr(run_benchmarks, "reset_gpu_state", lambda: None)
     monkeypatch.setattr(run_benchmarks, "emit_event", lambda *args, **kwargs: None)
-    monkeypatch.setattr(run_benchmarks, "start_progress_watchdog", lambda *args, **kwargs: (None, None))
+    monkeypatch.setattr(
+        run_benchmarks, "start_progress_watchdog", lambda *args, **kwargs: (None, None)
+    )
     monkeypatch.setattr(run_benchmarks, "ExpectationsStore", _DummyExpectationsStore)
     monkeypatch.setattr(run_benchmarks.torch.cuda, "is_available", lambda: True)
     monkeypatch.setattr(run_benchmarks.torch.cuda, "device_count", lambda: 1)
@@ -108,7 +181,10 @@ def test_benchmark_cuda_executable_treats_skip_exit_code_as_skip(tmp_path):
     result = run_benchmarks.benchmark_cuda_executable(executable, iterations=1, warmup=0, timeout=5)
 
     assert result is not None
-    assert result.skip_reason == "SKIPPED: cuBLASLt NVFP4 algorithm unavailable on this driver/toolchain."
+    assert (
+        result.skip_reason
+        == "SKIPPED: cuBLASLt NVFP4 algorithm unavailable on this driver/toolchain."
+    )
 
 
 def test_is_distributed_benchmark_ignores_local_gpu_reduction_named_distributed(tmp_path):
@@ -209,7 +285,9 @@ def test_append_profile_warning_persists_message_to_stderr_log(tmp_path, monkeyp
     monkeypatch.setattr(
         run_benchmarks.logger,
         "warning",
-        lambda message, *args, **_kwargs: logger_messages.append(message % args if args else message),
+        lambda message, *args, **_kwargs: logger_messages.append(
+            message % args if args else message
+        ),
     )
 
     run_benchmarks._append_profile_warning(log_path, "profiler cleanup detail")

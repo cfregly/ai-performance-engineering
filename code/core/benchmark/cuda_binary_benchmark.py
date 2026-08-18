@@ -28,12 +28,13 @@ from typing import Optional, Sequence
 
 import torch
 
-from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.benchmark.detect_sm import SM_MAP
+from core.benchmark.timing_parser import parse_kernel_time_ms
+from core.benchmark.tma_checks import require_tma_instructions
 from core.benchmark.verification import simple_signature
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.harness.cuda_capabilities import pipeline_runtime_allowed
-from core.benchmark.tma_checks import require_tma_instructions
-from core.benchmark.timing_parser import parse_kernel_time_ms
 
 
 # Default regex for parsing VERIFY_CHECKSUM from stdout
@@ -42,7 +43,13 @@ VERIFY_CHECKSUM_REGEX = r"VERIFY_CHECKSUM:\s*([0-9.eE+-]+)"
 ARCH_SUFFIX = {
     "sm_100": "_sm100",
     "sm_103": "_sm103",
+    "sm_120": "_sm120",
     "sm_121": "_sm121",
+}
+SUPPORTED_CAPABILITY_ARCH = {
+    capability: architecture
+    for capability, architecture in SM_MAP.items()
+    if architecture in ARCH_SUFFIX
 }
 
 
@@ -91,13 +98,9 @@ def detect_supported_arch() -> str:
         raise RuntimeError("CUDA device required to benchmark CUDA binaries")
     
     major, minor = torch.cuda.get_device_capability()
-    capability = major * 10 + minor
-    if capability >= 121:
-        return "sm_121"
-    if capability >= 103:
-        return "sm_103"
-    if capability >= 100:
-        return "sm_100"
+    architecture = SUPPORTED_CAPABILITY_ARCH.get((major, minor))
+    if architecture is not None:
+        return architecture
     
     raise RuntimeError(
         f"Unsupported compute capability {major}.{minor}. "
