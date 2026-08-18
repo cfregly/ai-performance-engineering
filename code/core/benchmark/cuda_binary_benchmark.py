@@ -92,6 +92,19 @@ def _run_subprocess_capture(
             stderr=stderr,
         )
 
+
+def _extract_binary_skip_message(completed: subprocess.CompletedProcess[str]) -> Optional[str]:
+    """Return a canonical skip message for the binary exit-code contract."""
+    if completed.returncode != 3:
+        return None
+    for output in (completed.stdout, completed.stderr):
+        for line in output.splitlines():
+            marker_index = line.find("SKIPPED:")
+            if marker_index >= 0:
+                return line[marker_index:].strip()
+    return None
+
+
 def detect_supported_arch() -> str:
     """Infer the CUDA architecture for building binaries from the active GPU."""
     if not torch.cuda.is_available():
@@ -254,6 +267,9 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError(f"Verify timeout: {self._verify_exec_path.name} exceeded {self.timeout_seconds} seconds")
         
         if completed.returncode != 0:
+            skip_message = _extract_binary_skip_message(completed)
+            if skip_message is not None:
+                raise RuntimeError(skip_message)
             raise RuntimeError(
                 f"Verify binary {self._verify_exec_path.name} exited with code {completed.returncode}.\n"
                 f"stdout:\n{completed.stdout}\n"
@@ -325,6 +341,9 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError(f"Execution timeout: {self.exec_path.name} exceeded {self.timeout_seconds} seconds")
         
         if completed.returncode != 0:
+            skip_message = _extract_binary_skip_message(completed)
+            if skip_message is not None:
+                raise RuntimeError(skip_message)
             raise RuntimeError(
                 f"{self.exec_path.name} exited with code {completed.returncode}.\n"
                 f"stdout:\n{completed.stdout}\n"
@@ -468,6 +487,8 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
             try:
                 self.run_verify()
             except Exception as e:
+                if str(e).startswith("SKIPPED:"):
+                    raise RuntimeError(str(e)) from e
                 raise RuntimeError(
                     f"CUDA binary verification failed: {e}. "
                     "Ensure the binary supports -DVERIFY=1 build mode."

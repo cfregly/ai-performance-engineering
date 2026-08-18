@@ -84,8 +84,55 @@ def test_cuda_binary_wrapper_preserves_exit_three_skip_reason(
         ),
     )
 
-    with pytest.raises(RuntimeError, match="SKIPPED: unsupported architecture"):
+    with pytest.raises(RuntimeError) as exc_info:
         benchmark._run_once()
+
+    assert str(exc_info.value) == "SKIPPED: unsupported architecture"
+
+
+def test_cuda_binary_verify_preserves_exit_three_skip_reason(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    executable = tmp_path / "skip_cuda_binary_verify"
+    executable.touch()
+    benchmark = object.__new__(cuda_binary_benchmark.CudaBinaryBenchmark)
+    benchmark._verify_exec_path = executable
+    benchmark.chapter_dir = tmp_path
+    benchmark.timeout_seconds = 5
+    benchmark.run_args = []
+
+    monkeypatch.setattr(
+        cuda_binary_benchmark,
+        "_run_subprocess_capture",
+        lambda args, **_kwargs: subprocess.CompletedProcess(
+            args=args,
+            returncode=3,
+            stdout="SKIPPED: unsupported architecture\n",
+            stderr="",
+        ),
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        benchmark._run_verify()
+
+    assert str(exc_info.value) == "SKIPPED: unsupported architecture"
+
+
+def test_cuda_binary_get_verify_output_keeps_skip_prefix(monkeypatch) -> None:
+    benchmark = object.__new__(cuda_binary_benchmark.CudaBinaryBenchmark)
+    benchmark._last_result = object()
+    benchmark._verify_checksum = None
+
+    def raise_skip() -> None:
+        raise RuntimeError("SKIPPED: unsupported architecture")
+
+    monkeypatch.setattr(benchmark, "run_verify", raise_skip)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        benchmark.get_verify_output()
+
+    assert str(exc_info.value) == "SKIPPED: unsupported architecture"
 
 
 def test_test_chapter_impl_uses_cuda_wrapper_detector_without_nameerror(tmp_path, monkeypatch):
