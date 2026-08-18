@@ -8,6 +8,17 @@ SUFFIX = $(TARGET_SUFFIX)
 INCLUDES = -I..
 COMMON_HEADERS = ../core/common/headers/arch_detection.cuh ../core/common/headers/tma_helpers.cuh
 
+# CUDA 13.0's bundled CCCL supports the multicast wrapper for SM100a but
+# omitted SM103a. The source carries NVIDIA's corrected SM103a PTX path.
+# SM120 and SM121 compile the source's explicit non-multicast fallback.
+override TMA_MULTICAST_TARGET := 0
+ifeq ($(ARCH),sm_100)
+override TMA_MULTICAST_TARGET := 100
+else ifeq ($(ARCH),sm_103)
+override TMA_MULTICAST_TARGET := 103
+endif
+TMA_MULTICAST_FLAGS := -DTMA_MULTICAST_TARGET=$(TMA_MULTICAST_TARGET)
+
 # Auto-detect all .cu files and derive targets
 CUDA_SOURCES := $(wildcard *.cu)
 # Filter out files that require external build systems (PyTorch extensions)
@@ -82,10 +93,10 @@ optimized_warp_specialized_cluster_pipeline_verify$(SUFFIX): optimized_warp_spec
 	$(NVCC) $(NVCC_FLAGS) -std=c++17 -rdc=true -DVERIFY=1 $(INCLUDES) -o $@ $< $(CUDA_NVTX_LDFLAGS)
 
 tma_multicast_cluster$(SUFFIX): tma_multicast_cluster.cu $(COMMON_HEADERS) $(CUDA_NVTX_DEPS)
-	$(NVCC) $(NVCC_FLAGS) -std=c++17 -rdc=true $(INCLUDES) -lcuda -o $@ $< $(CUDA_NVTX_LDFLAGS)
+	$(NVCC) $(NVCC_FLAGS) $(TMA_MULTICAST_FLAGS) -std=c++17 -rdc=true $(INCLUDES) -lcuda -o $@ $< $(CUDA_NVTX_LDFLAGS)
 
 tma_multicast_cluster_verify$(SUFFIX): tma_multicast_cluster.cu $(COMMON_HEADERS) $(CUDA_NVTX_DEPS)
-	$(NVCC) $(NVCC_FLAGS) -std=c++17 -rdc=true -DVERIFY=1 $(INCLUDES) -lcuda -o $@ $< $(CUDA_NVTX_LDFLAGS)
+	$(NVCC) $(NVCC_FLAGS) $(TMA_MULTICAST_FLAGS) -std=c++17 -rdc=true -DVERIFY=1 $(INCLUDES) -lcuda -o $@ $< $(CUDA_NVTX_LDFLAGS)
 
 tma_multicast_baseline$(SUFFIX): tma_multicast_baseline.cu $(COMMON_HEADERS) $(CUDA_NVTX_DEPS)
 	$(NVCC) $(NVCC_FLAGS) -std=c++17 -rdc=true $(INCLUDES) -lcuda -o $@ $< $(CUDA_NVTX_LDFLAGS)

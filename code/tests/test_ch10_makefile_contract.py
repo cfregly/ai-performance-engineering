@@ -6,6 +6,8 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
+
 CODE_ROOT = Path(__file__).resolve().parents[1]
 CHAPTER_ROOT = CODE_ROOT / "ch10"
 REQUIRED_TORCH_EXTENSION_SOURCES = {
@@ -16,6 +18,12 @@ REQUIRED_TORCH_EXTENSION_SOURCES = {
 }
 TORCH_EXTENSION_MARKERS = ("torch/extension.h", "ATen/", "PYBIND11_MODULE")
 MAIN_PATTERN = re.compile(r"\bint\s+main\s*\(")
+TMA_MULTICAST_TARGETS = {
+    "sm_100": "100",
+    "sm_103": "103",
+    "sm_120": "0",
+    "sm_121": "0",
+}
 
 
 def _standalone_build_output() -> str:
@@ -54,3 +62,36 @@ def test_every_cuda_source_with_main_is_built_as_a_standalone_executable() -> No
     assert "tcgen05_blackwell.cu" in standalone_sources
     for source_name in standalone_sources:
         assert source_name in build_output
+
+
+@pytest.mark.parametrize(("architecture", "feature_target"), TMA_MULTICAST_TARGETS.items())
+def test_tma_multicast_build_selects_an_explicit_feature_target(
+    architecture: str,
+    feature_target: str,
+) -> None:
+    suffix = architecture.replace("_", "")
+    result = subprocess.run(
+        [
+            "make",
+            "-B",
+            "-n",
+            f"ARCH={architecture}",
+            f"tma_multicast_cluster_{suffix}",
+        ],
+        cwd=CHAPTER_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert f"-DTMA_MULTICAST_TARGET={feature_target}" in result.stdout
+
+
+def test_tma_multicast_has_the_cuda_13_sm103_compatibility_path() -> None:
+    source = (CHAPTER_ROOT / "tma_multicast_cluster.cu").read_text(encoding="utf-8")
+
+    assert "#if TMA_MULTICAST_TARGET == 100 || TMA_MULTICAST_TARGET == 103" in source
+    assert "#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)" not in source
+    assert "__CUDA_ARCH_SPECIFIC__ == 1030" in source
+    assert "cp.async.bulk.tensor.2d.shared::cluster.global.tile" in source
+    assert ".mbarrier::complete_tx::bytes.multicast::cluster" in source

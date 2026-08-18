@@ -14,6 +14,7 @@
 #include <cuda/barrier>
 #include <cuda_runtime.h>
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -25,6 +26,25 @@
 namespace cg = cooperative_groups;
 namespace cptx = cuda::ptx;
 namespace cde = cuda::device::experimental;
+
+#ifndef TMA_MULTICAST_TARGET
+#error "Build tma_multicast_cluster.cu through its Makefile target"
+#endif
+
+#if TMA_MULTICAST_TARGET != 0 && TMA_MULTICAST_TARGET != 100 && \
+    TMA_MULTICAST_TARGET != 103
+#error "TMA_MULTICAST_TARGET must be 0, 100, or 103"
+#endif
+
+#if defined(__CUDA_ARCH__) && TMA_MULTICAST_TARGET == 100 && \
+    (!defined(__CUDA_ARCH_SPECIFIC__) || __CUDA_ARCH_SPECIFIC__ != 1000)
+#error "TMA_MULTICAST_TARGET=100 requires compute_100a"
+#endif
+
+#if defined(__CUDA_ARCH__) && TMA_MULTICAST_TARGET == 103 && \
+    (!defined(__CUDA_ARCH_SPECIFIC__) || __CUDA_ARCH_SPECIFIC__ != 1030)
+#error "TMA_MULTICAST_TARGET=103 requires compute_103a"
+#endif
 
 #define CUDA_CHECK(call)                                                       \
     do {                                                                       \
@@ -49,6 +69,37 @@ constexpr int BLOCK_SIZE = 128;
 constexpr int CLUSTER_M = 16;
 constexpr int CLUSTER_N = 1;
 
+#if TMA_MULTICAST_TARGET == 103
+// CUDA 13.0 bundles CCCL 3.0.1, whose generated wrapper omitted SM103a.
+// NVIDIA added this exact architecture guard and PTX instruction in CCCL 3.1.
+// https://github.com/NVIDIA/cccl/commit/f32097d47a1a65527bcb3062277c791655408b30
+__device__ __forceinline__ void issue_tma_multicast_sm103(
+    void* dst,
+    const CUtensorMap* tensor_map,
+    const int (&coords)[2],
+    std::uint64_t* barrier,
+    std::uint16_t cta_mask) {
+#if defined(__CUDA_ARCH_SPECIFIC__) && __CUDA_ARCH_SPECIFIC__ == 1030
+    const auto dst_smem =
+        static_cast<std::uint32_t>(__cvta_generic_to_shared(dst));
+    const auto barrier_smem =
+        static_cast<std::uint32_t>(__cvta_generic_to_shared(barrier));
+    asm volatile(
+        "cp.async.bulk.tensor.2d.shared::cluster.global.tile"
+        ".mbarrier::complete_tx::bytes.multicast::cluster "
+        "[%0], [%1, {%2, %3}], [%4], %5;"
+        :
+        : "r"(dst_smem),
+          "l"(tensor_map),
+          "r"(coords[0]),
+          "r"(coords[1]),
+          "r"(barrier_smem),
+          "h"(cta_mask)
+        : "memory");
+#endif
+}
+#endif
+
 //============================================================================
 // TMA Multicast Kernel
 //============================================================================
@@ -61,7 +112,7 @@ void tma_multicast_gemm_kernel(
     float* __restrict__ C,        // [M, N]
     int M, int N, int K
 ) {
-#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+#if TMA_MULTICAST_TARGET == 100 || TMA_MULTICAST_TARGET == 103
     cg::cluster_group cluster = cg::this_cluster();
     const int cluster_rank = cluster.block_rank();
 
@@ -111,6 +162,14 @@ void tma_multicast_gemm_kernel(
             // Coordinates follow the descriptor's dimension order (row, col).
             const int coords[2] = {k_base, tile_n * TILE_N};
             const uint16_t cta_mask = static_cast<uint16_t>((1u << (CLUSTER_M * CLUSTER_N)) - 1u);
+#if TMA_MULTICAST_TARGET == 103
+            issue_tma_multicast_sm103(
+                &B_smem[0][0],
+                &b_desc,
+                coords,
+                cuda::device::barrier_native_handle(*bar),
+                cta_mask);
+#else
             cptx::cp_async_bulk_tensor(
                 cptx::space_cluster,
                 cptx::space_global,
@@ -119,6 +178,7 @@ void tma_multicast_gemm_kernel(
                 coords,
                 cuda::device::barrier_native_handle(*bar),
                 cta_mask);
+#endif
         }
 
         // Each CTA loads its own A tile while the multicast B load is in flight.
@@ -219,6 +279,13 @@ int main(int argc, char** argv) {
 
     std::printf("TMA Multicast GEMM Example\n");
     std::printf("Device: %s (SM %d.%d)\n", prop.name, prop.major, prop.minor);
+
+#if TMA_MULTICAST_TARGET == 0
+    std::printf(
+        "SKIPPED: compile target does not provide CTA cluster TMA multicast\n"
+        "TIME_MS: 0.0\n");
+    return 0;
+#endif
 
     if (prop.major < 9) {
         std::printf("SKIPPED: requires SM90+ for TMA/cluster multicast\nTIME_MS: 0.0\n");
