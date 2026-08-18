@@ -103,6 +103,7 @@ jobs:
             tests/test_update_history_index_cli.py \
             tests/test_benchmark_e2e_sweep.py \
             tests/test_run_manifest_provenance.py \
+            tests/test_run_benchmarks_cuda_wrapper_regression.py \
             tests/test_environment_validation_enforcement.py \
             tests/test_audit_silent_fallbacks.py \
             tests/test_optimize.py \
