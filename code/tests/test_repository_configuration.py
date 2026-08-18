@@ -455,6 +455,7 @@ def test_benchmark_validation_has_blocking_campaign_checks() -> None:
     assert "tests/test_llm_patch_worker.py" in contract_command
     assert "tests/test_mcts_optimizer.py" in contract_command
     assert "tests/test_ch10_makefile_contract.py" in contract_command
+    assert "tests/test_tma_multicast_tool.py" in contract_command
     assert "tests/test_dual_arch_make_contract.py" in contract_command
     assert "tests/test_run_benchmarks_cuda_wrapper_regression.py" in contract_command
     assert "test_ch04_nvshmem_torchrun_specs_preserve_variant_contracts" in contract_command

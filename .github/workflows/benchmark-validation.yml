@@ -114,6 +114,7 @@ jobs:
             tests/test_llm_patch_worker.py \
             tests/test_mcts_optimizer.py \
             tests/test_ch10_makefile_contract.py \
+            tests/test_tma_multicast_tool.py \
             tests/test_dual_arch_make_contract.py \
             tests/test_repository_configuration.py \
             tests/test_setup_bootstrap.py \

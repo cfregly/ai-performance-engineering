@@ -64,6 +64,10 @@ constexpr int TILE_M = 4;
 constexpr int TILE_N = 128;
 constexpr int TILE_K = 128;
 constexpr int BLOCK_SIZE = 128;
+constexpr size_t B_SMEM_BYTES =
+    static_cast<size_t>(TILE_K) * TILE_N * sizeof(float);
+constexpr size_t DYNAMIC_SMEM_BYTES = B_SMEM_BYTES;
+static_assert(DYNAMIC_SMEM_BYTES == 65536);
 
 // Cluster configuration: 16x1 cluster along M (shares B tiles).
 constexpr int CLUSTER_M = 16;
@@ -112,6 +116,8 @@ void tma_multicast_gemm_kernel(
     float* __restrict__ C,        // [M, N]
     int M, int N, int K
 ) {
+    extern __shared__ __align__(128) unsigned char smem_raw[];
+    auto* B_smem = reinterpret_cast<float (*)[TILE_N]>(smem_raw);
 #if TMA_MULTICAST_TARGET == 100 || TMA_MULTICAST_TARGET == 103
     cg::cluster_group cluster = cg::this_cluster();
     const int cluster_rank = cluster.block_rank();
@@ -128,7 +134,6 @@ void tma_multicast_gemm_kernel(
     const int thread_n = (tid % THREADS_PER_ROW) * COLS_PER_THREAD;  // 0..124
 
     __shared__ alignas(128) float A_smem[TILE_M][TILE_K];
-    __shared__ alignas(128) float B_smem[TILE_K][TILE_N];
 
     using block_barrier = cuda::barrier<cuda::thread_scope_block>;
     __shared__ alignas(block_barrier) unsigned char barrier_storage[sizeof(block_barrier)];
@@ -147,7 +152,7 @@ void tma_multicast_gemm_kernel(
 
         block_barrier::arrival_token token;
         if (tid == 0) {
-            token = cuda::device::barrier_arrive_tx(*bar, 1, sizeof(B_smem));
+            token = cuda::device::barrier_arrive_tx(*bar, 1, B_SMEM_BYTES);
         } else {
             token = bar->arrive();
         }
@@ -222,7 +227,6 @@ void tma_multicast_gemm_kernel(
     const int tid = threadIdx.x;
 
     __shared__ float A_smem[TILE_M][TILE_K];
-    __shared__ float B_smem[TILE_K][TILE_N];
     constexpr int COLS_PER_THREAD = 4;
     constexpr int THREADS_PER_ROW = TILE_N / COLS_PER_THREAD;
     float acc[COLS_PER_THREAD] = {0.0f};
@@ -287,9 +291,32 @@ int main(int argc, char** argv) {
 #endif
 
     if (prop.major < 9) {
-        std::printf("SKIPPED: requires SM90+ for TMA/cluster multicast\nTIME_MS: 0.0\n");
-        return 0;
+        std::printf("SKIPPED: requires SM90+ for TMA/cluster multicast\n");
+        return 3;
     }
+
+    cudaFuncAttributes kernel_attributes{};
+    CUDA_CHECK(cudaFuncGetAttributes(
+        &kernel_attributes,
+        tma_multicast_gemm_kernel));
+    int max_shared_bytes = 0;
+    CUDA_CHECK(cudaDeviceGetAttribute(
+        &max_shared_bytes,
+        cudaDevAttrMaxSharedMemoryPerBlockOptin,
+        0));
+    const size_t required_shared_bytes =
+        DYNAMIC_SMEM_BYTES + kernel_attributes.sharedSizeBytes;
+    if (required_shared_bytes > static_cast<size_t>(max_shared_bytes)) {
+        std::printf(
+            "SKIPPED: multicast kernel requires %zu bytes of shared memory, device permits %d\n",
+            required_shared_bytes,
+            max_shared_bytes);
+        return 3;
+    }
+    CUDA_CHECK(cudaFuncSetAttribute(
+        tma_multicast_gemm_kernel,
+        cudaFuncAttributeMaxDynamicSharedMemorySize,
+        static_cast<int>(DYNAMIC_SMEM_BYTES)));
 
     int M = 2048;
     int N = 2048;
@@ -374,7 +401,7 @@ int main(int argc, char** argv) {
     cudaLaunchConfig_t config{};
     config.gridDim = grid;
     config.blockDim = block;
-    config.dynamicSmemBytes = 0;
+    config.dynamicSmemBytes = DYNAMIC_SMEM_BYTES;
     config.stream = 0;
     config.attrs = attrs;
     config.numAttrs = 1;

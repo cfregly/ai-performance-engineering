@@ -34,12 +34,15 @@ BASE_TARGETS := $(STANDALONE_SOURCES:.cu=)
 TARGETS := $(addsuffix $(SUFFIX), $(BASE_TARGETS))
 VERIFY_TARGETS := $(addsuffix _verify$(SUFFIX), $(BASE_TARGETS))
 
-.PHONY: all clean test compare b200 gb10 b300 gb300 profile-nsys profile-ncu profile-hta profile-perf profile-all run test-gds demo help
+.PHONY: all clean test compare verify-tma-multicast b200 gb10 b300 gb300 profile-nsys profile-ncu profile-hta profile-perf profile-all run test-gds demo help
 
 all: $(TARGETS)
 	@echo "Building all Chapter 10 examples with $(ARCH) (CUDA $(CUDA_VERSION))"
 	@echo "✓ Targeting $(ARCH_NAME)"
 	@echo "✓ Built $(words $(BASE_TARGETS)) CUDA examples"
+
+verify-tma-multicast: tma_multicast_baseline_verify$(SUFFIX) tma_multicast_cluster_verify$(SUFFIX)
+	@echo "✓ Built Chapter 10 TMA multicast verification binaries for $(ARCH)"
 
 # Default pattern rule for most .cu files
 %$(SUFFIX): %.cu $(COMMON_HEADERS) $(CUDA_NVTX_DEPS)
@@ -99,10 +102,10 @@ tma_multicast_cluster_verify$(SUFFIX): tma_multicast_cluster.cu $(COMMON_HEADERS
 	$(NVCC) $(NVCC_FLAGS) $(TMA_MULTICAST_FLAGS) -std=c++17 -rdc=true -DVERIFY=1 $(INCLUDES) -lcuda -o $@ $< $(CUDA_NVTX_LDFLAGS)
 
 tma_multicast_baseline$(SUFFIX): tma_multicast_baseline.cu $(COMMON_HEADERS) $(CUDA_NVTX_DEPS)
-	$(NVCC) $(NVCC_FLAGS) -std=c++17 -rdc=true $(INCLUDES) -lcuda -o $@ $< $(CUDA_NVTX_LDFLAGS)
+	$(NVCC) $(NVCC_FLAGS) $(TMA_MULTICAST_FLAGS) -std=c++17 -rdc=true $(INCLUDES) -lcuda -o $@ $< $(CUDA_NVTX_LDFLAGS)
 
 tma_multicast_baseline_verify$(SUFFIX): tma_multicast_baseline.cu $(COMMON_HEADERS) $(CUDA_NVTX_DEPS)
-	$(NVCC) $(NVCC_FLAGS) -std=c++17 -rdc=true -DVERIFY=1 $(INCLUDES) -lcuda -o $@ $< $(CUDA_NVTX_LDFLAGS)
+	$(NVCC) $(NVCC_FLAGS) $(TMA_MULTICAST_FLAGS) -std=c++17 -rdc=true -DVERIFY=1 $(INCLUDES) -lcuda -o $@ $< $(CUDA_NVTX_LDFLAGS)
 
 optimized_dsmem_reduction$(SUFFIX): optimized_dsmem_reduction.cu $(COMMON_HEADERS) $(CUDA_NVTX_DEPS)
 	$(NVCC) $(NVCC_FLAGS) -rdc=true $(INCLUDES) -o $@ $< $(CUDA_NVTX_LDFLAGS)
@@ -157,7 +160,7 @@ gb300: clean all
 compare: clean
 	@set -e; for arch in $(ARCH_LIST); do \
 		echo ">>> Building $${arch}..."; \
-		$(MAKE) ARCH=$${arch} all; \
+		$(MAKE) ARCH=$${arch} all verify-tma-multicast; \
 	done
 
 test: all

@@ -70,21 +70,61 @@ def test_tma_multicast_build_selects_an_explicit_feature_target(
     feature_target: str,
 ) -> None:
     suffix = architecture.replace("_", "")
+    for target in (
+        f"tma_multicast_baseline_{suffix}",
+        f"tma_multicast_cluster_{suffix}",
+    ):
+        result = subprocess.run(
+            ["make", "-B", "-n", f"ARCH={architecture}", target],
+            cwd=CHAPTER_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        assert f"-DTMA_MULTICAST_TARGET={feature_target}" in result.stdout
+
+
+@pytest.mark.parametrize(("architecture", "feature_target"), TMA_MULTICAST_TARGETS.items())
+def test_tma_multicast_verification_target_builds_both_binaries(
+    architecture: str,
+    feature_target: str,
+) -> None:
+    suffix = architecture.replace("_", "")
     result = subprocess.run(
-        [
-            "make",
-            "-B",
-            "-n",
-            f"ARCH={architecture}",
-            f"tma_multicast_cluster_{suffix}",
-        ],
+        ["make", "-B", "-n", f"ARCH={architecture}", "verify-tma-multicast"],
         cwd=CHAPTER_ROOT,
         check=True,
         capture_output=True,
         text=True,
     )
 
-    assert f"-DTMA_MULTICAST_TARGET={feature_target}" in result.stdout
+    assert result.stdout.count("-DVERIFY=1") == 2
+    baseline_command = next(
+        line for line in result.stdout.splitlines() if "tma_multicast_baseline.cu" in line
+    )
+    cluster_command = next(
+        line for line in result.stdout.splitlines() if "tma_multicast_cluster.cu" in line
+    )
+    assert f"-DTMA_MULTICAST_TARGET={feature_target}" in baseline_command
+    assert f"-o tma_multicast_baseline_verify_{suffix}" in baseline_command
+    assert f"-DTMA_MULTICAST_TARGET={feature_target}" in cluster_command
+    assert f"-o tma_multicast_cluster_verify_{suffix}" in cluster_command
+
+
+def test_compare_dry_run_builds_tma_multicast_verification_for_every_architecture() -> None:
+    result = subprocess.run(
+        ["make", "-B", "-n", "ARCH=sm_100", "compare"],
+        cwd=CHAPTER_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    for architecture in TMA_MULTICAST_TARGETS:
+        suffix = architecture.replace("_", "")
+        assert f"-o tma_multicast_baseline_verify_{suffix}" in result.stdout
+        assert f"-o tma_multicast_cluster_verify_{suffix}" in result.stdout
 
 
 def test_tma_multicast_has_the_cuda_13_sm103_compatibility_path() -> None:
@@ -97,8 +137,14 @@ def test_tma_multicast_has_the_cuda_13_sm103_compatibility_path() -> None:
     assert ".mbarrier::complete_tx::bytes.multicast::cluster" in source
 
 
-def test_tma_multicast_unsupported_target_uses_the_cuda_skip_contract() -> None:
-    source = (CHAPTER_ROOT / "tma_multicast_cluster.cu").read_text(encoding="utf-8")
+@pytest.mark.parametrize(
+    "source_name",
+    ["tma_multicast_baseline.cu", "tma_multicast_cluster.cu"],
+)
+def test_tma_multicast_unsupported_target_uses_the_cuda_skip_contract(
+    source_name: str,
+) -> None:
+    source = (CHAPTER_ROOT / source_name).read_text(encoding="utf-8")
     unsupported_branch = source.split(
         "#if TMA_MULTICAST_TARGET == 0",
         maxsplit=1,
@@ -107,6 +153,59 @@ def test_tma_multicast_unsupported_target_uses_the_cuda_skip_contract() -> None:
     assert '"SKIPPED:' in unsupported_branch
     assert "return 3;" in unsupported_branch
     assert "TIME_MS" not in unsupported_branch
+
+
+@pytest.mark.parametrize(
+    "source_name",
+    ["tma_multicast_baseline.cu", "tma_multicast_cluster.cu"],
+)
+def test_tma_cluster_gemm_tiles_use_opt_in_dynamic_shared_memory(
+    source_name: str,
+) -> None:
+    source = (CHAPTER_ROOT / source_name).read_text(encoding="utf-8")
+
+    assert "constexpr int TILE_M = 4;" in source
+    assert "constexpr int TILE_N = 128;" in source
+    assert "constexpr int TILE_K = 128;" in source
+    assert (
+        "constexpr size_t B_SMEM_BYTES =\n    static_cast<size_t>(TILE_K) * TILE_N * sizeof(float);"
+    ) in source
+    assert "constexpr size_t DYNAMIC_SMEM_BYTES = B_SMEM_BYTES;" in source
+    assert "static_assert(DYNAMIC_SMEM_BYTES == 65536);" in source
+    assert "extern __shared__ __align__(128) unsigned char smem_raw[];" in source
+    assert "reinterpret_cast<float (*)[TILE_N]>(smem_raw)" in source
+    assert source.count("__shared__ alignas(128) float A_smem") == 1
+    assert source.count("__shared__ float A_smem") == 1
+    assert "__shared__ alignas(128) float B_smem" not in source
+    assert "__shared__ float B_smem" not in source
+    assert "cudaDevAttrMaxSharedMemoryPerBlockOptin" in source
+    assert "DYNAMIC_SMEM_BYTES + kernel_attributes.sharedSizeBytes" in source
+    assert "cudaFuncAttributeMaxDynamicSharedMemorySize" in source
+    assert "static_cast<int>(DYNAMIC_SMEM_BYTES)" in source
+    assert "config.dynamicSmemBytes = DYNAMIC_SMEM_BYTES;" in source
+
+
+def test_tma_multicast_dynamic_b_tile_preserves_transaction_bytes() -> None:
+    source = (CHAPTER_ROOT / "tma_multicast_cluster.cu").read_text(encoding="utf-8")
+
+    assert "barrier_arrive_tx(*bar, 1, B_SMEM_BYTES)" in source
+    assert "barrier_arrive_tx(*bar, 1, sizeof(B_smem))" not in source
+
+
+@pytest.mark.parametrize(
+    ("source_name", "skip_count"),
+    [("tma_multicast_baseline.cu", 3), ("tma_multicast_cluster.cu", 3)],
+)
+def test_tma_cluster_gemm_sources_use_the_cuda_skip_contract(
+    source_name: str,
+    skip_count: int,
+) -> None:
+    source = (CHAPTER_ROOT / source_name).read_text(encoding="utf-8")
+
+    assert '"SKIP:' not in source
+    assert "TIME_MS: 0.0" not in source
+    assert source.count('"SKIPPED:') == skip_count
+    assert source.count("return 3;") == skip_count
 
 
 def test_flash_attention_tma_pipeline_uses_opt_in_dynamic_shared_memory() -> None:

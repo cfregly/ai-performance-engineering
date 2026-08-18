@@ -32,12 +32,33 @@ def _run(cmd: list[str], cwd: Path) -> None:
     subprocess.run(cmd, cwd=cwd, check=True)
 
 
+def _run_demo_binary(cmd: list[str], cwd: Path) -> int:
+    result = subprocess.run(
+        cmd,
+        cwd=cwd,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.stdout:
+        sys.stdout.write(result.stdout)
+    if result.stderr:
+        sys.stderr.write(result.stderr)
+
+    combined_output = f"{result.stdout}\n{result.stderr}"
+    if result.returncode == 3 and "SKIPPED:" in combined_output:
+        return 3
+
+    result.check_returncode()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the Chapter 10 TMA multicast demo binaries.")
     parser.add_argument(
         "--no-build",
         action="store_true",
-        help="Skip building; assumes the binaries are already built.",
+        help="Skip building. Assumes the binaries are already built.",
     )
     parser.add_argument(
         "--baseline-only",
@@ -69,10 +90,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if run_baseline:
         print(f"\n=== {baseline} ===")
-        _run([f"./{baseline}"], cwd=chapter_dir)
+        if _run_demo_binary([f"./{baseline}"], cwd=chapter_dir) == 3:
+            return 3
     if run_cluster:
         print(f"\n=== {cluster} ===")
-        _run([f"./{cluster}"], cwd=chapter_dir)
+        if _run_demo_binary([f"./{cluster}"], cwd=chapter_dir) == 3:
+            return 3
 
     return 0
 

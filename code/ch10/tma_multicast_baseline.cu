@@ -17,6 +17,14 @@
 #include "../core/common/headers/cuda_verify.cuh"
 #include "../core/common/nvtx_utils.cuh"
 
+#ifndef TMA_MULTICAST_TARGET
+#error "Build tma_multicast_baseline.cu through its Makefile target"
+#endif
+
+#if TMA_MULTICAST_TARGET != 0 && TMA_MULTICAST_TARGET != 100 && \
+    TMA_MULTICAST_TARGET != 103
+#error "TMA_MULTICAST_TARGET must be 0, 100, or 103"
+#endif
 
 #define CUDA_CHECK(call)                                                       \
     do {                                                                       \
@@ -36,6 +44,10 @@ constexpr int TILE_M = 4;
 constexpr int TILE_N = 128;
 constexpr int TILE_K = 128;
 constexpr int BLOCK_SIZE = 128;
+constexpr size_t B_SMEM_BYTES =
+    static_cast<size_t>(TILE_K) * TILE_N * sizeof(float);
+constexpr size_t DYNAMIC_SMEM_BYTES = B_SMEM_BYTES;
+static_assert(DYNAMIC_SMEM_BYTES == 65536);
 
 // Cluster configuration: 16x1 cluster along M (shares B tiles).
 constexpr int CLUSTER_M = 16;
@@ -48,6 +60,8 @@ void tma_nomulticast_gemm_kernel(
     float* __restrict__ C,        // [M, N]
     int M, int N, int K
 	) {
+    extern __shared__ __align__(128) unsigned char smem_raw[];
+    auto* B_smem = reinterpret_cast<float (*)[TILE_N]>(smem_raw);
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
     const int tile_m = blockIdx.x;
 	    const int tile_n = blockIdx.y;
@@ -61,7 +75,6 @@ void tma_nomulticast_gemm_kernel(
     const int thread_n = (tid % THREADS_PER_ROW) * COLS_PER_THREAD;  // 0..124
 
     __shared__ alignas(128) float A_smem[TILE_M][TILE_K];
-    __shared__ alignas(128) float B_smem[TILE_K][TILE_N];
 
 	    float acc[COLS_PER_THREAD] = {0.0f};
 	    const int num_k_tiles = (K + TILE_K - 1) / TILE_K;
@@ -115,7 +128,6 @@ void tma_nomulticast_gemm_kernel(
     const int tid = threadIdx.x;
 
     __shared__ float A_smem[TILE_M][TILE_K];
-    __shared__ float B_smem[TILE_K][TILE_N];
     constexpr int COLS_PER_THREAD = 4;
     constexpr int THREADS_PER_ROW = TILE_N / COLS_PER_THREAD;
     float acc[COLS_PER_THREAD] = {0.0f};
@@ -169,10 +181,39 @@ int main(int argc, char** argv) {
     std::printf("TMA Cluster GEMM Baseline (No Multicast)\n");
     std::printf("Device: %s (SM %d.%d)\n", prop.name, prop.major, prop.minor);
 
+#if TMA_MULTICAST_TARGET == 0
+    std::printf(
+        "SKIPPED: compile target does not provide a comparable CTA cluster TMA multicast pair\n");
+    return 3;
+#endif
+
     if (prop.major < 9) {
-        std::printf("SKIPPED: requires SM90+ for TMA/cluster launch\nTIME_MS: 0.0\n");
-        return 0;
+        std::printf("SKIPPED: requires SM90+ for TMA/cluster launch\n");
+        return 3;
     }
+
+    cudaFuncAttributes kernel_attributes{};
+    CUDA_CHECK(cudaFuncGetAttributes(
+        &kernel_attributes,
+        tma_nomulticast_gemm_kernel));
+    int max_shared_bytes = 0;
+    CUDA_CHECK(cudaDeviceGetAttribute(
+        &max_shared_bytes,
+        cudaDevAttrMaxSharedMemoryPerBlockOptin,
+        0));
+    const size_t required_shared_bytes =
+        DYNAMIC_SMEM_BYTES + kernel_attributes.sharedSizeBytes;
+    if (required_shared_bytes > static_cast<size_t>(max_shared_bytes)) {
+        std::printf(
+            "SKIPPED: baseline requires %zu bytes of shared memory, device permits %d\n",
+            required_shared_bytes,
+            max_shared_bytes);
+        return 3;
+    }
+    CUDA_CHECK(cudaFuncSetAttribute(
+        tma_nomulticast_gemm_kernel,
+        cudaFuncAttributeMaxDynamicSharedMemorySize,
+        static_cast<int>(DYNAMIC_SMEM_BYTES)));
 
     int M = 2048;
     int N = 2048;
@@ -233,7 +274,7 @@ int main(int argc, char** argv) {
     cudaLaunchConfig_t config{};
     config.gridDim = grid;
     config.blockDim = block;
-    config.dynamicSmemBytes = 0;
+    config.dynamicSmemBytes = DYNAMIC_SMEM_BYTES;
     config.stream = 0;
     config.attrs = attrs;
     config.numAttrs = 1;
