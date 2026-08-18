@@ -282,9 +282,8 @@ int main(int argc, char** argv) {
 
 #if TMA_MULTICAST_TARGET == 0
     std::printf(
-        "SKIPPED: compile target does not provide CTA cluster TMA multicast\n"
-        "TIME_MS: 0.0\n");
-    return 0;
+        "SKIPPED: compile target does not provide CTA cluster TMA multicast\n");
+    return 3;
 #endif
 
     if (prop.major < 9) {

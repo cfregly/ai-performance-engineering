@@ -95,3 +95,15 @@ def test_tma_multicast_has_the_cuda_13_sm103_compatibility_path() -> None:
     assert "__CUDA_ARCH_SPECIFIC__ == 1030" in source
     assert "cp.async.bulk.tensor.2d.shared::cluster.global.tile" in source
     assert ".mbarrier::complete_tx::bytes.multicast::cluster" in source
+
+
+def test_tma_multicast_unsupported_target_uses_the_cuda_skip_contract() -> None:
+    source = (CHAPTER_ROOT / "tma_multicast_cluster.cu").read_text(encoding="utf-8")
+    unsupported_branch = source.split(
+        "#if TMA_MULTICAST_TARGET == 0",
+        maxsplit=1,
+    )[1].split("#endif", maxsplit=1)[0]
+
+    assert '"SKIPPED:' in unsupported_branch
+    assert "return 3;" in unsupported_branch
+    assert "TIME_MS" not in unsupported_branch
