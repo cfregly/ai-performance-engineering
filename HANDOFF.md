@@ -30,6 +30,17 @@ GPU ownership was yielded on 2026-08-16. Another task owns both B200 GPUs. Do no
 
 The paused run ID is `20260816_autoresearch_b200_full_13de588b7`. Its orchestrator is not live. No benchmark or profiler child from this run remains. Keep this package as historical evidence. Do not resume it after installing the next checkpoint. The new resume contract requires the stored clean commit and execution provenance to match the current checkout, so a resumed run cannot combine measurements from two source revisions.
 
+### Latest non-B200 checkpoint
+
+Source checkpoint `f7ec105e05941c6c6a58e9f064e1ffe041dd00af` is published to both `main` and `codex/actions-node24-ci-20260816`. No B200 command, SSH probe, benchmark, profiler, workflow, or runner was used while preparing or validating it.
+
+- [Benchmark Validation run 32093636361](https://github.com/cfregly/ai-performance-engineering/actions/runs/32093636361) passed in 3 minutes 37 seconds. Contract tests, dashboard tests and build, Ruff, mypy, shell checks, the silent-fallback audit, and all 932 benchmark contracts passed.
+- [Dual-Architecture Compare run 32093636344](https://github.com/cfregly/ai-performance-engineering/actions/runs/32093636344) passed in 33 minutes 9 seconds. It completed `sm_100`, `sm_103`, `sm_120`, and `sm_121`. Each architecture compiled the normal and verification forms of `tma_multicast_baseline` and `tma_multicast_cluster`.
+- The broad macOS CPU suite passed 2,453 tests, skipped 516 capability-limited tests, and failed 0 tests in 264.57 seconds. Six Triton-only test files were excluded because Triton has no macOS ARM wheel.
+- The changed-file gate passed 110 tests and skipped 2 Linux-only tests. Pinned Ruff, Python syntax checks, four-architecture Make dry runs, workflow YAML parsing, the silent-fallback audit, and `git diff --check` passed.
+
+The Chapter 10 fix keeps the 2 KiB A tile in static shared memory and moves the 64 KiB B tile into aligned opt-in dynamic shared memory. Runtime checks include the remaining static allocation before launch. SM120 and SM121 now report a truthful exit-code-3 skip for both sides of the unsupported multicast comparison. The direct demo preserves the `SKIPPED:` reason without a traceback. CPU validation also handles macOS pinned staging, synthetic Linux fixtures, resolved temporary paths, and hard environment errors without false portable-mode recovery advice.
+
 Tier 1 completed all six targets before the pause. Four succeeded. Two exposed defects:
 
 - `labs/block_scaling:block_scaling` failed because the CUTLASS 4.1 example called `cute.make_fragment`, which the pinned CUTLASS DSL 4.5.2 runtime replaced with `cute.make_rmem_tensor`. The baseline completed at 0.117482032 ms and all baseline profilers succeeded. The local compatibility fix and CPU regression tests are complete. B200 verification remains.
@@ -217,8 +228,8 @@ Choose a new `$RUN_ID` after reviewing the historical paused package and confirm
 ## Remaining validation phases
 
 1. Keep all B200 GPU work stopped until the other task releases both GPUs.
-2. Publish the current Node 24 and dual-build evidence checkpoint to `main` and verify its GitHub Actions runs.
-3. Continue CPU-safe regression, audit, lint, and coverage work while the GPUs remain occupied.
+2. Keep source checkpoint `f7ec105e05941c6c6a58e9f064e1ffe041dd00af` as the verified non-B200 source while the GPUs remain occupied.
+3. Continue only CPU-safe regression, audit, lint, and coverage work while the GPUs remain occupied.
 4. Register and attest one eligible Tier 1 runner. If no compatible canonical history exists, make one manual `main` dispatch with `bootstrap_history` and `accept_history_anchor` set to `true`, plus a public `acceptance_note`.
 5. Finish the FlashAttention ALiBi contract investigation with the saved tier 1 profiler evidence.
 6. Install the published checkpoint on the B200 worktree after GPU ownership returns.
