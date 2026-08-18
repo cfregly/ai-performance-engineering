@@ -544,6 +544,10 @@ def test_run_profile_subprocess_streams_output_to_logs(tmp_path: Path) -> None:
     assert json.loads(log_base.with_suffix(".command.json").read_text())["command"][0] == sys.executable
 
 
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="requires Linux /proc process-group enumeration",
+)
 def test_run_profile_subprocess_reaps_lingering_process_group_members(tmp_path: Path) -> None:
     log_base = tmp_path / "lingering"
     child_pid_path = tmp_path / "lingering_child.pid"

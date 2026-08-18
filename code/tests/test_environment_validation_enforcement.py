@@ -13,18 +13,31 @@ import sys
 import tempfile
 import textwrap
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Optional
 
 import pytest
 import torch
 
+from core.harness import validity_checks
 from core.benchmark.models import BenchmarkResult as PydanticBenchmarkResult, TimingStats
-from core.harness.benchmark_harness import BenchmarkConfig, BenchmarkHarness, BaseBenchmark, ExecutionMode
+from core.harness.benchmark_harness import (
+    BaseBenchmark,
+    BenchmarkConfig,
+    BenchmarkHarness,
+    ExecutionMode,
+    _format_environment_invalid_message,
+)
 from core.harness.validity_checks import (
     EnvironmentProbe,
     EnvironmentValidationResult,
     validate_environment,
 )
+
+
+@pytest.fixture(autouse=True)
+def _use_synthetic_linux_platform(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(validity_checks, "sys", SimpleNamespace(platform="linux"))
 
 
 def _write_file(root: Path, relpath: str, content: str) -> None:
@@ -107,6 +120,18 @@ def _valid_environment_result() -> EnvironmentValidationResult:
         details={},
         notices=[],
     )
+
+
+def test_environment_invalid_message_does_not_offer_ineffective_portable_recovery() -> None:
+    message = _format_environment_invalid_message(
+        ["Non-Linux platform 'darwin' is not supported for benchmark validity checks."]
+    )
+
+    assert message == (
+        "ENVIRONMENT INVALID: Non-Linux platform 'darwin' is not supported for benchmark validity checks."
+    )
+    assert "--validity-profile portable" not in message
+    assert "--allow-portable-expectations-update" not in message
 
 
 def _make_subprocess_result(*, seeds: Optional[dict] = None) -> PydanticBenchmarkResult:

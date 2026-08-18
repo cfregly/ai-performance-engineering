@@ -344,10 +344,10 @@ engine.benchmark.speed_test()                   # Quick GEMM/attention test
 ```
 
 **Runner notes:**
-- CUDA benchmarks execute via Python wrappers (`CudaBinaryBenchmark`); direct `.cu` runs are not supported.
+- CUDA benchmarks execute via Python wrappers (`CudaBinaryBenchmark`). Direct `.cu` runs are not supported.
 - Ad-hoc script runs should use `benchmark_main` (supports `--iterations`, `--warmup`, and defaults to `--force-sync`; disable with `--no-force-sync` or `AISP_FORCE_SYNC=0`).
 - Benchmark validity profile defaults to strict across CLI/MCP/dashboard (`--validity-profile strict` / `validity_profile=\"strict\"`).
-- Use `--validity-profile portable` only as an explicit compatibility override for virtualized/limited hosts (`validity_profile=\"portable\"` in MCP).
+- The portable profile relaxes clock locking, application-clock verification, GPU telemetry, and virtualization reporting. It labels the result as noncanonical. It does not bypass hard failures such as unsupported platforms, swap, CPU governor, cgroup limits, missing CUDA, or foreign GPU processes (`validity_profile=\"portable\"` in MCP).
 - Portable validity profile does not update expectation files unless explicitly enabled (`--allow-portable-expectations-update` / `allow_portable_expectations_update=true`).
 - Use `--force-sync` (CLI) / `force_sync=true` (MCP) to insert a device-wide synchronize after each `benchmark_fn()` when you need an extra safety net outside standard harness timing.
 - Safer profiling defaults are `--ncu-metric-set minimal` and `--ncu-replay-mode kernel` (same defaults in MCP `run_benchmarks`).

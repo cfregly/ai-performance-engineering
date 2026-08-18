@@ -94,6 +94,10 @@ class _TorchrunSkipBenchmark(BaseBenchmark):
         )
 
 
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="requires Linux torchrun rendezvous",
+)
 def test_torchrun_skip_reason_propagates_without_generic_exit_error(tmp_path: Path) -> None:
     if shutil.which("torchrun") is None:
         pytest.skip("torchrun not available in PATH")
@@ -116,6 +120,7 @@ def test_torchrun_skip_reason_propagates_without_generic_exit_error(tmp_path: Pa
         launch_via=LaunchVia.TORCHRUN,
         nproc_per_node=1,
         multi_gpu_required=False,
+        enforce_environment_validation=False,
     )
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=config)
     result = harness.benchmark(_TorchrunSkipBenchmark(script))

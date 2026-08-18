@@ -236,22 +236,9 @@ def _lookup_target_extra_args(
     return None
 
 
-def _format_environment_invalid_message(errors: Sequence[str], config: "BenchmarkConfig") -> str:
-    """Build a consistent environment failure message with recovery guidance.
-
-    Strict mode is intentionally fail-fast. When environment capability checks
-    fail there, always surface the explicit portability recovery flags.
-    """
-    message = "ENVIRONMENT INVALID: " + " | ".join(errors)
-    validity_profile = str(getattr(config, "validity_profile", "strict")).strip().lower()
-    if validity_profile == "strict":
-        message += (
-            " Recovery: rerun with --validity-profile portable to use the portable"
-            " validity profile (compatibility mode)."
-            " Consequence: strict environment protections are relaxed and expectation"
-            " writes remain disabled unless --allow-portable-expectations-update is set."
-        )
-    return message
+def _format_environment_invalid_message(errors: Sequence[str]) -> str:
+    """Build a consistent environment failure message."""
+    return "ENVIRONMENT INVALID: " + " | ".join(errors)
 
 
 _FOREIGN_GPU_PROCESS_ERROR_PREFIX = (
@@ -2930,7 +2917,7 @@ class BenchmarkHarness:
             for notice in env_result.notices:
                 logger.info("ENVIRONMENT NOTICE: %s", notice)
         if env_result.errors:
-            message = _format_environment_invalid_message(env_result.errors, config)
+            message = _format_environment_invalid_message(env_result.errors)
             enforce_env = bool(getattr(config, "enforce_environment_validation", True))
             defer_foreign_process_failure = (
                 config.execution_mode == ExecutionMode.SUBPROCESS
@@ -3908,7 +3895,7 @@ class BenchmarkHarness:
             for notice in env_result.notices:
                 logger.info("ENVIRONMENT NOTICE: %s", notice)
         if env_result.errors:
-            message = _format_environment_invalid_message(env_result.errors, config)
+            message = _format_environment_invalid_message(env_result.errors)
             enforce_env = bool(getattr(config, "enforce_environment_validation", True))
             if enforce_env:
                 errors.append(message)
@@ -4855,7 +4842,7 @@ class BenchmarkHarness:
             for notice in env_result.notices:
                 logger.info("ENVIRONMENT NOTICE: %s", notice)
         if env_result.errors:
-            message = _format_environment_invalid_message(env_result.errors, config)
+            message = _format_environment_invalid_message(env_result.errors)
             enforce_env = bool(getattr(config, "enforce_environment_validation", True))
             if enforce_env:
                 raise RuntimeError(message)

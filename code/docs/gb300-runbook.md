@@ -65,8 +65,8 @@ Bring-up steps:
 The strict validity profile rejects a container CPU/memory quota
 (`ENVIRONMENT INVALID: CPU quota is set via cgroup cpu.max=...`). On a node you
 fully own, clear the quota on the pod's leaf cgroup before running so strict
-validity passes (otherwise use `--validity-profile portable`, numbers labeled
-non-canonical):
+validity passes. The portable profile does not bypass CPU or memory quota
+failures.
 
 ```bash
 LEAF=$(awk -F: '/^0::/{print $3}' /proc/self/cgroup)
@@ -74,8 +74,8 @@ echo max > "/sys/fs/cgroup${LEAF}/cpu.max"
 echo max > "/sys/fs/cgroup${LEAF}/memory.max"
 ```
 
-The cleaner alternative is to launch the pod with no CPU/memory limits (GPU
-resources still pin the device). GPU clock locking (`nvidia-smi -lgc`) works in a
+The cleaner alternative is to launch the pod with no CPU or memory limits. GPU
+resources still pin the device. GPU clock locking (`nvidia-smi -lgc`) works in a
 privileged pod, so strict validity is viable.
 
 ## Running

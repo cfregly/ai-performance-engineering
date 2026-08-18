@@ -43,6 +43,7 @@ def test_promote_cluster_run_builds_expected_command(monkeypatch) -> None:
 
 def test_promote_cluster_run_passes_repo_root_to_command(monkeypatch) -> None:
     captured: Dict[str, Any] = {}
+    expected_root = Path("/tmp/fake_repo").resolve()
 
     def fake_run_cmd(cmd, *, cwd=None, timeout_seconds=None):  # type: ignore[no-untyped-def]
         captured["cmd"] = cmd
@@ -65,5 +66,6 @@ def test_promote_cluster_run_passes_repo_root_to_command(monkeypatch) -> None:
     )
 
     assert "--repo-root" in captured["cmd"]
-    assert "/tmp/fake_repo" in captured["cmd"]
-    assert captured["cwd"] == Path("/tmp/fake_repo")
+    repo_root_index = captured["cmd"].index("--repo-root") + 1
+    assert captured["cmd"][repo_root_index] == str(expected_root)
+    assert captured["cwd"] == expected_root

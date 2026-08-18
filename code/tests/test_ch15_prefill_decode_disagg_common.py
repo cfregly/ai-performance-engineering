@@ -139,6 +139,7 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
     assert "verify_shape = torch.Size((min(2, self.batch_size), min(256, self.hidden_size)))" in setup_section
     assert "self._verify_output_stack = self._empty_cpu_staging(verify_shape, torch.bfloat16)" in setup_section
     assert "self._verify_output_buffer = self._empty_cpu_staging(verify_shape, torch.float32)" in setup_section
+    assert "pin_memory=torch.cuda.is_available()" in source
     assert "self._handoff_staging[staging_key] = torch.empty(" in setup_section
     assert "first_decode_token = torch.empty(" in setup_section
     assert "self._decode_token_staging[staging_key] = (" in setup_section
@@ -235,6 +236,7 @@ def test_prefill_decode_disagg_handoff_reuses_larger_capacity() -> None:
     bench._handoff_kv(large, decode_device)
     decode_ptr = bench._handoff_staging["cpu"].data_ptr()
     host_ptr = bench._host_staging["cpu"].data_ptr()
+    assert bench._host_staging["cpu"].device.type == "cpu"
 
     small = torch.randn((1, 2, 4), dtype=torch.bfloat16)
     out_small = bench._handoff_kv(small, decode_device)

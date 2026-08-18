@@ -85,6 +85,7 @@ def test_optimized_grace_coherent_memory_skips_binding_when_gpu_numa_is_unknown(
         optimized_grace_coherent_memory.os,
         "sched_setaffinity",
         lambda pid, cpus: affinity_calls.append((pid, list(cpus))),
+        raising=False,
     )
 
     instance._bind_numa_node()

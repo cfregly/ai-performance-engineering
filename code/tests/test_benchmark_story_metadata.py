@@ -293,6 +293,7 @@ def test_harness_result_carries_story_metadata() -> None:
         warmup=5,
         validity_profile="portable",
         allow_foreign_gpu_processes=True,
+        enforce_environment_validation=False,
     )
     config.use_subprocess = False
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=config)

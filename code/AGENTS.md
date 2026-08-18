@@ -414,9 +414,10 @@ Origin: the 2026-06-11 GB300 sm_103a `tcgen05.wait.st` incident (runbook B69/B70
 - Portable mode must be explicit: `--validity-profile portable`.
 - In portable mode, expectation writes are disabled unless explicitly enabled with `--allow-portable-expectations-update`.
 - Do not use aliases/synonyms for validity modes (no transitional names); keep terminology exact and stable.
-- When strict mode fails due environment capability gaps (for example virtualization, clock lock, or telemetry constraints), surface the exact recovery flag and consequence in the error/help text:
-  - `--validity-profile portable` to run compatibility mode.
-  - `--allow-portable-expectations-update` only when the user explicitly wants expectation files updated in portable mode.
+- Portable mode relaxes clock locking, application-clock verification, GPU telemetry, and virtualization reporting only.
+- Hard `validate_environment` errors require error-specific recovery. Portable mode does not bypass unsupported platforms, swap, CPU governor, cgroup limits, missing CUDA, or foreign GPU processes.
+- Never recommend `--validity-profile portable` as generic recovery for a hard environment error.
+- Use `--allow-portable-expectations-update` only when the user explicitly wants expectation files updated in portable mode.
 
 ## Defaults Consistency (CRITICAL)
 - CLI, MCP tools, dashboard, and any other entrypoints must stay in sync on defaults (flags, behaviors, and help text). If a default changes, update all entrypoints together in the same change.

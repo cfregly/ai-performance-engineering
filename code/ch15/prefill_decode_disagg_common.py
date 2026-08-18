@@ -127,7 +127,12 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def _empty_cpu_staging(self, shape: torch.Size, dtype: torch.dtype) -> torch.Tensor:
         try:
-            return torch.empty(shape, device="cpu", dtype=dtype, pin_memory=True)
+            return torch.empty(
+                shape,
+                device="cpu",
+                dtype=dtype,
+                pin_memory=torch.cuda.is_available(),
+            )
         except RuntimeError:
             return torch.empty(shape, device="cpu", dtype=dtype)
 
