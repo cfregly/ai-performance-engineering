@@ -255,6 +255,8 @@ Recent sessions:
 - [PyTorch Model Optimization](resources/PyTorch_Model_Optimization.pdf)
 
 ### Monthly Meetup Summaries
+- **Aug 17, 2026** - [YouTube](https://www.youtube.com/watch?v=s1j7-x6uk_0): Deep Dive into Optimizing Continuous RL @ Fireworks: Rollout, Reward, Update, Repeat by Sinan Ozdemir, Head of AI Education and Developer Relations @ FireworksAI & Slides [Fireworks_AI_Continuous_RL_Rollout_Reward_Update_Repeat_by_Sinan_Ozdemir.pdf](resources/Fireworks_AI_Continuous_RL_Rollout_Reward_Update_Repeat_by_Sinan_Ozdemir.pdf)
+- **Jul 20, 2026** - [YouTube](https://www.youtube.com/watch?v=T9MkCcEAw8c): AI + GPU Systems Performance Tuning with Zymtrace, eBPF, and Flamegraphs with Israel Ogbole and Joel Honer @ Zymtrace
 - **Jun 15, 2026** - [YouTube](https://www.youtube.com/watch?v=1gALYQESnNU): Hacking AI Accelerators: Maxxing Tokens & Outcomes with Rob Ferguson @ Fireworks.AI
 - **May 19, 2026** - [YouTube](https://www.youtube.com/watch?v=Z_L-vowv_Io): OpenAI on AWS + Cerebras vs GPU vs TPU + High-Performance KV Cache Offload
 - **Apr 23, 2026** - [YouTube](https://www.youtube.com/watch?v=1i_9-4bx3Ms): Optimizing AI Inference for Heterogeneous Clusters by Natalie Serrino, Founder @ Gimlet Labs
