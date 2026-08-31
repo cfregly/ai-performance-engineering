@@ -1,0 +1,2339 @@
+{
+  "schema_version": 1,
+  "source_kind": "user_supplied_full_report_text",
+  "source_url": "https://claude.ai/code/artifact/9a311b78-5dac-4ea7-909f-e52993ab8e0e",
+  "source_capture": "wave-2-source.txt",
+  "source_sha256": "a57bd321e8b6296b11f4983c1e55464c459ce85e3866f805b2bf2433fd5e1868",
+  "report_updated_date": "2026-08-31",
+  "reviewed_revision": "cf48c8481",
+  "wave_1_revision": "b57e4c6a9",
+  "wave_1_fix_revision": "f49aae73f",
+  "open_finding_counts": {
+    "total": 141,
+    "critical": 3,
+    "high": 31,
+    "low": 45,
+    "medium": 62
+  },
+  "open_findings": [
+    {
+      "id": "W2-001",
+      "source_record_index": 0,
+      "source_line": 30,
+      "original_severity": "critical",
+      "original_location": "code/ch12/cuda_extensions/cuda_graphs_kernels.cu:99",
+      "original_title": "Cached CUDA graph replays a stale baked data pointer; optimized benchmark never touches its tensor",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-002",
+      "source_record_index": 1,
+      "source_line": 46,
+      "original_severity": "critical",
+      "original_location": "code/ch12/optimized_graph_conditional_runtime.cu:282",
+      "original_title": "Conditional WHILE graph never terminates and its body is never populated (phGraph_out is an output parameter)",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-003",
+      "source_record_index": 2,
+      "source_line": 62,
+      "original_severity": "critical",
+      "original_location": "code/labs/custom_vs_cublas/cutlass_gemm/cutlass_gemm.cu:125",
+      "original_title": "stride_B built from swapped (K,N) shape; wrong results for any K != N",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-004",
+      "source_record_index": 3,
+      "source_line": 79,
+      "original_severity": "high",
+      "original_location": "code/ch02/memory_transfer_nvlink_demo.cu:113",
+      "original_title": "CC >= 12 misidentified as GB200/GB300 Grace-Blackwell Superchip (SM 12.x is the workstation/DGX-Spark family)",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-005",
+      "source_record_index": 4,
+      "source_line": 82,
+      "original_severity": "high",
+      "original_location": "code/ch02/nvlink_c2c_bandwidth_benchmark.py:69",
+      "original_title": "H2D/D2H/zero-copy bandwidth reported ~1000x too high (MB/s printed as GB/s)",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-006",
+      "source_record_index": 5,
+      "source_line": 85,
+      "original_severity": "high",
+      "original_location": "code/ch02/optimized_grace_coherent_memory.py:214",
+      "original_title": "'Zero-copy coherent transfer' benchmark transfers zero bytes but reports NVLink transfer metrics",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-007",
+      "source_record_index": 6,
+      "source_line": 88,
+      "original_severity": "high",
+      "original_location": "code/ch04/ddp_nvlink_overlap.py:30",
+      "original_title": "Peer-access enable calls nonexistent API; AttributeError escapes the except RuntimeError guard",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-008",
+      "source_record_index": 7,
+      "source_line": 91,
+      "original_severity": "high",
+      "original_location": "code/ch04/multi_node_blackwell.py:375",
+      "original_title": "Tensor parallelism shards a single attention head's feature dim, changing the attention math",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-009",
+      "source_record_index": 8,
+      "source_line": 94,
+      "original_severity": "high",
+      "original_location": "code/ch04/optimizer_central_nvlink.py:53",
+      "original_title": "Same nonexistent enable_peer_access call crashes setup on NVLink hardware",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-010",
+      "source_record_index": 9,
+      "source_line": 97,
+      "original_severity": "high",
+      "original_location": "code/ch05/optimized_ai.py:112",
+      "original_title": "Pinned host staging buffer overwritten by CPU while async H2D copy is still pending",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-011",
+      "source_record_index": 10,
+      "source_line": 100,
+      "original_severity": "high",
+      "original_location": "code/ch07/baseline_tma_copy.py:24",
+      "original_title": "tma_copy byte accounting inflated 6.25x (redundant_reads=8 not implemented by kernels); 4x_gb200 bar 12.5x above b200's own result",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-012",
+      "source_record_index": 11,
+      "source_line": 103,
+      "original_severity": "high",
+      "original_location": "code/ch07/expectations_b200.json:433",
+      "original_title": "lookup_cuda expectations encode physically impossible bandwidth and poison the regression gate",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-013",
+      "source_record_index": 12,
+      "source_line": 106,
+      "original_severity": "high",
+      "original_location": "code/ch09/baseline_compute_bound.py:101",
+      "original_title": "Roofline FLOP count inflated ~4096x: vector (GEMV) workload counted as an N-row GEMM",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-014",
+      "source_record_index": 13,
+      "source_line": 109,
+      "original_severity": "high",
+      "original_location": "code/ch09/baseline_compute_bound.py:101",
+      "original_title": "compute_bound roofline FLOPs inflated 4096x and bytes ignore weights; expectations record 7134 TFLOPS on B200",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-015",
+      "source_record_index": 14,
+      "source_line": 112,
+      "original_severity": "high",
+      "original_location": "code/ch09/baseline_cublas_gemm_fp4_perchannel.cu:196",
+      "original_title": "VEC16_UE4M3 block scales passed in plain row-major layout instead of the required swizzled SF layout",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-016",
+      "source_record_index": 15,
+      "source_line": 115,
+      "original_severity": "high",
+      "original_location": "code/ch13/compiled_autograd.py:121",
+      "original_title": "torch._dynamo.compiled_autograd.enable() does not exist — every compiled-autograd path crashes",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-017",
+      "source_record_index": 16,
+      "source_line": 118,
+      "original_severity": "high",
+      "original_location": "code/ch13/optimized_precisionfp8_te.py:103",
+      "original_title": "DelayedScaling(interval=1) is an invalid kwarg on Transformer Engine 2.x — FP8 benchmark crashes at setup",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-018",
+      "source_record_index": 17,
+      "source_line": 121,
+      "original_severity": "high",
+      "original_location": "code/ch13/optimized_regional_compile.py:209",
+      "original_title": "Verification tolerance (rtol=1.0, atol=10.0) passes even an all-zero output",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-019",
+      "source_record_index": 18,
+      "source_line": 124,
+      "original_severity": "high",
+      "original_location": "code/ch15/optimized_kv_cache_nvlink_pool_multigpu.py:260",
+      "original_title": "KV-cache NVLink-pool pair verifies with rtol=0.5/atol=0.5 — the tolerance accepts garbage attention outputs",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-020",
+      "source_record_index": 19,
+      "source_line": 127,
+      "original_severity": "high",
+      "original_location": "code/ch16/inference_optimizations_blackwell.py:294",
+      "original_title": "FP8 KV cache overwrites per-row scale each step but dequantizes the whole history with it",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-021",
+      "source_record_index": 20,
+      "source_line": 130,
+      "original_severity": "high",
+      "original_location": "code/ch16/inference_optimizations_blackwell.py:468",
+      "original_title": "OptimizedDecoderLayer's 'sliding window' mask is not causal; SDPA fallback disables causality too",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-022",
+      "source_record_index": 21,
+      "source_line": 133,
+      "original_severity": "high",
+      "original_location": "code/ch16/inference_server_load_test.py:290",
+      "original_title": "Aggregate sums replicated per-rank stats, inflating throughput/QPS by world_size",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-023",
+      "source_record_index": 22,
+      "source_line": 136,
+      "original_severity": "high",
+      "original_location": "code/ch16/inference_serving_multigpu.py:259",
+      "original_title": "DemoCausalLM samples next token from padded position for shorter sequences in mixed batches",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-024",
+      "source_record_index": 23,
+      "source_line": 139,
+      "original_severity": "high",
+      "original_location": "code/ch19/fp8_compiled_matmul.py:103",
+      "original_title": "The 'FP8 compiled' benchmark never executes an FP8 GEMM: it upcasts to FP16 before matmul",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-025",
+      "source_record_index": 24,
+      "source_line": 142,
+      "original_severity": "high",
+      "original_location": "code/ch19/optimized_memory_double_buffering.py:234",
+      "original_title": "Double-buffering loop has a write-after-read race: copy stream can overwrite a buffer the compute stream is still reading",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-026",
+      "source_record_index": 25,
+      "source_line": 145,
+      "original_severity": "high",
+      "original_location": "code/labs/cutlass_profiler_kernel_selector/run_cutlass_profiler_sweep.py:77",
+      "original_title": "Kernel-selector never captures the winning CUTLASS kernel name",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-027",
+      "source_record_index": 26,
+      "source_line": 148,
+      "original_severity": "high",
+      "original_location": "code/labs/dynamic_router/scorecard.py:80",
+      "original_title": "Token drop rate divides window drop counts by number of windows, not tokens",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-028",
+      "source_record_index": 27,
+      "source_line": 151,
+      "original_severity": "high",
+      "original_location": "code/labs/dynamic_router/vllm_runner.py:232",
+      "original_title": "dynamic_router lab targets vLLM 0.4-era API while enforcing vllm==0.16.0 — all four vLLM benchmarks are inoperable on their own pinned stack",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-029",
+      "source_record_index": 28,
+      "source_line": 154,
+      "original_severity": "high",
+      "original_location": "code/labs/real_world_models/baseline_llama_3_1_8b.py:61",
+      "original_title": "Verification tolerance rtol=0.1/atol=1.0 accepts grossly wrong Llama outputs",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-030",
+      "source_record_index": 29,
+      "source_line": 157,
+      "original_severity": "high",
+      "original_location": "code/mcp/mcp_server.py:2243",
+      "original_title": "gpu_bandwidth tool calls nonexistent engine method; fails on every invocation",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-031",
+      "source_record_index": 30,
+      "source_line": 160,
+      "original_severity": "high",
+      "original_location": "code/mcp/mcp_server.py:6862",
+      "original_title": "profile_kernels tool calls nonexistent profile.kernel_breakdown(); always errors",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-032",
+      "source_record_index": 31,
+      "source_line": 163,
+      "original_severity": "high",
+      "original_location": "code/mcp/mcp_server.py:6314",
+      "original_title": "optimize_techniques tool calls nonexistent optimize.all_techniques(); always errors",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-033",
+      "source_record_index": 32,
+      "source_line": 166,
+      "original_severity": "high",
+      "original_location": "code/mcp/mcp_server.py:8879",
+      "original_title": "hw_network tool accesses nonexistent engine 'test' domain; always errors",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-034",
+      "source_record_index": 33,
+      "source_line": 169,
+      "original_severity": "high",
+      "original_location": "code/scripts/full_virtualized_rerun.py:781",
+      "original_title": "Expectation key helper double-suffixes CUDA examples, diverging from the harness",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-035",
+      "source_record_index": 34,
+      "source_line": 176,
+      "original_severity": "medium",
+      "original_location": "code/ch02/cpu_gpu_grace_blackwell_coherency.cu:87",
+      "original_title": "Blackwell check requires minor==0, so GB300/B300 (CC 10.3) is reported 'Not a Blackwell GPU'",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-036",
+      "source_record_index": 35,
+      "source_line": 179,
+      "original_severity": "medium",
+      "original_location": "code/ch02/hardware_info.py:380",
+      "original_title": "Comparison against 'Blackwell B200/B300' is always false — B200-specific output is dead code",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-037",
+      "source_record_index": 36,
+      "source_line": 182,
+      "original_severity": "medium",
+      "original_location": "code/ch02/hardware_info.py:195",
+      "original_title": "Device-to-device copy bandwidth undercounts HBM traffic by 2x (and GEMM time is mislabeled as bandwidth)",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-038",
+      "source_record_index": 37,
+      "source_line": 185,
+      "original_severity": "medium",
+      "original_location": "code/ch02/memory_transfer_nvlink_demo.cu:131",
+      "original_title": "B300 multi-GPU detection window compares GiB to decimal-GB bounds — real B300 (288 GB = 268 GiB) never matches",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-039",
+      "source_record_index": 38,
+      "source_line": 188,
+      "original_severity": "medium",
+      "original_location": "code/ch02/memory_transfer_nvlink_demo.cu:296",
+      "original_title": "Page-migration demo compares 'No hints' vs 'With prefetch' but both strategies run identical code",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-040",
+      "source_record_index": 39,
+      "source_line": 191,
+      "original_severity": "medium",
+      "original_location": "code/ch02/memory_transfer_zero_copy_demo.cu:2",
+      "original_title": "GB10 zero-copy claims of 800-900 GB/s are ~3x above the hardware's actual limits",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-041",
+      "source_record_index": 40,
+      "source_line": 194,
+      "original_severity": "medium",
+      "original_location": "code/ch03/baseline_pinned_prefetch_mlp.py:104",
+      "original_title": "Verification tolerance (rtol=1.0, atol=10.0) accepts arbitrary garbage output",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-042",
+      "source_record_index": 41,
+      "source_line": 197,
+      "original_severity": "medium",
+      "original_location": "code/ch04/bandwidth_benchmark_suite_multigpu.py:281",
+      "original_title": "All-gather bandwidth uses factor N instead of (N-1), inflating reported GB/s (2x at world_size=2)",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-043",
+      "source_record_index": 42,
+      "source_line": 200,
+      "original_severity": "medium",
+      "original_location": "code/ch04/ddp_nvlink_overlap.py:223",
+      "original_title": "Weight update indexes per-microbatch reduction buffers by model index and updates only 2 of N replicas",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-044",
+      "source_record_index": 43,
+      "source_line": 203,
+      "original_severity": "medium",
+      "original_location": "code/ch04/gradient_compression_common.py:162",
+      "original_title": "Comm-only compression comparison is asymmetric: baseline does 2 copies, optimized does 1 — speedup overstated 2x",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-045",
+      "source_record_index": 44,
+      "source_line": 206,
+      "original_severity": "medium",
+      "original_location": "code/ch04/multi_node_blackwell.py:533",
+      "original_title": "Per-step throughput computed from host time with no CUDA synchronization — measures enqueue rate",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-046",
+      "source_record_index": 45,
+      "source_line": 209,
+      "original_severity": "medium",
+      "original_location": "code/ch04/nccl_blackwell_config.py:79",
+      "original_title": "Fabricated NCCL features/env vars: 'Tensor Core Engine' and NCCL_NVLINK_TCE/C2C_ENABLE do not exist",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-047",
+      "source_record_index": 46,
+      "source_line": 212,
+      "original_severity": "medium",
+      "original_location": "code/ch04/nvls_collectives.py:50",
+      "original_title": "NVLS environment variables set after eager NCCL communicator initialization — they never take effect",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-048",
+      "source_record_index": 47,
+      "source_line": 215,
+      "original_severity": "medium",
+      "original_location": "code/ch04/optimized_pipeline_parallel_multigpu_1f1b.py:162",
+      "original_title": "'1F1B' schedule degenerates to GPipe under the harness defaults — steady-state loop never executes",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-049",
+      "source_record_index": 48,
+      "source_line": 218,
+      "original_severity": "medium",
+      "original_location": "code/ch06/expectations_b200.json:164",
+      "original_title": "Legacy duplicate keys (add_cuda_cuda, hbm_cuda_cuda, unsuffixed dsmem_*) carry contradictory frozen bars and are double-counted",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-050",
+      "source_record_index": 49,
+      "source_line": 221,
+      "original_severity": "medium",
+      "original_location": "code/ch09/baseline_cublas_gemm_fp4_perchannel.cu:58",
+      "original_title": "apply_per_channel_scale indexes the column-major cuBLASLt output as row-major, scaling rows (M) instead of output channels (N)",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-051",
+      "source_record_index": 50,
+      "source_line": 224,
+      "original_severity": "medium",
+      "original_location": "code/ch09/baseline_memory_bound.py:93",
+      "original_title": "Roofline bytes/FLOPs omit the 64x repeat factor, under-reporting achieved GB/s and GFLOPS by 64x",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-052",
+      "source_record_index": 51,
+      "source_line": 227,
+      "original_severity": "medium",
+      "original_location": "code/ch09/optimized_cutlass_gemm_fp4_all_concepts.cu:151",
+      "original_title": "File claims CTA clustering + TMA multicast ('4-way clustering') but ClusterShape is 1x1x1",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-053",
+      "source_record_index": 52,
+      "source_line": 230,
+      "original_severity": "medium",
+      "original_location": "code/ch09/tcgen05_basic.cu:179",
+      "original_title": "matmul_tcgen05_bias_silu never applies the bias -- returns silu(A@B^T) regardless of the bias argument",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-054",
+      "source_record_index": 53,
+      "source_line": 233,
+      "original_severity": "medium",
+      "original_location": "code/ch13/baseline_precisionfp8_te.py:4",
+      "original_title": "TE FP8 'precision benefit' pair conflates FP8 with CUDA-graph capture: baseline runs eager, optimized replays a captured graph",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-055",
+      "source_record_index": 54,
+      "source_line": 236,
+      "original_severity": "medium",
+      "original_location": "code/ch14/optimized_flex_attention_sparse.py:431",
+      "original_title": "Roofline metrics claim dense-attention FLOPs for a 128-token sliding-window kernel (~10-16x TFLOPS inflation)",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-056",
+      "source_record_index": 55,
+      "source_line": 239,
+      "original_severity": "medium",
+      "original_location": "code/ch15/baseline_disaggregated_inference_multigpu.py:194",
+      "original_title": "Decode never reads the transferred KV cache — the multi-GPU KV handoff moves dead data and verification cannot detect a corrupted transfer",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-057",
+      "source_record_index": 56,
+      "source_line": 242,
+      "original_severity": "medium",
+      "original_location": "code/ch15/expert_parallelism.py:194",
+      "original_title": "Distributed mode computes unweighted top-1 expert output while local mode computes gated top-2 — the local-vs-distributed tokens/s comparison is not the same math or the same work",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-058",
+      "source_record_index": 57,
+      "source_line": 245,
+      "original_severity": "medium",
+      "original_location": "code/ch16/awq_gptq_smoothquant_benchmarks.py:308",
+      "original_title": "PTQ accuracy verification tolerance rtol=1.0, atol=10.0 accepts garbage",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-059",
+      "source_record_index": 58,
+      "source_line": 248,
+      "original_severity": "medium",
+      "original_location": "code/ch16/baseline_dense_attention_flash.py:157",
+      "original_title": "Attention/scheduler benchmark family uses atol=1.0, vacuous for outputs with magnitude << 1",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-060",
+      "source_record_index": 59,
+      "source_line": 251,
+      "original_severity": "medium",
+      "original_location": "code/ch16/dcgm_prometheus_exporter.py:743",
+      "original_title": "NVLink error counter update sits outside the per-GPU loop; only the last GPU is tracked",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-061",
+      "source_record_index": 60,
+      "source_line": 254,
+      "original_severity": "medium",
+      "original_location": "code/ch16/inference_optimizations_blackwell.py:763",
+      "original_title": "BlackwellInferencePipeline.generate never uses its KV cache; decode sees only the previous token",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-062",
+      "source_record_index": 61,
+      "source_line": 257,
+      "original_severity": "medium",
+      "original_location": "code/ch16/radix_attention_example.py:71",
+      "original_title": "Shared KV buffers are appended in place, corrupting sibling cached prefixes in the radix tree",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-063",
+      "source_record_index": 62,
+      "source_line": 260,
+      "original_severity": "medium",
+      "original_location": "code/ch16/synthetic_moe_inference_benchmark.py:144",
+      "original_title": "detect_device_flavor maps compute capability 12.0 to B200 class ('blackwell_sm100')",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-064",
+      "source_record_index": 63,
+      "source_line": 263,
+      "original_severity": "medium",
+      "original_location": "code/ch16/vllm_monitoring.py:176",
+      "original_title": "f-string collapses {{ $labels.* }}/{{ $value }} to single braces, breaking all alert templates",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-065",
+      "source_record_index": 64,
+      "source_line": 266,
+      "original_severity": "medium",
+      "original_location": "code/ch16/vllm_monitoring.py:482",
+      "original_title": "Error-hook dashboard panels emit PromQL containing literal backslashes (invalid queries)",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-066",
+      "source_record_index": 65,
+      "source_line": 269,
+      "original_severity": "medium",
+      "original_location": "code/ch17/optimized_pipeline_parallelism.py:146",
+      "original_title": "All pipeline stage streams are created on the current device, so stages on other GPUs silently run on their default streams and stage events guard nothing",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-067",
+      "source_record_index": 66,
+      "source_line": 272,
+      "original_severity": "medium",
+      "original_location": "code/ch17/optimized_pipeline_parallelism.py:280",
+      "original_title": "Per-stage 'durations' and stage_imbalance_ratio measure CPU kernel-launch time, not GPU execution",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-068",
+      "source_record_index": 67,
+      "source_line": 275,
+      "original_severity": "medium",
+      "original_location": "code/ch17/optimized_prefill_decode_disagg.py:159",
+      "original_title": "\"Optimized\" two-stream disaggregation is strictly serialized — no overlap can ever occur, so the claimed optimization is structurally a no-op",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-069",
+      "source_record_index": 68,
+      "source_line": 278,
+      "original_severity": "medium",
+      "original_location": "code/ch17/prefill_decode_disagg_monolithic_common.py:34",
+      "original_title": "SimpleLLM.prefill ignores the prompt and draws fresh random inputs every call, making the disagg pair's verification compare unrelated outputs (masked by atol=1.0)",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-070",
+      "source_record_index": 69,
+      "source_line": 281,
+      "original_severity": "medium",
+      "original_location": "code/ch18/eos_early_exit_common.py:203",
+      "original_title": "'Optimized' EOS early exit never detects EOS: the shorter loop length is hardcoded from the config, and completion checks are counted but never performed",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-071",
+      "source_record_index": 70,
+      "source_line": 284,
+      "original_severity": "medium",
+      "original_location": "code/ch18/run_vllm_decoder.py:562",
+      "original_title": "setup() force-overrides graph_mode to EAGER, silently disabling --graph-mode/OPT_MOE_GRAPH_MODE and all CUDA-graph paths",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-072",
+      "source_record_index": 71,
+      "source_line": 287,
+      "original_severity": "medium",
+      "original_location": "code/ch18/v1_bucketed_decode_loop.py:203",
+      "original_title": "--use-vllm always falls back to the mock engine: add_request() is called with the removed sampling_params= keyword",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-073",
+      "source_record_index": 72,
+      "source_line": 290,
+      "original_severity": "medium",
+      "original_location": "code/ch19/baseline_dynamic_quantized_cache.py:311",
+      "original_title": "Non-blocking D2H copies into pinned buffers are read by the CPU with no synchronization",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-074",
+      "source_record_index": 73,
+      "source_line": 293,
+      "original_severity": "medium",
+      "original_location": "code/ch19/fp8_compiled_matmul.py:11",
+      "original_title": "Blackwell B200 peak specs understated ~10x (450 TFLOPS FP8 / 225 TFLOPS FP16), inflating the printed utilization; GB10 called 'same GPU as B200'",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-075",
+      "source_record_index": 74,
+      "source_line": 296,
+      "original_severity": "medium",
+      "original_location": "code/ch20/optimized_pipeline_sequential.py:141",
+      "original_title": "Stage outputs allocated on one stream are consumed and freed across streams without record_stream — allocator reuse hazard",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-076",
+      "source_record_index": 75,
+      "source_line": 299,
+      "original_severity": "medium",
+      "original_location": "code/core/analysis/report_generator.py:296",
+      "original_title": "Zero-padding mismatch drops all ch01-ch09 metrics from target validation",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-077",
+      "source_record_index": 76,
+      "source_line": 302,
+      "original_severity": "medium",
+      "original_location": "code/core/benchmark/expectations.py:673",
+      "original_title": "bytes_per_s throughput is recorded in 175 entries but exempt from every regression check",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-078",
+      "source_record_index": 77,
+      "source_line": 305,
+      "original_severity": "medium",
+      "original_location": "code/core/common/headers/arch_detection.cuh:71",
+      "original_title": "Checked-in capability table only covers CC 10.0; H100/GB300 get wrong TMA limits",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-079",
+      "source_record_index": 78,
+      "source_line": 308,
+      "original_severity": "medium",
+      "original_location": "code/core/scripts/utilities/probe_hardware_capabilities.py:250",
+      "original_title": "Probe invents TMA box limits that contradict the CUDA driver contract",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-080",
+      "source_record_index": 79,
+      "source_line": 311,
+      "original_severity": "medium",
+      "original_location": "code/dashboard/api/server.py:228",
+      "original_title": "Sync route handlers run on the async event loop, freezing all endpoints (incl. the live GPU SSE stream)",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-081",
+      "source_record_index": 80,
+      "source_line": 314,
+      "original_severity": "medium",
+      "original_location": "code/labs/cudnn_sdpa_bench/expectations_b200.json:14",
+      "original_title": "Frozen 1.2967x speedup bar for an auto-vs-flash SDPA pair whose delta the lab's own README declares unattributable",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-082",
+      "source_record_index": 81,
+      "source_line": 317,
+      "original_severity": "medium",
+      "original_location": "code/labs/cutlass_profiler_kernel_selector/run_cutlass_profiler_sweep.py:16",
+      "original_title": "README-documented invocations crash on relative imports",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-083",
+      "source_record_index": 82,
+      "source_line": 320,
+      "original_severity": "medium",
+      "original_location": "code/labs/cutlass_profiler_kernel_selector/run_triton_matmul.py:75",
+      "original_title": "Triton matmul kernel has no K-dimension bounds mask (OOB reads for K % 32 != 0)",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-084",
+      "source_record_index": 83,
+      "source_line": 323,
+      "original_severity": "medium",
+      "original_location": "code/labs/dynamic_router/eval_stack.py:605",
+      "original_title": "moe_router.jsonl 'drops per window' records only the window's final step",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-085",
+      "source_record_index": 84,
+      "source_line": 326,
+      "original_severity": "medium",
+      "original_location": "code/labs/dynamic_router/vllm_runner.py:232",
+      "original_title": "Prompt 'tokens' are actually characters of repeated 'x' — BPE collapses them, so the prefill workload is roughly an order of magnitude smaller than labeled",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-086",
+      "source_record_index": 85,
+      "source_line": 329,
+      "original_severity": "medium",
+      "original_location": "code/labs/occupancy_tuning/README.md:34",
+      "original_title": "Documented sweep command fails: flag is --csv not --output, and script lacks the sys.path bootstrap",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-087",
+      "source_record_index": 86,
+      "source_line": 332,
+      "original_severity": "medium",
+      "original_location": "code/labs/occupancy_tuning/sweep_schedules.py:125",
+      "original_title": "Sweep defaults to torch.compile(fullgraph=True) that the lab's own code says must never be used",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-088",
+      "source_record_index": 87,
+      "source_line": 335,
+      "original_severity": "medium",
+      "original_location": "code/labs/real_world_models/gpt4_architecture_optimization.py:236",
+      "original_title": "GPT-4 benchmark records use_fp8/use_moe=1.0 while executing neither",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-089",
+      "source_record_index": 88,
+      "source_line": 338,
+      "original_severity": "medium",
+      "original_location": "code/labs/real_world_models/llama_3_1_8b_optimization.py:104",
+      "original_title": "Baseline attention silently upcast to fp32, inflating the taught speedup and memory delta",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-090",
+      "source_record_index": 89,
+      "source_line": 341,
+      "original_severity": "medium",
+      "original_location": "code/labs/real_world_models/llama_3_1_8b_optimization.py:171",
+      "original_title": "'Llama 3.1 8B' benchmark actually builds a 4-layer ~0.97B-param stack",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-091",
+      "source_record_index": 90,
+      "source_line": 344,
+      "original_severity": "medium",
+      "original_location": "code/labs/software_pipelining/software_pipelining_kernels.cu:50",
+      "original_title": "Baseline is crippled beyond 'serialized', so the ~2.22x delta is not a software-pipelining win",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-092",
+      "source_record_index": 91,
+      "source_line": 347,
+      "original_severity": "medium",
+      "original_location": "code/mcp/mcp_client.py:263",
+      "original_title": "Server stderr pipe is never drained; server blocks once the pipe buffer fills",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-093",
+      "source_record_index": 92,
+      "source_line": 350,
+      "original_severity": "medium",
+      "original_location": "code/mcp/mcp_server.py:4009",
+      "original_title": "Double-escaped regexes make _infer_dtype_from_cu always return float32 (wave-1 class f)",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-094",
+      "source_record_index": 93,
+      "source_line": 353,
+      "original_severity": "medium",
+      "original_location": "code/monitoring/cluster_monitor.py:274",
+      "original_title": "NetworkCollector fabricates 100 Gbps InfiniBand throughput as real telemetry",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-095",
+      "source_record_index": 94,
+      "source_line": 356,
+      "original_severity": "medium",
+      "original_location": "code/monitoring/cluster_monitor.py:224",
+      "original_title": "CPU utilization is the since-boot average, not the sampled real-time value",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-096",
+      "source_record_index": 95,
+      "source_line": 359,
+      "original_severity": "medium",
+      "original_location": "code/monitoring/prometheus_exporter.py:89",
+      "original_title": "Exporter publishes process-local torch allocator stats as GPU memory utilization",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-097",
+      "source_record_index": 96,
+      "source_line": 366,
+      "original_severity": "low",
+      "original_location": "code/ch01/optimized_performance_fusion.py:134",
+      "original_title": "output_tolerance=(0.5, 0.5) too loose to catch a broken fusion — FP32-identical pair verified with 50% slack",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-098",
+      "source_record_index": 97,
+      "source_line": 369,
+      "original_severity": "low",
+      "original_location": "code/ch02/cpu_gpu_topology_aware.py:148",
+      "original_title": "Any ARM CPU is classified as Grace, yielding a false 'NVLink-C2C (~900 GB/s)' interconnect claim",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-099",
+      "source_record_index": 98,
+      "source_line": 372,
+      "original_severity": "low",
+      "original_location": "code/ch04/dist_allreduce.py:60",
+      "original_title": "Multi-node benchmark forces Gloo fallback whenever the local node has fewer than 2 GPUs",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-100",
+      "source_record_index": 99,
+      "source_line": 375,
+      "original_severity": "low",
+      "original_location": "code/ch07/async_prefetch_2d_demo.cu:134",
+      "original_title": "Consumer verdict: correct; self-check uses all-ones input and cannot catch layout bugs",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-101",
+      "source_record_index": 100,
+      "source_line": 378,
+      "original_severity": "low",
+      "original_location": "code/ch07/optimized_tma_bulk_tensor_2d.cu:154",
+      "original_title": "Consumer verdict: correct after helper fix; in-binary 'validation' never compares",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-102",
+      "source_record_index": 101,
+      "source_line": 381,
+      "original_severity": "low",
+      "original_location": "code/ch07/optimized_tma_copy.cu:450",
+      "original_title": "Consumer verdict: correct; pre-fix it worked only by square-symmetry accident",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-103",
+      "source_record_index": 102,
+      "source_line": 384,
+      "original_severity": "low",
+      "original_location": "code/ch09/optimized_cublaslt_gemm.cu:152",
+      "original_title": "#if defined() on a cuBLASLt enum value -- PDL capability check is dead code that can never compile in",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-104",
+      "source_record_index": 103,
+      "source_line": 387,
+      "original_severity": "low",
+      "original_location": "code/ch09/optimized_cublaslt_gemm_fp4.cu:18",
+      "original_title": "Header claims 'Each batch is a single-matrix TN matmul, looped' but the code performs one strided-batched matmul",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-105",
+      "source_record_index": 104,
+      "source_line": 390,
+      "original_severity": "low",
+      "original_location": "code/ch09/optimized_cutlass_gemm_fp16.cu:68",
+      "original_title": "Header comment contradicts the code on the B-operand layout convention (comment says ColumnMajor, code declares RowMajor)",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-106",
+      "source_record_index": 105,
+      "source_line": 393,
+      "original_severity": "low",
+      "original_location": "code/ch09/optimized_micro_tiling_matmul.cu:1",
+      "original_title": "'Register-tiled' / 'micro-tiling' claims not matched by the code, which is plain 16x16 shared-memory tiling",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-107",
+      "source_record_index": 106,
+      "source_line": 396,
+      "original_severity": "low",
+      "original_location": "code/ch10/optimized_flash_attn_tma_micro_pipeline.cu:54",
+      "original_title": "Consumer verdict: correct via its own descriptor builder (never had the bug)",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-108",
+      "source_record_index": 107,
+      "source_line": 399,
+      "original_severity": "low",
+      "original_location": "code/ch10/tma_2d_pipeline_blackwell.cu:356",
+      "original_title": "Consumer verdict: correct; barrier/tx accounting and partial-tile store path check out",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-109",
+      "source_record_index": 108,
+      "source_line": 402,
+      "original_severity": "low",
+      "original_location": "code/ch10/tma_multicast_cluster.cu:371",
+      "original_title": "Verdict on wave-1's proven-wrong GEMM: fixed by f49aae73f, now consistent",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-110",
+      "source_record_index": 109,
+      "source_line": 405,
+      "original_severity": "low",
+      "original_location": "code/ch12/cuda_extensions/cuda_graphs_kernels.cu:9",
+      "original_title": "#ifndef on a CUDA enum value always fires, silently zeroing the AutoFreeOnLaunch instantiate flag",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-111",
+      "source_record_index": 110,
+      "source_line": 408,
+      "original_severity": "low",
+      "original_location": "code/ch15/disaggregated_inference_multigpu.py:865",
+      "original_title": "setup_tensor_parallelism describes pipeline-style whole-layer placement as tensor parallelism (and assigns 0 layers when num_gpus > 6)",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-112",
+      "source_record_index": 111,
+      "source_line": 411,
+      "original_severity": "low",
+      "original_location": "code/ch18/flex_attention_large_model.py:204",
+      "original_title": "Parameter-count formula uses 5·d² for a 4x-expansion FFN (actual 8·d²), understating printed model sizes by 25%",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-113",
+      "source_record_index": 112,
+      "source_line": 414,
+      "original_severity": "low",
+      "original_location": "code/ch18/flexattention_block_sparse.py:78",
+      "original_title": "Sparsity formula forgets to multiply per-block attention by the number of blocks — reports ~99.9% instead of ~96.5%",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-114",
+      "source_record_index": 113,
+      "source_line": 417,
+      "original_severity": "low",
+      "original_location": "code/ch19/native_fp6_quantization.py:20",
+      "original_title": "FP6 header claims wrong Blackwell throughput (FP6 faster than FP8; both numbers ~4x low) and wrong memory-savings math",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-115",
+      "source_record_index": 114,
+      "source_line": 420,
+      "original_severity": "low",
+      "original_location": "code/ch20/baseline_moe.py:54",
+      "original_title": "tokens_per_iteration set to batch × hidden_dim, inflating harness tokens/sec by 1024x",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-116",
+      "source_record_index": 115,
+      "source_line": 423,
+      "original_severity": "low",
+      "original_location": "code/core/analysis/analyze_expectation_rejections.py:47",
+      "original_title": "Rejection analyzer strips _cuda before lookup and hardcodes expectations_b200.json, so CUDA context always misses",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-117",
+      "source_record_index": 116,
+      "source_line": 426,
+      "original_severity": "low",
+      "original_location": "code/core/benchmark/comparison.py:651",
+      "original_title": "Wave-1 impact assessment: comparison.py threshold/direction bugs never contaminated expectations_*.json; exposure was report-only and is fixed at HEAD",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-118",
+      "source_record_index": 117,
+      "source_line": 429,
+      "original_severity": "low",
+      "original_location": "code/core/benchmark/performance_targets.py:65",
+      "original_title": "allreduce target contradicts its own citation by 8x (Gb/s vs GB/s) and fp16 target exceeds its realistic_max",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-119",
+      "source_record_index": 118,
+      "source_line": 432,
+      "original_severity": "low",
+      "original_location": "code/core/common/headers/cuda13_demos.cuh:225",
+      "original_title": "Consumer verdict: correct; dispatch has a dead unhandled (128,32) combination",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-120",
+      "source_record_index": 119,
+      "source_line": 435,
+      "original_severity": "low",
+      "original_location": "code/core/scripts/utilities/probe_hardware_capabilities.py:234",
+      "original_title": "Grace coherence / NVLink-C2C claimed for all CC 12.x, including x86 discrete GPUs",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-121",
+      "source_record_index": 120,
+      "source_line": 438,
+      "original_severity": "low",
+      "original_location": "code/dashboard/web/src/components/GpuCard.tsx:13",
+      "original_title": "GPU memory MiB values converted with 1e6, understating capacity ~4.9% (GiB/GB mixup)",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-122",
+      "source_record_index": 121,
+      "source_line": 441,
+      "original_severity": "low",
+      "original_location": "code/labs/custom_vs_cublas/autotune.py:146",
+      "original_title": "autotune crashes with bare ValueError when every kernel fails",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-123",
+      "source_record_index": 122,
+      "source_line": 444,
+      "original_severity": "low",
+      "original_location": "code/labs/custom_vs_cublas/autotune.py:40",
+      "original_title": "Cache key always fingerprints GPU 0, not the device being benchmarked",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-124",
+      "source_record_index": 123,
+      "source_line": 447,
+      "original_severity": "low",
+      "original_location": "code/labs/custom_vs_cublas/run_lab.py:220",
+      "original_title": "Residual of W1-069: False 'MMA hardware handles dependencies internally' + '+43%' claim",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": [
+        "W1-069"
+      ]
+    },
+    {
+      "id": "W2-125",
+      "source_record_index": 124,
+      "source_line": 450,
+      "original_severity": "low",
+      "original_location": "code/labs/cutlass_profiler_kernel_selector/README.md:35",
+      "original_title": "README CI claim: compare script does not exit non-zero on missing records",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-126",
+      "source_record_index": 125,
+      "source_line": 453,
+      "original_severity": "low",
+      "original_location": "code/labs/cutlass_profiler_kernel_selector/run_triton_matmul.py:41",
+      "original_title": "Module crashes with NameError when Triton is absent; graceful fallback is dead code",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-127",
+      "source_record_index": 126,
+      "source_line": 456,
+      "original_severity": "low",
+      "original_location": "code/labs/dynamic_router/baseline_dynamic_router_vllm.py:50",
+      "original_title": "dynamic_router pair 'verification' compares baseline-vs-optimized performance metrics as if they were model outputs",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-128",
+      "source_record_index": 127,
+      "source_line": 459,
+      "original_severity": "low",
+      "original_location": "code/labs/dynamic_router/eval_stack.py:342",
+      "original_title": "Error message points to an environment variable that is never read",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-129",
+      "source_record_index": 128,
+      "source_line": 462,
+      "original_severity": "low",
+      "original_location": "code/labs/kv_optimization/optimized_kv_standard.py:370",
+      "original_title": "KV FP8-compression pair verifies with rtol=0.1/atol=1.0 — vacuous for its ~N(0,1) cache contents",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-130",
+      "source_record_index": 129,
+      "source_line": 465,
+      "original_severity": "low",
+      "original_location": "code/labs/occupancy_tuning/README.md:73",
+      "original_title": "Validation Checklist's --validate command validates nothing",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-131",
+      "source_record_index": 130,
+      "source_line": 468,
+      "original_severity": "low",
+      "original_location": "code/labs/occupancy_tuning/README.md:66",
+      "original_title": "--target-extra-arg 'sweep schedule knobs' claim is a silent no-op for this lab",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-132",
+      "source_record_index": 131,
+      "source_line": 471,
+      "original_severity": "low",
+      "original_location": "code/labs/occupancy_tuning/triton_matmul_schedules.py:235",
+      "original_title": "Verification tolerance atol=1.0 (and eager max-diff gate 2.0) is ~30-60x looser than the workload warrants",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-133",
+      "source_record_index": 132,
+      "source_line": 474,
+      "original_severity": "low",
+      "original_location": "code/labs/real_world_models/expectations_4x_gb200.json:11",
+      "original_title": "Checked-in 15.06x llama speedup expectation built on an outlier-corrupted baseline",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-134",
+      "source_record_index": 133,
+      "source_line": 477,
+      "original_severity": "low",
+      "original_location": "code/labs/real_world_models/gpt4_architecture_optimization.py:73",
+      "original_title": "MoE memory estimate uses active params for storage, understating GPU count ~10x",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-135",
+      "source_record_index": 134,
+      "source_line": 480,
+      "original_severity": "low",
+      "original_location": "code/labs/recsys_sequence_ranking/README.md:85",
+      "original_title": "README claims Triton is used only for candidate scoring; optimized path also runs a fused Triton pooling kernel",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-136",
+      "source_record_index": 135,
+      "source_line": 483,
+      "original_severity": "low",
+      "original_location": "code/labs/software_pipelining/pipeline_graph.py:243",
+      "original_title": "fa_like_inner_loop anti-dependency has distance 2 in a 3-stage pipeline, so it does not model stage reuse",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-137",
+      "source_record_index": 136,
+      "source_line": 486,
+      "original_severity": "low",
+      "original_location": "code/labs/top_k_kernel/top_k_kernel_common.py:744",
+      "original_title": "The 'CUTLASS-backed CUDA' Top-K pair never executes the CUTLASS extension in fwd_bwd mode",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-138",
+      "source_record_index": 137,
+      "source_line": 489,
+      "original_severity": "low",
+      "original_location": "code/mcp/mcp_server.py:9318",
+      "original_title": "predict_scaling caps estimated speedup at 7.5x regardless of target GPU count",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-139",
+      "source_record_index": 138,
+      "source_line": 492,
+      "original_severity": "low",
+      "original_location": "code/scripts/full_virtualized_rerun.py:671",
+      "original_title": "force_rerun enqueues duplicate pending entries for the same target",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-140",
+      "source_record_index": 139,
+      "source_line": 495,
+      "original_severity": "low",
+      "original_location": "code/scripts/full_virtualized_rerun.py:1290",
+      "original_title": "Restarting an existing queue silently resets profile to 'none' (dead fallback)",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": []
+    },
+    {
+      "id": "W2-141",
+      "source_record_index": 140,
+      "source_line": 498,
+      "original_severity": "low",
+      "original_location": "docs/appendix.md:191",
+      "original_title": "Residual of W1-098: NVL72's 130 TB/s is aggregate NVLink bandwidth, not bisection bandwidth",
+      "source_group": "merged_wave_2_closure_critic_tail_and_wave_1_residual_inventory",
+      "related_wave_1": [
+        "W1-098"
+      ]
+    }
+  ],
+  "wave_1_remediation_verdict_counts": {
+    "fixed": 120,
+    "needs_runtime": 5,
+    "obsolete": 1,
+    "partial": 2
+  },
+  "wave_1_remediation_verdicts": [
+    {
+      "id": "W1-001",
+      "verdict": "needs_runtime",
+      "source_line": 504,
+      "location": "code/ch10/tma_multicast_cluster.cu:168",
+      "title": "TMA multicast GEMM loads the B tile from the transposed location, producing wrong results"
+    },
+    {
+      "id": "W1-002",
+      "verdict": "needs_runtime",
+      "source_line": 508,
+      "location": "code/labs/custom_vs_cublas/tcgen05_cluster.cu:211",
+      "title": "Pipelined mainloop reuses smem stage without waiting on empty_barrier: TMA overwrites operands still being read by in-flight tcgen05 MMA"
+    },
+    {
+      "id": "W1-003",
+      "verdict": "needs_runtime",
+      "source_line": 512,
+      "location": "code/labs/nanochat_fullstack/nanochat/engine.py:584",
+      "title": "CUDA-graph decode replays a stale KV-cache write position, producing wrong tokens after the first replay"
+    },
+    {
+      "id": "W1-027",
+      "verdict": "needs_runtime",
+      "source_line": 516,
+      "location": "code/labs/custom_vs_cublas/tcgen05_gemm.cu:177",
+      "title": "matmul_tcgen05_bias_silu never applies the bias: it computes silu(A@B^T), not silu(A@B^T + bias)"
+    },
+    {
+      "id": "W1-068",
+      "verdict": "needs_runtime",
+      "source_line": 520,
+      "location": "code/labs/custom_vs_cublas/experimental/tcgen05_tma_multicast.cu:178",
+      "title": "TMA multicast with no fence_barrier_init/cluster_sync and no cross-CTA empty sync"
+    },
+    {
+      "id": "W1-069",
+      "verdict": "partial",
+      "source_line": 524,
+      "location": "code/labs/custom_vs_cublas/run_lab.py:220",
+      "title": "False 'MMA hardware handles dependencies internally' + '+43%' claim"
+    },
+    {
+      "id": "W1-098",
+      "verdict": "partial",
+      "source_line": 528,
+      "location": "docs/appendix.md:191",
+      "title": "NVL72's 130 TB/s is aggregate NVLink bandwidth, not bisection bandwidth"
+    },
+    {
+      "id": "W1-116",
+      "verdict": "obsolete",
+      "source_line": 532,
+      "location": "code/labs/custom_vs_cublas/experimental/tcgen05_multicast.cu:77",
+      "title": "Uses a nonexistent 'cyclic_multicast' namespace — the file cannot compile — and its 'multicast' path is dead code anyway"
+    },
+    {
+      "id": "W1-004",
+      "verdict": "fixed",
+      "source_line": 536,
+      "location": "code/labs/train_distributed/optimized_zero2_multigpu.py:147",
+      "title": "Optimized ZeRO-2 never runs the optimizer: overlap_with_ddp=True makes step() a no-op"
+    },
+    {
+      "id": "W1-005",
+      "verdict": "fixed",
+      "source_line": 540,
+      "location": "code/setup.sh:1924",
+      "title": "setup.sh installs the pinned stable torch==2.9.1+cu130 from the nightly-only cu130 index, so setup always aborts"
+    },
+    {
+      "id": "W1-006",
+      "verdict": "fixed",
+      "source_line": 544,
+      "location": ".github/workflows/benchmark-validation.yml:95",
+      "title": "CI runs only ~28 of 267 test files; all anti-cheat/verification suites are unwired"
+    },
+    {
+      "id": "W1-007",
+      "verdict": "fixed",
+      "source_line": 548,
+      "location": "code/ch01/Makefile:41",
+      "title": "b200/b300/gb10/gb300 targets cannot change the compile architecture — target-specific ARCH is set after cuda_arch.mk already chose the gencode"
+    },
+    {
+      "id": "W1-008",
+      "verdict": "fixed",
+      "source_line": 552,
+      "location": "code/ch08/baseline_thresholdtma.cu:74",
+      "title": "Baseline timing measures only host enqueue: events on legacy stream, kernels on non-blocking stream"
+    },
+    {
+      "id": "W1-009",
+      "verdict": "fixed",
+      "source_line": 556,
+      "location": "code/ch08/threshold_async_kernel.cuh:133",
+      "title": "cp.async wait_group off-by-one: each block's last tile is consumed before its copy is guaranteed complete"
+    },
+    {
+      "id": "W1-010",
+      "verdict": "fixed",
+      "source_line": 560,
+      "location": "code/ch10/tcgen05_warp_specialized.cu:81",
+      "title": "Tile swizzle drops/duplicates output tiles whenever grid_n is not a multiple of 8"
+    },
+    {
+      "id": "W1-011",
+      "verdict": "fixed",
+      "source_line": 564,
+      "location": "code/ch11/streams_ordered_demo.cu:118",
+      "title": "Timed region records events on default stream while kernels run on non-blocking streams — measures launch overhead only"
+    },
+    {
+      "id": "W1-012",
+      "verdict": "fixed",
+      "source_line": 568,
+      "location": "code/ch11/streams_ordered_demo.cu:90",
+      "title": "No inter-stream dependencies: H2D copy, compute, and D2H copy race across three independent streams"
+    },
+    {
+      "id": "W1-013",
+      "verdict": "fixed",
+      "source_line": 572,
+      "location": "code/ch11/streams_overlap_demo.cu:221",
+      "title": "Vectorization 'speedup' compares a baseline doing 2 kernel launches/iter against optimized doing 1 — ~2x inflated"
+    },
+    {
+      "id": "W1-014",
+      "verdict": "fixed",
+      "source_line": 576,
+      "location": "code/ch11/streams_warp_specialized_demo.cu:186",
+      "title": "Same wrong-stream event timing: stop event does not wait for kernels launched on non-blocking streams"
+    },
+    {
+      "id": "W1-015",
+      "verdict": "fixed",
+      "source_line": 580,
+      "location": "code/ch12/optimized_cuda_graphs.cu:107",
+      "title": "Graph-replay benchmark records events on default stream while replays run on non-blocking stream"
+    },
+    {
+      "id": "W1-016",
+      "verdict": "fixed",
+      "source_line": 584,
+      "location": "code/ch18/flashmla_kernel.cu:27",
+      "title": "FlashMLA book sample computes softmax of per-thread partial dot products - the attention math is wrong"
+    },
+    {
+      "id": "W1-017",
+      "verdict": "fixed",
+      "source_line": 588,
+      "location": "code/cli/aisp.py:267",
+      "title": "Default `aisp` invocation imports nonexistent module cli.tui and crashes"
+    },
+    {
+      "id": "W1-018",
+      "verdict": "fixed",
+      "source_line": 592,
+      "location": "code/core/benchmark/benchmark_peak.py:200",
+      "title": "Peak HBM (and L2) bandwidth undercounts copy traffic by 2x — measured 'peak' then becomes the validation target"
+    },
+    {
+      "id": "W1-019",
+      "verdict": "fixed",
+      "source_line": 596,
+      "location": "code/core/benchmark/blackwell_optimizations/blackwell_optimizations/test_all_features.cu:275",
+      "title": "Same 4096-thread block bug: the 'comprehensive Blackwell feature' benchmark always fails to launch; feature claims are also unbacked"
+    },
+    {
+      "id": "W1-020",
+      "verdict": "fixed",
+      "source_line": 600,
+      "location": "code/core/benchmark/blackwell_optimizations/blackwell_optimizations/test_tma.cu:255",
+      "title": "Launch config uses a 64x64 = 4096-thread block, exceeding the 1024 threads/block hardware limit: every kernel launch fails"
+    },
+    {
+      "id": "W1-021",
+      "verdict": "fixed",
+      "source_line": 604,
+      "location": "code/core/benchmark/comparison.py:578",
+      "title": "Chapter 'speedup' metric mapping flips timing.mean_ms to HIGHER_IS_BETTER, inverting regression detection"
+    },
+    {
+      "id": "W1-022",
+      "verdict": "fixed",
+      "source_line": 608,
+      "location": "code/core/common/async_input_pipeline.py:110",
+      "title": "Prefetcher allocates batches on the copy stream but never record_stream()s them: cross-stream use-after-free race"
+    },
+    {
+      "id": "W1-023",
+      "verdict": "fixed",
+      "source_line": 612,
+      "location": "code/core/llm.py:209",
+      "title": "max_tokens is floored at 131072, breaking every OpenAI/Anthropic call and ignoring all overrides"
+    },
+    {
+      "id": "W1-024",
+      "verdict": "fixed",
+      "source_line": 616,
+      "location": "code/docs/gb300-sol-roofline.md:11",
+      "title": "GB300 FP8/BF16 dense peak specs inflated 1.5x across all roofline docs"
+    },
+    {
+      "id": "W1-025",
+      "verdict": "fixed",
+      "source_line": 620,
+      "location": "code/labs/custom_vs_cublas/cutlass_gemm/CMakeLists.txt:50",
+      "title": "Manual -gencode 100a/103a conflicts with CMAKE_CUDA_ARCHITECTURES=100 under separable compilation — the SM100a/SM103a kernels never reach the device link"
+    },
+    {
+      "id": "W1-026",
+      "verdict": "fixed",
+      "source_line": 624,
+      "location": "code/labs/custom_vs_cublas/tcgen05_cluster.cu:309",
+      "title": "Odd grid_m is padded up for the cluster launch but the kernel has no tile bounds guard: padded CTAs write a full tile out of bounds"
+    },
+    {
+      "id": "W1-028",
+      "verdict": "fixed",
+      "source_line": 628,
+      "location": "code/labs/dynamic_router/vllm_runner.py:526",
+      "title": "Router fed tokens-per-step EMA as its ttft_ms metric in the vLLM routing demo"
+    },
+    {
+      "id": "W1-029",
+      "verdict": "fixed",
+      "source_line": 632,
+      "location": "code/labs/fullstack_cluster/moe_hybrid_ep_common.py:727",
+      "title": "Overlap mode shares reuse-buffers between the comm stream and the default stream — cross-stream data race corrupts expert outputs"
+    },
+    {
+      "id": "W1-030",
+      "verdict": "fixed",
+      "source_line": 636,
+      "location": "code/labs/kv_cache_compression/optimized_kv_cache_nvfp4.py:79",
+      "title": "Verification tolerance rtol=1.0, atol=10.0 accepts any output including all zeros"
+    },
+    {
+      "id": "W1-031",
+      "verdict": "fixed",
+      "source_line": 640,
+      "location": "code/labs/kv_cache_compression/optimized_kv_cache_nvfp4.py:29",
+      "title": "NVFP4BlockScaling called with kwargs the TE recipe does not accept — TypeError on any machine with Transformer Engine"
+    },
+    {
+      "id": "W1-032",
+      "verdict": "fixed",
+      "source_line": 644,
+      "location": "code/labs/moe_optimization_journey/level4_triton.py:285",
+      "title": "Async pinned D2H copy of expert counts read without synchronization (race)"
+    },
+    {
+      "id": "W1-033",
+      "verdict": "fixed",
+      "source_line": 648,
+      "location": "code/labs/moe_parallelism/scenarios.py:217",
+      "title": "Five of seven planner scenarios are sized for a 128-GPU DGX-A100 cluster but bound to the 576-GPU GB200 cluster"
+    },
+    {
+      "id": "W1-034",
+      "verdict": "fixed",
+      "source_line": 652,
+      "location": "code/labs/nanochat_fullstack/nanochat/engine.py:491",
+      "title": "Persistent-decode path runs forward on a side stream with no synchronization against the consumer stream"
+    },
+    {
+      "id": "W1-035",
+      "verdict": "fixed",
+      "source_line": 656,
+      "location": "code/labs/nanochat_fullstack/nanochat/engine.py:919",
+      "title": "non_blocking D2H copy into pinned memory is read by the host immediately, without synchronization"
+    },
+    {
+      "id": "W1-036",
+      "verdict": "fixed",
+      "source_line": 660,
+      "location": "code/labs/nanochat_fullstack/scripts/bench_b200_flags.py:125",
+      "title": "'persistent' mode decode is timed with events on the default stream while the work runs on the engine's side stream"
+    },
+    {
+      "id": "W1-037",
+      "verdict": "fixed",
+      "source_line": 664,
+      "location": "code/labs/nvfp4_gemm/local_eval_submission.py:86",
+      "title": "Correctness verify compares the output tensor with itself for case0/case2 (aliasing tautology)"
+    },
+    {
+      "id": "W1-038",
+      "verdict": "fixed",
+      "source_line": 668,
+      "location": "code/labs/nvfp4_gemv/local_eval.py:169",
+      "title": "NameError: `sys` is never imported on the module execution path that actually runs"
+    },
+    {
+      "id": "W1-039",
+      "verdict": "fixed",
+      "source_line": 672,
+      "location": "code/labs/persistent_decode/persistent_decode_ext.cu:38",
+      "title": "Shared-memory reduction race: smem[0] read without a barrier before buffer reuse"
+    },
+    {
+      "id": "W1-040",
+      "verdict": "fixed",
+      "source_line": 676,
+      "location": "code/tests/test_anti_cheat_protections.py:139",
+      "title": "Anti-cheat tests assert the config values the test itself just set"
+    },
+    {
+      "id": "W1-041",
+      "verdict": "fixed",
+      "source_line": 680,
+      "location": "code/tests/test_protection_effectiveness.py:337",
+      "title": "'Protection catches attack' tests are tautologies that never invoke the protections"
+    },
+    {
+      "id": "W1-042",
+      "verdict": "fixed",
+      "source_line": 684,
+      "location": "docs/environment.md:12",
+      "title": "Environment doc prescribes CUDA 12.9/cu129 while the repo requires CUDA 13"
+    },
+    {
+      "id": "W1-043",
+      "verdict": "fixed",
+      "source_line": 688,
+      "location": "CONTRIBUTING.md:57",
+      "title": "B300 mislabeled as SM100; B300/Blackwell Ultra is compute capability 10.3 (sm_103)"
+    },
+    {
+      "id": "W1-044",
+      "verdict": "fixed",
+      "source_line": 692,
+      "location": "CONTRIBUTING.md:314",
+      "title": "CONTRIBUTING claims MIT License; the repo is Apache 2.0"
+    },
+    {
+      "id": "W1-045",
+      "verdict": "fixed",
+      "source_line": 696,
+      "location": "code/ch06/occupancy_api.cu:62",
+      "title": "Occupancy queried with 0 dynamic shared memory but kernel launched with block_size*4 bytes; divergent __syncthreads in partial block"
+    },
+    {
+      "id": "W1-046",
+      "verdict": "fixed",
+      "source_line": 700,
+      "location": "code/ch06/optimized_ilp_low_occupancy_vec4_impl.cuh:191",
+      "title": "Host verification uses a 4-wide coefficient pattern against the kernel's 8-wide pattern, so the demo always reports Incorrect and exits 1"
+    },
+    {
+      "id": "W1-047",
+      "verdict": "fixed",
+      "source_line": 704,
+      "location": "code/ch10/tma_2d_pipeline_blackwell.cu:11",
+      "title": "Header and summary claim 128B swizzle and L2 promotion, but the code encodes SWIZZLE_NONE and L2_PROMOTION_NONE"
+    },
+    {
+      "id": "W1-048",
+      "verdict": "fixed",
+      "source_line": 708,
+      "location": "code/ch11/streams_ordered_demo.cu:73",
+      "title": "Chunking mismatch: array split into 8 pipeline chunks but only 3 are ever transferred or processed"
+    },
+    {
+      "id": "W1-049",
+      "verdict": "fixed",
+      "source_line": 712,
+      "location": "code/ch11/streams_overlap_demo.cu:278",
+      "title": "scale_kernel_async is launched with the Float8-sized grid on Blackwell, so it only processes half the array and reports ~2x inflated bandwidth"
+    },
+    {
+      "id": "W1-050",
+      "verdict": "fixed",
+      "source_line": 716,
+      "location": "code/ch11/streams_overlap_demo.cu:193",
+      "title": "'Three-way pipeline' overlap benchmark runs copy and compute on the same stream because stream2 aliases stream1"
+    },
+    {
+      "id": "W1-051",
+      "verdict": "fixed",
+      "source_line": 720,
+      "location": "code/ch11/streams_overlap_demo.cu:296",
+      "title": "Default-stream cudaMemcpy races with kernels still running on the non-blocking stream"
+    },
+    {
+      "id": "W1-052",
+      "verdict": "fixed",
+      "source_line": 724,
+      "location": "code/ch19/Makefile:41",
+      "title": "ch16/ch18/ch19/ch20 'compare' loops drop per-architecture build failures — exit status is the last arch only"
+    },
+    {
+      "id": "W1-053",
+      "verdict": "fixed",
+      "source_line": 728,
+      "location": "code/core/benchmark/benchmark_peak.py:360",
+      "title": "FP4 'peak TFLOPS' builds an invalid recipe: NVFP4BlockScaling passed as a DelayedScaling kwarg"
+    },
+    {
+      "id": "W1-054",
+      "verdict": "fixed",
+      "source_line": 732,
+      "location": "code/core/benchmark/comparison.py:643",
+      "title": "Chapter metric 'target' VALUES are misused as regression-threshold PERCENTAGES"
+    },
+    {
+      "id": "W1-055",
+      "verdict": "fixed",
+      "source_line": 736,
+      "location": "code/core/benchmark/detect_sm.py:31",
+      "title": "Architecture table labels CC 12.x as 'Grace-Blackwell GB200/GB300' — wrong hardware spec, contradicted elsewhere in the repo"
+    },
+    {
+      "id": "W1-056",
+      "verdict": "fixed",
+      "source_line": 740,
+      "location": "code/core/benchmark/metrics.py:57",
+      "title": "B200 peak FLOPS specs wrong (FP8 2500 'sparse', FP16 tensor 1250) — roofline efficiency percentages inflated ~1.8x"
+    },
+    {
+      "id": "W1-057",
+      "verdict": "fixed",
+      "source_line": 744,
+      "location": "code/core/common/cuda_arch.mk:90",
+      "title": "sm_120 mislabeled 'Grace-Blackwell GB200 (CC 12.0)' — GB200 GPUs are CC 10.0; following the label builds binaries that cannot run on GB200"
+    },
+    {
+      "id": "W1-058",
+      "verdict": "fixed",
+      "source_line": 748,
+      "location": "code/core/diagnostics/microbench.py:344",
+      "title": "tensor_core_bench fp8 path always crashes on modern PyTorch (randn/matmul unsupported for float8)"
+    },
+    {
+      "id": "W1-059",
+      "verdict": "fixed",
+      "source_line": 752,
+      "location": "code/core/engine.py:978",
+      "title": "ai.ask imports nonexistent core.book.get_book_citations; ImportError silently swallowed so citations are always empty"
+    },
+    {
+      "id": "W1-060",
+      "verdict": "fixed",
+      "source_line": 756,
+      "location": "code/core/engine.py:1030",
+      "title": "ai.explain summary/bullet regexes double-escaped — explanation is the whole citation blob, key_points never parse bullets"
+    },
+    {
+      "id": "W1-061",
+      "verdict": "fixed",
+      "source_line": 760,
+      "location": "code/core/harness/benchmark_harness.py:3506",
+      "title": "Harness fabricates Gaussian timing samples and reports them as measured raw times"
+    },
+    {
+      "id": "W1-062",
+      "verdict": "fixed",
+      "source_line": 764,
+      "location": "code/core/harness/benchmark_harness.py:4887",
+      "title": "UnboundLocalError: allowed_antipatterns referenced when sync-detection is disabled but antipattern-detection is enabled"
+    },
+    {
+      "id": "W1-063",
+      "verdict": "fixed",
+      "source_line": 768,
+      "location": "code/core/harness/benchmark_harness.py:2387",
+      "title": "torchrun tokens/s parser regex requires a literal backslash — throughput never extracted"
+    },
+    {
+      "id": "W1-064",
+      "verdict": "fixed",
+      "source_line": 772,
+      "location": "code/core/perf_core_base.py:1313",
+      "title": "get_nvlink_status regexes are double-escaped and never match — NVLink always reported as 0 links / 0 GB/s"
+    },
+    {
+      "id": "W1-065",
+      "verdict": "fixed",
+      "source_line": 776,
+      "location": "code/labs/blackwell_matmul/grace_blackwell_kernels.cu:529",
+      "title": "Dead #ifdef on enum attributes leaves TMA gated at CC >= 10, wrongly refusing Hopper (TMA is SM90)"
+    },
+    {
+      "id": "W1-066",
+      "verdict": "fixed",
+      "source_line": 780,
+      "location": "code/labs/cudnn_sdpa_bench/baseline_flash_sdp.py:51",
+      "title": "--backend cudnn never pins cuDNN: same fallback preference list as auto"
+    },
+    {
+      "id": "W1-067",
+      "verdict": "fixed",
+      "source_line": 784,
+      "location": "code/labs/custom_vs_cublas/Makefile:12",
+      "title": "ARCH knob dead: gencode hardcoded to compute_100a regardless of ARCH"
+    },
+    {
+      "id": "W1-070",
+      "verdict": "fixed",
+      "source_line": 788,
+      "location": "code/labs/custom_vs_cublas/tcgen05_cluster.cu:6",
+      "title": "Header claims TMA multicast but kernel uses plain SM90_TMA_LOAD"
+    },
+    {
+      "id": "W1-071",
+      "verdict": "fixed",
+      "source_line": 792,
+      "location": "code/labs/flashattention4/README.md:27",
+      "title": "'Current validated' 14.45x claim contradicted by latest B200 run"
+    },
+    {
+      "id": "W1-072",
+      "verdict": "fixed",
+      "source_line": 796,
+      "location": "code/labs/flashattention4/flashattention4_common.py:659",
+      "title": "TFLOPs inflated ~2x for alibi/softcap: dense FLOP count for causal kernels"
+    },
+    {
+      "id": "W1-073",
+      "verdict": "fixed",
+      "source_line": 800,
+      "location": "code/labs/flashattention_gluon/flashattention_gluon_common.py:102",
+      "title": "Padded keys get softmax weight: K/V loads masked but scores not"
+    },
+    {
+      "id": "W1-074",
+      "verdict": "fixed",
+      "source_line": 804,
+      "location": "code/labs/flexattention/flex_attention_cute.py:61",
+      "title": "flash-attn CuTe called with [B,H,S,D] but expects [B,S,H,D]"
+    },
+    {
+      "id": "W1-075",
+      "verdict": "fixed",
+      "source_line": 808,
+      "location": "code/labs/fullstack_cluster/moe_hybrid_ep_common.py:1112",
+      "title": "Replicated router/projection params never synchronized at init"
+    },
+    {
+      "id": "W1-076",
+      "verdict": "fixed",
+      "source_line": 812,
+      "location": "code/labs/fullstack_cluster/moe_hybrid_ep_common.py:857",
+      "title": "Collectives gated on per-rank data-dependent token counts — hang risk"
+    },
+    {
+      "id": "W1-077",
+      "verdict": "fixed",
+      "source_line": 816,
+      "location": "code/labs/kv_cache_compression/optimized_kv_cache_nvfp4.py:90",
+      "title": "Fabricated 4x/2x kv_cache.compression_ratio for a BF16-in-both-paths cache"
+    },
+    {
+      "id": "W1-078",
+      "verdict": "fixed",
+      "source_line": 820,
+      "location": "code/labs/moe_cuda/optimized_kv_transfer.py:130",
+      "title": "Overlapped KV-transfer pipeline lacks compute-after-copy dependency (WAR race)"
+    },
+    {
+      "id": "W1-079",
+      "verdict": "fixed",
+      "source_line": 824,
+      "location": "code/labs/moe_cuda_ptx/moe_cuda_ptx_common.py:1260",
+      "title": "moe_layer verification tolerance loosened 10x based on a quantization step the code explicitly does not perform"
+    },
+    {
+      "id": "W1-080",
+      "verdict": "fixed",
+      "source_line": 828,
+      "location": "code/labs/moe_optimization_journey/level2_fp8.py:2",
+      "title": "Journey wrapper benchmarks advertise optimizations (FP8, streams, sorting, grouping) their level never enables"
+    },
+    {
+      "id": "W1-081",
+      "verdict": "fixed",
+      "source_line": 832,
+      "location": "code/labs/moe_optimization_journey/level6_native_fp8.py:195",
+      "title": "FP8 hidden activations saturate with scale=1.0, and utilization is measured against the BF16 peak"
+    },
+    {
+      "id": "W1-082",
+      "verdict": "fixed",
+      "source_line": 836,
+      "location": "code/labs/moe_optimization_journey/triton_fused_moe.py:102",
+      "title": "Fused MoE Triton kernel computes a tiny slice of the math yet reports full-GEMM TFLOPS"
+    },
+    {
+      "id": "W1-083",
+      "verdict": "fixed",
+      "source_line": 840,
+      "location": "code/labs/moe_optimization_journey/triton_kernels.py:140",
+      "title": "Demo Triton kernels compute wrong math: FFN kernel reuses one hidden tile for all N blocks; grouped GEMM has no per-group pointer offsets"
+    },
+    {
+      "id": "W1-084",
+      "verdict": "fixed",
+      "source_line": 844,
+      "location": "code/labs/moe_parallelism/plan.py:379",
+      "title": "EP all-to-all cost charged even at EP=1, and hotspot text hardcodes HDR100 on GB200 clusters"
+    },
+    {
+      "id": "W1-085",
+      "verdict": "fixed",
+      "source_line": 848,
+      "location": "code/labs/nanochat_fullstack/benchmark_incremental_optimizations.py:159",
+      "title": "'+ enable_persistent_decode' and '+ use_cuda_graphs' benchmark rows are no-ops: the flags gate Engine paths but the benchmark never uses the Engine"
+    },
+    {
+      "id": "W1-086",
+      "verdict": "fixed",
+      "source_line": 852,
+      "location": "code/labs/nvfp4_group_gemm/baseline_nvfp4_group_gemm.py:40",
+      "title": "Baseline and optimized group-GEMM targets run the same custom kernel — verification is self-referential"
+    },
+    {
+      "id": "W1-087",
+      "verdict": "fixed",
+      "source_line": 856,
+      "location": "code/labs/ozaki_scheme/README.md:48",
+      "title": "\"Verification-clean within rtol=1e-2, atol=1e-2\" claim is vacuous for this workload's output scale"
+    },
+    {
+      "id": "W1-088",
+      "verdict": "fixed",
+      "source_line": 860,
+      "location": "code/labs/persistent_decode/optimized_persistent_decode_triton.py:83",
+      "title": "Triton persistent decode silently drops sequences when num_programs < batch"
+    },
+    {
+      "id": "W1-089",
+      "verdict": "fixed",
+      "source_line": 864,
+      "location": "code/labs/persistent_decode/paged_kv_offload_common.py:278",
+      "title": "Pinned staging buffer overwritten while non-blocking H2D copy may still be in flight"
+    },
+    {
+      "id": "W1-090",
+      "verdict": "fixed",
+      "source_line": 868,
+      "location": "code/labs/persistent_decode/tma_extension.py:58",
+      "title": "\"Native TMA\" extension never uses the TMA engine — 4-byte thread-scope cp.async at best"
+    },
+    {
+      "id": "W1-091",
+      "verdict": "fixed",
+      "source_line": 872,
+      "location": "code/labs/train_distributed/optimized_zero2.py:77",
+      "title": "Optimized single-GPU ZeRO-2 requires a DDP comm hook that does not exist in any PyTorch release"
+    },
+    {
+      "id": "W1-092",
+      "verdict": "fixed",
+      "source_line": 876,
+      "location": "code/monitoring/prometheus_exporter.py:139",
+      "title": "Exporter emits duplicate # HELP/# TYPE lines per GPU series - Prometheus rejects the whole scrape on any multi-GPU host"
+    },
+    {
+      "id": "W1-093",
+      "verdict": "fixed",
+      "source_line": 880,
+      "location": "code/tests/test_anti_cheat_edge_cases.py:1314",
+      "title": "43 of 124 edge-case tests contain no assertions; several bodies are literally 'pass'"
+    },
+    {
+      "id": "W1-094",
+      "verdict": "fixed",
+      "source_line": 884,
+      "location": "code/tests/test_benchmark_metrics.py:48",
+      "title": "CI-gated B200 spec test is too loose to catch wrong hardware constants it currently blesses"
+    },
+    {
+      "id": "W1-095",
+      "verdict": "fixed",
+      "source_line": 888,
+      "location": "code/tests/test_blackwell_stack.py:105",
+      "title": "Blackwell 'validation suite' swallows every exception with print and can never fail"
+    },
+    {
+      "id": "W1-096",
+      "verdict": "fixed",
+      "source_line": 892,
+      "location": "docs/appendix.md:856",
+      "title": "NCCL_NTHREADS and NCCL_BUFFSIZE described with wrong semantics and wrong defaults"
+    },
+    {
+      "id": "W1-097",
+      "verdict": "fixed",
+      "source_line": 896,
+      "location": "docs/appendix.md:539",
+      "title": "cp.async attributed to Hopper/Blackwell; it is an Ampere (CC 8.0) feature"
+    },
+    {
+      "id": "W1-099",
+      "verdict": "fixed",
+      "source_line": 900,
+      "location": "docs/tooling-and-profiling.md:45",
+      "title": "ncu/nsys commands use metric and trace names that do not exist"
+    },
+    {
+      "id": "W1-100",
+      "verdict": "fixed",
+      "source_line": 904,
+      "location": "docs/tooling-and-profiling.md:14",
+      "title": "Every scripted workflow in the profiling guide references nonexistent files"
+    },
+    {
+      "id": "W1-101",
+      "verdict": "fixed",
+      "source_line": 908,
+      "location": "CONTRIBUTING.md:36",
+      "title": "Setup and test commands in CONTRIBUTING reference nonexistent paths"
+    },
+    {
+      "id": "W1-102",
+      "verdict": "fixed",
+      "source_line": 912,
+      "location": "code/ch02/memory_transfer_pcie_demo.cu:98",
+      "title": "PCIe 5.0 \"~128 GB/s theoretical max\" is unreachable for this benchmark's sequential-transfer metric"
+    },
+    {
+      "id": "W1-103",
+      "verdict": "fixed",
+      "source_line": 916,
+      "location": "code/ch07/fp8_32byte_loads_demo.cu:105",
+      "title": "Comment claims 0x3C initializes FP8 buffer to 1.0, but 0x3C is 1.5 in E4M3"
+    },
+    {
+      "id": "W1-104",
+      "verdict": "fixed",
+      "source_line": 920,
+      "location": "code/ch08/threshold_tma_kernel.cuh:50",
+      "title": "aligned_size_t<16> constructed with a size that is not a multiple of 16 for ragged tails (undefined behavior)"
+    },
+    {
+      "id": "W1-105",
+      "verdict": "fixed",
+      "source_line": 924,
+      "location": "code/ch10/optimized_dsmem_reduction_warp_specialized.cu:11",
+      "title": "Header claims 'No atomics needed - single writer per cluster' and an 8-CTA cluster; the kernel uses atomicAdd from all 4 CTAs"
+    },
+    {
+      "id": "W1-106",
+      "verdict": "fixed",
+      "source_line": 928,
+      "location": "code/cli/commands/profiling.py:419",
+      "title": "`aisp profile flame` claims to generate a flame graph but is a no-op"
+    },
+    {
+      "id": "W1-107",
+      "verdict": "fixed",
+      "source_line": 932,
+      "location": "code/core/analysis/distributed_analysis.py:126",
+      "title": "NVLink-active check compares capitalized 'Active' against a lowercased string — branch can never run"
+    },
+    {
+      "id": "W1-108",
+      "verdict": "fixed",
+      "source_line": 936,
+      "location": "code/core/benchmark/benchmark_peak.py:701",
+      "title": "NVLink bandwidth mixes GiB and GB — result underreported by ~7.4%"
+    },
+    {
+      "id": "W1-109",
+      "verdict": "fixed",
+      "source_line": 940,
+      "location": "code/core/benchmark/blackwell_optimizations/blackwell_optimizations/test_tma.cu:214",
+      "title": "Wrong hardware claim: 'TMA requires Blackwell (SM 10.0+)' — TMA was introduced on Hopper (SM 9.0)"
+    },
+    {
+      "id": "W1-110",
+      "verdict": "fixed",
+      "source_line": 944,
+      "location": "code/core/perf_core_base.py:1421",
+      "title": "CUTLASS version parse uses r\"\\\\d+\" — always IndexError, version reported as None with a spurious warning"
+    },
+    {
+      "id": "W1-111",
+      "verdict": "fixed",
+      "source_line": 948,
+      "location": "code/core/scripts/build_tma_demos.sh:34",
+      "title": "build_tma_demos.sh resolves the repo root to code/core, so both builds fail unconditionally (and the make targets don't exist anyway)"
+    },
+    {
+      "id": "W1-112",
+      "verdict": "fixed",
+      "source_line": 952,
+      "location": "code/core/scripts/run_warp_specialization_ci.sh:7",
+      "title": "run_warp_specialization_ci.sh computes REPO_ROOT as code/core, so the CI test wrapper always fails with file-not-found"
+    },
+    {
+      "id": "W1-113",
+      "verdict": "fixed",
+      "source_line": 956,
+      "location": "code/core/whatif.py:22",
+      "title": "FP8 what-if scenario ships an invalid torch.autocast code example"
+    },
+    {
+      "id": "W1-114",
+      "verdict": "fixed",
+      "source_line": 960,
+      "location": "code/labs/cache_aware_disagg_inference/cache_aware_disagg_multigpu_common.py:367",
+      "title": "Peer KV handoff sends a non-contiguous slice for batch_size > 1"
+    },
+    {
+      "id": "W1-115",
+      "verdict": "fixed",
+      "source_line": 964,
+      "location": "code/labs/custom_vs_cublas/cutlass_gemm/CMakeLists.txt:52",
+      "title": "-D_GLIBCXX_USE_CXX11_ABI=0 is wrong for the pinned torch 2.9.1+cu130 wheels (CXX11 ABI=1)"
+    },
+    {
+      "id": "W1-117",
+      "verdict": "fixed",
+      "source_line": 968,
+      "location": "code/labs/custom_vs_cublas/run_lab.py:463",
+      "title": "Arithmetic-intensity figure is wrong by 4x: 4096^3 fp16 GEMM is ~1365 FLOPs/byte, not 5461"
+    },
+    {
+      "id": "W1-118",
+      "verdict": "fixed",
+      "source_line": 972,
+      "location": "code/labs/decode_optimization/baseline_decode_warp_specialized.py:1",
+      "title": "\"Warp-specialized Triton decode\" pair contains no Triton and no warp specialization"
+    },
+    {
+      "id": "W1-119",
+      "verdict": "fixed",
+      "source_line": 976,
+      "location": "code/labs/kv_cache_compression/baseline_kv_cache.py:1",
+      "title": "Baseline docstrings claim MXFP8 block scaling but the code uses per-tensor DelayedScaling"
+    },
+    {
+      "id": "W1-120",
+      "verdict": "fixed",
+      "source_line": 980,
+      "location": "code/labs/moe_cuda/optimized_router.py:88",
+      "title": "AdaptiveTopKMoE applies expert 0's FC2 weights to every routed expert"
+    },
+    {
+      "id": "W1-121",
+      "verdict": "fixed",
+      "source_line": 984,
+      "location": "code/labs/nanochat_fullstack/test_new_optimizations.py:87",
+      "title": "CTA clustering 'validation' asserts nothing and prints tests-passed unconditionally"
+    },
+    {
+      "id": "W1-122",
+      "verdict": "fixed",
+      "source_line": 988,
+      "location": "code/labs/nvfp4_gemv/optimized_submission.py:146",
+      "title": "Packed-scale cache keyed on data_ptr/_version can silently serve stale scales after allocator address reuse"
+    },
+    {
+      "id": "W1-123",
+      "verdict": "fixed",
+      "source_line": 992,
+      "location": "code/labs/nvfp4_group_gemm/README.md:56",
+      "title": "Directory Layout lists cutlass_extension.py, which does not exist"
+    },
+    {
+      "id": "W1-124",
+      "verdict": "fixed",
+      "source_line": 996,
+      "location": "code/requirements_latest.txt:18",
+      "title": "README quickstart 'pip install -r requirements_latest.txt' cannot resolve torch==2.9.1+cu130 — the cu130 index line is commented out"
+    },
+    {
+      "id": "W1-125",
+      "verdict": "fixed",
+      "source_line": 1000,
+      "location": "code/setup.sh:3897",
+      "title": "Final summary claims cuDNN 9.15.1.9-1 was installed, contradicting the script's own 9.16.0.29-1 install-and-hold"
+    },
+    {
+      "id": "W1-126",
+      "verdict": "fixed",
+      "source_line": 1004,
+      "location": "code/tests/test_benchmark_regime_configs.py:19",
+      "title": "Module-wide CUDA skip disables pure-config regression tests that need no GPU"
+    },
+    {
+      "id": "W1-127",
+      "verdict": "fixed",
+      "source_line": 1008,
+      "location": "code/tests/test_symmetric_memory_inference.py:61",
+      "title": "Gloo demo tests silently return (reporting PASS) unless symmetric memory and 2 GPUs are present"
+    },
+    {
+      "id": "W1-128",
+      "verdict": "fixed",
+      "source_line": 1012,
+      "location": "code/tests/test_validate_benchmark_pairs_tools.py:448",
+      "title": "nvshmem pair-validation test asserts nothing on multi-GPU hosts"
+    }
+  ],
+  "source_scope_note": "The report's 141-item open inventory merges Wave 2, the closure critic, the tail pass, and two explicitly linked Wave 1 residuals. Original order and wording are preserved; implementation work may deduplicate overlaps."
+}

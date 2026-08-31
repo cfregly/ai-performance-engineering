@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-08-31T09:41:14.008623+00:00",
+  "source_url": "https://claude.ai/code/artifact/9a311b78-5dac-4ea7-909f-e52993ab8e0e",
+  "authoritative_intake": {
+    "path": "docs/audits/2026-08-30/wave-2-source.txt",
+    "bytes": 56552,
+    "sha256": "a57bd321e8b6296b11f4983c1e55464c459ce85e3866f805b2bf2433fd5e1868",
+    "kind": "user_supplied_full_report_text",
+    "reason": "The user supplied this complete 1,034-line report attachment after the public artifact continued to serve its older Wave 1 version."
+  },
+  "session_summary": {
+    "path": "docs/audits/2026-08-30/evidence/intake/wave-2/session-summary.txt",
+    "bytes": 8984,
+    "sha256": "74edd02a4696138b2559066ee10eab654a07ff4c89b131243183f452b53c4fe5",
+    "kind": "user_supplied_wave_2_session_summary"
+  },
+  "public_artifact_observation": {
+    "status": "stale_relative_to_user_attachment",
+    "frame_metadata": {
+      "path": "docs/audits/2026-08-30/evidence/intake/wave-2/public-artifact-frame-metadata.json",
+      "bytes": 292,
+      "sha256": "dcb48442c95a4ef9c974353f9b4ad5da64b9d9145b74bc3fd44904d23182dc75",
+      "content": {
+        "kind": "public",
+        "ver": "1788095118-31d5",
+        "title": "AI Performance Engineering Audit",
+        "favicon": "\ud83d\udd2c",
+        "description": "128 verified accuracy findings with fixes from a 27-agent adversarial review of the repo at b57e4c6a9.",
+        "mode": "public",
+        "hasThumb": true,
+        "reportEnabled": true,
+        "duplicable": true
+      }
+    },
+    "rendered_html": {
+      "bytes": 432725,
+      "sha256": "e75511c1215de4d9cd8cee9b2e3ad6e16e6876146668a671fecc8acb6c95b176",
+      "retained": false,
+      "reason": "The large ephemeral HTML response is represented by its digest and frame metadata; the authoritative report is the user attachment."
+    },
+    "rendered_page_text": {
+      "reported_findings": 128,
+      "reviewed_revision": "b57e4c6a9",
+      "wave_2_text_present": false,
+      "method": "Fresh public frame response plus browser DOM inspection."
+    }
+  },
+  "scope_boundary": "The attached report is read-only audit evidence. It does not prove runtime correctness, GPU qualification, performance, or deployment."
+}

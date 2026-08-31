@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-08-31T09:51:56.493737+00:00",
+  "base_revision": "cf48c8481df0de847abc1569fd3be3f33218f351",
+  "candidate_revision": "2f3fc665d1cb6af7a55631c87988ab9487af2275",
+  "goal_complete": false,
+  "checkpoint": "wave_2_criticals_and_wave_1_residuals_source_candidate",
+  "findings": {
+    "awaiting_runtime": [
+      "W2-001",
+      "W2-002",
+      "W2-003"
+    ],
+    "source_fixed": [
+      "W2-124",
+      "W2-141",
+      "W1-069",
+      "W1-098"
+    ]
+  },
+  "changed_files": [
+    {
+      "path": "code/ch12/cuda_extensions/cuda_graphs_kernels.cu",
+      "bytes": 6213,
+      "sha256": "8bf1e05d1451413962648b5909c167110e803eca210d287fefb7f67cbc7c81a2"
+    },
+    {
+      "path": "code/ch12/optimized_graph_conditional_runtime.cu",
+      "bytes": 11525,
+      "sha256": "56cd1c6782d145584e0bbbf918d0e2902405b5d4bf61174cf6867bf57360c778"
+    },
+    {
+      "path": "code/labs/custom_vs_cublas/cutlass_gemm/cutlass_gemm.cu",
+      "bytes": 6718,
+      "sha256": "026c362262e9f401209cb478cb2e437d7a34b01f6557e6731bce3b06277541ba"
+    },
+    {
+      "path": "code/labs/custom_vs_cublas/run_lab.py",
+      "bytes": 14101,
+      "sha256": "25f2b01964391125f92be6e17421ece2bfcfadecc078f1ecf2e9294309737770"
+    },
+    {
+      "path": "code/labs/custom_vs_cublas/tcgen05_loader.py",
+      "bytes": 28666,
+      "sha256": "6725dab31b1508062e046a3a91206d53b33eb21e364491b3ce9d4f5806fde018"
+    },
+    {
+      "path": "docs/appendix.md",
+      "bytes": 137538,
+      "sha256": "4e4ecc69f8875d161b1d3ca01a5e6fbfa8cf35ef07dbac6c5a3c650de04fc8c2"
+    },
+    {
+      "path": "code/tests/test_ch12_cuda_graph_regressions.py",
+      "bytes": 2154,
+      "sha256": "0c9b05f2511cf1638e81ca410540339d8a5adbf2188a38f2abbe2e68b3fbfd55"
+    },
+    {
+      "path": "code/tests/test_blackwell_feature_sources.py",
+      "bytes": 11466,
+      "sha256": "eb3f2ef19ba05f664efc3531f05a6fffc9170a59ed46311d6bd1d8a0cdbc178e"
+    }
+  ],
+  "focused_verification": {
+    "command": "cd code && python -m pytest tests/test_ch12_cuda_graph_regressions.py tests/test_blackwell_feature_sources.py tests/test_chapter_cuda_contracts.py::test_stream_ordered_enhanced_demo_uses_reentrant_helper tests/test_moe_cuda_ptx_layer_contract.py::test_grouped_ffn_cuda_clears_poisoned_reusable_padding_rows tests/test_cli_profile_ncu.py::test_cli_profile_ncu_help tests/test_cli_profile_ncu.py::test_cli_profile_ncu_minimal_metric_set tests/test_build_entrypoints.py::test_custom_cublas_make_uses_the_requested_architecture -q",
+    "exit_code": 0,
+    "result": "61 passed in 2.74s",
+    "additional": [
+      "Python compilation passed for the two lab loaders and both intake scripts.",
+      "The appendix aggregate-versus-bisection semantic contract passed.",
+      "git diff --check passed."
+    ]
+  },
+  "runtime_limits": [
+    "No local nvcc or NVIDIA GPU was available.",
+    "The three critical CUDA fixes require compatible compile and GPU correctness qualification.",
+    "No performance result or speedup is claimed."
+  ]
+}

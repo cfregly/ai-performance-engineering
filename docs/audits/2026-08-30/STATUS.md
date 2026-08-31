@@ -1,43 +1,38 @@
 # Audit remediation status
 
-The goal remains active. All 128 original first-wave findings have dispositions,
-but 76 still require supported runtime evidence. The completed second-wave report
-has not been supplied. The authorized interim source candidate is commit
-`f49aae73f629f4d90b60d1c6a5b890780e7ef758`, published on `main` with this
-checkpoint metadata. This landing does not claim deployment, GPU qualification,
-performance acceptance, or completion of the remediation goal.
+The goal remains active. The complete second-wave report is now captured and
+reconciled: **141 open findings — 3 critical, 31 high, 62 medium, and 45 low**
+across 110 files. The first focused source batch fixes all three critical
+mechanisms and the two Wave 1 residuals; compatible CUDA compilation and GPU
+correctness for the criticals remain pending. This checkpoint does not claim
+deployment, GPU qualification, performance acceptance, or completion.
 
 ## Current source checkpoint
 
-- Original ledger: **52 `source_fixed`, 76 `awaiting_runtime`**. There are no
-  untriaged or in-progress original entries.
-- Adjacent discoveries: **42 total — 30 `source_fixed`, 12
-  `awaiting_runtime`**. LOCAL-038 through LOCAL-042 cover the tensor-parallel
-  attention defects exposed by the preserved broad diagnostic.
-- Every original and adjacent entry therefore has a current source disposition,
-  but the ledger is not closed: all 11 packages remain `in_progress`, 68 original
-  entries still contain `requirements_pending_triage` verification fields, 55
-  original entries lack an independent review record, and zero original entries
-  have final verified closure at the landed revision.
-- Final tensor-parallel source acceptance: **18 focused tests passed** and **2
-  related hygiene tests passed**. Directed coverage includes poisoned padded KV
-  state, cache-offset causality, heterogeneous and zero input lengths, exact
-  length validation, monotonic workspace growth, bounded mask fallback, and
-  repeated autograd. The assigned fixer also ran a 160-case independent oracle
-  sweep; the file-backed JUnit receipt remains the acceptance evidence.
-- Repository gates: `make lint` passes across **932 benchmark files** with zero
-  contract errors or warnings; fatal repository Ruff, focused Ruff, focused
-  mypy, targeted compile/static checks, and the import-edge checker pass.
-- Per the user-directed verification policy now recorded in `code/AGENTS.md`, the
-  full CPU suite was **not rerun** after the final tensor-parallel fixes. The
-  earlier run is retained only as diagnostic evidence: **4,181 passed, 450
-  skipped, 1 failed**. That failure led to the final fixes and is not a current
-  integration result.
-- The focused checkpoint captured **392 changed, new, or deleted source paths**
-  against base HEAD `b57e4c6a9e261c09ac09208705d040c81b03d35e` and tracked-diff SHA-256
-  `2ec6c0ac1a634b54742171b221c2d81152a8e1573597f625a66575fed3fef719`.
-  Commit `f49aae73f629f4d90b60d1c6a5b890780e7ef758` records that exact source and
-  evidence candidate.
+- Published base: `cf48c8481df0de847abc1569fd3be3f33218f351` on `main` and
+  `origin/main`. The first Wave 2/CI source batch is committed locally as `2f3fc665d`;
+  remote publication confirmation is pending this metadata checkpoint.
+- Wave 1 external re-review: **120 fixed, 5 need runtime, 2 partial, 1 obsolete**.
+  The two partial residuals are now repaired locally, so the mutable ledger reads
+  **122 `source_fixed`, 5 `awaiting_runtime`, 1
+  `already_fixed_with_evidence`**. The source-only external verdict does not
+  replace the **76** applicable runtime gates retained by the local acceptance
+  plan.
+- Wave 2 ledger: **3 `awaiting_runtime`, 2 `source_fixed`, 136 `untriaged`**.
+  W2-001 through W2-003 are the critical CUDA graph/CUTLASS repairs. W2-124 and
+  W2-141 close the two explicitly linked Wave 1 residuals.
+- Adjacent discoveries: **47 total**. LOCAL-043 through LOCAL-047 record the
+  post-landing ch11 compile error, poisoned MoE padding, insufficient CI CMake,
+  brittle NCU help assertion, and Dependabot evidence-file misclassification.
+- Focused combined verification: **61 passed in 2.74s**, plus Python compilation,
+  appendix semantics, manifest/hash checks, and `git diff --check`. This exercises
+  the three critical source contracts, both residual claims, and the directly
+  affected landing-CI nodes.
+- Per the user-directed policy in `code/AGENTS.md`, the full CPU suite was not
+  rerun. Focused results are not presented as a full-suite pass.
+- Hosted confirmation of the fixed Benchmark Validation, dual-architecture
+  compile, and dynamic dependency-graph jobs requires the next pushed revision.
+  The MoE zero-fill cost is intentionally unmeasured until GPU custody.
 
 ## Other completed source work
 
@@ -64,35 +59,43 @@ performance acceptance, or completion of the remediation goal.
 
 ## Material limits
 
-The local checks used macOS/arm64, Python 3.12.2, and CPU PyTorch 2.8.0. Actual
-pinned Linux installation and CI, CUDA imports/builds, two-GPU CUDA/NCCL
-correctness, Nsight capture, sanitizer checks, Grace observations, reviewed
-numerical policies, and performance measurements remain pending. Capability
-skips are not passing GPU coverage.
+The focused local checks use macOS/arm64 without `nvcc` or an NVIDIA GPU. The
+published first-wave GitHub runs exposed the CI defects now repaired in this
+candidate, but the candidate itself still needs hosted confirmation. CUDA
+imports/builds, two-GPU CUDA/NCCL correctness, Nsight capture, sanitizer checks,
+Grace observations, reviewed numerical policies, and performance measurements
+remain pending. Capability skips are not passing GPU coverage.
 
 `HANDOFF.md` still assigns both B200 GPUs to another task, so this task has not
 probed them, changed clocks, or launched a job. The Docker Linux route remains
 blocked by the macOS Keychain credential helper (`-25293`); no bypass was
 attempted.
 
-At the 2026-08-31T03:11:40Z intake check, the supplied artifact still reported
-the original 128 findings. Its “Not yet reviewed” footer remained a
-future-coverage inventory, not a completed second wave. The user reported that
-Wave 2 was on hold for one more hour, and a one-time task follow-up was scheduled.
-Missing Wave 2 input is not treated as zero findings.
+The public artifact still served its older 128-finding Wave 1 frame during the
+latest intake. The user's complete 1,034-line attachment is the authoritative
+Wave 2 source. Its SHA-256, the public frame version, and the stale rendered-page
+observation are preserved in the intake receipt; the mismatch is not treated as
+zero findings.
 
 ## Reviewable artifacts
 
 - [Execution plan](../../../AUDIT_REMEDIATION_PLAN.md)
 - [Issue ledger](remediation-ledger.json)
+- [Wave 2 source capture](wave-2-source.txt)
+- [Wave 2 parsed inventory](wave-2-source.json)
+- [Wave 2 intake receipt](evidence/intake/wave-2/receipt.json)
+- [Critical/residual source receipt](evidence/integration/wave-2-first-batch/critical-source-receipt.json)
+- [Post-landing CI repair receipt](evidence/integration/wave-2-first-batch/post-landing-ci-receipt.json)
 - [Focused source-gate receipt](evidence/integration/source-gate-followup/receipt.json)
 - [Focused source manifest](evidence/integration/source-gate-followup/source-targeted-final.json)
 - [Semantic seam receipt](evidence/integration/semantic-seam-closure/receipt.json)
 - [ZeRO supplement](evidence/integration/zero2-child-protocol/supplement-receipt.json)
 - [Dependency review](evidence/integration/full-dependency-review/receipt.json)
 - [Remaining runtime acceptance](evidence/integration/pinned-linux-integration/runtime-update.md)
-- [Latest Wave 2 artifact and task check](evidence/intake/second-wave-check-20260831T031140Z.json)
+- [Historical pre-delivery artifact check](evidence/intake/second-wave-check-20260831T031140Z.json)
 - [Interim landing receipt](evidence/integration/landing/receipt.json)
 
-The source candidate and this checkpoint are committed and published on `main`.
-No deployment, runtime qualification, or performance acceptance is claimed.
+The first-wave source candidate is published on `main`; the first Wave 2/CI
+source batch is committed locally as `2f3fc665d`. Remote publication confirmation
+is pending this metadata checkpoint. No deployment, runtime qualification, or
+performance acceptance is claimed.

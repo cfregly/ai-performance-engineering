@@ -1,0 +1,59 @@
+Wave 2 hit the Fable 5 usage limit mid-run yesterday — all 13 finders died before returning anything. The limit window has rolled over, so relaunching the same script now (resuming from the prior run; nothing was cached, so all agents re-run fresh).
+
+Wave 2 relaunched. Quick sanity check that the repo hasn't moved since wave 1 (so both waves audit the same commit):
+
+The repo moved overnight — local main is now at `cf48c8481` ("docs: clarify landing whitespace checks"). Checking what changed since the audited commit so I know whether any findings are affected:
+
+The remediation is genuine and well-structured — a 128-entry ledger (`W1-001`…`W1-128`) mapping every wave-1 finding to a work package, with fix designs, evidence receipts, and honest statuses (many marked `awaiting_runtime` since real GPU validation needs hardware this Mac doesn't have). My spot-checks of three headline fixes at `cf48c8481`:
+
+- **`tma_helpers.cuh`** — rewritten with the documented (column, row) TMA ordering via a new `make_2d_tensor_map_layout`; the transposed-dims bug looks addressed.
+- **`setup.sh`** — the nightly-only index variable is gone; find-links now derives from a single `PYTORCH_CU130_INDEX`.
+- **`llm.py`** — the 131072 max_tokens floor is replaced with a validated pass-through budget.
+
+Current state: **wave 2 is running against the remediated tree** (which is the right target — it covers the areas wave 1 never touched, post-remediation). When it completes, the natural third step is a **remediation-verification pass**: independently re-checking each of the 128 ledger entries at `cf48c8481` to confirm the fix actually resolves the mechanism (read-only, one revision-bound result — matching your Codex-owns-source / Claude-reviews split). I'll run that after wave 2 reports, then update the artifact with both: new wave-2 findings plus a fixed/partial/not-fixed status column for every wave-1 finding.
+
+Wave 2 is complete (all 25 agents). Let me parse it, then launch the remediation-verification pass.
+
+Remediation verification is running (run ID `wf_77786795-2f3`). Let me grab the wave-2 closure verdict while it works:
+
+Both final passes are now in flight:
+
+- **Remediation verification** (13 agents): independently judging all 128 ledger entries at `cf48c8481` — fixed / partially fixed / not fixed / regressed / needs-runtime — with second-order skeptics re-deriving every contested verdict and every critical-severity "fixed" claim. It does not trust the ledger's own status fields.
+- **Tail reviewer** (1 agent): the last five files no wave deep-read.
+
+Meanwhile, the wave-2 headline results, already verified by independent skeptics (124 confirmed, 2 refuted, 0 uncertain):
+
+- **Two new criticals in ch12**: the conditional-WHILE CUDA graph at [optimized_graph_conditional_runtime.cu:282](code/ch12/optimized_graph_conditional_runtime.cu:282) never terminates and never populates its body graph, and [cuda_graphs_kernels.cu:99](code/ch12/cuda_extensions/cuda_graphs_kernels.cu:99) caches a CUDA graph with a stale baked data pointer, so the "optimized" benchmark never touches its own tensor.
+- **The recurring bug classes reproduced widely in the previously-unreviewed chapters**, exactly as the seeded prompts predicted: vacuous tolerances (`rtol=1.0, atol=10.0`) in ch03/ch13/ch15/ch16 and `real_world_models`; unit errors (ch02's NVLink benchmark prints MB/s as GB/s — ~1000× overstated); wrong-stream/unsynchronized async copies in ch04/ch05/ch19/ch20; dead `#ifdef`-on-enum checks in ch09/ch12; double-escaped regexes in `mcp_server.py`; CC 12.x misidentified as GB200 in three more places.
+- **Nonexistent-API crashes**: `enable_peer_access` (ch04, two files), `torch._dynamo.compiled_autograd.enable()` (ch13), `DelayedScaling(interval=1)` on TE 2.x (ch13), and four MCP server tools that call methods that don't exist.
+- **Benchmarks not measuring what they claim**: ch16's load test inflates QPS by world_size; ch19's "FP8 compiled" matmul upcasts to FP16 before multiplying; ch17's "optimized" disaggregation is strictly serialized; the "Llama 3.1 8B" lab actually builds a ~0.97B model.
+- **Expectations files**: ch07 encodes physically impossible bandwidth bars, and — one refutation of note — the wave-1 `comparison.py` bugs turn out **not** to have contaminated the checked-in `expectations_*.json` values themselves.
+
+I'll merge everything — wave 1 + remediation status per finding + wave 2 + tail — into the artifact when the verification lands, and give you the final delta here.
+
+The tail reviewer returned 9 findings, including one critical (a swapped CUTLASS `stride_B` in `cutlass_gemm.cu`) and a root-cause for the duplicate `*_cuda_cuda` expectation keys wave 2 flagged. Since these didn't go through a skeptic pass, let me verify the critical myself while the remediation workflow finishes:
+
+The transcript format doesn't match my regex — simpler to write the findings directly from the notification:
+
+Tail findings saved (9 findings — 1 critical, 2 high, 1 medium, 5 low; the critical is hand-verified). The remediation-verification workflow is still running with its 13 agents; when it lands I'll merge all four datasets — wave 1 with per-finding remediation status, wave 2, the critic extras, and this tail — into the artifact and post the final summary.
+
+The remediation verification is in: **120 of 128 verified fixed, 5 needs-runtime (static fix correct, GPU acceptance on hold), 2 partially fixed, 1 obsolete — 0 not-fixed, 0 regressed.** Let me pull the details of the non-fixed entries, then rebuild the artifact with everything merged.
+
+All datasets are in. Building the final merged report — open findings (wave 2 + closure critic + tail + wave-1 residuals) plus the full remediation ledger with verification status:
+
+**The full audit arc is complete.** The updated **[AI Performance Engineering Audit](https://claude.ai/code/artifact/9a311b78-5dac-4ea7-909f-e52993ab8e0e)** (same URL) now holds two things: **141 open findings** (3 critical, 31 high, 62 medium, 45 low) from wave 2, the closure critic, and the tail pass — all against the current tree `cf48c8481` — plus the **independently verified remediation ledger** for all 128 wave-1 findings.
+
+**Remediation verdict on Codex's `f49aae73f` fix commit — it held up remarkably well:**
+- **120 of 128 verified fixed**, 0 not-fixed, 0 regressed. Second-order skeptics re-derived every contested and critical verdict and upheld all of them.
+- **5 "needs runtime"**: the three hardest criticals (TMA multicast, tcgen05 pipeline barrier, nanochat CUDA-graph decode) plus two tcgen05 kernels. In each case the verifiers established the static fix is *mechanically correct* — e.g. the TMA helper now encodes the driver contract properly across all seven consumers, and the barrier fix matches the known-good dual-CTA idiom in every affected kernel — but the ledger's own acceptance gates require B200 compile-and-compare runs this Mac can't do. Those runtime gates are the one thing left for real hardware.
+- **2 partial**: `run_lab.py` (main claim fixed, a scoped sibling remained) and `docs/appendix.md` (the 130 TB/s correction landed but line 129's PCIe comparison, explicitly in the wave-1 fix scope, is untouched — it even has a `14"` typo). Both are in the open list.
+- **1 obsolete**: the uncompilable `cyclic_multicast` experiment was retired with an honest `#error` stub — the finding's own sanctioned option.
+
+**The 3 open criticals to fix next:**
+1. [optimized_graph_conditional_runtime.cu:282](code/ch12/optimized_graph_conditional_runtime.cu:282) — the conditional-WHILE CUDA graph never terminates and its body graph is never populated.
+2. [cuda_graphs_kernels.cu:99](code/ch12/cuda_extensions/cuda_graphs_kernels.cu:99) — cached CUDA graph replays a stale baked data pointer; the "optimized" benchmark never touches its tensor.
+3. [cutlass_gemm.cu:125](code/labs/custom_vs_cublas/cutlass_gemm/cutlass_gemm.cu:125) — `stride_B` built from `{k, n, 1}` instead of `{n, k, 1}`; wrong results for any K ≠ N. I hand-verified this one — every sibling GEMM in the repo does it correctly.
+
+**Coverage is now substantively closed**: the closure critic accounted for every tracked, non-vendored source file across both waves, and the last five files it named were deep-read in the tail pass (which also found the root cause of the duplicate `*_cuda_cuda` expectation keys: `full_virtualized_rerun.py`'s reimplemented key helper diverges from the harness's canonical one).
+
+Totals for the whole exercise: 66 agents across four runs, ~4,150 tool calls, 3 refutations across ~280 verified claims, and everything read-only — the report is the deliverable, the fixes are suggestions. The natural next step when you have B200 time is running the ledger's held runtime acceptance for the 5 needs-runtime entries; the 141 open findings are filterable in the artifact whenever you (or Codex) want to start on them.

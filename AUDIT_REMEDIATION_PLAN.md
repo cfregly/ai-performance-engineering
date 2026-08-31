@@ -6,15 +6,16 @@ Created 2026-08-30. This is the execution plan for the active Codex goal in task
 ## Goal and completion contract
 
 Resolve every valid finding in the supplied first-wave audit and the same review
-session's forthcoming second wave in this repository. Preserve every original
+session's supplied second wave in this repository. Preserve every original
 finding and its disposition. Demonstrate each fix with appropriate regression,
 integration, build, and supported-hardware evidence. Finish with zero unresolved
 valid findings across both received waves and an independent reconciliation of
 the complete inventory against the final source revision.
 
-Creating this plan is not completion of the remediation goal. Wave 2 is required
-scope even though its report has not yet been supplied. Missing hardware evidence,
-an unreceived wave, or a deferred valid finding keeps the overall goal open.
+Creating this plan is not completion of the remediation goal. Wave 2 has now been
+received and reconciled, but its valid findings and the applicable first-wave
+runtime gates remain open. Missing hardware evidence or a deferred valid finding
+keeps the overall goal open.
 
 The current goal was activated by the user's `/goal` request. This document makes
 its success criteria concrete; it does not create a second goal or token budget.
@@ -29,13 +30,14 @@ its success criteria concrete; it does not create a second goal or token budget.
 | First-wave inventory | 128 findings: 5 critical, 37 high, 58 medium, 28 low |
 | Reviewer confidence | External audit claims; its verification labels are preserved, not treated as our runtime evidence |
 | Additional source record | One separately refuted pytest-timeout claim, outside the 128 |
-| Second wave | Awaiting completed report or updated-artifact notification; count unknown |
-| Implementation status | Interim source candidate `f49aae73f629f4d90b60d1c6a5b890780e7ef758` is published on `main`; all 128 original findings have dispositions; current focused source gates pass through LOCAL-042; 76 original and 12 adjacent findings remain runtime-held; wave 2 is unreceived; no GPU qualification, deployment, or new speedup claim |
+| Second wave | User-supplied full report captured at `cf48c8481`: 141 open findings (3 critical, 31 high, 62 medium, 45 low) across 110 files |
+| First-wave external re-review | 120 fixed, 5 need runtime, 2 partial, 1 obsolete; this read-only source verdict does not replace the 76 applicable local runtime acceptance gates |
+| Implementation status | First-wave candidate `f49aae73f629f4d90b60d1c6a5b890780e7ef758` is published on `main`; Wave 2 is parsed into eight packages; critical and CI source fixes are committed at `2f3fc665d`; no GPU qualification, deployment, or new speedup claim |
 
 ### Interim main landing checkpoint
 
-The user authorized landing the current source/evidence candidate before B200
-custody returns and before Wave 2 is delivered. Commit
+The user authorized landing the first-wave source/evidence candidate before B200
+custody returned and before Wave 2 was delivered. Commit
 `f49aae73f629f4d90b60d1c6a5b890780e7ef758` records the first-wave source and
 evidence checkpoint; the following metadata commit binds that revision and
 preserves the remaining work. This is a publication checkpoint, not goal closure.
@@ -47,7 +49,8 @@ is incomplete: all 11 packages remain `in_progress`, 68 original verification
 records still contain `requirements_pending_triage`, 55 original entries lack an
 independent review record, and no original entry is marked verified at the landed
 revision. Per-item `fix_revision` values remain unset until their required closure
-evidence exists. Wave 2 and the supported runtime matrix remain required scope.
+evidence exists. The newly received Wave 2 inventory and the supported runtime
+matrix remain required scope.
 
 ### Earlier implementation checkpoint
 
@@ -128,8 +131,9 @@ below supersede its then-pending source work; its hardware limits still apply.
   wrappers, artifact portability/hash reconciliation, and final ledger readback.
   Exact target compilation, CUDA/NCCL/sanitizer/profile runs and reviewed accuracy
   policies remain separate acceptance gates.
-- **Wave 2 remains required and unreceived.** The original 128 findings are intact;
-  adjacent discoveries are tracked separately. No package or overall goal is closed.
+- **At this earlier checkpoint, Wave 2 was unreceived.** The immutable Wave 1
+  inventory and this historical checkpoint remain intact; the current Wave 2
+  intake below supersedes that wait state. No package or overall goal is closed.
 
 The complete rendered audit, each finding's problem/evidence/suggested fix/verifier
 notes, and the unreviewed-area footer are captured in
@@ -163,10 +167,10 @@ and verification evidence.
    attention/decode paths, hardware metrics, distributed/MoE logic, and APIs.
    Medium and low findings remain required scope. P11 and package-local docs must
    describe the corrected code and evidence, including withdrawn invalid claims.
-5. **Integrate wave 2 as soon as delivered.** Revalidate it against its own reviewed
-   revision and the then-current source, link overlaps without dropping IDs, and
-   reprioritize new critical/high defects. Extend the existing packages where safe;
-   create new ones for independently owned surfaces. Reopen affected closures.
+5. **Integrate the delivered wave 2.** Revalidate it against its reviewed revision
+   and current source, link overlaps without dropping IDs, and prioritize the three
+   critical and 31 high defects. Use its eight disjoint packages for ownership and
+   reopen affected first-wave closures.
 6. **Verify the combined final revision.** Run the relevant source/CPU gates, builds,
    real entrypoints, and serialized supported-hardware jobs. Regenerate affected
    reports only from fresh valid measurements. Perform an independent review and
@@ -308,34 +312,48 @@ Build and hardware gates:
 
 ## Second-wave intake
 
-The other session is still working on wave 2. Its contents and reviewed revision
-are unknown. The first audit's “Not yet reviewed” footer is a coverage warning,
-not a second-wave issue list and not evidence those areas are defective.
+The complete user-supplied report is captured verbatim in
+[`wave-2-source.txt`](docs/audits/2026-08-30/wave-2-source.txt), with a deterministic
+parsed inventory in
+[`wave-2-source.json`](docs/audits/2026-08-30/wave-2-source.json) and an intake
+[receipt](docs/audits/2026-08-30/evidence/intake/wave-2/receipt.json). The parser
+reconciles exactly **141 open findings: 3 critical, 31 high, 62 medium, and 45
+low**, across **110 unique files**. It also reconciles all 128 first-wave re-review
+verdicts: **120 fixed, 5 need runtime, 2 partial, and 1 obsolete**.
 
-When its link/report arrives, or the user confirms the same artifact has updated:
+The report's 141 rows merge Wave 2, the closure critic, the tail pass, and two
+explicit Wave 1 residuals. Stable IDs `W2-001` through `W2-141` preserve source
+order and wording; overlaps may share a fix but remain separate historical rows.
+The two partial Wave 1 records, W1-069 and W1-098, are reopened. The five
+needs-runtime records remain runtime-held. The source-only external review does
+not erase the 76 runtime acceptance requirements already recorded by the local
+plan.
 
-1. Capture a new immutable source file with URL/report identity, timestamp, reviewed
-   revision, counts, verifier labels and original text. Never overwrite wave 1.
-2. Assign `W2-001...` IDs. Retain reviewer amendments/refutations and the relationship
-   to `W1-*` records. Deduplicate implementation work, not the historical records.
-3. Check each finding against both its reviewed revision and current integrated
-   code. Classify it as new, overlapping, already fixed with current evidence,
-   contradicted, or requiring further reproduction. An older source observation
-   does not automatically establish a current defect.
-4. Add each issue to a package and specify a reproducer/acceptance check. Coordinate
-   shared paths before edits, and interrupt lower-priority work for new critical
-   correctness or verification failures.
-5. Reopen previously closed findings affected by new information. Rerun impacted
-   integration and hardware checks at the combined revision.
-6. Reconcile the final wave-2 total to its source, including any explicit zero-finding
-   final report. No missing report may be treated as zero findings.
+The public artifact URL continued to serve its older 128-finding Wave 1 frame at
+intake. The user's complete attachment is therefore the authoritative Wave 2
+source; the public mismatch, response version, and digests are preserved in the
+receipt. This mismatch is an intake limitation, not evidence against the supplied
+report.
 
-Expected areas to watch, based only on the first report's coverage footer: inline
-MCP tools and metric math; ch04/ch15/ch17 distributed Python; ch09 FP4/FP8 CUDA;
-expectations; dashboard/monitoring/cluster tooling; remaining chapter/lab code,
-documentation and shared CUDA headers. The delivered second-wave report determines
-its actual finding scope. This plan does not launch a competing full audit or send
-messages to the other session.
+Implementation proceeds through eight exclusive file-domain packages:
+
+| Package | Findings | Scope |
+| --- | ---: | --- |
+| W2P01 | 24 | Chapters 1–5 |
+| W2P02 | 20 | Chapters 6–11 |
+| W2P03 | 8 | Chapters 12–14 |
+| W2P04 | 32 | Chapters 15–20 |
+| W2P05 | 32 | Labs |
+| W2P06 | 12 | MCP, dashboard, and monitoring |
+| W2P07 | 9 | Core framework |
+| W2P08 | 4 | Scripts, documentation, and residuals |
+
+The first active batch fixes the three critical findings: pointer-sensitive CUDA
+graph caching, correctly populated finite conditional graphs, and the CUTLASS
+column-major B stride. CI blockers found on the first-wave landing are handled in
+the same focused checkpoint. High findings follow in package order, then medium
+and low findings. Each batch uses the smallest sufficient focused tests; the full
+CPU pass is not repeatedly rerun.
 
 ## Known constraints and unsafe shortcuts
 
@@ -366,9 +384,12 @@ messages to the other session.
 This checkpoint supersedes older local counts for current source status while
 preserving those receipts as historical evidence.
 
-- The original inventory remains **52 `source_fixed` and 76
-  `awaiting_runtime`**. Adjacent discoveries now cover LOCAL-001 through
-  LOCAL-042: **30 `source_fixed` and 12 `awaiting_runtime`**.
+- After the independent Wave 2 re-review, the original inventory records **120
+  `source_fixed`, 5 `awaiting_runtime`, 2 `in_progress`, and 1
+  `already_fixed_with_evidence`**. The separate local acceptance contract still
+  marks 76 first-wave rows as requiring runtime evidence. Adjacent discoveries
+  cover LOCAL-001 through LOCAL-042: **30 `source_fixed` and 12
+  `awaiting_runtime`**.
 - The final tensor-parallel repair passes **18 focused tests** plus **2 related
   hygiene tests**. It initializes invalid KV padding, applies cache-offset causal
   semantics, validates and honors heterogeneous/zero input lengths, grows cached
@@ -398,14 +419,14 @@ preserving those receipts as historical evidence.
 - Offline profiler/metadata, Grace-provider, extension, and chapter seams have
   focused CPU and independent read-only acceptance. Real Nsight, CUDA/NVCC,
   Grace hardware, supported Linux installation/CI, GPU correctness/performance,
-  and the completed second wave remain open gates.
+  and remediation of the received second-wave inventory remain open gates.
 
 ## Final reconciliation
 
 The goal is complete only when all of the following are true:
 
 - [x] Wave 1's 128 IDs and the separate refutation reconcile exactly to the capture.
-- [ ] The completed second wave has been captured and reconciled to its actual count.
+- [x] The completed second wave has been captured and reconciled to its actual count.
 - [ ] Every valid issue is fixed and verified; none is deferred, untriaged, in progress,
       or waiting for required runtime evidence.
 - [ ] Every stale, duplicate or refuted disposition has current evidence and a reason;
@@ -438,7 +459,10 @@ requirements separately. Do not mark the goal complete because the plan is writt
 - Incomplete Triton MoE/FFN/grouped-GEMM experiments were withdrawn; active SiLU helper gradients and layout validation repaired. 27 passed, 32 CUDA skips. The retained elementwise Triton path still needs actual device/stream/numerical/memcheck acceptance.
 - ZeRO workload parity: 17 passed, 1 CUDA skip. Real CPU dense/sharded updates match an independent reference; four wrappers now share model/precision/data/clipping/warmup/timing. A separate two-GPU production-training gate is prepared and unexecuted. Its wrapper-verification integration is tracked independently.
 - P11: 8 real command/discovery checks, 11 local links, a real CPU profiler capture and 4 CSV-extractor tests passed. All 16 operator rows roundtrip; GPU Nsight capture and environment installation were not run.
-- The 2026-08-31T03:11:40Z artifact readback still shows the original 128 findings at b57e4c6a9 and no second-wave report. The unreviewed-area footer is not Wave 2. No separate match was found among 50 current and all 166 local archived Codex tasks; the user reports that Wave 2 is on hold for one more hour. All original IDs/titles/locations/severities remain intact.
+- The historical 2026-08-31T03:11:40Z public-artifact readback showed only the
+  original 128 findings. The user subsequently supplied the completed Wave 2
+  report as an attachment; its intake receipt preserves the continuing public
+  mismatch and all original identities.
 
 ### Final local integration checkpoint
 
@@ -447,7 +471,7 @@ requirements separately. Do not mark the goal complete because the plan is writt
 - Complete prefill/decode payloads, workload parity and stream/input refresh are source-repaired; the current attention gate binds 32 exact CUDA cases and 115 dependencies. Its actual CPU preflight is HOLD with zero CUDA dispatch.
 - The unrelated parent-side training verifier is withdrawn. All 61 generic wrappers explicitly refuse harness qualification until actual child results and an independent reference exist. Direct scripts remain available; hardware alone cannot restore wrapper qualification.
 - Historical fallback table rows now disclose missing/unverified source lineage. Original evidence and all Nanochat logs are preserved and includable.
-- The [local receipt](docs/audits/2026-08-30/evidence/integration/final-local/receipt.json), [current status](docs/audits/2026-08-30/STATUS.md) and [runtime handoff](docs/audits/2026-08-30/evidence/integration/runtime-handoff.md) separate completed local work from pending pinned Linux/build/GPU/numerical-policy gates. Wave 2 remains required and unreceived. **The goal is not complete.**
+- The [local receipt](docs/audits/2026-08-30/evidence/integration/final-local/receipt.json), [current status](docs/audits/2026-08-30/STATUS.md) and [runtime handoff](docs/audits/2026-08-30/evidence/integration/runtime-handoff.md) separate completed local work from pending pinned Linux/build/GPU/numerical-policy gates. The received Wave 2 inventory remains in remediation. **The goal is not complete.**
 
 ### Dependency and HTTP follow-up checkpoint
 
@@ -474,8 +498,9 @@ requirements separately. Do not mark the goal complete because the plan is writt
 - Docker's local image pull is blocked by the macOS Keychain credential helper;
   no audit container exists and no credential bypass was attempted. Docker start
   resumed nine existing containers, which this task did not modify or stop.
-- Original statuses remain 52 source-fixed and 76 awaiting runtime; 26 adjacent
-  discoveries are recorded separately. Wave 2 is still unreceived. The
+- At this historical dependency checkpoint, original statuses were 52 source-fixed
+  and 76 awaiting runtime, with 26 adjacent discoveries recorded separately. The
+  current Wave 2 intake and external re-review supersede those status counts. The
   [current receipt](docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/receipt.json)
   and [remaining acceptance](docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/runtime-update.md)
   supplement the preserved earlier checkpoints. **The goal remains incomplete.**

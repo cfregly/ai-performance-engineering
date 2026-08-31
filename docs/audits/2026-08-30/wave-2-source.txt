@@ -1,0 +1,1035 @@
+Adversarial accuracy audit · three passes · read-only · updated 2026-08-31
+AI Performance Engineering Audit
+repo ai-performance-engineering · wave 1 @ b57e4c6a9 · remediated by f49aae73f · wave 2 + verification @ cf48c8481
+agents 66 across 4 runs · tool calls ~4,150
+141
+open findings
+3
+critical
+31
+high
+62
+medium
+45
+low
+120/128
+wave-1 fixed & verified
+Wave 1 (13 experts + 13 skeptics + critic) found 128 defects at b57e4c6a9; commit f49aae73f remediated them, and an independent 13-agent verification at cf48c8481 judged 120 fixed, 5 needs-runtime (static fix correct, GPU acceptance on hold), 2 partial, 1 obsolete — 0 not-fixed, 0 regressed (full ledger at the bottom). The open findings below are from wave 2 (12 new experts + 12 skeptics over the areas wave 1 never covered), the closure critic, a 5-file tail pass, and the two wave-1 residuals.
+
+critical 3
+high 31
+medium 62
+low 45
+
+All domains
+Filter by file or title…
+Critical
+3
+Wrong results or broken core paths
+
+code/ch12/cuda_extensions/cuda_graphs_kernels.cu:99
+Cached CUDA graph replays a stale baked data pointer; optimized benchmark never touches its tensor
+critical
+ch12–14 graphs/compile/FP8
+verified by independent skeptic
+Problem
+graph_replay() captures kernels with `data.data_ptr<float>()` baked in, but the cache-rebuild check keys only on (device, num_elements, iterations) — NOT on the data pointer. optimized_cuda_graphs.py setup() captures during warmup (line 45: `self._extension.graph_replay(self.data, self.iterations)`) and then REPLACES the tensor (line 49: `self.data = torch.linspace(...)` — the RHS allocates a new buffer while the old one is still alive, so the address is guaranteed different). Every subsequent timed benchmark_fn() call hits the cache and replays the graph bound to the FREED original allocation, which the caching allocator typically hands to `self._verify_input`/`_verify_output_buffer` next — so the replay silently corrupts the verification input while `self.data` stays a pristine linspace. The 'optimized' result is a replay writing garbage into a repurposed buffer, and the captured verification output is the untransformed input (baseline converges to ~0.105 everywhere; optimized reports linspace 0..1). optimized_cuda_graphs_router.py has the identical pattern (warmup capture line 41, reassignment line 45). The sibling extension graph_bandwidth_kernels.cu (lines 105-106) keys its cache on dst_ptr/src_ptr, showing this is an omission, not a design choice.
+
+Evidence
+cuda_graphs_kernels.cu lines 99-102: `bool needs_capture = (g_graph_cache.exec == nullptr) || (g_graph_cache.device != device_id) || (g_graph_cache.num_elements != n) || (g_graph_cache.iterations != iterations);` with line 114 baking `data.data_ptr<float>()` into the captured launch; optimized_cuda_graphs.py line 45 `self._extension.graph_replay(self.data, self.iterations)` followed by line 49 `self.data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)`.
+Suggested fix
+Add `const float* data_ptr` to GraphCache and include `g_graph_cache.data_ptr != data.data_ptr<float>()` in needs_capture (as graph_bandwidth_kernels.cu already does), or update the exec's kernel node params via cudaGraphExecKernelNodeSetParams when the pointer changes. In the Python wrappers, stop re-allocating self.data after the capture warmup — reset values in place with `self.data.copy_(...)`.
+
+Verifier notes
+needs_capture (lines 99-102) keys only on exec/device/num_elements/iterations — no data pointer — while lines 114-116 bake data.data_ptr<float>() into the capture. optimized_cuda_graphs.py setup() captures at line 45 then reassigns self.data at line 49; the old tensor is still referenced during the torch.linspace allocation, so the new address is guaranteed different, and every timed benchmark_fn (line 56) replays the graph bound to the freed original buffer (likely reused by _verify_input/_verify_output_buffer allocated at lines 50-51). self.data is never modified by the replay, so the captured 'output' is the untransformed linspace, masked by the loose (0.1, 1.0) tolerance at line 75. optimized_cuda_graphs_router.py has the identical pattern (capture line 41, reassignment line 45). graph_bandwidth_kernels.cu keys its cache on dst_ptr/src_ptr (lines 105-106, 150-151), confirming this is an omission. Critical is correct: the optimized measurement is invalid and it silently corrupts a repurposed allocation.
+
+code/ch12/optimized_graph_conditional_runtime.cu:282
+Conditional WHILE graph never terminates and its body is never populated (phGraph_out is an output parameter)
+critical
+ch12–14 graphs/compile/FP8
+verified by independent skeptic
+Problem
+The code builds a WHILE-type conditional node and passes its own populated body graph via `phGraph_out`. In the CUDA API, `conditional.phGraph_out` is an OUTPUT array: cudaGraphAddNode writes the handle of a newly created, EMPTY body graph into it. So the `while_body` that received `expensive_kernel` (line 257) is discarded (the variable is overwritten with the node-owned empty graph), and the conditional body is never populated. Worse, the WHILE condition handle is set to 1 by `set_condition_kernel` (data mean ~1.5 > threshold 0.5) and nothing inside the body ever calls cudaGraphSetConditional(handle, 0), so the WHILE node re-evaluates a permanently non-zero handle and loops forever. On any CUDA 12.4+ machine the very first warmup `cudaGraphLaunch` (line ~302) spins the GPU indefinitely and `cudaStreamSynchronize(stream)` never returns — the 'optimized' benchmark hangs and the expensive kernel it claims to measure is not even in the graph. The comment at line 261 ('WHILE with initial value 1 runs once if we don't loop') states semantics that do not exist. The ch12 Makefile auto-builds every *.cu, so this broken binary is a shipped target.
+
+Evidence
+Line 257: `CUDA_CHECK(cudaGraphAddKernelNode(&expensive_node, while_body, nullptr, 0, &expensive_params));`  Line 261: `// WHILE with initial value 1 runs once if we don't loop`  Lines 281-282: `cudaGraph_t* body_graph_ptr = &while_body;` / `while_params.conditional.phGraph_out = body_graph_ptr;`  Line 286: `CUDA_CHECK(cudaGraphAddNode(&while_node, graph, while_deps, nullptr, 1, &while_params));` — body graph handed in before cudaGraphAddNode, no cudaGraphSetConditional(handle, 0) anywhere in the body.
+Suggested fix
+Create the conditional node first with an empty `cudaGraph_t body; while_params.conditional.phGraph_out = &body;`, then add `expensive_kernel` (plus a tail kernel that calls `cudaGraphSetConditional(handle, 0)` to give IF-like run-once semantics) into the RETURNED `body` graph before instantiation. Alternatively use `cudaGraphCondTypeIf`, whose body runs at most once per launch, and populate the returned body graph the same way.
+
+Verifier notes
+Evidence matches: line 257 adds expensive_kernel to while_body; lines 281-282 set while_params.conditional.phGraph_out=&while_body BEFORE cudaGraphAddNode (line 286). Per NVIDIA docs, phGraph_out is populated BY cudaGraphAddNode with a CUDA-owned empty body graph — a caller-populated graph passed there is never installed as the body, so expensive_kernel is not in the executed graph. The handle is set to 1 by set_condition_kernel (initial data 1.0+(i%100)*0.01, mean ~1.495 > threshold 0.5) and no kernel in the (empty) body calls cudaGraphSetConditional(handle,0), so the WHILE re-evaluates a permanently nonzero handle: the first warmup cudaGraphLaunch (line 301) loops forever and cudaStreamSynchronize (line 303) never returns. Line 261 comment claims run-once semantics WHILE nodes do not have. ch12 Makefile confirms 'Auto-builds all *.cu files' via wildcard, so this hanging binary is a shipped target. Critical is correct.
+
+code/labs/custom_vs_cublas/cutlass_gemm/cutlass_gemm.cu:125
+stride_B built from swapped (K,N) shape; wrong results for any K != N
+critical
+Tail pass
+hand-verified by session lead
+Problem
+CUTLASS 3.x convention passes B's shape as (N, K, L) regardless of layout tag -- the StrideB type (TagToStrideB_t<ColumnMajor> = Stride<int64_t, _1, int64_t>) already encodes the layout, and make_cute_packed_stride sets the dynamic N-mode stride to shape[1]. Passing {k, n, 1} makes B's N-mode stride N instead of K, so for any non-square GEMM (K != N) the kernel reads B at wrong offsets (wrong numerical results and potential out-of-bounds reads). It only accidentally works for square problems. Every other CUTLASS GEMM in this repo (labs/nvfp4_gemm/*.cu, ch09/*.cu) correctly uses {n, k, 1}. [Hand-verified by session lead: all five sibling GEMM files pass {n, k, 1}.]
+
+Evidence
+StrideB stride_B = cutlass::make_cute_packed_stride(StrideB{}, {k, n, 1});  // (K,N) for ColumnMajor
+Suggested fix
+Change to `StrideB stride_B = cutlass::make_cute_packed_stride(StrideB{}, {n, k, 1});` (and drop the misleading comment); B is an (N,K) tensor whose N-mode stride must be K.
+
+High
+31
+Crashes, races, inflated metrics, dead validation
+
+code/ch02/memory_transfer_nvlink_demo.cu:113
+CC >= 12 misidentified as GB200/GB300 Grace-Blackwell Superchip (SM 12.x is the workstation/DGX-Spark family)
+high
+code/ch02/nvlink_c2c_bandwidth_benchmark.py:69
+H2D/D2H/zero-copy bandwidth reported ~1000x too high (MB/s printed as GB/s)
+high
+code/ch02/optimized_grace_coherent_memory.py:214
+'Zero-copy coherent transfer' benchmark transfers zero bytes but reports NVLink transfer metrics
+high
+code/ch04/ddp_nvlink_overlap.py:30
+Peer-access enable calls nonexistent API; AttributeError escapes the except RuntimeError guard
+high
+code/ch04/multi_node_blackwell.py:375
+Tensor parallelism shards a single attention head's feature dim, changing the attention math
+high
+code/ch04/optimizer_central_nvlink.py:53
+Same nonexistent enable_peer_access call crashes setup on NVLink hardware
+high
+code/ch05/optimized_ai.py:112
+Pinned host staging buffer overwritten by CPU while async H2D copy is still pending
+high
+code/ch07/baseline_tma_copy.py:24
+tma_copy byte accounting inflated 6.25x (redundant_reads=8 not implemented by kernels); 4x_gb200 bar 12.5x above b200's own result
+high
+code/ch07/expectations_b200.json:433
+lookup_cuda expectations encode physically impossible bandwidth and poison the regression gate
+high
+code/ch09/baseline_compute_bound.py:101
+Roofline FLOP count inflated ~4096x: vector (GEMV) workload counted as an N-row GEMM
+high
+code/ch09/baseline_compute_bound.py:101
+compute_bound roofline FLOPs inflated 4096x and bytes ignore weights; expectations record 7134 TFLOPS on B200
+high
+code/ch09/baseline_cublas_gemm_fp4_perchannel.cu:196
+VEC16_UE4M3 block scales passed in plain row-major layout instead of the required swizzled SF layout
+high
+code/ch13/compiled_autograd.py:121
+torch._dynamo.compiled_autograd.enable() does not exist — every compiled-autograd path crashes
+high
+code/ch13/optimized_precisionfp8_te.py:103
+DelayedScaling(interval=1) is an invalid kwarg on Transformer Engine 2.x — FP8 benchmark crashes at setup
+high
+code/ch13/optimized_regional_compile.py:209
+Verification tolerance (rtol=1.0, atol=10.0) passes even an all-zero output
+high
+code/ch15/optimized_kv_cache_nvlink_pool_multigpu.py:260
+KV-cache NVLink-pool pair verifies with rtol=0.5/atol=0.5 — the tolerance accepts garbage attention outputs
+high
+code/ch16/inference_optimizations_blackwell.py:294
+FP8 KV cache overwrites per-row scale each step but dequantizes the whole history with it
+high
+code/ch16/inference_optimizations_blackwell.py:468
+OptimizedDecoderLayer's 'sliding window' mask is not causal; SDPA fallback disables causality too
+high
+code/ch16/inference_server_load_test.py:290
+Aggregate sums replicated per-rank stats, inflating throughput/QPS by world_size
+high
+code/ch16/inference_serving_multigpu.py:259
+DemoCausalLM samples next token from padded position for shorter sequences in mixed batches
+high
+code/ch19/fp8_compiled_matmul.py:103
+The 'FP8 compiled' benchmark never executes an FP8 GEMM: it upcasts to FP16 before matmul
+high
+code/ch19/optimized_memory_double_buffering.py:234
+Double-buffering loop has a write-after-read race: copy stream can overwrite a buffer the compute stream is still reading
+high
+code/labs/cutlass_profiler_kernel_selector/run_cutlass_profiler_sweep.py:77
+Kernel-selector never captures the winning CUTLASS kernel name
+high
+code/labs/dynamic_router/scorecard.py:80
+Token drop rate divides window drop counts by number of windows, not tokens
+high
+code/labs/dynamic_router/vllm_runner.py:232
+dynamic_router lab targets vLLM 0.4-era API while enforcing vllm==0.16.0 — all four vLLM benchmarks are inoperable on their own pinned stack
+high
+code/labs/real_world_models/baseline_llama_3_1_8b.py:61
+Verification tolerance rtol=0.1/atol=1.0 accepts grossly wrong Llama outputs
+high
+code/mcp/mcp_server.py:2243
+gpu_bandwidth tool calls nonexistent engine method; fails on every invocation
+high
+code/mcp/mcp_server.py:6862
+profile_kernels tool calls nonexistent profile.kernel_breakdown(); always errors
+high
+code/mcp/mcp_server.py:6314
+optimize_techniques tool calls nonexistent optimize.all_techniques(); always errors
+high
+code/mcp/mcp_server.py:8879
+hw_network tool accesses nonexistent engine 'test' domain; always errors
+high
+code/scripts/full_virtualized_rerun.py:781
+Expectation key helper double-suffixes CUDA examples, diverging from the harness
+high
+Medium
+62
+Wrong specs, misleading benchmarks, broken tooling
+
+code/ch02/cpu_gpu_grace_blackwell_coherency.cu:87
+Blackwell check requires minor==0, so GB300/B300 (CC 10.3) is reported 'Not a Blackwell GPU'
+medium
+code/ch02/hardware_info.py:380
+Comparison against 'Blackwell B200/B300' is always false — B200-specific output is dead code
+medium
+code/ch02/hardware_info.py:195
+Device-to-device copy bandwidth undercounts HBM traffic by 2x (and GEMM time is mislabeled as bandwidth)
+medium
+code/ch02/memory_transfer_nvlink_demo.cu:131
+B300 multi-GPU detection window compares GiB to decimal-GB bounds — real B300 (288 GB = 268 GiB) never matches
+medium
+code/ch02/memory_transfer_nvlink_demo.cu:296
+Page-migration demo compares 'No hints' vs 'With prefetch' but both strategies run identical code
+medium
+code/ch02/memory_transfer_zero_copy_demo.cu:2
+GB10 zero-copy claims of 800-900 GB/s are ~3x above the hardware's actual limits
+medium
+code/ch03/baseline_pinned_prefetch_mlp.py:104
+Verification tolerance (rtol=1.0, atol=10.0) accepts arbitrary garbage output
+medium
+code/ch04/bandwidth_benchmark_suite_multigpu.py:281
+All-gather bandwidth uses factor N instead of (N-1), inflating reported GB/s (2x at world_size=2)
+medium
+code/ch04/ddp_nvlink_overlap.py:223
+Weight update indexes per-microbatch reduction buffers by model index and updates only 2 of N replicas
+medium
+code/ch04/gradient_compression_common.py:162
+Comm-only compression comparison is asymmetric: baseline does 2 copies, optimized does 1 — speedup overstated 2x
+medium
+code/ch04/multi_node_blackwell.py:533
+Per-step throughput computed from host time with no CUDA synchronization — measures enqueue rate
+medium
+code/ch04/nccl_blackwell_config.py:79
+Fabricated NCCL features/env vars: 'Tensor Core Engine' and NCCL_NVLINK_TCE/C2C_ENABLE do not exist
+medium
+code/ch04/nvls_collectives.py:50
+NVLS environment variables set after eager NCCL communicator initialization — they never take effect
+medium
+code/ch04/optimized_pipeline_parallel_multigpu_1f1b.py:162
+'1F1B' schedule degenerates to GPipe under the harness defaults — steady-state loop never executes
+medium
+code/ch06/expectations_b200.json:164
+Legacy duplicate keys (add_cuda_cuda, hbm_cuda_cuda, unsuffixed dsmem_*) carry contradictory frozen bars and are double-counted
+medium
+code/ch09/baseline_cublas_gemm_fp4_perchannel.cu:58
+apply_per_channel_scale indexes the column-major cuBLASLt output as row-major, scaling rows (M) instead of output channels (N)
+medium
+code/ch09/baseline_memory_bound.py:93
+Roofline bytes/FLOPs omit the 64x repeat factor, under-reporting achieved GB/s and GFLOPS by 64x
+medium
+code/ch09/optimized_cutlass_gemm_fp4_all_concepts.cu:151
+File claims CTA clustering + TMA multicast ('4-way clustering') but ClusterShape is 1x1x1
+medium
+code/ch09/tcgen05_basic.cu:179
+matmul_tcgen05_bias_silu never applies the bias -- returns silu(A@B^T) regardless of the bias argument
+medium
+code/ch13/baseline_precisionfp8_te.py:4
+TE FP8 'precision benefit' pair conflates FP8 with CUDA-graph capture: baseline runs eager, optimized replays a captured graph
+medium
+code/ch14/optimized_flex_attention_sparse.py:431
+Roofline metrics claim dense-attention FLOPs for a 128-token sliding-window kernel (~10-16x TFLOPS inflation)
+medium
+code/ch15/baseline_disaggregated_inference_multigpu.py:194
+Decode never reads the transferred KV cache — the multi-GPU KV handoff moves dead data and verification cannot detect a corrupted transfer
+medium
+code/ch15/expert_parallelism.py:194
+Distributed mode computes unweighted top-1 expert output while local mode computes gated top-2 — the local-vs-distributed tokens/s comparison is not the same math or the same work
+medium
+code/ch16/awq_gptq_smoothquant_benchmarks.py:308
+PTQ accuracy verification tolerance rtol=1.0, atol=10.0 accepts garbage
+medium
+code/ch16/baseline_dense_attention_flash.py:157
+Attention/scheduler benchmark family uses atol=1.0, vacuous for outputs with magnitude << 1
+medium
+code/ch16/dcgm_prometheus_exporter.py:743
+NVLink error counter update sits outside the per-GPU loop; only the last GPU is tracked
+medium
+code/ch16/inference_optimizations_blackwell.py:763
+BlackwellInferencePipeline.generate never uses its KV cache; decode sees only the previous token
+medium
+code/ch16/radix_attention_example.py:71
+Shared KV buffers are appended in place, corrupting sibling cached prefixes in the radix tree
+medium
+code/ch16/synthetic_moe_inference_benchmark.py:144
+detect_device_flavor maps compute capability 12.0 to B200 class ('blackwell_sm100')
+medium
+code/ch16/vllm_monitoring.py:176
+f-string collapses {{ $labels.* }}/{{ $value }} to single braces, breaking all alert templates
+medium
+code/ch16/vllm_monitoring.py:482
+Error-hook dashboard panels emit PromQL containing literal backslashes (invalid queries)
+medium
+code/ch17/optimized_pipeline_parallelism.py:146
+All pipeline stage streams are created on the current device, so stages on other GPUs silently run on their default streams and stage events guard nothing
+medium
+code/ch17/optimized_pipeline_parallelism.py:280
+Per-stage 'durations' and stage_imbalance_ratio measure CPU kernel-launch time, not GPU execution
+medium
+code/ch17/optimized_prefill_decode_disagg.py:159
+"Optimized" two-stream disaggregation is strictly serialized — no overlap can ever occur, so the claimed optimization is structurally a no-op
+medium
+code/ch17/prefill_decode_disagg_monolithic_common.py:34
+SimpleLLM.prefill ignores the prompt and draws fresh random inputs every call, making the disagg pair's verification compare unrelated outputs (masked by atol=1.0)
+medium
+code/ch18/eos_early_exit_common.py:203
+'Optimized' EOS early exit never detects EOS: the shorter loop length is hardcoded from the config, and completion checks are counted but never performed
+medium
+code/ch18/run_vllm_decoder.py:562
+setup() force-overrides graph_mode to EAGER, silently disabling --graph-mode/OPT_MOE_GRAPH_MODE and all CUDA-graph paths
+medium
+code/ch18/v1_bucketed_decode_loop.py:203
+--use-vllm always falls back to the mock engine: add_request() is called with the removed sampling_params= keyword
+medium
+code/ch19/baseline_dynamic_quantized_cache.py:311
+Non-blocking D2H copies into pinned buffers are read by the CPU with no synchronization
+medium
+code/ch19/fp8_compiled_matmul.py:11
+Blackwell B200 peak specs understated ~10x (450 TFLOPS FP8 / 225 TFLOPS FP16), inflating the printed utilization; GB10 called 'same GPU as B200'
+medium
+code/ch20/optimized_pipeline_sequential.py:141
+Stage outputs allocated on one stream are consumed and freed across streams without record_stream — allocator reuse hazard
+medium
+code/core/analysis/report_generator.py:296
+Zero-padding mismatch drops all ch01-ch09 metrics from target validation
+medium
+code/core/benchmark/expectations.py:673
+bytes_per_s throughput is recorded in 175 entries but exempt from every regression check
+medium
+code/core/common/headers/arch_detection.cuh:71
+Checked-in capability table only covers CC 10.0; H100/GB300 get wrong TMA limits
+medium
+code/core/scripts/utilities/probe_hardware_capabilities.py:250
+Probe invents TMA box limits that contradict the CUDA driver contract
+medium
+code/dashboard/api/server.py:228
+Sync route handlers run on the async event loop, freezing all endpoints (incl. the live GPU SSE stream)
+medium
+code/labs/cudnn_sdpa_bench/expectations_b200.json:14
+Frozen 1.2967x speedup bar for an auto-vs-flash SDPA pair whose delta the lab's own README declares unattributable
+medium
+code/labs/cutlass_profiler_kernel_selector/run_cutlass_profiler_sweep.py:16
+README-documented invocations crash on relative imports
+medium
+code/labs/cutlass_profiler_kernel_selector/run_triton_matmul.py:75
+Triton matmul kernel has no K-dimension bounds mask (OOB reads for K % 32 != 0)
+medium
+code/labs/dynamic_router/eval_stack.py:605
+moe_router.jsonl 'drops per window' records only the window's final step
+medium
+code/labs/dynamic_router/vllm_runner.py:232
+Prompt 'tokens' are actually characters of repeated 'x' — BPE collapses them, so the prefill workload is roughly an order of magnitude smaller than labeled
+medium
+code/labs/occupancy_tuning/README.md:34
+Documented sweep command fails: flag is --csv not --output, and script lacks the sys.path bootstrap
+medium
+code/labs/occupancy_tuning/sweep_schedules.py:125
+Sweep defaults to torch.compile(fullgraph=True) that the lab's own code says must never be used
+medium
+code/labs/real_world_models/gpt4_architecture_optimization.py:236
+GPT-4 benchmark records use_fp8/use_moe=1.0 while executing neither
+medium
+code/labs/real_world_models/llama_3_1_8b_optimization.py:104
+Baseline attention silently upcast to fp32, inflating the taught speedup and memory delta
+medium
+code/labs/real_world_models/llama_3_1_8b_optimization.py:171
+'Llama 3.1 8B' benchmark actually builds a 4-layer ~0.97B-param stack
+medium
+code/labs/software_pipelining/software_pipelining_kernels.cu:50
+Baseline is crippled beyond 'serialized', so the ~2.22x delta is not a software-pipelining win
+medium
+code/mcp/mcp_client.py:263
+Server stderr pipe is never drained; server blocks once the pipe buffer fills
+medium
+code/mcp/mcp_server.py:4009
+Double-escaped regexes make _infer_dtype_from_cu always return float32 (wave-1 class f)
+medium
+code/monitoring/cluster_monitor.py:274
+NetworkCollector fabricates 100 Gbps InfiniBand throughput as real telemetry
+medium
+code/monitoring/cluster_monitor.py:224
+CPU utilization is the since-boot average, not the sampled real-time value
+medium
+code/monitoring/prometheus_exporter.py:89
+Exporter publishes process-local torch allocator stats as GPU memory utilization
+medium
+Low
+45
+Wrong comments, dead knobs, stale docs, residuals
+
+code/ch01/optimized_performance_fusion.py:134
+output_tolerance=(0.5, 0.5) too loose to catch a broken fusion — FP32-identical pair verified with 50% slack
+low
+code/ch02/cpu_gpu_topology_aware.py:148
+Any ARM CPU is classified as Grace, yielding a false 'NVLink-C2C (~900 GB/s)' interconnect claim
+low
+code/ch04/dist_allreduce.py:60
+Multi-node benchmark forces Gloo fallback whenever the local node has fewer than 2 GPUs
+low
+code/ch07/async_prefetch_2d_demo.cu:134
+Consumer verdict: correct; self-check uses all-ones input and cannot catch layout bugs
+low
+code/ch07/optimized_tma_bulk_tensor_2d.cu:154
+Consumer verdict: correct after helper fix; in-binary 'validation' never compares
+low
+code/ch07/optimized_tma_copy.cu:450
+Consumer verdict: correct; pre-fix it worked only by square-symmetry accident
+low
+code/ch09/optimized_cublaslt_gemm.cu:152
+#if defined() on a cuBLASLt enum value -- PDL capability check is dead code that can never compile in
+low
+code/ch09/optimized_cublaslt_gemm_fp4.cu:18
+Header claims 'Each batch is a single-matrix TN matmul, looped' but the code performs one strided-batched matmul
+low
+code/ch09/optimized_cutlass_gemm_fp16.cu:68
+Header comment contradicts the code on the B-operand layout convention (comment says ColumnMajor, code declares RowMajor)
+low
+code/ch09/optimized_micro_tiling_matmul.cu:1
+'Register-tiled' / 'micro-tiling' claims not matched by the code, which is plain 16x16 shared-memory tiling
+low
+code/ch10/optimized_flash_attn_tma_micro_pipeline.cu:54
+Consumer verdict: correct via its own descriptor builder (never had the bug)
+low
+code/ch10/tma_2d_pipeline_blackwell.cu:356
+Consumer verdict: correct; barrier/tx accounting and partial-tile store path check out
+low
+code/ch10/tma_multicast_cluster.cu:371
+Verdict on wave-1's proven-wrong GEMM: fixed by f49aae73f, now consistent
+low
+code/ch12/cuda_extensions/cuda_graphs_kernels.cu:9
+#ifndef on a CUDA enum value always fires, silently zeroing the AutoFreeOnLaunch instantiate flag
+low
+code/ch15/disaggregated_inference_multigpu.py:865
+setup_tensor_parallelism describes pipeline-style whole-layer placement as tensor parallelism (and assigns 0 layers when num_gpus > 6)
+low
+code/ch18/flex_attention_large_model.py:204
+Parameter-count formula uses 5·d² for a 4x-expansion FFN (actual 8·d²), understating printed model sizes by 25%
+low
+code/ch18/flexattention_block_sparse.py:78
+Sparsity formula forgets to multiply per-block attention by the number of blocks — reports ~99.9% instead of ~96.5%
+low
+code/ch19/native_fp6_quantization.py:20
+FP6 header claims wrong Blackwell throughput (FP6 faster than FP8; both numbers ~4x low) and wrong memory-savings math
+low
+code/ch20/baseline_moe.py:54
+tokens_per_iteration set to batch × hidden_dim, inflating harness tokens/sec by 1024x
+low
+code/core/analysis/analyze_expectation_rejections.py:47
+Rejection analyzer strips _cuda before lookup and hardcodes expectations_b200.json, so CUDA context always misses
+low
+code/core/benchmark/comparison.py:651
+Wave-1 impact assessment: comparison.py threshold/direction bugs never contaminated expectations_*.json; exposure was report-only and is fixed at HEAD
+low
+code/core/benchmark/performance_targets.py:65
+allreduce target contradicts its own citation by 8x (Gb/s vs GB/s) and fp16 target exceeds its realistic_max
+low
+code/core/common/headers/cuda13_demos.cuh:225
+Consumer verdict: correct; dispatch has a dead unhandled (128,32) combination
+low
+code/core/scripts/utilities/probe_hardware_capabilities.py:234
+Grace coherence / NVLink-C2C claimed for all CC 12.x, including x86 discrete GPUs
+low
+code/dashboard/web/src/components/GpuCard.tsx:13
+GPU memory MiB values converted with 1e6, understating capacity ~4.9% (GiB/GB mixup)
+low
+code/labs/custom_vs_cublas/autotune.py:146
+autotune crashes with bare ValueError when every kernel fails
+low
+code/labs/custom_vs_cublas/autotune.py:40
+Cache key always fingerprints GPU 0, not the device being benchmarked
+low
+code/labs/custom_vs_cublas/run_lab.py:220
+Residual of W1-069: False 'MMA hardware handles dependencies internally' + '+43%' claim
+low
+code/labs/cutlass_profiler_kernel_selector/README.md:35
+README CI claim: compare script does not exit non-zero on missing records
+low
+code/labs/cutlass_profiler_kernel_selector/run_triton_matmul.py:41
+Module crashes with NameError when Triton is absent; graceful fallback is dead code
+low
+code/labs/dynamic_router/baseline_dynamic_router_vllm.py:50
+dynamic_router pair 'verification' compares baseline-vs-optimized performance metrics as if they were model outputs
+low
+code/labs/dynamic_router/eval_stack.py:342
+Error message points to an environment variable that is never read
+low
+code/labs/kv_optimization/optimized_kv_standard.py:370
+KV FP8-compression pair verifies with rtol=0.1/atol=1.0 — vacuous for its ~N(0,1) cache contents
+low
+code/labs/occupancy_tuning/README.md:73
+Validation Checklist's --validate command validates nothing
+low
+code/labs/occupancy_tuning/README.md:66
+--target-extra-arg 'sweep schedule knobs' claim is a silent no-op for this lab
+low
+code/labs/occupancy_tuning/triton_matmul_schedules.py:235
+Verification tolerance atol=1.0 (and eager max-diff gate 2.0) is ~30-60x looser than the workload warrants
+low
+code/labs/real_world_models/expectations_4x_gb200.json:11
+Checked-in 15.06x llama speedup expectation built on an outlier-corrupted baseline
+low
+code/labs/real_world_models/gpt4_architecture_optimization.py:73
+MoE memory estimate uses active params for storage, understating GPU count ~10x
+low
+code/labs/recsys_sequence_ranking/README.md:85
+README claims Triton is used only for candidate scoring; optimized path also runs a fused Triton pooling kernel
+low
+code/labs/software_pipelining/pipeline_graph.py:243
+fa_like_inner_loop anti-dependency has distance 2 in a 3-stage pipeline, so it does not model stage reuse
+low
+code/labs/top_k_kernel/top_k_kernel_common.py:744
+The 'CUTLASS-backed CUDA' Top-K pair never executes the CUTLASS extension in fwd_bwd mode
+low
+code/mcp/mcp_server.py:9318
+predict_scaling caps estimated speedup at 7.5x regardless of target GPU count
+low
+code/scripts/full_virtualized_rerun.py:671
+force_rerun enqueues duplicate pending entries for the same target
+low
+code/scripts/full_virtualized_rerun.py:1290
+Restarting an existing queue silently resets profile to 'none' (dead fallback)
+low
+docs/appendix.md:191
+Residual of W1-098: NVL72's 130 TB/s is aggregate NVLink bandwidth, not bisection bandwidth
+low
+Wave-1 remediation ledger — independently verified
+All 128 wave-1 findings, judged against the current tree (cf48c8481) by 10 batch auditors with second-order skeptics re-deriving every contested verdict and every critical. "Needs runtime" means the static fix checks out but the ledger's own GPU acceptance gates (compile + full-output comparison on B200) are still on hold — this Mac has no CUDA toolchain.
+
+needs runtime
+W1-001
+code/ch10/tma_multicast_cluster.cu:168
+TMA multicast GEMM loads the B tile from the transposed location, producing wrong results
+needs runtime
+W1-002
+code/labs/custom_vs_cublas/tcgen05_cluster.cu:211
+Pipelined mainloop reuses smem stage without waiting on empty_barrier: TMA overwrites operands still being read by in-flight tcgen05 MMA
+needs runtime
+W1-003
+code/labs/nanochat_fullstack/nanochat/engine.py:584
+CUDA-graph decode replays a stale KV-cache write position, producing wrong tokens after the first replay
+needs runtime
+W1-027
+code/labs/custom_vs_cublas/tcgen05_gemm.cu:177
+matmul_tcgen05_bias_silu never applies the bias: it computes silu(A@B^T), not silu(A@B^T + bias)
+needs runtime
+W1-068
+code/labs/custom_vs_cublas/experimental/tcgen05_tma_multicast.cu:178
+TMA multicast with no fence_barrier_init/cluster_sync and no cross-CTA empty sync
+partial
+W1-069
+code/labs/custom_vs_cublas/run_lab.py:220
+False 'MMA hardware handles dependencies internally' + '+43%' claim
+partial
+W1-098
+docs/appendix.md:191
+NVL72's 130 TB/s is aggregate NVLink bandwidth, not bisection bandwidth
+obsolete
+W1-116
+code/labs/custom_vs_cublas/experimental/tcgen05_multicast.cu:77
+Uses a nonexistent 'cyclic_multicast' namespace — the file cannot compile — and its 'multicast' path is dead code anyway
+fixed
+W1-004
+code/labs/train_distributed/optimized_zero2_multigpu.py:147
+Optimized ZeRO-2 never runs the optimizer: overlap_with_ddp=True makes step() a no-op
+fixed
+W1-005
+code/setup.sh:1924
+setup.sh installs the pinned stable torch==2.9.1+cu130 from the nightly-only cu130 index, so setup always aborts
+fixed
+W1-006
+.github/workflows/benchmark-validation.yml:95
+CI runs only ~28 of 267 test files; all anti-cheat/verification suites are unwired
+fixed
+W1-007
+code/ch01/Makefile:41
+b200/b300/gb10/gb300 targets cannot change the compile architecture — target-specific ARCH is set after cuda_arch.mk already chose the gencode
+fixed
+W1-008
+code/ch08/baseline_thresholdtma.cu:74
+Baseline timing measures only host enqueue: events on legacy stream, kernels on non-blocking stream
+fixed
+W1-009
+code/ch08/threshold_async_kernel.cuh:133
+cp.async wait_group off-by-one: each block's last tile is consumed before its copy is guaranteed complete
+fixed
+W1-010
+code/ch10/tcgen05_warp_specialized.cu:81
+Tile swizzle drops/duplicates output tiles whenever grid_n is not a multiple of 8
+fixed
+W1-011
+code/ch11/streams_ordered_demo.cu:118
+Timed region records events on default stream while kernels run on non-blocking streams — measures launch overhead only
+fixed
+W1-012
+code/ch11/streams_ordered_demo.cu:90
+No inter-stream dependencies: H2D copy, compute, and D2H copy race across three independent streams
+fixed
+W1-013
+code/ch11/streams_overlap_demo.cu:221
+Vectorization 'speedup' compares a baseline doing 2 kernel launches/iter against optimized doing 1 — ~2x inflated
+fixed
+W1-014
+code/ch11/streams_warp_specialized_demo.cu:186
+Same wrong-stream event timing: stop event does not wait for kernels launched on non-blocking streams
+fixed
+W1-015
+code/ch12/optimized_cuda_graphs.cu:107
+Graph-replay benchmark records events on default stream while replays run on non-blocking stream
+fixed
+W1-016
+code/ch18/flashmla_kernel.cu:27
+FlashMLA book sample computes softmax of per-thread partial dot products - the attention math is wrong
+fixed
+W1-017
+code/cli/aisp.py:267
+Default `aisp` invocation imports nonexistent module cli.tui and crashes
+fixed
+W1-018
+code/core/benchmark/benchmark_peak.py:200
+Peak HBM (and L2) bandwidth undercounts copy traffic by 2x — measured 'peak' then becomes the validation target
+fixed
+W1-019
+code/core/benchmark/blackwell_optimizations/blackwell_optimizations/test_all_features.cu:275
+Same 4096-thread block bug: the 'comprehensive Blackwell feature' benchmark always fails to launch; feature claims are also unbacked
+fixed
+W1-020
+code/core/benchmark/blackwell_optimizations/blackwell_optimizations/test_tma.cu:255
+Launch config uses a 64x64 = 4096-thread block, exceeding the 1024 threads/block hardware limit: every kernel launch fails
+fixed
+W1-021
+code/core/benchmark/comparison.py:578
+Chapter 'speedup' metric mapping flips timing.mean_ms to HIGHER_IS_BETTER, inverting regression detection
+fixed
+W1-022
+code/core/common/async_input_pipeline.py:110
+Prefetcher allocates batches on the copy stream but never record_stream()s them: cross-stream use-after-free race
+fixed
+W1-023
+code/core/llm.py:209
+max_tokens is floored at 131072, breaking every OpenAI/Anthropic call and ignoring all overrides
+fixed
+W1-024
+code/docs/gb300-sol-roofline.md:11
+GB300 FP8/BF16 dense peak specs inflated 1.5x across all roofline docs
+fixed
+W1-025
+code/labs/custom_vs_cublas/cutlass_gemm/CMakeLists.txt:50
+Manual -gencode 100a/103a conflicts with CMAKE_CUDA_ARCHITECTURES=100 under separable compilation — the SM100a/SM103a kernels never reach the device link
+fixed
+W1-026
+code/labs/custom_vs_cublas/tcgen05_cluster.cu:309
+Odd grid_m is padded up for the cluster launch but the kernel has no tile bounds guard: padded CTAs write a full tile out of bounds
+fixed
+W1-028
+code/labs/dynamic_router/vllm_runner.py:526
+Router fed tokens-per-step EMA as its ttft_ms metric in the vLLM routing demo
+fixed
+W1-029
+code/labs/fullstack_cluster/moe_hybrid_ep_common.py:727
+Overlap mode shares reuse-buffers between the comm stream and the default stream — cross-stream data race corrupts expert outputs
+fixed
+W1-030
+code/labs/kv_cache_compression/optimized_kv_cache_nvfp4.py:79
+Verification tolerance rtol=1.0, atol=10.0 accepts any output including all zeros
+fixed
+W1-031
+code/labs/kv_cache_compression/optimized_kv_cache_nvfp4.py:29
+NVFP4BlockScaling called with kwargs the TE recipe does not accept — TypeError on any machine with Transformer Engine
+fixed
+W1-032
+code/labs/moe_optimization_journey/level4_triton.py:285
+Async pinned D2H copy of expert counts read without synchronization (race)
+fixed
+W1-033
+code/labs/moe_parallelism/scenarios.py:217
+Five of seven planner scenarios are sized for a 128-GPU DGX-A100 cluster but bound to the 576-GPU GB200 cluster
+fixed
+W1-034
+code/labs/nanochat_fullstack/nanochat/engine.py:491
+Persistent-decode path runs forward on a side stream with no synchronization against the consumer stream
+fixed
+W1-035
+code/labs/nanochat_fullstack/nanochat/engine.py:919
+non_blocking D2H copy into pinned memory is read by the host immediately, without synchronization
+fixed
+W1-036
+code/labs/nanochat_fullstack/scripts/bench_b200_flags.py:125
+'persistent' mode decode is timed with events on the default stream while the work runs on the engine's side stream
+fixed
+W1-037
+code/labs/nvfp4_gemm/local_eval_submission.py:86
+Correctness verify compares the output tensor with itself for case0/case2 (aliasing tautology)
+fixed
+W1-038
+code/labs/nvfp4_gemv/local_eval.py:169
+NameError: `sys` is never imported on the module execution path that actually runs
+fixed
+W1-039
+code/labs/persistent_decode/persistent_decode_ext.cu:38
+Shared-memory reduction race: smem[0] read without a barrier before buffer reuse
+fixed
+W1-040
+code/tests/test_anti_cheat_protections.py:139
+Anti-cheat tests assert the config values the test itself just set
+fixed
+W1-041
+code/tests/test_protection_effectiveness.py:337
+'Protection catches attack' tests are tautologies that never invoke the protections
+fixed
+W1-042
+docs/environment.md:12
+Environment doc prescribes CUDA 12.9/cu129 while the repo requires CUDA 13
+fixed
+W1-043
+CONTRIBUTING.md:57
+B300 mislabeled as SM100; B300/Blackwell Ultra is compute capability 10.3 (sm_103)
+fixed
+W1-044
+CONTRIBUTING.md:314
+CONTRIBUTING claims MIT License; the repo is Apache 2.0
+fixed
+W1-045
+code/ch06/occupancy_api.cu:62
+Occupancy queried with 0 dynamic shared memory but kernel launched with block_size*4 bytes; divergent __syncthreads in partial block
+fixed
+W1-046
+code/ch06/optimized_ilp_low_occupancy_vec4_impl.cuh:191
+Host verification uses a 4-wide coefficient pattern against the kernel's 8-wide pattern, so the demo always reports Incorrect and exits 1
+fixed
+W1-047
+code/ch10/tma_2d_pipeline_blackwell.cu:11
+Header and summary claim 128B swizzle and L2 promotion, but the code encodes SWIZZLE_NONE and L2_PROMOTION_NONE
+fixed
+W1-048
+code/ch11/streams_ordered_demo.cu:73
+Chunking mismatch: array split into 8 pipeline chunks but only 3 are ever transferred or processed
+fixed
+W1-049
+code/ch11/streams_overlap_demo.cu:278
+scale_kernel_async is launched with the Float8-sized grid on Blackwell, so it only processes half the array and reports ~2x inflated bandwidth
+fixed
+W1-050
+code/ch11/streams_overlap_demo.cu:193
+'Three-way pipeline' overlap benchmark runs copy and compute on the same stream because stream2 aliases stream1
+fixed
+W1-051
+code/ch11/streams_overlap_demo.cu:296
+Default-stream cudaMemcpy races with kernels still running on the non-blocking stream
+fixed
+W1-052
+code/ch19/Makefile:41
+ch16/ch18/ch19/ch20 'compare' loops drop per-architecture build failures — exit status is the last arch only
+fixed
+W1-053
+code/core/benchmark/benchmark_peak.py:360
+FP4 'peak TFLOPS' builds an invalid recipe: NVFP4BlockScaling passed as a DelayedScaling kwarg
+fixed
+W1-054
+code/core/benchmark/comparison.py:643
+Chapter metric 'target' VALUES are misused as regression-threshold PERCENTAGES
+fixed
+W1-055
+code/core/benchmark/detect_sm.py:31
+Architecture table labels CC 12.x as 'Grace-Blackwell GB200/GB300' — wrong hardware spec, contradicted elsewhere in the repo
+fixed
+W1-056
+code/core/benchmark/metrics.py:57
+B200 peak FLOPS specs wrong (FP8 2500 'sparse', FP16 tensor 1250) — roofline efficiency percentages inflated ~1.8x
+fixed
+W1-057
+code/core/common/cuda_arch.mk:90
+sm_120 mislabeled 'Grace-Blackwell GB200 (CC 12.0)' — GB200 GPUs are CC 10.0; following the label builds binaries that cannot run on GB200
+fixed
+W1-058
+code/core/diagnostics/microbench.py:344
+tensor_core_bench fp8 path always crashes on modern PyTorch (randn/matmul unsupported for float8)
+fixed
+W1-059
+code/core/engine.py:978
+ai.ask imports nonexistent core.book.get_book_citations; ImportError silently swallowed so citations are always empty
+fixed
+W1-060
+code/core/engine.py:1030
+ai.explain summary/bullet regexes double-escaped — explanation is the whole citation blob, key_points never parse bullets
+fixed
+W1-061
+code/core/harness/benchmark_harness.py:3506
+Harness fabricates Gaussian timing samples and reports them as measured raw times
+fixed
+W1-062
+code/core/harness/benchmark_harness.py:4887
+UnboundLocalError: allowed_antipatterns referenced when sync-detection is disabled but antipattern-detection is enabled
+fixed
+W1-063
+code/core/harness/benchmark_harness.py:2387
+torchrun tokens/s parser regex requires a literal backslash — throughput never extracted
+fixed
+W1-064
+code/core/perf_core_base.py:1313
+get_nvlink_status regexes are double-escaped and never match — NVLink always reported as 0 links / 0 GB/s
+fixed
+W1-065
+code/labs/blackwell_matmul/grace_blackwell_kernels.cu:529
+Dead #ifdef on enum attributes leaves TMA gated at CC >= 10, wrongly refusing Hopper (TMA is SM90)
+fixed
+W1-066
+code/labs/cudnn_sdpa_bench/baseline_flash_sdp.py:51
+--backend cudnn never pins cuDNN: same fallback preference list as auto
+fixed
+W1-067
+code/labs/custom_vs_cublas/Makefile:12
+ARCH knob dead: gencode hardcoded to compute_100a regardless of ARCH
+fixed
+W1-070
+code/labs/custom_vs_cublas/tcgen05_cluster.cu:6
+Header claims TMA multicast but kernel uses plain SM90_TMA_LOAD
+fixed
+W1-071
+code/labs/flashattention4/README.md:27
+'Current validated' 14.45x claim contradicted by latest B200 run
+fixed
+W1-072
+code/labs/flashattention4/flashattention4_common.py:659
+TFLOPs inflated ~2x for alibi/softcap: dense FLOP count for causal kernels
+fixed
+W1-073
+code/labs/flashattention_gluon/flashattention_gluon_common.py:102
+Padded keys get softmax weight: K/V loads masked but scores not
+fixed
+W1-074
+code/labs/flexattention/flex_attention_cute.py:61
+flash-attn CuTe called with [B,H,S,D] but expects [B,S,H,D]
+fixed
+W1-075
+code/labs/fullstack_cluster/moe_hybrid_ep_common.py:1112
+Replicated router/projection params never synchronized at init
+fixed
+W1-076
+code/labs/fullstack_cluster/moe_hybrid_ep_common.py:857
+Collectives gated on per-rank data-dependent token counts — hang risk
+fixed
+W1-077
+code/labs/kv_cache_compression/optimized_kv_cache_nvfp4.py:90
+Fabricated 4x/2x kv_cache.compression_ratio for a BF16-in-both-paths cache
+fixed
+W1-078
+code/labs/moe_cuda/optimized_kv_transfer.py:130
+Overlapped KV-transfer pipeline lacks compute-after-copy dependency (WAR race)
+fixed
+W1-079
+code/labs/moe_cuda_ptx/moe_cuda_ptx_common.py:1260
+moe_layer verification tolerance loosened 10x based on a quantization step the code explicitly does not perform
+fixed
+W1-080
+code/labs/moe_optimization_journey/level2_fp8.py:2
+Journey wrapper benchmarks advertise optimizations (FP8, streams, sorting, grouping) their level never enables
+fixed
+W1-081
+code/labs/moe_optimization_journey/level6_native_fp8.py:195
+FP8 hidden activations saturate with scale=1.0, and utilization is measured against the BF16 peak
+fixed
+W1-082
+code/labs/moe_optimization_journey/triton_fused_moe.py:102
+Fused MoE Triton kernel computes a tiny slice of the math yet reports full-GEMM TFLOPS
+fixed
+W1-083
+code/labs/moe_optimization_journey/triton_kernels.py:140
+Demo Triton kernels compute wrong math: FFN kernel reuses one hidden tile for all N blocks; grouped GEMM has no per-group pointer offsets
+fixed
+W1-084
+code/labs/moe_parallelism/plan.py:379
+EP all-to-all cost charged even at EP=1, and hotspot text hardcodes HDR100 on GB200 clusters
+fixed
+W1-085
+code/labs/nanochat_fullstack/benchmark_incremental_optimizations.py:159
+'+ enable_persistent_decode' and '+ use_cuda_graphs' benchmark rows are no-ops: the flags gate Engine paths but the benchmark never uses the Engine
+fixed
+W1-086
+code/labs/nvfp4_group_gemm/baseline_nvfp4_group_gemm.py:40
+Baseline and optimized group-GEMM targets run the same custom kernel — verification is self-referential
+fixed
+W1-087
+code/labs/ozaki_scheme/README.md:48
+"Verification-clean within rtol=1e-2, atol=1e-2" claim is vacuous for this workload's output scale
+fixed
+W1-088
+code/labs/persistent_decode/optimized_persistent_decode_triton.py:83
+Triton persistent decode silently drops sequences when num_programs < batch
+fixed
+W1-089
+code/labs/persistent_decode/paged_kv_offload_common.py:278
+Pinned staging buffer overwritten while non-blocking H2D copy may still be in flight
+fixed
+W1-090
+code/labs/persistent_decode/tma_extension.py:58
+"Native TMA" extension never uses the TMA engine — 4-byte thread-scope cp.async at best
+fixed
+W1-091
+code/labs/train_distributed/optimized_zero2.py:77
+Optimized single-GPU ZeRO-2 requires a DDP comm hook that does not exist in any PyTorch release
+fixed
+W1-092
+code/monitoring/prometheus_exporter.py:139
+Exporter emits duplicate # HELP/# TYPE lines per GPU series - Prometheus rejects the whole scrape on any multi-GPU host
+fixed
+W1-093
+code/tests/test_anti_cheat_edge_cases.py:1314
+43 of 124 edge-case tests contain no assertions; several bodies are literally 'pass'
+fixed
+W1-094
+code/tests/test_benchmark_metrics.py:48
+CI-gated B200 spec test is too loose to catch wrong hardware constants it currently blesses
+fixed
+W1-095
+code/tests/test_blackwell_stack.py:105
+Blackwell 'validation suite' swallows every exception with print and can never fail
+fixed
+W1-096
+docs/appendix.md:856
+NCCL_NTHREADS and NCCL_BUFFSIZE described with wrong semantics and wrong defaults
+fixed
+W1-097
+docs/appendix.md:539
+cp.async attributed to Hopper/Blackwell; it is an Ampere (CC 8.0) feature
+fixed
+W1-099
+docs/tooling-and-profiling.md:45
+ncu/nsys commands use metric and trace names that do not exist
+fixed
+W1-100
+docs/tooling-and-profiling.md:14
+Every scripted workflow in the profiling guide references nonexistent files
+fixed
+W1-101
+CONTRIBUTING.md:36
+Setup and test commands in CONTRIBUTING reference nonexistent paths
+fixed
+W1-102
+code/ch02/memory_transfer_pcie_demo.cu:98
+PCIe 5.0 "~128 GB/s theoretical max" is unreachable for this benchmark's sequential-transfer metric
+fixed
+W1-103
+code/ch07/fp8_32byte_loads_demo.cu:105
+Comment claims 0x3C initializes FP8 buffer to 1.0, but 0x3C is 1.5 in E4M3
+fixed
+W1-104
+code/ch08/threshold_tma_kernel.cuh:50
+aligned_size_t<16> constructed with a size that is not a multiple of 16 for ragged tails (undefined behavior)
+fixed
+W1-105
+code/ch10/optimized_dsmem_reduction_warp_specialized.cu:11
+Header claims 'No atomics needed - single writer per cluster' and an 8-CTA cluster; the kernel uses atomicAdd from all 4 CTAs
+fixed
+W1-106
+code/cli/commands/profiling.py:419
+`aisp profile flame` claims to generate a flame graph but is a no-op
+fixed
+W1-107
+code/core/analysis/distributed_analysis.py:126
+NVLink-active check compares capitalized 'Active' against a lowercased string — branch can never run
+fixed
+W1-108
+code/core/benchmark/benchmark_peak.py:701
+NVLink bandwidth mixes GiB and GB — result underreported by ~7.4%
+fixed
+W1-109
+code/core/benchmark/blackwell_optimizations/blackwell_optimizations/test_tma.cu:214
+Wrong hardware claim: 'TMA requires Blackwell (SM 10.0+)' — TMA was introduced on Hopper (SM 9.0)
+fixed
+W1-110
+code/core/perf_core_base.py:1421
+CUTLASS version parse uses r"\\d+" — always IndexError, version reported as None with a spurious warning
+fixed
+W1-111
+code/core/scripts/build_tma_demos.sh:34
+build_tma_demos.sh resolves the repo root to code/core, so both builds fail unconditionally (and the make targets don't exist anyway)
+fixed
+W1-112
+code/core/scripts/run_warp_specialization_ci.sh:7
+run_warp_specialization_ci.sh computes REPO_ROOT as code/core, so the CI test wrapper always fails with file-not-found
+fixed
+W1-113
+code/core/whatif.py:22
+FP8 what-if scenario ships an invalid torch.autocast code example
+fixed
+W1-114
+code/labs/cache_aware_disagg_inference/cache_aware_disagg_multigpu_common.py:367
+Peer KV handoff sends a non-contiguous slice for batch_size > 1
+fixed
+W1-115
+code/labs/custom_vs_cublas/cutlass_gemm/CMakeLists.txt:52
+-D_GLIBCXX_USE_CXX11_ABI=0 is wrong for the pinned torch 2.9.1+cu130 wheels (CXX11 ABI=1)
+fixed
+W1-117
+code/labs/custom_vs_cublas/run_lab.py:463
+Arithmetic-intensity figure is wrong by 4x: 4096^3 fp16 GEMM is ~1365 FLOPs/byte, not 5461
+fixed
+W1-118
+code/labs/decode_optimization/baseline_decode_warp_specialized.py:1
+"Warp-specialized Triton decode" pair contains no Triton and no warp specialization
+fixed
+W1-119
+code/labs/kv_cache_compression/baseline_kv_cache.py:1
+Baseline docstrings claim MXFP8 block scaling but the code uses per-tensor DelayedScaling
+fixed
+W1-120
+code/labs/moe_cuda/optimized_router.py:88
+AdaptiveTopKMoE applies expert 0's FC2 weights to every routed expert
+fixed
+W1-121
+code/labs/nanochat_fullstack/test_new_optimizations.py:87
+CTA clustering 'validation' asserts nothing and prints tests-passed unconditionally
+fixed
+W1-122
+code/labs/nvfp4_gemv/optimized_submission.py:146
+Packed-scale cache keyed on data_ptr/_version can silently serve stale scales after allocator address reuse
+fixed
+W1-123
+code/labs/nvfp4_group_gemm/README.md:56
+Directory Layout lists cutlass_extension.py, which does not exist
+fixed
+W1-124
+code/requirements_latest.txt:18
+README quickstart 'pip install -r requirements_latest.txt' cannot resolve torch==2.9.1+cu130 — the cu130 index line is commented out
+fixed
+W1-125
+code/setup.sh:3897
+Final summary claims cuDNN 9.15.1.9-1 was installed, contradicting the script's own 9.16.0.29-1 install-and-hold
+fixed
+W1-126
+code/tests/test_benchmark_regime_configs.py:19
+Module-wide CUDA skip disables pure-config regression tests that need no GPU
+fixed
+W1-127
+code/tests/test_symmetric_memory_inference.py:61
+Gloo demo tests silently return (reporting PASS) unless symmetric memory and 2 GPUs are present
+fixed
+W1-128
+code/tests/test_validate_benchmark_pairs_tools.py:448
+nvshmem pair-validation test asserts nothing on multi-GPU hosts
+Refuted on verification
+code/pytest.ini — pytest.ini declares timeout = 600 but pytest-timeout is installed nowhere (wave 1)
+
+The premise (pytest-timeout absent from CI install list and requirements_latest.txt) is true, but the conclusion is wrong: code/conftest.py implements its own timeout support. Line 16 sets PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 (external plugins deliberately blocked), line 108 registers the 'timeout' ini option via parser.addini (so it is NOT an unknown-option warning), pytest_configure line 93 parses it, and the pytest_runtest_call hookwrapper (lines 117-133) arms signal.alarm(600) per test and raises TimeoutError on expiry. The comment at line 82 says explicitly 'Simple built-in timeout support (pytest-timeout is disabled by plugin block)'. The per-test 600s timeout therefore IS enforced on the ubuntu CI runner and local macOS (SIGALRM available); a hung test gets a per-test TimeoutError, not a silent 30-minute job kill. Residual truth: no effect on Windows and no coverage for hangs outside the main-thread test call, but the finding's core claim ('silently inert everywhere') is false.
+
+code/ch09/baseline_cublas_gemm_fp4_perchannel.cu — B operand quantized/packed along N instead of K, so cuBLASLt consumes B-transposed with scale blocks on the wrong axis (wave 2)
+
+The central numerical claim does not hold. layoutB (kK,kN,ld=kK, default col-major, line 201) over the row-major KxN packed buffer makes cuBLASLt consume L_B(k,n)=B[n][k]: consecutive memory IS consecutive k of the consumed operand, so the operand is K-major as NVFP4 requires, and each quantizer block (16 contiguous N-elements of B row n, line 77) is exactly one 16-element K-block of the consumed operand for output column n, with its scale at the plain [n][kblock] index (line 81) - the scale blocks are on the CORRECT axis of the operand the hardware actually reduces over. The only true residue is that the GEMM computes A@B^T of i.i.d. random data instead of A@B; the file states no reference product, performs no reference verification, and the checksum pair is self-consistent, so this is a labeling nuance, not a correctness defect. The real numerical bug in these files is the missing SF swizzle (finding 1), which this finding's proposed fix would not by itself address.
+
+code/core/benchmark/comparison.py — latency_us chapter metrics display millisecond values labeled as microseconds (1000x label error) (wave 2)
+
+The quoted mapping tuples exist at comparison.py:558-559, but the claimed defect never reaches a report. get_chapter_metric_config's only production consumer is compare_all_metrics (line 820), which merges via merged_config.setdefault(metric_path, config) (line ~837) after starting from METRIC_CONFIG.copy() - and METRIC_CONFIG already defines "timing.mean_ms" as ("Mean Execution Time", LOWER_IS_BETTER, "ms", ...) at line 181, so the chapter's mu-s-labeled entry for that path is always discarded. The comment directly above the merge ('Chapter aliases... must not reinterpret an existing measurement') documents this guard, which the reviewer missed. Ch04 small-message latency therefore renders as 'Mean Execution Time' in ms, not as a mu-s-labeled ms value. The stale mu-s units in the local metric_mappings dict are misleading dead config worth cleaning up, but the reported 1000x display error does not occur.
+
+Coverage closure
+After this pass, coverage is substantively complete with a small tail. Newly reviewed here (previously uncovered by both waves): labs kv_optimization, kv_cache_compression, cudnn_sdpa_bench, top_k_kernel (incl. its CUTLASS .cu — correct), ozaki_scheme (549-line common header, wrappers, lab_utils — clean and carefully gated), dynamic_router (router_policy, vllm_runner, driver, verification, benchmark pair), tcgen05_cluster_shapes, labs/common/model_fetcher.py, code/templates, code/examples (all referenced core.profiling APIs verified to exist with matching signatures), code/scripts (precision_power_sweep unit math verified; queue_snapshot/restore/canonical_queue_batches skimmed), ch11 stream_overlap_base.py (clean), and a repo-wide vacuous-tolerance sweep over the ch06-ch11 Python halves (no hits — the recurring class appears remediated there). Confirmed low-risk without deep reads: docs/audits (1,255 files of generated audit evidence — logs/JSON/txt), eval_datasets (data), img/resources (excluded), .claude/.agents configs, meetups README (wave 2). Remaining substantively unreviewed: (1) code/labs/custom_vs_cublas experimental/*.cu (9 experimental tcgen05 kernels), cutlass_gemm/cutlass_gemm.cu, and autotune.py internals — wave-1's 'Blackwell/TMA labs' phrase may or may not have included this lab (its main harness pair skimmed clean here); (2) code/scripts/full_virtualized_rerun.py (1,565-line ops orchestration script); (3) code/labs/dynamic_router/eval_stack.py + scorecard.py (~1,040 lines of eval harness); (4) the bulk of the ch06-ch08/ch10 Python wrapper bases (spot-checks and the tolerance sweep were clean, but they were not line-by-line read); (5) an unverified presumption that wave-1's 'attention/decode labs' and 'FP4/numerics labs' actually included speculative_decode, decode_optimization, persistent_decode, flashattention4/gluon, flashinfer_attention, flexattention, block_scaling, blackwell_gemm_optimizations, and blackwell_matmul.
+
+The closure critic's residual items were resolved after it ran: the custom_vs_cublas experimental kernels, decode/attention labs, block_scaling, and blackwell labs were confirmed in wave-1 scopes, and the five remaining tail files (full_virtualized_rerun.py, dynamic_router eval_stack/scorecard, custom_vs_cublas autotune/cutlass_gemm.cu) were deep-read in the tail pass — their findings appear above. No tracked, non-vendored source remains unaccounted for.
+
+Method
+Four runs, all read-only. Wave 1 (27 agents): 13 adversarial domain experts swept the repo at b57e4c6a9, each finding re-verified by an independent skeptic instructed to refute it (1 refuted, 0 uncertain), plus a completeness critic. Remediation: commit f49aae73f (authored outside this audit) fixed the wave-1 findings; a 13-agent verification pass at cf48c8481 independently judged every ledger entry, with second-order skeptics re-deriving contested and critical verdicts. Wave 2 (25 agents): 12 new domain experts covered everything wave 1 didn't — ch01–05, ch09, ch12–20, seven remaining labs, mcp/dashboard/monitoring, expectations baselines, and the TMA-helper blast radius — again with per-domain skeptics (2 refuted, 0 uncertain) and a closure critic. Tail (1 agent): the last five files, with the critical hand-verified by the session lead. Vendored code (third_party/, vendor/, upstream/, archive/) excluded throughout. Severities reflect the verifiers' corrected judgments.

@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-08-31T09:51:56.493737+00:00",
+  "base_revision": "cf48c8481df0de847abc1569fd3be3f33218f351",
+  "candidate_revision": "2f3fc665d1cb6af7a55631c87988ab9487af2275",
+  "goal_complete": false,
+  "checkpoint": "post_landing_ci_source_repairs",
+  "adjacent_discoveries": [
+    "LOCAL-043",
+    "LOCAL-044",
+    "LOCAL-045",
+    "LOCAL-046",
+    "LOCAL-047"
+  ],
+  "changed_files": [
+    {
+      "path": ".github/workflows/benchmark-validation.yml",
+      "bytes": 7941,
+      "sha256": "01a73dc2412b53e81f4c5030dc36ea347f3376972ffcaa3233d3a40a6953840e"
+    },
+    {
+      "path": "code/ch11/streams_ordered_demo.cu",
+      "bytes": 16425,
+      "sha256": "4fe453aba6d77b83fcce0eacb5b2a10badf10f603ab8aa98f3f62ce64609f63e"
+    },
+    {
+      "path": "code/labs/moe_cuda_ptx/moe_cuda_ptx_common.py",
+      "bytes": 61638,
+      "sha256": "7755e09d8095e8bad999526eb6494e0f8826c1eb2898ceaa985121d54aea8694"
+    },
+    {
+      "path": "code/tests/test_chapter_cuda_contracts.py",
+      "bytes": 6866,
+      "sha256": "fe27bef6e1fce66426a6bdf9dd6b7ffb9b7bafebc6ecd109e9e3edf2bbd40f3b"
+    },
+    {
+      "path": "code/tests/test_cli_profile_ncu.py",
+      "bytes": 6626,
+      "sha256": "6ddc4472ba40236c0355bb2982b772e18e1def5415065d0fe5509e45a04f1dd1"
+    },
+    {
+      "path": "code/tests/test_moe_cuda_ptx_layer_contract.py",
+      "bytes": 23961,
+      "sha256": "9e2c5c4a9faf696ce5e9a26f6b0e85f87483eac0411917db9122c0d3ea28316f"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/checkpoint-artifact-manifest.json",
+      "bytes": 32299,
+      "sha256": "a9137d8fb1e33e05d519b00ea69ad52c9384ce4253beb35cb25af5d553d2cf6d"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/receipt.json",
+      "bytes": 9195,
+      "sha256": "b4ec6ef467ce196c523baebd7bbd7ea6b1676c21424b6708a517a69bd7336b66"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/final-artifact-manifest.json",
+      "bytes": 29395,
+      "sha256": "224d4a31816bdb50e27cf1ef994274c8fac70051fd64213c515fc33dce35393e"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-public-requirements-attempt-1/stderr.log",
+      "bytes": 191120,
+      "sha256": "bbc543ded015f702433a80fd2137a0e857c4a3d701bba72b916e1a5df681c25d"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-public-requirements-attempt-1/stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-requirements-attempt-1/stderr.log",
+      "bytes": 130,
+      "sha256": "571e48060d5998dbc3bcaf411fe7cdcd1a82b14b149bda58239381af0d4def43"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-requirements-attempt-1/stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "focused_verification": [
+    {
+      "scope": "combined root replay",
+      "result": "61 passed in 2.74s; includes the ch11, MoE poison, and NCU CLI nodes"
+    },
+    {
+      "scope": "benchmark validation repair set",
+      "result": "5 passed; adjacent focused set 37 passed; exact pinned dependency nodes passed"
+    },
+    {
+      "scope": "dual architecture compile regression",
+      "result": "3 focused contracts passed; sm_100 Make dry-run emitted nvcc command"
+    },
+    {
+      "scope": "dependency graph filename repair",
+      "result": "deployed Dependabot filename regex excludes renamed logs; hashes, byte counts, JSON manifests, and receipt chain validate"
+    }
+  ],
+  "remote_limits": [
+    "The dynamic dependency graph job and CUDA compile matrix require confirmation on the next pushed revision.",
+    "The MoE zero-fill performance cost is unmeasured pending GPU custody."
+  ]
+}
