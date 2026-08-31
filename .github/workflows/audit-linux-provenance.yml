@@ -1,0 +1,386 @@
+name: Audit Linux CPU Provenance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-linux-cpu-provenance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  provenance:
+    name: Verify hash-bound CPU dependency provenance
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      LOCK_PATH: docs/audits/2026-08-30/evidence/integration/full-dependency-graph/cpu-exact-sources-final-source-attempt-1/resolved-requirements.txt
+      DIRECT_REQUIREMENTS_PATH: docs/audits/2026-08-30/evidence/integration/full-dependency-graph/cpu-exact-sources-final-source-attempt-1/requirements.in
+      EVIDENCE_DIR: artifacts/audit-linux-cpu-provenance
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Capture source and runner identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          checkout_status="${RUNNER_TEMP}/audit-linux-provenance-git-status.txt"
+          git status --porcelain=v1 > "${checkout_status}"
+          if [[ -s "${checkout_status}" ]]; then
+            cat "${checkout_status}" >&2
+            echo "Checkout is not clean" >&2
+            exit 1
+          fi
+          mkdir -p "${EVIDENCE_DIR}"
+          test -f "${LOCK_PATH}"
+          test -f "${DIRECT_REQUIREMENTS_PATH}"
+          cp "${LOCK_PATH}" "${EVIDENCE_DIR}/resolved-requirements.txt"
+          cp "${DIRECT_REQUIREMENTS_PATH}" "${EVIDENCE_DIR}/requirements.in"
+          cp "${checkout_status}" "${EVIDENCE_DIR}/git-status.txt"
+          lock_sha256="$(sha256sum "${LOCK_PATH}" | cut -d' ' -f1)"
+          if [[ "${lock_sha256}" != "c004b33d0d396f8f677d87f4695e303212e81b2757a23199f369952870f9fa83" ]]; then
+            echo "Unexpected reviewed lock SHA-256: ${lock_sha256}" >&2
+            exit 1
+          fi
+          direct_sha256="$(sha256sum "${DIRECT_REQUIREMENTS_PATH}" | cut -d' ' -f1)"
+          if [[ "${direct_sha256}" != "484ea82e4d82c89286f819a95fe0fe982c3e443ade7a339ecf0d2de247c49adc" ]]; then
+            echo "Unexpected direct-requirements SHA-256: ${direct_sha256}" >&2
+            exit 1
+          fi
+          git rev-parse HEAD > "${EVIDENCE_DIR}/source-revision.txt"
+          sha256sum "${LOCK_PATH}" > "${EVIDENCE_DIR}/lock-sha256.txt"
+          sha256sum "${DIRECT_REQUIREMENTS_PATH}" \
+            > "${EVIDENCE_DIR}/direct-requirements-sha256.txt"
+          uname -a > "${EVIDENCE_DIR}/uname.txt"
+          cat /etc/os-release > "${EVIDENCE_DIR}/os-release.txt"
+          ldd --version > "${EVIDENCE_DIR}/glibc-version.txt" 2>&1
+          python -VV > "${EVIDENCE_DIR}/python-version.txt" 2>&1
+          python - <<'PY'
+          import json
+          import os
+          import platform
+          import sys
+          from pathlib import Path
+
+          context = {
+              "github_repository": os.environ["GITHUB_REPOSITORY"],
+              "github_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "github_run_id": os.environ["GITHUB_RUN_ID"],
+              "github_sha": os.environ["GITHUB_SHA"],
+              "libc": platform.libc_ver(),
+              "machine": platform.machine(),
+              "platform": platform.platform(),
+              "python_executable": sys.executable,
+              "python_version": sys.version,
+              "runner_arch": os.environ["RUNNER_ARCH"],
+              "runner_os": os.environ["RUNNER_OS"],
+          }
+          Path(os.environ["EVIDENCE_DIR"], "run-context.json").write_text(
+              json.dumps(context, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          if (
+              sys.implementation.name != "cpython"
+              or sys.version_info[:2] != (3, 12)
+              or sys.platform != "linux"
+              or platform.machine() != "x86_64"
+              or os.environ["RUNNER_OS"] != "Linux"
+              or os.environ["RUNNER_ARCH"] != "X64"
+          ):
+              raise SystemExit(f"unsupported provenance cell: {context}")
+          PY
+
+      - name: Install exact hash-bound dependency set
+        shell: bash
+        run: |
+          set -euo pipefail
+          provenance_venv="${RUNNER_TEMP}/audit-linux-cpu-provenance-venv"
+          python -m venv "${provenance_venv}"
+          provenance_python="${provenance_venv}/bin/python"
+          echo "PROVENANCE_PYTHON=${provenance_python}" >> "${GITHUB_ENV}"
+          "${provenance_python}" -m pip --isolated --version \
+            | tee "${EVIDENCE_DIR}/pip-version.txt"
+          "${provenance_python}" -m pip \
+            --isolated \
+            --disable-pip-version-check \
+            --no-input \
+            install \
+            --no-cache-dir \
+            --keyring-provider disabled \
+            --require-hashes \
+            --report "${EVIDENCE_DIR}/pip-install-report.json" \
+            -r "${LOCK_PATH}" \
+            2>&1 | tee "${EVIDENCE_DIR}/pip-install.log"
+
+      - name: Verify installation, origins, and CPU imports
+        shell: bash
+        run: |
+          set -euo pipefail
+          "${PROVENANCE_PYTHON}" -m pip --isolated check \
+            | tee "${EVIDENCE_DIR}/pip-check.txt"
+          "${PROVENANCE_PYTHON}" -m pip --isolated inspect --local \
+            > "${EVIDENCE_DIR}/pip-inspect.json"
+          "${PROVENANCE_PYTHON}" -m pip --isolated list --format=json \
+            > "${EVIDENCE_DIR}/pip-list.json"
+          "${PROVENANCE_PYTHON}" -m pip --isolated freeze --all \
+            > "${EVIDENCE_DIR}/pip-freeze.txt"
+          "${PROVENANCE_PYTHON}" -m pip --isolated debug --verbose \
+            > "${EVIDENCE_DIR}/pip-debug.txt" 2>&1
+          "${PROVENANCE_PYTHON}" - <<'PY' 2>&1 \
+            | tee "${EVIDENCE_DIR}/validation.log"
+          import importlib
+          import json
+          import os
+          from importlib import metadata
+          from pathlib import Path
+
+          from packaging.requirements import Requirement
+          from packaging.utils import canonicalize_name
+
+          evidence = Path(os.environ["EVIDENCE_DIR"])
+          lock = Path(os.environ["LOCK_PATH"])
+          direct_requirements = Path(os.environ["DIRECT_REQUIREMENTS_PATH"])
+          expected = {}
+          for raw_line in lock.read_text(encoding="utf-8").splitlines():
+              if not raw_line or raw_line[0].isspace() or raw_line.startswith(("#", "--")):
+                  continue
+              requirement = Requirement(raw_line.rstrip("\\").strip())
+              expected[canonicalize_name(requirement.name)] = requirement
+          if len(expected) != 56:
+              raise SystemExit(f"expected 56 locked distributions, found {len(expected)}")
+
+          direct = {}
+          for raw_line in direct_requirements.read_text(encoding="utf-8").splitlines():
+              if not raw_line or raw_line.lstrip().startswith("#"):
+                  continue
+              requirement = Requirement(raw_line.strip())
+              direct[canonicalize_name(requirement.name)] = requirement
+          if len(direct) != 20 or not set(direct).issubset(expected):
+              raise SystemExit(
+                  f"direct requirement mismatch: count={len(direct)}, "
+                  f"missing_from_lock={sorted(set(direct) - set(expected))}"
+              )
+
+          installed = {
+              canonicalize_name(distribution.metadata["Name"]): distribution
+              for distribution in metadata.distributions()
+          }
+          missing = sorted(set(expected) - set(installed))
+          unexpected = sorted(set(installed) - set(expected) - {"pip"})
+          if missing or unexpected:
+              raise SystemExit(
+                  f"installed distribution mismatch: missing={missing}, unexpected={unexpected}"
+              )
+
+          versions = {}
+          for name, requirement in sorted(expected.items()):
+              version = installed[name].version
+              if requirement.specifier and not requirement.specifier.contains(
+                  version, prereleases=True
+              ):
+                  raise SystemExit(
+                      f"version mismatch for {name}: {version} not in {requirement.specifier}"
+                  )
+              versions[name] = version
+
+          if versions.get("torch") != "2.9.1+cpu":
+              raise SystemExit(f"unexpected torch build: {versions.get('torch')}")
+
+          report = json.loads(
+              (evidence / "pip-install-report.json").read_text(encoding="utf-8")
+          )
+          selected = []
+          report_names = set()
+          for item in report.get("install", []):
+              name = canonicalize_name(item["metadata"]["name"])
+              report_names.add(name)
+              download = item.get("download_info", {})
+              archive = download.get("archive_info", {})
+              hashes = dict(archive.get("hashes", {}))
+              legacy_hash = archive.get("hash")
+              if legacy_hash and "=" in legacy_hash:
+                  algorithm, value = legacy_hash.split("=", 1)
+                  hashes.setdefault(algorithm, value)
+              sha256 = hashes.get("sha256")
+              if not sha256:
+                  raise SystemExit(f"missing selected archive SHA-256 for {name}")
+              origin_url = download.get("url")
+              if not origin_url:
+                  raise SystemExit(f"missing selected artifact origin URL for {name}")
+              selected.append({
+                  "name": name,
+                  "requested": bool(item.get("requested")),
+                  "sha256": sha256,
+                  "url": origin_url,
+                  "version": item["metadata"]["version"],
+              })
+
+          if report_names != set(expected):
+              raise SystemExit(
+                  "pip report distribution mismatch: "
+                  f"missing={sorted(set(expected) - report_names)}, "
+                  f"unexpected={sorted(report_names - set(expected))}"
+              )
+          if len(selected) != 56:
+              raise SystemExit(f"expected 56 selected artifacts, found {len(selected)}")
+
+          imports = {
+              "anthropic": "anthropic",
+              "click": "click",
+              "coverage": "coverage",
+              "fastapi": "fastapi",
+              "httpx": "httpx",
+              "hypothesis": "hypothesis",
+              "numpy": "numpy",
+              "openai": "openai",
+              "psutil": "psutil",
+              "pydantic": "pydantic",
+              "pytest": "pytest",
+              "pytest-cov": "pytest_cov",
+              "pyyaml": "yaml",
+              "requests": "requests",
+              "rich": "rich",
+              "tokenizers": "tokenizers",
+              "torch": "torch",
+              "triton": "triton",
+              "typer": "typer",
+              "uvicorn": "uvicorn",
+          }
+          if set(imports) != set(direct):
+              raise SystemExit(
+                  f"direct import coverage mismatch: missing={sorted(set(direct) - set(imports))}, "
+                  f"unexpected={sorted(set(imports) - set(direct))}"
+              )
+          imported = {}
+          for distribution_name, module_name in imports.items():
+              module = importlib.import_module(module_name)
+              imported[distribution_name] = {
+                  "module": module_name,
+                  "module_file": str(getattr(module, "__file__", "")),
+                  "version": versions[distribution_name],
+              }
+
+          torch = importlib.import_module("torch")
+          if torch.version.cuda is not None or torch.cuda.is_available():
+              raise SystemExit(
+                  "CPU provenance job unexpectedly loaded a CUDA-enabled torch runtime"
+              )
+          cpu_result = torch.tensor([[1.0, 2.0]]) @ torch.tensor([[3.0], [4.0]])
+          if cpu_result.device.type != "cpu" or cpu_result.tolist() != [[11.0]]:
+              raise SystemExit(f"unexpected CPU tensor result: {cpu_result}")
+
+          (evidence / "selected-artifacts.json").write_text(
+              json.dumps(sorted(selected, key=lambda item: item["name"]), indent=2)
+              + "\n",
+              encoding="utf-8",
+          )
+          (evidence / "validation.json").write_text(
+              json.dumps({
+                  "boundary": (
+                      "Reviewed 20-direct-pin/56-distribution hash-bound x86_64 Linux "
+                      "CPU cell only. It excludes the separate cmake and prometheus-client "
+                      "packages used by current benchmark-validation CI, and claims no "
+                      "CUDA, GPU, native-extension, numerical, profiler, or performance "
+                      "acceptance."
+                  ),
+                  "cpu_tensor_result": cpu_result.tolist(),
+                  "direct_distribution_count": len(direct),
+                  "direct_distributions": sorted(direct),
+                  "expected_distribution_count": len(expected),
+                  "imported": imported,
+                  "installed_distribution_count_excluding_pip": len(installed) - 1,
+                  "pip_check": "pass",
+                  "pip_report_requested_count": sum(
+                      bool(item.get("requested")) for item in report.get("install", [])
+                  ),
+                  "pip_report_requested_distributions": sorted(
+                      canonicalize_name(item["metadata"]["name"])
+                      for item in report.get("install", [])
+                      if item.get("requested")
+                  ),
+                  "torch_cpu_build": versions["torch"],
+                  "torch_cuda_available": bool(torch.cuda.is_available()),
+                  "torch_cuda_version": torch.version.cuda,
+                  "versions": versions,
+              }, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          echo "PROVENANCE_VALIDATION_STATUS=pass" >> "${GITHUB_ENV}"
+
+      - name: Finalize evidence manifest
+        if: always()
+        shell: bash
+        env:
+          PREUPLOAD_JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${EVIDENCE_DIR}"
+          validation_status="${PROVENANCE_VALIDATION_STATUS:-not_completed}"
+          overall_status="failed_or_incomplete"
+          if [[ "${PREUPLOAD_JOB_STATUS}" == "success" && "${validation_status}" == "pass" ]]; then
+            overall_status="pass"
+          fi
+          export overall_status validation_status
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          Path(os.environ["EVIDENCE_DIR"], "overall-status.json").write_text(
+              json.dumps({
+                  "boundary": (
+                      "Reviewed x86_64 Linux CPU dependency provenance only; no CUDA, "
+                      "GPU, native-extension, numerical, profiler, or performance acceptance."
+                  ),
+                  "github_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+                  "github_run_id": os.environ["GITHUB_RUN_ID"],
+                  "github_sha": os.environ["GITHUB_SHA"],
+                  "preupload_job_status": os.environ["PREUPLOAD_JOB_STATUS"],
+                  "status": os.environ["overall_status"],
+                  "validation_status": os.environ["validation_status"],
+              }, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          find "${EVIDENCE_DIR}" -type f \
+            ! -name sha256-manifest.txt \
+            -print0 \
+            | sort -z \
+            | xargs -0 sha256sum \
+            > "${EVIDENCE_DIR}/sha256-manifest.txt"
+          {
+            echo "## Audit Linux CPU provenance"
+            echo
+            echo "Source: \`${GITHUB_SHA}\`"
+            echo
+            echo "Validation outcome: **${overall_status}**"
+            echo
+            if [[ "${overall_status}" == "pass" ]]; then
+              echo "The reviewed 20-direct-pin/56-distribution hash-bound x86_64 Linux CPU cell, pip consistency, and CPU-safe imports passed."
+            else
+              echo "The provenance attempt did not complete successfully; inspect the retained evidence artifact."
+            fi
+            echo
+            echo "This cell excludes the separate cmake and prometheus-client packages used by current benchmark-validation CI and does not certify CUDA, GPU, native extensions, numerical accuracy, profiling, or performance."
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload provenance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: audit-linux-cpu-provenance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/audit-linux-cpu-provenance
+          if-no-files-found: error
+          retention-days: 90
