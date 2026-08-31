@@ -167,8 +167,8 @@ export interface BenchmarkData {
 
 export interface GpuInfo {
   name: string;
-  memory_total: number;      // MB
-  memory_used: number;       // MB
+  memory_total: number;      // MiB (nvidia-smi units)
+  memory_used: number;       // MiB (nvidia-smi units)
   utilization: number;
   temperature: number;
   temperature_hbm?: number | null;

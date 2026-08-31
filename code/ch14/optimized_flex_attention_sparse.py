@@ -62,7 +62,7 @@ def causal_mask(b: int, h: int, q_idx: int, kv_idx: int) -> bool:
 def sliding_window_mask(window_size: int):
     """Create sliding window mask function."""
     def mask_fn(b: int, h: int, q_idx: int, kv_idx: int) -> bool:
-        return abs(q_idx - kv_idx) <= window_size
+        return abs(q_idx - kv_idx) < window_size
     return mask_fn
 
 
@@ -70,9 +70,18 @@ def sliding_window_causal_mask(window_size: int):
     """Sliding window + causal: attend to last `window_size` tokens only."""
     def mask_fn(b: int, h: int, q_idx: int, kv_idx: int) -> bool:
         causal = q_idx >= kv_idx
-        in_window = q_idx - kv_idx <= window_size
+        in_window = q_idx - kv_idx < window_size
         return causal and in_window
     return mask_fn
+
+
+def _causal_window_key_pairs(seq_len: int, window_size: int) -> int:
+    """Count the exact query/key pairs in a causal local-attention window."""
+    if seq_len <= 0 or window_size <= 0:
+        raise ValueError("seq_len and window_size must be positive")
+    full_window_queries = max(0, seq_len - window_size)
+    ramp_queries = min(seq_len, window_size)
+    return ramp_queries * (ramp_queries + 1) // 2 + full_window_queries * window_size
 
 
 def block_sparse_mask(block_size: int, sparse_ratio: float = 0.5):
@@ -166,7 +175,7 @@ class SlidingWindowCausalAttention(nn.Module):
         if key not in self._block_mask_cache:
             window = self.window_size
             def mask_fn(b, h, q_idx, kv_idx):
-                return (q_idx >= kv_idx) & ((q_idx - kv_idx) <= window)
+                return (q_idx >= kv_idx) & ((q_idx - kv_idx) < window)
             
             self._block_mask_cache[key] = create_block_mask(
                 mask_fn,
@@ -428,8 +437,24 @@ class FlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return self._workload
 
     def get_custom_metrics(self) -> Optional[dict]:
-        total_flops = 2.0 * self.seq_len * self.seq_len * self.head_dim * self.num_heads
-        total_bytes = float(self.seq_len * self.num_heads * self.head_dim * 3 * 2)
+        attended_pairs = _causal_window_key_pairs(self.seq_len, self.window_size)
+        # QK^T and P@V each perform one multiply-add for every attended pair.
+        total_flops = float(
+            4
+            * self.batch_size
+            * self.num_heads
+            * self.head_dim
+            * attended_pairs
+        )
+        # Conservative tensor-I/O lower bound for Q, K, V, and attention output.
+        total_bytes = float(
+            self.batch_size
+            * self.seq_len
+            * self.num_heads
+            * self.head_dim
+            * 4
+            * 2
+        )
         from core.benchmark.metrics import compute_roofline_metrics
         return compute_roofline_metrics(
             total_flops=total_flops,

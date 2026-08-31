@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "../core/common/headers/cuda_verify.cuh"
+#include "../core/common/headers/nvfp4_scale_layout.cuh"
 #include "../core/common/nvtx_utils.cuh"
 
 #define CUDA_CHECK(call)                                                         \
@@ -55,19 +56,22 @@ __global__ void apply_per_channel_scale(__half* __restrict__ output,
     if (row >= rows || col >= cols) {
         return;
     }
-    const int idx = row * cols + col;
+    // cuBLASLt's C layout is column-major with leading dimension `rows`.
+    const size_t idx = static_cast<size_t>(col) * rows + row;
     float val = __half2float(output[idx]) * scales[col];
     output[idx] = __float2half(val);
 }
 
-void quantize_to_nvfp4(const float* input,
-                       uint8_t* output_packed,
-                       __nv_fp8_e4m3* scales,
-                       int rows,
-                       int cols) {
+void quantize_to_nvfp4_kmajor(const float* input,
+                              uint8_t* output_packed,
+                              __nv_fp8_e4m3* scales,
+                              int rows,
+                              int reduction_dim,
+                              int input_row_stride,
+                              int input_reduction_stride) {
     NVTX_RANGE("setup:quantize_to_nvfp4");
-    const int packed_cols = cols / 2;
-    const int num_scale_cols = cols / FP4_BLOCK_SIZE;
+    const int packed_cols = reduction_dim / 2;
+    const int num_scale_cols = reduction_dim / FP4_BLOCK_SIZE;
 
     for (int r = 0; r < rows; ++r) {
         for (int block = 0; block < num_scale_cols; ++block) {
@@ -75,15 +79,20 @@ void quantize_to_nvfp4(const float* input,
 
             float max_abs = 0.0f;
             for (int i = 0; i < FP4_BLOCK_SIZE; ++i) {
-                max_abs = std::max(max_abs, std::abs(input[r * cols + block_start + i]));
+                const size_t input_idx = static_cast<size_t>(r) * input_row_stride
+                    + static_cast<size_t>(block_start + i) * input_reduction_stride;
+                max_abs = std::max(max_abs, std::abs(input[input_idx]));
             }
 
             float scale = (max_abs > 0.0f) ? max_abs / 6.0f : 1.0f;
-            scales[r * num_scale_cols + block] = __nv_fp8_e4m3(scale);
+            scales[aisp::nvfp4_vec16_scale_offset(r, block, reduction_dim)] =
+                __nv_fp8_e4m3(scale);
 
             for (int i = 0; i < FP4_BLOCK_SIZE; i += 2) {
-                float v0 = input[r * cols + block_start + i];
-                float v1 = input[r * cols + block_start + i + 1];
+                const size_t input_idx = static_cast<size_t>(r) * input_row_stride
+                    + static_cast<size_t>(block_start + i) * input_reduction_stride;
+                float v0 = input[input_idx];
+                float v1 = input[input_idx + input_reduction_stride];
 
                 __nv_fp4_storage_t fp4_0 =
                     __nv_cvt_float_to_fp4(v0 / scale, __NV_E2M1, cudaRoundNearest);
@@ -106,18 +115,18 @@ int main() {
         return 3;
     }
 
-    static_assert(kM % FP4_BLOCK_SIZE == 0, "M must be multiple of 16");
-    static_assert(kN % FP4_BLOCK_SIZE == 0, "N must be multiple of 16");
-    static_assert(kK % FP4_BLOCK_SIZE == 0, "K must be multiple of 16");
+    static_assert(kM % 128 == 0, "M must be multiple of 128 for the scale layout");
+    static_assert(kN % 128 == 0, "N must be multiple of 128 for the scale layout");
+    static_assert((kK / FP4_BLOCK_SIZE) % 4 == 0,
+                  "K/16 must be multiple of 4 for the scale layout");
 
     const size_t packed_K = kK / 2;
-    const size_t packed_N = kN / 2;
     const size_t elements_A_packed = static_cast<size_t>(kM) * packed_K;
-    const size_t elements_B_packed = static_cast<size_t>(kK) * packed_N;
+    const size_t elements_B_packed = static_cast<size_t>(kN) * packed_K;
     const size_t elements_C = static_cast<size_t>(kM) * kN;
 
     const size_t num_scales_A = static_cast<size_t>(kM) * (kK / FP4_BLOCK_SIZE);
-    const size_t num_scales_B = static_cast<size_t>(kK) * (kN / FP4_BLOCK_SIZE);
+    const size_t num_scales_B = static_cast<size_t>(kN) * (kK / FP4_BLOCK_SIZE);
 
     std::vector<float> h_A_fp32(kM * kK * kBatchCount);
     std::vector<float> h_B_fp32(kK * kN * kBatchCount);
@@ -144,14 +153,16 @@ int main() {
 
     for (int batch = 0; batch < kBatchCount; ++batch) {
         NVTX_RANGE("setup:quantize_batch");
-        quantize_to_nvfp4(h_A_fp32.data() + batch * kM * kK,
-                          h_A_packed.data() + batch * elements_A_packed,
-                          h_A_scales.data() + batch * num_scales_A,
-                          kM, kK);
-        quantize_to_nvfp4(h_B_fp32.data() + batch * kK * kN,
-                          h_B_packed.data() + batch * elements_B_packed,
-                          h_B_scales.data() + batch * num_scales_B,
-                          kK, kN);
+        quantize_to_nvfp4_kmajor(h_A_fp32.data() + batch * kM * kK,
+                                 h_A_packed.data() + batch * elements_A_packed,
+                                 h_A_scales.data() + batch * num_scales_A,
+                                 kM, kK, kK, 1);
+        // Read row-major B[K,N] as B^T[N,K], making each reduction row
+        // K-contiguous in the packed operand and its scale-factor layout.
+        quantize_to_nvfp4_kmajor(h_B_fp32.data() + batch * kK * kN,
+                                 h_B_packed.data() + batch * elements_B_packed,
+                                 h_B_scales.data() + batch * num_scales_B,
+                                 kN, kK, 1, kN);
     }
 
     std::fill(h_C.begin(), h_C.end(), __float2half(0.0f));

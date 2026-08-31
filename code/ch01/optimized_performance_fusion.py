@@ -131,7 +131,7 @@ class OptimizedPerformanceFusionBenchmark(VerificationPayloadMixin, BaseBenchmar
                 "fp8": False,
                 "tf32": torch.cuda.is_available() and bool(torch.backends.cuda.matmul.allow_tf32),
             },
-            output_tolerance=(0.5, 0.5),
+            output_tolerance=(1e-4, 1e-5),
         )
 
     def teardown(self) -> None:

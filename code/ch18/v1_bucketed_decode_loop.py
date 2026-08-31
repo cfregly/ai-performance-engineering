@@ -200,7 +200,7 @@ def build_vllm_steps(args: argparse.Namespace) -> Iterable[List[object]]:
         "List three causes of allocator churn in decode loops.",
     ]
     for i, prompt in enumerate(prompts):
-        engine.add_request(request_id=f"req-{i}", prompt=prompt, sampling_params=sp)
+        engine.add_request(request_id=f"req-{i}", prompt=prompt, params=sp)
 
     return iter_vllm_engine(engine)
 
@@ -209,16 +209,13 @@ def main() -> None:
     args = parse_args()
 
     if args.use_vllm:
-        try:
-            step_iter = build_vllm_steps(args)
-        except Exception as exc:
-            print(f"[warn] falling back to mock engine: {exc}")
-            step_iter = iter_mock_engine()
+        step_iter = build_vllm_steps(args)
+        backend = "vllm"
     else:
         step_iter = iter_mock_engine()
+        backend = "torch"
 
     metrics = run_bucketed_loop(step_iter, hidden=128)
-    backend = "vllm" if args.use_vllm else "torch"
     print(format_metrics("v1_bucketed_loop", metrics, backend=backend))
 
     if args.prom_port is not None:

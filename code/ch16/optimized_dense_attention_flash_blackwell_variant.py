@@ -16,6 +16,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ch16.dense_attention_accuracy import DENSE_ATTENTION_OUTPUT_TOLERANCE
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
@@ -191,7 +192,7 @@ class DenseAttentionFlashBlackwellVariantBenchmark(VerificationPayloadMixin, Bas
                 "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
-            output_tolerance=(0.1, 1.0),
+            output_tolerance=DENSE_ATTENTION_OUTPUT_TOLERANCE,
         )
     
     def teardown(self) -> None:

@@ -8,10 +8,15 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from .shapes import transformer_gemm_shapes
-
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from labs.cutlass_profiler_kernel_selector.shapes import (  # noqa: E402
+    transformer_gemm_shapes,
+)
+
+
 ARTIFACT_DIR = REPO_ROOT / "artifacts" / "cutlass_profiler"
 DEFAULT_BASELINE = ARTIFACT_DIR / "cutlass_profiler_results.json"
 DEFAULT_TRITON = ARTIFACT_DIR / "triton_matmul_results.json"
@@ -111,18 +116,35 @@ def main(argv: List[str] | None = None) -> int:
         return 1
 
     resolved_paths = []
+    missing_paths = []
     for path in provider_paths:
         if not path.is_file():
             print(f"Provider results missing: {path}", file=sys.stderr)
+            missing_paths.append(path)
             continue
         resolved_paths.append(path)
 
+    if missing_paths:
+        return 1
     if not resolved_paths:
         print("No valid competitor results to compare.", file=sys.stderr)
         return 1
 
     baseline_provider, baseline = load_results(args.baseline, "cutlass_profiler")
     loaded_providers = [load_results(path) for path in resolved_paths]
+
+    missing_records = {
+        provider: sorted(set(baseline) - set(results))
+        for provider, results in loaded_providers
+        if set(baseline) - set(results)
+    }
+    if missing_records:
+        for provider, names in missing_records.items():
+            print(
+                f"Provider {provider} is missing baseline shape records: {', '.join(names)}",
+                file=sys.stderr,
+            )
+        return 1
 
     comparison = _compare_loaded(baseline_provider, baseline, loaded_providers)
     output_path = ARTIFACT_DIR / "comparison.json"

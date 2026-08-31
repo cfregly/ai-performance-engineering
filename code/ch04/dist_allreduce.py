@@ -56,12 +56,6 @@ def main():
     )
     args = parser.parse_args()
 
-    # Check if we have enough GPUs for NCCL
-    if args.backend == "nccl" and torch.cuda.device_count() < 2:
-        print(f"Warning: Only {torch.cuda.device_count()} GPU(s) available, but NCCL requires at least 2 GPUs.", flush=True)
-        print("Falling back to Gloo backend.", flush=True)
-        args.backend = "gloo"
-
     local_rank = _resolve_local_rank()
     device = _resolve_device(args.backend, local_rank)
 

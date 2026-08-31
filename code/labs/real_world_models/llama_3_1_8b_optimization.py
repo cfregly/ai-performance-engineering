@@ -20,6 +20,12 @@ from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# BF16 eager, SDPA, and compiled paths compare the same model and inputs. Keep
+# the pairwise gate tight enough that a zero or unrelated output cannot pass.
+# Target-GPU calibration may tighten this bound; it must never be relaxed without
+# fresh full-output evidence.
+LLAMA_BF16_OUTPUT_TOLERANCE = (0.02, 0.02)
+
 
 class Llama31_8B_Optimization:
     """Llama 3.1 8B optimization benchmark."""
@@ -100,14 +106,13 @@ class Llama31_8B_Optimization:
                         with cm:
                             attn = F.scaled_dot_product_attention(q, k, v, is_causal=True)
                 else:
-                    # NAIVE baseline attention: materializes [B, H, T, T] and uses explicit softmax.
-                    q_fp32 = q.float()
-                    k_fp32 = k.float()
-                    v_fp32 = v.float()
-                    scores = torch.matmul(q_fp32, k_fp32.transpose(-2, -1)) * self._scale
+                    # NAIVE baseline attention: materializes [B, H, T, T] and
+                    # uses explicit softmax, while preserving the BF16 workload
+                    # dtype used by the optimized SDPA path.
+                    scores = torch.matmul(q, k.transpose(-2, -1)) * self._scale
                     scores.masked_fill_(self._causal_mask, float("-inf"))
                     probs = torch.softmax(scores, dim=-1)
-                    attn = torch.matmul(probs, v_fp32).to(dtype=q.dtype)
+                    attn = torch.matmul(probs, v)
                 
                 attn = attn.transpose(1, 2).contiguous().view(B, T, C)
                 return self.o_proj(attn)
@@ -162,13 +167,15 @@ class Llama31_8B_Optimization:
                     x = layer(x)
                 return x
         
-        # Create simplified model (just a few layers for benchmarking)
+        # Build the declared 32-layer Llama 3.1 8B-class stack. A reduced-depth
+        # proxy must use a different benchmark identity and cannot inherit the
+        # 8B label or its performance expectations.
         self.layers = nn.ModuleList([
             SimplifiedLlamaLayer(
                 self._create_attention_layer(),
                 self._create_mlp_layer()
             )
-            for _ in range(4)  # Use 4 layers for faster benchmarking
+            for _ in range(self.NUM_LAYERS)
         ]).to(self.device).to(torch.bfloat16).eval()
         
         self.model = LayerStack(self.layers)

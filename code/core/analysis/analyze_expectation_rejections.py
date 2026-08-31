@@ -43,22 +43,19 @@ def _load_json_object(path: Path, *, label: str) -> Tuple[Optional[Dict[str, Any
     return payload, None
 
 
-def _example_key(example: str) -> str:
-    return example[:-5] if example.endswith("_cuda") else example
-
-
 def _fallback_stored_entry(
     repo_root: Path,
     chapter: str,
     example: str,
+    hardware_key: str,
 ) -> Tuple[Optional[Path], Optional[Dict[str, Any]], Optional[str]]:
-    expectation_path = repo_root / chapter / "expectations_b200.json"
+    expectation_path = repo_root / chapter / f"expectations_{hardware_key}.json"
     if not expectation_path.exists():
         return None, None, None
     data, warning = _load_json_object(expectation_path, label="stored expectations file")
     if warning:
         return expectation_path, None, warning
-    entry = (data.get("examples") or {}).get(_example_key(example))
+    entry = (data.get("examples") or {}).get(example)
     return expectation_path, entry, None
 
 
@@ -130,9 +127,20 @@ def _load_expectation_updates(run_dir: Path, repo_root: Path) -> List[Dict[str, 
         example = str(event["example"])
         target = f"{chapter}:{example}"
         validation_issue_types = list(event.get("validation_issue_types") or [])
-        expectation_path, stored_entry, stored_warning = _fallback_stored_entry(repo_root, chapter, example)
-        stored_provenance = event.get("old_provenance") or ((stored_entry or {}).get("provenance") or {})
+        old_provenance = event.get("old_provenance") or {}
         new_provenance = event.get("new_provenance") or {}
+        hardware_key = str(
+            old_provenance.get("hardware_key")
+            or new_provenance.get("hardware_key")
+            or "b200"
+        )
+        expectation_path, stored_entry, stored_warning = _fallback_stored_entry(
+            repo_root,
+            chapter,
+            example,
+            hardware_key,
+        )
+        stored_provenance = old_provenance or ((stored_entry or {}).get("provenance") or {})
         provenance_mismatch_fields = list(event.get("provenance_mismatch_fields") or [])
 
         if not provenance_mismatch_fields and stored_provenance and new_provenance:

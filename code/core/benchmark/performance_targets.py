@@ -32,7 +32,8 @@ _DEFAULT_TARGETS: TargetsDict = {
         # Same fallback policy expressed as read+write traffic (formerly payload-only).
         # This arithmetic correction does not certify a measured hardware peak.
         "hbm3e_bandwidth_tbs": {"min": 6.0, "target": 7.0, "unit": "TB/s", "realistic_max": 8.0},
-        "fp16_compute_tflops": {"min": 1000, "target": 2000, "unit": "TFLOPS", "realistic_max": 1300},
+        # Per-GPU B200 dense FP16 peak is 2.25 PFLOPS (sparse peak: 4.5 PFLOPS).
+        "fp16_compute_tflops": {"min": 1000, "target": 2000, "unit": "TFLOPS", "realistic_max": 2250},
         "torch_compile_speedup_small": {"min": 1.1, "target": 1.2, "unit": "x"},
         "torch_compile_speedup_large": {"min": 1.0, "target": 1.3, "unit": "x"},
         "flex_attention_speedup": {"min": 1.5, "target": 2.0, "unit": "x"},
@@ -61,8 +62,8 @@ _DEFAULT_TARGETS: TargetsDict = {
     "ch04": {
         "description": "Distributed Networking (includes ch04:nixl_tier_handoff memory-tier analogue)",
         "metrics": {
-            # NCCL all-reduce: 100 GB/s on 800 Gb/s InfiniBand (book/ch04.md:760-779)
-            "allreduce_bandwidth_gbs": {"min": 700, "target": 800, "unit": "GB/s"},
+            # NCCL all-reduce over an 800 Gb/s link: 100 GB/s theoretical line rate.
+            "allreduce_bandwidth_gbs": {"min": 70, "target": 100, "unit": "GB/s", "realistic_max": 100},
             # P2P bandwidth: NVLink 5 provides 900 GB/s per direction (book/ch04.md:392-399)
             "p2p_bandwidth_gbs": {"min": 800, "target": 900, "unit": "GB/s"},
             # Small message latency: single-digit microseconds (book/ch04.md:551-552)

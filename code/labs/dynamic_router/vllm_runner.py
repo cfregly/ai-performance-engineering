@@ -23,9 +23,8 @@ import torch
 from core.harness.serving_stack import get_serving_stack_pins
 
 try:
-    from vllm.engine.arg_utils import EngineArgs
-    from vllm.engine.llm_engine import LLMEngine
-    from vllm.sampling_params import RequestOutputKind, SamplingParams
+    from vllm import EngineArgs, LLMEngine, SamplingParams
+    from vllm.sampling_params import RequestOutputKind
 except Exception as exc:  # pragma: no cover - optional dep
     EngineArgs = None  # type: ignore
     LLMEngine = None  # type: ignore
@@ -35,9 +34,10 @@ except Exception as exc:  # pragma: no cover - optional dep
 else:
     _IMPORT_ERROR = None
 
-from labs.dynamic_router.topology import TopologySnapshot, detect_topology
 from labs.dynamic_router.router_policy import EWMA, Router, SequenceInfo
 from labs.dynamic_router.router_round_robin import Request
+from labs.dynamic_router.topology import TopologySnapshot, detect_topology
+from labs.dynamic_router.verification import VERIFICATION_OUTPUT_KEY
 
 
 def _skip(reason: str) -> None:
@@ -194,6 +194,46 @@ class _RoutingTelemetry:
         }
 
 
+def _build_vllm_engine(engine_cls, model_id: str, device_index: int):
+    """Build a pinned-vLLM engine on one logical CUDA device.
+
+    vLLM 0.16 removed ``device`` from ``EngineArgs``. Its single-process
+    executor still selects a logical rank from ``VllmConfig.device_config``,
+    so set that current config field before constructing the engine.
+    """
+    if EngineArgs is None:
+        _skip(_format_vllm_import_error(_IMPORT_ERROR or RuntimeError("EngineArgs is unavailable")))
+
+    engine_args = EngineArgs(
+        model=model_id,
+        tensor_parallel_size=1,
+        trust_remote_code=True,
+        gpu_memory_utilization=0.5,
+        # Every request supplies the declared number of token IDs directly.
+        # Disable prefix caching so repeated synthetic inputs still exercise
+        # the full prefill length on every request.
+        enable_prefix_caching=False,
+        enforce_eager=True,
+    )
+    create_engine_config = getattr(engine_args, "create_engine_config", None)
+    from_vllm_config = getattr(engine_cls, "from_vllm_config", None)
+    if not callable(create_engine_config) or not callable(from_vllm_config):
+        _skip(
+            "Pinned vLLM API mismatch: expected EngineArgs.create_engine_config(), "
+            f"VllmConfig.device_config, and LLMEngine.from_vllm_config() in vLLM "
+            f"{_EXPECTED_VLLM_DIST_VERSION}."
+        )
+    vllm_config = create_engine_config()
+    device_config = getattr(vllm_config, "device_config", None)
+    if device_config is None:
+        _skip(
+            "Pinned vLLM API mismatch: expected VllmConfig.device_config in "
+            f"vLLM {_EXPECTED_VLLM_DIST_VERSION}."
+        )
+    device_config.device = torch.device("cuda", device_index)
+    return from_vllm_config(vllm_config)
+
+
 class _VllmWrapper:
     """Minimal wrapper around LLMEngine for metrics and request tracking."""
 
@@ -204,17 +244,9 @@ class _VllmWrapper:
 
         self.gpu_id = gpu_id
         self.device_index = device_index
-        engine_args = EngineArgs(
-            model=model_id,
-            tensor_parallel_size=1,
-            trust_remote_code=True,
-            gpu_memory_utilization=0.5,
-            device=f"cuda:{device_index}",
-            enforce_eager=True,
-        )
         buf = io.StringIO()
         with redirect_stdout(buf):
-            self.engine = LLMEngine.from_engine_args(engine_args)
+            self.engine = _build_vllm_engine(LLMEngine, model_id, device_index)
         captured = buf.getvalue().strip()
         if captured:
             try:
@@ -223,13 +255,30 @@ class _VllmWrapper:
             except Exception:
                 print(captured, file=sys.stderr)
         self._inflight: Dict[str, _RequestRuntime] = {}
+        self._completed_output_token_ids: Dict[str, Tuple[int, ...]] = {}
 
     def add_request(self, rt: _RequestRuntime) -> None:
-        params = SamplingParams(temperature=0.0, max_tokens=rt.req.expected_new_tokens,
-                                output_kind=RequestOutputKind.CUMULATIVE)
+        if rt.req.expected_new_tokens <= 0:
+            raise ValueError("expected_new_tokens must be positive")
+        params = SamplingParams(
+            temperature=0.0,
+            max_tokens=rt.req.expected_new_tokens,
+            # The verification payload must contain actual model output for
+            # every declared decode step.  Otherwise an immediate EOS can
+            # produce an empty completion in both arms and make an exact
+            # baseline/optimized comparison pass without checking any token.
+            ignore_eos=True,
+            output_kind=RequestOutputKind.CUMULATIVE,
+        )
+        if rt.req.prompt_tokens <= 0:
+            raise ValueError("prompt_tokens must be positive")
+        # vLLM accepts pretokenized ``list[int]`` prompts. Supplying the token
+        # IDs directly makes the requested prefill length exact; a text string
+        # such as ``"x" * prompt_tokens`` can collapse to far fewer BPE tokens.
+        prompt_token_ids = [1] * rt.req.prompt_tokens
         self.engine.add_request(
             request_id=rt.req.req_id,
-            inputs=rt.req.req_id + " " + "x" * rt.req.prompt_tokens,
+            prompt=prompt_token_ids,
             params=params,
             arrival_time=rt.admitted_at,
         )
@@ -269,6 +318,19 @@ class _VllmWrapper:
             if ro.finished:
                 finished_ids.append(rid)
                 rt.finished = True
+                completed_outputs = getattr(self, "_completed_output_token_ids", None)
+                if completed_outputs is None:
+                    completed_outputs = {}
+                    self._completed_output_token_ids = completed_outputs
+                token_ids = tuple(
+                    int(token_id) for output in ro.outputs for token_id in output.token_ids
+                )
+                if len(token_ids) != rt.req.expected_new_tokens:
+                    raise RuntimeError(
+                        f"Request {rid} completed with {len(token_ids)} output tokens; "
+                        f"expected {rt.req.expected_new_tokens}"
+                    )
+                completed_outputs[rid] = token_ids
                 self._inflight.pop(rid, None)
         return finished_ids, ttft_samples, tokens_emitted
 
@@ -304,29 +366,22 @@ class _VllmV1Wrapper(_VllmWrapper):
     """
 
     def __init__(self, gpu_id: str, device_index: int, model_id: str) -> None:
+        _assert_vllm_runtime_ready()
         if EngineArgs is None or SamplingParams is None:
             _skip(f"vLLM import failed: {_IMPORT_ERROR}")
         try:
-            from vllm.v1.engine.llm_engine import LLMEngine as V1LLMEngine
             from vllm.v1.engine import EngineCoreOutputs
+            from vllm.v1.engine.llm_engine import LLMEngine as V1LLMEngine
         except Exception as exc:  # pragma: no cover - optional dep
             _skip(f"vLLM V1 import failed: {exc}")
 
         self._EngineCoreOutputs = EngineCoreOutputs
         self.gpu_id = gpu_id
         self.device_index = device_index
-        engine_args = EngineArgs(
-            model=model_id,
-            tensor_parallel_size=1,
-            trust_remote_code=True,
-            gpu_memory_utilization=0.5,
-            device=f"cuda:{device_index}",
-            enforce_eager=True,
-        )
         # Keep EngineCore in-process so we can drive step_fn() directly.
         buf = io.StringIO()
         with redirect_stdout(buf):
-            self.engine = V1LLMEngine.from_engine_args(engine_args, enable_multiprocessing=False)
+            self.engine = _build_vllm_engine(V1LLMEngine, model_id, device_index)
         captured = buf.getvalue().strip()
         if captured:
             try:
@@ -341,20 +396,11 @@ class _VllmV1Wrapper(_VllmWrapper):
         if not hasattr(self._core, "step_fn"):
             _skip("EngineCore.step_fn is unavailable; update vLLM to V1 or disable --use-v1-core-loop.")
         self._inflight: Dict[str, _RequestRuntime] = {}
-
-    def add_request(self, rt: _RequestRuntime) -> None:
-        params = SamplingParams(temperature=0.0, max_tokens=rt.req.expected_new_tokens,
-                                output_kind=RequestOutputKind.CUMULATIVE)
-        self.engine.add_request(
-            request_id=rt.req.req_id,
-            inputs=rt.req.req_id + " " + "x" * rt.req.prompt_tokens,
-            params=params,
-            arrival_time=rt.admitted_at,
-        )
-        self._inflight[rt.req.req_id] = rt
+        self._completed_output_token_ids: Dict[str, Tuple[int, ...]] = {}
 
     def step(self, now: Optional[float] = None) -> Tuple[List[str], List[Tuple[str, float]], int]:
         outputs_dict, executed = self._core.step_fn()
+        self._core.post_step(model_executed=executed)
         ttft_samples: List[Tuple[str, float]] = []
         finished_ids: List[str] = []
         tokens_emitted = 0
@@ -470,6 +516,36 @@ def _build_handles(
     return handles
 
 
+def _collect_verification_output_token_ids(
+    engines: Dict[str, _VllmWrapper], request_ids: List[str]
+) -> List[int]:
+    """Frame completed model token ids in workload order for exact pair verification."""
+    completed: Dict[str, Tuple[int, ...]] = {}
+    for engine in engines.values():
+        for request_id, token_ids in engine._completed_output_token_ids.items():
+            if request_id in completed:
+                raise RuntimeError(f"Duplicate completed output for request {request_id}")
+            completed[request_id] = token_ids
+
+    expected = set(request_ids)
+    missing = expected - set(completed)
+    unexpected = set(completed) - expected
+    if missing or unexpected:
+        details = []
+        if missing:
+            details.append(f"missing={sorted(missing)}")
+        if unexpected:
+            details.append(f"unexpected={sorted(unexpected)}")
+        raise RuntimeError("Incomplete verification output capture: " + ", ".join(details))
+
+    framed: List[int] = []
+    for request_id in request_ids:
+        token_ids = completed[request_id]
+        framed.append(len(token_ids))
+        framed.extend(token_ids)
+    return framed
+
+
 def run_vllm_routing_with_topology(
     mode: str,
     *,
@@ -517,10 +593,12 @@ def run_vllm_routing_with_topology(
     completed = 0
     telemetry = {gid: _RoutingTelemetry() for gid in engines}
     engine_ids = tuple(engines)
+    request_ids: List[str] = []
 
     # Submit all requests up front
     for i in range(req_count_val):
         rid = f"req-{i}"
+        request_ids.append(rid)
         req = Request(req_id=rid, prompt_tokens=64, expected_new_tokens=max_tokens_val)
         admitted = time.time()
         if router:
@@ -560,6 +638,9 @@ def run_vllm_routing_with_topology(
     summary["ttft_ms_p50"], summary["ttft_ms_p95"] = _percentiles(ttft_samples, (50.0, 95.0))
     for gid in engines:
         summary[f"tpot_tok_per_step_{gid}"] = telemetry[gid].tokens_per_step.get()
+    summary[VERIFICATION_OUTPUT_KEY] = _collect_verification_output_token_ids(
+        engines, request_ids
+    )
     return summary
 
 
@@ -790,6 +871,9 @@ def run_dual_pool_vllm_with_topology(
     }
     for gid in engines:
         summary[f"tpot_tok_per_step_{gid}"] = telemetry[gid].tokens_per_step.get()
+    summary[VERIFICATION_OUTPUT_KEY] = _collect_verification_output_token_ids(
+        engines, list(req_roles)
+    )
     return summary
 
 

@@ -89,9 +89,9 @@ class BaselineMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Return domain-specific metrics using standardized helper."""
         from core.benchmark.metrics import compute_roofline_metrics
         return compute_roofline_metrics(
-            total_flops=float(getattr(self, 'total_flops', getattr(self, 'N', 1024) * 2)),
-            total_bytes=float(getattr(self, 'N', 1024) * 4 * 2),
-            elapsed_ms=getattr(self, '_last_elapsed_ms', None),
+            total_flops=float(self.N * 2 * self.repeats),
+            total_bytes=float(self.N * torch.float32.itemsize * 2 * self.repeats),
+            elapsed_ms=getattr(self, "_last_elapsed_ms", None),
             precision="fp32",
         )
 

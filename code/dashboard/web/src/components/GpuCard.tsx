@@ -1,7 +1,7 @@
 'use client';
 
 import { GpuInfo } from '@/types';
-import { formatBytes } from '@/lib/utils';
+import { formatBytes, mebibytesToBytes } from '@/lib/utils';
 import { Cpu, Thermometer, Zap, HardDrive } from 'lucide-react';
 
 interface GpuCardProps {
@@ -10,8 +10,8 @@ interface GpuCardProps {
 }
 
 export function GpuCard({ gpu, lastUpdated }: GpuCardProps) {
-  const memoryBytesTotal = typeof gpu.memory_total === 'number' ? gpu.memory_total * 1e6 : 0; // API returns MB
-  const memoryBytesUsed = typeof gpu.memory_used === 'number' ? gpu.memory_used * 1e6 : 0;
+  const memoryBytesTotal = typeof gpu.memory_total === 'number' ? mebibytesToBytes(gpu.memory_total) : 0;
+  const memoryBytesUsed = typeof gpu.memory_used === 'number' ? mebibytesToBytes(gpu.memory_used) : 0;
   const memoryPercent =
     memoryBytesTotal > 0 ? Math.min(100, (memoryBytesUsed / memoryBytesTotal) * 100) : 0;
   const powerDraw = gpu.power_draw ?? gpu.power;

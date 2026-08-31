@@ -1,4 +1,4 @@
-// optimized_micro_tiling_matmul.cu -- Register-tiled matmul (optimized).
+// optimized_micro_tiling_matmul.cu -- 16x16 shared-memory tiled matmul.
 
 #include <cuda_runtime.h>
 #include <stdio.h>
@@ -97,7 +97,7 @@ int main() {
     CUDA_CHECK(cudaEventElapsedTime(&ms, start, stop));
     float avg_ms = ms / iterations;
     
-    printf("Tiled matmul (optimized): %.2f ms\n", avg_ms);
+    printf("Shared-memory tiled matmul: %.2f ms\n", avg_ms);
 
 #ifdef VERIFY
     CUDA_CHECK(cudaMemcpy(h_C, d_C, bytes, cudaMemcpyDeviceToHost));

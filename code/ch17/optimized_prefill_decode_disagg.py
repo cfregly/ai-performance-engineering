@@ -1,8 +1,9 @@
 """Optimized disaggregated prefill/decode benchmark (Chapter 17).
 
-Separates prefill (long context) and decode (short, latency-sensitive) phases onto
-independent CUDA streams. Mirrors production scheduling that dedicates resources
-for context building while keeping decode latency low.
+Pipelines independent requests so one request prefills (long context) while the
+previous ready request decodes (short, latency-sensitive) on a separate CUDA
+stream. Mirrors steady-state serving where the two worker pools handle different
+requests concurrently.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E40
 
 
 class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Prefill on a long context + decode on a short context using separate streams."""
+    """Overlap the next request's prefill with the ready request's decode."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -39,6 +40,8 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.prefill_stream: Optional[torch.cuda.Stream] = None
         self.decode_stream: Optional[torch.cuda.Stream] = None
         self._prefill_done: Optional[torch.cuda.Event] = None
+        self._decode_ready: Optional[torch.cuda.Event] = None
+        self._decode_state: Optional[torch.Tensor] = None
         self._empty_iteration_result: Dict[str, list[float]] = {}
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
@@ -77,11 +80,14 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.prefill_stream = torch.cuda.Stream(device=self.device)
         self.decode_stream = torch.cuda.Stream(device=self.device)
         self._prefill_done = torch.cuda.Event()
+        self._decode_ready = torch.cuda.Event()
 
-        # Warm up to reduce first-iteration variance.
+        # Prime the decode lane with a completed prefill. Timed iterations then
+        # complete one ready request while prefilling the next request.
         with torch.inference_mode():
-            kv_cache = self.model.prefill(self.prompt)
-            _ = self.model.decode_step(kv_cache)
+            self._decode_state = self.model.prefill(self.prompt)
+            _ = self.model.decode_step(self._decode_state)
+        self._decode_ready.record(torch.cuda.current_stream(device=self.device))
         torch.cuda.synchronize(self.device)
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
         self._ttft_events = (
@@ -135,6 +141,8 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self.prefill_stream is None
             or self.decode_stream is None
             or self._prefill_done is None
+            or self._decode_ready is None
+            or self._decode_state is None
             or self._ttft_events is None
             or self._tpot_event_count != self.decode_seq
         ):
@@ -148,21 +156,23 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 request_start.record(default_stream)
                 with torch.cuda.stream(self.prefill_stream):
                     self.prefill_stream.wait_stream(default_stream)
-                    kv_cache = self.model.prefill(self.prompt)
+                    next_decode_state = self.model.prefill(self.prompt)
                     self._prefill_done.record(self.prefill_stream)
                     prefill_end.record(self.prefill_stream)
 
-                token_output = kv_cache
+                token_output = self._decode_state
                 token_event_pairs = self._tpot_events
                 token_event_count = self._tpot_event_count
                 with torch.cuda.stream(self.decode_stream):
-                    self.decode_stream.wait_event(self._prefill_done)
+                    self.decode_stream.wait_event(self._decode_ready)
                     for token_start, token_end in token_event_pairs:
                         token_start.record(self.decode_stream)
                         token_output = self.model.decode_step(token_output)
                         token_end.record(self.decode_stream)
 
                 self.output = token_output
+                self._decode_state = next_decode_state
+                self._decode_ready, self._prefill_done = self._prefill_done, self._decode_ready
                 self._pending_ttft_pair = ttft_events
                 self._pending_tpot_pairs = token_event_pairs
                 self._pending_tpot_count = token_event_count
@@ -223,6 +233,8 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.prefill_stream = None
         self.decode_stream = None
         self._prefill_done = None
+        self._decode_ready = None
+        self._decode_state = None
         self.output = None
         self._ttft_events = None
         self._tpot_events = []

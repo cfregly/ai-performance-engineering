@@ -660,17 +660,12 @@ def _enqueue_targets(state: Dict[str, Any], targets: List[str], *, force_rerun: 
             pending_targets.append(target)
             added += 1
             continue
-        if target == active_target:
-            pending_targets.append(target)
-            added += 1
+        # Forced reruns may queue active or completed targets, but each target
+        # still appears at most once in the pending queue.
+        if target in pending_targets:
             continue
-        if target not in pending_targets:
-            pending_targets.append(target)
-            added += 1
-            continue
-        if target in target_records:
-            pending_targets.append(target)
-            added += 1
+        pending_targets.append(target)
+        added += 1
     state["targets_total"] = len(discovered_targets)
     return added
 
@@ -778,7 +773,10 @@ def _expectation_example_key(bench: Dict[str, Any]) -> str:
     bench_type = str(bench.get("type") or "python").strip().lower() or "python"
     if bench_type == "python":
         return example_name
-    return f"{example_name}_{bench_type}"
+    suffix = f"_{bench_type}"
+    if example_name.lower().endswith(suffix):
+        return example_name
+    return f"{example_name}{suffix}"
 
 
 def _write_eligible_expectation(
@@ -976,7 +974,12 @@ def _parse_args() -> argparse.Namespace:
     start_parser = subparsers.add_parser("start", help="Initialize/enqueue targets and launch the background worker.")
     _add_queue_args(start_parser)
     _add_target_args(start_parser)
-    start_parser.add_argument("--profile", default="none", choices=["none", "minimal", "deep_dive", "roofline"], help="Profiling preset for each target run.")
+    start_parser.add_argument(
+        "--profile",
+        default=None,
+        choices=["none", "minimal", "deep_dive", "roofline"],
+        help="Profiling preset for each target run. Existing queues retain their saved preset when omitted.",
+    )
     start_parser.add_argument("--suite-timeout", type=int, default=0, help="Suite timeout per target in seconds. Use 0 to disable.")
     start_parser.add_argument("--gpu-sm-clock-mhz", type=int, default=1965, help="SM application clock in MHz.")
     start_parser.add_argument("--gpu-mem-clock-mhz", type=int, default=3996, help="Memory application clock in MHz.")
@@ -1263,6 +1266,12 @@ def _run_target(
     return target_record
 
 
+def _resolve_start_profile(saved_profile: Optional[str], requested_profile: Optional[str]) -> str:
+    """Use an explicit profile override, otherwise preserve the queue setting."""
+
+    return requested_profile or saved_profile or "none"
+
+
 def _command_start(args: argparse.Namespace) -> int:
     repo_root = Path(__file__).resolve().parents[1]
     run_root = (args.run_root or _default_run_root(repo_root)).resolve()
@@ -1278,7 +1287,7 @@ def _command_start(args: argparse.Namespace) -> int:
             state = _initialize_state(
                 run_root=run_root,
                 queue_root=queue_root,
-                profile=args.profile,
+                profile=_resolve_start_profile(None, args.profile),
                 suite_timeout=args.suite_timeout,
                 gpu_sm_clock_mhz=args.gpu_sm_clock_mhz,
                 gpu_mem_clock_mhz=args.gpu_mem_clock_mhz,
@@ -1287,7 +1296,7 @@ def _command_start(args: argparse.Namespace) -> int:
         else:
             state["run_root"] = str(run_root)
             state["queue_root"] = str(queue_root)
-            state["profile"] = args.profile or state.get("profile") or "none"
+            state["profile"] = _resolve_start_profile(state.get("profile"), args.profile)
             state["suite_timeout"] = args.suite_timeout
             state["gpu_sm_clock_mhz"] = args.gpu_sm_clock_mhz
             state["gpu_mem_clock_mhz"] = args.gpu_mem_clock_mhz

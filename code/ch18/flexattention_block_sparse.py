@@ -71,9 +71,12 @@ class BlockSparseFlexAttention:
     def _calculate_sparsity(self) -> float:
         """Calculate expected sparsity percentage."""
         # Block-sparse pattern: attend to local block + global tokens
-        num_blocks = self.seq_length // self.block_size
-        local_attention = self.block_size * self.block_size  # Within block
-        global_attention = self.block_size * num_blocks  # To global tokens
+        num_blocks = math.ceil(self.seq_length / self.block_size)
+        full_blocks, tail_tokens = divmod(self.seq_length, self.block_size)
+        local_attention = full_blocks * self.block_size**2 + tail_tokens**2
+        # Every query also attends the first token in every *other* block. The
+        # first token in its own block is already included in local_attention.
+        global_attention = self.seq_length * max(num_blocks - 1, 0)
         
         total_attention = local_attention + global_attention
         full_attention = self.seq_length * self.seq_length

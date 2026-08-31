@@ -3,7 +3,7 @@ Native FP6 Quantization for Blackwell B200
 ==========================================
 
 Demonstrates Blackwell's native FP6 (6-bit floating point) support for:
-- Weight quantization: 25% memory savings vs FP8, 50% vs FP16
+- Weight quantization: 25% memory savings vs FP8, 62.5% vs FP16
 - Activation quantization with dynamic range
 - Mixed-precision training with FP6 weights
 - Inference optimization with FP6
@@ -16,9 +16,10 @@ FP6 Format (E3M2):
 - Precision: ~12.5% relative error
 
 Performance on B200:
-- Memory bandwidth: 50% reduction vs FP16
-- Tensor core throughput: ~1400 TFLOPS (vs ~1200 FP8)
-- Model capacity: 2x larger models in same memory
+- Packed-weight traffic: 62.5% reduction vs FP16
+- Tensor core throughput: ~4.5 PFLOPS dense for either FP6 or FP8
+  (~9 PFLOPS with structured sparsity)
+- Model capacity: up to 2.67x as many packed weights as FP16
 
 Requirements:
 - PyTorch 2.10+ with CUDA 13.0

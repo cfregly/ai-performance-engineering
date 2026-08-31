@@ -37,9 +37,8 @@ __global__ void baseline_tile_pipeline_kernel(
     int numel,
     int repeat_fmas) {
   cg::thread_block cta = cg::this_thread_block();
-  auto warp = cg::tiled_partition<kWarpSize>(cta);
-  __shared__ float lhs_tile[kTileElems];
-  __shared__ float rhs_tile[kTileElems];
+  __shared__ alignas(16) float lhs_tile[kTileElems];
+  __shared__ alignas(16) float rhs_tile[kTileElems];
 
   const int num_tiles = (numel + kTileElems - 1) / kTileElems;
   const int stride = gridDim.x;
@@ -47,22 +46,50 @@ __global__ void baseline_tile_pipeline_kernel(
   for (int tile = blockIdx.x; tile < num_tiles; tile += stride) {
     const int tile_base = tile * kTileElems;
 
-    if (warp.meta_group_rank() == 0) {
-      for (int local = warp.thread_rank(); local < kTileElems; local += warp.size()) {
+    const bool full_tile = tile_base + kTileElems <= numel;
+    if (full_tile) {
+      // Match the pipelined kernel's full-CTA, 16-byte copy width. The baseline
+      // differs only in scheduling: it completes both synchronous loads before
+      // any math begins and never overlaps the next tile.
+      const float4* lhs_global = reinterpret_cast<const float4*>(lhs + tile_base);
+      const float4* rhs_global = reinterpret_cast<const float4*>(rhs + tile_base);
+      float4* lhs_shared = reinterpret_cast<float4*>(lhs_tile);
+      float4* rhs_shared = reinterpret_cast<float4*>(rhs_tile);
+      constexpr int kVecPerTile = kTileElems / 4;
+      for (int v = threadIdx.x; v < kVecPerTile; v += blockDim.x) {
+        lhs_shared[v] = lhs_global[v];
+        rhs_shared[v] = rhs_global[v];
+      }
+    } else {
+      for (int local = threadIdx.x; local < kTileElems; local += blockDim.x) {
         const int idx = tile_base + local;
         lhs_tile[local] = idx < numel ? lhs[idx] : 0.0f;
-      }
-      for (int local = warp.thread_rank(); local < kTileElems; local += warp.size()) {
-        const int idx = tile_base + local;
         rhs_tile[local] = idx < numel ? rhs[idx] : 0.0f;
       }
     }
     cta.sync();
 
-    for (int local = threadIdx.x; local < kTileElems; local += blockDim.x) {
-      const int idx = tile_base + local;
-      if (idx < numel) {
-        out[idx] = tile_math(lhs_tile[local], rhs_tile[local], repeat_fmas);
+    if (full_tile) {
+      const float4* lhs_vec = reinterpret_cast<const float4*>(lhs_tile);
+      const float4* rhs_vec = reinterpret_cast<const float4*>(rhs_tile);
+      float4* out_vec = reinterpret_cast<float4*>(out + tile_base);
+      constexpr int kVecPerTile = kTileElems / 4;
+      for (int v = threadIdx.x; v < kVecPerTile; v += blockDim.x) {
+        const float4 a = lhs_vec[v];
+        const float4 b = rhs_vec[v];
+        float4 r;
+        r.x = tile_math(a.x, b.x, repeat_fmas);
+        r.y = tile_math(a.y, b.y, repeat_fmas);
+        r.z = tile_math(a.z, b.z, repeat_fmas);
+        r.w = tile_math(a.w, b.w, repeat_fmas);
+        out_vec[v] = r;
+      }
+    } else {
+      for (int local = threadIdx.x; local < kTileElems; local += blockDim.x) {
+        const int idx = tile_base + local;
+        if (idx < numel) {
+          out[idx] = tile_math(lhs_tile[local], rhs_tile[local], repeat_fmas);
+        }
       }
     }
     cta.sync();
@@ -406,30 +433,9 @@ torch::Tensor launch_common(
   // outside capture).
   const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
-  if (use_pipeline && props->major >= 9) {
-    // TMA bulk-copy pipeline (sm_90+): dynamic smem above the 48KB static cap.
-    constexpr int kTmaSmemBytes = kTmaStages * kTmaTileElems * 2 * sizeof(float);
-    static int blocks_per_sm = [] {
-      cudaFuncSetAttribute(
-          optimized_tile_pipeline_tma_kernel,
-          cudaFuncAttributeMaxDynamicSharedMemorySize,
-          kTmaSmemBytes);
-      int blocks = 0;
-      cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-          &blocks, optimized_tile_pipeline_tma_kernel, kTmaBlockThreads, kTmaSmemBytes);
-      return std::max(1, blocks);
-    }();
-    const int tma_tiles = (numel + kTmaTileElems - 1) / kTmaTileElems;
-    const int tma_grid =
-        std::max(1, std::min(tma_tiles, props->multiProcessorCount * blocks_per_sm));
-    const dim3 tma_block(kTmaBlockThreads);
-    optimized_tile_pipeline_tma_kernel<<<tma_grid, tma_block, kTmaSmemBytes, stream>>>(
-        lhs.data_ptr<float>(),
-        rhs.data_ptr<float>(),
-        out.data_ptr<float>(),
-        numel,
-        static_cast<int>(repeat_fmas));
-  } else if (use_pipeline) {
+  if (use_pipeline) {
+    // Keep the comparison controlled: identical tile size, block size, vector
+    // width, and math. Only the serialized-vs-two-stage schedule differs.
     optimized_tile_pipeline_kernel<<<grid, block, 0, stream>>>(
         lhs.data_ptr<float>(),
         rhs.data_ptr<float>(),

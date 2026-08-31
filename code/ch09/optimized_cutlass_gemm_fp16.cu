@@ -9,9 +9,10 @@
 //
 // The host data (mt19937 fill, RowMajor A/B, M=N=K=2048) and the |C| checksum
 // are kept identical to the baseline so the A/B and verification stay valid. For
-// C = A @ B with A RowMajor (MxK) and B RowMajor (KxN), the Sm100 convention is
-// LayoutA=RowMajor, LayoutB=ColumnMajor (a KxN row-major buffer is an (N,K)
-// column-major operand), so C(m,n) = sum_k A(m,k) * B(n,k) = (A @ B)(m,n).
+// C = A @ B with A RowMajor (MxK) and B RowMajor (KxN), the declarations use
+// LayoutA=RowMajor and LayoutB=RowMajor. The packed B stride is built from the
+// logical (N,K,1) operand shape while preserving the baseline's KxN row-major
+// storage.
 
 #include <cuda_runtime.h>
 

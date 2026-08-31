@@ -195,14 +195,18 @@ class FlexAttentionModel(nn.Module):
         return x
 
 
-def estimate_memory(n_layers, d_model, batch, seq_len):
-    """Estimate memory usage"""
-    # Parameters per layer
+def estimate_parameter_count(n_layers, d_model, d_ff):
+    """Estimate dominant attention and FFN weight parameters."""
     params_per_layer = (
-        4 * d_model * d_model +  # QKV + out
-        5 * d_model * d_model    # FFN (assuming 4x expansion)
+        4 * d_model * d_model +  # QKV + attention output projection
+        2 * d_model * d_ff       # FFN input + output projections
     )
-    total_params = n_layers * params_per_layer
+    return n_layers * params_per_layer
+
+
+def estimate_memory(n_layers, d_model, d_ff, batch, seq_len):
+    """Estimate memory usage"""
+    total_params = estimate_parameter_count(n_layers, d_model, d_ff)
     
     # Memory in GB
     param_mem = total_params * 4 / 1e9  # FP32
@@ -251,7 +255,7 @@ def test_configuration(name, n_layers, d_model, n_heads, d_ff, batch, seq_len, t
     print("=" * 80)
     
     # Estimate memory
-    estimated_mem = estimate_memory(n_layers, d_model, batch, seq_len)
+    estimated_mem = estimate_memory(n_layers, d_model, d_ff, batch, seq_len)
     print(f"Layers: {n_layers}, Hidden: {d_model}, Heads: {n_heads}")
     print(f"Batch: {batch}, Sequence: {seq_len}")
     print(f"Estimated memory: {estimated_mem:.1f} GB / {total_memory:.1f} GB available")
@@ -262,7 +266,7 @@ def test_configuration(name, n_layers, d_model, n_heads, d_ff, batch, seq_len, t
         return None
     
     # Count parameters
-    total_params = n_layers * (4 * d_model * d_model + 5 * d_model * d_model)
+    total_params = estimate_parameter_count(n_layers, d_model, d_ff)
     print(f"Parameters: {total_params / 1e6:.0f}M")
     
     # Create input

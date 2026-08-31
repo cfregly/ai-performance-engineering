@@ -236,7 +236,7 @@ def test_cuda_top_k_forward_scores_reduced_query_tiles(
     assert "block_k_tile.contiguous()" not in cutlass_section
     assert "torch.mul(dense_chunk, workload.scale, out=group_scores[q_start:q_end])" in cutlass_section
     assert "needs_backward = bool(ctx.needs_input_grad[0] or ctx.needs_input_grad[1])" in forward_section
-    assert "use_cutlass=workload.mode == \"forward\"" in forward_section
+    assert "use_cutlass=True" in forward_section
     assert "_run_cutlass_group_block_scores(q_group, block_k, workload)" not in forward_section
     assert "ctx.save_for_backward()" in forward_section
 
@@ -249,7 +249,7 @@ def test_cuda_top_k_forward_scores_reduced_query_tiles(
         head_dim=8,
         top_k=2,
         selection_block_size=4,
-        mode="forward",
+        mode="fwd_bwd",
         dtype=torch.float16,
     )
     seen: list[tuple[torch.Size, torch.Size]] = []

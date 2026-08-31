@@ -1030,60 +1030,6 @@
       },
       "type": "python"
     },
-    "precisionfp8_te": {
-      "example": "precisionfp8_te",
-      "metadata": {
-        "best_memory_savings_pct": -0.8937952661354505,
-        "best_memory_savings_ratio": 0.991141226635614,
-        "best_optimization": "optimized_precisionfp8_te",
-        "best_optimization_file": "optimized_precisionfp8_te.py",
-        "best_optimization_memory_mb": 456.21484375,
-        "best_optimization_speedup": 1.5517006255317791,
-        "best_optimization_technique": "optimized_precisionfp8_te",
-        "best_optimization_time_ms": 0.3315454177188535,
-        "optimization_goal": "speed"
-      },
-      "metrics": {
-        "baseline_memory_mb": 452.17333984375,
-        "baseline_p75_ms": 0.5119360089302063,
-        "baseline_throughput.bytes_per_s": null,
-        "baseline_throughput.custom_unit_name": null,
-        "baseline_throughput.custom_unit_per_s": null,
-        "baseline_throughput.goodput": null,
-        "baseline_throughput.latency_ms": 0.51445923206654,
-        "baseline_throughput.requests_per_s": 1943.7886185521115,
-        "baseline_throughput.samples_per_s": null,
-        "baseline_throughput.schemaVersion": "1.0",
-        "baseline_throughput.tokens_per_s": 2038210094.486899,
-        "baseline_time_ms": 0.51445923206654,
-        "best_memory_savings_pct": -0.8937952661354505,
-        "best_memory_savings_ratio": 0.991141226635614,
-        "best_optimized_memory_mb": 456.21484375,
-        "best_optimized_p75_ms": 0.3316799998283386,
-        "best_optimized_speedup": 1.5517006255317791,
-        "best_optimized_throughput.bytes_per_s": null,
-        "best_optimized_throughput.custom_unit_name": null,
-        "best_optimized_throughput.custom_unit_per_s": null,
-        "best_optimized_throughput.goodput": null,
-        "best_optimized_throughput.latency_ms": 0.3315454177188535,
-        "best_optimized_throughput.requests_per_s": 3016.178015308865,
-        "best_optimized_throughput.samples_per_s": null,
-        "best_optimized_throughput.schemaVersion": "1.0",
-        "best_optimized_throughput.tokens_per_s": 3162691878.580508,
-        "best_optimized_time_ms": 0.3315454177188535,
-        "best_speedup": 1.5517006255317791,
-        "is_regression": false
-      },
-      "provenance": {
-        "git_commit": "c3156855a344c00635b8958b323c049e529bb26a",
-        "hardware_key": "2x_b200",
-        "iterations": 20,
-        "profile_name": "none",
-        "timestamp": "2026-01-02T23:42:42.450818",
-        "warmup_iterations": 5
-      },
-      "type": "python"
-    },
     "precisionmixed": {
       "example": "precisionmixed",
       "metadata": {

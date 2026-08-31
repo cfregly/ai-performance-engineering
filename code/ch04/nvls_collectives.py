@@ -20,6 +20,40 @@ from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E40
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 
 
+_NVLS_ALGORITHMS = "Tree,Ring,NVLS"
+
+
+def _configure_nvls_environment(*, communicator_initialized: bool) -> None:
+    """Configure or validate NVLS before the first NCCL communicator exists."""
+    nvls_enable = os.environ.get("NCCL_NVLS_ENABLE")
+    algorithms = os.environ.get("NCCL_ALGO")
+
+    if communicator_initialized:
+        invalid = []
+        if nvls_enable != "1":
+            invalid.append("NCCL_NVLS_ENABLE=1")
+        if algorithms is None or "NVLS" not in algorithms.split(","):
+            invalid.append("NCCL_ALGO containing NVLS")
+        if invalid:
+            required = ", ".join(invalid)
+            raise RuntimeError(
+                "SKIPPED: NVLS environment must be configured before NCCL "
+                f"communicator initialization; required {required}"
+            )
+        return
+
+    if nvls_enable not in (None, "1"):
+        raise RuntimeError(
+            "SKIPPED: NCCL_NVLS_ENABLE must be 1 before NCCL communicator initialization"
+        )
+    if algorithms is not None and "NVLS" not in algorithms.split(","):
+        raise RuntimeError(
+            "SKIPPED: NCCL_ALGO must include NVLS before NCCL communicator initialization"
+        )
+    os.environ.setdefault("NCCL_NVLS_ENABLE", "1")
+    os.environ.setdefault("NCCL_ALGO", _NVLS_ALGORITHMS)
+
+
 class NVLSCollectivesBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Tiny NCCL all-reduce meant to mirror the doc's NVLS target."""
 
@@ -40,6 +74,7 @@ class NVLSCollectivesBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("SKIPPED: NVLS collectives require >=2 GPUs")
         if not dist.is_available():
             raise RuntimeError("SKIPPED: torch.distributed not available")
+        _configure_nvls_environment(communicator_initialized=dist.is_initialized())
         if not dist.is_initialized():
             if "RANK" not in os.environ or "WORLD_SIZE" not in os.environ:
                 raise RuntimeError("SKIPPED: launch with torchrun to enable NCCL NVLS demo")
@@ -47,9 +82,6 @@ class NVLSCollectivesBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.cuda.set_device(local_rank)
             dist.init_process_group("nccl", device_id=local_rank)
 
-        os.environ.setdefault("NCCL_NVLS_ENABLE", "1")
-        os.environ.setdefault("NCCL_ALGO", "Tree,Ring,NVLS")
-        os.environ.setdefault("NCCL_COLLNET_ENABLE", "1")
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         self.tensor = torch.randn(32, 32, device=self.device, dtype=torch.float32)

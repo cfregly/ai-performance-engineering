@@ -2236,11 +2236,10 @@ def tool_gpu_info(params: Dict[str, Any]) -> Dict[str, Any]:
 )
 def tool_gpu_bandwidth(params: Dict[str, Any]) -> Dict[str, Any]:
     """Run GPU bandwidth test."""
-    from core.perf_core import get_core
     from core.engine import get_engine
 
     include_context, context_level = extract_context_opts(params)
-    result = get_engine().gpu.bandwidth_test()
+    result = get_engine().gpu.bandwidth()
     return attach_context_if_requested(result, include_context, context_level)
 
 
@@ -4006,11 +4005,11 @@ def _extract_workload_params_from_cu(cu_path: Path) -> Dict[str, int]:
 
 def _infer_dtype_from_cu(cu_path: Path) -> str:
     text = cu_path.read_text(encoding="utf-8")
-    if re.search(r"\\b(__nv_bfloat16|nv_bfloat16)\\b", text):
+    if re.search(r"\b(__nv_bfloat16|nv_bfloat16)\b", text):
         return "bfloat16"
-    if re.search(r"\\b(__half|half)\\b", text):
+    if re.search(r"\b(__half|half)\b", text):
         return "float16"
-    if re.search(r"\\bdouble\\b", text):
+    if re.search(r"\bdouble\b", text):
         return "float64"
     return "float32"
 
@@ -6311,7 +6310,7 @@ def tool_optimize_techniques(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.engine import get_engine
 
     include_context, context_level = extract_context_opts(params)
-    result = get_engine().optimize.all_techniques()
+    result = get_engine().optimize.techniques()
     return attach_context_if_requested(result, include_context, context_level)
 
 
@@ -6859,7 +6858,7 @@ def tool_profile_kernels(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.engine import get_engine
 
     include_context, context_level = extract_context_opts(params)
-    result = get_engine().profile.kernel_breakdown()
+    result = get_engine().profile.kernels()
     return attach_context_if_requested(result, include_context, context_level)
 
 
@@ -8863,12 +8862,13 @@ def tool_test_tensor_core(params: Dict[str, Any]) -> Dict[str, Any]:
 
 @register_tool(
     "hw_network",
-    "Tags: network, throughput, interconnect, bandwidth, nic. "
-    "Run network throughput tests to check NIC and interconnect performance. "
-    "Returns: {throughput_gbps, latency_ms, interface_info}. "
-    "USE when: Checking host network bandwidth, interconnect performance for distributed training. "
-    'Example: "Test network bandwidth" or "Check interconnect speed between nodes". '
-    "ALSO USE: system_network for InfiniBand status, hw_nccl for NCCL collectives. 🕐 MEDIUM (~15s). WORKFLOW: hw_network → if slow → check NIC config.",
+    "Tags: network, throughput, loopback, tcp, bandwidth. "
+    "Run a localhost TCP loopback throughput diagnostic. "
+    "Returns: {throughput_gbps, elapsed_seconds, bytes_sent, notes}. "
+    "USE when: Checking the host TCP stack without external network dependencies. "
+    'Example: "Test localhost TCP throughput" or "Check the local network stack". '
+    "NOT FOR: NIC or inter-node bandwidth (use hw_ib), InfiniBand status (use system_network), "
+    "or GPU collectives (use hw_nccl). 🕐 MEDIUM (~15s). WORKFLOW: hw_network → system_network → hw_ib/hw_nccl.",
     {"type": "object", "properties": with_context_params({})},
 )
 def tool_test_network(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -8876,7 +8876,7 @@ def tool_test_network(params: Dict[str, Any]) -> Dict[str, Any]:
     from core.engine import get_engine
 
     include_context, context_level = extract_context_opts(params)
-    result = get_engine().test.network()
+    result = get_engine().benchmark.network_test()
     return attach_context_if_requested(result, include_context, context_level)
 
 
@@ -9312,12 +9312,14 @@ def tool_predict_scaling(params: Dict[str, Any]) -> Dict[str, Any]:
         engine = get_engine()
         # Use analyze.scaling with prediction
         result = engine.analyze.scaling()
+        target_gpus = max(int(params.get("target_gpus", 8)), 1)
+        current_gpus = max(int(params.get("current_gpus", 1)), 1)
+        scaling_efficiency = 0.85
         result["prediction"] = {
-            "target_gpus": params.get("target_gpus", 8),
-            "current_gpus": params.get("current_gpus", 1),
-            "estimated_speedup": min(
-                params.get("target_gpus", 8) / max(params.get("current_gpus", 1), 1) * 0.85, 7.5
-            ),
+            "target_gpus": target_gpus,
+            "current_gpus": current_gpus,
+            "scaling_efficiency": scaling_efficiency,
+            "estimated_speedup": target_gpus / current_gpus * scaling_efficiency,
             "note": "Scaling efficiency typically 80-90% for well-optimized workloads",
         }
         return attach_context_if_requested(result, include_context, context_level)

@@ -80,6 +80,20 @@ def _bandwidth_summary(bandwidth_matrix: Dict[Tuple[int, int], float]) -> Tuple[
     return total / count, min_bw, max_bw
 
 
+def _collective_bus_bytes(op_type: str, data_bytes: int, world_size: int) -> float:
+    """Return per-rank bus traffic represented by one collective operation."""
+    if world_size < 2:
+        raise ValueError(f"world_size must be >=2, got {world_size}")
+    if op_type == "allreduce":
+        return data_bytes * 2 * (world_size - 1) / world_size
+    if op_type == "allgather":
+        # Each rank already owns one shard and receives the other N - 1 shards.
+        return float(data_bytes * (world_size - 1))
+    if op_type == "reducescatter":
+        return data_bytes * (world_size - 1) / world_size
+    raise ValueError(f"Unsupported collective op: {op_type}")
+
+
 # ============================================================================
 # P2P Bandwidth Matrix
 # ============================================================================
@@ -271,17 +285,10 @@ def benchmark_collective(
     
     latency_ms = start.elapsed_time(end) / iterations
     
-    # Calculate bandwidth
+    # Calculate per-rank bus bandwidth.
     data_bytes = size * 4  # float32
-    if op_type == "allreduce":
-        # AllReduce: 2*(N-1)/N algorithm bandwidth
-        bandwidth_gbs = (data_bytes * 2 * (world_size - 1) / world_size) / (latency_ms / 1000) / 1e9
-    elif op_type == "allgather":
-        # AllGather: N * data
-        bandwidth_gbs = (data_bytes * world_size) / (latency_ms / 1000) / 1e9
-    elif op_type == "reducescatter":
-        # ReduceScatter: (N-1)/N algorithm bandwidth
-        bandwidth_gbs = (data_bytes * (world_size - 1) / world_size) / (latency_ms / 1000) / 1e9
+    bus_bytes = _collective_bus_bytes(op_type, data_bytes, world_size)
+    bandwidth_gbs = bus_bytes / (latency_ms / 1000) / 1e9
     
     return latency_ms, bandwidth_gbs
 

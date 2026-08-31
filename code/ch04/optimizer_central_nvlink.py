@@ -1,7 +1,7 @@
 """optimizer_central_nvlink.py
 
 Centralized optimizer state on a single GPU (typically within the same NVSwitch
-island) with peer access enabled. Remote GPUs ship gradients to the central
+island) with peer access validated. Remote GPUs ship gradients to the central
 GPU over NVLink; updated weights are multicast back.
 """
 
@@ -12,9 +12,9 @@ from typing import List, Optional, Tuple
 import torch
 import torch.nn as nn
 
-from core.benchmark.gpu_requirements import skip_if_insufficient_gpus
-from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
+from core.benchmark.gpu_requirements import require_peer_access, skip_if_insufficient_gpus
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 
 class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -41,24 +41,18 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
             tokens_per_iteration=float(tokens),
         )
 
-    def _enable_peer_access(self) -> None:
+    def _require_root_peer_access(self) -> None:
+        """Require each bidirectional root route; PyTorch enables P2P internally."""
         num = torch.cuda.device_count()
         skip_if_insufficient_gpus(2)
-        for src in range(num):
-            for dst in range(num):
-                if src == dst:
-                    continue
-                if torch.cuda.can_device_access_peer(src, dst):
-                    try:
-                        torch.cuda.device(src).enable_peer_access(dst)
-                    except RuntimeError:
-                        # Already enabled or unsupported; ignore
-                        pass
+        for peer in range(1, num):
+            require_peer_access(peer, 0, script_name="optimizer_central_nvlink.py")
+            require_peer_access(0, peer, script_name="optimizer_central_nvlink.py")
 
     def setup(self) -> None:
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
-        self._enable_peer_access()
+        self._require_root_peer_access()
         num_gpus = max(1, torch.cuda.device_count())
         skip_if_insufficient_gpus(2)
 

@@ -78,15 +78,22 @@ class MetricsCollector:
         
         for gpu_id in range(self.device_count):
             try:
-                # Memory metrics
-                mem_allocated = torch.cuda.memory_allocated(gpu_id) / (1024**3)  # GB
-                mem_reserved = torch.cuda.memory_reserved(gpu_id) / (1024**3)
-                mem_total = torch.cuda.get_device_properties(gpu_id).total_memory / (1024**3)
+                # cudaMemGetInfo reports device-wide free/total memory. PyTorch's
+                # allocator counters below are process-local and are labeled as
+                # such; they must not be presented as whole-GPU utilization.
+                free_bytes, total_bytes = torch.cuda.mem_get_info(gpu_id)
+                used_bytes = total_bytes - free_bytes
+                mem_total = total_bytes / (1024**3)
+                mem_used = used_bytes / (1024**3)
+                process_allocated = torch.cuda.memory_allocated(gpu_id) / (1024**3)
+                process_reserved = torch.cuda.memory_reserved(gpu_id) / (1024**3)
                 
-                metrics[f'gpu_memory_allocated_gb{{gpu="{gpu_id}"}}'] = mem_allocated
-                metrics[f'gpu_memory_reserved_gb{{gpu="{gpu_id}"}}'] = mem_reserved
+                metrics[f'gpu_process_memory_allocated_gb{{gpu="{gpu_id}"}}'] = process_allocated
+                metrics[f'gpu_process_memory_reserved_gb{{gpu="{gpu_id}"}}'] = process_reserved
+                metrics[f'gpu_memory_used_gb{{gpu="{gpu_id}"}}'] = mem_used
                 metrics[f'gpu_memory_total_gb{{gpu="{gpu_id}"}}'] = mem_total
-                metrics[f'gpu_memory_utilization{{gpu="{gpu_id}"}}'] = mem_allocated / mem_total
+                if total_bytes > 0:
+                    metrics[f'gpu_memory_utilization{{gpu="{gpu_id}"}}'] = used_bytes / total_bytes
                 
                 # Device properties
                 props = torch.cuda.get_device_properties(gpu_id)

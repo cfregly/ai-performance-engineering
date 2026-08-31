@@ -339,7 +339,7 @@ class CheapEvalStack:
             if not rows and not self.cfg.allow_missing_metrics:
                 raise FileNotFoundError(
                     f"Expected {name} under {metrics_dir} for real telemetry. "
-                    "Set EVAL_STACK_ALLOW_MISSING=1 to fall back to synthetic rows."
+                    "Pass --allow-missing-metrics to permit synthetic fallback rows."
                 )
 
         _assert_present("quality.jsonl", quality_rows)
@@ -564,6 +564,8 @@ class CheapEvalStack:
         total_tokens = 0
         dropped_tokens = 0
         window = 0
+        window_tokens = 0
+        window_drops = 0
         tokens_per_window = 64
         total_steps = max(self.cfg.request_count * 20, tokens_per_window)
 
@@ -595,6 +597,8 @@ class CheapEvalStack:
             router_sample_count += 1
             total_tokens += 1
             dropped_tokens += 1 if drop_event else 0
+            window_tokens += 1
+            window_drops += 1 if drop_event else 0
 
             if (step + 1) % tokens_per_window == 0:
                 router_rows.append(
@@ -602,7 +606,8 @@ class CheapEvalStack:
                         "step": step,
                         "entropy": entropy,
                         "margin": margin,
-                        "drops": int(drop_event),
+                        "drops": window_drops,
+                        "total_tokens": window_tokens,
                     }
                 )
                 traffic_rows.append(
@@ -613,6 +618,26 @@ class CheapEvalStack:
                     }
                 )
                 window += 1
+                window_tokens = 0
+                window_drops = 0
+
+        if window_tokens:
+            router_rows.append(
+                {
+                    "step": total_steps - 1,
+                    "entropy": entropy,
+                    "margin": margin,
+                    "drops": window_drops,
+                    "total_tokens": window_tokens,
+                }
+            )
+            traffic_rows.append(
+                {
+                    "window": window,
+                    "expert_hist": expert_hist.copy(),
+                    "imbalance_cv": _imbalance_cv(expert_hist),
+                }
+            )
 
         drop_rate = dropped_tokens / float(total_tokens or 1)
         summary = {

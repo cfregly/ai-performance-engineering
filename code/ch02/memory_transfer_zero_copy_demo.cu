@@ -1,7 +1,12 @@
-// memory_transfer_zero_copy_demo.cu -- Zero-copy GPU access to CPU memory via NVLink-C2C
-// Optimized for Grace-Blackwell GB10 (SM 12.1) with 900 GB/s coherent interconnect
+// memory_transfer_zero_copy_demo.cu -- GPU access to GB10 coherent system memory
+// DGX Spark's published peak unified-memory bandwidth is 273 GB/s. This
+// benchmark reports observed effective traffic and does not equate a link rate
+// with sustained application bandwidth.
 // Compile: nvcc -O3 -std=c++17 -arch=sm_121 memory_transfer_zero_copy_demo.cu -o memory_transfer_zero_copy_demo
 
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <cuda_runtime.h>
 #include <cstdio>
 #include <vector>
@@ -18,18 +23,18 @@
   } while (0)
 
 // Zero-copy kernel: Direct CPU memory access from GPU
-// On GB10, this uses 900 GB/s NVLink-C2C with cache coherence
+// On GB10, this reads its coherent LPDDR5X unified system memory.
 __global__ void zero_copy_process_kernel(
     const float* __restrict__ cpu_input,   // CPU memory (via NVLink-C2C)
-    float* __restrict__ gpu_output,         // GPU memory (HBM3e)
+    float* __restrict__ gpu_output,         // GPU-accessible output allocation
     int n) {
     
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     
     if (idx < n) {
         // Direct load from CPU memory - compiler generates coherent access
-        // On GB10: ~800-900 GB/s via NVLink-C2C
-        // On discrete GPU: ~25 GB/s via PCIe (much slower!)
+        // The measured rate is bounded by the platform's 273 GB/s peak unified
+        // system-memory bandwidth and by this kernel's compute and write traffic.
         float val = cpu_input[idx];
         
         // Compute
@@ -85,28 +90,26 @@ __global__ void traditional_process_kernel(
     }
 }
 
-bool is_grace_blackwell() {
-    cudaDeviceProp prop;
-    CUDA_CHECK(cudaGetDeviceProperties(&prop, 0));
-    return prop.major == 12;  // SM 12.x
-}
-
 int main() {
     NVTX_RANGE("main");
     // Detect architecture
     cudaDeviceProp prop;
     CUDA_CHECK(cudaGetDeviceProperties(&prop, 0));
-    bool is_sm121 = (prop.major == 12);
+    bool is_gb10 = (prop.major == 12 && prop.minor == 1);
     
     std::printf("=== GB10 Zero-Copy Coherent Memory Benchmark ===\n");
     std::printf("Architecture: %s (SM %d.%d)\n", 
-                is_sm121 ? "Grace-Blackwell GB10" : "Other",
+                is_gb10 ? "Grace-Blackwell GB10" : "Other",
                 prop.major, prop.minor);
-    
-    if (!is_sm121) {
-        std::printf("\n⚠️  WARNING: This demo is optimized for Grace-Blackwell GB10!\n");
-        std::printf("   On discrete GPUs, zero-copy uses slow PCIe access (~25 GB/s)\n");
-        std::printf("   On GB10, zero-copy uses NVLink-C2C coherent access (~900 GB/s)\n\n");
+
+    if (!is_gb10) {
+        std::fprintf(
+            stderr,
+            "SKIPPED: this coherent unified-memory benchmark requires "
+            "Grace-Blackwell GB10 (SM 12.1); observed SM %d.%d.\n",
+            prop.major,
+            prop.minor);
+        return EXIT_FAILURE;
     }
     
     // Test with moderately large array
@@ -178,7 +181,7 @@ int main() {
     // ============================================================
     // Test 2: Zero-copy (direct CPU memory access)
     // ============================================================
-    std::printf("Test 2: Zero-Copy (direct CPU memory access via NVLink-C2C)\n");
+    std::printf("Test 2: Zero-Copy (direct coherent system-memory access)\n");
     
     // Warmup
     for (int i = 0; i < WARMUP; ++i) {
@@ -201,7 +204,7 @@ int main() {
     float avg_zerocopy = ms_zerocopy / ITERS;
     
     std::printf("  Time: %.3f ms\n", avg_zerocopy);
-    std::printf("  Throughput: %.2f GB/s (CPU read bandwidth)\n", 
+    std::printf("  Throughput: %.2f GB/s (effective system-memory reads)\n",
                 (BYTES / 1e9) / (avg_zerocopy / 1000.0f));
     std::printf("  Speedup: %.2fx vs traditional\n\n", avg_traditional / avg_zerocopy);
     
@@ -231,7 +234,7 @@ int main() {
     float avg_bidir = ms_bidir / ITERS;
     
     std::printf("  Time: %.3f ms\n", avg_bidir);
-    std::printf("  Throughput: %.2f GB/s (read + write via NVLink-C2C)\n",
+    std::printf("  Throughput: %.2f GB/s (effective system-memory read + write traffic)\n",
                 (2.0f * BYTES / 1e9) / (avg_bidir / 1000.0f));
     std::printf("  Speedup: %.2fx vs traditional\n\n", avg_traditional / avg_bidir);
     
@@ -261,18 +264,11 @@ int main() {
                 avg_bidir, avg_traditional / avg_bidir);
     std::printf("\nCorrectness: %s\n", correct ? "✅ PASSED" : "❌ FAILED");
     
-    if (is_sm121) {
-        std::printf("\n✅ GB10 Benefits:\n");
-        std::printf("  • No explicit H2D/D2H transfers needed\n");
-        std::printf("  • 900 GB/s coherent CPU-GPU bandwidth\n");
-        std::printf("  • Reduced memory footprint (data stays on CPU)\n");
-        std::printf("  • Ideal for: large KV caches, optimizer states, preprocessing\n");
-    } else {
-        std::printf("\n⚠️  On discrete GPUs:\n");
-        std::printf("  • Zero-copy uses slow PCIe (~25 GB/s)\n");
-        std::printf("  • Traditional approach is usually faster\n");
-        std::printf("  • GB10's NVLink-C2C provides ~36x better zero-copy bandwidth\n");
-    }
+    std::printf("\n✅ GB10 Characteristics:\n");
+    std::printf("  • No explicit H2D/D2H transfers needed\n");
+    std::printf("  • 273 GB/s peak unified system-memory bandwidth\n");
+    std::printf("  • Reported throughput is measured effective traffic, not a link-rate claim\n");
+    std::printf("  • Shared system memory can reduce duplicate CPU/GPU allocations\n");
     
     CUDA_CHECK(cudaEventDestroy(start));
     CUDA_CHECK(cudaEventDestroy(stop));
@@ -281,5 +277,5 @@ int main() {
     CUDA_CHECK(cudaFree(d_input));
     CUDA_CHECK(cudaFree(d_output));
     
-    return 0;
+    return correct ? EXIT_SUCCESS : EXIT_FAILURE;
 }

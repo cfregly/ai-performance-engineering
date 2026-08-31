@@ -76,6 +76,22 @@ def _resolve_batch_config(
     return adjusted_batch, micro_batches
 
 
+def _resolve_1f1b_schedule(world_size: int, num_micro_batches: int) -> tuple[int, int]:
+    """Return warmup and steady-state counts for a nondegenerate 1F1B schedule."""
+    if world_size < 2:
+        raise ValueError(f"world_size must be >=2, got {world_size}")
+    if num_micro_batches < 1:
+        raise ValueError(f"num_micro_batches must be >=1, got {num_micro_batches}")
+    warmup_steps = min(world_size - 1, num_micro_batches)
+    steady_state_steps = num_micro_batches - warmup_steps
+    if steady_state_steps < 1:
+        raise ValueError(
+            "1F1B requires at least one steady-state microbatch; "
+            f"got world_size={world_size}, num_micro_batches={num_micro_batches}"
+        )
+    return warmup_steps, steady_state_steps
+
+
 def _init_distributed() -> tuple[int, int, int]:
     if "RANK" not in os.environ or "WORLD_SIZE" not in os.environ:
         raise RuntimeError("optimized_pipeline_parallel_multigpu_1f1b requires torchrun (RANK/WORLD_SIZE missing).")
@@ -159,7 +175,10 @@ def _run_worker(
             x = torch.relu_(layer(x))
         return x
 
-    warmup_steps = min(world_size, num_micro_batches)
+    warmup_steps, _steady_state_steps = _resolve_1f1b_schedule(
+        world_size,
+        num_micro_batches,
+    )
     activation_slots: list[Optional[torch.Tensor]] = [None] * warmup_steps
 
     def _run_iteration() -> None:

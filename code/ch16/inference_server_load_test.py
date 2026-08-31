@@ -283,26 +283,46 @@ def _percentiles_from_ordered(values: List[float] | List[int], pcts: Tuple[float
 def aggregate_results(local_result: Dict) -> Dict:
     gathered: List[Dict] = [None] * dist.get_world_size()  # type: ignore
     dist.all_gather_object(gathered, local_result)
+    if not gathered:
+        raise RuntimeError("Distributed result aggregation received no rank records")
 
-    total_requests = sum(item["stats"]["total_requests"] for item in gathered)
-    completed_requests = sum(item["stats"]["completed_requests"] for item in gathered)
-    rejected_requests = sum(item["stats"]["rejected_requests"] for item in gathered)
-    tokens_generated = sum(item["stats"]["total_tokens_generated"] for item in gathered)
+    # Tensor-parallel ranks execute the same request stream, so scheduler counts
+    # and completion samples are replicas rather than independent work. Use the
+    # leader's record once and reject divergent counters instead of multiplying
+    # throughput and QPS by world_size.
+    leader = gathered[0]
+    replicated_counter_names = (
+        "total_requests",
+        "completed_requests",
+        "rejected_requests",
+        "total_tokens_generated",
+    )
+    for rank, item in enumerate(gathered[1:], start=1):
+        for counter_name in replicated_counter_names:
+            if item["stats"][counter_name] != leader["stats"][counter_name]:
+                raise RuntimeError(
+                    f"Tensor-parallel rank {rank} diverged for {counter_name}: "
+                    f"{item['stats'][counter_name]} != {leader['stats'][counter_name]}"
+                )
+
+    total_requests = leader["stats"]["total_requests"]
+    completed_requests = leader["stats"]["completed_requests"]
+    rejected_requests = leader["stats"]["rejected_requests"]
+    tokens_generated = leader["stats"]["total_tokens_generated"]
     elapsed = max(item["elapsed"] for item in gathered)
     latencies: List[float] = []
     prompt_lengths: List[int] = []
     generated_lengths: List[int] = []
     prompt_token_total = 0.0
     generated_token_total = 0.0
-    for item in gathered:
-        for rec in item["completions"]:
-            latencies.append(rec["latency_ms"])
-            prompt_tokens = rec["prompt_tokens"]
-            generated_tokens = rec["generated_tokens"]
-            prompt_lengths.append(prompt_tokens)
-            generated_lengths.append(generated_tokens)
-            prompt_token_total += prompt_tokens
-            generated_token_total += generated_tokens
+    for rec in leader["completions"]:
+        latencies.append(rec["latency_ms"])
+        prompt_tokens = rec["prompt_tokens"]
+        generated_tokens = rec["generated_tokens"]
+        prompt_lengths.append(prompt_tokens)
+        generated_lengths.append(generated_tokens)
+        prompt_token_total += prompt_tokens
+        generated_token_total += generated_tokens
 
     throughput = tokens_generated / elapsed if elapsed > 0 else 0.0
     if latencies:
@@ -313,7 +333,7 @@ def aggregate_results(local_result: Dict) -> Dict:
 
     prompt_stats = _summarize_samples(prompt_lengths, prompt_token_total)
     generated_stats = _summarize_samples(generated_lengths, generated_token_total)
-    world_size = gathered[0]["world_size"] if gathered else 1
+    world_size = leader["world_size"]
 
     return {
         "elapsed": elapsed,

@@ -148,7 +148,7 @@ using MmaTileShape = Shape<_128, _64, _256>;
 // N-dimension CTA clustering enables TMA multicast for A/SF across multiple CTAs.
 // We use 4-way clustering here to increase multicast fanout for the leaderboard shapes
 // where N is divisible by 256 (N-tile=64, cluster_n=4 => 256 columns per cluster).
-using ClusterShape = Shape<_1, _1, _1>;
+using ClusterShape = Shape<_1, _4, _1>;
 using MainloopSchedule = cutlass::gemm::KernelTmaWarpSpecialized1SmNvf4Sm100;
 
 using CollectiveEpilogue = typename cutlass::epilogue::collective::CollectiveBuilder<

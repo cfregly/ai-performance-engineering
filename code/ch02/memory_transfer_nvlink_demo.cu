@@ -109,49 +109,52 @@ SystemInfo detect_system_capabilities() {
     CUDA_CHECK(cudaGetDeviceProperties(&prop, 0));
     
     info.gpu_memory = prop.totalGlobalMem;
-    bool is_blackwell = (prop.major == 10);
-    bool is_grace_blackwell = (prop.major >= 12);
+    // Compute capability identifies the GPU ISA family, not the host/GPU
+    // product topology.  SM 10.x covers the datacenter Blackwell GPUs used by
+    // GB200/GB300, while SM 12.x covers GB10/workstation-class Blackwell.  An
+    // SM 12.x device must not be relabeled as a GB200/GB300 Superchip.
+    bool is_datacenter_blackwell = (prop.major == 10);
+    bool is_sm12_blackwell = (prop.major == 12);
     
     printf("=== System Capabilities ===\n");
     printf("GPU: %s\n", prop.name);
     printf("Compute Capability: %d.%d\n", prop.major, prop.minor);
-    printf("GPU Memory: %.2f GB per GPU\n", info.gpu_memory / (1024.0 * 1024.0 * 1024.0));
+    printf("GPU Memory: %.2f GiB per GPU\n", info.gpu_memory / (1024.0 * 1024.0 * 1024.0));
     printf("Number of GPUs: %d\n", info.num_gpus);
     
-    // Check for multi-GPU Blackwell/GB configuration
-    if (info.num_gpus >= 2 && (is_blackwell || is_grace_blackwell)) {
-        float mem_gb = info.gpu_memory / (1024.0 * 1024.0 * 1024.0);
-        if (mem_gb > 170.0 && mem_gb < 190.0) {
+    const bool is_b200 = prop.major == 10 && prop.minor == 0;
+    const bool is_b300 = prop.major == 10 && prop.minor == 3;
+
+    // Check for multi-GPU datacenter Blackwell configurations by compute
+    // capability. CUDA reports capacity in bytes; using marketed decimal-GB
+    // windows against a GiB conversion misclassifies both B200 and B300.
+    if (info.num_gpus >= 2 && is_datacenter_blackwell) {
+        double mem_gib = info.gpu_memory / (1024.0 * 1024.0 * 1024.0);
+        if (is_b200) {
             info.is_b200_multigpu = true;
             printf("✓ B200 multi-GPU configuration detected\n");
-            printf("  Total memory: %.2f TB (%.0f GB per GPU)\n", 
-                   info.num_gpus * mem_gb / 1024.0, mem_gb);
+            printf("  Total memory: %.2f TiB (%.1f GiB per GPU)\n",
+                   info.num_gpus * mem_gib / 1024.0, mem_gib);
             printf("  Total SMs: %d (148 per GPU)\n", info.num_gpus * 148);
             printf("  NVLink 5.0: 1800 GB/s per GPU pair (bidirectional)\n");
-        } else if (mem_gb >= 270.0 && mem_gb <= 300.0) {
+        } else if (is_b300) {
             info.is_b200_multigpu = true;
             printf("✓ B300 multi-GPU configuration detected\n");
-            printf("  Total memory: %.2f TB (%.0f GB per GPU)\n",
-                   info.num_gpus * mem_gb / 1024.0, mem_gb);
+            printf("  Total memory: %.2f TiB (%.1f GiB per GPU)\n",
+                   info.num_gpus * mem_gib / 1024.0, mem_gib);
             printf("  Total SMs: %d (148 per GPU)\n", info.num_gpus * 148);
             printf("  NVLink 5.0: 1800 GB/s per GPU pair (bidirectional)\n");
-        } else if (is_grace_blackwell) {
-            info.is_b200_multigpu = true;
-            printf("✓ Grace-Blackwell multi-GPU configuration detected\n");
-            printf("  Total memory: %.2f TB (%.0f GB per GPU)\n",
-                   info.num_gpus * mem_gb / 1024.0, mem_gb);
-            printf("  Grace coherence + NVLink-C2C enabled\n");
         }
     }
     
     // Check for Blackwell
-    if (is_blackwell || is_grace_blackwell) {
-        printf("✓ %s detected\n", is_grace_blackwell ? "Grace-Blackwell (SM 12.x)" : "Blackwell B200/B300");
+    if (is_datacenter_blackwell) {
+        printf("✓ Datacenter Blackwell GPU detected (GB200/GB300 GPU class)\n");
         
         // Detect Grace CPU
         bool has_grace_cpu = detect_grace_cpu();
         
-        if (has_grace_cpu || is_grace_blackwell) {
+        if (has_grace_cpu) {
             info.has_nvlink_c2c = true;
             info.is_grace_blackwell = true;
             printf("✓ Grace CPU detected (ARM Neoverse)\n");
@@ -200,6 +203,10 @@ SystemInfo detect_system_capabilities() {
             }
             #endif
         }
+    } else if (is_sm12_blackwell) {
+        printf("⚠ SM 12.x Blackwell-family GPU detected\n");
+        printf("  SM 12.x identifies GB10/workstation-class GPUs, not a GB200/GB300 Superchip\n");
+        printf("  NVLink-C2C capability must be established from the platform topology\n");
     } else {
         printf("⚠ Not a Blackwell GPU - NVLink-C2C not available\n");
         info.has_pcie_5 = true;
@@ -267,10 +274,20 @@ double benchmark_device_to_host(void* d_data, void* h_data, size_t size,
 // Page Migration Hints (CUDA 13 / Blackwell)
 // ============================================================================
 
+__global__ void touch_managed_pages(float* data, size_t elements) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < elements) {
+        data[idx] += 1.0f;
+    }
+}
+
 void demonstrate_page_migration() {
     printf("\n=== Page Migration Hints (CUDA 13) ===\n");
     
-    size_t size = 256 * 1024 * 1024;  // 256 MB
+    size_t size = 256 * 1024 * 1024;  // 256 MiB
+    size_t elements = size / sizeof(float);
+    dim3 block(256);
+    dim3 grid((elements + block.x - 1) / block.x);
     
     // Allocate managed memory
     float* managed_data;
@@ -293,38 +310,37 @@ void demonstrate_page_migration() {
     cpuLoc.type = cudaMemLocationTypeHost;
     cpuLoc.id = 0;
     
-    // Strategy 1: No hints (baseline)
+    // Strategy 1: No hints. The first GPU touch services page faults on demand.
     {
         auto start = std::chrono::high_resolution_clock::now();
-        
-        // Touch all pages on GPU (triggers migration)
-        cudaMemPrefetchAsync(managed_data, size, gpuLoc, 0, 0);
+
+        touch_managed_pages<<<grid, block>>>(managed_data, elements);
+        CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
         
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         
-        printf("  No hints:            %5ld ms\n", duration.count());
+        printf("  On-demand first GPU touch:       %5ld ms\n", duration.count());
     }
     
     // Reset to CPU
-    cudaMemPrefetchAsync(managed_data, size, cpuLoc, 0, 0);
+    CUDA_CHECK(cudaMemPrefetchAsync(managed_data, size, cpuLoc, 0, 0));
     CUDA_CHECK(cudaDeviceSynchronize());
-    
-    // Strategy 2: With prefetch hint (optimized for NVLink-C2C)
+
+    // Strategy 2: Explicit prefetch followed by the same first-touch kernel.
     {
         auto start = std::chrono::high_resolution_clock::now();
-        
-        // For streamed transfers, prefer double-buffered prefetch (overlap copy/compute).
-        // On Hopper/Blackwell, also consider TMA + thread-block clusters for staging.
-        // Prefetch with hint for bulk transfer
-        cudaMemPrefetchAsync(managed_data, size, gpuLoc, 0, 0);
+
+        CUDA_CHECK(cudaMemPrefetchAsync(managed_data, size, gpuLoc, 0, 0));
+        touch_managed_pages<<<grid, block>>>(managed_data, elements);
+        CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
         
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         
-        printf("  With prefetch:       %5ld ms (optimized for NVLink-C2C)\n", 
+        printf("  Prefetch + first GPU touch:      %5ld ms\n",
                duration.count());
     }
     
@@ -339,18 +355,20 @@ void demonstrate_page_migration() {
                                  cudaMemAdviseSetReadMostly, gpuLoc));
         
         // Reset to CPU
-        cudaMemPrefetchAsync(managed_data, size, cpuLoc, 0, 0);
+        CUDA_CHECK(cudaMemPrefetchAsync(managed_data, size, cpuLoc, 0, 0));
         CUDA_CHECK(cudaDeviceSynchronize());
         
         auto start = std::chrono::high_resolution_clock::now();
         
-        cudaMemPrefetchAsync(managed_data, size, gpuLoc, 0, 0);
+        CUDA_CHECK(cudaMemPrefetchAsync(managed_data, size, gpuLoc, 0, 0));
+        touch_managed_pages<<<grid, block>>>(managed_data, elements);
+        CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
         
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         
-        printf("  With cudaMemAdvise:  %5ld ms (CUDA 13 optimization)\n", 
+        printf("  Advise + prefetch + GPU touch:   %5ld ms\n",
                duration.count());
     }
     
@@ -688,10 +706,10 @@ int main() {
     printf("5. Prefer pinned memory for frequent transfers\n");
     
     if (info.is_b200_multigpu) {
-        float mem_gb = info.gpu_memory / (1024.0 * 1024.0 * 1024.0);
+        double mem_gib = info.gpu_memory / (1024.0 * 1024.0 * 1024.0);
         printf("\n✓ B200/B300 multi-GPU Configuration Detected\n");
-        printf("  - Total memory: %.2f TB (%.0f GB per GPU)\n",
-               info.num_gpus * mem_gb / 1024.0, mem_gb);
+        printf("  - Total memory: %.2f TiB (%.1f GiB per GPU)\n",
+               info.num_gpus * mem_gib / 1024.0, mem_gib);
         printf("  - NVLink 5.0: 1800 GB/s per GPU pair\n");
         printf("  - Recommendations:\n");
         printf("    * Use NCCL 2.28 for collectives\n");

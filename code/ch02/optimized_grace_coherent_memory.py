@@ -138,11 +138,10 @@ class OptimizedGraceCoherentMemory:
 
     def _select_strategy(self) -> str:
         """Select optimal transfer strategy based on size."""
-        # On Grace-Blackwell the NVLink-C2C fabric is cache-coherent, so a GPU-resident
-        # buffer is directly CPU-visible. A zero-copy in-place update then avoids the
-        # explicit per-iteration H2D/D2H staging entirely (the coherent-memory advantage),
-        # which beats async-pinned transfers at every size. The old size threshold was a
-        # PCIe-era heuristic; on coherent hardware zero-copy is the right strategy throughout.
+        # The current PyTorch implementation keeps the buffer resident on the GPU and
+        # performs no CPU access or explicit H2D/D2H transfer.  Keep the historical
+        # strategy identifier for compatibility, but report it as resident compute rather
+        # than an NVLink bandwidth measurement.
         return "zero_copy"
 
     def _bind_numa_node(self):
@@ -185,16 +184,17 @@ class OptimizedGraceCoherentMemory:
         self._bind_numa_node()
 
         if self.strategy == "zero_copy":
-            # Zero-copy coherent buffer: a GPU-resident allocation the CPU reads directly
-            # over NVLink-C2C, so no per-iteration H2D/D2H transfer is needed. Initialize
-            # from a CPU randn (same seed as the baseline's input) so the in-place result
-            # equals the baseline's transfer-and-compute result; the per-step win is from
-            # skipping the transfers, not from changing the math.
+            # GPU-resident buffer: setup performs one initialization copy, while run_step()
+            # performs only in-place device compute.  No per-iteration interconnect bytes
+            # are attributed to this path.
             cpu_init = torch.randn(num_elements, dtype=torch.float32)
             self.gpu_data = cpu_init.to(self.device)
-            # cpu_data is the same coherent buffer (CPU-visible); no separate host copy.
+            # Keep the legacy attribute used by verification; this is a device alias, not
+            # a host tensor or evidence of a coherent CPU access.
             self.cpu_data = self.gpu_data
-            logger.info(f"Using zero-copy coherent GPU buffer ({self.size_mb}MB)")
+            logger.info(
+                f"Using resident GPU buffer with no per-step explicit transfer ({self.size_mb}MB)"
+            )
 
         elif self.strategy == "async_pinned":
             # Pinned memory with async copies
@@ -248,8 +248,10 @@ class OptimizedGraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
             size_mb=size_mb,
             iterations=iterations,
         )
-        multiplier = 1 if self._impl.strategy == "zero_copy" else 2
-        bytes_per_iter = size_mb * 1024 * 1024 * multiplier
+        # The resident zero-copy path performs an in-place GPU operation and
+        # issues no explicit interconnect transfer.  Only the async-pinned path
+        # moves one H2D and one D2H payload per iteration.
+        bytes_per_iter = 0 if self._impl.strategy == "zero_copy" else size_mb * 1024 * 1024 * 2
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
             bytes_per_iteration=float(bytes_per_iter),
@@ -281,13 +283,15 @@ class OptimizedGraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
     def benchmark_fn(self) -> None:
         elapsed = self._impl.run_step()
         self.elapsed_s = elapsed
-        multiplier = 1 if self._impl.strategy == "zero_copy" else 2
-        self.bandwidth_gb_s = (self._impl.size_mb / 1024) * multiplier / elapsed
+        if self._impl.strategy == "zero_copy":
+            self.bandwidth_gb_s = None
+        else:
+            transferred_bytes = self._impl.size_mb * 1024 * 1024 * 2
+            self.bandwidth_gb_s = transferred_bytes / elapsed / 1e9
         self.output = None
 
     def capture_verification_payload(self) -> None:
-        # Compare the post-transfer host-visible tensor instead of a device
-        # buffer slice so every strategy reports the same semantic result.
+        # Compare the post-step tensor used by each strategy.
         if self.output is None:
             if self._verify_output_buffer is None:
                 raise RuntimeError("setup() must be called before verification")
@@ -341,11 +345,18 @@ class OptimizedGraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
         return streams
 
     def get_custom_metrics(self) -> Optional[dict]:
-        """Return memory transfer metrics for grace_coherent_memory."""
+        """Return metrics without inventing bytes for the resident path."""
+        if self._impl.strategy == "zero_copy":
+            resident_elements = (self.size_mb * 1024 * 1024) // 4
+            return {
+                "coherent_memory.explicit_transfer_bytes": 0.0,
+                "coherent_memory.resident_elements": float(resident_elements),
+                "coherent_memory.resident_compute": 1.0,
+            }
+
         from core.benchmark.metrics import compute_memory_transfer_metrics
 
-        multiplier = 1 if self._impl.strategy == "zero_copy" else 2
-        bytes_transferred = float(self.size_mb * 1024 * 1024 * multiplier)
+        bytes_transferred = float(self.size_mb * 1024 * 1024 * 2)
         return compute_memory_transfer_metrics(
             bytes_transferred=bytes_transferred,
             elapsed_ms=(self.elapsed_s or 0.001) * 1000.0,

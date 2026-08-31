@@ -138,6 +138,10 @@ class OptimizedPipelineOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 with torch.cuda.stream(stream):
                     if previous_event is not None:
                         stream.wait_event(previous_event)
+                        # Events establish execution order, while record_stream()
+                        # keeps the caching allocator from reusing stage_input
+                        # before this consumer stream has finished reading it.
+                        stage_input.record_stream(stream)
                     stage_output = stage(stage_input)
                     output_row[microbatch_idx] = stage_output
                     event = event_row[microbatch_idx]

@@ -212,9 +212,21 @@ int main() {
     const char* path_label = tma_capable ? "TMA" : "fallback-manual";
     std::printf("TMA 2D bulk tensor copy: %.3f ms (path: %s)\n", avg_ms, path_label);
 
-    // Validate checksum to keep store path honest.
+    // Compare the full nonuniform tensor so transposes and partial copies fail.
     std::vector<float> h_dst(width * height);
     check_cuda(cudaMemcpy(h_dst.data(), d_dst, bytes, cudaMemcpyDeviceToHost), "copy output");
+    bool copy_ok = true;
+    for (std::size_t idx = 0; idx < h_dst.size(); ++idx) {
+        if (h_dst[idx] != h_src[idx]) {
+            std::fprintf(stderr,
+                         "Mismatch at %zu: got %.9g expected %.9g\n",
+                         idx,
+                         static_cast<double>(h_dst[idx]),
+                         static_cast<double>(h_src[idx]));
+            copy_ok = false;
+            break;
+        }
+    }
     std::printf("Output checksum: %.6f\n", checksum(h_dst));
 #ifdef VERIFY
     float verify_checksum = 0.0f;
@@ -226,7 +238,7 @@ int main() {
     check_cuda(cudaEventDestroy(stop), "destroy stop");
     check_cuda(cudaFree(d_src), "free d_src");
     check_cuda(cudaFree(d_dst), "free d_dst");
-    return 0;
+    return copy_ok ? 0 : 2;
 }
 
 #endif  // CUDART_VERSION >= 13000

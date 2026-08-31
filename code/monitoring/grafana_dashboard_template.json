@@ -159,13 +159,13 @@
       },
       "targets": [
         {
-          "expr": "gpu_memory_allocated_gb",
-          "legendFormat": "GPU {{gpu}} Allocated",
+          "expr": "gpu_memory_used_gb",
+          "legendFormat": "GPU {{gpu}} Used",
           "refId": "A"
         },
         {
-          "expr": "gpu_memory_reserved_gb",
-          "legendFormat": "GPU {{gpu}} Reserved",
+          "expr": "gpu_memory_total_gb",
+          "legendFormat": "GPU {{gpu}} Total",
           "refId": "B"
         }
       ],
@@ -537,4 +537,3 @@
   "uid": "blackwell-ai-perf",
   "version": 0
 }
-

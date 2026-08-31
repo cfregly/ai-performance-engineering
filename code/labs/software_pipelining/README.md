@@ -17,7 +17,7 @@ The repo already had good implementation-side coverage for `cuda::pipeline`, TMA
 - same math and shape, but explicit software pipelining
 
 ## Measured Delta
-Current shared-host dogfood on a virtualized B200 observed roughly `2.22x` speedup for the staged path, but this lab intentionally ships without `expectations_{hardware_key}.json` until the pair is re-run on a clean canonical host and recorded as publishable evidence.
+No current speedup is claimed. The earlier shared-host result compared kernels with different load participation and was invalidated when the pair was repaired to differ only in serialized versus two-stage scheduling. Re-run the controlled pair on a clean canonical host before adding `expectations_{hardware_key}.json` or publishing a measured delta.
 
 ## Profiler Evidence
 ```bash

@@ -235,6 +235,86 @@ def pcie_bandwidth_test(
     })
 
 
+def gpu_memory_bandwidth_test(
+    size_mb: int = 256,
+    iters: int = 10,
+    warmup: int = 3,
+) -> Dict[str, Any]:
+    """Measure effective GPU-memory copy bandwidth without writing to stdout."""
+    if size_mb <= 0:
+        raise ValueError("size_mb must be positive")
+    if iters <= 0:
+        raise ValueError("iters must be positive")
+    if warmup < 0:
+        raise ValueError("warmup must be non-negative")
+
+    try:
+        import torch
+    except ImportError as exc:
+        return _with_meta({"error": f"torch not available: {exc}"})
+    if not torch.cuda.is_available():
+        return _with_meta({"error": "CUDA not available"})
+
+    from core.benchmark.metrics import (
+        compute_copy_bandwidth_metrics,
+        hardware_specs_for_device,
+    )
+    from core.harness.validity_checks import capture_gpu_state
+
+    device_index = int(torch.cuda.current_device())
+    device = torch.device("cuda", device_index)
+    size_bytes = size_mb * 1024 * 1024
+    source = torch.empty(size_bytes, dtype=torch.uint8, device=device)
+    destination = torch.empty_like(source)
+    gpu_state_before = capture_gpu_state(device_index)
+
+    for _ in range(warmup):
+        destination.copy_(source)
+    torch.cuda.synchronize(device)
+
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
+    start_event.record(torch.cuda.current_stream(device))
+    for _ in range(iters):
+        destination.copy_(source)
+    end_event.record(torch.cuda.current_stream(device))
+    torch.cuda.synchronize(device)
+
+    elapsed_ms = float(start_event.elapsed_time(end_event))
+    accounting = compute_copy_bandwidth_metrics(size_bytes, iters, elapsed_ms)
+    bandwidth_gbps = float(accounting["peak_bandwidth_gbs"])
+
+    properties = torch.cuda.get_device_properties(device)
+    gpu_name = torch.cuda.get_device_name(device)
+    theoretical_gbps = None
+    profile_error = None
+    try:
+        profile = hardware_specs_for_device(
+            gpu_name,
+            (int(properties.major), int(properties.minor)),
+        )
+        theoretical_gbps = float(profile.hbm_bandwidth_gbps)
+    except ValueError as exc:
+        profile_error = str(exc)
+
+    efficiency_pct = (
+        bandwidth_gbps / theoretical_gbps * 100.0 if theoretical_gbps else None
+    )
+    gpu_state_after = capture_gpu_state(device_index)
+    result: Dict[str, Any] = {
+        "bandwidth_gbps": bandwidth_gbps,
+        "theoretical_gbps": theoretical_gbps,
+        "efficiency_pct": efficiency_pct,
+        "test_size_mb": size_mb,
+        "gpu_name": gpu_name,
+        **accounting,
+        **_gpu_state_payload(gpu_state_before, gpu_state_after),
+    }
+    if profile_error:
+        result["theoretical_profile_warning"] = profile_error
+    return _with_meta(result)
+
+
 def mem_hierarchy_test(
     size_mb: int = 256,
     stride: int = 128,

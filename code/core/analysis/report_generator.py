@@ -293,8 +293,9 @@ def generate_report_from_metrics(
         # Extract chapter prefix if present
         if metric_name.startswith("ch") and "_" in metric_name:
             prefix, rest = metric_name.split("_", 1)
-            if prefix in [f"ch{i}" for i in range(1, 21)]:
-                chapter = prefix
+            chapter_number = prefix.removeprefix("ch")
+            if chapter_number.isdigit() and 1 <= int(chapter_number) <= 20:
+                chapter = f"ch{int(chapter_number):02d}"
                 metric_name = rest
         
         matched_chapter = None

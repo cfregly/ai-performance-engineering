@@ -10,9 +10,15 @@ from pathlib import Path
 
 import torch
 
-import arch_config  # noqa: F401  # triggers triton_compat patch
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
-from .shapes import GemmShape, transformer_gemm_shapes
+import arch_config  # noqa: E402,F401  # triggers triton_compat patch
+from labs.cutlass_profiler_kernel_selector.shapes import (  # noqa: E402
+    GemmShape,
+    transformer_gemm_shapes,
+)
 
 try:
     import triton
@@ -23,7 +29,6 @@ except Exception:  # pylint: disable=broad-except
     TRITON_AVAILABLE = False
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACT_DIR = REPO_ROOT / "artifacts" / "cutlass_profiler"
 
 
@@ -38,59 +43,73 @@ def _dtype_from_str(dtype: str) -> torch.dtype:
     return mapping[dtype]
 
 
-@triton.jit
-def _matmul_kernel(
-    a_ptr,
-    b_ptr,
-    c_ptr,
-    M,
-    N,
-    K,
-    stride_am,
-    stride_ak,
-    stride_bk,
-    stride_bn,
-    stride_cm,
-    stride_cn,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-):
-    """Simple block matmul kernel using Triton language (no triton.ops dependency)."""
-    pid_m = tl.program_id(axis=0)
-    pid_n = tl.program_id(axis=1)
+if TRITON_AVAILABLE:
 
-    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    offs_k = tl.arange(0, BLOCK_K)
+    @triton.jit
+    def _matmul_kernel(
+        a_ptr,
+        b_ptr,
+        c_ptr,
+        M,
+        N,
+        K,
+        stride_am,
+        stride_ak,
+        stride_bk,
+        stride_bn,
+        stride_cm,
+        stride_cn,
+        BLOCK_M: tl.constexpr,
+        BLOCK_N: tl.constexpr,
+        BLOCK_K: tl.constexpr,
+    ):
+        """Simple block matmul kernel using Triton language (no triton.ops dependency)."""
+        pid_m = tl.program_id(axis=0)
+        pid_n = tl.program_id(axis=1)
 
-    a_block_ptr = a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
-    b_block_ptr = b_ptr + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
+        offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+        offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+        offs_k = tl.arange(0, BLOCK_K)
 
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    k_remaining = K
-    a_ptrs = a_block_ptr
-    b_ptrs = b_block_ptr
-    while k_remaining > 0:
-        a = tl.load(a_ptrs, mask=offs_m[:, None] < M)
-        b = tl.load(b_ptrs, mask=offs_n[None, :] < N)
-        acc += tl.dot(a, b, out_dtype=tl.float32)
-        a_ptrs += BLOCK_K * stride_ak
-        b_ptrs += BLOCK_K * stride_bk
-        k_remaining -= BLOCK_K
+        a_block_ptr = a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
+        b_block_ptr = b_ptr + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
 
-    c = acc
-    tl.store(
-        c_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn,
-        c,
-        mask=(offs_m[:, None] < M) & (offs_n[None, :] < N),
-    )
+        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+        k_remaining = K
+        a_ptrs = a_block_ptr
+        b_ptrs = b_block_ptr
+        while k_remaining > 0:
+            k_mask = offs_k < k_remaining
+            a = tl.load(
+                a_ptrs,
+                mask=(offs_m[:, None] < M) & k_mask[None, :],
+                other=0.0,
+            )
+            b = tl.load(
+                b_ptrs,
+                mask=k_mask[:, None] & (offs_n[None, :] < N),
+                other=0.0,
+            )
+            acc += tl.dot(a, b, out_dtype=tl.float32)
+            a_ptrs += BLOCK_K * stride_ak
+            b_ptrs += BLOCK_K * stride_bk
+            k_remaining -= BLOCK_K
+
+        c = acc
+        tl.store(
+            c_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn,
+            c,
+            mask=(offs_m[:, None] < M) & (offs_n[None, :] < N),
+        )
+
+else:
+    _matmul_kernel = None
 
 
 def benchmark_triton_matmul(
     shape: GemmShape, warmup: int, iters: int, dtype: torch.dtype
 ) -> dict[str, float] | None:
-    if not torch.cuda.is_available() or not TRITON_AVAILABLE:
+    if not torch.cuda.is_available() or not TRITON_AVAILABLE or _matmul_kernel is None:
         return None
 
     device = torch.device("cuda")
@@ -208,7 +227,7 @@ def main(argv: list[str] | None = None) -> int:
                 **shape.as_dict(),
                 **metrics,
                 "provider": "triton",
-                "kernel": "triton.ops.matmul",
+                "kernel": "custom_triton_matmul",
             }
         )
 

@@ -23,7 +23,7 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { getAiTools, executeAiTool } from '@/lib/api';
-import { cn, formatBytes } from '@/lib/utils';
+import { cn, formatBytes, mebibytesToBytes } from '@/lib/utils';
 import { useToast } from '@/components/Toast';
 import type { GpuInfo } from '@/types';
 
@@ -99,8 +99,8 @@ function extractGpuInfo(payload: unknown): GpuInfo | null {
 }
 
 function renderGpuSummary(gpu: GpuInfo) {
-  const memoryTotal = typeof gpu.memory_total === 'number' ? gpu.memory_total * 1e6 : 0;
-  const memoryUsed = typeof gpu.memory_used === 'number' ? gpu.memory_used * 1e6 : 0;
+  const memoryTotal = typeof gpu.memory_total === 'number' ? mebibytesToBytes(gpu.memory_total) : 0;
+  const memoryUsed = typeof gpu.memory_used === 'number' ? mebibytesToBytes(gpu.memory_used) : 0;
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-white/70">
       <div>

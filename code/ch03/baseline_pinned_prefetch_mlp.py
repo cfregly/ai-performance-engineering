@@ -19,6 +19,9 @@ from core.optimization.allocator_tuning import log_allocator_guidance
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
 
+PINNED_PREFETCH_MLP_OUTPUT_TOLERANCE = (1e-3, 1e-3)
+
+
 class BaselinePinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Uses blocking host-to-device copies without pinned-memory prefetch."""
 
@@ -101,7 +104,7 @@ class BaselinePinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmark
                 "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
             },
-            output_tolerance=(1.0, 10.0),
+            output_tolerance=PINNED_PREFETCH_MLP_OUTPUT_TOLERANCE,
         )
 
     def teardown(self) -> None:

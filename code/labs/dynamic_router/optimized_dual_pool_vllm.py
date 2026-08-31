@@ -56,7 +56,7 @@ class OptimizedDualPoolVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
             batch_size=1,
             parameter_count=0,
             precision_flags={"fp16": False, "bf16": False, "tf32": False},
-            output_tolerance=(0.1, 1.0),
+            output_tolerance=(0.0, 0.0),
         )
 
     def teardown(self) -> None:

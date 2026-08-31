@@ -240,12 +240,22 @@ inline void run_simple_tma_demo() {
         tma_copy_kernel<TILE_M, TILE_N><<<grid, block>>>(in_desc, out_desc, d_out, WIDTH, HEIGHT, WIDTH);
     };
 
-    if (WIDTH == 128 && HEIGHT == 64) {
-        launch_demo(std::integral_constant<int, 128>{}, std::integral_constant<int, 64>{});
-    } else if (WIDTH == 64 && HEIGHT == 64) {
-        launch_demo(std::integral_constant<int, 64>{}, std::integral_constant<int, 64>{});
+    if (HEIGHT == 64) {
+        if (WIDTH == 128) {
+            launch_demo(std::integral_constant<int, 128>{}, std::integral_constant<int, 64>{});
+        } else if (WIDTH == 64) {
+            launch_demo(std::integral_constant<int, 64>{}, std::integral_constant<int, 64>{});
+        } else {
+            launch_demo(std::integral_constant<int, 32>{}, std::integral_constant<int, 64>{});
+        }
     } else {
-        launch_demo(std::integral_constant<int, 64>{}, std::integral_constant<int, 32>{});
+        if (WIDTH == 128) {
+            launch_demo(std::integral_constant<int, 128>{}, std::integral_constant<int, 32>{});
+        } else if (WIDTH == 64) {
+            launch_demo(std::integral_constant<int, 64>{}, std::integral_constant<int, 32>{});
+        } else {
+            launch_demo(std::integral_constant<int, 32>{}, std::integral_constant<int, 32>{});
+        }
     }
 
     cudaError_t launch_err = cudaGetLastError();

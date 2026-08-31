@@ -17,6 +17,11 @@ from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, Workl
 QuantizationScheme = Literal["baseline", "awq", "gptq", "smoothquant"]
 INT4_MAX = 7.0
 INT8_MAX = 127.0
+# Shared by the dense reference and all three PTQ variants because the harness
+# compares each optimized result to the baseline payload. This bound covers the
+# deterministic INT4 negative-control calibration while still rejecting zero or
+# unrelated outputs; target-GPU calibration may tighten it further.
+PTQ_OUTPUT_TOLERANCE = (0.25, 0.15)
 
 
 def _resolve_dtype() -> torch.dtype:
@@ -305,7 +310,6 @@ class PTQQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         # Verification is baseline-bound in the harness, so the dense reference must
         # advertise the same bounded PTQ family tolerance as the optimized variants.
-        tolerance = (1.0, 10.0)
         self._verify_input_buffer.copy_(self.inputs)
         self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
@@ -319,7 +323,7 @@ class PTQQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
             },
-            output_tolerance=tolerance,
+            output_tolerance=PTQ_OUTPUT_TOLERANCE,
         )
 
     def teardown(self) -> None:

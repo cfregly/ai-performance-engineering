@@ -43,6 +43,16 @@ def _load_transformer_engine() -> tuple[Any, Any, Any]:
     return TELinear, fp8_autocast, te_recipe
 
 
+def _create_delayed_scaling_recipe(te_recipe_module: Any) -> object:
+    """Build a DelayedScaling recipe using the Transformer Engine 2.x API."""
+    return te_recipe_module.DelayedScaling(
+        margin=0,
+        amax_history_len=1024,
+        amax_compute_algo="max",
+        scaling_factor_compute_algo=None,
+    )
+
+
 class TEFP8MLP(nn.Module):
     """Two-layer MLP using Transformer Engine Linear layers with FP8."""
 
@@ -59,7 +69,7 @@ class TEFP8MLP(nn.Module):
 
 
 class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Optimized FP8 path using Transformer Engine."""
+    """Eager FP8 path using Transformer Engine."""
 
     def __init__(self):
         super().__init__()
@@ -72,10 +82,6 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.compute_dtype = torch.float16
         self.input_pool: List[torch.Tensor] = []
         self.target_pool: List[torch.Tensor] = []
-        self.static_input: Optional[torch.Tensor] = None
-        self.static_target: Optional[torch.Tensor] = None
-        self.graph: Optional[torch.cuda.CUDAGraph] = None
-        self.capture_stream: Optional[torch.cuda.Stream] = None
         self.output_buffer: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         tokens = self.batch_size * self.hidden_dim
@@ -93,19 +99,9 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         _, _, te_recipe_module = _load_transformer_engine()
-        # Optimized FP8 recipe with best practices:
-        # - HYBRID format: E4M3 for forward (more precision), E5M2 for backward (wider range)
-        # - Larger amax_history_len for stable scaling over more iterations
-        # - Hysteresis algorithm prevents scale oscillation
-        # - margin=0 is aggressive but maximizes dynamic range utilization
-        self.fp8_recipe = te_recipe_module.DelayedScaling(
-            margin=0,  # Aggressive margin for max precision
-            interval=1,  # Update scales every iteration for stable training
-            amax_history_len=1024,  # Longer history for smoother scaling
-            amax_compute_algo="max",  # Conservative scaling algorithm
-            # Use default scaling factor compute (callable required; default uses margin-based scaling)
-            scaling_factor_compute_algo=None,
-        )
+        # Transformer Engine 2.x defaults to HYBRID format (E4M3 forward,
+        # E5M2 backward); keep a long amax history and the standard max policy.
+        self.fp8_recipe = _create_delayed_scaling_recipe(te_recipe_module)
         torch.manual_seed(42)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(42)
@@ -121,30 +117,21 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input_pool = [fixed_input]
         self.target_pool = [torch.randn_like(fixed_input)]
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
-        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.01, foreach=False)
+        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.01)
         self.criterion = nn.MSELoss()
 
         # Warmup to initialize optimizer state.
         for idx in range(5):
             self._train_step_impl(self.input_pool[idx % len(self.input_pool)], self.target_pool[idx % len(self.target_pool)])
         self._synchronize()
+        self.optimizer.zero_grad(set_to_none=True)
 
-        # Prepare static buffers for CUDA graph capture/replay.
-        self.static_input = self.input_pool[0].clone()
-        self.static_target = self.target_pool[0].clone()
-        self.output_buffer = torch.empty_like(self.static_input)
+        # Keep execution eager so FP8 is the only material difference from the
+        # FP16 baseline. CUDA graph benefits are measured by the training-speed
+        # benchmark pair instead of being folded into this precision comparison.
+        self.output_buffer = torch.empty_like(self.input_pool[0])
         self._verify_output_buffer = torch.empty_like(self.output_buffer)
-        self._verify_input = self.static_input.detach().clone()
-        self.graph = torch.cuda.CUDAGraph()
-        self.capture_stream = torch.cuda.Stream()
-
-        with torch.cuda.stream(self.capture_stream):
-            for _ in range(3):
-                self._train_step_impl(self.static_input, self.static_target)
-            self._synchronize()
-            with torch.cuda.graph(self.graph, stream=self.capture_stream):
-                self._train_step_impl(self.static_input, self.static_target, capture_output=True)
-        self.capture_stream.synchronize()
+        self._verify_input = self.input_pool[0].detach().clone()
         self.register_workload_metadata(
             requests_per_iteration=self._workload.requests_per_iteration,
             tokens_per_iteration=self._workload.tokens_per_iteration,
@@ -167,22 +154,22 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
             if capture_output:
                 if self.output_buffer is None:
                     raise RuntimeError("Output buffer not initialized")
-                self.output_buffer.copy_(outputs)
+                with torch.inference_mode():
+                    self.output_buffer.copy_(outputs)
             loss = self.criterion(outputs, target)
         loss.backward()
         self.optimizer.step()
 
     def benchmark_fn(self) -> None:
-        if self.graph is None or self.static_input is None or self.static_target is None:
-            raise RuntimeError("CUDA graph not initialized")
-
-        current_input = self.input_pool[0]
-        current_target = self.target_pool[0]
+        if not self.input_pool or not self.target_pool:
+            raise RuntimeError("Input pool not initialized")
 
         with self._nvtx_range("optimized_precisionfp8_te"):
-            self.static_input.copy_(current_input)
-            self.static_target.copy_(current_target)
-            self.graph.replay()
+            self._train_step_impl(
+                self.input_pool[0],
+                self.target_pool[0],
+                capture_output=True,
+            )
             if self.output_buffer is None:
                 raise RuntimeError("Output buffer not initialized")
             self.output = self.output_buffer
@@ -201,7 +188,7 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
             precision_flags={
                 "fp16": True,
                 "bf16": False,
-                "fp8": False,
+                "fp8": True,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
             output_tolerance=(0.5, 5.0),
@@ -211,10 +198,6 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = None
         self.optimizer = None
         self.criterion = None
-        self.graph = None
-        self.static_input = None
-        self.static_target = None
-        self.capture_stream = None
         self.output_buffer = None
         self.output = None
         self._verify_output_buffer = None
@@ -241,14 +224,11 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def get_output_for_verification(self) -> Optional[torch.Tensor]:
-        # Use a static captured input/output as representative output.
-        return self.static_input
+        return self._verify_input
 
     def validate_result(self) -> Optional[str]:
         if self.model is None:
             return "Model not initialized"
-        if self.graph is None:
-            return "CUDA graph not initialized"
         return None
 
 

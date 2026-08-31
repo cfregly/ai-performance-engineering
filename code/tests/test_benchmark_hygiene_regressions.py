@@ -1062,15 +1062,17 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "sorted(zip(grads, _bucket_order())" not in benchmark_section
     assert "ordered_grads = [g for g, _ in ordered]" not in benchmark_section
     assert "reduction_results[micro] = self._async_reduce_to_root(ordered_grads, micro)" in benchmark_section
-    assert "for model_idx, model, update_buffer in self._model_update_groups:" in benchmark_section
-    assert "root_buf = reduction_results[model_idx]" in benchmark_section
+    assert "grad_snapshot = self._micro_grad_buffers[micro][model_idx]" in benchmark_section
+    assert "for _model_idx, model, update_buffer in self._model_update_groups:" in benchmark_section
+    assert "root_buf = reduction_results[model_idx]" not in benchmark_section
+    assert "aggregate_grad = _aggregate_reduced_gradients(" in benchmark_section
     assert "zip(self.models, reduction_results)" not in benchmark_section
     assert "self._slot_counts = ()" in teardown_section
     assert "self._expected_slot_counts = ()" in teardown_section
     assert "root_buf.zero_()" not in reduce_section
-    assert "root_buf.to(model.weight.device" not in benchmark_section
-    assert "root_local.copy_(root_buf, non_blocking=True)" in benchmark_section
-    assert "root_local.mul_(self._grad_scale)" in benchmark_section
+    assert "aggregate_grad.to(model.weight.device" not in benchmark_section
+    assert "root_local.copy_(aggregate_grad, non_blocking=True)" in benchmark_section
+    assert "root_local.mul_(self._grad_scale)" not in benchmark_section
     assert "root_local.mul_(1.0 / len(self.models))" not in benchmark_section
     assert "staging.copy_(g, non_blocking=True)" in reduce_section
     assert "self._model_update_groups = []" in source
@@ -2322,8 +2324,11 @@ def test_ch04_distributed_demo_elapsed_timing_uses_monotonic_clock() -> None:
     )[1].split("# ============================================================================", maxsplit=1)[0]
 
     assert "epoch_start = time.perf_counter()" in multi_node_train
-    assert "step_start = time.perf_counter()" in multi_node_train
-    assert "step_time = time.perf_counter() - step_start" in multi_node_train
+    assert "step_start_event = torch.cuda.Event(enable_timing=True)" in multi_node_train
+    assert "step_end_event = torch.cuda.Event(enable_timing=True)" in multi_node_train
+    assert "step_start_event.record()" in multi_node_train
+    assert "step_end_event.synchronize()" in multi_node_train
+    assert "step_time = step_start_event.elapsed_time(step_end_event) / 1000.0" in multi_node_train
     assert "epoch_time = time.perf_counter() - epoch_start" in multi_node_train
     assert "time.time()" not in multi_node_train
 
@@ -3061,7 +3066,8 @@ def test_custom_vs_cublas_timing_helpers_use_cuda_events() -> None:
     assert "start.elapsed_time(end) / iters" in runner_section
     assert "time.time()" not in runner_section
     assert autotune_section.count("torch.cuda.Event(enable_timing=True)") == 2
-    assert "current_stream = torch.cuda.current_stream()" in autotune_section
+    assert "torch.cuda.synchronize(A.device)" in autotune_section
+    assert "current_stream = torch.cuda.current_stream(A.device)" in autotune_section
     assert "start_event.record(current_stream)" in autotune_section
     assert "end_event.record(current_stream)" in autotune_section
     assert "start_event.record()" not in autotune_section
@@ -7128,7 +7134,9 @@ def test_cutlass_profiler_sweep_selects_latest_csv_without_full_sort() -> None:
     assert "first_row = next(reader, None)" in parse_section
     assert "for row in chain((first_row,), reader):" in parse_section
     assert "rows = list(reader)" not in parse_section
-    assert "csv_file = max(output_dir.glob(f\"{shape.name}*.csv\"), key=lambda p: p.stat().st_mtime, default=None)" in run_section
+    assert "prior_csv_state = {" in run_section
+    assert "if was_emitted_by_this_run(path)" in run_section
+    assert "key=lambda path: path.stat().st_mtime_ns" in run_section
     assert "candidate_files = list(" not in run_section
     assert "candidate_files.sort(" not in run_section
     assert "candidate_files[0]" not in run_section
@@ -7672,14 +7680,17 @@ def test_occupancy_tuning_schedule_preserves_inference_and_validation_hygiene() 
     assert "self._validation_scalars = torch.empty(2, dtype=torch.float32, device=device)" in schedule_source
     assert "Validation scalar buffer not initialized" in validate_section
     assert "validation_scalars = self._validation_scalars" in validate_section
-    assert "validation_scalars[0].copy_((self._output - self._reference).abs().max().float())" in validate_section
+    assert "rtol, atol = TRITON_MATMUL_OUTPUT_TOLERANCE" in validate_section
+    assert "error = (self._output - self._reference).abs()" in validate_section
+    assert "allowed_error = atol + rtol * self._reference.abs()" in validate_section
+    assert "validation_scalars[0].copy_((error - allowed_error).max().float())" in validate_section
     assert "validation_scalars[1].copy_(torch.isnan(self._output).any().to(torch.float32))" in validate_section
     assert "validation_scalars_host = validation_scalars.detach().cpu()" in validate_section
-    assert "diff = float(validation_scalars_host[0])" in validate_section
+    assert "max_excess = float(validation_scalars_host[0])" in validate_section
     assert "has_nan = bool(validation_scalars_host[1])" in validate_section
     assert "validation_scalars = torch.stack(" not in validate_section
     assert "torch.empty(" not in validate_section
-    assert "(self._output - self._reference).abs().max().float()" in validate_section
+    assert "if max_excess > 0.0:" in validate_section
     assert "torch.isnan(self._output).any().to(torch.float32)" in validate_section
     assert ".detach().cpu().tolist()" not in validate_section
     assert ".abs().max().item()" not in validate_section
@@ -13550,7 +13561,7 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     assert "seed_out.copy_(seed_tokens)" in prefill_helper
     assert "kv_chunks.append(" not in prefill_helper
     assert "seed_chunks.append(" not in prefill_helper
-    assert "outputs = [torch.empty(0) for _ in range(len(kv_chunks))]" in decode_helper
+    assert "outputs = _allocate_decode_outputs(cfg, device)" in decode_helper
     assert "with torch.inference_mode():" in decode_helper
     assert "with torch.inference_mode():" in torchrun_worker
     assert "with torch.inference_mode():" in benchmark_section
@@ -13584,7 +13595,7 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     assert "outputs.append(" not in decode_helper
     assert "outputs[output_idx] = tokens" in decode_helper
     assert "decode_kv_cache = allocate_kv_cache(" in torchrun_worker
-    assert "decode_outputs = [torch.empty(0) for _ in range(cfg.requests_per_rank)]" in torchrun_worker
+    assert "decode_outputs = _allocate_decode_outputs(cfg, device)" in torchrun_worker
     assert "                outputs = [torch.empty(0) for _ in range(cfg.requests_per_rank)]" not in torchrun_worker
     assert "raise RuntimeError(\"Decode output slots not initialized\")" in torchrun_worker
     assert "outputs[req_idx] = tokens" in torchrun_worker
@@ -13594,7 +13605,7 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     assert "prefill_seed_chunks = [" in setup_section
     assert "transfer_kv_chunks = [" in setup_section
     assert "transfer_seed_chunks = [" in setup_section
-    assert "decode_outputs=[torch.empty(0) for _ in range(self.cfg.requests_per_rank)]" in setup_section
+    assert "decode_outputs=_allocate_decode_outputs(self.cfg, decode_device)" in setup_section
     assert "prefill_kv_chunks=prefill_kv_chunks" in setup_section
     assert "prefill_seed_chunks=prefill_seed_chunks" in setup_section
     assert "transfer_kv_chunks=transfer_kv_chunks" in setup_section
@@ -13647,9 +13658,8 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     assert "self._output_buffer: Optional[torch.Tensor] = None" in source
     assert "self._output_buffer = self._allocate_output_buffer()" in setup_section
     assert "if self._output_buffer is None:" in capture_section
-    assert "for output in self._pending_outputs:" in capture_section
-    assert "self._output_buffer[output_offset : output_offset + output_rows].copy_(" in capture_section
-    assert "self._output = self._output_buffer" in capture_section
+    assert "self._output = _collect_decode_verification_outputs(" in capture_section
+    assert "self._pending_outputs," in capture_section
     assert '"decode_tokens": self._metadata_inputs["decode_tokens"]' in capture_section
     assert '"num_experts": self._metadata_inputs["num_experts"]' in capture_section
     assert "torch.cat([out.detach().cpu() for out in self._pending_outputs], dim=0)" not in capture_section
@@ -16767,11 +16777,12 @@ def test_ch15_expert_parallelism_batches_expert_metadata_reads() -> None:
         assert "top2_w = torch.exp(top2_logits - torch.logsumexp(logits, dim=-1, keepdim=True))" in section
         assert "F.softmax(self.gate(tokens), dim=-1)" not in section
         assert "torch.topk(probs, k=2, dim=-1)" not in section
-        assert "overflow_flags_host = mask_overflow.detach().cpu()" in section
-        assert "mask_overflow.detach().cpu().tolist()" not in section
-        assert "if bool(overflow_flags_host[eid_int]):" in section
         assert "eid.item()" not in section
         assert "mask.any()" not in section
+    assert "route_overflow = _route_overflow_mask(" in local_section
+    assert "mask_overflow.detach().cpu().tolist()" not in local_section
+    assert "mask = (expert_ids == eid_int) & ~route_overflow[:, slot]" in local_section
+    assert "overflow_flags_host" not in distributed_section
     assert "self._local_out_buffers: list[torch.Tensor] = []" in source
     assert "self._local_accum_buffer: Optional[torch.Tensor] = None" in source
     assert "self._distributed_workspaces: dict[str, torch.Tensor] = {}" in source
@@ -16791,12 +16802,16 @@ def test_ch15_expert_parallelism_batches_expert_metadata_reads() -> None:
     assert "partials: list[torch.Tensor]" not in local_section
     assert "sum(partials)" not in local_section
     for name in (
+        "route_positions",
+        "effective_route_weights",
         "send_buf",
         "send_ids",
         "send_pos",
+        "send_weights",
         "recv_buf",
         "recv_ids",
         "recv_pos",
+        "recv_weights",
         "local_out",
         "recv_back_buf",
         "recv_back_pos",
@@ -16806,18 +16821,26 @@ def test_ch15_expert_parallelism_batches_expert_metadata_reads() -> None:
     assert "send_buf = self._distributed_workspace(" in distributed_section
     assert "send_ids = self._distributed_workspace(" in distributed_section
     assert "send_pos = self._distributed_workspace(" in distributed_section
-    assert "torch.index_select(flat_tokens, 0, send_indices, out=send_buf[send_offset:end])" in distributed_section
-    assert "torch.index_select(top1, 0, send_indices, out=send_ids[send_offset:end])" in distributed_section
-    assert "send_pos[send_offset:end].copy_(send_indices)" in distributed_section
+    assert "send_weights = self._distributed_workspace(" in distributed_section
+    assert "route_expert_ids = flat_idx.reshape(-1)" in distributed_section
+    assert "route_weights = flat_w.reshape(-1)" in distributed_section
+    assert "total_send = route_expert_ids.numel()" in distributed_section
+    assert "top1 = flat_idx[:, 0]" not in distributed_section
+    assert "out=send_buf[send_offset:end]" in distributed_section
+    assert "out=send_ids[send_offset:end]" in distributed_section
+    assert "out=send_pos[send_offset:end]" in distributed_section
+    assert "out=send_weights[send_offset:end]" in distributed_section
     assert "recv_buf = self._distributed_workspace(" in distributed_section
     assert "recv_ids = self._distributed_workspace(" in distributed_section
     assert "recv_pos = self._distributed_workspace(" in distributed_section
+    assert "recv_weights = self._distributed_workspace(" in distributed_section
     assert "local_out = self._distributed_workspace(" in distributed_section
     assert "recv_back_buf = self._distributed_workspace(" in distributed_section
     assert "recv_back_pos = self._distributed_workspace(" in distributed_section
     assert "out = self._distributed_workspace(" in distributed_section
     assert "local_out.zero_()" in distributed_section
-    assert "out.zero_()" in distributed_section
+    assert "_accumulate_route_outputs(out, recv_back_pos, recv_back_buf)" in distributed_section
+    assert "out[recv_back_pos] = recv_back_buf" not in distributed_section
     assert "recv_buf = torch.empty(" not in distributed_section
     assert "recv_ids = torch.empty(" not in distributed_section
     assert "recv_pos = torch.empty(" not in distributed_section
@@ -17332,7 +17355,7 @@ def test_ch18_eos_early_exit_skips_tail_decode_after_forced_eos() -> None:
     assert "if cfg.force_eos_after_tokens < 1:" in source
     assert "if cfg.force_eos_after_tokens > cfg.decode_tokens:" in source
     assert "self._full_decode_range = range(cfg.decode_tokens)" in source
-    assert "self._early_exit_range = range(cfg.force_eos_after_tokens)" in source
+    assert "self._early_exit_range" not in source
     assert "self._decode_token_divisor = float(max(cfg.decode_tokens, 1))" in source
     assert "self._lm_head_weight_t: Optional[torch.Tensor] = None" in source
     assert "self._lm_head_weight_t = self.lm_head_weight.t()" in setup_section
@@ -17350,13 +17373,16 @@ def test_ch18_eos_early_exit_skips_tail_decode_after_forced_eos() -> None:
         "self.generated_tokens[:, step].copy_(next_token)"
     )
     assert "if self.cfg.stop_on_all_done:" in benchmark_section
-    assert "decode_step_range = self._early_exit_range if self.cfg.stop_on_all_done else self._full_decode_range" in benchmark_section
-    assert "for step in decode_step_range:" in benchmark_section
+    assert "for step in self._full_decode_range:" in benchmark_section
     assert "for step in range(stop_step):" not in benchmark_section
     assert "range(self.cfg.decode_tokens)" not in benchmark_section
     assert "max(self.cfg.decode_tokens, 1)" not in benchmark_section
-    assert "if bool(self.done_mask_buffer.all().item()):" not in benchmark_section
-    assert ".all().item()" not in benchmark_section
+    assert "if self.cfg.stop_on_all_done and self._all_requests_done():" in benchmark_section
+    completion_section = source.split("def _all_requests_done", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    assert "self.done_mask_buffer.all().item()" in completion_section
     assert "self.generated_tokens[:, filled:].fill_(self.cfg.eos_token_id)" in benchmark_section
     assert 'metrics["eos_early_exit.decoded_steps"] = float(filled)' in benchmark_section
     assert 'metrics["eos_early_exit.skipped_decode_steps"] = float(self.cfg.decode_tokens - filled)' in benchmark_section
@@ -19370,13 +19396,20 @@ def test_ch16_radix_attention_reuses_token_and_kv_buffers() -> None:
     state = ModelState(hidden_dim=model.hidden_dim, num_heads=model.num_heads, device=model.device)
 
     first_state = model.forward(1, state)
+    first_keys = first_state.kv_cache.key_view.clone()
+    first_values = first_state.kv_cache.value_view.clone()
     second_state = model.forward(2, first_state)
 
     first_cache = first_state.kv_cache
     second_cache = second_state.kv_cache
     assert first_cache.seq_len == 1
     assert second_cache.seq_len == 2
-    assert first_cache.keys.data_ptr() == second_cache.keys.data_ptr()
+    assert first_cache.keys.data_ptr() != second_cache.keys.data_ptr()
+    assert first_cache.values.data_ptr() != second_cache.values.data_ptr()
+    torch.testing.assert_close(first_cache.key_view, first_keys)
+    torch.testing.assert_close(first_cache.value_view, first_values)
+    torch.testing.assert_close(second_cache.key_view[:1], first_keys)
+    torch.testing.assert_close(second_cache.value_view[:1], first_values)
     assert first_cache.key_view.shape[0] == 1
     assert second_cache.key_view.shape[0] == 2
 
@@ -24736,7 +24769,7 @@ def test_ch17_prefill_decode_disagg_records_timing_on_explicit_streams() -> None
     assert "sum(tpot_times_ms)" not in optimized_finalize
 
 
-def test_ch17_optimized_disaggregated_waits_once_before_decode_loop() -> None:
+def test_ch17_optimized_disaggregated_decodes_prior_ready_request() -> None:
     source = (REPO_ROOT / "ch17" / "optimized_prefill_decode_disagg.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def finalize_iteration_metrics",
@@ -24744,10 +24777,14 @@ def test_ch17_optimized_disaggregated_waits_once_before_decode_loop() -> None:
     )[0]
 
     decode_stream_pos = benchmark_section.index("with torch.cuda.stream(self.decode_stream):")
-    wait_pos = benchmark_section.index("self.decode_stream.wait_event(self._prefill_done)")
+    wait_pos = benchmark_section.index("self.decode_stream.wait_event(self._decode_ready)")
     loop_pos = benchmark_section.index("for token_start, token_end in token_event_pairs:")
     assert benchmark_section.count("with torch.cuda.stream(self.decode_stream):") == 1
-    assert benchmark_section.count("self.decode_stream.wait_event(self._prefill_done)") == 1
+    assert benchmark_section.count("self.decode_stream.wait_event(self._decode_ready)") == 1
+    assert "self.decode_stream.wait_event(self._prefill_done)" not in benchmark_section
+    assert "token_output = self._decode_state" in benchmark_section
+    assert "self._decode_state = next_decode_state" in benchmark_section
+    assert "self._decode_ready, self._prefill_done = self._prefill_done, self._decode_ready" in benchmark_section
     assert decode_stream_pos < wait_pos < loop_pos
 
 
@@ -24769,7 +24806,7 @@ def test_ch17_optimized_disaggregated_uses_prebuilt_timing_events() -> None:
     assert "self._get_tpot_events(" not in benchmark_section
 
 
-def test_ch17_monolithic_prefill_reuses_random_input_buffer() -> None:
+def test_ch17_monolithic_prefill_reuses_prompt_input_buffer() -> None:
     source = (REPO_ROOT / "ch17" / "prefill_decode_disagg_monolithic_common.py").read_text(
         encoding="utf-8"
     )
@@ -24791,7 +24828,9 @@ def test_ch17_monolithic_prefill_reuses_random_input_buffer() -> None:
     assert "self._prefill_input_buffer.numel() < numel" in helper_section
     assert "self._prefill_input_buffer.shape != shape" not in helper_section
     assert "prefill_input = self._prefill_input_buffer[:numel].view(shape)" in helper_section
-    assert "prefill_input.normal_()" in helper_section
+    assert "prompt_tokens.unsqueeze(-1)" in helper_section
+    assert "self._prefill_feature_scale" in helper_section
+    assert "prefill_input.normal_()" not in helper_section
     assert "return prefill_input" in helper_section
     assert "x = self._prefill_input(prompt_tokens)" in prefill_section
     assert "torch.randn(" not in prefill_section

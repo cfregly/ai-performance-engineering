@@ -83,8 +83,10 @@ SystemConfig detect_grace_blackwell() {
     config.gpu_memory_per_device = prop.totalGlobalMem;
     config.total_gpu_memory = prop.totalGlobalMem * config.num_gpus;
     
-    // Check for Blackwell
-    bool is_blackwell = (prop.major == 10 && prop.minor == 0);
+    // Datacenter Blackwell spans SM 10.x: B200/GB200 is SM 10.0 and
+    // B300/GB300 is SM 10.3. The minor version must not exclude Blackwell
+    // Ultra systems.
+    bool is_blackwell = (prop.major == 10);
     
     // Check for unified memory support
     config.has_unified_memory = (prop.unifiedAddressing == 1) && 

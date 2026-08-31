@@ -20,6 +20,7 @@ from core.harness.benchmark_harness import (
     BenchmarkMode,
 )
 from core.utils.logger import get_logger
+from labs.kv_optimization.verification import FP8_KV_OUTPUT_TOLERANCE
 
 logger = get_logger(__name__)
 
@@ -367,7 +368,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
                 "bf16": self.cache_dtype == torch.bfloat16,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
-            output_tolerance=(0.1, 1.0),
+            output_tolerance=FP8_KV_OUTPUT_TOLERANCE,
         )
 
     def finalize_iteration_metrics(self) -> Optional[Dict[str, Any]]:

@@ -11,17 +11,36 @@ Requires PyTorch 2.10+ and CUDA 13.0+.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch._dynamo import compiled_autograd
 import time
 from core.common.device_utils import get_preferred_device
 
 # Check if compiled autograd is available
 try:
     from torch._dynamo import compiled_autograd
-    COMPILED_AUTOGRAD_AVAILABLE = True
+    _COMPILED_AUTOGRAD_ENABLE = getattr(compiled_autograd, "enable", None)
+    if _COMPILED_AUTOGRAD_ENABLE is None:
+        # PyTorch releases before the public context-manager spelling expose
+        # the same entrypoint as _enable.
+        _COMPILED_AUTOGRAD_ENABLE = getattr(compiled_autograd, "_enable", None)
+    COMPILED_AUTOGRAD_AVAILABLE = callable(_COMPILED_AUTOGRAD_ENABLE)
 except ImportError:
+    compiled_autograd = None
+    _COMPILED_AUTOGRAD_ENABLE = None
     COMPILED_AUTOGRAD_AVAILABLE = False
-    print("WARNING: Compiled autograd not available. Requires PyTorch 2.10+")
+
+
+def compiled_autograd_context(
+    *,
+    backend: str = "inductor",
+    fullgraph: bool = True,
+):
+    """Return PyTorch's compiled-autograd context for the requested backend."""
+    if not COMPILED_AUTOGRAD_AVAILABLE or _COMPILED_AUTOGRAD_ENABLE is None:
+        raise RuntimeError(
+            "SKIPPED: This PyTorch build does not expose a compiled-autograd context entrypoint."
+        )
+    compiler = torch.compile(backend=backend, fullgraph=fullgraph)
+    return _COMPILED_AUTOGRAD_ENABLE(compiler)
 
 
 class BenchmarkModel(nn.Module):
@@ -100,7 +119,7 @@ def benchmark_standard_autograd() -> float:
 def benchmark_compiled_autograd() -> float:
     """Benchmark with compiled autograd."""
     if not COMPILED_AUTOGRAD_AVAILABLE:
-        return 0.0
+        raise RuntimeError("SKIPPED: Compiled autograd is unavailable in this PyTorch build.")
 
     device_obj, cuda_err = get_preferred_device()
     device = device_obj.type
@@ -117,10 +136,9 @@ def benchmark_compiled_autograd() -> float:
     x = torch.randn(batch_size, seq_len, hidden_dim, device=device)
     target = torch.randn(batch_size, seq_len, hidden_dim, device=device)
     
-    # Enable compiled autograd
-    compiled_autograd.enable(compiler="inductor")
-    
-    try:
+    # Keep the context around forward and backward so the autograd engine can
+    # capture the entire backward graph and restore its prior state on exit.
+    with compiled_autograd_context():
         # Warmup
         for _ in range(5):
             optimizer.zero_grad(set_to_none=True)
@@ -157,16 +175,12 @@ def benchmark_compiled_autograd() -> float:
             elapsed_ms = (time.perf_counter() - start_time) / num_iters * 1000
         
         return elapsed_ms
-    
-    finally:
-        # Disable compiled autograd
-        compiled_autograd.disable()
 
 
 def benchmark_forward_and_backward_compiled() -> tuple[float, float]:
     """Benchmark with both forward and backward compiled."""
     if not COMPILED_AUTOGRAD_AVAILABLE:
-        return 0.0, 0.0
+        raise RuntimeError("SKIPPED: Compiled autograd is unavailable in this PyTorch build.")
 
     device_obj, cuda_err = get_preferred_device()
     device = device_obj.type
@@ -187,10 +201,7 @@ def benchmark_forward_and_backward_compiled() -> tuple[float, float]:
     x = torch.randn(batch_size, seq_len, hidden_dim, device=device)
     target = torch.randn(batch_size, seq_len, hidden_dim, device=device)
     
-    # Enable compiled autograd
-    compiled_autograd.enable(compiler="inductor")
-    
-    try:
+    with compiled_autograd_context():
         # Warmup
         for _ in range(5):
             optimizer.zero_grad(set_to_none=True)
@@ -233,9 +244,6 @@ def benchmark_forward_and_backward_compiled() -> tuple[float, float]:
             memory_mb = 0.0
         
         return elapsed_ms, memory_mb
-    
-    finally:
-        compiled_autograd.disable()
 
 
 def demonstrate_compiled_autograd_context() -> None:
@@ -254,33 +262,23 @@ def demonstrate_compiled_autograd_context() -> None:
     print("Compiled Autograd Context Manager Example")
     print("=" * 80)
     
-    # Method 1: Global enable/disable
-    print("\nMethod 1: Global enable/disable")
-    compiled_autograd.enable(compiler="inductor")
-    output = model(x)
-    loss = F.mse_loss(output, target)
-    loss.backward()
-    compiled_autograd.disable()
-    print(" Used global enable/disable")
-    
-    # Method 2: Context manager (cleaner)
-    print("\nMethod 2: Context manager (recommended)")
+    print("\nMethod 1: Compiled backward context")
     torch.cuda.empty_cache() if device == "cuda" else None
-    
-    with compiled_autograd.enable(compiler="inductor"):
+
+    with compiled_autograd_context():
         output = model(x)
         loss = F.mse_loss(output, target)
         loss.backward()
-    print(" Used context manager")
-    
-    # Method 3: Selective compilation
-    print("\nMethod 3: Selective compilation")
+    print(" Used compiled-autograd context")
+
+    # Method 2: Compile both the forward and backward regions.
+    print("\nMethod 2: Forward and backward compilation")
     print("  - Forward pass: compiled")
     print("  - Backward pass: compiled autograd")
-    
+
     compiled_model = torch.compile(model, mode="reduce-overhead")
-    
-    with compiled_autograd.enable(compiler="inductor"):
+
+    with compiled_autograd_context():
         output = compiled_model(x)
         loss = F.mse_loss(output, target)
         loss.backward()
@@ -347,7 +345,7 @@ def main() -> None:
     print("- Training on Blackwell GPUs")
     print("- Production training workloads")
     print("\nUsage:")
-    print("  with compiled_autograd.enable(compiler='inductor'):")
+    print("  with compiled_autograd_context():")
     print("      loss.backward()")
     print("=" * 80)
 

@@ -1135,68 +1135,6 @@
       },
       "type": "python"
     },
-    "precisionfp8_te": {
-      "custom_metrics": {
-        "precision.accuracy_delta": 0.0,
-        "precision.fp32_ms": 2.6626880168914795,
-        "precision.memory_reduction_factor": 4.0
-      },
-      "example": "precisionfp8_te",
-      "metadata": {
-        "best_memory_savings_pct": -0.009178760133081222,
-        "best_memory_savings_ratio": 0.9999082208228597,
-        "best_optimization": "optimized_precisionfp8_te",
-        "best_optimization_file": "optimized_precisionfp8_te.py",
-        "best_optimization_memory_mb": 452.21484375,
-        "best_optimization_speedup": 6.247690546083759,
-        "best_optimization_technique": "optimized_precisionfp8_te",
-        "best_optimization_time_ms": 0.42437333372277275,
-        "optimization_goal": "speed"
-      },
-      "metrics": {
-        "baseline_memory_mb": 452.17333984375,
-        "baseline_p75_ms": 2.7667200565338135,
-        "baseline_throughput.bytes_per_s": null,
-        "baseline_throughput.custom_unit_name": null,
-        "baseline_throughput.custom_unit_per_s": null,
-        "baseline_throughput.goodput": null,
-        "baseline_throughput.latency_ms": 2.6513532651098153,
-        "baseline_throughput.requests_per_s": 377.16588474247754,
-        "baseline_throughput.samples_per_s": null,
-        "baseline_throughput.schemaVersion": "1.0",
-        "baseline_throughput.tokens_per_s": 395487094.75972813,
-        "baseline_time_ms": 2.6513532651098153,
-        "best_memory_savings_pct": -0.009178760133081222,
-        "best_memory_savings_ratio": 0.9999082208228597,
-        "best_optimized_memory_mb": 452.21484375,
-        "best_optimized_p75_ms": 0.4260160028934479,
-        "best_optimized_speedup": 6.247690546083759,
-        "best_optimized_throughput.bytes_per_s": null,
-        "best_optimized_throughput.custom_unit_name": null,
-        "best_optimized_throughput.custom_unit_per_s": null,
-        "best_optimized_throughput.goodput": null,
-        "best_optimized_throughput.latency_ms": 0.42437333372277275,
-        "best_optimized_throughput.requests_per_s": 2356.4157324108933,
-        "best_optimized_throughput.samples_per_s": null,
-        "best_optimized_throughput.schemaVersion": "1.0",
-        "best_optimized_throughput.tokens_per_s": 2470880983.028485,
-        "best_optimized_time_ms": 0.42437333372277275,
-        "best_speedup": 6.247690546083759,
-        "is_regression": false
-      },
-      "provenance": {
-        "dmi_product_name": "Standard PC (Q35 + ICH9, 2009)",
-        "execution_environment": "virtualized",
-        "git_commit": "e1af4ba1ac65cde755e836586cdb44cad06a0010",
-        "hardware_key": "b200",
-        "iterations": 50,
-        "profile_name": "none",
-        "timestamp": "2026-03-21T10:31:43+00:00",
-        "validity_profile": "portable",
-        "warmup_iterations": 10
-      },
-      "type": "python"
-    },
     "precisionmixed": {
       "example": "precisionmixed",
       "metadata": {

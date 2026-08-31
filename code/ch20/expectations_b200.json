@@ -222,63 +222,6 @@
       },
       "type": "python"
     },
-    "moe": {
-      "example": "moe",
-      "metadata": {
-        "best_memory_savings_pct": 0.905801371962,
-        "best_memory_savings_ratio": 1.0091408113139098,
-        "best_optimization": "optimized_moe",
-        "best_optimization_file": "optimized_moe.py",
-        "best_optimization_memory_mb": 164.2060546875,
-        "best_optimization_speedup": 1.977102524809026,
-        "best_optimization_technique": "optimized_moe",
-        "best_optimization_time_ms": 0.1697972186253621,
-        "optimization_goal": "speed"
-      },
-      "metrics": {
-        "baseline_memory_mb": 165.70703125,
-        "baseline_p75_ms": 0.3620159924030304,
-        "baseline_throughput.bytes_per_s": null,
-        "baseline_throughput.custom_unit_name": null,
-        "baseline_throughput.custom_unit_per_s": null,
-        "baseline_throughput.goodput": null,
-        "baseline_throughput.latency_ms": 0.33570650964975357,
-        "baseline_throughput.requests_per_s": 95321.35684049131,
-        "baseline_throughput.samples_per_s": null,
-        "baseline_throughput.schemaVersion": "1.0",
-        "baseline_throughput.tokens_per_s": 97609069.4046631,
-        "baseline_time_ms": 0.33570650964975357,
-        "best_memory_savings_pct": 0.905801371962,
-        "best_memory_savings_ratio": 1.0091408113139098,
-        "best_optimized_memory_mb": 164.2060546875,
-        "best_optimized_p75_ms": 0.1746560037136078,
-        "best_optimized_speedup": 1.977102524809026,
-        "best_optimized_throughput.bytes_per_s": null,
-        "best_optimized_throughput.custom_unit_name": null,
-        "best_optimized_throughput.custom_unit_per_s": null,
-        "best_optimized_throughput.goodput": null,
-        "best_optimized_throughput.latency_ms": 0.1697972186253621,
-        "best_optimized_throughput.requests_per_s": 188460.09527755747,
-        "best_optimized_throughput.samples_per_s": null,
-        "best_optimized_throughput.schemaVersion": "1.0",
-        "best_optimized_throughput.tokens_per_s": 192983137.56421885,
-        "best_optimized_time_ms": 0.1697972186253621,
-        "best_speedup": 1.977102524809026,
-        "is_regression": false
-      },
-      "provenance": {
-        "dmi_product_name": "Standard PC (Q35 + ICH9, 2009)",
-        "execution_environment": "virtualized",
-        "git_commit": "e1af4ba1ac65cde755e836586cdb44cad06a0010",
-        "hardware_key": "b200",
-        "iterations": 10,
-        "profile_name": "none",
-        "timestamp": "2026-03-21T11:30:06+00:00",
-        "validity_profile": "portable",
-        "warmup_iterations": 10
-      },
-      "type": "python"
-    },
     "bf16_mlp": {
       "custom_metrics": {
         "ai_opt.code_changes": 0.0,

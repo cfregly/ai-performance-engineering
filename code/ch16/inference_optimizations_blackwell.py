@@ -23,6 +23,7 @@ Requirements:
 
 Author: Blackwell Optimization Project
 """
+import inspect
 import os
 
 from core.harness.arch_config import prefer_flash_sdpa
@@ -80,6 +81,33 @@ def _benchmark_cuda_latency_ms(fn: Callable[[], object], iterations: int) -> flo
     return start.elapsed_time(end) / iterations
 
 
+def _sliding_window_causal_mask(
+    q_idx,
+    kv_idx,
+    *,
+    query_start: int,
+    window_size: int,
+):
+    """Return whether an absolute KV position is visible to a query."""
+    query_position = q_idx + query_start
+    distance = query_position - kv_idx
+    return (distance >= 0) & (distance < window_size)
+
+
+def _dense_sliding_window_causal_mask(
+    seq_len: int,
+    total_len: int,
+    window_size: int,
+    device: torch.device,
+) -> torch.Tensor:
+    """Build the SDPA equivalent of the FlexAttention sliding-window mask."""
+    query_start = total_len - seq_len
+    query_positions = torch.arange(seq_len, device=device).view(seq_len, 1)
+    key_positions = torch.arange(total_len, device=device).view(1, total_len)
+    distances = query_positions + query_start - key_positions
+    return (distances >= 0) & (distances < window_size)
+
+
 # ============================================================================
 # 1. Dynamic Quantized KV Cache
 # ============================================================================
@@ -123,9 +151,18 @@ class DynamicQuantizedKVCache:
         cache_shape = (num_layers, 2, max_batch_size, num_heads, max_seq_len, head_dim)
         self.cache = torch.empty(cache_shape, dtype=self.cache_dtype, device=device)
         
-        # Scaling factors for FP8 quantization
+        # Preserve the scale for every cached token. A single scale per batch
+        # row is not sufficient because decode appends can have very different
+        # ranges and old FP8 values must be dequantized with their original
+        # scale.
         if FP8_AVAILABLE:
-            self.scales = torch.ones(num_layers, 2, max_batch_size, device=device)
+            self.scales = torch.ones(
+                num_layers,
+                2,
+                max_batch_size,
+                max_seq_len,
+                device=device,
+            )
         else:
             self.scales = None
         
@@ -289,15 +326,25 @@ class DynamicQuantizedKVCache:
                 )
 
             if FP8_AVAILABLE and key.dtype != FP8_E4M3:
-                k_scale = key.abs().amax(dim=(1, 2, 3))
-                v_scale = value.abs().amax(dim=(1, 2, 3))
-                self.scales[layer_idx, 0].index_copy_(0, batch_indices, k_scale)
-                self.scales[layer_idx, 1].index_copy_(0, batch_indices, v_scale)
-                k_store = (key / k_scale.view(-1, 1, 1, 1)).to(FP8_E4M3)
-                v_store = (value / v_scale.view(-1, 1, 1, 1)).to(FP8_E4M3)
+                k_scale = key.abs().amax(dim=(1, 3))
+                v_scale = value.abs().amax(dim=(1, 3))
+                k_scale.masked_fill_(k_scale == 0, 1.0)
+                v_scale.masked_fill_(v_scale == 0, 1.0)
+                self.scales[
+                    layer_idx, 0, batch_indices, current_len:end_pos
+                ] = k_scale
+                self.scales[
+                    layer_idx, 1, batch_indices, current_len:end_pos
+                ] = v_scale
+                k_store = (key / k_scale.view(-1, 1, new_seq_len, 1)).to(FP8_E4M3)
+                v_store = (value / v_scale.view(-1, 1, new_seq_len, 1)).to(FP8_E4M3)
             else:
                 k_store = key
                 v_store = value
+                if FP8_AVAILABLE:
+                    self.scales[
+                        layer_idx, :, batch_indices, current_len:end_pos
+                    ] = 1.0
 
             self.cache[layer_idx, 0, batch_indices, :, current_len:end_pos, :] = k_store
             self.cache[layer_idx, 1, batch_indices, :, current_len:end_pos, :] = v_store
@@ -308,8 +355,12 @@ class DynamicQuantizedKVCache:
             cached_key = self.cache[layer_idx, 0, batch_indices, :, :end_pos, :]
             cached_value = self.cache[layer_idx, 1, batch_indices, :, :end_pos, :]
             if FP8_AVAILABLE:
-                k_scale = self.scales[layer_idx, 0, batch_indices].view(-1, 1, 1, 1)
-                v_scale = self.scales[layer_idx, 1, batch_indices].view(-1, 1, 1, 1)
+                k_scale = self.scales[
+                    layer_idx, 0, batch_indices, :end_pos
+                ].view(-1, 1, end_pos, 1)
+                v_scale = self.scales[
+                    layer_idx, 1, batch_indices, :end_pos
+                ].view(-1, 1, end_pos, 1)
                 cached_key = cached_key.to(torch.float32) * k_scale
                 cached_value = cached_value.to(torch.float32) * v_scale
             return cached_key, cached_value
@@ -366,15 +417,25 @@ class DynamicQuantizedKVCache:
             v_slice = value[local_idx]
             
             if FP8_AVAILABLE and k_slice.dtype != FP8_E4M3:
-                k_scale = k_slice.abs().max()
-                v_scale = v_slice.abs().max()
-                self.scales[layer_idx, 0, cache_idx_int] = k_scale
-                self.scales[layer_idx, 1, cache_idx_int] = v_scale
-                k_store = (k_slice / k_scale).to(FP8_E4M3)
-                v_store = (v_slice / v_scale).to(FP8_E4M3)
+                k_scale = k_slice.abs().amax(dim=(0, 2))
+                v_scale = v_slice.abs().amax(dim=(0, 2))
+                k_scale.masked_fill_(k_scale == 0, 1.0)
+                v_scale.masked_fill_(v_scale == 0, 1.0)
+                self.scales[
+                    layer_idx, 0, cache_idx_int, current_len:end_pos
+                ] = k_scale
+                self.scales[
+                    layer_idx, 1, cache_idx_int, current_len:end_pos
+                ] = v_scale
+                k_store = (k_slice / k_scale.view(1, new_seq_len, 1)).to(FP8_E4M3)
+                v_store = (v_slice / v_scale.view(1, new_seq_len, 1)).to(FP8_E4M3)
             else:
                 k_store = k_slice
                 v_store = v_slice
+                if FP8_AVAILABLE:
+                    self.scales[
+                        layer_idx, :, cache_idx_int, current_len:end_pos
+                    ] = 1.0
             
             self.cache[layer_idx, 0, cache_idx_int, :, current_len:end_pos, :] = k_store
             self.cache[layer_idx, 1, cache_idx_int, :, current_len:end_pos, :] = v_store
@@ -385,8 +446,12 @@ class DynamicQuantizedKVCache:
             cached_value = self.cache[layer_idx, 1, cache_idx_int, :, :end_pos, :]
             
             if FP8_AVAILABLE:
-                k_scale = self.scales[layer_idx, 0, cache_idx_int]
-                v_scale = self.scales[layer_idx, 1, cache_idx_int]
+                k_scale = self.scales[
+                    layer_idx, 0, cache_idx_int, :end_pos
+                ].view(1, end_pos, 1)
+                v_scale = self.scales[
+                    layer_idx, 1, cache_idx_int, :end_pos
+                ].view(1, end_pos, 1)
                 cached_key = cached_key.to(torch.float32) * k_scale
                 cached_value = cached_value.to(torch.float32) * v_scale
             
@@ -447,6 +512,8 @@ class OptimizedDecoderLayer(nn.Module):
         self.d_model = d_model
         self.num_heads = num_heads
         self.head_dim = d_model // num_heads
+        if isinstance(window_size, bool) or int(window_size) <= 0:
+            raise ValueError("window_size must be a positive integer")
         self.window_size = window_size
         self.use_flex_attention = use_flex_attention
         
@@ -462,10 +529,16 @@ class OptimizedDecoderLayer(nn.Module):
         self._attn_project_2d: Optional[torch.Tensor] = None
         self._o_proj_weight_t: Optional[torch.Tensor] = None
         self._block_mask_cache = {}
+        self._dense_mask_cache = {}
         
         # FlexAttention block mask (sliding window)
         def sliding_window(b, h, q_idx, kv_idx):
-            return q_idx - kv_idx <= window_size
+            return _sliding_window_causal_mask(
+                q_idx,
+                kv_idx,
+                query_start=0,
+                window_size=self.window_size,
+            )
         
         self.block_mask_fn = sliding_window
         self.flex_attention_fn = _FLEX_ATTENTION_FN if self.use_flex_attention else None
@@ -528,8 +601,18 @@ class OptimizedDecoderLayer(nn.Module):
         cache_key = (int(batch_size), int(self.num_heads), int(seq_len), int(total_len), device)
         block_mask = self._block_mask_cache.get(cache_key)
         if block_mask is None:
+            query_start = total_len - seq_len
+
+            def sliding_window_with_cache(b, h, q_idx, kv_idx):
+                return _sliding_window_causal_mask(
+                    q_idx,
+                    kv_idx,
+                    query_start=query_start,
+                    window_size=self.window_size,
+                )
+
             block_mask = create_block_mask(
-                self.block_mask_fn,
+                sliding_window_with_cache,
                 B=batch_size,
                 H=self.num_heads,
                 Q_LEN=seq_len,
@@ -538,6 +621,24 @@ class OptimizedDecoderLayer(nn.Module):
             )
             self._block_mask_cache[cache_key] = block_mask
         return block_mask
+
+    def _cached_dense_mask(
+        self,
+        seq_len: int,
+        total_len: int,
+        device: torch.device,
+    ) -> torch.Tensor:
+        cache_key = (int(seq_len), int(total_len), device)
+        mask = self._dense_mask_cache.get(cache_key)
+        if mask is None:
+            mask = _dense_sliding_window_causal_mask(
+                seq_len,
+                total_len,
+                self.window_size,
+                device,
+            )
+            self._dense_mask_cache[cache_key] = mask
+        return mask
         
     def forward(
         self,
@@ -587,9 +688,15 @@ class OptimizedDecoderLayer(nn.Module):
             )
             attn_output = self.flex_attention_fn(query, key, value, block_mask)
         else:
+            attention_mask = self._cached_dense_mask(seq_len, total_len, query.device)
             with prefer_flash_sdpa():
                 attn_output = F.scaled_dot_product_attention(
-                    query, key, value, dropout_p=0.0, is_causal=False
+                    query,
+                    key,
+                    value,
+                    attn_mask=attention_mask,
+                    dropout_p=0.0,
+                    is_causal=False,
                 )
         
         # Reshape and project
@@ -643,6 +750,17 @@ class BlackwellInferencePipeline:
         self.max_batch_size = max_batch_size
         self.max_seq_len = max_seq_len
         self.device = next(model.parameters()).device
+
+        forward_parameters = inspect.signature(model.forward).parameters.values()
+        if not any(
+            parameter.name == "kv_cache"
+            or parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in forward_parameters
+        ):
+            raise ValueError(
+                "BlackwellInferencePipeline requires model.forward(..., kv_cache=cache) "
+                "so decode can consume the transferred cache"
+            )
         
         # Initialize KV cache
         # Assume model has num_layers and d_model attributes
@@ -681,6 +799,15 @@ class BlackwellInferencePipeline:
             print(" Model compiled")
         
         self.compiled = compile
+
+    def _forward_with_kv_cache(self, input_ids: torch.Tensor) -> torch.Tensor:
+        """Run the model through the cache-aware forward contract."""
+        logits = self.model(input_ids, kv_cache=self.kv_cache)
+        if not isinstance(logits, torch.Tensor) or logits.ndim != 3:
+            raise RuntimeError(
+                "Cache-aware model forward must return [batch, sequence, vocabulary] logits"
+            )
+        return logits
 
     def _next_token_from_logits(self, logits_last: torch.Tensor) -> torch.Tensor:
         batch_size = logits_last.size(0)
@@ -754,13 +881,13 @@ class BlackwellInferencePipeline:
         output_ids[:, :seq_len].copy_(input_ids)
         
         # Prefill phase (process all input tokens)
-        logits = self.model(input_ids)
+        logits = self._forward_with_kv_cache(input_ids)
         next_token = self._next_token_from_logits(logits[:, -1, :])
         output_ids[:, seq_len : seq_len + 1].copy_(next_token)
         
         # Decode phase (autoregressive generation)
         for step in range(1, max_new_tokens):
-            logits = self.model(next_token)
+            logits = self._forward_with_kv_cache(next_token)
             next_token = self._next_token_from_logits(logits[:, -1, :])
             output_ids[:, seq_len + step : seq_len + step + 1].copy_(next_token)
         
@@ -781,7 +908,8 @@ class BlackwellInferencePipeline:
         
         # Warmup
         for _ in range(10):
-            _ = self.model(input_ids)
+            self.kv_cache.clear()
+            _ = self._forward_with_kv_cache(input_ids)
         torch.cuda.synchronize()
         
         # Benchmark using CUDA Events for accurate GPU timing
@@ -791,7 +919,8 @@ class BlackwellInferencePipeline:
         
         start_event.record(current_stream)
         for _ in range(num_iterations):
-            _ = self.model(input_ids)
+            self.kv_cache.clear()
+            _ = self._forward_with_kv_cache(input_ids)
         end_event.record(current_stream)
         end_event.synchronize()
         

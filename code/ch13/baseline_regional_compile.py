@@ -181,7 +181,7 @@ class BaselineFullGraphCompileBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
             },
-            output_tolerance=(1.0, 10.0),
+            output_tolerance=(1e-2, 5e-2),
         )
 
     def teardown(self) -> None:

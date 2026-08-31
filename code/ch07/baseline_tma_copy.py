@@ -20,8 +20,8 @@ class BaselineTMACopyBenchmark(CudaBinaryBenchmark):
         chapter_dir = Path(__file__).parent
         n_elems = 1 << 25
         lookahead = 64
-        redundant_reads = 8
-        bytes_per_element = (redundant_reads * 3 + 1) * 4
+        source_reads_per_output = 3
+        bytes_per_element = (source_reads_per_output + 1) * 4
         super().__init__(
             chapter_dir=chapter_dir,
             binary_name="baseline_tma_copy",
@@ -32,7 +32,7 @@ class BaselineTMACopyBenchmark(CudaBinaryBenchmark):
             workload_params={
                 "N": n_elems,
                 "lookahead": lookahead,
-                "redundant_reads": redundant_reads,
+                "source_reads_per_output": source_reads_per_output,
                 "dtype": "float32",
             },
         )
@@ -55,4 +55,3 @@ class BaselineTMACopyBenchmark(CudaBinaryBenchmark):
 def get_benchmark() -> BaselineTMACopyBenchmark:
     """Factory for discover_benchmarks()."""
     return BaselineTMACopyBenchmark()
-

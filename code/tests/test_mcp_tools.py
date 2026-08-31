@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -731,6 +731,67 @@ def test_tool_list_protocol_matches_registration(server: mcp_server.MCPServer):
     names = {tool["name"] for tool in tool_list}
     expected = {case.name for case in ALL_TOOL_CASES}
     assert names == expected
+
+
+def test_wave2_engine_tools_dispatch_through_supported_domain_methods(
+    server: mcp_server.MCPServer,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The MCP registry must reach real engine domains, not stale method aliases."""
+    import core.engine as engine_module
+    from core.diagnostics import microbench
+
+    handler = MagicMock()
+    handler.get_kernel_breakdown.return_value = {"kernels": ["kernel_a"]}
+    handler.get_all_optimizations.return_value = {"optimizations": ["compile"]}
+    gpu_bandwidth = MagicMock(
+        return_value={
+            "bandwidth_gbps": 7200.0,
+            "theoretical_gbps": 8000.0,
+            "efficiency_pct": 90.0,
+            "test_size_mb": 256,
+        }
+    )
+    network_loopback = MagicMock(return_value={"throughput_gbps": 12.5, "bytes_sent": 1024})
+    monkeypatch.setattr(engine_module, "_get_handler", lambda: handler)
+    monkeypatch.setattr(microbench, "gpu_memory_bandwidth_test", gpu_bandwidth)
+    monkeypatch.setattr(microbench, "network_loopback_test", network_loopback)
+
+    expected_results = {
+        "gpu_bandwidth": {"bandwidth_gbps": 7200.0},
+        "profile_kernels": {"kernels": ["kernel_a"]},
+        "optimize_techniques": {"optimizations": ["compile"]},
+        "hw_network": {"throughput_gbps": 12.5},
+    }
+    for tool_name, expected in expected_results.items():
+        payload = _payload_from_result(
+            server.call_tool(tool_name, {"include_context": False})
+        )
+        assert payload["status"] == "ok"
+        for key, value in expected.items():
+            assert payload["result"][key] == value
+
+    gpu_bandwidth.assert_called_once_with()
+    network_loopback.assert_called_once_with()
+    handler.get_kernel_breakdown.assert_called_once_with()
+    handler.get_all_optimizations.assert_called_once_with()
+
+
+def test_gpu_bandwidth_reports_missing_cuda_through_mcp_dispatch(
+    server: mcp_server.MCPServer,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The real backend should fail visibly before attempting a GPU allocation."""
+    torch = pytest.importorskip("torch")
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+
+    payload = _payload_from_result(
+        server.call_tool("gpu_bandwidth", {"include_context": False})
+    )
+
+    assert payload["status"] == "error"
+    assert payload["result"]["success"] is False
+    assert payload["result"]["error"] == "CUDA not available"
 
 
 @pytest.mark.parametrize(

@@ -13,10 +13,16 @@ from itertools import chain
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
-from .shapes import GemmShape, transformer_gemm_shapes
-
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from labs.cutlass_profiler_kernel_selector.shapes import (  # noqa: E402
+    GemmShape,
+    transformer_gemm_shapes,
+)
+
+
 ARTIFACT_DIR = REPO_ROOT / "artifacts" / "cutlass_profiler"
 
 
@@ -56,6 +62,12 @@ def _to_float(value: str) -> float:
 
 def _select_field(fields: Iterable[str], candidates: Iterable[str]) -> Optional[str]:
     lowered = {f.lower(): f for f in fields}
+    # Prefer an exact header before substring matching. CUTLASS emits both
+    # ``OperationKind`` and ``Operation``; the latter is the winning kernel name.
+    for want in candidates:
+        exact = lowered.get(want)
+        if exact is not None:
+            return exact
     for want in candidates:
         for key, original in lowered.items():
             if want in key:
@@ -74,7 +86,7 @@ def parse_best_result(csv_path: Path) -> Dict[str, object]:
 
         gflops_field = _select_field(reader.fieldnames or [], ("gflop", "tflop", "flops"))
         runtime_field = _select_field(reader.fieldnames or [], ("runtime", "time"))
-        kernel_field = _select_field(reader.fieldnames or [], ("kernel", "name"))
+        kernel_field = _select_field(reader.fieldnames or [], ("kernel", "operation", "name"))
 
         if gflops_field is None or runtime_field is None:
             raise ValueError(f"Missing gflops/time fields in {csv_path} (fields: {reader.fieldnames})")
@@ -102,7 +114,7 @@ def parse_best_result(csv_path: Path) -> Dict[str, object]:
                         runtime_ms = float("nan")
 
                 best_row = {
-                    "kernel": row.get(kernel_field, row.get("op", "")) if kernel_field else "",
+                    "kernel": row.get(kernel_field, "") if kernel_field else "",
                     "gflops": gflops,
                     "tflops": tflops,
                     "runtime_ms": runtime_ms,
@@ -121,6 +133,10 @@ def run_profiler_for_shape(binary: Path, shape: GemmShape, output_dir: Path, ext
     # matching that stem.
     csv_path = output_dir / f"{shape.name}"
     log_path = output_dir / f"{shape.name}.log"
+    prior_csv_state = {
+        path: (path.stat().st_mtime_ns, path.stat().st_size)
+        for path in output_dir.glob(f"{shape.name}*.csv")
+    }
 
     cmd = [
         str(binary),
@@ -149,10 +165,19 @@ def run_profiler_for_shape(binary: Path, shape: GemmShape, output_dir: Path, ext
     if process.returncode != 0:
         raise RuntimeError(f"{binary.name} failed for {shape.name}; see {log_path}")
 
-    csv_file = max(output_dir.glob(f"{shape.name}*.csv"), key=lambda p: p.stat().st_mtime, default=None)
+    def was_emitted_by_this_run(path: Path) -> bool:
+        current = (path.stat().st_mtime_ns, path.stat().st_size)
+        return path not in prior_csv_state or current != prior_csv_state[path]
+
+    csv_file = max(
+        (path for path in output_dir.glob(f"{shape.name}*.csv") if was_emitted_by_this_run(path)),
+        key=lambda path: path.stat().st_mtime_ns,
+        default=None,
+    )
     if csv_file is None:
         raise FileNotFoundError(
-            f"Profiler did not emit CSV for {shape.name}; expected something like {csv_path}*.csv; log: {log_path}"
+            f"Profiler did not emit a fresh CSV for {shape.name}; "
+            f"expected something like {csv_path}*.csv; log: {log_path}"
         )
 
     best_row = parse_best_result(csv_file)

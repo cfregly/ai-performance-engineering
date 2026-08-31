@@ -31,7 +31,7 @@ Keep `proton_matmul_bm64_bn64_bk32_nw2` as a supplementary local-contract schedu
 ## Profiler Evidence
 ```bash
 python -m cli.aisp bench run --targets labs/occupancy_tuning:proton_matmul --profile deep_dive --single-gpu
-python labs/occupancy_tuning/sweep_schedules.py --output artifacts/occupancy_tuning.csv
+python labs/occupancy_tuning/sweep_schedules.py --csv artifacts/occupancy_tuning.csv
 ```
 
 Use the deep-dive harness run for Nsight evidence and the sweep script when you want to explore candidate schedules before promoting one into the benchmark pair.
@@ -40,7 +40,7 @@ Use the deep-dive harness run for Nsight evidence and the sweep script when you 
 ```bash
 python -m cli.aisp bench list-targets --chapter labs/occupancy_tuning
 python -m cli.aisp bench run --targets labs/occupancy_tuning:proton_matmul --profile minimal
-python labs/occupancy_tuning/sweep_schedules.py --output artifacts/occupancy_tuning.csv
+python labs/occupancy_tuning/sweep_schedules.py --csv artifacts/occupancy_tuning.csv
 ```
 
 ## Learning Goals
@@ -63,14 +63,15 @@ python -m cli.aisp bench list-targets --chapter labs/occupancy_tuning
 python -m cli.aisp bench run --targets labs/occupancy_tuning --profile minimal
 ```
 - Targets follow the `labs/occupancy_tuning:<workload>` naming convention listed by `list-targets`.
-- Use `--target-extra-arg labs/occupancy_tuning:<workload>="--flag value"` to sweep schedule knobs.
+- Each harness target binds one named schedule. Use `sweep_schedules.py --schedule
+  <name> --csv <path>` to explore schedule knobs before adding a new target.
 - Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited environments.
 - Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.
 
 ## Validation Checklist
 - `python -m cli.aisp bench run --targets labs/occupancy_tuning --profile minimal` executes every schedule defined in the lab.
-- `python labs/occupancy_tuning/sweep_schedules.py --output artifacts/occupancy_tuning.csv` enumerates schedules and highlights the top performer.
-- `python labs/occupancy_tuning/optimized_proton_matmul_bm128_bn128_bk32_nw8.py --validate` compares outputs against the baseline to ensure correctness.
+- `python labs/occupancy_tuning/sweep_schedules.py --csv artifacts/occupancy_tuning.csv` enumerates schedules and records every result; it exits nonzero if any schedule fails.
+- `python -m cli.aisp bench run --targets labs/occupancy_tuning:proton_matmul --profile minimal` runs the harness's baseline-versus-optimized output verification on CUDA.
 
 ## Notes
 - Add new schedules to `triton_matmul_schedules.py` and regenerate the harness targets by rerunning the sweep script.

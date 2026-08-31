@@ -96,15 +96,22 @@ class BaselineComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """
         from core.benchmark.metrics import compute_roofline_metrics
         
-        # Estimate FLOPs for the model (2 linear layers: 2*M*N*K per layer)
-        # Layer 1: N -> N*2, Layer 2: N*2 -> N
-        layer1_flops = 2 * self.N * (self.N * 2) * self.N
-        layer2_flops = 2 * self.N * self.N * (self.N * 2)
+        # The input is a vector, so both linear layers execute GEMVs. Count one
+        # multiply-add per weight rather than treating the vector as N matrix rows.
+        layer1_flops = 2 * self.N * (self.N * 2)
+        layer2_flops = 2 * (self.N * 2) * self.N
         total_flops = (layer1_flops + layer2_flops) * self.repeats
-        
-        # Estimate bytes moved (simplified: input + output)
+
+        # Use a conservative algorithmic-traffic lower bound: every invocation
+        # consumes all weights/biases plus the input and output vectors. Excluding
+        # intermediate activation traffic maximizes the estimated intensity, so it
+        # cannot make this GEMV chain look more memory-bound than the full traffic.
         element_size = 2  # FP16
-        total_bytes = (self.N + self.N) * element_size * self.repeats
+        parameter_elements = 4 * self.N * self.N + 3 * self.N
+        activation_io_elements = 2 * self.N
+        total_bytes = (
+            parameter_elements + activation_io_elements
+        ) * element_size * self.repeats
         
         # Use elapsed time from last run if available
         elapsed_ms = getattr(self, '_last_elapsed_ms', None)

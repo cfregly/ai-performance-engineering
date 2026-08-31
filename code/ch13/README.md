@@ -24,9 +24,10 @@ Representative validated results from `artifacts/runs/20260303_163946__bench__pr
 | `kv_cache_naive` | `1664.672 ms / 1194.135 MB` | `1739.080 ms / 370.394 MB` | `68.98% less memory` | token-by-token paged allocation preserves the batch contract while cutting KV-cache footprint |
 | `memory_profiling` | allocator fragmentation baseline | gradient-checkpointed path | memory-goal benchmark | checkpointing is judged by lower peak allocation and cleaner allocator behavior, not by raw speedup |
 | `autograd_standard` | `1.644 ms` | `0.204 ms` | `8.04x` | compiled/optimized autograd path |
-| `precisionfp8_te` | `2.800 ms` | `0.542 ms` | `5.17x` | Transformer Engine FP8 path |
 
 This chapter is one of the easiest places to fool yourself with framework overhead. That is why the benchmark contract and side-by-side baseline/optimized structure matter here more than almost anywhere else.
+
+The prior `precisionfp8_te` number compared eager FP16 with CUDA-graph-replayed FP8, so it is retired. The pair now runs both sides eagerly to isolate Transformer Engine FP8; publish a new speed result only after a fresh B200 correctness and timing run.
 
 ## Profiler Evidence
 Use deep-dive runs when you want to see whether the gain came from framework overhead reduction, memory behavior, or the lower-precision path itself:

@@ -51,10 +51,9 @@ class BaselineMoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs: Optional[torch.Tensor] = None
         self.batch = 32
         self.hidden_dim = 1024
-        tokens = self.batch * self.hidden_dim
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch),
-            tokens_per_iteration=float(tokens),
+            tokens_per_iteration=float(self.batch),
         )
         self._verify_input: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None

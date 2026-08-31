@@ -48,7 +48,6 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._fp32_output: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
-        self._fp32_buffers: List[torch.Tensor] = []
         self._fp32_outputs: List[torch.Tensor] = []
         self._fp16_buffers: List[torch.Tensor] = []
         self._fp16_outputs: List[torch.Tensor] = []
@@ -94,8 +93,6 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_output_buffer = torch.empty_like(self.inputs[0])
         self._bucket_slices = self._build_bucket_slices()
         self._fp32_outputs = [torch.empty_like(t) for t in self.inputs]
-        if not self.multi_gpu and self.simulate_single_gpu_transfer:
-            self._fp32_buffers = [torch.empty_like(t) for t in self.inputs]
         if self.compression == "fp16":
             self._fp16_buffers = [
                 torch.empty_like(t, dtype=torch.float16) for t in self.inputs
@@ -135,10 +132,11 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     self.output = self._fp32_outputs[0]
                 else:
                     if self.simulate_single_gpu_transfer:
-                        if not self._fp32_buffers or not self._fp32_outputs:
-                            raise RuntimeError("FP32 transfer buffers not initialized")
-                        self._fp32_buffers[0].copy_(self.inputs[0])
-                        self._fp32_outputs[0].copy_(self._fp32_buffers[0])
+                        if not self._fp32_outputs:
+                            raise RuntimeError("FP32 transfer output not initialized")
+                        # Communication-only baselines model one payload transfer,
+                        # matching the precompressed FP16/INT8 paths below.
+                        self._fp32_outputs[0].copy_(self.inputs[0])
                         self.output = self._fp32_outputs[0]
                     else:
                         if self._fp32_output is None:
@@ -375,7 +373,6 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._fp32_output = None
         self._verify_input = None
         self._verify_output_buffer = None
-        self._fp32_buffers = []
         self._fp32_outputs = []
         self._fp16_buffers = []
         self._fp16_outputs = []

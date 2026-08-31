@@ -225,7 +225,10 @@ def _make_endpoint(route: ApiRoute):
 
         had_exception = False
         try:
-            result = route.handler(params)
+            # Registry handlers are synchronous and may perform filesystem,
+            # subprocess, or GPU-driver work. Keep them off the ASGI event loop
+            # so one slow request cannot stall unrelated routes or the SSE feed.
+            result = await asyncio.to_thread(route.handler, params)
         except Exception as exc:
             had_exception = True
             result = {
@@ -302,7 +305,7 @@ async def gpu_stream(
             try:
                 payload = {
                     "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    "gpu": get_engine().gpu.info(),
+                    "gpu": await asyncio.to_thread(get_engine().gpu.info),
                 }
                 yield f"event: gpu\ndata: {json.dumps(payload)}\n\n"
             except Exception as exc:

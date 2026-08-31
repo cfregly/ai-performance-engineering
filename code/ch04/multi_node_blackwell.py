@@ -213,6 +213,9 @@ class MultiNodeTransformerBlock(nn.Module):
         self.d_model = d_model
         self.num_heads = num_heads
         self.d_ff = d_ff
+        if num_heads <= 0 or d_model % num_heads != 0:
+            raise ValueError(f"d_model ({d_model}) must be divisible by num_heads ({num_heads})")
+        self.head_dim = d_model // num_heads
         
         # Multi-head attention
         self.attn_norm = nn.LayerNorm(d_model)
@@ -237,10 +240,17 @@ class MultiNodeTransformerBlock(nn.Module):
         k = self.k_proj(x)
         v = self.v_proj(x)
         
-        # Scaled dot-product attention
+        # Colwise tensor parallelism shards the projected width.  Reshape that
+        # width into complete local heads before SDPA so each rank preserves
+        # the full head_dim and therefore the correct attention scale/math.
+        batch_size, seq_len, _ = q.shape
+        q = q.view(batch_size, seq_len, -1, self.head_dim).transpose(1, 2)
+        k = k.view(batch_size, seq_len, -1, self.head_dim).transpose(1, 2)
+        v = v.view(batch_size, seq_len, -1, self.head_dim).transpose(1, 2)
         attn_out = F.scaled_dot_product_attention(
             q, k, v, dropout_p=0.1 if self.training else 0.0,
         )
+        attn_out = attn_out.transpose(1, 2).contiguous().flatten(2)
         x = self.o_proj(attn_out)
         x = self.dropout(x)
         x = x + residual
@@ -365,12 +375,23 @@ def apply_tensor_parallelism(
     Apply tensor parallelism to model using PyTorch 2.10 API.
     Optimized for intra-node parallelism via NVLink-C2C.
     """
+    tp_mesh = device_mesh["tp"]
+    tp_size = tp_mesh.size()
+
+    # A column-wise Q/K/V shard must contain whole attention heads.  Otherwise
+    # SDPA would split a head's feature dimension and change the attention math.
+    for layer in model.layers:
+        if layer.num_heads % tp_size != 0:
+            raise ValueError(
+                f"num_heads ({layer.num_heads}) must be divisible by tp_size ({tp_size})"
+            )
+
     # Parallelize attention projections
     for layer in model.layers:
         # Column-wise parallel for Q, K, V projections
         parallelize_module(
             layer,
-            device_mesh["tp"],
+            tp_mesh,
             {
                 "q_proj": ColwiseParallel(),
                 "k_proj": ColwiseParallel(),
@@ -380,13 +401,13 @@ def apply_tensor_parallelism(
         # Row-wise parallel for output projection
         parallelize_module(
             layer,
-            device_mesh["tp"],
+            tp_mesh,
             {"o_proj": RowwiseParallel()},
         )
         # Column-wise for FF1, Row-wise for FF2
         parallelize_module(
             layer,
-            device_mesh["tp"],
+            tp_mesh,
             {
                 "ff1": ColwiseParallel(),
                 "ff2": RowwiseParallel(),
@@ -496,12 +517,14 @@ def train_multi_node(
     global_step = 0
     loss_value_buffer = torch.empty(1, dtype=torch.float64, device=f"cuda:{device}")
     epoch_loss_sum = torch.zeros((), dtype=torch.float64, device=f"cuda:{device}")
+    step_start_event = torch.cuda.Event(enable_timing=True)
+    step_end_event = torch.cuda.Event(enable_timing=True)
     
     for epoch in range(num_epochs):
         epoch_loss_sum.zero_()
         epoch_start = time.perf_counter()
         for step, batch in enumerate(train_data):
-            step_start = time.perf_counter()
+            step_start_event.record()
             
             # Move to device
             input_ids = batch['input_ids'].to(device)
@@ -524,7 +547,11 @@ def train_multi_node(
                 optimizer.zero_grad()
                 global_step += 1
             
-            step_time = time.perf_counter() - step_start
+            # CUDA events measure completed device work instead of host enqueue
+            # rate. Synchronizing the end event also makes epoch wall time honest.
+            step_end_event.record()
+            step_end_event.synchronize()
+            step_time = step_start_event.elapsed_time(step_end_event) / 1000.0
             # Log statistics
             if rank == 0 and step % 10 == 0:
                 loss_value_buffer[0].copy_(loss.detach())

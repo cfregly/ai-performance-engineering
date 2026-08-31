@@ -240,7 +240,7 @@ _EXAMPLES: Dict[str, PipelineExample] = {
                 "pv_mma",
                 "load_kv",
                 "anti_dependency",
-                2,
+                3,
                 1,
                 "A stage cannot be reused for a later load until the prior PV matmul is done with that tile.",
             ),

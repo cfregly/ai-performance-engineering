@@ -26,6 +26,10 @@ export function formatBytes(bytes: number): string {
   return bytes + ' B';
 }
 
+export function mebibytesToBytes(mebibytes: number): number {
+  return mebibytes * 1024 ** 2;
+}
+
 export function getSpeedupColor(speedup: number): string {
   if (speedup >= 5) return '#00f5a0';   // Excellent
   if (speedup >= 2) return '#00f5d4';   // Great
@@ -42,5 +46,4 @@ export function getStatusColor(status: string): string {
     default: return '#6b7280';
   }
 }
-
 

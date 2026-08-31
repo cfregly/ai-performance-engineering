@@ -23,6 +23,17 @@ import torch
 
 BENCHMARK_QUICK = os.environ.get("BENCHMARK_QUICK", "0") == "1"
 
+
+def _decimal_gb_per_second(
+    *, size_mb: int, iterations: int, elapsed_seconds: float, directions: int = 1
+) -> float:
+    """Return payload bandwidth in decimal GB/s from a MiB workload size."""
+    if size_mb <= 0 or iterations <= 0 or directions <= 0 or elapsed_seconds <= 0:
+        raise ValueError("size, iterations, directions, and elapsed time must be positive")
+    total_bytes = size_mb * 1024 * 1024 * iterations * directions
+    return total_bytes / elapsed_seconds / 1e9
+
+
 def detect_architecture():
     """Detect GPU architecture"""
     if not torch.cuda.is_available():
@@ -66,7 +77,11 @@ def measure_h2d_bandwidth(size_mb=1024, iterations=100):
     end.synchronize()
     elapsed_ms = start.elapsed_time(end)
     
-    bandwidth_gbs = (size_mb * iterations) / (elapsed_ms / 1000.0)
+    bandwidth_gbs = _decimal_gb_per_second(
+        size_mb=size_mb,
+        iterations=iterations,
+        elapsed_seconds=elapsed_ms / 1000.0,
+    )
     return bandwidth_gbs, elapsed_ms / iterations
 
 
@@ -95,7 +110,11 @@ def measure_d2h_bandwidth(size_mb=1024, iterations=100):
     end.synchronize()
     elapsed_ms = start.elapsed_time(end)
     
-    bandwidth_gbs = (size_mb * iterations) / (elapsed_ms / 1000.0)
+    bandwidth_gbs = _decimal_gb_per_second(
+        size_mb=size_mb,
+        iterations=iterations,
+        elapsed_seconds=elapsed_ms / 1000.0,
+    )
     return bandwidth_gbs, elapsed_ms / iterations
 
 
@@ -131,9 +150,13 @@ def measure_bidirectional_bandwidth(size_mb=512, iterations=100):
     torch.cuda.synchronize()
     elapsed_sec = time.perf_counter() - start_time
     
-    # Total data: H2D + D2H
-    total_mb = 2 * size_mb * iterations
-    bandwidth_gbs = (total_mb / 1024.0) / elapsed_sec
+    # Total payload: one H2D transfer plus one D2H transfer per iteration.
+    bandwidth_gbs = _decimal_gb_per_second(
+        size_mb=size_mb,
+        iterations=iterations,
+        elapsed_seconds=elapsed_sec,
+        directions=2,
+    )
     
     return bandwidth_gbs, (elapsed_sec * 1000.0) / iterations
 
@@ -176,7 +199,11 @@ def measure_zero_copy_read_bandwidth(size_mb=1024, iterations=50):
     end.synchronize()
     elapsed_ms = start.elapsed_time(end)
     
-    bandwidth_gbs = (size_mb * iterations) / (elapsed_ms / 1000.0)
+    bandwidth_gbs = _decimal_gb_per_second(
+        size_mb=size_mb,
+        iterations=iterations,
+        elapsed_seconds=elapsed_ms / 1000.0,
+    )
     return bandwidth_gbs, elapsed_ms / iterations
 
 

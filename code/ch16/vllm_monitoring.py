@@ -173,9 +173,9 @@ def build_vllm_monitoring_bundle(metrics: MetricNames, thresholds: AlertThreshol
                 labels:
                   severity: warning
                 annotations:
-                  summary: "TTFT p90 high ({{ $labels.model_name }} @ {{ $labels.instance }})"
+                  summary: "TTFT p90 high ({{{{ $labels.model_name }}}} @ {{{{ $labels.instance }}}})"
                   description: |
-                    Time to first token p90 is {{ $value }}s.
+                    Time to first token p90 is {{{{ $value }}}}s.
                     Check scheduler load, prefill batch sizes, and KV cache usage.
 
               - alert: VLLMHighTTFTP99
@@ -184,7 +184,7 @@ def build_vllm_monitoring_bundle(metrics: MetricNames, thresholds: AlertThreshol
                 labels:
                   severity: critical
                 annotations:
-                  summary: "TTFT p99 degraded ({{ $labels.model_name }} @ {{ $labels.instance }})"
+                  summary: "TTFT p99 degraded ({{{{ $labels.model_name }}}} @ {{{{ $labels.instance }}}})"
                   description: |
                     TTFT p99 > {t.ttft_p99_crit}s. Often caused by GPU saturation, long prompts, or cache fragmentation.
 
@@ -194,7 +194,7 @@ def build_vllm_monitoring_bundle(metrics: MetricNames, thresholds: AlertThreshol
                 labels:
                   severity: warning
                 annotations:
-                  summary: "Prefill latency p90 elevated ({{ $labels.model_name }} @ {{ $labels.instance }})"
+                  summary: "Prefill latency p90 elevated ({{{{ $labels.model_name }}}} @ {{{{ $labels.instance }}}})"
                   description: |
                     Prefill p90 exceeds {t.prefill_p90_warn}s. Prompts may be too long or batches oversized.
 
@@ -204,7 +204,7 @@ def build_vllm_monitoring_bundle(metrics: MetricNames, thresholds: AlertThreshol
                 labels:
                   severity: warning
                 annotations:
-                  summary: "Decode latency p90 elevated ({{ $labels.model_name }} @ {{ $labels.instance }})"
+                  summary: "Decode latency p90 elevated ({{{{ $labels.model_name }}}} @ {{{{ $labels.instance }}}})"
                   description: |
                     Decode p90 above {t.decode_p90_warn}s suggests slow token throughput at current concurrency.
 
@@ -214,7 +214,7 @@ def build_vllm_monitoring_bundle(metrics: MetricNames, thresholds: AlertThreshol
                 labels:
                   severity: warning
                 annotations:
-                  summary: "Inter-token latency p90 high ({{ $labels.model_name }} @ {{ $labels.instance }})"
+                  summary: "Inter-token latency p90 high ({{{{ $labels.model_name }}}} @ {{{{ $labels.instance }}}})"
                   description: |
                     Time per output token p90 exceeds {t.inter_token_p90_warn}s. Check GPU utilization, batching, or attention backend.
 
@@ -224,7 +224,7 @@ def build_vllm_monitoring_bundle(metrics: MetricNames, thresholds: AlertThreshol
                 labels:
                   severity: warning
                 annotations:
-                  summary: "KV cache usage > {t.kv_warn}% ({{ $labels.model_name }} @ {{ $labels.instance }})"
+                  summary: "KV cache usage > {t.kv_warn}% ({{{{ $labels.model_name }}}} @ {{{{ $labels.instance }}}})"
                   description: |
                     KV cache sustained above {t.kv_warn}%. Expect elevated TTFT and possible stalls soon.
 
@@ -234,7 +234,7 @@ def build_vllm_monitoring_bundle(metrics: MetricNames, thresholds: AlertThreshol
                 labels:
                   severity: critical
                 annotations:
-                  summary: "KV cache nearly full ({{ $labels.model_name }} @ {{ $labels.instance }})"
+                  summary: "KV cache nearly full ({{{{ $labels.model_name }}}} @ {{{{ $labels.instance }}}})"
                   description: |
                     KV cache above {t.kv_crit}%. New requests may hang or fail. Shed load or lower max concurrency.
 
@@ -247,7 +247,7 @@ def build_vllm_monitoring_bundle(metrics: MetricNames, thresholds: AlertThreshol
                 labels:
                   severity: critical
                 annotations:
-                  summary: "Active requests but almost no completions ({{ $labels.model_name }} @ {{ $labels.instance }})"
+                  summary: "Active requests but almost no completions ({{{{ $labels.model_name }}}} @ {{{{ $labels.instance }}}})"
                   description: |
                     Active work with almost zero completions suggests deadlocks, cache starvation, or CUDA stalls.
 
@@ -259,7 +259,7 @@ def build_vllm_monitoring_bundle(metrics: MetricNames, thresholds: AlertThreshol
                 labels:
                   severity: warning
                 annotations:
-                  summary: "Queue draining slowly ({{ $labels.model_name }} @ {{ $labels.instance }})"
+                  summary: "Queue draining slowly ({{{{ $labels.model_name }}}} @ {{{{ $labels.instance }}}})"
                   description: |
                     Finished/active ratio is very low with many active requests.
                     Scheduler may be overloaded or batch policy misconfigured.
@@ -270,7 +270,7 @@ def build_vllm_monitoring_bundle(metrics: MetricNames, thresholds: AlertThreshol
                 labels:
                   severity: info
                 annotations:
-                  summary: "CUDA graph mode changed ({{ $labels.model_name }} @ {{ $labels.instance }})"
+                  summary: "CUDA graph mode changed ({{{{ $labels.model_name }}}} @ {{{{ $labels.instance }}}})"
                   description: |
                     Mode deviated from FULL_AND_PIECEWISE. Could indicate config drift or eager fallback.
         """
@@ -479,7 +479,7 @@ def build_vllm_monitoring_bundle(metrics: MetricNames, thresholds: AlertThreshol
                 "datasource": {"type": "prometheus", "uid": "PROM_DS_UID"},
                 "targets": [
                     {
-                        "expr": f"sum by (instance, model_name, error_type) (rate({m.enginecore_errors_total}{{model_name=~\\\"$model\\\",instance=~\\\"$instance\\\"}}[1m]))",
+                        "expr": f'sum by (instance, model_name, error_type) (rate({m.enginecore_errors_total}{{model_name=~"$model",instance=~"$instance"}}[1m]))',
                         "legendFormat": "{{error_type}} {{instance}} {{model_name}}",
                         "refId": "A",
                     }
@@ -493,7 +493,7 @@ def build_vllm_monitoring_bundle(metrics: MetricNames, thresholds: AlertThreshol
                 "datasource": {"type": "prometheus", "uid": "PROM_DS_UID"},
                 "targets": [
                     {
-                        "expr": f"sum by (instance, model_name, error_type) (rate({m.scheduler_errors_total}{{model_name=~\\\"$model\\\",instance=~\\\"$instance\\\"}}[1m]))",
+                        "expr": f'sum by (instance, model_name, error_type) (rate({m.scheduler_errors_total}{{model_name=~"$model",instance=~"$instance"}}[1m]))',
                         "legendFormat": "{{error_type}} {{instance}} {{model_name}}",
                         "refId": "A",
                     }

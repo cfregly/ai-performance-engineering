@@ -64,19 +64,12 @@ class KVCache:
         )
 
     def append(self, k: torch.Tensor, v: torch.Tensor) -> "KVCache":
-        """Append one or more KV rows without rebuilding the full prefix when capacity allows."""
+        """Append through copy-on-write so sibling prefixes remain immutable."""
         append_len = k.size(0)
         new_seq_len = self.seq_len + append_len
-        if new_seq_len <= self.capacity:
-            self.keys[self.seq_len:new_seq_len].copy_(k)
-            self.values[self.seq_len:new_seq_len].copy_(v)
-            return KVCache(
-                keys=self.keys,
-                values=self.values,
-                seq_len=new_seq_len,
-                capacity=self.capacity,
-            )
-
+        # A cached prefix can be referenced by multiple radix-tree branches.
+        # Treat its storage as immutable and allocate a private extension even
+        # when unused capacity remains; otherwise one branch corrupts siblings.
         new_capacity = max(new_seq_len, max(1, self.capacity) * 2)
         new_keys = torch.empty(
             new_capacity,

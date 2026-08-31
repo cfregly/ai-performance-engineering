@@ -53,12 +53,7 @@ def emit_capability_entries(records: Dict[str, Dict[str, object]]) -> str:
     for key in sorted(records.keys()):
         record = records[key]
         major, minor = parse_sm_tag(key)
-        tma = record.get("tma", {}) or {}
         cluster = record.get("cluster", {}) or {}
-
-        max_1d = int(tma.get("max_1d", 0) or 0)
-        max_2d_w = int(tma.get("max_2d_width", 0) or 0)
-        max_2d_h = int(tma.get("max_2d_height", 0) or 0)
 
         supports_clusters = bool(cluster.get("supports_clusters", False))
         has_dsmem = bool(cluster.get("has_dsmem", False))
@@ -72,7 +67,6 @@ def emit_capability_entries(records: Dict[str, Dict[str, object]]) -> str:
 
         entry = f"""    {{
         {major}, {minor},
-        {{{max_1d}, {max_2d_w}, {max_2d_h}}},
         {format_bool(supports_clusters)},
         {format_bool(has_dsmem)},
         {max_cluster_size},
@@ -147,7 +141,6 @@ struct TensorCoreTile {{
 struct CapabilityData {{
     int major;
     int minor;
-    TMALimits tma;
     bool supports_clusters;
     bool has_dsmem;
     int max_cluster_size;
@@ -173,22 +166,21 @@ inline const CapabilityData* find_capability(int major, int minor) {{
 }}
 
 inline TMALimits get_tma_limits() {{
-    static TMALimits cached_limits = {{0, 0, 0}};
-    if (cached_limits.max_1d_box_size != 0) {{
+    static TMALimits cached_limits{{}};
+    static bool initialized = false;
+    if (initialized) {{
         return cached_limits;
     }}
 
     cudaDeviceProp props{{}};
-    if (cudaGetDeviceProperties(&props, 0) != cudaSuccess) {{
-        cached_limits = {{256, 64, 32}};
-        return cached_limits;
+    if (cudaGetDeviceProperties(&props, 0) == cudaSuccess && props.major >= 9) {{
+        // cuTensorMapEncodeTiled constrains every boxDim entry to [1, 256].
+        // This is a CUDA Driver API descriptor contract, not an architecture
+        // capability-table value.
+        // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html
+        cached_limits = {{256, 256, 256}};
     }}
-
-    if (const CapabilityData* entry = find_capability(props.major, props.minor)) {{
-        cached_limits = entry->tma;
-    }} else {{
-        cached_limits = {{256, 64, 32}};
-    }}
+    initialized = true;
     return cached_limits;
 }}
 
@@ -274,8 +266,11 @@ inline const ArchitectureLimits& get_architecture_limits() {{
             cached.tensor_tile_n = 32;
             cached.tensor_tile_k = 16;
         }}
-        cached.has_grace_coherence = (props.major == 12 && props.minor >= 1);
-        cached.has_nvlink_c2c = cached.has_grace_coherence;
+        // Compute capability alone does not identify the host CPU or prove an
+        // NVLink-C2C coherent Grace-Blackwell platform. Only probed capability
+        // table entries may assert these host/platform properties.
+        cached.has_grace_coherence = false;
+        cached.has_nvlink_c2c = false;
     }}
 
     initialized = true;

@@ -156,9 +156,7 @@ __global__ void gemm_device(ATensor mA,
   auto tiled_t2r_copy = make_tmem_copy(SM100_TMEM_LOAD_32dp32b1x{}, tCtAcc);
   auto thr_t2r_copy = tiled_t2r_copy.get_slice(threadIdx.x);
 
-  Tensor tDgC = thr_t2r_copy.partition_D(tCgC);
-  Tensor tDrC = make_fragment_like(tDgC);
-  copy(tDgC, tDrC);
+  Tensor tDrC = make_fragment_like(thr_t2r_copy.partition_D(tCgC));
 
   Tensor tDtAcc = thr_t2r_copy.partition_S(tCtAcc);
   Tensor tDgD = thr_t2r_copy.partition_D(tCgD);
@@ -166,22 +164,24 @@ __global__ void gemm_device(ATensor mA,
   copy(tiled_t2r_copy, tDtAcc, tDrAcc);
 
   if (fuse_bias_silu && bias_ptr != nullptr) {
-    // Apply bias + SiLU while data is still on-chip (TMEM -> registers).
-    // First copy accumulator to output tensor
-    axpby(1.0f, tDrAcc, 0.0f, tDrC);
-    // Then apply bias + SiLU in-place using flat iteration
-    // Note: This is a simplified fusion - proper implementation would need
-    // to track global N coordinates per thread for bias lookup
+    // Broadcast one bias per global N column through the same tile/fragment
+    // partition as the accumulator; a thread-local flat index is not a column.
+    Tensor mBias = make_tensor(
+        make_gmem_ptr(bias_ptr),
+        make_layout(shape(mD), make_stride(Int<0>{}, Int<1>{})));
+    Tensor gBias = local_tile(mBias, mma_tiler, mma_coord, Step<_1, _1, X>{});
+    Tensor tCgBias = cta_mma.partition_C(gBias);
+    Tensor tDgBias = thr_t2r_copy.partition_D(tCgBias);
+    Tensor tDrBias = make_fragment_like(tDgBias);
+    copy(tDgBias, tDrBias);
     CUTE_UNROLL
     for (int i = 0; i < size(tDrC); ++i) {
-      float acc_val = static_cast<float>(tDrC(i));
-      // Simplified: use thread-local bias offset (proper impl needs global N coord)
-      float x = acc_val;  // bias application would need proper coordinate mapping
-      float sig = 1.0f / (1.0f + expf(-x));
+      const float x = static_cast<float>(tDrAcc(i)) + static_cast<float>(tDrBias(i));
+      const float sig = 1.0f / (1.0f + expf(-x));
       tDrC(i) = x * sig;
     }
   } else {
-    axpby(1.0f, tDrAcc, 0.0f, tDrC);
+    copy(tDrAcc, tDrC);
   }
   copy(tDrC, tDgD);
 

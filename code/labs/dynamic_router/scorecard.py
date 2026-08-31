@@ -74,10 +74,20 @@ def _load_run(run_dir: Path) -> Dict:
     ttft_p95 = _pct(ttft_vals, 95)
     decode_p95 = _pct(decode_vals, 95)
 
-    drop_total = 0
+    drop_total = 0.0
+    drop_token_total = 0.0
+    drop_counts_complete = True
     for row in moe_router_rows:
-        drop_total += row.get("drops", 0)
-    drop_rate = drop_total / float(len(moe_router_rows) or 1)
+        drop_total += float(row.get("drops", 0.0))
+        if "total_tokens" not in row:
+            drop_counts_complete = False
+            continue
+        drop_token_total += float(row["total_tokens"])
+    drop_rate = (
+        drop_total / drop_token_total
+        if drop_counts_complete and drop_token_total > 0
+        else float("nan")
+    )
     traffic_rows = _read_jsonl(run_dir / "moe_traffic.jsonl")
     imbalance_cv = max((r.get("imbalance_cv", 0.0) for r in traffic_rows), default=0.0)
 

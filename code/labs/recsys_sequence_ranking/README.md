@@ -82,4 +82,4 @@ python -m labs.recsys_sequence_ranking.compare_sequence_ranking --iterations 10 
 ## Notes
 - The workload is intentionally synthetic and weight-light. The point is to benchmark sparse ranking mechanics, not offline recommendation quality.
 - This lab keeps ETL, feature stores, and training out of the timed path on purpose. If those become the story, they belong in a separate workflow/playbook lab.
-- The optimized path uses Triton only for candidate scoring in the first version. That keeps the performance claim narrow and explainable while still giving the lab a real kernel-level optimization anchor.
+- When Triton is available, the optimized path uses fused Triton kernels for sequence pooling and candidate scoring. The `--score-backend torch` override changes candidate scoring only; sequence pooling may still use its Triton kernel.

@@ -8,10 +8,12 @@ Demonstrates optimization strategies for GPT-4 scale models:
 - Disaggregated prefill/decode
 """
 
+import math
+import time
+from typing import Any, Dict, Optional
+
 import torch
 import torch.nn as nn
-from typing import Dict, Any, Optional
-import time
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkConfig, BenchmarkMode
@@ -40,9 +42,15 @@ class GPT4ArchitectureOptimization:
     ):
         self.batch_size = batch_size
         self.seq_length = seq_length
-        self.use_moe = use_moe
-        self.use_fp8 = use_fp8
-        self.use_context_parallel = use_context_parallel
+        # The compact executable proxy below is a dense BF16 layer stack. Keep
+        # the requested architecture assumptions for the memory estimate, but
+        # report only optimizations that the timed workload actually executes.
+        self.requested_use_moe = bool(use_moe)
+        self.requested_use_fp8 = bool(use_fp8)
+        self.requested_use_context_parallel = bool(use_context_parallel)
+        self.use_moe = False
+        self.use_fp8 = False
+        self.use_context_parallel = False
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.output: Optional[torch.Tensor] = None
@@ -52,28 +60,34 @@ class GPT4ArchitectureOptimization:
         self._throughput_logged = False
         self._timing_pending = False
         
-        logger.info(f"GPT-4 Architecture Optimization")
-        logger.info(f"  MoE: {use_moe}")
-        logger.info(f"  FP8: {use_fp8}")
-        logger.info(f"  Context Parallel: {use_context_parallel}")
+        logger.info("GPT-4 Architecture Optimization")
+        logger.info("  Requested MoE architecture estimate: %s", self.requested_use_moe)
+        logger.info("  Requested FP8 architecture estimate: %s", self.requested_use_fp8)
+        logger.info(
+            "  Requested context-parallel architecture estimate: %s",
+            self.requested_use_context_parallel,
+        )
+        logger.info("  Executed proxy precision: BF16 dense")
         
         # Estimate memory requirements
         self._estimate_memory()
     
     def _estimate_memory(self):
         """Estimate memory requirements."""
-        # Model parameters (approximate)
-        params_per_layer = (
-            self.HIDDEN_SIZE * self.HIDDEN_SIZE * 4 +  # Attention
-            self.HIDDEN_SIZE * self.HIDDEN_SIZE * 4 * 3  # FFN (if dense)
-        )
-        
-        if self.use_moe:
-            # MoE: fewer active params
-            params_per_layer = params_per_layer // 2  # Roughly
-        
+        # Model parameters (approximate). MoE routing activates only a subset
+        # of experts per token, but every expert's weights must remain stored.
+        attention_params_per_layer = self.HIDDEN_SIZE * self.HIDDEN_SIZE * 4
+        ffn_params_per_expert = self.HIDDEN_SIZE * self.HIDDEN_SIZE * 4 * 3
+        if self.requested_use_moe:
+            params_per_layer = (
+                attention_params_per_layer
+                + ffn_params_per_expert * self.NUM_EXPERTS_PER_LAYER
+            )
+        else:
+            params_per_layer = attention_params_per_layer + ffn_params_per_expert
+
         total_params = params_per_layer * self.NUM_LAYERS
-        
+
         # Memory in GB (FP16)
         param_memory_gb = (total_params * 2) / (1024**3)
         
@@ -84,18 +98,24 @@ class GPT4ArchitectureOptimization:
             (self.HIDDEN_SIZE // self.NUM_HEADS) * 2
         ) / (1024**3)
         
-        if self.use_fp8:
+        if self.requested_use_fp8:
             kv_memory_gb /= 2
-        
+
         total_memory_gb = param_memory_gb + kv_memory_gb
-        
+
+        self.estimated_parameter_count = total_params
+        self.estimated_parameter_memory_gb = param_memory_gb
+        self.estimated_kv_memory_gb = kv_memory_gb
+        self.estimated_total_memory_gb = total_memory_gb
+        self.estimated_min_b200_gpus = max(1, math.ceil(total_memory_gb / 192))
+
         logger.info(f"Estimated memory: {total_memory_gb:.2f} GB")
         logger.info(f"  Parameters: {param_memory_gb:.2f} GB")
         logger.info(f"  KV cache: {kv_memory_gb:.2f} GB")
-        
+
         if total_memory_gb > 192:  # B200 capacity
             logger.warning(f"Memory exceeds single B200 (192GB)")
-            logger.info(f"Requires {int(total_memory_gb / 192) + 1} GPUs minimum")
+            logger.info("Requires %d GPUs minimum", self.estimated_min_b200_gpus)
     
     def setup(self):
         """Initialize simplified GPT-4 model (for benchmarking)."""
@@ -316,10 +336,15 @@ def run_benchmark(
     return {
         "mean_time_ms": result.timing.mean_ms,
         "optimizations": {
-            "moe": use_moe,
-            "fp8": use_fp8,
-            "context_parallel": use_context_parallel,
-        }
+            "moe": benchmark.use_moe,
+            "fp8": benchmark.use_fp8,
+            "context_parallel": benchmark.use_context_parallel,
+        },
+        "requested_architecture_assumptions": {
+            "moe": benchmark.requested_use_moe,
+            "fp8": benchmark.requested_use_fp8,
+            "context_parallel": benchmark.requested_use_context_parallel,
+        },
     }
 
 

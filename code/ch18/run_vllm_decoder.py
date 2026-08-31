@@ -358,21 +358,29 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.spec_decoder: Optional[SpeculativeDecoder] = None
         self.spec_config_path: Optional[Path] = None
         self.spec_config: SpeculatorConfig = SpeculatorConfig()
-        self.enable_graphs = os.getenv("OPT_MOE_ENABLE_GRAPHS") == "1"
+        requested_graph_mode = os.getenv("OPT_MOE_GRAPH_MODE")
+        self.graph_mode = GraphMode.from_str(requested_graph_mode)
+        enable_graphs_override = os.getenv("OPT_MOE_ENABLE_GRAPHS")
+        self.enable_graphs = (
+            enable_graphs_override == "1"
+            if enable_graphs_override is not None
+            else requested_graph_mode is not None and self.graph_mode != GraphMode.EAGER
+        )
         self.prefill_workers = env_override_int("OPT_MOE_PREFILL_WORKERS", 2)
         self.decode_workers = env_override_int("OPT_MOE_DECODE_WORKERS", 2)
         self._dtype_bytes = dtype_bytes(self.config.dtype_obj)
         total_tokens = self.config.context_window + self.config.decode_tokens
         self.engine_variant = "v1"
-        self.graph_mode = GraphMode.from_str(os.getenv("OPT_MOE_GRAPH_MODE"))
         self.max_capture_tokens = env_override_int("OPT_MOE_MAX_CAPTURE_TOKENS", total_tokens)
         self._full_graph: Optional[torch.cuda.CUDAGraph] = None
+        self._full_graph_tokens: Optional[torch.Tensor] = None
         self._full_prefill_done: Optional[torch.cuda.Event] = None
         self._full_decode_done: Optional[torch.cuda.Event] = None
         self._full_replay_start: Optional[torch.cuda.Event] = None
         self._full_replay_end: Optional[torch.cuda.Event] = None
         self._piecewise_prefill_graph: Optional[torch.cuda.CUDAGraph] = None
         self._piecewise_decode_graph: Optional[torch.cuda.CUDAGraph] = None
+        self._piecewise_graph_tokens: Optional[torch.Tensor] = None
         self._piecewise_prefill_done: Optional[torch.cuda.Event] = None
         self._piecewise_decode_done: Optional[torch.cuda.Event] = None
         self._piecewise_replay_prefill_start: Optional[torch.cuda.Event] = None
@@ -558,8 +566,6 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
         )
         self.spec_decoder.prepare_workspaces(cfg.batch_size, cfg.dtype_obj, self.device)
-        # Force eager path so verification can capture decode tokens deterministically.
-        self.graph_mode = GraphMode.EAGER
         self._refresh_router_metrics()
         torch.cuda.synchronize(self.device)
         self._memory_poll_pending = False
@@ -645,6 +651,16 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return tokens
 
     # ----------------------------------------------------------- graph preparation
+    def _require_graph_capture_support(self) -> None:
+        """Reject graph modes whose current decode/dispatch control flow is not capturable."""
+        if self.graph_mode == GraphMode.EAGER:
+            return
+        raise RuntimeError(
+            f"CUDA graph mode '{self.graph_mode.value}' is unsupported for speculative MoE "
+            "decode: acceptance control and expert dispatch perform data-dependent host reads. "
+            "Use --graph-mode eager until a graph-safe fixed-control routing path is available."
+        )
+
     def _prepare_graphs(self) -> None:
         cfg = self.config
         if not self.enable_graphs:
@@ -653,6 +669,9 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             return
         if self.graph_mode == GraphMode.EAGER:
             return
+        # Fail before constructing or entering a CUDAGraph. The current path reaches
+        # Tensor.item() in acceptance control and a host metadata read in MoE dispatch.
+        self._require_graph_capture_support()
         if self._prefill_next_values is None:
             self._prefill_next_values = torch.empty(
                 (cfg.batch_size, 1),
@@ -690,7 +709,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._prefill_next_token_from_logits(logits)
             if self._full_prefill_done is not None:
                 self._full_prefill_done.record()
-            _tokens, _, _, _ = self.spec_decoder.decode(  # type: ignore[call-arg]
+            self._full_graph_tokens, _, _, _ = self.spec_decoder.decode(  # type: ignore[call-arg]
                 self._prefill_next_tokens,
                 cfg.decode_tokens,
                 self.paged_cache,  # type: ignore[arg-type]
@@ -732,7 +751,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         # Decode graph: reuse prefetched tokens and capture decode path.
         with torch.cuda.graph(self._piecewise_decode_graph):
-            _tokens, _, _, _ = self.spec_decoder.decode(  # type: ignore[call-arg]
+            self._piecewise_graph_tokens, _, _, _ = self.spec_decoder.decode(  # type: ignore[call-arg]
                 self._prefill_next_tokens,
                 cfg.decode_tokens,
                 self.paged_cache,  # type: ignore[arg-type]
@@ -749,10 +768,18 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def _can_use_full_graph(self) -> bool:
         total_tokens = self.config.context_window + self.config.decode_tokens
-        return self._full_graph is not None and total_tokens <= self.max_capture_tokens
+        return (
+            self._full_graph is not None
+            and self._full_graph_tokens is not None
+            and total_tokens <= self.max_capture_tokens
+        )
 
     def _can_use_piecewise_graph(self) -> bool:
-        return self._piecewise_prefill_graph is not None and self._piecewise_decode_graph is not None
+        return (
+            self._piecewise_prefill_graph is not None
+            and self._piecewise_decode_graph is not None
+            and self._piecewise_graph_tokens is not None
+        )
 
     def _replay_full_graph(self) -> Tuple[List[float], List[float], str, float, float, int, int]:
         if not self._can_use_full_graph():
@@ -768,6 +795,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._full_graph.replay()  # type: ignore[union-attr]
         end.record(current_stream)
         torch.cuda.synchronize(self.device)
+        self.output = self._full_graph_tokens
         ttft_ms = start.elapsed_time(self._full_prefill_done)
         decode_total_ms = self._full_prefill_done.elapsed_time(self._full_decode_done)
         decode_count = self.config.decode_tokens
@@ -798,6 +826,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._piecewise_decode_graph.replay()  # type: ignore[union-attr]
         end.record(current_stream)
         torch.cuda.synchronize(self.device)
+        self.output = self._piecewise_graph_tokens
         ttft_ms = start_prefill.elapsed_time(self._piecewise_prefill_done)
         decode_total_ms = self._piecewise_prefill_done.elapsed_time(self._piecewise_decode_done)
         decode_count = self.config.decode_tokens
@@ -1090,6 +1119,11 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.prompts = None
         self.paged_cache = None
         self.spec_decoder = None
+        self._full_graph = None
+        self._full_graph_tokens = None
+        self._piecewise_prefill_graph = None
+        self._piecewise_decode_graph = None
+        self._piecewise_graph_tokens = None
         self._full_replay_start = None
         self._full_replay_end = None
         self._piecewise_replay_prefill_start = None
@@ -1178,6 +1212,7 @@ def _run_harness(
         benchmark.spec_config_path = Path(spec_config)
     if graph_mode:
         benchmark.graph_mode = GraphMode.from_str(graph_mode)
+        benchmark.enable_graphs = benchmark.graph_mode != GraphMode.EAGER
     if max_capture_tokens is not None:
         benchmark.max_capture_tokens = max_capture_tokens
     config = benchmark.get_config()

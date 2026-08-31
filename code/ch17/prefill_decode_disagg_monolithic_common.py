@@ -14,6 +14,16 @@ class SimpleLLM(nn.Module):
         self.hidden_dim = hidden_dim
         self.layers = nn.ModuleList([nn.Linear(hidden_dim, hidden_dim) for _ in range(num_layers)])
         self.register_buffer("_prefill_input_buffer", torch.empty(0), persistent=False)
+        self.register_buffer(
+            "_prefill_feature_scale",
+            torch.linspace(
+                1.0 / max(hidden_dim, 1),
+                1.0,
+                hidden_dim,
+                dtype=torch.bfloat16,
+            ),
+            persistent=False,
+        )
 
     def _prefill_input(self, prompt_tokens: torch.Tensor) -> torch.Tensor:
         batch_size = int(prompt_tokens.size(0))
@@ -31,7 +41,12 @@ class SimpleLLM(nn.Module):
                 dtype=torch.bfloat16,
             )
         prefill_input = self._prefill_input_buffer[:numel].view(shape)
-        prefill_input.normal_()
+        torch.mul(
+            prompt_tokens.unsqueeze(-1),
+            self._prefill_feature_scale,
+            out=prefill_input,
+        )
+        prefill_input.mul_(1.0 / 10_000.0)
         return prefill_input
 
     def prefill(self, prompt_tokens: torch.Tensor) -> torch.Tensor:
@@ -39,7 +54,7 @@ class SimpleLLM(nn.Module):
         x = self._prefill_input(prompt_tokens)
         for layer in self.layers:
             x = torch.relu_(layer(x))
-        return x[:, -1:, :]
+        return x.mean(dim=1, keepdim=True)
 
     def decode_step(self, kv_cache: torch.Tensor) -> torch.Tensor:
         """Advance the decode state by one token-equivalent step."""

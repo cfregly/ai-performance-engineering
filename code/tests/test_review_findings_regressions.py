@@ -1094,6 +1094,9 @@ def test_portable_rerun_uses_typed_expectation_keys_for_cuda_examples() -> None:
     assert _expectation_example_key(
         {"example": "cuda_graphs_conditional_enhanced", "type": "cuda"}
     ) == ("cuda_graphs_conditional_enhanced_cuda")
+    assert _expectation_example_key(
+        {"example": "cuda_graphs_conditional_enhanced_cuda", "type": "cuda"}
+    ) == ("cuda_graphs_conditional_enhanced_cuda")
     assert (
         _expectation_example_key({"example": "regional_triton", "type": "python"})
         == "regional_triton"

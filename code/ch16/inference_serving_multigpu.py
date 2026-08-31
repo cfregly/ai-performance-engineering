@@ -141,6 +141,35 @@ class CacheExhaustedException(RuntimeError):
     pass
 
 
+def _select_last_token_hidden(
+    hidden: torch.Tensor,
+    input_lengths: List[int],
+) -> torch.Tensor:
+    """Select each sequence's final real token from a padded batch."""
+    batch_size, seq_len, _ = hidden.shape
+    if len(input_lengths) != batch_size:
+        raise ValueError("input_lengths size must match batch size")
+    positions: List[int] = []
+    for batch_idx, value in enumerate(input_lengths):
+        if isinstance(value, bool):
+            raise ValueError(f"input_lengths[{batch_idx}] must be an integer")
+        try:
+            length = operator.index(value)
+        except TypeError as exc:
+            raise ValueError(
+                f"input_lengths[{batch_idx}] must be an integer"
+            ) from exc
+        if length <= 0 or length > seq_len:
+            raise ValueError(
+                f"input_lengths[{batch_idx}]={length} must be between 1 and {seq_len}"
+            )
+        positions.append(length - 1)
+
+    batch_indices = torch.arange(batch_size, device=hidden.device)
+    token_indices = torch.tensor(positions, dtype=torch.long, device=hidden.device)
+    return hidden[batch_indices, token_indices]
+
+
 class DemoCausalLM(nn.Module):
     """Minimal transformer stack that emits attention KV tensors per layer."""
 
@@ -256,7 +285,11 @@ class DemoCausalLM(nn.Module):
         value_stack = self._stack_layer_outputs(local_values, "_value_stack_buffer")
 
         final_hidden = self.final_norm(hidden)
-        logits = self.lm_head(final_hidden[:, -1, :])
+        if input_lengths is None:
+            final_token_hidden = final_hidden[:, -1, :]
+        else:
+            final_token_hidden = _select_last_token_hidden(final_hidden, current_lengths)
+        logits = self.lm_head(final_token_hidden)
 
         return logits, key_stack, value_stack
 

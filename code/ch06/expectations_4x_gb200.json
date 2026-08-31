@@ -108,7 +108,7 @@
       },
       "type": "python"
     },
-    "add_cuda_cuda": {
+    "add_cuda": {
       "example": "add_cuda",
       "metadata": {
         "best_memory_savings_pct": 0.0,

@@ -494,6 +494,22 @@ bool benchmark_tma_2d(cudaDeviceProp& prop) {
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaEventRecord(stop2d));
     CUDA_CHECK(cudaEventSynchronize(stop2d));
+
+    std::vector<float> h_matrix_out(static_cast<std::size_t>(M) * N);
+    CUDA_CHECK(cudaMemcpy(
+        h_matrix_out.data(), d_mat_dst, matrix_bytes, cudaMemcpyDeviceToHost));
+    bool copy_ok = true;
+    for (std::size_t idx = 0; idx < h_matrix_out.size(); ++idx) {
+        if (h_matrix_out[idx] != h_matrix[idx]) {
+            std::fprintf(stderr,
+                         "2D TMA mismatch at %zu: got %.9g expected %.9g\n",
+                         idx,
+                         static_cast<double>(h_matrix_out[idx]),
+                         static_cast<double>(h_matrix[idx]));
+            copy_ok = false;
+            break;
+        }
+    }
     
     float tma2d_ms = 0.0f;
     CUDA_CHECK(cudaEventElapsedTime(&tma2d_ms, start2d, stop2d));
@@ -522,6 +538,10 @@ bool benchmark_tma_2d(cudaDeviceProp& prop) {
     CUDA_CHECK(cudaEventDestroy(stop2d));
     CUDA_CHECK(cudaFree(d_mat_src));
     CUDA_CHECK(cudaFree(d_mat_dst));
+    if (!copy_ok) {
+        std::fprintf(stderr, "2D TMA validation failed.\n");
+        std::exit(EXIT_FAILURE);
+    }
     return true;
 }
 

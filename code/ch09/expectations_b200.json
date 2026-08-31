@@ -1,17 +1,6 @@
 {
   "examples": {
     "compute_bound": {
-      "custom_metrics": {
-        "roofline.achieved_gbps": 0.2126135503449834,
-        "roofline.achieved_tflops": 7134.12691732932,
-        "roofline.arithmetic_intensity": 33554432.0,
-        "roofline.efficiency_pct": 100.0,
-        "roofline.is_compute_bound": 1.0,
-        "roofline.memory_ceiling_tflops": 7134.126917329321,
-        "roofline.peak_gbps": 8000.0,
-        "roofline.peak_tflops": 160.0,
-        "roofline.ridge_point": 20.0
-      },
       "example": "compute_bound",
       "metadata": {
         "best_memory_savings_pct": -3.145995558429146,
@@ -67,63 +56,6 @@
         "warmup_iterations": 5
       },
       "type": "python"
-    },
-    "cublas_gemm_fp4_perchannel_cuda": {
-      "example": "cublas_gemm_fp4_perchannel",
-      "metadata": {
-        "best_memory_savings_pct": 0.0,
-        "best_memory_savings_ratio": 1.0,
-        "best_optimization": "optimized_cublas_gemm_fp4_perchannel",
-        "best_optimization_file": "optimized_cublas_gemm_fp4_perchannel.py",
-        "best_optimization_memory_mb": 148.125,
-        "best_optimization_speedup": 1.1406476240621297,
-        "best_optimization_technique": "optimized_cublas_gemm_fp4_perchannel",
-        "best_optimization_time_ms": 0.0486208,
-        "optimization_goal": "speed"
-      },
-      "metrics": {
-        "baseline_memory_mb": 148.125,
-        "baseline_p75_ms": 0.0554592,
-        "baseline_throughput.bytes_per_s": null,
-        "baseline_throughput.custom_unit_name": null,
-        "baseline_throughput.custom_unit_per_s": null,
-        "baseline_throughput.goodput": null,
-        "baseline_throughput.latency_ms": 0.0554592,
-        "baseline_throughput.requests_per_s": 18031.273440655474,
-        "baseline_throughput.samples_per_s": null,
-        "baseline_throughput.schemaVersion": "1.0",
-        "baseline_throughput.tokens_per_s": null,
-        "baseline_time_ms": 0.0554592,
-        "best_memory_savings_pct": 0.0,
-        "best_memory_savings_ratio": 1.0,
-        "best_optimized_memory_mb": 148.125,
-        "best_optimized_p75_ms": 0.0486208,
-        "best_optimized_speedup": 1.1406476240621297,
-        "best_optimized_throughput.bytes_per_s": null,
-        "best_optimized_throughput.custom_unit_name": null,
-        "best_optimized_throughput.custom_unit_per_s": null,
-        "best_optimized_throughput.goodput": null,
-        "best_optimized_throughput.latency_ms": 0.0486208,
-        "best_optimized_throughput.requests_per_s": 20567.32920889825,
-        "best_optimized_throughput.samples_per_s": null,
-        "best_optimized_throughput.schemaVersion": "1.0",
-        "best_optimized_throughput.tokens_per_s": null,
-        "best_optimized_time_ms": 0.0486208,
-        "best_speedup": 1.1406476240621297,
-        "is_regression": false
-      },
-      "provenance": {
-        "dmi_product_name": "Standard PC (Q35 + ICH9, 2009)",
-        "execution_environment": "virtualized",
-        "git_commit": "0213a139906fe31cace50f86aaff5e6a7d23ce09",
-        "hardware_key": "b200",
-        "iterations": 20,
-        "profile_name": "deep_dive",
-        "timestamp": "2026-03-14T06:38:19.609385",
-        "validity_profile": "strict",
-        "warmup_iterations": 5
-      },
-      "type": "cuda"
     },
     "cublaslt_gemm_cuda": {
       "example": "cublaslt_gemm",
@@ -463,60 +395,6 @@
       },
       "type": "cuda"
     },
-    "cutlass_gemm_fp4_all_concepts_cuda": {
-      "example": "cutlass_gemm_fp4_all_concepts",
-      "metadata": {
-        "best_memory_savings_pct": 0.0,
-        "best_memory_savings_ratio": 1.0,
-        "best_optimization": "optimized_cutlass_gemm_fp4_all_concepts",
-        "best_optimization_file": "optimized_cutlass_gemm_fp4_all_concepts.py",
-        "best_optimization_memory_mb": 147.27587890625,
-        "best_optimization_speedup": 1.5592649565542758,
-        "best_optimization_technique": "optimized_cutlass_gemm_fp4_all_concepts",
-        "best_optimization_time_ms": 0.00769696,
-        "optimization_goal": "speed"
-      },
-      "metrics": {
-        "baseline_memory_mb": 147.27587890625,
-        "baseline_p75_ms": 0.0120016,
-        "baseline_throughput.bytes_per_s": null,
-        "baseline_throughput.custom_unit_name": null,
-        "baseline_throughput.custom_unit_per_s": null,
-        "baseline_throughput.goodput": null,
-        "baseline_throughput.latency_ms": 0.0120016,
-        "baseline_throughput.requests_per_s": 83322.22370350621,
-        "baseline_throughput.samples_per_s": null,
-        "baseline_throughput.schemaVersion": "1.0",
-        "baseline_throughput.tokens_per_s": null,
-        "baseline_time_ms": 0.0120016,
-        "best_memory_savings_pct": 0.0,
-        "best_memory_savings_ratio": 1.0,
-        "best_optimized_memory_mb": 147.27587890625,
-        "best_optimized_p75_ms": 0.00769696,
-        "best_optimized_speedup": 1.5592649565542758,
-        "best_optimized_throughput.bytes_per_s": null,
-        "best_optimized_throughput.custom_unit_name": null,
-        "best_optimized_throughput.custom_unit_per_s": null,
-        "best_optimized_throughput.goodput": null,
-        "best_optimized_throughput.latency_ms": 0.00769696,
-        "best_optimized_throughput.requests_per_s": 129921.42352305326,
-        "best_optimized_throughput.samples_per_s": null,
-        "best_optimized_throughput.schemaVersion": "1.0",
-        "best_optimized_throughput.tokens_per_s": null,
-        "best_optimized_time_ms": 0.00769696,
-        "best_speedup": 1.5592649565542758,
-        "is_regression": false
-      },
-      "provenance": {
-        "git_commit": "46394dc563475242d973d1ad57d7ec221705f59b",
-        "hardware_key": "b200",
-        "iterations": 20,
-        "profile_name": "minimal",
-        "timestamp": "2026-02-08T21:53:06.312392",
-        "warmup_iterations": 5
-      },
-      "type": "cuda"
-    },
     "cutlass_gemm_fp4_cuda": {
       "example": "cutlass_gemm_fp4",
       "metadata": {
@@ -743,17 +621,6 @@
       "type": "cuda"
     },
     "memory_bound": {
-      "custom_metrics": {
-        "roofline.achieved_gbps": 38.64329098773235,
-        "roofline.achieved_tflops": 0.009660822746933088,
-        "roofline.arithmetic_intensity": 0.25,
-        "roofline.efficiency_pct": 0.4830411373466544,
-        "roofline.is_compute_bound": 0.0,
-        "roofline.memory_ceiling_tflops": 0.009660822746933088,
-        "roofline.peak_gbps": 8000.0,
-        "roofline.peak_tflops": 160.0,
-        "roofline.ridge_point": 20.0
-      },
       "example": "memory_bound",
       "metadata": {
         "best_memory_savings_pct": 54.686039719626166,

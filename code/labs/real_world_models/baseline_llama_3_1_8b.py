@@ -12,7 +12,10 @@ import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
-from labs.real_world_models.llama_3_1_8b_optimization import Llama31_8B_Optimization
+from labs.real_world_models.llama_3_1_8b_optimization import (
+    LLAMA_BF16_OUTPUT_TOLERANCE,
+    Llama31_8B_Optimization,
+)
 
 
 class BaselineLlama31_8B(VerificationPayloadMixin, BaseBenchmark):
@@ -58,7 +61,7 @@ class BaselineLlama31_8B(VerificationPayloadMixin, BaseBenchmark):
             batch_size=self.batch_size,
             parameter_count=self.parameter_count,
             precision_flags={"bf16": True, "fp16": False, "fp8": False, "tf32": torch.backends.cuda.matmul.allow_tf32},
-            output_tolerance=(0.1, 1.0),
+            output_tolerance=LLAMA_BF16_OUTPUT_TOLERANCE,
         )
 
     def teardown(self) -> None:
@@ -76,4 +79,3 @@ class BaselineLlama31_8B(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineLlama31_8B()
-

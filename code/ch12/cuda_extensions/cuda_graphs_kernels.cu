@@ -6,10 +6,6 @@
 #include <cmath>
 #include "profiling_helpers.cuh"
 
-#ifndef cudaGraphInstantiateFlagAutoFreeOnLaunch
-#define cudaGraphInstantiateFlagAutoFreeOnLaunch 0
-#endif
-
 struct GraphCache {
     cudaGraphExec_t exec = nullptr;
     cudaStream_t stream = nullptr;

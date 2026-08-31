@@ -59,7 +59,7 @@ def build_candidate_configs(device_flavor: str):
             {'layers': 2, 'batch': 8, 'seq': 1024},
         ]
         note = "B200 baseline: moderate config tuned for torch.compile vs eager comparisons."
-    elif device_flavor == "blackwell_sm121":
+    elif device_flavor == "blackwell_sm12x":
         configs = [
             {'layers': 8, 'batch': 4, 'seq': 512},
             {'layers': 6, 'batch': 4, 'seq': 512},
@@ -67,7 +67,7 @@ def build_candidate_configs(device_flavor: str):
             {'layers': 2, 'batch': 2, 'seq': 512},
             {'layers': 2, 'batch': 2, 'seq': 256},
         ]
-        note = "GB10 baseline: compact sequence settings that still highlight compile gains."
+        note = "SM 12.x baseline: compact workstation settings for compile comparisons."
     else:
         configs = [
             {'layers': 4, 'batch': 4, 'seq': 1024},
@@ -95,7 +95,7 @@ def resolve_iteration_schedule(device_flavor: str):
         compile_warmup, compile_iters = 25, 20
         fp8_eager_warmup, fp8_eager_iters = 8, 15
         fp8_compile_warmup, fp8_compile_iters = 20, 15
-    elif device_flavor == "blackwell_sm121":
+    elif device_flavor == "blackwell_sm12x":
         eager_warmup, eager_iters = 3, 10
         compile_warmup, compile_iters = 10, 12
         fp8_eager_warmup, fp8_eager_iters = 5, 10
@@ -139,9 +139,13 @@ def detect_device_flavor() -> str:
         return "cpu"
     props = torch.cuda.get_device_properties(0)
     name = props.name.lower()
-    if "gb10" in name or (props.major == 12 and props.minor >= 1):
-        return "blackwell_sm121"
-    if "b200" in name or (props.major == 12 and props.minor == 0):
+    if props.major == 12:
+        return "blackwell_sm12x"
+    if props.major == 10:
+        return "blackwell_sm100"
+    if "gb10" in name:
+        return "blackwell_sm12x"
+    if "b200" in name or "b300" in name:
         return "blackwell_sm100"
     return "other"
 
@@ -749,6 +753,6 @@ if __name__ == "__main__":
 
     flavor = CURRENT_DEVICE_FLAVOR
     threshold = 1.05
-    if flavor in {"blackwell_sm121", "cpu", "other", "unknown"}:
+    if flavor in {"blackwell_sm12x", "cpu", "other", "unknown"}:
         threshold = 0.80
     sys.exit(0 if speedup >= threshold else 1)

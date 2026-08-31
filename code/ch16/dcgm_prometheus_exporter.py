@@ -728,6 +728,23 @@ class DCGMPrometheusExporter:
             if m.fp16_active > 0:
                 self.fp16_active.labels(gpu=gpu_label, hostname=self.hostname).set(m.fp16_active)
 
+            # Increment each GPU's NVLink error counter from its own cumulative
+            # source value. Keeping this inside the per-GPU loop prevents the
+            # final record from being applied as if it represented every device.
+            prev_errors = self.prev_nvlink_errors.get(m.gpu_id, 0)
+            if m.nvlink_errors >= prev_errors:
+                delta = m.nvlink_errors - prev_errors
+            else:
+                # Counter reset
+                delta = m.nvlink_errors
+            if delta > 0:
+                self.nvlink_errors.labels(
+                    gpu=gpu_label,
+                    hostname=self.hostname,
+                    error_type='total'
+                ).inc(delta)
+            self.prev_nvlink_errors[m.gpu_id] = m.nvlink_errors
+
             if NVML_AVAILABLE:
                 try:
                     handle = pynvml.nvmlDeviceGetHandleByIndex(m.gpu_id)
@@ -742,21 +759,6 @@ class DCGMPrometheusExporter:
 
         if self._gpu_info_cache:
             self.gpu_info.info(self._gpu_info_cache)
-
-            # Increment NVLink error counter based on delta
-            prev_errors = self.prev_nvlink_errors.get(m.gpu_id, 0)
-            if m.nvlink_errors >= prev_errors:
-                delta = m.nvlink_errors - prev_errors
-            else:
-                # Counter reset
-                delta = m.nvlink_errors
-            if delta > 0:
-                self.nvlink_errors.labels(
-                    gpu=gpu_label,
-                    hostname=self.hostname,
-                    error_type='total'
-                ).inc(delta)
-            self.prev_nvlink_errors[m.gpu_id] = m.nvlink_errors
     
     def run(self):
         """Main loop: continuously collect and export metrics."""

@@ -12,6 +12,9 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
 
+TRITON_MATMUL_OUTPUT_TOLERANCE = (0.02, 0.02)
+
+
 def _tcgen05_codegen_broken() -> bool:
     """Previously True on Blackwell Ultra (sm_103, CC 10.3) with Triton >= 3.6: the
     matmul kernel JITted to a tcgen05.wait.st intrinsic the LLVM backend could not
@@ -232,7 +235,7 @@ class TritonMatmulProtonBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "bf16": self._dtype == torch.bfloat16,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
-            output_tolerance=(0.1, 1.0),
+            output_tolerance=TRITON_MATMUL_OUTPUT_TOLERANCE,
         )
 
     def validate_result(self) -> Optional[str]:
@@ -241,15 +244,18 @@ class TritonMatmulProtonBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self._validation_scalars is None:
             return "Validation scalar buffer not initialized"
         validation_scalars = self._validation_scalars
-        validation_scalars[0].copy_((self._output - self._reference).abs().max().float())
+        rtol, atol = TRITON_MATMUL_OUTPUT_TOLERANCE
+        error = (self._output - self._reference).abs()
+        allowed_error = atol + rtol * self._reference.abs()
+        validation_scalars[0].copy_((error - allowed_error).max().float())
         validation_scalars[1].copy_(torch.isnan(self._output).any().to(torch.float32))
         validation_scalars_host = validation_scalars.detach().cpu()
-        diff = float(validation_scalars_host[0])
+        max_excess = float(validation_scalars_host[0])
         has_nan = bool(validation_scalars_host[1])
         if has_nan:
             return "NaNs detected in Triton output"
-        if diff > 2.0:
-            return f"Max diff {diff:.4f} exceeds tolerance"
+        if max_excess > 0.0:
+            return f"Pairwise tolerance exceeded by {max_excess:.4f}"
         return None
 
     def teardown(self) -> None:
@@ -291,4 +297,5 @@ __all__ = [
     "WARP_HEAVY_SCHEDULE",
     "LATENCY_FRIENDLY_SCHEDULE",
     "SCHEDULES",
+    "TRITON_MATMUL_OUTPUT_TOLERANCE",
 ]

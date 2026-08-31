@@ -86,13 +86,16 @@ class NodeMetrics:
     node_id: int
     timestamp: float
     gpus: List[GPUMetrics] = field(default_factory=list)
-    cpu_utilization_pct: float = 0.0
+    cpu_utilization_pct: Optional[float] = None
+    cpu_telemetry_status: str = "unavailable"
     memory_used_gb: float = 0.0
     memory_total_gb: float = 0.0
-    network_rx_gbps: float = 0.0
-    network_tx_gbps: float = 0.0
-    ib_rx_gbps: float = 0.0
-    ib_tx_gbps: float = 0.0
+    network_rx_gbps: Optional[float] = None
+    network_tx_gbps: Optional[float] = None
+    network_telemetry_status: str = "unavailable"
+    ib_rx_gbps: Optional[float] = None
+    ib_tx_gbps: Optional[float] = None
+    ib_telemetry_status: str = "unavailable"
     nccl_collectives_per_sec: float = 0.0
     nccl_bytes_per_sec: float = 0.0
     
@@ -103,12 +106,15 @@ class NodeMetrics:
             "timestamp": self.timestamp,
             "gpus": [asdict(g) for g in self.gpus],
             "cpu_utilization_pct": self.cpu_utilization_pct,
+            "cpu_telemetry_status": self.cpu_telemetry_status,
             "memory_used_gb": self.memory_used_gb,
             "memory_total_gb": self.memory_total_gb,
             "network_rx_gbps": self.network_rx_gbps,
             "network_tx_gbps": self.network_tx_gbps,
+            "network_telemetry_status": self.network_telemetry_status,
             "ib_rx_gbps": self.ib_rx_gbps,
             "ib_tx_gbps": self.ib_tx_gbps,
+            "ib_telemetry_status": self.ib_telemetry_status,
             "nccl_collectives_per_sec": self.nccl_collectives_per_sec,
             "nccl_bytes_per_sec": self.nccl_bytes_per_sec,
         }
@@ -203,27 +209,55 @@ class GPUCollector:
 
 class SystemCollector:
     """Collects system-wide metrics."""
-    
+
+    _cpu_sample_lock = threading.Lock()
+    _previous_cpu_sample: Optional[Tuple[int, int]] = None
+
     @staticmethod
-    def collect() -> Dict[str, float]:
+    def _read_cpu_sample() -> Tuple[int, int]:
+        """Return cumulative (idle, total) jiffies from /proc/stat."""
+        with open('/proc/stat') as f:
+            parts = f.readline().split()
+        if not parts or parts[0] != 'cpu':
+            raise ValueError("/proc/stat does not contain an aggregate cpu row")
+        values = [int(value) for value in parts[1:9]]
+        if len(values) < 4:
+            raise ValueError("/proc/stat aggregate cpu row is incomplete")
+        idle = values[3] + (values[4] if len(values) > 4 else 0)
+        return idle, sum(values)
+
+    @classmethod
+    def collect(cls) -> Dict[str, Any]:
         """Collect CPU and memory metrics."""
         metrics = {
-            "cpu_utilization_pct": 0.0,
+            "cpu_utilization_pct": None,
+            "cpu_telemetry_status": "unavailable",
             "memory_used_gb": 0.0,
             "memory_total_gb": 0.0,
         }
         
-        # CPU utilization
+        # /proc/stat fields are cumulative. Report utilization only from the
+        # delta between two observations; the first observation is warmup.
         try:
-            with open('/proc/stat') as f:
-                line = f.readline()
-                parts = line.split()
-                if parts[0] == 'cpu':
-                    total = sum(int(x) for x in parts[1:8])
-                    idle = int(parts[4])
-                    metrics["cpu_utilization_pct"] = 100 * (total - idle) / total
-        except Exception:
-            pass
+            with cls._cpu_sample_lock:
+                # Keep the sample read and prior-sample update atomic so two
+                # callers cannot publish deltas from observations in reverse order.
+                current_idle, current_total = cls._read_cpu_sample()
+                previous = cls._previous_cpu_sample
+                cls._previous_cpu_sample = (current_idle, current_total)
+            if previous is None:
+                metrics["cpu_telemetry_status"] = "warming_up"
+            else:
+                previous_idle, previous_total = previous
+                delta_total = current_total - previous_total
+                delta_idle = current_idle - previous_idle
+                if delta_total > 0 and 0 <= delta_idle <= delta_total:
+                    metrics["cpu_utilization_pct"] = 100.0 * (delta_total - delta_idle) / delta_total
+                    metrics["cpu_telemetry_status"] = "ok"
+                else:
+                    metrics["cpu_telemetry_status"] = "counter_reset"
+        except Exception as exc:
+            metrics["cpu_telemetry_status"] = f"unavailable: {type(exc).__name__}"
         
         # Memory
         try:
@@ -244,13 +278,15 @@ class NetworkCollector:
     """Collects network metrics including InfiniBand."""
     
     @staticmethod
-    def collect() -> Dict[str, float]:
+    def collect() -> Dict[str, Any]:
         """Collect network throughput metrics."""
         metrics = {
-            "network_rx_gbps": 0.0,
-            "network_tx_gbps": 0.0,
-            "ib_rx_gbps": 0.0,
-            "ib_tx_gbps": 0.0,
+            "network_rx_gbps": None,
+            "network_tx_gbps": None,
+            "network_telemetry_status": "unavailable: no sampled byte-counter source",
+            "ib_rx_gbps": None,
+            "ib_tx_gbps": None,
+            "ib_telemetry_status": "unavailable",
         }
         
         # Check for InfiniBand
@@ -260,24 +296,20 @@ class NetworkCollector:
                 capture_output=True, text=True, timeout=5
             )
             if result.returncode == 0 and 'Active' in result.stdout:
-                # IB is available and active
-                # Try to get counters
-                try:
-                    result = subprocess.run(
-                        ['perfquery', '-x'],
-                        capture_output=True, text=True, timeout=5
-                    )
-                    # Parse counters - simplified
-                    if result.returncode == 0:
-                        for line in result.stdout.split('\n'):
-                            if 'RcvData' in line:
-                                metrics["ib_rx_gbps"] = 100.0  # Placeholder
-                            if 'XmtData' in line:
-                                metrics["ib_tx_gbps"] = 100.0
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                # ibstat establishes link state only. It does not report a
+                # throughput rate, and a single perfquery counter snapshot is
+                # cumulative, so publishing Gbps here would fabricate telemetry.
+                metrics["ib_telemetry_status"] = (
+                    "unavailable: active link but no sampled byte-counter delta"
+                )
+            elif result.returncode == 0:
+                metrics["ib_telemetry_status"] = "unsupported_or_inactive"
+            else:
+                metrics["ib_telemetry_status"] = "unavailable: ibstat failed"
+        except FileNotFoundError:
+            metrics["ib_telemetry_status"] = "unsupported: ibstat not installed"
+        except Exception as exc:
+            metrics["ib_telemetry_status"] = f"unavailable: {type(exc).__name__}"
         
         return metrics
 
@@ -334,12 +366,15 @@ class MonitorAgent:
             timestamp=time.time(),
             gpus=gpus,
             cpu_utilization_pct=system["cpu_utilization_pct"],
+            cpu_telemetry_status=system["cpu_telemetry_status"],
             memory_used_gb=system["memory_used_gb"],
             memory_total_gb=system["memory_total_gb"],
             network_rx_gbps=network["network_rx_gbps"],
             network_tx_gbps=network["network_tx_gbps"],
+            network_telemetry_status=network["network_telemetry_status"],
             ib_rx_gbps=network["ib_rx_gbps"],
             ib_tx_gbps=network["ib_tx_gbps"],
+            ib_telemetry_status=network["ib_telemetry_status"],
         )
     
     def report_metrics(self, metrics: NodeMetrics):
@@ -472,7 +507,12 @@ class ClusterAggregator:
             recommendations.append("Consider enabling gradient accumulation")
         if mem_utils and max(mem_utils) > 85:
             recommendations.append("Consider gradient checkpointing")
-        if len(nodes) > 4 and not any(n.ib_rx_gbps > 0 for n in nodes):
+        ib_rx_samples = [
+            n.ib_rx_gbps
+            for n in nodes
+            if n.ib_telemetry_status == "ok" and n.ib_rx_gbps is not None
+        ]
+        if len(nodes) > 4 and ib_rx_samples and not any(value > 0 for value in ib_rx_samples):
             recommendations.append("Consider enabling InfiniBand for better scaling")
         
         cluster = ClusterMetrics(
@@ -540,13 +580,16 @@ class AggregatorHandler(http.server.BaseHTTPRequestHandler):
                     node_id=data["node_id"],
                     timestamp=data["timestamp"],
                     gpus=[GPUMetrics(**g) for g in data.get("gpus", [])],
-                    cpu_utilization_pct=data.get("cpu_utilization_pct", 0),
+                    cpu_utilization_pct=data.get("cpu_utilization_pct"),
+                    cpu_telemetry_status=data.get("cpu_telemetry_status", "unavailable"),
                     memory_used_gb=data.get("memory_used_gb", 0),
                     memory_total_gb=data.get("memory_total_gb", 0),
-                    network_rx_gbps=data.get("network_rx_gbps", 0),
-                    network_tx_gbps=data.get("network_tx_gbps", 0),
-                    ib_rx_gbps=data.get("ib_rx_gbps", 0),
-                    ib_tx_gbps=data.get("ib_tx_gbps", 0),
+                    network_rx_gbps=data.get("network_rx_gbps"),
+                    network_tx_gbps=data.get("network_tx_gbps"),
+                    network_telemetry_status=data.get("network_telemetry_status", "unavailable"),
+                    ib_rx_gbps=data.get("ib_rx_gbps"),
+                    ib_tx_gbps=data.get("ib_tx_gbps"),
+                    ib_telemetry_status=data.get("ib_telemetry_status", "unavailable"),
                 )
                 self.aggregator.report_node_metrics(metrics)
                 self.send_json({"status": "ok"})

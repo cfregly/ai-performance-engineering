@@ -81,6 +81,9 @@ def test_ch17_disaggregated_prefill_decode_reuses_timing_events() -> None:
     bench.prefill_stream = torch.cuda.Stream(device=bench.device)
     bench.decode_stream = torch.cuda.Stream(device=bench.device)
     bench._prefill_done = torch.cuda.Event()
+    bench._decode_ready = torch.cuda.Event()
+    bench._decode_state = fake_model.prefill_output
+    bench._decode_ready.record(torch.cuda.current_stream(bench.device))
     bench._ttft_events = (
         torch.cuda.Event(enable_timing=True),
         torch.cuda.Event(enable_timing=True),
@@ -106,6 +109,7 @@ def test_ch17_disaggregated_prefill_decode_reuses_timing_events() -> None:
     assert len(tpot_events) == bench.decode_seq
     assert fake_model.prefill_calls == 1
     assert fake_model.decode_calls == bench.decode_seq
+    assert bench._decode_state is fake_model.prefill_output
 
     metrics_payload = bench.finalize_iteration_metrics()
     assert metrics_payload is not None

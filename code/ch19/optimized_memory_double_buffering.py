@@ -128,8 +128,11 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
         self.copy_stream = None
         self.compute_stream = None
         self.copy_events: list[torch.cuda.Event] = []
+        self.compute_events: list[torch.cuda.Event] = []
         self._buffer_event_counts: tuple[int, int] = (0, 0)
         self._expected_buffer_event_counts: tuple[int, int] = (0, 0)
+        self._compute_event_count = 0
+        self._expected_compute_event_count = 0
         self._micro_batch_schedule: list[tuple[int, int, Optional[int], Optional[int]]] = []
         self._micro_batch_schedule_count = 0
         self._expected_micro_batch_schedule_count = 0
@@ -187,8 +190,11 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
         self.copy_stream = torch.cuda.Stream()
         self.compute_stream = torch.cuda.Stream()
         self.copy_events = [torch.cuda.Event(blocking=False) for _ in range(2)]
+        self.compute_events = [torch.cuda.Event(blocking=False) for _ in range(2)]
         self._buffer_event_counts = (len(self.buffers), len(self.copy_events))
         self._expected_buffer_event_counts = (2, 2)
+        self._compute_event_count = len(self.compute_events)
+        self._expected_compute_event_count = 2
         self._micro_batch_schedule = [
             (
                 batch_idx,
@@ -208,8 +214,11 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
             with torch.inference_mode():
                 buffers = self.buffers
                 copy_events = self.copy_events
+                compute_events = self.compute_events
                 if self._buffer_event_counts != self._expected_buffer_event_counts:
                     raise RuntimeError("Double buffers or copy events not initialized")
+                if self._compute_event_count != self._expected_compute_event_count:
+                    raise RuntimeError("Double-buffer compute events not initialized")
                 if self._micro_batch_schedule_count != self._expected_micro_batch_schedule_count:
                     raise RuntimeError("Double-buffer microbatch schedule not initialized")
 
@@ -226,11 +235,16 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
                         # Ensure the compute stream only waits when the copy has finished.
                         self.compute_stream.wait_event(current_event)
                         self.output = self.model.forward_prepared(current_buffer)
+                        compute_events[slot_idx].record(self.compute_stream)
 
                     if next_batch_idx is not None and next_slot_idx is not None:
                         next_buffer = buffers[next_slot_idx]
                         next_event = copy_events[next_slot_idx]
                         with torch.cuda.stream(self.copy_stream):
+                            # Once a slot has entered the ping-pong reuse cycle,
+                            # its prior compute must finish before H2D overwrites it.
+                            if batch_idx > 0:
+                                self.copy_stream.wait_event(compute_events[next_slot_idx])
                             next_buffer.copy_(self.host_batches[next_batch_idx], non_blocking=True)
                             next_event.record(self.copy_stream)
                 current = torch.cuda.current_stream(device=self.device)
@@ -262,8 +276,11 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
         self.compute_stream = None
         self.buffers = []
         self.copy_events = []
+        self.compute_events = []
         self._buffer_event_counts = (0, 0)
         self._expected_buffer_event_counts = (0, 0)
+        self._compute_event_count = 0
+        self._expected_compute_event_count = 0
         self._micro_batch_schedule = []
         self._micro_batch_schedule_count = 0
         self._expected_micro_batch_schedule_count = 0

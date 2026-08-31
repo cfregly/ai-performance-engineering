@@ -15,8 +15,8 @@
 //   2. VEC16_UE4M3 block scales in the SF swizzle layout (sfoff() below):
 //      a 512-byte tile of 128 rows x 4 SF-K (CUTLASS/Colfax block16 SF layout).
 // A is M x K row-major == K x M col-major (K-major already); B (K x N) is transposed
-// to N x K so each N-column is K-contiguous (K-major). Each batch is a single-matrix
-// TN matmul, looped (matching the baseline's per-batch kernel loop). Standalone proof
+// to N x K so each N-column is K-contiguous (K-major). One strided-batched TN
+// matmul processes all kBatchCount matrices. Standalone proof
 // + the full derivation: code/docs/gb300-cublaslt-nvfp4-tn-reference.cu.
 
 #include <cuda_runtime.h>

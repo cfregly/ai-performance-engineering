@@ -312,18 +312,11 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if last_bits == 8:
             packed_view = packed_cpu
             packed_view.copy_(self._last_packed_dst, non_blocking=packed_cpu.is_pinned())
-            dequantized.copy_(packed_cpu.view(torch.int8))
-            dequantized.mul_(scale_cpu)
         elif last_bits == 6:
             packed_view = packed_cpu[..., :_FP6_PACKED_LAST_DIM]
             packed_view.copy_(
                 self._last_packed_dst,
                 non_blocking=packed_cpu.is_pinned(),
-            )
-            _unpack_int6_to_float(
-                packed_view,
-                scale_cpu,
-                dequantized,
             )
         elif last_bits == 4:
             packed_view = packed_cpu[..., :_FP4_PACKED_LAST_DIM]
@@ -331,13 +324,29 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self._last_packed_dst,
                 non_blocking=packed_cpu.is_pinned(),
             )
+        else:
+            raise ValueError(f"Unsupported final quantization bits: {last_bits}")
+
+        # The host dequantizers below read both pinned destinations. A
+        # non-blocking D2H copy only makes that safe after its CUDA stream has
+        # completed the transfers.
+        torch.cuda.current_stream(self.device).synchronize()
+
+        if last_bits == 8:
+            dequantized.copy_(packed_cpu.view(torch.int8))
+            dequantized.mul_(scale_cpu)
+        elif last_bits == 6:
+            _unpack_int6_to_float(
+                packed_view,
+                scale_cpu,
+                dequantized,
+            )
+        elif last_bits == 4:
             _unpack_int4_to_float(
                 packed_view,
                 scale_cpu,
                 dequantized,
             )
-        else:
-            raise ValueError(f"Unsupported final quantization bits: {last_bits}")
         self.output = dequantized
         error = float((self._reference_cache_cpu - dequantized).abs().max().item())
         self._error_total += error

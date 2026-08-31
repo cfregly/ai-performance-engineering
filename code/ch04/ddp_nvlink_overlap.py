@@ -1,6 +1,6 @@
 """ddp_nvlink_overlap.py
 
-Topology- and overlap-aware DDP-style loop. Enables peer access, reorders
+Topology- and overlap-aware DDP-style loop. Validates peer access, reorders
 gradient buckets by device distance (lowest ID first as a proxy), and overlaps
 gradient transfer with computation using a dedicated communication stream.
 Falls back to single-GPU if only one device is present.
@@ -18,18 +18,13 @@ from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, Workl
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 
 
-def _enable_peer_access() -> None:
+def _require_root_peer_access() -> None:
+    """Require each bidirectional root route; PyTorch enables P2P internally."""
     num = torch.cuda.device_count()
     skip_if_insufficient_gpus(2)
-    for src in range(num):
-        for dst in range(num):
-            if src == dst:
-                continue
-            if torch.cuda.can_device_access_peer(src, dst):
-                try:
-                    torch.cuda.device(src).enable_peer_access(dst)
-                except RuntimeError:
-                    pass
+    for peer in range(1, num):
+        require_peer_access(peer, 0, script_name="ddp_nvlink_overlap.py")
+        require_peer_access(0, peer, script_name="ddp_nvlink_overlap.py")
 
 
 def _bucket_order() -> List[Tuple[int, int]]:
@@ -37,8 +32,24 @@ def _bucket_order() -> List[Tuple[int, int]]:
     return [(idx, idx) for idx in range(torch.cuda.device_count())]
 
 
+def _aggregate_reduced_gradients(
+    destination: torch.Tensor,
+    reductions: List[torch.Tensor],
+    tail_indices: range,
+    scale: float,
+) -> torch.Tensor:
+    """Sum per-microbatch reductions once and apply the replica-average scale."""
+    if not reductions:
+        raise ValueError("At least one reduction is required")
+    destination.copy_(reductions[0])
+    for micro in tail_indices:
+        destination.add_(reductions[micro])
+    destination.mul_(scale)
+    return destination
+
+
 class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Overlapped gradient transfers over NVLink with peer access enabled."""
+    """Overlapped gradient transfers over validated NVLink peer routes."""
 
     def __init__(self):
         super().__init__()
@@ -48,11 +59,13 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.output: Optional[torch.Tensor] = None
         self.microbatches = 2
         self._microbatch_range = range(self.microbatches)
+        self._tail_microbatch_range = range(1, self.microbatches)
         self.batch_size = 8
         self.hidden = 512
         self.root_device = torch.device("cuda:0")
         self._payload_parameter_count = 0
         self._reduce_buffers: List[torch.Tensor] = []
+        self._micro_grad_buffers: List[List[torch.Tensor]] = []
         self._root_grad_staging: List[List[torch.Tensor]] = []
         self._grad_ready_events: List[List[torch.cuda.Event]] = []
         self._update_buffers: List[torch.Tensor] = []
@@ -63,6 +76,7 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._model_index_range = range(0)
         self._tail_model_index_range = range(1, 1)
         self._reduction_results: List[torch.Tensor] = []
+        self._aggregate_grad: Optional[torch.Tensor] = None
         self._model_update_groups: List[Tuple[int, nn.Linear, torch.Tensor]] = []
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self._model_count = 0
@@ -79,10 +93,9 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
     def setup(self) -> None:
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
-        _enable_peer_access()
+        _require_root_peer_access()
         num = torch.cuda.device_count()
         skip_if_insufficient_gpus(2)
-        require_peer_access(0, 1)
         for rank in range(num):
             device = f"cuda:{rank}"
             self.models.append(nn.Linear(self.hidden, self.hidden).to(device))
@@ -109,6 +122,7 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._tail_model_index_range = range(1, self._model_count)
         self._inputs = []
         self._microbatch_range = range(self.microbatches)
+        self._tail_microbatch_range = range(1, self.microbatches)
         for _micro in self._microbatch_range:
             micro_inputs: List[torch.Tensor] = []
             for model in self.models:
@@ -122,10 +136,18 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
             torch.empty_like(self.models[0].weight, device=self.root_device)
             for _ in self._microbatch_range
         ]
+        self._micro_grad_buffers = [
+            [torch.empty_like(model.weight) for model in self.models]
+            for _ in self._microbatch_range
+        ]
         self._reduction_results = [
             torch.empty(0, device=self.root_device)
             for _ in self._microbatch_range
         ]
+        self._aggregate_grad = torch.empty_like(
+            self.models[0].weight,
+            device=self.root_device,
+        )
         self._root_grad_staging = [
             [
                 torch.empty_like(self.models[0].weight, device=self.root_device)
@@ -144,18 +166,22 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._model_update_groups = [
             (model_idx, model, update_buffer)
             for model_idx, (model, update_buffer) in enumerate(zip(self.models, self._update_buffers, strict=True))
-        ][: len(self._reduction_results)]
+        ]
         self._slot_counts = (
             len(self._grad_slots),
             len(self._ordered_grad_slots),
             len(self._ordered_bucket_indices),
             len(self._reduction_results),
+            len(self._micro_grad_buffers),
+            len(self._model_update_groups),
         )
         self._expected_slot_counts = (
             self._model_count,
             self._model_count,
             self._model_count,
             self.microbatches,
+            self.microbatches,
+            self._model_count,
         )
         self._synchronize()
 
@@ -165,7 +191,9 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         event_row = self._grad_ready_events[buffer_index]
         staging_row = self._root_grad_staging[buffer_index]
         for idx in self._model_index_range:
-            event_row[idx].record()
+            grad_device = grads[idx].device
+            with torch.cuda.device(grad_device):
+                event_row[idx].record(torch.cuda.current_stream(grad_device))
 
         with torch.cuda.stream(self.comm_stream):
             first = grads[0]
@@ -195,6 +223,7 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
             if (
                 self._slot_counts != self._expected_slot_counts
                 or not self._model_update_groups
+                or self._aggregate_grad is None
             ):
                 raise RuntimeError("Gradient reduction slots not initialized")
             grads = self._grad_slots
@@ -209,7 +238,11 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
                     grad = model.weight.grad
                     if grad is None:
                         raise RuntimeError("Gradient missing after backward")
-                    grads[model_idx] = grad
+                    grad_snapshot = self._micro_grad_buffers[micro][model_idx]
+                    grad_snapshot.copy_(grad)
+                    grads[model_idx] = grad_snapshot
+                    model.weight.grad.zero_()
+                    model.bias.grad.zero_()
 
                 # Reorder buckets (simple proxy: ascending device id)
                 for ordered_idx, source_idx in self._bucket_reorder_pairs:
@@ -219,18 +252,20 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
 
             # Finalize reductions and apply updates
             torch.cuda.current_stream(self.root_device).wait_stream(self.comm_stream)
-            for model_idx, model, update_buffer in self._model_update_groups:
-                root_buf = reduction_results[model_idx]
-                if root_buf.device != model.weight.device:
+            aggregate_grad = _aggregate_reduced_gradients(
+                self._aggregate_grad,
+                reduction_results,
+                self._tail_microbatch_range,
+                self._grad_scale,
+            )
+            for _model_idx, model, update_buffer in self._model_update_groups:
+                if aggregate_grad.device != model.weight.device:
                     root_local = update_buffer
-                    root_local.copy_(root_buf, non_blocking=True)
+                    root_local.copy_(aggregate_grad, non_blocking=True)
                 else:
-                    root_local = root_buf
+                    root_local = aggregate_grad
                 with torch.no_grad():
-                    root_local.mul_(self._grad_scale)
                     model.weight.add_(-1e-3, root_local)
-                    model.weight.grad.zero_()
-                    model.bias.grad.zero_()
             self.output = self.models[0].weight
 
     def capture_verification_payload(self) -> None:
@@ -259,7 +294,9 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.models.clear()
         self._inputs = []
         self._micro_model_groups = []
+        self._tail_microbatch_range = range(1, 1)
         self._reduce_buffers = []
+        self._micro_grad_buffers = []
         self._root_grad_staging = []
         self._grad_ready_events = []
         self._update_buffers = []
@@ -270,6 +307,7 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._model_index_range = range(0)
         self._tail_model_index_range = range(1, 1)
         self._reduction_results = []
+        self._aggregate_grad = None
         self._model_update_groups = []
         self._model_count = 0
         self._slot_counts = ()

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""NCCL 2.28 Blackwell Optimizations.
+"""NCCL 2.28 Blackwell configuration.
 
-NCCL 2.28 includes Blackwell-specific optimizations for NVLink 5.0 and C2C
-(Chip-to-Chip). These optimizations can improve multi-GPU scaling by 20-30%.
+NCCL discovers NVLink and NVLink-C2C from the hardware topology. This module
+only exposes documented NCCL environment controls and leaves fabric discovery
+to NCCL.
 
 Key Features:
 - NVLink 5.0 support (900 GB/s per GPU pair)
-- NVLink-C2C (CPU-GPU interconnect)
-- Tensor Core Engine (TCE) for collectives
+- Automatic NVLink/NVLink-C2C topology discovery
 - Optimized algorithms for Blackwell topology
 
 Requirements:
@@ -43,16 +43,12 @@ def _ib_devices_present() -> bool:
 
 
 def configure_nccl_for_blackwell(
-    enable_nvlink_c2c: bool = True,
-    enable_tce: bool = True,
     algo: str = "Ring,Tree",
     verbose: bool = True,
 ) -> Dict[str, str]:
     """Configure NCCL 2.28 for optimal Blackwell performance.
 
     Args:
-        enable_nvlink_c2c: Enable NVLink Chip-to-Chip (CPU-GPU interconnect)
-        enable_tce: Enable Tensor Core Engine for collectives
         algo: NCCL algorithms to use (Ring, Tree, or both)
         verbose: Print configuration details
 
@@ -69,25 +65,15 @@ def configure_nccl_for_blackwell(
     os.environ["NCCL_ALGO"] = algo
     env_vars["NCCL_ALGO"] = algo
 
-    # 3. NVLink-C2C (Chip-to-Chip) - NEW in NCCL 2.28 for Blackwell
-    if enable_nvlink_c2c:
-        os.environ["NCCL_NVLINK_C2C_ENABLE"] = "1"
-        env_vars["NCCL_NVLINK_C2C_ENABLE"] = "1"
-
-    # 4. Tensor Core Engine (TCE) - Use Tensor Cores for collectives
-    if enable_tce:
-        os.environ["NCCL_NVLINK_TCE_ENABLE"] = "1"
-        env_vars["NCCL_NVLINK_TCE_ENABLE"] = "1"
-
-    # 5. Cross NIC - Enable for multi-node
+    # 3. Cross NIC - Enable for multi-node
     os.environ.setdefault("NCCL_CROSS_NIC", "1")
     env_vars["NCCL_CROSS_NIC"] = "1"
 
-    # 6. P2P Level - Enable full peer-to-peer
+    # 4. P2P Level - Prefer NVLink when topology discovery reports it
     os.environ.setdefault("NCCL_P2P_LEVEL", "NVL")  # NVLink level
     env_vars["NCCL_P2P_LEVEL"] = "NVL"
 
-    # 7. IB (InfiniBand) optimizations for multi-node
+    # 5. IB (InfiniBand) optimizations for multi-node
     ib_disable_override = os.environ.get("NCCL_IB_DISABLE")
     if ib_disable_override is not None:
         env_vars["NCCL_IB_DISABLE"] = ib_disable_override
@@ -103,23 +89,23 @@ def configure_nccl_for_blackwell(
         os.environ.setdefault("NCCL_IB_DISABLE", "1")
         env_vars["NCCL_IB_DISABLE"] = "1"
 
-    # 8. Socket NUMA affinity
+    # 6. Socket NUMA affinity
     os.environ.setdefault("NCCL_SOCKET_NTHREADS", "4")
     os.environ.setdefault("NCCL_NSOCKS_PERTHREAD", "8")
     env_vars["NCCL_SOCKET_NTHREADS"] = "4"
     env_vars["NCCL_NSOCKS_PERTHREAD"] = "8"
 
-    # 9. Buffer sizes - Tuned for Blackwell
+    # 7. Buffer sizes - Tuned for Blackwell
     os.environ.setdefault("NCCL_BUFFSIZE", str(32 * 1024 * 1024))  # 32 MB
     os.environ.setdefault("NCCL_LL_THRESHOLD", "0")  # Use low-latency
     env_vars["NCCL_BUFFSIZE"] = str(32 * 1024 * 1024)
     env_vars["NCCL_LL_THRESHOLD"] = "0"
 
-    # 10. Graph support - Enable for torch.compile
+    # 8. Graph support - Enable for torch.compile
     os.environ.setdefault("NCCL_GRAPH_REGISTER", "1")
     env_vars["NCCL_GRAPH_REGISTER"] = "1"
 
-    # 11. Debug level (set to INFO for initial tuning, WARN for production)
+    # 9. Debug level (set to INFO for initial tuning, WARN for production)
     if verbose:
         os.environ.setdefault("NCCL_DEBUG", "INFO")
         os.environ.setdefault("NCCL_DEBUG_SUBSYS", "INIT,GRAPH,ENV")
@@ -134,11 +120,7 @@ def configure_nccl_for_blackwell(
             print(f"  {key}={value}")
         print("=" * 80)
         print("\nKey Features Enabled:")
-        print("  ✓ NVLink 5.0 protocol optimizations")
-        c2c_mark = "✓" if enable_nvlink_c2c else "✗"
-        print(f"  {c2c_mark} NVLink-C2C (CPU-GPU interconnect)")
-        tce_mark = "✓" if enable_tce else "✗"
-        print(f"  {tce_mark} Tensor Core Engine for collectives")
+        print("  Topology discovery: automatic (including NVLink/NVLink-C2C)")
         print(f"  Algorithms: {algo}")
         print("=" * 80)
 
@@ -148,8 +130,6 @@ def configure_nccl_for_blackwell(
 def configure_nccl_for_multigpu(
     *,
     num_gpus: int | None = None,
-    enable_nvlink_c2c: bool = True,
-    enable_tce: bool = True,
     enable_nvls: bool = True,
     num_channels: int | None = None,
     verbose: bool = True,
@@ -158,8 +138,6 @@ def configure_nccl_for_multigpu(
 
     Args:
         num_gpus: GPU count (defaults to all available GPUs)
-        enable_nvlink_c2c: Enable NVLink-C2C for Grace-Blackwell
-        enable_tce: Enable Tensor Core Engine for collectives
         enable_nvls: Enable NVLink Sharp (NVLS) when available
         num_channels: Override NCCL channels (auto-derived if None)
         verbose: Print configuration details
@@ -175,8 +153,6 @@ def configure_nccl_for_multigpu(
         raise ValueError(f"num_gpus must be >=2, got {num_gpus}")
 
     env_vars = configure_nccl_for_blackwell(
-        enable_nvlink_c2c=enable_nvlink_c2c,
-        enable_tce=enable_tce,
         algo="Ring,Tree",
         verbose=False,
     )
@@ -217,10 +193,6 @@ def configure_nccl_for_multigpu(
     env_vars["NCCL_BUFFSIZE"] = os.environ["NCCL_BUFFSIZE"]
     env_vars["NCCL_MIN_NCHANNELS"] = os.environ["NCCL_MIN_NCHANNELS"]
     env_vars["NCCL_MAX_NCHANNELS"] = os.environ["NCCL_MAX_NCHANNELS"]
-
-    if enable_nvlink_c2c:
-        os.environ["NCCL_NVLINK_C2C_ENABLE"] = "1"
-        env_vars["NCCL_NVLINK_C2C_ENABLE"] = "1"
 
     if verbose:
         print("=" * 80)
@@ -326,39 +298,30 @@ def configure_nccl_for_gb200_gb300(verbose: bool = True) -> Dict[str, str]:
     # Start with multi-GPU config as base
     env_vars = configure_nccl_for_multigpu(
         num_gpus=torch.cuda.device_count() if torch.cuda.is_available() else 4,
-        enable_nvlink_c2c=True,
-        enable_tce=True,
         enable_nvls=True,
         num_channels=8,
         verbose=False,
     )
 
-    # GB200/GB300 specific enhancements
-    # 1. Force NVLink-C2C for Grace coherency (level 2 = mandatory)
-    os.environ["NCCL_NVLINK_C2C_ENABLE"] = "2"
-    env_vars["NCCL_NVLINK_C2C_ENABLE"] = "2"
-
-    # 2. Grace-specific: Enhanced CPU-GPU affinity
+    # GB200/GB300 specific enhancements. NCCL detects C2C from topology;
+    # configure only documented CPU/network controls here.
+    # 1. Grace-specific: Enhanced CPU-GPU affinity
     os.environ["NCCL_SOCKET_NTHREADS"] = "12"  # More threads for 72 ARM cores
     os.environ["NCCL_NSOCKS_PERTHREAD"] = "4"
     env_vars["NCCL_SOCKET_NTHREADS"] = "12"
     env_vars["NCCL_NSOCKS_PERTHREAD"] = "4"
 
-    # 3. Unified memory support
+    # 2. Unified memory support
     os.environ["NCCL_CUMEM_ENABLE"] = "1"
     env_vars["NCCL_CUMEM_ENABLE"] = "1"
 
-    # 4. Grace CPU network interface
+    # 3. Grace CPU network interface
     os.environ["NCCL_SOCKET_IFNAME"] = "eth0,en0"
     env_vars["NCCL_SOCKET_IFNAME"] = "eth0,en0"
 
-    # 5. InfiniBand settings for Grace
+    # 4. InfiniBand settings for Grace
     os.environ["NCCL_IB_GID_INDEX"] = "3"
     env_vars["NCCL_IB_GID_INDEX"] = "3"
-
-    # 6. Hint to NCCL for coherent CPU-GPU memory
-    os.environ["NCCL_GRACE_BLACKWELL"] = "2"
-    env_vars["NCCL_GRACE_BLACKWELL"] = "2"
 
     if verbose:
         print("=" * 80)

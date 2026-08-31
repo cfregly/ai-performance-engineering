@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from queue import Queue, Empty
 from concurrent.futures import ThreadPoolExecutor, Future
 import logging
+from collections import deque
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +94,10 @@ class RobustMCPClient:
         # Process management
         self._process: Optional[subprocess.Popen] = None
         self._reader_thread: Optional[threading.Thread] = None
+        self._stderr_thread: Optional[threading.Thread] = None
         self._cleanup_thread: Optional[threading.Thread] = None
         self._running = False
+        self._stderr_tail: deque[str] = deque(maxlen=100)
         
         # Response queue
         self._response_queue: Queue = Queue()
@@ -209,6 +212,21 @@ class RobustMCPClient:
         except Exception as e:
             if self._running:
                 logger.error(f"Error reading from server: {e}")
+
+    def _stderr_loop(self):
+        """Continuously drain server stderr so its pipe cannot backpressure stdout."""
+        if not self._process or self._process.stderr is None:
+            return
+
+        try:
+            for line in self._process.stderr:
+                message = line.rstrip("\r\n")
+                if message:
+                    self._stderr_tail.append(message)
+                    self._log_debug(f"Server stderr: {message}")
+        except Exception as e:
+            if self._running:
+                logger.error(f"Error reading server stderr: {e}")
     
     def _response_handler_loop(self):
         """Process responses from queue."""
@@ -272,6 +290,11 @@ class RobustMCPClient:
         # Start reader thread
         self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
         self._reader_thread.start()
+
+        # stderr must be consumed independently from stdout. A PIPE with no
+        # reader eventually fills and blocks the server before it can respond.
+        self._stderr_thread = threading.Thread(target=self._stderr_loop, daemon=True)
+        self._stderr_thread.start()
         
         # Start response handler thread
         self._response_handler_thread = threading.Thread(target=self._response_handler_loop, daemon=True)
@@ -313,6 +336,9 @@ class RobustMCPClient:
                 self._process.kill()
             except Exception as e:
                 logger.error(f"Error stopping process: {e}")
+
+        if self._stderr_thread is not None:
+            self._stderr_thread.join(timeout=1.0)
         
         logger.info("MCP client stopped")
     

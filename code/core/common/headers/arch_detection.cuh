@@ -56,7 +56,6 @@ struct TensorCoreTile {
 struct CapabilityData {
     int major;
     int minor;
-    TMALimits tma;
     bool supports_clusters;
     bool has_dsmem;
     int max_cluster_size;
@@ -71,7 +70,6 @@ struct CapabilityData {
 inline constexpr CapabilityData kCapabilityTable[] = {
     {
         10, 0,
-        {1024, 128, 128},
         true,
         true,
         8,
@@ -92,22 +90,21 @@ inline const CapabilityData* find_capability(int major, int minor) {
 }
 
 inline TMALimits get_tma_limits() {
-    static TMALimits cached_limits = {0, 0, 0};
-    if (cached_limits.max_1d_box_size != 0) {
+    static TMALimits cached_limits{};
+    static bool initialized = false;
+    if (initialized) {
         return cached_limits;
     }
 
     cudaDeviceProp props{};
-    if (cudaGetDeviceProperties(&props, 0) != cudaSuccess) {
-        cached_limits = {256, 64, 32};
-        return cached_limits;
+    if (cudaGetDeviceProperties(&props, 0) == cudaSuccess && props.major >= 9) {
+        // cuTensorMapEncodeTiled constrains every boxDim entry to [1, 256].
+        // This is a CUDA Driver API descriptor contract, not an architecture
+        // capability-table value.
+        // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html
+        cached_limits = {256, 256, 256};
     }
-
-    if (const CapabilityData* entry = find_capability(props.major, props.minor)) {
-        cached_limits = entry->tma;
-    } else {
-        cached_limits = {256, 64, 32};
-    }
+    initialized = true;
     return cached_limits;
 }
 
@@ -193,8 +190,11 @@ inline const ArchitectureLimits& get_architecture_limits() {
             cached.tensor_tile_n = 32;
             cached.tensor_tile_k = 16;
         }
-        cached.has_grace_coherence = (props.major == 12 && props.minor >= 1);
-        cached.has_nvlink_c2c = cached.has_grace_coherence;
+        // Compute capability alone does not identify the host CPU or prove an
+        // NVLink-C2C coherent Grace-Blackwell platform. Only probed capability
+        // table entries may assert these host/platform properties.
+        cached.has_grace_coherence = false;
+        cached.has_nvlink_c2c = false;
     }
 
     initialized = true;

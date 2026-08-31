@@ -108,7 +108,7 @@
       },
       "type": "python"
     },
-    "hbm_cuda_cuda": {
+    "hbm_cuda": {
       "example": "hbm_cuda",
       "metadata": {
         "best_memory_savings_pct": 0.0,

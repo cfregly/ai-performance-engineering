@@ -617,12 +617,20 @@ class SimpleMoEGPT(nn.Module):
         kv_cache: Optional[torch.Tensor] = None,
         position: Optional[int] = None,
         output_router_stats: bool = False,
+        kv_context: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, torch.Tensor] | tuple[torch.Tensor, torch.Tensor, List[dict]]:
         if output_router_stats:
             hidden, router_stats = self.forward_tokens(token_ids, collect_router_stats=True)  # type: ignore[misc]
         else:
             hidden = self.forward_tokens(token_ids)  # type: ignore[assignment]
             router_stats = []
+        if kv_context is not None:
+            if kv_context.shape != hidden.shape:
+                raise ValueError(
+                    "kv_context must have the same shape as the decoded hidden state "
+                    f"(got {tuple(kv_context.shape)} and {tuple(hidden.shape)})"
+                )
+            hidden = self.final_norm(hidden + kv_context.to(device=hidden.device, dtype=hidden.dtype))
         if kv_cache is not None and position is not None:
             kv_cache[:, position:position + hidden.size(1)].copy_(hidden)
         logits = self.lm_head(hidden)

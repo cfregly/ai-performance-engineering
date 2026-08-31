@@ -30,6 +30,11 @@ class EosEarlyExitConfig:
 class EosEarlyExitBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Toy decode loop that isolates tail work skipped by EOS early exit."""
 
+    # The optimized policy must observe the device completion mask to make a
+    # data-dependent host control-flow decision. That synchronization is the
+    # behavior this benchmark measures rather than an accidental hot-path sync.
+    allowed_benchmark_fn_antipatterns = ("host_transfer", "sync")
+
     def __init__(self, cfg: EosEarlyExitConfig):
         super().__init__()
         if cfg.force_eos_after_tokens < 1:
@@ -58,7 +63,6 @@ class EosEarlyExitBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._completion_checks = 0
         self._decoded_steps = 0
         self._full_decode_range = range(cfg.decode_tokens)
-        self._early_exit_range = range(cfg.force_eos_after_tokens)
         self._decode_token_divisor = float(max(cfg.decode_tokens, 1))
         self._custom_metrics: Dict[str, float] = {}
         self.parameter_count = 0
@@ -192,6 +196,16 @@ class EosEarlyExitBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         return self.next_token_buffer
 
+    def _all_requests_done(self) -> bool:
+        """Poll the device completion mask for data-dependent early exit.
+
+        The host/device synchronization is intentional: it is the control-plane
+        cost of deciding whether this decode loop can skip its remaining work.
+        """
+        if self.done_mask_buffer is None:
+            raise RuntimeError("EOS completion mask is not initialized")
+        return bool(self.done_mask_buffer.all().item())
+
     def benchmark_fn(self) -> None:
         if self.generated_tokens is None or self.done_mask_buffer is None or self.eos_compare_buffer is None:
             raise RuntimeError("EOS early-exit output buffers are not initialized")
@@ -200,9 +214,8 @@ class EosEarlyExitBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._prefill()
         self.done_mask_buffer.zero_()
         filled = 0
-        decode_step_range = self._early_exit_range if self.cfg.stop_on_all_done else self._full_decode_range
         with torch.inference_mode(), self._nvtx_range(self.cfg.label):
-            for step in decode_step_range:
+            for step in self._full_decode_range:
                 next_token = self._decode_step()
                 if (step + 1) >= self.cfg.force_eos_after_tokens:
                     next_token.fill_(self.cfg.eos_token_id)
@@ -213,6 +226,8 @@ class EosEarlyExitBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 if self.cfg.stop_on_all_done:
                     self._completion_checks += 1
                 next_token.masked_fill_(self.done_mask_buffer, self.cfg.eos_token_id)
+                if self.cfg.stop_on_all_done and self._all_requests_done():
+                    break
             if filled < self.cfg.decode_tokens:
                 self.generated_tokens[:, filled:].fill_(self.cfg.eos_token_id)
         self._decoded_steps = filled

@@ -54,37 +54,6 @@
       },
       "type": "python"
     },
-    "cublas_gemm_fp4_perchannel_cuda": {
-      "example": "cublas_gemm_fp4_perchannel",
-      "metadata": {
-        "best_optimization": "optimized_cublas_gemm_fp4_perchannel",
-        "best_optimization_file": "optimized_cublas_gemm_fp4_perchannel.cu",
-        "best_optimization_speedup": 1.1188468550592525,
-        "best_optimization_technique": "optimized_cublas_gemm_fp4_perchannel",
-        "best_optimization_time_ms": 0.0280832,
-        "optimization_goal": "speed"
-      },
-      "metrics": {
-        "baseline_p75_ms": 0.0314144,
-        "baseline_p90_ms": 0.0314144,
-        "baseline_time_ms": 0.0314208,
-        "best_optimized_p75_ms": 0.0281152,
-        "best_optimized_p90_ms": 0.0281152,
-        "best_optimized_speedup": 1.1188468550592525,
-        "best_optimized_time_ms": 0.0280832,
-        "best_speedup": 1.1188468550592525,
-        "is_regression": false
-      },
-      "provenance": {
-        "git_commit": "4fe709b0cf0876851d645e87c589d44dc5a59a91",
-        "hardware_key": "2x_b200",
-        "iterations": 20,
-        "profile_name": "none",
-        "timestamp": "2026-01-03T06:06:10.717418",
-        "warmup_iterations": 5
-      },
-      "type": "cuda"
-    },
     "cublaslt_gemm_cuda": {
       "example": "cublaslt_gemm_cuda",
       "metadata": {

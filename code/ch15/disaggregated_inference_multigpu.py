@@ -865,15 +865,15 @@ class ParallelismManager:
     def setup_tensor_parallelism(self):
         """Setup tensor parallelism across GPUs."""
         print("Setting up tensor parallelism...")
-        
-        # Split model layers across GPUs
-        num_layers_per_gpu = 6 // self.config.num_gpus
-        
+
+        # Tensor parallelism shards each layer's tensors while every rank
+        # participates in every transformer layer.
+        num_transformer_layers = 6
         for gpu_id in range(self.config.num_gpus):
-            start_layer = gpu_id * num_layers_per_gpu
-            end_layer = start_layer + num_layers_per_gpu
-            
-            print(f"GPU {gpu_id}: Layers {start_layer}-{end_layer}")
+            print(
+                f"GPU {gpu_id}: Tensor shard {gpu_id + 1}/{self.config.num_gpus} "
+                f"across all {num_transformer_layers} transformer layers"
+            )
             
     def setup_pipeline_parallelism(self):
         """Setup pipeline parallelism across GPUs."""

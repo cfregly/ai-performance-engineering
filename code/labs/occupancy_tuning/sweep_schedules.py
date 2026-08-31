@@ -12,7 +12,14 @@ from typing import Iterable, List, Sequence
 
 import torch
 
-from labs.occupancy_tuning.triton_matmul_schedules import MatmulSchedule, SCHEDULES
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from labs.occupancy_tuning.triton_matmul_schedules import (  # noqa: E402
+    MatmulSchedule,
+    SCHEDULES,
+)
 
 
 @dataclass
@@ -96,6 +103,10 @@ def benchmark_schedule(
     """Benchmark a single preset and return timing statistics."""
 
     _ensure_cuda()
+    if use_compile:
+        raise ValueError(
+            "torch.compile is unsupported for this sweep; Triton JIT already compiles the kernel"
+        )
     # resolve_schedules is also used without a GPU or Triton installation.
     # Kernel construction still requires the real dependency before timing.
     from labs.occupancy_tuning import triton_matmul
@@ -120,11 +131,6 @@ def benchmark_schedule(
         )
 
     runner = _run_once
-    if use_compile and hasattr(torch, "compile"):  # pragma: no cover - torch.compile optional
-        try:
-            runner = torch.compile(_run_once, fullgraph=True)  # type: ignore[arg-type]
-        except Exception:
-            runner = _run_once
 
     for _ in range(max(0, warmup)):
         runner()
@@ -279,11 +285,6 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help="Restrict the sweep to one or more schedule names (use --schedule all to keep every preset).",
     )
     parser.add_argument(
-        "--no-compile",
-        action="store_true",
-        help="Disable torch.compile wrapping of the Triton runner.",
-    )
-    parser.add_argument(
         "--list",
         action="store_true",
         help="List known schedules and exit.",
@@ -292,7 +293,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         "--csv",
         type=Path,
         default=Path("artifacts/occupancy_tuning/sweep_results.csv"),
-        help="Whereto store the CSV output.",
+        help="Where to store the CSV output.",
     )
     return parser.parse_args(argv)
 
@@ -323,7 +324,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         iterations=args.iterations,
         warmup=args.warmup,
         dtype=dtype,
-        use_compile=not args.no_compile,
+        use_compile=False,
     )
 
     for result in results:
@@ -338,7 +339,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     _write_csv(results, args.csv)
     print(f"\nCSV saved to {args.csv.resolve()}")
-    return 0
+    return 1 if any(result.error for result in results) else 0
 
 
 if __name__ == "__main__":

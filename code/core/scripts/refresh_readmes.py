@@ -1912,7 +1912,7 @@ ENTRIES["ch09"] = chapter_entry(
     ],
     contents=[
         ("`baseline_compute_bound.py`, `optimized_compute_bound.py`, `baseline_memory_bound.py`, `optimized_memory_bound.py`", "Reference kernels that isolate compute vs bandwidth ceilings and demonstrate tuning strategies."),
-        ("`baseline_micro_tiling_matmul.cu`, `baseline_micro_tiling_matmul.py`, `optimized_micro_tiling_matmul.cu`, `optimized_micro_tiling_matmul.py`", "Micro-tiling matmuls with explicit register blocking and cp.async prefetch."),
+        ("`baseline_micro_tiling_matmul.cu`, `baseline_micro_tiling_matmul.py`, `optimized_micro_tiling_matmul.cu`, `optimized_micro_tiling_matmul.py`", "Naive and 16x16 shared-memory tiled matmuls with per-thread scalar accumulation."),
         ("`baseline_cublaslt_gemm.cu`, `baseline_cublaslt_gemm.py`, `optimized_cublaslt_gemm.cu`, `optimized_cublaslt_gemm.py`, `tcgen05_pipelined.cu`", "cuBLASLt-driven matmuls and tcgen05 pipeline kernels showcasing tcgen05 lowering and occupancy tuning."),
         ("`baseline_cublaslt_gemm_fp4.cu`, `baseline_cublaslt_gemm_fp4.py`, `optimized_cublaslt_gemm_fp4.cu`, `optimized_cublaslt_gemm_fp4.py`", "FP4 comparison path: naive block-scaled FP4 baseline vs native cuBLASLt NVFP4 when the driver/toolchain exposes the required heuristic."),
         ("`baseline_fused_l2norm.cu`, `baseline_fused_l2norm.py`, `optimized_fused_l2norm.cu`, `optimized_fused_l2norm.py`, `fusedL2Norm/`", "Fusion examples that merge L2 norm + scaling while staying numerically stable."),
@@ -2292,9 +2292,10 @@ ENTRIES["ch13"] = chapter_entry(
                 | `kv_cache_naive` | `1664.672 ms / 1194.135 MB` | `1739.080 ms / 370.394 MB` | `68.98% less memory` | token-by-token paged allocation preserves the batch contract while cutting KV-cache footprint |
                 | `memory_profiling` | allocator fragmentation baseline | gradient-checkpointed path | memory-goal benchmark | checkpointing is judged by lower peak allocation and cleaner allocator behavior, not by raw speedup |
                 | `autograd_standard` | `1.644 ms` | `0.204 ms` | `8.04x` | compiled/optimized autograd path |
-                | `precisionfp8_te` | `2.800 ms` | `0.542 ms` | `5.17x` | Transformer Engine FP8 path |
 
-                This chapter is one of the easiest places to fool yourself with framework overhead. That is why the benchmark contract and side-by-side baseline/optimized structure matter here more than almost anywhere else."""
+                This chapter is one of the easiest places to fool yourself with framework overhead. That is why the benchmark contract and side-by-side baseline/optimized structure matter here more than almost anywhere else.
+
+                The prior `precisionfp8_te` number compared eager FP16 with CUDA-graph-replayed FP8, so it is retired. The pair now runs both sides eagerly to isolate Transformer Engine FP8; publish a new speed result only after a fresh B200 correctness and timing run."""
             ),
         ),
         MarkdownSection(

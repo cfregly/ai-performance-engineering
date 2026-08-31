@@ -171,12 +171,16 @@ class OptimizedComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def get_custom_metrics(self) -> Optional[dict]:
         """Return compute-bound analysis metrics using the centralized helper."""
         from core.benchmark.metrics import compute_roofline_metrics
-        # Same FLOP/byte estimates as baseline model.
-        layer1_flops = 2 * self.N * (self.N * 2) * self.N
-        layer2_flops = 2 * self.N * self.N * (self.N * 2)
+        # Same vector-GEMV FLOP and conservative byte estimates as the baseline.
+        layer1_flops = 2 * self.N * (self.N * 2)
+        layer2_flops = 2 * (self.N * 2) * self.N
         total_flops = (layer1_flops + layer2_flops) * self.repeats
         element_size = 2  # FP16
-        total_bytes = (self.N + self.N) * element_size * self.repeats
+        parameter_elements = 4 * self.N * self.N + 3 * self.N
+        activation_io_elements = 2 * self.N
+        total_bytes = (
+            parameter_elements + activation_io_elements
+        ) * element_size * self.repeats
         return compute_roofline_metrics(
             total_flops=total_flops,
             total_bytes=total_bytes,

@@ -33,6 +33,7 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.host_buffers: list[torch.Tensor] = []
         self.device_buffers: list[torch.Tensor] = []
         self.host_views: list[np.ndarray] = []
+        self.host_copy_done_events: list[torch.cuda.Event] = []
         self.batch = 64
         self.hidden = 32
         self.num_blocks = 256
@@ -73,10 +74,21 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ]
         if self.device.type == "cuda":
             self.copy_stream = torch.cuda.Stream(device=self.device)
+            self.host_copy_done_events = [
+                torch.cuda.Event(blocking=False) for _ in self.host_buffers
+            ]
+            current_stream = torch.cuda.current_stream(device=self.device)
+            for event in self.host_copy_done_events:
+                event.record(current_stream)
         self._synchronize()
 
     def _stage_to_host(self, slot: int, step: int) -> None:
         assert self.mapped_inputs is not None
+        # A non-blocking H2D copy can still be reading this pinned allocation
+        # after the Python enqueue returns.  Fence host reuse before np.copyto
+        # overwrites the slot.
+        if self.host_copy_done_events:
+            self.host_copy_done_events[slot].synchronize()
         np.copyto(self.host_views[slot], self.mapped_inputs[step])
 
     def _enqueue_copy(self, slot: int, wait_stream: Optional[torch.cuda.Stream] = None) -> None:
@@ -87,6 +99,7 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with torch.cuda.stream(self.copy_stream):
             self.copy_stream.wait_stream(producer_stream)
             self.device_buffers[slot].copy_(self.host_buffers[slot], non_blocking=True)
+            self.host_copy_done_events[slot].record(self.copy_stream)
 
     def _wait_for_copy(self, wait_stream: Optional[torch.cuda.Stream] = None) -> None:
         if self.copy_stream is not None:
@@ -142,6 +155,7 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.host_buffers = []
         self.device_buffers = []
         self.host_views = []
+        self.host_copy_done_events = []
         if self.inputs_path and os.path.exists(self.inputs_path):
             os.unlink(self.inputs_path)
         self.inputs_path = None

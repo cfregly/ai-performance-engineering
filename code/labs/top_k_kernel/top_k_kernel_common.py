@@ -741,7 +741,7 @@ class CudaTopKSelectionFunction(torch.autograd.Function):
             q,
             k,
             workload,
-            use_cutlass=workload.mode == "forward",
+            use_cutlass=True,
         )
         probs, topk_indices = _finalize_topk_from_block_scores(block_scores, workload)
         if needs_backward:

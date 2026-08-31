@@ -168,6 +168,93 @@ def _run_prefill(
     return kv_chunks, seed_chunks
 
 
+def _transferred_kv_context(
+    kv_cache: torch.Tensor,
+    context_window: int,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Reduce the transferred prompt state into decode context and a verification signal."""
+    if kv_cache.ndim != 3:
+        raise ValueError("kv_cache must have shape (batch, sequence, hidden)")
+    if context_window <= 0 or context_window > kv_cache.size(1):
+        raise ValueError(
+            f"context_window must be in [1, {kv_cache.size(1)}], got {context_window}"
+        )
+    context_fp32 = kv_cache[:, :context_window].mean(
+        dim=1,
+        keepdim=True,
+        dtype=torch.float32,
+    )
+    return context_fp32.to(dtype=kv_cache.dtype), context_fp32
+
+
+def _write_decode_verification_output(
+    output: torch.Tensor,
+    final_tokens: torch.Tensor,
+    context_fp32: torch.Tensor,
+) -> torch.Tensor:
+    """Record final tokens plus a transfer-sensitive prompt-context fingerprint."""
+    if final_tokens.ndim != 2 or final_tokens.size(1) != 1:
+        raise ValueError("final_tokens must have shape (batch, 1)")
+    batch_size = final_tokens.size(0)
+    if context_fp32.ndim != 3 or context_fp32.size(0) != batch_size or context_fp32.size(1) != 1:
+        raise ValueError("context_fp32 must have shape (batch, 1, hidden)")
+    if context_fp32.device != final_tokens.device:
+        raise ValueError("final_tokens and context_fp32 must be on the same device")
+    hidden_size = context_fp32.size(-1)
+    expected_shape = (batch_size, hidden_size + 1)
+    if (
+        output.shape != expected_shape
+        or output.device != final_tokens.device
+        or output.dtype != torch.float32
+    ):
+        output = torch.empty(expected_shape, device=final_tokens.device, dtype=torch.float32)
+    output[:, :hidden_size].copy_(context_fp32.squeeze(1))
+    output[:, hidden_size:].copy_(final_tokens)
+    return output
+
+
+def _allocate_decode_outputs(cfg: DisaggConfig, device: torch.device) -> List[torch.Tensor]:
+    """Preallocate one transfer-sensitive verification result per request."""
+    shape = (cfg.batch_size, cfg.hidden_size + 1)
+    return [
+        torch.empty(shape, device=device, dtype=torch.float32)
+        for _ in range(cfg.requests_per_rank)
+    ]
+
+
+def _collect_decode_verification_outputs(
+    output_buffer: torch.Tensor,
+    outputs: List[torch.Tensor],
+    *,
+    batch_size: int,
+    hidden_size: int,
+) -> torch.Tensor:
+    """Copy complete per-request verification results into the host payload."""
+    expected_output_shape = (batch_size, hidden_size + 1)
+    expected_buffer_shape = (len(outputs) * batch_size, hidden_size + 1)
+    if output_buffer.shape != expected_buffer_shape or output_buffer.dtype != torch.float32:
+        raise RuntimeError(
+            "Decode verification buffer has shape/dtype "
+            f"{tuple(output_buffer.shape)}/{output_buffer.dtype}; expected "
+            f"{expected_buffer_shape}/{torch.float32}"
+        )
+
+    output_offset = 0
+    for output_idx, output in enumerate(outputs):
+        if output.shape != expected_output_shape or output.dtype != torch.float32:
+            raise RuntimeError(
+                f"Decode output {output_idx} has shape/dtype "
+                f"{tuple(output.shape)}/{output.dtype}; expected "
+                f"{expected_output_shape}/{torch.float32}"
+            )
+        output_end = output_offset + batch_size
+        output_buffer[output_offset:output_end].copy_(output, non_blocking=False)
+        output_offset = output_end
+    if output_offset != output_buffer.size(0):
+        raise RuntimeError("Decode verification output collection was incomplete")
+    return output_buffer
+
+
 def _run_decode(
     cfg: DisaggConfig,
     model: SimpleMoEGPT,
@@ -179,7 +266,7 @@ def _run_decode(
     outputs: Optional[List[torch.Tensor]] = None,
 ) -> List[torch.Tensor]:
     if outputs is None or len(outputs) != len(kv_chunks):
-        outputs = [torch.empty(0) for _ in range(len(kv_chunks))]
+        outputs = _allocate_decode_outputs(cfg, device)
     with torch.inference_mode():
         for output_idx, (kv_prompt, seed_tokens) in enumerate(zip(kv_chunks, seed_chunks)):
             request_kv_cache = kv_cache
@@ -192,14 +279,24 @@ def _run_decode(
                     device,
                 )
             request_kv_cache[:, : cfg.context_window].copy_(kv_prompt)
+            kv_context, context_fp32 = _transferred_kv_context(
+                request_kv_cache,
+                cfg.context_window,
+            )
             tokens = seed_tokens
             for step in range(cfg.decode_tokens):
                 _, decode_logits = model.decode(
                     tokens,
                     kv_cache=request_kv_cache,
                     position=cfg.context_window + step,
+                    kv_context=kv_context,
                 )
                 tokens = torch.argmax(decode_logits[:, -1, :], dim=-1, keepdim=True)
+            tokens = _write_decode_verification_output(
+                outputs[output_idx],
+                tokens,
+                context_fp32,
+            )
             outputs[output_idx] = tokens
     return outputs
 
@@ -346,7 +443,7 @@ def _run_torchrun_worker(
             cfg.dtype,
             device,
         )
-        decode_outputs = [torch.empty(0) for _ in range(cfg.requests_per_rank)]
+        decode_outputs = _allocate_decode_outputs(cfg, device)
 
     def run_iteration() -> List[torch.Tensor]:
         if is_prefill:
@@ -419,14 +516,24 @@ def _run_torchrun_worker(
                     _wait_handles(handles)
                     pending[req_idx] = None
                     decode_kv_cache[:, : cfg.context_window].copy_(recv_kv_bufs[req_idx])
+                    kv_context, context_fp32 = _transferred_kv_context(
+                        decode_kv_cache,
+                        cfg.context_window,
+                    )
                     tokens = recv_seed_bufs[req_idx]
                     for step in range(cfg.decode_tokens):
                         _, decode_logits = model.decode(
                             tokens,
                             kv_cache=decode_kv_cache,
                             position=cfg.context_window + step,
+                            kv_context=kv_context,
                         )
                         tokens = torch.argmax(decode_logits[:, -1, :], dim=-1, keepdim=True)
+                    tokens = _write_decode_verification_output(
+                        outputs[req_idx],
+                        tokens,
+                        context_fp32,
+                    )
                     outputs[req_idx] = tokens
             return outputs
 
@@ -516,12 +623,12 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
     def _allocate_output_buffer(self) -> torch.Tensor:
         shape = (
             self.num_pairs * self.cfg.requests_per_rank * self.cfg.batch_size,
-            1,
+            self.cfg.hidden_size + 1,
         )
         try:
-            return torch.empty(shape, device="cpu", dtype=torch.long, pin_memory=True)
+            return torch.empty(shape, device="cpu", dtype=torch.float32, pin_memory=True)
         except RuntimeError:
-            return torch.empty(shape, device="cpu", dtype=torch.long)
+            return torch.empty(shape, device="cpu", dtype=torch.float32)
 
     def setup(self) -> None:
         if not torch.cuda.is_available():
@@ -619,7 +726,7 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
                     decode_model=decode_model,
                     prompts=prompts,
                     decode_kv_cache=decode_kv_cache,
-                    decode_outputs=[torch.empty(0) for _ in range(self.cfg.requests_per_rank)],
+                    decode_outputs=_allocate_decode_outputs(self.cfg, decode_device),
                     prefill_kv_chunks=prefill_kv_chunks,
                     prefill_seed_chunks=prefill_seed_chunks,
                     transfer_kv_chunks=transfer_kv_chunks,
@@ -703,15 +810,12 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
                 raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
             if self._output_buffer is None:
                 raise RuntimeError("Output buffer not initialized")
-            output_offset = 0
-            for output in self._pending_outputs:
-                output_rows = int(output.shape[0])
-                self._output_buffer[output_offset : output_offset + output_rows].copy_(
-                    output,
-                    non_blocking=False,
-                )
-                output_offset += output_rows
-            self._output = self._output_buffer
+            self._output = _collect_decode_verification_outputs(
+                self._output_buffer,
+                self._pending_outputs,
+                batch_size=self.cfg.batch_size,
+                hidden_size=self.cfg.hidden_size,
+            )
         tf32_enabled = torch.cuda.is_available() and bool(torch.backends.cuda.matmul.allow_tf32)
         if not self._metadata_inputs:
             raise RuntimeError("setup() must initialize verification metadata tensors")

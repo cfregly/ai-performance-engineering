@@ -241,7 +241,9 @@ class GPUDomain:
     
     def bandwidth(self) -> Dict[str, Any]:
         """Run GPU memory bandwidth test (actual vs theoretical HBM bandwidth)."""
-        return _safe_call(_get_handler().run_gpu_bandwidth_test)
+        from core.diagnostics import microbench
+
+        return _safe_call(microbench.gpu_memory_bandwidth_test)
     
     def nvlink(self) -> Dict[str, Any]:
         """Get NVLink status: links per GPU, total bandwidth."""
@@ -938,8 +940,10 @@ class BenchmarkDomain:
         return _safe_call(_get_handler().run_speed_tests)
     
     def network_test(self) -> Dict[str, Any]:
-        """Run network throughput tests."""
-        return _safe_call(_get_handler().run_network_tests)
+        """Run a localhost TCP loopback throughput diagnostic."""
+        from core.diagnostics import microbench
+
+        return _safe_call(microbench.network_loopback_test)
 
 
 # =============================================================================

@@ -16,6 +16,7 @@ Or via the CLI:
 from __future__ import annotations
 
 import argparse
+import math
 import os
 from dataclasses import dataclass
 from typing import Optional
@@ -62,6 +63,74 @@ def _init_distributed() -> DistributedContext:
 
 def _expert_to_rank(expert_id: int, experts_per_rank: int) -> int:
     return expert_id // experts_per_rank
+
+
+def _accumulate_route_outputs(
+    output: torch.Tensor,
+    route_positions: torch.Tensor,
+    weighted_route_outputs: torch.Tensor,
+) -> torch.Tensor:
+    """Sum every weighted expert route back into its originating token."""
+    if route_positions.ndim != 1 or weighted_route_outputs.ndim != 2:
+        raise ValueError("route positions must be 1D and route outputs must be 2D")
+    if route_positions.numel() != weighted_route_outputs.size(0):
+        raise ValueError("route positions and route outputs must contain the same number of routes")
+    output.zero_()
+    output.index_add_(0, route_positions, weighted_route_outputs)
+    return output
+
+
+def _weight_route_outputs(
+    expert_outputs: torch.Tensor,
+    route_weights: torch.Tensor,
+) -> torch.Tensor:
+    """Apply one gate weight to each routed expert output."""
+    if route_weights.ndim != 1 or route_weights.numel() != expert_outputs.size(0):
+        raise ValueError("route weights must provide one scalar per expert output")
+    return expert_outputs * route_weights.unsqueeze(-1)
+
+
+def _expert_capacity(
+    token_count: int,
+    routes_per_token: int,
+    num_experts: int,
+    capacity_factor: float,
+) -> int:
+    """Return per-expert capacity for all routed token/expert pairs."""
+    if token_count <= 0 or routes_per_token <= 0 or num_experts <= 0:
+        raise ValueError("token, route, and expert counts must be positive")
+    if capacity_factor <= 0:
+        raise ValueError("capacity_factor must be positive")
+    return max(
+        1,
+        math.ceil(capacity_factor * token_count * routes_per_token / num_experts),
+    )
+
+
+def _route_overflow_mask(expert_ids: torch.Tensor, capacity: int) -> torch.Tensor:
+    """Mark only routes beyond each expert's capacity, preserving route order."""
+    if expert_ids.ndim != 1:
+        raise ValueError("expert_ids must be one-dimensional")
+    if capacity <= 0:
+        raise ValueError("capacity must be positive")
+    overflow = torch.empty_like(expert_ids, dtype=torch.bool)
+    route_count = expert_ids.numel()
+    if route_count == 0:
+        return overflow
+
+    order = torch.argsort(expert_ids, stable=True)
+    sorted_expert_ids = expert_ids[order]
+    sorted_positions = torch.arange(route_count, device=expert_ids.device)
+    new_expert = torch.ones(route_count, device=expert_ids.device, dtype=torch.bool)
+    new_expert[1:] = sorted_expert_ids[1:] != sorted_expert_ids[:-1]
+    group_starts = torch.where(
+        new_expert,
+        sorted_positions,
+        torch.zeros_like(sorted_positions),
+    ).cummax(dim=0).values
+    sorted_overflow = (sorted_positions - group_starts) >= capacity
+    overflow[order] = sorted_overflow
+    return overflow
 
 
 class Top2MoE(nn.Module):
@@ -144,10 +213,8 @@ class Top2MoE(nn.Module):
         flat_w = top2_w.view(batch * seq, 2)
         flat_tokens = tokens.view(batch * seq, hidden)
 
-        cap = int(self.capacity_factor * (batch * seq) / self.num_experts)
-        counts = torch.bincount(flat_idx.view(-1), minlength=self.num_experts)
-        mask_overflow = counts > cap
-        overflow_flags_host = mask_overflow.detach().cpu()
+        cap = _expert_capacity(batch * seq, 2, self.num_experts, self.capacity_factor)
+        route_overflow = _route_overflow_mask(flat_idx.reshape(-1), cap).view(batch * seq, 2)
 
         local_buffers, local_accum = self._local_buffers(flat_tokens, len(self._local_streams))
         current = torch.cuda.current_stream(tokens.device)
@@ -161,9 +228,7 @@ class Top2MoE(nn.Module):
                 local_out.zero_()
                 for unique_idx in range(unique_expert_ids_host.numel()):
                     eid_int = int(unique_expert_ids_host[unique_idx])
-                    if bool(overflow_flags_host[eid_int]):
-                        continue
-                    mask = expert_ids == eid_int
+                    mask = (expert_ids == eid_int) & ~route_overflow[:, slot]
                     contrib = self.experts[eid_int](flat_tokens[mask]) * flat_w[mask, slot:slot + 1]
                     local_out[mask] += contrib
 
@@ -180,21 +245,40 @@ class Top2MoE(nn.Module):
         top2_logits, top2_idx = torch.topk(logits, k=2, dim=-1)
         top2_w = torch.exp(top2_logits - torch.logsumexp(logits, dim=-1, keepdim=True))
         flat_idx = top2_idx.view(batch * seq, 2)
+        flat_w = top2_w.view(batch * seq, 2)
         flat_tokens = tokens.view(batch * seq, hidden)
-
-        cap = int(self.capacity_factor * (batch * seq) / self.num_experts)
-        counts = torch.bincount(flat_idx.view(-1), minlength=self.num_experts)
-        mask_overflow = counts > cap
-        overflow_flags_host = mask_overflow.detach().cpu()
 
         world_size = ctx.world_size
         rank = ctx.rank
-        experts_per_rank = max(1, self.num_experts // world_size)
+        if self.num_experts < world_size or self.num_experts % world_size != 0:
+            raise ValueError(
+                "distributed mode requires num_experts to be evenly divisible by world_size"
+            )
+        experts_per_rank = self.num_experts // world_size
 
-        top1 = flat_idx[:, 0]
-        dest_ranks = top1 // experts_per_rank
+        route_expert_ids = flat_idx.reshape(-1)
+        route_weights = flat_w.reshape(-1)
+        total_send = route_expert_ids.numel()
+        cap = _expert_capacity(batch * seq, 2, self.num_experts, self.capacity_factor)
+        route_overflow = _route_overflow_mask(route_expert_ids, cap)
+        route_positions = self._distributed_workspace(
+            "route_positions",
+            (total_send,),
+            device=tokens.device,
+            dtype=torch.int64,
+        )
+        torch.arange(total_send, out=route_positions)
+        route_positions.div_(2, rounding_mode="floor")
+        effective_route_weights = self._distributed_workspace(
+            "effective_route_weights",
+            (total_send,),
+            device=tokens.device,
+            dtype=route_weights.dtype,
+        )
+        effective_route_weights.copy_(route_weights)
+        effective_route_weights.masked_fill_(route_overflow, 0.0)
+        dest_ranks = route_expert_ids // experts_per_rank
 
-        total_send = flat_tokens.shape[0]
         send_buf = self._distributed_workspace(
             "send_buf",
             (total_send, hidden),
@@ -213,6 +297,12 @@ class Top2MoE(nn.Module):
             device=tokens.device,
             dtype=torch.int64,
         )
+        send_weights = self._distributed_workspace(
+            "send_weights",
+            (total_send,),
+            device=tokens.device,
+            dtype=route_weights.dtype,
+        )
         send_splits: list[int] = []
         send_offset = 0
         for r in range(world_size):
@@ -222,9 +312,30 @@ class Top2MoE(nn.Module):
             send_splits.append(count)
             if count:
                 end = send_offset + count
-                torch.index_select(flat_tokens, 0, send_indices, out=send_buf[send_offset:end])
-                torch.index_select(top1, 0, send_indices, out=send_ids[send_offset:end])
-                send_pos[send_offset:end].copy_(send_indices)
+                torch.index_select(
+                    route_positions,
+                    0,
+                    send_indices,
+                    out=send_pos[send_offset:end],
+                )
+                torch.index_select(
+                    flat_tokens,
+                    0,
+                    send_pos[send_offset:end],
+                    out=send_buf[send_offset:end],
+                )
+                torch.index_select(
+                    route_expert_ids,
+                    0,
+                    send_indices,
+                    out=send_ids[send_offset:end],
+                )
+                torch.index_select(
+                    effective_route_weights,
+                    0,
+                    send_indices,
+                    out=send_weights[send_offset:end],
+                )
                 send_offset = end
         splits_all: list[list[int]] = [None for _ in range(world_size)]  # type: ignore[list-item]
         dist.all_gather_object(splits_all, send_splits)
@@ -249,10 +360,22 @@ class Top2MoE(nn.Module):
             device=tokens.device,
             dtype=torch.int64,
         )
+        recv_weights = self._distributed_workspace(
+            "recv_weights",
+            (total_recv,),
+            device=tokens.device,
+            dtype=route_weights.dtype,
+        )
 
         dist.all_to_all_single(recv_buf, send_buf, out_split_sizes=recv_splits, in_split_sizes=send_splits)
         dist.all_to_all_single(recv_ids, send_ids, out_split_sizes=recv_splits, in_split_sizes=send_splits)
         dist.all_to_all_single(recv_pos, send_pos, out_split_sizes=recv_splits, in_split_sizes=send_splits)
+        dist.all_to_all_single(
+            recv_weights,
+            send_weights,
+            out_split_sizes=recv_splits,
+            in_split_sizes=send_splits,
+        )
 
         local_out = self._distributed_workspace(
             "local_out",
@@ -264,12 +387,13 @@ class Top2MoE(nn.Module):
         recv_unique_ids_host = torch.unique(recv_ids).detach().cpu()
         for unique_idx in range(recv_unique_ids_host.numel()):
             eid_int = int(recv_unique_ids_host[unique_idx])
-            if bool(overflow_flags_host[eid_int]):
-                continue
             if _expert_to_rank(eid_int, experts_per_rank) != rank:
                 continue
-            mask = recv_ids == eid_int
-            local_out[mask] = self.experts[eid_int](recv_buf[mask])
+            mask = (recv_ids == eid_int) & recv_weights.ne(0)
+            local_out[mask] = _weight_route_outputs(
+                self.experts[eid_int](recv_buf[mask]),
+                recv_weights[mask],
+            )
 
         send_back_splits = recv_splits
         recv_back_splits = send_splits
@@ -300,8 +424,7 @@ class Top2MoE(nn.Module):
             device=tokens.device,
             dtype=flat_tokens.dtype,
         )
-        out.zero_()
-        out[recv_back_pos] = recv_back_buf
+        _accumulate_route_outputs(out, recv_back_pos, recv_back_buf)
         return out.view(batch, seq, hidden)
 
 

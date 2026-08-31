@@ -15,7 +15,7 @@ How it works:
 import heapq
 import json
 import os
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional, Union
 
 import torch
 
@@ -34,9 +34,27 @@ _CACHE_DIR = os.path.dirname(os.path.abspath(__file__))
 _CACHE_FILE = os.path.join(_CACHE_DIR, ".autotune_cache.json")
 
 
-def _get_device_key() -> str:
-    """Generate a unique key for the current GPU."""
-    props = torch.cuda.get_device_properties(0)
+DeviceLike = Union[torch.device, str, int]
+
+
+def _resolve_cuda_device(device: Optional[DeviceLike] = None) -> torch.device:
+    """Resolve an explicit CUDA device, defaulting to the current device."""
+    if device is None:
+        return torch.device("cuda", torch.cuda.current_device())
+    if isinstance(device, int):
+        return torch.device("cuda", device)
+    resolved = torch.device(device)
+    if resolved.type != "cuda":
+        raise ValueError(f"Autotuning requires a CUDA device, got {resolved}")
+    if resolved.index is None:
+        return torch.device("cuda", torch.cuda.current_device())
+    return resolved
+
+
+def _get_device_key(device: Optional[DeviceLike] = None) -> str:
+    """Generate a cache key for the GPU that will execute the benchmark."""
+    resolved = _resolve_cuda_device(device)
+    props = torch.cuda.get_device_properties(resolved.index)
     return f"{props.name}_{props.major}.{props.minor}"
 
 
@@ -66,14 +84,14 @@ def _benchmark_kernel(fn: Callable, A: torch.Tensor, B: torch.Tensor,
     # Warmup
     for _ in range(warmup):
         _ = fn(A, B)
-    torch.cuda.synchronize()
+    torch.cuda.synchronize(A.device)
 
     # Timed runs: keep the k+1 smallest samples, whose max is the upper median.
     target_heap_size = iters // 2 + 1
     upper_median_heap = []
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
-    current_stream = torch.cuda.current_stream()
+    current_stream = torch.cuda.current_stream(A.device)
     for _ in range(iters):
         start_event.record(current_stream)
         _ = fn(A, B)
@@ -98,7 +116,13 @@ KERNELS = {
 }
 
 
-def autotune(M: int, N: int, K: int, verbose: bool = True) -> str:
+def autotune(
+    M: int,
+    N: int,
+    K: int,
+    verbose: bool = True,
+    device: Optional[DeviceLike] = None,
+) -> str:
     """
     Autotune to find the best kernel for the given problem size.
     
@@ -109,7 +133,8 @@ def autotune(M: int, N: int, K: int, verbose: bool = True) -> str:
     Returns:
         Name of the best kernel
     """
-    device_key = _get_device_key()
+    resolved_device = _resolve_cuda_device(device)
+    device_key = _get_device_key(resolved_device)
     size_key = f"{M}x{N}x{K}"
     cache_key = f"{device_key}_{size_key}"
     
@@ -125,22 +150,39 @@ def autotune(M: int, N: int, K: int, verbose: bool = True) -> str:
         print(f"\n  ★ AUTOTUNING for {M}x{N}x{K} on {device_key} ★")
         print(f"  Testing {len(KERNELS)} configurations...")
     
-    # Create test tensors
-    A = torch.randn(M, K, device='cuda', dtype=torch.float16)
-    B = torch.randn(N, K, device='cuda', dtype=torch.float16)
-    
-    # Benchmark each kernel
     results = {}
-    for name, fn in KERNELS.items():
+    failures: Dict[str, str] = {}
+    # Several extension variants launch on at::cuda::getCurrentCUDAStream()
+    # and compile for the current device. Keep the current CUDA context aligned
+    # with the tensors being tuned, including cleanup of that device's cache.
+    with torch.cuda.device(resolved_device):
+        A = torch.randn(M, K, device=resolved_device, dtype=torch.float16)
+        B = torch.randn(N, K, device=resolved_device, dtype=torch.float16)
+
         try:
-            t = _benchmark_kernel(fn, A, B)
-            results[name] = t
-            if verbose:
-                tflops = 2 * M * N * K / t / 1e9
-                print(f"    {name:12s}: {t:>7.3f} ms ({tflops:>6.1f} TFLOPS)")
-        except Exception as e:
-            if verbose:
-                print(f"    {name:12s}: FAILED ({e})")
+            for name, fn in KERNELS.items():
+                try:
+                    t = _benchmark_kernel(fn, A, B)
+                    results[name] = t
+                    if verbose:
+                        tflops = 2 * M * N * K / t / 1e9
+                        print(f"    {name:12s}: {t:>7.3f} ms ({tflops:>6.1f} TFLOPS)")
+                except Exception as exc:
+                    failures[name] = f"{type(exc).__name__}: {exc}"
+                    if verbose:
+                        print(f"    {name:12s}: FAILED ({exc})")
+        finally:
+            del A, B
+            torch.cuda.empty_cache()
+
+    if not results:
+        failure_summary = "; ".join(
+            f"{name}={message}" for name, message in sorted(failures.items())
+        )
+        raise RuntimeError(
+            f"Autotuning {M}x{N}x{K} on {device_key} failed: "
+            f"all {len(KERNELS)} kernels failed ({failure_summary})"
+        )
     
     # Find winner
     winner = min(results, key=results.get)
@@ -151,10 +193,6 @@ def autotune(M: int, N: int, K: int, verbose: bool = True) -> str:
     # Update cache
     cache[cache_key] = winner
     _save_cache(cache)
-    
-    # Cleanup
-    del A, B
-    torch.cuda.empty_cache()
     
     return winner
 
@@ -175,12 +213,18 @@ def matmul_autotuned(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     """
     M, K = a.shape
     N = b.shape[0]
+    if a.device != b.device:
+        raise ValueError(f"Input tensors must be on the same device, got {a.device} and {b.device}")
+    if a.device.type != "cuda":
+        raise ValueError(f"Autotuned tcgen05 kernels require CUDA tensors, got {a.device}")
     
     # Get best kernel (from cache or autotune)
-    best = autotune(M, N, K, verbose=False)
+    best = autotune(M, N, K, verbose=False, device=a.device)
     
-    # Execute
-    return KERNELS[best](a, b)
+    # Execute under the input device's context because the extension variants
+    # use the current CUDA stream for their launches.
+    with torch.cuda.device(a.device):
+        return KERNELS[best](a, b)
 
 
 def clear_cache():

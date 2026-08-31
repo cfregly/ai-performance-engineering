@@ -108,35 +108,6 @@
       },
       "type": "python"
     },
-    "disaggregated_inference_multigpu": {
-      "example": "disaggregated_inference_multigpu",
-      "metadata": {
-        "best_optimization": "optimized_disaggregated_inference_multigpu",
-        "best_optimization_file": "optimized_disaggregated_inference_multigpu.py",
-        "best_optimization_speedup": 1.21829401384054,
-        "best_optimization_technique": "optimized_disaggregated_inference_multigpu",
-        "best_optimization_time_ms": 5729.772508144379,
-        "optimization_goal": "speed"
-      },
-      "metrics": {
-        "baseline_p75_ms": 6980.547547340393,
-        "baseline_time_ms": 6980.547547340393,
-        "best_optimized_p75_ms": 5729.772508144379,
-        "best_optimized_speedup": 1.21829401384054,
-        "best_optimized_time_ms": 5729.772508144379,
-        "best_speedup": 1.21829401384054,
-        "is_regression": false
-      },
-      "provenance": {
-        "git_commit": "1ac595b64759f4fefbf2d38f0c384149bdb7b715",
-        "hardware_key": "2x_b200",
-        "iterations": 20,
-        "profile_name": "none",
-        "timestamp": "2026-01-06T07:38:30.591216",
-        "warmup_iterations": 5
-      },
-      "type": "python"
-    },
     "guided_decoding": {
       "example": "guided_decoding",
       "metadata": {

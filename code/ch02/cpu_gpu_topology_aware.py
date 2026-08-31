@@ -141,13 +141,22 @@ def detect_cpu_info() -> Dict[str, Any]:
     # Detect specific CPU types
     if info["architecture"] in ["aarch64", "arm64"]:
         info["cpu_type"] = "ARM"
-        
-        # Check for Neoverse/Grace (ARM-based superchip CPU)
-        with open('/proc/cpuinfo', 'r') as f:
-            cpuinfo = f.read()
-            if 'ARM' in cpuinfo or 'Neoverse' in cpuinfo:
-                info["cpu_type"] = "ARM Neoverse"
-                info["is_grace"] = True
+
+        # Neoverse is a broad ARM family, not evidence of an NVIDIA Grace CPU.
+        try:
+            with open('/proc/cpuinfo', 'r') as f:
+                cpuinfo = f.read()
+        except OSError:
+            cpuinfo = ""
+        if re.search(r"\bNeoverse\b", cpuinfo, flags=re.IGNORECASE):
+            info["cpu_type"] = "ARM Neoverse"
+        if re.search(
+            r"\bNVIDIA\s+Grace\b|\bGrace\s+(?:CPU|Processor)\b",
+            cpuinfo,
+            flags=re.IGNORECASE,
+        ):
+            info["cpu_type"] = "NVIDIA Grace"
+            info["is_grace"] = True
     elif info["architecture"] in ["x86_64", "AMD64"]:
         info["cpu_type"] = "x86_64"
         with open('/proc/cpuinfo', 'r') as f:
@@ -185,15 +194,16 @@ def detect_interconnect_type(cpu_info: Dict[str, Any], gpu_info: Dict[str, Any])
     Detect the CPU-GPU interconnect type.
     
     Returns:
-        Interconnect type string with bandwidth estimate
+        Interconnect type string. Bandwidth is labeled as unmeasured unless the
+        platform query exposes a negotiated PCIe link speed.
     """
     # NVLink-C2C: Grace CPU + Blackwell/Hopper GPUs
     if cpu_info["is_grace"] and gpu_info["family"] in ["Blackwell", "Hopper"]:
-        return "NVLink-C2C (~900 GB/s)"
+        return "NVLink-C2C (detected; bandwidth unmeasured)"
     
     # NVSwitch: Multi-GPU with NVLink
     if gpu_info.get("nvlink_capable", False):
-        return "NVLink (~600-900 GB/s GPU-GPU)"
+        return "NVLink (detected; bandwidth unmeasured)"
     
     # PCIe (most common)
     # Try to detect PCIe generation

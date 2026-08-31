@@ -117,8 +117,14 @@ int main() {
     }
 
     const std::size_t bytes = static_cast<std::size_t>(M) * N * sizeof(float);
-    std::vector<float> h_in(static_cast<std::size_t>(M) * N, 1.0f);
+    std::vector<float> h_in(static_cast<std::size_t>(M) * N);
     std::vector<float> h_out(static_cast<std::size_t>(M) * N, 0.0f);
+    for (int row = 0; row < M; ++row) {
+        for (int col = 0; col < N; ++col) {
+            const std::size_t idx = static_cast<std::size_t>(row) * N + col;
+            h_in[idx] = static_cast<float>((row * 131 + col * 17) % 8191) / 8191.0f;
+        }
+    }
 
     float* d_in = nullptr;
     float* d_out = nullptr;
@@ -168,8 +174,8 @@ int main() {
     bool ok = true;
     for (std::size_t idx = 0; idx < h_out.size(); ++idx) {
         NVTX_RANGE("iteration");
-        if (h_out[idx] != 1.0f) {
-            std::printf("Mismatch at %zu: got %f expected %f\n", idx, h_out[idx], 1.0f);
+        if (h_out[idx] != h_in[idx]) {
+            std::printf("Mismatch at %zu: got %f expected %f\n", idx, h_out[idx], h_in[idx]);
             ok = false;
             break;
         }

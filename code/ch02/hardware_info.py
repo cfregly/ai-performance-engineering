@@ -23,6 +23,33 @@ from core.profiling.nvtx_helper import standardize_nvtx_label
 from core.harness.hardware_capabilities import detect_capabilities
 
 
+_DATACENTER_BLACKWELL_SM_VERSIONS = frozenset({"sm_100", "sm_103"})
+
+
+def _is_b200_or_b300(gpu_info: Dict[str, Any]) -> bool:
+    """Return whether capability data identifies a B200/GB200 or B300/GB300 GPU."""
+    return gpu_info.get("sm_version") in _DATACENTER_BLACKWELL_SM_VERSIONS
+
+
+def _effective_copy_bandwidth_gbps(
+    size_bytes: int,
+    iterations: int,
+    elapsed_ms: float,
+) -> float:
+    """Compute aggregate HBM read+write traffic for a device-to-device copy."""
+    if size_bytes <= 0 or iterations <= 0 or elapsed_ms <= 0:
+        raise ValueError("copy size, iteration count, and elapsed time must be positive")
+    traffic_bytes = 2 * size_bytes * iterations
+    return traffic_bytes / (elapsed_ms / 1000.0) / 1e9
+
+
+def _gemm_throughput_tflops(size: int, elapsed_seconds: float) -> float:
+    """Compute dense square GEMM throughput using 2*N^3 floating-point ops."""
+    if size <= 0 or elapsed_seconds <= 0:
+        raise ValueError("GEMM size and elapsed time must be positive")
+    return (2 * size**3) / elapsed_seconds / 1e12
+
+
 def get_architecture() -> str:
     """Detect and return the current GPU architecture."""
     cap = detect_capabilities()
@@ -73,7 +100,8 @@ def get_gpu_info() -> Dict[str, Any]:
         "max_shared_memory_per_block": cap.max_shared_mem_per_block,
         "max_shared_memory_per_sm": cap.max_shared_mem_per_sm,
         "l2_cache_size": l2_bytes,
-        "architecture": cap.name,
+        "architecture": cap.architecture,
+        "architecture_name": cap.name,
         "sm_version": cap.sm_version,
         "hbm3e_memory": "HBM3e" in cap.features,
         "memory_bandwidth_tbps": cap.memory_bandwidth_tbps,
@@ -192,8 +220,15 @@ def benchmark_memory_bandwidth() -> None:
         end.synchronize()
 
         elapsed_ms = start.elapsed_time(end)
-        bandwidth_gbps = (size_bytes * iterations / elapsed_ms) / 1e6
-        print(f"Copy {size_gb:2d} GB: {bandwidth_gbps / 1024:.2f} TB/s")
+        bandwidth_gbps = _effective_copy_bandwidth_gbps(
+            size_bytes,
+            iterations,
+            elapsed_ms,
+        )
+        print(
+            f"Copy {size_gb:2d} GiB: {bandwidth_gbps / 1000:.2f} TB/s "
+            "(aggregate HBM read + write)"
+        )
 
     sizes = [1024, 2048, 4096]
 
@@ -218,10 +253,12 @@ def benchmark_memory_bandwidth() -> None:
             end_time = time.perf_counter()
 
             avg_time = (end_time - start_time) / active_iters
-            bytes_transferred = 2 * size * size * 4
-            bandwidth_gbps = (bytes_transferred / avg_time) / 1e9
+            throughput_tflops = _gemm_throughput_tflops(size, avg_time)
 
-            print(f"GEMM {size}x{size}: {avg_time:.4f}s, {bandwidth_gbps:.1f} GB/s")
+            print(
+                f"GEMM {size}x{size}: {avg_time:.4f}s, "
+                f"{throughput_tflops:.1f} TFLOP/s"
+            )
 
         except RuntimeError as err:
             if "out of memory" in str(err):
@@ -377,12 +414,14 @@ def demonstrate_blackwell_optimizations() -> None:
 
     gpu_info = get_gpu_info()
 
-    if gpu_info.get("architecture") == "Blackwell B200/B300":
+    if _is_b200_or_b300(gpu_info):
         print("Blackwell B200/B300 Optimizations:")
         print("1. HBM3e Memory Optimizations")
-        print("   • High-bandwidth memory (7.8 TB/s)")
+        print(
+            "   • Detected memory bandwidth: "
+            f"{_format_bandwidth(gpu_info.get('memory_bandwidth_gbps'))}"
+        )
         print("   • Optimized memory access patterns")
-        print("   • Unified memory architecture")
 
         print("\n2. Tensor Core Optimizations")
         print("   • 5th Generation Tensor Cores")
@@ -394,15 +433,14 @@ def demonstrate_blackwell_optimizations() -> None:
         print("   • Reduced memory latency")
         print("   • Optimized memory bandwidth")
 
-        print("\n4. NVLink-C2C")
-        print("   • Direct GPU-to-GPU communication")
-        print("   • High-speed data transfer")
-        print("   • Reduced communication overhead")
-
-        print("\n5. Unified Memory")
-        print("   • 30 TB total unified memory")
-        print("   • Seamless CPU-GPU memory access")
-        print("   • Optimized memory management")
+        print("\n4. Interconnect and Unified Memory")
+        if gpu_info.get("nvlink_c2c"):
+            print("   • NVLink-C2C Grace CPU ↔ Blackwell GPU coherence detected")
+        else:
+            print("   • NVLink-C2C was not detected on this host")
+        max_unified_memory_tb = gpu_info.get("max_unified_memory_tb")
+        if max_unified_memory_tb is not None:
+            print(f"   • Maximum unified-memory budget: {max_unified_memory_tb} TB")
     else:
         print("This GPU does not support Blackwell B200/B300 optimizations")
 
@@ -438,16 +476,25 @@ def main() -> None:
     print("\n2. Blackwell B200/B300 Specific Information:")
     print("-" * 40)
     if "error" not in gpu_info:
-        if gpu_info.get("architecture") == "Blackwell B200/B300":
+        if _is_b200_or_b300(gpu_info):
             print(" This is a Blackwell B200/B300 GPU")
-            print(f" Compute Capability: {gpu_info['compute_capability']} (SM100)")
-            print(f" Memory: {gpu_info['total_memory_gb']:.1f} GB HBM3e")
-            print(f" Memory Bandwidth: {gpu_info['memory_bandwidth_tbps']} TB/s")
+            print(
+                f" Compute Capability: {gpu_info['compute_capability']} "
+                f"({gpu_info['sm_version']})"
+            )
+            memory_type = " HBM3e" if gpu_info.get("hbm3e_memory") else ""
+            print(f" Memory: {gpu_info['total_memory_gb']:.1f} GB{memory_type}")
+            print(
+                " Memory Bandwidth: "
+                f"{_format_bandwidth(gpu_info.get('memory_bandwidth_gbps'))}"
+            )
             print(" 5th Generation Tensor Cores")
-            print(" TMA (Tensor Memory Accelerator)")
-            print(" NVLink-C2C (Direct GPU-to-GPU communication)")
-            print(" Unified Memory Architecture")
-            print(f" Max Unified Memory: {gpu_info['max_unified_memory_tb']} TB")
+            if gpu_info.get("tma_support"):
+                print(" TMA (Tensor Memory Accelerator)")
+            if gpu_info.get("nvlink_c2c"):
+                print(" NVLink-C2C (Grace CPU ↔ Blackwell GPU coherence)")
+            if gpu_info.get("max_unified_memory_tb") is not None:
+                print(f" Max Unified Memory: {gpu_info['max_unified_memory_tb']} TB")
         else:
             print("This is not a Blackwell B200/B300 GPU")
             print(f"GPU: {gpu_info['name']}")

@@ -222,17 +222,33 @@ def _query_cluster_launch(device_index: int) -> Optional[int]:
         return None
 
 
+def _read_grace_host_identity() -> str:
+    """Read host identity sources that can explicitly name an NVIDIA Grace CPU."""
+    samples: List[str] = []
+    for path in (
+        Path("/proc/cpuinfo"),
+        Path("/sys/firmware/devicetree/base/model"),
+        Path("/sys/devices/virtual/dmi/id/product_name"),
+    ):
+        try:
+            samples.append(path.read_text(encoding="utf-8", errors="ignore"))
+        except OSError:
+            continue
+    return "\n".join(samples).lower()
+
+
 def _is_grace_host() -> bool:
-    """True when the host CPU is Grace (ARM), i.e. a coherent Grace-Blackwell node."""
-    return platform.machine().lower() in ("aarch64", "arm64")
+    """Return true only when an ARM host explicitly identifies NVIDIA Grace."""
+    if platform.machine().lower() not in ("aarch64", "arm64"):
+        return False
+    identity = _read_grace_host_identity()
+    return "nvidia" in identity and "grace" in identity
 
 
 def _has_grace_coherence(props) -> bool:
     """Grace-Blackwell coherent memory: a Grace (ARM) host with a Blackwell-class
     GPU. GB200/GB300 report CC 10.x; GB10 reports CC 12.x. A non-Grace (x86)
     B200/B300 has no NVLink-C2C coherent fabric."""
-    if props.major >= 12:
-        return True
     return props.major >= 10 and _is_grace_host()
 
 
@@ -248,13 +264,15 @@ def _build_features(props) -> List[str]:
 
 
 def _derive_tma_limits(props) -> Tuple[int, int, int]:
-    if props.major >= 10 and props.major < 12:
-        return 1024, 128, 128
-    if props.major >= 12:
-        return 256, 64, 32
+    """Return the cuTensorMapEncodeTiled box-dimension contract.
+
+    These are CUDA Driver API descriptor limits, not architecture-specific
+    performance characteristics. Every boxDim entry must be in [1, 256].
+    https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html
+    """
     if props.major >= 9:
-        return 1024, 128, 128
-    return 256, 64, 32
+        return 256, 256, 256
+    return 0, 0, 0
 
 
 def _probe_device(device_index: int) -> Dict[str, Any]:
