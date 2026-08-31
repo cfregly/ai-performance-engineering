@@ -22,12 +22,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
 
@@ -137,13 +137,15 @@ jobs:
             > "${EVIDENCE_DIR}/pip-freeze.txt"
           "${PROVENANCE_PYTHON}" -m pip --isolated debug --verbose \
             > "${EVIDENCE_DIR}/pip-debug.txt" 2>&1
-          "${PROVENANCE_PYTHON}" - <<'PY' 2>&1 \
+          "${PROVENANCE_PYTHON}" -I - <<'PY' 2>&1 \
             | tee "${EVIDENCE_DIR}/validation.log"
           import importlib
           import json
           import os
+          import sys
           from importlib import metadata
           from pathlib import Path
+          from urllib.parse import urlparse
 
           from packaging.requirements import Requirement
           from packaging.utils import canonicalize_name
@@ -218,6 +220,16 @@ jobs:
               origin_url = download.get("url")
               if not origin_url:
                   raise SystemExit(f"missing selected artifact origin URL for {name}")
+              parsed_origin = urlparse(origin_url)
+              allowed_origin_hosts = {
+                  "download-r2.pytorch.org",
+                  "files.pythonhosted.org",
+              }
+              if (
+                  parsed_origin.scheme != "https"
+                  or parsed_origin.hostname not in allowed_origin_hosts
+              ):
+                  raise SystemExit(f"unapproved selected artifact origin for {name}: {origin_url}")
               selected.append({
                   "name": name,
                   "requested": bool(item.get("requested")),
@@ -263,11 +275,20 @@ jobs:
                   f"unexpected={sorted(set(imports) - set(direct))}"
               )
           imported = {}
+          venv_root = Path(sys.prefix).resolve()
           for distribution_name, module_name in imports.items():
               module = importlib.import_module(module_name)
+              module_file = getattr(module, "__file__", None)
+              if not module_file:
+                  raise SystemExit(f"imported module has no file: {module_name}")
+              module_path = Path(module_file).resolve()
+              if not module_path.is_relative_to(venv_root):
+                  raise SystemExit(
+                      f"import escaped provenance venv: {module_name} -> {module_path}"
+                  )
               imported[distribution_name] = {
                   "module": module_name,
-                  "module_file": str(getattr(module, "__file__", "")),
+                  "module_file": str(module_path),
                   "version": versions[distribution_name],
               }
 
@@ -378,7 +399,7 @@ jobs:
 
       - name: Upload provenance evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: audit-linux-cpu-provenance-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/audit-linux-cpu-provenance
