@@ -51,13 +51,22 @@ def test_active_workflows_live_at_git_root() -> None:
         assert defaults["run"]["working-directory"] == "code"
 
 
-def test_workflows_use_current_node24_action_majors() -> None:
+def test_workflows_use_current_node24_action_refs() -> None:
     expected_actions = {
-        "actions/checkout": "v7",
-        "actions/download-artifact": "v7",
-        "actions/setup-node": "v7",
-        "actions/setup-python": "v7",
-        "actions/upload-artifact": "v7",
+        "actions/checkout": {
+            "v7",
+            "3d3c42e5aac5ba805825da76410c181273ba90b1",
+        },
+        "actions/download-artifact": {"v7"},
+        "actions/setup-node": {"v7"},
+        "actions/setup-python": {
+            "v7",
+            "5fda3b95a4ea91299a34e894583c3862153e4b97",
+        },
+        "actions/upload-artifact": {
+            "v7",
+            "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+        },
     }
     observed_actions: set[str] = set()
 
@@ -74,7 +83,7 @@ def test_workflows_use_current_node24_action_majors() -> None:
                 if not isinstance(action_ref, str) or not action_ref.startswith("actions/"):
                     continue
                 action_name, version = action_ref.split("@", maxsplit=1)
-                assert version == expected_actions[action_name]
+                assert version in expected_actions[action_name]
                 observed_actions.add(action_name)
 
     assert observed_actions == set(expected_actions)

@@ -34,7 +34,7 @@ The paused run ID is `20260816_autoresearch_b200_full_13de588b7`. Its orchestrat
 
 B200 custody is unavailable for the active two-wave audit remediation goal. No GPU, SSH, runner, profiler, sanitizer, or device probe was used during the latest reconciliation. A later session may continue only after explicit custody returns and after re-reading this ownership section.
 
-The final code source epoch is `3316e0efe985040745ffd926c5f76a6bd4436aff`; subsequent mainline commits through reconciliation base `4bcbd16325eb5d51cff90e84f8a1cb4e6c735189` change CI, documentation, and retained evidence only. Current audit state:
+The final code source epoch is `3316e0efe985040745ffd926c5f76a6bd4436aff`; later mainline commits through the commit containing this handoff change CI, documentation, and retained evidence only. Current audit state:
 
 - all 128 Wave 1 and 141 Wave 2 rows have source dispositions;
 - the 76-row Wave 1 local runtime matrix is 7 verified and 69 pending;
@@ -45,7 +45,10 @@ The final code source epoch is `3316e0efe985040745ffd926c5f76a6bd4436aff`; subse
 
 Use [the runtime handoff](docs/audits/2026-08-30/evidence/integration/runtime-handoff.md), [current status](docs/audits/2026-08-30/STATUS.md), and [ledger](docs/audits/2026-08-30/remediation-ledger.json) as the pickup records. Do not restart the old 486-target sweep to satisfy these findings. Run the smallest affected target matrix. Do not rerun the full CPU suite merely to reproduce retained evidence; only a later source or dependency change that invalidates it should require a new broad pass.
 
-### Latest non-B200 checkpoint
+### Historical autoresearch non-B200 checkpoint
+
+This subsection preserves the older 486-target autoresearch campaign. It does
+not supersede the focused two-wave audit-remediation pickup above.
 
 Source checkpoint `f7ec105e05941c6c6a58e9f064e1ffe041dd00af` is published to both `main` and `codex/actions-node24-ci-20260816`. No B200 command, SSH probe, benchmark, profiler, workflow, or runner was used while preparing or validating it.
 
@@ -242,7 +245,15 @@ Choose a new `$RUN_ID` after reviewing the historical paused package and confirm
   --no-auto-resume
 ```
 
-## Remaining validation phases
+## Historical 486-target autoresearch validation phases
+
+The phases below belong to the separate autoresearch campaign described at the
+top of this file. They are not the acceptance queue for the active two-wave
+audit-remediation goal. For that goal, follow the focused runtime handoff and do
+not rerun the full CPU suite or the 486-target sweep merely to reproduce retained
+evidence. A later source or dependency change that invalidates the retained
+evidence, or a separately authorized autoresearch run, is required before those
+broad reruns are appropriate.
 
 1. Keep all B200 GPU work stopped until the other task releases both GPUs.
 2. Keep source checkpoint `f7ec105e05941c6c6a58e9f064e1ffe041dd00af` as the verified non-B200 source while the GPUs remain occupied.

@@ -1,0 +1,292 @@
+name: Audit Linux Full Dependency Graph
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-linux-full-dependency-graph-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  full-graph:
+    name: Install hash-bound 90-specification graph
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      LOCK_PATH: docs/audits/2026-08-30/evidence/integration/full-dependency-graph/full-90-final-source-attempt-1/resolved-requirements.txt
+      DIRECT_REQUIREMENTS_PATH: docs/audits/2026-08-30/evidence/integration/full-dependency-graph/full-90-final-source-attempt-1/requirements.in
+      CURRENT_REQUIREMENTS_PATH: code/requirements_latest.txt
+      VERIFIER_PATH: docs/audits/2026-08-30/evidence/integration/full-dependency-graph/verify_full_graph_install.py
+      EVIDENCE_DIR: artifacts/audit-linux-full-dependency-graph
+      WHEEL_LOCK_PATH: artifacts/audit-linux-full-dependency-graph/wheel-install-requirements.txt
+      GPUTIL_LOCK_PATH: artifacts/audit-linux-full-dependency-graph/gputil-install-requirement.txt
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+
+      - name: Capture source, inputs, and runner identity
+        id: capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          checkout_status="${RUNNER_TEMP}/audit-linux-full-graph-git-status.txt"
+          git status --porcelain=v1 > "${checkout_status}"
+          if [[ -s "${checkout_status}" ]]; then
+            cat "${checkout_status}" >&2
+            echo "Checkout is not clean" >&2
+            exit 1
+          fi
+          mkdir -p "${EVIDENCE_DIR}"
+          cp "${checkout_status}" "${EVIDENCE_DIR}/git-status.txt"
+          test -f "${LOCK_PATH}"
+          test -f "${DIRECT_REQUIREMENTS_PATH}"
+          test -f "${CURRENT_REQUIREMENTS_PATH}"
+          test -f "${VERIFIER_PATH}"
+          cp "${LOCK_PATH}" "${EVIDENCE_DIR}/resolved-requirements.txt"
+          cp "${DIRECT_REQUIREMENTS_PATH}" "${EVIDENCE_DIR}/requirements.in"
+          cp "${CURRENT_REQUIREMENTS_PATH}" "${EVIDENCE_DIR}/requirements_latest.txt"
+          cp "${VERIFIER_PATH}" "${EVIDENCE_DIR}/verify_full_graph_install.py"
+          cp .github/workflows/audit-linux-full-graph.yml \
+            "${EVIDENCE_DIR}/workflow-source.yml"
+          test "$(sha256sum "${LOCK_PATH}" | cut -d' ' -f1)" = \
+            "b4f8c2163ae1ea14ca3dfcab75bc1c50dd24bc9a5a4a72f38b2e1fb92c83bec0"
+          test "$(sha256sum "${DIRECT_REQUIREMENTS_PATH}" | cut -d' ' -f1)" = \
+            "aa388c2e21c8a2eba8307c99126215e01ba856616888203195157d76a6a0d15a"
+          test "$(sha256sum "${CURRENT_REQUIREMENTS_PATH}" | cut -d' ' -f1)" = \
+            "4142cb1aced78f4f619e78eb8e86382c921ec2ad9c59d8fcdc7290beb026f66a"
+          git rev-parse HEAD > "${EVIDENCE_DIR}/source-revision.txt"
+          sha256sum \
+            "${LOCK_PATH}" \
+            "${DIRECT_REQUIREMENTS_PATH}" \
+            "${CURRENT_REQUIREMENTS_PATH}" \
+            "${VERIFIER_PATH}" \
+            > "${EVIDENCE_DIR}/input-sha256.txt"
+          uname -a > "${EVIDENCE_DIR}/uname.txt"
+          cat /etc/os-release > "${EVIDENCE_DIR}/os-release.txt"
+          ldd --version > "${EVIDENCE_DIR}/glibc-version.txt" 2>&1
+          python -VV > "${EVIDENCE_DIR}/python-version.txt" 2>&1
+          df -B1 > "${EVIDENCE_DIR}/df-before.txt"
+          cat /proc/meminfo > "${EVIDENCE_DIR}/meminfo-before.txt"
+          nproc > "${EVIDENCE_DIR}/nproc.txt"
+          ulimit -a > "${EVIDENCE_DIR}/ulimit.txt"
+          python - <<'PY'
+          import json
+          import os
+          import platform
+          import sys
+          from pathlib import Path
+
+          context = {
+              "github_repository": os.environ["GITHUB_REPOSITORY"],
+              "github_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "github_run_id": os.environ["GITHUB_RUN_ID"],
+              "github_sha": os.environ["GITHUB_SHA"],
+              "libc": platform.libc_ver(),
+              "machine": platform.machine(),
+              "platform": platform.platform(),
+              "python_executable": sys.executable,
+              "python_version": sys.version,
+              "runner_arch": os.environ["RUNNER_ARCH"],
+              "runner_os": os.environ["RUNNER_OS"],
+          }
+          Path(os.environ["EVIDENCE_DIR"], "run-context.json").write_text(
+              json.dumps(context, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          if (
+              sys.implementation.name != "cpython"
+              or sys.version_info[:2] != (3, 12)
+              or sys.platform != "linux"
+              or platform.machine() != "x86_64"
+              or os.environ["RUNNER_OS"] != "Linux"
+              or os.environ["RUNNER_ARCH"] != "X64"
+          ):
+              raise SystemExit(f"unsupported provenance cell: {context}")
+          PY
+          python "${VERIFIER_PATH}" preflight \
+            --lock "${LOCK_PATH}" \
+            --direct "${DIRECT_REQUIREMENTS_PATH}" \
+            --current-requirements "${CURRENT_REQUIREMENTS_PATH}" \
+            --wheel-lock-output "${WHEEL_LOCK_PATH}" \
+            --gputil-lock-output "${GPUTIL_LOCK_PATH}" \
+            --output-dir "${EVIDENCE_DIR}"
+
+      - name: Install complete hash-bound graph
+        id: install
+        shell: bash
+        run: |
+          set -euo pipefail
+          graph_venv="${RUNNER_TEMP}/audit-linux-full-graph-venv"
+          python -m venv "${graph_venv}"
+          graph_python="${graph_venv}/bin/python"
+          echo "GRAPH_PYTHON=${graph_python}" >> "${GITHUB_ENV}"
+          "${graph_python}" -m pip --isolated --version \
+            | tee "${EVIDENCE_DIR}/pip-version.txt"
+          cat > "${EVIDENCE_DIR}/install-command.txt" <<EOF
+          ${graph_python} -m pip --isolated --disable-pip-version-check --no-input install --no-cache-dir --keyring-provider disabled --require-hashes --no-deps --report ${EVIDENCE_DIR}/pip-wheel-install-report.json -r ${WHEEL_LOCK_PATH}
+          ${graph_python} -m pip --isolated --disable-pip-version-check --no-input install --no-cache-dir --keyring-provider disabled --require-hashes --no-deps --no-build-isolation --no-binary gputil --report ${EVIDENCE_DIR}/pip-gputil-install-report.json -r ${GPUTIL_LOCK_PATH}
+          EOF
+          set +e
+          /usr/bin/time \
+            -v \
+            -o "${EVIDENCE_DIR}/pip-wheel-install-resource.txt" \
+            "${graph_python}" -m pip \
+            --isolated \
+            --disable-pip-version-check \
+            --no-input \
+            install \
+            --no-cache-dir \
+            --keyring-provider disabled \
+            --require-hashes \
+            --no-deps \
+            --report "${EVIDENCE_DIR}/pip-wheel-install-report.json" \
+            -r "${WHEEL_LOCK_PATH}" \
+            2>&1 | tee "${EVIDENCE_DIR}/pip-wheel-install.log"
+          wheel_status="${PIPESTATUS[0]}"
+          printf '%s\n' "${wheel_status}" \
+            > "${EVIDENCE_DIR}/pip-wheel-install-exit-code.txt"
+          if [[ "${wheel_status}" -ne 0 ]]; then
+            printf '%s\n' "not-run" \
+              > "${EVIDENCE_DIR}/pip-gputil-install-exit-code.txt"
+            set -e
+            exit "${wheel_status}"
+          fi
+          /usr/bin/time \
+            -v \
+            -o "${EVIDENCE_DIR}/pip-gputil-install-resource.txt" \
+            "${graph_python}" -m pip \
+            --isolated \
+            --disable-pip-version-check \
+            --no-input \
+            install \
+            --no-cache-dir \
+            --keyring-provider disabled \
+            --require-hashes \
+            --no-deps \
+            --no-build-isolation \
+            --no-binary gputil \
+            --report "${EVIDENCE_DIR}/pip-gputil-install-report.json" \
+            -r "${GPUTIL_LOCK_PATH}" \
+            2>&1 | tee "${EVIDENCE_DIR}/pip-gputil-install.log"
+          gputil_status="${PIPESTATUS[0]}"
+          set -e
+          printf '%s\n' "${gputil_status}" \
+            > "${EVIDENCE_DIR}/pip-gputil-install-exit-code.txt"
+          exit "${gputil_status}"
+
+      - name: Verify installed set, origins, hashes, and CPU-safe imports
+        id: verify
+        if: steps.install.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          "${GRAPH_PYTHON}" -m pip --isolated check \
+            | tee "${EVIDENCE_DIR}/pip-check.txt"
+          "${GRAPH_PYTHON}" -m pip --isolated inspect --local \
+            > "${EVIDENCE_DIR}/pip-inspect.json"
+          "${GRAPH_PYTHON}" -m pip --isolated list --format=json \
+            > "${EVIDENCE_DIR}/pip-list.json"
+          "${GRAPH_PYTHON}" -m pip --isolated freeze --all \
+            > "${EVIDENCE_DIR}/pip-freeze.txt"
+          "${GRAPH_PYTHON}" -m pip --isolated debug --verbose \
+            > "${EVIDENCE_DIR}/pip-debug.txt" 2>&1
+          "${GRAPH_PYTHON}" "${VERIFIER_PATH}" installed \
+            --lock "${LOCK_PATH}" \
+            --pip-report "${EVIDENCE_DIR}/pip-wheel-install-report.json" \
+            --pip-report "${EVIDENCE_DIR}/pip-gputil-install-report.json" \
+            --output-dir "${EVIDENCE_DIR}"
+
+      - name: Finalize retained evidence
+        if: always()
+        shell: bash
+        env:
+          CAPTURE_OUTCOME: ${{ steps.capture.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${EVIDENCE_DIR}"
+          df -B1 > "${EVIDENCE_DIR}/df-after.txt"
+          cat /proc/meminfo > "${EVIDENCE_DIR}/meminfo-after.txt"
+          if [[ -n "${GRAPH_PYTHON:-}" && -e "${GRAPH_PYTHON}" ]]; then
+            du -sb "$(dirname "$(dirname "${GRAPH_PYTHON}")")" \
+              > "${EVIDENCE_DIR}/venv-size-bytes.txt"
+            set +e
+            "${GRAPH_PYTHON}" -m pip --isolated check \
+              > "${EVIDENCE_DIR}/pip-check-final.txt" 2>&1
+            printf '%s\n' "$?" > "${EVIDENCE_DIR}/pip-check-final-exit-code.txt"
+            "${GRAPH_PYTHON}" -m pip --isolated list --format=json \
+              > "${EVIDENCE_DIR}/pip-list-final.json" 2>&1
+            printf '%s\n' "$?" > "${EVIDENCE_DIR}/pip-list-final-exit-code.txt"
+            "${GRAPH_PYTHON}" -m pip --isolated inspect --local \
+              > "${EVIDENCE_DIR}/pip-inspect-final.json" 2>&1
+            printf '%s\n' "$?" > "${EVIDENCE_DIR}/pip-inspect-final-exit-code.txt"
+            set -e
+          fi
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          evidence = Path(os.environ["EVIDENCE_DIR"])
+          outcomes = {
+              "capture": os.environ.get("CAPTURE_OUTCOME"),
+              "install": os.environ.get("INSTALL_OUTCOME"),
+              "verify": os.environ.get("VERIFY_OUTCOME"),
+          }
+          result = "PASS" if all(value == "success" for value in outcomes.values()) else "FAIL"
+          (evidence / "overall-status.json").write_text(
+              json.dumps(
+                  {
+                      "boundary": (
+                          "Full Linux package install, hash/origin selection, pip consistency, "
+                          "and CPU-safe imports only; no CUDA driver, native build, GPUtil device "
+                          "discovery, GPU, sanitizer, profiler, or performance credit."
+                      ),
+                      "outcomes": outcomes,
+                      "result": result,
+                  },
+                  indent=2,
+                  sort_keys=True,
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          records = []
+          for path in sorted(evidence.rglob("*")):
+              if not path.is_file() or path.name == "sha256-manifest.json":
+                  continue
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              records.append(
+                  {
+                      "path": str(path.relative_to(evidence)),
+                      "sha256": digest,
+                      "size": path.stat().st_size,
+                  }
+              )
+          (evidence / "sha256-manifest.json").write_text(
+              json.dumps(records, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload retained provenance
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: audit-linux-full-dependency-graph-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/audit-linux-full-dependency-graph
+          if-no-files-found: error
+          retention-days: 90
