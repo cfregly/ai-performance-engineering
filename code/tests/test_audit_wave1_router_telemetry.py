@@ -17,13 +17,24 @@ def output(request, count, finished=False):
     return SimpleNamespace(request_id=request, outputs=[SimpleNamespace(token_ids=list(range(count)))], finished=finished)
 
 
-def runtime(name):
-    return _RequestRuntime(Request(req_id=name, prompt_tokens=4, expected_new_tokens=8), "gpu0", 100.0)
+def runtime(name, *, expected_new_tokens=8):
+    return _RequestRuntime(
+        Request(
+            req_id=name,
+            prompt_tokens=4,
+            expected_new_tokens=expected_new_tokens,
+        ),
+        "gpu0",
+        100.0,
+    )
 
 
 def test_cumulative_output_payloads_count_each_token_once_and_ttft_once():
     wrapper = _VllmWrapper.__new__(_VllmWrapper)
-    wrapper._inflight = {name: runtime(name) for name in ("a", "b")}
+    wrapper._inflight = {
+        "a": runtime("a", expected_new_tokens=3),
+        "b": runtime("b", expected_new_tokens=5),
+    }
     completed, first, tokens = wrapper._consume_request_outputs([output("a", 1), output("b", 2)], 100.25)
     assert completed == [] and tokens == 3
     assert first == [("a", 250), ("b", 250)]
@@ -32,6 +43,10 @@ def test_cumulative_output_payloads_count_each_token_once_and_ttft_once():
     completed, first, tokens = wrapper._consume_request_outputs([output("a", 3, True), output("b", 5, True)], 101)
     assert completed == ["a", "b"] and first == [] and tokens == 3
     assert wrapper._inflight == {}
+    assert wrapper._completed_output_token_ids == {
+        "a": (0, 1, 2),
+        "b": (0, 1, 2, 3, 4),
+    }
     assert wrapper._consume_request_outputs([output("a", 3, True)], 102) == ([], [], 0)
 
 

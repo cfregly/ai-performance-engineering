@@ -251,12 +251,13 @@ def test_gpt4_proxy_reports_only_optimizations_it_executes() -> None:
     assert proxy.use_context_parallel is False
 
 
-def test_occupancy_sweep_documented_cli_supports_direct_execution() -> None:
+def test_occupancy_sweep_documented_cli_supports_module_execution() -> None:
     repo_code = Path(__file__).resolve().parents[1]
     result = subprocess.run(
         [
             sys.executable,
-            str(repo_code / "labs/occupancy_tuning/sweep_schedules.py"),
+            "-m",
+            "labs.occupancy_tuning.sweep_schedules",
             "--list",
         ],
         cwd=repo_code,
@@ -318,7 +319,7 @@ def test_occupancy_readme_uses_only_supported_commands() -> None:
     repo_code = Path(__file__).resolve().parents[1]
     readme = (repo_code / "labs/occupancy_tuning/README.md").read_text(encoding="utf-8")
 
-    assert "sweep_schedules.py --csv" in readme
+    assert "python -m labs.occupancy_tuning.sweep_schedules --csv" in readme
     assert "sweep_schedules.py --output" not in readme
     assert " --validate" not in readme
     assert "--target-extra-arg" not in readme

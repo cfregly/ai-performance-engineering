@@ -233,7 +233,7 @@ Generated from `mcp.mcp_server.TOOLS`. Run `python -m scripts.generate_mcp_docs`
 - `hw_disk`: Run disk I/O benchmark measuring sequential read/write throughput
 - `hw_ib`: Get InfiniBand bandwidth test instructions and check if ib_write_bw is available
 - `hw_nccl`: Get NCCL collective bandwidth test command and check if nccl-tests is available
-- `hw_network`: Run network throughput tests to check NIC and interconnect performance
+- `hw_network`: Run a localhost TCP loopback throughput diagnostic
 - `hw_p2p`: Run GPU-to-GPU P2P bandwidth test measuring NVLink or PCIe peer access speed
 - `hw_pcie`: Run PCIe bandwidth benchmark measuring Host-to-Device and Device-to-Host transfer speeds
 - `hw_roofline`: Run stride sweep to measure memory bandwidth at different access patterns (roofline data)

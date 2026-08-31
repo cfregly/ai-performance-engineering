@@ -90,6 +90,7 @@ jobs:
             uvicorn==0.38.0 \
             httpx==0.28.1 \
             requests==2.34.2 \
+            prometheus-client==0.21.0 \
             tokenizers==0.22.2 \
             hypothesis==6.148.2 \
             anthropic==0.112.0 \
