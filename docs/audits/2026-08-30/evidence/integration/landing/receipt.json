@@ -52,7 +52,19 @@
       "failed": 1,
       "interpretation": "Historical diagnostic that triggered final focused repairs; not a post-fix integration result."
     },
-    "staged_source_whitespace_check": "PASS",
+    "whitespace_checks": {
+      "application_source": {
+        "status": "PASS",
+        "scope": "Application source in the source commit, excluding preserved diagnostic evidence under docs/audits/** and code/labs/nanochat_fullstack/audit_wave1/**.",
+        "command": "git diff --check f49aae73f^ f49aae73f -- . ':(exclude)docs/audits/**' ':(exclude)code/labs/nanochat_fullstack/audit_wave1/**'"
+      },
+      "whole_source_evidence_commit": {
+        "status": "FAIL_WITH_PRESERVED_EVIDENCE_WHITESPACE",
+        "exit_code": 2,
+        "output_lines": 10912,
+        "reason": "Immutable before/after logs, text captures, and JUnit XML preserve their original trailing whitespace; application source passed the scoped check."
+      }
+    },
     "credential_review": {
       "gstack_redact": "NO_FINDINGS",
       "targeted_patterns": "CLEAN",
