@@ -59,7 +59,7 @@ def test_kv_cache_demo_runs_on_gloo():
     from ch16.symmetric_memory_inference import symmetric_memory_available
 
     if not symmetric_memory_available() or torch.cuda.device_count() < 2:
-        return
+        pytest.skip("Symmetric-memory demo requires runtime support and at least two GPUs")
 
     world_size = 2
     port = _find_free_port()
@@ -71,7 +71,7 @@ def test_multi_model_demo_runs_on_gloo():
     from ch16.symmetric_memory_inference import symmetric_memory_available
 
     if not symmetric_memory_available() or torch.cuda.device_count() < 2:
-        return
+        pytest.skip("Symmetric-memory demo requires runtime support and at least two GPUs")
 
     world_size = 2
     port = _find_free_port()
@@ -83,7 +83,7 @@ def test_speculative_demo_runs_on_gloo():
     from ch16.symmetric_memory_inference import symmetric_memory_available
 
     if not symmetric_memory_available() or torch.cuda.device_count() < 2:
-        return
+        pytest.skip("Symmetric-memory demo requires runtime support and at least two GPUs")
 
     world_size = 2
     port = _find_free_port()

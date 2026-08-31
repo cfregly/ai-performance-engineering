@@ -1,0 +1,150 @@
+{
+  "captured_at": "2026-08-30T22:29:34.374920-04:00",
+  "evidence": {
+    "supplement-critical-negatives.txt": "514387caa968d64b6465a4a58f84853d3162979bf656c0d328104c687da1a54b",
+    "supplement-critical-negatives.xml": "24be08bd0af2323938f4657cf308368929ba93dd376efc6caf318c32bf6df439",
+    "supplement-focused.txt": "da744f61c469fbbc7bc0f7fc968a2285d61aca799ca56de0dc44b98cf3848f49",
+    "supplement-focused.xml": "119ed6c3453a81c5603260afcfcb575a50c833afcc543765a8c3044e30b5d3e9",
+    "supplement-mypy-default.exit": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3",
+    "supplement-mypy-default.txt": "7eed21b85baed04e8a559a4a1c2b8ba8e3b92d51a06a3afa3a45d420f2a2ad6b",
+    "supplement-mypy-source-only.exit": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "supplement-mypy-source-only.txt": "8228fcc5ce46d42d01caf3cd941f4e9c5f2bcc372bb5b147a2f0572d2dd675a8",
+    "supplement-static-source.txt": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  },
+  "protocol_guards": {
+    "child_result_schema": "aisp.zero2.child-result.v3",
+    "launch_context": "A second launch specification is rejected while an earlier result context remains unconsumed.",
+    "optimized_multi_rank_acceptance_requires": [
+      "separately recorded completed reduce-scatter operations",
+      "separately recorded completed all-gather operations",
+      "no ordinary all-reduce substitution",
+      "nonempty parameter ownership for every required rank"
+    ],
+    "verification_execution": "The accepted adapter is eager FP32; compile aliases are rejected before artifacts, and autocast is disabled in timed and verification steps."
+  },
+  "relationship_to_prior_receipt": {
+    "prior_receipt": "receipt.json",
+    "prior_receipt_modified": false,
+    "purpose": "Bind the final five-file source snapshot and the verification added after the immutable prior receipt."
+  },
+  "runtime_boundary": {
+    "actual_two_gpu_cuda_nccl": "HOLD_NOT_RUN",
+    "claims_not_made": [
+      "two-GPU CUDA correctness qualification",
+      "NCCL runtime qualification",
+      "CUDA RNG-state qualification",
+      "BF16 or compile qualification",
+      "throughput, speedup, or regression conclusion"
+    ],
+    "cpu_gloo": "Accepted for source and verification-only functional evidence.",
+    "performance_claim": false
+  },
+  "schema_version": 1,
+  "scope": "Post-receipt source and CPU/Gloo supplement for the final ZeRO child protocol, adapter, and focused regression snapshot.",
+  "source": {
+    "branch": "codex/audit-remediation-20260830",
+    "file_count": 5,
+    "files": {
+      "code/labs/train_distributed/training_utils/zero2_torchrun_benchmark.py": "56cfbe205dc6a8d7d89330b01b488ea973eff2dcb6a6c54e5c62a78910d56ee4",
+      "code/labs/train_distributed/zero2_child_protocol.py": "6e2ff8319bcf18ca76d7f51c5786583fb96ba624e2fe1393dc88de665692c5a3",
+      "code/labs/train_distributed/zero2_common.py": "2f7626921d7748934b7e71af1a2e8ec6b89be1f4fc563d1e2a6e911a578abecd",
+      "code/tests/test_audit_wave1_torchrun_verification.py": "3994b36c918d6177846618b424b96fa0070e80211ad31622c4f038317d1c5be0",
+      "code/tests/test_audit_wave1_zero2_child_protocol.py": "6945c776b6eccbc268707ecf496e9b9d3796bdebf96a2338acfaa4c49177d90c"
+    },
+    "git_head": "b57e4c6a9e261c09ac09208705d040c81b03d35e"
+  },
+  "status": "PASS_SOURCE_AND_CPU_GLOO__ACTUAL_TWO_GPU_CUDA_NCCL_HOLD",
+  "verification": {
+    "cpu_gloo_factory_matrix": {
+      "evidence": "supplement-focused.xml",
+      "factories": [
+        "baseline-single",
+        "optimized-single",
+        "baseline-multigpu",
+        "optimized-multigpu"
+      ],
+      "passed": 4,
+      "performance_claim": false,
+      "status": "PASS_ALL_FOUR_VERIFICATION_ONLY_FACTORIES"
+    },
+    "critical_negative_controls": {
+      "covered_rejections": [
+        "ordinary all-reduce substitution inside the tracked optimized hook",
+        "degenerate empty-owner rank",
+        "compile request before capability checks",
+        "compile alias before artifact creation",
+        "second unconsumed launch result context"
+      ],
+      "errors": 0,
+      "failures": 0,
+      "junit": "supplement-critical-negatives.xml",
+      "log": "supplement-critical-negatives.txt",
+      "passed": 6,
+      "skipped": 0,
+      "status": "PASS",
+      "tests": 6,
+      "time_seconds": 9.192
+    },
+    "focused_suite": {
+      "errors": 0,
+      "failures": 0,
+      "junit": "supplement-focused.xml",
+      "log": "supplement-focused.txt",
+      "passed": 79,
+      "skipped": 2,
+      "skips": [
+        "Production reduce-scatter hook requires NCCL and two real GPUs.",
+        "CUDA RNG-state coverage requires CUDA/NCCL."
+      ],
+      "status": "PASS_WITH_RUNTIME_SKIPS",
+      "tests": 81,
+      "time_seconds": 36.618
+    },
+    "independent_read_only_review": {
+      "focused_result": {
+        "passed": 71,
+        "skip_reason": "CUDA/NCCL unavailable",
+        "skipped": 1
+      },
+      "independent_gloo_probe": {
+        "completed_all_gather_calls_per_rank": 6,
+        "completed_reduce_scatter_calls_per_rank": 6,
+        "matched_child_result_schema": "aisp.zero2.child-result.v3",
+        "ranks": 2,
+        "status": "PASS"
+      },
+      "note": "This observation is the clean read-only reviewer result reported to the coordinating session; no separate reviewer-owned artifact was written into this evidence package.",
+      "result": "PASS_NO_FALSE_SUCCESS_PATH_FOUND",
+      "reviewer_task": "zero_postfix_audit",
+      "source_snapshot": "The same five SHA-256 values bound by this receipt."
+    },
+    "mypy": {
+      "default_environment": {
+        "evidence": "supplement-mypy-default.txt",
+        "exit_code": 2,
+        "exit_evidence": "supplement-mypy-default.exit",
+        "failure": "/opt/miniconda3/lib/python3.12/site-packages/mlx/core/__init__.pyi:1653: Invalid syntax",
+        "interpretation": "Default import-following mypy stopped in the externally installed MLX stub before checking the full target; this failure is retained and is not represented as a passing source gate.",
+        "status": "ENVIRONMENT_LIMITATION_PRESERVED_NOT_A_SOURCE_PASS"
+      },
+      "source_only": {
+        "configuration": "--follow-imports skip",
+        "evidence": "supplement-mypy-source-only.txt",
+        "exit_code": 0,
+        "exit_evidence": "supplement-mypy-source-only.exit",
+        "files_checked": 3,
+        "result": "Success: no issues found in 3 source files",
+        "status": "PASS"
+      }
+    },
+    "source_static": {
+      "checks": [
+        "Python bytecode compilation",
+        "fatal Ruff rules E9/F821/F822/F823",
+        "git diff whitespace validation"
+      ],
+      "evidence": "supplement-static-source.txt",
+      "status": "PASS"
+    }
+  }
+}

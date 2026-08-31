@@ -1,248 +1,144 @@
 # Tooling and Profiling Guide
 
-This guide consolidates the repository’s profiling, tooling, and automation
-information. It preserves the detailed instructions that previously lived in
-the root `README.md` while keeping the top-level README focused on the high-
-level story.
+Run commands from the repository's `code/` directory. The supported entrypoint is
+`python -m cli.aisp`; inspect its current help before selecting a workload or
+profiler. Captures below require an available, supported target and permission to
+use it. A profiler report alone does not establish correctness or a speedup.
 
-## Automated Profiling Harness
-
-All chapter examples can be profiled through a unified harness:
+## Discover and profile benchmark pairs
 
 ```bash
-# List all available examples
-python scripts/profile_harness.py --list
+python -m cli.aisp bench list-targets --chapter ch01
+python -m cli.aisp bench run --help
+python -m cli.aisp bench verify --help
 
-# Profile a specific example with multiple tools
-python scripts/master_profile.py ch10_warp_specialized_pipeline --profile nsys ncu
-
-# Profile all examples
-python scripts/profile_harness.py --profile all
-
-# Shortcut wrappers
-./start.sh    # Launch harness across all chapters
-./stop.sh     # Terminate active runs
-./clean_profiles.sh  # Remove accumulated artifacts
+# Execute only on the appropriate available target:
+python -m cli.aisp bench run --targets ch01:performance --profile minimal
 ```
 
-## NVIDIA Nsight Systems (Timeline Analysis)
+`ch01:performance` is an actual discovered baseline/optimized pair. Choose another
+listed target for memory access, compilation or Triton experiments. Keep the
+baseline and candidate's workload, dtype, verification policy and timing scope
+consistent. Preserve the generated run directory, exact revision, environment,
+logs and failed/skipped results. Do not update expectation files from an invalid
+or unverified run.
+
+## Check that a profiler works
+
+The small script `tests/fixtures/mcp_torch_profile_target.py` performs a real
+matrix multiply. It is a capture smoke test, not a performance benchmark. It uses
+CUDA if available and otherwise CPU, so a CPU trace does not prove CUDA capture.
 
 ```bash
-nsys profile -t cuda,nvtx,osrt,triton -o timeline_profile python script.py
+python -m cli.aisp profile torch --help
+python -m cli.aisp profile torch tests/fixtures/mcp_torch_profile_target.py \
+  --mode full --output-name docs-smoke --timeout 60
 ```
 
-**Key Metrics**
+This produces a Chrome trace and summary under the reported artifacts directory.
+Use a fresh output/run name for each attempt. For your own script, include the
+actual forward/backward or serving work in the capture, with warmup and capture
+boundaries documented. Profiling overhead must not be reported as ordinary
+benchmark latency.
 
-- GPU utilization timeline
-- Memory transfer patterns
-- Kernel launch overhead
-- CUDA stream overlap
-- Multi-GPU communication patterns
+## NVIDIA Nsight Systems
 
-## NVIDIA Nsight Compute (Kernel Analysis)
+Check the installed binary and supported trace options on the target:
 
 ```bash
-ncu --metrics achieved_occupancy,warp_execution_efficiency -o kernel_profile python script.py
+nsys --version
+nsys profile --help
+nsys profile --trace=cuda,nvtx,osrt --output=timeline_attempt_01 \
+  python tests/fixtures/mcp_torch_profile_target.py
+nsys stats timeline_attempt_01.nsys-rep
 ```
 
-**Key Metrics**
+On Linux, `cuda,nvtx,osrt` are supported trace categories in
+[Nsight Systems 2025.3](https://archive.docs.nvidia.com/nsight-systems/2025.3/UserGuide/index.html).
+`triton` is not a trace category: Triton-generated CUDA kernels appear in the CUDA
+timeline. Add library/NCCL tracing only if the installed version advertises it.
+The timeline can expose stream dependencies, transfers and idle gaps; verify that
+its captured interval covers the intended work.
 
-- Achieved occupancy
-- Warp execution efficiency
-- Memory throughput
-- Compute utilization
-- Register usage
-- SM % Peak utilization
-- DRAM throughput
-- L2 hit rate
-
-## Holistic Tracing Analysis (HTA)
+The repository wrapper accepts a quoted command:
 
 ```bash
-nsys profile -t cuda,nvtx,osrt,cudnn,cublas,nccl,triton -o hta_profile python script.py
+python -m cli.aisp profile nsys \
+  "python tests/fixtures/mcp_torch_profile_target.py" \
+  --output-name timeline-smoke --timeout 60
 ```
 
-**Key Metrics**
+## NVIDIA Nsight Compute
 
-- Multi-GPU communication patterns
-- NCCL collective operation efficiency
-- Load balancing across GPUs
-- Memory bandwidth distribution
-- Inter-GPU synchronization
-
-## PyTorch Profiler (Framework-Level)
-
-```python
-with torch.profiler.profile(
-    activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
-    record_shapes=True,
-    with_stack=True,
-    with_flops=True,
-    profile_memory=True,
-) as prof:
-    # Your code here
-```
-
-**Key Metrics**
-
-- Operator execution time
-- Memory allocation patterns
-- FLOP counts
-- Call stack analysis
-- Module-level performance
-
-## perf (System-Level Analysis)
+Discover metrics on the actual GPU instead of copying legacy nvprof names:
 
 ```bash
-perf record -g -p $(pgrep python) -o perf.data
-perf report -i perf.data
+ncu --version
+ncu --list-sections
+ncu --query-metrics --query-metrics-mode all
+ncu --set basic --export=kernel_attempt_01 \
+  python tests/fixtures/mcp_torch_profile_target.py
+ncu --import kernel_attempt_01.ncu-rep --page raw --csv > kernel_attempt_01.csv
 ```
 
-**Key Metrics**
+The [Nsight Compute CLI guide](https://docs.nvidia.com/nsight-compute/NsightComputeCli/index.html)
+explains section sets and metric suffixes. `achieved_occupancy`,
+`warp_execution_efficiency`, `memory_throughput` and
+`triton_kernel_efficiency` are not portable metric selectors for these commands.
+Use a complete name returned by the installed tool for that device. Kernel
+replay can change cache state and add overhead; record replay settings and do not
+substitute profiled duration for a separately measured end-to-end baseline.
 
-- CPU utilization
-- Cache miss rates
-- System call overhead
-- Memory access patterns
+## Framework traces, HTA and offline analysis
 
-## Profiling Output Analysis
+`python -m cli.aisp profile torch` captures framework operators and CPU/CUDA
+activities. HTA consumes compatible traces; `python -m cli.aisp profile hta --help`
+and `hta-capture --help` describe the current repository interfaces. Do not assume
+an arbitrary Nsight report is directly interchangeable with an HTA input.
 
-Extract metrics for book tables and deep dives:
+Current extraction helpers live under `core/profiling/`:
 
 ```bash
-# Nsight Compute metrics
-python tools/extract_ncu_subset.py 'output/reports/*.csv'
-
-# Nsight Systems summary
-python tools/extract_nsys_summary.py 'output/traces/*.nsys-rep'
-
-# PyTorch profiler data
-python tools/extract_pytorch_profile.py 'profiles/*/pytorch_*/*'
-
-# Or run the automated extraction script
-./extract.sh
+python core/profiling/extract_nsys_summary.py --help
+python core/profiling/extract_pytorch_profile.py --help
+# Replace these quoted globs with paths from a completed capture:
+python core/profiling/extract_nsys_summary.py 'artifacts/runs/your-run/*.nsys-rep' \
+  --output /tmp/your-run-nsys-summary.csv
+python core/profiling/extract_pytorch_profile.py 'artifacts/runs/your-run/torch*' \
+  --output-prefix /tmp/your-run-torch-summary
 ```
 
-## Example Profiling Workflows
+Inspect each helper's expected schema and read back its result. The legacy
+`core/profiling/extract_ncu_subset.py` recognizes a small list of display labels;
+it is not a general parser for every modern raw metric name. Keep the original
+`.ncu-rep`/CSV if that subset produces no rows. The former root `scripts/`,
+`tools/`, `start.sh`, `stop.sh`, `extract.sh` and `clean_profiles.sh` commands in
+this guide were stale and are not supported orchestration shortcuts.
 
-### 1. Basic Performance Analysis
+## Linux CPU profiling
+
+Select the exact process you own, or launch the workload under `perf`:
 
 ```bash
-# Run performance basics
-python3 code/ch1/performance_basics.py
-
-# Profile with Nsight Systems
-nsys profile -t cuda,nvtx,osrt -o perf_basics python3 code/ch1/performance_basics.py
-
-# Analyze results
-nsys stats perf_basics.nsys-rep
+perf record -g -o cpu_attempt_01.data -- \
+  python tests/fixtures/mcp_torch_profile_target.py
+perf report -i cpu_attempt_01.data
 ```
 
-### 2. Hardware Optimization
+Avoid `pgrep python`, which may select unrelated processes. CPU sampling does not
+measure CUDA kernel execution. For permission errors, inspect the target's
+policy with its administrator; do not change system-wide profiling settings as a
+routine troubleshooting step.
 
-```bash
-# Check hardware capabilities
-python3 code/ch2/hardware_info.py
+## Troubleshooting and evidence boundaries
 
-# Test NUMA binding
-python3 code/ch3/bind_numa_affinity.py
-
-# Profile memory access patterns
-ncu --metrics memory_throughput -o memory_profile python3 code/ch7/memory_optimization.py
-```
-
-### 3. PyTorch Compilation Analysis
-
-```bash
-# Test torch.compile performance
-python3 code/ch14/torch_compiler_examples.py
-
-# Profile compilation overhead
-nsys profile -t cuda,nvtx,osrt -o compile_profile python3 code/ch14/torch_compiler_examples.py
-
-# Analyze kernel performance
-ncu --metrics achieved_occupancy -o kernel_profile python3 code/ch14/torch_compiler_examples.py
-```
-
-### 4. Triton Kernel Development
-
-```bash
-# Test Triton kernels
-python3 code/ch14/triton_examples.py
-
-# Profile custom kernels
-ncu --metrics triton_kernel_efficiency -o triton_profile python3 code/ch14/triton_examples.py
-```
-
-## Tools and Utilities
-
-### Essential Tools Directory (`tools/`)
-
-- `extract_ncu_subset.py`: Collate Nsight Compute CSV metrics for manuscript tables
-- `extract_nsys_summary.py`: Extract Nsight Systems timeline summaries
-- `extract_pytorch_profile.py`: Process PyTorch profiler output data
-
-### Archive Directory (`archive/`)
-
-- `build_all.sh`: Build CUDA samples and validate Python syntax
-- `update_blackwell_requirements.sh`: Update all requirements files
-- `update_cuda_versions.sh`: Normalize Makefiles for Blackwell
-- `comprehensive_profiling.py`: Demo of all profiling tools
-- `generate_example_inventory.py`: Generate chapter-by-chapter catalog
-- `run_all_examples.sh`: Execute all chapter examples
-- `compare_nsight/`: Nsight Systems vs Compute comparison tools
-- `clean_profiles.sh`: Clean accumulated profiling artifacts
-- `assert.sh`: Helpful information about extraction tools
-
-### Scripts Directory (`scripts/`)
-
-- `profile_harness.py`: Unified profiling harness for all examples
-- `master_profile.py`: Master profiling script with multiple tool support
-- `example_registry.py`: Registry of all chapter examples and their metadata
-- `ncu_profile.sh`, `nsys_profile.sh`, `perf_profile.sh`: CLI shortcuts for Nsight and perf
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Setup Script Failures**
-
-   ```bash
-   # Check permissions
-   sudo ./setup.sh
-
-   # Verify GPU detection
-   nvidia-smi
-   ```
-
-2. **CUDA Version Mismatch**
-
-   ```bash
-   # Check CUDA version
-   nvcc --version
-
-   # Verify PyTorch CUDA support
-   python3 -c "import torch; print(torch.cuda.is_available())"
-   ```
-
-3. **Memory Issues**
-
-   ```bash
-   # Check available memory
-   free -h
-
-   # Monitor GPU memory
-   nvidia-smi
-   ```
-
-4. **Profiling Tool Issues**
-
-   ```bash
-   # Verify Nsight installation
-   nsys --version
-   ncu --version
-
-   # Check permissions for profiling
-   sudo sysctl kernel.perf_event_paranoid=1
-   ```
-
+- Check `python --version`, `nvcc --version`, `nvidia-smi`, `nsys --version` and
+  `ncu --version`, then compare them with [the environment guide](environment.md).
+- Verify the selected target and script exist; start with `--help` and discovery.
+- Missing tools, unsupported metrics/architectures and denied counters remain
+  failures or explicit HOLD results. Do not silently substitute a profiler or
+  claim an empty report is a successful capture.
+- Preserve each attempt in a separate directory. Do not clean a shared artifact
+  directory or kill unrelated jobs to make a profiling command run.
+- Recheck complete numerical outputs before using new timing or throughput
+  claims. A host help check is command validation, not a Linux/CUDA profiler run.

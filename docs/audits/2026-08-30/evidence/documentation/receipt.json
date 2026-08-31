@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "scope": "P11 documentation original9findings and adjacent actual profiler extraction failure",
+  "created_at": "2026-08-30T23:35:22.235433+00:00",
+  "reviewed_base": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "finding_ids": [
+    "W1-042",
+    "W1-043",
+    "W1-044",
+    "W1-096",
+    "W1-097",
+    "W1-098",
+    "W1-099",
+    "W1-100",
+    "W1-101"
+  ],
+  "status": "SOURCE_AND_CPU_WORKFLOW_PASS__CUDA_NVIDIA_PROFILERS_AND_INSTALLATION_NOT_QUALIFIED",
+  "source_files": {
+    "docs/environment.md": "2a6618a04394ed7ba9ca28b05929ed1a7599fc105a77ff14293647ab5d3a41d4",
+    "docs/tooling-and-profiling.md": "9490aacac56fa2379f242afad88c57809d1900a8eb1dc89c70f5126166dec401",
+    "docs/appendix.md": "d36c9f06dcb96b6d9718bc368a80a7172e233eb8bc3cccbe383af124b47119c1",
+    "CONTRIBUTING.md": "b9e6c2724c1bf211159fd3d15e678176bd321ada1bdfd4c66fbde2a438f963bd",
+    "code/core/profiling/extract_pytorch_profile.py": "ff963205bac84411fb50ea7eff22c1d4d6fa9d4c14be5e949ca255fb1c3db928",
+    "code/tests/test_extract_pytorch_profile.py": "a3836582c3b9e2dd2e106b6e5190d258bd2dda61b40cfaabdf805d9710c0ee9a"
+  },
+  "checks": {
+    "real_help_and_discovery_commands": 8,
+    "local_links": 11,
+    "make_preview": "exit0; no compilation",
+    "torch_profile": "actual CPU matrix multiplication;697traceevents;16operatorrows;0CUDAkernels",
+    "extract_profile": "4realCPUtests passed; all16operatorrows and numericalfields roundtrip exactly",
+    "raw_inputs": "all6inputfiles byte-identical portablearchives"
+  },
+  "extraction_receipt": {
+    "path": "profile-extraction/validation-receipts.json",
+    "sha256": "67071176852050a4854b9be66fbfb2901c0e5e710fec9a94310fbf5be8be622f"
+  },
+  "primary_references": [
+    "https://developer.nvidia.com/cuda/gpus",
+    "https://docs.nvidia.com/deeplearning/nccl/archives/nccl_2275/user-guide/docs/env.html",
+    "https://docs.nvidia.com/cuda/ampere-tuning-guide/index.html",
+    "https://docs.nvidia.com/cuda/hopper-tuning-guide/index.html",
+    "https://www.nvidia.com/en-us/data-center/gb200-nvl72/",
+    "https://archive.docs.nvidia.com/nsight-systems/2025.3/UserGuide/index.html",
+    "https://docs.nvidia.com/nsight-compute/NsightComputeCli/index.html"
+  ],
+  "source_references": [
+    "code/setup.sh",
+    "code/requirements_latest.txt",
+    "code/core/common/cuda_arch.mk",
+    "code/core/harness/arch_config.py",
+    "LICENSE"
+  ],
+  "review": {
+    "reviewer": "audit_wave1_plan_a",
+    "result": "source/commands reviewed; exact cwd/output-prefix corrections incorporated"
+  },
+  "limits": [
+    "No package installation or system setup executed",
+    "No CUDA/Nsight tool installed or run",
+    "CPUtorch2.8.0 is not the pinnedTorch2.9.1 CUDA environment",
+    "Docs are operational guidance, not new hardware performance evidence"
+  ],
+  "artifacts": {
+    "local-link-checks.json": "245aa589681b9914d5a898e329c2fc238b996db0a2b8a11e2cfad0ea51067156",
+    "cpu-profile-command.txt": "8ac57441b1b84238d3149ce0eea4c908c35d30f6b8527a91e66516b95212fefd",
+    "cpu-capture-archive-manifest.json": "0735c494e43e7d46dde6203ee54f4d17ea795f170d1bd20ce470b721b8f9a64b",
+    "original-sources.json": "1b252ce52a98fdd8ee56753a41ea63ae0581ad63864854735c4135812b6d9a93",
+    "command-03.txt": "6646ae22737c48dbf28f3d449f9f41405fd9568e52a22a4e9d5c18bb52c4dc5d",
+    "command-02.txt": "15a3ad4d365d819c9dc26a63314f24402958bdde2f17a1c967e8bd4c16facf94",
+    "command-01.txt": "2c15aa133ca8347fbc05a78c2d39ecff54f82b509d8eb82c90cf60e2fcb9be33",
+    "command-05.txt": "d002b09e7e2ce1e4c86c37590edaff0698460f7c6a081f0c79b23e37f6ab38b2",
+    "command-04.txt": "7ad69758a9bc2a0347a5aa797ab165619a84ca91030bad757318139a628bbf26",
+    "command-06.txt": "a3281f3eb082d54a678b82bef40b5fe48fa0d2ef6b7505d66d78f0481bd55aac",
+    "command-07.txt": "43850ab4790c55e2340c138e2685b5e52cee6b3be885cb18ea381f70b0c658f8",
+    "original-environment.md": "d35bda8be46bb4e03cbcc73894b9a19d209526ab9d192bbd9b52bc2828a4e981",
+    "make-preview.txt": "03209337a39ed8dbaa904656bc9a9dc9c14c00788fe7d9edf8d25e6002f3e22e",
+    "command-08.txt": "cf5127228c2981baf15127ca8cec8dc30e1139ef875867b2e9a88ce92d29ae18",
+    "original-tooling-and-profiling.md": "54d2ad78c449ff01270b9a56018d04701b2ba5b506f68e63afa667939c8e3629",
+    "original-CONTRIBUTING.md": "ada0aef1be1a474b6cfa200c46bcd3d66f859f775c4c19fce09bf8c84767df45",
+    "command-checks.json": "590c852512ddf84b07d55916759e88d4aaea90a89dff0feae08b2b1d699d443c",
+    "original-appendix.md": "38e09c323b688b83b20e78297d19ee682cf9842959213e5fdadeca2543fd17e0"
+  }
+}

@@ -656,10 +656,12 @@ def count_nonmasked_attention_elements(
     window_size: int = 0,
 ) -> int:
     """Count the attention matrix elements that participate in the forward pass."""
-    if mode in {"dense", "alibi", "softcap"}:
+    if q_seq_len < 0 or kv_seq_len < 0:
+        raise ValueError("Sequence lengths must be nonnegative")
+    if mode == "dense":
         return q_seq_len * kv_seq_len
 
-    if mode == "causal":
+    if mode in {"causal", "alibi", "softcap"}:
         diagonal_rows = min(q_seq_len, kv_seq_len)
         triangular = diagonal_rows * (diagonal_rows + 1) // 2
         full_kv_rows = max(q_seq_len - kv_seq_len, 0)

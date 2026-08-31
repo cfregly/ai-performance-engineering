@@ -1,0 +1,220 @@
+{
+  "package": "HTTP CPU readiness false-pass followup",
+  "status": "SOURCE_AND_ACTUAL_LOOPBACK_VERIFIED_WITH_EXPLICIT_RETIRED_FEATURE_SKIP",
+  "environment": {
+    "python_executable": "/opt/miniconda3/bin/python",
+    "python": "3.12.2",
+    "system": "Darwin",
+    "release": "25.5.0",
+    "machine": "arm64",
+    "qualification": "existing macOS CPU environment, not pinned Linux CI"
+  },
+  "changed_sources": {
+    "code/tests/test_http_microbench.py": "55f21cf07e1d0baf58e1e8a3502b73c9b2de136b4bb458b89cd6f6d6d505a284"
+  },
+  "reviewed_dependencies": {
+    "code/dashboard/api/server.py": "393e7d5925cd9c45e9fe9290cbb9bd3164eaaffac210d5af6f99c3d227731cbb",
+    "code/core/api/registry.py": "14b27f3dc68a4b43d60a072967d009d0f74b71dc58efe4ec144421c90be42ade",
+    "code/core/api/handlers.py": "1abf012caaf0621f5173315e2703416249af1cc4ff040161f908d25ebc5028d2",
+    "code/core/api/response.py": "01c6991c8dff3e68035fd0443c24909c28363b3d02aea0c6bbc36c0b96025ec9",
+    "code/core/engine.py": "08dbc75f0e0f0ca9c1c8196ddcce9da4d87c5a539e77a35071320e8823294c65",
+    "code/core/optimization/campaign_dashboard.py": "5635c072c28314ad9f51d0034bb2cdab41dcd72d8f12a48f5b9e9228b1ae341a",
+    "code/tests/test_dashboard_server.py": "72e06070b167cfe6f20852656e21c29cf5ebfe19e249bde8f8ebf6f723929500",
+    "code/conftest.py": "26907ef7aa9743fe56d59a171d11caba994e708a44eaf4f639632de1318e7779",
+    "code/pytest.ini": "e36297939c4314c2799d1e59a5b319279d6c4881020aeac73bae41df1f8dc7e6"
+  },
+  "hash_timing": "Recorded after focused final run; owner froze tracked source before receipt assembly. Root final integration binds the combined epoch.",
+  "original_source_sha256": "deae68e1ad44bd53eda658b7e46a97f3ad1a554aafbfacdbc5990d7b0a9a867d",
+  "original_reproduction": [
+    {
+      "artifact": "original-attempt-1.json",
+      "status": "INTERRUPTED_UNBOUNDED_REQUEST",
+      "exit_code": 130,
+      "source": "reproduce-original-attempt-1.py.txt",
+      "notes": "Observed blocking connect with original missing request timeout; SIGINT targeted owned PID56262. No endpoint success inferred."
+    },
+    {
+      "stdout": "original-false-pass-bounded.json",
+      "stderr": "original-bounded.stderr.txt",
+      "status": "REPRODUCER_ASSERTION_FAILED",
+      "exit_code": 1,
+      "source": "reproduce-original-attempt-2.py.txt",
+      "notes": "Reproducer incorrectly required nonzero child exit; no-command CLI prints help and exits0 without serving. Failed attempt preserved."
+    },
+    {
+      "stdout": "original-false-pass-final.json",
+      "stderr": "original-final.stderr.txt",
+      "status": "REPRODUCED_FALSE_PASS",
+      "exit_code": 0,
+      "source": "reproduce_original.py",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "docs/audits/2026-08-30/evidence/integration/http-cpu-readiness/reproduce_original.py"
+      ],
+      "notes": "Original child command/control flow retained. Port8123 replaced by an exclusively reserved ephemeral loopback socket; proxies disabled; request timeout0.1s added to bound the earlier hang. Old test returned normally despite no server."
+    }
+  ],
+  "test_attempts": [
+    {
+      "stdout": "pytest-attempt-1.txt",
+      "junit": "pytest-attempt-1.xml",
+      "exit_code": 0,
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_http_microbench.py -q -ra -p no:cacheprovider --basetemp=/tmp/aisp-http-cpu-b-attempt1 --junitxml=../docs/audits/2026-08-30/evidence/integration/http-cpu-readiness/pytest-attempt-1.xml",
+      "cwd": "code",
+      "outcome": {
+        "passed": 5,
+        "skipped": 1,
+        "failed": 0,
+        "cases": [
+          {
+            "id": "tests.test_http_microbench::test_microbench_endpoints_start_stop",
+            "status": "skipped",
+            "seconds": 0.0,
+            "reason": "Legacy routes /api/microbench/disk, /api/microbench/loopback and /api/export/html are absent from the dashboard API; their microbenchmark/export functionality is unavailable through these routes and remains unverified."
+          },
+          {
+            "id": "tests.test_http_microbench::test_current_dashboard_http_readiness_and_campaign_guard",
+            "status": "passed",
+            "seconds": 0.862
+          },
+          {
+            "id": "tests.test_http_microbench::test_retired_http_routes_explicitly_return_not_found",
+            "status": "passed",
+            "seconds": 0.581
+          },
+          {
+            "id": "tests.test_http_microbench::test_dashboard_readiness_rejects_failed_owned_child",
+            "status": "passed",
+            "seconds": 1.061
+          },
+          {
+            "id": "tests.test_http_microbench::test_dashboard_requests_reject_killed_owned_child",
+            "status": "passed",
+            "seconds": 0.338
+          },
+          {
+            "id": "tests.test_http_microbench::test_dashboard_readiness_timeout_cleans_up_owned_child",
+            "status": "passed",
+            "seconds": 1.065
+          }
+        ]
+      },
+      "notes": "Initial source; final adds explicit no-surviving-PID assertion for timeout child."
+    },
+    {
+      "stdout": "pytest-final.txt",
+      "junit": "pytest-final.xml",
+      "exit_code": 0,
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_http_microbench.py tests/test_dashboard_server.py -q -ra -p no:cacheprovider --basetemp=/tmp/aisp-http-cpu-b-final --junitxml=../docs/audits/2026-08-30/evidence/integration/http-cpu-readiness/pytest-final.xml",
+      "cwd": "code",
+      "outcome": {
+        "passed": 16,
+        "skipped": 1,
+        "failed": 0,
+        "cases": [
+          {
+            "id": "tests.test_http_microbench::test_microbench_endpoints_start_stop",
+            "status": "skipped",
+            "seconds": 0.0,
+            "reason": "Legacy routes /api/microbench/disk, /api/microbench/loopback and /api/export/html are absent from the dashboard API; their microbenchmark/export functionality is unavailable through these routes and remains unverified."
+          },
+          {
+            "id": "tests.test_http_microbench::test_current_dashboard_http_readiness_and_campaign_guard",
+            "status": "passed",
+            "seconds": 0.588
+          },
+          {
+            "id": "tests.test_http_microbench::test_retired_http_routes_explicitly_return_not_found",
+            "status": "passed",
+            "seconds": 0.559
+          },
+          {
+            "id": "tests.test_http_microbench::test_dashboard_readiness_rejects_failed_owned_child",
+            "status": "passed",
+            "seconds": 1.062
+          },
+          {
+            "id": "tests.test_http_microbench::test_dashboard_requests_reject_killed_owned_child",
+            "status": "passed",
+            "seconds": 0.335
+          },
+          {
+            "id": "tests.test_http_microbench::test_dashboard_readiness_timeout_cleans_up_owned_child",
+            "status": "passed",
+            "seconds": 1.065
+          },
+          {
+            "id": "tests.test_dashboard_server::test_configure_engine_uses_data_file",
+            "status": "passed",
+            "seconds": 0.001
+          },
+          {
+            "id": "tests.test_dashboard_server::test_dashboard_cli_has_serve_command",
+            "status": "passed",
+            "seconds": 0.006
+          },
+          {
+            "id": "tests.test_dashboard_server::test_dashboard_http_benchmark_overview_route_returns_success_envelope",
+            "status": "passed",
+            "seconds": 0.019
+          },
+          {
+            "id": "tests.test_dashboard_server::test_dashboard_http_compare_route_returns_error_envelope",
+            "status": "passed",
+            "seconds": 0.001
+          },
+          {
+            "id": "tests.test_dashboard_server::test_dashboard_cors_allows_only_configured_ui_origins",
+            "status": "passed",
+            "seconds": 0.001
+          },
+          {
+            "id": "tests.test_dashboard_server::test_campaign_api_restricts_workspaces_to_configured_root",
+            "status": "passed",
+            "seconds": 0.006
+          },
+          {
+            "id": "tests.test_dashboard_server::test_campaign_api_requires_an_explicit_server_root",
+            "status": "passed",
+            "seconds": 0.001
+          },
+          {
+            "id": "tests.test_dashboard_server::test_serve_uses_the_app_with_its_configured_campaign_root",
+            "status": "passed",
+            "seconds": 0.0
+          },
+          {
+            "id": "tests.test_dashboard_server::test_ai_tools_only_lists_dashboard_mcp_subset",
+            "status": "passed",
+            "seconds": 0.01
+          },
+          {
+            "id": "tests.test_dashboard_server::test_ai_execute_rejects_tools_outside_dashboard_subset",
+            "status": "passed",
+            "seconds": 0.0
+          },
+          {
+            "id": "tests.test_dashboard_server::test_engine_exposes_tier1_history_and_trends",
+            "status": "passed",
+            "seconds": 0.018
+          }
+        ]
+      }
+    }
+  ],
+  "actual_checks": [
+    "Actual dashboard FastAPI ASGI application served through real Uvicorn in owned child via exclusively inherited loopback socket; parent retains bind until cleanup.",
+    "Actual OpenAPI200 title/version/declared routes; actual supported campaign-artifact disabled503 body without hardware/context probing.",
+    "Separate absence/OpenAPI and404 checks for three retired routes; not feature functionality.",
+    "Actual child exits37 with diagnostic text: readiness raises; actual ready server killed: later request raises before network.",
+    "Actual alive nonserving child times out, is terminated/reaped, and os.kill(pid,0) raises ProcessLookupError.",
+    "All HTTP requests have connect/read timeouts and Session.trust_env=False. Logs captured to files avoid unread-pipe deadlock."
+  ],
+  "limitations": [
+    "Original test_microbench_endpoints_start_stop identity retained as explicit pytest.skip: disk,loopback,HTML routes absent and corresponding functionality remains unverified/unavailable through them.",
+    "No production server/routes/handlers changed; no legacy endpoint restored.",
+    "This is ASGI server integration; the production serve CLI is not exercised by the positive case. Original no-command CLI was exercised only by the rejection reproduction.",
+    "No GPU query/job/profiler, external service, install, Docker/Linux job or paid call was run.",
+    "Fresh pinned Linux CPU environment qualification remains pending; this local focused run cannot replace it."
+  ]
+}

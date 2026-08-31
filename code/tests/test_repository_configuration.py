@@ -408,6 +408,10 @@ def test_dual_arch_compare_script_resolves_chapters_from_code_root(
         "ch10",
         "ch11",
         "ch12",
+        "ch16",
+        "ch18",
+        "ch19",
+        "ch20",
     ]
     assert build_log.read_text(encoding="utf-8").splitlines() == [
         f"{CODE_ROOT / chapter}|--jobs=2 compare" for chapter in expected_chapters
@@ -483,6 +487,43 @@ def test_cpu_ci_uses_exact_coverage_pins() -> None:
     for pin in ("pytest-cov==7.1.0", "coverage[toml]==7.15.2"):
         assert pin in requirements
         assert pin in workflow
+
+
+
+def test_cpu_ci_installs_direct_collection_dependencies() -> None:
+    workflow = _load_workflow("benchmark-validation.yml")
+    install = next(step["run"] for step in workflow["jobs"]["validate"]["steps"]
+                   if step["name"] == "Install CPU test dependencies")
+    requirements = (CODE_ROOT / "requirements_latest.txt").read_text(encoding="utf-8")
+    # HTTP tests import requests; nanochat.engine imports tokenizers transitively
+    # through checkpoint_manager. CLI tests also need the same Typer/Click/Rich
+    # versions as the shared environment, including help and argument parsing.
+    for package in ("requests", "tokenizers", "typer", "click", "rich"):
+        pins = [line.split("#", 1)[0].strip() for line in requirements.splitlines()
+                if line.strip().startswith(f"{package}==")]
+        assert len(pins) == 1, f"The full CPU suite directly imports {package}"
+        assert pins[0] in install.split(), f"Clean CPU CI must install {pins[0]} before collection"
+
+
+def test_full_test_collection_gates_cpu_and_attested_gpu_workflows() -> None:
+    cpu_job = _load_workflow("benchmark-validation.yml")["jobs"]["validate"]
+    cpu_step = next(step for step in cpu_job["steps"] if step["name"] == "Run full CPU test suite")
+    gpu_job = _load_workflow("tier1-nightly.yml")["jobs"]["tier1"]
+    gpu_steps = gpu_job["steps"]
+    gpu_step = next(step for step in gpu_steps if step["name"] == "Run verification tests on the attested GPU runner")
+    for step, report in ((cpu_step, "pytest-cpu.xml"), (gpu_step, "pytest-gpu.xml")):
+        assert "python -m pytest tests " in step["run"]
+        assert "--ignore" not in step["run"]
+        assert "-k " not in step["run"]
+        assert "-o timeout=" in step["run"]
+        assert "--timeout=" not in step["run"]  # external plugins are deliberately disabled
+        assert report in step["run"]
+        assert "continue-on-error" not in step
+    preflight = next(step for step in gpu_steps if step["name"] == "GPU preflight")
+    performance = next(step for step in gpu_steps if step["name"] == "Run canonical tier-1 suite")
+    assert gpu_steps.index(preflight) < gpu_steps.index(gpu_step) < gpu_steps.index(performance)
+    assert gpu_job["concurrency"]["group"] == "tier1-nightly-producer"
+    assert "b200" in gpu_job["runs-on"]
 
 
 def test_dashboard_ci_uses_blocking_node_24_gates() -> None:

@@ -1,0 +1,159 @@
+{
+  "captured_at": "2026-08-31T01:12:37.582513+00:00",
+  "files": [
+    {
+      "path": "code/core/scripts/check_import_edges.py",
+      "present": true,
+      "bytes": 5674,
+      "sha256": "df8b6d145bd67ea425b34849548ef6eda83719d83ea820a06b13b6b5e53e3af3"
+    },
+    {
+      "path": "code/core/analysis/compare_benchmark_pairs.py",
+      "present": true,
+      "bytes": 3409,
+      "sha256": "1aa714186c838ebd53f521e8ba7f039f644f3ae32cd2b49b4d56019f93351974"
+    },
+    {
+      "path": "code/core/analysis/deep_profiling_report.py",
+      "present": true,
+      "bytes": 28715,
+      "sha256": "dc7db2cdca474b97eb7bd174c1030f6d039e763dcc6d229bb33fc939e9683eae"
+    },
+    {
+      "path": "code/core/analysis/kernel_roofline.py",
+      "present": true,
+      "bytes": 7339,
+      "sha256": "b9689b46b7f67d98494579141a5f6230ef1c61cd38a90a1a967cd0259b81c784"
+    },
+    {
+      "path": "code/core/benchmark/precision_power_sweep.py",
+      "present": false
+    },
+    {
+      "path": "code/scripts/precision_power_sweep.py",
+      "present": true,
+      "bytes": 17621,
+      "sha256": "3122da74202b1cbc15f0dc99969bb68e081cb3e1fa497d11cc38c9164f96e17c"
+    },
+    {
+      "path": "code/core/scripts/run_power_efficiency_sweeps.sh",
+      "present": false
+    },
+    {
+      "path": "code/scripts/run_power_efficiency_sweeps.sh",
+      "present": true,
+      "bytes": 5030,
+      "sha256": "48b762d24e71c7b40beff28e2dbc371c4bb3e0920d71992f794f48bae97a2470"
+    },
+    {
+      "path": "code/core/perf_core_base.py",
+      "present": true,
+      "bytes": 132702,
+      "sha256": "e213c847b382b1b887601a203f4f4470888dd35ab8a338495482a71277660766"
+    },
+    {
+      "path": "code/core/profiling/nsys_summary.py",
+      "present": true,
+      "bytes": 4390,
+      "sha256": "379e08ab9184e08feae2a0c687e6258f2321997c12f871257a2c648e9184ab45"
+    },
+    {
+      "path": "code/core/profiling/nsight_systems.py",
+      "present": true,
+      "bytes": 4353,
+      "sha256": "8abe7fa0e81e08655fb3affe00b0ebc1401b097394c2add73962b551294bf8c6"
+    },
+    {
+      "path": "code/core/scripts/utilities/dump_hardware_capabilities.py",
+      "present": false
+    },
+    {
+      "path": "code/scripts/utilities/dump_hardware_capabilities.py",
+      "present": true,
+      "bytes": 9418,
+      "sha256": "112d21445c5ccd5d7aadf9f5921a820989c19cc5c8eba8c4d671dd6f544e47c6"
+    },
+    {
+      "path": "code/core/scripts/utilities/precompile_cuda_extensions.py",
+      "present": false
+    },
+    {
+      "path": "code/scripts/utilities/precompile_cuda_extensions.py",
+      "present": true,
+      "bytes": 3474,
+      "sha256": "d565cf672094ae5112e4aa9dda22bad59320dff9eb34e7259ae05c5914b233c3"
+    },
+    {
+      "path": "code/core/utils/extension_prewarm.py",
+      "present": true,
+      "bytes": 15236,
+      "sha256": "3adc07aedc814de865141212270a9e60f48e1b2382ac0b54dbe85659beb708d4"
+    },
+    {
+      "path": "code/tests/test_core_profiling_seams.py",
+      "present": true,
+      "bytes": 3428,
+      "sha256": "fa96e58ccce68f8e9cf72e1a1df3c12741b988222965d99d50b48f35fae3906d"
+    },
+    {
+      "path": "code/tests/test_firstparty_correctness_regressions.py",
+      "present": true,
+      "bytes": 4346,
+      "sha256": "427def498cdb3f32d0d7dfe5861a3816f9c8a9a23caf49fe8fc83ece4c9eec55"
+    },
+    {
+      "path": "code/labs/moe_parallelism/compare_pairs.py",
+      "present": true,
+      "bytes": 2161,
+      "sha256": "8e0bff2d5b85e792465528be0a4ec28ea4b92c9989376bb2de3f54c5b5d28683"
+    },
+    {
+      "path": "code/labs/moe_parallelism/plan.py",
+      "present": true,
+      "bytes": 18474,
+      "sha256": "a356e6940e950ef3574399633ed0100e56ed6b187d656f45e5634a6d7674eb65"
+    },
+    {
+      "path": "code/core/common/moe_parallelism_plan.py",
+      "present": true,
+      "bytes": 18474,
+      "sha256": "a356e6940e950ef3574399633ed0100e56ed6b187d656f45e5634a6d7674eb65"
+    },
+    {
+      "path": "code/ch08/roofline.py",
+      "present": true,
+      "bytes": 5218,
+      "sha256": "54c54a8bd7d9d70725b93ba6ffbf431f4e850fe1dec293d22aed6ab18082f5b6"
+    },
+    {
+      "path": "code/ch17/blackwell_profiling_guide.py",
+      "present": true,
+      "bytes": 10054,
+      "sha256": "c3bdd5265e419f17e9b92cfc3afa683694693cd2db01d7dba961351687a66a2d"
+    },
+    {
+      "path": "code/ch16/gpt_large_benchmark.py",
+      "present": true,
+      "bytes": 31631,
+      "sha256": "5219fdad566cfb6c85ba04513b4253242437f6abdc6448ef3e8473c467af28a1"
+    },
+    {
+      "path": "code/ch04/gb200_grace_numa_optimization.py",
+      "present": true,
+      "bytes": 18331,
+      "sha256": "8eb5b377b2b4dcb9e642cb2fbab413f00aeddc826b935a6a73f21b18a695638a"
+    },
+    {
+      "path": "code/ch06/cuda_extensions/__init__.py",
+      "present": true,
+      "bytes": 1775,
+      "sha256": "8fad23fca50b806c7ae63edc8cc940ed852a46c323dc4e46eedc079642e72028"
+    },
+    {
+      "path": "code/ch12/cuda_extensions/__init__.py",
+      "present": true,
+      "bytes": 2217,
+      "sha256": "3ca4e346efa91bba63784a179dcfefefcf69bfbe38c0f0715ed63396e622f674"
+    }
+  ]
+}

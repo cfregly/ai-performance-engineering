@@ -1,0 +1,12 @@
+{
+  "command": [
+    "/opt/miniconda3/bin/python",
+    "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/curated-source-gates/direct-script-searchpath-probe/fixture-code/core/scripts/validate_imports.py"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/curated-source-gates/direct-script-searchpath-probe/fixture-code",
+  "environment": "PYTHONPATH removed; no sys.path bootstrap; BYTECODE disabled",
+  "exit_code": 1,
+  "stdout": "======================================================================\nBenchmark Import Validation\n======================================================================\nValidating all chapters...\n\n  \u274c ch777.baseline_only_local\n     ModuleNotFoundError: No module named 'ch777'\n\n======================================================================\nResults: 0/1 passed (0.0%)\n\n\u274c 1 failures:\n\n  ModuleNotFoundError (1 files):\n    - ch777.baseline_only_local\n",
+  "stderr": "",
+  "scope": "Actual copied validator CLI with one CPU-only temp module ch777.baseline_only_local; no real repo benchmark imported."
+}

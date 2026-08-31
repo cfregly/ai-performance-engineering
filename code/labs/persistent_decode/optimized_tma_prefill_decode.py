@@ -25,6 +25,8 @@ from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.harness.cuda_capabilities import tma_support_status
 from labs.persistent_decode.persistent_decode_common import (
     build_inputs,
+    build_prefill_decode_verification_buffers,
+    validate_prefill_decode_output,
     get_stream_priorities,
     resolve_device,
     resolve_shapes,
@@ -320,6 +322,8 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.output: torch.Tensor | None = None
         self._output_view: torch.Tensor | None = None
         self._verify_output_buffer: torch.Tensor | None = None
+        self._verify_decode_view: torch.Tensor | None = None
+        self._verify_prefill_view: torch.Tensor | None = None
 
     def setup(self) -> None:
         ensure_blackwell_tma_supported("optimized_tma_prefill_decode")
@@ -327,8 +331,7 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(42)
         self.inputs = build_inputs(self.device)
-        self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
-        self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)
+        self._output_view = self.inputs.out
         # Skip on GPUs without TMA support to avoid false regressions.
         supported, reason = tma_support_status()
         if not supported:
@@ -338,6 +341,11 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
             self.prefill_chunks, self.prefill_chunk_elems, device=self.device
         )
         self.prefill_dst = torch.empty_like(self.prefill_src)
+        (
+            self._verify_output_buffer,
+            self._verify_decode_view,
+            self._verify_prefill_view,
+        ) = build_prefill_decode_verification_buffers(self.inputs, self.prefill_dst)
 
         # Graph-captured decode loop to cut host gaps during profiling.
         self.graph_q = self.inputs.q.clone()
@@ -447,6 +455,10 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
             raise RuntimeError("Inputs not initialized")
 
         current_stream = torch.cuda.current_stream()
+        # Callers may have just refreshed inputs on their current stream.
+        for stream in self.prefill_streams:
+            stream.wait_stream(current_stream)
+        self.decode_stream.wait_stream(current_stream)
         use_full = (
             self.graph_mode == GraphMode.FULL
             or (self.graph_mode == GraphMode.FULL_AND_PIECEWISE and self.seq_len <= self.max_capture_seq)
@@ -457,6 +469,9 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
             with torch.inference_mode(), self._nvtx_range("full_graph_high_pri"):
                 with torch.cuda.stream(self.decode_stream):
                     start.record(self.decode_stream)
+                    self.graph_q.copy_(self.inputs.q)
+                    self.graph_k.copy_(self.inputs.k)
+                    self.graph_v.copy_(self.inputs.v)
                     self.full_graph.replay()
                     end.record(self.decode_stream)
             current_stream.wait_stream(self.decode_stream)
@@ -533,9 +548,14 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
     def capture_verification_payload(self) -> None:
         if self.inputs is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
-        self._verify_output_buffer.copy_(self.output)
+        if self._verify_decode_view is None or self._verify_prefill_view is None:
+            raise RuntimeError("Verification output views not initialized")
+        validate_prefill_decode_output(self.inputs, self.prefill_src, self.prefill_dst)
+        self._verify_decode_view.copy_(self.inputs.out)
+        self._verify_prefill_view.copy_(self.prefill_dst)
         self._set_verification_payload(
             inputs={
+                "prefill_src": self.prefill_src.detach(),
                 "q": self.inputs.q,
                 "k": self.inputs.k,
                 "v": self.inputs.v,
@@ -564,6 +584,8 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.output = None
         self._output_view = None
         self._verify_output_buffer = None
+        self._verify_decode_view = None
+        self._verify_prefill_view = None
         self._prefill_events = []
         self._prefill_work = []
         self._pending_graph_path = None
@@ -590,8 +612,10 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
     def validate_result(self) -> str | None:
         if self.inputs is None:
             return "Inputs not initialized"
-        if not torch.isfinite(self.inputs.out).all():
-            return "Non-finite output detected"
+        try:
+            validate_prefill_decode_output(self.inputs, self.prefill_src, self.prefill_dst)
+        except AssertionError as exc:
+            return str(exc)
         return None
 
 def get_benchmark() -> BaseBenchmark:

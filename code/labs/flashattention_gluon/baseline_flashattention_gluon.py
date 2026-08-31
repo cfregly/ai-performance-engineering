@@ -41,9 +41,6 @@ class BaselineFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchma
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.inputs = build_flashattention_inputs(
             batch=self.batch,
             seq_len=self.seq_len,

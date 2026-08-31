@@ -39,24 +39,24 @@ run_all: all
 	@echo "=== Running All Blackwell Optimization Tests ==="
 	@echo ""
 	@echo "--- TMEM Test ---"
-	@./test_tmem || true
+	@./test_tmem
 	@echo ""
-	@echo "--- TMA Test ---"
-	@./test_tma || true
+	@echo "--- Shared-memory scalar control (legacy test_tma) ---"
+	@./test_tma
 	@echo ""
 	@echo "--- CTA Clusters Test ---"
-	@./test_clusters || true
+	@./test_clusters
 	@echo ""
 	@echo "--- FP8 Test ---"
-	@./test_fp8 || true
+	@./test_fp8
 	@echo ""
 	@echo "--- Warp Specialization Test ---"
-	@./test_warp_spec || true
+	@./test_warp_spec
 	@echo ""
 	@echo "--- Distributed Shared Memory Test ---"
-	@./test_dsmem || true
+	@./test_dsmem
 	@echo ""
-	@echo "--- All Features Combined Test ---"
-	@./test_all_features || true
+	@echo "--- Cluster / FP8 storage scalar control ---"
+	@./test_all_features
 
 .PHONY: all clean run_all

@@ -1,0 +1,13 @@
+{
+  "status": "HOLD",
+  "arch": "sm_100a",
+  "checks": [],
+  "sanitizers": "all",
+  "started_at_utc": "2026-08-30T22:53:22Z",
+  "source_sha256": {
+    "ch10/tcgen05_warp_specialized.cu": "b29cb67f42ea334c4eb43f8392077579968adc4885a17c636d5bccfa30802863",
+    "ch10/grouped_tile_schedule.cuh": "e8f971c015e9f942ba812a1f1988a22379a8046a3c73976f00baeabffd56c992",
+    "tests/cuda/run_ch10_warp_specialized_validation.py": "eb821edbaa6e98211e99c1195b9c2cb77c90d84f81ad7cad5608cf7140eb3302"
+  },
+  "reason": "nvcc unavailable; no CUDA compilation or execution occurred"
+}

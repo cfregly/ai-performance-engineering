@@ -1,0 +1,5 @@
+..........................s                                              [100%]
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/validation/clock-lock-followup/focused.xml -
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_anti_cheat_protections.py:543: Clock-lock capability unavailable: real CUDA device required
+26 passed, 1 skipped in 1.33s

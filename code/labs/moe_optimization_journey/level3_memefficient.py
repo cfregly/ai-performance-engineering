@@ -1,22 +1,18 @@
 #!/usr/bin/env python3
-"""Level 3: Memory Efficient Execution.
+"""Level 3: Intermediate-buffer reuse.
 
-ADDS: Reuse pre-allocated buffers instead of creating new tensors.
+Adds buffer reuse to the shared BF16 model.
 
-Benefits:
-- Reduces memory allocation overhead
-- Less garbage collection pressure
-- Better memory locality
-
-Cumulative: batched + fused + mem_efficient
-"""
+The filename and class are retained for compatibility. The LEVEL mapping,
+not a legacy filename, determines execution. These shared levels do not use
+FP8 quantization. No speedup is established by selecting a level."""
 import torch
 
 from labs.moe_optimization_journey.moe_benchmark import MoEJourneyBenchmark, run_level
 
 
 class Level3MemEfficient(MoEJourneyBenchmark):
-    """Level 3: + Memory efficient (buffer reuse)."""
+    """Shared level 3: Intermediate-buffer reuse."""
     LEVEL = 3
 
 def get_benchmark() -> Level3MemEfficient:

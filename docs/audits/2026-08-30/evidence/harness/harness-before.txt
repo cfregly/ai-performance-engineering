@@ -1,0 +1,412 @@
+..F.FF.FFFFFFF                                                           [100%]
+=================================== FAILURES ===================================
+______________ test_detector_switches_are_independent[True-False] ______________
+
+sync_detection = False, antipattern_detection = True
+
+    @pytest.mark.parametrize("sync_detection", [False, True])
+    @pytest.mark.parametrize("antipattern_detection", [False, True])
+    def test_detector_switches_are_independent(sync_detection, antipattern_detection):
+        harness, config = _cpu_harness(
+            detect_benchmark_fn_sync=sync_detection,
+            detect_benchmark_fn_antipatterns=antipattern_detection,
+        )
+        work = _CPUWork()
+>       samples, _ = harness._benchmark_custom(work.benchmark_fn, config)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_audit_wave1_harness.py:57: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <core.harness.benchmark_harness.BenchmarkHarness object at 0x31a5fa1e0>
+fn = <bound method _CPUWork.benchmark_fn of <tests.test_audit_wave1_harness._CPUWork object at 0x106c55970>>
+config = BenchmarkConfig(iterations=2, warmup=5, min_run_time_ms=100.0, percentiles=[25, 50, 75, 99], enable_memory_tracking=Fa...hold_mb=100.0, nsys_timeout_seconds=540, ncu_timeout_seconds=10800, proton_timeout_seconds=540, timeout_multiplier=3.0)
+
+    def _benchmark_custom(self, fn: Callable, config: BenchmarkConfig) -> tuple[List[float], Optional[Dict[str, List[float]]]]:
+        """Custom benchmarking with CUDA Events for accurate GPU timing.
+    
+        Optimized for minimal overhead:
+        - Uses CUDA Events for accurate GPU timing without blocking
+        - Reuses events across iterations for efficiency
+        - Synchronizes only when necessary for accurate timing
+    
+        Returns:
+            Tuple of (times_ms, inference_timing_data) where inference_timing_data is None
+            or a dict with 'ttft_times_ms' and 'tpot_times_ms' keys
+        """
+        self._ensure_runtime_initialized()
+        times_ms: List[float] = []
+        inference_timing_data: Optional[Dict[str, List[float]]] = None
+        ttft_times_ms: List[float] = []
+        tpot_times_ms: List[float] = []
+    
+        # Capture config snapshot for immutability verification (Option C: full config).
+        # This protects against benchmarks manipulating harness protections mid-run.
+        config_snapshot = config.capture_config_snapshot() if getattr(config, 'enforce_config_immutability', True) else None
+    
+        # Some benchmarks (e.g., external CUDA binaries) report their own timing.
+        benchmark_obj = getattr(fn, "__self__", None)
+        use_reported_time = bool(getattr(benchmark_obj, "use_reported_time", False))
+        range_name = getattr(config, "name", None) or getattr(fn, "__name__", "benchmark_fn")
+    
+        # ===== VALIDITY PROTECTIONS (Pre-benchmark) =====
+        # These checks address benchmark validity issues.
+        from core.harness.validity_checks import (
+            reset_cuda_memory_pool, capture_gpu_state, gc_disabled,
+            clear_compile_cache, force_tensor_evaluation, validate_environment,
+            capture_precision_policy_state, check_precision_policy_consistency,
+            MemoryAllocationTracker, get_active_streams,
+            check_benchmark_fn_antipatterns, check_benchmark_fn_sync_calls,
+        )
+    
+        # 0. Validate environment and log device enumeration
+        env_result = validate_environment(
+            device=self.device,
+            probe=self._environment_probe,
+            allow_virtualization=bool(getattr(config, "allow_virtualization", False)),
+            allow_foreign_gpu_processes=bool(getattr(config, "allow_foreign_gpu_processes", False)),
+        )
+        for warning in env_result.warnings:
+            import warnings as warn_module
+            warn_module.warn(f"ENVIRONMENT WARNING: {warning}", RuntimeWarning)
+        if LOGGER_AVAILABLE:
+            for notice in env_result.notices:
+                logger.info("ENVIRONMENT NOTICE: %s", notice)
+        if env_result.errors:
+            message = _format_environment_invalid_message(env_result.errors)
+            enforce_env = bool(getattr(config, "enforce_environment_validation", True))
+            if enforce_env:
+                raise RuntimeError(message)
+            import warnings as warn_module
+            warn_module.warn(message, RuntimeWarning)
+    
+        # 1. Reset memory pool to prevent memory reuse gaming
+        if getattr(config, 'reset_memory_pool', True) and self.device.type == "cuda":
+            reset_cuda_memory_pool(self.device)
+    
+        # 2. Clear torch.compile cache for consistent compilation state
+        # NOTE: compile caches are cleared before setup/warmup in BenchmarkHarness.benchmark().
+    
+        # 2b. Inspect benchmark_fn source for explicit synchronization in the hot path.
+        if benchmark_obj is not None and getattr(config, "detect_benchmark_fn_sync", True):
+            allowed_antipatterns = getattr(
+                benchmark_obj,
+                "allowed_benchmark_fn_antipatterns",
+                (),
+            )
+            sync_ok, sync_findings = check_benchmark_fn_sync_calls(
+                fn,
+                allowed_codes=allowed_antipatterns,
+            )
+            if not sync_ok:
+                policy = str(getattr(config, "benchmark_fn_sync_policy", "warn")).strip().lower()
+                message = (
+                    "BENCHMARK_FN SYNC WARNING: explicit synchronization detected in benchmark_fn(). "
+                    "This usually inflates harness timings and blocks CUDA graph capture.\n- "
+                    + "\n- ".join(sync_findings)
+                )
+                if policy == "error":
+                    raise RuntimeError(message)
+                if policy == "warn":
+                    import warnings as warn_module
+    
+                    warn_module.warn(message, RuntimeWarning)
+    
+        if benchmark_obj is not None and getattr(config, "detect_benchmark_fn_antipatterns", True):
+            antipattern_ok, antipattern_findings = check_benchmark_fn_antipatterns(
+                fn,
+>               allowed_codes=allowed_antipatterns,
+                              ^^^^^^^^^^^^^^^^^^^^
+            )
+E           UnboundLocalError: cannot access local variable 'allowed_antipatterns' where it is not associated with a value
+
+core/harness/benchmark_harness.py:4887: UnboundLocalError
+_ test_antipattern_detection_still_rejects_logging_when_sync_detection_is_off __
+
+    def test_antipattern_detection_still_rejects_logging_when_sync_detection_is_off():
+        harness, config = _cpu_harness(
+            detect_benchmark_fn_sync=False,
+            detect_benchmark_fn_antipatterns=True,
+            benchmark_fn_antipattern_policy="error",
+        )
+        work = _LoggingWork()
+        with pytest.raises(RuntimeError, match="ANTI-PATTERN"):
+>           harness._benchmark_custom(work.benchmark_fn, config)
+
+tests/test_audit_wave1_harness.py:70: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <core.harness.benchmark_harness.BenchmarkHarness object at 0x31a66e690>
+fn = <bound method _LoggingWork.benchmark_fn of <tests.test_audit_wave1_harness._LoggingWork object at 0x31a5fa3f0>>
+config = BenchmarkConfig(iterations=2, warmup=5, min_run_time_ms=100.0, percentiles=[25, 50, 75, 99], enable_memory_tracking=Fa...hold_mb=100.0, nsys_timeout_seconds=540, ncu_timeout_seconds=10800, proton_timeout_seconds=540, timeout_multiplier=3.0)
+
+    def _benchmark_custom(self, fn: Callable, config: BenchmarkConfig) -> tuple[List[float], Optional[Dict[str, List[float]]]]:
+        """Custom benchmarking with CUDA Events for accurate GPU timing.
+    
+        Optimized for minimal overhead:
+        - Uses CUDA Events for accurate GPU timing without blocking
+        - Reuses events across iterations for efficiency
+        - Synchronizes only when necessary for accurate timing
+    
+        Returns:
+            Tuple of (times_ms, inference_timing_data) where inference_timing_data is None
+            or a dict with 'ttft_times_ms' and 'tpot_times_ms' keys
+        """
+        self._ensure_runtime_initialized()
+        times_ms: List[float] = []
+        inference_timing_data: Optional[Dict[str, List[float]]] = None
+        ttft_times_ms: List[float] = []
+        tpot_times_ms: List[float] = []
+    
+        # Capture config snapshot for immutability verification (Option C: full config).
+        # This protects against benchmarks manipulating harness protections mid-run.
+        config_snapshot = config.capture_config_snapshot() if getattr(config, 'enforce_config_immutability', True) else None
+    
+        # Some benchmarks (e.g., external CUDA binaries) report their own timing.
+        benchmark_obj = getattr(fn, "__self__", None)
+        use_reported_time = bool(getattr(benchmark_obj, "use_reported_time", False))
+        range_name = getattr(config, "name", None) or getattr(fn, "__name__", "benchmark_fn")
+    
+        # ===== VALIDITY PROTECTIONS (Pre-benchmark) =====
+        # These checks address benchmark validity issues.
+        from core.harness.validity_checks import (
+            reset_cuda_memory_pool, capture_gpu_state, gc_disabled,
+            clear_compile_cache, force_tensor_evaluation, validate_environment,
+            capture_precision_policy_state, check_precision_policy_consistency,
+            MemoryAllocationTracker, get_active_streams,
+            check_benchmark_fn_antipatterns, check_benchmark_fn_sync_calls,
+        )
+    
+        # 0. Validate environment and log device enumeration
+        env_result = validate_environment(
+            device=self.device,
+            probe=self._environment_probe,
+            allow_virtualization=bool(getattr(config, "allow_virtualization", False)),
+            allow_foreign_gpu_processes=bool(getattr(config, "allow_foreign_gpu_processes", False)),
+        )
+        for warning in env_result.warnings:
+            import warnings as warn_module
+            warn_module.warn(f"ENVIRONMENT WARNING: {warning}", RuntimeWarning)
+        if LOGGER_AVAILABLE:
+            for notice in env_result.notices:
+                logger.info("ENVIRONMENT NOTICE: %s", notice)
+        if env_result.errors:
+            message = _format_environment_invalid_message(env_result.errors)
+            enforce_env = bool(getattr(config, "enforce_environment_validation", True))
+            if enforce_env:
+                raise RuntimeError(message)
+            import warnings as warn_module
+            warn_module.warn(message, RuntimeWarning)
+    
+        # 1. Reset memory pool to prevent memory reuse gaming
+        if getattr(config, 'reset_memory_pool', True) and self.device.type == "cuda":
+            reset_cuda_memory_pool(self.device)
+    
+        # 2. Clear torch.compile cache for consistent compilation state
+        # NOTE: compile caches are cleared before setup/warmup in BenchmarkHarness.benchmark().
+    
+        # 2b. Inspect benchmark_fn source for explicit synchronization in the hot path.
+        if benchmark_obj is not None and getattr(config, "detect_benchmark_fn_sync", True):
+            allowed_antipatterns = getattr(
+                benchmark_obj,
+                "allowed_benchmark_fn_antipatterns",
+                (),
+            )
+            sync_ok, sync_findings = check_benchmark_fn_sync_calls(
+                fn,
+                allowed_codes=allowed_antipatterns,
+            )
+            if not sync_ok:
+                policy = str(getattr(config, "benchmark_fn_sync_policy", "warn")).strip().lower()
+                message = (
+                    "BENCHMARK_FN SYNC WARNING: explicit synchronization detected in benchmark_fn(). "
+                    "This usually inflates harness timings and blocks CUDA graph capture.\n- "
+                    + "\n- ".join(sync_findings)
+                )
+                if policy == "error":
+                    raise RuntimeError(message)
+                if policy == "warn":
+                    import warnings as warn_module
+    
+                    warn_module.warn(message, RuntimeWarning)
+    
+        if benchmark_obj is not None and getattr(config, "detect_benchmark_fn_antipatterns", True):
+            antipattern_ok, antipattern_findings = check_benchmark_fn_antipatterns(
+                fn,
+>               allowed_codes=allowed_antipatterns,
+                              ^^^^^^^^^^^^^^^^^^^^
+            )
+E           UnboundLocalError: cannot access local variable 'allowed_antipatterns' where it is not associated with a value
+
+core/harness/benchmark_harness.py:4887: UnboundLocalError
+____________ test_summary_timing_preserves_only_supplied_statistics ____________
+
+    def test_summary_timing_preserves_only_supplied_statistics():
+        harness, config = _cpu_harness()
+        # Deliberately asymmetric summary: inventing Gaussian samples would alter it.
+        child_timing = TimingStats(
+            mean_ms=4.0, median_ms=1.0, std_ms=6.0, min_ms=0.1, max_ms=25.0,
+            iterations=100, warmup_iterations=7, p99_ms=24.0,
+            percentiles={99.0: 24.0}, raw_times_ms=None,
+        )
+        transported = TimingStats.model_validate_json(child_timing.model_dump_json())
+>       result = harness._result_from_timing(transported, config)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'BenchmarkHarness' object has no attribute '_result_from_timing'
+
+tests/test_audit_wave1_harness.py:83: AttributeError
+____ test_torchrun_throughput_log_parser[throughput: 1,234.5 tok/s-1234.5] _____
+
+line = 'throughput: 1,234.5 tok/s', expected = 1234.5
+
+    @pytest.mark.parametrize(
+        ("line", "expected"),
+        [("throughput: 1,234.5 tok/s", 1234.5),
+         ("1234.5tok/s", 1234.5),
+         ("1000 tokens/s", 1000.0),
+         ("1 toks/s", 1.0),
+         ("0 TOKENS/S", 0.0),
+         ("no throughput available", None)],
+    )
+    def test_torchrun_throughput_log_parser(line, expected):
+>       assert BenchmarkHarness._extract_tokens_per_s([line]) == expected
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: type object 'BenchmarkHarness' has no attribute '_extract_tokens_per_s'
+
+tests/test_audit_wave1_harness.py:110: AttributeError
+___________ test_torchrun_throughput_log_parser[1234.5tok/s-1234.5] ____________
+
+line = '1234.5tok/s', expected = 1234.5
+
+    @pytest.mark.parametrize(
+        ("line", "expected"),
+        [("throughput: 1,234.5 tok/s", 1234.5),
+         ("1234.5tok/s", 1234.5),
+         ("1000 tokens/s", 1000.0),
+         ("1 toks/s", 1.0),
+         ("0 TOKENS/S", 0.0),
+         ("no throughput available", None)],
+    )
+    def test_torchrun_throughput_log_parser(line, expected):
+>       assert BenchmarkHarness._extract_tokens_per_s([line]) == expected
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: type object 'BenchmarkHarness' has no attribute '_extract_tokens_per_s'
+
+tests/test_audit_wave1_harness.py:110: AttributeError
+__________ test_torchrun_throughput_log_parser[1000 tokens/s-1000.0] ___________
+
+line = '1000 tokens/s', expected = 1000.0
+
+    @pytest.mark.parametrize(
+        ("line", "expected"),
+        [("throughput: 1,234.5 tok/s", 1234.5),
+         ("1234.5tok/s", 1234.5),
+         ("1000 tokens/s", 1000.0),
+         ("1 toks/s", 1.0),
+         ("0 TOKENS/S", 0.0),
+         ("no throughput available", None)],
+    )
+    def test_torchrun_throughput_log_parser(line, expected):
+>       assert BenchmarkHarness._extract_tokens_per_s([line]) == expected
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: type object 'BenchmarkHarness' has no attribute '_extract_tokens_per_s'
+
+tests/test_audit_wave1_harness.py:110: AttributeError
+______________ test_torchrun_throughput_log_parser[1 toks/s-1.0] _______________
+
+line = '1 toks/s', expected = 1.0
+
+    @pytest.mark.parametrize(
+        ("line", "expected"),
+        [("throughput: 1,234.5 tok/s", 1234.5),
+         ("1234.5tok/s", 1234.5),
+         ("1000 tokens/s", 1000.0),
+         ("1 toks/s", 1.0),
+         ("0 TOKENS/S", 0.0),
+         ("no throughput available", None)],
+    )
+    def test_torchrun_throughput_log_parser(line, expected):
+>       assert BenchmarkHarness._extract_tokens_per_s([line]) == expected
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: type object 'BenchmarkHarness' has no attribute '_extract_tokens_per_s'
+
+tests/test_audit_wave1_harness.py:110: AttributeError
+_____________ test_torchrun_throughput_log_parser[0 TOKENS/S-0.0] ______________
+
+line = '0 TOKENS/S', expected = 0.0
+
+    @pytest.mark.parametrize(
+        ("line", "expected"),
+        [("throughput: 1,234.5 tok/s", 1234.5),
+         ("1234.5tok/s", 1234.5),
+         ("1000 tokens/s", 1000.0),
+         ("1 toks/s", 1.0),
+         ("0 TOKENS/S", 0.0),
+         ("no throughput available", None)],
+    )
+    def test_torchrun_throughput_log_parser(line, expected):
+>       assert BenchmarkHarness._extract_tokens_per_s([line]) == expected
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: type object 'BenchmarkHarness' has no attribute '_extract_tokens_per_s'
+
+tests/test_audit_wave1_harness.py:110: AttributeError
+______ test_torchrun_throughput_log_parser[no throughput available-None] _______
+
+line = 'no throughput available', expected = None
+
+    @pytest.mark.parametrize(
+        ("line", "expected"),
+        [("throughput: 1,234.5 tok/s", 1234.5),
+         ("1234.5tok/s", 1234.5),
+         ("1000 tokens/s", 1000.0),
+         ("1 toks/s", 1.0),
+         ("0 TOKENS/S", 0.0),
+         ("no throughput available", None)],
+    )
+    def test_torchrun_throughput_log_parser(line, expected):
+>       assert BenchmarkHarness._extract_tokens_per_s([line]) == expected
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: type object 'BenchmarkHarness' has no attribute '_extract_tokens_per_s'
+
+tests/test_audit_wave1_harness.py:110: AttributeError
+__________ test_torchrun_throughput_selects_highest_valid_observation __________
+
+    def test_torchrun_throughput_selects_highest_valid_observation():
+>       assert BenchmarkHarness._extract_tokens_per_s(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            ["warmup 2 tok/s", "broken 1.2.3 tok/s", "measured 3,000 tokens/s"]
+        ) == 3000.0
+E       AttributeError: type object 'BenchmarkHarness' has no attribute '_extract_tokens_per_s'
+
+tests/test_audit_wave1_harness.py:114: AttributeError
+=============================== warnings summary ===============================
+tests/test_audit_wave1_harness.py::test_detector_switches_are_independent[False-False]
+tests/test_audit_wave1_harness.py::test_detector_switches_are_independent[False-True]
+tests/test_audit_wave1_harness.py::test_detector_switches_are_independent[True-False]
+tests/test_audit_wave1_harness.py::test_detector_switches_are_independent[True-True]
+tests/test_audit_wave1_harness.py::test_antipattern_detection_still_rejects_logging_when_sync_detection_is_off
+tests/test_audit_wave1_harness.py::test_summary_timing_preserves_only_supplied_statistics
+tests/test_audit_wave1_harness.py::test_measured_samples_still_drive_statistics
+  <string>:94: UserWarning: Warmup iterations (0) for BenchmarkConfig is below minimum (5). This may include JIT/compile overhead in measurements, causing inaccurate results. Automatically raising to 5. If you intentionally need warmup=0, add internal warmup in setup() instead.
+
+tests/test_audit_wave1_harness.py::test_detector_switches_are_independent[False-False]
+tests/test_audit_wave1_harness.py::test_detector_switches_are_independent[False-True]
+tests/test_audit_wave1_harness.py::test_detector_switches_are_independent[True-False]
+tests/test_audit_wave1_harness.py::test_detector_switches_are_independent[True-True]
+tests/test_audit_wave1_harness.py::test_antipattern_detection_still_rejects_logging_when_sync_detection_is_off
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/harness/benchmark_harness.py:4850: RuntimeWarning: ENVIRONMENT INVALID: Non-Linux platform 'darwin' is not supported for benchmark validity checks.
+    warn_module.warn(message, RuntimeWarning)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_audit_wave1_harness.py::test_detector_switches_are_independent[True-False]
+FAILED tests/test_audit_wave1_harness.py::test_antipattern_detection_still_rejects_logging_when_sync_detection_is_off
+FAILED tests/test_audit_wave1_harness.py::test_summary_timing_preserves_only_supplied_statistics
+FAILED tests/test_audit_wave1_harness.py::test_torchrun_throughput_log_parser[throughput: 1,234.5 tok/s-1234.5]
+FAILED tests/test_audit_wave1_harness.py::test_torchrun_throughput_log_parser[1234.5tok/s-1234.5]
+FAILED tests/test_audit_wave1_harness.py::test_torchrun_throughput_log_parser[1000 tokens/s-1000.0]
+FAILED tests/test_audit_wave1_harness.py::test_torchrun_throughput_log_parser[1 toks/s-1.0]
+FAILED tests/test_audit_wave1_harness.py::test_torchrun_throughput_log_parser[0 TOKENS/S-0.0]
+FAILED tests/test_audit_wave1_harness.py::test_torchrun_throughput_log_parser[no throughput available-None]
+FAILED tests/test_audit_wave1_harness.py::test_torchrun_throughput_selects_highest_valid_observation
+10 failed, 4 passed, 12 warnings in 1.41s

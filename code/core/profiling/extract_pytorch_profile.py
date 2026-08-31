@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Summarise torch.profiler outputs captured by core/scripts/pytorch_profiler_runner.py."""
+"""Summarise outputs from core/scripts/profiling/pytorch_profiler_runner.py."""
 
 import argparse
 import csv
+import glob
 import json
 import pathlib
 import sys
@@ -63,14 +64,19 @@ def collect_key_averages(dir_path: pathlib.Path, mode: str) -> List[Dict[str, st
 
 def scan(patterns: Iterable[str]) -> Dict[str, Dict[str, List[Dict[str, str]]]]:
     result: Dict[str, Dict[str, List[Dict[str, str]]]] = {}
-    base = pathlib.Path()
     for pat in patterns:
-        for directory in base.glob(pat):
+        direct = pathlib.Path(pat)
+        candidates = [direct] if direct.is_dir() else [
+            pathlib.Path(path) for path in sorted(glob.glob(pat, recursive=True))
+        ]
+        for directory in candidates:
             if not directory.is_dir():
                 continue
             tag = str(directory)
             meta = collect_metadata(directory)
             modes = _discover_modes(directory)
+            if not meta and not modes:
+                continue
             entries: List[Dict[str, str]] = []
             for mode in modes:
                 entries.extend(collect_key_averages(directory, mode))
@@ -80,8 +86,9 @@ def scan(patterns: Iterable[str]) -> Dict[str, Dict[str, List[Dict[str, str]]]]:
 
 def write_outputs(data: Dict[str, Dict[str, List[Dict[str, str]]]], out_prefix: pathlib.Path) -> None:
     out_prefix.parent.mkdir(parents=True, exist_ok=True)
-    meta_path = out_prefix.with_suffix("_metadata.csv")
-    rows_path = out_prefix.with_suffix("_operators.csv")
+    # This is a filename prefix, not an extension; keep dots in the prefix.
+    meta_path = out_prefix.with_name(out_prefix.name + "_metadata.csv")
+    rows_path = out_prefix.with_name(out_prefix.name + "_operators.csv")
 
     with meta_path.open("w", newline="") as fh:
         fieldnames = [

@@ -1,0 +1,19 @@
+{
+  "at": "2026-08-31T00:35:31.132024+00:00",
+  "checks": [
+    {
+      "manifest": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/final-artifact-manifest.json",
+      "sha256": "95a14182ffff546d9be5e57c447c994d016d9012f0ef78387ff8ed905facd45a",
+      "files": 121,
+      "mismatches": []
+    },
+    {
+      "manifest": "docs/audits/2026-08-30/evidence/integration/http-cpu-readiness/artifact-manifest.json",
+      "sha256": "6e2e93bec7234220d015aab0114ac7b8a4544b7b62a8f772e7798911d32bee71",
+      "files": 27,
+      "mismatches": []
+    }
+  ],
+  "pass": true,
+  "scope": "Immutable package-artifact hash verification only; not execution of packages or Linux qualification."
+}

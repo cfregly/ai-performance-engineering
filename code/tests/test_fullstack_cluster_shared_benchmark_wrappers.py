@@ -341,8 +341,8 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "expanded_tokens = hidden.index_select(0, token_indices)" in route_tokens_section
     assert "hidden.repeat_interleave(self.top_k" not in route_tokens_section
     assert "sort_idx = torch.argsort(expert_ids)" in apply_local_section
-    assert '"local_outputs"' in apply_local_section
-    assert '"local_sorted_outputs"' in apply_local_section
+    assert 'f"{buffer_namespace}.local_outputs"' in apply_local_section
+    assert 'f"{buffer_namespace}.local_sorted_outputs"' in apply_local_section
     assert "outputs.zero_()" not in apply_local_section
     assert "torch.zeros_like(tokens)" not in apply_local_section
     assert "torch.empty_like(sorted_tokens)" not in apply_local_section
@@ -370,7 +370,11 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "return tensor" in all_to_all_single_section
     assert "dist_nn.all_to_all(recv_parts, send_parts, group=group)" in all_to_all_list_section
     assert "return torch.cat(list(result), dim=0)" not in all_to_all_list_section
-    assert "return recv" in all_to_all_list_section
+    # Functional collective results carry autograd history; the backing recv does not.
+    # Real four-process forward/backward controls live in test_audit_wave1_hybrid_ep.py.
+    assert "return torch.cat(received, dim=0)" in all_to_all_list_section
+    assert "reuse=self.optimized and not differentiable" in apply_local_section
+    assert "out_slice.copy_(expert_out * sorted_weights[offset:next_offset])" in apply_local_section
     assert "self._exchange_count_send_buffer = torch.empty(" in source
     assert "self._exchange_count_recv_buffer = torch.empty(" in source
     assert "dist.all_gather_into_tensor(recv_tensor, send_tensor, group=group)" in exchange_counts_section
@@ -384,14 +388,14 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "torch.bincount(dest_ranks, minlength=group_size).tolist()" not in roundtrip_section
     assert "inverse_sort[sort_idx] = self._range_indices(sort_idx.numel(), sort_idx.device)" in roundtrip_section
     assert "torch.arange(sort_idx.numel()" not in roundtrip_section
-    assert '"route_meta"' in roundtrip_section
+    assert 'f"{event_label}.route_meta"' in roundtrip_section
     assert "meta[:, 0].copy_(sorted_token_indices)" in roundtrip_section
     assert "meta[:, 1].copy_(sorted_local_ids)" in roundtrip_section
     assert "meta = torch.stack(" not in roundtrip_section
     assert "torch.cuda.Event(enable_timing=True)" not in forward_section
     assert "torch.cuda.Event(enable_timing=True)" not in run_step_section
-    assert roundtrip_section.count("torch.cuda.current_stream()") == 1
-    assert "current_stream = torch.cuda.current_stream()" in roundtrip_section
+    assert roundtrip_section.count("torch.cuda.current_stream(tokens.device)") == 1
+    assert "current_stream = torch.cuda.current_stream(tokens.device) if tokens.is_cuda else None" in roundtrip_section
     assert "events.start.record(current_stream)" in roundtrip_section
     assert "events.mid.record(current_stream)" in roundtrip_section
     assert "events.mid2.record(current_stream)" in roundtrip_section

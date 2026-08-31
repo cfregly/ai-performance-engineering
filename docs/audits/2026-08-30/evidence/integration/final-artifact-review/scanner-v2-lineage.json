@@ -1,0 +1,10 @@
+{
+  "previous_script": "docs/audits/2026-08-30/evidence/integration/final-artifact-review/audit_artifacts.py",
+  "previous_script_sha256": "69e7ad9123aae9470b70694f1caf98e75b603c49fd3dff918e03c5a86a43a271",
+  "changes": [
+    "Recognize .mk source-file hashes (no current-source gap existed for cuda_arch.mk).",
+    "Explicitly add package-local P05 evidence tree, discovered outside canonical audit evidence directory.",
+    "Classify package-local audit artifacts as evidence, not production source."
+  ],
+  "earlier_snapshot_retained": "snapshot-1"
+}

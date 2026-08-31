@@ -243,11 +243,14 @@ def test_cache_aware_disagg_readme_marks_single_gpu_locality_comparison_contract
 
 
 def test_train_distributed_readme_marks_single_gpu_fsdp2_as_comparison_surface() -> None:
+    # Preserve the original regression ID while enforcing the replacement
+    # contract: the former comparison surface had no child-training verifier.
     readme_text = (REPO_ROOT / "labs" / "train_distributed" / "README.md").read_text(encoding="utf-8")
 
-    assert "single-GPU `fsdp2` on `b200`" in readme_text
-    assert "supplementary comparison surface with a local comparison contract" in readme_text
-    assert "multi-GPU `2x_b200` contract" in readme_text
+    assert "FSDP2 wrapper execution is also unavailable until actual child training is verified" in readme_text
+    assert "distinguish single-GPU behavior from real multi-GPU sharding" in readme_text
+    assert "The generic `fsdp2` wrapper retains metadata but rejects harness execution" in readme_text
+    assert "Direct script execution is not a substitute for a child-result contract" in readme_text
 
 
 def test_occupancy_tuning_readme_marks_low_warp_schedule_informational() -> None:

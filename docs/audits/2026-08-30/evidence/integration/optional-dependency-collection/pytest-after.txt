@@ -1,0 +1,9 @@
+..............ssss...........................s                           [100%]
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/optional-dependency-collection/pytest-after.xml -
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_blackwell_gemm_optimizations_lab.py:318: CUDA required for Blackwell grouped GEMM validation
+SKIPPED [1] tests/test_blackwell_gemm_optimizations_lab.py:364: CUDA required for Blackwell grouped GEMM validation
+SKIPPED [1] tests/test_flashattention_gluon_runtime.py:43: CUDA required
+SKIPPED [1] tests/test_flashattention_gluon_runtime.py:59: CUDA required
+SKIPPED [1] tests/test_occupancy_tuning.py:85: requires CUDA
+41 passed, 5 skipped in 6.72s

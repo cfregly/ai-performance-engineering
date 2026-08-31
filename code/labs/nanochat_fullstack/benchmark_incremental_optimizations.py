@@ -3,10 +3,11 @@
 Incremental Optimization Benchmark for NanoChat
 
 Measures the performance impact of enabling each optimization one by one.
-Tests both inference (prefill + decode) and training scenarios.
+Tests inference (prefill + decode). Engine features execute through Engine;
+unavailable requested backends fail instead of producing mislabeled timings.
 
 Usage:
-    python benchmark_incremental_optimizations.py [--mode inference|training|both]
+    python -m labs.nanochat_fullstack.benchmark_incremental_optimizations
 """
 
 import argparse
@@ -16,6 +17,7 @@ from typing import Any, Callable, Dict, List
 import torch
 
 from labs.nanochat_fullstack.nanochat.gpt import GPT, GPTConfig
+from labs.nanochat_fullstack.nanochat.engine import Engine, KVCache
 
 
 @dataclass
@@ -34,6 +36,8 @@ class BenchmarkResult:
     total_time: float
     category: str
     description: str
+    decode_execution: str = "not_run"
+    decode_attention: str = "not_run"
     improvement_vs_baseline: float = 0.0
     cumulative_improvement: float = 0.0
 
@@ -43,6 +47,10 @@ class IncrementalBenchmark:
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.warmup = warmup
         self.iterations = iterations
+        if warmup < 1 or iterations < 1:
+            raise ValueError("warmup and iterations must both be positive")
+        self.last_decode_execution = "not_run"
+        self.last_decode_attention = "not_run"
         self.batch_size = 4
         self.prompt_len = 256
         self.decode_len = 64
@@ -58,6 +66,8 @@ class IncrementalBenchmark:
     
     def create_model(self, config_overrides: Dict[str, Any]) -> GPT:
         """Create a small GPT model for benchmarking."""
+        # Identical model weights and token streams across feature arms.
+        torch.manual_seed(718)
         base_config = {
             'sequence_len': 1024,
             'vocab_size': self.vocab_size,
@@ -74,6 +84,9 @@ class IncrementalBenchmark:
             model = GPT(config)
         model.to_empty(device=self.device)
         model.init_weights()
+        # init_weights intentionally zeros output projections for training;
+        # nonzero projections are necessary for meaningful inference parity.
+        model.apply(model._init_weights)
         
         if self.device.type == "cuda":
             model = model.to(dtype=torch.bfloat16)
@@ -83,25 +96,28 @@ class IncrementalBenchmark:
 
     def _time_region_seconds(self, fn: Callable[[], None]) -> float:
         if self.device.type == "cuda":
-            start = torch.cuda.Event(enable_timing=True)
-            end = torch.cuda.Event(enable_timing=True)
-            current_stream = torch.cuda.current_stream(self.device)
-            start.record(current_stream)
-            fn()
-            end.record(current_stream)
-            end.synchronize()
-            return start.elapsed_time(end) / 1000.0
-
+            torch.cuda.synchronize(self.device)
         t0 = time.perf_counter()
         fn()
+        if self.device.type == "cuda":
+            torch.cuda.synchronize(self.device)
         return time.perf_counter() - t0
     
     def benchmark_inference(self, config_overrides: Dict[str, Any]) -> tuple:
         """Benchmark prefill + decode performance."""
-        from labs.nanochat_fullstack.nanochat.engine import KVCache
-        
         model = self.create_model(config_overrides)
         cfg = model.config
+        engine = Engine(model, tokenizer=None, enable_batch_decode=False)
+        if cfg.use_cuda_graphs or cfg.enable_persistent_decode:
+            if self.device.type != "cuda":
+                raise RuntimeError("Requested CUDA graph/side-stream benchmark requires a CUDA device")
+        if cfg.use_flash3 and any(not b.attn.use_flash3 or b.attn.flash3_fn is None for b in model.transformer.h):
+            raise RuntimeError("Requested FA3 benchmark backend is unavailable")
+        if cfg.use_cta_clustering and any(
+            not b.attn._flash3_accepts_clusters or self.prompt_len < b.attn.cta_cluster_seq_threshold
+            for b in model.transformer.h
+        ):
+            raise RuntimeError("Requested CTA clustering benchmark requires an active cluster-capable FA3 backend")
         
         # Prepare inputs
         prompt = torch.randint(0, self.vocab_size, (self.batch_size, self.prompt_len), 
@@ -131,7 +147,7 @@ class IncrementalBenchmark:
             with torch.inference_mode():
                 _ = model(prompt, kv_cache=kv_cache)
                 for step_ids in decode_token_steps[: min(8, self.decode_len)]:
-                    _ = model(step_ids, kv_cache=kv_cache)
+                    _ = engine._execute_decode(step_ids, kv_cache)
         
         if self.device.type == "cuda":
             torch.cuda.synchronize()
@@ -156,7 +172,7 @@ class IncrementalBenchmark:
         def _run_decode() -> None:
             with torch.inference_mode():
                 for step_ids in decode_token_steps:
-                    _ = model(step_ids, kv_cache=kv_cache)
+                    _ = engine._execute_decode(step_ids, kv_cache)
 
         for _ in range(self.iterations):
             kv_cache.reset()
@@ -164,10 +180,20 @@ class IncrementalBenchmark:
             with torch.inference_mode():
                 _ = model(prompt, kv_cache=kv_cache)
 
+                # Capture/warmup is setup, outside steady-state replay timing.
+                # Capture does not consume a logical token or alter the prefix.
+                if cfg.use_cuda_graphs:
+                    engine._capture_decode_graph(decode_token_steps[0], kv_cache)
+
             decode_time_total += self._time_region_seconds(_run_decode)
         
         decode_time = decode_time_total / self.iterations
         decode_tok_s = (self.batch_size * self.decode_len) / decode_time
+        self.last_decode_execution = engine.decode_execution_mode
+        self.last_decode_attention = "sdpa_full_capacity_mask" if cfg.use_cuda_graphs else "model_backend_preferences"
+        expected_execution = "cuda_graph" if cfg.use_cuda_graphs else ("side_stream" if cfg.enable_persistent_decode else "eager")
+        if self.last_decode_execution != expected_execution:
+            raise RuntimeError(f"Requested {expected_execution}, observed {self.last_decode_execution}")
         
         total_time = prefill_time + decode_time
         
@@ -361,6 +387,8 @@ class IncrementalBenchmark:
                     total_time=total_time,
                     category=config.category,
                     description=config.description,
+                    decode_execution=self.last_decode_execution,
+                    decode_attention=self.last_decode_attention,
                     improvement_vs_baseline=improvement_vs_baseline,
                     cumulative_improvement=cumulative_improvement,
                 )
@@ -368,15 +396,15 @@ class IncrementalBenchmark:
                 
                 print(f"    Prefill: {prefill_tok_s:>8.1f} tok/s")
                 print(f"    Decode:  {decode_tok_s:>8.1f} tok/s")
+                print(f"    Execution: {self.last_decode_execution}; synchronized wall timing includes host submission")
+                print(f"    Decode attention: {self.last_decode_attention}")
                 print(f"    Total:   {total_time:>8.3f}s")
                 if baseline_total is not None and i > 0:
                     print(f"    Speedup: {cumulative_improvement:>7.1f}% vs baseline")
                 print()
                 
             except Exception as e:
-                print(f"    ❌ Failed: {e}")
-                print()
-                continue
+                raise RuntimeError(f"Benchmark arm {config.name!r} failed; no timing result recorded") from e
         
         return results
 
@@ -468,12 +496,13 @@ def main():
             f.write(f"**Iterations**: {benchmark.iterations}\n\n")
             
             f.write("## Summary Table\n\n")
-            f.write("| Optimization | Category | Prefill (tok/s) | Decode (tok/s) | Total (sec) | Speedup vs Baseline |\n")
-            f.write("|--------------|----------|-----------------|----------------|-------------|---------------------|\n")
+            f.write("Timing: synchronized wall latency including host submission; graph capture is excluded from steady-state decode.\n\n")
+            f.write("| Optimization | Category | Execution | Decode attention | Prefill (tok/s) | Decode (tok/s) | Total (sec) | Speedup vs Baseline |\n")
+            f.write("|--------------|----------|-----------|------------------|-----------------|----------------|-------------|---------------------|\n")
             
             for result in results:
                 speedup = f"{result.cumulative_improvement:+.1f}%" if result.cumulative_improvement != 0 else "baseline"
-                f.write(f"| {result.name} | {result.category} | {result.prefill_tok_s:.1f} | "
+                f.write(f"| {result.name} | {result.category} | {result.decode_execution} | {result.decode_attention} | {result.prefill_tok_s:.1f} | "
                        f"{result.decode_tok_s:.1f} | {result.total_time:.3f} | {speedup} |\n")
             
             if len(results) > 1:

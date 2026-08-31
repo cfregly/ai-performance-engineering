@@ -81,7 +81,7 @@ class GPTConfig:
     flash3_block_size: int = 128  # sequence tile for FA3 varlen kernels (aligns to TMEM staging)
     kv_block_size: Optional[int] = None  # optional KV cache block size for TMA/paged layout
     kv_page_size: Optional[int] = None  # optional KV cache page size for growth hints
-    enable_persistent_decode: bool = False  # gate persistent decode kernels (Engine)
+    enable_persistent_decode: bool = False  # reusable buffers + dedicated decode stream (not a resident kernel)
     use_cuda_graphs: bool = False  # gate CUDA Graph capture in Engine generate paths
     use_te_weight_only: bool = False  # if True, prefer Transformer Engine weight-only linears (q/k/v/proj + lm_head)
     te_weight_dtype: str = "fp8"  # fp8|fp4|int4 hint for TE weight-only path
@@ -362,6 +362,7 @@ class CausalSelfAttention(nn.Module):
 
     def forward(self, x, cos_sin, kv_cache, attention_mask=None, token_mask=None):
         B, T, C = x.size()
+        graph_decode = kv_cache is not None and kv_cache.graph_mode
         
         # CTA clustering hint for attention kernels (Blackwell/Hopper optimization)
         # Note: Full CTA clustering requires custom CUDA kernels with __cluster_dims__ annotations
@@ -378,7 +379,7 @@ class CausalSelfAttention(nn.Module):
 
         # Apply Rotary Embeddings to queries and keys to get relative positional encoding
         cos, sin = cos_sin
-        if not torch.is_grad_enabled() or not q.requires_grad:
+        if not graph_decode and (not torch.is_grad_enabled() or not q.requires_grad):
             q = apply_rotary_emb(q, cos, sin, out=self._rotary_buffer("_rotary_q_cache", q))
             k = apply_rotary_emb(k, cos, sin, out=self._rotary_buffer("_rotary_k_cache", k))
         else:
@@ -402,9 +403,13 @@ class CausalSelfAttention(nn.Module):
         if attention_mask is not None and not self.use_padded_attention:
             raise ValueError("attention_mask provided but use_padded_attention=False")
         # Allow callers to force efficient/math paths when flash/TE is undesired.
-        sdpa_order = None if self.use_flash_sdp else _NON_FLASH_SDP_BACKENDS
+        sdpa_order = None if self.use_flash_sdp and q.is_cuda else list(_NON_FLASH_SDP_BACKENDS)
         attn_mask = None
-        if use_mask:
+        if graph_decode:
+            # Fixed capacity, but visible keys advance on the device at replay.
+            # This masked path uses SDPA, not the unmasked FA3 varlen backend.
+            attn_mask = kv_cache.graph_attention_mask.view(1, 1, 1, -1)
+        elif use_mask:
             if attention_mask.dim() == 2:
                 key_mask = attention_mask[:, None, None, :]
             elif attention_mask.dim() == 3:
@@ -692,7 +697,12 @@ class GPT(nn.Module):
         assert idx.device == self.cos.device, f"Rotary embeddings and idx are on different devices: {idx.device} != {self.cos.device}"
         assert self.cos.dtype == torch.bfloat16, "Rotary embeddings must be in bfloat16"
         # if kv cache exists, we need to offset the rotary embeddings to the current position in the cache
-        if kv_cache is not None and kv_cache.get_row_pos() is not None and self.config.use_padded_attention:
+        if kv_cache is not None and kv_cache.graph_mode:
+            if T != 1 or attention_mask is not None or token_mask is not None:
+                raise ValueError("Graph rotary lookup supports dense single-token decode only")
+            cos_sin = (self.cos.index_select(1, kv_cache.graph_position),
+                       self.sin.index_select(1, kv_cache.graph_position))
+        elif kv_cache is not None and kv_cache.get_row_pos() is not None and self.config.use_padded_attention:
             row_pos = kv_cache.get_row_pos()
             assert row_pos.numel() == B, f"kv_cache row_pos mismatch: {row_pos.numel()} != {B}"
             max_pos = kv_cache.get_pos() + T

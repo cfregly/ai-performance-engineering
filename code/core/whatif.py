@@ -13,13 +13,29 @@ def get_scenarios() -> Dict[str, Any]:
     scenarios.append({
         "id": "fp8",
         "name": "Use FP8 Precision",
-        "description": "Switch from FP16/BF16 to FP8 for 2x compute throughput",
-        "requirements": ["Blackwell GPU", "FP8-compatible model"],
+        "description": "Evaluate FP8 using compatible Transformer Engine modules; measure throughput and quality on your workload",
+        "requirements": ["FP8-capable CUDA GPU", "Transformer Engine 2.18.x for this template", "Model ported to FP8-compatible TE modules and supported tensor shapes"],
         "estimated_speedup": 1.8,
         "memory_impact": -0.5,
-        "accuracy_impact": "Minimal (<0.1% loss for inference)",
+        "accuracy_impact": "Workload-dependent; validate against the original precision before deployment",
         "implementation_effort": "low",
-        "code_example": "with torch.autocast(dtype=torch.float8_e4m3fn):\n    output = model(input)",
+        "estimate_kind": "illustrative_unmeasured",
+        "code_example_kind": "integration_template",
+        "code_example_executable": False,
+        "code_example_api_version": "Transformer Engine 2.18.x",
+        "code_example_validation": "API documentation checked; CUDA execution remains unvalidated",
+        "code_example_source": "https://docs.nvidia.com/deeplearning/transformer-engine-releases/release-2.18/user-guide/examples/fp8_primer.html",
+        "code_example": (
+            "# Integration template for Transformer Engine 2.18.x, not a standalone script.\n"
+            "# model must already contain TE modules (e.g. te.Linear); inputs must be\n"
+            "# CUDA tensors with supported shapes. Wrapping an arbitrary torch.nn model\n"
+            "# does not convert its operations to FP8. Validate quality and performance.\n"
+            "import transformer_engine.pytorch as te\n"
+            "from transformer_engine.common.recipe import DelayedScaling, Format\n"
+            "recipe = DelayedScaling(fp8_format=Format.HYBRID)\n"
+            "with te.autocast(enabled=True, recipe=recipe):\n"
+            "    output = model(inputs)"
+        ),
     })
 
     scenarios.append({
@@ -59,4 +75,3 @@ def get_scenarios() -> Dict[str, Any]:
     })
 
     return {"scenarios": scenarios, "count": len(scenarios)}
-

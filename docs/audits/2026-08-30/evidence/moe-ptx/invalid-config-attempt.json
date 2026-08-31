@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "status": "FAILED_NOT_ACCEPTED",
+  "accepted": false,
+  "gpu_executed": false,
+  "captured_at": "2026-08-30T23:20:30.695628+00:00",
+  "config": {
+    "output": "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/audit-w079-invalid-config-nzusbuqr/attempt.json",
+    "seed": 314159,
+    "num_tokens": 0,
+    "hidden_dim": 7168,
+    "expert_ffn_dim": 2048,
+    "num_experts": 8,
+    "histogram": "balanced",
+    "dtype": "bf16",
+    "capacity_factor": 1.25
+  },
+  "python": "3.12.2",
+  "torch": "2.8.0",
+  "cuda": null,
+  "source_sha256": "1f740b3924182657f0ce020691dbe7e37320d9888389732ba70b6e2f5ebb1532",
+  "records": [],
+  "performance_measured": false,
+  "exception_type": "ValueError",
+  "reason": "num_tokens must be > 0",
+  "finished_at": "2026-08-30T23:20:30.695908+00:00"
+}

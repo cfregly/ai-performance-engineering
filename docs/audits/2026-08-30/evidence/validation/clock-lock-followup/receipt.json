@@ -1,0 +1,196 @@
+{
+  "scope": [
+    "W1-040 residual failed-clock-lock-as-pass repair",
+    "W1-040/W1-093 bounded disposition review"
+  ],
+  "base_commit": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "prior_receipt": "../protection-coverage-receipt.json",
+  "prior_receipt_sha256": "809c67de9f024211e1dd64059dd99170d4eed515e9920b7449f85aef6dafef54",
+  "prior_source_sha256": "b03c60bd445a7cba7db4dca4573fb8288c7f5db47c3bbd09776626709b4b0456",
+  "source_status": "Source fixed; no production runtime/default changes; CUDA/NVML integration pending",
+  "environment": {
+    "python": "3.12.2",
+    "executable": "/opt/miniconda3/bin/python",
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "torch": "2.8.0",
+    "cuda_available": false,
+    "pynvml_distributions": {
+      "pynvml": "11.5.0"
+    },
+    "qualification": "Existing CPU environment, not the pinned GPU stack"
+  },
+  "source_files": {
+    "code/tests/test_anti_cheat_protections.py": "0a9464e77a170b459d1d4e3d4e7c914aa3947afd1512d83dc9f97aecc1f47c45"
+  },
+  "read_only_dependency_hashes": {
+    "code/core/harness/benchmark_harness.py": "1f35a30c0216f3ae7f9a64ff5898125278efc9f7490fe2cf21829dcd9d2d3585",
+    "code/core/benchmark/defaults.py": "0f40782f438718eba663db901500128841f1435bcff79beb49b573294b1dd12f",
+    ".github/workflows/tier1-nightly.yml": "23bbece0e985441032989436502104373ad1e2cbed63babab04081e530f0d412",
+    "code/tests/test_anti_cheat_edge_cases.py": "5d9d3154fedf3899eef31a6a709667f1148d720287c588bc89f10f65c5aa066b",
+    "code/tests/protection_test_utils.py": "bacedb4b85d24df893b2133ba26dbb4a1419eeb61cb58f8cddf00dda3dffdfd1",
+    "code/core/harness/validity_checks.py": "367136da94453ffd16381b9100836821d5985de72df4ad48aacb3cb1a4449cb6",
+    "code/core/benchmark/verify_runner.py": "16eeddaeefa19bf11a10379d157cd12ec27ab6065d4893c9d8b30288b2982963"
+  },
+  "reproduction": {
+    "artifact": "before.json",
+    "result": "Three failed-lock examples complete the exact original AST exception handler successfully",
+    "scope": "Source/control-flow proof only; no simulated CUDA availability or successful lock"
+  },
+  "changes": [
+    "Use real NVML maximum targets and existing harness lock context; inspect actual application clocks before/after real CUDA work",
+    "Use existing production50MHz application-clock contract; no new timing/accuracy tolerance",
+    "Typed permission/NVML capability errors, missing NVIDIA tools and documented nvidia-smi codes3/4/12/13 skip locally, never pass",
+    "Existing TIER1_EXPECTED_GPU_NAME requires failure for unavailable clock capability; no new bypass flag",
+    "Generic lock, driver, unrelated-tool and observed-clock mismatch errors propagate",
+    "42 added CPU cases check exception dispositions and diagnostic comparisons; no fake successful GPU/runtime-validity result"
+  ],
+  "attempts": [
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_anti_cheat_protections.py::TestClockLockControlPlane tests/test_anti_cheat_protections.py::TestEnvironmentProtections::test_frequency_boost_clock_locking -q -rs -p no:cacheprovider --junitxml=../docs/audits/2026-08-30/evidence/validation/clock-lock-followup/focused.xml",
+      "exit_code": 0,
+      "artifact": "focused.txt",
+      "result": {
+        "tests": 27,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 1,
+        "passed": 26,
+        "seconds": 1.329
+      },
+      "scope": "Initial control set before additional typed-NVML/return-code/unrelated-tool controls; not final source"
+    },
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_anti_cheat_edge_cases.py tests/test_anti_cheat_protections.py tests/test_protection_effectiveness.py tests/test_verification.py tests/test_runtime_transparency_warnings.py -q -rs -p no:cacheprovider --junitxml=../docs/audits/2026-08-30/evidence/validation/clock-lock-followup/combined-final.xml",
+      "exit_code": 0,
+      "artifact": "combined-final.txt",
+      "result": {
+        "tests": 401,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 96,
+        "passed": 305,
+        "seconds": 11.337
+      },
+      "final_source_gate": false
+    },
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_anti_cheat_edge_cases.py tests/test_anti_cheat_protections.py tests/test_protection_effectiveness.py tests/test_verification.py tests/test_runtime_transparency_warnings.py -q -rs -p no:cacheprovider --junitxml=../docs/audits/2026-08-30/evidence/validation/clock-lock-followup/combined-final-v2.xml",
+      "exit_code": 0,
+      "artifact": "combined-final-v2.txt",
+      "result": {
+        "tests": 413,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 96,
+        "passed": 317,
+        "seconds": 11.272
+      },
+      "final_source_gate": false
+    },
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_anti_cheat_edge_cases.py tests/test_anti_cheat_protections.py tests/test_protection_effectiveness.py tests/test_verification.py tests/test_runtime_transparency_warnings.py -q -rs -p no:cacheprovider --junitxml=../docs/audits/2026-08-30/evidence/validation/clock-lock-followup/combined-final-v3.xml",
+      "exit_code": 0,
+      "artifact": "combined-final-v3.txt",
+      "result": {
+        "tests": 415,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 96,
+        "passed": 319,
+        "seconds": 12.688
+      },
+      "final_source_gate": true
+    },
+    {
+      "command": "TIER1_EXPECTED_GPU_NAME='NVIDIA B200' PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_anti_cheat_protections.py::TestEnvironmentProtections::test_frequency_boost_clock_locking -q -p no:cacheprovider --junitxml=../docs/audits/2026-08-30/evidence/validation/clock-lock-followup/attested-cpu-negative.xml",
+      "exit_code": 1,
+      "artifact": "attested-cpu-negative.txt",
+      "result": {
+        "tests": 1,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 0,
+        "seconds": 1.297
+      },
+      "expected_negative": true,
+      "final_source_gate": false,
+      "scope": "Actual pytest invocation on CPU rejects unavailable required capability; not GPU qualification"
+    },
+    {
+      "command": "TIER1_EXPECTED_GPU_NAME='NVIDIA B200' PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_anti_cheat_protections.py::TestEnvironmentProtections::test_frequency_boost_clock_locking -q -p no:cacheprovider --junitxml=../docs/audits/2026-08-30/evidence/validation/clock-lock-followup/attested-cpu-negative-final.xml",
+      "exit_code": 1,
+      "artifact": "attested-cpu-negative-final.txt",
+      "result": {
+        "tests": 1,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 0,
+        "seconds": 1.321
+      },
+      "expected_negative": true,
+      "final_source_gate": true,
+      "scope": "Actual pytest invocation on CPU rejects unavailable required capability; not GPU qualification"
+    }
+  ],
+  "static_validation": {
+    "ruff": {
+      "command": "/opt/miniconda3/bin/python -m ruff check code/tests/test_anti_cheat_protections.py --select E9,F63,F7,F82,B006,B023",
+      "exit_code": 0,
+      "artifact": "ruff-final-v3.txt"
+    },
+    "ast_parse": "PASS",
+    "scoped_git_diff_check": "PASS"
+  },
+  "recommended_dispositions": {
+    "W1-040": "awaiting_runtime after documentation reconciliation: source test-quality defects corrected, including final failed-lock-as-pass path. Real CUDA protection/observed-clock-lock cases still need attested runner evidence.",
+    "W1-093": "source_fixed; verify original assertion-free/pass-only test cleanup after final-source CPU/CI integration and accurate documentation. Explicit skips correct misleading test passes but establish no protection coverage.",
+    "unsupported_policies": "The61 unsupported/obsolete cases are explicit requirements/coverage limitations, not61 implied new production implementations. Replace blanket95-protection claims with actual scopes.",
+    "required_production_guards": "This bounded read-only interface/default review did not reproduce a broken required production guard. It found documentation overclaims and the remaining test exception-handling defect repaired here.",
+    "jitter_limit": "Prior Dynamo-count and post-perturbation jitter source fixes retain earlier evidence. Pre-perturbation unsupported/advisory exits remain unchanged; no universally fail-closed claim."
+  },
+  "documentation_proposal": "documentation-proposal.md",
+  "official_sources": [
+    {
+      "url": "https://docs.nvidia.com/deploy/nvidia-smi/index.html#return-value",
+      "verified_on": "2026-08-30",
+      "purpose": "Return codes3/4/12/13 identify unavailable operation, permission, missing NVML library/function. Generic or driver failures must not be swallowed."
+    }
+  ],
+  "remaining_gates": [
+    "Actual CUDA/NVML successful lock observation; no GPU lease or clock changes performed here",
+    "35 real-CUDA skips remain runtime coverage gaps;61 unsupported/obsolete skips remain limitations",
+    "Root final-source CPU/CI integration and README/generator/AGENTS factual coverage reconciliation"
+  ],
+  "limitations": [
+    "No CUDA compilation/execution, GPU measurement or performance claim",
+    "Attested CPU failure is expected capability rejection, not GPU qualification",
+    "Optional typed-NVML CPU controls explicitly skip if the Python wrapper is absent; actual GPU test fails missing dependency in Tier-1",
+    "No whole-repository immutable-state test during concurrent writers",
+    "The prior frozen receipt describes its earlier source epoch and is unchanged",
+    "Receipt assembly first failed because importable pynvml was supplied by pynvml11.5.0, not a distribution named nvidia-ml-py; failure retained separately"
+  ],
+  "artifacts": {
+    "README.md": "f8c5e75dcf42c71597bc3da990b0a7997bb536074edbc508ee416043517e2225",
+    "attested-cpu-negative-final.txt": "ea09290be1b6af6b56527c4c75350107b8b50f15a4b2ee9b3f7c1d94276d57f1",
+    "attested-cpu-negative-final.xml": "79a11827e79fd95b2462986dec54922c5c64707c0703cf189b3a6be0e62e72b8",
+    "attested-cpu-negative.txt": "8cfa8924bc90eadf9ab3aacdff48032a3d47384de70f1fdf1c0ce57ce65a6216",
+    "attested-cpu-negative.xml": "fcd8b47e37dc2c41430cd5178f84e1b5b34edd9bf10903fa1ad8f5e734e0eca7",
+    "before.json": "44952234ad4cde8b0ebda78ec60221885715a45b720ab4197acf8312c6d386af",
+    "build_receipt.py": "ca34557baa1fd7ccea464ec9d53475519e4eb8971a63c48f41d1dac6cd6f220a",
+    "combined-final-v2.txt": "0e5883baf1e27918615e7241876d62846f8232d735df29f7367ded61b3c0201e",
+    "combined-final-v2.xml": "73931cad6a0dab75c9bd19d115cc792a256d1e36abafca0dfde524a8f1ea1845",
+    "combined-final-v3.txt": "a00d4063eb43c8d7b48b18e9199fda80fb4cb59c1ab88477e75efcb7ff94458d",
+    "combined-final-v3.xml": "c788f555b962233295604f6431f6224804d02c4db12d3276448b7e8222706d9d",
+    "combined-final.txt": "f7b2c277239598d568d961c4aa079b76ebddc33f896edecc79a6c3e1d2a5d51c",
+    "combined-final.xml": "27e4b789f99e2bce10f3e07bae116467f93caaf698195e9f096aa134d7a8de91",
+    "documentation-proposal.md": "a96f695f8e3ad27688fca05eec11f1fbd208fdd3fd15cfa5b6f52b3ab77d605e",
+    "focused.txt": "90167fdbea8572c335f3696c7e762d4ca8da8cbc2d23e37b129d3c9c3f284b98",
+    "focused.xml": "831ef9c1c8750b5eff754e12399aba333105babbd4d9770dcbef50acdad2d134",
+    "receipt-assembly-attempt.json": "a68e9136c7c778aebe87b0a397478e4cbb6b66fe4586c82230972b68b2753270",
+    "ruff-final-v3.txt": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "ruff-final.txt": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "ruff.txt": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+  }
+}

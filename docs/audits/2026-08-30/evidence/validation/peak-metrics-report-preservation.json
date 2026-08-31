@@ -1,0 +1,50 @@
+[
+  {
+    "path": "code/docs/gb300-sol-roofline.md",
+    "original_sha256": "f1be0809a40ee93c5fa3adc334fc624c3fe4433ddee76d44092e588515363217",
+    "new_sha256": "1dc6f45c46b7278f810240c3d1d479447139ddd3ccddf9a99a7234ebd2e0cc18",
+    "original_preserved_except_added_notice": true
+  },
+  {
+    "path": "code/docs/gb300-sol-roofline-kernels.md",
+    "original_sha256": "5fa71374dfab51f7a0b634c99ff926f7519b1809002909826ffdf231c20c7022",
+    "new_sha256": "05823cb1b3ae5a9f9343e1fd1e6dcb1132be1d085eb5c23d6fd79f25a57b8601",
+    "original_preserved_except_added_notice": true
+  },
+  {
+    "path": "code/docs/gb300-sol-roofline-labs2.md",
+    "original_sha256": "008a6b82693e8ca1d508d056cd2bcf278b8d7078181701e21f9ec9831d9e72f1",
+    "new_sha256": "f11515a8e6f628937c4ad11e2398a217bdc0e92da443aa5e009d1d4e331c0ad4",
+    "original_preserved_except_added_notice": true
+  },
+  {
+    "path": "code/docs/gb300-sol-roofline-labs3.md",
+    "original_sha256": "c1a2a2444ad40f7647f9f62751278916b184293e40c082233e138993216e090a",
+    "new_sha256": "6e54fd5e0f05b1e6feaea9258dc62e6558c50860bfc9b9e0c5edac219969abce",
+    "original_preserved_except_added_notice": true
+  },
+  {
+    "path": "code/docs/gb300-moe-roofline.md",
+    "original_sha256": "699d5365df7f56eb609a0d07f4515ef1c597bb7071b4b72c8acca8dbf3b58a5f",
+    "new_sha256": "c24708c53d5e512f224b9946f382fcc1752a08d147a5e565dcaaa28e187c2dfd",
+    "original_preserved_except_added_notice": true
+  },
+  {
+    "path": "code/docs/gb300-blackwell-matmul-hostoverhead.md",
+    "original_sha256": "88884f31e4b8c636e0760b1d05205a8068656c0a0cb1efe032717a9bf0fa1577",
+    "new_sha256": "4d2e2efb3bf4c2546a115328f049b6bc804292d171d606211461753aac8cabb7",
+    "original_preserved_except_added_notice": true
+  },
+  {
+    "path": "code/docs/gb300-gemm-occupancy-rewrite.md",
+    "original_sha256": "c2d72ac361e204ab961ed5bc0bd39e47e1130782974f955e3a45331b40aff630",
+    "new_sha256": "18941bd7dfab07b09c227fbe8cfc1ba8c948284793d6df9ef0d54f07ede58d96",
+    "original_preserved_except_added_notice": true
+  },
+  {
+    "path": "code/docs/gb300-runbook.md",
+    "original_sha256": "e6c9cbeced90dc1a91b6fbcc0b9725961e930b7083029881828e020a47fdbfdd",
+    "new_sha256": "44614027232cdcb98e96c2138e65a5462ac82ecc2e9810e8a100e6fb42ab2da7",
+    "original_preserved_except_added_notice": true
+  }
+]

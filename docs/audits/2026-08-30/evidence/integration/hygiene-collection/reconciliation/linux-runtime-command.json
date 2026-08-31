@@ -1,0 +1,14 @@
+{
+  "command": [
+    "/opt/miniconda3/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-rs",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_benchmark_hygiene_regressions.py::test_run_benchmarks_reaps_current_run_descendants"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "exit_code": 0
+}

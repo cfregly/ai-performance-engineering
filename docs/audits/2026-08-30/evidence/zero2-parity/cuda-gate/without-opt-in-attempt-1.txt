@@ -1,0 +1,5 @@
+{
+  "status": "HOLD",
+  "reason": "Explicit opt-in required after allocating exactly two CUDA devices.",
+  "report": "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-1/report.json"
+}

@@ -1,0 +1,2 @@
+nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC   --allow-unsupported-compiler -o baseline_cuda_graphs_sm100 baseline_cuda_graphs.cu -lcuda  
+nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC   --allow-unsupported-compiler -o optimized_cuda_graphs_sm100 optimized_cuda_graphs.cu -lcuda  

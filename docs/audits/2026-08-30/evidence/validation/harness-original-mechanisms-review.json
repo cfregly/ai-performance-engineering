@@ -1,0 +1,38 @@
+{
+  "evidence_kind": "parser and summary transport fixtures; no GPU benchmark evidence",
+  "parser": [
+    {
+      "line": "throughput: 1,234.5 tok/s",
+      "original": null,
+      "fixed": 1234.5
+    },
+    {
+      "line": "1234.5tok/s",
+      "original": null,
+      "fixed": 1234.5
+    },
+    {
+      "line": "1000 tokens/s",
+      "original": null,
+      "fixed": 1000.0
+    },
+    {
+      "line": "1 toks/s",
+      "original": null,
+      "fixed": 1.0
+    },
+    {
+      "line": "0 TOKENS/S",
+      "original": null,
+      "fixed": 0.0
+    }
+  ],
+  "original_summary_fallback": {
+    "input_raw_times": null,
+    "generated_sample_count": 100,
+    "generated_median_ms": 3.2382622493217244,
+    "reported_median_ms": 1.0
+  },
+  "negative_std_original_rejection": "scale < 0",
+  "negative_std_model_accepts": -1
+}

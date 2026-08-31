@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-08-31T03:11:40.900160+00:00",
+  "url": "https://claude.ai/code/artifact/9a311b78-5dac-4ea7-909f-e52993ab8e0e",
+  "method": "Fresh read-only Chrome navigation to the supplied artifact, followed by targeted iframe text checks and read-only current/archived Codex task discovery.",
+  "page_title": "AI Performance Engineering Audit",
+  "artifact_header_date": "2026-08-30",
+  "reviewed_revision": "b57e4c6a9",
+  "confirmed_findings": 128,
+  "severity_counts": {
+    "critical": 5,
+    "high": 37,
+    "medium": 58,
+    "low": 28
+  },
+  "rendered_text_length": 42144,
+  "targeted_text_checks": {
+    "second wave": false,
+    "wave 2": false,
+    "wave2": false,
+    "Not yet reviewed": true,
+    "Suggested next pass": true
+  },
+  "wave_2_status": "awaiting_report",
+  "coordination": {
+    "user_report": "Wave 2 is on hold for one more hour.",
+    "follow_up": {
+      "automation_id": "recheck-audit-wave-2",
+      "status": "ACTIVE",
+      "scope": "One future task heartbeat approximately one hour after the hold notice."
+    }
+  },
+  "task_discovery": {
+    "current_codex_tasks_searched": 50,
+    "local_archived_codex_tasks_searched": 166,
+    "matching_separate_codex_tasks": 0,
+    "only_exact_match": {
+      "title": "Plan and fix feedback issues",
+      "task_id": "01a054a4-a0c0-7612-af1a-2df7b0c08851",
+      "relationship": "current task"
+    },
+    "remote_archives": "Unavailable because the two remote Codex hosts were not connected.",
+    "related_visible_claude_tabs": "Only the supplied artifact was visible; no separate Wave 2 session tab was found."
+  },
+  "observations": [
+    "The live page still reports 128 confirmed findings at reviewed revision b57e4c6a9.",
+    "No second wave, wave 2, or wave2 text is present in the rendered artifact.",
+    "The footer remains headed Not yet reviewed and still lists future coverage areas plus a suggested next pass.",
+    "The footer is an unreviewed inventory, not a completed second-wave report.",
+    "The user reports that Wave 2 remains on hold for one more hour.",
+    "No separate matching Codex task or visible Claude session was found in the searched scope."
+  ],
+  "limits": "The separate Wave 2 session/report is still unavailable. Remote Codex archives could not be searched while their hosts were disconnected. Absence from the supplied artifact and searched task surfaces is not evidence of zero findings."
+}

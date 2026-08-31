@@ -17,6 +17,10 @@ def get_optimizer_memory(optimizer):
     total_memory = 0
     if hasattr(optimizer, "optimizer"):
         optimizer = optimizer.optimizer
+    elif hasattr(optimizer, "optim"):
+        # ZeroRedundancyOptimizer keeps this rank's AdamW state in .optim;
+        # the wrapper's .state mapping is empty even after successful updates.
+        optimizer = optimizer.optim
     for state in optimizer.state.values():
         for state_tensor in state.values():
             if torch.is_tensor(state_tensor):

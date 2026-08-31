@@ -1,0 +1,12 @@
+{
+  "at": "2026-08-31T00:21:00.910658+00:00",
+  "argv": [
+    "/opt/miniconda3/bin/python",
+    "-m",
+    "venv",
+    "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-pinned-linux-tm3bih7u/venv"
+  ],
+  "exit_code": 0,
+  "isolated_work_directory": "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-pinned-linux-tm3bih7u",
+  "shared_environment_changed": false
+}

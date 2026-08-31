@@ -1,0 +1,49 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______________ test_single_rank_zero2_updates_match_dense_adamw _______________
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1576/test_single_rank_zero2_updates0')
+
+    @pytest.mark.skipif(not dist.is_available() or not dist.is_gloo_available(), reason="Gloo unavailable")
+    def test_single_rank_zero2_updates_match_dense_adamw(tmp_path):
+        from labs.train_distributed.optimized_zero2 import _build_training_components
+    
+        assert not dist.is_initialized(), "Test requires its own isolated process group"
+        dist.init_process_group(
+            "gloo", init_method=(tmp_path / "rendezvous").as_uri(), rank=0, world_size=1,
+            timeout=timedelta(seconds=15),
+        )
+        try:
+            torch.manual_seed(731)
+            model = torch.nn.Sequential(torch.nn.Linear(3, 5), torch.nn.GELU(), torch.nn.Linear(5, 2))
+            reference = copy.deepcopy(model)
+>           ddp, optimizer = _build_training_components(model, 0.01)
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_audit_wave1_zero2_single.py:28: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+model = Sequential(
+  (0): Linear(in_features=3, out_features=5, bias=True)
+  (1): GELU(approximate='none')
+  (2): Linear(in_features=5, out_features=2, bias=True)
+)
+learning_rate = 0.01, device_ids = None
+
+    def _build_training_components(model, learning_rate, device_ids=None):
+        ddp_model = DDP(
+            model,
+            device_ids=device_ids,
+            static_graph=True,
+            gradient_as_bucket_view=True,
+            bucket_cap_mb=25,
+        )
+        hook = getattr(comm_hooks, "batched_reduce_scatter_hook", None)
+        if hook is None:
+>           raise RuntimeError("SKIPPED: PyTorch build missing batched_reduce_scatter_hook required for optimized ZeRO-2.")
+E           RuntimeError: SKIPPED: PyTorch build missing batched_reduce_scatter_hook required for optimized ZeRO-2.
+
+labs/train_distributed/optimized_zero2.py:68: RuntimeError
+=========================== short test summary info ============================
+FAILED tests/test_audit_wave1_zero2_single.py::test_single_rank_zero2_updates_match_dense_adamw
+1 failed in 1.66s

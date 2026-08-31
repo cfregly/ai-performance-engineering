@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Dict, Iterable
-
-import triton
 
 
 @dataclass(frozen=True)
@@ -126,38 +125,50 @@ EXPERIMENTAL_SCHEDULES: Dict[str, KernelSchedule] = {
 }
 
 
-FULL_STACK_AUTOTUNE_CONFIGS = [
-    triton.Config(
-        {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 64, "GROUP_M": 4},
-        num_warps=8,
-        num_stages=4,
-    ),
-    triton.Config(
-        {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 64, "GROUP_M": 1},
-        num_warps=8,
-        num_stages=3,
-    ),
-    triton.Config(
-        {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 64, "GROUP_M": 4},
-        num_warps=4,
-        num_stages=4,
-    ),
-    triton.Config(
-        {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 64, "GROUP_M": 4},
-        num_warps=4,
-        num_stages=4,
-    ),
-    triton.Config(
-        {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 64, "GROUP_M": 4},
-        num_warps=8,
-        num_stages=4,
-    ),
-    triton.Config(
-        {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 64, "GROUP_M": 4},
-        num_warps=8,
-        num_stages=6,
-    ),
-]
+@lru_cache(maxsize=1)
+def full_stack_autotune_configs():
+    """Construct the unchanged real Triton configs when kernels are imported."""
+    import triton
+
+    return [
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 64, "GROUP_M": 4},
+            num_warps=8,
+            num_stages=4,
+        ),
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 64, "GROUP_M": 1},
+            num_warps=8,
+            num_stages=3,
+        ),
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 64, "GROUP_M": 4},
+            num_warps=4,
+            num_stages=4,
+        ),
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 64, "GROUP_M": 4},
+            num_warps=4,
+            num_stages=4,
+        ),
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 64, "GROUP_M": 4},
+            num_warps=8,
+            num_stages=4,
+        ),
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 64, "GROUP_M": 4},
+            num_warps=8,
+            num_stages=6,
+        ),
+    ]
+
+
+def __getattr__(name: str):
+    # Preserve the former constant's public import and shared-list behavior.
+    if name == "FULL_STACK_AUTOTUNE_CONFIGS":
+        return full_stack_autotune_configs()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def resolve_schedule(name: str, *, allow_experimental: bool = True) -> KernelSchedule:

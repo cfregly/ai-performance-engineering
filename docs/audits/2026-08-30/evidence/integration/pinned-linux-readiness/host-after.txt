@@ -1,0 +1,21 @@
+.......................F............                                     [100%]
+=================================== FAILURES ===================================
+_______________ test_cpu_ci_installs_direct_http_test_dependency _______________
+
+    def test_cpu_ci_installs_direct_http_test_dependency() -> None:
+        workflow = _load_workflow("benchmark-validation.yml")
+        install = next(step["run"] for step in workflow["jobs"]["validate"]["steps"]
+                       if step["name"] == "Install CPU test dependencies")
+        requirements = (CODE_ROOT / "requirements_latest.txt").read_text(encoding="utf-8")
+        requests_pins = [line.strip() for line in requirements.splitlines()
+                         if line.strip().startswith("requests==")]
+        assert len(requests_pins) == 1, "The full CPU suite directly imports requests"
+>       assert requests_pins[0] in install.split(), "Clean CPU CI must install its direct HTTP test dependency"
+E       AssertionError: Clean CPU CI must install its direct HTTP test dependency
+E       assert 'requests==2.34.2  # Direct dependency of the full CPU HTTP integration tests' in ['python', '-m', 'pip', 'install', '--upgrade', 'pip', ...]
+E        +  where ['python', '-m', 'pip', 'install', '--upgrade', 'pip', ...] = <built-in method split of str object at 0x11c3be960>()
+E        +    where <built-in method split of str object at 0x11c3be960> = 'python -m pip install --upgrade pip\npython -m pip install \\\n  pytest==8.3.4 \\\n  pytest-cov==7.1.0 \\\n  coverage...nai==2.44.0 \\\n  triton==3.5.1\npython -m pip install torch==2.9.1 --index-url https://download.pytorch.org/whl/cpu\n'.split
+
+tests/test_repository_configuration.py:501: AssertionError
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/host-after.xml -
+1 failed, 35 passed in 0.71s

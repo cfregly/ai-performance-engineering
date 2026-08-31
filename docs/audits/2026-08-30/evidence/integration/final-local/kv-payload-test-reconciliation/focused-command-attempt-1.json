@@ -1,0 +1,21 @@
+{
+  "argv": [
+    "/opt/miniconda3/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-rs",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_labs_runtime_gating.py::test_kv_cache_verification_output_is_built_after_benchmark",
+    "--junitxml=/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/final-local/kv-payload-test-reconciliation/focused-attempt-1.xml"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "env_overrides": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+  },
+  "exit_code": 1,
+  "elapsed_seconds": 3.8913958072662354,
+  "log": "focused-attempt-1.txt",
+  "junit": "focused-attempt-1.xml"
+}

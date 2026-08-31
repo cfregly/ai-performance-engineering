@@ -1,0 +1,6 @@
+Looking in indexes: https://download.pytorch.org/whl
+Collecting triton==3.5.0
+  Downloading https://download-r2.pytorch.org/whl/triton-3.5.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (1.7 kB)
+Downloading https://download-r2.pytorch.org/whl/triton-3.5.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (170.5 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 170.5/170.5 MB 43.5 MB/s eta 0:00:00
+Would install triton-3.5.0

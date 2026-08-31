@@ -127,17 +127,21 @@ compare: clean
 		$(MAKE) ARCH=$${arch} nvshmem; \
 	done
 
-b200: ARCH=sm_100
-b200: clean nvshmem
+b200:
+	$(MAKE) ARCH=sm_100 clean
+	$(MAKE) ARCH=sm_100 nvshmem
 
-gb10: ARCH=sm_121
-gb10: clean nvshmem
+gb10:
+	$(MAKE) ARCH=sm_121 clean
+	$(MAKE) ARCH=sm_121 nvshmem
 
-b300: ARCH=sm_103
-b300: clean nvshmem
+b300:
+	$(MAKE) ARCH=sm_103 clean
+	$(MAKE) ARCH=sm_103 nvshmem
 
-gb300: ARCH=sm_103
-gb300: clean nvshmem
+gb300:
+	$(MAKE) ARCH=sm_103 clean
+	$(MAKE) ARCH=sm_103 nvshmem
 
 clean:
 	rm -f *_sm100 *_sm103 *_sm120 *_sm121 *_sm122 *_sm123

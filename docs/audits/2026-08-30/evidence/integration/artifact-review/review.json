@@ -1,0 +1,84 @@
+{
+  "status": "ARTIFACT_SNAPSHOT_PASS__FINAL_SOURCE_INTEGRATION_PENDING",
+  "snapshot_utc": "2026-08-30T23:37:25.677587+00:00",
+  "scope": "Read-only package receipt/hash/portability review. No old receipt, ledger, production source or Git mutation.",
+  "evidence_files_scanned": 512,
+  "metadata_files_scanned": 66,
+  "explicit_file_hash_observations": 884,
+  "metadata_parse_errors": [],
+  "metadata_changed_during_scan": [],
+  "missing_hashed_files": [],
+  "changed_hashed_evidence_files": [],
+  "unresolved_file_like_json_values": [],
+  "missing_markdown_links": [],
+  "markdown_links_checked": 5,
+  "portable_log_files": 59,
+  "ignored_required_files_without_portable_copy": [],
+  "ignored_profile_files_with_portable_copies": 6,
+  "ignored_disposable_files": 1,
+  "tracked_audit_files_at_snapshot": 0,
+  "git_handoff_limit": "Audit files are untracked at this snapshot. Include the dated tree and its scoped .gitignore in the eventual patch/commit; git diff alone does not carry untracked files. No staging was performed.",
+  "historical_source_drift_paths": 26,
+  "current_hash_recorded_for_drift_paths": 23,
+  "final_integration_source_paths": [
+    {
+      "path": "code/AGENTS.md",
+      "current_sha256": "e4cca5f7ac816f4a11410063b217d61b2e2146ab9d9cd80f8b6bc0b0d902d27e"
+    },
+    {
+      "path": "code/core/scripts/refresh_readmes.py",
+      "current_sha256": "da6596dcf3b278fba6daeadaceea4b34013a0a0319a368ba6f582966d6011397"
+    },
+    {
+      "path": "code/labs/moe_optimization_journey/README.md",
+      "current_sha256": "2e67af4adb89711241ac251741ee57419c22f4feb6bf6e97609989f9ba4dce1c"
+    }
+  ],
+  "shared_hygiene_function": {
+    "path": "code/tests/test_benchmark_hygiene_regressions.py",
+    "function": "test_cuda_event_timing_waits_on_terminal_event_not_whole_device",
+    "expected_sha256": "5382aa5f4df2258cd395919497cc5ae0b979a9283dbb9ec5907df18ccbb08574",
+    "current_hash_forms": {
+      "segment": "5382aa5f4df2258cd395919497cc5ae0b979a9283dbb9ec5907df18ccbb08574",
+      "segment_with_newline": "4692c9d6f2affd4acd5efa6e7cf51308afd4f2cb08e744a9ba4d05f26eb72de8"
+    },
+    "matching_form": [
+      "segment"
+    ],
+    "validation": "Read-only source-hash check only; no new test execution. Whole shared file still needs root final integration."
+  },
+  "source_epoch_rule": "Old receipts remain historical and must not be rewritten. A later matching hash, including one in a HOLD/preflight report, establishes identity only; it does not demonstrate rerunning all earlier tests or hardware acceptance.",
+  "parent_followup": "Parent confirmed final current-source manifest and available CPU diagnostic after all writers freeze; generator/docs/inventory and combined MoE checks cover shared source epochs. GPU acceptance remains HOLD.",
+  "ledger": {
+    "ledger_snapshot_sha256": "328b98deb1650c99d8a50557b57c5c9fa061a10095fec6af2cc66fd8ab2ed432",
+    "ledger_changed_while_reading": false,
+    "source_sha256": "474779ab49b67c5c888e5f689b2400204b6d0f46f304219cedd0773694b6e1ba",
+    "recorded_source_sha256": "474779ab49b67c5c888e5f689b2400204b6d0f46f304219cedd0773694b6e1ba",
+    "source_hash_matches": true,
+    "source_count": 128,
+    "ledger_count": 128,
+    "source_ids_exact": true,
+    "ledger_ids_exact": true,
+    "package_assignment_count": 128,
+    "package_ids_exact_once": true,
+    "source_severities": {
+      "critical": 5,
+      "high": 37,
+      "medium": 58,
+      "low": 28
+    },
+    "original_field_drift": [],
+    "wave2_required": true,
+    "wave2_status": "awaiting_report"
+  },
+  "scan_authoring_notes": [
+    "Initial basename resolution treated seven lab-relative CUDA source hashes as missing; runner-relative paths now resolve to code/labs/custom_vs_cublas. No source files were missing.",
+    "Initial command-relative paths now resolve against code/. No command target files were missing.",
+    "Git check-ignore -v prints negated rules too; the final scanner explicitly treats scoped !*.log matches as includable."
+  ],
+  "limits": [
+    "Bounded scan extracts explicit file/hash pairs and file-like JSON values from receipt/manifest/report metadata; it does not interpret every prose claim or reconstruct every historical source tree.",
+    "Filesystem snapshot taken while parent/other agents produced separate new receipts. Listed metadata did not change during this scan; later receipts require a new integration snapshot.",
+    "No tests, CUDA kernels, GPU leases, installations, benchmark measurements or performance acceptance occurred in this review."
+  ]
+}

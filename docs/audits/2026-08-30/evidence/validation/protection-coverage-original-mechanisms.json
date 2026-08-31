@@ -1,0 +1,168 @@
+{
+  "baseline": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "scope": "real CPU Dynamo and verification behavior; not CUDA performance evidence",
+  "compile": [
+    {
+      "stage": "before",
+      "original": {
+        "dynamo_available": true,
+        "compile_count": 0,
+        "cache_entries": 0
+      },
+      "current": {
+        "dynamo_available": true,
+        "compile_count": 0,
+        "compile_count_available": false,
+        "compile_count_source": null,
+        "cache_entries": 0,
+        "cache_entries_available": false
+      },
+      "actual_counters": {}
+    },
+    {
+      "stage": "compile",
+      "original": {
+        "dynamo_available": true,
+        "compile_count": 0,
+        "cache_entries": 0
+      },
+      "current": {
+        "dynamo_available": true,
+        "compile_count": 1,
+        "compile_count_available": true,
+        "compile_count_source": "stats.unique_graphs",
+        "cache_entries": 0,
+        "cache_entries_available": false
+      },
+      "actual_counters": {
+        "frames": {
+          "total": 1,
+          "ok": 1
+        },
+        "stats": {
+          "calls_captured": 1,
+          "unique_graphs": 1
+        }
+      }
+    },
+    {
+      "stage": "cache_hit",
+      "original": {
+        "dynamo_available": true,
+        "compile_count": 0,
+        "cache_entries": 0
+      },
+      "current": {
+        "dynamo_available": true,
+        "compile_count": 1,
+        "compile_count_available": true,
+        "compile_count_source": "stats.unique_graphs",
+        "cache_entries": 0,
+        "cache_entries_available": false
+      },
+      "actual_counters": {
+        "frames": {
+          "total": 1,
+          "ok": 1
+        },
+        "stats": {
+          "calls_captured": 1,
+          "unique_graphs": 1
+        }
+      }
+    },
+    {
+      "stage": "guard_recompile",
+      "original": {
+        "dynamo_available": true,
+        "compile_count": 0,
+        "cache_entries": 0
+      },
+      "current": {
+        "dynamo_available": true,
+        "compile_count": 2,
+        "compile_count_available": true,
+        "compile_count_source": "stats.unique_graphs",
+        "cache_entries": 0,
+        "cache_entries_available": false
+      },
+      "actual_counters": {
+        "frames": {
+          "total": 2,
+          "ok": 2
+        },
+        "stats": {
+          "calls_captured": 2,
+          "unique_graphs": 2
+        }
+      }
+    }
+  ],
+  "jitter": [
+    {
+      "behavior": "real",
+      "original": {
+        "passed": false,
+        "reason": "Jitter check failed: output unchanged after perturbing input. This suggests hardcoded/cached outputs.",
+        "input_restored": true
+      },
+      "current": {
+        "passed": true,
+        "reason": null,
+        "input_restored": true
+      }
+    },
+    {
+      "behavior": "cached",
+      "original": {
+        "passed": false,
+        "reason": "Jitter check failed: output unchanged after perturbing input. This suggests hardcoded/cached outputs.",
+        "input_restored": true
+      },
+      "current": {
+        "passed": false,
+        "reason": "Jitter check failed: output unchanged after perturbing input. This suggests hardcoded/cached outputs.",
+        "input_restored": true
+      }
+    },
+    {
+      "behavior": "nested",
+      "original": {
+        "passed": true,
+        "reason": "Jitter check skipped due to error: allclose(): argument 'input' (position 1) must be Tensor, not dict.",
+        "input_restored": true
+      },
+      "current": {
+        "passed": true,
+        "reason": null,
+        "input_restored": true
+      }
+    },
+    {
+      "behavior": "none",
+      "original": {
+        "passed": true,
+        "reason": null,
+        "input_restored": true
+      },
+      "current": {
+        "passed": false,
+        "reason": "Jitter check failed: output missing after perturbation",
+        "input_restored": true
+      }
+    },
+    {
+      "behavior": "capture_error",
+      "original": {
+        "passed": true,
+        "reason": "Jitter check skipped due to capture_verification_payload() error: injected refresh error",
+        "input_restored": false
+      },
+      "current": {
+        "passed": false,
+        "reason": "Jitter check failed due to error: capture_verification_payload() error: injected refresh error.",
+        "input_restored": true
+      }
+    }
+  ]
+}

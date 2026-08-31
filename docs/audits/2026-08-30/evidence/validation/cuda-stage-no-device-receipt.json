@@ -1,0 +1,194 @@
+{
+  "started_at_utc": "2026-08-30T22:23:12.612620+00:00",
+  "status": "failed",
+  "scope": "GPU full-output correctness only",
+  "sanitizer_qualified": false,
+  "python": "3.12.2 | packaged by conda-forge | (main, Feb 16 2024, 20:54:21) [Clang 16.0.6 ]",
+  "torch": "2.8.0",
+  "cuda": null,
+  "source_sha256": {
+    "tcgen05_cluster.cu": "0d39d3909ca8633f50bbe6dff90c18a5dcbc7ee1cf482bd9df8013d83484c47f",
+    "tcgen05_no_wait.cu": "8a45ce6b216c751a3f81b4b723c7a0ad22c945942906bf000e1a56fdac3871b7",
+    "tcgen05_no_wait_swizzle.cu": "dc1a3acc804c2c0872e441625220ea7b4c60a420559bbbe9e7509a59a5ca106d",
+    "tcgen05_warp_parallel.cu": "6897d6e8d59cfbb5f4529e9166b3741cc2a87e2578e3d44f1e2da41519ee62de",
+    "experimental/tcgen05_tma_multicast.cu": "bacf28de21aa01d25d36e98a993c0366af488c8be9b15f12acf971b3e8d439aa",
+    "experimental/tcgen05_no_wait_5stage.cu": "9eefa5bca6b142381bc7f66068e2b12a325d72fdd9863725270556e30634a3fb",
+    "experimental/tcgen05_no_mma_barrier.cu": "77365369893a8bdeb30dea7f3a61e6731068ff04df08a86fa84f828a31188bda"
+  },
+  "requested": {
+    "variants": [
+      "cluster",
+      "no_wait",
+      "no_wait_swizzle",
+      "warp_parallel",
+      "tma_multicast",
+      "no_wait_5stage",
+      "no_mma_barrier"
+    ],
+    "shapes_m_n_k": [
+      [
+        128,
+        256,
+        64
+      ],
+      [
+        128,
+        256,
+        128
+      ],
+      [
+        128,
+        256,
+        192
+      ],
+      [
+        128,
+        256,
+        256
+      ],
+      [
+        128,
+        256,
+        320
+      ],
+      [
+        128,
+        256,
+        512
+      ],
+      [
+        128,
+        256,
+        576
+      ],
+      [
+        128,
+        256,
+        1088
+      ],
+      [
+        128,
+        256,
+        2112
+      ],
+      [
+        128,
+        256,
+        8256
+      ],
+      [
+        256,
+        256,
+        64
+      ],
+      [
+        256,
+        256,
+        128
+      ],
+      [
+        256,
+        256,
+        192
+      ],
+      [
+        256,
+        256,
+        256
+      ],
+      [
+        256,
+        256,
+        320
+      ],
+      [
+        256,
+        256,
+        512
+      ],
+      [
+        256,
+        256,
+        576
+      ],
+      [
+        256,
+        256,
+        1088
+      ],
+      [
+        256,
+        256,
+        2112
+      ],
+      [
+        256,
+        256,
+        8256
+      ],
+      [
+        384,
+        256,
+        64
+      ],
+      [
+        384,
+        256,
+        128
+      ],
+      [
+        384,
+        256,
+        192
+      ],
+      [
+        384,
+        256,
+        256
+      ],
+      [
+        384,
+        256,
+        320
+      ],
+      [
+        384,
+        256,
+        512
+      ],
+      [
+        384,
+        256,
+        576
+      ],
+      [
+        384,
+        256,
+        1088
+      ],
+      [
+        384,
+        256,
+        2112
+      ],
+      [
+        384,
+        256,
+        8256
+      ]
+    ],
+    "seeds": [
+      42,
+      1009
+    ],
+    "repeats": 4
+  },
+  "modules": [],
+  "checks": [],
+  "failure": {
+    "case": null,
+    "type": "RuntimeError",
+    "message": "Real CUDA device required; no CPU substitute is valid"
+  },
+  "finished_at_utc": "2026-08-30T22:23:12.613301+00:00"
+}

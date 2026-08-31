@@ -1,0 +1,32 @@
+{
+  "scope": "Python compilation and source identity only, not CUDA compilation or runtime",
+  "python_compile_report": "original-mechanisms-rechecked.json",
+  "scoped_diff_check": {
+    "argv": [
+      "git",
+      "diff",
+      "--check",
+      "--",
+      "code/labs/persistent_decode/baseline_tma_prefill_decode.py",
+      "code/labs/persistent_decode/optimized_tma_prefill_decode.py",
+      "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py",
+      "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py",
+      "code/labs/persistent_decode/persistent_decode_common.py",
+      "code/tests/test_audit_wave1_prefill_full_output.py"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering",
+    "exit_code": 0,
+    "output": ""
+  },
+  "frozen_source_sha256": {
+    "code/labs/persistent_decode/baseline_tma_prefill_decode.py": "24838f26dc2c50800ccda28e24d1c0e92d8c8bd7d7ee43301dc013a28c052f9b",
+    "code/labs/persistent_decode/optimized_tma_prefill_decode.py": "5c01331ae35be8975c6e070af8bc0ddf3dd28ad5d4e02eb2efd62b1b63719497",
+    "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py": "ff54f675b862bd3c72330e839b6461e6d01a02ec76cc35a7ccfa5c5bfb9465e9",
+    "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py": "7f3c16ab16961332e08fa5acef20c58483b268a3c268513a36f476ccaa25daa9",
+    "code/labs/persistent_decode/persistent_decode_common.py": "59b13fcbeac492772d47382efe5b04e3321fcbb3467098e46759755d7111d8ad",
+    "code/tests/test_audit_wave1_prefill_full_output.py": "ef1164f7fdd036216c93d7f333f7391dd503760394e4eda97960f481e5db828a"
+  },
+  "source_hashes_match_cuda_preflight": true,
+  "five_source_hashes_match_independent_hygiene_receipt": true,
+  "original_manifest_verified": true
+}

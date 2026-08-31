@@ -1,0 +1,30 @@
+{
+  "baseline": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "source_sha256": "cac9739b8f9b41fb72f26d12c0bada0abd02824b47fc76aafa46f074b2c9f237",
+  "original_token_deltas": [
+    1,
+    2,
+    3
+  ],
+  "current_token_deltas": [
+    1,
+    1,
+    1
+  ],
+  "first_token_samples": [
+    [
+      "request",
+      250.0
+    ]
+  ],
+  "original_latency_wiring": [
+    {
+      "line": 526,
+      "args": {
+        "ttft_ema": "tpot_ema[gid]",
+        "tpot_ema": "tpot_ema[gid]"
+      }
+    }
+  ],
+  "scope": "Actual Python parser and AST source reproduction with cumulative response fixtures; no vLLM/GPU runtime"
+}

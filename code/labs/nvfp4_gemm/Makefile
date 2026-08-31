@@ -24,8 +24,9 @@ $(VERIFY_TARGETS): %_verify$(TARGET_SUFFIX): %.cu $(CUDA_NVTX_DEPS)
 	@echo "Building $@ (verify)..."
 	$(NVCC) $(NVCC_FLAGS) -DVERIFY=1 $(CUTLASS_INCLUDES) -lcuda -o $@ $< $(CUDA_NVTX_LDFLAGS)
 
-b200: ARCH=sm_100
-b200: clean all
+b200:
+	$(MAKE) ARCH=sm_100 clean
+	$(MAKE) ARCH=sm_100 all
 
 clean:
 	rm -f *_sm100 *_sm103 *_sm120 *_sm121 *_sm122 *_sm123 *.o *.so *.a

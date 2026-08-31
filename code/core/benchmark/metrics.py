@@ -23,7 +23,9 @@ Usage:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+import math
+import re
 from typing import Dict, Optional, Any
 
 
@@ -33,29 +35,37 @@ from typing import Dict, Optional, Any
 
 @dataclass(frozen=True)
 class HardwareSpecs:
-    """Hardware specifications for computing theoretical peaks."""
+    """Per-GPU theoretical peaks; Tensor Core rates use dense arithmetic.
+
+    Link rates are aggregate one-way payload bandwidth per GPU, not per link.
+    These profiles describe named SKUs, not measured performance guarantees.
+    """
     name: str
     hbm_bandwidth_gbps: float      # HBM3e bandwidth in GB/s
     pcie_bandwidth_gbps: float     # PCIe Gen5 x16 bandwidth in GB/s
-    nvlink_bandwidth_gbps: float   # NVLink per-link bandwidth in GB/s
+    nvlink_bandwidth_gbps: float   # Per-GPU one-way NVLink aggregate, decimal GB/s
     fp32_tflops: float             # Peak FP32 TFLOPS
     fp16_tflops: float             # Peak FP16 TFLOPS
-    fp8_tflops: float              # Peak FP8 TFLOPS
-    tensor_tflops: float           # Peak Tensor Core TFLOPS (FP16)
+    fp8_tflops: float              # Dense FP8 Tensor Core TFLOPS
+    tensor_tflops: float           # Dense FP16/BF16 Tensor Core TFLOPS
     num_sms: int                   # Number of Streaming Multiprocessors
     shared_mem_per_sm_kb: float    # Shared memory per SM in KB
+    profile_source: str = "published_static_profile"
 
 
-# Common hardware profiles
+# NVIDIA HGX B200 table: eight GPUs, FP8=72 PF/s sparse,
+# FP16/BF16=36 PF/s sparse, FP32=600 TF/s. Divide by eight and
+# by two for sparse Tensor Core figures only. This is not GB200 NVL72.
+# https://www.nvidia.com/en-us/data-center/hgx/
 BLACKWELL_B200 = HardwareSpecs(
     name="NVIDIA B200",
     hbm_bandwidth_gbps=8000.0,     # ~8 TB/s HBM3e
     pcie_bandwidth_gbps=64.0,      # PCIe Gen5 x16
-    nvlink_bandwidth_gbps=900.0,   # NVLink5 per link
-    fp32_tflops=80.0,              # Non-tensor FP32
-    fp16_tflops=160.0,             # Non-tensor FP16
-    fp8_tflops=2500.0,             # FP8 Tensor Core sparse
-    tensor_tflops=1250.0,          # FP16 Tensor Core
+    nvlink_bandwidth_gbps=900.0,   # NVLink5 one-way aggregate per GPU
+    fp32_tflops=75.0,              # Non-tensor FP32
+    fp16_tflops=150.0,             # Packed non-tensor FP16 (two operations per FP32 lane)
+    fp8_tflops=4500.0,             # Dense FP8 Tensor Core
+    tensor_tflops=2250.0,          # Dense FP16/BF16 Tensor Core
     num_sms=148,
     shared_mem_per_sm_kb=228.0,
 )
@@ -67,26 +77,81 @@ HOPPER_H100 = HardwareSpecs(
     nvlink_bandwidth_gbps=450.0,
     fp32_tflops=67.0,
     fp16_tflops=134.0,
-    fp8_tflops=1979.0,
-    tensor_tflops=989.0,
+    fp8_tflops=1979.0,             # H100 SXM dense; sparse is 3958 TF/s
+    tensor_tflops=989.0,           # H100 SXM dense, rounded; sparse is 1979 TF/s
     num_sms=132,
     shared_mem_per_sm_kb=228.0,
 )
 
 # Default to Blackwell
-DEFAULT_SPECS = BLACKWELL_B200
+DEFAULT_SPECS = replace(
+    BLACKWELL_B200,
+    name="NVIDIA B200 (assumed static profile; no CUDA detection)",
+    profile_source="assumed_static_no_cuda",
+)
+
+
+def compute_copy_bandwidth_metrics(
+    payload_bytes: int,
+    iterations: int,
+    elapsed_ms: float,
+    *,
+    traffic: str = "read_plus_write",
+) -> Dict[str, Any]:
+    """Convert copy measurements to decimal GB/s with explicit byte semantics.
+
+    Local memory copies count one read and one write. A one-way interconnect
+    transfer counts the payload once, not both endpoints' memory accesses.
+    See NVIDIA CUDA Best Practices Guide, Effective Bandwidth Calculation.
+    """
+    if isinstance(payload_bytes, bool) or not isinstance(payload_bytes, int) or payload_bytes <= 0:
+        raise ValueError("payload_bytes must be a positive integer")
+    if isinstance(iterations, bool) or not isinstance(iterations, int) or iterations <= 0:
+        raise ValueError("iterations must be a positive integer")
+    if isinstance(elapsed_ms, bool) or not isinstance(elapsed_ms, (int, float)) or not math.isfinite(elapsed_ms) or elapsed_ms <= 0:
+        raise ValueError("elapsed_ms must be finite and positive")
+    if traffic not in {"read_plus_write", "one_way_payload"}:
+        raise ValueError(f"Unsupported copy byte accounting: {traffic}")
+    multiplier = 2 if traffic == "read_plus_write" else 1
+    bytes_per_iteration = payload_bytes * multiplier
+    total_bytes = bytes_per_iteration * iterations
+    bandwidth_gbs = total_bytes / (elapsed_ms / 1000.0) / 1e9
+    return {
+        "peak_bandwidth_gbs": bandwidth_gbs,
+        "peak_bandwidth_tbs": bandwidth_gbs / 1000.0,
+        "byte_accounting": traffic,
+        "bandwidth_unit": "decimal_GB_per_s",
+        "accounting_version": 2,
+        "payload_bytes": payload_bytes,
+        "bytes_per_iteration": bytes_per_iteration,
+        "total_bytes": total_bytes,
+        "iterations": iterations,
+        "elapsed_ms": elapsed_ms,
+    }
+
+
+def hardware_specs_for_device(name: str, capability: tuple[int, int]) -> HardwareSpecs:
+    """Match named supported SKUs; compute capability alone cannot identify peaks."""
+    upper_name = name.upper()
+    if capability == (10, 0) and re.search(r"\bB200\b", upper_name):
+        return BLACKWELL_B200
+    if capability == (9, 0) and re.search(r"\bH100\b", upper_name) and (
+        "SXM" in upper_name or "HBM3" in upper_name
+    ) and "PCIE" not in upper_name and "NVL" not in upper_name:
+        return HOPPER_H100
+    raise ValueError(
+        f"No validated static peak profile for CUDA device {name!r} at {capability[0]}.{capability[1]}; "
+        "supply explicit HardwareSpecs for this SKU. Compute capability does not identify its peaks."
+    )
 
 
 def detect_hardware_specs() -> HardwareSpecs:
-    """Detect current hardware and return appropriate specs."""
+    """Select a named device profile, or a labeled assumed B200 profile without CUDA."""
     try:
         import torch
         if torch.cuda.is_available():
             props = torch.cuda.get_device_properties(0)
-            if props.major >= 10:  # Blackwell
-                return BLACKWELL_B200
-            elif props.major == 9:  # Hopper
-                return HOPPER_H100
+            return hardware_specs_for_device(props.name, (props.major, props.minor))
     except ImportError:
         pass
     return DEFAULT_SPECS
@@ -314,7 +379,7 @@ def compute_roofline_metrics(
     elapsed_s = max(elapsed_ms / 1000.0, 1e-9)
     achieved_tflops = (total_flops / 1e12) / elapsed_s
     achieved_gbps = (total_bytes / 1e9) / elapsed_s
-    memory_ceiling_tflops = (achieved_gbps / 1000.0) * arithmetic_intensity
+    memory_ceiling_tflops = (specs.hbm_bandwidth_gbps / 1000.0) * arithmetic_intensity
     if is_compute_bound:
         efficiency = (achieved_tflops / peak_tflops) * 100.0
     else:

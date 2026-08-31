@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "status": "HOLD",
+  "accepted": false,
+  "gpu_executed": false,
+  "captured_at": "2026-08-30T23:18:44.645510+00:00",
+  "config": {
+    "output": "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/audit-w079-cuda-preflight-o8ejfpvp/attempt.json",
+    "seed": 314159,
+    "num_tokens": 32768,
+    "hidden_dim": 7168,
+    "expert_ffn_dim": 2048,
+    "num_experts": 8,
+    "histogram": "balanced",
+    "dtype": "bf16",
+    "capacity_factor": 1.25
+  },
+  "python": "3.12.2",
+  "torch": "2.8.0",
+  "cuda": null,
+  "source_sha256": "1f740b3924182657f0ce020691dbe7e37320d9888389732ba70b6e2f5ebb1532",
+  "records": [],
+  "performance_measured": false,
+  "reason": "Actual CUDA unavailable; no numerical evidence collected",
+  "finished_at": "2026-08-30T23:18:44.645780+00:00"
+}

@@ -1,0 +1,5 @@
+................................sssssss                                  [100%]
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/prefill-full-output/pytest-first.xml -
+=========================== short test summary info ============================
+SKIPPED [7] tests/test_audit_wave1_prefill_full_output.py:227: Actual CUDA device required; CPU payload checks are not GPU qualification
+32 passed, 7 skipped in 1.57s

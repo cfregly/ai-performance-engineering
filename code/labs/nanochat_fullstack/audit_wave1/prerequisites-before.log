@@ -1,0 +1,3 @@
+REPRODUCED original rounded-prefix copy failure: The expanded size of the tensor (3) must match the existing size (4) at non-singleton dimension 4.  Target sizes: [1, 2, 2, 1, 3, 2].  Tensor sizes: [2, 1, 1, 4, 2]
+REPRODUCED original tuple-to-SDPA API failure: Backend must be an instance of SDPBackend or a list of SDPBackend instances
+Original CUDA races/graph replay were not executed: CUDA unavailable

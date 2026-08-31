@@ -1,0 +1,584 @@
+FFFFFFFFF..FFFFFFFFFFFFF.F                                               [100%]
+=================================== FAILURES ===================================
+_________________ test_cli_opens_real_analysis_menu[q\n-args0] _________________
+
+args = [], menu_input = 'q\n'
+
+    @pytest.mark.parametrize("args", [[], ["tui"]])
+    @pytest.mark.parametrize("menu_input", ["q\n", ""])
+    def test_cli_opens_real_analysis_menu(args, menu_input):
+        result = subprocess.run(
+            [sys.executable, "-m", "cli.aisp", *args],
+            input=menu_input,
+            capture_output=True,
+            text=True,
+            cwd=CODE_ROOT,
+            timeout=30,
+        )
+>       assert result.returncode == 0, result.stderr
+E       AssertionError: ╭───────────────────── Traceback (most recent call last) ──────────────────────╮
+E         │ /Users/admin/dev/ai-perf/ai-performance-engineering/code/cli/aisp.py:267 in  │
+E         │ _root                                                                        │
+E         │                                                                              │
+E         │    264 │   │   │   for key in ["TORCH_LOGS", "TORCH_COMPILE_DEBUG"]:         │
+E         │    265 │   │   │   │   os.environ.pop(key, None)                             │
+E         │    266 │   │   if ctx.invoked_subcommand is None:                            │
+E         │ ❱  267 │   │   │   from cli.tui import run_tui                               │
+E         │    268 │   │   │   try:                                                      │
+E         │    269 │   │   │   │   run_tui()                                             │
+E         │    270 │   │   │   except Exception as exc:  # pragma: no cover - curses may │
+E         │                                                                              │
+E         │ ╭───────────────────────── locals ─────────────────────────╮                 │
+E         │ │         ctx = <click.core.Context object at 0x315cbc320> │                 │
+E         │ │ dynamo_logs = False                                      │                 │
+E         │ │ json_output = False                                      │                 │
+E         │ │         key = 'TORCH_COMPILE_DEBUG'                      │                 │
+E         │ │     verbose = False                                      │                 │
+E         │ ╰──────────────────────────────────────────────────────────╯                 │
+E         ╰──────────────────────────────────────────────────────────────────────────────╯
+E         ModuleNotFoundError: No module named 'cli.tui'
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/opt/miniconda3/bin/python', '-m', 'cli.aisp'], returncode=1, stdout='', stderr='╭────────────...────────────────────────────────────────────────────────────────╯\nModuleNotFoundError: No module named \'cli.tui\'\n').returncode
+
+tests/test_audit_wave1_api_regressions.py:32: AssertionError
+_________________ test_cli_opens_real_analysis_menu[q\n-args1] _________________
+
+args = ['tui'], menu_input = 'q\n'
+
+    @pytest.mark.parametrize("args", [[], ["tui"]])
+    @pytest.mark.parametrize("menu_input", ["q\n", ""])
+    def test_cli_opens_real_analysis_menu(args, menu_input):
+        result = subprocess.run(
+            [sys.executable, "-m", "cli.aisp", *args],
+            input=menu_input,
+            capture_output=True,
+            text=True,
+            cwd=CODE_ROOT,
+            timeout=30,
+        )
+>       assert result.returncode == 0, result.stderr
+E       AssertionError: ╭───────────────────── Traceback (most recent call last) ──────────────────────╮
+E         │ /Users/admin/dev/ai-perf/ai-performance-engineering/code/cli/aisp.py:2046 in │
+E         │ tui_command                                                                  │
+E         │                                                                              │
+E         │   2043 │   │   ctx: typer.Context,                                           │
+E         │   2044 │   │   data_file: Optional[Path] = typer.Option(None, "--data-file", │
+E         │   2045 │   ) -> None:                                                        │
+E         │ ❱ 2046 │   │   from cli.tui import run_tui                                   │
+E         │   2047 │   │   try:                                                          │
+E         │   2048 │   │   │   run_tui(str(data_file) if data_file else None)            │
+E         │   2049 │   │   except Exception as exc:  # pragma: no cover - curses may fai │
+E         │                                                                              │
+E         │ ╭──────────────────────── locals ────────────────────────╮                   │
+E         │ │       ctx = <click.core.Context object at 0x14e889f10> │                   │
+E         │ │ data_file = None                                       │                   │
+E         │ ╰────────────────────────────────────────────────────────╯                   │
+E         ╰──────────────────────────────────────────────────────────────────────────────╯
+E         ModuleNotFoundError: No module named 'cli.tui'
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/opt/miniconda3/bin/python', '-m', 'cli.aisp', 'tui'], returncode=1, stdout='', stderr='╭─────...────────────────────────────────────────────────────────────────╯\nModuleNotFoundError: No module named \'cli.tui\'\n').returncode
+
+tests/test_audit_wave1_api_regressions.py:32: AssertionError
+__________________ test_cli_opens_real_analysis_menu[-args0] ___________________
+
+args = [], menu_input = ''
+
+    @pytest.mark.parametrize("args", [[], ["tui"]])
+    @pytest.mark.parametrize("menu_input", ["q\n", ""])
+    def test_cli_opens_real_analysis_menu(args, menu_input):
+        result = subprocess.run(
+            [sys.executable, "-m", "cli.aisp", *args],
+            input=menu_input,
+            capture_output=True,
+            text=True,
+            cwd=CODE_ROOT,
+            timeout=30,
+        )
+>       assert result.returncode == 0, result.stderr
+E       AssertionError: ╭───────────────────── Traceback (most recent call last) ──────────────────────╮
+E         │ /Users/admin/dev/ai-perf/ai-performance-engineering/code/cli/aisp.py:267 in  │
+E         │ _root                                                                        │
+E         │                                                                              │
+E         │    264 │   │   │   for key in ["TORCH_LOGS", "TORCH_COMPILE_DEBUG"]:         │
+E         │    265 │   │   │   │   os.environ.pop(key, None)                             │
+E         │    266 │   │   if ctx.invoked_subcommand is None:                            │
+E         │ ❱  267 │   │   │   from cli.tui import run_tui                               │
+E         │    268 │   │   │   try:                                                      │
+E         │    269 │   │   │   │   run_tui()                                             │
+E         │    270 │   │   │   except Exception as exc:  # pragma: no cover - curses may │
+E         │                                                                              │
+E         │ ╭───────────────────────── locals ─────────────────────────╮                 │
+E         │ │         ctx = <click.core.Context object at 0x323cc2fc0> │                 │
+E         │ │ dynamo_logs = False                                      │                 │
+E         │ │ json_output = False                                      │                 │
+E         │ │         key = 'TORCH_COMPILE_DEBUG'                      │                 │
+E         │ │     verbose = False                                      │                 │
+E         │ ╰──────────────────────────────────────────────────────────╯                 │
+E         ╰──────────────────────────────────────────────────────────────────────────────╯
+E         ModuleNotFoundError: No module named 'cli.tui'
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/opt/miniconda3/bin/python', '-m', 'cli.aisp'], returncode=1, stdout='', stderr='╭────────────...────────────────────────────────────────────────────────────────╯\nModuleNotFoundError: No module named \'cli.tui\'\n').returncode
+
+tests/test_audit_wave1_api_regressions.py:32: AssertionError
+__________________ test_cli_opens_real_analysis_menu[-args1] ___________________
+
+args = ['tui'], menu_input = ''
+
+    @pytest.mark.parametrize("args", [[], ["tui"]])
+    @pytest.mark.parametrize("menu_input", ["q\n", ""])
+    def test_cli_opens_real_analysis_menu(args, menu_input):
+        result = subprocess.run(
+            [sys.executable, "-m", "cli.aisp", *args],
+            input=menu_input,
+            capture_output=True,
+            text=True,
+            cwd=CODE_ROOT,
+            timeout=30,
+        )
+>       assert result.returncode == 0, result.stderr
+E       AssertionError: ╭───────────────────── Traceback (most recent call last) ──────────────────────╮
+E         │ /Users/admin/dev/ai-perf/ai-performance-engineering/code/cli/aisp.py:2046 in │
+E         │ tui_command                                                                  │
+E         │                                                                              │
+E         │   2043 │   │   ctx: typer.Context,                                           │
+E         │   2044 │   │   data_file: Optional[Path] = typer.Option(None, "--data-file", │
+E         │   2045 │   ) -> None:                                                        │
+E         │ ❱ 2046 │   │   from cli.tui import run_tui                                   │
+E         │   2047 │   │   try:                                                          │
+E         │   2048 │   │   │   run_tui(str(data_file) if data_file else None)            │
+E         │   2049 │   │   except Exception as exc:  # pragma: no cover - curses may fai │
+E         │                                                                              │
+E         │ ╭──────────────────────── locals ────────────────────────╮                   │
+E         │ │       ctx = <click.core.Context object at 0x34a5756d0> │                   │
+E         │ │ data_file = None                                       │                   │
+E         │ ╰────────────────────────────────────────────────────────╯                   │
+E         ╰──────────────────────────────────────────────────────────────────────────────╯
+E         ModuleNotFoundError: No module named 'cli.tui'
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/opt/miniconda3/bin/python', '-m', 'cli.aisp', 'tui'], returncode=1, stdout='', stderr='╭─────...────────────────────────────────────────────────────────────────╯\nModuleNotFoundError: No module named \'cli.tui\'\n').returncode
+
+tests/test_audit_wave1_api_regressions.py:32: AssertionError
+_________________ test_llm_environment_uses_dataclass_default __________________
+
+budget_environment = None
+
+    def test_llm_environment_uses_dataclass_default(budget_environment):
+>       assert llm.LLMConfig.from_env().max_tokens == 4096
+E       AssertionError: assert 131072 == 4096
+E        +  where 131072 = LLMConfig(provider='vllm', model='default', api_key=None, base_url=None, temperature=0.7, max_tokens=131072).max_tokens
+E        +    where LLMConfig(provider='vllm', model='default', api_key=None, base_url=None, temperature=0.7, max_tokens=131072) = from_env()
+E        +      where from_env = <class 'core.llm.LLMConfig'>.from_env
+E        +        where <class 'core.llm.LLMConfig'> = llm.LLMConfig
+
+tests/test_audit_wave1_api_regressions.py:48: AssertionError
+____________ test_llm_environment_honors_small_budgets[64-8192-64] _____________
+
+budget_environment = None
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x30c0a67e0>
+primary = '64', legacy = '8192', expected = 64
+
+    @pytest.mark.parametrize(
+        "primary, legacy, expected", [("64", "8192", 64), (None, "128", 128)]
+    )
+    def test_llm_environment_honors_small_budgets(
+        budget_environment, monkeypatch, primary, legacy, expected
+    ):
+        if primary is not None:
+            monkeypatch.setenv("LLM_MAX_TOKENS", primary)
+        monkeypatch.setenv("PERF_LLM_MAX_TOKENS", legacy)
+>       assert llm.LLMConfig.from_env().max_tokens == expected
+E       AssertionError: assert 131072 == 64
+E        +  where 131072 = LLMConfig(provider='vllm', model='default', api_key=None, base_url=None, temperature=0.7, max_tokens=131072).max_tokens
+E        +    where LLMConfig(provider='vllm', model='default', api_key=None, base_url=None, temperature=0.7, max_tokens=131072) = from_env()
+E        +      where from_env = <class 'core.llm.LLMConfig'>.from_env
+E        +        where <class 'core.llm.LLMConfig'> = llm.LLMConfig
+
+tests/test_audit_wave1_api_regressions.py:60: AssertionError
+___________ test_llm_environment_honors_small_budgets[None-128-128] ____________
+
+budget_environment = None
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x30c0a6ff0>
+primary = None, legacy = '128', expected = 128
+
+    @pytest.mark.parametrize(
+        "primary, legacy, expected", [("64", "8192", 64), (None, "128", 128)]
+    )
+    def test_llm_environment_honors_small_budgets(
+        budget_environment, monkeypatch, primary, legacy, expected
+    ):
+        if primary is not None:
+            monkeypatch.setenv("LLM_MAX_TOKENS", primary)
+        monkeypatch.setenv("PERF_LLM_MAX_TOKENS", legacy)
+>       assert llm.LLMConfig.from_env().max_tokens == expected
+E       AssertionError: assert 131072 == 128
+E        +  where 131072 = LLMConfig(provider='vllm', model='default', api_key=None, base_url=None, temperature=0.7, max_tokens=131072).max_tokens
+E        +    where LLMConfig(provider='vllm', model='default', api_key=None, base_url=None, temperature=0.7, max_tokens=131072) = from_env()
+E        +      where from_env = <class 'core.llm.LLMConfig'>.from_env
+E        +        where <class 'core.llm.LLMConfig'> = llm.LLMConfig
+
+tests/test_audit_wave1_api_regressions.py:60: AssertionError
+_______________ test_llm_environment_rejects_invalid_budgets[0] ________________
+
+budget_environment = None
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x30c0a78f0>
+value = '0'
+
+    @pytest.mark.parametrize("value", ["0", "-1", "1.5", "invalid"])
+    def test_llm_environment_rejects_invalid_budgets(budget_environment, monkeypatch, value):
+        monkeypatch.setenv("LLM_MAX_TOKENS", value)
+>       with pytest.raises(ValueError):
+E       Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_audit_wave1_api_regressions.py:66: Failed
+_______________ test_llm_environment_rejects_invalid_budgets[-1] _______________
+
+budget_environment = None
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x30c0a5d90>
+value = '-1'
+
+    @pytest.mark.parametrize("value", ["0", "-1", "1.5", "invalid"])
+    def test_llm_environment_rejects_invalid_budgets(budget_environment, monkeypatch, value):
+        monkeypatch.setenv("LLM_MAX_TOKENS", value)
+>       with pytest.raises(ValueError):
+E       Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_audit_wave1_api_regressions.py:66: Failed
+_________ test_llm_sends_exact_budget_to_local_endpoint[None-512-vllm] _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x30c0a6a50>
+local_llm_endpoint = ('http://127.0.0.1:57557', [('/v1/chat/completions', {'max_tokens': 131072, 'messages': [{'content': 'public synthetic protocol test', 'role': 'user'}], 'model': 'local-fixture', 'temperature': 0.7})])
+provider = 'vllm', override = None, expected = 512
+
+    @pytest.mark.parametrize("provider", ["vllm", "ollama"])
+    @pytest.mark.parametrize("override, expected", [(None, 512), (64, 64), (8192, 8192)])
+    def test_llm_sends_exact_budget_to_local_endpoint(
+        monkeypatch, local_llm_endpoint, provider, override, expected
+    ):
+        base_url, requests = local_llm_endpoint
+        monkeypatch.setattr(
+            llm,
+            "_config",
+            llm.LLMConfig(provider=provider, model="local-fixture", base_url=base_url, max_tokens=512),
+        )
+        assert llm.llm_call("public synthetic protocol test", max_tokens=override) == "local protocol fixture"
+        assert len(requests) == 1
+        path, payload = requests[0]
+        if provider == "vllm":
+            assert path == "/v1/chat/completions"
+>           assert payload["max_tokens"] == expected
+E           assert 131072 == 512
+
+tests/test_audit_wave1_api_regressions.py:120: AssertionError
+________ test_llm_sends_exact_budget_to_local_endpoint[None-512-ollama] ________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x30c0a6a80>
+local_llm_endpoint = ('http://127.0.0.1:57559', [('/api/generate', {'model': 'local-fixture', 'options': {'num_predict': 131072, 'temperature': 0.7}, 'prompt': 'public synthetic protocol test', 'stream': False})])
+provider = 'ollama', override = None, expected = 512
+
+    @pytest.mark.parametrize("provider", ["vllm", "ollama"])
+    @pytest.mark.parametrize("override, expected", [(None, 512), (64, 64), (8192, 8192)])
+    def test_llm_sends_exact_budget_to_local_endpoint(
+        monkeypatch, local_llm_endpoint, provider, override, expected
+    ):
+        base_url, requests = local_llm_endpoint
+        monkeypatch.setattr(
+            llm,
+            "_config",
+            llm.LLMConfig(provider=provider, model="local-fixture", base_url=base_url, max_tokens=512),
+        )
+        assert llm.llm_call("public synthetic protocol test", max_tokens=override) == "local protocol fixture"
+        assert len(requests) == 1
+        path, payload = requests[0]
+        if provider == "vllm":
+            assert path == "/v1/chat/completions"
+            assert payload["max_tokens"] == expected
+        else:
+            assert path == "/api/generate"
+>           assert payload["options"]["num_predict"] == expected
+E           assert 131072 == 512
+
+tests/test_audit_wave1_api_regressions.py:123: AssertionError
+__________ test_llm_sends_exact_budget_to_local_endpoint[64-64-vllm] ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x30c08b590>
+local_llm_endpoint = ('http://127.0.0.1:57561', [('/v1/chat/completions', {'max_tokens': 131072, 'messages': [{'content': 'public synthetic protocol test', 'role': 'user'}], 'model': 'local-fixture', 'temperature': 0.7})])
+provider = 'vllm', override = 64, expected = 64
+
+    @pytest.mark.parametrize("provider", ["vllm", "ollama"])
+    @pytest.mark.parametrize("override, expected", [(None, 512), (64, 64), (8192, 8192)])
+    def test_llm_sends_exact_budget_to_local_endpoint(
+        monkeypatch, local_llm_endpoint, provider, override, expected
+    ):
+        base_url, requests = local_llm_endpoint
+        monkeypatch.setattr(
+            llm,
+            "_config",
+            llm.LLMConfig(provider=provider, model="local-fixture", base_url=base_url, max_tokens=512),
+        )
+        assert llm.llm_call("public synthetic protocol test", max_tokens=override) == "local protocol fixture"
+        assert len(requests) == 1
+        path, payload = requests[0]
+        if provider == "vllm":
+            assert path == "/v1/chat/completions"
+>           assert payload["max_tokens"] == expected
+E           assert 131072 == 64
+
+tests/test_audit_wave1_api_regressions.py:120: AssertionError
+_________ test_llm_sends_exact_budget_to_local_endpoint[64-64-ollama] __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x30c0a6ae0>
+local_llm_endpoint = ('http://127.0.0.1:57564', [('/api/generate', {'model': 'local-fixture', 'options': {'num_predict': 131072, 'temperature': 0.7}, 'prompt': 'public synthetic protocol test', 'stream': False})])
+provider = 'ollama', override = 64, expected = 64
+
+    @pytest.mark.parametrize("provider", ["vllm", "ollama"])
+    @pytest.mark.parametrize("override, expected", [(None, 512), (64, 64), (8192, 8192)])
+    def test_llm_sends_exact_budget_to_local_endpoint(
+        monkeypatch, local_llm_endpoint, provider, override, expected
+    ):
+        base_url, requests = local_llm_endpoint
+        monkeypatch.setattr(
+            llm,
+            "_config",
+            llm.LLMConfig(provider=provider, model="local-fixture", base_url=base_url, max_tokens=512),
+        )
+        assert llm.llm_call("public synthetic protocol test", max_tokens=override) == "local protocol fixture"
+        assert len(requests) == 1
+        path, payload = requests[0]
+        if provider == "vllm":
+            assert path == "/v1/chat/completions"
+            assert payload["max_tokens"] == expected
+        else:
+            assert path == "/api/generate"
+>           assert payload["options"]["num_predict"] == expected
+E           assert 131072 == 64
+
+tests/test_audit_wave1_api_regressions.py:123: AssertionError
+________ test_llm_sends_exact_budget_to_local_endpoint[8192-8192-vllm] _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x30c0a61b0>
+local_llm_endpoint = ('http://127.0.0.1:57567', [('/v1/chat/completions', {'max_tokens': 131072, 'messages': [{'content': 'public synthetic protocol test', 'role': 'user'}], 'model': 'local-fixture', 'temperature': 0.7})])
+provider = 'vllm', override = 8192, expected = 8192
+
+    @pytest.mark.parametrize("provider", ["vllm", "ollama"])
+    @pytest.mark.parametrize("override, expected", [(None, 512), (64, 64), (8192, 8192)])
+    def test_llm_sends_exact_budget_to_local_endpoint(
+        monkeypatch, local_llm_endpoint, provider, override, expected
+    ):
+        base_url, requests = local_llm_endpoint
+        monkeypatch.setattr(
+            llm,
+            "_config",
+            llm.LLMConfig(provider=provider, model="local-fixture", base_url=base_url, max_tokens=512),
+        )
+        assert llm.llm_call("public synthetic protocol test", max_tokens=override) == "local protocol fixture"
+        assert len(requests) == 1
+        path, payload = requests[0]
+        if provider == "vllm":
+            assert path == "/v1/chat/completions"
+>           assert payload["max_tokens"] == expected
+E           assert 131072 == 8192
+
+tests/test_audit_wave1_api_regressions.py:120: AssertionError
+_______ test_llm_sends_exact_budget_to_local_endpoint[8192-8192-ollama] ________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x30c0a69f0>
+local_llm_endpoint = ('http://127.0.0.1:57569', [('/api/generate', {'model': 'local-fixture', 'options': {'num_predict': 131072, 'temperature': 0.7}, 'prompt': 'public synthetic protocol test', 'stream': False})])
+provider = 'ollama', override = 8192, expected = 8192
+
+    @pytest.mark.parametrize("provider", ["vllm", "ollama"])
+    @pytest.mark.parametrize("override, expected", [(None, 512), (64, 64), (8192, 8192)])
+    def test_llm_sends_exact_budget_to_local_endpoint(
+        monkeypatch, local_llm_endpoint, provider, override, expected
+    ):
+        base_url, requests = local_llm_endpoint
+        monkeypatch.setattr(
+            llm,
+            "_config",
+            llm.LLMConfig(provider=provider, model="local-fixture", base_url=base_url, max_tokens=512),
+        )
+        assert llm.llm_call("public synthetic protocol test", max_tokens=override) == "local protocol fixture"
+        assert len(requests) == 1
+        path, payload = requests[0]
+        if provider == "vllm":
+            assert path == "/v1/chat/completions"
+            assert payload["max_tokens"] == expected
+        else:
+            assert path == "/api/generate"
+>           assert payload["options"]["num_predict"] == expected
+E           assert 131072 == 8192
+
+tests/test_audit_wave1_api_regressions.py:123: AssertionError
+____________________ test_llm_status_probe_sends_64_tokens _____________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x30c0a5f70>
+local_llm_endpoint = ('http://127.0.0.1:57571', [('/v1/chat/completions', {'max_tokens': 131072, 'messages': [{'content': 'LLM connectivity check', 'role': 'user'}], 'model': 'local-fixture', 'temperature': 0.7})])
+
+    def test_llm_status_probe_sends_64_tokens(monkeypatch, local_llm_endpoint):
+        base_url, requests = local_llm_endpoint
+        monkeypatch.setattr(
+            llm,
+            "_config",
+            llm.LLMConfig(provider="vllm", model="local-fixture", base_url=base_url),
+        )
+        status = llm.get_llm_status(probe=True)
+        assert status["available"] is True
+        assert status["probed"] is True
+        assert len(requests) == 1
+>       assert requests[0][1]["max_tokens"] == 64
+E       assert 131072 == 64
+
+tests/test_audit_wave1_api_regressions.py:137: AssertionError
+_______________ test_llm_rejects_invalid_override_before_http[0] _______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x30c0b3770>
+local_llm_endpoint = ('http://127.0.0.1:57574', [('/v1/chat/completions', {'max_tokens': 131072, 'messages': [{'content': 'public synthetic protocol test', 'role': 'user'}], 'model': 'local-fixture', 'temperature': 0.7})])
+value = 0
+
+    @pytest.mark.parametrize("value", [0, -1, True, 1.5, "64"])
+    def test_llm_rejects_invalid_override_before_http(monkeypatch, local_llm_endpoint, value):
+        base_url, requests = local_llm_endpoint
+        monkeypatch.setattr(
+            llm,
+            "_config",
+            llm.LLMConfig(provider="vllm", model="local-fixture", base_url=base_url),
+        )
+>       with pytest.raises(ValueError, match="positive integer"):
+E       Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_audit_wave1_api_regressions.py:148: Failed
+______________ test_llm_rejects_invalid_override_before_http[-1] _______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x30c0b2930>
+local_llm_endpoint = ('http://127.0.0.1:57577', [('/v1/chat/completions', {'max_tokens': 131072, 'messages': [{'content': 'public synthetic protocol test', 'role': 'user'}], 'model': 'local-fixture', 'temperature': 0.7})])
+value = -1
+
+    @pytest.mark.parametrize("value", [0, -1, True, 1.5, "64"])
+    def test_llm_rejects_invalid_override_before_http(monkeypatch, local_llm_endpoint, value):
+        base_url, requests = local_llm_endpoint
+        monkeypatch.setattr(
+            llm,
+            "_config",
+            llm.LLMConfig(provider="vllm", model="local-fixture", base_url=base_url),
+        )
+>       with pytest.raises(ValueError, match="positive integer"):
+E       Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_audit_wave1_api_regressions.py:148: Failed
+_____________ test_llm_rejects_invalid_override_before_http[True] ______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x30c0b2c00>
+local_llm_endpoint = ('http://127.0.0.1:57579', [('/v1/chat/completions', {'max_tokens': 131072, 'messages': [{'content': 'public synthetic protocol test', 'role': 'user'}], 'model': 'local-fixture', 'temperature': 0.7})])
+value = True
+
+    @pytest.mark.parametrize("value", [0, -1, True, 1.5, "64"])
+    def test_llm_rejects_invalid_override_before_http(monkeypatch, local_llm_endpoint, value):
+        base_url, requests = local_llm_endpoint
+        monkeypatch.setattr(
+            llm,
+            "_config",
+            llm.LLMConfig(provider="vllm", model="local-fixture", base_url=base_url),
+        )
+>       with pytest.raises(ValueError, match="positive integer"):
+E       Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_audit_wave1_api_regressions.py:148: Failed
+______________ test_llm_rejects_invalid_override_before_http[1.5] ______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x30c08aae0>
+local_llm_endpoint = ('http://127.0.0.1:57581', [('/v1/chat/completions', {'max_tokens': 131072, 'messages': [{'content': 'public synthetic protocol test', 'role': 'user'}], 'model': 'local-fixture', 'temperature': 0.7})])
+value = 1.5
+
+    @pytest.mark.parametrize("value", [0, -1, True, 1.5, "64"])
+    def test_llm_rejects_invalid_override_before_http(monkeypatch, local_llm_endpoint, value):
+        base_url, requests = local_llm_endpoint
+        monkeypatch.setattr(
+            llm,
+            "_config",
+            llm.LLMConfig(provider="vllm", model="local-fixture", base_url=base_url),
+        )
+>       with pytest.raises(ValueError, match="positive integer"):
+E       Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_audit_wave1_api_regressions.py:148: Failed
+______________ test_llm_rejects_invalid_override_before_http[64] _______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x30c089760>
+local_llm_endpoint = ('http://127.0.0.1:57583', [('/v1/chat/completions', {'max_tokens': 131072, 'messages': [{'content': 'public synthetic protocol test', 'role': 'user'}], 'model': 'local-fixture', 'temperature': 0.7})])
+value = '64'
+
+    @pytest.mark.parametrize("value", [0, -1, True, 1.5, "64"])
+    def test_llm_rejects_invalid_override_before_http(monkeypatch, local_llm_endpoint, value):
+        base_url, requests = local_llm_endpoint
+        monkeypatch.setattr(
+            llm,
+            "_config",
+            llm.LLMConfig(provider="vllm", model="local-fixture", base_url=base_url),
+        )
+>       with pytest.raises(ValueError, match="positive integer"):
+E       Failed: DID NOT RAISE <class 'ValueError'>
+
+tests/test_audit_wave1_api_regressions.py:148: Failed
+_______ test_ask_returns_serializable_file_backed_citations_without_llm ________
+
+local_book = 'Auditwidget introduces the example. Its second sentence explains the contract! This third sentence must not enter the...ird useful detail\n2. Fourth useful detail\n3. Fifth useful detail\n4. Sixth detail stays outside the five-point limit'
+
+    def test_ask_returns_serializable_file_backed_citations_without_llm(local_book):
+        result = get_engine().ai.ask("auditwidget")
+        assert result["success"] is False
+        assert result["error_type"] == "llm_unavailable"
+>       assert len(result["citations"]) == 1
+E       assert 0 == 1
+E        +  where 0 = len([])
+
+tests/test_audit_wave1_api_regressions.py:180: AssertionError
+_________ test_explain_parses_summary_and_bullets_from_real_book_index _________
+
+local_book = 'Auditwidget introduces the example. Its second sentence explains the contract! This third sentence must not enter the...ird useful detail\n2. Fourth useful detail\n3. Fifth useful detail\n4. Sixth detail stays outside the five-point limit'
+
+    def test_explain_parses_summary_and_bullets_from_real_book_index(local_book):
+        result = get_engine().ai.explain("auditwidget")
+        assert result["success"] is True
+>       assert result["explanation"] == (
+            "Auditwidget introduces the example. Its second sentence explains the contract!"
+        )
+E       AssertionError: assert 'Auditwidget ...e-point limit' == 'Auditwidget ...the contract!'
+E         
+E         Skipping 67 identical leading characters in diff, use -v to show
+E         - e contract!
+E         + e contract! This third sentence must not enter the summary.
+E         + - First useful detail
+E         + * Second useful detail
+E         + 1. Third useful detail...
+E         
+E         ...Full output truncated (3 lines hidden), use '-vv' to show
+
+tests/test_audit_wave1_api_regressions.py:197: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_audit_wave1_api_regressions.py::test_cli_opens_real_analysis_menu[q\n-args0]
+FAILED tests/test_audit_wave1_api_regressions.py::test_cli_opens_real_analysis_menu[q\n-args1]
+FAILED tests/test_audit_wave1_api_regressions.py::test_cli_opens_real_analysis_menu[-args0]
+FAILED tests/test_audit_wave1_api_regressions.py::test_cli_opens_real_analysis_menu[-args1]
+FAILED tests/test_audit_wave1_api_regressions.py::test_llm_environment_uses_dataclass_default
+FAILED tests/test_audit_wave1_api_regressions.py::test_llm_environment_honors_small_budgets[64-8192-64]
+FAILED tests/test_audit_wave1_api_regressions.py::test_llm_environment_honors_small_budgets[None-128-128]
+FAILED tests/test_audit_wave1_api_regressions.py::test_llm_environment_rejects_invalid_budgets[0]
+FAILED tests/test_audit_wave1_api_regressions.py::test_llm_environment_rejects_invalid_budgets[-1]
+FAILED tests/test_audit_wave1_api_regressions.py::test_llm_sends_exact_budget_to_local_endpoint[None-512-vllm]
+FAILED tests/test_audit_wave1_api_regressions.py::test_llm_sends_exact_budget_to_local_endpoint[None-512-ollama]
+FAILED tests/test_audit_wave1_api_regressions.py::test_llm_sends_exact_budget_to_local_endpoint[64-64-vllm]
+FAILED tests/test_audit_wave1_api_regressions.py::test_llm_sends_exact_budget_to_local_endpoint[64-64-ollama]
+FAILED tests/test_audit_wave1_api_regressions.py::test_llm_sends_exact_budget_to_local_endpoint[8192-8192-vllm]
+FAILED tests/test_audit_wave1_api_regressions.py::test_llm_sends_exact_budget_to_local_endpoint[8192-8192-ollama]
+FAILED tests/test_audit_wave1_api_regressions.py::test_llm_status_probe_sends_64_tokens
+FAILED tests/test_audit_wave1_api_regressions.py::test_llm_rejects_invalid_override_before_http[0]
+FAILED tests/test_audit_wave1_api_regressions.py::test_llm_rejects_invalid_override_before_http[-1]
+FAILED tests/test_audit_wave1_api_regressions.py::test_llm_rejects_invalid_override_before_http[True]
+FAILED tests/test_audit_wave1_api_regressions.py::test_llm_rejects_invalid_override_before_http[1.5]
+FAILED tests/test_audit_wave1_api_regressions.py::test_llm_rejects_invalid_override_before_http[64]
+FAILED tests/test_audit_wave1_api_regressions.py::test_ask_returns_serializable_file_backed_citations_without_llm
+FAILED tests/test_audit_wave1_api_regressions.py::test_explain_parses_summary_and_bullets_from_real_book_index
+23 failed, 3 passed in 17.28s

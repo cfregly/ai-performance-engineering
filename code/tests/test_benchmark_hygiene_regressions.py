@@ -8,6 +8,7 @@ import math
 import re
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -34,12 +35,6 @@ from core.harness.run_benchmarks import (
 )
 from labs.flexattention.baseline_flex_attention import BaselineFlexAttentionBenchmark
 from labs.flexattention.optimized_flex_attention import OptimizedFlexAttentionBenchmark
-from labs.occupancy_tuning.optimized_proton_matmul_bm64_bn64_bk32_nw2 import (
-    get_benchmark as get_latency_benchmark,
-)
-from labs.occupancy_tuning.optimized_proton_matmul_bm64_bn256_bk32 import (
-    get_benchmark as get_wide_n_benchmark,
-)
 from labs.real_world_models.deepseek_r1_moe_optimization import (
     get_benchmark as get_deepseek_benchmark,
 )
@@ -3016,6 +3011,9 @@ def test_ch14_triton_nvshmem_batches_result_reads() -> None:
 
 
 def test_custom_vs_cublas_batches_correctness_scale_reads() -> None:
+    # Keep the historical test ID, but reject the former global-max policy.
+    from labs.custom_vs_cublas.run_lab import validate_result
+
     source = (REPO_ROOT / "labs" / "custom_vs_cublas" / "run_lab.py").read_text(
         encoding="utf-8"
     )
@@ -3024,19 +3022,17 @@ def test_custom_vs_cublas_batches_correctness_scale_reads() -> None:
         maxsplit=1,
     )[0]
 
-    assert "ref_abs_max = ref_fp32.abs().max()" in verify_section
-    assert "error_stats = torch.empty(2, device=ref_fp32.device, dtype=ref_fp32.dtype)" in verify_section
-    assert "error_stats[0].copy_((ref_fp32 - result_fp32).abs().max())" in verify_section
-    assert "error_stats[1].copy_(ref_abs_max)" in verify_section
-    assert "error_stats_host = error_stats.detach().cpu()" in verify_section
-    assert "max_diff = float(error_stats_host[0])" in verify_section
-    assert "ref_abs_max_host = float(error_stats_host[1])" in verify_section
-    assert ".tolist()" not in verify_section
-    assert "(ref_fp32 - result_fp32).abs().max()" in verify_section
-    assert verify_section.count("ref_fp32.abs().max()") == 1
-    assert ".abs().max().item()" not in verify_section
-    assert "C = torch.empty(M, N, device='cuda', dtype=torch.float32)" in source
-    assert "C = torch.zeros(M, N, device='cuda', dtype=torch.float32)" not in source
+    assert "validate_result(fn(A, B_T), reference)" in verify_section
+    assert "passed = False" in verify_section
+    assert "return passed" in verify_section
+    reference = torch.tensor([[1_000_000., 0.], [0., 1.]])
+    validate_result(reference.clone(), reference)
+    for invalid in (1., float("nan"), float("inf")):
+        output = reference.clone()
+        output[0, 1] = invalid
+        with pytest.raises(AssertionError):
+            validate_result(output, reference)
+    assert "C = torch.empty(M, N, device=A.device, dtype=torch.float32)" in source
 
 
 def test_custom_vs_cublas_timing_helpers_use_cuda_events() -> None:
@@ -5120,7 +5116,9 @@ def test_nvfp4_group_gemm_reuses_verification_output_buffer() -> None:
     assert "with torch.inference_mode(), torch.cuda.graph(graph):" in setup_section
     assert "with torch.inference_mode():" in benchmark_section
     assert "if self._verify_output is None:" in capture_section
-    assert "for group_output in self._last_output:" in capture_section
+    assert "actual_outputs = [c for data in self._canonical_data for _a, _b, c in data[0]]" in capture_section
+    assert "assert_group_outputs(actual_outputs, self._reference_outputs)" in capture_section
+    assert "for group_output in actual_outputs:" in capture_section
     assert "self._verify_output[offset:next_offset].copy_(flat_output)" in capture_section
     assert "combined = self._verify_output[:offset]" in capture_section
     assert "torch.cat([t.reshape(-1) for t in self._last_output], dim=0)" not in capture_section
@@ -7240,7 +7238,6 @@ def test_cuda_event_timing_waits_on_terminal_event_not_whole_device() -> None:
         "labs/flexattention/flex_attention_cute.py": "end.synchronize()",
         "labs/cutlass_profiler_kernel_selector/run_triton_matmul.py": "end.synchronize()",
         "labs/moe_decode_blackwell_matrix/runner.py": "end_event.synchronize()",
-        "labs/moe_optimization_journey/triton_fused_moe.py": "end.synchronize()",
         "labs/nvfp4_dual_gemm/env_probe_b200.py": "end.synchronize()",
         "labs/nvfp4_dual_gemm/local_eval.py": "end.synchronize()",
         "labs/nvfp4_dual_gemm/official_semantics_eval.py": "end.synchronize()",
@@ -7255,6 +7252,12 @@ def test_cuda_event_timing_waits_on_terminal_event_not_whole_device() -> None:
         source = (REPO_ROOT / filename).read_text(encoding="utf-8")
         assert expected_sync in source
         assert global_wait_after_event.search(source) is None
+
+    # This experiment no longer executes or reports timing. Keep an actual
+    # failure contract rather than requiring a dead CUDA-event spelling.
+    from labs.moe_optimization_journey.triton_fused_moe import benchmark_triton_moe
+    with pytest.raises(NotImplementedError, match="Retired incomplete Triton MoE"):
+        benchmark_triton_moe()
 
 
 def test_ch02_and_ch05_host_elapsed_timing_uses_monotonic_clock() -> None:
@@ -7597,7 +7600,7 @@ def test_lab_utility_timers_record_on_current_stream() -> None:
             "end_evt.record()",
         ),
         "labs/flexattention/flex_attention_cute.py": (
-            "count = max(int(args.iters), 1)",
+            "count = int(args.iters)",
             "elapsed_s =",
             "current_stream = torch.cuda.current_stream(device)",
             "start.record(current_stream)",
@@ -7620,11 +7623,34 @@ def test_lab_utility_timers_record_on_current_stream() -> None:
         assert end_record in timing_section
         assert implicit_start not in timing_section
         assert implicit_end not in timing_section
+        if filename == "labs/flexattention/flex_attention_cute.py":
+            assert "min(args.batch, args.heads, args.seq_len, args.head_dim, args.iters) <= 0" in source
 
 
 def test_occupancy_tuning_variants_match_their_filenames() -> None:
+    from labs.occupancy_tuning.optimized_proton_matmul_bm64_bn64_bk32_nw2 import (
+        get_benchmark as get_latency_benchmark,
+    )
+    from labs.occupancy_tuning.optimized_proton_matmul_bm64_bn256_bk32 import (
+        get_benchmark as get_wide_n_benchmark,
+    )
+
     wide_n = get_wide_n_benchmark()
     latency = get_latency_benchmark()
+
+    assert wide_n.schedule.name == "bm64_bn256_bk32"
+    assert wide_n.schedule.block_m == 64
+    assert wide_n.schedule.block_n == 256
+    assert wide_n.schedule.block_k == 32
+
+    assert latency.schedule.name == "bm64_bn64_bk32_nw2"
+    assert latency.schedule.block_m == 64
+    assert latency.schedule.block_n == 64
+    assert latency.schedule.block_k == 32
+    assert latency.schedule.num_warps == 2
+
+
+def test_occupancy_tuning_schedule_preserves_inference_and_validation_hygiene() -> None:
     schedule_source = (
         REPO_ROOT / "labs" / "occupancy_tuning" / "triton_matmul_schedules.py"
     ).read_text(encoding="utf-8")
@@ -7637,16 +7663,6 @@ def test_occupancy_tuning_variants_match_their_filenames() -> None:
         maxsplit=1,
     )[0]
 
-    assert wide_n.schedule.name == "bm64_bn256_bk32"
-    assert wide_n.schedule.block_m == 64
-    assert wide_n.schedule.block_n == 256
-    assert wide_n.schedule.block_k == 32
-
-    assert latency.schedule.name == "bm64_bn64_bk32_nw2"
-    assert latency.schedule.block_m == 64
-    assert latency.schedule.block_n == 64
-    assert latency.schedule.block_k == 32
-    assert latency.schedule.num_warps == 2
     assert "with torch.inference_mode(), self._nvtx_range(self.schedule.name):" in benchmark_section
     assert "with self._nvtx_range(self.schedule.name):" not in benchmark_section
     assert "torch.no_grad()" not in benchmark_section
@@ -9297,14 +9313,12 @@ def test_remaining_benchmark_wrappers_cache_verification_parameter_count() -> No
     inherited_source = (
         REPO_ROOT / "labs" / "kv_cache_compression" / "optimized_kv_cache_nvfp4.py"
     ).read_text(encoding="utf-8")
-    inherited_capture = inherited_source.split("def capture_verification_payload", maxsplit=1)[
-        1
-    ].split(
-        "def get_custom_metrics",
-        maxsplit=1,
-    )[0]
-    assert "parameter_count=self._payload_parameter_count" in inherited_capture
-    assert "sum(p.numel()" not in inherited_capture
+    inherited_class = next(node for node in ast.parse(inherited_source).body
+                           if isinstance(node, ast.ClassDef)
+                           and node.name == "OptimizedKVCacheNVFP4Benchmark")
+    assert [ast.unparse(base) for base in inherited_class.bases] == ["BaselineKVCacheBenchmark"]
+    assert "capture_verification_payload" not in {node.name for node in inherited_class.body
+                                                 if isinstance(node, ast.FunctionDef)}
 
 
 def test_kv_cache_compression_reuses_capture_metadata_tensors() -> None:
@@ -9324,25 +9338,28 @@ def test_kv_cache_compression_reuses_capture_metadata_tensors() -> None:
     baseline_capture = baseline_source.split("def capture_verification_payload", maxsplit=1)[
         1
     ].split("def finalize_iteration_metrics", maxsplit=1)[0]
-    optimized_capture = optimized_source.split("def capture_verification_payload", maxsplit=1)[
-        1
-    ].split("def get_custom_metrics", maxsplit=1)[0]
+    # NVFP4 inherits the same calibrated full-cache capture rather than copying it.
+    optimized_class = next(node for node in ast.parse(optimized_source).body
+                           if isinstance(node, ast.ClassDef)
+                           and node.name == "OptimizedKVCacheNVFP4Benchmark")
+    assert [ast.unparse(base) for base in optimized_class.bases] == ["BaselineKVCacheBenchmark"]
+    assert "capture_verification_payload" not in {node.name for node in optimized_class.body
+                                                 if isinstance(node, ast.FunctionDef)}
 
     assert "self._batch_size_tensor: Optional[torch.Tensor] = None" in baseline_source
     assert "self._seq_meta_tensor: Optional[torch.Tensor] = None" in baseline_source
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in baseline_source
     assert 'self._batch_size_tensor = torch.empty(1, dtype=torch.int64, device="cpu")' in setup_section
     assert 'self._seq_meta_tensor = torch.empty(3, dtype=torch.int64, device="cpu")' in setup_section
-    assert "self._verify_output_buffer = torch.empty(" in setup_section
-    assert "self._verify_output_buffer[0].copy_(k_slice)" in build_section
-    assert "self._verify_output_buffer[1].copy_(v_slice)" in build_section
-    assert "return self._verify_output_buffer" in build_section
-    assert "torch.stack(" not in build_section
-    assert ".detach().float().clone()" not in build_section
-    for capture_section in (baseline_capture, optimized_capture):
-        assert '"batch_size": self._batch_size_tensor' in capture_section
-        assert '"seq_meta": self._seq_meta_tensor' in capture_section
-        assert "torch.tensor(" not in capture_section
+    assert "if self._accuracy_limits is None:" in build_section
+    assert "self._accuracy_metrics = self.measure_accuracy()" in build_section
+    assert "torch.cat((self.cache.cache_k.reshape(-1), self.cache.cache_v.reshape(-1)))" in build_section
+    assert "k_slice" not in build_section and "v_slice" not in build_section
+    assert '"batch_size": self._batch_size_tensor' in baseline_capture
+    assert '"seq_meta": self._seq_meta_tensor' in baseline_capture
+    assert "output=self.output" in baseline_capture
+    assert "self._accuracy_limits.pairwise_rtol" in baseline_capture
+    assert "torch.tensor(" not in baseline_capture
 
 
 def test_ch20_optimized_memory_standard_uses_scalar_addcmul_constants() -> None:
@@ -10982,17 +10999,14 @@ def test_dynamic_router_vllm_runner_caches_engine_ids() -> None:
     assert "ttft_samples.extend(sample for _, sample in ttft_new)" not in routing_section
     assert "ttft_samples.extend([sample" not in routing_section
     assert "output_token_count = sum(len(o.token_ids) for o in ro.outputs)" in wrapper_section
-    assert "tokens_emitted += output_token_count" in wrapper_section
+    assert "rt.observe_cumulative_tokens(output_token_count, observed_at)" in wrapper_section
+    assert "tokens_emitted += delta" in wrapper_section
+    assert "tokens_emitted += output_token_count" not in wrapper_section
     assert "total_tokens = sum(len(o.token_ids) for o in ro.outputs)" not in wrapper_section
     assert wrapper_section.count("sum(len(o.token_ids) for o in ro.outputs)") == 1
-    assert "ro_outputs = ro.outputs" in v1_wrapper_section
-    assert "is_finished = ro.finished" in v1_wrapper_section
-    assert "except AttributeError:" in v1_wrapper_section
-    assert "getattr(ro," not in v1_wrapper_section
-    assert "output_token_count = sum(len(o.token_ids) for o in ro_outputs)" in v1_wrapper_section
-    assert "tokens_emitted += output_token_count" in v1_wrapper_section
-    assert "total_tokens = sum(len(o.token_ids) for o in ro.outputs)" not in v1_wrapper_section
-    assert v1_wrapper_section.count("sum(len(o.token_ids) for o in ro_outputs)") == 1
+    assert "finished_ids, ttft_samples, tokens_emitted = self._consume_request_outputs(" in v1_wrapper_section
+    assert "processed.request_outputs, time.time()," in v1_wrapper_section
+    assert "tokens_emitted += output_token_count" not in v1_wrapper_section
 
 
 def test_dynamic_router_percentiles_reuse_sorted_samples(tmp_path: Path) -> None:
@@ -12039,7 +12053,7 @@ def test_persistent_decode_baseline_reuses_decode_step_buffers() -> None:
     assert "self._decode_step_views = tuple(" in setup_section
     assert "self.inputs.q.unbind(1)" in setup_section
     assert "self.inputs.out.unbind(1)" in setup_section
-    assert "self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]" in setup_section
+    assert "self._output_view = self.inputs.out\n" in setup_section
     assert "torch.mul(q_t, k_t, out=product)" in decode_step_section
     assert "torch.sum(product, dim=-1, keepdim=True, out=dot)" in decode_step_section
     assert "torch.mul(v_t, dot, out=out_t)" in decode_step_section
@@ -12136,16 +12150,14 @@ def test_persistent_decode_tma_baselines_precompute_host_loop_views() -> None:
         "baseline_tma_prefill_decode.py": (
             "def _prefill_sequential",
             "dst.copy_(src)",
-            "dst.add_(src)",
         ),
         "baseline_native_tma_prefill_decode.py": (
             "def _prefill_native",
-            "self._tma_ext.tma_copy(src, dst)",
-            "assert self._tma_ext is not None",
+            "self._async_copy_ext.async_copy(src, dst)",
         ),
     }
 
-    for filename, (prefill_marker, first_prefill_assert, second_prefill_assert) in targets.items():
+    for filename, (prefill_marker, first_prefill_assert) in targets.items():
         source = (
             REPO_ROOT / "labs" / "persistent_decode" / filename
         ).read_text(encoding="utf-8")
@@ -12184,10 +12196,12 @@ def test_persistent_decode_tma_baselines_precompute_host_loop_views() -> None:
         assert "self.inputs.q.unbind(1)" in setup_section
         assert "self.inputs.out.unbind(1)" in setup_section
         assert "strict=True" in setup_section
-        assert "self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]" in setup_section
+        assert "self._output_view = self.inputs.out\n" in setup_section
         assert "for src, dst in self._prefill_work:" in prefill_section
         assert first_prefill_assert in prefill_section
-        assert second_prefill_assert in prefill_section
+        assert "dst.add_(src)" not in prefill_section
+        if filename == "baseline_native_tma_prefill_decode.py":
+            assert "assert self._async_copy_ext is not None" in prefill_section
         assert "range(self.prefill_chunks)" not in prefill_section
         assert "self.prefill_src[idx]" not in prefill_section
         assert "self.prefill_dst[idx]" not in prefill_section
@@ -12942,13 +12956,15 @@ def test_nanochat_incremental_benchmark_uses_cuda_event_timing() -> None:
         maxsplit=1,
     )[0]
 
-    assert helper_section.count("torch.cuda.Event(enable_timing=True)") == 2
-    assert "current_stream = torch.cuda.current_stream(self.device)" in helper_section
-    assert "start.record(current_stream)" in helper_section
-    assert "end.record(current_stream)" in helper_section
-    assert "start.record()" not in helper_section
-    assert "end.record()" not in helper_section
-    assert "start.elapsed_time(end) / 1000.0" in helper_section
+    # Retain the historical test ID: the corrected contract joins all streams
+    # and includes host submission, so current-stream events cannot time it.
+    assert "torch.cuda.Event" not in helper_section
+    assert helper_section.count("torch.cuda.synchronize(self.device)") == 2
+    assert (helper_section.index("torch.cuda.synchronize(self.device)")
+            < helper_section.index("t0 = time.perf_counter()")
+            < helper_section.index("fn()")
+            < helper_section.rindex("torch.cuda.synchronize(self.device)")
+            < helper_section.index("return time.perf_counter() - t0"))
     assert "t0 = time.perf_counter()" in helper_section
     assert "return time.perf_counter() - t0" in helper_section
     assert "time.time()" not in helper_section
@@ -12990,13 +13006,13 @@ def test_nanochat_b200_flag_benchmark_uses_cuda_event_timing() -> None:
         maxsplit=1,
     )[0]
 
-    assert helper_section.count("torch.cuda.Event(enable_timing=True)") == 2
-    assert "current_stream = torch.cuda.current_stream()" in helper_section
-    assert "start.record(current_stream)" in helper_section
-    assert "end.record(current_stream)" in helper_section
-    assert "start.record()" not in helper_section
-    assert "end.record()" not in helper_section
-    assert "start.elapsed_time(end) / 1000.0" in helper_section
+    assert "torch.cuda.Event" not in helper_section
+    assert helper_section.count("torch.cuda.synchronize()") == 2
+    assert (helper_section.index("torch.cuda.synchronize()")
+            < helper_section.index("start = time.perf_counter()")
+            < helper_section.index("fn()")
+            < helper_section.rindex("torch.cuda.synchronize()")
+            < helper_section.index("return time.perf_counter() - start"))
     assert "decode_token_steps = tuple(" in run_once_section
     assert "decode_tokens[:, t:t + 1]" in run_once_section
     assert "for step_ids in decode_token_steps:" in run_once_section
@@ -13087,7 +13103,7 @@ def test_nanochat_attention_reuses_non_flash_sdpa_backend_order() -> None:
     assert "_NON_FLASH_SDP_BACKENDS = tuple(" in source
     assert 'getattr(SDPBackend, "EFFICIENT_ATTENTION", None)' in source
     assert 'getattr(SDPBackend, "MATH", None)' in source
-    assert "sdpa_order = None if self.use_flash_sdp else _NON_FLASH_SDP_BACKENDS" in forward_section
+    assert "sdpa_order = None if self.use_flash_sdp and q.is_cuda else list(_NON_FLASH_SDP_BACKENDS)" in forward_section
     assert "getattr(SDPBackend" not in forward_section
     assert "for backend in (" not in forward_section
 
@@ -15279,8 +15295,6 @@ def test_train_distributed_optimized_wrappers_log_detached_loss_values() -> None
         "optimized_ddp_flash_multigpu.py",
         "optimized_zero1.py",
         "optimized_zero1_multigpu.py",
-        "optimized_zero2.py",
-        "optimized_zero2_multigpu.py",
         "optimized_zero3.py",
         "optimized_zero3_multigpu.py",
     ):
@@ -15302,7 +15316,6 @@ def test_train_distributed_baseline_wrappers_log_detached_loss_values() -> None:
         "baseline_ddp_multigpu.py",
         "baseline_ddp_flash.py",
         "baseline_ddp_flash_multigpu.py",
-        "baseline_zero2_multigpu.py",
     ):
         source = (REPO_ROOT / "labs" / "train_distributed" / relative).read_text(
             encoding="utf-8"
@@ -15320,14 +15333,10 @@ def test_train_distributed_zero_scripts_reuse_synthetic_batch_buffers() -> None:
     for relative in (
         "baseline_zero1.py",
         "baseline_zero1_multigpu.py",
-        "baseline_zero2.py",
-        "baseline_zero2_multigpu.py",
         "baseline_zero3.py",
         "baseline_zero3_multigpu.py",
         "optimized_zero1.py",
         "optimized_zero1_multigpu.py",
-        "optimized_zero2.py",
-        "optimized_zero2_multigpu.py",
         "optimized_zero3.py",
         "optimized_zero3_multigpu.py",
     ):
@@ -15342,6 +15351,19 @@ def test_train_distributed_zero_scripts_reuse_synthetic_batch_buffers() -> None:
         assert source.count("x.normal_()") >= 2
         assert source.count("y.normal_()") >= 2
         assert "torch.empty(" not in measured_loop
+
+
+def test_train_distributed_matched_zero2_keeps_reporting_outside_measured_updates() -> None:
+    source = (REPO_ROOT / "labs" / "train_distributed" / "zero2_common.py").read_text()
+    step = source.split("def training_step", 1)[1].split("def run_training", 1)[0]
+    timed = source.split("start = perf_counter()", 1)[1].split("total_time =", 1)[0]
+    assert "print(" not in step and "print(" not in timed
+    assert ".cpu()" not in step and ".item()" not in step
+    assert "x.normal_(generator=generator)" in step
+    assert "y.normal_(generator=generator)" in step
+    assert "torch.empty(" not in step and "torch.empty(" not in timed
+    assert "torch.cuda.synchronize(device)" in timed
+    assert "loss_value_buffer.detach().cpu()[0]" in source.split("total_time =", 1)[1]
 
 
 def test_train_distributed_baseline_zero3_reuses_full_param_buffers() -> None:
@@ -18321,7 +18343,7 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     )[0]
 
     assert ".detach().float().clone()" not in moe_benchmark
-    assert "expert_indices_cpu = torch.randint(0, E, (batch_seq, K))" in moe_setup
+    assert "expert_indices_cpu = torch.randint(0, E, (batch_seq, K), generator=rng)" in moe_setup
     assert "self._expert_range = range(E)" in moe_setup
     assert "torch.bincount(expert_indices_cpu.view(-1), minlength=E).tolist()" in moe_setup
     assert "torch.bincount(sorted_expert_ids, minlength=E).tolist()" not in moe_setup
@@ -18355,12 +18377,12 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     assert ".to(torch.float8_e4m3fn)" not in moe_benchmark
     assert "tokens_e = self._expert_token_views[e]" in moe_benchmark
     assert "tokens_fp8_slice = self._expert_tokens_fp8_views[e]" in moe_benchmark
-    assert "tokens_fp8_slice.copy_(tokens_e)" in moe_benchmark
+    assert "tokens_scale = quantize_e4m3(tokens_e, tokens_fp8_slice)" in moe_benchmark
     assert "weights_e = self._expert_weight_views[e]" in moe_benchmark
     assert "F.silu(gate, inplace=True)" in moe_benchmark
     assert "gate.mul_(up)" in moe_benchmark
     assert "hidden_fp8_slice = self._expert_hidden_fp8_views[e]" in moe_benchmark
-    assert "hidden_fp8_slice.copy_(gate)" in moe_benchmark
+    assert "hidden_scale = quantize_e4m3(gate, hidden_fp8_slice)" in moe_benchmark
     assert "expert_out.mul_(weights_e)" not in moe_benchmark
     assert "self._expert_output_views[e].copy_(expert_out)" not in moe_benchmark
     assert "torch.mul(expert_out, weights_e, out=self._expert_output_views[e])" in moe_benchmark
@@ -18372,8 +18394,8 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     assert "self.output = output" in moe_benchmark
     assert "self.output = output[:1, : min(8, output.shape[1])]" not in moe_benchmark
     assert "verify_output = getattr(self, \"_verify_output_buffer\", None)" in moe_capture
-    assert "output_slice = self.output[: verify_output.shape[0], : verify_output.shape[1]]" in moe_capture
-    assert "verify_output.copy_(output_slice)" in moe_capture
+    assert "self._check_full_output()" in moe_capture
+    assert "verify_output.copy_(self.output)" in moe_capture
     assert "output=verify_output" in moe_capture
     assert "self._payload_param_count = int(" in moe_source
     assert "output=output_slice.detach().float().clone()" not in moe_capture
@@ -22767,7 +22789,6 @@ def test_ch16_and_lab_forward_benchmarks_use_inference_mode() -> None:
         "labs/moe_optimization_journey/level4_triton.py",
         "labs/moe_optimization_journey/level6_full_stack.py",
         "labs/moe_optimization_journey/moe_benchmark.py",
-        "labs/train_distributed/training_utils/torchrun_harness.py",
     )
 
     for path in paths:
@@ -22778,9 +22799,6 @@ def test_ch16_and_lab_forward_benchmarks_use_inference_mode() -> None:
         )[0]
         assert "torch.inference_mode()" in benchmark_section
         assert "torch.no_grad()" not in benchmark_section
-        if path == "labs/train_distributed/training_utils/torchrun_harness.py":
-            assert "output.add_(meta_scale)" in benchmark_section
-            assert "self._output = output + meta_scale" not in benchmark_section
         if path in (
             "labs/moe_optimization_journey/baseline_moe_pad_quant.py",
             "labs/moe_optimization_journey/optimized_moe_pad_quant.py",
@@ -22835,7 +22853,8 @@ def test_moe_journey_slice_verification_reuses_buffers() -> None:
         assert ".detach().float().clone()" not in capture_section
         assert "_verify_output_buffer = None" in teardown_section or '"_verify_output_buffer"' in teardown_section
         if path.endswith("level6_native_fp8.py"):
-            assert "verify_output.copy_(output_slice)" in capture_section
+            assert "verify_output.copy_(self.output)" in capture_section
+            assert "output_slice" not in capture_section
             assert "output=verify_output" in capture_section
         else:
             assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
@@ -23890,6 +23909,16 @@ def test_moe_cuda_graphs_journey_uses_real_graph_capture_and_correct_leveling() 
 
 
 def test_persistent_decode_verification_clone_stays_out_of_hot_path() -> None:
+    common_source = (REPO_ROOT / "labs" / "persistent_decode" / "persistent_decode_common.py").read_text(
+        encoding="utf-8"
+    )
+    buffer_helper = common_source.split("def build_prefill_decode_verification_buffers", maxsplit=1)[1].split(
+        "def validate_prefill_decode_output", maxsplit=1
+    )[0]
+    assert "decode_elements + prefill_dst.numel()" in buffer_helper
+    assert "dtype=torch.float32" in buffer_helper
+    assert "payload[:decode_elements].view_as(inputs.out)" in buffer_helper
+    assert "payload[decode_elements:].view_as(prefill_dst)" in buffer_helper
     targets = [
         REPO_ROOT / "labs" / "persistent_decode" / "baseline_persistent_decode.py",
         REPO_ROOT / "labs" / "persistent_decode" / "optimized_persistent_decode_cuda.py",
@@ -23935,8 +23964,15 @@ def test_persistent_decode_verification_clone_stays_out_of_hot_path() -> None:
             )[0]
 
             assert "_verify_output_buffer" in text
-            assert "dtype=torch.float32" in setup_section
-            assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+            if "prefill_decode" in path.name:
+                assert "build_prefill_decode_verification_buffers(self.inputs, self.prefill_dst)" in setup_section
+                assert "validate_prefill_decode_output(self.inputs, self.prefill_src, self.prefill_dst)" in capture_section
+                assert "self._verify_decode_view.copy_(self.inputs.out)" in capture_section
+                assert "self._verify_prefill_view.copy_(self.prefill_dst)" in capture_section
+                assert capture_section.index("validate_prefill_decode_output(") < capture_section.index(".copy_(")
+            else:
+                assert "dtype=torch.float32" in setup_section
+                assert "self._verify_output_buffer.copy_(self.output)" in capture_section
             assert "output=self._verify_output_buffer" in capture_section
             assert "self.output.float().clone()" not in capture_section
             assert "self.output.to(dtype=torch.float32)" not in capture_section
@@ -23970,14 +24006,14 @@ def test_persistent_decode_verification_clone_stays_out_of_hot_path() -> None:
             )[0]
 
             assert "_output_view" in text
-            assert "self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]" in setup_section
+            assert "self._output_view = self.inputs.out\n" in setup_section
             assert "self.output = self._output_view" in hot_section
             assert "self._output_view.detach()" not in hot_section
             assert "self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]" not in hot_section
             assert "self._output_view = None" in teardown_section
             if path.name == "optimized_persistent_decode_triton.py":
-                assert "self._num_items = min(self.batch, self.num_programs)" in text
-                assert "self._launch_grid = (max(1, self._num_items),)" in text
+                assert "self._num_items = self.batch" in text
+                assert "self._launch_grid = (min(self.batch, self.num_programs),)" in text
                 assert "self._block_k_const = self.block_k" in text
                 assert "persistent_decode_kernel[self._launch_grid](" in setup_section
                 assert "persistent_decode_kernel[self._launch_grid](" in hot_section
@@ -24951,8 +24987,11 @@ def test_run_benchmarks_reaps_orphaned_benchmark_processes_from_older_runs_via_c
 
 
 def test_run_benchmarks_reaps_current_run_descendants() -> None:
+    if not sys.platform.startswith("linux"):
+        pytest.skip("Actual descendant reaping requires the production Linux /proc backend")
+    assert Path("/proc/self/stat").is_file(), "Linux runtime must expose /proc process metadata"
     process = subprocess.Popen(
-        ["python", "-c", "import time; time.sleep(60)"],
+        [sys.executable, "-c", "import time; time.sleep(60)"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True,
@@ -25202,7 +25241,10 @@ def test_ch19_adaptive_parallelism_elapsed_timing_uses_monotonic_clock() -> None
 
 
 def test_ch17_blackwell_profiling_ranks_top_k_without_full_sort() -> None:
-    source = (REPO_ROOT / "ch17" / "blackwell_profiling_guide.py").read_text(
+    source = (REPO_ROOT / "core" / "profiling" / "nsight_systems.py").read_text(
+        encoding="utf-8"
+    )
+    chapter_source = (REPO_ROOT / "ch17" / "blackwell_profiling_guide.py").read_text(
         encoding="utf-8"
     )
     rank_section = source.split("def _filter_and_rank_kernels", maxsplit=1)[1].split(
@@ -25210,11 +25252,18 @@ def test_ch17_blackwell_profiling_ranks_top_k_without_full_sort() -> None:
         maxsplit=1,
     )[0]
 
+    assert (
+        "from core.profiling.nsight_systems import NsightSystemsReportParser"
+        in chapter_source
+    )
+    assert "class NsightSystemsProfiler(NsightSystemsReportParser)" in chapter_source
     assert "import heapq" in source
     assert "from collections.abc import Iterable" in source
-    assert "rows: Iterable[Dict[str, str]] = kernel_rows" in rank_section
+    assert "rows: Iterable[dict[str, str]] = kernel_rows" in rank_section
     assert 'rows = (row for row in kernel_rows if pattern.search(row.get("Name", "")))' in rank_section
-    assert "return heapq.nlargest(top_k, rows, key=parse_pct)" in rank_section
+    assert "ranked = (" in rank_section
+    assert "(value := _parse_time_percentage(row)) is not None" in rank_section
+    assert "heapq.nlargest(" in rank_section
     assert 'rows = [row for row in rows if pattern.search(row.get("Name", ""))]' not in rank_section
     assert "sorted(rows, key=parse_pct" not in rank_section
 

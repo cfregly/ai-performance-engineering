@@ -1,0 +1,165 @@
+{
+  "broad_import_diagnostic": {
+    "artifacts": {
+      "import-validation.exit": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "import-validation.txt": "3ccd2c1df22e5f558b5f9e6f2917808b58e2c06fc2b903dab678ccc148735379"
+    },
+    "classification": "CONFIRMED_TARGET_RUNTIME_DEPENDENCY_HOLD__NO_SOURCE_COLD_IMPORT_DEFECT",
+    "exit_code": 1,
+    "failures": [
+      "ch10.baseline_persistent_matmul_tma: Triton unavailable",
+      "ch10.optimized_persistent_matmul_tma: Triton unavailable",
+      "ch14.baseline_triton_persistent: Triton unavailable",
+      "ch14.optimized_cuda_python: CUDA setup unavailable",
+      "ch14.optimized_triton_persistent: Triton unavailable",
+      "ch16.optimized_flashinfer_block_sparse: FlashInfer unavailable"
+    ],
+    "independent_review": {
+      "diagnostic_followup": "Multiline cuda-python failure now retains ImportError class and complete flattened guidance; validator contract tests 10 passed.",
+      "result": "All six require pinned target-runtime dependencies; no fallback or lazy-import weakening recommended.",
+      "reviewer": "remaining_import_audit",
+      "targeted_cpu_safe_tests": "14 passed"
+    },
+    "result": "594/600 imported; six explicit optional/runtime dependency failures"
+  },
+  "created_at_utc": "2026-08-31T02:15:40.165732+00:00",
+  "environment": {
+    "execution": "Darwin ARM64 CPU-only",
+    "gpu_actions": false,
+    "network_actions": false,
+    "package_install_actions": false,
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "python": "3.12.2 | packaged by conda-forge | (main, Feb 16 2024, 20:54:21) [Clang 16.0.6 ]",
+    "torch": "2.8.0"
+  },
+  "focused_cpu": {
+    "artifacts": {
+      "focused-cpu.txt": "be1630c984604e764e275ad42d4aabffd48ad9968f6149f27fdd14eafea0b59e",
+      "focused-cpu.xml": "41510758dbe4fad62d285f10dd1e8fdbf8945d29ec7e61ceabde976c00ef4701"
+    },
+    "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=code /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider -o timeout=120 --junitxml=docs/audits/2026-08-30/evidence/integration/semantic-seam-closure/focused-cpu.xml code/tests/test_core_profiling_seams.py code/tests/test_offline_profile_metadata_contract.py code/tests/test_data_loading_analysis_provider.py code/tests/test_chapter_profiling_claims.py code/tests/test_firstparty_correctness_regressions.py code/tests/test_ch03_ch04_validity_regressions.py",
+    "exit_code": 0,
+    "failed": 0,
+    "passed": 173,
+    "skipped": 6,
+    "split": {
+      "chapter_3_4_validity": {
+        "passed": 1,
+        "skipped": 6
+      },
+      "chapter_profiling_claims": {
+        "passed": 31,
+        "skipped": 0
+      },
+      "core_profiling_seams": {
+        "passed": 75,
+        "skipped": 0
+      },
+      "data_loading_provider": {
+        "passed": 13,
+        "skipped": 0
+      },
+      "extension_regressions": {
+        "passed": 24,
+        "skipped": 0
+      },
+      "offline_profile_metadata": {
+        "passed": 29,
+        "skipped": 0
+      }
+    }
+  },
+  "independent_review": {
+    "mode": "read_only_adversarial",
+    "negative_controls": [
+      "hard-link and symlink output alias rejection",
+      "malformed numeric grouping and parenthetical injection rejection",
+      "unrecognized NSYS schema, malformed row, missing name/time and out-of-range percentage rejection",
+      "source receipt retained on success and failure",
+      "zero-valued producer counter families do not become mixed precision or invent a compute peak",
+      "invalid authoritative HBM and recognized SASS counters block fallback",
+      "missing kernel name or launch ID is a structured nonzero failure"
+    ],
+    "passed": 141,
+    "result": "PASS_SOURCE_AND_CPU_CONTRACTS__RUNTIME_HARDWARE_GATES_PENDING",
+    "reviewer": "semantic_seam_review",
+    "split": {
+      "core_profiling_seams": 75,
+      "data_loading_provider": 13,
+      "extension_regressions": 24,
+      "offline_profile_metadata": 29
+    }
+  },
+  "repository": {
+    "branch": "codex/audit-remediation-20260830",
+    "head": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+    "working_tree": "dirty_uncommitted; exact file hashes below"
+  },
+  "schema_version": 1,
+  "scope": {
+    "accepted": [
+      "Offline profiling source and CPU contracts bind immutable content receipts, exact launch/device identity, strict counter grammar and non-overlapping counter families.",
+      "Operation-free captures retain zero FLOPs and a memory point without inventing a compute peak or ridge point.",
+      "Core extension registration and lifecycle behavior pass CPU/mock concurrency and failure controls for all nine chapter-owned loaders.",
+      "Core data-loading analysis has a versioned deterministic read-only provider and structured CLI/MCP failure behavior.",
+      "Chapter 17 profiler helpers require usable artifacts and an exact reviewed B200 for its B200 workflow.",
+      "All sixteen chapter 4 gradient-compression entrypoints cold-import after the shared metadata helper export repair."
+    ],
+    "local_discoveries": [
+      "LOCAL-032",
+      "LOCAL-033",
+      "LOCAL-034",
+      "LOCAL-035",
+      "LOCAL-036"
+    ],
+    "not_claimed": [
+      "No Nsight Systems or Nsight Compute binary was executed and no real profiler artifact was captured.",
+      "No CUDA, NVCC, B200, GPU, extension build, or performance qualification ran.",
+      "No Grace host, NUMA placement, memory bandwidth, or Grace-Blackwell observation ran.",
+      "The six optional/runtime-gated imports in import-validation.txt are not treated as passing coverage.",
+      "This focused checkpoint is not the fresh frozen-source full-suite receipt."
+    ]
+  },
+  "source_hashes": {
+    "code/ch04/gradient_compression_common.py": "43418a61bc235933f24b5da14a3c627858b06a6d41161e3fd448de492c6265de",
+    "code/ch06/cuda_extensions/__init__.py": "696fa783e8d3dfe456f0fcf2b1f1369705ef39f9ebee2d40593c23b837e16958",
+    "code/ch08/roofline.py": "1323fbd317b9cad08ad52b25057c47f743d2ab290ee68c1c91d58c069bc877b6",
+    "code/ch12/cuda_extensions/__init__.py": "efc567ee605e1f3eaadb5da9220cc171839a9914ca66689bd5c232634c3f50ea",
+    "code/ch17/blackwell_profiling_guide.py": "d1bd0af62a8baec0d786e7b64ce84963cbfbb997da7629616fb306dfbce62ab1",
+    "code/cli/aisp.py": "ba2164e302a3d6d855836a92dd300e7fe27252309a4e7c6c299aa9b43ab4d0ad",
+    "code/core/analysis/deep_profiling_report.py": "d1b365b4e000ded5e0828dfedbde60331f301b26b8ec4a7176efd0572948bf47",
+    "code/core/analysis/kernel_roofline.py": "6808dc445868f07e3dced39cc288a9efedacea9c07a4281a543a2f542cd34061",
+    "code/core/diagnostics/data_loading.py": "b617430e1440db004915121be07a19f58deed46bdfee85b6ec9b96fd1e4bd8f0",
+    "code/core/perf_core_base.py": "caca1622c6d1490fa384e60650290982f6df83fe26edc75405c862c7ff1ff05d",
+    "code/core/profiling/nsight_systems.py": "f0c769e7255f463e9b4e878b04678b9e06ae7690ab3b1655ff8bf3131a685359",
+    "code/core/profiling/nsys_summary.py": "811695201b71714628152bbc2c664f548414199e22e457984817de4d1946089e",
+    "code/core/scripts/harness/metrics_config.py": "6ecdb66956aa0e6588703d6ad6f0cfd12c7de33d9b1b51a4546550e4bcebab65",
+    "code/core/scripts/profiling/ncu_profile.sh": "c1a25abda1545e00e3293871d211d3f81a065da4f48a5e7c07143407f0a54127",
+    "code/core/scripts/profiling/profile.sh": "17a9117a0d26e138d3c8b12cf81269bf0bd09261f90c5867f6aed21160b65fc6",
+    "code/core/utils/extension_prewarm.py": "77295c3178b0810f6d5d40aa6a9c2a7fae1e8ec4d04a2d8a5bbfce92b38f4347",
+    "code/docs/mcp_tools.md": "ca7b2f6c04cfdf2ffb75ed842b04775067cebfa3bb5b7d0e765b64d42c72df05",
+    "code/mcp/mcp_server.py": "5468cea54abde723cd399dac7a9edb6d95e31a052c73ef4f84c51894c2a2ba14",
+    "code/scripts/utilities/precompile_cuda_extensions.py": "256f23d80fc9e40375755d4e5972b98ed958e36a6dd0f8417dea3942315fe6b0",
+    "code/tests/test_chapter_profiling_claims.py": "66ff97908666cff2345893791053abe4b1e73e1b6c0b596998247be8caaeadbb",
+    "code/tests/test_core_profiling_seams.py": "0c34f71742f810d8da3a48a38e26edd31e7bf48f99aa758560dd5d43d5dbe6fd",
+    "code/tests/test_data_loading_analysis_provider.py": "3bdec0ad423f41f7e1db6bb68405f7b778edda0696d214b84c4548cd5b987a3b",
+    "code/tests/test_firstparty_correctness_regressions.py": "8135e6e2b679b3ea0cd976935966e88aed821a73a75e52664fb51e897f825097",
+    "code/tests/test_offline_profile_metadata_contract.py": "6fe5e9a2c0abb80839cdc039ef23912b761b4242bca0fdfc41b5a228fb5401b5"
+  },
+  "static_gates": {
+    "artifact": {
+      "static-gates.txt": "945fff31135ae4e80d75e3ed21cadef8a2bb1d8c027026f4ee484d8103ee664e"
+    },
+    "checks": [
+      "py_compile",
+      "fatal Ruff E9/F63/F7/F82",
+      "bash -n profiling scripts",
+      "import-edge checker",
+      "chapter17 bounded-ranking static test",
+      "16/16 chapter4 cold imports",
+      "git diff --check"
+    ],
+    "exit_code": 0
+  },
+  "status": "PASS_FOCUSED_SOURCE_AND_CPU_SEAMS__REAL_HARDWARE_AND_FULL_SUITE_PENDING"
+}

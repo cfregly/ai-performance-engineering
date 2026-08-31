@@ -1,0 +1,234 @@
+--- preserved attention/run_cuda_acceptance.py
++++ new integration/attention-final-epoch/run_cuda_acceptance.py
+@@ -1,69 +1,184 @@
+-"""Run the actual CUDA gates only with separately authorized hardware custody.
++"""Run 25 attention and 7 prefill CUDA cases on separately authorized hardware.
+ 
+-CPU execution exits 2/HOLD. CUDA success establishes bounded correctness only,
+-not benchmark speed, SASS attribution, a release, or a performance qualification.
++Derived from evidence/attention/run_cuda_acceptance.py; the old package is intact.
++CPU/missing capability or source drift exits 2/HOLD. A zero-skip pass establishes
++bounded correctness only, never timing, sanitizer, numerical calibration or release.
+ """
+ from __future__ import annotations
++
+ import argparse
++from collections import Counter
+ from datetime import datetime, timezone
+ import hashlib
++import importlib.metadata
+ import json
++import os
+ from pathlib import Path
+ import platform
++import re
+ import shutil
+ import subprocess
+ import sys
++import traceback
+ import xml.etree.ElementTree as ET
+ 
+-ROOT = Path(__file__).resolve().parents[5]
+-TEST = 'tests/test_audit_wave1_attention_regressions.py'
++HERE = Path(__file__).resolve().parent
++ROOT = HERE.parents[5]
++EXPECTED_COUNTS = {"attention": 25, "prefill": 7, "total": 32}
++
++
++def inspect_epoch(root: Path, manifest: list[dict]) -> tuple[list[dict], list[str]]:
++    """Verify real files; missing, duplicate, unsafe or changed paths reject."""
++    if not isinstance(manifest, list) or not manifest:
++        raise ValueError("A nonempty source manifest is required")
++    observed, mismatches, seen = [], [], set()
++    for item in manifest:
++        path, expected = item["path"], item["sha256"]
++        relative = Path(path)
++        if relative.is_absolute() or ".." in relative.parts or path in seen:
++            raise ValueError(f"Unsafe or duplicate manifest path: {path}")
++        if not re.fullmatch(r"[0-9a-f]{64}", expected):
++            raise ValueError(f"Invalid SHA256 for {path}")
++        seen.add(path)
++        target = root / relative
++        if not target.resolve().is_relative_to(root.resolve()):
++            raise ValueError(f"Manifest symlink escapes repository: {path}")
++        actual = hashlib.sha256(target.read_bytes()).hexdigest() if target.is_file() else None
++        observed.append({"path": path, "sha256": actual})
++        if actual != expected:
++            mismatches.append(path)
++    return observed, mismatches
++
++
++def read_cases(path: Path) -> list[str]:
++    data = json.loads(path.read_text())
++    ids = data["nodeids"]
++    if data["counts"] != EXPECTED_COUNTS or len(ids) != 32 or len(set(ids)) != 32:
++        raise ValueError("Acceptance requires the reviewed 25+7 distinct cases")
++    for filename, count in [("test_audit_wave1_attention_regressions.py", 25),
++                            ("test_audit_wave1_prefill_full_output.py", 7)]:
++        prefix = "tests/" + filename + "::test_real_"
++        if sum(node.startswith(prefix) for node in ids) != count:
++            raise ValueError(f"Wrong case selection for {filename}")
++    return ids
++
++
++def assess_junit(path: Path, returncode: int, expected: list[str]) -> dict:
++    """Report parser only: fixtures testing this function are not GPU evidence."""
++    try:
++        root = ET.parse(path).getroot()
++        suites = list(root.iter("testsuite"))
++        counts = {key: sum(int(suite.get(key, "0")) for suite in suites)
++                  for key in ("tests", "failures", "errors", "skipped")}
++        cases = list(root.iter("testcase"))
++        observed = Counter((case.get("classname"), case.get("name")) for case in cases)
++        wanted = Counter((node.split("::", 1)[0][:-3].replace("/", "."), node.split("::", 1)[1])
++                         for node in expected)
++        unacceptable = any(case.find(tag) is not None for case in cases
++                           for tag in ("failure", "error", "skipped"))
++        accepted = (returncode == 0 and counts["tests"] == len(expected)
++                    and not any(counts[key] for key in ("failures", "errors", "skipped"))
++                    and observed == wanted and not unacceptable)
++        return {"accepted": accepted, "counts": counts,
++                "exact_case_identities": observed == wanted}
++    except (OSError, ET.ParseError, TypeError, ValueError) as error:
++        return {"accepted": False, "reason": f"Missing or invalid JUnit report: {error}"}
++
+ 
+ def main() -> int:
+     parser = argparse.ArgumentParser(description=__doc__)
+-    parser.add_argument('--output-dir', type=Path, required=True,
+-                        help='Fresh directory; existing attempts cannot be overwritten')
++    parser.add_argument("--output-dir", type=Path, required=True,
++                        help="Fresh directory; existing attempts cannot be overwritten")
+     args = parser.parse_args()
+     output = args.output_dir.resolve()
+     output.mkdir(parents=True, exist_ok=False)
+-    import torch
+-    result = dict(captured_at=datetime.now(timezone.utc).isoformat(), python=sys.version,
+-        platform=platform.platform(), torch=torch.__version__, cuda_build=torch.version.cuda,
+-        cuda_available=torch.cuda.is_available(), nvcc=shutil.which('nvcc'),
+-        gpu_executed=False, status='HOLD', performance_qualified=False,
+-        head=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip())
+-    manifest = json.loads((Path(__file__).parent / 'source_manifest.json').read_text())
+-    result['source_files'] = [dict(path=item['path'], sha256=hashlib.sha256((ROOT/item['path']).read_bytes()).hexdigest())
+-                              for item in manifest]
+-    mismatch = [item['path'] for item, recorded in zip(result['source_files'], manifest)
+-                if item['sha256'] != recorded['sha256']]
+-    if mismatch:
+-        result['reason'] = 'Source epoch differs from reviewed manifest; require a new reviewed receipt'
+-        result['mismatched_source'] = mismatch
+-    elif not torch.cuda.is_available() or not shutil.which('nvcc'):
+-        result['reason'] = 'Actual CUDA GPU and nvcc are required; skipped tests cannot qualify this package'
+-    else:
+-        result['gpu_name'] = torch.cuda.get_device_name()
+-        result['compute_capability'] = torch.cuda.get_device_capability()
+-        cmd = [sys.executable, '-m', 'pytest', '-q', '-p', 'no:cacheprovider',
+-               TEST, '-k', 'test_real_', '--junitxml', str(output/'junit.xml'),
+-               '--basetemp', str(output/'pytest-tmp')]
+-        import os
+-        env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD='1')
+-        result['command'] = cmd
+-        result['gpu_executed'] = True
+-        with (output/'pytest.log').open('w') as log:
+-            completed = subprocess.run(cmd, cwd=ROOT/'code', env=env, stdout=log, stderr=subprocess.STDOUT)
+-        result['exit_code'] = completed.returncode
+-        suites = list(ET.parse(output/'junit.xml').getroot().iter('testsuite')) if (output/'junit.xml').exists() else []
+-        counts = {name:sum(int(suite.get(name, '0')) for suite in suites)
+-                  for name in ('tests','failures','errors','skipped')}
+-        result['junit_counts'] = counts
+-        accepted = completed.returncode == 0 and counts['tests'] >= 25 and not any(counts[n] for n in ('failures','errors','skipped'))
+-        result['status'] = 'PASS_BOUNDED_CUDA_CORRECTNESS' if accepted else 'FAIL'
+-        result['reason'] = 'No performance, profiler/SASS, full-size or release qualification is implied'
+-    (output/'result.json').write_text(json.dumps(result,indent=2)+'\n')
+-    print(json.dumps({key:result[key] for key in ('status','reason','gpu_executed','performance_qualified')}))
+-    return 0 if result['status'] == 'PASS_BOUNDED_CUDA_CORRECTNESS' else 2
++    result = {"captured_at": datetime.now(timezone.utc).isoformat(), "python": sys.version,
++              "platform": platform.platform(), "status": "HOLD", "gpu_executed": False,
++              "cuda_tests_dispatched": False, "performance_qualified": False,
++              "sanitizer_qualified": False, "accuracy_thresholds_calibrated": False,
++              "expected_counts": EXPECTED_COUNTS, "case_results": []}
+ 
+-if __name__ == '__main__':
++    def save():
++        (output / "result.json").write_text(json.dumps(result, indent=2) + "\n")
++
++    try:
++        result["head"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
++        manifest_path = HERE / "source_manifest.json"
++        result["manifest_sha256"] = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
++        manifest = json.loads(manifest_path.read_text())
++        result["source_files"], mismatches = inspect_epoch(ROOT, manifest)
++        if mismatches:
++            result.update(reason="Source epoch differs from reviewed manifest; require a new reviewed receipt",
++                          mismatched_source=mismatches)
++        else:
++            ids = read_cases(HERE / "expected_cuda_cases.json")
++            import torch
++            result.update(torch=torch.__version__, cuda_build=torch.version.cuda,
++                          cuda_available=torch.cuda.is_available(), nvcc=shutil.which("nvcc"))
++            result["installed_packages"] = {}
++            for package in ("torch", "triton", "pytest", "nvidia-cutlass-dsl", "flash-attn"):
++                try:
++                    result["installed_packages"][package] = importlib.metadata.version(package)
++                except importlib.metadata.PackageNotFoundError:
++                    result["installed_packages"][package] = None
++            if not result["cuda_available"] or not result["nvcc"]:
++                result["reason"] = "Actual CUDA GPU and nvcc are required; skipped tests cannot qualify this package"
++            elif (torch.cuda.get_device_capability() not in {(10, 0), (10, 3), (12, 0), (12, 1)}
++                  or not torch.version.cuda or int(torch.version.cuda.split(".")[0]) < 13):
++                result["reason"] = "Combined prefill gate requires actual sm_100/103/120/121 and CUDA 13+ build"
++            elif os.name != "posix":
++                result["reason"] = "POSIX process containment is required for bounded CUDA workers"
++            else:
++                sys.path.insert(0, str(ROOT / "code"))
++                from tests.cuda.validation_process import run_command
++                result.update(gpu_name=torch.cuda.get_device_name(),
++                              compute_capability=torch.cuda.get_device_capability(),
++                              status="RUNNING", cuda_tests_dispatched=True, gpu_executed=None,
++                              reason="GPU execution attempted; no acceptance until every case passes")
++                save()
++                # Each selected case has its own process/log/artifacts. Prefill's
++                # inner child is bounded at 300 s; outer allowance is 600 s.
++                for index, nodeid in enumerate(ids):
++                    _, drift = inspect_epoch(ROOT, manifest)
++                    if drift:
++                        result.update(status="FAIL", reason="Source changed during validation",
++                                      mismatched_source=drift)
++                        break
++                    directory = output / f"case-{index:02d}"
++                    directory.mkdir()
++                    command = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", nodeid,
++                               "--junitxml", str(directory / "junit.xml"),
++                               "--basetemp", str(directory / "pytest-tmp")]
++                    # Child cwd/env are explicit in the launch wrapper; the
++                    # shared helper owns process-group timeout containment.
++                    launch = [sys.executable, "-c",
++                              "import os,sys; os.chdir(sys.argv[1]); os.environ['PYTEST_DISABLE_PLUGIN_AUTOLOAD']='1'; os.execv(sys.argv[2],sys.argv[2:])",
++                              str(ROOT / "code"), *command]
++                    entry = {"nodeid": nodeid, "command": command, "launch_command": launch,
++                             "cwd": str(ROOT / "code"), "environment": {"PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"},
++                             "timeout_seconds": 600}
++                    (directory / "command.json").write_text(json.dumps(entry, indent=2) + "\n")
++                    completed = run_command(launch, timeout=600)
++                    (directory / "pytest.log").write_text(completed.stdout + completed.stderr)
++                    entry.update(exit_code=completed.returncode,
++                                 assessment=assess_junit(directory / "junit.xml", completed.returncode, [nodeid]))
++                    result["case_results"].append(entry)
++                    save()
++                result["source_files_after"], drift = inspect_epoch(ROOT, manifest)
++                result["mismatched_source_after"] = drift
++                accepted = (not drift and len(result["case_results"]) == len(ids)
++                            and all(item["assessment"]["accepted"] for item in result["case_results"]))
++                result["status"] = "PASS_BOUNDED_CUDA_CORRECTNESS" if accepted else "FAIL"
++                result["gpu_executed"] = True if accepted else None
++                result["reason"] = ("All 32 exact cases passed without skip; no performance, sanitizer, full-size or accuracy-calibration qualification"
++                                    if accepted else "One or more exact CUDA cases failed, skipped, timed out, or source drifted")
++    except Exception:
++        result.update(status="FAIL", reason=traceback.format_exc())
++    save()
++    print(json.dumps({key: result[key] for key in
++                      ("status", "reason", "gpu_executed", "cuda_tests_dispatched", "performance_qualified")}))
++    return 0 if result["status"] == "PASS_BOUNDED_CUDA_CORRECTNESS" else 2
++
++
++if __name__ == "__main__":
+     raise SystemExit(main())

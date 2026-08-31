@@ -1,0 +1,9 @@
+{
+  "at": "2026-08-31T00:39:04.308076+00:00",
+  "original_findings": 128,
+  "original_identifiers_and_text_unchanged": true,
+  "source_capture_sha256": "474779ab49b67c5c888e5f689b2400204b6d0f46f304219cedd0773694b6e1ba",
+  "expected_source_capture_sha256": "474779ab49b67c5c888e5f689b2400204b6d0f46f304219cedd0773694b6e1ba",
+  "tracked_deletions": [],
+  "scope": "Original inventory/capture and preservation check before mutable ledger follow-up; source/runtime verification reported separately."
+}

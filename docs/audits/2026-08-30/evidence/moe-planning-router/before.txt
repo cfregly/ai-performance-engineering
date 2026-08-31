@@ -1,0 +1,243 @@
+FFFFF..FFFFFFF.                                                          [100%]
+=================================== FAILURES ===================================
+_______ test_dgx_scenarios_use_matching_cluster_and_model[memory_budget] _______
+
+name = 'memory_budget'
+
+    @pytest.mark.parametrize("name", ["memory_budget", "moe_grouping", "network_affinity", "parallelism_breakdown", "pipeline_schedule"])
+    def test_dgx_scenarios_use_matching_cluster_and_model(name):
+        pair = get_scenario_pairs()[name]
+>       assert (pair.cluster, pair.model) == SPEC_PRESETS["dgx_a100_175b"]
+E       AssertionError: assert (ClusterSpec(...type_bytes=2)) == (ClusterSpec(...type_bytes=2))
+E         
+E         At index 0 diff: ClusterSpec(name='GB200 NVL72 (8 racks, dual 800G CX8)', nodes=72, gpus_per_node=8, nics_per_node=2, nic_bandwidth_gbps=800.0, nvlink_bandwidth_tbps=1.8, hbm_gb=192.0, interconnect='InfiniBand') != ClusterSpec(name='DGX A100 (16 nodes, dual HDR100)', nodes=16, gpus_per_node=8, nics_per_node=2, nic_bandwidth_gbps=100.0, nvlink_bandwidth_tbps=0.6, hbm_gb=80.0, interconnect='InfiniBand')
+E         Use -v to get more diff
+
+tests/test_audit_wave1_moe_planning_router.py:23: AssertionError
+_______ test_dgx_scenarios_use_matching_cluster_and_model[moe_grouping] ________
+
+name = 'moe_grouping'
+
+    @pytest.mark.parametrize("name", ["memory_budget", "moe_grouping", "network_affinity", "parallelism_breakdown", "pipeline_schedule"])
+    def test_dgx_scenarios_use_matching_cluster_and_model(name):
+        pair = get_scenario_pairs()[name]
+>       assert (pair.cluster, pair.model) == SPEC_PRESETS["dgx_a100_175b"]
+E       AssertionError: assert (ClusterSpec(...type_bytes=2)) == (ClusterSpec(...type_bytes=2))
+E         
+E         At index 0 diff: ClusterSpec(name='GB200 NVL72 (8 racks, dual 800G CX8)', nodes=72, gpus_per_node=8, nics_per_node=2, nic_bandwidth_gbps=800.0, nvlink_bandwidth_tbps=1.8, hbm_gb=192.0, interconnect='InfiniBand') != ClusterSpec(name='DGX A100 (16 nodes, dual HDR100)', nodes=16, gpus_per_node=8, nics_per_node=2, nic_bandwidth_gbps=100.0, nvlink_bandwidth_tbps=0.6, hbm_gb=80.0, interconnect='InfiniBand')
+E         Use -v to get more diff
+
+tests/test_audit_wave1_moe_planning_router.py:23: AssertionError
+_____ test_dgx_scenarios_use_matching_cluster_and_model[network_affinity] ______
+
+name = 'network_affinity'
+
+    @pytest.mark.parametrize("name", ["memory_budget", "moe_grouping", "network_affinity", "parallelism_breakdown", "pipeline_schedule"])
+    def test_dgx_scenarios_use_matching_cluster_and_model(name):
+        pair = get_scenario_pairs()[name]
+>       assert (pair.cluster, pair.model) == SPEC_PRESETS["dgx_a100_175b"]
+E       AssertionError: assert (ClusterSpec(...type_bytes=2)) == (ClusterSpec(...type_bytes=2))
+E         
+E         At index 0 diff: ClusterSpec(name='GB200 NVL72 (8 racks, dual 800G CX8)', nodes=72, gpus_per_node=8, nics_per_node=2, nic_bandwidth_gbps=800.0, nvlink_bandwidth_tbps=1.8, hbm_gb=192.0, interconnect='InfiniBand') != ClusterSpec(name='DGX A100 (16 nodes, dual HDR100)', nodes=16, gpus_per_node=8, nics_per_node=2, nic_bandwidth_gbps=100.0, nvlink_bandwidth_tbps=0.6, hbm_gb=80.0, interconnect='InfiniBand')
+E         Use -v to get more diff
+
+tests/test_audit_wave1_moe_planning_router.py:23: AssertionError
+___ test_dgx_scenarios_use_matching_cluster_and_model[parallelism_breakdown] ___
+
+name = 'parallelism_breakdown'
+
+    @pytest.mark.parametrize("name", ["memory_budget", "moe_grouping", "network_affinity", "parallelism_breakdown", "pipeline_schedule"])
+    def test_dgx_scenarios_use_matching_cluster_and_model(name):
+        pair = get_scenario_pairs()[name]
+>       assert (pair.cluster, pair.model) == SPEC_PRESETS["dgx_a100_175b"]
+E       AssertionError: assert (ClusterSpec(...type_bytes=2)) == (ClusterSpec(...type_bytes=2))
+E         
+E         At index 0 diff: ClusterSpec(name='GB200 NVL72 (8 racks, dual 800G CX8)', nodes=72, gpus_per_node=8, nics_per_node=2, nic_bandwidth_gbps=800.0, nvlink_bandwidth_tbps=1.8, hbm_gb=192.0, interconnect='InfiniBand') != ClusterSpec(name='DGX A100 (16 nodes, dual HDR100)', nodes=16, gpus_per_node=8, nics_per_node=2, nic_bandwidth_gbps=100.0, nvlink_bandwidth_tbps=0.6, hbm_gb=80.0, interconnect='InfiniBand')
+E         Use -v to get more diff
+
+tests/test_audit_wave1_moe_planning_router.py:23: AssertionError
+_____ test_dgx_scenarios_use_matching_cluster_and_model[pipeline_schedule] _____
+
+name = 'pipeline_schedule'
+
+    @pytest.mark.parametrize("name", ["memory_budget", "moe_grouping", "network_affinity", "parallelism_breakdown", "pipeline_schedule"])
+    def test_dgx_scenarios_use_matching_cluster_and_model(name):
+        pair = get_scenario_pairs()[name]
+>       assert (pair.cluster, pair.model) == SPEC_PRESETS["dgx_a100_175b"]
+E       AssertionError: assert (ClusterSpec(...type_bytes=2)) == (ClusterSpec(...type_bytes=2))
+E         
+E         At index 0 diff: ClusterSpec(name='GB200 NVL72 (8 racks, dual 800G CX8)', nodes=72, gpus_per_node=8, nics_per_node=2, nic_bandwidth_gbps=800.0, nvlink_bandwidth_tbps=1.8, hbm_gb=192.0, interconnect='InfiniBand') != ClusterSpec(name='DGX A100 (16 nodes, dual HDR100)', nodes=16, gpus_per_node=8, nics_per_node=2, nic_bandwidth_gbps=100.0, nvlink_bandwidth_tbps=0.6, hbm_gb=80.0, interconnect='InfiniBand')
+E         Use -v to get more diff
+
+tests/test_audit_wave1_moe_planning_router.py:23: AssertionError
+___________ test_no_expert_collective_or_network_hotspot_for_ep_one ____________
+
+    def test_no_expert_collective_or_network_hotspot_for_ep_one():
+        pair = get_scenario_pairs()["gpt_gb200"]
+        plan = replace(pair.optimized, ep=1, cross_node_ep=True)
+        report = PlanEvaluator(pair.cluster, pair.model).analyze(plan)
+>       assert report.ep_time_ms == 0
+E       AssertionError: assert 533.3333333333334 == 0
+E        +  where 533.3333333333334 = PlanReport(plan_name='Optimized GPT-OSS-120B (DP8×PP6×TP3×EP4)', world_size=144, world_size_matches=False, dp=8, pp=6,... embeddings/head; later stages balanced', 'TP raised to 3 to trim per-rank params/activations without leaving NVLink']).ep_time_ms
+
+tests/test_audit_wave1_moe_planning_router.py:46: AssertionError
+_________ test_network_messages_use_configured_interconnect_and_rates __________
+
+    def test_network_messages_use_configured_interconnect_and_rates():
+        cluster, model = SPEC_PRESETS["gpt_oss_120b_gb200_ethernet"]
+        plan = replace(get_scenario_pairs()["gpt_gb200"].optimized, cross_node_ep=True)
+        report = PlanEvaluator(cluster, model).analyze(plan)
+        text = "\n".join(report.hotspots + report.affinity)
+>       assert "Ethernet" in text and "400" in text
+E       AssertionError: assert ('Ethernet' in 'Expert groups span nodes, forcing HDR100 all-to-all traffic\nPipeline activation transfers saturate HDR100\nNodes per... nodes per stage: 1.5\nPer-stage TP×EP grid: 3×4 -> 12 GPUs (available 12.0)\nEP communication: cross-node over HDR100')
+
+tests/test_audit_wave1_moe_planning_router.py:57: AssertionError
+___________ test_decimal_network_units_and_zero_payload_without_link ___________
+
+    def test_decimal_network_units_and_zero_payload_without_link():
+>       assert _bytes_to_ms(1e9, 100) == pytest.approx(10.0)
+E       assert 9.313225746154785 == 10.0 ± 1.0e-05
+E         
+E         comparison failed
+E         Obtained: 9.313225746154785
+E         Expected: 10.0 ± 1.0e-05
+
+tests/test_audit_wave1_moe_planning_router.py:63: AssertionError
+___ test_adaptive_router_uses_each_selected_experts_second_layer[1-1-False] ____
+
+batch = 1, top_k = 1, training = False
+
+    @pytest.mark.parametrize("batch,top_k,training", [(1, 1, False), (3, 2, False), (5, 4, False), (3, 2, True), (0, 2, False)])
+    def test_adaptive_router_uses_each_selected_experts_second_layer(batch, top_k, training):
+        import copy
+    
+        torch.manual_seed(730)
+        model = AdaptiveTopKMoE(hidden_size=3, num_experts=4, top_k=top_k).double()
+        # Every expert has distinct nonzero second-layer weights. Force the top-1
+        # case away from expert0 so this cannot pass by accidentally choosing it.
+        with torch.no_grad():
+            model.router.weight.zero_()
+            model.router.bias.copy_(torch.tensor([-4.0, -1.0, 1.0, 2.0]))
+            model.expert_fc2.weight.add_(torch.arange(4).repeat_interleave(3).unsqueeze(1))
+        oracle = copy.deepcopy(model)
+        backing = torch.randn(batch, 6, dtype=torch.float64)
+        tokens = backing[:, ::2].requires_grad_(training)
+        reference_tokens = tokens.detach().clone().requires_grad_(training)
+        with torch.set_grad_enabled(training):
+            actual = model(tokens)
+            expected = reference(oracle, reference_tokens)
+>           torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+E           AssertionError: Tensor-likes are not close!
+E           
+E           Mismatched elements: 3 / 3 (100.0%)
+E           Greatest absolute difference: 0.8803204060482901 at index (0, 2) (up to 1e-12 allowed)
+E           Greatest relative difference: 1.0165386053270442 at index (0, 2) (up to 1e-12 allowed)
+
+tests/test_audit_wave1_moe_planning_router.py:99: AssertionError
+___ test_adaptive_router_uses_each_selected_experts_second_layer[3-2-False] ____
+
+batch = 3, top_k = 2, training = False
+
+    @pytest.mark.parametrize("batch,top_k,training", [(1, 1, False), (3, 2, False), (5, 4, False), (3, 2, True), (0, 2, False)])
+    def test_adaptive_router_uses_each_selected_experts_second_layer(batch, top_k, training):
+        import copy
+    
+        torch.manual_seed(730)
+        model = AdaptiveTopKMoE(hidden_size=3, num_experts=4, top_k=top_k).double()
+        # Every expert has distinct nonzero second-layer weights. Force the top-1
+        # case away from expert0 so this cannot pass by accidentally choosing it.
+        with torch.no_grad():
+            model.router.weight.zero_()
+            model.router.bias.copy_(torch.tensor([-4.0, -1.0, 1.0, 2.0]))
+            model.expert_fc2.weight.add_(torch.arange(4).repeat_interleave(3).unsqueeze(1))
+        oracle = copy.deepcopy(model)
+        backing = torch.randn(batch, 6, dtype=torch.float64)
+        tokens = backing[:, ::2].requires_grad_(training)
+        reference_tokens = tokens.detach().clone().requires_grad_(training)
+        with torch.set_grad_enabled(training):
+            actual = model(tokens)
+            expected = reference(oracle, reference_tokens)
+>           torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+E           AssertionError: Tensor-likes are not close!
+E           
+E           Mismatched elements: 9 / 9 (100.0%)
+E           Greatest absolute difference: 1.7364773267781963 at index (2, 1) (up to 1e-12 allowed)
+E           Greatest relative difference: 1.252333337266287 at index (1, 0) (up to 1e-12 allowed)
+
+tests/test_audit_wave1_moe_planning_router.py:99: AssertionError
+___ test_adaptive_router_uses_each_selected_experts_second_layer[5-4-False] ____
+
+batch = 5, top_k = 4, training = False
+
+    @pytest.mark.parametrize("batch,top_k,training", [(1, 1, False), (3, 2, False), (5, 4, False), (3, 2, True), (0, 2, False)])
+    def test_adaptive_router_uses_each_selected_experts_second_layer(batch, top_k, training):
+        import copy
+    
+        torch.manual_seed(730)
+        model = AdaptiveTopKMoE(hidden_size=3, num_experts=4, top_k=top_k).double()
+        # Every expert has distinct nonzero second-layer weights. Force the top-1
+        # case away from expert0 so this cannot pass by accidentally choosing it.
+        with torch.no_grad():
+            model.router.weight.zero_()
+            model.router.bias.copy_(torch.tensor([-4.0, -1.0, 1.0, 2.0]))
+            model.expert_fc2.weight.add_(torch.arange(4).repeat_interleave(3).unsqueeze(1))
+        oracle = copy.deepcopy(model)
+        backing = torch.randn(batch, 6, dtype=torch.float64)
+        tokens = backing[:, ::2].requires_grad_(training)
+        reference_tokens = tokens.detach().clone().requires_grad_(training)
+        with torch.set_grad_enabled(training):
+            actual = model(tokens)
+            expected = reference(oracle, reference_tokens)
+>           torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+E           AssertionError: Tensor-likes are not close!
+E           
+E           Mismatched elements: 15 / 15 (100.0%)
+E           Greatest absolute difference: 4.0759805732403125 at index (2, 1) (up to 1e-12 allowed)
+E           Greatest relative difference: 4.3895425980594585 at index (0, 1) (up to 1e-12 allowed)
+
+tests/test_audit_wave1_moe_planning_router.py:99: AssertionError
+____ test_adaptive_router_uses_each_selected_experts_second_layer[3-2-True] ____
+
+batch = 3, top_k = 2, training = True
+
+    @pytest.mark.parametrize("batch,top_k,training", [(1, 1, False), (3, 2, False), (5, 4, False), (3, 2, True), (0, 2, False)])
+    def test_adaptive_router_uses_each_selected_experts_second_layer(batch, top_k, training):
+        import copy
+    
+        torch.manual_seed(730)
+        model = AdaptiveTopKMoE(hidden_size=3, num_experts=4, top_k=top_k).double()
+        # Every expert has distinct nonzero second-layer weights. Force the top-1
+        # case away from expert0 so this cannot pass by accidentally choosing it.
+        with torch.no_grad():
+            model.router.weight.zero_()
+            model.router.bias.copy_(torch.tensor([-4.0, -1.0, 1.0, 2.0]))
+            model.expert_fc2.weight.add_(torch.arange(4).repeat_interleave(3).unsqueeze(1))
+        oracle = copy.deepcopy(model)
+        backing = torch.randn(batch, 6, dtype=torch.float64)
+        tokens = backing[:, ::2].requires_grad_(training)
+        reference_tokens = tokens.detach().clone().requires_grad_(training)
+        with torch.set_grad_enabled(training):
+            actual = model(tokens)
+            expected = reference(oracle, reference_tokens)
+>           torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+E           AssertionError: Tensor-likes are not close!
+E           
+E           Mismatched elements: 9 / 9 (100.0%)
+E           Greatest absolute difference: 1.7364773267781963 at index (2, 1) (up to 1e-12 allowed)
+E           Greatest relative difference: 1.252333337266287 at index (1, 0) (up to 1e-12 allowed)
+
+tests/test_audit_wave1_moe_planning_router.py:99: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_audit_wave1_moe_planning_router.py::test_dgx_scenarios_use_matching_cluster_and_model[memory_budget]
+FAILED tests/test_audit_wave1_moe_planning_router.py::test_dgx_scenarios_use_matching_cluster_and_model[moe_grouping]
+FAILED tests/test_audit_wave1_moe_planning_router.py::test_dgx_scenarios_use_matching_cluster_and_model[network_affinity]
+FAILED tests/test_audit_wave1_moe_planning_router.py::test_dgx_scenarios_use_matching_cluster_and_model[parallelism_breakdown]
+FAILED tests/test_audit_wave1_moe_planning_router.py::test_dgx_scenarios_use_matching_cluster_and_model[pipeline_schedule]
+FAILED tests/test_audit_wave1_moe_planning_router.py::test_no_expert_collective_or_network_hotspot_for_ep_one
+FAILED tests/test_audit_wave1_moe_planning_router.py::test_network_messages_use_configured_interconnect_and_rates
+FAILED tests/test_audit_wave1_moe_planning_router.py::test_decimal_network_units_and_zero_payload_without_link
+FAILED tests/test_audit_wave1_moe_planning_router.py::test_adaptive_router_uses_each_selected_experts_second_layer[1-1-False]
+FAILED tests/test_audit_wave1_moe_planning_router.py::test_adaptive_router_uses_each_selected_experts_second_layer[3-2-False]
+FAILED tests/test_audit_wave1_moe_planning_router.py::test_adaptive_router_uses_each_selected_experts_second_layer[5-4-False]
+FAILED tests/test_audit_wave1_moe_planning_router.py::test_adaptive_router_uses_each_selected_experts_second_layer[3-2-True]
+12 failed, 3 passed in 1.71s

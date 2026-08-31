@@ -1,0 +1,12 @@
+{
+  "scope": "Real old Linear/meta CPU computation only; explicit CPU device, never GPU or child-training evidence",
+  "script_would_exit": 37,
+  "child_launched": false,
+  "different_child_args_have_identical_verification_output": true,
+  "output_shape": [
+    4,
+    186
+  ],
+  "cached_outputs_exist": true,
+  "output_abs_max": 2.016141176223755
+}

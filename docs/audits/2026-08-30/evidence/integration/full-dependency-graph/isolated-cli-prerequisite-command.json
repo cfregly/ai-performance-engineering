@@ -1,0 +1,22 @@
+{
+  "argv": [
+    "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+    "-m",
+    "pip",
+    "install",
+    "--no-cache-dir",
+    "--only-binary",
+    ":all:",
+    "--index-url",
+    "https://pypi.org/simple",
+    "--report",
+    "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/full-dependency-graph/isolated-cli-prerequisite-report.json",
+    "torch==2.9.1",
+    "numpy==2.1.2",
+    "psutil==7.1.0"
+  ],
+  "cwd": "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8",
+  "exit_code": 0,
+  "elapsed_seconds": 17.999207973480225,
+  "scope": "Only new task venv; real Darwin arm64 wheels for CLI imports. Torch2.9.1 without CUDA localversion is not CUDA/nativeLinux qualification."
+}

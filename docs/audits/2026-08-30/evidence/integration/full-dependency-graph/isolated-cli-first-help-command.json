@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+    "-m",
+    "cli.aisp",
+    "bench",
+    "list-targets",
+    "--help"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "exit_code": 0,
+  "elapsed_seconds": 0.20297598838806152
+}

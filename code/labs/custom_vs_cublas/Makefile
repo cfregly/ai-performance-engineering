@@ -1,18 +1,11 @@
 # Makefile for Matching cuBLAS Lab
 
-NVCC = nvcc
-ARCH ?= sm_100
+.DEFAULT_GOAL := all
+include ../../core/common/cuda_arch.mk
 
-# Detect architecture if not specified
-ifeq ($(ARCH),)
-    ARCH := $(shell nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1 | tr -d '.' | sed 's/^/sm_/')
-endif
-
-NVCC_FLAGS = -O3 -std=c++17 \
-    -gencode arch=compute_100a,code=[sm_100a,compute_100a] \
-    --expt-relaxed-constexpr \
-    -Xcompiler -fPIC \
-    -lineinfo
+# This target contains the plain GEMM baseline. The tcgen05 Python extensions
+# have their own build path and require architecture-specific 100a/103a code.
+NVCC_FLAGS = $(CUDA_NVCC_ARCH_FLAGS) -lineinfo
 
 TARGETS = kernels.so
 
@@ -25,4 +18,3 @@ clean:
 	rm -f $(TARGETS) *.o
 
 .PHONY: all clean
-

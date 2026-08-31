@@ -10,11 +10,25 @@ Example:
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import sys
 from pathlib import Path
 from typing import Iterable
 
-from ch17.blackwell_profiling_guide import NsightSystemsProfiler  # noqa: E402
+from core.profiling.nsight_systems import NsightSystemsReportParser
+
+
+def _paths_refer_to_same_file(first: Path, second: Path) -> bool:
+    """Return true for lexical, symlink, or hard-link aliases."""
+    first_path = first.expanduser().resolve()
+    second_path = second.expanduser().resolve()
+    if first_path == second_path:
+        return True
+    try:
+        return os.path.samefile(first_path, second_path)
+    except (FileNotFoundError, OSError):
+        return False
 
 
 def _collect_reports(explicit: Iterable[str], pattern: str | None) -> list[Path]:
@@ -26,6 +40,10 @@ def _collect_reports(explicit: Iterable[str], pattern: str | None) -> list[Path]
             reports.extend(sorted(path.glob("*.nsys-rep")))
             reports.extend(sorted(path.glob("*.qdrep")))
         elif path.is_file():
+            reports.append(path)
+        else:
+            # An explicit path is a requested input, not a discovery pattern.
+            # Preserve it so the caller receives a concrete failure and nonzero exit.
             reports.append(path)
 
     if pattern:
@@ -44,8 +62,20 @@ def _collect_reports(explicit: Iterable[str], pattern: str | None) -> list[Path]
 
 
 def _format_summary(report: Path, data: dict) -> str:
+    source = data.get(
+        "source",
+        {
+            "requested_path": str(report),
+            "resolved_path": str(report.expanduser().resolve()),
+            "sha256": None,
+            "size_bytes": None,
+            "status": "unknown",
+            "error": "parser did not provide a source receipt",
+        },
+    )
     lines = [
         f"=== Nsight Systems Summary ({report}) ===",
+        f"Source receipt: {json.dumps(source, sort_keys=True)}",
     ]
     kernels = data["kernels"]
     if not kernels:
@@ -76,7 +106,7 @@ def _format_summary(report: Path, data: dict) -> str:
     return "\n".join(lines)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Summarise Nsight Systems reports (cuda_gpu_kern_sum)."
     )
@@ -110,38 +140,66 @@ def main() -> int:
         help="Optional file to write the summary. Printed to stdout otherwise.",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    if args.top_k <= 0:
+        print("--top-k must be a positive integer.", file=sys.stderr)
+        return 1
 
     reports = _collect_reports(args.report, args.glob)
     if not reports:
         print("No Nsight Systems reports found.", file=sys.stderr)
-        return 0
+        return 1
+    output_path = Path(args.output).expanduser().resolve() if args.output is not None else None
+    if output_path is not None:
+        if any(_paths_refer_to_same_file(output_path, report) for report in reports):
+            print("--output must not alias an input report path.", file=sys.stderr)
+            return 1
 
     summaries: list[str] = []
+    successful_reports = 0
     for report in reports:
         try:
-            data = NsightSystemsProfiler.summarize_report(
+            data = NsightSystemsReportParser.summarize_report(
                 str(report),
                 kernel_regex=args.kernel_regex,
                 top_k=args.top_k,
                 print_summary=False,
             )
+            formatted = _format_summary(report, data)
         except Exception as exc:
-            summaries.append(f"=== {report} ===\nFailed to summarise: {exc}")
+            source = getattr(
+                exc,
+                "source",
+                {
+                    "requested_path": str(report),
+                    "resolved_path": str(report.expanduser().resolve()),
+                    "sha256": None,
+                    "size_bytes": None,
+                    "status": "error",
+                    "error": str(exc),
+                },
+            )
+            summaries.append(
+                f"=== {report} ===\n"
+                f"Source receipt: {json.dumps(source, sort_keys=True)}\n"
+                f"Failed to summarise: {exc}"
+            )
             continue
-        summaries.append(_format_summary(report, data))
+        summaries.append(formatted)
+        successful_reports += 1
 
     output_text = "\n\n".join(summaries)
 
-    if args.output:
-        output_path = Path(args.output)
+    if output_path is not None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(output_text + "\n")
         print(f"Wrote Nsight Systems summary to {output_path}")
     else:
         print(output_text)
 
-    return 0
+    if successful_reports == len(reports):
+        return 0
+    return 3 if successful_reports else 2
 
 
 if __name__ == "__main__":

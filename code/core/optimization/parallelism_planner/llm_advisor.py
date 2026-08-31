@@ -11,6 +11,9 @@ Uses LLM intelligence combined with our comprehensive system context to provide:
 
 The LLM receives rich system context (hardware, software, topology, benchmarks)
 and generates tailored recommendations rather than hard-coded rules.
+
+Anthropic defaults to Claude Sonnet 4.6. ANTHROPIC_MODEL, then PERF_LLM_MODEL,
+can explicitly select another model.
 """
 
 from __future__ import annotations
@@ -21,6 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 from enum import Enum
 
+from core.llm import DEFAULT_ANTHROPIC_MODEL
 
 class OptimizationGoal(Enum):
     """Optimization goals for LLM advisor."""
@@ -434,7 +438,7 @@ Provide ONLY the JSON output, no additional text.
         try:
             if self.llm_provider == "anthropic":
                 response = client.messages.create(
-                    model="claude-sonnet-4-20250514",
+                    model=os.environ.get("ANTHROPIC_MODEL") or os.environ.get("PERF_LLM_MODEL") or DEFAULT_ANTHROPIC_MODEL,
                     max_tokens=8192,
                     system=self.SYSTEM_PROMPT,
                     messages=[{"role": "user", "content": prompt}]

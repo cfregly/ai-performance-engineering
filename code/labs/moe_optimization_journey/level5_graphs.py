@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""Level 5: BMM fusion on the shared journey model.
+"""Level 5: Padded batched GEMMs.
 
-ADDS: Vectorized scatter plus a single batched-matmul expert path.
+Adds padded batched-matmul dispatch to the shared BF16 model; no distributed or multi-stream expert parallelism is enabled.
 
-Cumulative: batched + fused + mem_efficient + grouped + BMM fusion
-"""
+The filename and class are retained for compatibility. The LEVEL mapping,
+not a legacy filename, determines execution. These shared levels do not use
+FP8 quantization. No speedup is established by selecting a level."""
 
 from labs.moe_optimization_journey.moe_benchmark import MoEJourneyBenchmark, run_level
 
 
 class Level5Graphs(MoEJourneyBenchmark):
-    """Level 5 shared BMM-fusion benchmark."""
+    """Shared level 5: Padded batched GEMMs."""
 
     LEVEL = 5
 

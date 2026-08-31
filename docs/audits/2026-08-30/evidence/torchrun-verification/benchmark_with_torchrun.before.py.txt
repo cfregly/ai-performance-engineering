@@ -1,0 +1,313 @@
+def _benchmark_with_torchrun(self, benchmark: BaseBenchmark, config: BenchmarkConfig) -> PydanticBenchmarkResult:
+        """Launch benchmark via torchrun for multi-GPU targets."""
+        import inspect
+        print("[harness] _benchmark_with_torchrun start", flush=True)
+
+        def _filter_logs(lines: List[str], dedupe: bool = True) -> List[str]:
+            filtered: List[str] = []
+            seen: set = set()
+            for line in lines:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                key = stripped.lower()
+                if dedupe and key in seen:
+                    continue
+                seen.add(key)
+                # Keep messages that either don't mention rank or explicitly mention rank 0
+                if "rank 0" in key or "local_rank: 0" in key or "r0" in key:
+                    filtered.append(stripped)
+                elif "rank" not in key or "world_size" in key:
+                    filtered.append(stripped)
+            return filtered
+
+        errors: List[str] = []
+        spec: Optional[TorchrunLaunchSpec] = None
+        try:
+            getter = getattr(benchmark, "get_torchrun_spec", None)
+            if callable(getter):
+                spec = getter(config)
+        except Exception as exc:  # pragma: no cover - defensive
+            errors.append(f"Failed to build torchrun spec: {exc}")
+        if spec is None:
+            # Fallback to module path if provided
+            benchmark_module = inspect.getmodule(benchmark) or inspect.getmodule(benchmark.__class__)
+            module_path = Path(getattr(benchmark_module, "__file__", "")).resolve()
+            spec = TorchrunLaunchSpec(script_path=module_path)
+        print(
+            f"[harness] torchrun spec script={spec.script_path} module={spec.module_name} args={spec.script_args}",
+            flush=True,
+        )
+
+        script_path = Path(spec.script_path).resolve() if spec and spec.script_path is not None else None
+        module_name = spec.module_name if spec else None
+        if bool(script_path) == bool(module_name):
+            raise RuntimeError(
+                "SKIPPED: Torchrun launch requires exactly one of script_path or module_name."
+            )
+        if script_path is not None and not script_path.exists():
+            raise RuntimeError("SKIPPED: Torchrun launch requested but script_path does not exist.")
+
+        world_size_hint = self._world_size_hint(config)
+        multi_gpu_required = bool(spec.multi_gpu_required or getattr(config, "multi_gpu_required", False))
+        if multi_gpu_required and (world_size_hint is not None and world_size_hint < 2):
+            message = "SKIPPED: Multi-GPU benchmark requires nproc_per_node>=2."
+            errors.append(message)
+            raise RuntimeError(message)
+
+        nproc_per_node = getattr(config, "nproc_per_node", None) or 1
+        def _sockets_permitted() -> bool:
+            """Return True if the runtime can create sockets (required by torchrun rendezvous)."""
+            try:
+                import socket
+
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.close()
+                return True
+            except Exception:
+                return False
+
+        sockets_permitted = _sockets_permitted()
+
+        # Torchrun rendezvous uses TCPStore even when nproc_per_node=1. Some sandboxed
+        # environments disallow socket syscalls entirely; in that case, fall back to
+        # launching the wrapper directly for single-process runs so we can still enforce
+        # invariants like seed immutability.
+        if not sockets_permitted:
+            nnodes = int(getattr(config, "nnodes", None) or 1)
+            if nnodes != 1:
+                raise RuntimeError("Torchrun launch requires socket permissions (nnodes>1 requested).")
+            if int(nproc_per_node) != 1:
+                raise RuntimeError("Torchrun launch requires socket permissions (nproc_per_node>1 requested).")
+            if getattr(config, "rdzv_backend", None) or getattr(config, "rdzv_endpoint", None):
+                raise RuntimeError("Torchrun rendezvous flags require socket permissions in this environment.")
+            print("[harness] sockets unavailable; launching torchrun wrapper directly (single process)", flush=True)
+            torchrun_cmd = [sys.executable]
+        else:
+            # A PATH torchrun can belong to another Python/PyTorch environment.
+            # Preserve the actual harness interpreter and dependency versions.
+            torchrun_cmd = [
+                sys.executable,
+                "-m",
+                "torch.distributed.run",
+                "--nproc_per_node",
+                str(nproc_per_node),
+            ]
+        if getattr(config, "nnodes", None):
+            torchrun_cmd.extend(["--nnodes", str(config.nnodes)])
+        if getattr(config, "rdzv_backend", None) or getattr(config, "nnodes", None):
+            torchrun_cmd.extend(["--rdzv_backend", getattr(config, "rdzv_backend", None) or "c10d"])
+        if getattr(config, "rdzv_endpoint", None):
+            torchrun_cmd.extend(["--rdzv_endpoint", str(config.rdzv_endpoint)])
+
+        def _config_args_from_map() -> List[str]:
+            args: List[str] = []
+            for key, flag in spec.config_arg_map.items():
+                if not flag or not hasattr(config, key):
+                    continue
+                value = getattr(config, key)
+                if value is None:
+                    continue
+                if isinstance(value, bool):
+                    if value:
+                        args.append(flag)
+                else:
+                    args.extend([flag, str(value)])
+            return args
+
+        extra_args: List[str] = []
+        target_label = getattr(config, "target_label", None)
+        if target_label:
+            target_overrides = _lookup_target_extra_args(
+                (getattr(config, "target_extra_args", {}) or {}),
+                target_label,
+            )
+            if target_overrides:
+                if isinstance(target_overrides, str):
+                    extra_args.extend(shlex.split(target_overrides))
+                else:
+                    extra_args.extend(list(target_overrides))
+
+        script_args = list(spec.script_args)
+        script_args.extend(_config_args_from_map())
+        script_args.extend(extra_args)
+
+        if self._seed_info is None:
+            self._ensure_runtime_initialized()
+        expected_torch_seed = getattr(self, "_seed_info", {}).get("torch_seed")
+        if expected_torch_seed is None:
+            raise RuntimeError("Missing expected torch seed for torchrun enforcement")
+
+        wrapper_args: List[str] = [
+            "--aisp-expected-torch-seed",
+            str(int(expected_torch_seed)),
+        ]
+        if script_path is not None:
+            wrapper_args[0:0] = ["--aisp-target-script", str(script_path)]
+        else:
+            wrapper_args[0:0] = ["--aisp-target-module", str(module_name)]
+        if getattr(config, "deterministic", False):
+            wrapper_args.append("--aisp-deterministic")
+
+        if torch.cuda.is_available():
+            expected_cuda_seed = getattr(self, "_seed_info", {}).get("cuda_seed")
+            if expected_cuda_seed is None:
+                raise RuntimeError("Missing expected CUDA seed for torchrun enforcement")
+            wrapper_args.extend(["--aisp-expected-cuda-seed", str(int(expected_cuda_seed))])
+
+        full_cmd = torchrun_cmd + ["-m", "core.harness.torchrun_wrapper"] + wrapper_args + script_args
+        print(f"[harness] torchrun cmd: {' '.join(full_cmd)}", flush=True)
+
+        repo_root = Path(__file__).resolve().parents[2]
+        env = build_repo_python_env(repo_root, base_env=os.environ.copy())
+        env.setdefault("AISP_BENCHMARK_OWNER_RUN_ID", os.environ.get("AISP_BENCHMARK_OWNER_RUN_ID", str(os.getpid())))
+        env.setdefault("AISP_BENCHMARK_OWNER_PID", os.environ.get("AISP_BENCHMARK_OWNER_PID", str(os.getpid())))
+        for key in getattr(config, "env_passthrough", []) or []:
+            if key in os.environ:
+                env[key] = os.environ[key]
+        print(f"[harness] torchrun env passthrough: {getattr(config, 'env_passthrough', [])}", flush=True)
+        env.update(spec.env)
+        if getattr(config, "single_gpu", False):
+            env["CUDA_VISIBLE_DEVICES"] = self._select_single_gpu_visible()
+        if getattr(config, "lock_gpu_clocks", False) and torch.cuda.is_available():
+            env["AISP_LOCK_GPU_CLOCKS"] = "1"
+            if getattr(config, "gpu_sm_clock_mhz", None) is not None:
+                env["AISP_GPU_SM_CLOCK_MHZ"] = str(config.gpu_sm_clock_mhz)
+            if getattr(config, "gpu_mem_clock_mhz", None) is not None:
+                env["AISP_GPU_MEM_CLOCK_MHZ"] = str(config.gpu_mem_clock_mhz)
+            env["AISP_RAMP_GPU_CLOCKS"] = "1"
+        if not sockets_permitted:
+            env.setdefault("RANK", "0")
+            env.setdefault("LOCAL_RANK", "0")
+            env.setdefault("WORLD_SIZE", "1")
+            env.setdefault("LOCAL_WORLD_SIZE", "1")
+            env.setdefault("GROUP_RANK", "0")
+            env.setdefault("ROLE_RANK", "0")
+            env.setdefault("ROLE_NAME", "default")
+            env.setdefault("MASTER_ADDR", "127.0.0.1")
+            env.setdefault("MASTER_PORT", "29500")
+
+        stdout = ""
+        stderr = ""
+        elapsed = 0.0
+        timeout_limit = config.get_effective_timeout("measurement")
+        if timeout_limit is None:
+            raise ValueError(
+                "Torchrun execution requires a finite timeout; set BenchmarkConfig.measurement_timeout_seconds."
+            )
+        if not isinstance(timeout_limit, (int, float)) or timeout_limit <= 0:
+            raise ValueError(f"Invalid torchrun measurement timeout: {timeout_limit!r}")
+        timeout_limit = float(timeout_limit)
+
+        try:
+            start = time.perf_counter()
+            process = subprocess.Popen(
+                full_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                preexec_fn=_benchmark_child_preexec,
+                env=env,
+            )
+            try:
+                stdout, stderr = process.communicate(timeout=timeout_limit)
+            except subprocess.TimeoutExpired:
+                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                elapsed = time.perf_counter() - start
+                return self._create_timeout_result(
+                    stage="measurement",
+                    duration=elapsed,
+                    limit=timeout_limit,
+                    errors=["Torchrun launch exceeded timeout", *errors],
+                    benchmark_name=spec.name or getattr(benchmark, "name", None) or benchmark.__class__.__name__,
+                    config=config,
+                )
+            elapsed = time.perf_counter() - start
+            if process.returncode != 0:
+                stdout_lines = stdout.splitlines() if stdout else []
+                stderr_lines = [line.strip() for line in (stderr or "").splitlines() if line.strip()]
+                skip_reason = _extract_skip_reason_from_messages([*stdout_lines, *stderr_lines])
+                if skip_reason:
+                    errors.append(f"SKIPPED: {skip_reason}")
+                else:
+                    errors.append(f"torchrun exited with code {process.returncode}")
+                if stderr:
+                    _maybe_write_subprocess_stderr(stderr, f"torchrun_{spec.name or benchmark.__class__.__name__}", config)
+                if stderr_lines and not skip_reason:
+                    # Prefer showing the root-cause message (e.g., seed mutation) instead of only the
+                    # torchrun elastic summary tail.
+                    interesting = [
+                        line
+                        for line in stderr_lines
+                        if "seed mutation detected" in line.lower()
+                        or "cuda seed mutation detected" in line.lower()
+                    ]
+                    if interesting:
+                        # Add the first few matching lines (deduped) for clarity.
+                        seen: set[str] = set()
+                        for line in interesting:
+                            key = line.lower()
+                            if key in seen:
+                                continue
+                            seen.add(key)
+                            errors.append(line)
+                            if len(seen) >= 3:
+                                break
+
+                    head = stderr_lines[:25]
+                    if head:
+                        errors.append("stderr_head: " + " | ".join(head))
+
+                    tail = stderr_lines[-8:]
+                    if tail:
+                        errors.append("stderr_tail: " + " | ".join(tail))
+        except FileNotFoundError:
+            raise RuntimeError("SKIPPED: torchrun not found in PATH.")
+
+        stdout_lines = stdout.splitlines() if stdout else []
+        filtered_lines = _filter_logs(stdout_lines, dedupe=spec.parse_rank0_only)
+        tokens_per_s = self._extract_tokens_per_s(filtered_lines)
+
+        # This parent observed one process interval, not each training step.
+        # Keep it as one sample; the amortized value is a separately labeled
+        # derived metric and includes launcher/setup/warmup work.
+        iterations = getattr(config, "iterations", None) or 1
+        times_ms = _ObservedTimings(
+            [elapsed * 1000.0], sample_scope="process_wall", iterations_per_sample=1,
+        )
+        result = self._compute_stats(times_ms, config)
+        result.custom_metrics["torchrun.requested_iterations"] = float(iterations)
+        result.custom_metrics["torchrun.amortized_ms_per_requested_iteration"] = elapsed * 1000.0 / iterations
+
+        if tokens_per_s is not None:
+            result.throughput = ThroughputStats(
+                tokens_per_s=tokens_per_s,
+                requests_per_s=None,
+                samples_per_s=None,
+                bytes_per_s=None,
+                custom_unit_per_s=None,
+                custom_unit_name=None,
+                latency_ms=result.timing.mean_ms,
+                goodput=None,
+                schemaVersion="1.0",
+            )
+            result.custom_metrics["tokens_per_s"] = tokens_per_s
+
+        if filtered_lines:
+            tail = "\n".join(filtered_lines[-5:])
+            result.validation_message = tail
+
+        if errors:
+            result.errors.extend(errors)
+
+        self._annotate_launch_metadata(
+            result,
+            config,
+            world_size=world_size_hint,
+            multi_gpu_required=multi_gpu_required,
+        )
+        return result

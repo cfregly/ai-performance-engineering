@@ -1,7 +1,8 @@
 """Baseline prefill vs. decode microbench without TMA shaping.
 
 Emits two phases for Nsight Systems:
-- Prefill: sequential "TMA-like" bulk copies + compute on the default stream.
+- Prefill: sequential bulk copies on the default stream, matching the optimized
+  path's copy-only workload.
 - Decode: per-token work (host-driven loop).
 """
 
@@ -16,6 +17,8 @@ from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.benchmark.blackwell_requirements import ensure_blackwell_tma_supported
 from labs.persistent_decode.persistent_decode_common import (
     build_inputs,
+    build_prefill_decode_verification_buffers,
+    validate_prefill_decode_output,
     resolve_device,
     resolve_shapes,
     tokens_per_iteration,
@@ -23,7 +26,7 @@ from labs.persistent_decode.persistent_decode_common import (
 
 
 class BaselineTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Sequential copy/compute prefill followed by host-driven decode."""
+    """Sequential copy-only prefill followed by host-driven decode."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -39,6 +42,8 @@ class BaselineTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._prefill_work: tuple[tuple[torch.Tensor, torch.Tensor], ...] = ()
         self._output_view: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._verify_decode_view: Optional[torch.Tensor] = None
+        self._verify_prefill_view: Optional[torch.Tensor] = None
         self.batch, self.seq_len, self.head_dim = resolve_shapes()
         self.batch_size = self.batch
         self.hidden_dim = self.head_dim
@@ -80,23 +85,19 @@ class BaselineTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 strict=True,
             )
         )
-        self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
-        self._verify_output_buffer = torch.empty(
-            1,
-            min(8, self.seq_len),
-            self.head_dim,
-            device=self.inputs.out.device,
-            dtype=torch.float32,
-        )
+        self._output_view = self.inputs.out
+        (
+            self._verify_output_buffer,
+            self._verify_decode_view,
+            self._verify_prefill_view,
+        ) = build_prefill_decode_verification_buffers(self.inputs, self.prefill_dst)
         self._synchronize()
 
     def _prefill_sequential(self) -> None:
-        """Sequential copy + compute without any pipelining."""
+        """Sequential prefill copies without any pipelining."""
         for src, dst in self._prefill_work:
             # Real copy operation - no artificial delays
             dst.copy_(src)
-            # Add computation to simulate processing
-            dst.add_(src)
 
     def _decode_host_loop(self) -> None:
         assert self._product_buffer is not None
@@ -128,9 +129,14 @@ class BaselineTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
     def capture_verification_payload(self) -> None:
         if self.inputs is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        self._verify_output_buffer.copy_(self.output)
+        if self._verify_decode_view is None or self._verify_prefill_view is None:
+            raise RuntimeError("Verification output views not initialized")
+        validate_prefill_decode_output(self.inputs, self.prefill_src, self.prefill_dst)
+        self._verify_decode_view.copy_(self.inputs.out)
+        self._verify_prefill_view.copy_(self.prefill_dst)
         self._set_verification_payload(
             inputs={
+                "prefill_src": self.prefill_src.detach(),
                 "q": self.inputs.q.detach(),
                 "k": self.inputs.k.detach(),
                 "v": self.inputs.v.detach(),
@@ -156,6 +162,8 @@ class BaselineTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._prefill_work = ()
         self._output_view = None
         self._verify_output_buffer = None
+        self._verify_decode_view = None
+        self._verify_prefill_view = None
 
     def get_config(self) -> BenchmarkConfig:
         # Keep short; this is primarily for profiling with --profile / nsys
@@ -176,8 +184,10 @@ class BaselineTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
     def validate_result(self) -> str | None:
         if self.inputs is None:
             return "Inputs not initialized"
-        if not torch.isfinite(self.inputs.out).all():
-            return "Non-finite output detected"
+        try:
+            validate_prefill_decode_output(self.inputs, self.prefill_src, self.prefill_dst)
+        except AssertionError as exc:
+            return str(exc)
         return None
 
 def get_benchmark() -> BaseBenchmark:

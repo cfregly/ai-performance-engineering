@@ -7,7 +7,7 @@ import triton
 import triton.language as tl
 
 from labs.blackwell_gemm_optimizations.blackwell_grouped_gemm_autotune import (
-    FULL_STACK_AUTOTUNE_CONFIGS,
+    full_stack_autotune_configs,
     KernelSchedule,
 )
 
@@ -106,7 +106,7 @@ def grouped_gemm_batched_kernel(
 
 
 @triton.autotune(
-    configs=FULL_STACK_AUTOTUNE_CONFIGS,
+    configs=full_stack_autotune_configs(),
     key=["max_rows", "n_dim", "k_dim"],
 )
 @triton.jit

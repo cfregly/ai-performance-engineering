@@ -6,8 +6,11 @@ from typing import List, Optional, Tuple
 
 import torch
 
-from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.benchmark.wrapper_utils import attach_benchmark_metadata
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
+
+__all__ = ["GradientCompressionBenchmark", "attach_benchmark_metadata"]
 
 
 class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):

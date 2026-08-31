@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
-"""Level 4: Token Sorting.
+"""Level 4: Sorted per-expert GEMMs.
 
-ADDS: Sort tokens by expert for memory coalescing.
-- Consecutive tokens processed by same expert
-- Better cache utilization
-- May provide additional speedup on top of previous levels
+Adds sorting and per-expert GEMMs to the shared BF16 model; no multi-stream dispatch is enabled.
 
-Cumulative: batched + torch.compile + FP8 + sorting
-"""
+The filename and class are retained for compatibility. The LEVEL mapping,
+not a legacy filename, determines execution. These shared levels do not use
+FP8 quantization. No speedup is established by selecting a level."""
 import torch
 
 from labs.moe_optimization_journey.moe_benchmark import MoEJourneyBenchmark, run_level
 
 
 class Level4Sorted(MoEJourneyBenchmark):
-    """Level 4: + Token sorting."""
+    """Shared level 4: Sorted per-expert GEMMs."""
     LEVEL = 4
 
 def get_benchmark() -> Level4Sorted:

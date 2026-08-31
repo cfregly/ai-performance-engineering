@@ -1,5 +1,8 @@
 # GB300 (Blackwell Ultra, sm_103) validation runbook
 
+> **2026-08-30 correction:** This retained report uses historical FP8 7.5-PFLOP/s and/or FP16/BF16 3.75-PFLOP/s roofline denominators. For GB300 NVL72, the published dense per-GPU denominators are 5.0 and 2.5 PFLOP/s. See [corrected definitions and interpretation](gb300-roofline-corrections-2026-08-30.md). Original measurements and tables below are preserved; this correction does not recertify them or update native profiler percentages.
+
+
 How to run this repo's benchmark harness on a single GB300 node (Grace + Blackwell
 Ultra, compute capability 10.3 / `sm_103`, 4 GPUs), what was fixed to make it
 GB300-correct, and the open issues found during validation.

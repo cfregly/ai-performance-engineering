@@ -1,0 +1,13 @@
+usage: extract_pytorch_profile.py [-h] [--output-prefix OUTPUT_PREFIX]
+                                  patterns [patterns ...]
+
+Summarise PyTorch profiler outputs to CSV
+
+positional arguments:
+  patterns              Glob(s) matching profiler output directories
+
+options:
+  -h, --help            show this help message and exit
+  --output-prefix OUTPUT_PREFIX
+                        Prefix for generated CSV files (default:
+                        artifacts/runs/analysis/pytorch_profile)

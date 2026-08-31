@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "scope": "current core-to-chapter/lab imports reported by code/core/scripts/check_import_edges.py",
+  "head": "b57e4c6a9",
+  "observation_epoch": "initial_11_rows_before_concurrent_source_edits",
+  "counts": {
+    "violations": 11,
+    "core_interface_or_registration": 7,
+    "operational_script_outside_core": 4,
+    "checker_exception": 0
+  },
+  "violations": [
+    {
+      "id": 1,
+      "source": "core/analysis/compare_benchmark_pairs.py",
+      "line": 18,
+      "target": "labs.moe_parallelism.plan",
+      "disposition": "core_interface",
+      "fix_group": "generic_benchmark_protocol"
+    },
+    {
+      "id": 2,
+      "source": "core/analysis/deep_profiling_report.py",
+      "line": 41,
+      "target": "ch08.roofline",
+      "disposition": "core_interface",
+      "fix_group": "artifact_specific_roofline_specs"
+    },
+    {
+      "id": 3,
+      "source": "core/analysis/deep_profiling_report.py",
+      "line": 42,
+      "target": "ch17.blackwell_profiling_guide",
+      "disposition": "core_interface",
+      "fix_group": "core_nsys_stats_parser"
+    },
+    {
+      "id": 4,
+      "source": "core/benchmark/precision_power_sweep.py",
+      "line": 26,
+      "target": "ch16.gpt_large_benchmark",
+      "disposition": "operational_script_outside_core",
+      "fix_group": "relocate_precision_sweep"
+    },
+    {
+      "id": 5,
+      "source": "core/perf_core_base.py",
+      "line": 2550,
+      "target": "ch04.gb200_grace_numa_optimization",
+      "disposition": "core_interface",
+      "fix_group": "dataloader_analysis_provider"
+    },
+    {
+      "id": 6,
+      "source": "core/profiling/nsys_summary.py",
+      "line": 17,
+      "target": "ch17.blackwell_profiling_guide",
+      "disposition": "core_interface",
+      "fix_group": "core_nsys_stats_parser"
+    },
+    {
+      "id": 7,
+      "source": "core/scripts/utilities/dump_hardware_capabilities.py",
+      "line": 172,
+      "target": "ch12.cuda_extensions",
+      "disposition": "operational_script_outside_core",
+      "fix_group": "relocate_capability_dump"
+    },
+    {
+      "id": 8,
+      "source": "core/scripts/utilities/precompile_cuda_extensions.py",
+      "line": 39,
+      "target": "ch06.cuda_extensions",
+      "disposition": "operational_script_outside_core",
+      "fix_group": "relocate_extension_precompile"
+    },
+    {
+      "id": 9,
+      "source": "core/scripts/utilities/precompile_cuda_extensions.py",
+      "line": 70,
+      "target": "ch12.cuda_extensions",
+      "disposition": "operational_script_outside_core",
+      "fix_group": "relocate_extension_precompile"
+    },
+    {
+      "id": 10,
+      "source": "core/utils/extension_prewarm.py",
+      "line": 289,
+      "target": "ch06",
+      "disposition": "core_registration",
+      "fix_group": "extension_loader_registry"
+    },
+    {
+      "id": 11,
+      "source": "core/utils/extension_prewarm.py",
+      "line": 308,
+      "target": "ch12",
+      "disposition": "core_registration",
+      "fix_group": "extension_loader_registry"
+    }
+  ],
+  "checker_exception_decision": "rejected_for_all_11",
+  "concurrent_followup": {
+    "epochs": [
+      {
+        "checker_rows": 6,
+        "artifact": "intermediate-checker-output.txt",
+        "note": "partial implementation; duplicate/wrappers still present"
+      },
+      {
+        "checker_rows": 1,
+        "artifact": "checker-output.txt",
+        "exit_code": 1,
+        "note": "latest captured concurrent working-tree epoch"
+      }
+    ],
+    "initial_inventory_preserved": true,
+    "static_checker_clean_is_not_behavioral_acceptance": true,
+    "semantic_followups": [
+      2,
+      3,
+      6,
+      10,
+      11
+    ]
+  },
+  "runtime_acceptance": "not_run; pytest unavailable in current python; no package installed"
+}

@@ -1,0 +1,17 @@
+{
+  "artifacts": [],
+  "diagnostic": "ProcessGroupGloo Work::getFuture is not implemented for the asynchronous hook path.",
+  "finish_monotonic_ns": 274136202775958,
+  "finish_wall_ns": 1788138566397613000,
+  "launch_monotonic_ns": 274132192731041,
+  "launch_wall_ns": 1788138562387535000,
+  "mode": "optimized",
+  "rendezvous": "static loopback with an ephemeral local port",
+  "result_directory": "<temporary-result-directory>",
+  "returncode": 1,
+  "run_id": "adapter-proof-optimized-static-2b",
+  "schema_version": 1,
+  "status": "FAIL_GLOO_ASYNC_FUTURE",
+  "variant": "multigpu",
+  "world_size": 2
+}

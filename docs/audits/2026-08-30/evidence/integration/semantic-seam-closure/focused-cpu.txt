@@ -1,0 +1,5 @@
+........................................................................ [ 40%]
+........................................................................ [ 80%]
+.............................ssssss                                      [100%]
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/semantic-seam-closure/focused-cpu.xml -
+173 passed, 6 skipped in 1.96s

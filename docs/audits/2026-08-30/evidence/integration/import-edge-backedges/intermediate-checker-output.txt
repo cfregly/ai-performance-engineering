@@ -1,0 +1,6 @@
+core/analysis/deep_profiling_report.py:41: Core code must not import 'ch08.roofline' (labs/ch back-edge)
+core/analysis/deep_profiling_report.py:42: Core code must not import 'ch17.blackwell_profiling_guide' (labs/ch back-edge)
+core/perf_core_base.py:2550: Core code must not import 'ch04.gb200_grace_numa_optimization' (labs/ch back-edge)
+core/profiling/nsys_summary.py:17: Core code must not import 'ch17.blackwell_profiling_guide' (labs/ch back-edge)
+core/utils/extension_prewarm.py:289: Core code must not import 'ch06' (labs/ch back-edge)
+core/utils/extension_prewarm.py:308: Core code must not import 'ch12' (labs/ch back-edge)

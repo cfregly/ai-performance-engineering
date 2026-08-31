@@ -1,0 +1,44 @@
+{
+  "timestamp_utc": "2026-08-30T22:50:09.799712+00:00",
+  "baseline_revision": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "working_branch": "codex/audit-remediation-20260830",
+  "scope": [
+    "W1-091"
+  ],
+  "environment": {
+    "python": "3.12.2",
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "torch": "2.8.0",
+    "cuda_available": false
+  },
+  "source_sha256": {
+    "code/labs/train_distributed/optimized_zero2.py": "35ccdc8746e7d08b0654f463bbb3ad74d5d68997a22d42b3ca40ed8a9fefb799",
+    "code/labs/train_distributed/optimized_zero2_multigpu.py": "b1565ce16de05d1eba31b1b65ac6737cedf63d57035652a896cc52b862be4769",
+    "code/tests/test_audit_wave1_zero2_single.py": "f7b85433382fcde4cd65ace70dbcb768fc07e6bafdd135d7e34a176eb6d88eb7",
+    "code/tests/test_audit_wave1_zero2.py": "2359fae931efc4ae6e48e9c996020d7f3835160e024e760fb33ebc974136616c"
+  },
+  "attempts": [
+    {
+      "log": "single-before.txt",
+      "result": "1 failed; original construction extracted unchanged into helper then executed against actual one-rank Gloo; missing batched_reduce_scatter_hook RuntimeError",
+      "source_before": "single-before-components.txt"
+    },
+    {
+      "log": "single-after.txt",
+      "result": "2 passed, 1 actual two-GPU NCCL skip"
+    },
+    {
+      "log": "single-moe-integration.txt",
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_audit_wave1_zero2_single.py tests/test_audit_wave1_zero2.py tests/test_audit_wave1_moe_planning_router.py -q -p no:cacheprovider",
+      "cwd": "code",
+      "exit_code": 0,
+      "result": "18 passed, 1 two-GPU skip in 4.68s"
+    }
+  ],
+  "limitations": [
+    "No CUDA or production NCCL execution. One-rank optimizer state is replicated locally, not sharded across ranks.",
+    "CPU checks use actual DDP, custom single-rank hook and optimizer for three steps, matching dense AdamW and nonzero parameter changes.",
+    "LOCAL-006 baseline/optimized workload mismatch remains open; no speedup or historical result is accepted."
+  ],
+  "design": "Reuse repaired multi-rank helper with explicit optimizer steps and supported one-rank communication hook; no nonexistent PyTorch hook or unimplemented overlap."
+}

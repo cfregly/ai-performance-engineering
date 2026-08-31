@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "python_files": 209,
+  "rules": [
+    "E9",
+    "F821",
+    "F822",
+    "F823"
+  ],
+  "scope": "Changed/newPythonfiles; syntax/undefined-name checks only, not runtime qualification"
+}

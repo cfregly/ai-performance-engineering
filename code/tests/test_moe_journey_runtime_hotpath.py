@@ -74,7 +74,7 @@ def test_level4_grouped_moe_batches_expert_count_metadata_reads() -> None:
     assert "torch.cumsum(expert_counts, dim=0, out=expert_offsets)" in grouped_section
     assert "expert_offsets.sub_(expert_counts)" in grouped_section
     assert "expert_metadata[1].copy_(expert_counts)" in grouped_section
-    assert 'expert_metadata_host.copy_(expert_metadata, non_blocking=expert_counts.device.type == "cuda")' in grouped_section
+    assert 'expert_metadata_host.copy_(expert_metadata, non_blocking=False)' in grouped_section
     assert "expert_offsets_cpu = expert_metadata_host[0]" in grouped_section
     assert "expert_counts_cpu = expert_metadata_host[1]" in grouped_section
     assert "for expert_id in range(self.num_experts):" in grouped_section
@@ -265,42 +265,13 @@ def test_moe_route_weight_normalization_uses_selected_logit_softmax() -> None:
 
 
 def test_triton_fused_moe_benchmark_reuses_precomputed_max_tokens() -> None:
-    source = (
-        Path(__file__).resolve().parents[1]
-        / "labs"
-        / "moe_optimization_journey"
-        / "triton_fused_moe.py"
-    ).read_text(encoding="utf-8")
-    function_section = source.split("def triton_fused_moe", maxsplit=1)[1].split(
-        "def benchmark_triton_moe",
-        maxsplit=1,
-    )[0]
-    benchmark_section = source.split("def benchmark_triton_moe", maxsplit=1)[1]
+    """Legacy test ID retained: retired entry points must never report timing."""
+    from labs.moe_optimization_journey.triton_fused_moe import (
+        RetiredMoEKernelError, benchmark_triton_moe,
+    )
 
-    assert "max_tokens: int | None = None" in function_section
-    assert "if max_tokens is None:" in function_section
-    assert "max_tokens = total_tokens" in function_section
-    assert ".max().item()" not in function_section
-    assert "sorted_ids" not in function_section
-    assert "Sorted_ids_ptr" not in source
-    assert "def _flat_topk_token_ids" in source
-    assert 'token_ids.div_(top_k, rounding_mode="floor")' in source
-    assert "expert_indices_cpu = torch.randint(0, E, (batch_seq, K), dtype=torch.int64)" in benchmark_section
-    assert "counts_cpu = torch.bincount(expert_indices_cpu.reshape(-1), minlength=E)" in benchmark_section
-    assert "max_tokens = int(counts_cpu.max())" in benchmark_section
-    assert "expert_indices = expert_indices_cpu.to(device=device, non_blocking=True)" in benchmark_section
-    assert "x.repeat_interleave(K" not in benchmark_section
-    assert "sorted_token_ids = flat_token_ids.index_select(0, sorted_order)" in benchmark_section
-    assert "sorted_tokens = x.index_select(0, sorted_token_ids)" in benchmark_section
-    assert "max_tokens = int(counts.max().item())" not in benchmark_section
-    assert ".max().item()" not in benchmark_section
-    assert benchmark_section.count("max_tokens=max_tokens") == 3
-    assert benchmark_section.count("torch.cuda.Event(enable_timing=True)") == 2
-    assert "current_stream = torch.cuda.current_stream()" in benchmark_section
-    assert "start.record(current_stream)" in benchmark_section
-    assert "end.record(current_stream)" in benchmark_section
-    assert "start.elapsed_time(end) / 10" in benchmark_section
-    assert "time.perf_counter()" not in benchmark_section
+    with pytest.raises(RetiredMoEKernelError, match="Retired incomplete Triton MoE"):
+        benchmark_triton_moe()
 
 
 def test_moe_journey_run_level_uses_reused_cuda_events() -> None:
@@ -402,25 +373,19 @@ def test_moe_bmm_fusion_reuses_offset_buffer_without_cat() -> None:
 
 
 def test_triton_fused_moe_uses_overwritten_output_and_inplace_offsets() -> None:
-    source = (
-        Path(__file__).resolve().parents[1]
-        / "labs"
-        / "moe_optimization_journey"
-        / "triton_fused_moe.py"
-    ).read_text(encoding="utf-8")
-    function_section = source.split("def triton_fused_moe", maxsplit=1)[1].split(
-        "def benchmark_triton_moe",
-        maxsplit=1,
-    )[0]
-    benchmark_section = source.split("def benchmark_triton_moe", maxsplit=1)[1]
+    """Legacy test ID retained: the removed kernel cannot return partial output."""
+    from labs.moe_optimization_journey.triton_fused_moe import (
+        RetiredMoEKernelError, triton_fused_moe,
+    )
 
-    assert "output = torch.empty_like(x)" in function_section
-    assert "torch.zeros_like(x)" not in function_section
-    assert "expert_offsets = torch.empty(E + 1, device=device, dtype=torch.long)" in benchmark_section
-    assert "expert_offsets[0] = 0" in benchmark_section
-    assert "expert_offsets[1:].copy_(counts.cumsum(0))" in benchmark_section
-    assert "expert_offsets = torch.cat(" not in benchmark_section
-    assert "x.repeat_interleave(K" not in benchmark_section
+    x = torch.ones(2, 129)
+    original = x.clone()
+    gate = torch.zeros(2, 129, 193)
+    down = torch.zeros(2, 193, 129)
+    with pytest.raises(RetiredMoEKernelError, match="No kernel or benchmark result"):
+        triton_fused_moe(x, gate, gate, down, torch.ones(2), torch.tensor([0, 1, 2]),
+                         2, 129, 193, max_tokens=1)
+    torch.testing.assert_close(x, original, rtol=0, atol=0)
 
 
 @CUDA_REQUIRED

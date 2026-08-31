@@ -9,9 +9,12 @@ from typing import Optional
 from core.benchmark.cuda_binary_benchmark import CudaBinaryBenchmark
 from core.benchmark.verification import simple_signature
 from core.harness.benchmark_harness import BaseBenchmark
+from labs.ozaki_scheme.accuracy_policy import configured_accuracy
 
 _FLOAT_PATTERNS = {
     "tflops": re.compile(r"TFLOPS:\s*([0-9.eE+-]+)"),
+    "relative_l2_error": re.compile(r"RELATIVE_L2_ERROR:\s*([0-9.eE+-]+)"),
+    "normalized_max_abs_error": re.compile(r"NORMALIZED_MAX_ABS_ERROR:\s*([0-9.eE+-]+)"),
     "max_abs_error": re.compile(r"MAX_ABS_ERROR:\s*([0-9.eE+-]+)"),
     "mean_abs_error": re.compile(r"MEAN_ABS_ERROR:\s*([0-9.eE+-]+)"),
     "retained_bits": re.compile(r"RETAINED_BITS:\s*(-?\d+)"),
@@ -36,6 +39,8 @@ class OptimizedOzakiSchemeFixedBenchmark(CudaBinaryBenchmark):
             "--emulation-strategy", "eager",
             "--fixed-bits", "12",
         ]
+        accuracy_args, self._checksum_tolerance = configured_accuracy("fixed")
+        self._run_args.extend(accuracy_args)
         super().__init__(
             chapter_dir=Path(__file__).parent,
             binary_name="optimized_ozaki_scheme_fixed",
@@ -107,7 +112,8 @@ class OptimizedOzakiSchemeFixedBenchmark(CudaBinaryBenchmark):
         return self._parsed_metrics
 
     def get_output_tolerance(self) -> tuple[float, float]:
-        return (1e-2, 1e-2)
+        # Secondary checksum check only; the executable gates full-array accuracy.
+        return self._checksum_tolerance
 
 
 def get_benchmark() -> BaseBenchmark:

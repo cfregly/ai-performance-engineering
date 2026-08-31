@@ -1,0 +1,30 @@
+{
+  "captured_utc": "2026-08-31T00:22:21.871473+00:00",
+  "fetches": [
+    {
+      "url": "https://download.pytorch.org/whl/cu130/torch-2.9.1%2Bcu130-cp312-cp312-manylinux_2_28_x86_64.whl.metadata",
+      "status": 200,
+      "artifact": "torch-cuda-wheel.metadata.txt",
+      "sha256": "6a3cacf846425d9c8a3aa9929623a3d1ca261d185064c912be2ab5902d4f0e37",
+      "bytes": 30202
+    },
+    {
+      "url": "https://pypi.org/pypi/requests/2.34.2/json",
+      "status": 200,
+      "artifact": "requests-2.34.2-pypi.json",
+      "sha256": "8622e50ffd295ed759ec793f2a009172a4ed0204bbc5e948de23111bc3d2aeae",
+      "bytes": 6811
+    },
+    {
+      "url": "https://pypi.org/pypi/triton/3.5.1/json",
+      "status": 200,
+      "artifact": "triton-3.5.1-pypi.json",
+      "sha256": "ef97c1597a98f32b4e141767600ea21aac812088d924d993b42d712c7588473b",
+      "bytes": 14855
+    }
+  ],
+  "prior_read_only_attempt": {
+    "url": "https://download-r2.pytorch.org/whl/cu130/torch-2.9.1%2Bcu130-cp312-cp312-manylinux_2_28_x86_64.whl.metadata",
+    "result": "HTTP403Forbidden before this evidence directory was created; original earlier resolver remains unchanged."
+  }
+}

@@ -1,0 +1,61 @@
+                                                                                
+ Usage: python -m cli.aisp profile nsys [OPTIONS] COMMAND                       
+                                                                                
+ Run Nsight Systems capture                                                     
+                                                                                
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    command      TEXT  Command to profile (quote it), e.g., "python         │
+│                         train.py"                                            │
+│                         [default: None]                                      │
+│                         [required]                                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --output-name        -o                        TEXT     Base name for output │
+│                                                         [default: None]      │
+│ --output-dir                                   PATH     Base artifacts       │
+│                                                         directory (default:  │
+│                                                         ./artifacts/runs)    │
+│                                                         [default: None]      │
+│ --preset                                       TEXT     Preset: light or     │
+│                                                         full                 │
+│                                                         [default: light]     │
+│ --trace-cuda             --no-trace-cuda                Trace CUDA API calls │
+│                                                         [default:            │
+│                                                         trace-cuda]          │
+│ --trace-nvtx             --no-trace-nvtx                Trace NVTX ranges    │
+│                                                         [default:            │
+│                                                         trace-nvtx]          │
+│ --trace-osrt             --no-trace-osrt                Trace OS runtime     │
+│                                                         [default:            │
+│                                                         trace-osrt]          │
+│ --full-timeline                                         Include              │
+│                                                         cuda-hw/cublas/cudnn │
+│                                                         traces               │
+│ --trace-forks                                           Trace child          │
+│                                                         processes before     │
+│                                                         exec                 │
+│ --wait-mode                                    TEXT     NSYS wait mode:      │
+│                                                         primary or all       │
+│                                                         [default: primary]   │
+│ --finalize-grace-s…                            FLOAT    Grace window after   │
+│                                                         timeout SIGINT for   │
+│                                                         report finalization  │
+│                                                         [default: 20.0]      │
+│ --force-lineinfo         --no-force-linein…             Force -lineinfo for  │
+│                                                         source mapping       │
+│                                                         [default:            │
+│                                                         force-lineinfo]      │
+│ --sanitize-python-…      --no-sanitize-pyt…             Prefix a safe        │
+│                                                         sitecustomize shim   │
+│                                                         for profiling        │
+│                                                         subprocesses         │
+│                                                         [default:            │
+│                                                         sanitize-python-sta… │
+│ --timeout                                      INTEGER  Optional timeout in  │
+│                                                         seconds              │
+│                                                         [default: None]      │
+│ --help               -h                                 Show this message    │
+│                                                         and exit.            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

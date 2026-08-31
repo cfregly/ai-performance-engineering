@@ -9,7 +9,7 @@ The implemented runtime paths are:
 - Ozaki-I style dynamic retained-bit control through cuBLAS FP64 emulation
 - Ozaki-I style fixed retained-bit control through cuBLAS FP64 emulation
 
-The lab now also includes runnable narrative checks for the main practical claims behind the Ozaki slides:
+The lab includes narrative-check drivers, but their optimized runs require an explicitly reviewed accuracy policy. The following claims remain target-validation gates:
 
 - controllable accuracy
 - adaptive retained-bit behavior
@@ -32,8 +32,8 @@ The lab now also includes runnable narrative checks for the main practical claim
 
 The key scope boundary is that this lab is still a GEMM-focused Ozaki-I lab. It does not claim to be a full Ozaki-II modular-arithmetic implementation.
 
-## Measured B200 Result
-Strict benchmark-harness run on the local B200 with repo clock locking:
+## Historical B200 Result: accuracy not qualified
+These earlier numbers predate the full-array verifier. The old signed-checksum comparison used `rtol=1e-2, atol=1e-2` for outputs around `1e-5`; even zero output could pass. These timings are retained as history, not current accepted speedups:
 
 | Variant | Time (ms) | Speedup vs native | Retained bits | Max abs error | Mean abs error |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -41,11 +41,23 @@ Strict benchmark-harness run on the local B200 with repo clock locking:
 | Ozaki dynamic | `1.130` | `5.94x` | `4` | `3.0e-06` | `0` |
 | Ozaki fixed | `0.842` | `7.98x` | `12` | `0` | `0` |
 
-This tuned B200 result is useful because the two Ozaki-I style variants both beat native FP64 on the same shared workload:
+The dynamic path's reported `3e-6` maximum error is material relative to this small output scale. The old tolerance does not establish FP64-equivalent accuracy.
 
-- dynamic retained-bit control adapts down to a 4-bit retained budget on this workload and clears the native FP64 baseline by nearly `6x`
-- fixed retained-bit control remains the fastest path and clears the same baseline by nearly `8x`
-- both optimized paths stay verification-clean within the lab tolerance (`rtol=1e-2`, `atol=1e-2`)
+## Accuracy gate: target calibration pending
+
+The CUDA executable now checks every element against a separately allocated native FP64 reference before returning an accepted timing. The host comparator in `accuracy.h` rejects non-finite values and aliased reference storage and reports relative L2 and maximum absolute error normalized by the largest reference magnitude. Both accuracy limits must be explicitly configured, finite, and in `[0,1)`. The Python checksum comparison is secondary and defaults to exact equality; it cannot replace the full-array check.
+
+No numerical threshold has been calibrated or approved here. Without limits, optimized binaries fail before GPU allocation. Python wrappers and runners accept `AISP_OZAKI_ACCURACY_POLICY`, a JSON file with `schema_version: 1` and separate `dynamic`/`fixed` objects containing `relative_l2`, `normalized_max_abs`, `checksum_rtol`, and `checksum_atol`. The first three fields must be finite and in `[0,1)`; the last must be finite and nonnegative. A configured policy is not measured accuracy evidence.
+
+After compiling on the target, collect errors without accepting a benchmark result (binary suffix depends on the target):
+
+```bash
+make -C labs/ozaki_scheme all
+labs/ozaki_scheme/optimized_ozaki_scheme_dynamic_sm100 --m 4096 --n 4096 --k 4096 --seed 2026 --input-scale 0.001 --dynamic-max-bits 16 --dynamic-offset -56 --accuracy-measure-only
+labs/ozaki_scheme/optimized_ozaki_scheme_fixed_sm100 --m 4096 --n 4096 --k 4096 --seed 2026 --input-scale 0.001 --fixed-bits 12 --accuracy-measure-only
+```
+
+Measurement-only runs exit **2** with `ACCURACY_STATUS: MEASUREMENT_ONLY_NOT_ACCEPTED`; they omit `TIME_MS`, TFLOPS and the verifier checksum. Sweep seeds, retained-bit settings, and input scales before selecting workload-specific bounds. Repeated controlled GPU runs, numerical calibration and performance acceptance remain open gates.
 
 ## Why This Lab Exists
 The motivating story from the slides is that low-precision tensor-core hardware keeps getting faster while native FP64 throughput improves much more slowly, so accurate FP64-equivalent matrix multiplication increasingly wants an emulation story instead of a brute-force FP64 story.
@@ -69,7 +81,7 @@ In practical repo terms:
 - `optimized_ozaki_scheme_dynamic.py` is the adaptive Ozaki-I style path
 - `optimized_ozaki_scheme_fixed.py` is the fixed-budget Ozaki-I style path
 - both use `CUBLAS_COMPUTE_64F_EMULATED_FIXEDPOINT`
-- both fail fast if cuBLAS silently falls back to native FP64
+- both fail fast if cuBLAS falls back to native FP64 or full-array errors exceed explicitly configured limits
 
 The default scenario keeps the original `4096 x 4096 x 4096` GEMM size but narrows the operand range with `input_scale=1e-3`. That puts the dynamic controller into a regime where it can materially reduce the retained-bit budget instead of behaving like an accuracy-only fallback.
 
@@ -130,7 +142,7 @@ The reproducibility section checks:
 - retained-bit stability
 - emulation-used stability
 
-The binaries now always emit `RESULT_CHECKSUM`, so the direct runner can validate repeated-run stability without relying on a verify-only build.
+Accepted runs emit `RESULT_CHECKSUM` for repeated-run stability. Measurement-only calibration deliberately emits no accepted checksum or timing.
 
 ## CUDA 13 Control Surface
 The screenshots mention the environment-variable path from CUDA 13:

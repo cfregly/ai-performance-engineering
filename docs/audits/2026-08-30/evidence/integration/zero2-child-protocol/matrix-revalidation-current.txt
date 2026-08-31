@@ -1,0 +1,14 @@
+{
+  "cases": [
+    "baseline-multigpu",
+    "baseline-single",
+    "optimized-multigpu",
+    "optimized-single"
+  ],
+  "pair_max_abs_diff": {
+    "multigpu": 0.0,
+    "single": 0.0
+  },
+  "performance_claim": false,
+  "status": "PASS_ALL_FOUR_ZERO2_CPU_GLOO_VERIFICATION_ONLY"
+}

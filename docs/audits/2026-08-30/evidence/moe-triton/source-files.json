@@ -1,0 +1,26 @@
+[
+  {
+    "path": "code/labs/moe_optimization_journey/triton_fused_moe.py",
+    "sha256": "657d57e6f457906cafef8e0cea7afd5efe8efcf1d548d53e48cb3665f55072dc"
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/triton_kernels.py",
+    "sha256": "aef34a763b011415afe65eeab6dc6b27604afb6e333e83a2099b1302176fb58b"
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/moe_model.py",
+    "sha256": "8bcf7703ca96d842a368aa11884e950bd6a4d636c4b1f0a2afd88a232f4985cb"
+  },
+  {
+    "path": "code/tests/test_audit_wave1_moe_triton.py",
+    "sha256": "d5712542922882af3382c249fbc25cb3dfe0590716590a96a7ebb989fcecba5c"
+  },
+  {
+    "path": "code/tests/test_moe_journey_runtime_hotpath.py",
+    "sha256": "d6baeb0fce611e8f99b5bd71e9d5db2808417fe5faee7964e6348a4357cf17ad"
+  },
+  {
+    "path": "code/tests/cuda/run_moe_triton_validation.py",
+    "sha256": "3226aeefe32cd0d148ff83aa0605c445fed2e2c249de40e17137c31324d6c453"
+  }
+]

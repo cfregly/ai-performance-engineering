@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/nanochat_fullstack/audit_wave1/verify_existing_cpu.py", line 3, in <module>
+    import labs.nanochat_fullstack
+ModuleNotFoundError: No module named 'labs'

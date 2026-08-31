@@ -1,0 +1,10 @@
+{
+  "errors": 0,
+  "failures": 0,
+  "passed": 606,
+  "schema_version": 1,
+  "skipped": 5,
+  "status": "PASS_FRESH_PROCESS_REGRESSIONS",
+  "tests": 611,
+  "time_seconds": 19.155
+}

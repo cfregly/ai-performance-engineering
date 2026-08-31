@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""Optimized MoE: Triton fused SiLU*up (Level 2).
+"""Compatibility entrypoint for shared MoE level 2: Fused SiLU and multiplication.
 
-Pairs with: baseline_moe.py
-
-This wrapper must stay workload-equivalent with the baseline benchmark. Use the
-MoEJourneyBenchmark implementation (Level 2) to keep parameter_count, inputs,
-and verification semantics consistent.
-"""
+Requests fused SiLU/multiply in the shared BF16 model; Triton execution depends on runtime availability.
+The target name is retained; legacy FP8/streams/parallel labels are not
+evidence that those techniques execute. Shared-model precision is BF16.
+Fresh correctness and profiling evidence is required for a speedup claim."""
 from labs.moe_optimization_journey.level2_fused import Level2Fused
 
 

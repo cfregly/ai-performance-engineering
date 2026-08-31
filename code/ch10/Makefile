@@ -6,7 +6,7 @@ include ../core/common/cuda_arch.mk
 NVCC_FLAGS = $(CUDA_NVCC_ARCH_FLAGS) -lineinfo -Xptxas=-v $(CUDA_NVTX_CFLAGS)
 SUFFIX = $(TARGET_SUFFIX)
 INCLUDES = -I..
-COMMON_HEADERS = ../core/common/headers/arch_detection.cuh ../core/common/headers/tma_helpers.cuh
+COMMON_HEADERS = ../core/common/headers/arch_detection.cuh ../core/common/headers/tma_helpers.cuh ../core/common/headers/tma_2d_layout.hpp
 
 # CUDA 13.0's bundled CCCL supports the multicast wrapper for SM100a but
 # omitted SM103a. The source carries NVIDIA's corrected SM103a PTX path.
@@ -145,17 +145,21 @@ tma_2d_pipeline_blackwell_verify$(SUFFIX): tma_2d_pipeline_blackwell.cu $(COMMON
 	$(NVCC) $(NVCC_FLAGS) -std=c++17 -DVERIFY=1 $(INCLUDES) -lcuda -o $@ $< $(CUDA_NVTX_LDFLAGS)
 
 # Architecture-specific targets
-b200: ARCH=sm_100
-b200: clean all
+b200:
+	$(MAKE) ARCH=sm_100 clean
+	$(MAKE) ARCH=sm_100 all
 
-gb10: ARCH=sm_121
-gb10: clean all
+gb10:
+	$(MAKE) ARCH=sm_121 clean
+	$(MAKE) ARCH=sm_121 all
 
-b300: ARCH=sm_103
-b300: clean all
+b300:
+	$(MAKE) ARCH=sm_103 clean
+	$(MAKE) ARCH=sm_103 all
 
-gb300: ARCH=sm_103
-gb300: clean all
+gb300:
+	$(MAKE) ARCH=sm_103 clean
+	$(MAKE) ARCH=sm_103 all
 
 compare: clean
 	@set -e; for arch in $(ARCH_LIST); do \

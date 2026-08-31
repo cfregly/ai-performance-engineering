@@ -1,0 +1,91 @@
+{
+  "version": "1",
+  "pip_version": "24.0",
+  "install": [
+    {
+      "download_info": {
+        "url": "https://download-r2.pytorch.org/whl/triton-3.5.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+        "archive_info": {
+          "hash": "sha256=76f8651a5e38c2a7da6fa2b2e41cbc00a5a32cb52bf3f520113fe90b723a310d",
+          "hashes": {
+            "sha256": "76f8651a5e38c2a7da6fa2b2e41cbc00a5a32cb52bf3f520113fe90b723a310d"
+          }
+        }
+      },
+      "is_direct": false,
+      "is_yanked": false,
+      "requested": true,
+      "metadata": {
+        "metadata_version": "2.4",
+        "name": "triton",
+        "version": "3.5.0",
+        "dynamic": [
+          "author",
+          "author-email",
+          "classifier",
+          "home-page",
+          "keywords",
+          "license-file",
+          "provides-extra",
+          "requires-dist",
+          "requires-python",
+          "summary"
+        ],
+        "summary": "A language and compiler for custom Deep Learning operations",
+        "keywords": [
+          "Compiler",
+          "Deep Learning"
+        ],
+        "home_page": "https://github.com/triton-lang/triton/",
+        "author": "Philippe Tillet",
+        "author_email": "phil@openai.com",
+        "classifier": [
+          "Development Status :: 4 - Beta",
+          "Intended Audience :: Developers",
+          "Topic :: Software Development :: Build Tools",
+          "License :: OSI Approved :: MIT License",
+          "Programming Language :: Python :: 3.10",
+          "Programming Language :: Python :: 3.11",
+          "Programming Language :: Python :: 3.12",
+          "Programming Language :: Python :: 3.13",
+          "Programming Language :: Python :: 3.14"
+        ],
+        "requires_dist": [
+          "importlib-metadata; python_version < \"3.10\"",
+          "cmake<4.0,>=3.20; extra == \"build\"",
+          "lit; extra == \"build\"",
+          "autopep8; extra == \"tests\"",
+          "isort; extra == \"tests\"",
+          "numpy; extra == \"tests\"",
+          "pytest; extra == \"tests\"",
+          "pytest-forked; extra == \"tests\"",
+          "pytest-xdist; extra == \"tests\"",
+          "scipy>=1.7.1; extra == \"tests\"",
+          "llnl-hatchet; extra == \"tests\"",
+          "matplotlib; extra == \"tutorials\"",
+          "pandas; extra == \"tutorials\"",
+          "tabulate; extra == \"tutorials\""
+        ],
+        "requires_python": ">=3.10,<3.15",
+        "provides_extra": [
+          "build",
+          "tests",
+          "tutorials"
+        ]
+      }
+    }
+  ],
+  "environment": {
+    "implementation_name": "cpython",
+    "implementation_version": "3.12.2",
+    "os_name": "posix",
+    "platform_machine": "arm64",
+    "platform_release": "25.5.0",
+    "platform_system": "Darwin",
+    "platform_version": "Darwin Kernel Version 25.5.0: Tue Jun  9 22:26:15 PDT 2026; root:xnu-12377.121.10~1/RELEASE_ARM64_T6031",
+    "python_full_version": "3.12.2",
+    "platform_python_implementation": "CPython",
+    "python_version": "3.12",
+    "sys_platform": "darwin"
+  }
+}

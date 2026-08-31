@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="1.297" timestamp="2026-08-30T19:28:02.682308-04:00" hostname="Mac"><testcase classname="tests.test_anti_cheat_protections.TestEnvironmentProtections" name="test_frequency_boost_clock_locking" time="0.001"><failure message="Failed: Attested Tier-1 runner requires clock locking: real CUDA device required">self = &lt;tests.test_anti_cheat_protections.TestEnvironmentProtections object at 0x17ffad3d0&gt;
+
+    def test_frequency_boost_clock_locking(self):
+        """Observe real requested application clocks before and after CUDA work."""
+        if not torch.cuda.is_available():
+&gt;           _clock_lock_unavailable("real CUDA device required")
+
+tests/test_anti_cheat_protections.py:659: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+reason = 'real CUDA device required'
+
+    def _clock_lock_unavailable(reason):
+        """Unavailable locally is a skip; the attested Tier-1 contract requires it."""
+        if os.environ.get("TIER1_EXPECTED_GPU_NAME", "").strip():
+&gt;           pytest.fail(f"Attested Tier-1 runner requires clock locking: {reason}")
+E           Failed: Attested Tier-1 runner requires clock locking: real CUDA device required
+
+tests/test_anti_cheat_protections.py:542: Failed</failure></testcase></testsuite></testsuites>

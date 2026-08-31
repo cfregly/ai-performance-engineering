@@ -1,0 +1,33 @@
+{
+  "owned_source": {
+    "code/tests/test_benchmark_hygiene_regressions.py": "307af3b7dcc99bebf21544c87a5ecb145d2a84872874d844fa4d7af1b9315f73"
+  },
+  "read_only_dependencies": {
+    "code/core/harness/run_benchmarks.py": "929b3945f37e3bc63967adadcad41ab03f3e11f9e0dcfe310b2c2863d87599a2",
+    "code/labs/occupancy_tuning/__init__.py": "d0b992aa2614f95e2cce5899e08f77d19060ecc14c88583283b1f96604f974b9",
+    "code/labs/occupancy_tuning/triton_matmul_schedules.py": "4ac62de101756f9db1858d4fa2a7fd38712977c9366bcb6e118a19f2942f7d2e",
+    "code/labs/occupancy_tuning/sweep_schedules.py": "a2ea457f26503d36678974915384c09f02f25bad18aa60a4bb301b2f3fb90eca",
+    "code/labs/occupancy_tuning/optimized_proton_matmul_bm64_bn64_bk32_nw2.py": "2cdaf97c57f09f308866ed652cb43b1e1e699d4b694389d3fb6db412fec8c5fe",
+    "code/labs/occupancy_tuning/optimized_proton_matmul_bm64_bn256_bk32.py": "63bd9dad86088130535720b051f59e3e636cd9699a435d0d178a028542818f5d",
+    "code/labs/custom_vs_cublas/run_lab.py": "0d5c70d1525d654f62fc330c29c64f899fdd3a8ad6fa5d64aaa4899fb2d02c61",
+    "code/labs/nvfp4_group_gemm/nvfp4_group_gemm_common.py": "59ff4713fe7c3acbc9999e2ce9b1effa946db1dd4b01d9f46cea685c4bb53016",
+    "code/labs/kv_cache_compression/baseline_kv_cache.py": "6e192a20671da0b6572f358fcf002db6184ceabb0382811e4eb02ab0041cf443",
+    "code/labs/kv_cache_compression/optimized_kv_cache_nvfp4.py": "279464d15f98f3dbe7bf0deb0e00027a20885c9aead65361ea8234cb5f79fdba",
+    "code/labs/dynamic_router/vllm_runner.py": "7c7cf9da7b02d9889aa71d7cc08362b3c7fa5c3100add0ecf05ccdd58f42aeee",
+    "code/labs/tcgen05_cluster_shapes/run_cluster_shape_sweep.py": "a52df3ba7623701baf4fbe2af5ba236f32cfb82712587a65e29dea6390a0d28a",
+    "code/labs/fullstack_cluster/run_lab_fullstack_cluster.py": "eabfa1f105f5337255db248e614c56e89348cc4a5d7ac5ef2e826bb52c54dc8f",
+    "code/labs/flexattention/flex_attention_cute.py": "5d3a61471df1bfef00f5d8e6c245a45d9bfa055a7b995789ef5907442dadd157",
+    "code/labs/nanochat_fullstack/nanochat/gpt.py": "5893aa454ea6134652de52c7bc92679effe8f28272801c43cb71f7dfe31551d3",
+    "code/labs/nanochat_fullstack/benchmark_incremental_optimizations.py": "2764da60e3ea030cba09a9436bbeaf30ab3394de538a69d34eeeac3c1d82c2e1",
+    "code/labs/nanochat_fullstack/scripts/bench_b200_flags.py": "27f7fa06a6ac39339c34fbb58c5aa827b87d572c327585e6a8ab0a85a39187ec",
+    "code/labs/persistent_decode/persistent_decode_common.py": "59b13fcbeac492772d47382efe5b04e3321fcbb3467098e46759755d7111d8ad",
+    "code/labs/persistent_decode/baseline_persistent_decode.py": "b10c53d42430fa42cff45db889879ab2bf7b6d14b04e018ec55c51bf65ff63d8",
+    "code/labs/persistent_decode/optimized_persistent_decode_cuda.py": "b48694f43a25cd6da0ad17c857579013c4018ce901db62c721fd37d99e889739",
+    "code/labs/persistent_decode/optimized_persistent_decode_graphs.py": "c23a70f24c4f9245e200a910abb3410693047f924197e366cb1d808f98042fce",
+    "code/labs/persistent_decode/optimized_persistent_decode_triton.py": "2c3a95cc348d5ac9897dca4959b23b999322991ed21fa3992c583177ba826b93",
+    "code/labs/persistent_decode/baseline_tma_prefill_decode.py": "24838f26dc2c50800ccda28e24d1c0e92d8c8bd7d7ee43301dc013a28c052f9b",
+    "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py": "ff54f675b862bd3c72330e839b6461e6d01a02ec76cc35a7ccfa5c5bfb9465e9",
+    "code/labs/persistent_decode/optimized_tma_prefill_decode.py": "5c01331ae35be8975c6e070af8bc0ddf3dd28ad5d4e02eb2efd62b1b63719497",
+    "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py": "7f3c16ab16961332e08fa5acef20c58483b268a3c268513a36f476ccaa25daa9"
+  }
+}

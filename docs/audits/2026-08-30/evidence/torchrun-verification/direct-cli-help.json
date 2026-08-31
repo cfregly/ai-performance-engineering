@@ -1,0 +1,50 @@
+[
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "-m",
+      "labs.train_distributed.ddp",
+      "--help"
+    ],
+    "returncode": 0,
+    "stdout": "usage: ddp.py [-h]\n              [--mode {baseline,optimized,baseline_flash,optimized_flash}]\n              [--variant {single,multigpu}]\n\nDDP training examples.\n\noptions:\n  -h, --help            show this help message and exit\n  --mode {baseline,optimized,baseline_flash,optimized_flash}\n                        Which variant to execute.\n  --variant {single,multigpu}\n                        Select the single-GPU or multi-GPU implementation.\n",
+    "stderr": "",
+    "scope": "Real direct-training CLI help only; no child training or GPU execution"
+  },
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "-m",
+      "labs.train_distributed.zero2",
+      "--help"
+    ],
+    "returncode": 0,
+    "stdout": "usage: zero2.py [-h] [--mode {baseline,optimized}]\n                [--variant {single,multigpu}]\n\nZeRO-2 training examples.\n\noptions:\n  -h, --help            show this help message and exit\n  --mode {baseline,optimized}\n                        Select which variant to run.\n  --variant {single,multigpu}\n                        Select the single-GPU or multi-GPU implementation.\n",
+    "stderr": "",
+    "scope": "Real direct-training CLI help only; no child training or GPU execution"
+  },
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "-m",
+      "labs.train_distributed.baseline_ddp",
+      "--help"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": "",
+    "scope": "Real direct-training CLI help only; no child training or GPU execution"
+  },
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "-m",
+      "labs.train_distributed.optimized_zero2",
+      "--help"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": "",
+    "scope": "Real direct-training CLI help only; no child training or GPU execution"
+  }
+]

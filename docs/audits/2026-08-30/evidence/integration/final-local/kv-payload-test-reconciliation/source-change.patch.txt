@@ -1,0 +1,158 @@
+--- original/code/tests/test_labs_runtime_gating.py
++++ current/code/tests/test_labs_runtime_gating.py
+@@ -99,39 +99,136 @@
+ def test_kv_cache_verification_output_is_built_after_benchmark(
+     benchmark_cls, monkeypatch: pytest.MonkeyPatch
+ ) -> None:
++    from itertools import combinations
++
++    from labs.kv_cache_compression.accuracy import AccuracyLimits, assert_cache_accuracy
++
++    # Exercise real CPU BF16 modules and cache writes, without calling CUDA/TE
++    # setup or claiming the FP8/NVFP4 benchmark itself ran on this host.
++    class CPULinear(nn.Linear):
++        def __init__(self, *args, params_dtype, device, **kwargs):
++            super().__init__(*args, dtype=params_dtype, device=device, **kwargs)
++
++    class CPULayerNorm(nn.LayerNorm):
++        def __init__(self, hidden_dim, *, params_dtype, device):
++            super().__init__(hidden_dim, eps=0, dtype=params_dtype, device=device)
++
+     bench = benchmark_cls()
+     bench.device = torch.device("cpu")
+     bench.batch_size = 2
++    bench.hidden_dim = 8
++    bench.num_heads = 2
+     bench.prefill_seq = 4
+     bench.decode_seq = 2
+     bench.decode_steps = 1
++    bench.model = KVCacheAttention(
++        hidden_dim=bench.hidden_dim,
++        num_heads=bench.num_heads,
++        linear_cls=CPULinear,
++        layernorm_cls=CPULayerNorm,
++        params_dtype=torch.bfloat16,
++        device=bench.device,
++    )
+     bench.cache = allocate_kv_cache(
+-        batch_size=2,
++        batch_size=bench.batch_size,
+         total_tokens=6,
+-        num_heads=2,
++        num_heads=bench.num_heads,
+         head_dim=4,
+-        device=torch.device("cpu"),
+-        dtype=torch.float32,
+-    )
+-    bench.cache.cache_k.copy_(torch.arange(bench.cache.cache_k.numel()).view_as(bench.cache.cache_k))
+-    bench.cache.cache_v.copy_(torch.arange(bench.cache.cache_v.numel()).view_as(bench.cache.cache_v).mul_(2))
++        device=bench.device,
++        dtype=torch.bfloat16,
++    )
++    # Every row has mean zero and variance one, with a distinct sign pattern
++    # per batch/token. The eps=0 LayerNorm therefore leaves these inputs exact.
++    tokens = torch.full((12, 8), -1, dtype=torch.bfloat16)
++    for row, positive_channels in zip(tokens, combinations(range(8), 4)):
++        row[list(positive_channels)] = 1
++    tokens = tokens.reshape(2, 6, 8)
++    assert torch.unique(tokens.reshape(12, 8), dim=0).shape[0] == 12
++    channel_bias = torch.arange(1, 9, dtype=torch.bfloat16) / 8
++    with torch.no_grad():
++        bench.model.ln.weight.fill_(1)
++        bench.model.ln.bias.zero_()
++        bench.model.qkv.weight.zero_()
++        bench.model.qkv.bias.zero_()
++        identity = torch.eye(8, dtype=torch.bfloat16)
++        bench.model.qkv.weight[:8].copy_(identity)
++        bench.model.qkv.weight[8:16].copy_(2 * identity)
++        bench.model.qkv.weight[16:].copy_(-2 * identity)
++        bench.model.qkv.bias[8:16].copy_(channel_bias)
++        bench.model.qkv.bias[16:].copy_(-channel_bias)
++        bench.model.proj.weight.copy_(identity)
++        bench.model.proj.bias.zero_()
++        bench.cache.cache_k.fill_(float("nan"))
++        bench.cache.cache_v.fill_(float("nan"))
++
++    bench.prefill_inputs = [tokens[:, :2], tokens[:, 2:4]]
++    bench.decode_inputs = [tokens[:, 4:]]
++    bench._prefill_groups = [(bench.prefill_inputs[0], 0), (bench.prefill_inputs[1], 2)]
++    bench._decode_groups = [(bench.decode_inputs[0], 4)]
++    bench._payload_parameter_count = sum(parameter.numel() for parameter in bench.model.parameters())
+     bench._batch_size_tensor = torch.tensor([bench.batch_size], dtype=torch.int64)
+     bench._seq_meta_tensor = torch.tensor([bench.prefill_seq, bench.decode_seq, bench.decode_steps], dtype=torch.int64)
+-    bench._verify_output_buffer = torch.empty(2, 2, 1, 1, 4, dtype=torch.float32)
+-
+-    def fail_stack(*args, **kwargs):
+-        raise AssertionError("benchmark_fn() should not stack verification output")
+-
+-    monkeypatch.setattr(torch, "stack", fail_stack)
+-    bench._mark_cache_output_ready()
+-    assert bench.output is None
+-    monkeypatch.undo()
+-
++
++    with torch.inference_mode():
++        for part, offset in bench._prefill_groups + bench._decode_groups:
++            result = bench.model(part, bench.cache, offset)
++            assert torch.isfinite(result).all()
++
++    # Closed-form reference uses neither the production reference helper nor
++    # the candidate model/cache outputs. All arithmetic is exactly representable
++    # for this fixed fixture; it is not a calibrated GPU quantization policy.
++    expected_k = (2 * tokens + channel_bias).reshape(2, 6, 2, 4)
++    expected_v = (-2 * tokens - channel_bias).reshape(2, 6, 2, 4)
++    expected_payload = torch.cat((expected_k.reshape(-1), expected_v.reshape(-1)))
++    torch.testing.assert_close(bench.cache.cache_k, expected_k, rtol=0, atol=0)
++    torch.testing.assert_close(bench.cache.cache_v, expected_v, rtol=0, atol=0)
++    assert torch.count_nonzero(expected_payload) == expected_payload.numel()
++
++    def fail_payload_allocation(*args, **kwargs):
++        raise AssertionError("The timed readiness marker must not assemble a verification payload")
++
++    with monkeypatch.context() as timing_probe:
++        timing_probe.setattr(torch, "stack", fail_payload_allocation)
++        timing_probe.setattr(torch, "cat", fail_payload_allocation)
++        bench._mark_cache_output_ready()
++        assert bench.output is None
++        assert bench._accuracy_metrics == {}
++
++    # The real production guard and reference/comparator stay enabled.
++    with pytest.raises(RuntimeError, match="Uncalibrated KV run"):
++        bench.capture_verification_payload()
++    assert "Uncalibrated KV accuracy policy" in bench.validate_result()
++    bench._accuracy_limits = AccuracyLimits(0, 0, 0, 0)  # Exact CPU fixture only.
+     bench.capture_verification_payload()
+ 
+     verify_output = bench.get_verify_output()
+-    assert verify_output.shape == (2, 2, 1, 1, 4)
+-    assert verify_output.dtype == torch.float32
++    assert verify_output.shape == (192,)
++    assert verify_output.numel() == bench.cache.cache_k.numel() + bench.cache.cache_v.numel()
++    assert verify_output.dtype == torch.bfloat16
++    torch.testing.assert_close(verify_output, expected_payload, rtol=0, atol=0)
++    assert verify_output.untyped_storage().data_ptr() not in {
++        bench.cache.cache_k.untyped_storage().data_ptr(),
++        bench.cache.cache_v.untyped_storage().data_ptr(),
++        expected_payload.untyped_storage().data_ptr(),
++    }
++    assert bench.validate_result() is None
++    assert all(value == 0 for value in bench._accuracy_metrics.values())
++    assert bench.get_output_tolerance() == (0.0, 0.0)
++    with pytest.raises(AssertionError, match="reference aliases candidate storage"):
++        assert_cache_accuracy(bench.cache, bench.cache, bench._accuracy_limits)
++
++    # Tail corruption in either complete K/V tensor must be rejected, while
++    # the earlier captured payload must remain an independent stable snapshot.
++    for cache_tensor in (bench.cache.cache_k, bench.cache.cache_v):
++        tail = cache_tensor[-1, -1, -1, -1]
++        original_tail = tail.clone()
++        tail.add_(1)
++        assert "KV cache accuracy failed" in bench.validate_result()
++        with pytest.raises(AssertionError, match="KV cache accuracy failed"):
++            bench.capture_verification_payload()
++        torch.testing.assert_close(verify_output, expected_payload, rtol=0, atol=0)
++        tail.copy_(original_tail)
++    assert bench.validate_result() is None
+ 
+ 
+ class _DummyLayerNorm(nn.Module):

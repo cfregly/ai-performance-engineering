@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import math
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Optional
 
 import torch
@@ -17,11 +18,14 @@ from labs.blackwell_gemm_optimizations.blackwell_grouped_gemm_autotune import (
     KernelSchedule,
     resolve_schedule,
 )
-from labs.blackwell_gemm_optimizations.blackwell_grouped_gemm_kernel import (
-    launch_grouped_gemm_autotuned,
-    launch_grouped_gemm_persistent,
-    launch_grouped_gemm_standard,
-)
+
+
+@lru_cache(maxsize=1)
+def _load_grouped_gemm_kernels():
+    """Keep CPU routing helpers importable; never replace missing GPU kernels."""
+    from labs.blackwell_gemm_optimizations import blackwell_grouped_gemm_kernel
+
+    return blackwell_grouped_gemm_kernel
 
 
 def _resolve_device() -> torch.device:
@@ -290,6 +294,8 @@ def require_blackwell_grouped_gemm_support(device: torch.device) -> None:
         raise RuntimeError(
             "SKIPPED: Blackwell grouped GEMM lab requires compute capability 10.0+."
         )
+    # Benchmark setup resolves this cache before the measured run_variant calls.
+    _load_grouped_gemm_kernels()
 
 
 def _gather_packed_tokens(
@@ -316,12 +322,13 @@ def run_variant(
     packed_tokens_view: torch.Tensor | None = None,
     experimental: str | None = None,
 ) -> VariantResult:
+    kernels = _load_grouped_gemm_kernels()
     packed_tokens = _gather_packed_tokens(state, packed_tokens_flat, packed_tokens_view)
     schedule_name = experimental if experimental is not None else variant
     schedule = resolve_schedule(schedule_name)
 
     if schedule_name == "full_stack":
-        output = launch_grouped_gemm_autotuned(
+        output = kernels.launch_grouped_gemm_autotuned(
             packed_tokens,
             state.expert_weights,
             state.padded_route_weights,
@@ -329,7 +336,7 @@ def run_variant(
             output_buffer,
         )
     elif schedule.persistent:
-        output = launch_grouped_gemm_persistent(
+        output = kernels.launch_grouped_gemm_persistent(
             packed_tokens,
             state.expert_weights,
             state.padded_route_weights,
@@ -338,7 +345,7 @@ def run_variant(
             schedule,
         )
     else:
-        output = launch_grouped_gemm_standard(
+        output = kernels.launch_grouped_gemm_standard(
             packed_tokens,
             state.expert_weights,
             state.padded_route_weights,

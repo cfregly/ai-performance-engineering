@@ -1,0 +1,116 @@
+--- before/code/requirements_latest.txt
++++ after/code/requirements_latest.txt
+@@ -1,5 +1,5 @@
+ # AI Performance Engineering - Blackwell Requirements
+-# Target: Blackwell B200 (SM100) with PyTorch 2.9.1+cu130, CUDA 13.0, Triton 3.5.0
++# Target: Blackwell B200 (SM100) with PyTorch 2.9.1+cu130, CUDA 13.0, Triton 3.5.1
+ # All versions are pinned to exact versions for reproducible builds
+ # uv.lock contains only the repository's Python compatibility metadata. It is
+ # not a resolved dependency lock. This file remains the environment source.
+@@ -20,8 +20,8 @@
+ # Keep PyPI available for the remaining packages and local wheels when present.
+ # torchvision will be installed separately with --no-deps to prevent torch override
+ 
+-# Optional: install upstream Triton if you author custom GPU kernels outside of
+-triton==3.5.0
++# PyTorch 2.9.1 CUDA wheel metadata requires this exact Linux dependency.
++triton==3.5.1
+ 
+ # Build tooling compatibility
+ packaging==25.0
+@@ -88,6 +88,7 @@
+ fastapi==0.121.3
+ uvicorn==0.38.0
+ httpx==0.28.1
++requests==2.34.2  # Direct dependency of the full CPU HTTP integration tests
+ 
+ # Model development helpers
+ transformers==4.56.0
+--- before/code/setup.sh
++++ after/code/setup.sh
+@@ -9,7 +9,7 @@
+ #   2. Python 3.12
+ #   3. CUDA 13.0.2 toolkit + cuBLAS 13.1.0.3 (Update 2) repository
+ #   4. The canonical PyTorch/Triton stack pinned in requirements_latest.txt
+-#      (torch==2.9.1+cu130, triton==3.5.0) for CUDA 13.0.2; versions are
++#      (torch==2.9.1+cu130, triton==3.5.1) for CUDA 13.0.2; versions are
+ #      single-sourced from requirements_latest.txt, not the nightly defaults below
+ #   5. NVIDIA Nsight Systems 2025.3.2 (for timeline profiling)
+ #   6. NVIDIA Nsight Compute 2025.3.1 (for kernel metrics)
+@@ -367,7 +367,7 @@
+ PYTORCH_TORCHAUDIO_VERSION="2.9.1+cu130"
+ # torchao 0.15.0 is the upstream ABI-compatible release for torch 2.9.1.
+ PYTORCH_TORCHAO_VERSION="0.15.0+cu130"
+-PYTORCH_TRITON_VERSION="3.5.0"
++PYTORCH_TRITON_VERSION="3.5.1"
+ PYTORCH_STABLE_INDEX="https://download.pytorch.org/whl"
+ PYTORCH_NIGHTLY_INDEX="https://download.pytorch.org/whl/nightly"
+ 
+--- before/.github/workflows/benchmark-validation.yml
++++ after/.github/workflows/benchmark-validation.yml
+@@ -88,10 +88,12 @@
+             fastapi==0.121.3 \
+             uvicorn==0.38.0 \
+             httpx==0.28.1 \
++            requests==2.34.2 \
++            tokenizers==0.22.2 \
+             hypothesis==6.148.2 \
+             anthropic==0.112.0 \
+             openai==2.44.0 \
+-            triton==3.5.0
++            triton==3.5.1
+           python -m pip install torch==2.9.1 --index-url https://download.pytorch.org/whl/cpu
+ 
+       - name: Run core contract tests
+--- before/code/tests/test_setup_bootstrap.py
++++ after/code/tests/test_setup_bootstrap.py
+@@ -115,6 +115,7 @@
+         "PYTORCH_TORCHAO_INDEX",
+         "PYTORCH_TORCHAO_VERSION",
+         "PYTORCH_TRITON_INDEX",
++        "PYTORCH_TRITON_VERSION",
+     )
+     script = _pytorch_source_script()
+     for name in source_vars:
+@@ -150,6 +151,8 @@
+     assert sources["PYTORCH_TORCHAO_VERSION"] == "0.15.0+cu130"
+     assert sources["PYTORCH_TORCHAO_INDEX"] == sources["PYTORCH_CU130_INDEX"]
+     assert sources["PYTORCH_TRITON_INDEX"] == "https://download.pytorch.org/whl"
++    # The official torch 2.9.1+cu130 wheel requires triton==3.5.1 on Linux.
++    assert sources["PYTORCH_TRITON_VERSION"] == "3.5.1"
+ 
+ 
+ def test_nightly_requirements_select_nightly_sources(tmp_path: Path) -> None:
+@@ -179,6 +182,8 @@
+     assert sources["PYTORCH_TORCHAO_VERSION"] == "0.15.0+cu130"
+     assert sources["PYTORCH_CU130_INDEX"] == sources["PYTORCH_TORCHAO_INDEX"]
+     assert sources["PYTORCH_TRITON_INDEX"] == "https://download.pytorch.org/whl"
++    # The official torch 2.9.1+cu130 wheel requires triton==3.5.1 on Linux.
++    assert sources["PYTORCH_TRITON_VERSION"] == "3.5.1"
+ 
+ 
+ def test_aarch64_uses_published_torchaudio_version_without_changing_torch() -> None:
+--- before/code/tests/test_repository_configuration.py
++++ after/code/tests/test_repository_configuration.py
+@@ -489,6 +489,21 @@
+         assert pin in workflow
+ 
+ 
++
++def test_cpu_ci_installs_direct_collection_dependencies() -> None:
++    workflow = _load_workflow("benchmark-validation.yml")
++    install = next(step["run"] for step in workflow["jobs"]["validate"]["steps"]
++                   if step["name"] == "Install CPU test dependencies")
++    requirements = (CODE_ROOT / "requirements_latest.txt").read_text(encoding="utf-8")
++    # HTTP tests import requests; nanochat.engine imports tokenizers transitively
++    # through checkpoint_manager. Both imports happen during ordinary collection.
++    for package in ("requests", "tokenizers"):
++        pins = [line.split("#", 1)[0].strip() for line in requirements.splitlines()
++                if line.strip().startswith(f"{package}==")]
++        assert len(pins) == 1, f"The full CPU suite directly imports {package}"
++        assert pins[0] in install.split(), f"Clean CPU CI must install {pins[0]} before collection"
++
++
+ def test_full_test_collection_gates_cpu_and_attested_gpu_workflows() -> None:
+     cpu_job = _load_workflow("benchmark-validation.yml")["jobs"]["validate"]
+     cpu_step = next(step for step in cpu_job["steps"] if step["name"] == "Run full CPU test suite")

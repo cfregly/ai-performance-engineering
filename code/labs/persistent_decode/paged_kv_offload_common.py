@@ -131,6 +131,10 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._prefetch_lock = threading.Lock()
         self._prefetch_ready_start: Optional[int] = None
         self._prefetch_stop = threading.Event()
+        self._staging_copy_events: dict[int, torch.cuda.Event] = {}
+        self._staging_copy_pending: set[int] = set()
+        self._device_consumed_events: list[torch.cuda.Event] = []
+        self._device_consumed_pending: set[int] = set()
 
         self.host_cache: Optional[torch.Tensor] = None
         self._host_cache_is_pinned: bool = False
@@ -247,6 +251,13 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.cfg.use_direct_h2d and self._host_cache_is_pinned and self.host_cache is not None:
             return self._host_page_view(start, slice_len), slice_len
 
+        # GPU stream waits cannot protect a host write. Wait for DMA to finish
+        # reading this exact staging allocation before the CPU overwrites it.
+        key = id(target)
+        if key in self._staging_copy_pending:
+            self._staging_copy_events[key].synchronize()
+            self._staging_copy_pending.remove(key)
+
         if self.host_memmap is not None:
             target[..., :slice_len, :].copy_(self._host_page_view(start, slice_len))
         elif self.host_cache is not None:
@@ -289,11 +300,21 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 target_v[..., :slice_len, :].copy_(src_v, non_blocking=self.cfg.use_pinned_stage)
 
         label = "transfer_async:h2d" if (self.copy_stream is not None or self.cfg.use_pinned_stage) else "transfer_sync:h2d"
+        source_event = self._staging_copy_events.get(id(staged))
+
+        def _record_source_read(stream) -> None:
+            if source_event is not None:
+                source_event.record(stream)
+                self._staging_copy_pending.add(id(staged))
+
         if self.copy_stream is not None:
+            if buffer_idx in self._device_consumed_pending:
+                self.copy_stream.wait_event(self._device_consumed_events[buffer_idx])
             if wait_stream is not None:
                 self.copy_stream.wait_stream(wait_stream)
             with torch.cuda.stream(self.copy_stream), self._nvtx_range(label):
                 _copy_planes()
+                _record_source_read(self.copy_stream)
                 if record_event is not None:
                     record_event.record(self.copy_stream)
             if wait_for_copy:
@@ -302,6 +323,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         else:
             with self._nvtx_range(label):
                 _copy_planes()
+                _record_source_read(torch.cuda.current_stream(self.device))
                 if record_event is not None:
                     record_event.record(torch.cuda.current_stream())
 
@@ -361,6 +383,13 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 pin_memory=self.cfg.use_pinned_stage,
             )
         self.copy_stream = torch.cuda.Stream() if self.cfg.use_async_stream else None
+        self._staging_copy_events = {
+            id(tensor): torch.cuda.Event() for tensor in (self.staging, self.prefetch_staging)
+            if tensor is not None and self.cfg.use_pinned_stage
+        }
+        self._staging_copy_pending = set()
+        self._device_consumed_events = [torch.cuda.Event() for _ in range(buffer_count)]
+        self._device_consumed_pending = set()
 
         host_shape = (
             2,  # k and v
@@ -408,6 +437,8 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.float32,
         )
+        if self.copy_stream is not None:
+            self.copy_stream.wait_stream(torch.cuda.current_stream(self.device))
 
     # -------------------- Benchmark --------------------
 
@@ -466,6 +497,9 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
             except queue.Full:
                 pass
         self._prefetch_thread.join(timeout=2.0)
+        if self._prefetch_thread.is_alive():
+            # Keep worker-owned staging/memmap storage alive on a failed join.
+            raise RuntimeError("Host prefetch worker did not stop; cannot release its buffers")
         self._prefetch_thread = None
         self._prefetch_queue = None
         self._prefetch_ready = None
@@ -555,13 +589,16 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 k = self.hot_k[..., :slice_len, :]
                 v = self.hot_v[..., :slice_len, :]
                 attn_out = F.scaled_dot_product_attention(q, k, v)
+                if self.copy_stream is not None:
+                    self._device_consumed_events[active_idx].record(torch.cuda.current_stream(self.device))
+                    self._device_consumed_pending.add(active_idx)
 
                 if self.cfg.prefetch_next_page:
                     # Launch next-page prefetch so H2D can overlap attention compute.
                     if use_host_prefetch:
                         prefetched = self._wait_for_host_prefetch(next_start)
                         if prefetched is None:
-                            staged_prefetch, pref_len = self._stage_page(next_start, into_prefetch=True)
+                            raise RuntimeError("Host prefetch timed out; staging buffer is still owned by the worker")
                         else:
                             staged_prefetch, pref_len = prefetched
                     else:
@@ -625,6 +662,16 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def teardown(self) -> None:
         self._stop_host_prefetch_thread()
+        for key in self._staging_copy_pending:
+            self._staging_copy_events[key].synchronize()
+        self._staging_copy_pending.clear()
+        self._staging_copy_events.clear()
+        if self.copy_stream is not None:
+            self.copy_stream.synchronize()
+        for index in self._device_consumed_pending:
+            self._device_consumed_events[index].synchronize()
+        self._device_consumed_pending.clear()
+        self._device_consumed_events.clear()
         self.hot_k = None
         self.hot_v = None
         self.hot_kv_bufs = []

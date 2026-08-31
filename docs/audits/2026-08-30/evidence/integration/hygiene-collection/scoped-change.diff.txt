@@ -1,0 +1,62 @@
+--- original-hygiene-tests
++++ modified-hygiene-tests
+@@ -34,12 +34,6 @@
+ )
+ from labs.flexattention.baseline_flex_attention import BaselineFlexAttentionBenchmark
+ from labs.flexattention.optimized_flex_attention import OptimizedFlexAttentionBenchmark
+-from labs.occupancy_tuning.optimized_proton_matmul_bm64_bn64_bk32_nw2 import (
+-    get_benchmark as get_latency_benchmark,
+-)
+-from labs.occupancy_tuning.optimized_proton_matmul_bm64_bn256_bk32 import (
+-    get_benchmark as get_wide_n_benchmark,
+-)
+ from labs.real_world_models.deepseek_r1_moe_optimization import (
+     get_benchmark as get_deepseek_benchmark,
+ )
+@@ -7628,8 +7622,29 @@
+ 
+ 
+ def test_occupancy_tuning_variants_match_their_filenames() -> None:
++    from labs.occupancy_tuning.optimized_proton_matmul_bm64_bn64_bk32_nw2 import (
++        get_benchmark as get_latency_benchmark,
++    )
++    from labs.occupancy_tuning.optimized_proton_matmul_bm64_bn256_bk32 import (
++        get_benchmark as get_wide_n_benchmark,
++    )
++
+     wide_n = get_wide_n_benchmark()
+     latency = get_latency_benchmark()
++
++    assert wide_n.schedule.name == "bm64_bn256_bk32"
++    assert wide_n.schedule.block_m == 64
++    assert wide_n.schedule.block_n == 256
++    assert wide_n.schedule.block_k == 32
++
++    assert latency.schedule.name == "bm64_bn64_bk32_nw2"
++    assert latency.schedule.block_m == 64
++    assert latency.schedule.block_n == 64
++    assert latency.schedule.block_k == 32
++    assert latency.schedule.num_warps == 2
++
++
++def test_occupancy_tuning_schedule_preserves_inference_and_validation_hygiene() -> None:
+     schedule_source = (
+         REPO_ROOT / "labs" / "occupancy_tuning" / "triton_matmul_schedules.py"
+     ).read_text(encoding="utf-8")
+@@ -7642,16 +7657,6 @@
+         maxsplit=1,
+     )[0]
+ 
+-    assert wide_n.schedule.name == "bm64_bn256_bk32"
+-    assert wide_n.schedule.block_m == 64
+-    assert wide_n.schedule.block_n == 256
+-    assert wide_n.schedule.block_k == 32
+-
+-    assert latency.schedule.name == "bm64_bn64_bk32_nw2"
+-    assert latency.schedule.block_m == 64
+-    assert latency.schedule.block_n == 64
+-    assert latency.schedule.block_k == 32
+-    assert latency.schedule.num_warps == 2
+     assert "with torch.inference_mode(), self._nvtx_range(self.schedule.name):" in benchmark_section
+     assert "with self._nvtx_range(self.schedule.name):" not in benchmark_section
+     assert "torch.no_grad()" not in benchmark_section

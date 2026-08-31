@@ -1,0 +1,18 @@
+{
+  "case": "inference-help",
+  "argv": [
+    "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+    "-m",
+    "cli.aisp",
+    "inference",
+    "vllm",
+    "--help"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "exit_code": 0,
+  "expected_exit": 0,
+  "expected_text": "--model-size",
+  "status": "PASS",
+  "elapsed_seconds": 2.4119604579755105,
+  "output": "cli-inference-help.txt"
+}

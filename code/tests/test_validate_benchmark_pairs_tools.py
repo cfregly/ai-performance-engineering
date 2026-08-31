@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 import torch
+import pytest
 
 from core.benchmark.verification import InputSignature
 from core.benchmark.verification_mixin import VerificationPayloadMixin
@@ -448,6 +449,15 @@ def test_ch04_nvshmem_pairs_skip_cleanly_on_single_gpu_or_missing_symmem() -> No
         if torch.cuda.device_count() < 2:
             assert result.skipped is True
             assert result.error is not None and "SKIPPED" in result.error
+        elif result.skipped:
+            assert result.error is not None and "SKIPPED" in result.error
+            pytest.skip(result.error)
+        else:
+            assert result.valid, result.to_dict()
+            assert result.baseline_has_signature and result.optimized_has_signature
+            assert result.signatures_match
+            assert not result.mismatches
+            assert result.error is None
 
 
 def test_validate_all_pairs_timeout_kills_isolated_pair_descendants(tmp_path: Path) -> None:

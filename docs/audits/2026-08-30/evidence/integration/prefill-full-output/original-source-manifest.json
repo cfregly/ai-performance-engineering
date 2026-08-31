@@ -1,0 +1,27 @@
+[
+  {
+    "path": "code/labs/persistent_decode/baseline_tma_prefill_decode.py",
+    "preserved_as": "original-baseline_tma_prefill_decode.py",
+    "sha256": "baec3cc9367fb3c0417e847b0e1cbdb46da694eef93750f89cc4c44647cc5cce"
+  },
+  {
+    "path": "code/labs/persistent_decode/optimized_tma_prefill_decode.py",
+    "preserved_as": "original-optimized_tma_prefill_decode.py",
+    "sha256": "e24bef6eb0489281d54ed71579db42df894a3d8d4dece9d99cd6cb3d620e33fa"
+  },
+  {
+    "path": "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py",
+    "preserved_as": "original-baseline_native_tma_prefill_decode.py",
+    "sha256": "43427f27efdf22aad2d456212ddfb6b6eb68d122da5875c6c59c4ba8472a3fc3"
+  },
+  {
+    "path": "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py",
+    "preserved_as": "original-optimized_native_tma_prefill_decode.py",
+    "sha256": "5b0356053c4977f07080007cf1807600b9876f82782840e0ab82da834afbd521"
+  },
+  {
+    "path": "code/labs/persistent_decode/persistent_decode_common.py",
+    "preserved_as": "original-persistent_decode_common.py",
+    "sha256": "8c2e49dd225cf885faa53723c87294c9680853f66640a94131f4b9b4ce43e968"
+  }
+]

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import html
+import math
 import shlex
 import sys
 from pathlib import Path
@@ -410,30 +412,104 @@ def _generate_comparison_html(data: Dict[str, Any], chapter: str) -> str:
 </html>'''
 
 
-# Placeholder implementations for other profile commands
-def flame(args) -> None:
-    """Generate flame graph from profile."""
+def _flame_html(data: Dict[str, Any]) -> str:
+    """Offline SVG duration view; profile names are data, never HTML/script."""
+    rectangles = []
+    max_depth = 0
+
+    def draw(node, x, width, depth):
+        nonlocal max_depth
+        max_depth = max(max_depth, depth)
+        name = html.escape(str(node['name']))
+        value = float(node['value'])
+        rectangles.append(
+            f'<g><title>{name}: {value:.3f} us</title>'
+            f'<rect x="{x:.4f}" y="{depth * 28}" width="{width:.4f}" height="26" '
+            f'fill="hsl({25 + depth * 37},75%,65%)" stroke="white"/>'
+            f'<text x="{x + 3:.4f}" y="{depth * 28 + 18}">{name[:80]}</text></g>'
+        )
+        child_x = x
+        for child in node.get('children', []):
+            child_width = width * float(child['value']) / value if value else 0
+            if child_width > 0:
+                draw(child, child_x, child_width, depth + 1)
+                child_x += child_width
+
+    draw(data, 0, 1200, 0)
+    return (
+        '<!doctype html><html><head><meta charset="utf-8"><title>Trace duration flame graph</title>'
+        '<style>body{font-family:system-ui;margin:24px}svg{width:100%;height:auto}text{font-size:11px;pointer-events:none}</style>'
+        '</head><body><h1>Trace duration flame graph</h1>'
+        '<p>Widths show summed complete-event durations, grouped by trace category. '
+        'Overlapping CPU/GPU events may double-count elapsed time; this is not a wall-time timeline or reconstructed call stack. '
+        'Hover a rectangle for its full name and duration.</p>'
+        f'<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Trace duration flame graph" '
+        f'viewBox="0 0 1200 {(max_depth + 1) * 28}">' + ''.join(rectangles) + '</svg></body></html>'
+    )
+
+
+def flame(args) -> int:
+    """Export a real Chrome trace as offline HTML/SVG or flame graph JSON."""
     from rich.console import Console
-    file = getattr(args, 'file', None)
+    from core.profiling.flame_graph import FlameGraphGenerator
     console = Console()
-    console.print(f"[yellow]Generating flame graph from {file or 'default profile'}...[/yellow]")
-    console.print(f"[cyan]Use 'aisp profile compare' for baseline vs optimized comparison.[/cyan]")
+    try:
+        filename = getattr(args, 'file', None)
+        if not filename:
+            raise ValueError("A Chrome trace JSON file is required; export one with torch.profiler")
+        source = Path(filename)
+        if not source.is_file():
+            raise ValueError(f"Profile file not found: {source}")
+        if source.suffix.lower() != '.json':
+            raise ValueError("Only Chrome trace JSON is supported; export binary Nsight reports to JSON first")
+        output = Path(getattr(args, 'output', None) or 'flame.html')
+        if output.suffix.lower() not in ('.html', '.json'):
+            raise ValueError("Flame graph output must end in .html or .json")
+        if output.resolve() == source.resolve():
+            raise ValueError("Output must differ from the input trace")
+        # Preserve invalid durations for explicit validation instead of hiding
+        # them behind a minimum-duration filter.
+        generator = FlameGraphGenerator(min_duration_us=float('-inf'))
+        data = generator.from_chrome_trace(source, root_name='Trace events (summed duration)')
+        if data.get('error'):
+            raise ValueError(data['error'])
+
+        def validate(node):
+            value = float(node['value'])
+            if not math.isfinite(value) or value < 0:
+                raise ValueError("Trace contains non-finite or negative event durations")
+            for child in node.get('children', []):
+                validate(child)
+
+        validate(data)
+        if data['value'] <= 0 or not data.get('children'):
+            raise ValueError("Trace has no positive complete-event durations to visualize")
+        for warning in data.get('warnings', []):
+            console.print(f"Warning: {warning}", markup=False)
+        content = json.dumps(data, indent=2, allow_nan=False) if output.suffix.lower() == '.json' else _flame_html(data)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(content, encoding='utf-8')
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        console.print(f"Flame graph failed: {exc}", style='red', markup=False)
+        return 1
+    console.print(f"Flame graph saved to: {output}", style='green', markup=False)
+    return 0
 
 
-def memory(args) -> None:
+def memory(args) -> int:
     """Memory timeline analysis."""
     from rich.console import Console
-    file = getattr(args, 'file', None)
     console = Console()
-    console.print(f"[yellow]Memory analysis for {file or 'default profile'}[/yellow]")
+    console.print("Memory timeline conversion is not implemented by this command; no output was written. Use the dashboard for existing memory timeline artifacts.", style='red')
+    return 1
 
 
-def kernels(args) -> None:
+def kernels(args) -> int:
     """Kernel breakdown analysis."""
     from rich.console import Console
-    file = getattr(args, 'file', None)
     console = Console()
-    console.print(f"[yellow]Kernel breakdown for {file or 'default profile'}[/yellow]")
+    console.print("Standalone kernel breakdown is not implemented by this command. Use 'aisp profile compare' with collected baseline/optimized profiles.", style='red')
+    return 1
 
 
 def hta(args) -> None:

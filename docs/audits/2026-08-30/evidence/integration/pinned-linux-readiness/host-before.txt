@@ -1,0 +1,67 @@
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+______ test_pinned_stable_stack_uses_compatible_published_stable_sources _______
+
+    def test_pinned_stable_stack_uses_compatible_published_stable_sources() -> None:
+        sources = _resolve_pytorch_sources(CODE_ROOT / "requirements_latest.txt")
+    
+        assert sources["PYTORCH_TORCH_VERSION"] == "2.9.1+cu130"
+        assert sources["PYTORCH_CU130_INDEX"] == "https://download.pytorch.org/whl/cu130"
+        assert sources["PYTORCH_TORCH_FIND_LINKS"] == (
+            "https://download.pytorch.org/whl/cu130/torch/"
+        )
+        assert sources["PYTORCH_TORCHAUDIO_INDEX"] == sources["PYTORCH_CU130_INDEX"]
+        assert sources["PYTORCH_TORCHAO_VERSION"] == "0.15.0+cu130"
+        assert sources["PYTORCH_TORCHAO_INDEX"] == sources["PYTORCH_CU130_INDEX"]
+        assert sources["PYTORCH_TRITON_INDEX"] == "https://download.pytorch.org/whl"
+        # The official torch 2.9.1+cu130 wheel requires triton==3.5.1 on Linux.
+>       assert sources["PYTORCH_TRITON_VERSION"] == "3.5.1"
+E       AssertionError: assert '3.5.0' == '3.5.1'
+E         
+E         - 3.5.1
+E         ?     ^
+E         + 3.5.0
+E         ?     ^
+
+tests/test_setup_bootstrap.py:155: AssertionError
+_______ test_missing_requirements_retains_the_compatible_stable_defaults _______
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1651/test_missing_requirements_reta0')
+
+    def test_missing_requirements_retains_the_compatible_stable_defaults(tmp_path: Path) -> None:
+        sources = _resolve_pytorch_sources(tmp_path / "missing-requirements.txt")
+        assert sources["PYTORCH_TORCH_VERSION"] == "2.9.1+cu130"
+        assert sources["PYTORCH_TORCHAO_VERSION"] == "0.15.0+cu130"
+        assert sources["PYTORCH_CU130_INDEX"] == sources["PYTORCH_TORCHAO_INDEX"]
+        assert sources["PYTORCH_TRITON_INDEX"] == "https://download.pytorch.org/whl"
+        # The official torch 2.9.1+cu130 wheel requires triton==3.5.1 on Linux.
+>       assert sources["PYTORCH_TRITON_VERSION"] == "3.5.1"
+E       AssertionError: assert '3.5.0' == '3.5.1'
+E         
+E         - 3.5.1
+E         ?     ^
+E         + 3.5.0
+E         ?     ^
+
+tests/test_setup_bootstrap.py:186: AssertionError
+_______________ test_cpu_ci_installs_direct_http_test_dependency _______________
+
+    def test_cpu_ci_installs_direct_http_test_dependency() -> None:
+        workflow = _load_workflow("benchmark-validation.yml")
+        install = next(step["run"] for step in workflow["jobs"]["validate"]["steps"]
+                       if step["name"] == "Install CPU test dependencies")
+        requirements = (CODE_ROOT / "requirements_latest.txt").read_text(encoding="utf-8")
+        requests_pins = [line.strip() for line in requirements.splitlines()
+                         if line.strip().startswith("requests==")]
+>       assert len(requests_pins) == 1, "The full CPU suite directly imports requests"
+E       AssertionError: The full CPU suite directly imports requests
+E       assert 0 == 1
+E        +  where 0 = len([])
+
+tests/test_repository_configuration.py:500: AssertionError
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/host-before.xml -
+=========================== short test summary info ============================
+FAILED tests/test_setup_bootstrap.py::test_pinned_stable_stack_uses_compatible_published_stable_sources
+FAILED tests/test_setup_bootstrap.py::test_missing_requirements_retains_the_compatible_stable_defaults
+FAILED tests/test_repository_configuration.py::test_cpu_ci_installs_direct_http_test_dependency
+3 failed in 0.20s

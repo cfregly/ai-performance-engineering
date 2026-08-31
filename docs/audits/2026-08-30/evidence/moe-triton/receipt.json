@@ -1,0 +1,347 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-30",
+  "original_findings": [
+    "W1-082",
+    "W1-083"
+  ],
+  "scope": "Retire unused incomplete Triton MoE/FFN/grouped GEMM experiments; preserve and correct the active SiLU/multiply helper",
+  "status": "RETIREMENT_AND_CPU_BEHAVIOR_VERIFIED__ACTIVE_CUDA_TRITON_NUMERICS_DEVICE_STREAM_MEMCHECK_HOLD",
+  "reviewed_commit": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "source_files": [
+    {
+      "path": "code/labs/moe_optimization_journey/triton_fused_moe.py",
+      "sha256": "657d57e6f457906cafef8e0cea7afd5efe8efcf1d548d53e48cb3665f55072dc"
+    },
+    {
+      "path": "code/labs/moe_optimization_journey/triton_kernels.py",
+      "sha256": "aef34a763b011415afe65eeab6dc6b27604afb6e333e83a2099b1302176fb58b"
+    },
+    {
+      "path": "code/labs/moe_optimization_journey/moe_model.py",
+      "sha256": "8bcf7703ca96d842a368aa11884e950bd6a4d636c4b1f0a2afd88a232f4985cb"
+    },
+    {
+      "path": "code/tests/test_audit_wave1_moe_triton.py",
+      "sha256": "d5712542922882af3382c249fbc25cb3dfe0590716590a96a7ebb989fcecba5c"
+    },
+    {
+      "path": "code/tests/test_moe_journey_runtime_hotpath.py",
+      "sha256": "d6baeb0fce611e8f99b5bd71e9d5db2808417fe5faee7964e6348a4357cf17ad"
+    },
+    {
+      "path": "code/tests/cuda/run_moe_triton_validation.py",
+      "sha256": "3226aeefe32cd0d148ff83aa0605c445fed2e2c249de40e17137c31324d6c453"
+    }
+  ],
+  "shared_source_change": {
+    "path": "code/tests/test_benchmark_hygiene_regressions.py",
+    "scope": "Only test_cuda_event_timing_waits_on_terminal_event_not_whole_device: retired timing target replaced with explicit NotImplementedError check",
+    "owned_function_sha256": "5382aa5f4df2258cd395919497cc5ae0b979a9283dbb9ec5907df18ccbb08574",
+    "whole_file_validation": "Not claimed: unrelated module collection requires missing Triton. Exact host-only function passes in isolation; root may concurrently edit other functions after ownership release."
+  },
+  "shared_read_only_dependency": {
+    "path": "code/tests/cuda/validation_process.py",
+    "sha256": "47019ab4daa7d09d73a9721c2ee68e1b1999b18d1022e25d17dd7089f26f277d",
+    "scope": "Existing process-group timeout/descendant containment helper; not modified"
+  },
+  "retirement": {
+    "retired_raw_kernels": [
+      "triton_fused_moe.fused_moe_expert_kernel",
+      "triton_kernels.fused_expert_ffn_kernel",
+      "triton_kernels.grouped_gemm_kernel"
+    ],
+    "legacy_api": "triton_fused_moe and benchmark_triton_moe explicitly raise RetiredMoEKernelError",
+    "legacy_cli": {
+      "exit_code": 3,
+      "stdout": "",
+      "measurement_produced": false
+    },
+    "callers": "W082 called only by its standalone benchmark; W083 raw kernels have no repo callers or exports. The shared model imports the separate elementwise fused_silu_mul helper.",
+    "original_sources_preserved_exactly": true,
+    "original_runtime_limit": "Old CLI failed at missing Triton dependency. Original kernel compilation/partial execution was not run. Audit verifier says full-FFN throughput printing was unreachable after compile failure; no live inflated performance result claimed."
+  },
+  "adjacent_discoveries_without_invented_original_ids": [
+    {
+      "mechanism": "Raw output allocation did not preserve trainable gate/up autograd",
+      "fix": "Either trainable input selects explicit differentiable PyTorch operations",
+      "evidence": "Original allocation AST control plus actual CPU analytic gradients/aliased gradients/full-model independent outputs and all projection gradients"
+    },
+    {
+      "mechanism": "Flat pointer kernel ignored strided logical tensor order and omitted pair/device/dtype validation",
+      "fix": "Validate pair; perform contiguous copies within CUDA inference call; guard target device and restore caller",
+      "evidence": "Actual CPU transposed-address counterexample and negative shape/dtype/device/layout controls; real CUDA layout/noncurrent-device gates prepared but unexecuted"
+    },
+    {
+      "mechanism": "Premature reduced-precision sigmoid rounding did not match staged PyTorch SiLU then multiply",
+      "fix": "Compute SiLU in FP32, round activation to input dtype, then multiply",
+      "evidence": "Source-only change; actual FP32/FP16/BF16 Triton comparisons remain HOLD"
+    }
+  ],
+  "selected_backend_labels": [
+    "pytorch_autograd",
+    "pytorch_cpu",
+    "pytorch_no_triton",
+    "triton_inference"
+  ],
+  "final_test_command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -rs -p no:cacheprovider tests/test_audit_wave1_moe_triton.py tests/test_moe_journey_runtime_hotpath.py --junitxml=/tmp/aisp-moe-triton-final.xml > /tmp/aisp-moe-triton-final.txt 2>&1",
+  "final_test_cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "final_result": {
+    "passed": 27,
+    "skipped": 32,
+    "failed": 0,
+    "seconds": 1.91,
+    "new_cpu_cases": 18,
+    "existing_cpu_hotpath_cases": 9,
+    "new_cuda_skips": 30,
+    "existing_cuda_skips": 2
+  },
+  "other_verification": [
+    "Exact isolated hygiene host-only function PASS; not full module pytest pass",
+    "Python compilation PASS",
+    "Selected Ruff E9/F63/F7/F82 PASS",
+    "Scoped git diff --check PASS",
+    "Original hotpath function IDs all preserved"
+  ],
+  "attempts": [
+    {
+      "name": "existing-before",
+      "result": "2 passed, 9 deselected",
+      "classification": "Old source-only allocation/timing assertions passed despite broken experiment"
+    },
+    {
+      "name": "first",
+      "result": "14 passed, 12 skipped",
+      "classification": "Retirement and initial reference/gate slice"
+    },
+    {
+      "name": "active",
+      "result": "1 collection error",
+      "classification": "Unrelated hygiene module import requires unavailable Triton; no ordinary tests accepted from that attempt"
+    },
+    {
+      "name": "helper",
+      "result": "1 failed, 26 passed, 32 skipped",
+      "classification": "Test fixture omitted required num_experts_per_tok argument; not a production defect"
+    },
+    {
+      "name": "fixed",
+      "result": "27 passed, 32 skipped"
+    },
+    {
+      "name": "stable",
+      "result": "27 passed, 32 skipped"
+    },
+    {
+      "name": "final",
+      "result": "27 passed, 32 skipped"
+    },
+    {
+      "name": "initial ad-hoc host probe",
+      "result": "ModuleNotFoundError: labs",
+      "classification": "Unused import/PYTHONPATH probe-authoring error; corrected retained AST probe passed"
+    },
+    {
+      "name": "gpu-preflight",
+      "result": "HOLD, exit3, zero runs",
+      "classification": "No actual CUDA devices or Triton execution on this host"
+    }
+  ],
+  "gpu_acceptance": {
+    "executed": false,
+    "runner": "code/tests/cuda/run_moe_triton_validation.py",
+    "command": "python code/tests/cuda/run_moe_triton_validation.py --output-dir /absolute/new-receipt-dir",
+    "requires": [
+      "two actual CUDA devices",
+      "BF16 support",
+      "installed Triton",
+      "Compute Sanitizer"
+    ],
+    "required_gpu_cases": 30,
+    "runs_required": [
+      "plain",
+      "memcheck"
+    ],
+    "checks": [
+      "complete activation outputs and changed tails for 3 dtypes x 3 shapes x 3 layouts",
+      "CUDA PyTorch-autograd forward/backward",
+      "noncurrent CUDA device and caller restoration",
+      "complete separately named PyTorch expert output with hidden/intermediate tails and top-k combine"
+    ],
+    "rejects": [
+      "skipped cases",
+      "missing cases/XML",
+      "test failures/errors",
+      "sanitizer nonzero status",
+      "timeout"
+    ],
+    "timeout": "300 seconds default per command; process group and compiler descendants terminated on timeout",
+    "no_full_fused_ffn": "The full Triton FFN experiments are retired, not replaced or qualified"
+  },
+  "independent_source_review": {
+    "reviewer": "root",
+    "result": "Accepted shape/device/dtype/layout checks, explicit backend selection, in-call copies, device guard, empty no-launch and retirement. CUDA numeric/device/stream/sanitizer acceptance remains HOLD."
+  },
+  "readme_proposal": "readme-proposal.md; root owns generator and shared README writes",
+  "primary_references": [
+    "https://docs.pytorch.org/docs/2.9/generated/torch.empty_like.html",
+    "https://github.com/triton-lang/triton/blob/main/python/tutorials/01-vector-add.py"
+  ],
+  "boundaries": [
+    "No GPU lease or runtime qualification",
+    "No fake GPU/Triton module",
+    "No shared package install",
+    "No historical performance artifact changes",
+    "No root ledger/plan/Git changes"
+  ],
+  "artifacts": [
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/active.txt",
+      "sha256": "7006a8de54994c198fa3117989d47c13868f85e9a61ec72a2c60175b0a638c6d"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/active.xml",
+      "sha256": "14aec6644d815c49fad533329e978e81b5245e629c3312aa92cd74e4fa97c649"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/compile.json",
+      "sha256": "0889b22222ebd73cf8cd8e22d8d6f124b74d63d1c71111d798733f09430451cc"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/diff-check.json",
+      "sha256": "b6d6e6600bd28f53e1825275ae1f41aec72c0694b021b4c88a297670b5be26bb"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/environment.json",
+      "sha256": "fb6b96fb5b0bede8d18977b91965a613b4e81a4b70ea8f7890aaf951035448a1"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/existing-before.txt",
+      "sha256": "ccce82090e351633a8d1f2f86d6b0e2e20b6d3bbff94eafe08ae624edd78bd5d"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/existing-before.xml",
+      "sha256": "99473b5943ac8044f50487462c09c8d0e494bafbad5cbb2440f73ce07ac88495"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/final.txt",
+      "sha256": "a2591afa6b1a1030db1c47695c5dd5836e2815a1f3058f01b6335b6f3d8340a9"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/final.xml",
+      "sha256": "ad8b059645b1610810090a4e4b9be30f257379d7412f8a6c9568c4805ba5ef6f"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/first.txt",
+      "sha256": "5a9521a2b95032389c65c8a0e23b86274b7d095a99354345f0d51eff326d8be0"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/first.xml",
+      "sha256": "214db5eff82aac7c680def37653f0582551eea7a296bda8feb8df4e31a883a3f"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/fixed.txt",
+      "sha256": "29bf3d576f189e5bb6fd4919a9285df1e8e33c906a6ba4064203d2579903890c"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/fixed.xml",
+      "sha256": "a0092a34f8b6fc82e8362b584f4884c98af486b631caad335d3ca62bdb08fdf6"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/gpu-preflight-hold.json",
+      "sha256": "729d7035d7634d7c9477a99aa1be56c16f1b77fefb82e7a3886749ea64db0652"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/gpu-preflight-output.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/helper.txt",
+      "sha256": "3492a82868bf41221672be15098774671e168081ecf01a56cfc12731265edb7a"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/helper.xml",
+      "sha256": "498259ce5a3615bdb05a464ea79d0d99aa2e6d65d2b6b8fa6b335d6f164767a7"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/hygiene-isolated.json",
+      "sha256": "222fb4374ae63c703a13a77453386913978c3eef99370b71bbe1407b30e34646"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/hygiene-owned-function.py",
+      "sha256": "4692c9d6f2affd4acd5efa6e7cf51308afd4f2cb08e744a9ba4d05f26eb72de8"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/original-active-helper-controls.py",
+      "sha256": "7863680fc95776c58e2d96e558167f442cc8c893bcd87cebdeea524cc5f5980a"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/original-active-helper-mechanisms.json",
+      "sha256": "911cc0d0cf819b31033bf6e83c516d9a8c999cc56f4716aee334c84c27d637b8"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/original-active-helper-output.txt",
+      "sha256": "911cc0d0cf819b31033bf6e83c516d9a8c999cc56f4716aee334c84c27d637b8"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/original-callers.json",
+      "sha256": "60d3c2314def4bd80389996af1e57bacde7e690824bfab35cb01a69f3df2920e"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/original-cli.json",
+      "sha256": "1345f09330415c831b28ee901b9ac6c0f0e5c2cd226e354088d12dc3988bb8b6"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/original-findings.json",
+      "sha256": "ca81b3c55e3d70e5a4386084bed7382957757ef3ce26c901570b5390809b1687"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/original-provenance.json",
+      "sha256": "2bec6f2d3fcfb0f48d281b47c138c5e54baa8d89e1e9da4a18aa9e61deca40b7"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/original-triton_fused_moe.py",
+      "sha256": "5ac9fd96a10a53cde8a3a998bea1e415615870a7bf00931de29c2e20e8b8fb38"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/original-triton_kernels.py",
+      "sha256": "15580781938e784f1b80c6043519b86db65d463a1c48dff1a50fa61d1edd0447"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/probe-authoring-attempt.json",
+      "sha256": "4059cb4071b7329b165d3ce66d496e561dcd697808d666cfa2292ffe188a591d"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/readme-proposal.md",
+      "sha256": "1b9d8c69662f687d86375c4cf9451a32ef3b41fd3bd509176450b4b3228eca31"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/retired-cli.json",
+      "sha256": "efec69447e9a490841301a792370d6bd2e9273c769440ee1b55b5f9794a99e15"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/review.md",
+      "sha256": "304231f3bac37f03c3179ed414abb5b337a34aca89bd802eb3cbd32267099c30"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/ruff.json",
+      "sha256": "024ca24472f96e3a37acd7f1f04892ba7b05ae219ede34e5737c929b7b76e8da"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/source-files.json",
+      "sha256": "40f18a23b25162a52b634646fa459d465d906a8a5a5881a40b03b6c885fc8a4b"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/stable.txt",
+      "sha256": "af3997f723b6301a992822bc003afdfaa845f6e9b86e81f85cc8954d7af7c073"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/stable.xml",
+      "sha256": "da30d2278afb72894223ae423f3f206f8f3854d5d278028b6b220cfffa699f8f"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-triton/test-id-preservation.json",
+      "sha256": "9ead5ea19eb953df044464b486d57a87526ca8d0bf23cd8d101c6773450f6d03"
+    }
+  ]
+}

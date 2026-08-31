@@ -18,11 +18,15 @@
 __global__ void sampleKernel(float* data, int n) {
   extern __shared__ float tile[];
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  tile[threadIdx.x] = idx < n ? data[idx] : 0.0f;
+  __syncthreads();
   if (idx < n) {
-    tile[threadIdx.x] = data[idx];
-    __syncthreads();
     data[idx] = sqrtf(tile[threadIdx.x] * tile[threadIdx.x] + 1.0f);
   }
+}
+
+size_t sample_shared_bytes(int block_size) {
+  return static_cast<size_t>(block_size) * sizeof(float);
 }
 
 int main() {
@@ -45,11 +49,11 @@ int main() {
 
   int min_grid = 0;
   int block_size = 0;
-  CUDA_CHECK(cudaOccupancyMaxPotentialBlockSize(
+  CUDA_CHECK(cudaOccupancyMaxPotentialBlockSizeVariableSMem(
       &min_grid,
       &block_size,
       sampleKernel,
-      0,
+      sample_shared_bytes,
       0));
 
   std::printf("Suggested block size: %d\n", block_size);
@@ -58,7 +62,7 @@ int main() {
   int grid = (N + block_size - 1) / block_size;
   if (grid < min_grid) grid = min_grid;
 
-  size_t shared_mem = block_size * sizeof(float);
+  size_t shared_mem = sample_shared_bytes(block_size);
   sampleKernel<<<grid, block_size, shared_mem, stream>>>(d_data, N);
   CUDA_CHECK(cudaGetLastError());
   CUDA_CHECK(cudaMemcpyAsync(h_data, d_data, N * sizeof(float),

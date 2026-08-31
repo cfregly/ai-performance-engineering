@@ -1,5 +1,8 @@
 # GB300 SoL / Roofline Grounding — Labs Batch 2 (Front F2)
 
+> **2026-08-30 correction:** This retained report uses historical FP8 7.5-PFLOP/s and/or FP16/BF16 3.75-PFLOP/s roofline denominators. For GB300 NVL72, the published dense per-GPU denominators are 5.0 and 2.5 PFLOP/s. See [corrected definitions and interpretation](gb300-roofline-corrections-2026-08-30.md). Original measurements and tables below are preserved; this correction does not recertify them or update native profiler percentages.
+
+
 Date: 2026-06-11 (UTC) | Pod: <gb300-pod> (<namespace>) | GPU: 3 only (CUDA_VISIBLE_DEVICES=3)
 Repo: /work/ai-performance-engineering/code @ 2f7e30f9 + uncommitted GB300 fixes
 Peaks used: NVFP4 15.0 PFLOPS / FP8 7.5 / BF16 3.75 PFLOPS / HBM3e 8.0 TB/s

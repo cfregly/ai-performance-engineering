@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <vector>
 
 #include "cuda_graphs_workload.cuh"
@@ -41,7 +42,7 @@ __global__ void stage_kernel(float* data,
   data[idx] = x;
 }
 
-int main() {
+int main(int argc, char** argv) {
     NVTX_RANGE("main");
   int device = 0;
   CUDA_CHECK(cudaGetDevice(&device));
@@ -55,13 +56,20 @@ int main() {
 
   if (prop.major < 7 || (prop.major == 7 && prop.minor < 5)) {
     std::printf("CUDA Graphs require compute capability 7.5 or newer.\n");
-    return 0;
+    return 3;
   }
 
-  constexpr int N = 1 << 14;
-  constexpr int CAPTURE_ITERS = 1000;
-  constexpr int REPLAYS = 20;
-  constexpr int ITER = CAPTURE_ITERS * REPLAYS;
+  int N = 1 << 14, CAPTURE_ITERS = 1000, REPLAYS = 20;
+  bool verify = false;
+  for (int i = 1; i < argc; ++i) {
+    if (std::strcmp(argv[i], "--elements") == 0 && i + 1 < argc) N = std::atoi(argv[++i]);
+    else if (std::strcmp(argv[i], "--capture-iters") == 0 && i + 1 < argc) CAPTURE_ITERS = std::atoi(argv[++i]);
+    else if (std::strcmp(argv[i], "--replays") == 0 && i + 1 < argc) REPLAYS = std::atoi(argv[++i]);
+    else if (std::strcmp(argv[i], "--verify") == 0) verify = true;
+    else return 1;
+  }
+  if (N <= 0 || CAPTURE_ITERS <= 0 || REPLAYS <= 0) return 1;
+  const int ITER = CAPTURE_ITERS * REPLAYS;
   const size_t bytes = N * sizeof(float);
 
   std::vector<float> host(N);
@@ -100,16 +108,20 @@ int main() {
   CUDA_CHECK(cudaGraphLaunch(exec, stream));
   CUDA_CHECK(cudaStreamSynchronize(stream));
 
+  // Use the original input for measured work after warmup.
+  CUDA_CHECK(cudaMemcpyAsync(device_ptr, host.data(), N * sizeof(float), cudaMemcpyHostToDevice, stream));
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+
   cudaEvent_t start, stop;
   CUDA_CHECK(cudaEventCreate(&start));
   CUDA_CHECK(cudaEventCreate(&stop));
 
-  CUDA_CHECK(cudaEventRecord(start));
+  CUDA_CHECK(cudaEventRecord(start, stream));
   for (int replay = 0; replay < REPLAYS; ++replay) {
       NVTX_RANGE("compute_graph:launch");
     CUDA_CHECK(cudaGraphLaunch(exec, stream));
   }
-  CUDA_CHECK(cudaEventRecord(stop));
+  CUDA_CHECK(cudaEventRecord(stop, stream));
   CUDA_CHECK(cudaStreamSynchronize(stream));
   CUDA_CHECK(cudaGetLastError());
 
@@ -121,6 +133,8 @@ int main() {
       total_ms / static_cast<float>(ITER));
 
   CUDA_CHECK(cudaMemcpy(host.data(), device_ptr, bytes, cudaMemcpyDeviceToHost));
+  const bool correct = !verify || verify_graph_output(host.data(), N, ITER);
+  if (verify) std::printf("Graph full-output verification: %s\n", correct ? "PASS" : "FAIL");
   double checksum = 0.0;
   for (float v : host) {
       NVTX_RANGE("verify");
@@ -134,5 +148,5 @@ int main() {
   CUDA_CHECK(cudaEventDestroy(stop));
   CUDA_CHECK(cudaStreamDestroy(stream));
   CUDA_CHECK(cudaFree(device_ptr));
-  return 0;
+  return correct ? 0 : 1;
 }

@@ -1,0 +1,249 @@
+                                                                                
+ Usage: python -m cli.aisp bench run [OPTIONS]                                  
+                                                                                
+ Run benchmarks - discover, run, and summarize results.                         
+                                                                                
+ CUDA binaries execute only via Python wrappers (CudaBinaryBenchmark).          
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --targets                     -t      TEXT     Chapter(s) or chapter:example │
+│                                                pairs to run. Repeat the flag │
+│                                                for multiple targets. Omit or │
+│                                                use 'all' for every chapter.  │
+│                                                [default: None]               │
+│ --bench-root                  -r      PATH     Root directory to scan for    │
+│                                                benchmarks (defaults to repo  │
+│                                                root).                        │
+│                                                [default: None]               │
+│ --format                      -f      TEXT     Output format: 'json',        │
+│                                                'markdown', or 'both'         │
+│                                                [default: both]               │
+│ --profile                     -p      TEXT     Profiling preset: minimal     │
+│                                                (default), none, deep_dive,   │
+│                                                or roofline. Non-'none'       │
+│                                                enables nsys/ncu/PyTorch      │
+│                                                profiling.                    │
+│                                                [default: minimal]            │
+│ --suite-timeout                       INTEGER  Suite timeout in seconds      │
+│                                                (default: 14400 = 4 hours, 0  │
+│                                                = disabled)                   │
+│                                                [default: 14400]              │
+│ --timeout-seconds                     INTEGER  Override suite timeout in     │
+│                                                seconds (0 disables timeout)  │
+│                                                [default: None]               │
+│ --timeout-multiplier                  FLOAT    Multiply all benchmark        │
+│                                                timeouts by this factor       │
+│                                                (e.g., 2.0 = double all       │
+│                                                timeouts)                     │
+│                                                [default: 3.0]                │
+│ --validity-profile                    TEXT     Benchmark validity profile:   │
+│                                                strict (default; fail-fast    │
+│                                                with full validity checks) or │
+│                                                portable (compatibility mode  │
+│                                                for virtualized/limited       │
+│                                                hosts).                       │
+│                                                [default: strict]             │
+│ --allow-foreign-gpu-process…                   Warn instead of fail when     │
+│                                                unrelated CUDA compute        │
+│                                                processes are active on the   │
+│                                                benchmark GPU. Use only on    │
+│                                                shared hosts when strict      │
+│                                                isolation is impossible.      │
+│ --reproducible                                 Enable reproducible mode: set │
+│                                                all seeds to 42 and force     │
+│                                                deterministic algorithms      │
+│                                                (uses slower fallbacks; ops   │
+│                                                without deterministic support │
+│                                                may error).                   │
+│ --cold-start                                   Reset GPU state between       │
+│                                                benchmarks for cold start     │
+│                                                measurements                  │
+│ --force-sync                                   Force a device-wide           │
+│                                                synchronize immediately after │
+│                                                benchmark_fn() (opt-in        │
+│                                                safeguard).                   │
+│ --iterations                          INTEGER  Number of benchmark           │
+│                                                iterations (default:          │
+│                                                chapter-specific)             │
+│                                                [default: None]               │
+│ --warmup                              INTEGER  Number of warmup iterations   │
+│                                                (default: chapter-specific)   │
+│                                                [default: None]               │
+│ --force-pipeline                               Force enable CUDA Pipeline    │
+│                                                API even on compute           │
+│                                                capability 12.0+ (may cause   │
+│                                                instability on Blackwell      │
+│                                                GPUs)                         │
+│ --gpu-sm-clock-mhz                    INTEGER  Lock the SM application clock │
+│                                                (MHz) for this run (requires  │
+│                                                clock locking to be enabled). │
+│                                                Recommended for SOL           │
+│                                                comparisons, e.g.             │
+│                                                --gpu-sm-clock-mhz 1500 on    │
+│                                                B200/B200.                    │
+│                                                [default: None]               │
+│ --gpu-mem-clock-mhz                   INTEGER  Lock the GPU memory (HBM)     │
+│                                                application clock (MHz) for   │
+│                                                this run (requires clock      │
+│                                                locking to be enabled). If    │
+│                                                omitted, the harness will     │
+│                                                lock memory to the max        │
+│                                                supported clock.              │
+│                                                [default: None]               │
+│ --artifacts-dir                       TEXT     Base directory for run        │
+│                                                artifacts (default:           │
+│                                                ./artifacts/runs).            │
+│                                                [default: None]               │
+│ --run-id                              TEXT     Run ID for artifact directory │
+│                                                (default:                     │
+│                                                <timestamp>__bench__profile-… │
+│                                                [default: None]               │
+│ --log-level                           TEXT     Log level: DEBUG, INFO,       │
+│                                                WARNING, ERROR                │
+│                                                [default: INFO]               │
+│ --log-file                            TEXT     Path to log file (default:    │
+│                                                artifacts/runs/<run_id>/logs… │
+│                                                [default: None]               │
+│ --single-gpu                                   Force single-GPU visibility   │
+│                                                (sets CUDA_VISIBLE_DEVICES=0  │
+│                                                for this run).                │
+│ --ncu-metric-set                      TEXT     Nsight Compute metric preset: │
+│                                                auto, minimal, deep_dive, or  │
+│                                                roofline. Default is minimal  │
+│                                                for safer, lower-overhead     │
+│                                                profiling.                    │
+│                                                [default: minimal]            │
+│ --ncu-replay-mode                     TEXT     Nsight Compute replay mode:   │
+│                                                kernel or application. If     │
+│                                                omitted, benchmark-specific   │
+│                                                config or harness defaults    │
+│                                                apply.                        │
+│                                                [default: None]               │
+│ --nsys-timeout-seconds                INTEGER  Override Nsight Systems       │
+│                                                timeout in seconds (default   │
+│                                                from BenchmarkDefaults).      │
+│                                                [default: None]               │
+│ --ncu-timeout-seconds                 INTEGER  Override Nsight Compute       │
+│                                                timeout in seconds (default   │
+│                                                from BenchmarkDefaults).      │
+│                                                [default: None]               │
+│ --pm-sampling-interval                INTEGER  Nsight Compute                │
+│                                                pm-sampling-interval (cycles  │
+│                                                between samples). Optional:   │
+│                                                set to reduce overhead;       │
+│                                                defaults to unset.            │
+│                                                [default: None]               │
+│ --only-cuda                                    Run only CUDA binary          │
+│                                                benchmarks (Python wrappers). │
+│ --only-python                                  Run only Python benchmarks    │
+│                                                (skip CUDA binary wrappers).  │
+│ --accept-regressions                           Update expectation files when │
+│                                                improvements are detected     │
+│                                                instead of flagging           │
+│                                                regressions.                  │
+│ --update-expectations                          Force-write observed metrics  │
+│                                                into expectation files        │
+│                                                (overrides regressions).      │
+│                                                Useful for refreshing         │
+│                                                baselines on new hardware.    │
+│ --allow-portable-expectatio…                   In portable validity profile, │
+│                                                expectation writes are        │
+│                                                disabled by default. Set this │
+│                                                flag to allow                 │
+│                                                expectation-file updates.     │
+│ --allow-mixed-provenance                       Allow expectation updates     │
+│                                                when provenance differs       │
+│                                                (commit/hardware/profile      │
+│                                                mismatch) without forcing     │
+│                                                updates. Does NOT accept      │
+│                                                regressions (use              │
+│                                                --accept-regressions or       │
+│                                                --update-expectations).       │
+│ --launch-via                          TEXT     Launcher to use for           │
+│                                                benchmarks: python or         │
+│                                                torchrun.                     │
+│                                                [default: python]             │
+│ --nproc-per-node                      INTEGER  torchrun --nproc_per_node     │
+│                                                value.                        │
+│                                                [default: None]               │
+│ --nnodes                              TEXT     torchrun --nnodes value.      │
+│                                                [default: None]               │
+│ --rdzv-backend                        TEXT     torchrun rendezvous backend   │
+│                                                (defaults to c10d when nnodes │
+│                                                is set).                      │
+│                                                [default: None]               │
+│ --rdzv-endpoint                       TEXT     torchrun rendezvous endpoint  │
+│                                                (host:port).                  │
+│                                                [default: None]               │
+│ --torchrun-env                        TEXT     Environment variables to      │
+│                                                forward into torchrun         │
+│                                                launches (repeatable).        │
+│                                                [default: None]               │
+│ --target-extra-arg                    TEXT     Per-target extra args,        │
+│                                                format: target="--flag        │
+│                                                value". Repeatable.           │
+│                                                [default: None]               │
+│ --llm-analysis                                 Enable LLM-powered analysis   │
+│                                                for benchmarks with <1.1x     │
+│                                                speedup. Requires API keys in │
+│                                                .env.local                    │
+│ --force-llm                                    Force LLM analysis on ALL     │
+│                                                benchmarks regardless of      │
+│                                                speedup. Use to try improving │
+│                                                even good results.            │
+│ --llm-provider                        TEXT     LLM provider: 'anthropic' or  │
+│                                                'openai'. Defaults to env     │
+│                                                LLM_PROVIDER.                 │
+│                                                [default: None]               │
+│ --apply-llm-patches                            Apply LLM-suggested patches   │
+│                                                to create new optimized       │
+│                                                variants. Requires            │
+│                                                --llm-analysis.               │
+│ --rebenchmark-llm-patches                      Re-benchmark LLM-patched      │
+│                                                variants. Requires            │
+│                                                --apply-llm-patches.          │
+│ --patch-strategy                      TEXT     Patch strategy: 'ast'         │
+│                                                (default, AST-based) or       │
+│                                                'fuzzy' (text matching).      │
+│                                                [default: ast]                │
+│ --llm-patch-retries                   INTEGER  Max retry attempts when LLM   │
+│                                                patch fails (syntax/runtime   │
+│                                                errors). Default: 2           │
+│                                                [default: 2]                  │
+│ --no-llm-cache                                 Disable LLM analysis caching  │
+│                                                (always re-run LLM even if    │
+│                                                cached results exist).        │
+│ --llm-explain                                  Generate educational          │
+│                                                explanations for best patches │
+│                                                (why it works, optimization   │
+│                                                techniques used). Requires    │
+│                                                --rebenchmark-llm-patches.    │
+│ --skip-input-verify                            Skip input equivalence        │
+│                                                verification. WARNING:        │
+│                                                Without this check, benchmark │
+│                                                comparisons may be invalid    │
+│                                                (different workloads).        │
+│ --skip-output-verify                           Skip output correctness       │
+│                                                verification. WARNING:        │
+│                                                Without this check,           │
+│                                                optimizations may produce     │
+│                                                incorrect results.            │
+│ --skip-verify                                  Skip BOTH input and output    │
+│                                                verification. Equivalent to   │
+│                                                --skip-input-verify           │
+│                                                --skip-output-verify.         │
+│ --verify-phase                        TEXT     Verification enforcement      │
+│                                                phase: 'detect' (report       │
+│                                                only), 'quarantine' (exclude  │
+│                                                non-compliant from reports),  │
+│                                                'gate' (default, fail on      │
+│                                                verification failure)         │
+│                                                [default: gate]               │
+│ --precheck-only                                Validate targets and print    │
+│                                                planned command without       │
+│                                                running.                      │
+│ --dry-run                                      Describe planned execution    │
+│                                                without running benchmarks.   │
+│ --help                        -h               Show this message and exit.   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

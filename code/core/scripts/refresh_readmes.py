@@ -254,12 +254,18 @@ def _latest_tier1_summary(repo_root: Optional[Path] = None) -> Tuple[Optional[Di
 def _render_current_representative_deltas_body(repo_root: Optional[Path] = None) -> str:
     def _fallback_body(warnings: Optional[Sequence[str]] = None) -> str:
         rows = _fallback_tier1_representative_rows()
+        source_path = root / rows[0][3]
+        source_status = (
+            "The cited original artifact is unavailable in this checkout."
+            if not source_path.is_file()
+            else "The cited artifact exists but is not loaded or verified by this fallback."
+        )
         lines = [
-            "These numbers are taken from the latest canonical tier-1 history summary rather than from hand-maintained README text.",
+            "These hardcoded historical rows are retained in the README generator. " + source_status + " Their lineage and measurements remain unverified. This audit changed correctness, workload and verification contracts; neither the table nor its aggregate speedups qualify the repaired revision. Repeat the applicable full-output and exact-target timing gates before making new performance claims.",
             "",
             "Source artifact: `artifacts/history/tier1/20260329_e2e_truthful_canonical_main_4a8c827a__tier1/summary.json`",
             "",
-            "Representative suite speedup: `8.22x` geomean, `8.54x` median, `34.41x` arithmetic average.",
+            "Stored suite speedup (not requalified): `8.22x` geomean, `8.54x` median, `34.41x` arithmetic average.",
             "",
         ]
         if warnings:
@@ -296,7 +302,7 @@ def _render_current_representative_deltas_body(repo_root: Optional[Path] = None)
     avg_speedup = float(summary_metrics.get("avg_speedup", 0.0) or 0.0)
 
     lines = [
-        "These numbers are taken from the latest canonical tier-1 history summary rather than from hand-maintained README text.",
+        "These values reproduce a stored historical tier-1 artifact. This audit changed correctness, workload and verification contracts; neither the table nor its aggregate speedups qualify the repaired revision. Repeat the applicable full-output and exact-target timing gates before making new performance claims. The source artifact is preserved.",
         "",
         f"Source artifact: `{summary_path.relative_to(root) if summary_path.is_relative_to(root) else summary_path}`",
         "",
@@ -305,7 +311,7 @@ def _render_current_representative_deltas_body(repo_root: Optional[Path] = None)
         lines.extend(
             [
                 (
-                    f"Representative suite speedup: `{representative_speedup:.2f}x` geomean"
+                    f"Stored suite speedup (not requalified): `{representative_speedup:.2f}x` geomean"
                     + (f", `{median_speedup:.2f}x` median" if median_speedup > 0.0 else "")
                     + (f", `{avg_speedup:.2f}x` arithmetic average" if avg_speedup > 0.0 else "")
                     + "."
@@ -444,119 +450,120 @@ WALL_OF_SHAME = dedent(
     """\
     ## Wall of Shame
     The benchmark harness includes a strict set of correctness and validity checks to prevent misleading speedups.
-    Below is the reference list of validity issues we explicitly protect against, plus real-world incidents that
+    Below is a threat inventory with scoped and unsupported checks, plus real-world incidents that
     motivated these checks.
 
-    Note: All 95 validity issues are protected by the harness.
+    This threat inventory includes scoped checks and unsupported policies. It is not a guarantee that every listed attack is detected. Unsupported cases and missing CUDA runs are explicit skips, never passing coverage. See the [protection-test disposition](../docs/audits/2026-08-30/evidence/validation/protection-coverage-receipt.json) and [clock-lock follow-up](../docs/audits/2026-08-30/evidence/validation/clock-lock-followup/receipt.json). Unmapped rows below retain an advertised mechanism but remain individually unaudited; no independent coverage or runtime qualification is asserted.
 
     CUDA Graph Note: Capturing CUDA graphs in `setup()` is allowed for steady-state replay benchmarks (we intentionally
     measure replay, not capture). It is NOT allowed to precompute and reuse the final output from `setup()`. The output
     used for verification must come from the timed `benchmark_fn()` run and be surfaced via `capture_verification_payload()`.
 
-    Virtualization Note: `validate_environment()` treats virtualization (hypervisor present) as a warning. Benchmarks can
-    run in virtualized environments, but bare metal remains the preferred source for final performance numbers.
+    Virtualization Note: the runtime checker warns rather than rejecting virtualization. Repository policy requires
+    bare metal for canonical/publish-grade results. A virtualized current-host rerun requires explicit user approval,
+    locked GPU clocks, recorded provenance and a virtualized/non-canonical label; the warning does not grant approval.
 
     ### Benchmark Validity Issues Reference
 
     | Category | Issue | What Happens | Protection | Status | Real-World Incident |
     | --- | --- | --- | --- | --- | --- |
-    | Timing | Unsynced Streams | Work on non-default streams is not timed | Full device sync + StreamAuditor | OK | Locus/KernelBench 2025 |
-    | Timing | Incomplete Async Ops | Timer stops before async work finishes | Full device sync | OK | Locus/KernelBench 2025 |
-    | Timing | Event Timing Gaps | CUDA events recorded incorrectly | Cross-validate with wall clock | OK | |
-    | Timing | Timer Granularity | Measurement too coarse for fast ops | Adaptive iterations | OK | |
-    | Timing | Warmup Bleed | Real work happens during warmup | isolate_warmup_cache | OK | |
-    | Timing | Clock Drift | System clock changes during measurement | Monotonic clock usage | OK | |
-    | Timing | Profiler Overhead | Profiling tools add latency | Profile-free timing path | OK | |
-    | Output | Constant Output | Same result regardless of input | Jitter check | OK | |
-    | Output | Stale Cache | Same result across different seeds | Fresh-input check | OK | |
-    | Output | Approximation Drift | Rough estimate instead of full compute | Output tolerance validation | OK | |
-    | Output | Invalid Values (NaN) | NaN in output | validate_result NaN check | OK | |
-    | Output | Invalid Values (Inf) | Inf in output | validate_result Inf check | OK | |
-    | Output | Invalid Ground Truth | Labels/expected values wrong | GoldenOutputCache | OK | ImageNet Labels 2021, MMLU Errors 2025 |
-    | Output | Shape Mismatch | Output shape differs from expected | Shape validation | OK | |
-    | Output | Dtype Mismatch | Output dtype differs from expected | ToleranceSpec dtype check | OK | |
-    | Output | Denormalized Values | Subnormal floats cause slowdowns | Denormal check | OK | |
-    | Output | Uninitialized Memory | Output contains garbage | Memory initialization check | OK | |
-    | Workload | Precision Mismatch | Claims FP32 but uses FP16 | InputSignature dtype verification | OK | |
-    | Workload | Backend Precision Policy Drift | Global precision policy changes during timing | Backend policy immutability check | OK | PyTorch TF32 Default 2020 |
-    | Workload | Undeclared Shortcuts | Skips elements without declaring | Workload invariant check | OK | AI Agent Benchmark Shortcuts 2024 |
-    | Workload | Early Exit | Stops iteration loops early | Config immutability | OK | |
-    | Workload | Batch Shrinking | Processes fewer samples | InputSignature matching | OK | |
-    | Workload | Sequence Truncation | Processes shorter sequences | InputSignature matching | OK | |
-    | Workload | Hidden Downsampling | Silently reduces resolution | Dimension validation | OK | |
-    | Workload | Sparsity Mismatch | Different sparsity patterns | Sparsity ratio check | OK | |
-    | Workload | Attention Mask Mismatch | Different masking applied | Mask equivalence check | OK | |
-    | Workload | KV Cache Size Mismatch | Different cache sizes | Cache dimension check | OK | |
-    | Workload | Train/Test Overlap | Model tested on training data | Dataset isolation | OK | Computational Biology 2019 |
-    | Location | CPU Spillover | Work offloaded to CPU | GPU kernel time validation | OK | |
-    | Location | Setup Pre-computation | Work done in setup | check_setup_precomputation | OK | |
-    | Location | Graph Capture Cheat | Pre-compute during graph capture | GraphCaptureCheatDetector | OK | |
-    | Location | Warmup Computation | Compute results during warmup | isolate_warmup_cache | OK | |
-    | Location | Background Thread | Compute in separate thread | Process isolation | OK | |
-    | Location | Lazy Evaluation Skip | Returns unevaluated lazy tensor | force_tensor_evaluation | OK | |
-    | Location | JIT Compilation Timing | JIT compile time included/excluded inconsistently | clear_compile_cache | OK | |
-    | Memory | Pre-allocated Output | Result buffer allocated in setup | MemoryAllocationTracker | OK | |
-    | Memory | Input-Output Aliasing | Output points to pre-filled input | check_input_output_aliasing | OK | |
-    | Memory | Pinned Memory Timing | Async pinned transfers not waited | Transfer completion check | OK | |
-    | Memory | Memory Pool Reuse | Cached allocations skew timing | reset_cuda_memory_pool | OK | |
-    | Memory | Fragmentation Effects | Memory fragmentation differs | Memory pool reset | OK | |
-    | Memory | Page Fault Timing | First-touch page faults included | Memory pre-touch | OK | |
-    | Memory | Swap Interference | Swapping affects timing | Memory lock / swap disable | OK | |
-    | CUDA | Host Callback Escape | cudaLaunchHostFunc returns early | Host function tracking | OK | |
-    | CUDA | Async Memcpy Incomplete | D2H/H2D copies not awaited | Full device sync | OK | |
-    | CUDA | Workspace Pre-compute | Work in cuBLAS workspace alloc | Workspace monitoring | OK | |
-    | CUDA | Persistent Kernel | Kernel left running across calls | Kernel lifetime check | OK | |
-    | CUDA | Undeclared Multi-GPU | Work spread across undeclared GPUs | validate_environment | OK | |
-    | CUDA | Context Switch Overhead | CUDA context switches affect timing | Context pinning | OK | |
-    | CUDA | Driver Overhead | Driver calls not accounted for | Driver call tracking | OK | |
-    | CUDA | Cooperative Launch Abuse | Cooperative kernels bypass checks | Launch mode validation | OK | |
-    | CUDA | Dynamic Parallelism Hidden | Child kernels not tracked | CDP kernel tracking | OK | |
-    | CUDA | Unified Memory Faults | Page migration not timed | UM fault tracking | OK | |
-    | Compile | Compilation Cache Hit | Returns cached compiled output | clear_compile_cache | OK | |
-    | Compile | Trace Reuse | Exploits trace caching | torch._dynamo.reset | OK | |
-    | Compile | Mode Inconsistency | Different compile mode verify vs perf | Mode consistency check | OK | |
-    | Compile | Inductor Asymmetry | Inductor optimizations inconsistent | Compilation parity | OK | |
-    | Compile | Guard Failure Hidden | Recompilation not counted | get_compile_state | OK | |
-    | Compile | Autotuning Variance | Autotuning picks different kernels | Fixed autotuning cache | OK | |
-    | Compile | Symbolic Shape Exploit | Different shapes trigger different code | InputSignature matching | OK | |
-    | Distributed | Rank Skipping | Some ranks do not do work | check_rank_execution | OK | |
-    | Distributed | Collective Short-circuit | Communication skipped | NCCL validation | OK | |
-    | Distributed | Topology Mismatch | Claims different topology | verify_distributed | OK | |
-    | Distributed | Barrier Timing | Barrier timing exploited | Barrier synchronization | OK | |
-    | Distributed | Gradient Bucketing Mismatch | Different bucket sizes | Bucket size validation | OK | |
-    | Distributed | Async Gradient Timing | Async all-reduce not awaited | Full device sync | OK | |
-    | Distributed | Pipeline Bubble Hiding | Pipeline bubbles not counted | Bubble time tracking | OK | |
-    | Distributed | Shard Size Mismatch | FSDP shards differ | InputSignature matching | OK | |
-    | Environment | Device Mismatch | Uses different GPU than declared | validate_environment | OK | |
-    | Environment | Frequency Boost | Overclocked for benchmark only | lock_gpu_clocks | OK | |
-    | Environment | Priority Elevation | Runs at higher priority | Process isolation | OK | |
-    | Environment | Memory Overcommit | Exploits memory overcommit | Memory validation | OK | |
-    | Environment | NUMA Inconsistency | NUMA placement differs | NUMA audit | OK | |
-    | Environment | CPU Governor Mismatch | Different CPU frequency scaling | Governor lock | OK | |
-    | Environment | Thermal Throttling | GPU throttles during run | capture_gpu_state (pynvml) | OK | |
-    | Environment | Power Limit Difference | Different TDP settings | capture_gpu_state (pynvml) | OK | |
-    | Environment | Driver Version Mismatch | Different CUDA drivers | RunManifest version lock | OK | |
-    | Environment | Library Version Mismatch | Different cuDNN/cuBLAS | RunManifest version lock | OK | |
-    | Environment | Container Resource Limits | cgroups limits differ | Resource limit check | OK | |
-    | Environment | Virtualization Overhead | VM/container overhead varies | Bare-metal validation | OK | |
-    | Statistical | Cherry-picking | Only best iterations reported | All-iteration reporting | OK | Leaderboard Illusion 2025 |
-    | Statistical | Outlier Injection | Slow iterations added to baseline | Statistical validation | OK | |
-    | Statistical | Variance Gaming | Variance reporting manipulated | Consistent statistics | OK | |
-    | Statistical | Percentile Selection | Favorable percentile chosen | Fixed percentile policy | OK | |
-    | Statistical | Insufficient Samples | Too few iterations for significance | Adaptive iterations | OK | Measuring What Matters 2025 |
-    | Statistical | Cold Start Inclusion | First run included unfairly | Warmup enforcement | OK | |
-    | Statistical | GC Interference | Garbage collection during timing | gc_disabled | OK | |
-    | Statistical | Background Process Noise | System processes affect timing | Process isolation | OK | |
-    | Evaluation | Eval Code Exploitation | Benchmark code modified to pass | BenchmarkContract enforcement | OK | |
-    | Evaluation | Timeout Manipulation | Timeout extended to hide slowdowns | Config immutability | OK | |
-    | Evaluation | Metric Definition Gaming | Redefine what speedup means | Standardized metric definitions | OK | MLPerf 2019, HANS 2019, Measuring What Matters 2025, Medical LLM Benchmarks 2025 |
-    | Evaluation | Test Data Leakage | Training on test data | Data contamination checks | OK | Benchmark Data Contamination Survey 2024 |
-    | Evaluation | Benchmark Overfitting | Optimize specifically for benchmark | Fresh-input + jitter checks | OK | Underspecification 2020, Epic Sepsis 2021, NaturalCodeBench 2024 |
-    | Evaluation | Self-Modifying Tests | AI/code modifies its own tests | Config immutability | OK | |
-    | Evaluation | Benchmark Memorization | Agent memorizes test cases | Fresh-input checks, jitter | OK | AI Agent Benchmark Shortcuts 2024 |
-    | Evaluation | Missing Holdout Sets | No proper train/test split | Held-out evaluation data | OK | AI Agent Benchmark Shortcuts 2024, Microsoft Tay 2016 |
+    | Timing | Unsynced Streams | Work on non-default streams is not timed | Full device sync + StreamAuditor | Inventory; not re-audited | Locus/KernelBench 2025 |
+    | Timing | Incomplete Async Ops | Timer stops before async work finishes | Full device sync | Inventory; not re-audited | Locus/KernelBench 2025 |
+    | Timing | Event Timing Gaps | CUDA events recorded incorrectly | Cross-validate with wall clock | Inventory; not re-audited |  |
+    | Timing | Timer Granularity | Measurement too coarse for fast ops | Adaptive measurement duration; no timer-resolution guarantee | Scoped; CUDA pending |  |
+    | Timing | Warmup Bleed | Real work happens during warmup | L2 clearing after warmup; not general warmup-work detector | Scoped; eviction pending |  |
+    | Timing | Clock Drift | System clock changes during measurement | Monotonic clock usage | Inventory; not re-audited |  |
+    | Timing | Profiler Overhead | Profiling tools add latency | Harness timing does not enable its profiler; no nested-profiler rejection | Scoped check |  |
+    | Output | Constant Output | Same result regardless of input | Jitter check | Inventory; not re-audited |  |
+    | Output | Stale Cache | Same result across different seeds | Fresh-input check | Inventory; not re-audited |  |
+    | Output | Approximation Drift | Rough estimate instead of full compute | Output tolerance validation | Inventory; not re-audited |  |
+    | Output | Invalid Values (NaN) | NaN in output | validate_result NaN check | Inventory; not re-audited |  |
+    | Output | Invalid Values (Inf) | Inf in output | validate_result Inf check | Inventory; not re-audited |  |
+    | Output | Invalid Ground Truth | Labels/expected values wrong | Selected-reference caching/comparison; does not validate dataset labels | Scoped check | ImageNet Labels 2021, MMLU Errors 2025 |
+    | Output | Shape Mismatch | Output shape differs from expected | Shape validation | Inventory; not re-audited |  |
+    | Output | Dtype Mismatch | Output dtype differs from expected | ToleranceSpec dtype check | Inventory; not re-audited |  |
+    | Output | Denormalized Values | Subnormal floats cause slowdowns | Denormal check | Inventory; not re-audited |  |
+    | Output | Uninitialized Memory | Output contains garbage | No uninitialized-memory provenance detector | Unsupported |  |
+    | Workload | Precision Mismatch | Claims FP32 but uses FP16 | InputSignature dtype verification | Inventory; not re-audited |  |
+    | Workload | Backend Precision Policy Drift | Global precision policy changes during timing | Backend policy immutability check | Inventory; not re-audited | PyTorch TF32 Default 2020 |
+    | Workload | Undeclared Shortcuts | Skips elements without declaring | Workload invariant check | Inventory; not re-audited | AI Agent Benchmark Shortcuts 2024 |
+    | Workload | Early Exit | Stops iteration loops early | Config immutability | Inventory; not re-audited |  |
+    | Workload | Batch Shrinking | Processes fewer samples | InputSignature matching | Inventory; not re-audited |  |
+    | Workload | Sequence Truncation | Processes shorter sequences | InputSignature matching | Inventory; not re-audited |  |
+    | Workload | Hidden Downsampling | Silently reduces resolution | Dimension validation | Inventory; not re-audited |  |
+    | Workload | Sparsity Mismatch | Different sparsity patterns | Sparsity ratio check | Inventory; not re-audited |  |
+    | Workload | Attention Mask Mismatch | Different masking applied | Mask equivalence check | Inventory; not re-audited |  |
+    | Workload | KV Cache Size Mismatch | Different cache sizes | Cache dimension check | Inventory; not re-audited |  |
+    | Workload | Train/Test Overlap | Model tested on training data | No dataset provenance, leakage or holdout enforcement | Unsupported | Computational Biology 2019 |
+    | Location | CPU Spillover | Work offloaded to CPU | Wall/CUDA timing cross-check; no per-operation CPU placement detector | Scoped timing check |  |
+    | Location | Setup Pre-computation | Work done in setup | check_setup_precomputation | Inventory; not re-audited |  |
+    | Location | Graph Capture Cheat | Pre-compute during graph capture | GraphCaptureCheatDetector | Inventory; not re-audited |  |
+    | Location | Warmup Computation | Compute results during warmup | L2 clearing after warmup; not general warmup-work detector | Scoped; eviction pending |  |
+    | Location | Background Thread | Compute in separate thread | Subprocess execution does not prohibit threads, lock priority or isolate host processes | Unsupported policy |  |
+    | Location | Lazy Evaluation Skip | Returns unevaluated lazy tensor | force_tensor_evaluation | Inventory; not re-audited |  |
+    | Location | JIT Compilation Timing | JIT compile time included/excluded inconsistently | clear_compile_cache | Inventory; not re-audited |  |
+    | Memory | Pre-allocated Output | Result buffer allocated in setup | MemoryAllocationTracker | Inventory; not re-audited |  |
+    | Memory | Input-Output Aliasing | Output points to pre-filled input | check_input_output_aliasing | Inventory; not re-audited |  |
+    | Memory | Pinned Memory Timing | Async pinned transfers not waited | Transfer completion check | Inventory; not re-audited |  |
+    | Memory | Memory Pool Reuse | Cached allocations skew timing | reset_cuda_memory_pool | Inventory; not re-audited |  |
+    | Memory | Fragmentation Effects | Memory fragmentation differs | Allocator cleanup/memory-growth diagnostics; no fragmentation parity | Scoped check |  |
+    | Memory | Page Fault Timing | First-touch page faults included | No page-fault or managed-memory event detector | Unsupported |  |
+    | Memory | Swap Interference | Swapping affects timing | Detect enabled swap; does not disable swap or lock memory | Environment gate |  |
+    | CUDA | Host Callback Escape | cudaLaunchHostFunc returns early | No corresponding execution/provenance inspector | Unsupported |  |
+    | CUDA | Async Memcpy Incomplete | D2H/H2D copies not awaited | Full device sync | Inventory; not re-audited |  |
+    | CUDA | Workspace Pre-compute | Work in cuBLAS workspace alloc | No corresponding execution/provenance inspector | Unsupported |  |
+    | CUDA | Persistent Kernel | Kernel left running across calls | No corresponding execution/provenance inspector | Unsupported |  |
+    | CUDA | Undeclared Multi-GPU | Work spread across undeclared GPUs | No corresponding execution/provenance inspector | Unsupported |  |
+    | CUDA | Context Switch Overhead | CUDA context switches affect timing | No corresponding execution/provenance inspector | Unsupported |  |
+    | CUDA | Driver Overhead | Driver calls not accounted for | No corresponding execution/provenance inspector | Unsupported |  |
+    | CUDA | Cooperative Launch Abuse | Cooperative kernels bypass checks | No corresponding execution/provenance inspector | Unsupported |  |
+    | CUDA | Dynamic Parallelism Hidden | Child kernels not tracked | No corresponding execution/provenance inspector | Unsupported |  |
+    | CUDA | Unified Memory Faults | Page migration not timed | No page-fault or managed-memory event detector | Unsupported |  |
+    | Compile | Compilation Cache Hit | Returns cached compiled output | clear_compile_cache | Inventory; not re-audited |  |
+    | Compile | Trace Reuse | Exploits trace caching | torch._dynamo.reset | Inventory; not re-audited |  |
+    | Compile | Mode Inconsistency | Different compile mode verify vs perf | No general compiler-mode/backend parity or autotuning-variance guard | Unsupported |  |
+    | Compile | Inductor Asymmetry | Inductor optimizations inconsistent | No general compiler-mode/backend parity or autotuning-variance guard | Unsupported |  |
+    | Compile | Guard Failure Hidden | Recompilation not counted | Process-cumulative Dynamo graph counts with source metadata; not resident cache or compile parity | Scoped check |  |
+    | Compile | Autotuning Variance | Autotuning picks different kernels | No general compiler-mode/backend parity or autotuning-variance guard | Unsupported |  |
+    | Compile | Symbolic Shape Exploit | Different shapes trigger different code | InputSignature matching | Inventory; not re-audited |  |
+    | Distributed | Rank Skipping | Some ranks do not do work | check_rank_execution | Inventory; not re-audited |  |
+    | Distributed | Collective Short-circuit | Communication skipped | NCCL validation | Inventory; not re-audited |  |
+    | Distributed | Topology Mismatch | Claims different topology | Compare declared topology; no ring/tree algorithm field | Scoped signature check |  |
+    | Distributed | Barrier Timing | Barrier timing exploited | No barrier-timing, gradient-bucket parity or async-gradient completion detector | Unsupported |  |
+    | Distributed | Gradient Bucketing Mismatch | Different bucket sizes | No barrier-timing, gradient-bucket parity or async-gradient completion detector | Unsupported |  |
+    | Distributed | Async Gradient Timing | Async all-reduce not awaited | No barrier-timing, gradient-bucket parity or async-gradient completion detector | Unsupported |  |
+    | Distributed | Pipeline Bubble Hiding | Pipeline bubbles not counted | Declared rank workload and timing cross-checks; no bubble classifier | Scoped check |  |
+    | Distributed | Shard Size Mismatch | FSDP shards differ | InputSignature matching | Inventory; not re-audited |  |
+    | Environment | Device Mismatch | Uses different GPU than declared | Environment inventory lacks expected/observed GPU identity parity; separate Tier-1 preflight attests target | Unsupported generic identity policy |  |
+    | Environment | Frequency Boost | Overclocked for benchmark only | Application-clock lock; actual observed-NVML integration requires GPU | Implemented; runtime pending |  |
+    | Environment | Priority Elevation | Runs at higher priority | Subprocess execution does not prohibit threads, lock priority or isolate host processes | Unsupported policy |  |
+    | Environment | Memory Overcommit | Exploits memory overcommit | Memory-growth diagnostic; no overcommit policy | Scoped diagnostic |  |
+    | Environment | NUMA Inconsistency | NUMA placement differs | Advisory affinity diagnostics; no pinning or cross-node rejection | Advisory |  |
+    | Environment | CPU Governor Mismatch | Different CPU frequency scaling | Strict environment gate rejects non-performance governor; does not set or lock it | Environment gate |  |
+    | Environment | Thermal Throttling | GPU throttles during run | NVML temperature/clock-drop/throttling diagnostics | Scoped; hardware pending |  |
+    | Environment | Power Limit Difference | Different TDP settings | Power draw captured; configured power-limit parity absent | Unsupported |  |
+    | Environment | Driver Version Mismatch | Different CUDA drivers | Available RunManifest provenance; no cross-run version lock | Unsupported version parity |  |
+    | Environment | Library Version Mismatch | Different cuDNN/cuBLAS | Available RunManifest provenance; no cross-run version lock | Unsupported version parity |  |
+    | Environment | Container Resource Limits | cgroups limits differ | Resource limit check | Inventory; not re-audited |  |
+    | Environment | Virtualization Overhead | VM/container overhead varies | Runtime virtualization notice is advisory; separate repository policy still applies | Advisory |  |
+    | Statistical | Cherry-picking | Only best iterations reported | Preserve supplied samples/statistics; no upstream omission/injection/selection detector | Scoped reporting | Leaderboard Illusion 2025 |
+    | Statistical | Outlier Injection | Slow iterations added to baseline | Preserve supplied samples/statistics; no upstream omission/injection/selection detector | Scoped reporting |  |
+    | Statistical | Variance Gaming | Variance reporting manipulated | Preserve supplied samples/statistics; no upstream omission/injection/selection detector | Scoped reporting |  |
+    | Statistical | Percentile Selection | Favorable percentile chosen | Preserve supplied samples/statistics; no upstream omission/injection/selection detector | Scoped reporting |  |
+    | Statistical | Insufficient Samples | Too few iterations for significance | Duration-driven adaptive iterations with maximum; no power/variance guarantee | Scoped timing | Measuring What Matters 2025 |
+    | Statistical | Cold Start Inclusion | First run included unfairly | Warmup enforcement | Inventory; not re-audited |  |
+    | Statistical | GC Interference | Garbage collection during timing | gc_disabled | Inventory; not re-audited |  |
+    | Statistical | Background Process Noise | System processes affect timing | Subprocess execution does not prohibit threads, lock priority or isolate host processes | Unsupported policy |  |
+    | Evaluation | Eval Code Exploitation | Benchmark code modified to pass | BenchmarkContract enforcement | Inventory; not re-audited |  |
+    | Evaluation | Timeout Manipulation | Timeout extended to hide slowdowns | Config immutability | Inventory; not re-audited |  |
+    | Evaluation | Metric Definition Gaming | Redefine what speedup means | Standardized metric definitions | Inventory; not re-audited | MLPerf 2019, HANS 2019, Measuring What Matters 2025, Medical LLM Benchmarks 2025 |
+    | Evaluation | Test Data Leakage | Training on test data | No dataset provenance, leakage or holdout enforcement | Unsupported | Benchmark Data Contamination Survey 2024 |
+    | Evaluation | Benchmark Overfitting | Optimize specifically for benchmark | Fresh-input/jitter cached-output checks; no general dataset-overfitting detector | Scoped check | Underspecification 2020, Epic Sepsis 2021, NaturalCodeBench 2024 |
+    | Evaluation | Self-Modifying Tests | AI/code modifies its own tests | Config-value immutability; no test-source immutability | Unsupported source policy |  |
+    | Evaluation | Benchmark Memorization | Agent memorizes test cases | Fresh-input/jitter cached-output checks; no general dataset-overfitting detector | Scoped check | AI Agent Benchmark Shortcuts 2024 |
+    | Evaluation | Missing Holdout Sets | No proper train/test split | No dataset provenance, leakage or holdout enforcement | Unsupported | AI Agent Benchmark Shortcuts 2024, Microsoft Tay 2016 |
 
-    Total: 11 categories, 95 validity issues - all protected by the harness.
+    Total: 11 categories, 95 inventory rows. These are threats and advertised mechanisms, not a count of verified protections.
 
     ### Notable Real-World Incidents
 
@@ -588,17 +595,17 @@ WALL_OF_SHAME = dedent(
 
     | Category | Incidents | Our Protection | Status |
     | --- | --- | --- | --- |
-    | Timing Manipulation | 1 (Locus/KernelBench) | Full device sync + StreamAuditor | OK |
-    | Invalid Ground Truth | 2 (ImageNet Labels, MMLU) | GoldenOutputCache + validate_result | OK |
-    | Benchmark Overfitting | 4 (Underspecification, Epic Sepsis, NaturalCodeBench, Berkeley) | Fresh-input checks + jitter | OK |
-    | Data Contamination | 2 (LLM Survey 2024, NLP Contamination 2023) | Data contamination checks + fresh inputs | OK |
-    | Metric Gaming | 4 (Measuring What Matters 2025, Medical LLM Benchmarks 2025, HANS 2019, MLPerf 2019) | Standardized metric definitions | OK |
-    | Cherry-picking | 2 (Leaderboard Illusion, MLPerf 2022) | All-iteration reporting | OK |
-    | Train/Test Overlap | 1 (Computational Biology) | Dataset isolation + holdout enforcement | OK |
-    | Missing Holdout Sets | 2 (AI Agent Shortcuts, Microsoft Tay) | Held-out evaluation data | OK |
-    | Reproducibility | 1 (MLPerf 2021) | RunManifest version locking | OK |
-    | Evaluation Integrity | 1 (Sakana AI Scientist) | BenchmarkContract + verification enforcement | OK |
-    | Precision Policy Drift | 1 (TF32 Default) | Backend policy immutability check | OK |
+    | Timing Manipulation | 1 (Locus/KernelBench) | Full device sync + StreamAuditor | Inventory; not re-audited |
+    | Invalid Ground Truth | 2 (ImageNet Labels, MMLU) | Selected-reference caching/comparison; does not validate dataset labels | Scoped check |
+    | Benchmark Overfitting | 4 (Underspecification, Epic Sepsis, NaturalCodeBench, Berkeley) | Fresh-input/jitter cached-output checks; no general dataset-overfitting detector | Scoped check |
+    | Data Contamination | 2 (LLM Survey 2024, NLP Contamination 2023) | No dataset provenance, leakage or holdout enforcement | Unsupported |
+    | Metric Gaming | 4 (Measuring What Matters 2025, Medical LLM Benchmarks 2025, HANS 2019, MLPerf 2019) | Standardized metric definitions | Inventory; not re-audited |
+    | Cherry-picking | 2 (Leaderboard Illusion, MLPerf 2022) | Preserve supplied samples/statistics; no upstream omission/injection/selection detector | Scoped reporting |
+    | Train/Test Overlap | 1 (Computational Biology) | No dataset provenance, leakage or holdout enforcement | Unsupported |
+    | Missing Holdout Sets | 2 (AI Agent Shortcuts, Microsoft Tay) | No dataset provenance, leakage or holdout enforcement | Unsupported |
+    | Reproducibility | 1 (MLPerf 2021) | Available RunManifest provenance; no cross-run version lock | Unsupported version parity |
+    | Evaluation Integrity | 1 (Sakana AI Scientist) | Contract/config checks; no test-source immutability | Scoped checks |
+    | Precision Policy Drift | 1 (TF32 Default) | Backend policy immutability check | Inventory; not re-audited |
 
     ### Deep Dive: The Locus/KernelBench Stream Timing Vulnerability
 
@@ -682,7 +689,7 @@ ENTRIES["README.md"] = Entry(
             ),
         ),
         MarkdownSection(
-            "Current Representative Deltas",
+            "Historical Representative Deltas",
             _render_current_representative_deltas_body(),
         ),
         MarkdownSection(
@@ -797,7 +804,7 @@ ENTRIES["README.md"] = Entry(
     ],
     goals=[
         "Understand how the chapters, labs, and shared tooling fit together.",
-        "Stand up a reproducible environment for PyTorch 2.10-dev + CUDA 13 workloads on Blackwell GPUs.",
+        "Stand up a reproducible environment with the pinned PyTorch 2.9.1 + CUDA 13 stack for Blackwell workloads.",
         "Run the benchmark harness directly or through the Typer CLI for automated artifact capture.",
         "Validate peak hardware characteristics before grading optimizations against stored expectations.",
     ],
@@ -1920,7 +1927,7 @@ ENTRIES["ch09"] = chapter_entry(
     ],
     notes=[
         "`inline_ptx_example.cu` demonstrates how to wrap tcgen05 intrinsics safely with architecture guards.",
-        "`requirements.txt` includes Triton nightly pinning so the kernels track PyTorch 2.10-dev features.",
+        "`requirements.txt` includes the shared `requirements_latest.txt` pins for PyTorch 2.9.1 and its compatible Triton release.",
         "`optimized_cublaslt_gemm_fp4` is intentionally capability-gated: if cuBLASLt cannot provide the native block-scaled NVFP4 heuristic, the benchmark reports a clean skip instead of silently falling back to a different FP4 mode.",
     ],
 )
@@ -2454,7 +2461,7 @@ ENTRIES["ch14"] = chapter_entry(
     ],
     notes=[
         "`inspect_compiled_code.py` dumps Triton/PTX/Graph captures for any target; edit the helper to introspect new workloads.",
-        "`requirements.txt` includes nightly Triton + PyTorch wheels to keep compiler features aligned with the CUDA 13 toolchain.",
+        "`requirements.txt` includes the shared `requirements_latest.txt` pins for stable PyTorch and Triton wheels aligned with the CUDA 13 toolchain.",
         "For repo-native supporting examples that fill the training hot-path gaps without changing this chapter's primary compile narrative, see `labs/training_hotpath`.",
         "`cublas_vs_cutlass` is a supplementary comparison pair. Chapter-native performance claims stay anchored on `model_compile_reduced_precision`, `regional_triton`, and `triton_persistent`.",
     ],
@@ -3495,52 +3502,49 @@ ENTRIES["labs/cutlass_profiler_kernel_selector"] = lab_entry(
 
 ENTRIES["labs/cudnn_sdpa_bench"] = lab_entry(
     slug="labs/cudnn_sdpa_bench",
-    title="Lab - cuDNN SDPA Bench",
-    summary=dedent(
-        """\
-        Microbenchmarks cuDNN fused scaled-dot-product attention against Flash and math backends with explicit CLI backend selection."""
-    ),
+    title='Lab - cuDNN SDPA Bench',
+    summary='Microbenchmarks cuDNN fused scaled-dot-product attention against Flash and math backends with explicit CLI backend selection.',
     lead_sections=[
         MarkdownSection(
-            "Problem",
-            dedent(
-                """\
-                Attention backend choices are often treated as an implementation detail. This lab exists to keep that choice explicit and benchmarked so you can tell whether cuDNN, Flash, or the math path is actually the right answer for this exact shape family."""
-            ),
+            'Problem',
+            'Attention backend choices are often treated as an implementation detail. This lab exists to keep that choice explicit and benchmarked so you can tell whether cuDNN, Flash, or the math path is actually the right answer for this exact shape family.',
         ),
         MarkdownSection(
-            "Baseline Path",
+            'Baseline Path',
             dedent(
                 """\
                 - attention path with conservative backend selection
                 - stable reference for correctness and shape coverage
-                - useful when fused paths are unavailable or unstable"""
+                - useful when fused paths are unavailable or unstable
+                """
             ),
         ),
         MarkdownSection(
-            "Optimized Path",
+            'Optimized Path',
             dedent(
                 """\
                 - fused SDPA backend path
                 - same shapes and validation contract
-                - tuned to answer "does backend choice alone move the result?" rather than mixing in unrelated changes"""
+                - tuned to answer "does backend choice alone move the result?" rather than mixing in unrelated changes
+                """
             ),
         ),
         MarkdownSection(
-            "Measured Delta",
+            'Historical Delta (backend attribution unverified)',
             dedent(
                 """\
-                Representative strict result from `artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/`:
+                Earlier representative result from `artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/`:
 
                 | Target | Baseline | Optimized | Measured delta |
                 | --- | ---: | ---: | ---: |
                 | `flash_sdp` | `0.345 ms` | `0.282 ms` | `1.22x` |
 
-                This is not a giant benchmark pair, and that is useful. The lab exists to show a real backend-selection delta without pretending it is a bigger architectural win than it is."""
+                The earlier implementation allowed a requested cuDNN run to fall back to Flash. This table therefore does not establish a cuDNN-versus-Flash delta. Explicit backend requests are now pinned and fail if unavailable; only `auto` permits fallback. Fresh GPU verification and profiler evidence are required before attributing a speedup to backend selection.
+                """
             ),
         ),
         MarkdownSection(
-            "Profiler Evidence",
+            'Profiler Evidence',
             dedent(
                 """\
                 ```bash
@@ -3548,38 +3552,48 @@ ENTRIES["labs/cudnn_sdpa_bench"] = lab_entry(
                 python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --profile deep_dive --single-gpu --target-extra-arg labs/cudnn_sdpa_bench:flash_sdp="--backend flash"
                 ```
 
-                Keep the backend fixed per run when you profile. The point is to attribute the gain to backend behavior, not to mixed runtime heuristics."""
+                Keep the backend fixed per run when you profile. The point is to attribute the gain to backend behavior, not to mixed runtime heuristics.
+                """
             ),
         ),
         MarkdownSection(
-            "Repro Commands",
+            'Repro Commands',
             dedent(
                 """\
                 ```bash
                 python -m cli.aisp bench list-targets --chapter labs/cudnn_sdpa_bench
                 python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --profile minimal
                 python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --profile minimal --target-extra-arg labs/cudnn_sdpa_bench:flash_sdp="--backend cudnn"
-                ```"""
+                ```
+                """
             ),
         ),
     ],
     goals=[
-        "Compare cuDNN fused SDPA to Flash and math backends on identical shapes.",
-        "Capture Nsight traces per backend to inspect kernel fusion and launch counts.",
-        "Keep regression thresholds per architecture in `expectations_{hardware_key}.json`.",
+        'Compare cuDNN fused SDPA to Flash and math backends on identical shapes.',
+        'Capture Nsight traces per backend to inspect kernel fusion and launch counts.',
+        'Keep regression thresholds per architecture in `expectations_{hardware_key}.json`.',
     ],
     contents=[
-        ("`baseline_flash_sdp.py`, `optimized_flash_sdp.py`", "Shared attention microbenchmarks; backend chosen via `--backend {auto,cudnn,flash,math}` passed with `--target-extra-arg`."),
-        ("`expectations_{hardware_key}.json`", "Current golden timings for the active hardware key."),
+        ('`baseline_flash_sdp.py`, `optimized_flash_sdp.py`', 'Shared attention microbenchmarks; backend chosen via `--backend {auto,cudnn,flash,math}` passed with `--target-extra-arg`.'),
+        ('`expectations_{hardware_key}.json`', 'Current golden timings for the active hardware key.'),
     ],
+    run=RunSection(
+        commands=['python -m cli.aisp bench list-targets --chapter labs/cudnn_sdpa_bench', 'python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench --profile minimal'],
+        notes=['Targets follow the `labs/cudnn_sdpa_bench:<workload>` naming convention listed by `list-targets`.', 'Use `--target-extra-arg labs/cudnn_sdpa_bench:<workload>="--flag value"` to sweep schedule knobs.', 'Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited environments.', 'Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.'],
+    ),
+    run_heading='Running the Benchmarks',
+    run_intro='Use the benchmark harness for quick comparisons or drive the Typer CLI when you need repeatable artifact capture.',
     validation=[
-        "`python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --profile minimal --target-extra-arg labs/cudnn_sdpa_bench:flash_sdp=\"--backend cudnn\"` captures cuDNN with Nsight traces.",
-        "`python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --target-extra-arg labs/cudnn_sdpa_bench:flash_sdp=\"--backend flash\"` compares the Flash path against cuDNN.",
-        "`python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --target-extra-arg labs/cudnn_sdpa_bench:flash_sdp=\"--backend math\"` sanity-checks the math backend where fused kernels are unsupported.",
+        '`python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --profile minimal --target-extra-arg labs/cudnn_sdpa_bench:flash_sdp="--backend cudnn"` captures cuDNN with Nsight traces.',
+        '`python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --target-extra-arg labs/cudnn_sdpa_bench:flash_sdp="--backend flash"` compares the Flash path against cuDNN.',
+        '`python -m cli.aisp bench run --targets labs/cudnn_sdpa_bench:flash_sdp --target-extra-arg labs/cudnn_sdpa_bench:flash_sdp="--backend math"` sanity-checks the math backend where fused kernels are unsupported.',
+    ],
+    extra_sections=[
     ],
     notes=[
-        "Backend selection is CLI-only; environment variables are intentionally ignored.",
-        "Profiling outputs are stored under `artifacts/runs/<run_id>/profiles/bench/labs_cudnn_sdpa_bench/` with harness artifacts in `artifacts/runs/<run_id>/`.",
+        'Backend selection is CLI-only; environment variables are intentionally ignored.',
+        'Profiling outputs are stored under `artifacts/runs/<run_id>/profiles/bench/labs_cudnn_sdpa_bench/` with harness artifacts in `artifacts/runs/<run_id>/`.',
     ],
 )
 
@@ -3799,41 +3813,37 @@ ENTRIES["labs/nccl_nixl_nvshmem"] = lab_entry(
 
 ENTRIES["labs/decode_optimization"] = lab_entry(
     slug="labs/decode_optimization",
-    title="Lab - Decode Optimization",
-    summary=dedent(
-        """\
-        Decode-focused microbenchmarks that isolate serving-side wins such as pinned memory, streams, compile/graphs, FP8/FP4, warp specialization, and HuggingFace cache policy changes without dragging full attention stacks into every comparison."""
-    ),
+    title='Lab - Decode Optimization',
+    summary='Decode-focused microbenchmarks that isolate serving-side wins such as pinned memory, streams, compile/graphs, FP8/FP4, decode-only CUDA Graph replay, and HuggingFace cache policy changes without dragging full attention stacks into every comparison.',
     lead_sections=[
         MarkdownSection(
-            "Problem",
-            dedent(
-                """\
-                Decode paths die by a thousand cuts: host staging, stream orchestration, cache policy, compile overhead, and kernel schedule all matter. This lab keeps those costs as separate targets so you can see what actually moves TTFT, TPOT, and total decode latency."""
-            ),
+            'Problem',
+            'Decode paths die by a thousand cuts: host staging, stream orchestration, cache policy, compile overhead, and kernel schedule all matter. This lab keeps those costs as separate targets so you can see what actually moves TTFT, TPOT, and total decode latency.',
         ),
         MarkdownSection(
-            "Baseline Path",
+            'Baseline Path',
             dedent(
                 """\
                 - eager decode on pageable inputs and conservative cache policy
                 - straightforward correctness reference
-                - enough host and launch overhead to make serving optimizations visible"""
+                - enough host and launch overhead to make serving optimizations visible
+                """
             ),
         ),
         MarkdownSection(
-            "Optimized Path",
+            'Optimized Path',
             dedent(
                 """\
                 - pinned inputs and dual-stream decode variants
                 - `torch.compile` and CUDA Graph decode paths
                 - setup-time prefill-state reuse for static-prefix serving paths
-                - FP8/FP4 and warp-specialized kernels where the hardware supports them
-                - static-cache HuggingFace loop for the cache-policy pair"""
+                - FP8/FP4 compute and persistent-prefill CUDA Graph replay
+                - static-cache HuggingFace loop for the cache-policy pair
+                """
             ),
         ),
         MarkdownSection(
-            "Measured Delta",
+            'Measured Delta',
             dedent(
                 """\
                 Representative strict result from `artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/`:
@@ -3849,18 +3859,16 @@ ENTRIES["labs/decode_optimization"] = lab_entry(
                 | `decode_prefix_state_cache` | `1.761 ms` | `1.018 ms` | `1.73x` |
                 | `decode_candidate_logits` | `8.866 ms` | `6.335 ms` | `1.40x` |
 
-                The `decode_device_resident` row is from `artifacts/runs/codex_decode_device_resident_20260630_204000/`; the optimized path reports zero prompt/payload copies per iteration. The `decode_prefix_state_cache` row is from the B200/Zymtrace run `artifacts/runs/20260701_132419__bench__profile_none_targets_labs_decode_optimization_decode_prefix_state_cache/`; the optimized path reports zero prefill computes per iteration and reduces TTFT from about `0.91 ms` to `0.12 ms`. The `decode_candidate_logits` row is from `artifacts/runs/codex_decode_candidate_logits_forced_20260630_210000/`; the optimized path reduces the effective logits vocabulary from `131072` to `1`. This is the useful shape of the lab: some decode optimizations are huge, some are modest, and the lab keeps them separated instead of averaging them into a fake single story."""
+                The `decode_device_resident` row is from `artifacts/runs/codex_decode_device_resident_20260630_204000/`; the optimized path reports zero prompt/payload copies per iteration. The `decode_prefix_state_cache` row is from the B200/Zymtrace run `artifacts/runs/20260701_132419__bench__profile_none_targets_labs_decode_optimization_decode_prefix_state_cache/`; the optimized path reports zero prefill computes per iteration and reduces TTFT from about `0.91 ms` to `0.12 ms`. The `decode_candidate_logits` row is from `artifacts/runs/codex_decode_candidate_logits_forced_20260630_210000/`; the optimized path reduces the effective logits vocabulary from `131072` to `1`. This is the useful shape of the lab: some decode optimizations are huge, some are modest, and the lab keeps them separated instead of averaging them into a fake single story.
+                """
             ),
         ),
         MarkdownSection(
-            "Control Surfaces",
-            dedent(
-                """\
-                Treat `decode_pinned` as a supplementary local-contract speed benchmark. The pair now uses a dedicated pageable-vs-pinned baseline on the same transfer-heavy workload (`host_payload_mb=512`, no stream overlap) so the pinned-memory comparison is measurable on its own. More broadly, the standalone pinned-memory stepping stones remain non-headline benchmarks, while the lab's canonical host-overhead benchmark stays on `decode_streams`, where the workload keeps that same large host payload and adds copy/compute overlap."""
-            ),
+            'Control Surfaces',
+            "Treat `decode_pinned` as a supplementary local-contract speed benchmark. The pair now uses a dedicated pageable-vs-pinned baseline on the same transfer-heavy workload (`host_payload_mb=512`, no stream overlap) so the pinned-memory comparison is measurable on its own. More broadly, the standalone pinned-memory stepping stones remain non-headline benchmarks, while the lab's canonical host-overhead benchmark stays on `decode_streams`, where the workload keeps that same large host payload and adds copy/compute overlap.",
         ),
         MarkdownSection(
-            "Profiler Evidence",
+            'Profiler Evidence',
             dedent(
                 """\
                 ```bash
@@ -3872,59 +3880,69 @@ ENTRIES["labs/decode_optimization"] = lab_entry(
                 python -m cli.aisp bench run --targets labs/decode_optimization:decode_warp_specialized --profile deep_dive --single-gpu
                 ```
 
-                Those targets cover the most useful slices: general decode orchestration, device-resident serving contracts, real decoder-loop cache policy, and the fused Triton kernel path."""
+                Those targets cover the most useful slices: general decode orchestration, device-resident serving contracts, real decoder-loop cache policy, and decode-only CUDA Graph replay with persistent prefill state.
+                """
             ),
         ),
         MarkdownSection(
-            "Repro Commands",
+            'Repro Commands',
             dedent(
                 """\
                 ```bash
                 python -m cli.aisp bench list-targets --chapter labs/decode_optimization
                 python -m cli.aisp bench run --targets labs/decode_optimization --profile none
                 python -m cli.aisp demos labs-decode-multigpu --nproc-per-node 4 -- --iters 4 --warmup 1
-                ```"""
+                ```
+                """
             ),
         ),
     ],
     goals=[
-        "Contrast eager vs pinned/streamed vs compiled/graph decode paths on the same workload.",
-        "Measure FP8/FP4 tensor-core benefits relative to FP16/BF16 baselines.",
-        "Validate Triton warp-specialized decode kernels against Python math and harness expectations.",
-        "Observe NVLink-C2C behavior by scaling the decode loop across available GPUs.",
-        "Show when a prefix-cache/device-resident request path can remove recurring prompt-side H2D staging.",
-        "Show when a static-prefix request path can reuse prefill state instead of recomputing it per decode request.",
-        "Show when guided decoding can avoid full-vocabulary logits by scoring only legal candidates.",
+        'Contrast eager vs pinned/streamed vs compiled/graph decode paths on the same workload.',
+        'Measure FP8/FP4 tensor-core benefits relative to FP16/BF16 baselines.',
+        'Validate CUDA Graph replay against the same eager PyTorch decode math and persistent prefill state.',
+        'Observe NVLink-C2C behavior by scaling the decode loop across available GPUs.',
+        'Show when a prefix-cache/device-resident request path can remove recurring prompt-side H2D staging.',
+        'Show when a static-prefix request path can reuse prefill state instead of recomputing it per decode request.',
+        'Show when guided decoding can avoid full-vocabulary logits by scoring only legal candidates.',
     ],
     contents=[
-        ("`baseline_decode.py`, `optimized_decode_pinned.py`, `optimized_decode_streams.py`, `optimized_decode_compile.py`, `optimized_decode_graph.py`, `optimized_decode_graph_full.py`, `optimized_decode_ultimate.py`", "Serving-path decode variants that isolate host, stream, compile, and graph effects."),
-        ("`baseline_decode_device_resident.py`, `optimized_decode_device_resident.py`", "Prefix-cache-style serving variant that seeds prompt-side inputs once and skips recurring H2D staging in the decode hot path."),
-        ("`baseline_decode_prefix_state_cache.py`, `optimized_decode_prefix_state_cache.py`", "Static-prefix serving variant that keeps prompt tensors resident and reuses the setup-time prefill state during short decode."),
-        ("`baseline_decode_candidate_logits.py`, `optimized_decode_candidate_logits.py`", "Guided/constrained decode variant that compares full-vocabulary scoring plus candidate filtering with direct candidate-only projection."),
-        ("`baseline_decode_hf_cache.py`, `optimized_decode_hf_cache.py`", "Real HuggingFace decoder-loop comparison: dynamic cache + per-step EOS sync vs static cache + compiled decode + batched EOS polling."),
-        ("`baseline_decode_fp8.py`, `optimized_decode_fp8.py`, `baseline_decode_fp4.py`, `optimized_decode_fp4.py`", "Prefill-focused low-precision decode comparisons on hardware that supports them, including the intentional BF16/nn.Linear versus FP8/Transformer Engine TELinear path."),
-        ("`baseline_decode_warp_specialized.py`, `optimized_decode_warp_specialized.py`", "Warp-specialized decode path plus its eager correctness reference."),
-        ("`baseline_decode_double_buffer_tma.py`, `optimized_decode_double_buffer_tma.py`, `decode_common.py`, `decode_multigpu_demo.py`", "CUDA double-buffer/TMA path, shared helpers, and the multi-GPU NVLink-C2C demo."),
+        ('`baseline_decode.py`, `optimized_decode_pinned.py`, `optimized_decode_streams.py`, `optimized_decode_compile.py`, `optimized_decode_graph.py`, `optimized_decode_graph_full.py`, `optimized_decode_ultimate.py`', 'Serving-path decode variants that isolate host, stream, compile, and graph effects.'),
+        ('`baseline_decode_device_resident.py`, `optimized_decode_device_resident.py`', 'Prefix-cache-style serving variant that seeds prompt-side inputs once and skips recurring H2D staging in the decode hot path.'),
+        ('`baseline_decode_prefix_state_cache.py`, `optimized_decode_prefix_state_cache.py`', 'Static-prefix serving variant that keeps prompt tensors resident and reuses the setup-time prefill state during short decode.'),
+        ('`baseline_decode_candidate_logits.py`, `optimized_decode_candidate_logits.py`', 'Guided/constrained decode variant that compares full-vocabulary scoring plus candidate filtering with direct candidate-only projection.'),
+        ('`baseline_decode_hf_cache.py`, `optimized_decode_hf_cache.py`', 'Real HuggingFace decoder-loop comparison: dynamic cache + per-step EOS sync vs static cache + compiled decode + batched EOS polling.'),
+        ('`baseline_decode_fp8.py`, `optimized_decode_fp8.py`, `baseline_decode_fp4.py`, `optimized_decode_fp4.py`', 'Prefill-focused low-precision decode comparisons on hardware that supports them, including the intentional BF16/nn.Linear versus FP8/Transformer Engine TELinear path.'),
+        ('`baseline_decode_warp_specialized.py`, `optimized_decode_warp_specialized.py`', 'Decode-only CUDA Graph replay plus its eager PyTorch reference; filenames retain the legacy target name.'),
+        ('`baseline_decode_double_buffer_tma.py`, `optimized_decode_double_buffer_tma.py`, `decode_common.py`, `decode_multigpu_demo.py`', 'CUDA double-buffer/TMA path, shared helpers, and the multi-GPU NVLink-C2C demo.'),
     ],
+    run=RunSection(
+        commands=['python -m cli.aisp bench list-targets --chapter labs/decode_optimization', 'python -m cli.aisp bench run --targets labs/decode_optimization --profile minimal'],
+        notes=['Targets follow the `labs/decode_optimization:<workload>` naming convention listed by `list-targets`.', 'Use `--target-extra-arg labs/decode_optimization:<workload>="--flag value"` to sweep schedule knobs.', 'Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited environments.', 'Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.'],
+    ),
+    run_heading='Running the Benchmarks',
+    run_intro='Use the benchmark harness for quick comparisons or drive the Typer CLI when you need repeatable artifact capture.',
     validation=[
-        "Baseline vs pinned/streams shows improved TTFT and TPOT with lower host wait time.",
-        "Compile/graph variants emit fewer kernels and higher tokens/sec than the baseline in harness output.",
-        "FP8/FP4 runs use a prefill-focused workload (`decode_tokens=0`) to surface tensor-core benefits; outputs remain within tolerance.",
-        "Warp-specialized Triton kernel is validated against a workload-matched eager baseline; the expectation file stays green.",
-        "`decode_device_resident` emits zero prompt/payload copies per iteration on the optimized path while preserving the same model output.",
-        "`decode_prefix_state_cache` emits zero prefill computes per iteration on the optimized path while preserving the same short-decode output.",
-        "`decode_candidate_logits` emits the same constrained-token decode output while reducing the effective logits vocabulary from the full vocabulary to the candidate set.",
-        "The multi-GPU demo exercises NVLink-C2C without graph-capture failures when launched via `torchrun`.",
+        'Baseline vs pinned/streams shows improved TTFT and TPOT with lower host wait time.',
+        'Compile/graph variants emit fewer kernels and higher tokens/sec than the baseline in harness output.',
+        'FP8/FP4 runs use a prefill-focused workload (`decode_tokens=0`) to surface tensor-core benefits; outputs remain within tolerance.',
+        'The legacy `decode_warp_specialized` target contains no Triton or warp-specialized kernel. Its config labels identify eager versus graph-persistent decode; validate replay correctness and launch overhead on the target.',
+        '`decode_device_resident` emits zero prompt/payload copies per iteration on the optimized path while preserving the same model output.',
+        '`decode_prefix_state_cache` emits zero prefill computes per iteration on the optimized path while preserving the same short-decode output.',
+        '`decode_candidate_logits` emits the same constrained-token decode output while reducing the effective logits vocabulary from the full vocabulary to the candidate set.',
+        'The multi-GPU demo exercises NVLink-C2C without graph-capture failures when launched via `torchrun`.',
+    ],
+    extra_sections=[
     ],
     notes=[
-        "All targets emit TTFT, TPOT mean, decode time, total time, and tokens/sec in `custom_metrics` for easy diffing.",
+        'All targets emit TTFT, TPOT mean, decode time, total time, and tokens/sec in `custom_metrics` for easy diffing.',
         "`decode_pinned` is a supplementary local-contract stepping-stone target that now isolates pageable vs pinned staging on the same large host payload; use `decode_streams` when you want the lab's canonical pinned-host plus overlap speed claim.",
-        "`decode_device_resident` is a larger serving-contract optimization: it applies when routing and prefix-cache policy keep prompt-side buffers resident on the GPU between decode iterations.",
-        "`decode_prefix_state_cache` is a larger serving-contract optimization: it applies when a stable prompt prefix can be prefetched once and reused for low-latency short decode requests.",
-        "`decode_candidate_logits` models grammar, schema, or router-constrained serving where the legal next-token set is known before the lm_head projection.",
-        "FP4 requires NVFP4-capable Blackwell hardware; unsupported platforms fail fast.",
+        '`decode_device_resident` is a larger serving-contract optimization: it applies when routing and prefix-cache policy keep prompt-side buffers resident on the GPU between decode iterations.',
+        '`decode_prefix_state_cache` is a larger serving-contract optimization: it applies when a stable prompt prefix can be prefetched once and reused for low-latency short decode requests.',
+        '`decode_candidate_logits` models grammar, schema, or router-constrained serving where the legal next-token set is known before the lm_head projection.',
+        'FP4 requires NVFP4-capable Blackwell hardware; unsupported platforms fail fast.',
         "The HF cache pair reproduces the main idea from Chaim Rand's token-generation optimization write-up while keeping the harness contract intact.",
-        "`decode_fp8` is intentionally a BF16/`nn.Linear` baseline versus FP8/Transformer Engine `TELinear`, because Transformer Engine is the supported FP8 linear path in this lab.",
+        '`decode_fp8` is intentionally a BF16/`nn.Linear` baseline versus FP8/Transformer Engine `TELinear`, because Transformer Engine is the supported FP8 linear path in this lab.',
     ],
 )
 
@@ -4143,55 +4161,60 @@ ENTRIES["labs/block_scaling"] = lab_entry(
 
 ENTRIES["labs/flashattention4"] = lab_entry(
     slug="labs/flashattention4",
-    title="Lab - FlashAttention-4 Pipeline Co-Design",
-    summary=dedent(
-        """\
-        Recreates the practical shape of the FlashAttention-4 article: eager FlexAttention as the scalar-heavy baseline, then a compiled Blackwell-friendly path that tries the FLASH backend and falls back to FlexAttention+TMA when needed. The default benchmark uses ALiBi because it is stable on the local stack and still exercises the FA4 score-mod path."""
-    ),
+    title='Lab - FlashAttention-4 Pipeline Co-Design',
+    summary='Recreates the practical shape of the FlashAttention-4 article: eager FlexAttention as the scalar-heavy baseline, then a compiled Blackwell-friendly path that tries the FLASH backend and falls back to FlexAttention+TMA when needed. The default benchmark uses ALiBi because it is stable on the local stack and still exercises the FA4 score-mod path.',
     lead_sections=[
         MarkdownSection(
-            "Problem",
+            'Problem',
             dedent(
                 """\
                 This lab is here to test two different questions cleanly:
                 - does the fused FA4-style path beat the eager score-materializing baseline in this repo?
-                - does the local stack reproduce the Colfax / PyTorch FlashAttention-4 performance envelope?"""
+                - does the local stack reproduce the Colfax / PyTorch FlashAttention-4 performance envelope?
+                """
             ),
         ),
         MarkdownSection(
-            "Baseline Path",
+            'Baseline Path',
             dedent(
                 """\
                 - eager FlexAttention
                 - explicit score materialization
-                - good correctness reference, bad steady-state cost model"""
+                - good correctness reference, bad steady-state cost model
+                """
             ),
         ),
         MarkdownSection(
-            "Optimized Path",
+            'Optimized Path',
             dedent(
                 """\
                 - compiled Blackwell-oriented path
                 - prefers the experimental FLASH backend
-                - falls back to compiled FlexAttention + TMA when the backend/toolchain combination cannot lower cleanly"""
+                - falls back to compiled FlexAttention + TMA when the backend/toolchain combination cannot lower cleanly
+                """
             ),
         ),
         MarkdownSection(
-            "Measured Delta",
+            'Latest recorded validation and historical results',
             dedent(
                 """\
-                Current validated harness result for the default `ALiBi` target from `artifacts/runs/20260306_023114__bench__profile_none_targets_labs_flashattention4_flashattention4_alibi/`:
+                The latest repository handoff, dated **2026-08-17** in `HANDOFF.md`, records the ALiBi target passing input/output verification but failing the 1.05x speed gate on B200:
 
                 | Path | Latency | Relative |
                 | --- | ---: | ---: |
-                | Baseline (`baseline_flashattention4`) | `5.562 ms` | `1.00x` |
-                | Optimized (`optimized_flashattention4_alibi`) | `0.385 ms` | `14.45x faster` |
+                | Baseline | `3.429079 ms` | `1.00x` |
+                | Optimized | `3.572818 ms` | `0.959769x` |
 
-                This lab also carries an important negative result: the local stack does **not** currently reproduce the published Colfax/PyTorch FA4 envelope on the direct TFLOP/s microbench. That is a useful finding, not a documentation problem to hide."""
+                That run had a first-valid-provider selection defect. The source fix measures all correct compiled providers; B200 re-verification remains pending. The recorded result does not prove an inherent regression, but it does not support a current speedup claim.
+
+                The March 6, 2026 virtualized-host result (5.562 ms / 0.385 ms, 14.45x) in `artifacts/runs/20260306_023114__bench__profile_none_targets_labs_flashattention4_flashattention4_alibi/` is historical and superseded as the latest validation record. It is not the current accepted result. ALiBi and softcap FLOP accounting now uses their actual causal masks, so earlier dense-count TFLOP/s figures for those modes also require recomputation.
+
+                No new GPU measurement was performed for this audit repair, and reproducing the published Colfax/PyTorch envelope remains unverified.
+                """
             ),
         ),
         MarkdownSection(
-            "Profiler Evidence",
+            'Profiler Evidence',
             dedent(
                 """\
                 Use the harness for artifacted Nsight evidence:
@@ -4205,59 +4228,50 @@ ENTRIES["labs/flashattention4"] = lab_entry(
                 ```bash
                 python labs/flashattention4/tflops_microbench.py --preset public_blog --mode dense causal alibi
                 python labs/flashattention4/tflops_microbench.py --preset peak_probe --mode dense causal --backends flash_backend triton_flex cudnn_sdpa
-                ```"""
+                ```
+                """
             ),
         ),
         MarkdownSection(
-            "Repro Commands",
+            'Repro Commands',
             dedent(
                 """\
                 ```bash
                 python -m cli.aisp bench list-targets --chapter labs/flashattention4
                 python -m cli.aisp bench run --targets labs/flashattention4:flashattention4_alibi --profile minimal
                 python labs/flashattention4/tflops_microbench.py --preset public_blog --mode dense causal alibi
-                ```"""
+                ```
+                """
             ),
         ),
     ],
     goals=[
-        "Measure the delta between eager score materialization and a fused compiled attention kernel.",
-        "Exercise FA4-style score modifiers such as ALiBi and soft-capped logits, and optionally probe sliding-window masks on a best-effort basis.",
-        "Inspect provider selection on Blackwell (`flash_backend` vs `flex_tma`).",
-        "Use a coarse pipeline model to explain why overlap matters more under asymmetric hardware scaling.",
+        'Measure the delta between eager score materialization and a fused compiled attention kernel.',
+        'Exercise FA4-style score modifiers such as ALiBi and soft-capped logits, and optionally probe sliding-window masks on a best-effort basis.',
+        'Inspect provider selection on Blackwell (`flash_backend` vs `flex_tma`).',
+        'Use a coarse pipeline model to explain why overlap matters more under asymmetric hardware scaling.',
     ],
     contents=[
-        ("`baseline_flashattention4.py`, `optimized_flashattention4.py`", "Benchmark pair comparing eager FlexAttention to a compiled, provider-aware FA4 path."),
-        ("`flashattention4_common.py`", "Shared input builders, score mods, mask construction, and provider resolution."),
-        ("`pipeline_model.py`", "Latency model for serial versus overlapped attention tiles."),
-        ("`tflops_microbench.py`", "Clock-locked TFLOPs/s microbenchmark for Colfax/PyTorch-style backend comparisons."),
-    ],
-    validation=[
-        "`python -m cli.aisp bench run --targets labs/flashattention4 --profile minimal` shows the eager baseline materializing scores while the optimized path stays fused.",
-        "`python -m cli.aisp bench run --targets labs/flashattention4:flashattention4_alibi --profile minimal` succeeds on a cold-start process and exercises the FA4 score-mod path without relying on env vars.",
-        "`python -m cli.aisp bench run --targets labs/flashattention4:best_available_attention_dense --profile minimal` gives the clearest absolute-performance path for standard attention on this stack.",
-        "`python -m cli.aisp bench run --targets labs/flashattention4:flashattention4_windowed --profile minimal` and `labs/flashattention4:flashattention4_alibi_windowed` remain explicit experimental probes; treat failures there as a PyTorch/FA4 integration limitation on this stack rather than as a lab bug.",
-        "`python labs/flashattention4/pipeline_model.py --tiles 64 --tensor-core-scale 4 --scalar-scale 2` demonstrates overlap becoming more valuable as tensor cores scale faster than scalar hardware.",
-        "`python labs/flashattention4/tflops_microbench.py --preset public_blog --mode dense causal alibi` runs the public-shape backend comparison against the local FLASH backend, the local Triton-style proxy, and cuDNN where supported.",
-        "`python labs/flashattention4/tflops_microbench.py --preset peak_probe --mode dense causal --backends flash_backend triton_flex cudnn_sdpa` checks whether a larger compute-bound shape moves the local stack toward the published Colfax/PyTorch envelope.",
+        ('`baseline_flashattention4.py`, `optimized_flashattention4.py`', 'Benchmark pair comparing eager FlexAttention to a compiled, provider-aware FA4 path.'),
+        ('`flashattention4_common.py`', 'Shared input builders, score mods, mask construction, and provider resolution.'),
+        ('`pipeline_model.py`', 'Latency model for serial versus overlapped attention tiles.'),
+        ('`tflops_microbench.py`', 'Clock-locked TFLOPs/s microbenchmark for Colfax/PyTorch-style backend comparisons.'),
     ],
     run=RunSection(
-        commands=[
-            "python -m cli.aisp bench list-targets --chapter labs/flashattention4",
-            "python -m cli.aisp bench run --targets labs/flashattention4 --profile minimal",
-            "python -m cli.aisp bench run --targets labs/flashattention4:flashattention4_alibi --profile minimal",
-            "python -m cli.aisp bench run --targets labs/flashattention4:best_available_attention_dense --profile minimal",
-            "python -m cli.aisp bench run --targets labs/flashattention4:flashattention4_softcap --profile minimal",
-            "python labs/flashattention4/pipeline_model.py --tiles 32 --tensor-core-scale 4 --scalar-scale 2",
-            "python labs/flashattention4/tflops_microbench.py --preset public_blog --mode dense causal alibi",
-            "python labs/flashattention4/tflops_microbench.py --preset peak_probe --mode dense causal --backends flash_backend triton_flex cudnn_sdpa",
-        ],
-        notes=[
-            "Harness workflows use explicit targets such as `flashattention4_dense`, `flashattention4_causal`, `flashattention4_alibi`, `flashattention4_softcap`, `flashattention4_windowed`, `flashattention4_alibi_windowed`, and the matching `best_available_attention_*` variants.",
-            "On the local `torch 2.9.1+cu130` build, `windowed` and `alibi_windowed` are experimental: the optimized path can produce non-finite outputs on a fresh compile even though upstream FA4 supports sliding-window patterns.",
-            "`tflops_microbench.py` locks GPU clocks through `core.harness.benchmark_harness.lock_gpu_clocks()` by default; use `--no-lock-gpu-clocks` only for local debugging.",
-        ],
+        commands=['python -m cli.aisp bench list-targets --chapter labs/flashattention4', 'python -m cli.aisp bench run --targets labs/flashattention4 --profile minimal', 'python -m cli.aisp bench run --targets labs/flashattention4:flashattention4_alibi --profile minimal', 'python -m cli.aisp bench run --targets labs/flashattention4:best_available_attention_dense --profile minimal', 'python -m cli.aisp bench run --targets labs/flashattention4:flashattention4_softcap --profile minimal', 'python labs/flashattention4/pipeline_model.py --tiles 32 --tensor-core-scale 4 --scalar-scale 2', 'python labs/flashattention4/tflops_microbench.py --preset public_blog --mode dense causal alibi', 'python labs/flashattention4/tflops_microbench.py --preset peak_probe --mode dense causal --backends flash_backend triton_flex cudnn_sdpa'],
+        notes=['Harness workflows use explicit targets such as `flashattention4_dense`, `flashattention4_causal`, `flashattention4_alibi`, `flashattention4_softcap`, `flashattention4_windowed`, `flashattention4_alibi_windowed`, and the matching `best_available_attention_*` variants.', 'On the local `torch 2.9.1+cu130` build, `windowed` and `alibi_windowed` are experimental: the optimized path can produce non-finite outputs on a fresh compile even though upstream FA4 supports sliding-window patterns.', '`tflops_microbench.py` locks GPU clocks through `core.harness.benchmark_harness.lock_gpu_clocks()` by default; use `--no-lock-gpu-clocks` only for local debugging.'],
     ),
+    run_heading='Running the Benchmarks',
+    run_intro='Use the benchmark harness for quick comparisons or drive the Typer CLI when you need repeatable artifact capture.',
+    validation=[
+        '`python -m cli.aisp bench run --targets labs/flashattention4 --profile minimal` shows the eager baseline materializing scores while the optimized path stays fused.',
+        '`python -m cli.aisp bench run --targets labs/flashattention4:flashattention4_alibi --profile minimal` succeeds on a cold-start process and exercises the FA4 score-mod path without relying on env vars.',
+        '`python -m cli.aisp bench run --targets labs/flashattention4:best_available_attention_dense --profile minimal` gives the clearest absolute-performance path for standard attention on this stack.',
+        '`python -m cli.aisp bench run --targets labs/flashattention4:flashattention4_windowed --profile minimal` and `labs/flashattention4:flashattention4_alibi_windowed` remain explicit experimental probes; treat failures there as a PyTorch/FA4 integration limitation on this stack rather than as a lab bug.',
+        '`python labs/flashattention4/pipeline_model.py --tiles 64 --tensor-core-scale 4 --scalar-scale 2` demonstrates overlap becoming more valuable as tensor cores scale faster than scalar hardware.',
+        '`python labs/flashattention4/tflops_microbench.py --preset public_blog --mode dense causal alibi` runs the public-shape backend comparison against the local FLASH backend, the local Triton-style proxy, and cuDNN where supported.',
+        '`python labs/flashattention4/tflops_microbench.py --preset peak_probe --mode dense causal --backends flash_backend triton_flex cudnn_sdpa` checks whether a larger compute-bound shape moves the local stack toward the published Colfax/PyTorch envelope.',
+    ],
     extra_sections=[
         dedent(
             """\
@@ -4273,15 +4287,15 @@ ENTRIES["labs/flashattention4"] = lab_entry(
             The FLOP accounting matches the common SDPA forward convention used in vendor/blog comparisons:
             `forward_flops = 4 * batch * heads * head_dim * nonmasked_attention_elements`
 
-            - For `dense`, `alibi`, and `softcap`, `nonmasked_attention_elements = q_seq_len * kv_seq_len`.
-            - For `causal`, `windowed`, and `alibi_windowed`, only the unmasked score matrix entries are counted.
+            - For `dense`, `nonmasked_attention_elements = q_seq_len * kv_seq_len`.
+            - For `causal`, `alibi`, and `softcap`, count triangular causal attention pairs; for `windowed` and `alibi_windowed`, count the exact causal-window pairs. These are effective mathematical FLOPs, not measured hardware instructions.
             - `triton_flex` is the closest local proxy for the blog's Triton baseline: compiled FlexAttention with `USE_TMA=False`.
             """
         ),
         dedent(
             """\
-            ## Current Local Results
-            These measurements were taken on March 5, 2026 on the current local `torch 2.9.1+cu130` stack with harness clock locking enabled. This host is still virtualized, so treat the numbers as directional rather than canonical.
+            ## Historical Local Results (March 5, 2026)
+            These historical measurements were recorded on March 5, 2026 with `torch 2.9.1+cu130` and harness clock locking on a virtualized host. They are preserved as recorded, not requalified against the corrected code or evidence of the current host state. The historical ALiBi TFLOPs/s entries used a dense numerator for causal work and are not corrected throughput rates; corrected accounting requires the causal pair count.
 
             ### Public Blog Shape (`B=2, H=8, S=2048, D=128`)
             | Mode | Backend | Median (ms) | TFLOPs/s | Flash vs Triton | Flash vs cuDNN | Published check |
@@ -4306,18 +4320,18 @@ ENTRIES["labs/flashattention4"] = lab_entry(
             | `causal` | `triton_flex` | 2.200 | 250.0 | 15.6% | `1.00x` | `0.37x` |
             | `causal` | `cudnn_sdpa` | 0.814 | 675.1 | 42.1% | `2.70x` | `1.00x` |
 
-            The local conclusion is straightforward: this stack does not currently reproduce the published Colfax or PyTorch FlashAttention-4 envelope. The larger probe rules out a pure small-shape saturation explanation because the local FLASH path still tops out at `307.5 TFLOPs/s` on dense and `242.9 TFLOPs/s` on causal, well below both Colfax's `1605 TFLOPs/s` peak and the local cuDNN path.
+            That historical snapshot did not reproduce the published Colfax or PyTorch FlashAttention-4 envelope. Within that snapshot, the larger probe reported `307.5 TFLOPs/s` on dense and `242.9 TFLOPs/s` on causal, well below both Colfax's `1605 TFLOPs/s` peak and the local cuDNN path.
             """
         ),
     ],
     notes=[
         "Sources: Colfax Research's FlashAttention-4 article (`https://research.colfax-intl.com/flashattention-4-algorithm-and-kernel-pipelining-co-design-for-asymmetric-hardware-scaling/`) and the PyTorch FlexAttention + FlashAttention-4 integration post (`https://pytorch.org/blog/flexattention-flashattention-4-fast-and-flexible/`).",
-        "For a smaller, schedule-first explanation surface, see `labs/software_pipelining`, which models same-iteration, loop-carried, and anti-dependency constraints without requiring a full FA4 kernel.",
-        "Colfax reports up to `1605 TFLOPs/s` on B200 BF16 at roughly `71%` utilization, plus up to `1.3x` over cuDNN 9.13 and `2.7x` over Triton for forward passes.",
-        "The PyTorch post reports `1.6x-3.2x` forward speedup over Triton for standard dense/causal attention on GB200, `1.2x-2.1x` for ALiBi, and `1.4x-2.1x` for sliding-window attention.",
-        "The local PyTorch/Triton stack needs a quoted backend literal for the experimental FLASH backend; the lab handles that workaround internally and falls back automatically if needed.",
-        "The lab pins float32 accumulation to IEEE mode because the current sm_100 lowering produced non-finite outputs under TF32 accumulation.",
-        "Sliding-window modes remain exposed as explicit benchmark targets, but the stable day-to-day harness path is `flashattention4_alibi`.",
+        'For a smaller, schedule-first explanation surface, see `labs/software_pipelining`, which models same-iteration, loop-carried, and anti-dependency constraints without requiring a full FA4 kernel.',
+        'Colfax reports up to `1605 TFLOPs/s` on B200 BF16 at roughly `71%` utilization, plus up to `1.3x` over cuDNN 9.13 and `2.7x` over Triton for forward passes.',
+        'The PyTorch post reports `1.6x-3.2x` forward speedup over Triton for standard dense/causal attention on GB200, `1.2x-2.1x` for ALiBi, and `1.4x-2.1x` for sliding-window attention.',
+        'The local PyTorch/Triton stack needs a quoted backend literal for the experimental FLASH backend; the lab handles that workaround internally and falls back automatically if needed.',
+        'The lab pins float32 accumulation to IEEE mode because the current sm_100 lowering produced non-finite outputs under TF32 accumulation.',
+        'Sliding-window modes remain exposed as explicit benchmark targets, but the stable day-to-day harness path is `flashattention4_alibi`.',
     ],
 )
 
@@ -4688,7 +4702,7 @@ ENTRIES["labs/custom_vs_cublas"] = lab_entry(
         ("`expectations_{hardware_key}.json`", "Regression thresholds for the benchmark pair."),
     ],
     validation=[
-        "`python -m cli.aisp bench run --targets labs/custom_vs_cublas:tcgen05_matmul --profile minimal` should keep the custom path ahead of the baseline on validated hardware.",
+        "`python -m cli.aisp bench run --targets labs/custom_vs_cublas:tcgen05_matmul --profile minimal` must establish full-output correctness on the exact supported target before its timings can be compared. Historical expectations do not qualify the repaired source or imply a speedup.",
         "The optimized path must stay verification-clean; a faster wrong kernel does not count.",
     ],
     notes=[
@@ -4698,39 +4712,35 @@ ENTRIES["labs/custom_vs_cublas"] = lab_entry(
 
 ENTRIES["labs/flashattention_gluon"] = lab_entry(
     slug="labs/flashattention_gluon",
-    title="Lab - FlashAttention Gluon",
-    summary=dedent(
-        """\
-        Benchmarks a FlashAttention-style optimized path against a simpler attention reference so the local Gluon-flavored integration stays measured and honest."""
-    ),
+    title='Lab - Tiled Triton Attention (legacy Gluon target)',
+    summary='Benchmarks ordinary tiled Triton attention with online softmax against an eager attention reference. Historical Gluon target/module names remain compatible; no Gluon DSL, warp specialization, or TMA implementation is claimed.',
     lead_sections=[
         MarkdownSection(
-            "Problem",
-            dedent(
-                """\
-                Attention-stack integrations can look "fast" because the benchmark is fuzzy. This lab keeps the pair narrow so you can see whether the Gluon-oriented optimized path really buys anything on this stack."""
-            ),
+            'Problem',
+            'Attention-stack integrations can look "fast" because the benchmark is fuzzy. This lab keeps the pair narrow so you can see whether the tiled Triton path improves this workload on the target stack.',
         ),
         MarkdownSection(
-            "Baseline Path",
+            'Baseline Path',
             dedent(
                 """\
                 - simple attention reference path
                 - correctness anchor for the optimized implementation
-                - no fused fast-path assumptions"""
+                - no fused fast-path assumptions
+                """
             ),
         ),
         MarkdownSection(
-            "Optimized Path",
+            'Optimized Path',
             dedent(
                 """\
                 - FlashAttention-style optimized path
                 - same workload and harness contract
-                - focused on local integration cost/benefit, not a synthetic peak score"""
+                - focused on local integration cost/benefit, not a synthetic peak score
+                """
             ),
         ),
         MarkdownSection(
-            "Measured Delta",
+            'Measured Delta',
             dedent(
                 """\
                 Representative strict result from `artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/`:
@@ -4739,215 +4749,244 @@ ENTRIES["labs/flashattention_gluon"] = lab_entry(
                 | --- | ---: | ---: | ---: |
                 | `flashattention_gluon` | `0.205 ms` | `0.154 ms` | `1.33x` |
 
-                This is a modest but real backend/path win. The useful part is that the result stays measured and reproducible instead of being hidden in a broader model benchmark."""
+                This is a historical divisible-length, noncausal workload result. It does not qualify the corrected tail masking, causal masking, padded head dimension, or current runtime. Fresh CUDA numerical and performance checks remain pending.
+                """
             ),
         ),
         MarkdownSection(
-            "Profiler Evidence",
+            'Profiler Evidence',
             dedent(
                 """\
                 ```bash
                 python -m cli.aisp bench run --targets labs/flashattention_gluon:flashattention_gluon --profile deep_dive --single-gpu
-                ```"""
+                ```
+                """
             ),
         ),
         MarkdownSection(
-            "Repro Commands",
+            'Repro Commands',
             dedent(
                 """\
                 ```bash
                 python -m cli.aisp bench list-targets --chapter labs/flashattention_gluon
                 python -m cli.aisp bench run --targets labs/flashattention_gluon:flashattention_gluon --profile minimal
-                ```"""
+                ```
+                """
             ),
         ),
     ],
     goals=[
-        "Keep the local FlashAttention/Gluon integration benchmarked as a clean pair.",
-        "Measure backend-path value without mixing in unrelated model-level effects.",
-        "Use a small, stable attention benchmark as an integration health signal.",
+        'Compare tiled ordinary-Triton attention with the eager reference using identical shapes and masks.',
+        'Measure backend-path value without mixing in unrelated model-level effects.',
+        'Use a small, stable attention benchmark as an integration health signal.',
     ],
     contents=[
-        ("`baseline_flashattention_gluon.py`, `optimized_flashattention_gluon.py`", "Baseline and optimized harness entrypoints."),
-        ("`flashattention_gluon_common.py`", "Shared workload setup and helper code."),
-        ("`expectations_{hardware_key}.json`", "Regression thresholds for the lab."),
+        ('`baseline_flashattention_gluon.py`, `optimized_flashattention_gluon.py`', 'Baseline and optimized harness entrypoints.'),
+        ('`flashattention_gluon_common.py`', 'Shared workload setup and helper code.'),
+        ('`expectations_{hardware_key}.json`', 'Regression thresholds for the lab.'),
     ],
+    run=RunSection(
+        commands=['python -m cli.aisp bench list-targets --chapter labs/flashattention_gluon', 'python -m cli.aisp bench run --targets labs/flashattention_gluon --profile minimal'],
+        notes=['Targets follow the `labs/flashattention_gluon:<workload>` naming convention listed by `list-targets`.', 'Use `--target-extra-arg labs/flashattention_gluon:<workload>="--flag value"` to sweep schedule knobs.', 'Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited environments.', 'Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.'],
+    ),
+    run_heading='Running the Benchmarks',
+    run_intro='Use the benchmark harness for quick comparisons or drive the Typer CLI when you need repeatable artifact capture.',
     validation=[
-        "`python -m cli.aisp bench run --targets labs/flashattention_gluon:flashattention_gluon --profile minimal` should keep the optimized path ahead on validated hardware.",
+        'Check nonmultiples of 64, negative scores, causal and noncausal modes, and non-power-of-two head dimensions against PyTorch SDPA. Invalid columns receive negative infinity before softmax.',
+        'Nonzero dropout is explicitly unsupported; output buffers must not alias inputs.',
+        '`python -m cli.aisp bench run --targets labs/flashattention_gluon:flashattention_gluon --profile minimal` must pass numerical checks before any new speedup is accepted.',
+    ],
+    extra_sections=[
     ],
     notes=[
-        "Treat this as an integration-health benchmark more than as a giant architectural headline win.",
+        'Treat this as an integration-health benchmark more than as a giant architectural headline win.',
     ],
 )
 
 ENTRIES["labs/kv_cache_compression"] = lab_entry(
     slug="labs/kv_cache_compression",
-    title="Lab - KV Cache Compression",
-    summary=dedent(
-        """\
-        Tests whether compressing the KV cache is worth it for this workload, instead of assuming lower memory footprint automatically means better serving latency."""
-    ),
+    title='Lab - Quantized Projection Compute with BF16 KV Cache',
+    summary='This lab compares per-tensor delayed-scaling FP8 projection GEMMs with NVFP4 projection GEMMs. Both paths store K and V as BF16. The directory name is retained for compatibility; neither path compresses the KV cache.',
     lead_sections=[
         MarkdownSection(
-            "Problem",
+            'Storage and workload',
             dedent(
                 """\
-                KV-cache compression is attractive because the memory story is obvious, but the latency story often is not. This lab exists to keep those two questions separate."""
-            ),
-        ),
-        MarkdownSection(
-            "Baseline Path",
-            dedent(
-                """\
-                - uncompressed KV cache path
-                - simple latency/memory reference
-                - no compression overhead in the hot path"""
-            ),
-        ),
-        MarkdownSection(
-            "Optimized Path",
-            dedent(
-                """\
-                - compressed KV cache representation
-                - same benchmark harness and validation contract
-                - tests whether the memory tradeoff is actually latency-positive here"""
-            ),
-        ),
-        MarkdownSection(
-            "Measured Delta",
-            dedent(
-                """\
-                Representative strict result from `artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/`:
+                Both variants use batch 8, hidden dimension 16384, 64 heads, 4096 prefill tokens, and 128 decode steps of 128 tokens. The two cache tensors contain 5,368,709,120 elements and occupy 10,737,418,240 bytes at BF16. `kv_cache.storage_bytes`, `storage_bits_per_element`, and `compression_ratio` are calculated from the allocated tensors. The compression ratio relative to BF16 is 1.0, and the optimization goal is compute speed.
 
-                | Target | Baseline | Optimized | Measured delta |
-                | --- | ---: | ---: | ---: |
-                | `kv_cache` | `6066.040 ms` | `5897.083 ms` | `1.03x` |
+                The FP8 recipe is `DelayedScaling`; it is not MXFP8 block scaling. The NVFP4 recipe uses supported `NVFP4BlockScaling()` defaults. Both retain identical unquantized BF16 parameter representations while Transformer Engine autocast chooses the low-precision GEMMs.
+                """
+            ),
+        ),
+        MarkdownSection(
+            'Accuracy gate: target calibration pending',
+            dedent(
+                """\
+                Every token, head, and channel in both K and V is checked against an independent PyTorch BF16 projection reference using the original weights and inputs. The reference bypasses Transformer Engine's GEMMs and packing. Checks reject shape mismatches, non-finite values and aliased reference storage; relative L2 and maximum error normalized by reference magnitude avoid signed-checksum cancellation. Verification then snapshots the full cache for the harness pair comparison.
 
-                The important takeaway is restraint: the compressed path helps, but only slightly on this workload. This is exactly the kind of lab where a clean benchmark pair prevents an overclaim."""
-            ),
-        ),
-        MarkdownSection(
-            "Profiler Evidence",
-            dedent(
-                """\
+                No workload accuracy bound has been calibrated. An accepted benchmark run requires `AISP_KV_CACHE_ACCURACY_POLICY` pointing to a JSON file with `schema_version: 1`, separate `fp8` and `nvfp4` objects, and the fields `relative_l2`, `normalized_max_abs`, `pairwise_rtol`, `pairwise_atol`. The first three must be finite and in `[0,1)`; the last must be finite and nonnegative. Bounds are deliberately not supplied here. Configuring bounds is not evidence that they are appropriate or that this workload passes them.
+
+                Collect measurements on the actual CUDA/Transformer Engine host before reviewing a policy:
+
                 ```bash
-                python -m cli.aisp bench run --targets labs/kv_cache_compression:kv_cache --profile deep_dive --single-gpu
-                ```"""
-            ),
-        ),
-        MarkdownSection(
-            "Repro Commands",
-            dedent(
-                """\
+                python -m labs.kv_cache_compression.calibrate_accuracy --variant fp8 --seed 42 --output /tmp/kv-fp8-seed42.json
+                python -m labs.kv_cache_compression.calibrate_accuracy --variant nvfp4 --seed 42 --output /tmp/kv-nvfp4-seed42.json
+                ```
+
+                Repeat with other fixed seeds and preserve the hardware, software and workload metadata. These commands collect error metrics only; they do not accept output or claim a speedup. After independent accuracy review, run:
+
                 ```bash
-                python -m cli.aisp bench list-targets --chapter labs/kv_cache_compression
-                python -m cli.aisp bench run --targets labs/kv_cache_compression:kv_cache --profile minimal
-                ```"""
+                AISP_KV_CACHE_ACCURACY_POLICY=/absolute/path/reviewed-policy.json python -m cli.aisp bench run --targets labs/kv_cache_compression:kv_cache --profile minimal
+                ```
+
+                The historical 6066.040/5897.083 ms measurements used the old permissive verifier and are not evidence for the revised accuracy contract or cache compression. Fresh GPU accuracy, memory and performance measurements remain pending.
+                """
             ),
         ),
     ],
     goals=[
-        "Measure the latency cost/benefit of KV-cache compression under the harness contract.",
-        "Keep memory-saving and latency-saving claims distinct.",
-        "Make it easy to inspect whether compression overhead dominates the win.",
+        'Compare FP8 and NVFP4 projection GEMMs with the same BF16 KV cache storage.',
+        'Measure full-cache numerical error before reviewing any accuracy policy.',
+        'Keep allocated storage bytes separate from compute precision and latency.',
     ],
     contents=[
-        ("`baseline_kv_cache.py`, `optimized_kv_cache_nvfp4.py`", "Baseline and compressed KV-cache benchmark pair."),
-        ("`kv_cache_common.py`", "Shared workload setup."),
+        ('`baseline_kv_cache.py`, `optimized_kv_cache_nvfp4.py`', 'FP8/NVFP4 compute benchmark pair with BF16 cache storage.'),
+        ('`kv_cache_common.py`', 'Shared attention workload and cache allocation.'),
+        ('`accuracy.py`, `calibrate_accuracy.py`', 'Independent full-cache reference, explicit policy, and measurement-only driver.'),
     ],
+    run=RunSection(
+        commands=['python -m labs.kv_cache_compression.calibrate_accuracy --variant fp8 --seed 42 --output /tmp/kv-fp8-seed42.json', 'python -m labs.kv_cache_compression.calibrate_accuracy --variant nvfp4 --seed 42 --output /tmp/kv-nvfp4-seed42.json'],
+        notes=['These collect error metrics without accepting an accuracy threshold. Accepted benchmark runs require the separately reviewed policy described above.'],
+    ),
+    run_heading='Collecting Accuracy Measurements',
+    run_intro='Run on the actual CUDA/Transformer Engine host, preserving target and workload metadata.',
     validation=[
-        "`python -m cli.aisp bench run --targets labs/kv_cache_compression:kv_cache --profile minimal` should keep the compressed path verification-clean and modestly ahead on this hardware.",
+        'Require an independently reviewed accuracy policy and full-output comparisons before accepting timing.',
+        'Reject zeros, corruption, non-finite values, aliasing, and shape mismatches using the independent reference.',
+        'Verify allocated cache storage bytes and the BF16-relative compression ratio of 1.0.',
+    ],
+    extra_sections=[
     ],
     notes=[
-        "This is a good lab for demonstrating that some memory optimizations are valuable mostly for capacity, not for giant latency wins.",
+        'CPU source checks do not qualify CUDA accuracy, Transformer Engine kernels, memory measurements, or performance.',
     ],
 )
 
 ENTRIES["labs/moe_optimization_journey"] = lab_entry(
     slug="labs/moe_optimization_journey",
-    title="Lab - MoE Optimization Journey",
-    summary=dedent(
-        """\
-        Packages a staged MoE optimization story from naive execution to quantized/padded fast paths so you can measure which step is actually doing the work."""
-    ),
+    title='Lab - MoE Optimization Journey',
+    summary='Packages a staged MoE optimization story from naive execution to quantized/padded fast paths so you can measure which step is actually doing the work.',
     lead_sections=[
         MarkdownSection(
-            "Problem",
+            'Shared level mapping and compatibility names',
             dedent(
                 """\
-                MoE optimization is often told as a narrative, not a benchmarked sequence. This lab keeps the sequence explicit so you can see which stage of the journey is providing the real win."""
+                | Shared level | Actual requested path |
+                | --- | --- |
+                | 0 | Naive expert loops |
+                | 1 | Batched expert computation |
+                | 2 | Fused SiLU and multiplication |
+                | 3 | Intermediate-buffer reuse |
+                | 4 | Sorted per-expert GEMMs |
+                | 5 | Padded batched GEMMs |
+                | 6 | CUDA graph replay of the expert path |
+                | 7 | torch.compile on the graph-friendly model |
+
+                The shared benchmark casts models to BF16. Legacy names are compatibility aliases: level2_fp8/streams/sorted/permuted request level2 fusion; level3_grouped/sorted/fp8 request level3 buffer reuse; level4_parallel requests grouped dispatch; optimized_moe_expert_parallel requests level5 BMM. None of these names enables FP8 or multi-stream/distributed execution. Runtime availability and capture/compile metrics must confirm actual kernel paths. The separate level6_native_fp8 experiment is not one of these shared wrappers. Its native E4M3 path includes activation scaling in timing, combines all routed outputs, and checks full outputs against original BF16 weights. Normal setup requires AISP_NATIVE_FP8_ACCURACY_POLICY; no accuracy or speedup is accepted without reviewed limits and actual target evidence. Collect errors with python -m labs.moe_optimization_journey.calibrate_native_fp8 --output /tmp/native-fp8-unique-attempt.json. This calibration records failures and never grants acceptance; retained CPU reference weights are part of its memory cost.
+                """
             ),
         ),
         MarkdownSection(
-            "Baseline Path",
+            'Incomplete Triton experiments withdrawn',
+            'The incomplete standalone Triton MoE/FFN and raw grouped-GEMM experiments were withdrawn; legacy `triton_fused_moe` calls fail explicitly and emit no performance result. The active SiLU-times-up helper uses differentiable PyTorch whenever either input needs gradients, and also uses explicit PyTorch on CPU or without Triton. Only eligible CUDA inference launches the elementwise Triton kernel, including any required contiguous copies in the call. This is activation fusion, not a fused full expert FFN. Actual CUDA numerical, device, stream and memcheck acceptance remains HOLD.',
+        ),
+        MarkdownSection(
+            'Problem',
+            'MoE optimization is often told as a narrative, not a benchmarked sequence. This lab keeps the sequence explicit so you can see which stage of the journey is providing the real win.',
+        ),
+        MarkdownSection(
+            'Baseline Path',
             dedent(
                 """\
                 - naive MoE execution path
                 - simple correctness reference
-                - useful for showing how expensive unstructured expert execution can be"""
+                - useful for showing how expensive unstructured expert execution can be
+                """
             ),
         ),
         MarkdownSection(
-            "Optimized Path",
+            'Optimized Path',
             dedent(
                 """\
                 - staged optimized MoE path with batching/layout/scheduling improvements
                 - separate padded/quantized route for a more production-like fast path
-                - designed to attribute wins to concrete optimization steps"""
+                - designed to attribute wins to concrete optimization steps
+                """
             ),
         ),
         MarkdownSection(
-            "Measured Delta",
+            'Historical Delta (not requalified by this audit)',
             dedent(
                 """\
-                Representative strict results from `artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/`:
+                Historical results, preserved without recertifying their source/accuracy contracts, from `artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/`:
 
                 | Target | Baseline | Optimized | Measured delta |
                 | --- | ---: | ---: | ---: |
                 | `moe` | `41.938 ms` | `1.217 ms` | `34.47x` |
                 | `moe_pad_quant` | `4.681 ms` | `1.790 ms` | `2.62x` |
 
-                The spread is useful. The big win is in the core MoE path, while the padded/quantized lane is a smaller, still-real follow-on improvement."""
+                These records do not establish that legacy wrappers named FP8, streams, or expert parallelism executed those techniques. Fresh correctness and profiler evidence is required before attributing or repeating these speedup claims.
+                """
             ),
         ),
         MarkdownSection(
-            "Profiler Evidence",
+            'Profiler Evidence',
             dedent(
                 """\
                 ```bash
                 python -m cli.aisp bench run --targets labs/moe_optimization_journey:moe --profile deep_dive --single-gpu
                 python -m cli.aisp bench run --targets labs/moe_optimization_journey:moe_pad_quant --profile deep_dive --single-gpu
-                ```"""
+                ```
+                """
             ),
         ),
         MarkdownSection(
-            "Repro Commands",
+            'Repro Commands',
             dedent(
                 """\
                 ```bash
                 python -m cli.aisp bench list-targets --chapter labs/moe_optimization_journey
                 python -m cli.aisp bench run --targets labs/moe_optimization_journey --profile minimal
-                ```"""
+                ```
+                """
             ),
         ),
     ],
     goals=[
-        "Show a stepwise MoE optimization story with measured deltas instead of vague progression.",
-        "Keep the naive path, batched path, and padded/quantized path benchmarked under one roof.",
-        "Make it obvious which optimization stage is worth carrying forward.",
+        'Show a stepwise MoE optimization story with measured deltas instead of vague progression.',
+        'Keep the naive path, batched path, and padded/quantized path benchmarked under one roof.',
+        'Make it obvious which optimization stage is worth carrying forward.',
     ],
     contents=[
-        ("`baseline_moe.py`, `baseline_moe_pad_quant.py`", "Naive/reference entrypoints."),
-        ("`level0_naive.py` through `level6_full_stack.py`", "Incremental optimization stages used by the journey, including a real CUDA-graph replay stage before the compiled finale."),
-        ("`moe_benchmark.py`", "Shared benchmark harness layer for the staged MoE path."),
+        ('`baseline_moe.py`, `baseline_moe_pad_quant.py`', 'Naive/reference entrypoints.'),
+        ('`level0_naive.py` through `level6_full_stack.py`', 'Incremental optimization stages used by the journey, including a real CUDA-graph replay stage before the compiled finale.'),
+        ('`moe_benchmark.py`', 'Shared benchmark harness layer for the staged MoE path.'),
     ],
+    run=RunSection(
+        commands=['python -m cli.aisp bench list-targets --chapter labs/moe_optimization_journey', 'python -m cli.aisp bench run --targets labs/moe_optimization_journey --profile minimal'],
+        notes=['Targets follow the `labs/moe_optimization_journey:<workload>` naming convention listed by `list-targets`.', 'Use `--target-extra-arg labs/moe_optimization_journey:<workload>="--flag value"` to sweep schedule knobs.', 'Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited environments.', 'Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.'],
+    ),
+    run_heading='Running the Benchmarks',
+    run_intro='Use the benchmark harness for quick comparisons or drive the Typer CLI when you need repeatable artifact capture.',
     validation=[
-        "`python -m cli.aisp bench run --targets labs/moe_optimization_journey --profile minimal` should keep both the core MoE and pad/quant targets green.",
-        "Deep-dive runs should make the kernel/layout win attributable to the staged path rather than only to end-to-end timing.",
-        "The Level 6 CUDA-graphs entrypoint should report graph capture/replay instead of silently falling back to the Level 5 fused path.",
+        '`python -m cli.aisp bench run --targets labs/moe_optimization_journey --profile minimal` should keep both the core MoE and pad/quant targets green.',
+        'Deep-dive runs should make the kernel/layout win attributable to the staged path rather than only to end-to-end timing.',
+        'The Level 6 CUDA-graphs entrypoint should report graph capture/replay instead of silently falling back to the Level 5 fused path.',
+    ],
+    extra_sections=[
     ],
     notes=[
-        "This lab is a good example of how the repo should teach optimization: staged, benchmarked, and profiler-backed.",
+        'This lab is a good example of how the repo should teach optimization: staged, benchmarked, and profiler-backed.',
     ],
 )
 
@@ -5506,6 +5545,9 @@ ENTRIES["labs/nvfp4_group_gemm"] = lab_entry(
             "Baseline Path",
             dedent(
                 """\
+                - independent E2M1 unpacking and original-scale application followed by FP64 matmul, rounded to FP16 output
+                - all five baseline wrappers use `reference_math.py`; they do not import the custom kernel or reordered-scale packing
+                - unpacking and matmul are included in the measured baseline; this differs from the former conservative tcgen05 baseline
                 - canonical baseline front-door target for the promoted grouped shape
                 - shape-specific baseline companions for the other workload shapes
                 - useful for showing which grouped shapes are hard versus easy"""
@@ -5522,10 +5564,10 @@ ENTRIES["labs/nvfp4_group_gemm"] = lab_entry(
             ),
         ),
         MarkdownSection(
-            "Measured Delta",
+            "Historical Delta (not valid for the new baseline)",
             dedent(
                 """\
-                Fresh portable B200 single-target reruns on this host showed one clear winner, two smaller positive companions, and one flat control shape:
+                The table below records earlier custom-kernel-versus-custom-kernel timings. It does not establish independent numerical correctness and cannot be used as the speedup of the new unpack-and-FP64 baseline. Every logical request now has an independent full-output oracle; actual GPU validation and new timings remain pending:
 
                 | Target | Baseline | Optimized | Measured delta | Contract |
                 | --- | ---: | ---: | ---: | --- |
@@ -5568,17 +5610,21 @@ ENTRIES["labs/nvfp4_group_gemm"] = lab_entry(
     contents=[
         ("`baseline_nvfp4_group_gemm.py`, `optimized_nvfp4_group_gemm.py`", "Canonical front-door grouped-GEMM target for the promoted shape."),
         ("`baseline_nvfp4_group_gemm_g*.py`, `optimized_nvfp4_group_gemm_g*.py`", "Shape-specific grouped-GEMM companions for the remaining workload shapes."),
-        ("`WORKLOG.md`, `custom_cuda_submission.py`, `cutlass_extension.py`", "Tuning log and implementation plumbing for the promoted routes."),
+        ("`WORKLOG.md`, `custom_cuda_submission.py`, `custom_cuda_group_gemm_kernel.cu`", "Tuning history and custom CUDA implementation."),
+        ("`nvfp4_group_gemm_common.py`, `nvfp4_group_gemm_inputs.py`, `reference_math.py`", "Workload generation, all-request verification, and independent mathematical baseline."),
     ],
     validation=[
-        "`python -m cli.aisp bench run --targets labs/nvfp4_group_gemm:nvfp4_group_gemm --profile minimal` should keep the promoted `g2_n3072_k4096` route verification-clean.",
+        "Validate every element of every logical request against the independent reference, including requests hidden by fused-call compression. Negative controls must reject zeros, corruption, NaNs and reference aliasing.",
+        "Requested CUDA-graph capture failure is an error; explicitly set `AISP_NVFP4_GROUP_GEMM_CAPTURE_ITER_GRAPH=0` for an eager comparison.",
+        "The CPU checks validate the reference and verifier contract only. Recompile and run all routes on SM100 before treating any old expectation as current.",
+        "`python -m cli.aisp bench run --targets labs/nvfp4_group_gemm:nvfp4_group_gemm --profile minimal` must pass the new independent full-output check before any timing is accepted.",
         "`nvfp4_group_gemm_g8_n4096_k7168`, `nvfp4_group_gemm_g8_n7168_k2048`, and `nvfp4_group_gemm_g2_n4096_k1536` remain supplementary comparison benchmarks; use the ABAB/router tooling when deciding whether any of them should become canonical speed-claim targets again.",
         "Old `caseN` target names should no longer appear in `python -m cli.aisp bench list-targets --chapter labs/nvfp4_group_gemm`.",
         "Default changes should still be gated by the stricter ABAB/verify process documented in the codebase notes, not by a single benchmark run.",
     ],
     notes=[
         "This lab is intentionally stricter than a normal benchmark pair because grouped-GEMM route tuning is unusually noise-prone.",
-        "The benchmark harness now exposes one canonical front-door speed target, the explicit promoted-shape companion, and three supplementary comparison shapes on this host-aligned repo surface, because fresh portable B200 single-target reruns showed `g2_n3072_k4096` as the clearest isolated winner.",
+        "Target names remain stable for compatibility; no route is newly promoted by this CPU-only remediation.",
     ],
 )
 
@@ -6213,7 +6259,7 @@ ENTRIES["labs/moe_parallelism"] = lab_entry(
         commands=[
             "python -m cli.aisp tools moe-parallelism -- --scenario memory_budget",
             "python -m cli.aisp tools moe-parallelism -- --scenario gpt_gb200",
-            "python labs/moe_parallelism/run_lab.py --scenario deepseek_gb200",
+            "python -m labs.moe_parallelism.run_lab --scenario deepseek_gb200",
         ],
         notes=[
             "`python -m cli.aisp bench list-targets --chapter labs/moe_parallelism` intentionally returns no benchmark pairs today.",
@@ -6223,18 +6269,19 @@ ENTRIES["labs/moe_parallelism"] = lab_entry(
     validation=[
         "`python -m cli.aisp tools moe-parallelism -- --scenario memory_budget` runs a single scenario via the tool registry.",
         "`python -m cli.aisp tools moe-parallelism -- --scenario gpt_gb200` runs a larger cluster scenario.",
-        "`python labs/moe_parallelism/run_lab.py --scenario deepseek_gb200` runs the planner directly (without aisp).",
+        "`python -m labs.moe_parallelism.run_lab --scenario deepseek_gb200` runs the planner directly (without aisp).",
     ],
     run_heading="Running the Tool",
     run_intro=(
-        "Use the tool entrypoint or the direct script when you want reproducible "
+        "Use the tool entrypoint or the module command when you want reproducible "
         "scenario comparisons. This lab does not currently expose public "
         "baseline/optimized harness targets."
     ),
     notes=[
         "This is a workflow-oriented scenario and playbook lab, not a benchmark-pair lab.",
         "Baseline vs optimized here are *planning* scenarios (different designs), not comparable performance benchmarks.",
-        "`plan.py` centralizes scenario definitions so you only update one file when adding a new topology.",
+        "The first five scenarios use the 128-GPU DGX A100 sizing preset; `gpt_gb200` and `deepseek_gb200` keep their separate 576-GPU presets. Cluster and model values are planning assumptions, not validated deployment specifications.",
+        "`scenarios.py` binds each design to its cluster/model preset; `plan.py` supplies the sizing model. EP=1 has no expert all-to-all, and network messages use the configured interconnect and rates.",
     ],
 )
 
@@ -6491,52 +6538,56 @@ ENTRIES["labs/speculative_decode"] = lab_entry(
 
 ENTRIES["labs/persistent_decode"] = lab_entry(
     slug="labs/persistent_decode",
-    title="Lab - Persistent Decode & TMA Prefill",
-    summary=dedent(
-        """\
-        Demonstrates Blackwell-friendly persistent decode kernels and TMA-powered prefill paths, all validated via Python harnesses plus CUDA/Triton implementations."""
-    ),
+    title='Lab - Persistent Decode & TMA Prefill',
+    summary='Demonstrates Blackwell-friendly persistent decode kernels and TMA-powered prefill paths, with Python harnesses and CUDA/Triton implementations. Revised synchronization and full-output checks still require target GPU validation.',
     lead_sections=[
         MarkdownSection(
-            "Problem",
-            "Decode and prefill paths often die by launch overhead, staging overhead, or both. This lab exists to show which of those costs persistent kernels, CUDA Graphs, and TMA actually remove on the same logical workload.",
+            'Verification status after the audit',
+            'All four prefill/decode wrappers now capture every decode element and the complete prefill destination, with the prefill source included in the input signature. Both peers perform the same copy-only prefill workload. Independent decode checks and exact prefill-copy checks run outside timing; graph replay refreshes its inputs and side streams wait for caller input writes. CPU payload controls pass, but actual CUDA/TMA/graph runs, sanitizer checks and numerical-budget calibration remain pending. The inherited decode tolerance is not a newly calibrated accuracy policy.',
         ),
         MarkdownSection(
-            "Baseline Path",
+            'Problem',
+            'Decode and prefill paths often die by launch overhead, staging overhead, or both. This lab exists to show which of those costs persistent kernels, CUDA Graphs, and TMA actually remove on the same logical workload.',
+        ),
+        MarkdownSection(
+            'Baseline Path',
             dedent(
                 """\
                 - naive decode loops and non-persistent prefill paths
                 - higher launch overhead
-                - less efficient staging into shared memory"""
+                - less efficient staging into shared memory
+                """
             ),
         ),
         MarkdownSection(
-            "Optimized Path",
+            'Optimized Path',
             dedent(
                 """\
                 - persistent decode kernels
                 - CUDA Graph replay where it helps
-                - TMA-powered prefill variants for lower staging cost"""
+                - TMA-powered prefill variants for lower staging cost
+                """
             ),
         ),
         MarkdownSection(
-            "Measured Delta",
+            'Historical Delta (target revalidation pending)',
             dedent(
                 """\
-                Representative validated results from `artifacts/runs/20260302_full_strict_all_singlegpu/`:
+                Historical results preserved from `artifacts/runs/20260302_full_strict_all_singlegpu/`:
 
                 | Target | Baseline | Optimized | Measured delta | Best optimization |
                 | --- | ---: | ---: | ---: | --- |
                 | `persistent_decode` | `1.411 ms` | `0.118 ms` | `11.94x` | `graphs` |
                 | `tma_prefill_decode` | `1.588 ms` | `0.931 ms` | `1.71x` | `optimized_tma_prefill_decode` |
 
-                The decode win is a launch-overhead story. The prefill win is a staging/data-movement story. This lab is more useful when you keep those two categories separate.
+                These stored timings predate the complete-output checks and matching copy-only prefill workload. They do not establish a speedup for the repaired revision. Rerun correctness, numerical-budget and timing gates on the exact target before making a new performance claim.
 
-                The direct transport swaps stay visible as a transport-comparison benchmark on `nvlink_offload` and as `paged_kv_offload` as a real speed benchmark with a small local contract. The canonical KV-offload overlap claim stays on `paged_kv_offload_prefetch`, where async prefetch materially changes the overlap story instead of only swapping host-transport mechanics."""
+                The direct transport swaps stay visible as a transport-comparison benchmark on `nvlink_offload` and as `paged_kv_offload` as a real speed benchmark with a small local contract. The canonical KV-offload overlap claim stays on `paged_kv_offload_prefetch`, where async prefetch materially changes the overlap story instead of only swapping host-transport mechanics.
+                """
             ),
         ),
         MarkdownSection(
-            "Profiler Evidence",
+            'Profiler Evidence',
             dedent(
                 """\
                 Use deep-dive runs when you want to see launch count and staging behavior instead of only the wall-clock delta:
@@ -6544,44 +6595,60 @@ ENTRIES["labs/persistent_decode"] = lab_entry(
                 ```bash
                 python -m cli.aisp bench run --targets labs/persistent_decode:persistent_decode --profile deep_dive --single-gpu
                 python -m cli.aisp bench run --targets labs/persistent_decode:tma_prefill_decode --profile deep_dive --single-gpu
-                ```"""
+                ```
+                """
             ),
         ),
         MarkdownSection(
-            "Repro Commands",
+            'Repro Commands',
             dedent(
                 """\
                 ```bash
                 python -m cli.aisp bench list-targets --chapter labs/persistent_decode
                 python -m cli.aisp bench run --targets labs/persistent_decode --profile minimal
                 python labs/persistent_decode/optimized_persistent_decode_graphs.py --iterations 50
-                ```"""
+                ```
+                """
             ),
         ),
     ],
     goals=[
-        "Contrast naive decode loops against persistent kernels that pin CTAs per sequence.",
-        "Adopt TMA-based prefill to stream activations into shared memory with minimal latency.",
-        "Benchmark CUDA vs Triton implementations with unified validation utilities.",
-        "Mix CUDA Graphs into the decode path to remove residual launch overhead.",
-        "Compare pinned direct H2D staging against async prefetch overlap for paged KV offload.",
+        'Contrast naive decode loops against persistent kernels that pin CTAs per sequence.',
+        'Distinguish descriptor-based bulk TMA transfers from thread-scope cp.async/ordinary-copy scheduling.',
+        'Benchmark CUDA vs Triton implementations with unified validation utilities.',
+        'Mix CUDA Graphs into the decode path to remove residual launch overhead.',
+        'Compare pinned direct H2D staging against async prefetch overlap for paged KV offload.',
     ],
     contents=[
-        ("`baseline_persistent_decode.py`, `optimized_persistent_decode_cuda.py`, `optimized_persistent_decode_graphs.py`, `optimized_persistent_decode_triton.py`", "Persistent decode variants spanning CUDA, graphs, and Triton."),
-        ("`baseline_tma_prefill_decode.py`, `optimized_tma_prefill_decode.py`, `baseline_native_tma_prefill_decode.py`, `optimized_native_tma_prefill_decode.py`", "Prefill workloads illustrating cp.async vs native TMA scheduling."),
-        ("`baseline_paged_kv_offload.py`, `optimized_paged_kv_offload.py`, `baseline_paged_kv_offload_prefetch.py`, `optimized_paged_kv_offload_prefetch.py`", "KV offload comparisons (pinned direct H2D with memmap, plus async prefetch on pinned host cache)."),
-        ("`core/scripts/kv_locality_microbench.py`", "Pinned/pageable/NUMA host slab copy microbench (HBM vs local/remote pinned vs pageable)."),
-        ("`persistent_decode_common.py`, `tma_extension.py`, `expectations_{hardware_key}.json`", "Shared helpers, CUDA extension wrappers, and expectation thresholds."),
+        ('`baseline_persistent_decode.py`, `optimized_persistent_decode_cuda.py`, `optimized_persistent_decode_graphs.py`, `optimized_persistent_decode_triton.py`', 'Persistent decode variants spanning CUDA, graphs, and Triton.'),
+        ('`baseline_tma_prefill_decode.py`, `optimized_tma_prefill_decode.py`, `baseline_native_tma_prefill_decode.py`, `optimized_native_tma_prefill_decode.py`', 'Two distinct paths: `optimized_tma_prefill_decode.py` uses descriptor-based bulk tensor copies; the legacy `*_native_tma_*` pair uses 4-byte thread-scope CUDA pipeline copies, not TMA.'),
+        ('`baseline_paged_kv_offload.py`, `optimized_paged_kv_offload.py`, `baseline_paged_kv_offload_prefetch.py`, `optimized_paged_kv_offload_prefetch.py`', 'KV offload comparisons (pinned direct H2D with memmap, plus async prefetch on pinned host cache).'),
+        ('`core/scripts/kv_locality_microbench.py`', 'Pinned/pageable/NUMA host slab copy microbench (HBM vs local/remote pinned vs pageable).'),
+        ('`persistent_decode_common.py`, `tma_extension.py`, `expectations_{hardware_key}.json`', 'Shared helpers, CUDA extension wrappers, and expectation thresholds.'),
     ],
+    run=RunSection(
+        commands=['python -m cli.aisp bench list-targets --chapter labs/persistent_decode', 'python -m cli.aisp bench run --targets labs/persistent_decode --profile minimal'],
+        notes=['Targets follow the `labs/persistent_decode:<workload>` naming convention listed by `list-targets`.', 'Use `--target-extra-arg labs/persistent_decode:<workload>="--flag value"` to sweep schedule knobs.', 'Run only on an allocated, authorized target after its correctness gates pass. Canonical GPU measurements require bare metal; an explicitly approved virtualized run must preserve clock/provenance evidence and remain noncanonical.', 'Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.'],
+    ),
+    run_heading='Running the Benchmarks',
+    run_intro='Use the benchmark harness for quick comparisons or drive the Typer CLI when you need repeatable artifact capture.',
     validation=[
-        "`python -m cli.aisp bench run --targets labs/persistent_decode --profile minimal` compares all persistent/TMA variants in one sweep.",
-        "`python labs/persistent_decode/optimized_persistent_decode_graphs.py --iterations 50` shows lower launch overhead than `baseline_persistent_decode.py`.",
-        "`python labs/persistent_decode/optimized_native_tma_prefill_decode.py --validate` matches the math reference while reporting achieved memory throughput.",
-        "`python core/scripts/kv_locality_microbench.py` surfaces H2D copy time deltas for pageable vs pinned slabs; add `QUICK=1` for a short run.",
+        'Check every sequence and token, including `--tier large --num-programs 1` and `8`; grid-stride scheduling must not drop the final sequences.',
+        'Run CUDA racecheck/synccheck for the shared reduction and repeated eager-versus-reference comparisons.',
+        'Run `python -m pytest tests/test_audit_wave1_prefill_full_output.py -q` for complete payload controls and seven capability-gated actual CUDA cases. The CUDA cases change all inputs on a caller stream before each launch and cover full and piecewise graphs; CPU passes do not qualify GPU execution.',
+        'For pinned staging, verify host-buffer reuse waits for DMA completion and device-buffer reuse waits for prior attention consumers; cover memmap, direct pinned views, both streams and host-worker modes.',
+        '`python -m cli.aisp bench run --targets labs/persistent_decode --profile minimal` compares all persistent/TMA variants in one sweep.',
+        '`python labs/persistent_decode/optimized_persistent_decode_graphs.py --iterations 50` is a candidate measurement command; establish correctness and compare valid target timings before claiming lower launch overhead.',
+        'The legacy `native_tma_prefill_decode` target measures thread-scope CUDA copy scheduling. Inspect generated SASS before claiming cp.async; it is never a native-TMA measurement.',
+        '`python core/scripts/kv_locality_microbench.py` surfaces H2D copy time deltas for pageable vs pinned slabs; add `QUICK=1` for a short run.',
+    ],
+    extra_sections=[
     ],
     notes=[
-        "Set `TORCH_COMPILE_MODE` or `TMA_TILE_SIZE` via env vars before invoking the harness to sweep tile sizes.",
-        "`tma_extension.py` caches builds under `~/.cache/torch_extensions`; clean the cache when switching CUDA versions.",
+        '`tma_extension.py` exposes `load_async_copy()`; `load_native_tma()` and the old target filenames remain compatibility aliases. No TMA performance or capability claim follows from those names.',
+        'Historical timings and expectation files predate these correctness fixes; requalify them on the target.',
+        'Set `TORCH_COMPILE_MODE` or `TMA_TILE_SIZE` via env vars before invoking the harness to sweep tile sizes.',
+        '`tma_extension.py` caches builds under `~/.cache/torch_extensions`; clean the cache when switching CUDA versions.',
         "`nvlink_offload` remains a transport-comparison benchmark and `paged_kv_offload` stays a real speed benchmark with a small local contract; use `paged_kv_offload_prefetch` when you want the lab's canonical KV-offload overlap benchmark.",
     ],
 )
@@ -6788,14 +6855,29 @@ ENTRIES["labs/train_distributed"] = lab_entry(
     title="Lab - Distributed Training Playbook",
     summary=dedent(
         """\
-        Collects distributed-training recipes for Blackwell clusters: DDP, FSDP, ZeRO-1/2/3, symmetric memory, and flash-attention-aware all-reduce handling, all runnable through the harness."""
+        Collects distributed-training recipes: DDP, FSDP, ZeRO-1/2/3, symmetric memory and flash-attention-aware all-reduce handling. Direct training scripts remain available; generic torchrun-wrapper benchmark qualification is currently unsupported."""
     ),
     lead_sections=[
+        MarkdownSection(
+            "Generic wrapper verification unavailable",
+            "The shared `training_utils/torchrun_harness.py` wrapper formerly verified an unrelated parent-side Linear model before launching the real child. That surrogate has been removed. Its factories and configuration remain discoverable, but harness execution and verification now stop explicitly before launch until child-produced training results and an independent reference are implemented. A failed launch-spec getter is propagated rather than replaced with a fallback script. Direct training entrypoints are unchanged; executing them alone is not correctness or performance acceptance. The separate ZeRO training tests do not supply a verification protocol for other wrappers.",
+        ),
         MarkdownSection(
             "Problem",
             dedent(
                 """\
                 Distributed training has too many "optimized" labels that mean different things. This lab is here to keep DDP compression, pipeline schedules, and symmetric-memory training as separate benchmarked choices so you can see what actually helps on the current stack."""
+            ),
+        ),
+        MarkdownSection(
+            "ZeRO comparison validity",
+            dedent(
+                """\
+                The ZeRO-2 named pair uses a shared seven-linear-layer GELU model, FP32 model parameters, BF16 CUDA autocast, identical rank-specific inputs, accumulation, AdamW settings, clipping, one warmup update and the same measured training loop. The optional communication payload is BF16 in both variants. The optimized path shards optimizer state and uses reduce-scatter/all-gather to restore complete gradients; it does not overlap optimizer updates or keep gradients sharded through the optimizer step.
+
+                The original single baseline used ReLU and executed two training runs, while its optimized peer used GELU and one run. Other precision, clipping and timing differences also invalidated that comparison. Historical ZeRO timings are not accepted evidence for the repaired pair. The generic torchrun wrapper's small signature model has been withdrawn because it did not verify child-process training. Acceptance requires the separate full training tests, including actual two-GPU NCCL/BF16 checks, before any new speed or memory claim.
+
+                Inner training throughput counts batch rows as samples, not hidden-vector elements as tokens. Harness process-wall timing includes startup and warmup and must remain labeled separately."""
             ),
         ),
         MarkdownSection(
@@ -6813,14 +6895,14 @@ ENTRIES["labs/train_distributed"] = lab_entry(
                 """\
                 - overlap-aware pipeline schedules
                 - compression-aware DDP variants
-                - symmetric-memory and sharding strategies run through the same harness"""
+                - direct symmetric-memory and sharding scripts; generic harness qualification is unavailable"""
             ),
         ),
         MarkdownSection(
-            "Measured Delta",
+            "Historical Delta (not requalified by this audit)",
             dedent(
                 """\
-                Representative strict result from `artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/`:
+                Stored historical results from `artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/`; this audit does not requalify their original verification or timing contracts:
 
                 | Target | Baseline | Optimized | Measured delta |
                 | --- | ---: | ---: | ---: |
@@ -6829,21 +6911,21 @@ ENTRIES["labs/train_distributed"] = lab_entry(
                 | `pipeline_dualpipe` | `154.106 ms` | `105.111 ms` | `1.47x` |
                 | `symmem_training` | `177.269 ms` | `167.167 ms` | `1.06x` |
 
-                The useful point is that the lab shows more than one kind of "distributed optimization." Compression and pipeline scheduling move the needle more than the current symmetric-memory path on this local setup.
+                These records remain available for lineage. Fresh source, workload, actual-output and timing evidence is required before repeating their performance claims; generic wrapper metadata is not child-training evidence.
 
-                Treat single-GPU `fsdp2` on `b200` as a supplementary comparison surface with a local comparison contract. The real FSDP2 speed gate stays on the multi-GPU `2x_b200` contract where sharding and overlap can actually change the communication story."""
+                FSDP2 wrapper execution is also unavailable until actual child training is verified. Future FSDP2 qualification must distinguish single-GPU behavior from real multi-GPU sharding; old labels do not certify either."""
             ),
         ),
         MarkdownSection(
-            "Profiler Evidence",
+            "Profiler workflow status",
             dedent(
                 """\
                 ```bash
-                python -m cli.aisp bench run --targets labs/train_distributed:ddp_compression --profile deep_dive --single-gpu
-                python -m cli.aisp bench run --targets labs/train_distributed:pipeline_1f1b --profile deep_dive --single-gpu
+                python -m cli.aisp profile torch --help
+                python -m cli.aisp bench run --help
                 ```
 
-                For the multi-GPU variants, keep using `torchrun` through the lab utilities. The single-GPU harness targets are the evidence-first entrypoint, not a replacement for real cluster validation."""
+                These commands inspect options only. Generic training wrappers cannot currently produce a qualified harness profile or comparison. Profile a direct script only on an allocated, authorized target, and retain actual training verification separately."""
             ),
         ),
         MarkdownSection(
@@ -6852,8 +6934,7 @@ ENTRIES["labs/train_distributed"] = lab_entry(
                 """\
                 ```bash
                 python -m cli.aisp bench list-targets --chapter labs/train_distributed
-                python -m cli.aisp bench run --targets labs/train_distributed:ddp_compression --profile minimal
-                python -m cli.aisp bench run --targets labs/train_distributed:pipeline_1f1b --profile minimal
+                python -m pytest -q tests/test_audit_wave1_zero2_parity.py tests/test_audit_wave1_torchrun_verification.py
                 ```"""
             ),
         ),
@@ -6872,18 +6953,30 @@ ENTRIES["labs/train_distributed"] = lab_entry(
         ("`baseline_zero1.py`, `baseline_zero2.py`, `baseline_zero3.py`, `optimized_zero1.py`, `optimized_zero2.py`, `optimized_zero3.py`, `baseline_zero1_multigpu.py`, `baseline_zero2_multigpu.py`, `baseline_zero3_multigpu.py`, `optimized_zero1_multigpu.py`, `optimized_zero2_multigpu.py`, `optimized_zero3_multigpu.py`, `zero1.py`, `zero2.py`, `zero3.py`", "ZeRO implementations (1/2/3) plus helpers for parameter partitioning."),
         ("`training_utils/`, `utils.py`, `__init__.py`", "Shared launch utilities, argument parsing, and harness exports."),
     ],
+    run_heading="Discovery and local validation",
+    run_intro="Run from code/. These commands inspect metadata and exercise local contracts; they do not launch a qualified training benchmark.",
+    run=RunSection(
+        commands=(
+            "python -m cli.aisp bench list-targets --chapter labs/train_distributed",
+            "python -m cli.aisp bench run --help",
+            "python -m pytest -q tests/test_audit_wave1_zero2_parity.py tests/test_audit_wave1_torchrun_verification.py",
+        ),
+        notes=(
+            "Generic wrapper setup, verification and launch-spec requests fail explicitly; no speed or memory claim is accepted from them.",
+            "Canonical or publish-grade GPU results require bare metal. A virtualized current-host rerun requires explicit user approval, locked clocks, recorded provenance and a non-canonical label.",
+        ),
+    ),
     validation=[
-        "`python -m cli.aisp bench run --targets labs/train_distributed --profile minimal` runs every distributed configuration registered with the harness.",
-        "`python labs/train_distributed/train_fsdp.py --validate` confirms numerical parity between FSDP shards and the baseline DDP path.",
-        "`python labs/train_distributed/optimized_zero3_multigpu.py --summary` shows reduced peak memory vs the baseline script.",
+        "From `code/`, run `python -m pytest -q tests/test_audit_wave1_zero2_parity.py tests/test_audit_wave1_zero2_single.py tests/test_audit_wave1_zero2.py` for the local source/CPU checks; CUDA skips remain unverified.",
+        "Actual two-GPU training checks are in `tests/test_audit_wave1_zero2_parity_cuda.py`. Run only with an allocated compatible CUDA/NCCL target; local CPU passes do not qualify sharding, streams, memory savings or performance.",
+        "Use `python -m cli.aisp bench list-targets --chapter labs/train_distributed` to inspect registered workload names before selecting a run. A successful launch alone does not verify child training.",
     ],
     notes=[
-        "Set `TORCHRUN_ARGS` or pass `--torchrun-env` via the CLI when launching multi-node tests.",
-        "`utils.py` exposes helper functions (like `resolve_topology()`) that can be reused in other labs.",
+        "Inspect `python -m cli.aisp bench run --help` and `training_utils/torchrun_harness.py` for the supported launcher configuration; use the allocated topology and preserve launcher arguments with results.",
         "FSDP/FSDP2 benchmarks default to `labs/train_distributed/data/tinystories_packed_seq128.jsonl` plus `labs/train_distributed/data/tinyllama_config.json`, with `AISP_TINYSTORIES_LAYERS=4` to keep the model small. Override with `AISP_TINYSTORIES_PACKED_PATH`, `AISP_TINYSTORIES_LOCAL_PATH`, `AISP_TINYSTORIES_CONFIG_PATH`, or `AISP_TINYSTORIES_LAYERS`.",
         "Scale up by increasing `AISP_TINYSTORIES_LAYERS` or swapping to a larger config and pairing it with a packed dataset that matches the new sequence length.",
         "Set `AISP_FSDP_DISABLE_FP8=1` to keep the minimal BF16 path; unset it when you want to exercise the FP8 conversion on larger workloads.",
-        "On single-GPU `b200`, `fsdp2` remains runnable for regression tracking and profiler capture, but the benchmark is judged as a local comparison contract rather than a canonical speed claim.",
+        "The generic `fsdp2` wrapper retains metadata but rejects harness execution. Direct script execution is not a substitute for a child-result contract or multi-GPU correctness evidence.",
     ],
 )
 

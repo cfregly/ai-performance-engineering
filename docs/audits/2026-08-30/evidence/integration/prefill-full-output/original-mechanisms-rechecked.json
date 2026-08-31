@@ -1,0 +1,103 @@
+{
+  "status": "PASS",
+  "torch": "2.8.0",
+  "cuda_available": false,
+  "scope": "Actual preserved Python payload and copy methods on real CPU tensors. CUDA-only constructors, setup, streams, extensions and graphs were neither executed nor mocked. Current CPU fixture supplies data and storage only.",
+  "original_capture_reproductions": [
+    {
+      "variant": "baseline_tma",
+      "full_decode_shape": [
+        3,
+        11,
+        16
+      ],
+      "original_payload_shape": [
+        1,
+        8,
+        16
+      ],
+      "last_decode_and_prefill_corruption_omitted": true,
+      "original_validate_result_after_corruption": null
+    },
+    {
+      "variant": "optimized_tma",
+      "full_decode_shape": [
+        3,
+        11,
+        16
+      ],
+      "original_payload_shape": [
+        1,
+        8,
+        16
+      ],
+      "last_decode_and_prefill_corruption_omitted": true,
+      "original_validate_result_after_corruption": null
+    },
+    {
+      "variant": "baseline_native",
+      "full_decode_shape": [
+        3,
+        11,
+        16
+      ],
+      "original_payload_shape": [
+        1,
+        8,
+        16
+      ],
+      "last_decode_and_prefill_corruption_omitted": true,
+      "original_validate_result_after_corruption": null
+    },
+    {
+      "variant": "optimized_native",
+      "full_decode_shape": [
+        3,
+        11,
+        16
+      ],
+      "original_payload_shape": [
+        1,
+        8,
+        16
+      ],
+      "last_decode_and_prefill_corruption_omitted": true,
+      "original_validate_result_after_corruption": null
+    }
+  ],
+  "original_copy_result": "dst equals 2*src, differs from copy-only peer contract",
+  "unchanged_decode_math_extension_and_inherited_validator_ast": [
+    {
+      "path": "code/labs/persistent_decode/baseline_tma_prefill_decode.py",
+      "function": "_decode_host_loop"
+    },
+    {
+      "path": "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py",
+      "function": "_decode_host_loop"
+    },
+    {
+      "path": "code/labs/persistent_decode/optimized_tma_prefill_decode.py",
+      "function": "_decode_body"
+    },
+    {
+      "path": "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py",
+      "function": "_decode_body"
+    },
+    {
+      "path": "code/labs/persistent_decode/optimized_tma_prefill_decode.py",
+      "function": "_load_cp_async_tma_ext"
+    },
+    {
+      "path": "code/labs/persistent_decode/persistent_decode_common.py",
+      "function": "validate_decode_output"
+    }
+  ],
+  "python_compile": [
+    "code/labs/persistent_decode/baseline_tma_prefill_decode.py",
+    "code/labs/persistent_decode/optimized_tma_prefill_decode.py",
+    "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py",
+    "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py",
+    "code/labs/persistent_decode/persistent_decode_common.py",
+    "code/tests/test_audit_wave1_prefill_full_output.py"
+  ]
+}

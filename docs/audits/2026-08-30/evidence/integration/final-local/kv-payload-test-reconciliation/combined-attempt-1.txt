@@ -1,0 +1,5 @@
+............................................................s            [100%]
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/final-local/kv-payload-test-reconciliation/combined-attempt-1.xml -
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_audit_wave1_numerics_regressions.py:339: Actual CUDA required; CPU checks do not qualify GPU numerics
+60 passed, 1 skipped in 6.96s

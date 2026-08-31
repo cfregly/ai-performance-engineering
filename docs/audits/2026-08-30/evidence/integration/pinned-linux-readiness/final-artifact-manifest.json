@@ -1,0 +1,613 @@
+{
+  "schema_version": 1,
+  "scope": "All retained pinned-linux-readiness artifacts except this manifest and disposable __pycache__; no source, runtime or GPU acceptance implied.",
+  "files": [
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/README.md",
+      "sha256": "3a16452298a64878f4a51004c360e4780e02b598f9e162c25755773aa8615b34",
+      "bytes": 5457
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/additional-primary-source-fetches.json",
+      "sha256": "6da2d765a28f79998a55bfcec8ae8a216f1f76aa1d17d4b3abf8bb57848ea3d3",
+      "bytes": 1431
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/check_dependency_contract.py",
+      "sha256": "eaee039e5e144315ad3d003badb36991b39e56e04f2752ef0afb97a90d0173c5",
+      "bytes": 5472
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/cpu-source-policy-comparison.json",
+      "sha256": "c34e61dea97081d97d9dfdaf7ee537ec9d7ac1c430dfa174455f952befb48b2f",
+      "bytes": 1056
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/cpu-workflow-package-pins-v2.txt",
+      "sha256": "a0a371c97f15800cb542157d1726d871e70eccaef02d7cb06355d3d5c772af69",
+      "bytes": 317
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/cpu-workflow-package-pins.txt",
+      "sha256": "7c15bf61e9fdbce47a04bd1aa53a0c94b4391b7acdec40f8caaf85cb35ea5085",
+      "bytes": 298
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/current-source-manifest.json",
+      "sha256": "ba1ad3c41b78e60bcfa7912a4b6a5390f96d96f3351253a5bf46eac13f75d084",
+      "bytes": 966
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/dependency-contract.json",
+      "sha256": "605c468d460912c8107db428451209595fe479ec160f69bf2e226d6750d83a7d",
+      "bytes": 3098
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/epoch-19-pin-contract.py.txt",
+      "sha256": "779500f4a1aac5d7d68080279271b6c95a04949b65aa509f09d938a104366628",
+      "bytes": 30913
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/epoch-19-pin-workflow.yml.txt",
+      "sha256": "44a1449d3bfa496683a574fa169c6ad732982cf9fd0195a3042afc9c55cc88ea",
+      "bytes": 7879
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/epoch-source-diff.txt",
+      "sha256": "f9e8ad60905b5cc8711ec73e9c858dfb30bea2e65dd5efeda6c4ca0f93d980c3",
+      "bytes": 5288
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/final-host-command.json",
+      "sha256": "07e675ba8dae6e70ff085cf4663bbd0646fd2a95e6cdb96507936648d9ad3ec8",
+      "bytes": 484
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/final-host.txt",
+      "sha256": "1b0ef8b9566f5a368b940109a54a28036d8d31461a501e6ff185d0aafb6b906f",
+      "bytes": 257
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/final-host.xml",
+      "sha256": "63a47477daafd8880013f408b9e232fb8a15a131311ac52d6f8468ee27a538ca",
+      "bytes": 5006
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/final-shell-syntax-command.json",
+      "sha256": "a41ed77cd295a92c82404fbdec8622415aa0259b83de83c27c043d69efc0b5e6",
+      "bytes": 144
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/final-shell-syntax.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/gputil-1.4.0-pypi.json",
+      "sha256": "edc441714d05721a2e187f05245a05704b1bfd7141ebf7c1e9f1a7d1c6b4b562",
+      "bytes": 1918
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/host-after-attempt-1-test-source.py.txt",
+      "sha256": "16b6141a321d1d4b39e51c53b006d74486be84c14bb6ffda8256c35e53e994fd",
+      "bytes": 30896
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/host-after-attempt-2.txt",
+      "sha256": "a6e9d63a7d5a51c69ddf80e0930db81052219c529d55bb1db23a2ee2237d9495",
+      "bytes": 267
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/host-after-attempt-2.xml",
+      "sha256": "681fa9ce6e77301210005a81236ab4a35a41f456143c4690841892de353f00d2",
+      "bytes": 5003
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/host-after-command-attempt-2.json",
+      "sha256": "03d2117c9e1128be32077010da531b15b2e941ae73907508538c4fcbf220024f",
+      "bytes": 563
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/host-after-command.json",
+      "sha256": "9845188c64a863097fa9ed1be93e70e7e4193888d3dd2678dd3b8d1a0516a8db",
+      "bytes": 553
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/host-after.txt",
+      "sha256": "ec54f453f4abf2b448d24af624d7f11e0bac0f2d7b119ab714ffff4f7ef4cf4c",
+      "bytes": 1909
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/host-after.xml",
+      "sha256": "10839843f67d8b7ad303d95a85ae03d8df62e32983aa6359aa61e9e588f2008a",
+      "bytes": 7221
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/host-before-command.json",
+      "sha256": "4f1ebd273a34964eab616c34b4b38b4bd887c3d8570975e7bce7912393a5b40e",
+      "bytes": 763
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/host-before.txt",
+      "sha256": "62af10a91ed0188a9c32212914c7dfafc3df62c09407ad37d273953c74907281",
+      "bytes": 3803
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/host-before.xml",
+      "sha256": "f29f2f228cfa5c859fcc1d84f65d611bf8abe3ebbb3dc6830bb3afaf22fe8ca9",
+      "bytes": 3912
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-exact-sources-constrained-attempt-1/command.json",
+      "sha256": "0d8cd84b09c499b741ca66bcae436f0b5b30e0b85cbd2929c0312744871c90f8",
+      "bytes": 1756
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-exact-sources-constrained-attempt-1/requirements.in",
+      "sha256": "8c8b7270cfa6506d2f67ff645a79c6094083c4c1e4549f280c4bb541f57ade4e",
+      "bytes": 480
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-exact-sources-constrained-attempt-1/resolved-requirements.txt",
+      "sha256": "4352a3919b61e0132c95aaaf804c319d43deca5b9538088dac2276f9cb03f1fc",
+      "bytes": 91609
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-exact-sources-constrained-attempt-1/stderr.txt",
+      "sha256": "549710172ed6aa96d7b18c85a4e95507064eafed73b20a420f56012e9cf397f7",
+      "bytes": 81317
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-exact-sources-constrained-attempt-1/stdout.txt",
+      "sha256": "4352a3919b61e0132c95aaaf804c319d43deca5b9538088dac2276f9cb03f1fc",
+      "bytes": 91609
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-first-pypi-transaction-attempt-1/command.json",
+      "sha256": "827be208a749efd80326182a8ad0aaffd48b52087dfd7bcdec4ce0bc5c06df4c",
+      "bytes": 1516
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-first-pypi-transaction-attempt-1/requirements.in",
+      "sha256": "f03bbd2b1df9c5ea39923be76a42fff88df17bb8233d84130f6e5d6b7c529145",
+      "bytes": 304
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-first-pypi-transaction-attempt-1/resolved-requirements.txt",
+      "sha256": "0f47e9f7c9f7b4059c4977071d56e81561c156f06fa3c0709b02fd9003ad636f",
+      "bytes": 71631
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-first-pypi-transaction-attempt-1/stderr.txt",
+      "sha256": "41dab0e594fdb9ce22f20b8b605ef809788076d9f16754d741a6a6bdbdc7cee3",
+      "bytes": 68707
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-first-pypi-transaction-attempt-1/stdout.txt",
+      "sha256": "0f47e9f7c9f7b4059c4977071d56e81561c156f06fa3c0709b02fd9003ad636f",
+      "bytes": 71631
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-workflow-attempt-1/command.json",
+      "sha256": "b03d287b1b39f55cf5529ce7a6a8affba730cda101e4d344567204dcc6ec2418",
+      "bytes": 1494
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-workflow-attempt-1/requirements.in",
+      "sha256": "7c15bf61e9fdbce47a04bd1aa53a0c94b4391b7acdec40f8caaf85cb35ea5085",
+      "bytes": 298
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-workflow-attempt-1/stderr.txt",
+      "sha256": "2cae4ecd660187c741f7213426ece0de04c93b8ef3e925a4841a0af72ab6c6d3",
+      "bytes": 503
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-workflow-attempt-1/stdout.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-workflow-attempt-2/command.json",
+      "sha256": "fa13e0aa945d200acd10e080aac6cd709dfccd1f888767e96f909056c43ad66f",
+      "bytes": 1656
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-workflow-attempt-2/requirements.in",
+      "sha256": "7c15bf61e9fdbce47a04bd1aa53a0c94b4391b7acdec40f8caaf85cb35ea5085",
+      "bytes": 298
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-workflow-attempt-2/resolved-requirements.txt",
+      "sha256": "12aa95382d6869ad9ef40b88f22b066f6a959db78a656c23e6a9024d3156cdca",
+      "bytes": 78220
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-workflow-attempt-2/stderr.txt",
+      "sha256": "981f2e58e5c7dda975ba2d51fab9b876dbd3ba8fc5bd47ad72d0dccb3958714d",
+      "bytes": 81270
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-workflow-attempt-2/stdout.txt",
+      "sha256": "12aa95382d6869ad9ef40b88f22b066f6a959db78a656c23e6a9024d3156cdca",
+      "bytes": 78220
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-workflow-tokenizers-attempt-1/command.json",
+      "sha256": "574babdd6c6b65c29755431a45261b466e2f7dba51f068e064ec6725b68bf333",
+      "bytes": 1541
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-workflow-tokenizers-attempt-1/requirements.in",
+      "sha256": "a0a371c97f15800cb542157d1726d871e70eccaef02d7cb06355d3d5c772af69",
+      "bytes": 317
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-workflow-tokenizers-attempt-1/resolved-requirements.txt",
+      "sha256": "a8dc3d7cd67eb9245f4bd395a26436361be47ef38941f8720468a832d7d63047",
+      "bytes": 82766
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-workflow-tokenizers-attempt-1/stderr.txt",
+      "sha256": "258112bdb5d159f43ca9c4513f2df22e69d6de19d582e0fa0199d9d0e8c15b62",
+      "bytes": 81270
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-workflow-tokenizers-attempt-1/stdout.txt",
+      "sha256": "a8dc3d7cd67eb9245f4bd395a26436361be47ef38941f8720468a832d7d63047",
+      "bytes": 82766
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-corrected-pin-attempt-1/command.json",
+      "sha256": "fa7552942458ccf924cc7b30d9979a02b572faae2f08b1bd10696a2a20c16547",
+      "bytes": 1514
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-corrected-pin-attempt-1/requirements.in",
+      "sha256": "231b2456676dd6e1c367ff5535e2bc26506f2ccc23a8604a7a5b3df20972841a",
+      "bytes": 33
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-corrected-pin-attempt-1/stderr.txt",
+      "sha256": "2cae4ecd660187c741f7213426ece0de04c93b8ef3e925a4841a0af72ab6c6d3",
+      "bytes": 503
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-corrected-pin-attempt-1/stdout.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-corrected-pin-attempt-2/command.json",
+      "sha256": "555f1b2d8b4b6eaaea5e5a47d4f89995f0f175e17280aeef745e8fab3a3472f2",
+      "bytes": 1676
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-corrected-pin-attempt-2/requirements.in",
+      "sha256": "231b2456676dd6e1c367ff5535e2bc26506f2ccc23a8604a7a5b3df20972841a",
+      "bytes": 33
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-corrected-pin-attempt-2/resolved-requirements.txt",
+      "sha256": "caf8a0134c93d234656d17a65eb95c8f594fbadfe2278f8576872b02ce56caae",
+      "bytes": 18824
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-corrected-pin-attempt-2/stderr.txt",
+      "sha256": "f1454d942f8f0b148f4a70a4fafb3d14b397eacb75df6246662ccf6ffa75d332",
+      "bytes": 12593
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-corrected-pin-attempt-2/stdout.txt",
+      "sha256": "caf8a0134c93d234656d17a65eb95c8f594fbadfe2278f8576872b02ce56caae",
+      "bytes": 18824
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-original-pin-attempt-1/command.json",
+      "sha256": "a0b43a736dc53d226b33b07300d7cd3ec103f816faf881b0d04304c00cae6549",
+      "bytes": 1511
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-original-pin-attempt-1/requirements.in",
+      "sha256": "23973b5ba6aa3ee936b66de658ff14d5a4a38444698607d44cd7dd8c71569e44",
+      "bytes": 33
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-original-pin-attempt-1/stderr.txt",
+      "sha256": "2cae4ecd660187c741f7213426ece0de04c93b8ef3e925a4841a0af72ab6c6d3",
+      "bytes": 503
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-original-pin-attempt-1/stdout.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-original-pin-attempt-2/command.json",
+      "sha256": "3d9ac035c0204a3a63044582ce70c2f34e0934f2ca98bc7d78ee25b3c1491e41",
+      "bytes": 1650
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-original-pin-attempt-2/requirements.in",
+      "sha256": "23973b5ba6aa3ee936b66de658ff14d5a4a38444698607d44cd7dd8c71569e44",
+      "bytes": 33
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-original-pin-attempt-2/stderr.txt",
+      "sha256": "1d440fa0305646409b6040bed001735949417340b26c39aacc5914aaaeab0334",
+      "bytes": 11794
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-original-pin-attempt-2/stdout.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-public-requirements-attempt-1/command.json",
+      "sha256": "4e53cb97825752cbc2d62205de3e3619c39dd0d0af556ec653e63bfdfee4ccd4",
+      "bytes": 1602
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-public-requirements-attempt-1/requirements.in",
+      "sha256": "e471fb5f83a31023d66f9dcb698614a0d2c73d7450f0a3a2153dda5610a8494a",
+      "bytes": 5307
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-public-requirements-attempt-1/stderr.txt",
+      "sha256": "bbc543ded015f702433a80fd2137a0e857c4a3d701bba72b916e1a5df681c25d",
+      "bytes": 191120
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-public-requirements-attempt-1/stdout.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-requirements-attempt-1/command.json",
+      "sha256": "bc02ed066b4653a8ba1feccb968947db8a02f259a5610aaefce3d26fc128ac9a",
+      "bytes": 1433
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-requirements-attempt-1/requirements.in",
+      "sha256": "193324d594b71c6a1f9db4890814612f08df47ce74211866d2c5ba4668da86cf",
+      "bytes": 5246
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-requirements-attempt-1/stderr.txt",
+      "sha256": "571e48060d5998dbc3bcaf411fe7cdcd1a82b14b149bda58239381af0d4def43",
+      "bytes": 130
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-requirements-attempt-1/stdout.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-serving-torch-vllm-pair-attempt-1/command.json",
+      "sha256": "116cc283816f2fc9ad9ddb0f777b1629381a1ad6c4b0317975d8197ca357483c",
+      "bytes": 1544
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-serving-torch-vllm-pair-attempt-1/requirements.in",
+      "sha256": "caf800ffe2ff432e39261ccdc03781e26534672e7d4c08253322fef94b6001fd",
+      "bytes": 32
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-serving-torch-vllm-pair-attempt-1/stderr.txt",
+      "sha256": "b10e3b17fc03fee4cd63bd42da4a35ade0e87574d41438cf66fb380b5bed62eb",
+      "bytes": 11782
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-serving-torch-vllm-pair-attempt-1/stdout.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-serving-torch-vllm-pair-glibc231-attempt-1/command.json",
+      "sha256": "30972e84d2b27dc095adaae0deb3eadbc293c259bf2d221b97f6e9e1708927a3",
+      "bytes": 1508
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-serving-torch-vllm-pair-glibc231-attempt-1/requirements.in",
+      "sha256": "caf800ffe2ff432e39261ccdc03781e26534672e7d4c08253322fef94b6001fd",
+      "bytes": 32
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-serving-torch-vllm-pair-glibc231-attempt-1/resolved-requirements.txt",
+      "sha256": "36f579fe633fded0a14d888fa0d7779c0842dc1558d194653dc380ce8c5bb9d0",
+      "bytes": 361636
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-serving-torch-vllm-pair-glibc231-attempt-1/stderr.txt",
+      "sha256": "c903f28e71d45f252221f767caa1cceddae0e130281b51ebcfbcae828640e397",
+      "bytes": 151011
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-serving-torch-vllm-pair-glibc231-attempt-1/stdout.txt",
+      "sha256": "36f579fe633fded0a14d888fa0d7779c0842dc1558d194653dc380ce8c5bb9d0",
+      "bytes": 361636
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-training-torch-torchtitan-pair-attempt-1/command.json",
+      "sha256": "b6feadd9861ad62a63a15cac03a0c28abe7136466d8e99b2ccae8e5473ce0ed5",
+      "bytes": 1564
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-training-torch-torchtitan-pair-attempt-1/requirements.in",
+      "sha256": "6b197d2bc78671e80a9dfc2a6428f9543e064154b6133be0dae1461904427f63",
+      "bytes": 37
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-training-torch-torchtitan-pair-attempt-1/resolved-requirements.txt",
+      "sha256": "d72cbbd8345403838067f79f7f296130ebaea0eb7edba086b3d6a49e5ab4337d",
+      "bytes": 153071
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-training-torch-torchtitan-pair-attempt-1/stderr.txt",
+      "sha256": "952cd3df9f5dbe5f2786d0ae60dbfde5e38d013e582d5e60921d05491dea1234",
+      "bytes": 87261
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-training-torch-torchtitan-pair-attempt-1/stdout.txt",
+      "sha256": "d72cbbd8345403838067f79f7f296130ebaea0eb7edba086b3d6a49e5ab4337d",
+      "bytes": 153071
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/original-benchmark-validation.yml.txt",
+      "sha256": "1af4f41625fe280f68ab84c66d76710f68118000df409eccdd32d903a72a668b",
+      "bytes": 7848
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/original-requirements_latest.txt.txt",
+      "sha256": "b216f84c863a01a37c4d2e26fd15fc5c856c2c05fbbbe3696d6e965a8d6a4fa2",
+      "bytes": 5097
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/original-setup.sh.txt",
+      "sha256": "d31dd0daffc1e41a4c3ab8a52c72047d1b6a83c694bf4bb24b8679865c5472e4",
+      "bytes": 151067
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/original-source-manifest.json",
+      "sha256": "660401100a47e96d7ebd2d727938105356aafc8247bc7a307911625b7aa75cc9",
+      "bytes": 1268
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/original-test_repository_configuration.py.txt",
+      "sha256": "969b40b361f936160b98dc99a93a7c90e4f93d0e1dc4e74fb5dcfb522f06fd57",
+      "bytes": 30206
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/original-test_setup_bootstrap.py.txt",
+      "sha256": "763ee56170cdf5acd37ff203cf7c8db3adfbbc698ecbbd9517297438eee4c4eb",
+      "bytes": 12580
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/preserved-torch-wheel-metadata.json",
+      "sha256": "21a6092df26d2e0c5b1e70be12eb6ead11bab9ddad2a7b866fc8b44095adc8ab",
+      "bytes": 31821
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/primary-source-fetches.json",
+      "sha256": "76449fde7b4c227c63f1fe8b8db87219f4c544d5bf82209e152b935c35991a19",
+      "bytes": 1152
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/receipt.json",
+      "sha256": "9a94c963e835af6f84d7e86829e0156e2c3a4cd9f294ffa0302027860de7d470",
+      "bytes": 13130
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/requests-2.34.2-pypi.json",
+      "sha256": "8622e50ffd295ed759ec793f2a009172a4ed0204bbc5e948de23111bc3d2aeae",
+      "bytes": 6811
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/requests-host-resolver-command.json",
+      "sha256": "17126876efffc1087c575f2e93905be5278e221913289b47c26ab80790607221",
+      "bytes": 744
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/requests-host-resolver.json",
+      "sha256": "42ab7c35d5d6e7ad251cea2e386a5635223803462be1973972a3babf0879140a",
+      "bytes": 75522
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/requests-host-resolver.txt",
+      "sha256": "442ca9e68050a2a856c347fa25fead287065524e9fb7f8d4a29454c47f7bced9",
+      "bytes": 2063
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/run_linux_target_cases.py.txt",
+      "sha256": "af132fd5eeede9e47d76817674e9bb1146de600f607407589f739a9d2c160204",
+      "bytes": 2999
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/run_linux_target_followups.py.txt",
+      "sha256": "4c9d47dca8af95bbd36bec59fe9ca5ae01d3be00fb185cc4548da4868b5d61b8",
+      "bytes": 3317
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/tokenizers-0.22.2-pypi.json",
+      "sha256": "f7487f5630c723c64a7cc2cf4be4c9331492e332f48d054996cc850ecbe678f1",
+      "bytes": 29095
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/tokenizers-after-command.json",
+      "sha256": "eb2d01b0bf9dc7af06053c885a2533cd23a63ea15972aa291aab51a5bf50e237",
+      "bytes": 490
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/tokenizers-after.txt",
+      "sha256": "f77350a4c73cb407b9172b0836838618e8442c60d2b4e99c01b1f88e2910e709",
+      "bytes": 263
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/tokenizers-after.xml",
+      "sha256": "26ab246a10c9529a197974a20197558470a1fc4ae187827d0b75b479edac1cc1",
+      "bytes": 5006
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/tokenizers-before-command.json",
+      "sha256": "dca78a8ef8e0d7737d5fe353dafca5bb01f64f5af8a56966764b491a3a47c5c1",
+      "bytes": 505
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/tokenizers-before.txt",
+      "sha256": "88b6a4701ba8b7b2c13eae52b1f40f87a917aaaa758a5a3c5b2eb5ca1afda423",
+      "bytes": 2272
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/tokenizers-before.xml",
+      "sha256": "f59311a0951762b191128cf7b391353a7dbada4d9b5ff08f6af2e6db079fd35a",
+      "bytes": 2723
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/torch-cpu-index.html.txt",
+      "sha256": "4ab1e6e904e71e78941188ed9ab8c5b629fe36b188f18a2252c429559030a88c",
+      "bytes": 376117
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/torch-cpu-wheel-link.json",
+      "sha256": "10771786a7131d25dadf13cab45052de824630def843ac2d97ecf697afb2f2f8",
+      "bytes": 433
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/torch-cuda-wheel.metadata.txt",
+      "sha256": "6a3cacf846425d9c8a3aa9929623a3d1ca261d185064c912be2ab5902d4f0e37",
+      "bytes": 30202
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/torchtitan-0.2.0-pypi.json",
+      "sha256": "0230d3e640162d07cc481ded31555233db911b8aa8e2a7d6136f73030c0dbe51",
+      "bytes": 15673
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/triton-3.5.1-pypi.json",
+      "sha256": "ef97c1597a98f32b4e141767600ea21aac812088d924d993b42d712c7588473b",
+      "bytes": 14855
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/uv-help.txt",
+      "sha256": "49405713e024f94f82b8256d3623d577e75e6c5c14235783b04d07d09c1d8dda",
+      "bytes": 11451
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/venv-create.json",
+      "sha256": "f320fdcd421fb8404fdc28289d7e38fc672e18e175cd3bd18a389aa39d16008b",
+      "bytes": 372
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/venv-create.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/vllm-0.16.0-pypi.json",
+      "sha256": "93d1e73a73b151ccf1816ce28e6e22f552d6f7e12f6a0de614fd9c148a5e4ab2",
+      "bytes": 129252
+    }
+  ],
+  "count": 121,
+  "git_ignored_artifacts": []
+}

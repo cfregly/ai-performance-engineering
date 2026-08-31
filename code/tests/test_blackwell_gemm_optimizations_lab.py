@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 import torch
@@ -84,6 +86,44 @@ def test_blackwell_grouped_gemm_schedule_registry_is_complete() -> None:
         "two_cta",
         "tile_n256",
     }
+
+
+def test_blackwell_grouped_gemm_cpu_helpers_leave_kernel_unloaded() -> None:
+    script = """
+import sys
+import torch
+from labs.blackwell_gemm_optimizations.blackwell_grouped_gemm_common import (
+    BlackwellGroupedGemmWorkload, build_state,
+)
+from labs.blackwell_gemm_optimizations.blackwell_grouped_gemm_autotune import public_variant_names
+assert set(public_variant_names()) == {'baseline', 'large_tiles', 'full_stack', 'persistent'}
+state = build_state(BlackwellGroupedGemmWorkload(
+    num_tokens=17, num_experts=4, hidden_dim=32, expert_ffn_dim=64,
+), torch.device('cpu'))
+assert state.reference_output.device.type == 'cpu'
+assert 'labs.blackwell_gemm_optimizations.blackwell_grouped_gemm_kernel' not in sys.modules
+"""
+    subprocess.run([sys.executable, "-c", script], cwd=REPO_ROOT,
+                   check=True, capture_output=True, text=True, timeout=30)
+
+
+def test_blackwell_grouped_gemm_configs_require_real_triton() -> None:
+    from labs.blackwell_gemm_optimizations import blackwell_grouped_gemm_autotune as autotune
+
+    if importlib.util.find_spec("triton") is None:
+        with pytest.raises(ModuleNotFoundError) as failure:
+            autotune.full_stack_autotune_configs()
+        assert failure.value.name == "triton"
+        with pytest.raises(ModuleNotFoundError) as legacy_failure:
+            _ = autotune.FULL_STACK_AUTOTUNE_CONFIGS
+        assert legacy_failure.value.name == "triton"
+    else:
+        import triton
+
+        configs = autotune.full_stack_autotune_configs()
+        assert configs is autotune.FULL_STACK_AUTOTUNE_CONFIGS
+        assert len(configs) == 6
+        assert all(isinstance(config, triton.Config) for config in configs)
 
 
 def test_blackwell_grouped_gemm_skewed_counts_avoid_tensor_roundtrip() -> None:
@@ -280,6 +320,10 @@ def test_blackwell_grouped_gemm_build_state_packs_routes_on_cpu(
     reason="CUDA required for Blackwell grouped GEMM validation",
 )
 def test_blackwell_grouped_gemm_public_variants_match_reference() -> None:
+    if importlib.util.find_spec("triton") is None:
+        pytest.skip("Real Triton is required for grouped GEMM execution")
+    if torch.cuda.get_device_capability()[0] < 10:
+        pytest.skip("Grouped GEMM lab requires compute capability 10.0+")
     workload = BlackwellGroupedGemmWorkload(
         num_tokens=128,
         num_experts=4,
@@ -322,6 +366,10 @@ def test_blackwell_grouped_gemm_public_variants_match_reference() -> None:
     reason="CUDA required for Blackwell grouped GEMM validation",
 )
 def test_blackwell_grouped_gemm_experimental_variants_execute() -> None:
+    if importlib.util.find_spec("triton") is None:
+        pytest.skip("Real Triton is required for grouped GEMM execution")
+    if torch.cuda.get_device_capability()[0] < 10:
+        pytest.skip("Grouped GEMM lab requires compute capability 10.0+")
     workload = BlackwellGroupedGemmWorkload(
         num_tokens=128,
         num_experts=4,

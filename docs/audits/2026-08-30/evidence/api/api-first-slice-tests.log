@@ -1,0 +1,11 @@
+.....................................                                    [100%]
+=============================== warnings summary ===============================
+tests/test_audit_wave1_api_regressions.py::test_hosted_provider_payload_budget_without_external_requests[None-512-anthropic-claude-sonnet-4-20250514-/v1/messages-max_tokens]
+tests/test_audit_wave1_api_regressions.py::test_hosted_provider_payload_budget_without_external_requests[64-64-anthropic-claude-sonnet-4-20250514-/v1/messages-max_tokens]
+tests/test_audit_wave1_api_regressions.py::test_hosted_provider_payload_budget_without_external_requests[8192-8192-anthropic-claude-sonnet-4-20250514-/v1/messages-max_tokens]
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/llm.py:327: DeprecationWarning: The model 'claude-sonnet-4-20250514' is deprecated and will reach end-of-life on June 15th, 2026.
+  Please migrate to a newer model. Visit https://docs.anthropic.com/en/docs/resources/model-deprecations for more information.
+    response = client.messages.create(**kwargs)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+37 passed, 3 warnings in 21.98s

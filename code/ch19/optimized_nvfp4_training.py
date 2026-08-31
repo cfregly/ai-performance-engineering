@@ -89,9 +89,9 @@ class OptimizedNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         
-        # NVFP4 recipe with calibration
+        # Use supported NVFP4 recipe defaults; scales are computed at runtime.
         self.nvfp4_recipe = (
-            te_recipe.NVFP4BlockScaling(calibration_steps=20, amax_history_len=16, fp4_tensor_block=16)
+            te_recipe.NVFP4BlockScaling()
             if TE_AVAILABLE
             else None
         )
@@ -159,16 +159,16 @@ class OptimizedNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
         
-        # Calibration warmup (important for quantization)
+        # Runtime warmup (these are real optimizer steps)
         self._calibration_warmup()
         torch.cuda.synchronize()
 
     def _calibration_warmup(self) -> None:
-        """Run calibration steps to collect scaling factors."""
+        """Warm the quantized training path using real optimizer steps."""
         if self.model is None or self.active_recipe is None:
             return
         
-        # Run several forward passes to calibrate quantization scales
+        # Warm up forward/backward GEMMs and optimizer state
         for _ in range(5):
             for inp, target in self._micro_batch_pairs:
                 self._train_step(inp, target)

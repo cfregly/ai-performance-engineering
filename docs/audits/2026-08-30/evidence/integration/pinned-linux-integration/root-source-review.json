@@ -1,0 +1,30 @@
+{
+  "at": "2026-08-31T00:36:53.134874+00:00",
+  "reviewer": "root",
+  "scope": "Only new HTTP test contract, dependency documentation mirror and package handoff. Does not re-review or qualify GPU algorithms.",
+  "http_source": {
+    "path": "code/tests/test_http_microbench.py",
+    "sha256": "55f21cf07e1d0baf58e1e8a3502b73c9b2de136b4bb458b89cd6f6d6d505a284"
+  },
+  "accepted_controls": [
+    "Actual production ASGI app on an exclusively bound inherited loopback socket; owned child checked before and after HTTP calls.",
+    "Proxy environment ignored for loopback; requests bounded, logs captured, timeout/termination/reaping covered with actual processes.",
+    "Original legacy test ID retained with explicit skip; separate OpenAPI200, campaign disabled503 and retired404 assertions are labelled with their actual meaning.",
+    "Original false-pass reproduction and earlier failed/interrupted attempts preserved."
+  ],
+  "limitations": [
+    "Positive integration exercises ASGI serving, not the production serve CLI.",
+    "No legacy endpoint restoration, GPU query, Linux execution or benchmark performance claimed."
+  ],
+  "documentation_mirror": {
+    "path": "docs/environment.md",
+    "sha256": "fc1ba76dad41f263c9a3328799026980b0cb170ab40073fe764665d348cbd938",
+    "accepted_change": "Triton baseline3.5.1 matches official Torch2.9.1 Linux wheel dependency; old GB300 incident unchanged."
+  },
+  "independent_dependency_review": {
+    "path": "../pinned-linux-review/review.json",
+    "sha256": "f2654375845a7f19269137363860bb60552e1718187f1d95ec0ead534650dd72"
+  },
+  "source_review_result": "PASS_BOUNDED_SOURCE_REVIEW",
+  "full_cpu_integration": "running; result will be recorded separately"
+}

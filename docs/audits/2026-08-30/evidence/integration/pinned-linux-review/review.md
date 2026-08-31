@@ -1,0 +1,7 @@
+Read-only review found no additional source defect in the five-file dependency correction. Active requirements, setup fallback and CPU CI agree on Triton 3.5.1, as required by the captured official Torch 2.9.1+cu130 Linux wheel metadata. CPU CI now includes requests 2.34.2 and tokenizers 0.22.2. Earlier repairs and the dated GB300 incident note remain intact.
+
+The final evidence resolves the index-policy concern raised during review: 19 non-Torch workflow pins resolve from PyPI to 51 packages, then an exact official CPU Torch wheel is added while constraining every prior version. The resulting 58-package graph retains those versions and the actual PyPI Triton wheel hash. This is a Linux-target metadata result from Darwin, not execution of CI's pip transactions or a Linux installation.
+
+The old incompatible Torch/Triton pair fails as expected; the corrected core pair resolves. The serving and training pair results are separately bounded. All 90 full-environment package specifications remain in the public-only diagnostic, which stops at GPUtil's source-only distribution under the probe's binary-only restriction. That failure is not evidence that ordinary pip or the staged setup necessarily fails, and the full CUDA graph remains unqualified.
+
+The frozen receipt reports 36 focused host passes and no skips. I did not rerun tests or install anything. All 121 retained artifact hashes, five current source hashes and five preserved source snapshots verified. Actual Linux installation/full collection, native imports, ARM TorchAO and GPU acceptance remain HOLD.

@@ -1,0 +1,35 @@
+...rank=3 phase=remote single=True forward
+rank=2 phase=remote single=True forward
+rank=0 phase=remote single=True forward
+rank=1 phase=remote single=True forward
+rank=0 phase=remote single=True backward
+rank=3 phase=remote single=True backward
+rank=1 phase=remote single=True backward
+rank=2 phase=remote single=True backward
+rank=1 phase=same_node single=True forward
+rank=3 phase=same_node single=True forward
+rank=0 phase=same_node single=True forward
+rank=2 phase=same_node single=True forward
+rank=2 phase=same_node single=True backward
+rank=1 phase=same_node single=True backward
+rank=3 phase=same_node single=True backward
+rank=0 phase=same_node single=True backward
+rank=3 phase=all_empty single=True forward
+rank=1 phase=all_empty single=True forward
+rank=2 phase=all_empty single=True forward
+rank=0 phase=all_empty single=True forward
+rank=2 phase=all_empty single=True backward
+rank=1 phase=all_empty single=True backward
+rank=3 phase=all_empty single=True backward
+rank=0 phase=all_empty single=True backward
+rank=1 phase=balanced_world single=False forward
+rank=2 phase=balanced_world single=False forward
+rank=3 phase=balanced_world single=False forward
+rank=0 phase=balanced_world single=False forward
+rank=3 phase=balanced_world single=False backward
+rank=2 phase=balanced_world single=False backward
+rank=1 phase=balanced_world single=False backward
+rank=0 phase=balanced_world single=False backward
+.ssssss..........ss
+-------------- generated xml file: /tmp/aisp-hybrid-stronger.xml ---------------
+14 passed, 8 skipped in 6.90s

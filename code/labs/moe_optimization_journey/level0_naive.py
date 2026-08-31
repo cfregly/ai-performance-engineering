@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Level 0: Naive MoE Baseline.
+"""Level 0: Naive expert loops.
 
-NO OPTIMIZATIONS - Sequential expert execution with Python loops.
-This is our starting point for measuring compound improvements.
+Runs the naive shared BF16 model.
 
-Expected: ~25ms baseline
-"""
+The filename and class are retained for compatibility. The LEVEL mapping,
+not a legacy filename, determines execution. These shared levels do not use
+FP8 quantization. No speedup is established by selecting a level."""
 import torch
 
 from labs.moe_optimization_journey.moe_benchmark import MoEJourneyBenchmark, run_level
 
 
 class Level0Naive(MoEJourneyBenchmark):
-    """Level 0: Naive baseline."""
+    """Shared level 0: Naive expert loops."""
     LEVEL = 0
 
 def get_benchmark() -> Level0Naive:

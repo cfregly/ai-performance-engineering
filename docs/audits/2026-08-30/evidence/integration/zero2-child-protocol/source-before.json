@@ -1,0 +1,67 @@
+{
+  "captured_wall_ns": 1788138199434469000,
+  "files": {
+    "code/core/harness/benchmark_harness.py": {
+      "exists": true,
+      "sha256": "97aafb1fe60e84d18f16a25882aa4cb49e715e70b3217baf3a700881311128e9",
+      "size": 300834
+    },
+    "code/labs/train_distributed/baseline_zero2.py": {
+      "exists": true,
+      "sha256": "168337db169218f91077f56366d4c66915e52d5f53ca52e3448d16baa814bc4c",
+      "size": 5759
+    },
+    "code/labs/train_distributed/baseline_zero2_multigpu.py": {
+      "exists": true,
+      "sha256": "c0c56e8e882665fd14ca25633f01de69e7130a9ecb980d07b8ac1073d0c7ef4b",
+      "size": 1373
+    },
+    "code/labs/train_distributed/optimized_zero2.py": {
+      "exists": true,
+      "sha256": "61bdda99a0903d79dc8374223c6d661f86f61e7f2715d318260302cdb61c9201",
+      "size": 1799
+    },
+    "code/labs/train_distributed/optimized_zero2_multigpu.py": {
+      "exists": true,
+      "sha256": "65778560c2b6a094829cb098c1667e2e71ebfd7932a72c61a654279b5f9ea211",
+      "size": 4252
+    },
+    "code/labs/train_distributed/training_utils/torchrun_harness.py": {
+      "exists": true,
+      "sha256": "faf2903b81f3825422764a9819031375a287bbec28f1327899dcabd3bfd548b0",
+      "size": 5130
+    },
+    "code/labs/train_distributed/training_utils/zero2_torchrun_benchmark.py": {
+      "exists": false,
+      "sha256": null,
+      "size": null
+    },
+    "code/labs/train_distributed/zero2.py": {
+      "exists": true,
+      "sha256": "b8c6c77d7b830a586842bf7be446021b58432c79ff51ed6b6c368abed73cb610",
+      "size": 1222
+    },
+    "code/labs/train_distributed/zero2_child_protocol.py": {
+      "exists": false,
+      "sha256": null,
+      "size": null
+    },
+    "code/labs/train_distributed/zero2_common.py": {
+      "exists": true,
+      "sha256": "4e3cecbbd972f93febba8d4e46128c1924c5f3410af6d226b90ebe4091db0d10",
+      "size": 6460
+    },
+    "code/tests/test_audit_wave1_torchrun_verification.py": {
+      "exists": true,
+      "sha256": "5512a4fd6d6252ee1dac2e3c5d86e42f45abdcba9b8d6a94d64c80a9867c6de8",
+      "size": 9911
+    },
+    "code/tests/test_audit_wave1_zero2_child_protocol.py": {
+      "exists": false,
+      "sha256": null,
+      "size": null
+    }
+  },
+  "git_head": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "schema_version": 1
+}

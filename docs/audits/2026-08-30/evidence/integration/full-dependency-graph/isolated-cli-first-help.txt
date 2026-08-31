@@ -1,0 +1,10 @@
+                                                                                
+ Usage: python -m cli.aisp bench [OPTIONS]                                      
+                                                                                
+ Run and profile benchmarks                                                     
+                                                                                
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help  -h        Show this message and exit.                                │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

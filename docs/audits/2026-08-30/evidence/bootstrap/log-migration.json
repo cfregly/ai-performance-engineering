@@ -1,0 +1,120 @@
+{
+  "recorded_at_utc": "2026-08-30T22:35:07.667732+00:00",
+  "reason": "Repository ignores *.log; byte-identical .txt copies preserve reviewable evidence. Originals retained. No check was rerun by this migration.",
+  "copies": [
+    {
+      "original": "bash-syntax.log",
+      "copy": "bash-syntax.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "original": "diff-check.log",
+      "copy": "diff-check.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "original": "initial-source-validation/bash-syntax.log",
+      "copy": "initial-source-validation/bash-syntax.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "original": "initial-source-validation/diff-check.log",
+      "copy": "initial-source-validation/diff-check.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "original": "initial-source-validation/index-torch.log",
+      "copy": "initial-source-validation/index-torch.txt",
+      "sha256": "2ccc5a198ba8ec421a92e7d835d26b76024bcbb236af532db78680ae869ef290",
+      "bytes": 181
+    },
+    {
+      "original": "initial-source-validation/index-torchao.log",
+      "copy": "initial-source-validation/index-torchao.txt",
+      "sha256": "0a4c39a897c4efba9fe10f94de0b4ae38942211fe635a917261e518d3564019d",
+      "bytes": 1614
+    },
+    {
+      "original": "initial-source-validation/index-torchaudio.log",
+      "copy": "initial-source-validation/index-torchaudio.txt",
+      "sha256": "b69dae2b0f7e61de4af1adca073dc0f6c822d43fba6f9202963e506b076186a3",
+      "bytes": 144
+    },
+    {
+      "original": "initial-source-validation/index-triton.log",
+      "copy": "initial-source-validation/index-triton.txt",
+      "sha256": "dae01f10724ff6b0f60175b19ea0a5aea7c23d54b372de98277b4c69436162f8",
+      "bytes": 97
+    },
+    {
+      "original": "initial-source-validation/pytest.log",
+      "copy": "initial-source-validation/pytest.txt",
+      "sha256": "5099540f41d3691ed8a3269db234c2e8c66190398ee14c94a8d7d74710ce6bbf",
+      "bytes": 99
+    },
+    {
+      "original": "isolated-api-probe.log",
+      "copy": "isolated-api-probe.txt",
+      "sha256": "95f94bf25ec4a7ca4b28b1474f84e19bda27c96e7a66dfe40253c6429e361518",
+      "bytes": 795
+    },
+    {
+      "original": "isolated-install.log",
+      "copy": "isolated-install.txt",
+      "sha256": "6fbe4240e1281a8f0a9457c51070386b97b2244a0a623beb9c757e85e3818370",
+      "bytes": 4282
+    },
+    {
+      "original": "pytest.log",
+      "copy": "pytest.txt",
+      "sha256": "35bd51c20293720137c63a616139b2b056a80d5c3a397cfc6525fa67feaab8bb",
+      "bytes": 99
+    },
+    {
+      "original": "resolve-arm-torch-audio.log",
+      "copy": "resolve-arm-torch-audio.txt",
+      "sha256": "90649c0cd110ec71844c144d8bdb7001ce444ecbf37a4e34acbeeda35f850f97",
+      "bytes": 990
+    },
+    {
+      "original": "resolve-arm-torchao-unavailable.log",
+      "copy": "resolve-arm-torchao-unavailable.txt",
+      "sha256": "82a0fc06320d29e6cf2d79623872af3a31db05be0dc1af35a5554d2bfea65560",
+      "bytes": 230
+    },
+    {
+      "original": "resolve-x86-stack.log",
+      "copy": "resolve-x86-stack.txt",
+      "sha256": "a8cadd27feaec78fcdb3424eb26ccdf8bc57b8d48548c6030edc2cdb6dbb7256",
+      "bytes": 1519
+    },
+    {
+      "original": "resolve-x86-triton.log",
+      "copy": "resolve-x86-triton.txt",
+      "sha256": "2b278fe612f9d79a2ae766a3b1157be3606d1f0c7fa62f8bfc65d16c807591cd",
+      "bytes": 539
+    },
+    {
+      "original": "torchao-followup-before.log",
+      "copy": "torchao-followup-before.txt",
+      "sha256": "87dda165443b8bfe7f1d36e019c56ed5346197fab963a03fc716e33566ea9bac",
+      "bytes": 5580
+    }
+  ],
+  "updated_receipts": [
+    {
+      "receipt": "initial-source-validation/receipts.json",
+      "original_receipt": "initial-source-validation/receipts.pre-log-migration.json",
+      "original_sha256": "e8220905364b3763f49624657c093ae448708b769af5c111b6f3d70df0c8946e"
+    },
+    {
+      "receipt": "validation-receipts.json",
+      "original_receipt": "validation-receipts.pre-log-migration.json",
+      "original_sha256": "acc1ead26df3ace4d068414df8eeadfc1d00ac834a68bc9d874d6be87967bcb5"
+    }
+  ]
+}

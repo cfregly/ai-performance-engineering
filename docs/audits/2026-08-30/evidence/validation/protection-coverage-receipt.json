@@ -1,0 +1,119 @@
+{
+  "scope": [
+    "W1-040 remaining42 legacy bodies plus shard comparison assertion",
+    "W1-093 all124 original edge IDs",
+    "adjacent actual Dynamo counter and jitter snapshot/invalid-output/restore defects"
+  ],
+  "baseline_commit": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "current_head": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "source_status": "CPU behavior verified; missing production protections and actual CUDA integration remain OPEN/HOLD",
+  "environment": {
+    "python": "3.12.2 | packaged by conda-forge | (main, Feb 16 2024, 20:54:21) [Clang 16.0.6 ]",
+    "python_executable": "/opt/miniconda3/bin/python",
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "torch": "2.8.0",
+    "pytest": "8.4.2",
+    "cuda_available": false,
+    "pinned_gpu_stack": false
+  },
+  "files": {
+    "code/tests/test_anti_cheat_edge_cases.py": "5d9d3154fedf3899eef31a6a709667f1148d720287c588bc89f10f65c5aa066b",
+    "code/tests/test_anti_cheat_protections.py": "b03c60bd445a7cba7db4dca4573fb8288c7f5db47c3bbd09776626709b4b0456",
+    "code/tests/protection_test_utils.py": "bacedb4b85d24df893b2133ba26dbb4a1419eeb61cb58f8cddf00dda3dffdfd1",
+    "code/core/harness/validity_checks.py": "367136da94453ffd16381b9100836821d5985de72df4ad48aacb3cb1a4449cb6",
+    "code/core/benchmark/verify_runner.py": "16eeddaeefa19bf11a10379d157cd12ec27ab6065d4893c9d8b30288b2982963"
+  },
+  "test_id_accounting": {
+    "code/tests/test_anti_cheat_edge_cases.py": {
+      "original_count": 124,
+      "current_count": 128,
+      "missing_original_ids": [],
+      "new_ids": [
+        "TestAdjacentVerificationRegressions.test_jitter_rejects_uncomparable_output",
+        "TestAdjacentVerificationRegressions.test_jitter_restores_input_after_output_refresh_failure",
+        "TestAdjacentVerificationRegressions.test_jitter_snapshots_nested_reused_output",
+        "TestAdjacentVerificationRegressions.test_snapshot_does_not_hide_input_output_aliasing"
+      ]
+    },
+    "code/tests/test_anti_cheat_protections.py": {
+      "original_count": 104,
+      "current_count": 104,
+      "missing_original_ids": [],
+      "new_ids": []
+    }
+  },
+  "legacy_42_all_retained_and_replaced": true,
+  "baseline_edge_check_free_count": 40,
+  "external_claimed_count": 43,
+  "validation": {
+    "command": "cd code && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_anti_cheat_edge_cases.py tests/test_anti_cheat_protections.py tests/test_protection_effectiveness.py tests/test_verification.py tests/test_runtime_transparency_warnings.py -q -rs -p no:cacheprovider --junitxml=/tmp/aisp-protection-final.xml",
+    "tests": 373,
+    "passed": 277,
+    "skips": {
+      "real_cuda_unavailable": 35,
+      "unsupported_requirement_or_obsolete_count_claim": 61
+    },
+    "per_module": {
+      "test_anti_cheat_edge_cases": {
+        "real_cuda_unavailable": 11,
+        "passed": 90,
+        "unsupported_requirement_or_obsolete_count_claim": 35
+      },
+      "test_anti_cheat_protections": {
+        "real_cuda_unavailable": 22,
+        "passed": 56,
+        "unsupported_requirement_or_obsolete_count_claim": 26
+      },
+      "test_protection_effectiveness": {
+        "real_cuda_unavailable": 2,
+        "passed": 41
+      },
+      "test_verification": {
+        "passed": 75
+      },
+      "test_runtime_transparency_warnings": {
+        "passed": 15
+      }
+    },
+    "duration_seconds": 11.59,
+    "warnings": 18,
+    "ruff": "E9,F63,F7,F82,B006,B023 selected checks pass on all5files",
+    "git_diff_check": "pass on all5files"
+  },
+  "before_after": {
+    "original_edge_cpu": "124 skipped; module-level CUDA gate hid CPU-capable checks",
+    "first_rewrite": "72passed48skipped4failed:two real preallocated-output false rejections, real compile-count defect, one authored GraphCapture API typo corrected (not a baseline defect)",
+    "intermediate_combined": "268passed98skipped18warnings11.40s; retained before reviewer-requested fail-closed controls",
+    "original_mechanism_receipt": "protection-coverage-original-mechanisms.json",
+    "mechanism_reproduction": "PYTHONPATH=code /opt/miniconda3/bin/python docs/audits/2026-08-30/evidence/validation/protection-coverage-original-mechanisms.py (uses exclusive output file; preserve prior receipt by choosing a fresh output path)"
+  },
+  "source_changes": {
+    "get_compile_state": "Read actual modern stats.unique_graphs or legacy compile.calls. Cumulative count with explicit availability/source metadata; do not misrepresent cache_entries as measured. Original source remains0 while actual/current0->1->1->2 across compilation/cache hit/guard recompile.",
+    "_run_jitter_check": "Detach/clone tensor leaves with retained pytree spec before perturbation. Reused and noncontiguous/nested output buffers accepted when values actually change; cached output still rejected. Missing/structurally changed/non-tensor/wrong-shape/wrong-dtype/nonfinite outputs reject. Post-perturbation execution/refresh/comparison errors reject and restore inputs. Preserve existing explicit-skip and unsupported pre-perturbation policy."
+  },
+  "known_open_requirements": [
+    "Dataset provenance, feature-label leakage, holdout contamination",
+    "Nested profiler guard and CPU spillover attribution",
+    "Uninitialized-memory provenance, page-fault/managed-memory events and concurrent-allocation race detection",
+    "Background CPU/thread isolation, process priority",
+    "Host callbacks, cuBLAS workspace precomputation, persistent kernels, undeclared GPU execution, context switches, driver attribution, cooperative launches and dynamic parallelism inspectors",
+    "Compiler backend/mode parity, autotuning variance; compile graph-count diagnostic is not a policy enforcing identical compilation",
+    "Ring-versus-tree algorithm parity, rank-barrier timing, gradient buckets and async gradient timing",
+    "GPU identity/capability comparison, boost/absolute clocks, power-limit parity and cross-run driver/library version locks",
+    "Statistical power, omitted-sample/outlier/cherry-picking classifiers; raw sample retention tests are reporting only",
+    "Evaluation threshold policy and test-source immutability in benchmark verification",
+    "General memory overcommit/fragmentation diagnosis; memory-pattern snapshot tests only exercise actual warning classifiers",
+    "GPU runtime cases, NVML driver capture, L2 flush primitive/eviction measurement, actual CUDA timing gaps and stream controls remain unexecuted on this CPU host"
+  ],
+  "limitations": [
+    "No GPU/CUDA compile/runtime/sanitizer/benchmark qualification. No entire-suite immutability tests were run during active writers.",
+    "Unsupported requirements keep original test IDs and explicit reasons, not fabricated positive coverage. Narrow diagnostic/reporting controls retain scope notes.",
+    "The initial per-file disposition drafts are retained; final-dispositions.json is authoritative for this slice.",
+    "Core jitter still has pre-perturbation unsupported/advisory exits; this slice does not claim complete fail-closed verification for every unavailable input/output contract.",
+    "Source-level tests do not prove empirical cache eviction or hardware placement."
+  ],
+  "review": {
+    "root": "Independent read-only review accepted compile count semantics; requested jitter post-perturbation fail-open fixes, which now have seven invalid-output negatives and two restoration-failure controls.",
+    "root_final": "Final independent read-only source review found no further actionable source concern: snapshot before mutation, post-perturbation invalid/uncomparable/error outputs reject, inputs restored, pre-perturbation unsupported cases remain advisory. Source review plus277passed96skipped CPU receipt does not qualify real CUDA paths."
+  }
+}

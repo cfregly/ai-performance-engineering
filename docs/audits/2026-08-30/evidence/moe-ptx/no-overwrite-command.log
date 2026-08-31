@@ -1,0 +1,14 @@
+expected=nonzero_and_original_preserved
+actual_exit_code=1
+original_sha256=b1249bdfb46b04566f24e1c1298f61481875214c14af87fc8fb95bea84240862
+Traceback (most recent call last):
+  File "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/moe-ptx/calibrate_layer_accuracy.py", line 80, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/moe-ptx/calibrate_layer_accuracy.py", line 37, in main
+    with args.output.open('x') as destination:
+         ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.12/pathlib.py", line 1013, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileExistsError: [Errno 17] File exists: '/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/audit-w079-invalid-config-nzusbuqr/attempt.json'

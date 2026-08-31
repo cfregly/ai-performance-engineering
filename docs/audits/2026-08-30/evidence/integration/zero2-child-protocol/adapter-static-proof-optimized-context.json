@@ -1,0 +1,17 @@
+{
+  "artifacts": [],
+  "diagnostic": "ProcessGroupGloo rejected stacked reduce-scatter input: outputShape[0] * worldSize != inputShape[0].",
+  "finish_monotonic_ns": 274103646937750,
+  "finish_wall_ns": 1788138533841509000,
+  "launch_monotonic_ns": 274099968086041,
+  "launch_wall_ns": 1788138530162627000,
+  "mode": "optimized",
+  "rendezvous": "static loopback with an ephemeral local port",
+  "result_directory": "<temporary-result-directory>",
+  "returncode": 1,
+  "run_id": "adapter-proof-optimized-static-2",
+  "schema_version": 1,
+  "status": "FAIL_GLOO_REDUCE_SCATTER_SHAPE",
+  "variant": "multigpu",
+  "world_size": 2
+}

@@ -1,291 +1,199 @@
 #!/usr/bin/env python3
-"""
-Blackwell validation suite covering PyTorch 2.10, CUDA 13.0, and Triton 3.5 features.
+"""GPU stack regression checks for the pinned PyTorch/CUDA/Triton environment.
+
+Missing hardware is an explicit pytest skip. Once a prerequisite is present,
+compile, launch, profiler and numerical errors propagate as test failures.
+These smoke measurements do not qualify hardware peaks or TMA instructions.
 """
 
+import os
+from datetime import timedelta
+from pathlib import Path
+import sys
+
+import pytest
 import torch
-from core.harness.arch_config import ArchitectureConfig
 import torch.distributed as dist
-import torch.profiler as profiler
-from torch.profiler import profile, record_function, ProfilerActivity, schedule
-import torch.cuda.nvtx as nvtx
-import time
-import numpy as np
-from types import SimpleNamespace
+from torch.profiler import profile, record_function, ProfilerActivity
 
-try:
-    import triton as triton
-    import triton.language as tl
-except Exception:
-    triton = None
-    tl = None
-
-try:
-    from ch16.inference_serving_multigpu import (
-        DemoCausalLM,
-        ShardedKVCacheManager,
-        InferenceServerMultiGPU,
-        InferenceRequest,
-    )
-except Exception as e:
-    print(f"Warning: Could not import ch16 models: {e}")
-    DemoCausalLM = None
-    ShardedKVCacheManager = None
-    InferenceServerMultiGPU = None
-    InferenceRequest = None
+from core.harness.arch_config import ArchitectureConfig
 
 
 def ensure_cuda(feature: str) -> bool:
-    """Check CUDA availability and print a friendly skip message when missing."""
-    if torch.cuda.is_available():
-        return True
-    driver_info = None
+    """Require actual CUDA; returning from a test must never impersonate a skip."""
+    if not torch.cuda.is_available():
+        pytest.skip(f"{feature} requires a real CUDA device")
+    return True
+
+
+@pytest.fixture(autouse=True)
+def ieee_float32_reference_policy():
+    """Keep these FP32 reference comparisons independent of prior TF32 tests."""
+    previous = torch.backends.cuda.matmul.allow_tf32
+    torch.backends.cuda.matmul.allow_tf32 = False
     try:
-        driver_version = torch.cuda.driver_version()
-        if driver_version:
-            driver_info = str(driver_version)
-    except Exception:
-        try:
-            from torch._C import _cuda_getDriverVersion  # type: ignore
-            driver_version = _cuda_getDriverVersion()
-            if driver_version:
-                driver_info = str(driver_version)
-        except Exception:
-            driver_info = None
-    suffix = f" (driver version {driver_info})" if driver_info else ""
-    print(f" Skipping {feature}: CUDA unavailable{suffix}. Update the NVIDIA driver for full coverage.")
-    return False
+        yield
+    finally:
+        torch.backends.cuda.matmul.allow_tf32 = previous
+
 
 def test_architecture_detection():
-    """Test architecture detection."""
-    print("=== Architecture Detection Test ===")
-    if not torch.cuda.is_available():
-        ensure_cuda("architecture detection")
-        return
-    device_props = torch.cuda.get_device_properties(0)
-    compute_capability = f"{device_props.major}.{device_props.minor}"
-    gpu_name = device_props.name
-    print(f"GPU: {gpu_name}")
-    print(f"Compute Capability: {compute_capability}")
-    arch_cfg = ArchitectureConfig()
-    if arch_cfg.arch in {"blackwell", "grace_blackwell"}:
-        print(f" Detected {arch_cfg.get_architecture_name()}")
-    else:
-        print(f" Non-Blackwell GPU detected (compute capability {compute_capability})")
+    ensure_cuda("Blackwell architecture detection")
+    props = torch.cuda.get_device_properties(0)
+    if (props.major, props.minor) not in {(10, 0), (10, 3)}:
+        pytest.skip(f"Datacenter Blackwell check requires CC 10.0/10.3, found {props.major}.{props.minor}")
+    config = ArchitectureConfig()
+    expected = "blackwell_ultra" if props.minor == 3 else "blackwell"
+    assert config.arch == expected
+    assert config.config["compute_capability"] == f"{props.major}.{props.minor}"
+    assert config.config["sm_version"] == f"sm_{props.major}{props.minor}"
+
 
 def test_pytorch_29_features():
-    """Test PyTorch 2.10 features."""
-    print("\n=== PyTorch 2.10 Features Test ===")
+    """Compile and compare multiple batch shapes; configuration alone is not proof."""
+    ensure_cuda("torch.compile")
+    model = torch.nn.Linear(128, 96).cuda().eval()
+    compiled = torch.compile(model, fullgraph=True, dynamic=True)
+    with torch.no_grad():
+        for batch in (3, 11, 5):
+            inputs = torch.randn(batch, 128, device="cuda")
+            expected = model(inputs)
+            actual = compiled(inputs)
+            torch.testing.assert_close(actual, expected, rtol=1e-4, atol=1e-5)
+    torch.cuda.synchronize()
 
-    if not ensure_cuda("torch.compile tests"):
-        return
-    
-    # Test torch.compile
-    try:
-        model = torch.nn.Linear(1000, 1000).cuda()
-        compiled_model = torch.compile(model, mode="max-autotune")
-
-        inputs = torch.randn(32, 1000, device="cuda")
-
-        iters_warmup, iters_meas = 5, 20
-        for _ in range(iters_warmup):
-            _ = compiled_model(inputs)
-
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        torch.cuda.synchronize()
-        start.record()
-        for _ in range(iters_meas):
-            _ = compiled_model(inputs)
-        end.record()
-        end.synchronize()
-        avg_ms = start.elapsed_time(end) / iters_meas
-        print(f" torch.compile (max-autotune) avg {avg_ms:.3f} ms/iter")
-        print("  Hint: use mode='reduce-overhead' only for shape-stable graphs that benefit from CUDA Graphs; keep defaults for dynamic workloads.")
-    except Exception as e:
-        print(f" torch.compile failed: {e}")
-    
-    # Test dynamic shapes
-    try:
-        torch._dynamo.config.automatic_dynamic_shapes = True
-        print(" Dynamic shapes enabled")
-    except Exception as e:
-        print(f" Dynamic shapes failed: {e}")
-    
-    # Test Triton config access (robust to version changes)
-    try:
-        inductor_cfg = getattr(torch, "_inductor", None)
-        if inductor_cfg is not None and hasattr(inductor_cfg, "config"):
-            triton_cfg = getattr(inductor_cfg.config, "triton", None)
-            if triton_cfg is not None:
-                if hasattr(triton_cfg, "unique_kernel_names"):
-                    setattr(triton_cfg, "unique_kernel_names", True)
-                # Best-effort enable autotune if an appropriate knob exists
-                if hasattr(triton_cfg, "autotune_experimental"):
-                    setattr(triton_cfg, "autotune_experimental", True)
-        print(" Triton configuration accessible")
-    except Exception as e:
-        print(f" Triton config access failed: {e}")
 
 def test_cuda_130_features():
-    """Test CUDA 13.0 features."""
-    print("\n=== CUDA 13.0 Features Test ===")
-    
-    # Test stream-ordered memory allocation
-    # Note: Actual implementation would require CUDA kernel code
-    # For now, we verify CUDA 13.0+ is available which supports these features
-    try:
-        cuda_version = torch.version.cuda
-        if cuda_version and float(cuda_version.split('.')[0] + '.' + cuda_version.split('.')[1]) >= 13.0:
-            print(" Stream-ordered memory allocation support available (CUDA 13.0+)")
-        else:
-            print(f" Stream-ordered memory requires CUDA 13.0+, found {cuda_version}")
-    except Exception as e:
-        print(f" Stream-ordered memory check failed: {e}")
-    
-    # Test TMA (Tensor Memory Accelerator)
-    # Note: Actual implementation would require CUDA kernel code
-    # For now, we verify CUDA 13.0+ is available which supports these features
-    try:
-        cuda_version = torch.version.cuda
-        if cuda_version and float(cuda_version.split('.')[0] + '.' + cuda_version.split('.')[1]) >= 13.0:
-            print(" TMA support available (CUDA 13.0+)")
-        else:
-            print(f" TMA requires CUDA 13.0+, found {cuda_version}")
-    except Exception as e:
-        print(f" TMA check failed: {e}")
+    """Exercise stream dependencies with a CUDA-13 build, without claiming TMA."""
+    ensure_cuda("CUDA 13 stream integration")
+    version = torch.version.cuda
+    assert version is not None, "CUDA available but PyTorch build has no CUDA version"
+    if tuple(int(v) for v in version.split(".")[:2]) < (13, 0):
+        pytest.skip(f"CUDA 13 stack check requires a CUDA >=13 build, found {version}")
+    producer = torch.cuda.Stream()
+    consumer = torch.cuda.Stream()
+    with torch.cuda.stream(producer):
+        inputs = torch.arange(8193, device="cuda", dtype=torch.float32)
+        ready = producer.record_event()
+    consumer.wait_event(ready)
+    with torch.cuda.stream(consumer):
+        actual = inputs * 3 + 1
+        inputs.record_stream(consumer)
+        finished = consumer.record_event()
+    torch.cuda.current_stream().wait_event(finished)
+    actual.record_stream(torch.cuda.current_stream())
+    torch.testing.assert_close(actual.cpu(), torch.arange(8193, dtype=torch.float32) * 3 + 1)
+
 
 def test_profiling_tools():
-    """Test profiling tools."""
-    print("\n=== Profiling Tools Test ===")
+    """Require recorded CPU and CUDA work; an unopened active window is insufficient."""
+    ensure_cuda("CUDA profiler and NVTX")
+    from core.profiling.nvtx_helper import nvtx_range
 
-    if ensure_cuda("PyTorch profiler"):
-        try:
-            with profile(
-                activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-                profile_memory=True,
-                record_shapes=True,
-                with_stack=True,
-                with_flops=True,
-                with_modules=True,
-                schedule=schedule(wait=1, warmup=5, active=3, repeat=2),
-            ):
-                x = torch.randn(1000, 1000, device="cuda")
-                y = torch.randn(1000, 1000, device="cuda")
-                _ = torch.mm(x, y)
-                torch.cuda.synchronize()
-            print(" PyTorch profiler works")
-        except Exception as exc:
-            print(f" PyTorch profiler failed: {exc}")
-
-    try:
-        # Use conditional NVTX ranges - only enabled when profiling
-        from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
-        config = SimpleNamespace(enable_nvtx=True)
-        enable_nvtx = get_nvtx_enabled(config)
-
-        with nvtx_range("test_region", enable=enable_nvtx):
-            time.sleep(0.1)
-        print(" NVTX annotations work")
-    except Exception as exc:
-        print(f" NVTX failed: {exc}")
+    x = torch.randn(128, 128, device="cuda")
+    with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as trace:
+        with record_function("audit_stack_mm"), nvtx_range("audit_stack_mm", enable=True):
+            output = torch.mm(x, x)
+        torch.cuda.synchronize()
+    torch.testing.assert_close(output, x.double().mm(x.double()).float(), rtol=1e-4, atol=1e-4)
+    events = trace.events()
+    assert any(event.name == "audit_stack_mm" for event in events), "CPU range was not recorded"
+    assert any(event.device_type == torch.autograd.DeviceType.CUDA for event in events), "No CUDA work recorded"
 
 
 def test_triton_35():
-    """Test Triton 3.x features."""
-    print("\n=== Triton 3.x Features Test ===")
+    """Compile a masked, ragged add and compare every output, including the tail."""
+    ensure_cuda("Triton kernel")
+    # A supported CUDA environment must install its declared Triton dependency.
+    # Missing or broken imports there are failures, not success-shaped fallbacks.
+    import triton
+    import triton.language as tl
 
-    if not ensure_cuda("Triton kernels"):
-        return
+    @triton.jit
+    def add_kernel(x_ptr, y_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+        offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask, other=0)
+        y = tl.load(y_ptr + offsets, mask=mask, other=0)
+        tl.store(output_ptr + offsets, x + y, mask=mask)
 
-    try:
-        if triton is None or tl is None:
-            raise RuntimeError("Triton not available")
-        print(f" Triton version: {triton.__version__}")
-
-        @triton.jit
-        def add_kernel(x_ptr, y_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
-            pid = tl.program_id(axis=0)
-            block_start = pid * BLOCK_SIZE
-            offsets = block_start + tl.arange(0, BLOCK_SIZE)
-            mask = offsets < n_elements
-            x = tl.load(x_ptr + offsets, mask=mask)
-            y = tl.load(y_ptr + offsets, mask=mask)
-            tl.store(output_ptr + offsets, x + y, mask=mask)
-
-        n = 1024
-        block = 128
-        x = torch.ones(n, dtype=torch.float32, device="cuda")
-        y = torch.ones(n, dtype=torch.float32, device="cuda")
-        out = torch.empty(n, dtype=torch.float32, device="cuda")
-        grid = (triton.cdiv(n, block),)
-        add_kernel[grid](x, y, out, n, BLOCK_SIZE=block)
-        torch.cuda.synchronize()
-        print(" Triton kernel compile and launch works")
-    except Exception as exc:
-        print(f" Triton test failed: {exc}")
+    n, block = 1027, 128
+    x = torch.arange(n, dtype=torch.float32, device="cuda")
+    y = torch.linspace(-3, 7, n, dtype=torch.float32, device="cuda")
+    output = torch.full_like(x, float("nan"))
+    add_kernel[(triton.cdiv(n, block),)](x, y, output, n, BLOCK_SIZE=block)
+    torch.testing.assert_close(output, x + y, rtol=0, atol=0)
 
 
 def test_performance():
-    """Test basic performance."""
-    print("\n=== Performance Test ===")
+    """Record actual work and correct traffic/FLOPs; do not impose a speed threshold."""
+    ensure_cuda("CUDA timing smoke check")
+    size = 16 * 1024 * 1024
+    x = torch.randn(size, dtype=torch.float32, device="cuda")
+    y = torch.randn_like(x)
+    for _ in range(2):
+        output = x + y
+    start, end = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+    start.record()
+    output = x + y
+    end.record()
+    end.synchronize()
+    elapsed_ms = start.elapsed_time(end)
+    assert elapsed_ms > 0
+    torch.testing.assert_close(output, x + y, rtol=0, atol=0)
+    bytes_moved = (x.numel() + y.numel() + output.numel()) * x.element_size()
+    print(f"Add traffic (two reads + one write): {bytes_moved / elapsed_ms / 1e6:.2f} GB/s")
 
-    if not ensure_cuda("performance microbenchmarks"):
-        return
+    a = torch.randn(512, 512, device="cuda")
+    b = torch.randn_like(a)
+    for _ in range(2):
+        output = a @ b
+    start.record()
+    output = a @ b
+    end.record()
+    end.synchronize()
+    elapsed_ms = start.elapsed_time(end)
+    assert elapsed_ms > 0
+    torch.testing.assert_close(output, (a.double() @ b.double()).float(), rtol=1e-4, atol=1e-4)
+    print(f"FP32 matmul smoke: {2 * 512**3 / elapsed_ms / 1e9:.2f} TFLOP/s")
 
-    size = 1024 * 1024 * 1024
-    x = torch.randn(size // 4, dtype=torch.float32, device="cuda")
-    y = torch.randn(size // 4, dtype=torch.float32, device="cuda")
 
-    torch.cuda.synchronize()
-    start = time.time()
-    _ = x + y
-    torch.cuda.synchronize()
-    end = time.time()
-    bandwidth = (size * 2) / (end - start) / 1e9
-    print(f" Memory bandwidth: {bandwidth:.2f} GB/s")
+@pytest.fixture
+def nccl_world():
+    """Use an explicit torchrun launch; initialization failures must propagate."""
+    ensure_cuda("distributed inference")
+    if not dist.is_available() or not dist.is_nccl_available():
+        pytest.skip("NCCL is unavailable")
+    if not dist.is_initialized() and int(os.environ.get("WORLD_SIZE", "1")) != 2:
+        pytest.skip("Run the distributed cases with torchrun --nproc-per-node=2 -m pytest")
+    owns_group = not dist.is_initialized()
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    assert local_rank < torch.cuda.device_count(), "LOCAL_RANK exceeds actual CUDA device count"
+    torch.cuda.set_device(local_rank)
+    if owns_group:
+        dist.init_process_group(backend="nccl", timeout=timedelta(seconds=60))
+    try:
+        assert dist.get_world_size() == 2, "These cases require exactly two ranks"
+        assert dist.get_backend() == "nccl", "Distributed GPU validation requires NCCL"
+        torch.manual_seed(20260830)
+        yield dist.get_rank(), local_rank
+    finally:
+        if owns_group:
+            dist.destroy_process_group()
 
-    a = torch.randn(2048, 2048, dtype=torch.float32, device="cuda")
-    b = torch.randn(2048, 2048, dtype=torch.float32, device="cuda")
 
-    torch.cuda.synchronize()
-    start = time.time()
-    _ = torch.mm(a, b)
-    torch.cuda.synchronize()
-    end = time.time()
-    flops = 2 * 2048 * 2048 * 2048 / (end - start) / 1e12
-    print(f" Compute performance: {flops:.2f} TFLOPS")
-
-def test_kv_cache_batched_attention_2gpu():
+def test_kv_cache_batched_attention_2gpu(nccl_world):
     """
     Test batched attention with heterogeneous cache lengths on 2 GPUs.
     Validates padding/masking logic and head sharding.
     """
     print("\n=== KV Cache Batched Attention 2-GPU Test ===")
     
-    if DemoCausalLM is None or ShardedKVCacheManager is None:
-        print(" Skipping: ch16 models not available")
-        return
-    
-    if not torch.cuda.is_available():
-        print(" Skipping: CUDA unavailable")
-        return
-    
-    if not dist.is_initialized():
-        try:
-            dist.init_process_group(backend="nccl")
-        except Exception as e:
-            print(f" Skipping: Cannot initialize distributed: {e}")
-            return
-    
-    world_size = dist.get_world_size()
-    if world_size != 2:
-        print(f" Skipping: Requires 2 GPUs, found {world_size}")
-        return
-    
-    rank = dist.get_rank()
-    device = torch.device(f"cuda:{rank}")
-    
+    from ch16.inference_serving_multigpu import DemoCausalLM, ShardedKVCacheManager
+
+    rank, local_rank = nccl_world
+    device = torch.device(f"cuda:{local_rank}")
+
     num_layers = 2
     num_heads = 8  # 4 heads per GPU
     d_model = 64
@@ -395,35 +303,20 @@ def test_kv_cache_batched_attention_2gpu():
         dist.barrier()
 
 
-def test_inference_server_multigpu_distributed():
+def test_inference_server_multigpu_distributed(nccl_world):
     """
     Full end-to-end test of InferenceServerMultiGPU with distributed execution.
     Tests continuous batching, cache management, and throughput.
     """
     print("\n=== Inference Server Multi-GPU Distributed Test ===")
     
-    if InferenceServerMultiGPU is None or InferenceRequest is None or DemoCausalLM is None:
-        print(" Skipping: ch16 models not available")
-        return
-    
-    if not torch.cuda.is_available():
-        print(" Skipping: CUDA unavailable")
-        return
-    
-    if not dist.is_initialized():
-        try:
-            dist.init_process_group(backend="nccl")
-        except Exception as e:
-            print(f" Skipping: Cannot initialize distributed: {e}")
-            return
-    
+    from ch16.inference_serving_multigpu import (
+        DemoCausalLM, InferenceServerMultiGPU, InferenceRequest,
+    )
+
+    rank, _local_rank = nccl_world
     world_size = dist.get_world_size()
-    if world_size < 2:
-        print(f" Skipping: Requires >=2 GPUs, found {world_size}")
-        return
-    
-    rank = dist.get_rank()
-    
+
     # Create demo model (keep head sharding divisible by world_size)
     num_heads = 4 * world_size
     d_model = 64 * world_size
@@ -488,20 +381,13 @@ def test_inference_server_multigpu_distributed():
     dist.barrier()
 
 
-def main():
-    """Run all tests."""
-    print("AI Performance Engineering - Blackwell Validation Test")
-    print("=" * 60)
-    
-    test_architecture_detection()
-    test_pytorch_29_features()
-    test_cuda_130_features()
-    test_profiling_tools()
-    test_triton_35()
-    test_performance()
-    
-    print("\n" + "=" * 60)
-    print("Test completed!")
+def main() -> int:
+    """Run the actual test runner; do not print success when CUDA is missing."""
+    if not torch.cuda.is_available():
+        print("UNAVAILABLE: Blackwell validation requires a real CUDA device", file=sys.stderr)
+        return 3
+    return int(pytest.main([str(Path(__file__).resolve()), "-q", "-ra", *sys.argv[1:]]))
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

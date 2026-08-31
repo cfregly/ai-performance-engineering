@@ -1,15 +1,17 @@
 /**
  * ch10: True warp-specialized tcgen05 GEMM (producer/consumer warps).
  *
- * Warp 0 (producer) issues TMA loads, warp 1 (consumer) runs MMA. The warps
+ * Warp 1 (producer) issues TMA loads, warp 0 (consumer) runs MMA. The warps
  * overlap via full/empty barriers to hand off stages.
  */
 
 #include <ATen/cuda/CUDAContext.h>
 #include <ATen/cuda/Exceptions.h>
 #include <torch/extension.h>
+#include <c10/cuda/CUDAGuard.h>
 
 #include <cuda_runtime.h>
+#include "grouped_tile_schedule.cuh"
 
 #include <cutlass/arch/barrier.h>
 #include <cutlass/half.h>
@@ -71,17 +73,10 @@ gemm_warp_specialized(ATensor mA, BTensor mB, DTensor mD,
   bool is_producer = (warp_idx == kProducerWarpIdx);
   bool is_lane0 = (lane_idx == 0);
 
-  // Swizzled tile coord
-  int linear_idx = blockIdx.x + blockIdx.y * gridDim.x;
-  constexpr int GROUP_SIZE = 8;
-  int tiles_per_group = GROUP_SIZE * grid_m;
-  int group_idx = linear_idx / tiles_per_group;
-  int local_idx = linear_idx % tiles_per_group;
-  int tile_m = local_idx / GROUP_SIZE;
-  int tile_n = group_idx * GROUP_SIZE + (local_idx % GROUP_SIZE);
-  if (tile_n >= grid_n) {
-    tile_n = tile_n % grid_n;
-  }
+  const int linear_idx = blockIdx.x + blockIdx.y * gridDim.x;
+  const auto tile = ch10::grouped_tile_coord(linear_idx, grid_m, grid_n);
+  const int tile_m = tile.m;
+  const int tile_n = tile.n;
 
   auto mma_coord = make_coord(tile_m, tile_n, _);
 
@@ -154,7 +149,7 @@ gemm_warp_specialized(ATensor mA, BTensor mB, DTensor mD,
   auto [tBgB_3, tBsB_3] = tma_partition(tma_atom_B, Int<0>{}, Layout<_1>{},
       group_modes<0,3>(tCsB_3), group_modes<0,3>(tCgCoordB));
 
-  int tma_bytes = sizeof(make_tensor_like(tAsA_0)) + sizeof(make_tensor_like(tBsB_0));
+  const int tma_bytes = sizeof(TypeA) * size(tCsA_0) + sizeof(TypeB) * size(tCsB_0);
 
   // Initialize barriers
   if (is_producer && is_lane0) {
@@ -164,6 +159,7 @@ gemm_warp_specialized(ATensor mA, BTensor mB, DTensor mD,
     }
     cute::initialize_barrier(storage.mma_barrier, 1);
   }
+  cutlass::arch::fence_barrier_init();
   __syncthreads();
 
   int num_k_tiles = size<3>(tCgA);
@@ -267,6 +263,8 @@ torch::Tensor run_warp_specialized_matmul(torch::Tensor a, torch::Tensor b) {
   TORCH_CHECK(a.size(1) == b.size(1));
   TORCH_CHECK(a.dtype() == torch::kFloat16 && b.dtype() == torch::kFloat16);
   TORCH_CHECK(a.is_cuda() && b.is_cuda());
+  TORCH_CHECK(a.device() == b.device(), "Inputs must be on the same CUDA device");
+  const c10::cuda::CUDAGuard device_guard(a.device());
 
   auto a_contig = a.contiguous();
   auto b_contig = b.contiguous();
@@ -274,6 +272,7 @@ torch::Tensor run_warp_specialized_matmul(torch::Tensor a, torch::Tensor b) {
   auto k = a_contig.size(1);
   auto n = b_contig.size(0);
 
+  TORCH_CHECK(m > 0 && n > 0 && k > 0, "Matrix dimensions must be positive");
   TORCH_CHECK(m % 128 == 0 && n % 256 == 0 && k % 64 == 0,
               "Size must be divisible by tcgen05 tile");
 

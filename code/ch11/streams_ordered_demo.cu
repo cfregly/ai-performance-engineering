@@ -25,6 +25,10 @@
 #include <cstdio>
 #include <vector>
 #include <chrono>
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
+#include <cstring>
 #include "../core/common/nvtx_utils.cuh"
 
 #define CUDA_CHECK(call)                                                     \
@@ -51,100 +55,123 @@ __global__ void compute_kernel(const float* __restrict__ in,
   }
 }
 
-int main() {
-    NVTX_RANGE("main");
-  float *h_src = nullptr;
-  CUDA_CHECK(cudaMallocHost(&h_src, N * sizeof(float)));
-  for (int i = 0; i < N; ++i) {
-      NVTX_RANGE("setup");
-      h_src[i] = static_cast<float>(i);
+int run_stream_ordered_demo(int count, int pipelines) {
+  if (count <= 0 || pipelines <= 0) return 1;
+  const int chunk_elems = (count + pipelines - 1) / pipelines;
+  const size_t chunk_bytes = static_cast<size_t>(chunk_elems) * sizeof(float);
+  float *h_src = nullptr, *h_out = nullptr;
+  CUDA_CHECK(cudaMallocHost(&h_src, count * sizeof(float)));
+  CUDA_CHECK(cudaMallocHost(&h_out, count * sizeof(float)));
+  for (int i = 0; i < count; ++i) {
+    // Bounded, nonuniform inputs keep all three passes finite.
+    h_src[i] = static_cast<float>((i % 257) - 128) / 256.0f;
+    h_out[i] = NAN;
   }
 
   std::vector<cudaStream_t> h2d_streams(kNumStreams), compute_streams(kNumStreams), d2h_streams(kNumStreams);
-  for (int i = 0; i < kNumStreams; ++i) {
-      NVTX_RANGE("setup");
-    CUDA_CHECK(cudaStreamCreateWithFlags(&h2d_streams[i], cudaStreamNonBlocking));
-    CUDA_CHECK(cudaStreamCreateWithFlags(&compute_streams[i], cudaStreamNonBlocking));
-    CUDA_CHECK(cudaStreamCreateWithFlags(&d2h_streams[i], cudaStreamNonBlocking));
+  std::vector<cudaEvent_t> allocated(kNumStreams), h2d_done(kNumStreams), compute_done(kNumStreams), d2h_done(kNumStreams);
+  std::vector<float*> d_in(kNumStreams, nullptr), d_out(kNumStreams, nullptr);
+  for (int s = 0; s < kNumStreams; ++s) {
+    CUDA_CHECK(cudaStreamCreateWithFlags(&h2d_streams[s], cudaStreamNonBlocking));
+    CUDA_CHECK(cudaStreamCreateWithFlags(&compute_streams[s], cudaStreamNonBlocking));
+    CUDA_CHECK(cudaStreamCreateWithFlags(&d2h_streams[s], cudaStreamNonBlocking));
+    CUDA_CHECK(cudaEventCreateWithFlags(&allocated[s], cudaEventDisableTiming));
+    CUDA_CHECK(cudaEventCreateWithFlags(&h2d_done[s], cudaEventDisableTiming));
+    CUDA_CHECK(cudaEventCreateWithFlags(&compute_done[s], cudaEventDisableTiming));
+    CUDA_CHECK(cudaEventCreateWithFlags(&d2h_done[s], cudaEventDisableTiming));
+    CUDA_CHECK(cudaMallocAsync(&d_in[s], chunk_bytes, compute_streams[s]));
+    CUDA_CHECK(cudaMallocAsync(&d_out[s], chunk_bytes, compute_streams[s]));
+    CUDA_CHECK(cudaEventRecord(allocated[s], compute_streams[s]));
+    CUDA_CHECK(cudaStreamWaitEvent(h2d_streams[s], allocated[s], 0));
   }
 
-  std::vector<float*> d_in(kNumStreams, nullptr);
-  std::vector<float*> d_out(kNumStreams, nullptr);
-  const int chunk_elems = (N + kPipelines - 1) / kPipelines;
-
-  for (int i = 0; i < kNumStreams; ++i) {
-      NVTX_RANGE("transfer_async:h2d");
-    const int elems = std::min(chunk_elems, N - i * chunk_elems);
-    const size_t bytes = static_cast<size_t>(elems) * sizeof(float);
-    CUDA_CHECK(cudaMallocAsync(&d_in[i], bytes, compute_streams[i]));
-    CUDA_CHECK(cudaMallocAsync(&d_out[i], bytes, compute_streams[i]));
-    const float* src_ptr = h_src + i * chunk_elems;
-    CUDA_CHECK(cudaMemcpyAsync(d_in[i], src_ptr, bytes, cudaMemcpyHostToDevice, h2d_streams[i]));
-  }
-
-  dim3 block(256);
-  for (int i = 0; i < kNumStreams; ++i) {
-      NVTX_RANGE("compute_kernel:compute_kernel");
-    const int elems = std::min(chunk_elems, N - i * chunk_elems);
-    dim3 local_grid((elems + block.x - 1) / block.x);
-    compute_kernel<<<local_grid, block, 0, compute_streams[i]>>>(d_in[i], d_out[i], elems);
-    compute_kernel<<<local_grid, block, 0, compute_streams[i]>>>(d_out[i], d_in[i], elems);
-    // Third pass to amplify overlap benefit.
-    compute_kernel<<<local_grid, block, 0, compute_streams[i]>>>(d_in[i], d_out[i], elems);
-  }
-  CUDA_CHECK(cudaGetLastError());
-
-  for (int i = 0; i < kNumStreams; ++i) {
-      NVTX_RANGE("transfer_async:d2h");
-    const int elems = std::min(chunk_elems, N - i * chunk_elems);
-    const size_t bytes = static_cast<size_t>(elems) * sizeof(float);
-    CUDA_CHECK(cudaMemcpyAsync(h_src + i * chunk_elems, d_in[i], bytes,
-                               cudaMemcpyDeviceToHost, d2h_streams[i]));
-  }
-
-  for (int i = 0; i < kNumStreams; ++i) {
-      NVTX_RANGE("iteration");
-    CUDA_CHECK(cudaStreamSynchronize(h2d_streams[i]));
-    CUDA_CHECK(cudaStreamSynchronize(compute_streams[i]));
-    CUDA_CHECK(cudaStreamSynchronize(d2h_streams[i]));
-  }
-
-  // Add timing for benchmark harness
+  cudaStream_t timing_stream;
   cudaEvent_t start, stop;
+  CUDA_CHECK(cudaStreamCreateWithFlags(&timing_stream, cudaStreamNonBlocking));
   CUDA_CHECK(cudaEventCreate(&start));
   CUDA_CHECK(cudaEventCreate(&stop));
-  
-  // Timed iteration
-  CUDA_CHECK(cudaEventRecord(start));
-  for (int i = 0; i < kNumStreams; ++i) {
-      NVTX_RANGE("compute_kernel:compute_kernel");
-    const int elems = std::min(chunk_elems, N - i * chunk_elems);
-    dim3 local_grid((elems + block.x - 1) / block.x);
-    compute_kernel<<<local_grid, block, 0, compute_streams[i]>>>(d_in[i], d_out[i], elems);
-    compute_kernel<<<local_grid, block, 0, compute_streams[i]>>>(d_out[i], d_in[i], elems);
-    compute_kernel<<<local_grid, block, 0, compute_streams[i]>>>(d_in[i], d_out[i], elems);
+  for (int s = 0; s < kNumStreams; ++s) {
+    CUDA_CHECK(cudaStreamWaitEvent(timing_stream, allocated[s], 0));
   }
-  CUDA_CHECK(cudaEventRecord(stop));
+  CUDA_CHECK(cudaEventRecord(start, timing_stream));
+  for (int s = 0; s < kNumStreams; ++s) {
+    CUDA_CHECK(cudaStreamWaitEvent(h2d_streams[s], start, 0));
+  }
+
+  const int chunks = (count + chunk_elems - 1) / chunk_elems;
+  for (int chunk = 0; chunk < chunks; ++chunk) {
+    const int s = chunk % kNumStreams;
+    const int offset = chunk * chunk_elems;
+    const int elems = std::min(chunk_elems, count - offset);
+    const size_t bytes = static_cast<size_t>(elems) * sizeof(float);
+    if (chunk >= kNumStreams) {
+      // The previous output copy must finish before this slot can be reused.
+      CUDA_CHECK(cudaStreamWaitEvent(h2d_streams[s], d2h_done[s], 0));
+    }
+    CUDA_CHECK(cudaMemcpyAsync(d_in[s], h_src + offset, bytes, cudaMemcpyHostToDevice, h2d_streams[s]));
+    CUDA_CHECK(cudaEventRecord(h2d_done[s], h2d_streams[s]));
+    CUDA_CHECK(cudaStreamWaitEvent(compute_streams[s], h2d_done[s], 0));
+    const int grid = (elems + 255) / 256;
+    compute_kernel<<<grid, 256, 0, compute_streams[s]>>>(d_in[s], d_out[s], elems);
+    compute_kernel<<<grid, 256, 0, compute_streams[s]>>>(d_out[s], d_in[s], elems);
+    compute_kernel<<<grid, 256, 0, compute_streams[s]>>>(d_in[s], d_out[s], elems);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaEventRecord(compute_done[s], compute_streams[s]));
+    CUDA_CHECK(cudaStreamWaitEvent(d2h_streams[s], compute_done[s], 0));
+    CUDA_CHECK(cudaMemcpyAsync(h_out + offset, d_out[s], bytes, cudaMemcpyDeviceToHost, d2h_streams[s]));
+    CUDA_CHECK(cudaEventRecord(d2h_done[s], d2h_streams[s]));
+  }
+  for (int s = 0; s < std::min(chunks, kNumStreams); ++s) {
+    CUDA_CHECK(cudaStreamWaitEvent(timing_stream, d2h_done[s], 0));
+  }
+  CUDA_CHECK(cudaEventRecord(stop, timing_stream));
   CUDA_CHECK(cudaEventSynchronize(stop));
-  
   float elapsed_ms = 0.0f;
   CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms, start, stop));
-  std::printf("Kernel time: %.4f ms\n", elapsed_ms);
+  std::printf("Pipeline time (H2D + three passes + D2H): %.4f ms\n", elapsed_ms);
+
+  bool correct = true;
+  for (int i = 0; i < count; ++i) {
+    double expected = h_src[i];
+    for (int pass = 0; pass < 3; ++pass) expected = expected * expected + 1.0;
+    if (!std::isfinite(h_out[i]) || std::abs(h_out[i] - expected) > 2e-5 * std::max(1.0, std::abs(expected))) {
+      std::fprintf(stderr, "ordered mismatch at %d: %.9g versus %.9g\n", i, h_out[i], expected);
+      correct = false;
+      break;
+    }
+  }
+  std::printf("Ordered full-output verification: %s (%d elements, %d chunks)\n", correct ? "PASS" : "FAIL", count, chunks);
+  for (int s = 0; s < kNumStreams; ++s) {
+    if (s < chunks) CUDA_CHECK(cudaStreamWaitEvent(compute_streams[s], d2h_done[s], 0));
+    CUDA_CHECK(cudaFreeAsync(d_in[s], compute_streams[s]));
+    CUDA_CHECK(cudaFreeAsync(d_out[s], compute_streams[s]));
+    CUDA_CHECK(cudaStreamSynchronize(compute_streams[s]));
+    CUDA_CHECK(cudaEventDestroy(allocated[s]));
+    CUDA_CHECK(cudaEventDestroy(h2d_done[s]));
+    CUDA_CHECK(cudaEventDestroy(compute_done[s]));
+    CUDA_CHECK(cudaEventDestroy(d2h_done[s]));
+    CUDA_CHECK(cudaStreamDestroy(h2d_streams[s]));
+    CUDA_CHECK(cudaStreamDestroy(compute_streams[s]));
+    CUDA_CHECK(cudaStreamDestroy(d2h_streams[s]));
+  }
   CUDA_CHECK(cudaEventDestroy(start));
   CUDA_CHECK(cudaEventDestroy(stop));
-  
-  std::printf("stream0 result[0]=%.1f\n", h_src[0]);
-
-  for (int i = 0; i < kNumStreams; ++i) {
-      NVTX_RANGE("cleanup");
-    CUDA_CHECK(cudaFreeAsync(d_in[i], compute_streams[i]));
-    CUDA_CHECK(cudaFreeAsync(d_out[i], compute_streams[i]));
-    CUDA_CHECK(cudaStreamDestroy(h2d_streams[i]));
-    CUDA_CHECK(cudaStreamDestroy(compute_streams[i]));
-    CUDA_CHECK(cudaStreamDestroy(d2h_streams[i]));
-  }
+  CUDA_CHECK(cudaStreamDestroy(timing_stream));
   CUDA_CHECK(cudaFreeHost(h_src));
-  return 0;
+  CUDA_CHECK(cudaFreeHost(h_out));
+  return correct ? 0 : 1;
+}
+
+int main(int argc, char** argv) {
+  NVTX_RANGE("main");
+  int count = N;
+  int pipelines = kPipelines;
+  for (int i = 1; i < argc; ++i) {
+    if (std::strcmp(argv[i], "--elements") == 0 && i + 1 < argc) count = std::atoi(argv[++i]);
+    else if (std::strcmp(argv[i], "--pipelines") == 0 && i + 1 < argc) pipelines = std::atoi(argv[++i]);
+    else return 1;
+  }
+  return run_stream_ordered_demo(count, pipelines);
 }
 
 // ============================================================================

@@ -42,17 +42,21 @@ optimized_warp_specialized_two_pipelines_multistream$(SUFFIX): \
 	$(NVCC) $(NVCC_FLAGS) -o $@ $< $(CUDA_NVTX_LDFLAGS)
 
 # Architecture-specific targets
-b200: ARCH=sm_100
-b200: clean all
+b200:
+	$(MAKE) ARCH=sm_100 clean
+	$(MAKE) ARCH=sm_100 all
 
-gb10: ARCH=sm_121
-gb10: clean all
+gb10:
+	$(MAKE) ARCH=sm_121 clean
+	$(MAKE) ARCH=sm_121 all
 
-b300: ARCH=sm_103
-b300: clean all
+b300:
+	$(MAKE) ARCH=sm_103 clean
+	$(MAKE) ARCH=sm_103 all
 
-gb300: ARCH=sm_103
-gb300: clean all
+gb300:
+	$(MAKE) ARCH=sm_103 clean
+	$(MAKE) ARCH=sm_103 all
 
 compare: clean
 	@echo "========================================"

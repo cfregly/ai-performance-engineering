@@ -1,0 +1,36 @@
+s.F...sss..............                                                  [100%]
+=================================== FAILURES ===================================
+_____________ test_tensor_core_streams_use_overlap_friendly_regime _____________
+
+    def test_tensor_core_streams_use_overlap_friendly_regime() -> None:
+>       baseline = BaselineTensorCoresStreamsBenchmark()
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_benchmark_regime_configs.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ch11/baseline_tensor_cores_streams.py:22: in __init__
+    self.device = resolve_device()
+                  ^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+error_message = 'CUDA required for ch11'
+
+    def require_cuda_device(
+        error_message: str,
+        *,
+        local_rank_env: Optional[str] = None,
+    ) -> torch.device:
+        """Return a CUDA device or raise a benchmark-specific error.
+    
+        When ``local_rank_env`` is set, resolve ``cuda:<rank>`` from the named
+        environment variable so single-process distributed benchmarks honor the
+        launcher-assigned local rank.
+        """
+        if not torch.cuda.is_available():
+>           raise RuntimeError(error_message)
+E           RuntimeError: CUDA required for ch11
+
+core/common/device_utils.py:66: RuntimeError
+=========================== short test summary info ============================
+FAILED tests/test_benchmark_regime_configs.py::test_tensor_core_streams_use_overlap_friendly_regime
+1 failed, 18 passed, 4 skipped in 22.34s

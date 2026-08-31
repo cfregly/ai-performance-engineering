@@ -1,0 +1,70 @@
+{
+  "created_utc": "2026-08-31T00:35:44.021605+00:00",
+  "status": "PASS_BOUNDED_SOURCE_AND_METADATA_REVIEW__LINUX_RUNTIME_AND_FULL_CUDA_GRAPH_HOLD",
+  "reviewed_receipt": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/receipt.json",
+  "reviewed_receipt_sha256": "9a94c963e835af6f84d7e86829e0156e2c3a4cd9f294ffa0302027860de7d470",
+  "source_sha256": {
+    "code/requirements_latest.txt": "82b1714c2568befc9c7cbee2b7e4e5850cc5c663d76171ba959e296a86fe4fb7",
+    "code/setup.sh": "4b6515364cf289b31f323b4998e21d66ca263c5c51ac8b3e5ac445154ef8478e",
+    ".github/workflows/benchmark-validation.yml": "de1b183aca6019c35fe293a9d7f3db66db52492dd4d2e1092cc72e7bd31fa71b",
+    "code/tests/test_setup_bootstrap.py": "15a9da07dfe2c14b866b7574d4ae82a0a1471f892492a41ac147f7e8861911ea",
+    "code/tests/test_repository_configuration.py": "d90a0b22c63f7a637175875c1421aa418ba40ecb26e9eaf6607de788a680d7ab"
+  },
+  "artifact_manifest_sha256": "95a14182ffff546d9be5e57c447c994d016d9012f0ef78387ff8ed905facd45a",
+  "artifact_hashes_verified": 121,
+  "original_source_snapshots_verified": 5,
+  "actionable_source_findings": [],
+  "verified_checks": [
+    "Actual official torch2.9.1+cu130 metadata marks Linux triton==3.5.1;3.5.0 rejected and3.5.1 accepted by its exact specifier.",
+    "Active sharedrequirements,setupdefault andCPUCI use3.5.1; datedGB3003.5.0 incident prose remains untouched.",
+    "FinalCI20pins include requests2.34.2 andtokenizers0.22.2; focusedtests exercise realBashsource selection and directcollectionpin presence.",
+    "Final firstPyPI19nonTorch requirements exactlymatchtheworkflow exceptTorch; constrainedunion adds exactobservedofficialCPUtorchURL.",
+    "All51firsttransactionresolvedversions retainedinfinalunion; finalTritonblock includes actualPyPIcp312Linuxwheelhash andPyPIsourceannotation.",
+    "All90fullrequirementspackagespecifications retainedinpubliconlydiagnostic; onlyabsentlocalfindlinksremoved.",
+    "All121retainedartifacthashes,fivecurrentfiles andfiveoriginalsources matchthefrozenmanifests."
+  ],
+  "review_comment_resolution": {
+    "initial_concern": "Earlier uv --torch-backend cpu resolver routed Triton via a different wheel/index than actual CI first PyPI transaction. Matching versions alone was not exact source proof.",
+    "resolution": "New PyPI-first51version constrained union uses exactofficialCPUtorchURL and actualPyPITritonhash, resolves58 packages. Prior routed attempts preserved and labeled.",
+    "remaining_boundary": "Still targeted metadata resolution onDarwin, not execution ofpiptransactions orLinuxinstallation."
+  },
+  "evidence_outcomes": {
+    "scoped_host_tests_reported": {
+      "passed": 36,
+      "failed": 0,
+      "skipped": 0,
+      "environment": "ExistingDarwinarm64Python3.12.2/torch2.8.0CPU; reviewdidnotreruntests"
+    },
+    "old_torch_triton_pair": "Expectedunsatisfiableversionconstraint",
+    "corrected_torch_triton_pair": "26packagesmetadataresolved",
+    "final_cpu_exact_sources": "58packagesmetadataresolved,51priorversionsretained",
+    "vllm_torch_pair": "172packagesonlywithexplicitmanylinux2.31; otherrepositorypinsnotconstrained",
+    "torchtitan_torch_pair": "73packagesmetadataresolved; noAPI/import/ABIproof",
+    "full_requirements": "HOLD:rawuvinputparserfailure,thenbinary-onlypublicdiagnosticstoppedatGPUtilsdistavailability; neitherprovespip/setupfailureorfullgraphsuccess"
+  },
+  "review_attempts": [
+    {
+      "operation": "Initialread-onlyoriginal-manifestdiffinspection",
+      "exit_code": 1,
+      "reason": "Reviewerexpectedlistbutmanifestisadict; AttributeError before anywrites/installs. Correctedreadcompleted."
+    },
+    {
+      "operation": "Read-onlysource,diff,metadata,command/outputandhashreview",
+      "status": "PASS"
+    }
+  ],
+  "not_performed": [
+    "Sourceorpriorreceiptedit",
+    "Packageinstallorresolverexecution",
+    "Pytest/GPU/NVCCrun",
+    "Containerorremotejob",
+    "Gitmutation"
+  ],
+  "required_followup": [
+    "ActualcleanLinuxCPUinstallationandfullordinarytestswith20workflowpins",
+    "FullstagedCUDAbootstrap/dependencygraph/sourcebuild/import/ABIanddeviceacceptance",
+    "ValidatedARMTorchAOsourceartifact; existingbinaryguardremains",
+    "Do notrelabeltargetmetadataor36DarwinchecksasCI/fullLinuxsuccess"
+  ],
+  "frozen": true
+}

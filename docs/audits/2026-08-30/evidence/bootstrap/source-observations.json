@@ -1,0 +1,121 @@
+{
+  "observed_at_utc": "2026-08-30T22:10:11Z",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "branch": "codex/audit-remediation-20260830",
+  "head": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "owned_source_sha256": {
+    "code/setup.sh": "d31dd0daffc1e41a4c3ab8a52c72047d1b6a83c694bf4bb24b8679865c5472e4",
+    "code/requirements_latest.txt": "b216f84c863a01a37c4d2e26fd15fc5c856c2c05fbbbe3696d6e965a8d6a4fa2",
+    "code/tests/test_setup_bootstrap.py": "763ee56170cdf5acd37ff203cf7c8db3adfbbc698ecbbd9517297438eee4c4eb"
+  },
+  "observations": [
+    {
+      "label": "torchao-stable",
+      "url": "https://download.pytorch.org/whl/cu130/torchao/",
+      "page_sha256": "05bbd9f5ca765c8a15a4eabf35504181ddec334217e608f9aa27672ebb0c7d46",
+      "link_count": 6,
+      "matching_links": [
+        {
+          "href": "https://download.pytorch.org/whl/cu130/torchao-0.15.0%2Bcu130-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl#sha256=2d743a43f1f345fd7a6369e37901c5a7a0a929c0f7c8acc52e717f1d70d19155",
+          "data-dist-info-metadata": "sha256=19ade3d6b3b6212e5aa66fd81216f9e1c8e8014b3f701f803cc7bc7bee5a6a08",
+          "data-core-metadata": "sha256=19ade3d6b3b6212e5aa66fd81216f9e1c8e8014b3f701f803cc7bc7bee5a6a08",
+          "data-upload-time": "2025-12-18T23:11:01Z"
+        }
+      ],
+      "metadata_sha256": "19ade3d6b3b6212e5aa66fd81216f9e1c8e8014b3f701f803cc7bc7bee5a6a08",
+      "metadata_lines": [
+        "Name: torchao",
+        "Version: 0.15.0+cu130",
+        "Requires-Dist: pytest==8.4.2; extra == \"dev\"",
+        "Requires-Dist: unittest-xml-reporting; extra == \"dev\"",
+        "Requires-Dist: parameterized; extra == \"dev\"",
+        "Requires-Dist: packaging; extra == \"dev\"",
+        "Requires-Dist: transformers; extra == \"dev\"",
+        "Requires-Dist: hypothesis; extra == \"dev\"",
+        "Requires-Dist: sentencepiece; extra == \"dev\"",
+        "Requires-Dist: expecttest; extra == \"dev\"",
+        "Requires-Dist: bitsandbytes; extra == \"dev\"",
+        "Requires-Dist: matplotlib; extra == \"dev\"",
+        "Requires-Dist: pandas; extra == \"dev\"",
+        "Requires-Dist: fire; extra == \"dev\"",
+        "Requires-Dist: tabulate; extra == \"dev\"",
+        "Requires-Dist: tiktoken; extra == \"dev\"",
+        "Requires-Dist: blobfile; extra == \"dev\"",
+        "Requires-Dist: lm_eval; extra == \"dev\"",
+        "Requires-Dist: diskcache; extra == \"dev\"",
+        "Requires-Dist: pycocotools; extra == \"dev\"",
+        "Requires-Dist: tqdm; extra == \"dev\"",
+        "Requires-Dist: importlib_metadata; extra == \"dev\"",
+        "Requires-Dist: ninja; extra == \"dev\"",
+        "Requires-Dist: cmake<4.0.0,>=3.19.0; extra == \"dev\"",
+        "Requires-Dist: ruff==0.11.6; extra == \"dev\"",
+        "Requires-Dist: pre-commit; extra == \"dev\""
+      ]
+    },
+    {
+      "label": "torchao-retired-nightly",
+      "url": "https://download.pytorch.org/whl/nightly/cu130/torchao/",
+      "page_sha256": "c353c787647cf7007be5546c1f8752c46c1e7a77fb2d3a1ed4385cc6f7526683",
+      "link_count": 60,
+      "matching_links": []
+    },
+    {
+      "label": "torchaudio",
+      "url": "https://download.pytorch.org/whl/cu130/torchaudio/",
+      "page_sha256": "22c53e777041c151cdb5070a83e34e216e1d11d54678b8a32af58f24ba8d5a97",
+      "link_count": 339,
+      "matching_links": [
+        {
+          "href": "https://download-r2.pytorch.org/whl/cu130/torchaudio-2.9.1%2Bcu130-cp312-cp312-manylinux_2_28_x86_64.whl#sha256=a6c58d5e846da5a90d50bd425e2c24368747cd04297d95c6dd51d3f7f85fea26",
+          "data-dist-info-metadata": "sha256=c06448b8e1a7c765abff3edbe239a270597bf3b5d1eef0928e56551028d317ee",
+          "data-core-metadata": "sha256=c06448b8e1a7c765abff3edbe239a270597bf3b5d1eef0928e56551028d317ee",
+          "data-upload-time": "2025-11-11T19:17:10Z"
+        },
+        {
+          "href": "https://download-r2.pytorch.org/whl/cu130/torchaudio-2.9.1%2Bcu130-cp312-cp312-win_amd64.whl#sha256=7533a17bed21e5b86b8c49fd79656779779f2c991aef2804af6f318d2022ea6a",
+          "data-dist-info-metadata": "sha256=ebdd4877470539d2e8d44380375e07e63fa890f22029b27a3404349fba6859c0",
+          "data-core-metadata": "sha256=ebdd4877470539d2e8d44380375e07e63fa890f22029b27a3404349fba6859c0",
+          "data-upload-time": "2025-11-11T19:17:10Z"
+        },
+        {
+          "href": "https://download-r2.pytorch.org/whl/cu130/torchaudio-2.9.1-cp312-cp312-manylinux_2_28_aarch64.whl#sha256=b3c75f87e325946276c952864dbce2c8fabc88a00d86730c3d5bc0999ebf7789",
+          "data-dist-info-metadata": "sha256=9e16d6e0470c3ec90c56d8fae77082f5b676c6ca20a38c630fb9a49a9ecaf528",
+          "data-core-metadata": "sha256=9e16d6e0470c3ec90c56d8fae77082f5b676c6ca20a38c630fb9a49a9ecaf528",
+          "data-upload-time": "2025-11-11T19:17:11Z"
+        }
+      ]
+    },
+    {
+      "label": "release-native-compatibility-guard",
+      "url": "https://raw.githubusercontent.com/pytorch/ao/v0.15.0/torchao/__init__.py",
+      "page_sha256": "eeb3bfcd7d2c87367815f2bd17e426dc8d018209cc8d17c04312eb844ad3e3d2",
+      "matching_lines": [
+        {
+          "line": 79,
+          "text": "        # Built against torch 2.9.1"
+        },
+        {
+          "line": 80,
+          "text": "        (_parse_version(\"0.15.0\"), _parse_version(\"2.9.1\")),"
+        },
+        {
+          "line": 81,
+          "text": "        (_parse_version(\"0.15.0\"), _parse_version(\"2.10.0.dev\")),"
+        },
+        {
+          "line": 83,
+          "text": "        (_parse_version(\"0.16.0.dev\"), _parse_version(\"2.9.1\")),"
+        }
+      ]
+    },
+    {
+      "label": "torchao-release-tag",
+      "url": "https://api.github.com/repos/pytorch/ao/git/ref/tags/v0.15.0",
+      "object": {
+        "sha": "9338966da58ec44b60f0e0b173cabab08f942ed0",
+        "type": "commit",
+        "url": "https://api.github.com/repos/pytorch/ao/git/commits/9338966da58ec44b60f0e0b173cabab08f942ed0"
+      }
+    }
+  ]
+}

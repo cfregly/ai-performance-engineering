@@ -1,0 +1,167 @@
+ssssssssssssssssssssssssssssssssssssssss.........sssssssssssssssssssssss [  2%]
+ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss [  4%]
+ssssssssssssssssssssssssssssssssss................s..sssssss..ssss..s..s [  6%]
+..s..sssssss..s...ssssssssssssssss.ssss.ssssssss......ss.ssss........... [  9%]
+........................................................................ [ 11%]
+........................................s............................... [ 13%]
+...................ssssss............................................... [ 16%]
+........................................................................ [ 18%]
+........................................................ssssssssssssssss [ 20%]
+s.s..................................................................... [ 23%]
+........................s.......sssss..............sssssssssssssss...ss. [ 25%]
+.ss....ssssssssssssss...................................ssss............ [ 27%]
+...ssssss........s.....ss..s....ssssss....ssssssssss.................... [ 30%]
+........................................................................ [ 32%]
+.......................sss...........s............sss................... [ 34%]
+.......................................................................s [ 37%]
+.s..............................s....................................... [ 39%]
+.............................sssssssssssssssssssssssssssssssssssss....s. [ 41%]
+........................................................................ [ 44%]
+........................................................................ [ 46%]
+........................................................................ [ 48%]
+...................................ssssss..........ss.......sss......... [ 51%]
+........................................................................ [ 53%]
+.....ssss............................................................... [ 55%]
+..........................................F........F.................... [ 58%]
+........................................................................ [ 60%]
+.................................s.s.......s.....ss.................s... [ 62%]
+....................ss...................................Test queue: /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1547/test_queue_records_failure_and0/queue
+==> fails [candidate] test:fails
+==> continues [control] test:continues
+Invalid completion evidence: runs[0].roles.job.result must be an object with path and sha256
+Invalid completion evidence: runs[1].roles.job.result must be an object with path and sha256
+complete
+Queue completed with 2 failed job(s).
+............... [ 65%]
+........................................................................ [ 67%]
+........................................................................ [ 69%]
+........................................................................ [ 72%]
+................................................s..............s........ [ 74%]
+...............................................................ss....... [ 76%]
+......................................................................s. [ 78%]
+........................................................................ [ 81%]
+........................................................................ [ 83%]
+....s..............................................................ss... [ 85%]
+......................s.....ssssssssssssss.............................. [ 88%]
+........................................................................ [ 90%]
+........................................s............................... [ 92%]
+................ssssss..................s............................... [ 95%]
+........................................................................ [ 97%]
+......................................ssssssssssssss.................... [ 99%]
+....                                                                     [100%]
+=================================== FAILURES ===================================
+____________ test_tool_call_returns_json_envelope[system_container] ____________
+
+server = <mcp.mcp_server.MCPServer object at 0x346f525d0>
+case = ToolCase(name='system_container', params={}, category='system', slow=False, timeout=60)
+
+    @pytest.mark.parametrize("case", FAST_TOOL_CASES, ids=_case_ids(FAST_TOOL_CASES))
+    def test_tool_call_returns_json_envelope(server: mcp_server.MCPServer, case: ToolCase):
+>       result = _call_without_tracked_writes(server, case)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_mcp_tools.py:835: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+server = <mcp.mcp_server.MCPServer object at 0x346f525d0>
+case = ToolCase(name='system_container', params={}, category='system', slow=False, timeout=60)
+
+    def _call_without_tracked_writes(
+        server: mcp_server.MCPServer,
+        case: ToolCase,
+    ) -> mcp_server.ToolResult:
+        before = _tracked_worktree_state()
+        try:
+            return _call_with_timeout(server, case)
+        finally:
+            after = _tracked_worktree_state()
+            if before is not None:
+>               assert after == before, f"{case.name} modified tracked repository files"
+E               AssertionError: system_container modified tracked repository files
+E               assert (b'b57e4c6a9e...) -> None:\n') == (b'b57e4c6a9e...) -> None:\n')
+E                 
+E                 At index 1 diff: b'diff --git a/.github/workflows/benchmark-validation.yml b/.github/workflows/benchmark-validation.yml\nindex 8ad21d6b1..23309a881 100644\n--- a/.github/workflows/benchmark-validation.yml\n+++ b/.github/workflows/benchmark-validation.yml\n@@ -76,6 +76,7 @@ jobs:\n           python -m pip install --upgrade pip\n           python -m pip install \\\n             pytest==8.3.4 \\\n+            pytest-timeout==2.4.0 \\\n             pytest-cov==7.1.0 \\\n             coverage[toml]==7.15.2 \\\n             pyyaml==6.0.2 \\\n@@ -87,8 +88,12 @@ jobs:\n        ...
+E                 
+E                 ...Full output truncated (2 lines hidden), use '-vv' to show
+
+tests/test_mcp_tools.py:655: AssertionError
+___________ test_tool_call_returns_json_envelope[benchmark_targets] ____________
+
+server = <mcp.mcp_server.MCPServer object at 0x3575264b0>
+case = ToolCase(name='benchmark_targets', params={}, category='benchmarking', slow=False, timeout=60)
+
+    @pytest.mark.parametrize("case", FAST_TOOL_CASES, ids=_case_ids(FAST_TOOL_CASES))
+    def test_tool_call_returns_json_envelope(server: mcp_server.MCPServer, case: ToolCase):
+>       result = _call_without_tracked_writes(server, case)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_mcp_tools.py:835: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+server = <mcp.mcp_server.MCPServer object at 0x3575264b0>
+case = ToolCase(name='benchmark_targets', params={}, category='benchmarking', slow=False, timeout=60)
+
+    def _call_without_tracked_writes(
+        server: mcp_server.MCPServer,
+        case: ToolCase,
+    ) -> mcp_server.ToolResult:
+        before = _tracked_worktree_state()
+        try:
+            return _call_with_timeout(server, case)
+        finally:
+            after = _tracked_worktree_state()
+            if before is not None:
+>               assert after == before, f"{case.name} modified tracked repository files"
+E               AssertionError: benchmark_targets modified tracked repository files
+E               assert (b'b57e4c6a9e...) -> None:\n') == (b'b57e4c6a9e...) -> None:\n')
+E                 
+E                 At index 1 diff: b'diff --git a/.github/workflows/benchmark-validation.yml b/.github/workflows/benchmark-validation.yml\nindex 8ad21d6b1..8673555b1 100644\n--- a/.github/workflows/benchmark-validation.yml\n+++ b/.github/workflows/benchmark-validation.yml\n@@ -87,8 +87,12 @@ jobs:\n             numpy==2.1.2 \\\n             fastapi==0.121.3 \\\n             uvicorn==0.38.0 \\\n-            httpx==0.28.1\n-          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu\n+            httpx==0.28.1 \\\n+            hypothesis==6.148.2 \\\n+           ...
+E                 
+E                 ...Full output truncated (2 lines hidden), use '-vv' to show
+
+tests/test_mcp_tools.py:655: AssertionError
+=============================== warnings summary ===============================
+../../../../../../opt/miniconda3/lib/python3.12/site-packages/reportlab/lib/rl_safe_eval.py:12
+  /opt/miniconda3/lib/python3.12/site-packages/reportlab/lib/rl_safe_eval.py:12: DeprecationWarning: ast.NameConstant is deprecated and will be removed in Python 3.14; use ast.Constant instead
+    haveNameConstant = hasattr(ast,'NameConstant')
+
+ch15/placement_sim.py:35
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/ch15/placement_sim.py:35: RuntimeWarning: [ch15] placement_sim expects torch>=2.10 with CUDA 13 for Blackwell (B200/B300, GB200/GB300); falling back to compatibility mode.
+    warnings.warn(
+
+tests/test_anti_cheat_protections.py: 5 warnings
+tests/test_audit_wave1_harness.py: 5 warnings
+tests/test_benchmark_story_metadata.py: 1 warning
+tests/test_protection_effectiveness.py: 1 warning
+tests/test_seed_config_immutability.py: 2 warnings
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/harness/benchmark_harness.py:4856: RuntimeWarning: ENVIRONMENT INVALID: Non-Linux platform 'darwin' is not supported for benchmark validity checks.
+    warn_module.warn(message, RuntimeWarning)
+
+tests/test_anti_cheat_protections.py::TestTimingProtections::test_clock_drift_monotonic
+tests/test_anti_cheat_protections.py::TestWorkloadProtections::test_early_exit_config_immutability
+tests/test_anti_cheat_protections.py::TestEvaluationProtections::test_timeout_manipulation_immutability
+tests/test_anti_cheat_protections.py::TestEvaluationProtectionsExtended::test_self_modifying_tests_prevention
+tests/test_protection_effectiveness.py::TestMissingEdgeCases::test_cuda_oom_recovery
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/harness/benchmark_harness.py:4904: RuntimeWarning: BENCHMARK_FN ANTI-PATTERN WARNING: benchmark_fn() contains hot-path work that will distort timings or hide the real kernel cost.
+  - benchmark_fn() allocates tensors via torch.ones_like() (line 65); preallocate reusable buffers in setup() unless allocation cost is the benchmarked behavior
+    warn_module.warn(message, RuntimeWarning)
+
+tests/test_environment_validation_enforcement.py::test_environment_virtualization_strict_is_warning_only
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/harness/benchmark_harness.py:4846: RuntimeWarning: ENVIRONMENT WARNING: Cgroup mount (/sys/fs/cgroup) not found; cannot validate cgroup resource limits.
+    warn_module.warn(f"ENVIRONMENT WARNING: {warning}", RuntimeWarning)
+
+tests/test_fail_fast_helper_narrowing.py::test_benchmark_harness_warns_when_mark_execution_complete_fails_on_cpu
+tests/test_fail_fast_helper_narrowing.py::test_benchmark_harness_warns_once_when_force_tensor_evaluation_fails_on_cpu
+tests/test_target_override_resolution.py::test_harness_applies_target_overrides_before_get_config
+  <string>:94: UserWarning: Warmup iterations (0) for BenchmarkConfig is below minimum (5). This may include JIT/compile overhead in measurements, causing inaccurate results. Automatically raising to 5. If you intentionally need warmup=0, add internal warmup in setup() instead.
+
+tests/test_training_speed_common.py::test_training_speed_model_output_shape_cpu
+tests/test_training_speed_common.py::test_training_speed_model_reuses_position_id_buffer_cpu
+  /opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/transformer.py:392: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_mcp_tools.py::test_tool_call_returns_json_envelope[system_container]
+FAILED tests/test_mcp_tools.py::test_tool_call_returns_json_envelope[benchmark_targets]
+2 failed, 2662 passed, 436 skipped, 27 warnings in 334.25s (0:05:34)

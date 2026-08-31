@@ -1,0 +1,17 @@
+{
+  "case": "demos-registry",
+  "argv": [
+    "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+    "-m",
+    "cli.aisp",
+    "demos",
+    "list"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "exit_code": 0,
+  "expected_exit": 0,
+  "expected_text": "ch11-stream-overlap",
+  "status": "PASS",
+  "elapsed_seconds": 2.5492934579961,
+  "output": "cli-demos-registry.txt"
+}

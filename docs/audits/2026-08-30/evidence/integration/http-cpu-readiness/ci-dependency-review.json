@@ -1,0 +1,29 @@
+{
+  "scope": "Read-only fresh explicit CPU CI dependency completeness review; no installation or isolated-environment execution",
+  "method": "AST of ordinary code/tests imports plus conservatively reachable first-party from/relative/alias imports (1032files); manually checked direct unguarded imports and actual ordinary-test call paths, optional guards, code/conftest.py and code/pytest.ini.",
+  "concrete_finding": {
+    "distribution": "tokenizers",
+    "chain": [
+      "code/tests/test_audit_wave1_nanochat_regressions.py:8 imports nanochat.engine",
+      "code/labs/nanochat_fullstack/nanochat/engine.py:24 imports checkpoint_manager",
+      "code/labs/nanochat_fullstack/nanochat/checkpoint_manager.py:13 imports nanochat.tokenizer",
+      "code/labs/nanochat_fullstack/nanochat/tokenizer.py:35-38 unconditionally imports tokenizers"
+    ],
+    "impact": "Ordinary collection cannot import Nanochat without tokenizers.",
+    "owner_action": "Reported to agentA androot before changes. A added tokenizers==0.22.2; readback confirmed. Linux resolution/installation execution belongs toA/root."
+  },
+  "workflow_readback": {
+    "path": ".github/workflows/benchmark-validation.yml",
+    "sha256": "de1b183aca6019c35fe293a9d7f3db66db52492dd4d2e1092cc72e7bd31fa71b",
+    "tokenizers_pin_present": true
+  },
+  "not_collection_failures": [
+    "Prometheus strict_parse requires external promtool; four family cases additionally require prometheus_client.parser. Five ordinary CPU wire/parser cases explicitly skip withoutpromtool. No parser substitution or optional dependency installation made.",
+    "pynvml direct test imports are guarded by realCUDA availability; not a CPU install requirement.",
+    "reportlab/weasyprint imports are guarded; ordinary report test generatesHTML.",
+    "regex import only enters optional RustBPE fallback training; root Nanochat regression does not invoke tokenizer training.",
+    "Triton is already explicitly pinned in updated workflow; optionalCUDA/TE/FlashAttention paths remain separated."
+  ],
+  "pytest_configuration": "code/conftest.py supplies built-in timeout handling; pytest.ini uses --capture=sys. No direct pytest-timeout or pytest-asyncio requirement found; no async def test functions found. Conftest sets PYTEST_DISABLE_PLUGIN_AUTOLOAD via setdefault; this review does not establish process-start plugin loading behavior.",
+  "limit": "No other concrete direct missing CPU import found in bounded static review. This is not proof of complete runtime dependency closure or Linux suite success."
+}

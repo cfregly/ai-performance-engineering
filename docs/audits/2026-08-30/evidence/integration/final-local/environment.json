@@ -1,0 +1,32 @@
+{
+  "captured_at": "2026-08-30T23:56:25.386596+00:00",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "machine": "arm64",
+  "python": "3.12.2",
+  "python_executable": "/opt/miniconda3/bin/python",
+  "torch": "2.8.0",
+  "torch_cuda_build": null,
+  "cuda_available": false,
+  "nvcc": null,
+  "nvidia_smi": null,
+  "packages": {
+    "pytest": "8.4.2",
+    "numpy": "1.26.4",
+    "pydantic": "2.12.5",
+    "typer": "0.15.4",
+    "click": "8.1.8",
+    "fastapi": "0.138.1",
+    "httpx": "0.28.1",
+    "hypothesis": "6.140.3",
+    "anthropic": "0.109.2",
+    "openai": "2.44.0",
+    "triton": null,
+    "psutil": "7.0.0",
+    "pynvml": "11.5.0"
+  },
+  "not_pinned_target_stack": true,
+  "runtime_exclusions": "Actual capability skips only; no CLI file exclusions. Linux/proc cleanup and CUDA/Triton/NCCL cases remain unavailable here.",
+  "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests -q -ra -p no:cacheprovider -o timeout=120 --junitxml=../docs/audits/2026-08-30/evidence/integration/final-local/full-cpu-attempt-1.xml",
+  "working_directory": "code",
+  "real_process_started": true
+}

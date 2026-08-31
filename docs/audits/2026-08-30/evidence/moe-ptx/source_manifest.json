@@ -1,0 +1,17 @@
+[
+  {
+    "path": "code/labs/moe_cuda_ptx/moe_cuda_ptx_common.py",
+    "sha256": "1f740b3924182657f0ce020691dbe7e37320d9888389732ba70b6e2f5ebb1532",
+    "reviewed_base_sha256": "7d6a4609eeb721ae5e9983c8ed080c57b9a0677b0a54338606bcfb02d238cfac"
+  },
+  {
+    "path": "code/tests/test_audit_wave1_moe_ptx.py",
+    "sha256": "4fe0772063f62766afe294d94e83d002ee30e9e3ec914e7294a9ac7f115d1b13",
+    "reviewed_base_sha256": null
+  },
+  {
+    "path": "code/labs/moe_cuda_ptx/README.md",
+    "sha256": "5912d11c9286d006a0a331655560b63ca9dcbd37105ae7a1035d4f466da92fd3",
+    "reviewed_base_sha256": "f9923b3aca10810dbd95bdf757512fabad33df87886dfaad4f87627267322489"
+  }
+]

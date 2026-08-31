@@ -1,0 +1,893 @@
+FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF [ 45%]
+FFFFFFFFFFF..FFFFFFFFFFFFFFFFFFFFFFFFFFF................FFFF............ [ 90%]
+................                                                         [100%]
+=================================== FAILURES ===================================
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch01-b200] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch01-b300] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b300'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch01-gb300] __
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb300'], returncode=2, st... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch01-gb10] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb10'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch02-b200] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch02-b300] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b300'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch02-gb300] __
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb300'], returncode=2, st... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch02-gb10] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb10'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch03-b200] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch03-b300] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b300'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch03-gb300] __
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb300'], returncode=2, st... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch03-gb10] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb10'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch04-b200] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch04-b300] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b300'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch04-gb300] __
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb300'], returncode=2, st... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch04-gb10] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb10'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch05-b200] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch05-b300] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b300'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch05-gb300] __
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb300'], returncode=2, st... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch05-gb10] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb10'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch06-b200] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch06-b300] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b300'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch06-gb300] __
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb300'], returncode=2, st... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch06-gb10] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb10'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch07-b200] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch07-b300] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b300'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch07-gb300] __
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb300'], returncode=2, st... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch07-gb10] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb10'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch08-b200] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch08-b300] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b300'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch08-gb300] __
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb300'], returncode=2, st... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch08-gb10] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb10'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch09-b200] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch09-b300] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b300'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch09-gb300] __
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb300'], returncode=2, st... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch09-gb10] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb10'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch10-b200] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch10-b300] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b300'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch10-gb300] __
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb300'], returncode=2, st... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch10-gb10] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb10'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch11-b200] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch11-b300] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b300'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch11-gb300] __
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb300'], returncode=2, st... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch11-gb10] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb10'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch12-b200] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch12-b300] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b300'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch12-gb300] __
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb300'], returncode=2, st... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch12-gb10] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb10'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch13-b200] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch13-b300] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b300'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch13-gb300] __
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb300'], returncode=2, st... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch13-gb10] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb10'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch14-b200] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch14-b300] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b300'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch14-gb300] __
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb300'], returncode=2, st... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch14-gb10] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb10'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch15-b200] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch15-b300] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b300'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch15-gb300] __
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb300'], returncode=2, st... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch15-gb10] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb10'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch16-b200] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch16-b300] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b300'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch16-gb300] __
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb300'], returncode=2, st... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch16-gb10] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb10'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch17-b200] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch17-b300] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b300'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch17-gb300] __
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb300'], returncode=2, st... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch17-gb10] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb10'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch18-b200] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch18-b300] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b300'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch18-gb300] __
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb300'], returncode=2, st... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch18-gb10] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb10'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch19-b200] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch19-b300] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b300'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch19-gb300] __
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb300'], returncode=2, st... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch19-gb10] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb10'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch20-b200] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch20-b300] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b300'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch20-gb300] __
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb300'], returncode=2, st... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+__ test_hardware_alias_selects_architecture_without_a_visible_gpu[ch20-gb10] ___
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'gb10'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+_ test_hardware_alias_selects_architecture_without_a_visible_gpu[labs/nvfp4_gemm-b200] _
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+_ test_hardware_alias_selects_architecture_without_a_visible_gpu[labs/ozaki_scheme-b200] _
+tests/test_build_entrypoints.py:35: in test_hardware_alias_selects_architecture_without_a_visible_gpu
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: ../../core/common/cuda_arch.mk:49: *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'b200'], returncode=2, std... *** [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly..  Stop.\n').returncode
+____________ test_alias_overrides_a_conflicting_parent_architecture ____________
+tests/test_build_entrypoints.py:46: in test_alias_overrides_a_conflicting_parent_architecture
+    assert "compute_103a" in result.stdout
+E   assert 'compute_103a' in 'rm -f *_sm100 *_sm103 *_sm120 *_sm121 *_sm122 *_sm123 *.o *.so *.a\nrm -f nsys_* ncu_* hta_* perf_* comprehensive_*\n... examples with sm_100 (CUDA 13.0)"\necho "✓ Targeting Blackwell B200/B300 (CC 10.0)"\necho "✓ Built 3 CUDA examples"\n'
+E    +  where 'rm -f *_sm100 *_sm103 *_sm120 *_sm121 *_sm122 *_sm123 *.o *.so *.a\nrm -f nsys_* ncu_* hta_* perf_* comprehensive_*\n... examples with sm_100 (CUDA 13.0)"\necho "✓ Targeting Blackwell B200/B300 (CC 10.0)"\necho "✓ Built 3 CUDA examples"\n' = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'ARCH=sm_100', 'b300'], re...th sm_100 (CUDA 13.0)"\necho "✓ Targeting Blackwell B200/B300 (CC 10.0)"\necho "✓ Built 3 CUDA examples"\n', stderr='').stdout
+_______ test_custom_cublas_make_uses_the_requested_architecture[sm_103] ________
+tests/test_build_entrypoints.py:60: in test_custom_cublas_make_uses_the_requested_architecture
+    assert GENCODE[architecture] in result.stdout
+E   AssertionError: assert 'compute_103a' in 'nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC -lineinfo -shared -o kernels.so kernels.cu\n'
+E    +  where 'nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC -lineinfo -shared -o kernels.so kernels.cu\n' = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'ARCH=sm_103', 'all'], ret..._100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC -lineinfo -shared -o kernels.so kernels.cu\n', stderr='').stdout
+_______ test_custom_cublas_make_uses_the_requested_architecture[sm_120] ________
+tests/test_build_entrypoints.py:60: in test_custom_cublas_make_uses_the_requested_architecture
+    assert GENCODE[architecture] in result.stdout
+E   AssertionError: assert 'compute_120' in 'nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC -lineinfo -shared -o kernels.so kernels.cu\n'
+E    +  where 'nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC -lineinfo -shared -o kernels.so kernels.cu\n' = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'ARCH=sm_120', 'all'], ret..._100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC -lineinfo -shared -o kernels.so kernels.cu\n', stderr='').stdout
+_______ test_custom_cublas_make_uses_the_requested_architecture[sm_121] ________
+tests/test_build_entrypoints.py:60: in test_custom_cublas_make_uses_the_requested_architecture
+    assert GENCODE[architecture] in result.stdout
+E   AssertionError: assert 'compute_121' in 'nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC -lineinfo -shared -o kernels.so kernels.cu\n'
+E    +  where 'nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC -lineinfo -shared -o kernels.so kernels.cu\n' = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'ARCH=sm_121', 'all'], ret..._100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC -lineinfo -shared -o kernels.so kernels.cu\n', stderr='').stdout
+_________ test_custom_cublas_rejects_unsupported_make_targets[sm_120a] _________
+tests/test_build_entrypoints.py:69: in test_custom_cublas_rejects_unsupported_make_targets
+    assert result.returncode != 0
+E   AssertionError: assert 0 != 0
+E    +  where 0 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'ARCH=sm_120a', 'all'], re..._100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC -lineinfo -shared -o kernels.so kernels.cu\n', stderr='').returncode
+_________ test_custom_cublas_rejects_unsupported_make_targets[sm_122] __________
+tests/test_build_entrypoints.py:69: in test_custom_cublas_rejects_unsupported_make_targets
+    assert result.returncode != 0
+E   AssertionError: assert 0 != 0
+E    +  where 0 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'ARCH=sm_122', 'all'], ret..._100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC -lineinfo -shared -o kernels.so kernels.cu\n', stderr='').returncode
+_________ test_custom_cublas_rejects_unsupported_make_targets[native] __________
+tests/test_build_entrypoints.py:69: in test_custom_cublas_rejects_unsupported_make_targets
+    assert result.returncode != 0
+E   AssertionError: assert 0 != 0
+E    +  where 0 = CompletedProcess(args=['make', '--no-print-directory', '-B', '-n', 'PYTHON=/usr/bin/false', 'ARCH=native', 'all'], ret..._100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC -lineinfo -shared -o kernels.so kernels.cu\n', stderr='').returncode
+_ test_reported_architecture_metadata_keeps_the_actual_compute_capability[10-0-B200/GB200] _
+tests/test_build_entrypoints.py:83: in test_reported_architecture_metadata_keeps_the_actual_compute_capability
+    assert name in metadata["label"]
+E   AssertionError: assert 'B200/GB200' in 'Blackwell B200'
+_ test_reported_architecture_metadata_keeps_the_actual_compute_capability[10-3-B300/GB300] _
+tests/test_build_entrypoints.py:83: in test_reported_architecture_metadata_keeps_the_actual_compute_capability
+    assert name in metadata["label"]
+E   AssertionError: assert 'B300/GB300' in 'Blackwell Ultra B300'
+_ test_reported_architecture_metadata_keeps_the_actual_compute_capability[12-0-RTX] _
+tests/test_build_entrypoints.py:82: in test_reported_architecture_metadata_keeps_the_actual_compute_capability
+    assert metadata["compute_capability"] == f"{major}.{minor}"
+E   AssertionError: assert '12.1' == '12.0'
+E     
+E     - 12.0
+E     ?    ^
+E     + 12.1
+E     ?    ^
+_ test_reported_architecture_metadata_keeps_the_actual_compute_capability[12-1-GB10] _
+tests/test_build_entrypoints.py:83: in test_reported_architecture_metadata_keeps_the_actual_compute_capability
+    assert name in metadata["label"]
+E   AssertionError: assert 'GB10' in 'Grace-Blackwell GB200/GB300'
+_____ test_tma_build_helper_dry_run_uses_existing_suffixed_targets[sm_100] _____
+tests/test_build_entrypoints.py:94: in test_tma_build_helper_dry_run_uses_existing_suffixed_targets
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: Unknown option: --dry-run
+E     
+E   assert 1 == 0
+E    +  where 1 = CompletedProcess(args=['bash', '/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/scripts/build_tma_demos.sh', '--arch', 'sm_100', '--dry-run'], returncode=1, stdout='', stderr='Unknown option: --dry-run\n').returncode
+_____ test_tma_build_helper_dry_run_uses_existing_suffixed_targets[sm_103] _____
+tests/test_build_entrypoints.py:94: in test_tma_build_helper_dry_run_uses_existing_suffixed_targets
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: Unknown option: --dry-run
+E     
+E   assert 1 == 0
+E    +  where 1 = CompletedProcess(args=['bash', '/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/scripts/build_tma_demos.sh', '--arch', 'sm_103', '--dry-run'], returncode=1, stdout='', stderr='Unknown option: --dry-run\n').returncode
+_____ test_tma_build_helper_dry_run_uses_existing_suffixed_targets[sm_120] _____
+tests/test_build_entrypoints.py:94: in test_tma_build_helper_dry_run_uses_existing_suffixed_targets
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: Unknown option: --dry-run
+E     
+E   assert 1 == 0
+E    +  where 1 = CompletedProcess(args=['bash', '/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/scripts/build_tma_demos.sh', '--arch', 'sm_120', '--dry-run'], returncode=1, stdout='', stderr='Unknown option: --dry-run\n').returncode
+_____ test_tma_build_helper_dry_run_uses_existing_suffixed_targets[sm_121] _____
+tests/test_build_entrypoints.py:94: in test_tma_build_helper_dry_run_uses_existing_suffixed_targets
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: Unknown option: --dry-run
+E     
+E   assert 1 == 0
+E    +  where 1 = CompletedProcess(args=['bash', '/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/scripts/build_tma_demos.sh', '--arch', 'sm_121', '--dry-run'], returncode=1, stdout='', stderr='Unknown option: --dry-run\n').returncode
+___________ test_warp_ci_wrapper_reaches_real_help_from_outside_code ___________
+tests/test_build_entrypoints.py:108: in test_warp_ci_wrapper_reaches_real_help_from_outside_code
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: /opt/miniconda3/bin/python: can't open file '/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/tests/test_warp_specialization.py': [Errno 2] No such file or directory
+E     
+E   assert 2 == 0
+E    +  where 2 = CompletedProcess(args=['bash', '/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/scripts/run_warp_special...i-perf/ai-performance-engineering/code/core/tests/test_warp_specialization.py': [Errno 2] No such file or directory\n").returncode
+______ test_cmake_architecture_policy_preserves_supported_override[100a] _______
+tests/test_build_entrypoints.py:133: in test_cmake_architecture_policy_preserves_supported_override
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: CMake Error at /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1556/test_cmake_architecture_policy0/policy.cmake:1 (include):
+E       include could not find requested file:
+E     
+E         /Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake
+E     
+E     
+E     
+E   assert 1 == 0
+E    +  where 1 = CompletedProcess(args=['/opt/homebrew/bin/cmake', '-DCMAKE_CUDA_ARCHITECTURES=100a', '-P', '/private/var/folders/tn/kp...admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n').returncode
+______ test_cmake_architecture_policy_preserves_supported_override[103a] _______
+tests/test_build_entrypoints.py:133: in test_cmake_architecture_policy_preserves_supported_override
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: CMake Error at /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1556/test_cmake_architecture_policy1/policy.cmake:1 (include):
+E       include could not find requested file:
+E     
+E         /Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake
+E     
+E     
+E     
+E   assert 1 == 0
+E    +  where 1 = CompletedProcess(args=['/opt/homebrew/bin/cmake', '-DCMAKE_CUDA_ARCHITECTURES=103a', '-P', '/private/var/folders/tn/kp...admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n').returncode
+____ test_cmake_architecture_policy_preserves_supported_override[100a;103a] ____
+tests/test_build_entrypoints.py:133: in test_cmake_architecture_policy_preserves_supported_override
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: CMake Error at /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1556/test_cmake_architecture_policy2/policy.cmake:1 (include):
+E       include could not find requested file:
+E     
+E         /Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake
+E     
+E     
+E     
+E   assert 1 == 0
+E    +  where 1 = CompletedProcess(args=['/opt/homebrew/bin/cmake', '-DCMAKE_CUDA_ARCHITECTURES=100a;103a', '-P', '/private/var/folders/...admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n').returncode
+_______________ test_cmake_rejects_non_tcgen_architectures[100] ________________
+tests/test_build_entrypoints.py:141: in test_cmake_rejects_non_tcgen_architectures
+    assert "requires 100a and/or 103a" in result.stderr
+E   AssertionError: assert 'requires 100a and/or 103a' in 'CMake Error at /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1556/test_cmake_reject.../admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n'
+E    +  where 'CMake Error at /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1556/test_cmake_reject.../admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n' = CompletedProcess(args=['/opt/homebrew/bin/cmake', '-DCMAKE_CUDA_ARCHITECTURES=100', '-P', '/private/var/folders/tn/kpt...admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n').stderr
+_______________ test_cmake_rejects_non_tcgen_architectures[103] ________________
+tests/test_build_entrypoints.py:141: in test_cmake_rejects_non_tcgen_architectures
+    assert "requires 100a and/or 103a" in result.stderr
+E   AssertionError: assert 'requires 100a and/or 103a' in 'CMake Error at /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1556/test_cmake_reject.../admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n'
+E    +  where 'CMake Error at /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1556/test_cmake_reject.../admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n' = CompletedProcess(args=['/opt/homebrew/bin/cmake', '-DCMAKE_CUDA_ARCHITECTURES=103', '-P', '/private/var/folders/tn/kpt...admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n').stderr
+_______________ test_cmake_rejects_non_tcgen_architectures[120] ________________
+tests/test_build_entrypoints.py:141: in test_cmake_rejects_non_tcgen_architectures
+    assert "requires 100a and/or 103a" in result.stderr
+E   AssertionError: assert 'requires 100a and/or 103a' in 'CMake Error at /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1556/test_cmake_reject.../admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n'
+E    +  where 'CMake Error at /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1556/test_cmake_reject.../admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n' = CompletedProcess(args=['/opt/homebrew/bin/cmake', '-DCMAKE_CUDA_ARCHITECTURES=120', '-P', '/private/var/folders/tn/kpt...admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n').stderr
+_______________ test_cmake_rejects_non_tcgen_architectures[120a] _______________
+tests/test_build_entrypoints.py:141: in test_cmake_rejects_non_tcgen_architectures
+    assert "requires 100a and/or 103a" in result.stderr
+E   AssertionError: assert 'requires 100a and/or 103a' in 'CMake Error at /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1556/test_cmake_reject.../admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n'
+E    +  where 'CMake Error at /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1556/test_cmake_reject.../admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n' = CompletedProcess(args=['/opt/homebrew/bin/cmake', '-DCMAKE_CUDA_ARCHITECTURES=120a', '-P', '/private/var/folders/tn/kp...admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n').stderr
+______________ test_cmake_rejects_non_tcgen_architectures[native] ______________
+tests/test_build_entrypoints.py:141: in test_cmake_rejects_non_tcgen_architectures
+    assert "requires 100a and/or 103a" in result.stderr
+E   AssertionError: assert 'requires 100a and/or 103a' in 'CMake Error at /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1556/test_cmake_reject.../admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n'
+E    +  where 'CMake Error at /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1556/test_cmake_reject.../admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n' = CompletedProcess(args=['/opt/homebrew/bin/cmake', '-DCMAKE_CUDA_ARCHITECTURES=native', '-P', '/private/var/folders/tn/...admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n').stderr
+_______________ test_cmake_rejects_non_tcgen_architectures[OFF] ________________
+tests/test_build_entrypoints.py:141: in test_cmake_rejects_non_tcgen_architectures
+    assert "requires 100a and/or 103a" in result.stderr
+E   AssertionError: assert 'requires 100a and/or 103a' in 'CMake Error at /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1556/test_cmake_reject.../admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n'
+E    +  where 'CMake Error at /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1556/test_cmake_reject.../admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n' = CompletedProcess(args=['/opt/homebrew/bin/cmake', '-DCMAKE_CUDA_ARCHITECTURES=OFF', '-P', '/private/var/folders/tn/kpt...admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n').stderr
+_________________ test_cmake_rejects_non_tcgen_architectures[] _________________
+tests/test_build_entrypoints.py:141: in test_cmake_rejects_non_tcgen_architectures
+    assert "requires 100a and/or 103a" in result.stderr
+E   AssertionError: assert 'requires 100a and/or 103a' in 'CMake Error at /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1556/test_cmake_reject.../admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n'
+E    +  where 'CMake Error at /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1556/test_cmake_reject.../admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n' = CompletedProcess(args=['/opt/homebrew/bin/cmake', '-DCMAKE_CUDA_ARCHITECTURES=', '-P', '/private/var/folders/tn/kptc2m...admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n').stderr
+_____________ test_cmake_reads_abi_from_the_actual_selected_torch ______________
+tests/test_build_entrypoints.py:147: in test_cmake_reads_abi_from_the_actual_selected_torch
+    assert result.returncode == 0, result.stdout + result.stderr
+E   AssertionError: CMake Error at /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1556/test_cmake_reads_abi_from_the_0/policy.cmake:1 (include):
+E       include could not find requested file:
+E     
+E         /Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake
+E     
+E     
+E     
+E   assert 1 == 0
+E    +  where 1 = CompletedProcess(args=['/opt/homebrew/bin/cmake', '-DPROBE_PYTHON=/opt/miniconda3/bin/python', '-P', '/private/var/fol...admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n').returncode
+________________ test_cmake_rejects_failed_torch_metadata_query ________________
+tests/test_build_entrypoints.py:155: in test_cmake_rejects_failed_torch_metadata_query
+    assert "Unable to query the selected Python's torch" in result.stderr
+E   assert "Unable to query the selected Python's torch" in 'CMake Error at /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1556/test_cmake_reject.../admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n'
+E    +  where 'CMake Error at /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1556/test_cmake_reject.../admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n' = CompletedProcess(args=['/opt/homebrew/bin/cmake', '-DPROBE_PYTHON=/usr/bin/false', '-P', '/private/var/folders/tn/kptc...admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake\n\n\n').stderr
+________ test_compare_stops_after_a_nonfinal_architecture_failure[ch16] ________
+tests/test_dual_arch_make_contract.py:163: in test_compare_stops_after_a_nonfinal_architecture_failure
+    assert result.returncode != 0
+E   assert 0 != 0
+E    +  where 0 = CompletedProcess(args=['make', '--no-print-directory', '-f', 'Makefile', '-f', '/private/var/folders/tn/kptc2mn55wlclh...:2: warning: overriding commands for target `clean'\nMakefile:61: warning: ignoring old commands for target `clean'\n").returncode
+________ test_compare_stops_after_a_nonfinal_architecture_failure[ch18] ________
+tests/test_dual_arch_make_contract.py:163: in test_compare_stops_after_a_nonfinal_architecture_failure
+    assert result.returncode != 0
+E   assert 0 != 0
+E    +  where 0 = CompletedProcess(args=['make', '--no-print-directory', '-f', 'Makefile', '-f', '/private/var/folders/tn/kptc2mn55wlclh...:2: warning: overriding commands for target `clean'\nMakefile:58: warning: ignoring old commands for target `clean'\n").returncode
+________ test_compare_stops_after_a_nonfinal_architecture_failure[ch19] ________
+tests/test_dual_arch_make_contract.py:163: in test_compare_stops_after_a_nonfinal_architecture_failure
+    assert result.returncode != 0
+E   assert 0 != 0
+E    +  where 0 = CompletedProcess(args=['make', '--no-print-directory', '-f', 'Makefile', '-f', '/private/var/folders/tn/kptc2mn55wlclh...:2: warning: overriding commands for target `clean'\nMakefile:70: warning: ignoring old commands for target `clean'\n").returncode
+________ test_compare_stops_after_a_nonfinal_architecture_failure[ch20] ________
+tests/test_dual_arch_make_contract.py:163: in test_compare_stops_after_a_nonfinal_architecture_failure
+    assert result.returncode != 0
+E   assert 0 != 0
+E    +  where 0 = CompletedProcess(args=['make', '--no-print-directory', '-f', 'Makefile', '-f', '/private/var/folders/tn/kptc2mn55wlclh...:2: warning: overriding commands for target `clean'\nMakefile:61: warning: ignoring old commands for target `clean'\n").returncode
+=========================== short test summary info ============================
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch01-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch01-b300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch01-gb300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch01-gb10]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch02-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch02-b300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch02-gb300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch02-gb10]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch03-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch03-b300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch03-gb300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch03-gb10]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch04-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch04-b300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch04-gb300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch04-gb10]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch05-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch05-b300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch05-gb300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch05-gb10]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch06-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch06-b300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch06-gb300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch06-gb10]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch07-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch07-b300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch07-gb300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch07-gb10]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch08-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch08-b300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch08-gb300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch08-gb10]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch09-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch09-b300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch09-gb300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch09-gb10]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch10-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch10-b300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch10-gb300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch10-gb10]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch11-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch11-b300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch11-gb300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch11-gb10]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch12-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch12-b300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch12-gb300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch12-gb10]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch13-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch13-b300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch13-gb300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch13-gb10]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch14-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch14-b300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch14-gb300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch14-gb10]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch15-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch15-b300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch15-gb300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch15-gb10]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch16-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch16-b300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch16-gb300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch16-gb10]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch17-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch17-b300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch17-gb300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch17-gb10]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch18-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch18-b300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch18-gb300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch18-gb10]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch19-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch19-b300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch19-gb300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch19-gb10]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch20-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch20-b300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch20-gb300]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[ch20-gb10]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[labs/nvfp4_gemm-b200]
+FAILED tests/test_build_entrypoints.py::test_hardware_alias_selects_architecture_without_a_visible_gpu[labs/ozaki_scheme-b200]
+FAILED tests/test_build_entrypoints.py::test_alias_overrides_a_conflicting_parent_architecture
+FAILED tests/test_build_entrypoints.py::test_custom_cublas_make_uses_the_requested_architecture[sm_103]
+FAILED tests/test_build_entrypoints.py::test_custom_cublas_make_uses_the_requested_architecture[sm_120]
+FAILED tests/test_build_entrypoints.py::test_custom_cublas_make_uses_the_requested_architecture[sm_121]
+FAILED tests/test_build_entrypoints.py::test_custom_cublas_rejects_unsupported_make_targets[sm_120a]
+FAILED tests/test_build_entrypoints.py::test_custom_cublas_rejects_unsupported_make_targets[sm_122]
+FAILED tests/test_build_entrypoints.py::test_custom_cublas_rejects_unsupported_make_targets[native]
+FAILED tests/test_build_entrypoints.py::test_reported_architecture_metadata_keeps_the_actual_compute_capability[10-0-B200/GB200]
+FAILED tests/test_build_entrypoints.py::test_reported_architecture_metadata_keeps_the_actual_compute_capability[10-3-B300/GB300]
+FAILED tests/test_build_entrypoints.py::test_reported_architecture_metadata_keeps_the_actual_compute_capability[12-0-RTX]
+FAILED tests/test_build_entrypoints.py::test_reported_architecture_metadata_keeps_the_actual_compute_capability[12-1-GB10]
+FAILED tests/test_build_entrypoints.py::test_tma_build_helper_dry_run_uses_existing_suffixed_targets[sm_100]
+FAILED tests/test_build_entrypoints.py::test_tma_build_helper_dry_run_uses_existing_suffixed_targets[sm_103]
+FAILED tests/test_build_entrypoints.py::test_tma_build_helper_dry_run_uses_existing_suffixed_targets[sm_120]
+FAILED tests/test_build_entrypoints.py::test_tma_build_helper_dry_run_uses_existing_suffixed_targets[sm_121]
+FAILED tests/test_build_entrypoints.py::test_warp_ci_wrapper_reaches_real_help_from_outside_code
+FAILED tests/test_build_entrypoints.py::test_cmake_architecture_policy_preserves_supported_override[100a]
+FAILED tests/test_build_entrypoints.py::test_cmake_architecture_policy_preserves_supported_override[103a]
+FAILED tests/test_build_entrypoints.py::test_cmake_architecture_policy_preserves_supported_override[100a;103a]
+FAILED tests/test_build_entrypoints.py::test_cmake_rejects_non_tcgen_architectures[100]
+FAILED tests/test_build_entrypoints.py::test_cmake_rejects_non_tcgen_architectures[103]
+FAILED tests/test_build_entrypoints.py::test_cmake_rejects_non_tcgen_architectures[120]
+FAILED tests/test_build_entrypoints.py::test_cmake_rejects_non_tcgen_architectures[120a]
+FAILED tests/test_build_entrypoints.py::test_cmake_rejects_non_tcgen_architectures[native]
+FAILED tests/test_build_entrypoints.py::test_cmake_rejects_non_tcgen_architectures[OFF]
+FAILED tests/test_build_entrypoints.py::test_cmake_rejects_non_tcgen_architectures[]
+FAILED tests/test_build_entrypoints.py::test_cmake_reads_abi_from_the_actual_selected_torch
+FAILED tests/test_build_entrypoints.py::test_cmake_rejects_failed_torch_metadata_query
+FAILED tests/test_dual_arch_make_contract.py::test_compare_stops_after_a_nonfinal_architecture_failure[ch16]
+FAILED tests/test_dual_arch_make_contract.py::test_compare_stops_after_a_nonfinal_architecture_failure[ch18]
+FAILED tests/test_dual_arch_make_contract.py::test_compare_stops_after_a_nonfinal_architecture_failure[ch19]
+FAILED tests/test_dual_arch_make_contract.py::test_compare_stops_after_a_nonfinal_architecture_failure[ch20]
+114 failed, 46 passed in 4.53s

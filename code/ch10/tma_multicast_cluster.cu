@@ -164,8 +164,8 @@ void tma_multicast_gemm_kernel(
 
         // Cluster multicast: issue one B tile load per cluster.
         if (cluster_rank == 0 && tid == 0) {
-            // Coordinates follow the descriptor's dimension order (row, col).
-            const int coords[2] = {k_base, tile_n * TILE_N};
+            // B[K,N] is row-major: contiguous column first, then the K row.
+            const int coords[2] = {tile_n * TILE_N, k_base};
             const uint16_t cta_mask = static_cast<uint16_t>((1u << (CLUSTER_M * CLUSTER_N)) - 1u);
 #if TMA_MULTICAST_TARGET == 103
             issue_tma_multicast_sm103(
@@ -384,7 +384,10 @@ int main(int argc, char** argv) {
     }
 
     dim3 block(BLOCK_SIZE);
-    dim3 grid((M + TILE_M - 1) / TILE_M,
+    // Every cluster must be complete, including a final partial M tile. Padded
+    // CTAs participate in multicast/barriers but tile_valid suppresses stores.
+    const int m_tiles = (M + TILE_M - 1) / TILE_M;
+    dim3 grid(((m_tiles + CLUSTER_M - 1) / CLUSTER_M) * CLUSTER_M,
               (N + TILE_N - 1) / TILE_N);
 
     cudaLaunchAttribute attrs[1]{};

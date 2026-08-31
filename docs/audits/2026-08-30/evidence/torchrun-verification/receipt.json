@@ -1,0 +1,249 @@
+{
+  "scope": [
+    "LOCAL-019 withdraw parent-side toy child-training verification",
+    "LOCAL-019 declared torchrun-spec failures propagate before subprocess launch"
+  ],
+  "source_audit_count_unchanged": 128,
+  "base_commit": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "created_utc": "2026-08-30T23:47:35.989036+00:00",
+  "source_status": "Source repaired and CPU control-plane verified by explicit withdrawal; actual generic training qualification remains unsupported",
+  "environment": {
+    "python": "3.12.2",
+    "executable": "/opt/miniconda3/bin/python",
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "torch": "2.8.0",
+    "cuda_available": false,
+    "qualification": "Existing CPU environment, not pinned GPU stack"
+  },
+  "source_files_before": {
+    "code/labs/train_distributed/training_utils/torchrun_harness.py": "7cec3cdf803499f5388f6c87d1f09487f738e318855f141d7adbb3f3cad152ce",
+    "code/core/harness/benchmark_harness.py": "1f35a30c0216f3ae7f9a64ff5898125278efc9f7490fe2cf21829dcd9d2d3585"
+  },
+  "source_files": {
+    "code/labs/train_distributed/training_utils/torchrun_harness.py": "faf2903b81f3825422764a9819031375a287bbec28f1327899dcabd3bfd548b0",
+    "code/core/harness/benchmark_harness.py": "97aafb1fe60e84d18f16a25882aa4cb49e715e70b3217baf3a700881311128e9",
+    "code/tests/test_audit_wave1_torchrun_verification.py": "5512a4fd6d6252ee1dac2e3c5d86e42f45abdcba9b8d6a94d64c80a9867c6de8"
+  },
+  "read_only_dependencies": {
+    "code/core/harness/torchrun_wrapper.py": "fc4eda9f27b6c2d3d1f5fff56800cbd6dd7763d6f8dee996836b1560626f5c03",
+    "code/tests/protection_test_utils.py": "bacedb4b85d24df893b2133ba26dbb4a1419eeb61cb58f8cddf00dda3dffdfd1",
+    "code/tests/test_audit_wave1_harness.py": "7f832cc35eb3d928a80fdd6b95e3122087d6c196997c878bf6c1d4bafd54d392",
+    "code/tests/test_seed_config_immutability.py": "21524b747bfc772a02fd93f8fe77312bfac9da76315c1932ec53773587f283fd",
+    "code/tests/test_audit_wave1_timing_provenance.py": "0ba1f9d76b51116f4dd49e76ff00148ece135f508bee2cf7bd0a3bbd3f4967b1"
+  },
+  "affected_wrapper_count": 61,
+  "affected_wrapper_inventory": "source-validation.json",
+  "reproduction": {
+    "initial": "before-mechanism.json",
+    "repeat_command": "PYTHONDONTWRITEBYTECODE=1 /opt/miniconda3/bin/python docs/audits/2026-08-30/evidence/torchrun-verification/reproduce_archived_surrogate.py > docs/audits/2026-08-30/evidence/torchrun-verification/before-replay.json 2> docs/audits/2026-08-30/evidence/torchrun-verification/before-replay.stderr.txt",
+    "repeat_exit_code": 0,
+    "repeat_result": {
+      "scope": "Archived original CPU toy computation; no GPU or child-training acceptance",
+      "archived_source_sha256": "7cec3cdf803499f5388f6c87d1f09487f738e318855f141d7adbb3f3cad152ce",
+      "child_launched": false,
+      "child_would_exit": 37,
+      "different_child_args": [
+        [
+          "--mode",
+          "baseline"
+        ],
+        [
+          "--mode",
+          "corrupt"
+        ]
+      ],
+      "identical_verification_outputs": true,
+      "output_shape": [
+        4,
+        186
+      ],
+      "output_abs_max": 2.0499534606933594
+    },
+    "limitation": "Actual archived CPU toy math only; no child training or GPU evidence"
+  },
+  "changes": [
+    "Remove unrelated Linear/meta model, inputs, cached output, signature and fabricated tolerance",
+    "Reject all generic wrapper execution/verification hooks even with stale payload injection",
+    "Preserve factory/discovery metadata and configuration method ASTs",
+    "Propagate callable launch-spec getter failures; reject noncallable getter; only explicit None may select legacy module fallback"
+  ],
+  "attempts": [
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_audit_wave1_torchrun_verification.py -q -rs -p no:cacheprovider --junitxml=../docs/audits/2026-08-30/evidence/torchrun-verification/before-tests.xml > ../docs/audits/2026-08-30/evidence/torchrun-verification/before-tests.txt 2>&1",
+      "cwd": "code",
+      "exit_code": 1,
+      "result": {
+        "tests": 28,
+        "failures": 27,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 1,
+        "seconds": 61.799,
+        "skips": []
+      },
+      "interpretation": "Original production sources; initial test revision. 26 contract failures plus one real c10d rendezvous timeout, not a production diagnosis."
+    },
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_audit_wave1_torchrun_verification.py -q -rs -p no:cacheprovider --junitxml=../docs/audits/2026-08-30/evidence/torchrun-verification/after-tests.xml > ../docs/audits/2026-08-30/evidence/torchrun-verification/after-tests.txt 2>&1",
+      "cwd": "code",
+      "exit_code": 1,
+      "result": {
+        "tests": 32,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 1,
+        "passed": 30,
+        "seconds": 3.512,
+        "skips": [
+          {
+            "test": "tests.test_audit_wave1_torchrun_verification::test_explicit_none_spec_retains_real_cpu_module_launch",
+            "reason": "real torchrun launcher integration requires supported Linux host"
+          }
+        ]
+      },
+      "interpretation": "Repaired production sources; sole failing new fixture assumed spawn errors returned a result. Fixed expectation, not production."
+    },
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_audit_wave1_torchrun_verification.py tests/test_audit_wave1_harness.py tests/test_seed_config_immutability.py -q -rs -p no:cacheprovider --junitxml=../docs/audits/2026-08-30/evidence/torchrun-verification/integration.xml > ../docs/audits/2026-08-30/evidence/torchrun-verification/integration.txt 2>&1",
+      "cwd": "code",
+      "exit_code": 0,
+      "result": {
+        "tests": 64,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 3,
+        "passed": 61,
+        "seconds": 12.292,
+        "skips": [
+          {
+            "test": "tests.test_audit_wave1_torchrun_verification::test_explicit_none_spec_retains_real_cpu_module_launch",
+            "reason": "real torchrun launcher integration requires supported Linux host"
+          },
+          {
+            "test": "tests.test_seed_config_immutability::test_seed_mutation_is_detected_in_torchrun_runs",
+            "reason": "torchrun benchmark validity requires Linux"
+          },
+          {
+            "test": "tests.test_seed_config_immutability::test_seed_mutation_is_detected_in_torchrun_module_runs",
+            "reason": "torchrun benchmark validity requires Linux"
+          }
+        ]
+      },
+      "interpretation": "Before replacing temporary local launcher skip with the actual static-loopback test."
+    },
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_audit_wave1_torchrun_verification.py::test_explicit_none_spec_retains_real_cpu_module_launch -q -rs -p no:cacheprovider --junitxml=../docs/audits/2026-08-30/evidence/torchrun-verification/static-loopback.xml > ../docs/audits/2026-08-30/evidence/torchrun-verification/static-loopback.txt 2>&1",
+      "cwd": "code",
+      "exit_code": 0,
+      "result": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 1,
+        "seconds": 4.873,
+        "skips": []
+      },
+      "interpretation": "Real torchrun to real CPU child; supported static loopback, no fake launch success."
+    },
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_audit_wave1_torchrun_verification.py tests/test_audit_wave1_harness.py tests/test_seed_config_immutability.py tests/test_audit_wave1_timing_provenance.py -q -rs -p no:cacheprovider --junitxml=../docs/audits/2026-08-30/evidence/torchrun-verification/final-integration.xml > ../docs/audits/2026-08-30/evidence/torchrun-verification/final-integration.txt 2>&1",
+      "cwd": "code",
+      "exit_code": 0,
+      "result": {
+        "tests": 68,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 2,
+        "passed": 66,
+        "seconds": 19.539,
+        "skips": [
+          {
+            "test": "tests.test_seed_config_immutability::test_seed_mutation_is_detected_in_torchrun_runs",
+            "reason": "torchrun benchmark validity requires Linux"
+          },
+          {
+            "test": "tests.test_seed_config_immutability::test_seed_mutation_is_detected_in_torchrun_module_runs",
+            "reason": "torchrun benchmark validity requires Linux"
+          }
+        ]
+      },
+      "interpretation": "Frozen source. 32 LOCAL-019 cases pass; existing two Linux-only validity checks skip."
+    }
+  ],
+  "cli_import_and_help": {
+    "artifact": "direct-cli-help.json",
+    "commands": [
+      [
+        "/opt/miniconda3/bin/python",
+        "-m",
+        "labs.train_distributed.ddp",
+        "--help"
+      ],
+      [
+        "/opt/miniconda3/bin/python",
+        "-m",
+        "labs.train_distributed.zero2",
+        "--help"
+      ],
+      [
+        "/opt/miniconda3/bin/python",
+        "-m",
+        "labs.train_distributed.baseline_ddp",
+        "--help"
+      ],
+      [
+        "/opt/miniconda3/bin/python",
+        "-m",
+        "labs.train_distributed.optimized_zero2",
+        "--help"
+      ]
+    ],
+    "passed": 4,
+    "scope": "Import and parser availability only; no actual training"
+  },
+  "static_validation": {
+    "artifact": "source-validation.json",
+    "ruff_command": "/opt/miniconda3/bin/python -m ruff check code/labs/train_distributed/training_utils/torchrun_harness.py code/core/harness/benchmark_harness.py code/tests/test_audit_wave1_torchrun_verification.py --select E9,F63,F7,F82,B006,B023",
+    "ruff_exit_code": 0,
+    "ruff_artifact": "ruff-final.txt"
+  },
+  "remaining_gates": [
+    "Implement actual child-produced training result/state protocol plus independent workload-matched oracle before re-enabling any generic wrapper",
+    "Require rejection of corrupted/unrelated child results through actual comparison path",
+    "Run target-specific training/numerical/distributed checks on allocated compatible GPU stack before any accuracy, memory or performance acceptance",
+    "Existing two Linux-only seed/config validity cases remain skipped locally"
+  ],
+  "non_claims": [
+    "No CUDA/NCCL/multi-GPU training executed",
+    "No trained model, loss, gradient or optimizer-state numerical acceptance",
+    "No memory or speedup claim",
+    "No generic training qualification inferred from real CPU launcher success or independent ZeRO gates",
+    "No old receipt rewritten; historical shared-harness dependency hashes remain tied to their earlier source epoch"
+  ],
+  "artifacts": {
+    "README.md": "ae31413d3d5bdee56335d74578c36b8af4b5e7b0f0753568e1271197e76c8b84",
+    "after-tests.txt": "d2519f6a6f56f9c150c3de12be2bd2f45a036f37ea24cabb37cbab233bac3990",
+    "after-tests.xml": "88df99e1dd70260b340a0a41ab0e55b942f7ac644d3a7342cf5296c9268ed894",
+    "before-mechanism.json": "e174b97b6d5a2e56d9f842f84bc9b8d8efb24789bedb5f4f91cf763a0f9ffab9",
+    "before-replay.json": "8d6a5001925ac1b6137742f8a584caaa5e65d000e12ca49fce19a18876fa0428",
+    "before-replay.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before-source.json": "02e44c1e278e33c66acd08e304db58522a59c5454abcffe4782b970ca85c21b5",
+    "before-tests.txt": "f10e3e470bd9931c1295669984334ad679780b346dbabfcba645c85ce45f069f",
+    "before-tests.xml": "88677b3ba5a298dfd864a943f6f8128c19675d893162f3ec3dd85bc309054eca",
+    "benchmark_with_torchrun.before.py.txt": "5555b5236c9474180b6eb3ca7159696da7d50cae9b703ec3faacedcfa6315871",
+    "build_receipt.py": "eaced1fcb6b580129d49396932e4bd4e6f9c0cfdb43ceec584af22f5fe0f7acd",
+    "direct-cli-help.json": "3e255b38bc410e58070d629d9dcc48d97e9b5fc1c93957188c322d44f7689886",
+    "final-integration.txt": "da3e50bbcfe450387ba74c9ef4324a8b34e547c0b81a60d88897d85ca870ae05",
+    "final-integration.xml": "89a38c0863b2a4bb38a02d37d3aed3e557459d5bc8b64943f044b9a10139ea28",
+    "integration.txt": "69524c9cd0edb2bed8cd669d82cf0cdf9d6c5a80f474089bfb1e4634a69f76bc",
+    "integration.xml": "118e1038da44b6cc7416f3db1a920908b3627f8a01f31347ddb15bff76e2a680",
+    "reproduce_archived_surrogate.py": "c521f75fdfbe0269ea543913f6c07d07871e5e28ea70db878c5e35e3c7cea962",
+    "ruff-final.txt": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "ruff.txt": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "source-validation.json": "731ea1294bdea2a1d49e132d7bf3b57b37b3cf85340ab9ab87236f1c685c233b",
+    "static-loopback.txt": "bf59733be158636735dd8e191df1a819a534b61bcd2d14e9b7fa86d25c351ac8",
+    "static-loopback.xml": "18de35df7252b8aed51c29d27e807967196e4b3d313af1a5e95427b702e53215",
+    "torchrun_harness.before.py.txt": "7cec3cdf803499f5388f6c87d1f09487f738e318855f141d7adbb3f3cad152ce"
+  }
+}

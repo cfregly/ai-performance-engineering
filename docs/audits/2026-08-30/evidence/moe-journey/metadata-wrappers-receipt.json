@@ -1,0 +1,73 @@
+{
+  "timestamp_utc": "2026-08-30T23:02:56.804241+00:00",
+  "findings": [
+    "W1-032",
+    "W1-080"
+  ],
+  "baseline_revision": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "source_sha256": {
+    "code/labs/moe_optimization_journey/level0_naive.py": "603670dcb201ed38fdfbf1a25708ebc0512ec7b8085fc480dce6ca209fec945f",
+    "code/labs/moe_optimization_journey/level1_batched.py": "4b75549640c94db8c32e26b675dcb4fac5fd53f8beea37973196a73130cb413d",
+    "code/labs/moe_optimization_journey/level2_compiled.py": "a743ca488f7cd48d0fe6f9a942bc61d9812fc74394d896a92dca800ae45d2d8a",
+    "code/labs/moe_optimization_journey/level2_fp8.py": "6b816dc93239a6e77d024123a07dcfe6c72bbcf020356fa2875e2b98ee93ee4c",
+    "code/labs/moe_optimization_journey/level2_fused.py": "5f74e4f7ee5f4175aaa480156524dc81d50d180aa3dba9d3d4bf4dff045b5850",
+    "code/labs/moe_optimization_journey/level2_permuted.py": "a483fac79f58e4de6ba38560c7f8597523415c4a2812b20ddf333e9637d68aa7",
+    "code/labs/moe_optimization_journey/level2_sorted.py": "df975cadf9aeebf03689f992a6e91fc127358088ec7ee2836f3f73155cbc372e",
+    "code/labs/moe_optimization_journey/level2_streams.py": "52217e28246f282e47d1406db61bdce3024309657d87d8a9591a86dd8ea94fef",
+    "code/labs/moe_optimization_journey/level3_compiled.py": "b70e6ae958b0ac1a030402f7226a62e95e557c9bc3f23601939d3bd1a5bb5c3a",
+    "code/labs/moe_optimization_journey/level3_fp8.py": "cbf766c50c2a0145ef0fc96de73ea965fca8c784ad8d07574066a3eef5032cab",
+    "code/labs/moe_optimization_journey/level3_grouped.py": "3f39feae1742be36f2f5d46e2fa07e3d6084bb42f079a014ac397da1e931bdb2",
+    "code/labs/moe_optimization_journey/level3_memefficient.py": "1de08ec2baddb37c2c63ec8b62c66e49c047c1f1449bc54a15a1662fa52d2bfe",
+    "code/labs/moe_optimization_journey/level3_sorted.py": "93754dd1ab9f2d74a7e3d894a85aa19f12f975da18745c72d96a11717876c16c",
+    "code/labs/moe_optimization_journey/level4_graphs.py": "f62d0bf78b4ce9e8ad7909ab3874a5286f832557d12b6741026a8187cc77946e",
+    "code/labs/moe_optimization_journey/level4_grouped.py": "0c969d148e936eaf3e167d66c60a90731c868801d3ec64531a2ca53a95334040",
+    "code/labs/moe_optimization_journey/level4_parallel.py": "a04994dbf731a5ab0212bb54f232e1bc1da9ac8e4b20baf7c8ae1665df06c3ac",
+    "code/labs/moe_optimization_journey/level4_sorted.py": "41f74b4ade095002da1e4f4107b8c01c761c42dc6bcf03b857f631e7236d3854",
+    "code/labs/moe_optimization_journey/level5_bmm_fusion.py": "dee3a6e479a0ccda24decc3dad7ddb35430a1e6587ecd80b9a446b739e55baaa",
+    "code/labs/moe_optimization_journey/level5_compiled.py": "7aa16b7889a0ef0d3ac207eda9f1641056db9dd833aea9462e046ba780f75663",
+    "code/labs/moe_optimization_journey/level5_cudagraphs.py": "8ee303c3bb974fa32a4887f05c620e6e08db5b1acdd41eb0af73de8d15b852cc",
+    "code/labs/moe_optimization_journey/level5_expert_parallel.py": "e333c2d87fd68efe725ecb195b4ebc8e75f01712f0563d31f045040e30672ae0",
+    "code/labs/moe_optimization_journey/level5_graphs.py": "abc92a05d84ff7316fd8c9b14b8a23b3e130b676bde524de70cd25b5bd5013c2",
+    "code/labs/moe_optimization_journey/level6_compiled.py": "99d70165fc31d2ef61a1b87935ed1e3a7ddc7f33f99ad45d934f557ebe6207cb",
+    "code/labs/moe_optimization_journey/level7_compiled.py": "b6fd1c28b7bb896c05530a030145b2b8e7def29b496b6e8dce73374e8a5eecbf",
+    "code/labs/moe_optimization_journey/optimized_moe.py": "2350d3678e47801b2f17bbb0d5844417508d918605cdacc1a0c7f50ce57714d1",
+    "code/labs/moe_optimization_journey/optimized_moe_batched.py": "c4897c7200f36fef872f38f74a581627914b9f3870914a6fcf2b592fad506792",
+    "code/labs/moe_optimization_journey/optimized_moe_bmm_fusion.py": "3ecd8329c5972b29eb2847cb4620625a8e5fc6d68fa8ec224bdaa90d25fe46bd",
+    "code/labs/moe_optimization_journey/optimized_moe_compiled.py": "fe4aabfbe6ae56b12f51584a70c9985a500f370f5ab8a043beb76e2e79db1576",
+    "code/labs/moe_optimization_journey/optimized_moe_cuda_graphs.py": "e7b0975aea84c5360fa02c528072f4fbcd88e2999d6a4f84ba6774962451733a",
+    "code/labs/moe_optimization_journey/optimized_moe_expert_parallel.py": "0e0cb963aeb894fe298474e7f39b467995d17fd4dd1ce1012923a59cfc384a65",
+    "code/labs/moe_optimization_journey/optimized_moe_fp8.py": "bdb85e2ddbb70c23df5c091a2bebd1f739e71d64ba4117513ea611625d9638d2",
+    "code/labs/moe_optimization_journey/optimized_moe_fused.py": "d8221f95c1deac96ac7bf2d2c0da73b2617d8ef5a8dc1e9e042bf8e57c3436ca",
+    "code/labs/moe_optimization_journey/optimized_moe_grouped.py": "ff0cb7685378d2750858436069e8c2175422c4dba386a7ff19ff64d78e2c328c",
+    "code/labs/moe_optimization_journey/optimized_moe_memefficient.py": "566d53b9e072bc03b09ddb01e8e13b250ac5bf40b83b5015356b0419ecc42c03",
+    "code/labs/moe_optimization_journey/optimized_moe_parallel.py": "72098761bfe5b7cbdab9396b2662d9c0abb3a12367e32f022b15417028d51518",
+    "code/labs/moe_optimization_journey/optimized_moe_permuted.py": "d7d0de8ac7b4ef0ccdafb0238267825c49e66200cb94b4e1e0db862bf92e5a82",
+    "code/labs/moe_optimization_journey/optimized_moe_sorted.py": "22e2adc631a526bac7415894902f8a0f342bd6c10993f82096e590bee9c68b5f",
+    "code/labs/moe_optimization_journey/optimized_moe_streams.py": "ff4bbedcb2e17351b7dbd3a06a4ce7dbd61cd69bd1a386467e234e7644400c18",
+    "code/labs/moe_optimization_journey/optimized_moe_triton.py": "60b02973400537b49f8c7601b7e737de419a477e7e03d7314acd34545f91de68",
+    "code/labs/moe_optimization_journey/level4_triton.py": "4db191f7e2586d5c108dfa590d0a759dcc019ff11f7a8e414c08c25bdf38c96f",
+    "code/tests/test_moe_journey_runtime_hotpath.py": "eefbc7b2019bb95af8605bd0512a6a2152ed4b54aa240feaaf71031c10cf7555",
+    "code/tests/test_audit_wave1_moe_journey.py": "1f96a6ee42a3aa9cff53f1254c36b3c02a921e2fdbac7900baa5e03f3405e334",
+    "code/labs/moe_optimization_journey/README.md": "0719cb2895cf19083b8c8bb0ccbd7fcc4dbbc94f8a1c930c51cdef73df2c265c"
+  },
+  "validation": {
+    "result": "16 passed,3 explicit CUDA skips in1.72s",
+    "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_audit_wave1_moe_journey.py tests/test_moe_journey_runtime_hotpath.py -q -p no:cacheprovider",
+    "cwd": "code",
+    "log": "metadata-wrappers.txt",
+    "previous": "10 passed,3 skips before six real factory/shared-model controls were added",
+    "ruff": "selected E9,F63,F7,F82,B006,B023 passed",
+    "readme": "generator --check labs/moe_optimization_journey passed"
+  },
+  "source_reproduction": {
+    "W1-032": "Original nonblocking pinned D2H followed immediately by CPU integer reads confirmed in source; actual CUDA race not reproduced on CPU. Blocking copy completes before host consumption.",
+    "W1-080": "39 original wrapper/module descriptions and source hashes preserved in original-wrapper-descriptions.json; source LEVEL mappings verified by actual factories and small independent-naive CPU model comparisons for six misleading public aliases."
+  },
+  "limitations": [
+    "Actual CUDA metadata lifetime test prepared but skipped; existing CUDA hotpath tests also skipped.",
+    "CPU shared-model comparisons use their available PyTorch path; they do not prove actual Triton fusion, graph capture, compile or GPU speed.",
+    "Historical timing records retained as historical; no speedup recertification.",
+    "W1-081/082/083 native-FP8 and auxiliary Triton math remain pending in this lab; this receipt does not cover them.",
+    "README generator remains root-owned; subsequent source hashes will identify its final epoch."
+  ]
+}

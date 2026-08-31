@@ -1,0 +1,33 @@
+{
+  "archive_sha256": "099e52c65e512cdfa8c8763fca67f5a5c2afb63469602d5dcb4d296b3661efb9",
+  "status": "REVIEWED_PURE_PYTHON_BUILD_METADATA_ONLY",
+  "setup_ast": "Only from distutils.core import setup and one setup() call with literal metadata; no project import, executable hook, extension, install_requires or setup_requires.",
+  "setup_kwargs": {
+    "name": "GPUtil",
+    "packages": [
+      "GPUtil"
+    ],
+    "version": "1.4.0",
+    "description": "GPUtil is a Python module for getting the GPU status from NVIDA GPUs using nvidia-smi.",
+    "author": "Anders Krogh Mortensen",
+    "author_email": "anderskroghm@gmail.com",
+    "url": "https://github.com/anderskm/gputil",
+    "download_url": "https://github.com/anderskm/gputil/tarball/v1.4.0",
+    "keywords": [
+      "gpu",
+      "utilization",
+      "load",
+      "memory",
+      "available",
+      "usage",
+      "free",
+      "select",
+      "nvidia"
+    ],
+    "classifiers": [],
+    "license": "MIT"
+  },
+  "archive_contents": "Six text files plus two directories; no native source, symlink or pyproject.toml.",
+  "build_backend": "Legacy setuptools fallback needed under Python3.12; resolve in uv isolated build environment only.",
+  "runtime_scope": "GPUtil runtime imports distutils.spawn and subprocess; nvidia-smi invocation is inside getGPUs and is not called by setup.py. Package runtime/GPU probing is not executed or qualified."
+}

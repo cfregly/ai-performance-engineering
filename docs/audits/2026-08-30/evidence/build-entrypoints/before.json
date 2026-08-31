@@ -1,0 +1,20 @@
+{
+  "command": [
+    "/opt/miniconda3/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_build_entrypoints.py",
+    "tests/test_dual_arch_make_contract.py",
+    "--tb=short"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "environment": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+  },
+  "exit_code": 1,
+  "time_utc": "2026-08-30T22:30:45.332949+00:00",
+  "boundary": "Build-tool source/orchestration regression only; no CUDA compilation/execution."
+}

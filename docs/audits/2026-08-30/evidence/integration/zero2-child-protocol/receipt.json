@@ -1,0 +1,180 @@
+{
+  "artifact_manifest": {
+    "file_count": 83,
+    "path": "artifact-manifest.json",
+    "sha256": "c80589824b27d5d46bdbf5f94a2c56af746f65a22b6e5252fe00f16ce4415d1b"
+  },
+  "attempt_history": [
+    {
+      "accepted": false,
+      "evidence": "adapter-standalone-rendezvous-attempt.json",
+      "status": "FAIL_RENDEZVOUS_TIMEOUT"
+    },
+    {
+      "accepted": false,
+      "evidence": "adapter-static-proof-optimized-context.json",
+      "status": "FAIL_GLOO_REDUCE_SCATTER_SHAPE"
+    },
+    {
+      "accepted": false,
+      "evidence": "adapter-static-proof-optimized-context-2.json",
+      "status": "FAIL_GLOO_ASYNC_FUTURE"
+    },
+    {
+      "accepted": false,
+      "evidence": "harness-regressions-combined-attempt.json",
+      "note": "The combined process produced no complete JUnit and is not counted. Seven fresh interpreter runs passed 606 and skipped 5.",
+      "replacement": "harness-regressions-isolated-current/totals.json",
+      "returncode": 139,
+      "status": "FAIL_NATIVE_SEGFAULT_INDETERMINATE"
+    }
+  ],
+  "captured_wall_ns": 1788139480043651000,
+  "commands": "commands.json",
+  "conclusion": "The four ZeRO factories now consume fresh child-produced training state through an opt-in harness callback and independently validate it. The other 57 training factories retain their existing generic refusal; this package makes no blanket runtime claim for them.",
+  "current_cpu_gloo_matrix": {
+    "baseline_optimized_multigpu_max_abs_diff": 0.0,
+    "baseline_optimized_single_max_abs_diff": 0.0,
+    "cases": [
+      "baseline-single",
+      "optimized-single",
+      "baseline-multigpu",
+      "optimized-multigpu"
+    ],
+    "evidence": "matrix-revalidation-current.txt",
+    "grad_accum": 2,
+    "parameter_tensors": 14,
+    "performance_claim": false,
+    "status": "PASS_ALL_FOUR_ZERO2_CPU_GLOO_VERIFICATION_ONLY",
+    "updates": 3,
+    "validator": "validate_captured_matrix.py"
+  },
+  "factory_scope": {
+    "enabled_factories": [
+      "baseline_zero2",
+      "optimized_zero2",
+      "baseline_zero2_multigpu",
+      "optimized_zero2_multigpu"
+    ],
+    "inventory_review": "../torchrun-completion-scope/review.json",
+    "inventory_total": 61,
+    "only_result_callback_assignment": "code/labs/train_distributed/training_utils/zero2_torchrun_benchmark.py",
+    "remaining_generic_factory_calls": 57
+  },
+  "hook_repairs": [
+    {
+      "attempt": "FAIL_GLOO_REDUCE_SCATTER_SHAPE",
+      "finding": "The stacked [world_size, shard_size] input aborted ProcessGroupGloo.",
+      "repair": "Use the reduce_scatter_tensor concatenation form, accepted by Gloo and NCCL."
+    },
+    {
+      "attempt": "FAIL_GLOO_ASYNC_FUTURE",
+      "finding": "Gloo Work::getFuture is not implemented.",
+      "repair": "Use synchronous reduce-scatter/all-gather only when the explicitly selected backend is Gloo; NCCL retains the asynchronous future path."
+    }
+  ],
+  "implementation": {
+    "callback": "TorchrunLaunchSpec.result_callback is unset by default. Only Zero2TorchrunBenchmark sets it; the harness invokes it only after return code zero.",
+    "freshness": "Parent-injected wall-clock and monotonic launch tokens are repeated by each child. The callback requires child start, finish, artifact mtime and callback finish to fall in the same launch window.",
+    "independent_reference": "The parent constructs the seven-linear GELU network directly with torch.nn.functional.linear/GELU from raw initial parameters and runs an independent dense torch.optim.AdamW over the rank-averaged deterministic inputs. It does not call the production model builder or training step.",
+    "post_timing_verification": "The fixed small FP32 correctness profile uses production DDP, communication-hook and optimizer construction after the normal measured region. A separate verification_training_step keeps capture and deterministic-input work out of the timed training_step.",
+    "quorum": "Exactly rank-0..rank-(world_size-1) JSON and tensor files are accepted; missing, extra and temporary files fail.",
+    "schema": "aisp.zero2.child-result.v1",
+    "state_coverage": [
+      "deterministic full inputs",
+      "identical initial full parameters",
+      "final replicated full parameters",
+      "final post-clip full gradients",
+      "per-update rank-local losses",
+      "full local AdamW step/exp_avg/exp_avg_sq state",
+      "resolved mode, variant, world size, backend, device and optimizer config",
+      "wrapper seed and before/after CPU or CUDA RNG-state hashes",
+      "update count and nonzero parameter/gradient/optimizer-state checks"
+    ],
+    "transport": "Each rank atomically fsyncs and renames a tensor payload, then atomically publishes a JSON manifest containing payload size and SHA-256."
+  },
+  "limitations": [
+    "The full repository suite is outside this package receipt and must be rerun against the integrated tree.",
+    "The one targeted skip is the genuine two-rank CUDA/NCCL gate.",
+    "GPU custody, clock locking, default workload execution and performance comparison remain external runtime gates."
+  ],
+  "negative_controls": {
+    "count": 11,
+    "rejected": [
+      "missing rank",
+      "truncated payload",
+      "stale launch window",
+      "wrong resolved config",
+      "non-finite tensor",
+      "optimizer no-op",
+      "parameter corruption",
+      "wrong optimizer update count",
+      "wrong deterministic input",
+      "RNG mutation",
+      "wrong wrapper seed"
+    ],
+    "test_file": "code/tests/test_audit_wave1_zero2_child_protocol.py"
+  },
+  "performance_and_runtime_boundary": {
+    "claims_not_made": [
+      "GPU correctness qualification",
+      "NCCL runtime qualification",
+      "BF16/compile qualification",
+      "default large-shape memory or performance qualification",
+      "speedup or regression conclusion",
+      "qualification of the other 57 factories"
+    ],
+    "gloo": "Verification-only. The direct child prints that no performance timing was collected; no Gloo number is populated or accepted.",
+    "nccl": "The normal scripts still require CUDA/NCCL, preserve the existing workload/default dimensions/clock path and use asynchronous collectives. No NCCL or GPU run occurred in this package.",
+    "timing": "The child result profile runs after training_seconds and throughput are calculated and printed; parent process-wall timing still includes setup/profile and remains separately labeled by the existing harness."
+  },
+  "schema_version": 1,
+  "scope": "Functional completion slice for W1-004, W1-091 and LOCAL-019 across the four ZeRO factories.",
+  "source": {
+    "changed_file_count": 10,
+    "files": {
+      "code/core/harness/benchmark_harness.py": "7bbd1fffa32d9b577edcd9251e0ff9d30ca190d2a87f341bee5e72688107eab2",
+      "code/labs/train_distributed/baseline_zero2.py": "30c2678264d58c491ee6ce805caccbca9f5884ab44ddc58274cd7875e5b8a37e",
+      "code/labs/train_distributed/baseline_zero2_multigpu.py": "759e6a63702d3d6d787e122d44c59307541d39c5ced36d986ba1ea226dda3adc",
+      "code/labs/train_distributed/optimized_zero2.py": "91d57ce20afb45b6691c04f79daffde6c69c9bfc91280a5ebcf9ec73b42bc69c",
+      "code/labs/train_distributed/optimized_zero2_multigpu.py": "b79386410651a6be6a5212c0f6133a30e2f27dfdba553e18a317c6c02a9eec56",
+      "code/labs/train_distributed/training_utils/torchrun_harness.py": "faf2903b81f3825422764a9819031375a287bbec28f1327899dcabd3bfd548b0",
+      "code/labs/train_distributed/training_utils/zero2_torchrun_benchmark.py": "055e2a8a8efef50b93b1d1b8ff520ab4aa50128681a1a4357f84b1c1326e9d00",
+      "code/labs/train_distributed/zero2.py": "b8c6c77d7b830a586842bf7be446021b58432c79ff51ed6b6c368abed73cb610",
+      "code/labs/train_distributed/zero2_child_protocol.py": "818414d2434024d2b5a798a2bcdec837562f1ce8882e36467c32e0354eb3ff04",
+      "code/labs/train_distributed/zero2_common.py": "a978d11085b8622a11bd236d9e597e871082217e8034a2c2e1f5f5f60ef1bf4f",
+      "code/tests/test_audit_wave1_torchrun_verification.py": "c334752c0c28e6aea46ed1c91be0acc1143af63cb86970b86f1bf62043f2f70a",
+      "code/tests/test_audit_wave1_zero2_child_protocol.py": "d429ea94ac44e0575605c7ed031d790bb1072837b846b14d0b770a3f6bc417d0"
+    },
+    "git_head": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+    "source_after": "source-after.json",
+    "source_after_sha256": "161489cceaccb87fbff83533988f94ce2a414ca7b8b4aa0e025a8919794a4a94",
+    "source_before": "source-before.json",
+    "source_before_sha256": "ebc703fe2e66c2ec1456cbfd1721bc9cda05055f1c10b1fa4f091acff6d1c011"
+  },
+  "status": "PASS_SOURCE_AND_CPU_GLOO_ZERO2_CHILD_PROTOCOL__NCCL_GPU_QUALIFICATION_PENDING",
+  "tests": {
+    "fresh_process_regressions_current": {
+      "errors": 0,
+      "failures": 0,
+      "passed": 606,
+      "schema_version": 1,
+      "skipped": 5,
+      "status": "PASS_FRESH_PROCESS_REGRESSIONS_CURRENT_SOURCE",
+      "tests": 611,
+      "time_seconds": 19.055000000000003
+    },
+    "syntax_and_fatal_lint": "PASS: py_compile plus ruff E9/F821/F822/F823 on all changed protocol/harness/test sources.",
+    "targeted_current": {
+      "errors": 0,
+      "failures": 0,
+      "junit": "targeted-tests-current.xml",
+      "log": "targeted-tests-current.txt",
+      "passed": 57,
+      "skipped": 1,
+      "skipped_gate": "Two-rank NCCL production-hook test requires two real GPUs.",
+      "tests": 58
+    },
+    "whitespace": "PASS: git diff --check on all changed protocol/harness/test sources."
+  }
+}

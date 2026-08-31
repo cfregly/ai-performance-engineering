@@ -1,0 +1,108 @@
+s..............s..........F............                                  [100%]
+=================================== FAILURES ===================================
+_______________ TestMissingEdgeCases.test_empty_tensor_handling ________________
+
+self = <tests.test_protection_effectiveness.TestMissingEdgeCases object at 0x31f246b10>
+runner = <core.benchmark.verify_runner.VerifyRunner object at 0x16b3bc2f0>
+
+    def test_empty_tensor_handling(self, runner):
+        empty = torch.empty(0, 4)
+>       assert compare_tensors(runner, empty, empty.clone()).passed
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_protection_effectiveness.py:302: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/protection_test_utils.py:121: in compare_tensors
+    return runner._compare_outputs({"output": expected}, {"output": actual}, tolerance)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <core.benchmark.verify_runner.VerifyRunner object at 0x16b3bc2f0>
+expected = {'output': tensor([], size=(0, 4))}
+actual = {'output': tensor([], size=(0, 4))}, tolerance = None
+
+    def _compare_outputs(
+        self,
+        expected: Dict[str, torch.Tensor],
+        actual: Dict[str, torch.Tensor],
+        tolerance: Optional[ToleranceSpec] = None,
+    ) -> ComparisonDetails:
+        """Compare expected and actual outputs.
+    
+        Args:
+            expected: Expected output tensors (from baseline)
+            actual: Actual output tensors (from optimized)
+            tolerance: Optional custom tolerance override
+    
+        Returns:
+            ComparisonDetails with comparison results
+        """
+        if set(expected.keys()) != set(actual.keys()):
+            return ComparisonDetails(
+                passed=False,
+                max_diff=None,
+                location=None,
+            )
+    
+        max_diff_overall = 0.0
+        worst_location: Optional[Tuple[int, ...]] = None
+        worst_expected: Optional[float] = None
+        worst_actual: Optional[float] = None
+    
+        for name in expected.keys():
+            exp_tensor = expected[name]
+            act_tensor = actual[name]
+    
+            # Ensure tensors are on the same device for comparison
+            if exp_tensor.device != act_tensor.device:
+                # Move to actual tensor's device (typically GPU during verification)
+                exp_tensor = exp_tensor.to(act_tensor.device)
+    
+            # Check shapes match
+            if exp_tensor.shape != act_tensor.shape:
+                return ComparisonDetails(
+                    passed=False,
+                    max_diff=float('inf'),
+                    location=None,
+                )
+    
+            # Get tolerance for dtype
+            tol = tolerance or get_tolerance_for_dtype(exp_tensor.dtype)
+    
+            # Custom comparator takes precedence
+            if tol.comparator_fn is not None:
+                try:
+                    if not tol.comparator_fn(exp_tensor, act_tensor):
+                        return ComparisonDetails(
+                            passed=False,
+                            tolerance_used=tol,
+                        )
+                    continue
+                except Exception:
+                    return ComparisonDetails(passed=False, tolerance_used=tol)
+    
+            # Standard numeric comparison
+            if exp_tensor.is_floating_point():
+                # Use allclose with tolerances
+                diff = torch.abs(exp_tensor - act_tensor)
+                rel_diff = diff / (torch.abs(exp_tensor) + 1e-12)
+    
+>               max_diff = float(diff.max())
+                                 ^^^^^^^^^^
+E               RuntimeError: max(): Expected reduction dim to be specified for input.numel() == 0. Specify the reduction dim with the 'dim' argument.
+
+core/benchmark/verify_runner.py:714: RuntimeError
+=============================== warnings summary ===============================
+tests/test_protection_effectiveness.py::TestMissingEdgeCases::test_cuda_oom_recovery
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/harness/benchmark_harness.py:4856: RuntimeWarning: ENVIRONMENT INVALID: Non-Linux platform 'darwin' is not supported for benchmark validity checks.
+    warn_module.warn(message, RuntimeWarning)
+
+tests/test_protection_effectiveness.py::TestMissingEdgeCases::test_cuda_oom_recovery
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/harness/benchmark_harness.py:4904: RuntimeWarning: BENCHMARK_FN ANTI-PATTERN WARNING: benchmark_fn() contains hot-path work that will distort timings or hide the real kernel cost.
+  - benchmark_fn() allocates tensors via torch.ones_like() (line 65); preallocate reusable buffers in setup() unless allocation cost is the benchmarked behavior
+    warn_module.warn(message, RuntimeWarning)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_protection_effectiveness.py::TestMissingEdgeCases::test_empty_tensor_handling
+1 failed, 36 passed, 2 skipped, 2 warnings in 1.93s

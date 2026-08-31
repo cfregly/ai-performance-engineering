@@ -1,0 +1,215 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-08-31T00:33:48.294423+00:00",
+  "status": "SOURCE_AND_SCOPED_LINUX_TARGET_METADATA_PASS__ACTUAL_LINUX_INSTALL_AND_FULL_CUDA_GRAPH_HOLD",
+  "original_finding_scope": [
+    "W1-005",
+    "W1-006",
+    "W1-124"
+  ],
+  "original_inventory_change": "None. Original128 findings and earlier receipts untouched; requests/tokenizers collection gaps are adjacent implementation discoveries under the full-CPU-suite contract.",
+  "source_changes": [
+    "Align active requirements, setup default and CPUworkflow from Triton3.5.0 to3.5.1, preserving Torch2.9.1+cu130 and historical GB3003.5.0 incident prose.",
+    "Add requests2.34.2 to sharedrequirements and CPUworkflow (direct HTTPtest import). Exactofficialmetadata selected thispin; no previousexactrepo requests pin existed.",
+    "Add existing tokenizers0.22.2 pin to CPUworkflow: Nanochatengine import transitively imports tokenizers during ordinarycollection.",
+    "Test realBash default/configured source resolution forTriton3.5.1 and require CPUdirectcollection pins matchsharedrequirements."
+  ],
+  "source_manifest": "current-source-manifest.json",
+  "scoped_diff": "epoch-source-diff.txt",
+  "originals_manifest": "original-source-manifest.json",
+  "original_hashes_verified": 5,
+  "final_host_checks": {
+    "pytest_command": "final-host-command.json",
+    "passed": 36,
+    "failed": 0,
+    "skipped": 0,
+    "pytest_seconds": 0.64,
+    "actual_environment": "Darwin arm64 Python3.12.2 / existing torch2.8.0 CPU; not installed CI pins",
+    "shell_syntax": "final-shell-syntax-command.json",
+    "python_ast_files": 2
+  },
+  "preserved_host_failures": [
+    "host-before:3 expected failures on oldTriton/default and missingrequests",
+    "host-after:35pass/1test-authoring failure (inlinecomment included in requirements pin); fixed parsing without production weakening",
+    "tokenizers-before:1 expectedmissingdependency failure",
+    "host-after-attempt-2:36pass old19-pin epoch",
+    "tokenizers-after:36pass20-pin epoch"
+  ],
+  "dependency_metadata_contract": {
+    "artifact": "dependency-contract.json",
+    "historical_status_note": "Initial explicit-marker check predates realuvtarget resolution and tokenizersaddition. Its historical REAL_LINUX_RESOLVER_HOLD and19pins remainunaltered. Latercase receipts supersede only that metadata-resolution limitation.",
+    "actual_torch_requirement": "triton==3.5.1; platform_system == \"Linux\"",
+    "original_3_5_0_rejected": true,
+    "corrected_3_5_1_accepted": true,
+    "fresh_metadata_sha256": "6a3cacf846425d9c8a3aa9929623a3d1ca261d185064c912be2ab5902d4f0e37"
+  },
+  "resolver": {
+    "tool": "uv0.9.18",
+    "target_python": "CPython3.12",
+    "generic_target": "x86_64-unknown-linux-gnu",
+    "serving_wheel_target": "x86_64-manylinux_2_31",
+    "builds": "All successful resolverinvocations --only-binary :all:; no package source builds or installs",
+    "cases": [
+      {
+        "case": "linux-cuda-original-pin-attempt-1",
+        "status": "CLI_ARGUMENT_ERROR__NO_RESOLUTION",
+        "exit_code": 2,
+        "resolved_packages": null,
+        "command_artifact": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-original-pin-attempt-1/command.json",
+        "input_sha256": "23973b5ba6aa3ee936b66de658ff14d5a4a38444698607d44cd7dd8c71569e44"
+      },
+      {
+        "case": "linux-cuda-corrected-pin-attempt-1",
+        "status": "CLI_ARGUMENT_ERROR__NO_RESOLUTION",
+        "exit_code": 2,
+        "resolved_packages": null,
+        "command_artifact": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-corrected-pin-attempt-1/command.json",
+        "input_sha256": "231b2456676dd6e1c367ff5535e2bc26506f2ccc23a8604a7a5b3df20972841a"
+      },
+      {
+        "case": "linux-cpu-workflow-attempt-1",
+        "status": "CLI_ARGUMENT_ERROR__NO_RESOLUTION",
+        "exit_code": 2,
+        "resolved_packages": null,
+        "command_artifact": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-workflow-attempt-1/command.json",
+        "input_sha256": "7c15bf61e9fdbce47a04bd1aa53a0c94b4391b7acdec40f8caaf85cb35ea5085"
+      },
+      {
+        "case": "linux-cuda-original-pin-attempt-2",
+        "status": "EXPECTED_UNSATISFIABLE_VERSION_CONSTRAINT",
+        "exit_code": 1,
+        "resolved_packages": null,
+        "command_artifact": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-original-pin-attempt-2/command.json",
+        "input_sha256": "23973b5ba6aa3ee936b66de658ff14d5a4a38444698607d44cd7dd8c71569e44"
+      },
+      {
+        "case": "linux-cuda-corrected-pin-attempt-2",
+        "status": "PASS_TARGET_METADATA_RESOLUTION",
+        "exit_code": 0,
+        "resolved_packages": 26,
+        "command_artifact": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cuda-corrected-pin-attempt-2/command.json",
+        "input_sha256": "231b2456676dd6e1c367ff5535e2bc26506f2ccc23a8604a7a5b3df20972841a"
+      },
+      {
+        "case": "linux-cpu-workflow-attempt-2",
+        "status": "PASS_OLD_19_PIN_TARGET_METADATA_RESOLUTION",
+        "exit_code": 0,
+        "resolved_packages": 55,
+        "command_artifact": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-workflow-attempt-2/command.json",
+        "input_sha256": "7c15bf61e9fdbce47a04bd1aa53a0c94b4391b7acdec40f8caaf85cb35ea5085"
+      },
+      {
+        "case": "linux-cpu-workflow-tokenizers-attempt-1",
+        "status": "PASS_20_PIN_TARGET_METADATA_RESOLUTION__PYTORCH_BACKEND_ROUTING",
+        "exit_code": 0,
+        "resolved_packages": 58,
+        "command_artifact": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-workflow-tokenizers-attempt-1/command.json",
+        "input_sha256": "a0a371c97f15800cb542157d1726d871e70eccaef02d7cb06355d3d5c772af69"
+      },
+      {
+        "case": "linux-cpu-first-pypi-transaction-attempt-1",
+        "status": "PASS_19_NON_TORCH_PINS_PYPI_METADATA_RESOLUTION",
+        "exit_code": 0,
+        "resolved_packages": 51,
+        "command_artifact": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-first-pypi-transaction-attempt-1/command.json",
+        "input_sha256": "f03bbd2b1df9c5ea39923be76a42fff88df17bb8233d84130f6e5d6b7c529145"
+      },
+      {
+        "case": "linux-cpu-exact-sources-constrained-attempt-1",
+        "status": "PASS_20_PIN_EXACT_CPU_TORCH_AND_PYPI_METADATA_RESOLUTION",
+        "exit_code": 0,
+        "resolved_packages": 58,
+        "command_artifact": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-cpu-exact-sources-constrained-attempt-1/command.json",
+        "input_sha256": "8c8b7270cfa6506d2f67ff645a79c6094083c4c1e4549f280c4bb541f57ade4e"
+      },
+      {
+        "case": "linux-full-requirements-attempt-1",
+        "status": "INPUT_PARSER_FAILURE__NO_GRAPH_VERDICT",
+        "exit_code": 2,
+        "resolved_packages": null,
+        "command_artifact": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-requirements-attempt-1/command.json",
+        "input_sha256": "193324d594b71c6a1f9db4890814612f08df47ce74211866d2c5ba4668da86cf"
+      },
+      {
+        "case": "linux-serving-torch-vllm-pair-attempt-1",
+        "status": "WHEEL_TARGET_AVAILABILITY_FAILURE__NOT_VERSION_CONFLICT",
+        "exit_code": 1,
+        "resolved_packages": null,
+        "command_artifact": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-serving-torch-vllm-pair-attempt-1/command.json",
+        "input_sha256": "caf800ffe2ff432e39261ccdc03781e26534672e7d4c08253322fef94b6001fd"
+      },
+      {
+        "case": "linux-serving-torch-vllm-pair-glibc231-attempt-1",
+        "status": "PASS_PAIR_METADATA_RESOLUTION__NOT_FULL_PIN_MATRIX",
+        "exit_code": 0,
+        "resolved_packages": 172,
+        "command_artifact": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-serving-torch-vllm-pair-glibc231-attempt-1/command.json",
+        "input_sha256": "caf800ffe2ff432e39261ccdc03781e26534672e7d4c08253322fef94b6001fd"
+      },
+      {
+        "case": "linux-training-torch-torchtitan-pair-attempt-1",
+        "status": "PASS_PAIR_METADATA_RESOLUTION__NOT_FULL_PIN_MATRIX",
+        "exit_code": 0,
+        "resolved_packages": 73,
+        "command_artifact": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-training-torch-torchtitan-pair-attempt-1/command.json",
+        "input_sha256": "6b197d2bc78671e80a9dfc2a6428f9543e064154b6133be0dae1461904427f63"
+      },
+      {
+        "case": "linux-full-public-requirements-attempt-1",
+        "status": "BINARY_ONLY_SDIST_AVAILABILITY_FAILURE__FULL_GRAPH_HOLD",
+        "exit_code": 1,
+        "resolved_packages": null,
+        "command_artifact": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-public-requirements-attempt-1/command.json",
+        "input_sha256": "e471fb5f83a31023d66f9dcb698614a0d2c73d7450f0a3a2153dda5610a8494a"
+      }
+    ]
+  },
+  "cpu_source_policy": {
+    "artifact": "cpu-source-policy-comparison.json",
+    "old19_pin_graph_packages": 55,
+    "new20_pin_graph_packages": 58,
+    "first_pypi_transaction_packages": 51,
+    "final_constrained_union_packages": 58,
+    "all_first_transaction_versions_retained": true,
+    "clarification": "--torch-backend cpu routed Triton via PyTorchCPUindex, whose wheelhash differs fromPyPI. These older results are not literal CItransactions. Newfinalunion uses the observed exactofficialCPUtorchURL andPyPI forallotherpackages, with everyfirsttransactionresolvedversion constrained. This is true targetedmetadataresolution, notpipinstallation."
+  },
+  "full_requirements_boundary": {
+    "raw_attempt": "linux-full-requirements-attempt-1",
+    "raw_failure": "uvrejectsrelative find-links before dependency solving; code/third_party/wheels is absent. No fake wheel directory created. This doesnot demonstrate pip or setupfailure.",
+    "public_only_diagnostic": "linux-full-public-requirements-attempt-1",
+    "package_specs_preserved": 90,
+    "transformation": "Onlytheabsent -f ./third_party/wheels directive omitted; allpackages andtransitive dependencies retained, officialPyPI+PyTorchindexes withunsafe-best-matchtoapproximatepipcombinedindexselection.",
+    "diagnostic_failure": "GPUtil1.4.0 publishes onlysdist; binary-onlyresolutionfailswheelavailability. No fullgraphsuccess or inherentversionconflict asserted.",
+    "setup_distinction": "Actualsetup filters accelerate/torchtitan/torch/torchao/vllm (andoptionalflashinfer) for initialbulk install, laterinstalls parts--no-deps andverifiesimports. Theseattempts neitherexecute norprove thatmulti-step pipeline.",
+    "serving_pair": "Officialvllm0.16.0 requires torch==2.9.1, whichaccepts2.9.1+cu130; generic-targetvllmwheelunavailability clears with explicitmanylinux2.31 pairresolution172packages. Allotherfullrequirementspins were NOTconstraintsinthispair.",
+    "training_pair": "Torch2.9.1+cu130 plus torchtitan0.2.0 resolves73packages. Torchtitanhasnotdirecttorchversionrequirement inpublishedmetadata; thisdoesnotprove import/API/ABI compatibility."
+  },
+  "arm_bootstrap_disposition": "ExistingCUDA torchao0.15+cu130wheelsarex86only; currentsetup explicitlyrejectsARM atguard beforebulkPython installs butafterearlierOSprovisioning. Previouslyrecordedsourcebuildoptionneeds realvalidatedARMartifact/import/FP8; noARMcompletionclaim orsourceguardweakened here.",
+  "pending_acceptance": [
+    "ActualLinuxCPU isolatedinstall followed byordinaryfulltests with20workflowpins. Dockerpublicpull isblocked bymacOSKeychaincredentialhelper; no bypass orcontainerexecution.",
+    "FullLinux/CUDA requirements/native sourcebuild/bootstrap/import, CXXABI anddevicequalification.",
+    "ARMsourcebuiltTorchAO artifact andactualmatchingtargetvalidation.",
+    "CPUwire/parsertests requiring externalpromtool andprometheus-client retainexplicitcapabilitygaps; none silentlysubstituted."
+  ],
+  "not_performed": [
+    "System/sharedpackageinstallation",
+    "Linuxcontainerexecution",
+    "CUDA/GPUkernel orbenchmark",
+    "FullrepoCPUrerun inthissubtask",
+    "CI dispatch/push/Gitmutation",
+    "MainTorch/vllm/torchtitanversionupgrade",
+    "Priorreceipt/evidencerewrite"
+  ],
+  "review": "Parent/C source review duringworkfound noadditionalactivepin concern; independentfinalreview tofollowimmutable receipt. Bboundedtransitiveimportaudit identifiedtokenizers and nosecondconcreteunguardedCPUdependency; this is sourceanalysis, notcleanLinuxcollectionproof.",
+  "official_sources": [
+    "https://download.pytorch.org/whl/cu130/torch/",
+    "https://download.pytorch.org/whl/cpu/torch/",
+    "https://pypi.org/pypi/triton/3.5.1/json",
+    "https://pypi.org/pypi/requests/2.34.2/json",
+    "https://pypi.org/pypi/tokenizers/0.22.2/json",
+    "https://pypi.org/pypi/vllm/0.16.0/json",
+    "https://pypi.org/pypi/torchtitan/0.2.0/json",
+    "https://pypi.org/pypi/GPUtil/1.4.0/json",
+    "https://docs.astral.sh/uv/reference/cli/#uv-pip-compile--python-platform"
+  ]
+}

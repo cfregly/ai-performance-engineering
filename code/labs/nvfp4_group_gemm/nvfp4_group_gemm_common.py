@@ -27,6 +27,7 @@ from core.harness.benchmark_harness import (
 )
 
 from labs.nvfp4_group_gemm.nvfp4_group_gemm_inputs import generate_input
+from labs.nvfp4_group_gemm.reference_math import assert_group_outputs, reference_group_gemm
 
 input_t = Tuple[
     List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]],  # (a, b, c) per group
@@ -178,6 +179,8 @@ class NVFP4GroupGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs_per_iteration = _resolve_inputs_per_iteration(int(inputs_per_iteration))
 
         self.data_list: List[input_t] = []
+        self._canonical_data: List[input_t] = []
+        self._reference_outputs: list[torch.Tensor] = []
         self._last_output: Optional[output_t] = None
         self._verify_output: Optional[torch.Tensor] = None
         self._iter_graph: Optional[torch.cuda.CUDAGraph] = None
@@ -193,6 +196,8 @@ class NVFP4GroupGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         # Rebuild inputs on every setup() call because verify_runner reuses benchmark instances.
         self.data_list = []
+        self._canonical_data = []
+        self._reference_outputs = []
         self._last_output = None
         self._verify_output = None
         self._iter_graph = None
@@ -215,6 +220,16 @@ class NVFP4GroupGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 )
             )
 
+        # Retain every logical request before custom preparation can fuse/compress
+        # callsites. Verification must cover all requests, not merely the last
+        # Python return value (which is the first request in fused mode).
+        self._canonical_data = list(self.data_list)
+        with torch.inference_mode():
+            for data in self._canonical_data:
+                self._reference_outputs.extend(reference_group_gemm(data, write_output=False))
+                for _a, _b, c in data[0]:
+                    c.fill_(float("nan"))
+
         if self._prepare is not None:
             maybe_data = self._prepare(self.data_list)
             if maybe_data is not None:
@@ -225,7 +240,7 @@ class NVFP4GroupGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for m, n, _k, l in self.case.problem_sizes()
         )
         self._verify_output = torch.empty(
-            total_output_elements,
+            total_output_elements * self.inputs_per_iteration,
             device=self.device,
             dtype=torch.float16,
         )
@@ -253,11 +268,11 @@ class NVFP4GroupGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self._iter_graph = graph
                 self._iter_graph_last_output = out
                 self._synchronize()
-            except RuntimeError:
-                # Some tuned kernel schedules are not graph-capture safe on all shapes.
-                # Fall back to steady-state non-graph execution while keeping correctness.
-                self._iter_graph = None
-                self._iter_graph_last_output = None
+            except RuntimeError as exc:
+                raise RuntimeError(
+                    "Requested grouped-GEMM CUDA graph capture failed; explicitly set "
+                    "AISP_NVFP4_GROUP_GEMM_CAPTURE_ITER_GRAPH=0 for an eager run"
+                ) from exc
 
     def benchmark_fn(self) -> None:
         if not self.data_list:
@@ -287,13 +302,15 @@ class NVFP4GroupGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Use FP4 A from the first group/input as the jitter probe input. Jitter check will likely
         # skip for Float4/Float8 because torch.randn_like is not implemented, but output verification
         # still provides strong protection.
-        a0 = self.data_list[0][0][0][0]
+        a0 = self._canonical_data[0][0][0][0]
+        actual_outputs = [c for data in self._canonical_data for _a, _b, c in data[0]]
+        assert_group_outputs(actual_outputs, self._reference_outputs)
 
         # Combine per-group outputs into a single tensor to avoid input-output aliasing on C buffers.
         if self._verify_output is None:
             raise RuntimeError("Verification output buffer not initialized")
         offset = 0
-        for group_output in self._last_output:
+        for group_output in actual_outputs:
             flat_output = group_output.reshape(-1)
             next_offset = offset + int(flat_output.numel())
             self._verify_output[offset:next_offset].copy_(flat_output)
@@ -311,6 +328,8 @@ class NVFP4GroupGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def teardown(self) -> None:
         self.data_list = []
+        self._canonical_data = []
+        self._reference_outputs = []
         self._last_output = None
         self._verify_output = None
         self._iter_graph = None
@@ -322,6 +341,13 @@ class NVFP4GroupGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
             return "Output not produced"
         if len(self._last_output) != self.case.g:
             return f"Expected {self.case.g} group outputs, got {len(self._last_output)}"
+        try:
+            assert_group_outputs(
+                [c for data in self._canonical_data for _a, _b, c in data[0]],
+                self._reference_outputs,
+            )
+        except (AssertionError, RuntimeError) as exc:
+            return str(exc)
         return None
 
     def get_input_signature(self) -> dict:

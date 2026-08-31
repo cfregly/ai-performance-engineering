@@ -1,0 +1,19 @@
+{
+  "README.md": "dd05ec9c052d3522e2fd8a6e11c9e8173a99a94ebe84b05c9f6a5b55fd6bd4f9",
+  "capture_review.py": "0f2aae40024db4c07511ad37654046babcaf0b3885b62a727ff3b068515bf5ec",
+  "factory-inventory.json": "7b0de90e76542d08632bba790100f7dd0039e61960976654619126c233bcf2a2",
+  "observed-status.json": "89f34ecb0840655229d3568c132cc9e6cddc1a23c935112096b9591ae517f032",
+  "original-findings.json": "fc2a9a4c976b8caee3e081a17b59ce175120de56f0ab1c4a6c5f4f4ac4cb2f43",
+  "originals/code__ch04__symmetric_memory_training_advanced.py.txt": "e5ea9cb55618c5f2f77267d203ba5ad88e3f49a11328da84885bad9b09fbb1f8",
+  "originals/code__labs__train_distributed__README.md.txt": "671d0837eb5c62cc531e26999616d4e9a7bacb55c2ecfe96b2d4d5a9e9fe4020",
+  "originals/code__labs__train_distributed__baseline_symmem_training.py.txt": "e8b15ab84b2ee82461a6dd92e4ffe8e0eac23b1b2703060f7cbb7fd4e85de01c",
+  "originals/code__labs__train_distributed__baseline_symmem_training_multigpu.py.txt": "bf798c7ccef3a3891f94b1eade2c708494b600fa4818c827a5a733f72cb4f606",
+  "originals/code__labs__train_distributed__baseline_zero2.py.txt": "aa845a2e92de8a7c08f16099b9c21c152865be892165057659e205d093f2b8ec",
+  "originals/code__labs__train_distributed__baseline_zero2_multigpu.py.txt": "9c7832f65fa9c84a674af0b195edac6346b876b95c19b7a92e761093ef219f35",
+  "originals/code__labs__train_distributed__optimized_symmem_training.py.txt": "322544c01af316ed599d3fd426156c49f2ea54d05a6a752da3b70d0c800d9ca4",
+  "originals/code__labs__train_distributed__optimized_zero2.py.txt": "121ee2e2e3f82eca8ac2291270f73d64fddf747f39398e57a8fd7699bde9d85a",
+  "originals/code__labs__train_distributed__optimized_zero2_multigpu.py.txt": "75b9d845d854df156513d06def486c5c45d6473bff2d0ab29698f831fcb5b43f",
+  "originals/code__labs__train_distributed__training_utils__torchrun_harness.py.txt": "7cec3cdf803499f5388f6c87d1f09487f738e318855f141d7adbb3f3cad152ce",
+  "review.json": "73ed26092a7e4378f810163352e419685159b66c6e381ee0500ba7968b8c3a10",
+  "source-evidence.json": "1243e8e2f8b4d645005ded5ebb32aa530351c2f8c4e50d9769da5e9eb400964a"
+}

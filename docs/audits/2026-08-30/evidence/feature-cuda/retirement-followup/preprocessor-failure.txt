@@ -1,0 +1,12 @@
+# 1 "/Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/experimental/tcgen05_multicast.cu"
+# 1 "<built-in>" 1
+# 1 "<built-in>" 3
+# 531 "<built-in>" 3
+# 1 "<command line>" 1
+# 1 "<built-in>" 2
+# 1 "/Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/experimental/tcgen05_multicast.cu" 2
+
+/Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/experimental/tcgen05_multicast.cu:5:2: error: "Retired incomplete experiment: use experimental/tcgen05_tma_multicast.cu and its validation gates"
+    5 | #error "Retired incomplete experiment: use experimental/tcgen05_tma_multicast.cu and its validation gates"
+      |  ^
+1 error generated.

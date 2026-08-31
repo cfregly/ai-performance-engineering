@@ -169,7 +169,7 @@ int main(int argc, char** argv) {
     fused_bias_kernel<<<grid, block, 0, stream>>>(buffers.out, buffers.a, buffers.b, opts.batch_elems);
     CUDA_CHECK(cudaGetLastError());
 
-    CUDA_CHECK(cudaMemcpyAsync(batch_out, buffers.out, batch_bytes,
+    CUDA_CHECK(cudaMemcpyAsync(batch_out, buffers.b, batch_bytes,
                                cudaMemcpyDeviceToHost, stream));
   }
 
@@ -183,7 +183,14 @@ int main(int argc, char** argv) {
   CUDA_CHECK(cudaEventCreate(&start));
   CUDA_CHECK(cudaEventCreate(&stop));
   
-  CUDA_CHECK(cudaEventRecord(start));
+  cudaStream_t timing_stream;
+  std::vector<cudaEvent_t> done(opts.streams);
+  CUDA_CHECK(cudaStreamCreateWithFlags(&timing_stream, cudaStreamNonBlocking));
+  CUDA_CHECK(cudaEventRecord(start, timing_stream));
+  for (int s = 0; s < opts.streams; ++s) {
+    CUDA_CHECK(cudaEventCreateWithFlags(&done[s], cudaEventDisableTiming));
+    CUDA_CHECK(cudaStreamWaitEvent(streams[s], start, 0));
+  }
   for (int batch = 0; batch < opts.batches; ++batch) {
       NVTX_RANGE("compute_kernel:fused_bias_kernel");
     const int stream_idx = batch % opts.streams;
@@ -192,7 +199,12 @@ int main(int argc, char** argv) {
     fused_bias_kernel<<<grid, block, 0, stream>>>(buffers.a, buffers.b, buffers.out, opts.batch_elems);
     fused_bias_kernel<<<grid, block, 0, stream>>>(buffers.out, buffers.a, buffers.b, opts.batch_elems);
   }
-  CUDA_CHECK(cudaEventRecord(stop));
+  CUDA_CHECK(cudaGetLastError());
+  for (int s = 0; s < opts.streams; ++s) {
+    CUDA_CHECK(cudaEventRecord(done[s], streams[s]));
+    CUDA_CHECK(cudaStreamWaitEvent(timing_stream, done[s], 0));
+  }
+  CUDA_CHECK(cudaEventRecord(stop, timing_stream));
   CUDA_CHECK(cudaEventSynchronize(stop));
   
   float elapsed_ms = 0.0f;
@@ -200,13 +212,37 @@ int main(int argc, char** argv) {
   std::printf("Kernel time: %.4f ms\n", elapsed_ms);
   CUDA_CHECK(cudaEventDestroy(start));
   CUDA_CHECK(cudaEventDestroy(stop));
+  for (auto event : done) CUDA_CHECK(cudaEventDestroy(event));
+  CUDA_CHECK(cudaStreamDestroy(timing_stream));
 
   double max_error = 0.0;
   if (opts.verify) {
     for (size_t i = 0; i < total_elems; ++i) {
         NVTX_RANGE("verify");
-      double expected = (h_a[i] * 2.0 + h_b[i]) * 0.5;
-      max_error = std::max(max_error, std::abs(expected - h_out[i]));
+      double expected = 1.5 * h_a[i] + 0.5 * h_b[i];
+      if (!std::isfinite(h_out[i])) max_error = INFINITY;
+      else max_error = std::max(max_error, std::abs(expected - h_out[i]));
+    }
+  }
+
+  if (opts.verify) {
+    // Validate the timed feedback sequence too, including every output in the
+    // final buffer of every active stream (not just the earlier warmup output).
+    std::vector<float> timed_output(opts.batch_elems);
+    for (int s = 0; s < std::min(opts.streams, opts.batches); ++s) {
+      const int launches = (opts.batches - 1 - s) / opts.streams + 1;
+      const int last_batch = s + (launches - 1) * opts.streams;
+      const size_t offset = static_cast<size_t>(last_batch) * opts.batch_elems;
+      CUDA_CHECK(cudaMemcpyAsync(timed_output.data(), device_buffers[s].b, batch_bytes,
+                                 cudaMemcpyDeviceToHost, streams[s]));
+      CUDA_CHECK(cudaStreamSynchronize(streams[s]));
+      for (int i = 0; i < opts.batch_elems; ++i) {
+        const double a = h_a[offset + i];
+        double expected = 1.5 * a + 0.5 * h_b[offset + i];
+        for (int launch = 0; launch < launches; ++launch) expected = 1.5 * a + 0.5 * expected;
+        if (!std::isfinite(timed_output[i])) max_error = INFINITY;
+        else max_error = std::max(max_error, std::abs(expected - timed_output[i]));
+      }
     }
   }
 
@@ -232,5 +268,5 @@ int main(int argc, char** argv) {
   CUDA_CHECK(cudaFreeHost(h_a));
   CUDA_CHECK(cudaFreeHost(h_b));
   CUDA_CHECK(cudaFreeHost(h_out));
-  return 0;
+  return (!opts.verify || max_error <= 1e-3) ? 0 : 1;
 }

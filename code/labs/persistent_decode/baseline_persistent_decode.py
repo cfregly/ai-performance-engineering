@@ -10,6 +10,7 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from labs.persistent_decode.persistent_decode_common import (
     build_inputs,
+    validate_decode_output,
     build_decode_input_signature,
     get_decode_options,
     resolve_device,
@@ -44,9 +45,6 @@ class BaselinePersistentDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.register_workload_metadata(tokens_per_iteration=tokens_per_iteration())
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.inputs = build_inputs(self.device)
         self.batch = int(self.inputs.q.shape[0])
         self.seq_len = int(self.inputs.q.shape[1])
@@ -65,8 +63,8 @@ class BaselinePersistentDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
             dtype=self.inputs.q.dtype,
         )
         self._verify_output_buffer = torch.empty(
-            1,
-            min(8, self.seq_len),
+            self.batch,
+            self.seq_len,
             self.head_dim,
             device=self.inputs.out.device,
             dtype=torch.float32,
@@ -80,7 +78,7 @@ class BaselinePersistentDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 strict=True,
             )
         )
-        self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
+        self._output_view = self.inputs.out
         self._synchronize()
 
     def _decode_step(
@@ -114,6 +112,7 @@ class BaselinePersistentDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
     def capture_verification_payload(self) -> None:
         if self.inputs is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        validate_decode_output(self.inputs)
         self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={
@@ -169,8 +168,10 @@ class BaselinePersistentDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
     def validate_result(self) -> str | None:
         if self.inputs is None:
             return "Inputs not initialized"
-        if not torch.isfinite(self.inputs.out).all():
-            return "Non-finite output detected"
+        try:
+            validate_decode_output(self.inputs)
+        except AssertionError as exc:
+            return str(exc)
         return None
 
 def get_benchmark() -> BaseBenchmark:

@@ -1,0 +1,23 @@
+[
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "tests/test_audit_wave1_zero2_parity_cuda.py",
+      "--output-dir",
+      "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-2"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+    "exit_code": 3
+  },
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "tests/test_audit_wave1_zero2_parity_cuda.py",
+      "--output-dir",
+      "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-2",
+      "--execute"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+    "exit_code": 3
+  }
+]

@@ -1,0 +1,27 @@
+from pathlib import Path
+import json,subprocess,datetime,time,concurrent.futures,sys
+root=Path('/Users/admin/dev/ai-perf/ai-performance-engineering')
+out=root/'docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness'
+work=Path(json.loads((out/'venv-create.json').read_text())['argv'][-1]).parent
+# Resolve-only: package code is not built, imported, or installed.
+pins=(out/'cpu-workflow-package-pins-v2.txt').read_text()
+cases={
+ 'linux-cpu-workflow-tokenizers-attempt-1':(pins,['--torch-backend','cpu'],None),
+ 'linux-cpu-first-pypi-transaction-attempt-1':('\n'.join(p for p in pins.splitlines() if not p.startswith('torch=='))+'\n',[],None),
+ 'linux-full-requirements-attempt-1':((root/'code/requirements_latest.txt').read_text(),['--index-strategy','unsafe-best-match'],root/'code/requirements_latest.txt'),
+ 'linux-serving-torch-vllm-pair-attempt-1':('torch==2.9.1+cu130\nvllm==0.16.0\n',['--torch-backend','cu130'],None),
+ 'linux-training-torch-torchtitan-pair-attempt-1':('torch==2.9.1+cu130\ntorchtitan==0.2.0\n',['--torch-backend','cu130'],None),
+}
+def run(name):
+    content,extra,input_override=cases[name];case=out/name;case.mkdir(exist_ok=False)
+    req=case/'requirements.in';req.write_text(content)
+    args=['/Users/admin/.local/bin/uv','pip','compile','--python','/opt/miniconda3/bin/python','--python-version','3.12','--python-platform','x86_64-unknown-linux-gnu',*extra,'--only-binary',':all:','--no-python-downloads','--no-config','--default-index','https://pypi.org/simple','--cache-dir',str(work/(name+'-cache')),'--no-progress','--color','never','--generate-hashes','--emit-index-annotation','--emit-index-url','--output-file',str(case/'resolved-requirements.txt'),str(input_override or req)]
+    start=time.time();begun=datetime.datetime.now(datetime.timezone.utc).isoformat();cwd=root/'code' if input_override else work
+    try:p=subprocess.run(args,cwd=cwd,capture_output=True,text=True,timeout=120);status=p.returncode;stdout=p.stdout;stderr=p.stderr
+    except subprocess.TimeoutExpired as e:status=124;stdout=e.stdout or b'';stderr=e.stderr or b'';stdout=stdout.decode() if isinstance(stdout,bytes) else stdout;stderr=stderr.decode() if isinstance(stderr,bytes) else stderr
+    (case/'stdout.txt').write_text(stdout);(case/'stderr.txt').write_text(stderr)
+    (case/'command.json').write_text(json.dumps({'started_utc':begun,'argv':args,'cwd':str(cwd),'uv_version':'uv 0.9.18 (0cee76417 2025-12-16)','exit_code':status,'elapsed_seconds':time.time()-start,'input_snapshot':'requirements.in','scope':'Actual uv Linux x86_64 CPython3.12 target dependency metadata resolution, binary-only, public indexes; no Linux installation/execution/ABI claim.','timeout_seconds':120},indent=2)+'\n')
+    return {'case':name,'exit_code':status,'elapsed_seconds':round(time.time()-start,2),'stderr_tail':stderr[-4000:]}
+with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+    for result in pool.map(run,list(cases)):
+        print(json.dumps(result),flush=True)

@@ -8968,17 +8968,20 @@ def tool_analyze_memory_patterns(params: Dict[str, Any]) -> Dict[str, Any]:
 
 @register_tool(
     "analyze_dataloader",
-    "Tags: analyze, dataloader, data, loading, io, bottleneck, workers, prefetch. "
-    "DataLoader bottleneck analysis: worker efficiency, prefetch, throughput. "
-    "Returns: {throughput, worker_efficiency, recommendations}. "
-    "⚡ FAST (~2s). USE when: Diagnosing data loading bottlenecks in training. "
-    'Example: "Is data loading the bottleneck?" or "Check DataLoader efficiency". '
-    "WORKFLOW: analyze_bottlenecks → if host-bound → analyze_dataloader → tune num_workers/prefetch. "
-    "COMMON FIXES: Increase num_workers, enable pin_memory, use persistent_workers.",
+    "Tags: analyze, dataloader, data, loading, workers, prefetch, affinity, numa. "
+    "Read-only DataLoader recommendation and CPU/GPU locality snapshot. "
+    "Returns schema data_loading_analysis.v1: {schema_version, analysis_mode, success, "
+    "dataloader_kwargs, cpu, gpu_id, gpu_numa_mapping, current_cpu_affinity, "
+    "current_affinity_status, affinity_applied, recommendation_provenance, "
+    "observation_provenance, notes}. This tool does not run a performance benchmark, "
+    "measure worker behavior, infer missing NUMA placement, or change process affinity. "
+    "⚡ FAST. USE when: Inspecting configured DataLoader recommendations and observed "
+    "host/GPU locality before a separate workload measurement. "
+    'Example: "Show read-only DataLoader settings and NUMA observations". ',
     {"type": "object", "properties": with_context_params({})},
 )
 def tool_analyze_dataloader(params: Dict[str, Any]) -> Dict[str, Any]:
-    """DataLoader bottleneck analysis."""
+    """Return the read-only DataLoader configuration/locality contract."""
     from core.perf_core_base import PerformanceCoreBase
 
     include_context, context_level = extract_context_opts(params)

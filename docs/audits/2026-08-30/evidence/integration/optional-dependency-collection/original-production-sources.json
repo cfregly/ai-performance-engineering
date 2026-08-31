@@ -1,0 +1,32 @@
+[
+  {
+    "path": "code/labs/occupancy_tuning/__init__.py",
+    "preserved_as": "original-labs--occupancy_tuning--__init__.py",
+    "sha256": "72ab32cb8580ce5554aaa514ce0090dabceb7f7ca97191db231af3023794eac5"
+  },
+  {
+    "path": "code/labs/occupancy_tuning/triton_matmul_schedules.py",
+    "preserved_as": "original-labs--occupancy_tuning--triton_matmul_schedules.py",
+    "sha256": "bc379f4ae058256db6628122a1a5c76e950f8e0db5a42a174a6e7185ffb8b4f1"
+  },
+  {
+    "path": "code/labs/occupancy_tuning/sweep_schedules.py",
+    "preserved_as": "original-labs--occupancy_tuning--sweep_schedules.py",
+    "sha256": "6651f09b30ec08fc1cb442c9964b3d95e8208626107216bb112b751c89d096dd"
+  },
+  {
+    "path": "code/labs/blackwell_gemm_optimizations/blackwell_grouped_gemm_autotune.py",
+    "preserved_as": "original-labs--blackwell_gemm_optimizations--blackwell_grouped_gemm_autotune.py",
+    "sha256": "0784c21bf30a2576794f6e7c10f00595fc9f0bac4352b6ff9370f5adf1153889"
+  },
+  {
+    "path": "code/labs/blackwell_gemm_optimizations/blackwell_grouped_gemm_common.py",
+    "preserved_as": "original-labs--blackwell_gemm_optimizations--blackwell_grouped_gemm_common.py",
+    "sha256": "a26daf9f92b462d4f3c4b32ee4626363183b0ddfb35aa3482f43c993af103994"
+  },
+  {
+    "path": "code/labs/blackwell_gemm_optimizations/blackwell_grouped_gemm_kernel.py",
+    "preserved_as": "original-labs--blackwell_gemm_optimizations--blackwell_grouped_gemm_kernel.py",
+    "sha256": "f0784f34bab73ffd11e5f65916fcf758cf2bee5beab7a1232424c92c6d80a2df"
+  }
+]

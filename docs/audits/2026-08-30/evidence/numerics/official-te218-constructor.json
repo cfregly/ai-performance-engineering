@@ -1,0 +1,12 @@
+{
+  "source_url": "https://raw.githubusercontent.com/NVIDIA/TransformerEngine/v2.18/transformer_engine/common/recipe/__init__.py",
+  "sha256": "8417454a7b1d3f2ff40c4caa5bcf4b75e9d50a0ba4f18ae3d6c2b3c7be326d02",
+  "signature": "(disable_rht: 'bool' = False, disable_stochastic_rounding: 'bool' = False, disable_2d_quantization: 'bool' = False, row_scaled_activation: 'bool' = False, nvfp4_4over6: 'str' = 'none', nvfp4_4over6_e4m3_use_256: 'str' = 'all', nvfp4_4over6_err_mode: 'str' = 'MAE', fp4_format: 'Format' = <Format.E2M1: _FormatHelper(max_fwd=6, max_bwd=6)>, fp8_format: 'Format' = <Format.E4M3: _FormatHelper(max_fwd=448, max_bwd=448)>, fp8_dpa: 'bool' = False, fp8_mha: 'bool' = False, backward_override: 'Optional[str]' = None) -> None",
+  "default_constructs": true,
+  "old_kwargs_result": "accepted but silently ignored by pydantic dataclass",
+  "old_kwargs_present": {
+    "calibration_steps": false,
+    "amax_history_len": false,
+    "fp4_tensor_block": false
+  }
+}

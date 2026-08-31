@@ -1,0 +1,25 @@
+F.......s                                                                [100%]
+=================================== FAILURES ===================================
+____ test_all_four_entrypoints_select_identical_model_and_wrapper_workload _____
+
+    def test_all_four_entrypoints_select_identical_model_and_wrapper_workload():
+        outputs = []
+        for variant in ("single", "multigpu"):
+            arguments = []
+            for mode in ("baseline", "optimized"):
+                suffix = "_multigpu" if variant == "multigpu" else ""
+                module = importlib.import_module(f"labs.train_distributed.{mode}_zero2{suffix}")
+                with torch.random.fork_rng(devices=[]):
+                    torch.manual_seed(25)
+                    model = module._build_model(8, torch.device("cpu"))
+                assert all(p.dtype == torch.float32 for p in model.parameters())
+                assert sum(isinstance(layer, torch.nn.GELU) for layer in model) == 6
+                outputs.append(model(torch.arange(24.).reshape(3, 8)))
+>               args = list(module.get_benchmark().base_args)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               AttributeError: 'TorchrunScriptBenchmark' object has no attribute 'base_args'. Did you mean: '_base_args'?
+
+tests/test_audit_wave1_zero2_parity.py:32: AttributeError
+=========================== short test summary info ============================
+FAILED tests/test_audit_wave1_zero2_parity.py::test_all_four_entrypoints_select_identical_model_and_wrapper_workload
+1 failed, 7 passed, 1 skipped in 4.39s

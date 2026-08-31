@@ -1,0 +1,128 @@
+objective:
+  primary_kpi: correct_decode_logits_and_kv_state
+  secondary_kpis:
+  - decode_tokens_per_second_pending_GPU
+  - capture_setup_latency_pending_GPU
+benchmark:
+  layer: component
+  grade: realism
+  variable_under_test: decode_execution_path
+workload:
+  type: inference
+  model: Nanochat GPT; deterministic nonzero weights, tiny regression model and separate
+    representative checkpoint gate
+  prompt_or_seq_len:
+    test_values:
+    - 1
+    - 3
+    - 5
+    representative_pending:
+    - 256
+    - 512
+  batch_shape:
+    test_values:
+    - 1
+    - 2
+    - 3
+    representative_pending:
+    - 1
+    - 4
+  constraints:
+  - same weights and input sequence across arms
+  - dense one-token decode only for CUDA graphs
+  - per-step logits and every valid KV entry must match eager
+  - graph attention uses fixed-capacity masked SDPA; no FA3 execution claim
+slos:
+  latency_ms:
+    p50: null
+    p95: null
+    p99: null
+  availability: null
+  cost_budget: no paid/GPU runs performed
+environment:
+  hardware:
+    gpu: []
+    cpu: local macOS CPU; CUDA unavailable
+    ram_gb: null
+    storage: workspace local filesystem
+    interconnect: []
+    topology: CPU checks only
+  software:
+    os: macOS
+    kernel: null
+    driver: null
+    cuda: null
+    pytorch: 2.8.0
+    triton: null
+    frameworks:
+    - nanochat
+    - pytest 8.4.2
+    nccl: null
+    container_orchestrator: null
+  data_pipeline:
+  - seed 718 synthetic token IDs; no model download
+current_baseline:
+  time_to_train_hours: null
+  mfu_pct: null
+  scaling_efficiency_pct: null
+  tokens_per_second: null
+  ttft_ms: null
+  p50_ms: null
+  p99_ms: null
+  jitter_cv_pct: null
+  gpu_util_percent: null
+  mem_bw_percent: null
+  nic_gbps: null
+  goodput_percent: null
+  cost_per_token_usd: null
+  cost_per_request_usd: null
+hot_path_model:
+  path: nanochat.engine.Engine._execute_decode -> GPT.forward -> KVCache.insert_kv
+  phase: steady_state
+  invocation_frequency: per_token
+  invocations_per_primary_unit: 1
+  estimated_costs:
+    bytes_read: 'graph K/V attention: about 2*layers*batch*kv_heads*capacity*head_dim*element_bytes
+      (plus weights); eager uses current prefix length'
+    bytes_written: 'KV update: 2*layers*batch*kv_heads*head_dim*element_bytes per
+      token'
+    host_device_bytes: 8*batch input token IDs; 8*batch sampled token IDs when host
+      feedback is used
+    allocations_or_materializations: capture owns functional rotary intermediates;
+      fixed cache/mask/position buffers
+    kernel_launches: graph replay vs eager submission; no counts measured
+    synchronizations_or_locks: side stream producer/consumer waits; blocking D2H before
+      host reads; synchronized wall measurement boundaries
+    api_process_or_rpc_crossings: 0
+    storage_or_network_operations: 0
+  operation_cost_source: source-derived cost model, not a GPU profile
+  expected_dominant_cost: unmeasured; fixed-capacity attention may offset launch savings
+  best_case_primary_kpi_improvement_pct: null
+evidence:
+  baseline_artifact: none for GPU performance
+  profile_artifacts: []
+  allocation_or_memory_profile: null
+  hardware_counter_artifacts: []
+  static_review_findings:
+  - W1-003
+  - W1-034
+  - W1-035
+  - W1-036
+  - W1-085
+  - W1-121
+  correctness_receipt: receipt.json
+candidate_optimizations:
+- device-resident decode position and fixed attention shape enable correct replay
+- joined side stream with explicit allocator lifetimes
+- bounded blocking scalar D2H feedback
+known_issues_or_hypotheses:
+- GPU runtime correctness and speedup unmeasured
+- padded/masked and custom-kernel graph decode explicitly unsupported
+- full-capacity attention may be slower than eager at short prefixes
+risk_guardrails:
+  correctness_tests:
+  - ../test_new_optimizations.py
+  - ../../../tests/test_audit_wave1_nanochat_regressions.py
+  change_windows:
+  - no GPU benchmark without target custody/stack evidence
+  qualification_status: 'HOLD: CUDA unavailable'

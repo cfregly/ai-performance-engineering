@@ -1,0 +1,1398 @@
+FFFFFFFFFFFFFFFFFFF.FFFFFFFF                                             [100%]
+=================================== FAILURES ===================================
+________ test_generic_training_verification_is_unsupported[False-setup] ________
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica0')
+method = 'setup', stale_payload = False
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+>       with pytest.raises(RuntimeError, match=REASON):
+E       Failed: DID NOT RAISE <class 'RuntimeError'>
+
+tests/test_audit_wave1_torchrun_verification.py:54: Failed
+____ test_generic_training_verification_is_unsupported[False-benchmark_fn] _____
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica1')
+method = 'benchmark_fn', stale_payload = False
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+        with pytest.raises(RuntimeError, match=REASON):
+>           getattr(benchmark, method)()
+
+tests/test_audit_wave1_torchrun_verification.py:55: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <labs.train_distributed.training_utils.torchrun_harness.TorchrunScriptBenchmark object at 0x3360f16d0>
+
+    def benchmark_fn(self) -> None:
+        if self._model is None or self._input is None or self._meta is None:
+>           raise RuntimeError("setup() must run before benchmark_fn()")
+E           RuntimeError: setup() must run before benchmark_fn()
+
+labs/train_distributed/training_utils/torchrun_harness.py:96: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica1')
+method = 'benchmark_fn', stale_payload = False
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+>       with pytest.raises(RuntimeError, match=REASON):
+E       AssertionError: Regex pattern did not match.
+E        Regex: 'actual child-training verification is unsupported'
+E        Input: 'setup() must run before benchmark_fn()'
+
+tests/test_audit_wave1_torchrun_verification.py:54: AssertionError
+_ test_generic_training_verification_is_unsupported[False-capture_verification_payload] _
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica2')
+method = 'capture_verification_payload', stale_payload = False
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+        with pytest.raises(RuntimeError, match=REASON):
+>           getattr(benchmark, method)()
+
+tests/test_audit_wave1_torchrun_verification.py:55: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <labs.train_distributed.training_utils.torchrun_harness.TorchrunScriptBenchmark object at 0x3360f33e0>
+
+    def capture_verification_payload(self) -> None:
+        if self._output is None or self._input is None or self._meta is None:
+>           raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+E           RuntimeError: benchmark_fn() must run before capture_verification_payload()
+
+labs/train_distributed/training_utils/torchrun_harness.py:105: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica2')
+method = 'capture_verification_payload', stale_payload = False
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+>       with pytest.raises(RuntimeError, match=REASON):
+E       AssertionError: Regex pattern did not match.
+E        Regex: 'actual child-training verification is unsupported'
+E        Input: 'benchmark_fn() must run before capture_verification_payload()'
+
+tests/test_audit_wave1_torchrun_verification.py:54: AssertionError
+_ test_generic_training_verification_is_unsupported[False-_prepare_verification_payload] _
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica3')
+method = '_prepare_verification_payload', stale_payload = False
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+>       with pytest.raises(RuntimeError, match=REASON):
+E       Failed: DID NOT RAISE <class 'RuntimeError'>
+
+tests/test_audit_wave1_torchrun_verification.py:54: Failed
+__ test_generic_training_verification_is_unsupported[False-get_verify_inputs] __
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica4')
+method = 'get_verify_inputs', stale_payload = False
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+        with pytest.raises(RuntimeError, match=REASON):
+>           getattr(benchmark, method)()
+
+tests/test_audit_wave1_torchrun_verification.py:55: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+core/benchmark/verification_mixin.py:184: in get_verify_inputs
+    payload = self._require_payload()
+              ^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <labs.train_distributed.training_utils.torchrun_harness.TorchrunScriptBenchmark object at 0x3360f2f90>
+
+    def _require_payload(self) -> VerificationPayload:
+        payload = getattr(self, "_verification_payload", None)
+        if payload is None:
+>           raise RuntimeError("_set_verification_payload() must be called before verification")
+E           RuntimeError: _set_verification_payload() must be called before verification
+
+core/benchmark/verification_mixin.py:180: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica4')
+method = 'get_verify_inputs', stale_payload = False
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+>       with pytest.raises(RuntimeError, match=REASON):
+E       AssertionError: Regex pattern did not match.
+E        Regex: 'actual child-training verification is unsupported'
+E        Input: '_set_verification_payload() must be called before verification'
+
+tests/test_audit_wave1_torchrun_verification.py:54: AssertionError
+__ test_generic_training_verification_is_unsupported[False-get_verify_output] __
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica5')
+method = 'get_verify_output', stale_payload = False
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+        with pytest.raises(RuntimeError, match=REASON):
+>           getattr(benchmark, method)()
+
+tests/test_audit_wave1_torchrun_verification.py:55: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+core/benchmark/verification_mixin.py:188: in get_verify_output
+    payload = self._require_payload()
+              ^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <labs.train_distributed.training_utils.torchrun_harness.TorchrunScriptBenchmark object at 0x3360f3c50>
+
+    def _require_payload(self) -> VerificationPayload:
+        payload = getattr(self, "_verification_payload", None)
+        if payload is None:
+>           raise RuntimeError("_set_verification_payload() must be called before verification")
+E           RuntimeError: _set_verification_payload() must be called before verification
+
+core/benchmark/verification_mixin.py:180: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica5')
+method = 'get_verify_output', stale_payload = False
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+>       with pytest.raises(RuntimeError, match=REASON):
+E       AssertionError: Regex pattern did not match.
+E        Regex: 'actual child-training verification is unsupported'
+E        Input: '_set_verification_payload() must be called before verification'
+
+tests/test_audit_wave1_torchrun_verification.py:54: AssertionError
+_ test_generic_training_verification_is_unsupported[False-get_input_signature] _
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica6')
+method = 'get_input_signature', stale_payload = False
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+>       with pytest.raises(RuntimeError, match=REASON):
+E       Failed: DID NOT RAISE <class 'RuntimeError'>
+
+tests/test_audit_wave1_torchrun_verification.py:54: Failed
+_ test_generic_training_verification_is_unsupported[False-get_output_tolerance] _
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica7')
+method = 'get_output_tolerance', stale_payload = False
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+        with pytest.raises(RuntimeError, match=REASON):
+>           getattr(benchmark, method)()
+
+tests/test_audit_wave1_torchrun_verification.py:55: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+core/benchmark/verification_mixin.py:210: in get_output_tolerance
+    payload = self._require_payload()
+              ^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <labs.train_distributed.training_utils.torchrun_harness.TorchrunScriptBenchmark object at 0x3362e5040>
+
+    def _require_payload(self) -> VerificationPayload:
+        payload = getattr(self, "_verification_payload", None)
+        if payload is None:
+>           raise RuntimeError("_set_verification_payload() must be called before verification")
+E           RuntimeError: _set_verification_payload() must be called before verification
+
+core/benchmark/verification_mixin.py:180: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica7')
+method = 'get_output_tolerance', stale_payload = False
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+>       with pytest.raises(RuntimeError, match=REASON):
+E       AssertionError: Regex pattern did not match.
+E        Regex: 'actual child-training verification is unsupported'
+E        Input: '_set_verification_payload() must be called before verification'
+
+tests/test_audit_wave1_torchrun_verification.py:54: AssertionError
+__ test_generic_training_verification_is_unsupported[False-get_torchrun_spec] __
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica8')
+method = 'get_torchrun_spec', stale_payload = False
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+>       with pytest.raises(RuntimeError, match=REASON):
+E       Failed: DID NOT RAISE <class 'RuntimeError'>
+
+tests/test_audit_wave1_torchrun_verification.py:54: Failed
+________ test_generic_training_verification_is_unsupported[True-setup] _________
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica9')
+method = 'setup', stale_payload = True
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+>       with pytest.raises(RuntimeError, match=REASON):
+E       Failed: DID NOT RAISE <class 'RuntimeError'>
+
+tests/test_audit_wave1_torchrun_verification.py:54: Failed
+_____ test_generic_training_verification_is_unsupported[True-benchmark_fn] _____
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica10')
+method = 'benchmark_fn', stale_payload = True
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+        with pytest.raises(RuntimeError, match=REASON):
+>           getattr(benchmark, method)()
+
+tests/test_audit_wave1_torchrun_verification.py:55: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <labs.train_distributed.training_utils.torchrun_harness.TorchrunScriptBenchmark object at 0x3360f2630>
+
+    def benchmark_fn(self) -> None:
+        if self._model is None or self._input is None or self._meta is None:
+>           raise RuntimeError("setup() must run before benchmark_fn()")
+E           RuntimeError: setup() must run before benchmark_fn()
+
+labs/train_distributed/training_utils/torchrun_harness.py:96: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica10')
+method = 'benchmark_fn', stale_payload = True
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+>       with pytest.raises(RuntimeError, match=REASON):
+E       AssertionError: Regex pattern did not match.
+E        Regex: 'actual child-training verification is unsupported'
+E        Input: 'setup() must run before benchmark_fn()'
+
+tests/test_audit_wave1_torchrun_verification.py:54: AssertionError
+_ test_generic_training_verification_is_unsupported[True-capture_verification_payload] _
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica11')
+method = 'capture_verification_payload', stale_payload = True
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+        with pytest.raises(RuntimeError, match=REASON):
+>           getattr(benchmark, method)()
+
+tests/test_audit_wave1_torchrun_verification.py:55: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <labs.train_distributed.training_utils.torchrun_harness.TorchrunScriptBenchmark object at 0x3360f2a80>
+
+    def capture_verification_payload(self) -> None:
+        if self._output is None or self._input is None or self._meta is None:
+>           raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+E           RuntimeError: benchmark_fn() must run before capture_verification_payload()
+
+labs/train_distributed/training_utils/torchrun_harness.py:105: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica11')
+method = 'capture_verification_payload', stale_payload = True
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+>       with pytest.raises(RuntimeError, match=REASON):
+E       AssertionError: Regex pattern did not match.
+E        Regex: 'actual child-training verification is unsupported'
+E        Input: 'benchmark_fn() must run before capture_verification_payload()'
+
+tests/test_audit_wave1_torchrun_verification.py:54: AssertionError
+_ test_generic_training_verification_is_unsupported[True-_prepare_verification_payload] _
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica12')
+method = '_prepare_verification_payload', stale_payload = True
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+>       with pytest.raises(RuntimeError, match=REASON):
+E       Failed: DID NOT RAISE <class 'RuntimeError'>
+
+tests/test_audit_wave1_torchrun_verification.py:54: Failed
+__ test_generic_training_verification_is_unsupported[True-get_verify_inputs] ___
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica13')
+method = 'get_verify_inputs', stale_payload = True
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+        with pytest.raises(RuntimeError, match=REASON):
+>           getattr(benchmark, method)()
+
+tests/test_audit_wave1_torchrun_verification.py:55: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+core/benchmark/verification_mixin.py:184: in get_verify_inputs
+    payload = self._require_payload()
+              ^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <labs.train_distributed.training_utils.torchrun_harness.TorchrunScriptBenchmark object at 0x3362e5370>
+
+    def _require_payload(self) -> VerificationPayload:
+        payload = getattr(self, "_verification_payload", None)
+        if payload is None:
+>           raise RuntimeError("_set_verification_payload() must be called before verification")
+E           RuntimeError: _set_verification_payload() must be called before verification
+
+core/benchmark/verification_mixin.py:180: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica13')
+method = 'get_verify_inputs', stale_payload = True
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+>       with pytest.raises(RuntimeError, match=REASON):
+E       AssertionError: Regex pattern did not match.
+E        Regex: 'actual child-training verification is unsupported'
+E        Input: '_set_verification_payload() must be called before verification'
+
+tests/test_audit_wave1_torchrun_verification.py:54: AssertionError
+__ test_generic_training_verification_is_unsupported[True-get_verify_output] ___
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica14')
+method = 'get_verify_output', stale_payload = True
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+        with pytest.raises(RuntimeError, match=REASON):
+>           getattr(benchmark, method)()
+
+tests/test_audit_wave1_torchrun_verification.py:55: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+core/benchmark/verification_mixin.py:188: in get_verify_output
+    payload = self._require_payload()
+              ^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <labs.train_distributed.training_utils.torchrun_harness.TorchrunScriptBenchmark object at 0x3362e4f80>
+
+    def _require_payload(self) -> VerificationPayload:
+        payload = getattr(self, "_verification_payload", None)
+        if payload is None:
+>           raise RuntimeError("_set_verification_payload() must be called before verification")
+E           RuntimeError: _set_verification_payload() must be called before verification
+
+core/benchmark/verification_mixin.py:180: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica14')
+method = 'get_verify_output', stale_payload = True
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+>       with pytest.raises(RuntimeError, match=REASON):
+E       AssertionError: Regex pattern did not match.
+E        Regex: 'actual child-training verification is unsupported'
+E        Input: '_set_verification_payload() must be called before verification'
+
+tests/test_audit_wave1_torchrun_verification.py:54: AssertionError
+_ test_generic_training_verification_is_unsupported[True-get_input_signature] __
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica15')
+method = 'get_input_signature', stale_payload = True
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+>       with pytest.raises(RuntimeError, match=REASON):
+E       Failed: DID NOT RAISE <class 'RuntimeError'>
+
+tests/test_audit_wave1_torchrun_verification.py:54: Failed
+_ test_generic_training_verification_is_unsupported[True-get_output_tolerance] _
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica16')
+method = 'get_output_tolerance', stale_payload = True
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+        with pytest.raises(RuntimeError, match=REASON):
+>           getattr(benchmark, method)()
+
+tests/test_audit_wave1_torchrun_verification.py:55: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+core/benchmark/verification_mixin.py:210: in get_output_tolerance
+    payload = self._require_payload()
+              ^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <labs.train_distributed.training_utils.torchrun_harness.TorchrunScriptBenchmark object at 0x33634cf20>
+
+    def _require_payload(self) -> VerificationPayload:
+        payload = getattr(self, "_verification_payload", None)
+        if payload is None:
+>           raise RuntimeError("_set_verification_payload() must be called before verification")
+E           RuntimeError: _set_verification_payload() must be called before verification
+
+core/benchmark/verification_mixin.py:180: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica16')
+method = 'get_output_tolerance', stale_payload = True
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+>       with pytest.raises(RuntimeError, match=REASON):
+E       AssertionError: Regex pattern did not match.
+E        Regex: 'actual child-training verification is unsupported'
+E        Input: '_set_verification_payload() must be called before verification'
+
+tests/test_audit_wave1_torchrun_verification.py:54: AssertionError
+__ test_generic_training_verification_is_unsupported[True-get_torchrun_spec] ___
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_training_verifica17')
+method = 'get_torchrun_spec', stale_payload = True
+
+    @pytest.mark.parametrize("method", [
+        "setup", "benchmark_fn", "capture_verification_payload", "_prepare_verification_payload",
+        "get_verify_inputs", "get_verify_output", "get_input_signature", "get_output_tolerance",
+        "get_torchrun_spec",
+    ])
+    @pytest.mark.parametrize("stale_payload", [False, True])
+    def test_generic_training_verification_is_unsupported(tmp_path, method, stale_payload):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        # Execute only the old/new wrapper's CPU host mechanisms, never fake CUDA.
+        benchmark.device = torch.device("cpu")
+        if stale_payload:
+            benchmark._subprocess_verify_output = torch.ones(1)
+        before = torch.get_rng_state().clone()
+>       with pytest.raises(RuntimeError, match=REASON):
+E       Failed: DID NOT RAISE <class 'RuntimeError'>
+
+tests/test_audit_wave1_torchrun_verification.py:54: Failed
+____________ test_generic_validate_result_never_accepts_a_surrogate ____________
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_validate_result_n0')
+
+    def test_generic_validate_result_never_accepts_a_surrogate(tmp_path):
+        benchmark = TorchrunScriptBenchmark(script_path=tmp_path / "training.py", multi_gpu_required=False)
+>       assert REASON in benchmark.validate_result()
+E       AssertionError: assert 'actual child-training verification is unsupported' in 'No output captured'
+E        +  where 'No output captured' = validate_result()
+E        +    where validate_result = <labs.train_distributed.training_utils.torchrun_harness.TorchrunScriptBenchmark object at 0x3362e5160>.validate_result
+
+tests/test_audit_wave1_torchrun_verification.py:62: AssertionError
+_ test_real_training_factories_remain_discoverable_but_unverified[baseline_ddp] _
+
+name = 'baseline_ddp'
+
+    @pytest.mark.parametrize("name", ["baseline_ddp", "optimized_ddp", "baseline_zero2_multigpu", "optimized_zero2"])
+    def test_real_training_factories_remain_discoverable_but_unverified(name):
+        module = importlib.import_module(f"labs.train_distributed.{name}")
+        benchmark = module.get_benchmark()
+        assert isinstance(benchmark, TorchrunScriptBenchmark)
+        assert benchmark._script_path.is_file()
+        assert benchmark._base_args and benchmark._config_arg_map
+        with pytest.raises(RuntimeError, match=REASON):
+>           benchmark.get_torchrun_spec()
+
+tests/test_audit_wave1_torchrun_verification.py:93: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+labs/train_distributed/training_utils/torchrun_harness.py:193: in get_torchrun_spec
+    self._prepare_verification_payload()
+labs/train_distributed/training_utils/torchrun_harness.py:121: in _prepare_verification_payload
+    self.setup()
+labs/train_distributed/training_utils/torchrun_harness.py:79: in setup
+    self._model = nn.Linear(self._hidden_dim, self._hidden_dim, bias=False).to(self.device)
+                                                                               ^^^^^^^^^^^
+core/harness/benchmark_harness.py:1597: in device
+    self._device = self._resolve_device()
+                   ^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <labs.train_distributed.training_utils.torchrun_harness.TorchrunScriptBenchmark object at 0x3360f0fe0>
+
+    def _resolve_device(self) -> torch.device:
+        """Resolve CUDA device, failing fast if CUDA is not available.
+    
+        Returns:
+            torch.device("cuda") if CUDA is available
+    
+        Raises:
+            RuntimeError: If CUDA is not available (NVIDIA GPU required)
+        """
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        if getattr(self, "allow_cpu", False):
+            return torch.device("cpu")
+>       raise RuntimeError("CUDA required - NVIDIA GPU and tools must be available")
+E       RuntimeError: CUDA required - NVIDIA GPU and tools must be available
+
+core/harness/benchmark_harness.py:1617: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+name = 'baseline_ddp'
+
+    @pytest.mark.parametrize("name", ["baseline_ddp", "optimized_ddp", "baseline_zero2_multigpu", "optimized_zero2"])
+    def test_real_training_factories_remain_discoverable_but_unverified(name):
+        module = importlib.import_module(f"labs.train_distributed.{name}")
+        benchmark = module.get_benchmark()
+        assert isinstance(benchmark, TorchrunScriptBenchmark)
+        assert benchmark._script_path.is_file()
+        assert benchmark._base_args and benchmark._config_arg_map
+>       with pytest.raises(RuntimeError, match=REASON):
+E       AssertionError: Regex pattern did not match.
+E        Regex: 'actual child-training verification is unsupported'
+E        Input: 'CUDA required - NVIDIA GPU and tools must be available'
+
+tests/test_audit_wave1_torchrun_verification.py:92: AssertionError
+_ test_real_training_factories_remain_discoverable_but_unverified[optimized_ddp] _
+
+name = 'optimized_ddp'
+
+    @pytest.mark.parametrize("name", ["baseline_ddp", "optimized_ddp", "baseline_zero2_multigpu", "optimized_zero2"])
+    def test_real_training_factories_remain_discoverable_but_unverified(name):
+        module = importlib.import_module(f"labs.train_distributed.{name}")
+        benchmark = module.get_benchmark()
+        assert isinstance(benchmark, TorchrunScriptBenchmark)
+        assert benchmark._script_path.is_file()
+        assert benchmark._base_args and benchmark._config_arg_map
+        with pytest.raises(RuntimeError, match=REASON):
+>           benchmark.get_torchrun_spec()
+
+tests/test_audit_wave1_torchrun_verification.py:93: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+labs/train_distributed/training_utils/torchrun_harness.py:193: in get_torchrun_spec
+    self._prepare_verification_payload()
+labs/train_distributed/training_utils/torchrun_harness.py:121: in _prepare_verification_payload
+    self.setup()
+labs/train_distributed/training_utils/torchrun_harness.py:79: in setup
+    self._model = nn.Linear(self._hidden_dim, self._hidden_dim, bias=False).to(self.device)
+                                                                               ^^^^^^^^^^^
+core/harness/benchmark_harness.py:1597: in device
+    self._device = self._resolve_device()
+                   ^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <labs.train_distributed.training_utils.torchrun_harness.TorchrunScriptBenchmark object at 0x3360f0f50>
+
+    def _resolve_device(self) -> torch.device:
+        """Resolve CUDA device, failing fast if CUDA is not available.
+    
+        Returns:
+            torch.device("cuda") if CUDA is available
+    
+        Raises:
+            RuntimeError: If CUDA is not available (NVIDIA GPU required)
+        """
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        if getattr(self, "allow_cpu", False):
+            return torch.device("cpu")
+>       raise RuntimeError("CUDA required - NVIDIA GPU and tools must be available")
+E       RuntimeError: CUDA required - NVIDIA GPU and tools must be available
+
+core/harness/benchmark_harness.py:1617: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+name = 'optimized_ddp'
+
+    @pytest.mark.parametrize("name", ["baseline_ddp", "optimized_ddp", "baseline_zero2_multigpu", "optimized_zero2"])
+    def test_real_training_factories_remain_discoverable_but_unverified(name):
+        module = importlib.import_module(f"labs.train_distributed.{name}")
+        benchmark = module.get_benchmark()
+        assert isinstance(benchmark, TorchrunScriptBenchmark)
+        assert benchmark._script_path.is_file()
+        assert benchmark._base_args and benchmark._config_arg_map
+>       with pytest.raises(RuntimeError, match=REASON):
+E       AssertionError: Regex pattern did not match.
+E        Regex: 'actual child-training verification is unsupported'
+E        Input: 'CUDA required - NVIDIA GPU and tools must be available'
+
+tests/test_audit_wave1_torchrun_verification.py:92: AssertionError
+_ test_real_training_factories_remain_discoverable_but_unverified[baseline_zero2_multigpu] _
+
+name = 'baseline_zero2_multigpu'
+
+    @pytest.mark.parametrize("name", ["baseline_ddp", "optimized_ddp", "baseline_zero2_multigpu", "optimized_zero2"])
+    def test_real_training_factories_remain_discoverable_but_unverified(name):
+        module = importlib.import_module(f"labs.train_distributed.{name}")
+        benchmark = module.get_benchmark()
+        assert isinstance(benchmark, TorchrunScriptBenchmark)
+        assert benchmark._script_path.is_file()
+        assert benchmark._base_args and benchmark._config_arg_map
+        with pytest.raises(RuntimeError, match=REASON):
+>           benchmark.get_torchrun_spec()
+
+tests/test_audit_wave1_torchrun_verification.py:93: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+labs/train_distributed/training_utils/torchrun_harness.py:193: in get_torchrun_spec
+    self._prepare_verification_payload()
+labs/train_distributed/training_utils/torchrun_harness.py:121: in _prepare_verification_payload
+    self.setup()
+labs/train_distributed/training_utils/torchrun_harness.py:79: in setup
+    self._model = nn.Linear(self._hidden_dim, self._hidden_dim, bias=False).to(self.device)
+                                                                               ^^^^^^^^^^^
+core/harness/benchmark_harness.py:1597: in device
+    self._device = self._resolve_device()
+                   ^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <labs.train_distributed.training_utils.torchrun_harness.TorchrunScriptBenchmark object at 0x336360d40>
+
+    def _resolve_device(self) -> torch.device:
+        """Resolve CUDA device, failing fast if CUDA is not available.
+    
+        Returns:
+            torch.device("cuda") if CUDA is available
+    
+        Raises:
+            RuntimeError: If CUDA is not available (NVIDIA GPU required)
+        """
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        if getattr(self, "allow_cpu", False):
+            return torch.device("cpu")
+>       raise RuntimeError("CUDA required - NVIDIA GPU and tools must be available")
+E       RuntimeError: CUDA required - NVIDIA GPU and tools must be available
+
+core/harness/benchmark_harness.py:1617: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+name = 'baseline_zero2_multigpu'
+
+    @pytest.mark.parametrize("name", ["baseline_ddp", "optimized_ddp", "baseline_zero2_multigpu", "optimized_zero2"])
+    def test_real_training_factories_remain_discoverable_but_unverified(name):
+        module = importlib.import_module(f"labs.train_distributed.{name}")
+        benchmark = module.get_benchmark()
+        assert isinstance(benchmark, TorchrunScriptBenchmark)
+        assert benchmark._script_path.is_file()
+        assert benchmark._base_args and benchmark._config_arg_map
+>       with pytest.raises(RuntimeError, match=REASON):
+E       AssertionError: Regex pattern did not match.
+E        Regex: 'actual child-training verification is unsupported'
+E        Input: 'CUDA required - NVIDIA GPU and tools must be available'
+
+tests/test_audit_wave1_torchrun_verification.py:92: AssertionError
+_ test_real_training_factories_remain_discoverable_but_unverified[optimized_zero2] _
+
+name = 'optimized_zero2'
+
+    @pytest.mark.parametrize("name", ["baseline_ddp", "optimized_ddp", "baseline_zero2_multigpu", "optimized_zero2"])
+    def test_real_training_factories_remain_discoverable_but_unverified(name):
+        module = importlib.import_module(f"labs.train_distributed.{name}")
+        benchmark = module.get_benchmark()
+        assert isinstance(benchmark, TorchrunScriptBenchmark)
+        assert benchmark._script_path.is_file()
+        assert benchmark._base_args and benchmark._config_arg_map
+        with pytest.raises(RuntimeError, match=REASON):
+>           benchmark.get_torchrun_spec()
+
+tests/test_audit_wave1_torchrun_verification.py:93: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+labs/train_distributed/training_utils/torchrun_harness.py:193: in get_torchrun_spec
+    self._prepare_verification_payload()
+labs/train_distributed/training_utils/torchrun_harness.py:121: in _prepare_verification_payload
+    self.setup()
+labs/train_distributed/training_utils/torchrun_harness.py:79: in setup
+    self._model = nn.Linear(self._hidden_dim, self._hidden_dim, bias=False).to(self.device)
+                                                                               ^^^^^^^^^^^
+core/harness/benchmark_harness.py:1597: in device
+    self._device = self._resolve_device()
+                   ^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <labs.train_distributed.training_utils.torchrun_harness.TorchrunScriptBenchmark object at 0x336362420>
+
+    def _resolve_device(self) -> torch.device:
+        """Resolve CUDA device, failing fast if CUDA is not available.
+    
+        Returns:
+            torch.device("cuda") if CUDA is available
+    
+        Raises:
+            RuntimeError: If CUDA is not available (NVIDIA GPU required)
+        """
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        if getattr(self, "allow_cpu", False):
+            return torch.device("cpu")
+>       raise RuntimeError("CUDA required - NVIDIA GPU and tools must be available")
+E       RuntimeError: CUDA required - NVIDIA GPU and tools must be available
+
+core/harness/benchmark_harness.py:1617: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+name = 'optimized_zero2'
+
+    @pytest.mark.parametrize("name", ["baseline_ddp", "optimized_ddp", "baseline_zero2_multigpu", "optimized_zero2"])
+    def test_real_training_factories_remain_discoverable_but_unverified(name):
+        module = importlib.import_module(f"labs.train_distributed.{name}")
+        benchmark = module.get_benchmark()
+        assert isinstance(benchmark, TorchrunScriptBenchmark)
+        assert benchmark._script_path.is_file()
+        assert benchmark._base_args and benchmark._config_arg_map
+>       with pytest.raises(RuntimeError, match=REASON):
+E       AssertionError: Regex pattern did not match.
+E        Regex: 'actual child-training verification is unsupported'
+E        Input: 'CUDA required - NVIDIA GPU and tools must be available'
+
+tests/test_audit_wave1_torchrun_verification.py:92: AssertionError
+___________ test_declared_spec_error_propagates_before_spawn[error0] ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x3360f0c50>
+error = ValueError('invalid declared launch spec')
+
+    @pytest.mark.parametrize("error", [ValueError("invalid declared launch spec"), RuntimeError("SKIPPED: unverified child")])
+    def test_declared_spec_error_propagates_before_spawn(monkeypatch, error):
+        class BrokenSpec(BaseBenchmark):
+            def get_torchrun_spec(self, config=None):
+                raise error
+    
+        harness, config = cpu_harness()
+        launches = []
+    
+        def forbidden_spawn(*args, **kwargs):
+            launches.append(args)
+            raise AssertionError("unexpected spawn after declared spec error")
+    
+        monkeypatch.setattr("core.harness.benchmark_harness.subprocess.Popen", forbidden_spawn)
+        with pytest.raises(type(error)) as caught:
+            try:
+>               harness._benchmark_with_torchrun(BrokenSpec(), config)
+
+tests/test_audit_wave1_torchrun_verification.py:112: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+core/harness/benchmark_harness.py:2592: in _benchmark_with_torchrun
+    process = subprocess.Popen(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+args = (['/opt/miniconda3/bin/python', '-m', 'torch.distributed.run', '--nproc_per_node', '1', '--nnodes', ...],)
+kwargs = {'env': {'AISP_BENCHMARK_OWNER_PID': '34974', 'AISP_BENCHMARK_OWNER_RUN_ID': '34974', 'BUN_INSTALL': '/Users/admin/.bu...b21d04b.sock', ...}, 'preexec_fn': <function _benchmark_child_preexec at 0x33601da80>, 'stderr': -1, 'stdout': -1, ...}
+
+    def forbidden_spawn(*args, **kwargs):
+        launches.append(args)
+>       raise AssertionError("unexpected spawn after declared spec error")
+E       AssertionError: unexpected spawn after declared spec error
+
+tests/test_audit_wave1_torchrun_verification.py:107: AssertionError
+
+During handling of the above exception, another exception occurred:
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x3360f0c50>
+error = ValueError('invalid declared launch spec')
+
+    @pytest.mark.parametrize("error", [ValueError("invalid declared launch spec"), RuntimeError("SKIPPED: unverified child")])
+    def test_declared_spec_error_propagates_before_spawn(monkeypatch, error):
+        class BrokenSpec(BaseBenchmark):
+            def get_torchrun_spec(self, config=None):
+                raise error
+    
+        harness, config = cpu_harness()
+        launches = []
+    
+        def forbidden_spawn(*args, **kwargs):
+            launches.append(args)
+            raise AssertionError("unexpected spawn after declared spec error")
+    
+        monkeypatch.setattr("core.harness.benchmark_harness.subprocess.Popen", forbidden_spawn)
+        with pytest.raises(type(error)) as caught:
+            try:
+                harness._benchmark_with_torchrun(BrokenSpec(), config)
+            finally:
+>               assert not launches, "declared spec error reached subprocess launch"
+E               AssertionError: declared spec error reached subprocess launch
+E               assert not [(['/opt/miniconda3/bin/python', '-m', 'torch.distributed.run', '--nproc_per_node', '1', '--nnodes', ...],)]
+
+tests/test_audit_wave1_torchrun_verification.py:114: AssertionError
+----------------------------- Captured stdout call -----------------------------
+[harness] _benchmark_with_torchrun start
+[harness] torchrun spec script=/Users/admin/dev/ai-perf/ai-performance-engineering/code/tests/test_audit_wave1_torchrun_verification.py module=None args=[]
+[harness] torchrun cmd: /opt/miniconda3/bin/python -m torch.distributed.run --nproc_per_node 1 --nnodes 1 --rdzv_backend c10d --rdzv_endpoint 127.0.0.1:0 -m core.harness.torchrun_wrapper --aisp-target-script /Users/admin/dev/ai-perf/ai-performance-engineering/code/tests/test_audit_wave1_torchrun_verification.py --aisp-expected-torch-seed 42
+[harness] torchrun env passthrough: ['CUDA_VISIBLE_DEVICES']
+___________ test_declared_spec_error_propagates_before_spawn[error1] ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x3363619a0>
+error = RuntimeError('SKIPPED: unverified child')
+
+    @pytest.mark.parametrize("error", [ValueError("invalid declared launch spec"), RuntimeError("SKIPPED: unverified child")])
+    def test_declared_spec_error_propagates_before_spawn(monkeypatch, error):
+        class BrokenSpec(BaseBenchmark):
+            def get_torchrun_spec(self, config=None):
+                raise error
+    
+        harness, config = cpu_harness()
+        launches = []
+    
+        def forbidden_spawn(*args, **kwargs):
+            launches.append(args)
+            raise AssertionError("unexpected spawn after declared spec error")
+    
+        monkeypatch.setattr("core.harness.benchmark_harness.subprocess.Popen", forbidden_spawn)
+        with pytest.raises(type(error)) as caught:
+            try:
+>               harness._benchmark_with_torchrun(BrokenSpec(), config)
+
+tests/test_audit_wave1_torchrun_verification.py:112: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+core/harness/benchmark_harness.py:2592: in _benchmark_with_torchrun
+    process = subprocess.Popen(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+args = (['/opt/miniconda3/bin/python', '-m', 'torch.distributed.run', '--nproc_per_node', '1', '--nnodes', ...],)
+kwargs = {'env': {'AISP_BENCHMARK_OWNER_PID': '34974', 'AISP_BENCHMARK_OWNER_RUN_ID': '34974', 'BUN_INSTALL': '/Users/admin/.bu...b21d04b.sock', ...}, 'preexec_fn': <function _benchmark_child_preexec at 0x33601da80>, 'stderr': -1, 'stdout': -1, ...}
+
+    def forbidden_spawn(*args, **kwargs):
+        launches.append(args)
+>       raise AssertionError("unexpected spawn after declared spec error")
+E       AssertionError: unexpected spawn after declared spec error
+
+tests/test_audit_wave1_torchrun_verification.py:107: AssertionError
+
+During handling of the above exception, another exception occurred:
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x3363619a0>
+error = RuntimeError('SKIPPED: unverified child')
+
+    @pytest.mark.parametrize("error", [ValueError("invalid declared launch spec"), RuntimeError("SKIPPED: unverified child")])
+    def test_declared_spec_error_propagates_before_spawn(monkeypatch, error):
+        class BrokenSpec(BaseBenchmark):
+            def get_torchrun_spec(self, config=None):
+                raise error
+    
+        harness, config = cpu_harness()
+        launches = []
+    
+        def forbidden_spawn(*args, **kwargs):
+            launches.append(args)
+            raise AssertionError("unexpected spawn after declared spec error")
+    
+        monkeypatch.setattr("core.harness.benchmark_harness.subprocess.Popen", forbidden_spawn)
+        with pytest.raises(type(error)) as caught:
+            try:
+                harness._benchmark_with_torchrun(BrokenSpec(), config)
+            finally:
+>               assert not launches, "declared spec error reached subprocess launch"
+E               AssertionError: declared spec error reached subprocess launch
+E               assert not [(['/opt/miniconda3/bin/python', '-m', 'torch.distributed.run', '--nproc_per_node', '1', '--nnodes', ...],)]
+
+tests/test_audit_wave1_torchrun_verification.py:114: AssertionError
+----------------------------- Captured stdout call -----------------------------
+[harness] _benchmark_with_torchrun start
+[harness] torchrun spec script=/Users/admin/dev/ai-perf/ai-performance-engineering/code/tests/test_audit_wave1_torchrun_verification.py module=None args=[]
+[harness] torchrun cmd: /opt/miniconda3/bin/python -m torch.distributed.run --nproc_per_node 1 --nnodes 1 --rdzv_backend c10d --rdzv_endpoint 127.0.0.1:0 -m core.harness.torchrun_wrapper --aisp-target-script /Users/admin/dev/ai-perf/ai-performance-engineering/code/tests/test_audit_wave1_torchrun_verification.py --aisp-expected-torch-seed 42
+[harness] torchrun env passthrough: ['CUDA_VISIBLE_DEVICES']
+______________ test_generic_torchrun_harness_rejects_before_spawn ______________
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_torchrun_harness_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x3363f28d0>
+
+    def test_generic_torchrun_harness_rejects_before_spawn(tmp_path, monkeypatch):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        benchmark.device = torch.device("cpu")
+        harness, config = cpu_harness()
+        launches = []
+    
+        def forbidden_spawn(*args, **kwargs):
+            launches.append(args)
+            raise AssertionError("unverified generic training must not launch")
+    
+        monkeypatch.setattr("core.harness.benchmark_harness.subprocess.Popen", forbidden_spawn)
+        with pytest.raises(RuntimeError, match=REASON):
+>           harness._benchmark_with_torchrun(benchmark, config)
+
+tests/test_audit_wave1_torchrun_verification.py:132: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <core.harness.benchmark_harness.BenchmarkHarness object at 0x3363f01a0>
+benchmark = <labs.train_distributed.training_utils.torchrun_harness.TorchrunScriptBenchmark object at 0x3363f2330>
+config = BenchmarkConfig(iterations=1, warmup=5, min_run_time_ms=100.0, percentiles=[25, 50, 75, 99], enable_memory_tracking=Fa...hold_mb=100.0, nsys_timeout_seconds=540, ncu_timeout_seconds=10800, proton_timeout_seconds=540, timeout_multiplier=3.0)
+
+    def _benchmark_with_torchrun(self, benchmark: BaseBenchmark, config: BenchmarkConfig) -> PydanticBenchmarkResult:
+        """Launch benchmark via torchrun for multi-GPU targets."""
+        import inspect
+        print("[harness] _benchmark_with_torchrun start", flush=True)
+    
+        def _filter_logs(lines: List[str], dedupe: bool = True) -> List[str]:
+            filtered: List[str] = []
+            seen: set = set()
+            for line in lines:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                key = stripped.lower()
+                if dedupe and key in seen:
+                    continue
+                seen.add(key)
+                # Keep messages that either don't mention rank or explicitly mention rank 0
+                if "rank 0" in key or "local_rank: 0" in key or "r0" in key:
+                    filtered.append(stripped)
+                elif "rank" not in key or "world_size" in key:
+                    filtered.append(stripped)
+            return filtered
+    
+        errors: List[str] = []
+        spec: Optional[TorchrunLaunchSpec] = None
+        try:
+            getter = getattr(benchmark, "get_torchrun_spec", None)
+            if callable(getter):
+                spec = getter(config)
+        except Exception as exc:  # pragma: no cover - defensive
+            errors.append(f"Failed to build torchrun spec: {exc}")
+        if spec is None:
+            # Fallback to module path if provided
+            benchmark_module = inspect.getmodule(benchmark) or inspect.getmodule(benchmark.__class__)
+            module_path = Path(getattr(benchmark_module, "__file__", "")).resolve()
+            spec = TorchrunLaunchSpec(script_path=module_path)
+        print(
+            f"[harness] torchrun spec script={spec.script_path} module={spec.module_name} args={spec.script_args}",
+            flush=True,
+        )
+    
+        script_path = Path(spec.script_path).resolve() if spec and spec.script_path is not None else None
+        module_name = spec.module_name if spec else None
+        if bool(script_path) == bool(module_name):
+            raise RuntimeError(
+                "SKIPPED: Torchrun launch requires exactly one of script_path or module_name."
+            )
+        if script_path is not None and not script_path.exists():
+>           raise RuntimeError("SKIPPED: Torchrun launch requested but script_path does not exist.")
+E           RuntimeError: SKIPPED: Torchrun launch requested but script_path does not exist.
+
+core/harness/benchmark_harness.py:2437: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_torchrun_harness_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x3363f28d0>
+
+    def test_generic_torchrun_harness_rejects_before_spawn(tmp_path, monkeypatch):
+        benchmark = TorchrunScriptBenchmark(
+            script_path=tmp_path / "training.py", multi_gpu_required=False, default_nproc_per_node=1,
+        )
+        benchmark.device = torch.device("cpu")
+        harness, config = cpu_harness()
+        launches = []
+    
+        def forbidden_spawn(*args, **kwargs):
+            launches.append(args)
+            raise AssertionError("unverified generic training must not launch")
+    
+        monkeypatch.setattr("core.harness.benchmark_harness.subprocess.Popen", forbidden_spawn)
+>       with pytest.raises(RuntimeError, match=REASON):
+E       AssertionError: Regex pattern did not match.
+E        Regex: 'actual child-training verification is unsupported'
+E        Input: 'SKIPPED: Torchrun launch requested but script_path does not exist.'
+
+tests/test_audit_wave1_torchrun_verification.py:131: AssertionError
+----------------------------- Captured stdout call -----------------------------
+[harness] _benchmark_with_torchrun start
+[harness] torchrun spec script=/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_generic_torchrun_harness_0/training.py module=None args=[]
+____________ test_explicit_none_spec_retains_real_cpu_module_launch ____________
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_explicit_none_spec_retain0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x3363f2450>
+
+    def test_explicit_none_spec_retains_real_cpu_module_launch(tmp_path, monkeypatch):
+        """Actual child process receipt proves launcher fallback only, not training correctness."""
+        marker = tmp_path / "child.json"
+        source = tmp_path / "local019_launch_control.py"
+        source.write_text(
+            "from core.harness.benchmark_harness import BaseBenchmark\n"
+            "class DefaultSpec(BaseBenchmark):\n"
+            "    def get_torchrun_spec(self, config=None): return None\n"
+            "if __name__ == '__main__':\n"
+            "    import json, os, torch\n"
+            "    from pathlib import Path\n"
+            "    value = (torch.arange(4) * 3).tolist()\n"
+            "    Path(os.environ['LOCAL019_CHILD_RECEIPT']).write_text(json.dumps({'pid': os.getpid(), 'value': value}))\n"
+            "    print('LOCAL019_CPU_CHILD_EXECUTED')\n"
+        )
+        spec = importlib.util.spec_from_file_location("local019_launch_control", source)
+        module = importlib.util.module_from_spec(spec)
+        monkeypatch.setitem(sys.modules, spec.name, module)
+        spec.loader.exec_module(module)
+        monkeypatch.setenv("LOCAL019_CHILD_RECEIPT", str(marker))
+        harness, config = cpu_harness()
+        result = harness._benchmark_with_torchrun(module.DefaultSpec(), config)
+>       assert not result.errors, result.errors
+E       AssertionError: ['Torchrun launch exceeded timeout']
+E       assert not ['Torchrun launch exceeded timeout']
+E        +  where ['Torchrun launch exceeded timeout'] = BenchmarkResult(timing=TimingStats(mean_ms=0.0, median_ms=0.0, std_ms=0.0, min_ms=0.0, max_ms=0.0, p50_ms=None, p90_ms...rministic_mode': False}, custom_metrics={}, story_metadata=None, runtime_env={}, gpu_metrics=None, schemaVersion='1.0').errors
+
+tests/test_audit_wave1_torchrun_verification.py:158: AssertionError
+----------------------------- Captured stdout call -----------------------------
+[harness] _benchmark_with_torchrun start
+[harness] torchrun spec script=/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_explicit_none_spec_retain0/local019_launch_control.py module=None args=[]
+[harness] torchrun cmd: /opt/miniconda3/bin/python -m torch.distributed.run --nproc_per_node 1 --nnodes 1 --rdzv_backend c10d --rdzv_endpoint 127.0.0.1:0 -m core.harness.torchrun_wrapper --aisp-target-script /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1630/test_explicit_none_spec_retain0/local019_launch_control.py --aisp-expected-torch-seed 42
+[harness] torchrun env passthrough: ['CUDA_VISIBLE_DEVICES']
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/torchrun-verification/before-tests.xml -
+27 failed, 1 passed in 61.80s (0:01:01)

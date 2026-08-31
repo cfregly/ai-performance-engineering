@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "/opt/miniconda3/bin/python",
+    "docs/audits/2026-08-30/evidence/integration/attention-final-epoch/run_cuda_acceptance.py",
+    "--output-dir",
+    "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/attention-final-epoch/current-epoch-cpu-preflight"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering",
+  "started_utc": "2026-08-31T00:03:22.656330+00:00",
+  "finished_utc": "2026-08-31T00:03:23.615665+00:00",
+  "exit_code": 2,
+  "driver_sha256": "4b8346d15cf102d611706931fab8012ab4e49cb9dd6348e92ec93f82faab5270",
+  "result": "current-epoch-cpu-preflight/result.json"
+}

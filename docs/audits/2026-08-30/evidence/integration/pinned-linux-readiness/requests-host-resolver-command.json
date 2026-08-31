@@ -1,0 +1,21 @@
+{
+  "argv": [
+    "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-pinned-linux-tm3bih7u/venv/bin/python",
+    "-m",
+    "pip",
+    "install",
+    "--dry-run",
+    "--ignore-installed",
+    "--only-binary=:all:",
+    "--no-cache-dir",
+    "--index-url",
+    "https://pypi.org/simple",
+    "--report",
+    "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/requests-host-resolver.json",
+    "requests==2.34.2"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "exit_code": 0,
+  "elapsed_seconds": 1.1160850524902344,
+  "boundary": "Darwin CPython3.12 universal HTTP dependency resolver only; not Linux CUDA dependency graph or installation."
+}

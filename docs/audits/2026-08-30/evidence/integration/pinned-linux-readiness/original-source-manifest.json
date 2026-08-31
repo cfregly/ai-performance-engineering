@@ -1,0 +1,22 @@
+{
+  "code/requirements_latest.txt": {
+    "archival_path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/original-requirements_latest.txt.txt",
+    "sha256": "b216f84c863a01a37c4d2e26fd15fc5c856c2c05fbbbe3696d6e965a8d6a4fa2"
+  },
+  "code/setup.sh": {
+    "archival_path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/original-setup.sh.txt",
+    "sha256": "d31dd0daffc1e41a4c3ab8a52c72047d1b6a83c694bf4bb24b8679865c5472e4"
+  },
+  ".github/workflows/benchmark-validation.yml": {
+    "archival_path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/original-benchmark-validation.yml.txt",
+    "sha256": "1af4f41625fe280f68ab84c66d76710f68118000df409eccdd32d903a72a668b"
+  },
+  "code/tests/test_setup_bootstrap.py": {
+    "archival_path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/original-test_setup_bootstrap.py.txt",
+    "sha256": "763ee56170cdf5acd37ff203cf7c8db3adfbbc698ecbbd9517297438eee4c4eb"
+  },
+  "code/tests/test_repository_configuration.py": {
+    "archival_path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/original-test_repository_configuration.py.txt",
+    "sha256": "969b40b361f936160b98dc99a93a7c90e4f93d0e1dc4e74fb5dcfb522f06fd57"
+  }
+}

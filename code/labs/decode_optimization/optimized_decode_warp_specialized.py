@@ -3,7 +3,8 @@
 This variant targets the decode phase's kernel-launch overhead by capturing the
 decode loop into a CUDA Graph once, then replaying it for each benchmark
 iteration. The math is identical to the baseline; the speedup comes from
-reducing host-side launch overhead and the resulting GPU bubbles.
+reducing host-side launch overhead and the resulting GPU bubbles. The legacy
+filename is retained for compatibility; this is not a Triton or warp-specialized kernel.
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ class CUDAGraphPersistentDecodeBenchmark(DecodeBenchmark):
     def _capture_decode_graph(self) -> None:
         self._graph_stream = torch.cuda.Stream()
         self._decode_graph = torch.cuda.CUDAGraph()
+        self._graph_stream.wait_stream(torch.cuda.current_stream())
 
         # Warm up on the capture stream so kernels, heuristics, and workspaces are ready.
         with torch.inference_mode(), self.sdpa_ctx_factory():
@@ -68,6 +70,7 @@ class CUDAGraphPersistentDecodeBenchmark(DecodeBenchmark):
 
     def benchmark_fn(self) -> None:
         current_stream = torch.cuda.current_stream()
+        self._graph_stream.wait_stream(current_stream)
         with torch.cuda.stream(self._graph_stream):
             # Reset on the graph stream so replay consumes the intended state.
             self.state_buffer.copy_(self._prefilled_state)
@@ -95,6 +98,6 @@ def get_benchmark() -> DecodeBenchmark:
         use_cuda_graphs=False,  # graph handled explicitly in this benchmark
         graph_full_iteration=False,
         use_torch_compile=False,
-        label="optimized_decode_warp_specialized",
+        label="optimized_decode_graph_persistent",
     )
     return attach_benchmark_metadata(CUDAGraphPersistentDecodeBenchmark(cfg), __file__)

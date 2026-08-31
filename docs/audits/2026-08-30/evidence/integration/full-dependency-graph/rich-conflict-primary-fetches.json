@@ -1,0 +1,12 @@
+[
+  {
+    "url": "https://pypi.org/pypi/rich-toolkit/0.14.8/json",
+    "artifact": "rich-toolkit-0.14.8-pypi.json",
+    "sha256": "e19ad6c462724d210e76dbb8be492862fbd4f5fff595062a9889a7baa8f2a05b"
+  },
+  {
+    "url": "https://pypi.org/pypi/rich/13.7.1/json",
+    "artifact": "rich-13.7.1-pypi.json",
+    "sha256": "b061c8564526c5e4de4275354d06fd65dc5a07351609d23ad83090ba21b09762"
+  }
+]

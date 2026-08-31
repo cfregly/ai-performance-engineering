@@ -1,0 +1,60 @@
+{
+  "owned_paths": {
+    "code/core/benchmark/blackwell_optimizations/blackwell_optimizations/Makefile": {
+      "state": "present",
+      "sha256": "edbb8624a864b32a8f38d8f824f3a22b37d2919cf15a0590f27998e462217312"
+    },
+    "code/core/benchmark/blackwell_optimizations/blackwell_optimizations/test_tma.cu": {
+      "state": "present",
+      "sha256": "59b1c3422f574683975f5a56f1e7200f54efec0873925c64a1368bddc3be726f"
+    },
+    "code/core/benchmark/blackwell_optimizations/blackwell_optimizations/test_all_features.cu": {
+      "state": "present",
+      "sha256": "862d33fd0d9c8bb1f8722063a796aa663994108068e5fff230b6e96f1fac19d1"
+    },
+    "code/labs/blackwell_matmul/grace_blackwell_kernels.cu": {
+      "state": "present",
+      "sha256": "fef565ffc3458e28ccd9617216f040d3f99f2f5fcc8e228e677dcb47029b2eb5"
+    },
+    "code/labs/custom_vs_cublas/tcgen05_gemm.cu": {
+      "state": "present",
+      "sha256": "c6974fbeac9ead75ba50710cd8976318bf7c117597d2a5315524d0c93fa38026"
+    },
+    "code/labs/custom_vs_cublas/run_lab.py": {
+      "state": "present",
+      "sha256": "0d5c70d1525d654f62fc330c29c64f899fdd3a8ad6fa5d64aaa4899fb2d02c61"
+    },
+    "code/labs/custom_vs_cublas/tcgen05_loader.py": {
+      "state": "present",
+      "sha256": "4a76ef9443a2c46cbbdabf4143052d0a4490517caacf0c72a25e2a13186e5267"
+    },
+    "code/labs/custom_vs_cublas/experimental/tcgen05_multicast.cu": {
+      "state": "deleted",
+      "preserved_original": "originals/tcgen05_multicast.cu.txt",
+      "original_sha256": "2c38e8f2f563e23e0356a309cd2724b7c0baaa092c17232d5fc5119780683894"
+    },
+    "code/tests/test_blackwell_feature_sources.py": {
+      "state": "present",
+      "sha256": "2c03003757bf33ec7e8ee6bf0c3ef984baeae02591199167e92f1038f7048504"
+    },
+    "code/tests/cuda/feature_cuda_validation.cu": {
+      "state": "present",
+      "sha256": "f933d8b148856bd4fab089450dd848a65652f8fab02938a8404a575beceb415e"
+    },
+    "code/tests/cuda/run_feature_cuda_validation.py": {
+      "state": "present",
+      "sha256": "0f31df4ae79343765755b9f5291b85c7e4fc2782a9395500b841f1352dfe586a"
+    },
+    "code/tests/cuda/run_feature_extensions_validation.py": {
+      "state": "present",
+      "sha256": "4e1768e0bfa419326016e896d522210a872d6e6ebb03df98dd2aabcf108f7874"
+    }
+  },
+  "read_only_dependencies": {
+    "code/labs/custom_vs_cublas/tcgen05_cluster.cu": "0d39d3909ca8633f50bbe6dff90c18a5dcbc7ee1cf482bd9df8013d83484c47f",
+    "code/labs/custom_vs_cublas/experimental/tcgen05_tma_multicast.cu": "bacf28de21aa01d25d36e98a993c0366af488c8be9b15f12acf971b3e8d439aa",
+    "code/core/common/headers/tma_helpers.cuh": "4c8a88560d1cc5e04ff1b99110453119fefc98aa17faaee462ce0133abc942ba",
+    "code/core/common/headers/tma_2d_layout.hpp": "645f624cc2cd7a7b1f18e6d0c734e1b48407394d478f18aee46f0dd8927c8834",
+    "code/tests/cuda/validation_process.py": "47019ab4daa7d09d73a9721c2ee68e1b1999b18d1022e25d17dd7089f26f277d"
+  }
+}

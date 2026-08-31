@@ -1,0 +1,279 @@
+{
+  "slice": "P09 peak metrics and architecture metadata",
+  "reviewed_commit": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "wave1_ids": [
+    "W1-018",
+    "W1-024",
+    "W1-053",
+    "W1-056",
+    "W1-058",
+    "W1-094",
+    "W1-108"
+  ],
+  "existing_adjacent_id": "LOCAL-009",
+  "status": "SOURCE_AND_CPU_VALIDATED; GPU_ACCEPTANCE_HOLD",
+  "source_files": {
+    "code/core/benchmark/metrics.py": "240c74dace7cb75b1f2a0718abd5dcff4eb8a5369aaaef5994dcc9534122c30f",
+    "code/core/benchmark/benchmark_peak.py": "24a8c4dce15ee4369d39234ccf5309d409b9872c769e11b6b2df5311832b2b44",
+    "code/core/benchmark/performance_targets.py": "3efef808acf4a584d800572f8a7c3ddbfcb7ff3adaf5db0109e62791d9034e08",
+    "code/core/harness/arch_config.py": "c6a5a340834ad724f9b2df7c10cdb727358e5095eb466fad7797e77347b8480a",
+    "code/core/diagnostics/microbench.py": "01919110d09ee970bae344f3680c04f409025f07db83deb0a22d7e6d96922e6d",
+    "code/tests/test_audit_wave1_peak_metrics.py": "81e6ad339b68f4802ea6a95d692196c197ce5e2e7d57dd1c3659cd1b598dbd63",
+    "code/tests/test_benchmark_metrics.py": "e68e96d175638a6fd2e4f2cee8499f0c1ef4b782040bf237dc6fe84a05395090",
+    "code/tests/integration/test_benchmark_peak_import.py": "648c4a036bbd03dd3f46115997491a9cd60d9e3497c69c5b61468379a2f1a5e2",
+    "code/docs/gb300-roofline-corrections-2026-08-30.md": "db500aca2ffd91e0ce8f641b85b10448a53c25b55c973752fddeef264b301710",
+    "code/docs/gb300-sol-roofline.md": "1dc6f45c46b7278f810240c3d1d479447139ddd3ccddf9a99a7234ebd2e0cc18",
+    "code/docs/gb300-sol-roofline-kernels.md": "05823cb1b3ae5a9f9343e1fd1e6dcb1132be1d085eb5c23d6fd79f25a57b8601",
+    "code/docs/gb300-sol-roofline-labs2.md": "f11515a8e6f628937c4ad11e2398a217bdc0e92da443aa5e009d1d4e331c0ad4",
+    "code/docs/gb300-sol-roofline-labs3.md": "6e54fd5e0f05b1e6feaea9258dc62e6558c50860bfc9b9e0c5edac219969abce",
+    "code/docs/gb300-moe-roofline.md": "c24708c53d5e512f224b9946f382fcc1752a08d147a5e565dcaaa28e187c2dfd",
+    "code/docs/gb300-blackwell-matmul-hostoverhead.md": "4d2e2efb3bf4c2546a115328f049b6bc804292d171d606211461753aac8cabb7",
+    "code/docs/gb300-gemm-occupancy-rewrite.md": "18941bd7dfab07b09c227fbe8cfc1ba8c948284793d6df9ef0d54f07ede58d96",
+    "code/docs/gb300-runbook.md": "44614027232cdcb98e96c2138e65a5462ac82ecc2e9810e8a100e6fb42ab2da7"
+  },
+  "changes": {
+    "W1-018": "HBM and cache-sized copies count read+write bytes and emit version2 actual-payload/iterations/elapsed/unit provenance. Old or internally inconsistent HBM artifacts are rejected by the real target loader; original files are not rewritten. Overall fallback policy changes 3/3.5/4 to6/7/8TB/s in corrected units only; chapter02target5500GB/s is unchanged because its provenance differs.",
+    "W1-024": "Added canonical SKU-specific peak interpretation and notices to8historical reports, preserving original report bytes after stripping only notices. GB300NVL72denseFP8=5PF/s,BF16=2.5PF/s; FP4dense15PF/s andHBM8TB/s unchanged. External referenced sol-ceilings.yaml absent from checkout and not changed.",
+    "W1-053": "Lazy actual Transformer Engine dependency loader; standalone NVFP4BlockScaling recipe; direct optional NVFP6BlockScaling only when actually exported; no dtype/backend substitution. Missing required loader/recipe fails explicitly. API availability is not runtime success.",
+    "W1-056": "B200denseFP8=4500TF/s,BF16=2250TF/s,FP32=75TF/s from8-GPU sparse HGX footnotes. H1001979FP8/989BF16alreadydense retained; audit extra-halving suggestion rejected with primarysource evidence.",
+    "W1-058": "FP8 operands sampled BF16 then actually cast E4M3; column-majorB and unitGPUscales with torch._scaled_mm, BF16output and no fast-accum. Unsupported backend fails; no FP16 placeholder.",
+    "W1-094": "Exact source-matched peak constants and behavior tests pin roofline classification/efficiency; originalB200constant test failed beforefix.",
+    "W1-108": "Peer throughput counts actual tensor payload once and decimal1e9 divisor. Copies/events bound to actualsourceGPU0stream per pinnedPyTorchCopy.cu, syncboth0/1, peercheck0to1. Metadata explicitly cuda_peer_copy/nvlink_verifiedfalse.",
+    "LOCAL-009": "Exact10.0/10.3/12.0/12.1families, preservefutureunknownCC, noHBM/C2C/CPU inference. ActualSM121 is retained; no121ato120 rewriting or fake Tritoncapability. tcgen05unsupportedexplicitoutside100/103; runtime_qualifiedfalse."
+  },
+  "adjacent_discoveries_separate_from_original_ids": [
+    {
+      "finding": "metrics hardware detection assigned everyCC>=10B200andallCC9H100",
+      "fix": "Name+capabilityknownSKUgate; unknownCUDAdevice asksforexplicitHardwareSpecs. CPUfallbacknamedassumed_static_no_cuda."
+    },
+    {
+      "finding": "roofline memory ceiling used achievedbandwidth*AI, identically achievedTFLOPS",
+      "fix": "Use theoreticalHBMbandwidth*AI; two elapsedtimes preserveceilingwhileachievedchanges."
+    },
+    {
+      "finding": "L2test selected75%cache for eachof2buffers, combined150%",
+      "fix": "Eachpayloadmax37.5%;unknowncachesizeerrors; cache-sizedcopy/residencyunverifiedlabels. NoL2qualification."
+    },
+    {
+      "finding": "target-device functions recordedtiming oncallerdefaultdevice",
+      "fix": "EveryHBM/L2/compute/compileeventrecords current_stream(device); operationscarrytargettensors,synctarget. Actual2GPU noncurrentdevicetestprepared,notrun."
+    },
+    {
+      "finding": "peak PTXwrapper rewrote target suffix inargumentsandgeneratedPTX",
+      "fix": "Wrapperinstallationexplicitlyunsupported; compatibilityentrypointdoesnotretarget."
+    }
+  ],
+  "validation": {
+    "environment": "macOS CPU /opt/miniconda3/bin/python3.12.2 torch2.8.0 CUDAFalse pytest8.4.2; notpinnedGPUstack",
+    "command_cwd": "code",
+    "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_audit_wave1_peak_metrics.py tests/test_benchmark_metrics.py tests/integration/test_benchmark_peak_import.py tests/test_microbench.py -q -rs -p no:cacheprovider --junitxml=/tmp/aisp-peak-metrics-final-source.xml",
+    "final_result": {
+      "passed": 102,
+      "skipped": 7,
+      "failed": 0,
+      "duration_seconds": 4.3,
+      "per_file": {
+        "tests.test_audit_wave1_peak_metrics": {
+          "passed": 52,
+          "skipped": 5,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestHardwareSpecs": {
+          "passed": 3,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestMemoryTransferMetrics": {
+          "passed": 4,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestKernelFundamentalsMetrics": {
+          "passed": 2,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestMemoryAccessMetrics": {
+          "passed": 2,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestOptimizationMetrics": {
+          "passed": 2,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestRooflineMetrics": {
+          "passed": 3,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestStreamMetrics": {
+          "passed": 2,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestGraphMetrics": {
+          "passed": 1,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestDistributedAndTritonMetrics": {
+          "passed": 2,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestPrecisionMetrics": {
+          "passed": 5,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestInferenceMetrics": {
+          "passed": 1,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestSpeculativeDecodingMetrics": {
+          "passed": 2,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestEnvironmentMetrics": {
+          "passed": 2,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestSystemConfigMetrics": {
+          "passed": 1,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestDistributedMetrics": {
+          "passed": 1,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestStorageIOMetrics": {
+          "passed": 1,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestPipelineMetrics": {
+          "passed": 2,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestTritonMetrics": {
+          "passed": 1,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestMoEMetrics": {
+          "passed": 2,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestSpeedupMetrics": {
+          "passed": 2,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.test_benchmark_metrics.TestValidateMetrics": {
+          "passed": 5,
+          "skipped": 0,
+          "failed": 0
+        },
+        "tests.integration.test_benchmark_peak_import": {
+          "passed": 0,
+          "skipped": 1,
+          "failed": 0
+        },
+        "tests.test_microbench": {
+          "passed": 4,
+          "skipped": 1,
+          "failed": 0
+        }
+      }
+    },
+    "baseline": "peak-metrics-specs-before.txt:1failed2passed, oldB200FP82500vsrequired4500. Source-extracted original arithmetic/methods and realCPUartifact/tensor mechanisms in peak-metrics-original-mechanisms.json; no fakeGPUmeasurements.",
+    "prior_attempts": [
+      "95passed4skipped1.70s retained first-tests",
+      "100passed6skipped4.41s retained intermediate-tests",
+      "102passed7skipped4.35s retained complete-tests"
+    ],
+    "authoring_corrections": "Original mechanism script first used parents6instead5 and failedbefore reading anyoriginalsource; corrected. GPUtest initially referenced nonexistent backend flagscontext; fixedto existingtf32_overridebeforetargetexecution, andGPUtestremainedskippedhere.",
+    "static_checks": "RuffE9,F63,F7,F82,B006,B023all8PythonfilesPASS; scopeddiffcheckPASS;8originalreportcontentpreservationhashesPASS.",
+    "real_cli": "PYTHONPATH=code /opt/miniconda3/bin/python -m core.benchmark.benchmark_peak --output-dir /tmp/aisp-peak-no-cuda-20260830 exited1 with explicitCUDAunavailable; nopeakartifactcreated."
+  },
+  "independent_source_review": {
+    "reviewer": "/root",
+    "outcome": "Finalread-onlyreviewconfirmedexactSKUdenominator, alltargetdeviceeventrecords,noretarg,HMBartifactrecomputation,independentrooflineceiling;nofurtheractionableconcerninreviewedscope.",
+    "resolved_findings": [
+      "SubstringB200alsoincludedGB200:replacedexactSKUgate",
+      "Noncurrenttargetdeviceevents:explicitcurrent_stream(device)andactual2GPUgate"
+    ]
+  },
+  "required_gpu_gates": [
+    "Run five new GPUcases onactualpinnedtarget: fullFP8quantizedoperandreferencecomparison;actualTEFP4recipe+measurement;copytimingprovenance;2GPU noncurrenttargetcopy/compute;2GPUpeerpayload.",
+    "ActualFP4fullnumericalaccuracycalibration and lowprecisionkernel inspection; recipe/timingtestaloneisnotaccuracyqualification.",
+    "Repeatrepresentativesizeslockedclockswithcorrectnessandprofilercountersbeforepeak/SoLperformanceclaims; proveL2residency andactualNVLinktopology separately.",
+    "ActualGB10/RTX12.xcompilerunsupportedoutcomemustremainexplicit;removingretargetisnotcompilequalification.",
+    "All128issueclosureandexternalwave2ingestionremainrootgoalresponsibility; thissliceisnotwholegoalcompletion."
+  ],
+  "primary_sources": [
+    {
+      "url": "https://www.nvidia.com/en-us/data-center/hgx/",
+      "use": "B2008GPUaggregate sparse72/36PF;FP32600TF;densehalf."
+    },
+    {
+      "url": "https://www.nvidia.com/en-us/data-center/gb300-nvl72/",
+      "use": "GB30072GPUaggregate sparse720/360PF;FP4dense1080PF;memory576TBs."
+    },
+    {
+      "url": "https://www.nvidia.com/en-us/data-center/h100/",
+      "use": "SXMperGPU sparse3958FP8/1979BF16;H100alreadydenseinrepo."
+    },
+    {
+      "url": "https://developer.nvidia.com/cuda/gpus",
+      "use": "Exactcompute-capabilityfamilies,notSKU-specificpeaks."
+    },
+    {
+      "url": "https://www.nvidia.com/en-us/products/workstations/dgx-spark/",
+      "use": "GB10LPDDR5x273GB/s;notgenericHBM/Grace500GBs."
+    },
+    {
+      "url": "https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/#effective-bandwidth-calculation",
+      "use": "Bytesread+written,decimalGB/s."
+    },
+    {
+      "url": "https://docs.nvidia.com/deeplearning/transformer-engine-releases/release-2.10/user-guide/examples/fp8_primer.html",
+      "use": "NVFP4BlockScalingstandalonerecipe,modernte.autocastrecipeAPI."
+    },
+    {
+      "url": "https://raw.githubusercontent.com/pytorch/pytorch/v2.9.1/aten/src/ATen/native/native_functions.yaml",
+      "use": "Exact_scaled_mmsignature."
+    },
+    {
+      "url": "https://raw.githubusercontent.com/pytorch/pytorch/v2.9.1/aten/src/ATen/native/cuda/Copy.cu",
+      "use": "Crossdevicecopyruns sourcecurrentstreamwithtwo-waybarriers;notdestinationstream."
+    }
+  ],
+  "evidence_sha256": {
+    "peak-metrics-complete-tests.txt": "ec52d740d91ba14c5501e16821352b61651d0e56e1d10a398b7de153fb128855",
+    "peak-metrics-complete-tests.xml": "d778af2df6e33c46105ab0ef04f3235bc2e757d8bf65b399c77abaf05ed8bce0",
+    "peak-metrics-diff-check.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "peak-metrics-final-tests.txt": "e6d311167cf354b4e174608cca3f8ac936478261397e230ce05429f666a22562",
+    "peak-metrics-final-tests.xml": "dc7586e5e728adef30189b0d31237d2b0e9339e5cf6f937a09c1430b51d78d21",
+    "peak-metrics-first-tests.txt": "f381ce5d16c31f9376327e14b9757c08488fc6f0c2924c48b9d28355ec041949",
+    "peak-metrics-first-tests.xml": "3142e8184d70efe3d4dec7af7bfa3562cffb46e765993a530db71bddea1e9a43",
+    "peak-metrics-intermediate-tests.txt": "ef7b551ac7e3dfa52ed7d45e4de052540cab6a4fe6b240abf701fa3ce25c27e6",
+    "peak-metrics-intermediate-tests.xml": "c08e56be735cb3f90e727af14f3f8ef9098c8783430bf178431feea46b42201d",
+    "peak-metrics-no-cuda-cli.txt": "1c37837327dcc8fb56cd435cc64f80b2ad6b69883f15757c92d99224b28ffb66",
+    "peak-metrics-original-mechanisms.json": "3385937668db151f8c5f9cbcdc77a568ac2db5a828ca0af7173922d6ac94ef61",
+    "peak-metrics-original-mechanisms.py": "5b59d947bde22b671178d05f86db0d4734fb8268df239c17c71c1e0fa1819c46",
+    "peak-metrics-report-preservation.json": "872d50efded38a57ee378cfbc9f30e81ee15c991fcddb37ee12e0ddf99f38a57",
+    "peak-metrics-ruff.txt": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "peak-metrics-source-files.json": "c251fbb822cb37be6c57b57d62ecb359fe356db8cb830c070a918ccf202c6d42",
+    "peak-metrics-specs-before.txt": "e36bc8043abcf8b5565da95a476d71574501432cda7012e6d3f24cd3a5ac1bb6"
+  }
+}

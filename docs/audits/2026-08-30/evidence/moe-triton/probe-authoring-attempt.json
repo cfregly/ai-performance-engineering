@@ -1,0 +1,5 @@
+{
+  "status": "FAILED_PROBE_AUTHORING_ONLY",
+  "error": "ModuleNotFoundError: No module named 'labs'",
+  "reason": "An unused import in the initial ad-hoc host probe ran without PYTHONPATH. Removed in the retained original-active-helper-controls.py; no production failure or GPU result inferred."
+}

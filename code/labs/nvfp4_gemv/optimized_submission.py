@@ -24,7 +24,7 @@ _CASE0_OUT_CACHE: dict[tuple[int, int, int, int], torch.Tensor] = {}
 _STREAM_POOL: dict[tuple[int, int], list[torch.cuda.Stream]] = {}
 _PACKED_SCALE_CACHE: dict[
     tuple[tuple[object, ...], tuple[object, ...], int],
-    tuple[list[torch.Tensor], list[torch.Tensor]],
+    tuple[torch.Tensor, torch.Tensor, list[torch.Tensor], list[torch.Tensor]],
 ] = {}
 _PACKED_SCALE_CACHE_LIMIT = 8
 _MISSING = object()
@@ -143,15 +143,22 @@ def to_blocked(input_matrix: torch.Tensor) -> torch.Tensor:
     return rearranged.flatten()
 
 
-def _scale_cache_token(tensor: torch.Tensor) -> tuple[object, ...]:
+def _scale_cache_token(tensor: torch.Tensor) -> tuple[object, ...] | None:
+    try:
+        version = int(tensor._version)
+    except RuntimeError:
+        # Inference tensors do not track mutation versions; repack rather than
+        # cache a value that could silently become stale after an in-place write.
+        return None
     return (
+        id(tensor),
         int(tensor.data_ptr()),
         tuple(int(dim) for dim in tensor.shape),
         tuple(int(stride) for stride in tensor.stride()),
         int(tensor.storage_offset()),
         str(tensor.device),
         str(tensor.dtype),
-        int(tensor._version),
+        version,
     )
 
 
@@ -160,10 +167,11 @@ def _get_packed_scales(
     sfb_ref: torch.Tensor,
     l: int,
 ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
-    key = (_scale_cache_token(sfa_ref), _scale_cache_token(sfb_ref), int(l))
-    cached = _PACKED_SCALE_CACHE.get(key)
-    if cached is not None:
-        return cached
+    token_a, token_b = _scale_cache_token(sfa_ref), _scale_cache_token(sfb_ref)
+    key = (token_a, token_b, int(l)) if token_a is not None and token_b is not None else None
+    cached = _PACKED_SCALE_CACHE.get(key) if key is not None else None
+    if cached is not None and cached[0] is sfa_ref and cached[1] is sfb_ref:
+        return cached[2], cached[3]
 
     packed_scale_a = [
         to_blocked(sfa_ref[:, :, l_idx]).contiguous() for l_idx in range(int(l))
@@ -171,9 +179,12 @@ def _get_packed_scales(
     packed_scale_b = [
         to_blocked(sfb_ref[:, :, l_idx]).contiguous() for l_idx in range(int(l))
     ]
-    if len(_PACKED_SCALE_CACHE) >= _PACKED_SCALE_CACHE_LIMIT:
-        _PACKED_SCALE_CACHE.clear()
-    _PACKED_SCALE_CACHE[key] = (packed_scale_a, packed_scale_b)
+    if key is not None:
+        if len(_PACKED_SCALE_CACHE) >= _PACKED_SCALE_CACHE_LIMIT:
+            _PACKED_SCALE_CACHE.clear()
+        # Bounded strong references prevent allocator address/id reuse for a
+        # live cache entry. Object identity and mutation version both matter.
+        _PACKED_SCALE_CACHE[key] = (sfa_ref, sfb_ref, packed_scale_a, packed_scale_b)
     return packed_scale_a, packed_scale_b
 
 

@@ -1,0 +1,226 @@
+"""Source/host checks, not CUDA execution or hardware qualification."""
+import importlib.util
+from pathlib import Path
+import subprocess
+import sys
+
+import pytest
+
+CODE = Path(__file__).resolve().parents[1]
+FEATURES = CODE / "core/benchmark/blackwell_optimizations/blackwell_optimizations"
+
+
+def load_lab():
+    spec = importlib.util.spec_from_file_location("audit_run_lab", CODE / "labs/custom_vs_cublas/run_lab.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("m,n,k,out_bytes,expected", [(4096,4096,4096,2,4096/3), (4096,4096,4096,4,1024), (128,256,64,2,36.57142857142857)])
+def test_arithmetic_intensity_uses_actual_dimensions_and_storage(m,n,k,out_bytes,expected):
+    assert load_lab().gemm_arithmetic_intensity(m,n,k,output_bytes=out_bytes) == pytest.approx(expected)
+
+
+def test_cluster_and_overlap_labels_do_not_claim_unimplemented_features():
+    module = load_lab()
+    assert "does not multicast" in module.stage6_cluster.__doc__
+    assert "does not multicast" in module.stage11_cluster.__doc__
+    assert "empty barrier" in module.stage8_no_wait.__doc__
+    assert "MMA hardware handles dependencies internally" not in module.stage8_no_wait.__doc__
+
+
+@pytest.mark.parametrize("name", ["test_tma.cu", "test_all_features.cu"])
+def test_feature_control_launch_geometry_is_legal_and_errors_are_checked(name):
+    source = (FEATURES / name).read_text()
+    assert "const int TILE_M = 32;" in source
+    assert "const int TILE_N = 32;" in source
+    assert "CUDA_CHECK(cuda" in source
+    assert "static_assert(TILE_M * TILE_N <= 1024" in source
+    assert "std::isfinite" in source
+
+
+def test_no_fake_tma_attribute_or_enum_preprocessor_probe():
+    source = (CODE / "labs/blackwell_matmul/grace_blackwell_kernels.cu").read_text()
+    assert "cudaDevAttrTensorMemoryAccessSupported" not in source
+    assert "#ifdef cudaDevAttrClusterLaunch" not in source
+    assert "return major >= 9;" in source
+    assert "Hopper or newer" in source
+
+
+def test_fused_epilogue_fetches_bias_using_output_partition():
+    source = (CODE / "labs/custom_vs_cublas/tcgen05_gemm.cu").read_text()
+    assert "make_stride(Int<0>{}, Int<1>{})" in source
+    assert "partition_D(tCgBias)" in source
+    assert "static_cast<float>(tDrBias(i))" in source
+
+
+def test_retired_nonexistent_multicast_api_is_an_explicit_failure_stub():
+    source = (CODE / "labs/custom_vs_cublas/experimental/tcgen05_multicast.cu").read_text()
+    assert '#error "Retired incomplete experiment:' in source
+    assert "tcgen05_tma_multicast.cu and its validation gates" in source
+    assert "#include" not in source
+    assert "__global__" not in source
+    assert (CODE / "labs/custom_vs_cublas/experimental/tcgen05_tma_multicast.cu").is_file()
+
+
+def test_feature_make_runner_propagates_a_real_failed_executable(tmp_path):
+    executable = tmp_path / "test_tmem"
+    executable.write_text("#!/bin/sh\nexit 23\n")
+    executable.chmod(0o755)
+    result = subprocess.run(["make", "-f", str(FEATURES / "Makefile"), "-o", "all", "run_all"], cwd=tmp_path,
+                            capture_output=True,text=True)
+    assert result.returncode != 0
+    assert "Error 23" in result.stderr
+
+
+@pytest.mark.parametrize("stage", [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
+def test_backend_failure_is_not_substituted_with_another_kernel(monkeypatch, stage):
+    import types
+    module = load_lab()
+    def failed(*args):
+        raise RuntimeError("deliberate backend failure")
+    loader = types.SimpleNamespace(**{name: failed for name in (
+        "matmul_tcgen05", "matmul_tcgen05_pipelined", "matmul_tcgen05_3stage",
+        "matmul_tcgen05_swizzled", "matmul_tcgen05_cluster", "matmul_tcgen05_warp_spec",
+        "matmul_tcgen05_no_wait", "matmul_tcgen05_no_wait_swizzle",
+        "matmul_tcgen05_warp_parallel", "matmul_tcgen05_dual_cta")})
+    monkeypatch.setitem(sys.modules, "labs.custom_vs_cublas.tcgen05_loader", loader)
+    monkeypatch.setitem(sys.modules, "labs.custom_vs_cublas.cutlass_gemm", types.SimpleNamespace(cutlass_gemm=failed))
+    with pytest.raises(RuntimeError, match="deliberate backend failure"):
+        module.STAGES[stage][1](None, None)
+
+
+def test_missing_native_backend_fails_without_fp32_fallback(monkeypatch):
+    module = load_lab()
+    monkeypatch.setattr(module, "_kernels_lib", None)
+    with pytest.raises(RuntimeError, match="native kernels.so unavailable"):
+        module.stage1_naive_smem(None, None)
+
+
+@pytest.mark.parametrize("corruption", ["nan", "inf", "single_element", "shape"])
+def test_full_output_validator_rejects_corruption(corruption):
+    import torch
+    module = load_lab()
+    reference = torch.tensor([[1000., 0.], [-1000., 0.]])
+    output = reference.clone()
+    if corruption == "nan":
+        output[1, 1] = float("nan")
+    elif corruption == "inf":
+        output[1, 1] = float("inf")
+    elif corruption == "single_element":
+        # This passes the old max-error / global-max reference check (1/1000<1%).
+        output[1, 1] = 1
+    else:
+        output = output.reshape(4)
+    with pytest.raises(AssertionError):
+        module.validate_result(output, reference)
+
+
+def test_incorrect_backend_is_never_timed_or_given_throughput(monkeypatch):
+    import torch
+    module = load_lab()
+    monkeypatch.setitem(module.STAGES, 2, ("broken", lambda a, b: torch.ones(2, 2)))
+    def must_not_time(*args):
+        pytest.fail("incorrect output reached timing")
+    monkeypatch.setattr(module, "benchmark_kernel", must_not_time)
+    result = module.run_stage(2, torch.zeros(2, 2), torch.zeros(2, 2), 2, 2, 2,
+                              verbose=False, reference=torch.zeros(2, 2))
+    assert result["time_ms"] is None and result["tflops"] is None
+    assert result["verified"] is False
+
+
+def test_verification_returns_failure_instead_of_only_printing(monkeypatch):
+    import torch
+    module = load_lab()
+    monkeypatch.setitem(module.STAGES, 2, ("broken", lambda a, b: torch.ones(2, 2)))
+    assert not module.verify_correctness(torch.zeros(2, 2), torch.zeros(2, 2), verbose=False, stages=[2])
+
+
+@pytest.mark.parametrize("time_ms", [0, -1, float("nan"), float("inf")])
+def test_invalid_measurement_cannot_produce_throughput(time_ms):
+    with pytest.raises(ValueError):
+        load_lab().calculate_tflops(128, 256, 64, time_ms)
+
+
+@pytest.mark.parametrize("runner,extra", [
+    ("run_feature_cuda_validation.py", []),
+    ("run_feature_extensions_validation.py", ["--case", "bias_silu"]),
+    ("run_feature_extensions_validation.py", ["--case", "grace_tma"]),
+])
+def test_gpu_acceptance_is_hold_without_compiler(tmp_path, monkeypatch, runner, extra):
+    import os
+    import json
+    environment = dict(os.environ, PATH=str(tmp_path / "no-tools"))
+    output = tmp_path / "attempt"
+    result = subprocess.run([sys.executable, str(CODE / "tests/cuda" / runner), "--arch", "sm_100a",
+                             "--output-dir", str(output), *extra], env=environment, capture_output=True, text=True)
+    assert result.returncode == 3, result.stdout + result.stderr
+    report = json.loads((output / "report.json").read_text())
+    assert report["status"] == "HOLD" and report["checks"] == []
+    assert "nvcc unavailable" in report["reason"]
+    assert report["source_sha256"]
+
+
+def test_lab_cli_without_cuda_reports_unsupported(monkeypatch, capsys):
+    module = load_lab()
+    monkeypatch.setattr(module.torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(sys, "argv", ["run_lab.py", "--stage", "2"])
+    assert module.main() == 3
+    output = capsys.readouterr().out
+    assert "UNSUPPORTED" in output
+    assert "TFLOPS" not in output
+
+
+def test_bias_gate_reference_exposes_missing_and_shifted_bias(monkeypatch):
+    import torch
+    monkeypatch.syspath_prepend(str(CODE / "tests/cuda"))
+    import run_feature_extensions_validation as gate
+    a, b = gate.operands(128, 256, 64)
+    accumulator = a.double() @ b.double().T
+    bias = torch.linspace(-4, 4, 256, dtype=torch.float64)
+    reference = torch.nn.functional.silu(accumulator + bias).half()
+    for wrong in (torch.nn.functional.silu(accumulator).half(),
+                  torch.nn.functional.silu(accumulator + bias.roll(1)).half()):
+        with pytest.raises(AssertionError):
+            torch.testing.assert_close(wrong, reference, atol=1e-4, rtol=1e-3, equal_nan=False)
+
+
+def load_tcgen05_lab_loader():
+    spec = importlib.util.spec_from_file_location("audit_tcgen05_lab_loader", CODE / "labs/custom_vs_cublas/tcgen05_loader.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("capability,target", [((10, 0), "100a"), ((10, 3), "103a")])
+def test_tcgen05_lab_loader_exact_supported_targets(monkeypatch, tmp_path, capability, target):
+    module = load_tcgen05_lab_loader()
+    monkeypatch.setattr(module, "_find_cutlass_include", lambda: tmp_path)
+    monkeypatch.setattr(module.torch.cuda, "get_device_capability", lambda: capability)
+    assert f"-gencode=arch=compute_{target},code=sm_{target}" in module._get_cuda_flags()
+
+
+@pytest.mark.parametrize("capability", [(8, 0), (9, 0), (10, 1), (10, 2), (10, 4), (11, 0), (12, 0), (12, 1), (13, 0)])
+def test_tcgen05_lab_loader_rejects_unsupported_or_unknown_targets(monkeypatch, tmp_path, capability):
+    module = load_tcgen05_lab_loader()
+    monkeypatch.setattr(module, "_find_cutlass_include", lambda: tmp_path)
+    monkeypatch.setattr(module.torch.cuda, "get_device_capability", lambda: capability)
+    with pytest.raises(RuntimeError, match="requires exact"):
+        module._get_cuda_flags()
+
+
+def test_tcgen05_lab_cache_separates_architecture_and_abi(monkeypatch, tmp_path):
+    module = load_tcgen05_lab_loader()
+    monkeypatch.setattr(module, "_find_cutlass_include", lambda: tmp_path)
+    monkeypatch.setattr(module, "_get_build_directory", lambda name, verbose: str(tmp_path / name))
+    calls = []
+    # Host cache identity control only: no compiler, CUDA import, or device used.
+    monkeypatch.setattr(module, "load", lambda **kwargs: calls.append(kwargs) or object())
+    source = tmp_path / "test.cu"
+    source.write_text("// cache identity input\n")
+    for capability, abi in (((10, 0), False), ((10, 3), False), ((10, 3), True)):
+        monkeypatch.setattr(module.torch.cuda, "get_device_capability", lambda: capability)
+        monkeypatch.setattr(module.torch, "compiled_with_cxx11_abi", lambda: abi)
+        module._load_kernel(source, "test")
+    assert len({call["name"] for call in calls}) == 3

@@ -4211,31 +4211,20 @@ if TYPER_AVAILABLE:
     @app.command("tui")
     def tui(
         simple: bool = Option(
-            False, "--simple", "-s", help="Use simple menu instead of curses TUI"
+            False, "--simple", "-s", help="Compatibility flag; the analysis menu is always used"
         ),
         data_file: Optional[Path] = Option(
             None, "--data-file", "-d", help="Path to benchmark_test_results.json"
         ),
     ):
-        """Interactive Terminal UI for benchmark analysis."""
-        if simple:
-            _run_basic_menu(data_file)
-            return
-
+        """Open the interactive benchmark analysis menu."""
         try:
-            from cli.tui import run_tui
-
-            run_tui(data_file)
-        except KeyboardInterrupt:
-            typer.echo("\nExiting...")
-        except ImportError as e:
-            typer.echo(f"TUI requires curses (standard on Unix): {e}")
-            typer.echo("Falling back to basic menu...")
             _run_basic_menu(data_file)
+        except (EOFError, KeyboardInterrupt):
+            typer.echo("\nExiting benchmark analysis menu.")
         except Exception as e:
-            typer.echo(f"TUI error: {e}")
-            typer.echo("Falling back to basic menu...")
-            _run_basic_menu(data_file)
+            typer.echo(f"Benchmark menu error: {e}", err=True)
+            raise typer.Exit(code=1) from e
 
     def _run_basic_menu(data_file: Optional[Path] = None):
         """Simple menu-based interface when rich TUI isn't available."""

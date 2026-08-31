@@ -1,0 +1,48 @@
+[
+  {
+    "name": "GPUtil-1.4.0",
+    "type": "b'5'",
+    "size": 0
+  },
+  {
+    "name": "GPUtil-1.4.0/GPUtil",
+    "type": "b'5'",
+    "size": 0
+  },
+  {
+    "name": "GPUtil-1.4.0/GPUtil/demo_GPUtil.py",
+    "type": "b'0'",
+    "size": 2404,
+    "sha256": "5612416b48af83300c4df99c5ceb4581f7d65c951ceebd20a526faedb967b7c1"
+  },
+  {
+    "name": "GPUtil-1.4.0/GPUtil/GPUtil.py",
+    "type": "b'0'",
+    "size": 15270,
+    "sha256": "82db0d38cf7690cb6363ad925e31b2642c919f047bcc3717373b05f047b0f9fe"
+  },
+  {
+    "name": "GPUtil-1.4.0/GPUtil/__init__.py",
+    "type": "b'0'",
+    "size": 1508,
+    "sha256": "7423bf0ecccc4c9f54e6fc4789978c47653169e8741a60fa1efb74f6a6902a68"
+  },
+  {
+    "name": "GPUtil-1.4.0/PKG-INFO",
+    "type": "b'0'",
+    "size": 461,
+    "sha256": "7bfd5de12ec6032bcd0c6d727cf8cac54dcc10b2ebf15d261ec9f36b06685d0f"
+  },
+  {
+    "name": "GPUtil-1.4.0/setup.cfg",
+    "type": "b'0'",
+    "size": 40,
+    "sha256": "28f877a6861d0192942a71aa63766e87ed88565fac056762f881c1fd3b5acd35"
+  },
+  {
+    "name": "GPUtil-1.4.0/setup.py",
+    "type": "b'0'",
+    "size": 605,
+    "sha256": "b7d4a7903b3699288588816070f6d61d939f0df9dd7138d1c77575bcd757676d"
+  }
+]

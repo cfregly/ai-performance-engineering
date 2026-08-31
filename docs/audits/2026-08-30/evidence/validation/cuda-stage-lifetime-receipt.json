@@ -1,0 +1,77 @@
+{
+  "created_at_utc": "2026-08-30T22:24:32.258394+00:00",
+  "status": "HOLD",
+  "acceptance": "source changes and review only; compilation and GPU correctness/sanitizer gates have NOT run",
+  "findings": [
+    "W1-002",
+    "W1-026",
+    "W1-068 (related multicast protocol)",
+    "W1-070 (header only; external stage labels remain)"
+  ],
+  "additional_same_mechanism": [
+    "experimental/tcgen05_no_wait_5stage.cu",
+    "experimental/tcgen05_no_mma_barrier.cu"
+  ],
+  "current_head": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "reviewed_audit_base": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "changed_files": {
+    "code/labs/custom_vs_cublas/tcgen05_cluster.cu": "0d39d3909ca8633f50bbe6dff90c18a5dcbc7ee1cf482bd9df8013d83484c47f",
+    "code/labs/custom_vs_cublas/tcgen05_no_wait.cu": "8a45ce6b216c751a3f81b4b723c7a0ad22c945942906bf000e1a56fdac3871b7",
+    "code/labs/custom_vs_cublas/tcgen05_no_wait_swizzle.cu": "dc1a3acc804c2c0872e441625220ea7b4c60a420559bbbe9e7509a59a5ca106d",
+    "code/labs/custom_vs_cublas/tcgen05_warp_parallel.cu": "6897d6e8d59cfbb5f4529e9166b3741cc2a87e2578e3d44f1e2da41519ee62de",
+    "code/labs/custom_vs_cublas/experimental/tcgen05_tma_multicast.cu": "bacf28de21aa01d25d36e98a993c0366af488c8be9b15f12acf971b3e8d439aa",
+    "code/labs/custom_vs_cublas/experimental/tcgen05_no_wait_5stage.cu": "9eefa5bca6b142381bc7f66068e2b12a325d72fdd9863725270556e30634a3fb",
+    "code/labs/custom_vs_cublas/experimental/tcgen05_no_mma_barrier.cu": "77365369893a8bdeb30dea7f3a61e6731068ff04df08a86fa84f828a31188bda",
+    "code/labs/custom_vs_cublas/verify_tcgen05_pipeline.py": "0792b6711dafdb4ec2acbadd8f70622156878e7928215400252a1f4bcf51d7f8"
+  },
+  "validation": [
+    {
+      "command": "git diff --check -- code/labs/custom_vs_cublas",
+      "result": "passed"
+    },
+    {
+      "command": "/opt/miniconda3/bin/python -m ruff check code/labs/custom_vs_cublas/verify_tcgen05_pipeline.py --select E9,F63,F7,F82,B006,B023",
+      "result": "passed"
+    },
+    {
+      "command": "ast.parse(verify_tcgen05_pipeline.py source)",
+      "result": "passed"
+    },
+    {
+      "cwd": "code",
+      "command": "/opt/miniconda3/bin/python -m labs.custom_vs_cublas.verify_tcgen05_pipeline --list-cases",
+      "result": "exit0; planned_only; no CUDA initialized;7variants30shapes2seeds4repeats"
+    },
+    {
+      "cwd": "code",
+      "command": "/opt/miniconda3/bin/python -m labs.custom_vs_cublas.verify_tcgen05_pipeline --output /tmp/aisp-wave1-cuda-no-device-final-receipt.json",
+      "result": "expected exit1; failed with Real CUDA device required; zero checks executed",
+      "evidence": "cuda-stage-no-device-receipt.json"
+    }
+  ],
+  "unavailable": {
+    "nvcc": null,
+    "compute_sanitizer": null,
+    "cuda_device": false,
+    "cutlass_include": false,
+    "transformer_engine_cutlass_include": false
+  },
+  "source_review": {
+    "reviewer": "audit_wave1_plan_a (independent read-only peer; sole writer repo_plan_context)",
+    "confirmed": "Independent read-only reviewer audit_wave1_plan_a found no additional actionable source concern in final cooperative-B version: both producers cross prior empty waits before distinct B slices complete, full logical byte accounting, count2 remote commits, initialization publication+cluster sync, final stage drain and whole-tile padded output guard are consistent. CuTe template compilation, actual byte completion, parity-wrap/deadlock and sanitizer execution remain HOLD.",
+    "contract_sources": [
+      "https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-mbarrier-contents",
+      "https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-mbarrier-phases",
+      "https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-mbarrier-phase-completion",
+      "https://raw.githubusercontent.com/NVIDIA/cutlass/main/include/cute/arch/copy_sm90_desc.hpp",
+      "https://github.com/NVIDIA/cutlass/blob/main/include/cutlass/arch/barrier.h"
+    ]
+  },
+  "required_gates": [
+    "Compile all7 variants against pinned CUDA/CUTLASS/torch toolchain separately for actual supported SM100 and SM103 targets; preserve build logs/binary hashes; no source-only compile claim.",
+    "Obtain/verify serialized GPU ownership before any target run. No GPU lease or execution is authorized by this source receipt.",
+    "Run all1680 full-output cases (7variants*30shapes*2seeds*4repeats), same repo fp16 tolerance, full FP32-derived reference, inputs unchanged and supplementary guard unchanged. Preserve failures; no sampled/synthetic output acceptance.",
+    "Run compute-sanitizer memcheck and synccheck with PYTORCH_NO_CUDA_MEMORY_CACHING=1, nonzero error-exitcode and target watchdog. Preserve actual logs and compare source/binary lineage. Racecheck support/limitations for tcgen05/TMA must be stated; no clean log alone proves all async ordering.",
+    "Rebenchmark corrected incumbent only after correctness gates; earlier no-wait/claimed speedups are unqualified and must not be used as accepted performance evidence."
+  ]
+}

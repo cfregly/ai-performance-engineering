@@ -1,0 +1,19 @@
+...............................s..............................ss         [100%]
+=============================== warnings summary ===============================
+tests/test_audit_wave1_harness.py::test_detector_switches_are_independent[False-False]
+tests/test_audit_wave1_harness.py::test_detector_switches_are_independent[False-True]
+tests/test_audit_wave1_harness.py::test_detector_switches_are_independent[True-False]
+tests/test_audit_wave1_harness.py::test_detector_switches_are_independent[True-True]
+tests/test_audit_wave1_harness.py::test_antipattern_detection_still_rejects_logging_when_sync_detection_is_off
+tests/test_seed_config_immutability.py::test_seed_mutation_is_detected_in_perf_runs
+tests/test_seed_config_immutability.py::test_chapter_style_config_normalization_does_not_mutate_benchmark_config
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/harness/benchmark_harness.py:4866: RuntimeWarning: ENVIRONMENT INVALID: Non-Linux platform 'darwin' is not supported for benchmark validity checks.
+    warn_module.warn(message, RuntimeWarning)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/torchrun-verification/integration.xml -
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_audit_wave1_torchrun_verification.py:195: real torchrun launcher integration requires supported Linux host
+SKIPPED [1] tests/test_seed_config_immutability.py:182: torchrun benchmark validity requires Linux
+SKIPPED [1] tests/test_seed_config_immutability.py:246: torchrun benchmark validity requires Linux
+61 passed, 3 skipped, 7 warnings in 12.29s

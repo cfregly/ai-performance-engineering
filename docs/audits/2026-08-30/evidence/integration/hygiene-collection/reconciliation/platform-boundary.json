@@ -1,0 +1,6 @@
+{
+  "test_id": "test_run_benchmarks_reaps_current_run_descendants",
+  "reason": "Production _collect_descendant_pids uses Linux /proc and returns no descendants when absent; this is an actual OS runtime test, not a CPU/source fixture.",
+  "scope": "Only non-Linux runtime is skipped. Linux missing /proc/self/stat fails before launching a child. All source/CPU fixture tests stay enabled.",
+  "acceptance": "Linux runtime reaping HOLD on Darwin; no production behavior changed."
+}

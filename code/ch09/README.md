@@ -85,5 +85,5 @@ python -m cli.aisp bench run --targets ch09 --profile minimal
 
 ## Notes
 - `inline_ptx_example.cu` demonstrates how to wrap tcgen05 intrinsics safely with architecture guards.
-- `requirements.txt` includes Triton nightly pinning so the kernels track PyTorch 2.10-dev features.
+- `requirements.txt` includes the shared `requirements_latest.txt` pins for PyTorch 2.9.1 and its compatible Triton release.
 - `optimized_cublaslt_gemm_fp4` is intentionally capability-gated: if cuBLASLt cannot provide the native block-scaled NVFP4 heuristic, the benchmark reports a clean skip instead of silently falling back to a different FP4 mode.

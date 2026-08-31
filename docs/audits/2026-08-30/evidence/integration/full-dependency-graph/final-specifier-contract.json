@@ -1,0 +1,26 @@
+{
+  "status": "PASS_EXACT_FINAL_REQUIREMENTS_METADATA_CONTRACT",
+  "direct_spec_count": 90,
+  "resolved_package_count": 327,
+  "all_direct_specifiers_satisfied": true,
+  "changed_specs": {
+    "typer": {
+      "old": "typer==0.12.0",
+      "new": "typer==0.15.4"
+    },
+    "typer-slim": {
+      "old": "typer-slim[standard]==0.12.0",
+      "new": "typer-slim[standard]==0.15.4"
+    },
+    "rich": {
+      "old": "rich==13.7.0",
+      "new": "rich==13.7.1"
+    }
+  },
+  "unchanged_package_names_and_extras": true,
+  "final_input_source_equivalence": "Only missing local find-links omitted; every final package specifier is identical.",
+  "cpu_first_pypi_packages": 49,
+  "cpu_constrained_union_packages": 56,
+  "cpu_all_first_versions_retained": true,
+  "source_requirements_sha256": "4142cb1aced78f4f619e78eb8e86382c921ec2ad9c59d8fcdc7290beb026f66a"
+}

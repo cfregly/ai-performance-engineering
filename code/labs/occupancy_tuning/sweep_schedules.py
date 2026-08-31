@@ -12,7 +12,6 @@ from typing import Iterable, List, Sequence
 
 import torch
 
-from labs.occupancy_tuning import triton_matmul
 from labs.occupancy_tuning.triton_matmul_schedules import MatmulSchedule, SCHEDULES
 
 
@@ -97,6 +96,10 @@ def benchmark_schedule(
     """Benchmark a single preset and return timing statistics."""
 
     _ensure_cuda()
+    # resolve_schedules is also used without a GPU or Triton installation.
+    # Kernel construction still requires the real dependency before timing.
+    from labs.occupancy_tuning import triton_matmul
+
     device = torch.device("cuda")
     a, b, c = _allocate_inputs(size_m, size_n, size_k, dtype, device)
 

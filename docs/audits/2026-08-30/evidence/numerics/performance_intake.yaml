@@ -1,0 +1,37 @@
+objective:
+  primary_kpi: numerical_correctness_before_latency
+  secondary_kpis: [actual_storage_bytes, verified_latency_ms]
+benchmark:
+  layer: component
+  grade: realism
+  variable_under_test: compute_precision_and_kernel_implementation
+workload:
+  type: inference_and_gemm
+  model: synthetic_KV_attention_and_NVFP4_Ozaki_GEMMs
+  constraints:
+    - no_accepted_quantized_run_without_independent_full_output_reference
+    - no_guessed_workload_accuracy_threshold
+    - preserve_original_inputs_and_output_lifetimes
+    - configured_thresholds_are_not_calibration_evidence
+environment:
+  observed: CPU_macOS_arm64_Python3.12.2_torch2.8.0
+  cuda_available: false
+  nvcc_available: false
+  target: SM100_Blackwell_CUDA_and_compatible_TransformerEngine
+  gpu_lease: unavailable
+current_baseline:
+  latency_ms: null
+  numerical_acceptance: pending_target_calibration
+cost_model:
+  kv_storage_bytes: 10737418240
+  kv_storage_precision: bf16_both_variants
+  kv_traffic_constraint: full_prefix_attention_plus_projection_compute
+  group_baseline: dequantization_plus_independent_fp64_GEMM_to_fp16
+  group_verification: every_group_in_every_logical_request_including_fused_requests
+  ozaki: same_MNK_seed_scale_with_separate_native_fp64_reference
+  dominant_cost_measured: false
+acceptance:
+  cpu_gate: actual_comparator_negative_controls_and_protocol_lifetime_checks
+  gpu_gate: all_affected_shapes_precisions_seeds_and_repeated_runs
+  performance_gate: only_after_accuracy_and_locked_clock_repeated_AB_comparisons
+  status: HOLD_GPU_calibration_compile_runtime_and_performance

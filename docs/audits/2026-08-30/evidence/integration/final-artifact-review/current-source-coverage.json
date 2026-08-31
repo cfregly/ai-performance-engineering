@@ -1,0 +1,2800 @@
+[
+  {
+    "path": ".github/workflows/benchmark-validation.yml",
+    "sha256": "1af4f41625fe280f68ab84c66d76710f68118000df409eccdd32d903a72a668b",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/receipt.json"
+    ]
+  },
+  {
+    "path": ".github/workflows/tier1-nightly.yml",
+    "sha256": "23bbece0e985441032989436502104373ad1e2cbed63babab04081e530f0d412",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/clock-lock-followup/receipt.json"
+    ]
+  },
+  {
+    "path": "CONTRIBUTING.md",
+    "sha256": "b9e6c2724c1bf211159fd3d15e678176bd321ada1bdfd4c66fbde2a438f963bd",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/documentation/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/AGENTS.md",
+    "sha256": "e4cca5f7ac816f4a11410063b217d61b2e2146ab9d9cd80f8b6bc0b0d902d27e",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/README.md",
+    "sha256": "bc777fd1bb198c1096b844473d10cf410fc05406419ca1274305f0d824f1b6a4",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch01/Makefile",
+    "sha256": "d70c5e394797b0f7f8b70345a90655226aaaaeb49bc46814ab8b1f5c2774b45a",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch02/Makefile",
+    "sha256": "12783744b2ca4dabba772073fa104446e8f171f6ae2fd5d0f4bb0511fc2f0f70",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch02/memory_transfer_pcie_demo.cu",
+    "sha256": "61a436e87024595f8b59c500b11e0e947c062fbff870909ae84b5664b4a5a1be",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch03/Makefile",
+    "sha256": "6a012da94f03e6f738af5835ac0d492db04761d3b1ce309a20f1f233a578d273",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch04/Makefile",
+    "sha256": "f7c4e14c67bb5286dcf7b714f3f6b581b1273bba979d645b151d4a221d2876b0",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch05/Makefile",
+    "sha256": "c43f7449663dfa0c73fad1b30d2a936ac1086aa8b72936cb8c1e1abce55a33a7",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch06/Makefile",
+    "sha256": "f9d6c32d7915cb4b938258cb8301c431f8e2c5b623f486cf8ae52b7fada6f900",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch06/occupancy_api.cu",
+    "sha256": "33fd08d7e29eb7e55191322cb955df1b28ca03b8aeb2734f745c660a353a1d54",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch06/optimized_ilp_low_occupancy_vec4_impl.cuh",
+    "sha256": "5afd0c9c431568c766903f148e59072a6c1a6fd01ef92d72f4d739d7a57401d3",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch07/Makefile",
+    "sha256": "6bf7d88fcbf371866cea8f5d3878107327a88282182848ec57754512b8d720fb",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch07/async_prefetch_2d_demo.cu",
+    "sha256": "240fe11efe9b08b69451302d2f800f9866d143c117bb5268627044f4062fda42",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/tma/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/ch07/fp8_32byte_loads_demo.cu",
+    "sha256": "cbf49624b3668fd82e8249dbe17910f11bd1fc1b9a71df3599e9497c0f89f1c8",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch07/optimized_tma_bulk_tensor_2d.cu",
+    "sha256": "a08ada595900df14d7e1b221ecfdf726e9108ea461af3e48da38f20cb14b9c7d",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/tma/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/ch07/optimized_tma_copy.cu",
+    "sha256": "6d96913749a4e0678853666e65ec618faca98ff8999be0bb7adcbaa06169ed7d",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/tma/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/ch08/Makefile",
+    "sha256": "13f3447362236719467f6f1baab1d6ff9456b46a4413ef39623a9175514f602e",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch08/baseline_thresholdtma.cu",
+    "sha256": "e50cf230915fb7303ce1f089acdad899c7aef14f04650d19a57c73ca5221c955",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch08/threshold_async_kernel.cuh",
+    "sha256": "6c1a02868022ee2df39ac7bbc0eff6d148c0f8cbce6c95e7a59dcaec786cfde7",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch08/threshold_tma_kernel.cuh",
+    "sha256": "e54accbcc4664d9b4ef4fe8313aa5f93bb038b21dfcf16598e74b8f84f658c4a",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch09/Makefile",
+    "sha256": "3f3e080c4ff0e3f9c15b8fdb4c98a72d399002b78b8f49d0620fb0b1226b9c29",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch09/README.md",
+    "sha256": "173c74673175bf39a72ac052ce01ce252fcd0692ae84ce924e12e22091bbb9d6",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch10/Makefile",
+    "sha256": "7635ffdcca1920248b020e0a7211a1c8b1d4f6b962433dc26c3323a31e947015",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch10/grouped_tile_schedule.cuh",
+    "sha256": "e8f971c015e9f942ba812a1f1988a22379a8046a3c73976f00baeabffd56c992",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/tcgen05-gpu-final-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/tcgen05-gpu-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch10/optimized_dsmem_reduction_warp_specialized.cu",
+    "sha256": "c20eada00c5b9bc23ad0fc8d1cc6fcf339364944bd5dc2ce628ced190e4c814a",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch10/tcgen05_warp_specialized.cu",
+    "sha256": "b29cb67f42ea334c4eb43f8392077579968adc4885a17c636d5bccfa30802863",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/tcgen05-gpu-final-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/tcgen05-gpu-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch10/tma_2d_pipeline_blackwell.cu",
+    "sha256": "ce4f44059cd852c607b4a3e209fbe1b83988292f2a903f714c58d41dacca410c",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/tma/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/ch10/tma_multicast_baseline.cu",
+    "sha256": "b13b9a30fab9128a3756c37e1319e76405888f4ab66402f8c07ad8b4d5c34c7d",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/tma/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/ch10/tma_multicast_cluster.cu",
+    "sha256": "5f68f8b00bfaaa7dd1a9f89306749b024bad7ab7e03f23105b9bc2882c6e9dc4",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/tma/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/ch11/Makefile",
+    "sha256": "531e21565f3386d040a84280948a67b22a9fec9bdca39ea2bea44e6a9b6899ab",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch11/baseline_tensor_cores_streams.py",
+    "sha256": "7b00064e7617a8901f2ac12417e36733b227fdca4ecd7a880b724e14d9d11857",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/receipt.json"
+    ]
+  },
+  {
+    "path": "code/ch11/optimized_tensor_cores_streams.py",
+    "sha256": "ea9c0b1e34d305759b0cf46caf35422975b21b4dc57d4476b172f21731f9b592",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/receipt.json"
+    ]
+  },
+  {
+    "path": "code/ch11/streams_ordered_demo.cu",
+    "sha256": "24891671d501bfb45f05eefadc67dad48a5ce88a054a9449274b7e49b506a5ac",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch11/streams_overlap_demo.cu",
+    "sha256": "4f120f69d529ef60a00dfc67a5be1cac72b24a3cb61f340c6d4f1ed7dc06a960",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch11/streams_warp_specialized_demo.cu",
+    "sha256": "47b73f9e368b2a4a56f40c78d15f4d3487f6303705be768d34a1385272eee9b0",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch12/Makefile",
+    "sha256": "18e4bb9af5c424aa41d353be59d1dc13b55b6684f0d5754371f0158f4e2511f4",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch12/baseline_cuda_graphs.cu",
+    "sha256": "97c94bd2c7402f579f1e76e6b34595cf0d6bb5fa4d7a12fb57d8122f80f0a337",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch12/cuda_graphs_workload.cuh",
+    "sha256": "1e21d5b78f2396fb678ac04361b335874f3a866d8a13fff3c2ca918cbeb3db13",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch12/optimized_cuda_graphs.cu",
+    "sha256": "fbb3c4121fb55b7595316f965fd4425412c8f35566ff909f967324476e3fdb1b",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch13/Makefile",
+    "sha256": "719a87dfafb019d92d8c3c8849ffd75880f252c3d9cb6c762714d2446fea3c4c",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch14/Makefile",
+    "sha256": "8ac18dca8f5d9932261c32112702d242399fc39a33712885c840f0af36f99680",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch14/README.md",
+    "sha256": "9c3abd7029953e48f9c0d79f328567b9251040c1b58cb00983ec712c6417a48e",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch15/Makefile",
+    "sha256": "5ae2a083c45752f00427538ff024d45f88561451060d1500fd7ce6224a813461",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch16/Makefile",
+    "sha256": "1f728644a39e496c6c92ba061b80fcbada38c6953f40f95dcb547334145de256",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch17/Makefile",
+    "sha256": "811011a13b852813db963b445a24d1b7877244d73bef999083025e3091e3cc0a",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch18/Makefile",
+    "sha256": "c13d235dad0e717eaa50f3817f08b7e833f70bac4587f7b317d339407cd1346b",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch18/flashmla_kernel.cu",
+    "sha256": "948b108f65c3cd7026afedffc159a78479ac65c33a2edc7fc4783dd48173f811",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch19/Makefile",
+    "sha256": "53360081ff53a006b293536e396fe6b836a498de84b610a2df86ca4f1a2efd56",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/ch19/optimized_nvfp4_training.py",
+    "sha256": "8f553f3ee9d585d8c230b0a8a9a874f53a48a9bed58ee639be58bae74b7d844a",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/ch20/Makefile",
+    "sha256": "990789eda077bab4c35a0a0e4d1c26ca6f5f37c47a3e8b03bb14e811ba18c440",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/cli/aisp.py",
+    "sha256": "23ce03bd8e2021e6999fcb00c77016669f034ce1ed5281e34e535aa29eb1bdb5",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/api/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/cli/commands/profiling.py",
+    "sha256": "b54529691814a251afda8fbde4ddde0bfbc848a7120824b527931e314ba8aad5",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/tooling/receipt.json"
+    ]
+  },
+  {
+    "path": "code/core/analysis/distributed_analysis.py",
+    "sha256": "6e46d39c0c79e4d86cf523547911c8337de1b861fee886c00a39886a52385e65",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/api/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/analysis/llm_advisor.py",
+    "sha256": "57594bfd3cf4275ea2430aeb575546b25ea0a6066c0b2216cb24f43e5c82d794",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/api/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/analysis/llm_profile_analyzer.py",
+    "sha256": "327f8f6fc657bd8084351090b4d66ae34ab4fd234a265d7e38ea66715569b618",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/api/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/benchmark/bench_commands.py",
+    "sha256": "3f3859d83185c0f7aa664bcd415ca200e9020dd22cf4b4373e561cb96357df0a",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/api/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/benchmark/benchmark_peak.py",
+    "sha256": "24a8c4dce15ee4369d39234ccf5309d409b9872c769e11b6b2df5311832b2b44",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-source-files.json"
+    ]
+  },
+  {
+    "path": "code/core/benchmark/blackwell_optimizations/blackwell_optimizations/Makefile",
+    "sha256": "edbb8624a864b32a8f38d8f824f3a22b37d2919cf15a0590f27998e462217312",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/feature-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/benchmark/blackwell_optimizations/blackwell_optimizations/test_all_features.cu",
+    "sha256": "862d33fd0d9c8bb1f8722063a796aa663994108068e5fff230b6e96f1fac19d1",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/feature-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm100a-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm100a-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm90-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm90-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/benchmark/blackwell_optimizations/blackwell_optimizations/test_tma.cu",
+    "sha256": "59b1c3422f574683975f5a56f1e7200f54efec0873925c64a1368bddc3be726f",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/feature-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm100a-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm100a-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm90-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm90-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/benchmark/comparison.py",
+    "sha256": "9f0e71fd6e36c25ac176f0f3862a05643a329a105be0f3ce8e48f75825c434f6",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/harness/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/comparison-protection-receipt.json"
+    ]
+  },
+  {
+    "path": "code/core/benchmark/detect_sm.py",
+    "sha256": "3101a93e9ebc0179ad374a28dc7d238850f766020bf42cb9221a581831856837",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/benchmark/metrics.py",
+    "sha256": "240c74dace7cb75b1f2a0718abd5dcff4eb8a5369aaaef5994dcc9534122c30f",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-source-files.json"
+    ]
+  },
+  {
+    "path": "code/core/benchmark/models.py",
+    "sha256": "d7c551643c7a04ed10f26442514ebebfada5caee6313e41f5a823b5ddcaf4499",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/harness/timing-provenance-receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/benchmark/performance_targets.py",
+    "sha256": "3efef808acf4a584d800572f8a7c3ddbfcb7ff3adaf5db0109e62791d9034e08",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-source-files.json"
+    ]
+  },
+  {
+    "path": "code/core/benchmark/verify_runner.py",
+    "sha256": "16eeddaeefa19bf11a10379d157cd12ec27ab6065d4893c9d8b30288b2982963",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/clock-lock-followup/receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/protection-coverage-receipt.json"
+    ]
+  },
+  {
+    "path": "code/core/common/async_input_pipeline.py",
+    "sha256": "333f606ad377fb4cd700ecc5d1aad6e865e5cf0e25b530b6a91634d01bba4f7b",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/common/cuda_arch.mk",
+    "sha256": "c4dcab53cd1bab8c488bae1a7ae5996a4be05d206832d41f3ae74a6d3d7bfd13",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/common/headers/cuda13_demos.cuh",
+    "sha256": "8d830db67de26e477ffca0d206b6b31a01ccadef9763718fe833a87bdcffc431",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/tma/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/core/common/headers/tma_2d_layout.hpp",
+    "sha256": "645f624cc2cd7a7b1f18e6d0c734e1b48407394d478f18aee46f0dd8927c8834",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/feature-cuda/grace-sm90-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/grace-sm90-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/cuda-preflight-hold/report.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/receipt.json",
+      "docs/audits/2026-08-30/evidence/tma/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/core/common/headers/tma_helpers.cuh",
+    "sha256": "4c8a88560d1cc5e04ff1b99110453119fefc98aa17faaee462ce0133abc942ba",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/feature-cuda/grace-sm90-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/grace-sm90-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/cuda-preflight-hold/report.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/receipt.json",
+      "docs/audits/2026-08-30/evidence/tma/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/core/diagnostics/microbench.py",
+    "sha256": "01919110d09ee970bae344f3680c04f409025f07db83deb0a22d7e6d96922e6d",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-source-files.json"
+    ]
+  },
+  {
+    "path": "code/core/engine.py",
+    "sha256": "08dbc75f0e0f0ca9c1c8196ddcce9da4d87c5a539e77a35071320e8823294c65",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/api/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/harness/arch_config.py",
+    "sha256": "c6a5a340834ad724f9b2df7c10cdb727358e5095eb466fad7797e77347b8480a",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-source-files.json"
+    ]
+  },
+  {
+    "path": "code/core/harness/benchmark_harness.py",
+    "sha256": "97aafb1fe60e84d18f16a25882aa4cb49e715e70b3217baf3a700881311128e9",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/torchrun-verification/receipt.json"
+    ]
+  },
+  {
+    "path": "code/core/harness/validity_checks.py",
+    "sha256": "367136da94453ffd16381b9100836821d5985de72df4ad48aacb3cb1a4449cb6",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/clock-lock-followup/receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/protection-coverage-receipt.json"
+    ]
+  },
+  {
+    "path": "code/core/llm.py",
+    "sha256": "5599704325f793025f1e2c418b9bf9d64c2c78ff5563c6d07e10340ca6aa0bd4",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/api/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/optimization/parallelism_planner/llm_advisor.py",
+    "sha256": "84906cf80a9c0575c027d78fcf4d1f73ec55e03fbb37902d64acd8ebbcde1eaf",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/api/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/perf_core_base.py",
+    "sha256": "e213c847b382b1b887601a203f4f4470888dd35ab8a338495482a71277660766",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/api/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/profiling/extract_pytorch_profile.py",
+    "sha256": "ff963205bac84411fb50ea7eff22c1d4d6fa9d4c14be5e949ca255fb1c3db928",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/documentation/profile-extraction/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/documentation/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/scripts/build_tma_demos.sh",
+    "sha256": "f5378d297a05c999e04150f599a8bcf65a6d5a800bfff30f58a651810e8eb93e",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/scripts/ci/run_compare_builds.sh",
+    "sha256": "8140d1b7a90b92db59ce7b449484c7182756cbafc17b63a70191676ffc2ca40d",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/scripts/refresh_readmes.py",
+    "sha256": "e7d508a8fda4a1b87aef33d2135c67766753bb19fc22673817d4a215fba823da",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/receipt.json"
+    ]
+  },
+  {
+    "path": "code/core/scripts/run_warp_specialization_ci.sh",
+    "sha256": "b46608d84a962eb41e9b7381da97d156f32c18a332c8015037007b5da18c9389",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/verification/tma_cuda_probe.py",
+    "sha256": "d6170388e29544f39013fde2ad2917efa306fa11a9870fa41c2028976b74314e",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/verification/verify_tma_sm121.py",
+    "sha256": "feee6a936f25a1c9d1fc7a9dbb52effb0d0239c1261fee070055ea4320b0a338",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/core/whatif.py",
+    "sha256": "34658567aad6437d406efee717a940852a8af0d40a43fdd952210d98933c1b3e",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/tooling/receipt.json"
+    ]
+  },
+  {
+    "path": "code/docs/gb300-blackwell-matmul-hostoverhead.md",
+    "sha256": "4d2e2efb3bf4c2546a115328f049b6bc804292d171d606211461753aac8cabb7",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-source-files.json"
+    ]
+  },
+  {
+    "path": "code/docs/gb300-gemm-occupancy-rewrite.md",
+    "sha256": "18941bd7dfab07b09c227fbe8cfc1ba8c948284793d6df9ef0d54f07ede58d96",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-source-files.json"
+    ]
+  },
+  {
+    "path": "code/docs/gb300-moe-roofline.md",
+    "sha256": "c24708c53d5e512f224b9946f382fcc1752a08d147a5e565dcaaa28e187c2dfd",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-source-files.json"
+    ]
+  },
+  {
+    "path": "code/docs/gb300-roofline-corrections-2026-08-30.md",
+    "sha256": "db500aca2ffd91e0ce8f641b85b10448a53c25b55c973752fddeef264b301710",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-source-files.json"
+    ]
+  },
+  {
+    "path": "code/docs/gb300-runbook.md",
+    "sha256": "44614027232cdcb98e96c2138e65a5462ac82ecc2e9810e8a100e6fb42ab2da7",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-source-files.json"
+    ]
+  },
+  {
+    "path": "code/docs/gb300-sol-roofline-kernels.md",
+    "sha256": "05823cb1b3ae5a9f9343e1fd1e6dcb1132be1d085eb5c23d6fd79f25a57b8601",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-source-files.json"
+    ]
+  },
+  {
+    "path": "code/docs/gb300-sol-roofline-labs2.md",
+    "sha256": "f11515a8e6f628937c4ad11e2398a217bdc0e92da443aa5e009d1d4e331c0ad4",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-source-files.json"
+    ]
+  },
+  {
+    "path": "code/docs/gb300-sol-roofline-labs3.md",
+    "sha256": "6e54fd5e0f05b1e6feaea9258dc62e6558c50860bfc9b9e0c5edac219969abce",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-source-files.json"
+    ]
+  },
+  {
+    "path": "code/docs/gb300-sol-roofline.md",
+    "sha256": "1dc6f45c46b7278f810240c3d1d479447139ddd3ccddf9a99a7234ebd2e0cc18",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-source-files.json"
+    ]
+  },
+  {
+    "path": "code/examples/__init__.py",
+    "sha256": "dc3a141bfaf40ad1be9fbd63d3008e69ad7fc6cc26143f3570d27b8ed4af8bec",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/blackwell_gemm_optimizations/blackwell_grouped_gemm_autotune.py",
+    "sha256": "c59e393b774a0f617b619cc56afa5d68aa4820ae90bca1d0a7cd149d836e8f21",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/optional-dependency-collection/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/blackwell_gemm_optimizations/blackwell_grouped_gemm_common.py",
+    "sha256": "e4de9d8ed39d3522a13fe072dd8389f7a17ad2057fb0d3847289c28822bcf20a",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/optional-dependency-collection/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/blackwell_gemm_optimizations/blackwell_grouped_gemm_kernel.py",
+    "sha256": "83e2d666e6e5d10fac4633ea926819e43347cd7ad253516c154d41c2174a7243",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/optional-dependency-collection/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/blackwell_matmul/grace_blackwell_kernels.cu",
+    "sha256": "fef565ffc3458e28ccd9617216f040d3f99f2f5fcc8e228e677dcb47029b2eb5",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/feature-cuda/grace-sm90-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/grace-sm90-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/cache_aware_disagg_inference/cache_aware_disagg_multigpu_common.py",
+    "sha256": "b64156345e2f9abfc3eaf51572ee0036c6a80c7d8b9a8cef535f56d0303e546f",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/routing-kv/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/cudnn_sdpa_bench/README.md",
+    "sha256": "da87c0076ad46ee648c93cb4c467e8175e4f76eb051d5a01ddc7d17fa93b9c36",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/cudnn_sdpa_bench/baseline_flash_sdp.py",
+    "sha256": "c149f4875f00ef1574d88fc6828c4d7b960c0c1883d18b9f59ddde6ba4131b79",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/custom_vs_cublas/Makefile",
+    "sha256": "df37a4cf3305bf787f5cf28ba9a75dee9fd1c05b234884ab77d3675872b90f6c",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/custom_vs_cublas/README.md",
+    "sha256": "45303143700d88b19e6c86d4082912fc74089198c99f3799b67199a0f26637a3",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake",
+    "sha256": "ff6901777aaa441dcc795e242195b899735e7ea2280becf7a8231bcbb8c34441",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/custom_vs_cublas/cutlass_gemm/CMakeLists.txt",
+    "sha256": "894f51590542d1194a56a3c198421412da0a147faad889e8b376ef4f06a04ba4",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/custom_vs_cublas/cutlass_gemm/build.sh",
+    "sha256": "49e09e3e781cca9c9304b77c007a414b707ae775e900c0e223a1a8b8b402cfe4",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/custom_vs_cublas/experimental/tcgen05_multicast.cu",
+    "sha256": "f642f9f0a071ff88e39436eb757cca0b38e088c28b70afa2303ea1ef3a3a9d31",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/feature-cuda/retirement-followup/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/custom_vs_cublas/experimental/tcgen05_no_mma_barrier.cu",
+    "sha256": "77365369893a8bdeb30dea7f3a61e6731068ff04df08a86fa84f828a31188bda",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/cuda-stage-lifetime-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/cuda-stage-no-device-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/custom_vs_cublas/experimental/tcgen05_no_wait_5stage.cu",
+    "sha256": "9eefa5bca6b142381bc7f66068e2b12a325d72fdd9863725270556e30634a3fb",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/cuda-stage-lifetime-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/cuda-stage-no-device-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/custom_vs_cublas/experimental/tcgen05_tma_multicast.cu",
+    "sha256": "bacf28de21aa01d25d36e98a993c0366af488c8be9b15f12acf971b3e8d439aa",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/feature-cuda/retirement-followup/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/cuda-stage-lifetime-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/cuda-stage-no-device-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/custom_vs_cublas/run_lab.py",
+    "sha256": "0d5c70d1525d654f62fc330c29c64f899fdd3a8ad6fa5d64aaa4899fb2d02c61",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/feature-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/labs/custom_vs_cublas/tcgen05_cluster.cu",
+    "sha256": "0d39d3909ca8633f50bbe6dff90c18a5dcbc7ee1cf482bd9df8013d83484c47f",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/feature-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/cuda-stage-lifetime-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/cuda-stage-no-device-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/custom_vs_cublas/tcgen05_gemm.cu",
+    "sha256": "c6974fbeac9ead75ba50710cd8976318bf7c117597d2a5315524d0c93fa38026",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/feature-cuda/bias-sm100a-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/bias-sm100a-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/custom_vs_cublas/tcgen05_loader.py",
+    "sha256": "4a76ef9443a2c46cbbdabf4143052d0a4490517caacf0c72a25e2a13186e5267",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/feature-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/custom_vs_cublas/tcgen05_no_wait.cu",
+    "sha256": "8a45ce6b216c751a3f81b4b723c7a0ad22c945942906bf000e1a56fdac3871b7",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/cuda-stage-lifetime-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/cuda-stage-no-device-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/custom_vs_cublas/tcgen05_no_wait_swizzle.cu",
+    "sha256": "dc1a3acc804c2c0872e441625220ea7b4c60a420559bbbe9e7509a59a5ca106d",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/cuda-stage-lifetime-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/cuda-stage-no-device-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/custom_vs_cublas/tcgen05_warp_parallel.cu",
+    "sha256": "6897d6e8d59cfbb5f4529e9166b3741cc2a87e2578e3d44f1e2da41519ee62de",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/cuda-stage-lifetime-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/cuda-stage-no-device-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/custom_vs_cublas/verify_tcgen05_pipeline.py",
+    "sha256": "0792b6711dafdb4ec2acbadd8f70622156878e7928215400252a1f4bcf51d7f8",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/cuda-stage-lifetime-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/decode_optimization/README.md",
+    "sha256": "44caaed405f1f053f75f72ca38217a8769119a5ba302b778ae98ba5f229789a4",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/decode_optimization/baseline_decode_warp_specialized.py",
+    "sha256": "0f42144add0b0a72333372c8d9ccb515ed21b5eb3d9f5c5162dd750a6fa4e05b",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/decode_optimization/optimized_decode_warp_specialized.py",
+    "sha256": "a5d789dc20a05cbb013d6e4e536f8bc647044882ee6b38b64d84aac925a0d3df",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/dynamic_router/vllm_runner.py",
+    "sha256": "7c7cf9da7b02d9889aa71d7cc08362b3c7fa5c3100add0ecf05ccdd58f42aeee",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/routing-kv/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/flashattention4/README.md",
+    "sha256": "ec5d507722df6bb884ec2123148b69bf9fd544e964863e85a2196279d3dadc71",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/flashattention4/flashattention4_common.py",
+    "sha256": "a72dc8345a72767229e59ff79ac03472c43a03cb85a3b14160faedeae0aa20b1",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/flashattention_gluon/README.md",
+    "sha256": "905de3db3bfdde3479ad9758d69af0114081c8e8961bf660470aaabbb2032521",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/flashattention_gluon/baseline_flashattention_gluon.py",
+    "sha256": "952cf0e197e1f72af9ee26a09fdab85116838c7c18407d4f28f5db0d2150bcd2",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/optional-dependency-collection/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/flashattention_gluon/flashattention_gluon_common.py",
+    "sha256": "ea01c2b56b5cbeddca2f9e548490faf86a4a9970b239855cd81448c0e0c6ac57",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/optional-dependency-collection/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/flashattention_gluon/optimized_flashattention_gluon.py",
+    "sha256": "8d1ef0c690e9525a53dd6de042a7fb6329959a97859a94a25e95571d0e59ec30",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/optional-dependency-collection/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/flexattention/flex_attention_cute.py",
+    "sha256": "5d3a61471df1bfef00f5d8e6c245a45d9bfa055a7b995789ef5907442dadd157",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/labs/fullstack_cluster/moe_hybrid_ep_common.py",
+    "sha256": "7a599dd6111d830babecf3959da576a445a5d887882e679ddb8ab7bbb0500acb",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/hybrid-ep-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/hybrid-ep-source-files.json"
+    ]
+  },
+  {
+    "path": "code/labs/kv_cache_compression/README.md",
+    "sha256": "f05a0421c31abae0a06fd55f22161878541da8c6c873b86464394ba726fa57db",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/kv_cache_compression/accuracy.py",
+    "sha256": "03983a6c1474273cc2d406577015f77a5376dcb90c17f3a8033dd8fdcd4197a6",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/kv_cache_compression/baseline_kv_cache.py",
+    "sha256": "6e192a20671da0b6572f358fcf002db6184ceabb0382811e4eb02ab0041cf443",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/kv_cache_compression/calibrate_accuracy.py",
+    "sha256": "73485ea918284cfa0ad214136b7b1a91c229f867dfb6292d2916d4caffdb5755",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/kv_cache_compression/optimized_kv_cache_nvfp4.py",
+    "sha256": "279464d15f98f3dbe7bf0deb0e00027a20885c9aead65361ea8234cb5f79fdba",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_cuda/optimized_kv_transfer.py",
+    "sha256": "b6aec5d1d013bd3411a5b366a819dd341a18df2accbfec590be86d48b53e63f0",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/routing-kv/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_cuda/optimized_router.py",
+    "sha256": "81c0444045b77c4ba280671832d1b3c360d2ebd5adca44ed67c7e8c7220f1dc1",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-planning-router/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_cuda_ptx/README.md",
+    "sha256": "5912d11c9286d006a0a331655560b63ca9dcbd37105ae7a1035d4f466da92fd3",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-ptx/receipt.json",
+      "docs/audits/2026-08-30/evidence/moe-ptx/source_manifest.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_cuda_ptx/moe_cuda_ptx_common.py",
+    "sha256": "1f740b3924182657f0ce020691dbe7e37320d9888389732ba70b6e2f5ebb1532",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-ptx/receipt.json",
+      "docs/audits/2026-08-30/evidence/moe-ptx/source_manifest.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/README.md",
+    "sha256": "2e67af4adb89711241ac251741ee57419c22f4feb6bf6e97609989f9ba4dce1c",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/calibrate_native_fp8.py",
+    "sha256": "45df08f8914eb438bee2fb203692ee16ad34e8c9c21e4f7a09adbe8cea463356",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/native-fp8/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level0_naive.py",
+    "sha256": "603670dcb201ed38fdfbf1a25708ebc0512ec7b8085fc480dce6ca209fec945f",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level1_batched.py",
+    "sha256": "4b75549640c94db8c32e26b675dcb4fac5fd53f8beea37973196a73130cb413d",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level2_compiled.py",
+    "sha256": "a743ca488f7cd48d0fe6f9a942bc61d9812fc74394d896a92dca800ae45d2d8a",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level2_fp8.py",
+    "sha256": "6b816dc93239a6e77d024123a07dcfe6c72bbcf020356fa2875e2b98ee93ee4c",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level2_fused.py",
+    "sha256": "5f74e4f7ee5f4175aaa480156524dc81d50d180aa3dba9d3d4bf4dff045b5850",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level2_permuted.py",
+    "sha256": "a483fac79f58e4de6ba38560c7f8597523415c4a2812b20ddf333e9637d68aa7",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level2_sorted.py",
+    "sha256": "df975cadf9aeebf03689f992a6e91fc127358088ec7ee2836f3f73155cbc372e",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level2_streams.py",
+    "sha256": "52217e28246f282e47d1406db61bdce3024309657d87d8a9591a86dd8ea94fef",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level3_compiled.py",
+    "sha256": "b70e6ae958b0ac1a030402f7226a62e95e557c9bc3f23601939d3bd1a5bb5c3a",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level3_fp8.py",
+    "sha256": "cbf766c50c2a0145ef0fc96de73ea965fca8c784ad8d07574066a3eef5032cab",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level3_grouped.py",
+    "sha256": "3f39feae1742be36f2f5d46e2fa07e3d6084bb42f079a014ac397da1e931bdb2",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level3_memefficient.py",
+    "sha256": "1de08ec2baddb37c2c63ec8b62c66e49c047c1f1449bc54a15a1662fa52d2bfe",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level3_sorted.py",
+    "sha256": "93754dd1ab9f2d74a7e3d894a85aa19f12f975da18745c72d96a11717876c16c",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level4_graphs.py",
+    "sha256": "f62d0bf78b4ce9e8ad7909ab3874a5286f832557d12b6741026a8187cc77946e",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level4_grouped.py",
+    "sha256": "0c969d148e936eaf3e167d66c60a90731c868801d3ec64531a2ca53a95334040",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level4_parallel.py",
+    "sha256": "a04994dbf731a5ab0212bb54f232e1bc1da9ac8e4b20baf7c8ae1665df06c3ac",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level4_sorted.py",
+    "sha256": "41f74b4ade095002da1e4f4107b8c01c761c42dc6bcf03b857f631e7236d3854",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level4_triton.py",
+    "sha256": "4db191f7e2586d5c108dfa590d0a759dcc019ff11f7a8e414c08c25bdf38c96f",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level5_bmm_fusion.py",
+    "sha256": "dee3a6e479a0ccda24decc3dad7ddb35430a1e6587ecd80b9a446b739e55baaa",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level5_compiled.py",
+    "sha256": "7aa16b7889a0ef0d3ac207eda9f1641056db9dd833aea9462e046ba780f75663",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level5_cudagraphs.py",
+    "sha256": "8ee303c3bb974fa32a4887f05c620e6e08db5b1acdd41eb0af73de8d15b852cc",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level5_expert_parallel.py",
+    "sha256": "e333c2d87fd68efe725ecb195b4ebc8e75f01712f0563d31f045040e30672ae0",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level5_graphs.py",
+    "sha256": "abc92a05d84ff7316fd8c9b14b8a23b3e130b676bde524de70cd25b5bd5013c2",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level6_compiled.py",
+    "sha256": "99d70165fc31d2ef61a1b87935ed1e3a7ddc7f33f99ad45d934f557ebe6207cb",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level6_native_fp8.py",
+    "sha256": "9f666eb3f79387aadaab8f8676551cce666ae4feb5e618c0015d06a745e07298",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/native-fp8/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level7_compiled.py",
+    "sha256": "b6fd1c28b7bb896c05530a030145b2b8e7def29b496b6e8dce73374e8a5eecbf",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/moe_model.py",
+    "sha256": "8bcf7703ca96d842a368aa11884e950bd6a4d636c4b1f0a2afd88a232f4985cb",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-triton/receipt.json",
+      "docs/audits/2026-08-30/evidence/moe-triton/source-files.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/native_fp8_math.py",
+    "sha256": "82b34b1f068a6e3668d51b2f18305b5bb1e3bf3c3fe90686942e695a234e0687",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/native-fp8/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe.py",
+    "sha256": "2350d3678e47801b2f17bbb0d5844417508d918605cdacc1a0c7f50ce57714d1",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_batched.py",
+    "sha256": "c4897c7200f36fef872f38f74a581627914b9f3870914a6fcf2b592fad506792",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_bmm_fusion.py",
+    "sha256": "3ecd8329c5972b29eb2847cb4620625a8e5fc6d68fa8ec224bdaa90d25fe46bd",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_compiled.py",
+    "sha256": "fe4aabfbe6ae56b12f51584a70c9985a500f370f5ab8a043beb76e2e79db1576",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_cuda_graphs.py",
+    "sha256": "e7b0975aea84c5360fa02c528072f4fbcd88e2999d6a4f84ba6774962451733a",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_expert_parallel.py",
+    "sha256": "0e0cb963aeb894fe298474e7f39b467995d17fd4dd1ce1012923a59cfc384a65",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_fp8.py",
+    "sha256": "bdb85e2ddbb70c23df5c091a2bebd1f739e71d64ba4117513ea611625d9638d2",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_fused.py",
+    "sha256": "d8221f95c1deac96ac7bf2d2c0da73b2617d8ef5a8dc1e9e042bf8e57c3436ca",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_grouped.py",
+    "sha256": "ff0cb7685378d2750858436069e8c2175422c4dba386a7ff19ff64d78e2c328c",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_memefficient.py",
+    "sha256": "566d53b9e072bc03b09ddb01e8e13b250ac5bf40b83b5015356b0419ecc42c03",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_parallel.py",
+    "sha256": "72098761bfe5b7cbdab9396b2662d9c0abb3a12367e32f022b15417028d51518",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_permuted.py",
+    "sha256": "d7d0de8ac7b4ef0ccdafb0238267825c49e66200cb94b4e1e0db862bf92e5a82",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_sorted.py",
+    "sha256": "22e2adc631a526bac7415894902f8a0f342bd6c10993f82096e590bee9c68b5f",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_streams.py",
+    "sha256": "ff4bbedcb2e17351b7dbd3a06a4ce7dbd61cd69bd1a386467e234e7644400c18",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_triton.py",
+    "sha256": "60b02973400537b49f8c7601b7e737de419a477e7e03d7314acd34545f91de68",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/triton_fused_moe.py",
+    "sha256": "657d57e6f457906cafef8e0cea7afd5efe8efcf1d548d53e48cb3665f55072dc",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-triton/receipt.json",
+      "docs/audits/2026-08-30/evidence/moe-triton/source-files.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/triton_kernels.py",
+    "sha256": "aef34a763b011415afe65eeab6dc6b27604afb6e333e83a2099b1302176fb58b",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-triton/receipt.json",
+      "docs/audits/2026-08-30/evidence/moe-triton/source-files.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_parallelism/README.md",
+    "sha256": "23dd9275248e70be93b6380bbfb444bdcc82897250ee68295f0eb5afdc80b35e",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-planning-router/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_parallelism/plan.py",
+    "sha256": "a356e6940e950ef3574399633ed0100e56ed6b187d656f45e5634a6d7674eb65",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-planning-router/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_parallelism/run_lab.py",
+    "sha256": "576cb0822b5ac29952fd882eb39d93c2ff866e6dccfd03d40582a9467b1ae678",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-planning-router/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/moe_parallelism/scenarios.py",
+    "sha256": "3987db7c5b391607405984ce1807877a1b9e0c81bd957fab9e7ab989ea01d3ad",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-planning-router/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/nanochat_fullstack/benchmark_incremental_optimizations.py",
+    "sha256": "2764da60e3ea030cba09a9436bbeaf30ab3394de538a69d34eeeac3c1d82c2e1",
+    "current_covered_by": [
+      "code/labs/nanochat_fullstack/audit_wave1/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/labs/nanochat_fullstack/nanochat/engine.py",
+    "sha256": "76eb69ae795221b0cb5e133780e80617722bd61cfd92e735c229e3188d12320b",
+    "current_covered_by": [
+      "code/labs/nanochat_fullstack/audit_wave1/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/nanochat_fullstack/nanochat/gpt.py",
+    "sha256": "5893aa454ea6134652de52c7bc92679effe8f28272801c43cb71f7dfe31551d3",
+    "current_covered_by": [
+      "code/labs/nanochat_fullstack/audit_wave1/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/labs/nanochat_fullstack/scripts/bench_b200_flags.py",
+    "sha256": "27f7fa06a6ac39339c34fbb58c5aa827b87d572c327585e6a8ab0a85a39187ec",
+    "current_covered_by": [
+      "code/labs/nanochat_fullstack/audit_wave1/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/labs/nanochat_fullstack/test_new_optimizations.py",
+    "sha256": "a5bb9c4ec4a89492058d850045ff785675a7619f31c280a118a3aa902c4d515a",
+    "current_covered_by": [
+      "code/labs/nanochat_fullstack/audit_wave1/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/nanochat_fullstack/tests/test_engine_smoke.py",
+    "sha256": "a18023748df92cf6ecf1e6cb67e899c6f0386d87994747c3a3a608f51add0dff",
+    "current_covered_by": [
+      "code/labs/nanochat_fullstack/audit_wave1/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/nvfp4_gemm/Makefile",
+    "sha256": "b6f29e01283304b290782a3739cc0ba400d09554a85bddacf92dc6cf17284c5c",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/nvfp4_gemm/local_eval_submission.py",
+    "sha256": "2249c677f4f5d2668ec199822ad9bbe8b07011f7b0ffa314ba6e73a2bcad049b",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/nvfp4_gemv/local_eval.py",
+    "sha256": "d3085d3f9758048587582f6ea809367078052b3387e9ce9390fc8b9bbe9221f5",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/nvfp4_gemv/optimized_submission.py",
+    "sha256": "950030b8e33a831fce0f7536cde39de57855dcbfa9b42fcfe276b2d08920c404",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/nvfp4_group_gemm/README.md",
+    "sha256": "3bc687151b45edf1b19f715c471aab3870df1707f474ea92ef67c730a33d4bee",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/nvfp4_group_gemm/baseline_nvfp4_group_gemm.py",
+    "sha256": "8d25482e4214ae356abf10e9f2c9be6d9502b64e4f220af95d77c48a32f2493d",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/nvfp4_group_gemm/baseline_nvfp4_group_gemm_g2_n3072_k4096.py",
+    "sha256": "8d25482e4214ae356abf10e9f2c9be6d9502b64e4f220af95d77c48a32f2493d",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/nvfp4_group_gemm/baseline_nvfp4_group_gemm_g2_n4096_k1536.py",
+    "sha256": "98f4ca8c32cb0f56098c8a761b6e29b8329fed7b5c68b986ac671de637b331ea",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/nvfp4_group_gemm/baseline_nvfp4_group_gemm_g8_n4096_k7168.py",
+    "sha256": "b14834bec0770e11c9fc7f884936f57b07a1f5d683ec06231c9a9a841b9393f2",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/nvfp4_group_gemm/baseline_nvfp4_group_gemm_g8_n7168_k2048.py",
+    "sha256": "b075453dce68223d627452f4816e7c4d49d5ddfab7a4dcc3b6bb2cbbefa92c17",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/nvfp4_group_gemm/nvfp4_group_gemm_common.py",
+    "sha256": "59ff4713fe7c3acbc9999e2ce9b1effa946db1dd4b01d9f46cea685c4bb53016",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/nvfp4_group_gemm/reference_math.py",
+    "sha256": "b02113a223daa3ab63b9d4b1fce9c16b84b93f7e83ee5dbbabf59489bed1dc5a",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/occupancy_tuning/__init__.py",
+    "sha256": "d0b992aa2614f95e2cce5899e08f77d19060ecc14c88583283b1f96604f974b9",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/optional-dependency-collection/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/occupancy_tuning/sweep_schedules.py",
+    "sha256": "a2ea457f26503d36678974915384c09f02f25bad18aa60a4bb301b2f3fb90eca",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/optional-dependency-collection/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/occupancy_tuning/triton_matmul_schedules.py",
+    "sha256": "4ac62de101756f9db1858d4fa2a7fd38712977c9366bcb6e118a19f2942f7d2e",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/optional-dependency-collection/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/ozaki_scheme/Makefile",
+    "sha256": "f50c23779340df1ace9a6b724f4ccda03b5b7f8af218cb3dd60f393d74f73472",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/ozaki_scheme/README.md",
+    "sha256": "359efe931c9e24b88124f80325071067fdc48f868726416f3c7a76bc276408bb",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/ozaki_scheme/accuracy.h",
+    "sha256": "d14ecd809ec05ec09507e4ae42d3018b64502363bea602e5a4848c31da5cc348",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/ozaki_scheme/accuracy_policy.py",
+    "sha256": "935e3f1b279c25ee36adb8d1f23680444d4cf507c582fb180444fce7637f8fe1",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/ozaki_scheme/baseline_ozaki_scheme.py",
+    "sha256": "260d1b6d78059d474838ca9b26f3fc90bf955ce270f88e1fef5eef54c7f58b69",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/ozaki_scheme/lab_utils.py",
+    "sha256": "1881051a4b0e76f96414d1ef1157ce074cbc354d60e0bf5ba6b51261bafa4a22",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/ozaki_scheme/narrative_checks.py",
+    "sha256": "5b7e4c726b43921d41e1d61ba6081ff1275a8f57ed64f7e46a2c753d98f788f8",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/ozaki_scheme/optimized_ozaki_scheme_dynamic.py",
+    "sha256": "11b3258da80c5b2bef95e28cc8fa2ee8ae87561925dc69521200ad514eb02817",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/ozaki_scheme/optimized_ozaki_scheme_fixed.py",
+    "sha256": "ee25c047f15776dca46b463a552142912eb8b47be65521e99a123291480d8bac",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/ozaki_scheme/ozaki_scheme_common.cuh",
+    "sha256": "0d2fbd2b6a367dd640dd319f9d7343791e9f8279d2f72ea0f2a219b5fc3c13b9",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/ozaki_scheme/run_lab.py",
+    "sha256": "ccb726a3d4dfb2a396aef53931e068d44910f966addd6a5d61c6b458cbbc4ee6",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/persistent_decode/README.md",
+    "sha256": "095740beda6c680964e0c8d5ffeef92476eef5b7a539aabb78fff9660d33a4a1",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py",
+    "sha256": "ff54f675b862bd3c72330e839b6461e6d01a02ec76cc35a7ccfa5c5bfb9465e9",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/cuda-preflight-hold/report.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/persistent_decode/baseline_persistent_decode.py",
+    "sha256": "b10c53d42430fa42cff45db889879ab2bf7b6d14b04e018ec55c51bf65ff63d8",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/labs/persistent_decode/baseline_tma_prefill_decode.py",
+    "sha256": "24838f26dc2c50800ccda28e24d1c0e92d8c8bd7d7ee43301dc013a28c052f9b",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/cuda-preflight-hold/report.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py",
+    "sha256": "7f3c16ab16961332e08fa5acef20c58483b268a3c268513a36f476ccaa25daa9",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/cuda-preflight-hold/report.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/persistent_decode/optimized_persistent_decode_cuda.py",
+    "sha256": "b48694f43a25cd6da0ad17c857579013c4018ce901db62c721fd37d99e889739",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/labs/persistent_decode/optimized_persistent_decode_graphs.py",
+    "sha256": "c23a70f24c4f9245e200a910abb3410693047f924197e366cb1d808f98042fce",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/labs/persistent_decode/optimized_persistent_decode_triton.py",
+    "sha256": "2c3a95cc348d5ac9897dca4959b23b999322991ed21fa3992c583177ba826b93",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/labs/persistent_decode/optimized_tma_prefill_decode.py",
+    "sha256": "5c01331ae35be8975c6e070af8bc0ddf3dd28ad5d4e02eb2efd62b1b63719497",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/cuda-preflight-hold/report.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/persistent_decode/paged_kv_offload_common.py",
+    "sha256": "d806e5b8fc2ba3829082a8eb614abef31e0b7fb804e336cbe62001babe482a1d",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/persistent_decode/persistent_decode_common.py",
+    "sha256": "59b13fcbeac492772d47382efe5b04e3321fcbb3467098e46759755d7111d8ad",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/cuda-preflight-hold/report.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/persistent_decode/persistent_decode_ext.cu",
+    "sha256": "42722bf82da876e7a2b38aea352ea0e4b17341148b3516a132fc9cda0e2386ff",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/persistent_decode/tma_extension.py",
+    "sha256": "675fc3fb5faf72e274a72d2c86e31a67743150d467c41295c542ea759e3d03d8",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/cuda-preflight-hold/report.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/train_distributed/README.md",
+    "sha256": "5bcbe995fa625d2fed7481fe67acd4cc9c9a67559fc1dc145b5cedee20980a64",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/labs/train_distributed/baseline_zero2.py",
+    "sha256": "168337db169218f91077f56366d4c66915e52d5f53ca52e3448d16baa814bc4c",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/train_distributed/baseline_zero2_multigpu.py",
+    "sha256": "c0c56e8e882665fd14ca25633f01de69e7130a9ecb980d07b8ac1073d0c7ef4b",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/train_distributed/optimized_zero2.py",
+    "sha256": "61bdda99a0903d79dc8374223c6d661f86f61e7f2715d318260302cdb61c9201",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/train_distributed/optimized_zero2_multigpu.py",
+    "sha256": "65778560c2b6a094829cb098c1667e2e71ebfd7932a72c61a654279b5f9ea211",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/train_distributed/training_utils/memory.py",
+    "sha256": "1e72b5aa9174036d41ba97053ebd506c962ae0077ec65faabde96f05ccc3b607",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/zero2/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/train_distributed/training_utils/torchrun_harness.py",
+    "sha256": "faf2903b81f3825422764a9819031375a287bbec28f1327899dcabd3bfd548b0",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/torchrun-verification/receipt.json"
+    ]
+  },
+  {
+    "path": "code/labs/train_distributed/zero2_common.py",
+    "sha256": "4e3cecbbd972f93febba8d4e46128c1924c5f3410af6d226b90ebe4091db0d10",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/receipt.json"
+    ]
+  },
+  {
+    "path": "code/monitoring/prometheus_exporter.py",
+    "sha256": "fcf5d6cb387077ef37360c1607759b1100815390fd9d594ffdba496551c790fa",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/tooling/receipt.json"
+    ]
+  },
+  {
+    "path": "code/requirements_latest.txt",
+    "sha256": "b216f84c863a01a37c4d2e26fd15fc5c856c2c05fbbbe3696d6e965a8d6a4fa2",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/setup.sh",
+    "sha256": "d31dd0daffc1e41a4c3ab8a52c72047d1b6a83c694bf4bb24b8679865c5472e4",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/tests/cuda/chapter_cuda_validation.cu",
+    "sha256": "bb8eee8173fec1c9bf8f80a8a38d320f95c909947811c2331e56ea10b2a3fdd3",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/tests/cuda/feature_cuda_validation.cu",
+    "sha256": "f933d8b148856bd4fab089450dd848a65652f8fab02938a8404a575beceb415e",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/feature-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm100a-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm100a-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm90-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm90-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/tests/cuda/run_ch10_warp_specialized_validation.py",
+    "sha256": "5fabd910031af07109d51538fe5ced15079f56bc21a9fbc3833243a7ceb33e95",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/tcgen05-gpu-final-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/tests/cuda/run_chapter_cuda_validation.py",
+    "sha256": "b7f0a028b2aa5c9455e712214fbb01e5aa30d46948d8400aa6772e12d8750a7b",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/tests/cuda/run_feature_cuda_validation.py",
+    "sha256": "0f31df4ae79343765755b9f5291b85c7e4fc2782a9395500b841f1352dfe586a",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/feature-cuda/bias-sm100a-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/bias-sm100a-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/grace-sm90-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/grace-sm90-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm100a-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm100a-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm90-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm90-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/tests/cuda/run_feature_extensions_validation.py",
+    "sha256": "4e1768e0bfa419326016e896d522210a872d6e6ebb03df98dd2aabcf108f7874",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/feature-cuda/bias-sm100a-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/grace-sm90-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/tests/cuda/run_moe_triton_validation.py",
+    "sha256": "3226aeefe32cd0d148ff83aa0605c445fed2e2c249de40e17137c31324d6c453",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-triton/receipt.json",
+      "docs/audits/2026-08-30/evidence/moe-triton/source-files.json"
+    ]
+  },
+  {
+    "path": "code/tests/cuda/run_tma_2d_layout_validation.py",
+    "sha256": "7682c86fb69c8f7db2bcc0c50b7ded552c272bc5dc5c0ace113000f18eee36af",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/tma/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/tests/cuda/tma_2d_layout_validation.cu",
+    "sha256": "2516c597381ec412ede23c0ce2492e17c09c326ff48899b4f2a72efe7dc9482f",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/tma/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/tests/cuda/validation_process.py",
+    "sha256": "47019ab4daa7d09d73a9721c2ee68e1b1999b18d1022e25d17dd7089f26f277d",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/tcgen05-gpu-final-preflight/report.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/bias-sm100a-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/bias-sm100a-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/grace-sm90-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/grace-sm90-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm100a-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm100a-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm90-attempt-1/report.json",
+      "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm90-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/cuda-preflight-hold/report.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/receipt.json",
+      "docs/audits/2026-08-30/evidence/moe-triton/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/integration/test_benchmark_peak_import.py",
+    "sha256": "648c4a036bbd03dd3f46115997491a9cd60d9e3497c69c5b61468379a2f1a5e2",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-source-files.json"
+    ]
+  },
+  {
+    "path": "code/tests/protection_test_utils.py",
+    "sha256": "bacedb4b85d24df893b2133ba26dbb4a1419eeb61cb58f8cddf00dda3dffdfd1",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/torchrun-verification/receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/clock-lock-followup/receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/protection-coverage-receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_anti_cheat_edge_cases.py",
+    "sha256": "5d9d3154fedf3899eef31a6a709667f1148d720287c588bc89f10f65c5aa066b",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/clock-lock-followup/receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/protection-coverage-receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_anti_cheat_protections.py",
+    "sha256": "0a9464e77a170b459d1d4e3d4e7c914aa3947afd1512d83dc9f97aecc1f47c45",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/clock-lock-followup/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_api_regressions.py",
+    "sha256": "a3825143b22e41d4a6e638d74c27b26fd4bc50c4e07446b151fb2d5e76e0e6be",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/api/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_attention_regressions.py",
+    "sha256": "445905e7b9f741cd4cf22c709f4a07f8b392ba92e1d123e8d673c8e00a9a18e8",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_blackwell_validation.py",
+    "sha256": "186b8b11c3fae8513c1b6651a4a0051aaa2695db46dfa0d79939fd1e92011b1e",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/blackwell-stack/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_comparison.py",
+    "sha256": "a78cfa32498896b5648252b8ca4748f973016a30077faadfdbc1945819c6b936",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/harness/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/comparison-protection-receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_harness.py",
+    "sha256": "7f832cc35eb3d928a80fdd6b95e3122087d6c196997c878bf6c1d4bafd54d392",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/harness/timing-provenance-receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/torchrun-verification/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_hybrid_ep.py",
+    "sha256": "3774d045f826a69991bb5dd737a12ffb724a2ce4c7f8b81597f0b08378959995",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/hybrid-ep-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/hybrid-ep-source-files.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_kv_handoff.py",
+    "sha256": "2d2525ce5783dd9f9d3967f602de3d85078ff4706dde47723f4b32f7149afddb",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/routing-kv/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_kv_overlap.py",
+    "sha256": "072ba976bb99fa44327d4d908478c5e35051685455b85fdc5c72be360383ee48",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/routing-kv/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_moe_journey.py",
+    "sha256": "1f96a6ee42a3aa9cff53f1254c36b3c02a921e2fdbac7900baa5e03f3405e334",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_moe_planning_router.py",
+    "sha256": "e8a4bfd5a2f35b01c6d956f23d1e136868efdd52b7e06070af38d582b1034306",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-planning-router/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_moe_ptx.py",
+    "sha256": "4fe0772063f62766afe294d94e83d002ee30e9e3ec914e7294a9ac7f115d1b13",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-ptx/receipt.json",
+      "docs/audits/2026-08-30/evidence/moe-ptx/source_manifest.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_moe_triton.py",
+    "sha256": "d5712542922882af3382c249fbc25cb3dfe0590716590a96a7ebb989fcecba5c",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-triton/receipt.json",
+      "docs/audits/2026-08-30/evidence/moe-triton/source-files.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_nanochat_regressions.py",
+    "sha256": "1422b6cc4dd29cc038a11a1355613f3d1de29da639e65ab466e9db5fc653212b",
+    "current_covered_by": [
+      "code/labs/nanochat_fullstack/audit_wave1/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_native_fp8.py",
+    "sha256": "87d89cc5dad793964452fe0a76e7828e870d8f386ce2c1d13eaa6b863d7a779e",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/native-fp8/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_numerics_regressions.py",
+    "sha256": "4757f52eb8d040c28fbdeb4d9965a44aa9262341fd9cc7633f564500903f6f58",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_parser_regressions.py",
+    "sha256": "331c7a1995cad2e3678a323592c3edb90960af8beb011dfbdd997cba8b9b0218",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/api/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_peak_metrics.py",
+    "sha256": "81e6ad339b68f4802ea6a95d692196c197ce5e2e7d57dd1c3659cd1b598dbd63",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-source-files.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_prefill_full_output.py",
+    "sha256": "ef1164f7fdd036216c93d7f333f7391dd503760394e4eda97960f481e5db828a",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/cuda-preflight-hold/report.json",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_router_telemetry.py",
+    "sha256": "7fc042338bc7d7b648c5f82152fd5eb8fc39576adf6eeb590bc186a2eef90b2a",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/routing-kv/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_timing_provenance.py",
+    "sha256": "0ba1f9d76b51116f4dd49e76ff00148ece135f508bee2cf7bd0a3bbd3f4967b1",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/harness/timing-provenance-receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/torchrun-verification/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_tooling_regressions.py",
+    "sha256": "f5943e937d2a22fad05a26cf4c5a3ec79050f92574099b42980da6a8e26d3160",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/tooling/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_torchrun_verification.py",
+    "sha256": "5512a4fd6d6252ee1dac2e3c5d86e42f45abdcba9b8d6a94d64c80a9867c6de8",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/torchrun-verification/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_zero2.py",
+    "sha256": "2359fae931efc4ae6e48e9c996020d7f3835160e024e760fb33ebc974136616c",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/receipt.json",
+      "docs/audits/2026-08-30/evidence/zero2/receipt.json",
+      "docs/audits/2026-08-30/evidence/zero2/single-receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_zero2_parity.py",
+    "sha256": "6ca410e10f774f6371a00b23f526921f60ccf2034e9ab44334968831f629ae45",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_zero2_parity_cuda.py",
+    "sha256": "b1c66e6bc9d20259a0260514e469e52be970c2b17aba0aaa7c57ba932fa5847b",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-2/report.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-2/report.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_audit_wave1_zero2_single.py",
+    "sha256": "f7b85433382fcde4cd65ace70dbcb768fc07e6bafdd135d7e34a176eb6d88eb7",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/receipt.json",
+      "docs/audits/2026-08-30/evidence/zero2/single-receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_benchmark_harness.py",
+    "sha256": "ad12b85d018f4fd0e13cffac19a72ed3271eb24ce4031cc118b006b0e5bfbc66",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/harness/timing-provenance-receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_benchmark_hygiene_regressions.py",
+    "sha256": "307af3b7dcc99bebf21544c87a5ecb145d2a84872874d844fa4d7af1b9315f73",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_benchmark_metrics.py",
+    "sha256": "e68e96d175638a6fd2e4f2cee8499f0c1ef4b782040bf237dc6fe84a05395090",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/peak-metrics-source-files.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_benchmark_regime_configs.py",
+    "sha256": "17b1f1e08366da44ccc3179b2d05fd5f991429abf589238acb0c8f0626140a63",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_blackwell_feature_sources.py",
+    "sha256": "32756d0be4b5bad59e4cf160c760a0aacb032dfc1f1400bb503d5347ceb82d62",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/feature-cuda/retirement-followup/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_blackwell_gemm_optimizations_lab.py",
+    "sha256": "7ac534aa95a5e75bfdc90858e8db282578b195a3c98b305261090af72d297139",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/optional-dependency-collection/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_blackwell_stack.py",
+    "sha256": "1f112e84e2516f91e78d8e073c773eba50426fe1dc4705c0f8c9224f16de0afd",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/blackwell-stack/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_build_entrypoints.py",
+    "sha256": "9135ce5708f2e934f37946c17a81f836ecde8bf6863c1bdc9e82b6789f3257ab",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_chapter_cuda_contracts.py",
+    "sha256": "ed06580df21deaf7b0bd5c74eb9e039a7995ce5f4718066161cbba909d8d14c3",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+      "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_dual_arch_make_contract.py",
+    "sha256": "9f66c7929d2469be142a0d118baee5df51c044f2b110bc3387441133ae462551",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_extract_pytorch_profile.py",
+    "sha256": "a3836582c3b9e2dd2e106b6e5190d258bd2dda61b40cfaabdf805d9710c0ee9a",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/documentation/profile-extraction/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/documentation/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_flashattention_gluon_runtime.py",
+    "sha256": "e83fee7478d0f9b0a8992387768b06584a172aecd035ccdf92fd907188b69d66",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/optional-dependency-collection/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_fullstack_cluster_shared_benchmark_wrappers.py",
+    "sha256": "759e37625535859e5fad74b5f9bbc73a70d17ae3afc1aa71a69df599cdde4525",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/hybrid-ep-receipt.json",
+      "docs/audits/2026-08-30/evidence/validation/hybrid-ep-source-files.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_moe_journey_runtime_hotpath.py",
+    "sha256": "d6baeb0fce611e8f99b5bd71e9d5db2808417fe5faee7964e6348a4357cf17ad",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/moe-triton/receipt.json",
+      "docs/audits/2026-08-30/evidence/moe-triton/source-files.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_occupancy_tuning.py",
+    "sha256": "225a09b942862b331d1424b9cd7d1c1ec21761d3b2f3e2368019dddc82771c0b",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/optional-dependency-collection/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_protection_effectiveness.py",
+    "sha256": "e7cb5f75b07f48e7945e79d3dc7bf96df092afabe8ac8b01e66c0be2c08a1fd5",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/validation/comparison-protection-receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_refresh_readmes.py",
+    "sha256": "2ba7e22fbebd883941a35659a85b3b67fc111f99a6bbdae6e60ca66cdbdad48c",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_repository_configuration.py",
+    "sha256": "969b40b361f936160b98dc99a93a7c90e4f93d0e1dc4e74fb5dcfb522f06fd57",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_setup_bootstrap.py",
+    "sha256": "763ee56170cdf5acd37ff203cf7c8db3adfbbc698ecbbd9517297438eee4c4eb",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_symmetric_memory_inference.py",
+    "sha256": "ce9deeb35549c7a699b142aafba603880d0b5e0abf473d2769a9aa8c9a7c7990",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_tma_2d_layout.py",
+    "sha256": "760aa27c1e1b8ccb6c0c3b3b3492a8b17aab1457053e461e62fc406f7348b974",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/tma/validation-receipts.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_train_distributed_lab.py",
+    "sha256": "4a823b904ea0e3324dda34d081ba70c0ac8c2cf549aa3790198ec885146f67ea",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/zero2-parity/receipt.json"
+    ]
+  },
+  {
+    "path": "code/tests/test_validate_benchmark_pairs_tools.py",
+    "sha256": "cf7f03ba433cfe0cca5d07867c349096cfb3fbd74506d759f6a67de77102c534",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+      "docs/audits/2026-08-30/evidence/integration/receipt.json"
+    ]
+  },
+  {
+    "path": "docs/appendix.md",
+    "sha256": "d36c9f06dcb96b6d9718bc368a80a7172e233eb8bc3cccbe383af124b47119c1",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/documentation/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "docs/environment.md",
+    "sha256": "2a6618a04394ed7ba9ca28b05929ed1a7599fc105a77ff14293647ab5d3a41d4",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/documentation/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  },
+  {
+    "path": "docs/tooling-and-profiling.md",
+    "sha256": "9490aacac56fa2379f242afad88c57809d1900a8eb1dc89c70f5126166dec401",
+    "current_covered_by": [
+      "docs/audits/2026-08-30/evidence/documentation/receipt.json",
+      "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+    ]
+  }
+]

@@ -1,0 +1,85 @@
+{
+  "status": "OFFLINE_CPU_EXTRACTION_PASS",
+  "created_at_utc": "2026-08-30T23:25:07Z",
+  "source_sha256": {
+    "code/core/profiling/extract_pytorch_profile.py": "ff963205bac84411fb50ea7eff22c1d4d6fa9d4c14be5e949ca255fb1c3db928",
+    "code/tests/test_extract_pytorch_profile.py": "a3836582c3b9e2dd2e106b6e5190d258bd2dda61b40cfaabdf805d9710c0ee9a"
+  },
+  "artifacts_sha256": {
+    "README.md": "e1935c37610d2059555cebe9b878dbfd7321e079643f08194e568671fb8f261c",
+    "actual-cpu-inputs/chrome_trace_full.json": "db466403ead96e2a69850fc508b4c23d9fc9f71d60d08cbaa805e17c1f54011d",
+    "actual-cpu-inputs/key_averages_full.json": "0137e5bf38601bdaa60e62b8ece925ecfdea2d11f9d5afbf8299399827e3eb9d",
+    "actual-cpu-inputs/metadata.json": "9a1768c95620fb3334df48f425190c922aaf7b3b23f5772a00aa908a5db85bf7",
+    "actual-cpu-inputs/summary_full.txt": "dc3033b72b9904be2d3254fa3439c2588293cce747275ad1db11f9a7fcdc91f9",
+    "actual-cpu-inputs/torch_profile_summary.json": "14742f7af8d181e20eac3ca6bfff017f1628b2f3d28a19f353ad53e100f34e36",
+    "actual-cpu-inputs/trace.json": "db466403ead96e2a69850fc508b4c23d9fc9f71d60d08cbaa805e17c1f54011d",
+    "after.txt": "33ca67532c6ec000cb979fa7a669b1713fc7cdd47d0b8903915eeb6d54a2e162",
+    "before.txt": "6587204294b10bc090eb248a0b0843e77bc4d4f39e1764e3f0fe06e94afb4996",
+    "initial-failure/capture/key_averages_full.json": "c60a92a8c6dd3678a6c2ce198ccf4773faaf37332407507778ab918974294fe4",
+    "initial-failure/capture/metadata.json": "b52133236228d0e5d964f743e578769de3b3f07a3fe3c693a0892ae19034c764",
+    "initial-failure/command.json": "4b60a318f8281c2c8d7bdc4ded58cd58534433f38591667d3027cf76026f0948",
+    "initial-failure/stdout.txt": "3a2663023b414e312bb7c5fb6ab80ed245fde787c8de0a418c159cae38fa8bed",
+    "original-extract_pytorch_profile.py.txt": "61e3567db24b55e35633e76851351b596273fd03328ed0a2a216da78bf50c072",
+    "root-cpu-command.txt": "61add204a486cc5e64065e3299175222b61f4f4fec12007ddc9df5d42dd14f77",
+    "root-cpu-receipt.json": "e104f840ac896217262f425c08900e61dec1bdf908f280665a6c4af637bde566",
+    "root-cpu-smoke_metadata.csv": "ed1aa983fff4cdc4108f9d24f6f8ecdaf83fcee1688e77bd96a42db020344441",
+    "root-cpu-smoke_operators.csv": "8ca2e552248ef2754b315f9b221d7a4b6714ac5cd63227427000aab47e155d9a"
+  },
+  "commands": [
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider code/tests/test_extract_pytorch_profile.py",
+      "before": {
+        "exit_code": 1,
+        "artifact": "before.txt",
+        "result": "4 failed in2.75s"
+      },
+      "after": {
+        "exit_code": 0,
+        "artifact": "after.txt",
+        "result": "4 passed in3.43s"
+      }
+    },
+    {
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/profiling/extract_pytorch_profile.py",
+        "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844",
+        "--output-prefix",
+        "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/documentation/profile-extraction/root-cpu-smoke"
+      ],
+      "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+      "exit_code": 0,
+      "read_only_input_sha256": {
+        "docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/trace.json": "db466403ead96e2a69850fc508b4c23d9fc9f71d60d08cbaa805e17c1f54011d",
+        "docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/chrome_trace_full.json": "db466403ead96e2a69850fc508b4c23d9fc9f71d60d08cbaa805e17c1f54011d",
+        "docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/key_averages_full.json": "0137e5bf38601bdaa60e62b8ece925ecfdea2d11f9d5afbf8299399827e3eb9d",
+        "docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/summary_full.txt": "dc3033b72b9904be2d3254fa3439c2588293cce747275ad1db11f9a7fcdc91f9",
+        "docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/metadata.json": "9a1768c95620fb3334df48f425190c922aaf7b3b23f5772a00aa908a5db85bf7",
+        "docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/torch_profile_summary.json": "14742f7af8d181e20eac3ca6bfff017f1628b2f3d28a19f353ad53e100f34e36"
+      },
+      "capture_type": "actual CPU torch.profiler, not CUDA",
+      "input_metadata": {
+        "script": "tests/fixtures/mcp_torch_profile_target.py",
+        "args": [],
+        "mode": "full",
+        "start_time": 1788131926.007521,
+        "duration_seconds": 0.00938105583190918,
+        "torch_version": "2.8.0",
+        "cuda_available": false,
+        "cuda_device": null,
+        "error": null,
+        "nvtx_label": "aisp_torch_profile",
+        "force_lineinfo": true
+      },
+      "operator_count": 16,
+      "round_trip": "PASS; every operator name/count/numerical field matched source JSON exactly",
+      "source_sha256": "ff963205bac84411fb50ea7eff22c1d4d6fa9d4c14be5e949ca255fb1c3db928"
+    }
+  ],
+  "limits": {
+    "CUDA_capture": "HOLD",
+    "Nsight_capture": "HOLD",
+    "hardware_performance": "NOT_CLAIMED"
+  },
+  "diff_check_exit": 0
+}

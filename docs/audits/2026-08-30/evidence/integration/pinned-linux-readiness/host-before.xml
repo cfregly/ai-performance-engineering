@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="3" time="0.198" timestamp="2026-08-30T20:21:57.219320-04:00" hostname="Mac"><testcase classname="tests.test_setup_bootstrap" name="test_pinned_stable_stack_uses_compatible_published_stable_sources" time="0.034"><failure message="AssertionError: assert '3.5.0' == '3.5.1'&#10;  &#10;  - 3.5.1&#10;  ?     ^&#10;  + 3.5.0&#10;  ?     ^">def test_pinned_stable_stack_uses_compatible_published_stable_sources() -&gt; None:
+        sources = _resolve_pytorch_sources(CODE_ROOT / "requirements_latest.txt")
+    
+        assert sources["PYTORCH_TORCH_VERSION"] == "2.9.1+cu130"
+        assert sources["PYTORCH_CU130_INDEX"] == "https://download.pytorch.org/whl/cu130"
+        assert sources["PYTORCH_TORCH_FIND_LINKS"] == (
+            "https://download.pytorch.org/whl/cu130/torch/"
+        )
+        assert sources["PYTORCH_TORCHAUDIO_INDEX"] == sources["PYTORCH_CU130_INDEX"]
+        assert sources["PYTORCH_TORCHAO_VERSION"] == "0.15.0+cu130"
+        assert sources["PYTORCH_TORCHAO_INDEX"] == sources["PYTORCH_CU130_INDEX"]
+        assert sources["PYTORCH_TRITON_INDEX"] == "https://download.pytorch.org/whl"
+        # The official torch 2.9.1+cu130 wheel requires triton==3.5.1 on Linux.
+&gt;       assert sources["PYTORCH_TRITON_VERSION"] == "3.5.1"
+E       AssertionError: assert '3.5.0' == '3.5.1'
+E         
+E         - 3.5.1
+E         ?     ^
+E         + 3.5.0
+E         ?     ^
+
+tests/test_setup_bootstrap.py:155: AssertionError</failure></testcase><testcase classname="tests.test_setup_bootstrap" name="test_missing_requirements_retains_the_compatible_stable_defaults" time="0.018"><failure message="AssertionError: assert '3.5.0' == '3.5.1'&#10;  &#10;  - 3.5.1&#10;  ?     ^&#10;  + 3.5.0&#10;  ?     ^">tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1651/test_missing_requirements_reta0')
+
+    def test_missing_requirements_retains_the_compatible_stable_defaults(tmp_path: Path) -&gt; None:
+        sources = _resolve_pytorch_sources(tmp_path / "missing-requirements.txt")
+        assert sources["PYTORCH_TORCH_VERSION"] == "2.9.1+cu130"
+        assert sources["PYTORCH_TORCHAO_VERSION"] == "0.15.0+cu130"
+        assert sources["PYTORCH_CU130_INDEX"] == sources["PYTORCH_TORCHAO_INDEX"]
+        assert sources["PYTORCH_TRITON_INDEX"] == "https://download.pytorch.org/whl"
+        # The official torch 2.9.1+cu130 wheel requires triton==3.5.1 on Linux.
+&gt;       assert sources["PYTORCH_TRITON_VERSION"] == "3.5.1"
+E       AssertionError: assert '3.5.0' == '3.5.1'
+E         
+E         - 3.5.1
+E         ?     ^
+E         + 3.5.0
+E         ?     ^
+
+tests/test_setup_bootstrap.py:186: AssertionError</failure></testcase><testcase classname="tests.test_repository_configuration" name="test_cpu_ci_installs_direct_http_test_dependency" time="0.006"><failure message="AssertionError: The full CPU suite directly imports requests&#10;assert 0 == 1&#10; +  where 0 = len([])">def test_cpu_ci_installs_direct_http_test_dependency() -&gt; None:
+        workflow = _load_workflow("benchmark-validation.yml")
+        install = next(step["run"] for step in workflow["jobs"]["validate"]["steps"]
+                       if step["name"] == "Install CPU test dependencies")
+        requirements = (CODE_ROOT / "requirements_latest.txt").read_text(encoding="utf-8")
+        requests_pins = [line.strip() for line in requirements.splitlines()
+                         if line.strip().startswith("requests==")]
+&gt;       assert len(requests_pins) == 1, "The full CPU suite directly imports requests"
+E       AssertionError: The full CPU suite directly imports requests
+E       assert 0 == 1
+E        +  where 0 = len([])
+
+tests/test_repository_configuration.py:500: AssertionError</failure></testcase></testsuite></testsuites>

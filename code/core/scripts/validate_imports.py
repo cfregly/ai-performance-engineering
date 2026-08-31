@@ -3,6 +3,8 @@
 
 This script attempts to import each benchmark module and reports any failures.
 Useful for catching missing dependencies, syntax errors, or broken imports.
+Imports execute module code and may probe CUDA or build extensions; this is not
+a source-only validation gate and must run in an appropriate target environment.
 
 Usage:
     python -m core.scripts.validate_imports              # Validate all
@@ -14,7 +16,6 @@ from __future__ import annotations
 import argparse
 import importlib
 import sys
-import traceback
 from pathlib import Path
 from typing import List, Tuple, Optional
 
@@ -36,11 +37,17 @@ def try_import(module_name: str) -> Tuple[bool, Optional[str]]:
     try:
         importlib.import_module(module_name)
         return True, None
-    except Exception as e:
-        # Get just the last line of the traceback
-        tb = traceback.format_exc()
-        error_line = tb.strip().split('\n')[-1]
-        return False, error_line
+    except (Exception, SystemExit) as exc:
+        # Preserve the exception class for stable grouping while keeping the
+        # complete diagnostic on one terminal-safe line.
+        printable_message = "".join(
+            character if character.isprintable() else " " for character in str(exc)
+        )
+        message = " ".join(printable_message.split())
+        error = type(exc).__name__
+        if message:
+            error = f"{error}: {message}"
+        return False, error
 
 
 def validate_benchmarks(
@@ -53,8 +60,13 @@ def validate_benchmarks(
     Returns (total, passed, failures) where failures is [(module, error), ...].
     """
     # Find benchmark files
-    if chapter:
-        patterns = [f'ch{chapter}/baseline_*.py', f'ch{chapter}/optimized_*.py']
+    if chapter is not None:
+        if chapter <= 0:
+            raise ValueError("chapter must be positive")
+        chapter_dirs = {f"ch{chapter:02d}", f"ch{chapter}"}
+        patterns = [f"{directory}/{variant}_*.py"
+                    for directory in sorted(chapter_dirs)
+                    for variant in ("baseline", "optimized")]
     else:
         patterns = ['ch*/baseline_*.py', 'ch*/optimized_*.py']
     
@@ -98,8 +110,10 @@ def main():
     parser.add_argument("--verbose", "-v", action="store_true", help="Show all results")
     
     args = parser.parse_args()
+    if args.chapter is not None and args.chapter <= 0:
+        parser.error("chapter must be positive")
     
-    root = Path(__file__).parent.parent
+    root = Path(__file__).resolve().parents[2]
     
     print("=" * 70)
     print("Benchmark Import Validation")
@@ -119,6 +133,9 @@ def main():
     
     print()
     print("=" * 70)
+    if total == 0:
+        print(f"No benchmark files found under {root}; import validation failed.")
+        sys.exit(1)
     print(f"Results: {passed}/{total} passed ({100*passed/total:.1f}%)")
     
     if failures:
@@ -147,5 +164,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

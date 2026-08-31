@@ -1,0 +1,85 @@
+FFF.                                                                     [100%]
+=================================== FAILURES ===================================
+_ test_driver_metadata_preserves_row_major_axes_and_padded_pitch[196-259-208-64-128] _
+
+layout_probe = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1545/tma-layout-host0/layout')
+width = 196, height = 259, ld = 208, box_width = 64, box_height = 128
+
+    @pytest.mark.parametrize(
+        ("width", "height", "ld", "box_width", "box_height"),
+        [(196, 259, 208, 64, 128), (385, 129, 400, 128, 32), (64, 257, 64, 64, 128)],
+    )
+    def test_driver_metadata_preserves_row_major_axes_and_padded_pitch(
+        layout_probe: Path, width: int, height: int, ld: int, box_width: int, box_height: int
+    ) -> None:
+        result = subprocess.run(
+            [str(layout_probe), *map(str, (width, height, ld, box_width, box_height))],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        dim_x, dim_y, row_stride, box_x, box_y, step_x, step_y = map(int, result.stdout.split())
+>       assert (dim_x, dim_y) == (width, height)
+E       assert (259, 196) == (196, 259)
+E         
+E         At index 0 diff: 259 != 196
+E         Use -v to get more diff
+
+tests/test_tma_2d_layout.py:62: AssertionError
+_ test_driver_metadata_preserves_row_major_axes_and_padded_pitch[385-129-400-128-32] _
+
+layout_probe = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1545/tma-layout-host0/layout')
+width = 385, height = 129, ld = 400, box_width = 128, box_height = 32
+
+    @pytest.mark.parametrize(
+        ("width", "height", "ld", "box_width", "box_height"),
+        [(196, 259, 208, 64, 128), (385, 129, 400, 128, 32), (64, 257, 64, 64, 128)],
+    )
+    def test_driver_metadata_preserves_row_major_axes_and_padded_pitch(
+        layout_probe: Path, width: int, height: int, ld: int, box_width: int, box_height: int
+    ) -> None:
+        result = subprocess.run(
+            [str(layout_probe), *map(str, (width, height, ld, box_width, box_height))],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        dim_x, dim_y, row_stride, box_x, box_y, step_x, step_y = map(int, result.stdout.split())
+>       assert (dim_x, dim_y) == (width, height)
+E       assert (129, 385) == (385, 129)
+E         
+E         At index 0 diff: 129 != 385
+E         Use -v to get more diff
+
+tests/test_tma_2d_layout.py:62: AssertionError
+_ test_driver_metadata_preserves_row_major_axes_and_padded_pitch[64-257-64-64-128] _
+
+layout_probe = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1545/tma-layout-host0/layout')
+width = 64, height = 257, ld = 64, box_width = 64, box_height = 128
+
+    @pytest.mark.parametrize(
+        ("width", "height", "ld", "box_width", "box_height"),
+        [(196, 259, 208, 64, 128), (385, 129, 400, 128, 32), (64, 257, 64, 64, 128)],
+    )
+    def test_driver_metadata_preserves_row_major_axes_and_padded_pitch(
+        layout_probe: Path, width: int, height: int, ld: int, box_width: int, box_height: int
+    ) -> None:
+        result = subprocess.run(
+            [str(layout_probe), *map(str, (width, height, ld, box_width, box_height))],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        dim_x, dim_y, row_stride, box_x, box_y, step_x, step_y = map(int, result.stdout.split())
+>       assert (dim_x, dim_y) == (width, height)
+E       assert (257, 64) == (64, 257)
+E         
+E         At index 0 diff: 257 != 64
+E         Use -v to get more diff
+
+tests/test_tma_2d_layout.py:62: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_tma_2d_layout.py::test_driver_metadata_preserves_row_major_axes_and_padded_pitch[196-259-208-64-128]
+FAILED tests/test_tma_2d_layout.py::test_driver_metadata_preserves_row_major_axes_and_padded_pitch[385-129-400-128-32]
+FAILED tests/test_tma_2d_layout.py::test_driver_metadata_preserves_row_major_axes_and_padded_pitch[64-257-64-64-128]
+3 failed, 1 passed in 0.40s

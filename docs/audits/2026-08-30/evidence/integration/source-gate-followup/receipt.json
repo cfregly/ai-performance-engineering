@@ -1,0 +1,182 @@
+{
+  "schema_version": 1,
+  "created_at_utc": "2026-08-31T03:03:00.266693+00:00",
+  "status": "PASS_FOCUSED_SOURCE_GATES__FULL_CPU_NOT_RERUN__LINUX_CUDA_GPU_AND_WAVE2_PENDING",
+  "goal_complete": false,
+  "repository": {
+    "head": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+    "branch": "codex/audit-remediation-20260830",
+    "working_tree": "dirty_uncommitted; bound by source manifest and tracked diff hash"
+  },
+  "source_manifest": {
+    "path": "source-targeted-final.json",
+    "sha256": "d8b278022540a426e582ea3f65bcdb0ab93639dec477223ce247a07ee6031e9c",
+    "files": 392,
+    "stable_during_run": true,
+    "selection": "tracked changes plus nonignored untracked repository paths, excluding audit evidence, Playwright capture, and remediation-plan prose"
+  },
+  "tracked_diff_sha256": "2ec6c0ac1a634b54742171b221c2d81152a8e1573597f625a66575fed3fef719",
+  "diagnostic_full_cpu": {
+    "status": "FAIL_DIAGNOSTIC_PRESERVED",
+    "exit_code": 1,
+    "passed": 4181,
+    "skipped": 450,
+    "failed": 1,
+    "errors": 0,
+    "rerun_after_final_tp_fixes": false,
+    "failure": "tests/test_tp_attention.py::test_tensor_parallel_attention_with_kv_cache_matches_reference",
+    "interpretation": "Preserved diagnostic failure that exposed uninitialized padded KV state. It predates the final TP attention fixes and is not a post-fix integration result.",
+    "evidence": {
+      "full-cpu.txt": "d70ca9bf436a5c2144f25d1e5e391880d939e0702081f7eb416bf63b647ca4ea",
+      "full-cpu.xml": "623d35f104627e9229ae865fbf388f0203148b7c6ab95516201c1ae1ad85498a"
+    }
+  },
+  "focused_tests": {
+    "tp_attention": {
+      "status": "PASS",
+      "exit_code": 0,
+      "tests": 18,
+      "passed": 18,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0,
+      "time_seconds": 1.195,
+      "evidence": {
+        "tp-attention-focused.txt": "5b913fa555c1a43d93da099a4c17ced90300dbd5fd41e3370b443a20def0a914",
+        "tp-attention-focused.xml": "1b251aace19f7bf42b73b72a37e3099aa33692c97ed4f6cdc99e0a986d2e4626"
+      }
+    },
+    "related_hygiene": {
+      "status": "PASS",
+      "exit_code": 0,
+      "tests": 2,
+      "passed": 2,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0,
+      "time_seconds": 1.298,
+      "deselected": 551,
+      "evidence": {
+        "tp-attention-related.txt": "29f16795be4b8ba7816a2e2e97b38aab523e0663a5479d391f8d30119951c9ca",
+        "tp-attention-related.xml": "389de06bc172abe2539bb3a62d5df2031d52ed1ceaf07c19cdf864ac680f2b07"
+      }
+    },
+    "independent_randomized_oracle": {
+      "status": "PASS_REPORTED_BY_ASSIGNED_FIX_AGENT",
+      "cases": 160,
+      "coverage": "inference and autograd across explicit-mask and forced bounded-fallback paths",
+      "artifact": null,
+      "claim_boundary": "Reviewer result is recorded as coordination evidence; the 18-test JUnit suite is the file-backed acceptance evidence."
+    }
+  },
+  "adjacent_fixes": {
+    "LOCAL-038": {
+      "status": "PASS",
+      "exit_code": 0,
+      "passed": 18,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0,
+      "evidence": {
+        "tp-attention-focused.txt": "5b913fa555c1a43d93da099a4c17ced90300dbd5fd41e3370b443a20def0a914",
+        "tp-attention-focused.xml": "1b251aace19f7bf42b73b72a37e3099aa33692c97ed4f6cdc99e0a986d2e4626"
+      }
+    },
+    "LOCAL-039": {
+      "status": "PASS",
+      "exit_code": 0,
+      "passed": 18,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0,
+      "evidence": {
+        "tp-attention-focused.txt": "5b913fa555c1a43d93da099a4c17ced90300dbd5fd41e3370b443a20def0a914",
+        "tp-attention-focused.xml": "1b251aace19f7bf42b73b72a37e3099aa33692c97ed4f6cdc99e0a986d2e4626"
+      }
+    },
+    "LOCAL-040": {
+      "status": "PASS",
+      "exit_code": 0,
+      "passed": 18,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0,
+      "evidence": {
+        "tp-attention-focused.txt": "5b913fa555c1a43d93da099a4c17ced90300dbd5fd41e3370b443a20def0a914",
+        "tp-attention-focused.xml": "1b251aace19f7bf42b73b72a37e3099aa33692c97ed4f6cdc99e0a986d2e4626"
+      }
+    },
+    "LOCAL-041": {
+      "status": "PASS",
+      "exit_code": 0,
+      "passed": 18,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0,
+      "evidence": {
+        "tp-attention-focused.txt": "5b913fa555c1a43d93da099a4c17ced90300dbd5fd41e3370b443a20def0a914",
+        "tp-attention-focused.xml": "1b251aace19f7bf42b73b72a37e3099aa33692c97ed4f6cdc99e0a986d2e4626"
+      }
+    },
+    "LOCAL-042": {
+      "status": "PASS",
+      "exit_code": 0,
+      "passed": 18,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0,
+      "evidence": {
+        "tp-attention-focused.txt": "5b913fa555c1a43d93da099a4c17ced90300dbd5fd41e3370b443a20def0a914",
+        "tp-attention-focused.xml": "1b251aace19f7bf42b73b72a37e3099aa33692c97ed4f6cdc99e0a986d2e4626"
+      }
+    }
+  },
+  "targeted_gates": {
+    "make_lint": {
+      "status": "PASS",
+      "exit_code": 0,
+      "summary": "932 benchmark files; zero errors/warnings; fatal repository Ruff, focused Ruff, and focused mypy pass.",
+      "evidence": {
+        "make-lint.txt": "cc20ff49bcf2c0de50fdc09a62a3fdb1a365d566cacfaeaea86fbb6ade9c0414"
+      }
+    },
+    "static": {
+      "status": "PASS",
+      "exit_code": 0,
+      "summary": "TP implementation/tests compile; fatal Ruff and repository diff check pass; final source hashes recorded.",
+      "evidence": {
+        "targeted-static.txt": "d4f324ef7174ce6ce6b4620b2dc2eea7803f7af08ac32cca60c8fb0d750ad7b4"
+      }
+    },
+    "import_edges": {
+      "status": "PASS",
+      "exit_code": 0,
+      "summary": "Repository import-edge checker passes.",
+      "evidence": {
+        "import-edges.txt": "ab04c4b9944f38756bcb42410f6ebeb91172acdf0278436e17623494d784936e"
+      }
+    }
+  },
+  "tp_attention_repairs": {
+    "source_hashes": {
+      "code/ch16/inference_serving_multigpu.py": "e7d9179cb1a6ba0080753875c31ff6dc7ceba2b635306b2bd9e1581312db459d",
+      "code/tests/test_tp_attention.py": "ea63414dcf087013fdd8269813461a73dd4fee4372969afb29ee13c041bc017a",
+      "code/AGENTS.md": "b085105debcb3950c4441674dc4699fa708528b5d117b7c52b25fe62c999fdab"
+    },
+    "accepted": [
+      "invalid padded K/V tails are initialized before SDPA can observe stale NaNs",
+      "cached Q<K uses cache-offset causal semantics and sees the full valid cache prefix",
+      "heterogeneous and zero input lengths are validated and honored with or without a cache",
+      "cached K/V and explicit-mask capacities grow monotonically without orthogonal shrink/regrow churn",
+      "uniform full-token cached layouts use lazy lower-right causal bias; oversized heterogeneous layouts use a bounded per-sample lazy fallback",
+      "the default 16,777,216-element explicit-mask cap covers the configured 256x1x16384 decode surface while excluding the 64 GiB 256x16384x16384 surface"
+    ]
+  },
+  "runtime_boundary": {
+    "post_fix_full_suite": "NOT_RERUN_AT_USER_DIRECTION",
+    "linux_install_and_ci": "HOLD_NOT_RUN",
+    "cuda_nccl_gpu_correctness": "HOLD_NOT_RUN",
+    "gpu_performance": "HOLD_NOT_RUN_NO_CLAIM",
+    "wave_2": "AWAITING_REPORT; absence is not zero findings"
+  }
+}

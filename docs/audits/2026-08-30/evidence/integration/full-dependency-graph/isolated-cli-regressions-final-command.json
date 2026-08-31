@@ -1,0 +1,25 @@
+{
+  "argv": [
+    "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+    "-m",
+    "pytest",
+    "tests/test_cli_profile_ncu.py",
+    "tests/test_tools_cli.py",
+    "tests/test_bench_expectations_cli.py",
+    "tests/test_cli_smoke.py::test_help_exits_cleanly",
+    "tests/test_cli_smoke.py::test_bench_list_targets_help",
+    "tests/test_cli_smoke.py::test_bench_run_e2e_help",
+    "tests/test_cli_smoke.py::test_bench_analyze_help",
+    "tests/test_cli_smoke.py::test_bench_whatif_help",
+    "tests/test_repository_configuration.py",
+    "tests/test_setup_bootstrap.py",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "--junitxml=/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/full-dependency-graph/isolated-cli-regressions-final.xml"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "exit_code": 0,
+  "elapsed_seconds": 22.950045347213745,
+  "environment": "Task venv with final aligned package versions in isolated-installed-final.json; realDarwinTorch2.9.1, notCUDAwheel."
+}

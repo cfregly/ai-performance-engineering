@@ -1,0 +1,3 @@
+# Attempts
+
+The initial exploratory N64 BF16/FP16 CPU fixture confirmed zero passes both tolerances. The retained original-class N65 reproduction then confirmed the exact original capture and validate_result behavior; it exited0 with empty stderr. First source suite32passed5CUDA-skipped1.47s. The final suite added the real calibration error/no-overwrite subprocess control and passed33/skipped5 in6.75s. No product test failed in this slice. The actual CUDA preflight intentionally returns3/HOLD without GPU evidence. The invalid-config and no-overwrite commands are intentional negative controls, retained with exact statuses and original artifact hash, not failed GPU calibration runs. No hardware was contacted.

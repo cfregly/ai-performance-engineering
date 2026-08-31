@@ -1,0 +1,4 @@
+s                                                                        [100%]
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_benchmark_hygiene_regressions.py:24974: Actual descendant reaping requires the production Linux /proc backend
+1 skipped in 5.05s

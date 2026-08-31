@@ -1,0 +1,22 @@
+[
+  {
+    "path": "docs/environment.md",
+    "original": "original-environment.md",
+    "sha256": "d35bda8be46bb4e03cbcc73894b9a19d209526ab9d192bbd9b52bc2828a4e981"
+  },
+  {
+    "path": "docs/tooling-and-profiling.md",
+    "original": "original-tooling-and-profiling.md",
+    "sha256": "54d2ad78c449ff01270b9a56018d04701b2ba5b506f68e63afa667939c8e3629"
+  },
+  {
+    "path": "docs/appendix.md",
+    "original": "original-appendix.md",
+    "sha256": "38e09c323b688b83b20e78297d19ee682cf9842959213e5fdadeca2543fd17e0"
+  },
+  {
+    "path": "CONTRIBUTING.md",
+    "original": "original-CONTRIBUTING.md",
+    "sha256": "ada0aef1be1a474b6cfa200c46bcd3d66f859f775c4c19fce09bf8c84767df45"
+  }
+]

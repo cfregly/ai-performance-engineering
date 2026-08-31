@@ -1,0 +1,5 @@
+Preserved tool output from the first inline final-specifier checker (before it could write any report):
+  File "<stdin>", line 7
+SyntaxError: assignment expression cannot rebind comprehension iteration variable 'line'
+
+The checker used an assignment expression to strip its comprehension iteration variable. This was a checker-authoring error, not a source or resolver failure. The corrected checker is verify_final_specifiers.py.

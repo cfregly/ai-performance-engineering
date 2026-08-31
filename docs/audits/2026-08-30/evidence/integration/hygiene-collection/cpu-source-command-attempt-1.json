@@ -1,0 +1,17 @@
+{
+  "command": [
+    "/opt/miniconda3/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_benchmark_hygiene_regressions.py::test_ch01_training_mlp_uses_inplace_relu_modules",
+    "tests/test_benchmark_hygiene_regressions.py::test_ch01_fused_microbatches_preallocate_output_buffers",
+    "tests/test_benchmark_hygiene_regressions.py::test_ch01_fp16_benchmark_precomputes_microbatch_groups",
+    "tests/test_benchmark_hygiene_regressions.py::test_ch02_cublas_metrics_report_gemm_workload_not_transfer_placeholders",
+    "tests/test_benchmark_hygiene_regressions.py::test_occupancy_tuning_schedule_preserves_inference_and_validation_hygiene"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "exit_code": 0
+}

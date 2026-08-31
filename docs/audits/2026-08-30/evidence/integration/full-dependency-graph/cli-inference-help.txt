@@ -1,0 +1,29 @@
+                                                                                
+ Usage: python -m cli.aisp inference vllm [OPTIONS]                             
+                                                                                
+ vLLM configuration and optimization                                            
+                                                                                
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --model                   TEXT                     Model name                │
+│                                                    [default: None]           │
+│ --model-size              FLOAT                    Model size in billions    │
+│                                                    (required)                │
+│                                                    [default: None]           │
+│ --gpus                    INTEGER                  Number of GPUs            │
+│                                                    [default: 1]              │
+│ --gpu-memory-gb           FLOAT                    VRAM per GPU (GB)         │
+│                                                    [default: 80.0]           │
+│ --target                  [throughput|latency|mem  Optimization target       │
+│                           ory]                     [default: throughput]     │
+│ --max-seq-length          INTEGER                  Max sequence length       │
+│                                                    [default: 8192]           │
+│ --quantization            TEXT                     Quantization              │
+│                                                    (awq/gptq/fp8/int8)       │
+│                                                    [default: None]           │
+│ --compare                                          Compare inference engines │
+│                                                    instead of config         │
+│ --help            -h                               Show this message and     │
+│                                                    exit.                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

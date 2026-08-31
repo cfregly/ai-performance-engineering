@@ -7,8 +7,8 @@
 // OPTIMIZATIONS:
 //   1. Warp specialization - only warp 0 handles cluster communication
 //   2. Vectorized float4 loads for 4x bandwidth efficiency
-//   3. Larger cluster (8 CTAs) for more DSMEM benefit
-//   4. No atomics needed - single writer per cluster
+//   3. Four CTAs per cluster
+//   4. One DSMEM atomic per CTA; the leader writes the final cluster output
 //
 // WHY WARP SPECIALIZATION HELPS:
 //   - Dedicated warps for communication vs compute
@@ -150,9 +150,14 @@ void dsmem_warp_specialized_reduction_kernel(
     #pragma unroll 4
     for (int i = tid; i < vec_elements; i += BLOCK_SIZE) {
         int global_vec_idx = (block_offset / 4) + i;
-        if ((global_vec_idx * 4) < N) {
-            float4 v = input4[i];
+        const int base = global_vec_idx * 4;
+        if (base + 3 < N) {
+            const float4 v = input4[i];
             local_sum += v.x + v.y + v.z + v.w;
+        } else {
+            for (int lane = 0; lane < 4 && base + lane < N; ++lane) {
+                local_sum += input[base + lane];
+            }
         }
     }
     
@@ -311,7 +316,7 @@ int main() {
     printf("  - Warp specialization (only warp 0 does cluster work)\n");
     printf("  - Vectorized float4 loads\n");
     printf("  - 4-CTA cluster\n");
-    printf("  - No atomics (single writer per cluster)\n");
+    printf("  - One DSMEM atomic per CTA, one final output writer per cluster\n");
 
     const float verify_checksum = total;
     VERIFY_PRINT_CHECKSUM(verify_checksum);

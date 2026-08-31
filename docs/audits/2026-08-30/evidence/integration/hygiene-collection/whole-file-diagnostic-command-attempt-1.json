@@ -1,0 +1,21 @@
+{
+  "command": [
+    "/opt/miniconda3/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "--maxfail=10",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_benchmark_hygiene_regressions.py"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "env": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+  },
+  "purpose": "diagnostic whole-file run while other source modules may change",
+  "source_sha256_before": "ebd05f7bf7fe3fe7d016f72343918680e81115ee527534f7bb90c9865d98a5fc",
+  "exit_code": 1,
+  "wall_seconds": 5.927476082986686,
+  "source_sha256_after": "ebd05f7bf7fe3fe7d016f72343918680e81115ee527534f7bb90c9865d98a5fc"
+}

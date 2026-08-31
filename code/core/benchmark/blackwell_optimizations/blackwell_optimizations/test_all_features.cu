@@ -1,17 +1,19 @@
-// Comprehensive Blackwell Features Test
-// Tests all optimizations: TMEM, TMA, Clusters, FP8, Warp Specialization, DSMEM
+// Cluster-launch scalar GEMM control with FP8 storage.
+// No TMA, TMEM, tensor-core arithmetic, warp specialization or remote DSMEM access.
 
 #include <cuda_runtime.h>
 #include <cuda_fp8.h>
-#include <cuda/pipeline>
-#include <cuda/barrier>
 #include <cooperative_groups.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cmath>
+
+#define CUDA_CHECK(call) do { const cudaError_t err = (call); if (err != cudaSuccess) { \
+  std::fprintf(stderr, "%s: %s\n", #call, cudaGetErrorString(err)); std::exit(1); } } while (0)
 
 namespace cg = cooperative_groups;
 
-// Combined feature test: Cluster + TMA + FP8 + DSMEM
+// FP8 storage, local shared-memory buffers and explicit cluster synchronization.
 template<int TILE_M, int TILE_N, int TILE_K, int NUM_STAGES>
 __global__ void __cluster_dims__(2, 2, 1) blackwell_ultra_gemm_kernel(
     const __nv_fp8_e4m3* __restrict__ A,
@@ -19,25 +21,13 @@ __global__ void __cluster_dims__(2, 2, 1) blackwell_ultra_gemm_kernel(
     float* __restrict__ C,
     int M, int N, int K
 ) {
-    // Get cluster and block groups
+    static_assert(TILE_M * TILE_N <= 1024, "block exceeds CUDA thread limit");
+    static_assert(TILE_K <= TILE_M && TILE_K <= TILE_N, "tile loads require enough x/y threads");
+    static_assert(NUM_STAGES > 0, "at least one buffer is required");
     cg::cluster_group cluster = cg::this_cluster();
-    cg::thread_block block = cg::this_thread_block();
-    
-    // Multi-stage DSMEM buffers
     __shared__ __nv_fp8_e4m3 smem_A[NUM_STAGES][TILE_M][TILE_K];
     __shared__ __nv_fp8_e4m3 smem_B[NUM_STAGES][TILE_K][TILE_N];
-    
-    // Barriers for TMA-style async operations
-    __shared__ cuda::barrier<cuda::thread_scope_block> barriers[NUM_STAGES];
-    
-    // Initialize barriers
-    if (threadIdx.x == 0 && threadIdx.y == 0) {
-        for (int s = 0; s < NUM_STAGES; ++s) {
-            init(&barriers[s], blockDim.x * blockDim.y);
-        }
-    }
-    __syncthreads();
-    
+
     int bx = blockIdx.x;
     int by = blockIdx.y;
     int tx = threadIdx.x;
@@ -49,9 +39,8 @@ __global__ void __cluster_dims__(2, 2, 1) blackwell_ultra_gemm_kernel(
     float sum = 0.0f;
     int num_k_tiles = (K + TILE_K - 1) / TILE_K;
     
-    // Prefetch first stages (TMA-style)
+    // Fill the initial buffers with ordinary thread-issued loads.
     for (int s = 0; s < min(NUM_STAGES, num_k_tiles); ++s) {
-        auto token = barriers[s].arrive();
         
         // Load FP8 tiles
         if (ty < TILE_M && tx < TILE_K) {
@@ -74,14 +63,14 @@ __global__ void __cluster_dims__(2, 2, 1) blackwell_ultra_gemm_kernel(
             }
         }
         
-        barriers[s].wait(std::move(token));
+        __syncthreads(); // publish all initial loads before any thread reads them
     }
     
     // Main compute loop with pipelining
     for (int kt = 0; kt < num_k_tiles; ++kt) {
         int stage = kt % NUM_STAGES;
         
-        // Cluster sync for DSMEM coordination
+        // Cluster synchronization only; there is no remote shared-memory access.
         cluster.sync();
         
         // Compute with FP8 -> FP32 accumulation
@@ -97,7 +86,7 @@ __global__ void __cluster_dims__(2, 2, 1) blackwell_ultra_gemm_kernel(
         // Prefetch next stage
         int next_kt = kt + NUM_STAGES;
         if (next_kt < num_k_tiles) {
-            auto token = barriers[stage].arrive();
+            __syncthreads(); // all readers finish before this buffer is overwritten
             
             if (ty < TILE_M && tx < TILE_K) {
                 int a_row = by * TILE_M + ty;
@@ -119,7 +108,7 @@ __global__ void __cluster_dims__(2, 2, 1) blackwell_ultra_gemm_kernel(
                 }
             }
             
-            barriers[stage].wait(std::move(token));
+            __syncthreads(); // publish replacement values before the next read
         }
     }
     
@@ -132,9 +121,9 @@ __global__ void __cluster_dims__(2, 2, 1) blackwell_ultra_gemm_kernel(
 // Feature detection and reporting
 void report_blackwell_features() {
     cudaDeviceProp prop;
-    cudaGetDeviceProperties(&prop, 0);
+    CUDA_CHECK(cudaGetDeviceProperties(&prop, 0));
     
-    printf("=== Blackwell GPU Detected ===\n");
+    printf("=== Selected CUDA device ===\n");
     printf("Device: %s\n", prop.name);
     printf("Compute Capability: %d.%d\n", prop.major, prop.minor);
     printf("Streaming Multiprocessors: %d\n", prop.multiProcessorCount);
@@ -143,50 +132,11 @@ void report_blackwell_features() {
     printf("L2 Cache Size: %.2f MB\n", prop.l2CacheSize / (1024.0 * 1024.0));
     printf("\n");
     
-    printf("=== Blackwell Features Enabled ===\n");
-    printf("✓ TMEM (Tensor Memory Accelerator)\n");
-    printf("  - High-bandwidth tensor data path\n");
-    printf("  - Optimized for tensor operations\n");
-    printf("\n");
-    
-    printf("✓ TMA (Tensor Memory Accelerator - Async)\n");
-    printf("  - Async bulk tensor copy\n");
-    printf("  - Hardware-accelerated data movement\n");
-    printf("  - Multi-stage pipeline support\n");
-    printf("\n");
-    
-    printf("✓ CTA Clusters (Thread Block Clusters)\n");
-    printf("  - Cooperative thread block groups\n");
-    printf("  - Cross-CTA synchronization\n");
-    printf("  - Enhanced parallelism\n");
-    printf("\n");
-    
-    printf("✓ FP8 Precision\n");
-    printf("  - E4M3 format (training)\n");
-    printf("  - E5M2 format (inference)\n");
-    printf("  - 2x memory bandwidth vs FP16\n");
-    printf("  - 4x memory bandwidth vs FP32\n");
-    printf("\n");
-    
-    printf("✓ Warp Specialization\n");
-    printf("  - Producer-consumer patterns\n");
-    printf("  - Async warp operations\n");
-    printf("  - Warp-level primitives\n");
-    printf("\n");
-    
-    printf("✓ DSMEM (Distributed Shared Memory)\n");
-    printf("  - Cross-CTA shared memory access\n");
-    printf("  - Cluster-scoped data sharing\n");
-    printf("  - Reduced global memory traffic\n");
-    printf("\n");
-    
-    printf("✓ Additional Optimizations\n");
-    printf("  - 5th Gen Tensor Cores\n");
-    printf("  - HBM3e memory (up to 8 TB/s)\n");
-    printf("  - NVLink-C2C\n");
-    printf("  - Stream-ordered memory allocator\n");
-    printf("  - Advanced async operations\n");
-    printf("\n");
+    printf("=== Mechanisms exercised by this control ===\n");
+    printf("  - 2x2 CTA cluster launch and cluster synchronization\n");
+    printf("  - FP8 E4M3 storage converted to scalar FP32 arithmetic\n");
+    printf("  - Synchronous loads into local shared-memory buffers\n");
+    printf("Not exercised: TMA, TMEM, tensor-core MMA, warp specialization or remote DSMEM.\n\n");
 }
 
 void float_to_fp8_e4m3(const float* input, __nv_fp8_e4m3* output, int size) {
@@ -198,7 +148,7 @@ void float_to_fp8_e4m3(const float* input, __nv_fp8_e4m3* output, int size) {
 bool verify_result(const float* C, int M, int N, float expected, float tolerance) {
     int errors = 0;
     for (int i = 0; i < M * N; ++i) {
-        if (fabs(C[i] - expected) > tolerance) {
+        if (!std::isfinite(C[i]) || fabs(C[i] - expected) > tolerance) {
             if (errors < 5) {
                 printf("  Error at %d: expected %f, got %f\n", i, expected, C[i]);
             }
@@ -214,33 +164,34 @@ bool verify_result(const float* C, int M, int N, float expected, float tolerance
 
 int main() {
     printf("========================================\n");
-    printf("  BLACKWELL OPTIMIZATION TEST SUITE\n");
+    printf("  CLUSTER / FP8 STORAGE CONTROL\n");
     printf("========================================\n\n");
     
     // Check device
     cudaDeviceProp prop;
-    cudaGetDeviceProperties(&prop, 0);
+    CUDA_CHECK(cudaGetDeviceProperties(&prop, 0));
     
-    if (prop.major < 10) {
-        printf("ERROR: Blackwell GPU required (SM 10.0+)\n");
-        printf("Current device: %s (SM %d.%d)\n", prop.name, prop.major, prop.minor);
-        return 1;
+    int cluster_supported = 0;
+    CUDA_CHECK(cudaDeviceGetAttribute(&cluster_supported, cudaDevAttrClusterLaunch, 0));
+    if (!cluster_supported) {
+        printf("UNSUPPORTED: this control requires thread-block cluster launch (Hopper or newer).\n");
+        return 3;
     }
-    
+
     report_blackwell_features();
     
     // Run comprehensive test
     printf("========================================\n");
-    printf("  COMPREHENSIVE FEATURE TEST\n");
+    printf("  SCALAR CLUSTER CONTROL\n");
     printf("========================================\n\n");
     
-    printf("Testing: Clusters + TMA + FP8 + DSMEM + Warp Spec\n\n");
+    printf("Testing: cluster launch + FP8 storage + scalar shared-memory GEMM\n\n");
     
     const int M = 2048;
     const int N = 2048;
     const int K = 2048;
-    const int TILE_M = 64;
-    const int TILE_N = 64;
+    const int TILE_M = 32;
+    const int TILE_N = 32;
     const int TILE_K = 32;
     const int NUM_STAGES = 4;
     
@@ -264,49 +215,44 @@ int main() {
     __nv_fp8_e4m3 *d_A, *d_B;
     float *d_C;
     
-    cudaMalloc(&d_A, M * K * sizeof(__nv_fp8_e4m3));
-    cudaMalloc(&d_B, K * N * sizeof(__nv_fp8_e4m3));
-    cudaMalloc(&d_C, M * N * sizeof(float));
+    CUDA_CHECK(cudaMalloc(&d_A, M * K * sizeof(__nv_fp8_e4m3)));
+    CUDA_CHECK(cudaMalloc(&d_B, K * N * sizeof(__nv_fp8_e4m3)));
+    CUDA_CHECK(cudaMalloc(&d_C, M * N * sizeof(float)));
     
-    cudaMemcpy(d_A, h_A_fp8, M * K * sizeof(__nv_fp8_e4m3), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_B, h_B_fp8, K * N * sizeof(__nv_fp8_e4m3), cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(d_A, h_A_fp8, M * K * sizeof(__nv_fp8_e4m3), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_B, h_B_fp8, K * N * sizeof(__nv_fp8_e4m3), cudaMemcpyHostToDevice));
     
     // Setup cluster launch
     dim3 block(TILE_N, TILE_M);
-    dim3 grid((N + TILE_N - 1) / TILE_N, (M + TILE_M - 1) / TILE_M);
+    dim3 grid(2 * (((N + TILE_N - 1) / TILE_N + 1) / 2),
+              2 * (((M + TILE_M - 1) / TILE_M + 1) / 2));
     
     cudaLaunchConfig_t config = {0};
     config.gridDim = grid;
     config.blockDim = block;
     
-    cudaLaunchAttribute attrs[1];
-    attrs[0].id = cudaLaunchAttributeClusterDimension;
-    attrs[0].val.clusterDim.x = 2;
-    attrs[0].val.clusterDim.y = 2;
-    attrs[0].val.clusterDim.z = 1;
-    config.attrs = attrs;
-    config.numAttrs = 1;
-    
+    // __cluster_dims__ fixes the 2x2 cluster at compile time. No runtime override.
+
     // Warmup
     printf("Warming up...\n");
     void* kernel_args[] = {(void*)&d_A, (void*)&d_B, (void*)&d_C, (void*)&M, (void*)&N, (void*)&K};
     for (int i = 0; i < 3; ++i) {
-        cudaLaunchKernelExC(
+        CUDA_CHECK(cudaLaunchKernelExC(
             &config,
             (void*)blackwell_ultra_gemm_kernel<TILE_M, TILE_N, TILE_K, NUM_STAGES>,
             kernel_args
-        );
+        ));
     }
-    cudaDeviceSynchronize();
+    CUDA_CHECK(cudaDeviceSynchronize());
     
     // Benchmark
     printf("Running benchmark...\n");
     cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
+    CUDA_CHECK(cudaEventCreate(&start));
+    CUDA_CHECK(cudaEventCreate(&stop));
     
     const int num_iters = 10;
-    cudaEventRecord(start);
+    CUDA_CHECK(cudaEventRecord(start));
     for (int i = 0; i < num_iters; ++i) {
         cudaError_t err = cudaLaunchKernelExC(
             &config,
@@ -318,18 +264,18 @@ int main() {
             return 1;
         }
     }
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
+    CUDA_CHECK(cudaEventRecord(stop));
+    CUDA_CHECK(cudaEventSynchronize(stop));
     
     float total_ms = 0;
-    cudaEventElapsedTime(&total_ms, start, stop);
+    CUDA_CHECK(cudaEventElapsedTime(&total_ms, start, stop));
     float avg_ms = total_ms / num_iters;
     
     // Verify
-    cudaMemcpy(h_C, d_C, M * N * sizeof(float), cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpy(h_C, d_C, M * N * sizeof(float), cudaMemcpyDeviceToHost));
     
     float expected = (float)K;
-    bool passed = verify_result(h_C, M, N, expected, 10.0f);
+    bool passed = verify_result(h_C, M, N, expected, 1e-3f);
     
     printf("\n========================================\n");
     printf("  RESULTS\n");
@@ -341,6 +287,7 @@ int main() {
     printf("Cluster Dimensions: 2x2\n");
     printf("Precision: FP8 (E4M3) → FP32\n\n");
     
+    if (!passed || !std::isfinite(avg_ms) || avg_ms <= 0) return 1;
     printf("Time (average): %.3f ms\n", avg_ms);
     
     double flops = 2.0 * M * N * K;
@@ -352,41 +299,27 @@ int main() {
     printf("Memory Savings: %.1f%% vs FP32\n", 100.0 * (1.0 - (double)fp8_bytes / fp32_bytes));
     
     double bandwidth = fp8_bytes / (avg_ms * 1e6);
-    printf("Effective Bandwidth: %.2f GB/s\n", bandwidth);
+    printf("Ideal minimum-traffic rate (not measured bandwidth): %.2f GB/s\n", bandwidth);
     
     printf("\nVerification: %s\n", passed ? "✓ PASSED" : "✗ FAILED");
     
-    // Feature summary
-    printf("\n========================================\n");
-    printf("  FEATURES UTILIZED\n");
-    printf("========================================\n\n");
-    printf("✓ TMEM: Tensor memory data path\n");
-    printf("✓ TMA: %d-stage async pipeline\n", NUM_STAGES);
-    printf("✓ Clusters: 2x2 CTA cluster\n");
-    printf("✓ FP8: E4M3 precision (inputs)\n");
-    printf("✓ DSMEM: Cross-CTA shared memory\n");
-    printf("✓ Warp Spec: Pipelined execution\n");
-    
-    printf("\n========================================\n");
-    printf("  OPTIMIZATION STATUS\n");
-    printf("========================================\n\n");
-    printf("All Blackwell optimizations: ENABLED ✓\n");
-    printf("Test status: %s\n", passed ? "SUCCESS ✓" : "NEEDS ATTENTION");
-    
+    printf("\nMechanisms: cluster launch/sync, FP8 storage, scalar FP32 arithmetic and local shared memory.\n");
+    printf("No TMA/TMEM/tensor-core/warp-specialized/remote-DSMEM qualification is implied.\n");
+
     // Cleanup
-    cudaFree(d_A);
-    cudaFree(d_B);
-    cudaFree(d_C);
+    CUDA_CHECK(cudaFree(d_A));
+    CUDA_CHECK(cudaFree(d_B));
+    CUDA_CHECK(cudaFree(d_C));
     delete[] h_A_fp32;
     delete[] h_B_fp32;
     delete[] h_C;
     delete[] h_A_fp8;
     delete[] h_B_fp8;
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
+    CUDA_CHECK(cudaEventDestroy(start));
+    CUDA_CHECK(cudaEventDestroy(stop));
     
     printf("\n========================================\n");
-    printf("  BLACKWELL TEST COMPLETE\n");
+    printf("  CLUSTER CONTROL COMPLETE\n");
     printf("========================================\n");
     
     return passed ? 0 : 1;

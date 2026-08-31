@@ -1,0 +1,30 @@
+{
+  "arch": "sm_100a",
+  "status": "HOLD",
+  "checks": [],
+  "started_at_utc": "2026-08-30T22:53:21Z",
+  "source_sha256": {
+    "tests/cuda/chapter_cuda_validation.cu": "f1fdbb3293c5fd35e0f686aca7575d0c366cc9087ee869737c84f0c7cc47fa52",
+    "ch02/memory_transfer_pcie_demo.cu": "61a436e87024595f8b59c500b11e0e947c062fbff870909ae84b5664b4a5a1be",
+    "core/common/nvtx_utils.cuh": "50007375d81dc1349e2660e5183b4993105e792057446a7cd00945ce6d0e3bdd",
+    "core/common/nvtx_label_utils.cuh": "ca1fa71a62843dfd501b9243ad2977e937df5d39f2f9f3eaf9366af41d161580",
+    "ch10/optimized_dsmem_reduction_warp_specialized.cu": "c20eada00c5b9bc23ad0fc8d1cc6fcf339364944bd5dc2ce628ced190e4c814a",
+    "core/common/headers/cuda_verify.cuh": "26b52219eb0751279a71b94e32a66c47d3f3db0f947e0184c1e9e5666bfcb354",
+    "ch07/fp8_32byte_loads_demo.cu": "cbf49624b3668fd82e8249dbe17910f11bd1fc1b9a71df3599e9497c0f89f1c8",
+    "ch12/optimized_cuda_graphs.cu": "fbb3c4121fb55b7595316f965fd4425412c8f35566ff909f967324476e3fdb1b",
+    "ch12/cuda_graphs_workload.cuh": "1e21d5b78f2396fb678ac04361b335874f3a866d8a13fff3c2ca918cbeb3db13",
+    "ch12/baseline_cuda_graphs.cu": "97c94bd2c7402f579f1e76e6b34595cf0d6bb5fa4d7a12fb57d8122f80f0a337",
+    "ch11/streams_warp_specialized_demo.cu": "9465e1404337ba6643e2bb5642232a4e6c99f338b9e92535573cd70224a389ca",
+    "ch11/streams_ordered_demo.cu": "24891671d501bfb45f05eefadc67dad48a5ce88a054a9449274b7e49b506a5ac",
+    "ch11/streams_overlap_demo.cu": "4f120f69d529ef60a00dfc67a5be1cac72b24a3cb61f340c6d4f1ed7dc06a960",
+    "ch08/threshold_tma_kernel.cuh": "bf9b559f0c1d22f9abc9e76fa2823fc22944e725ed835518c8fe009affdc7e5c",
+    "ch08/threshold_common.cuh": "cde0e6857867cf29abff1ac62f46c98dfc7e723b4ea29d7af9ee73af621bfa94",
+    "ch08/threshold_async_kernel.cuh": "897ddfd31d4da5f2f9a23d229049a5b897246f25863d865f52656ba0c3209faf",
+    "ch06/optimized_ilp_low_occupancy_vec4_impl.cuh": "5afd0c9c431568c766903f148e59072a6c1a6fd01ef92d72f4d739d7a57401d3",
+    "core/common/headers/profiling_helpers.cuh": "47cdf0519a494999cdcc079b8232167de9dfe5ec5ff8bbabf55b16064cc35359",
+    "ch06/occupancy_api.cu": "33fd08d7e29eb7e55191322cb955df1b28ca03b8aeb2734f745c660a353a1d54",
+    "tests/cuda/run_chapter_cuda_validation.py": "080b91aff8cc0652b019d29e7d09328f91db1626ed821736183dcdb41729f2a7"
+  },
+  "sanitizers": "all",
+  "reason": "nvcc unavailable; no CUDA compilation or device execution occurred"
+}

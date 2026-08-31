@@ -1,0 +1,605 @@
+ssssssssssssssssssssssssssssssssssssssss.........sssss..s...s........... [  1%]
+.....s............sss...s......ss.s.ssssssssss...s.s...ssss..sss....sss. [  3%]
+.....s..s...ssss.s.........ss............sssss...................ssss... [  4%]
+............................................ss.s..s..s..s..ssssss...s... [  6%]
+sssss.sssssss.ss.ssss..s.sss........ss...ss............................. [  8%]
+........................................................................ [  9%]
+.sssssssssssssssss.ssssssss............................................. [ 11%]
+..................rank=2 phase=remote single=True forward
+rank=1 phase=remote single=True forward
+rank=0 phase=remote single=True forward
+rank=3 phase=remote single=True forward
+rank=2 phase=remote single=True backward
+rank=0 phase=remote single=True backward
+rank=1 phase=remote single=True backward
+rank=3 phase=remote single=True backward
+rank=1 phase=same_node single=True forward
+rank=3 phase=same_node single=True forward
+rank=2 phase=same_node single=True forward
+rank=0 phase=same_node single=True forward
+rank=2 phase=same_node single=True backward
+rank=0 phase=same_node single=True backward
+rank=3 phase=same_node single=True backward
+rank=1 phase=same_node single=True backward
+rank=3 phase=all_empty single=True forward
+rank=1 phase=all_empty single=True forward
+rank=2 phase=all_empty single=True forward
+rank=0 phase=all_empty single=True forward
+rank=2 phase=all_empty single=True backward
+rank=3 phase=all_empty single=True backward
+rank=0 phase=all_empty single=True backward
+rank=1 phase=all_empty single=True backward
+rank=0 phase=balanced_world single=False forward
+rank=2 phase=balanced_world single=False forward
+rank=3 phase=balanced_world single=False forward
+rank=1 phase=balanced_world single=False forward
+rank=3 phase=balanced_world single=False backward
+rank=1 phase=balanced_world single=False backward
+rank=2 phase=balanced_world single=False backward
+rank=0 phase=balanced_world single=False backward
+.s.s.sss.......s..................................ssss [ 13%]
+...................ssssssssssssssssssssssssssssss.......sssssss....s.... [ 14%]
+..................s....................................s................ [ 16%]
+..................................................sssss................. [ 18%]
+...............sssssss....s....................s........................ [ 19%]
+.........s............s................................................. [ 21%]
+..ssssss................................................................ [ 22%]
+........................................................................ [ 24%]
+.......................................sssssssssssssssss.s.............. [ 26%]
+........................................................................ [ 27%]
+........................................................................ [ 29%]
+........................................................................ [ 31%]
+........................................................................ [ 32%]
+........................................................................ [ 34%]
+........................................................................ [ 36%]
+........................................................................ [ 37%]
+.....................s.................................................. [ 39%]
+..................................................F.....s.......sssss... [ 40%]
+...........sssssssssssssss...ss......................................... [ 42%]
+.........................ssss....ssssssssssssssssssssss................. [ 44%]
+........................................................................ [ 45%]
+........................................................ssss............ [ 47%]
+...ssssss........s.....ss..s....ssssss....ssssssssss.................... [ 49%]
+........................................................................ [ 50%]
+.......................sss...........s............sss.................graph mismatch at 256: 1.75431061 versus 0.754310553
+graph mismatch at 256: nan versus 0.754310553
+.. [ 52%]
+........................................................................ [ 54%]
+.............s.s..............................s......................... [ 55%]
+...........................................sssssssssssssssssssssssssssss [ 57%]
+ssssssss....s........................................................... [ 59%]
+........................................................................ [ 60%]
+........................................................................ [ 62%]
+...............................................................ss..sssss [ 63%]
+s..........ss.......sss................................................. [ 65%]
+.....................................ssss...FF.......................... [ 67%]
+........................................................................ [ 68%]
+........................................................................ [ 70%]
+....................................................................s.s. [ 72%]
+......s......................ss.................s....................... [ 73%]
+ss.........................................s.Test queue: /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1644/test_queue_records_failure_and0/queue
+==> fails [candidate] test:fails
+==> continues [control] test:continues
+Invalid completion evidence: runs[0].roles.job.result must be an object with path and sha256
+Invalid completion evidence: runs[1].roles.job.result must be an object with path and sha256
+complete
+Queue completed with 2 failed job(s).
+........................... [ 75%]
+........................................................................ [ 77%]
+........................................................................ [ 78%]
+........................................................................ [ 80%]
+....................................s..............s.................... [ 81%]
+...................................................ss................... [ 83%]
+...........................................................s............ [ 85%]
+........................................................................ [ 86%]
+.................................................................s...... [ 88%]
+........................................................ss.............. [ 90%]
+...........s.....ssssssssssssss......................................... [ 91%]
+........................................................................ [ 93%]
+...................................s.................................... [ 95%]
+...........ssssss..................s.................................... [ 96%]
+........................................................................ [ 98%]
+.................................ssssssssssssss........................  [100%]
+=================================== FAILURES ===================================
+__ test_train_distributed_readme_marks_single_gpu_fsdp2_as_comparison_surface __
+
+    def test_train_distributed_readme_marks_single_gpu_fsdp2_as_comparison_surface() -> None:
+        readme_text = (REPO_ROOT / "labs" / "train_distributed" / "README.md").read_text(encoding="utf-8")
+    
+>       assert "single-GPU `fsdp2` on `b200`" in readme_text
+E       AssertionError: assert 'single-GPU `fsdp2` on `b200`' in '# Lab - Distributed Training Playbook\n\n## Summary\nCollects distributed-training recipes: DDP, FSDP, ZeRO-1/2/3, sy...xecution. Direct script execution is not a substitute for a child-result contract or multi-GPU correctness evidence.\n'
+
+tests/test_benchmark_pair_intent_docs.py:248: AssertionError
+_ test_kv_cache_verification_output_is_built_after_benchmark[BaselineKVCacheBenchmark] _
+
+benchmark_cls = <class 'labs.kv_cache_compression.baseline_kv_cache.BaselineKVCacheBenchmark'>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x35f1b2990>
+
+    @pytest.mark.parametrize(
+        "benchmark_cls",
+        (BaselineKVCacheBenchmark, OptimizedKVCacheNVFP4Benchmark),
+    )
+    def test_kv_cache_verification_output_is_built_after_benchmark(
+        benchmark_cls, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        bench = benchmark_cls()
+        bench.device = torch.device("cpu")
+        bench.batch_size = 2
+        bench.prefill_seq = 4
+        bench.decode_seq = 2
+        bench.decode_steps = 1
+        bench.cache = allocate_kv_cache(
+            batch_size=2,
+            total_tokens=6,
+            num_heads=2,
+            head_dim=4,
+            device=torch.device("cpu"),
+            dtype=torch.float32,
+        )
+        bench.cache.cache_k.copy_(torch.arange(bench.cache.cache_k.numel()).view_as(bench.cache.cache_k))
+        bench.cache.cache_v.copy_(torch.arange(bench.cache.cache_v.numel()).view_as(bench.cache.cache_v).mul_(2))
+        bench._batch_size_tensor = torch.tensor([bench.batch_size], dtype=torch.int64)
+        bench._seq_meta_tensor = torch.tensor([bench.prefill_seq, bench.decode_seq, bench.decode_steps], dtype=torch.int64)
+        bench._verify_output_buffer = torch.empty(2, 2, 1, 1, 4, dtype=torch.float32)
+    
+        def fail_stack(*args, **kwargs):
+            raise AssertionError("benchmark_fn() should not stack verification output")
+    
+        monkeypatch.setattr(torch, "stack", fail_stack)
+        bench._mark_cache_output_ready()
+        assert bench.output is None
+        monkeypatch.undo()
+    
+>       bench.capture_verification_payload()
+
+tests/test_labs_runtime_gating.py:130: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+labs/kv_cache_compression/baseline_kv_cache.py:227: in capture_verification_payload
+    self.output = self._build_verification_output()
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <labs.kv_cache_compression.baseline_kv_cache.BaselineKVCacheBenchmark object at 0x35f1b3b00>
+
+    def _build_verification_output(self) -> torch.Tensor:
+        if self.cache is None or not self._cache_output_ready:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        if self._accuracy_limits is None:
+>           raise RuntimeError("Uncalibrated KV run cannot produce an accepted verification payload")
+E           RuntimeError: Uncalibrated KV run cannot produce an accepted verification payload
+
+labs/kv_cache_compression/baseline_kv_cache.py:221: RuntimeError
+_ test_kv_cache_verification_output_is_built_after_benchmark[OptimizedKVCacheNVFP4Benchmark] _
+
+benchmark_cls = <class 'labs.kv_cache_compression.optimized_kv_cache_nvfp4.OptimizedKVCacheNVFP4Benchmark'>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x35f1b35c0>
+
+    @pytest.mark.parametrize(
+        "benchmark_cls",
+        (BaselineKVCacheBenchmark, OptimizedKVCacheNVFP4Benchmark),
+    )
+    def test_kv_cache_verification_output_is_built_after_benchmark(
+        benchmark_cls, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        bench = benchmark_cls()
+        bench.device = torch.device("cpu")
+        bench.batch_size = 2
+        bench.prefill_seq = 4
+        bench.decode_seq = 2
+        bench.decode_steps = 1
+        bench.cache = allocate_kv_cache(
+            batch_size=2,
+            total_tokens=6,
+            num_heads=2,
+            head_dim=4,
+            device=torch.device("cpu"),
+            dtype=torch.float32,
+        )
+        bench.cache.cache_k.copy_(torch.arange(bench.cache.cache_k.numel()).view_as(bench.cache.cache_k))
+        bench.cache.cache_v.copy_(torch.arange(bench.cache.cache_v.numel()).view_as(bench.cache.cache_v).mul_(2))
+        bench._batch_size_tensor = torch.tensor([bench.batch_size], dtype=torch.int64)
+        bench._seq_meta_tensor = torch.tensor([bench.prefill_seq, bench.decode_seq, bench.decode_steps], dtype=torch.int64)
+        bench._verify_output_buffer = torch.empty(2, 2, 1, 1, 4, dtype=torch.float32)
+    
+        def fail_stack(*args, **kwargs):
+            raise AssertionError("benchmark_fn() should not stack verification output")
+    
+        monkeypatch.setattr(torch, "stack", fail_stack)
+        bench._mark_cache_output_ready()
+        assert bench.output is None
+        monkeypatch.undo()
+    
+>       bench.capture_verification_payload()
+
+tests/test_labs_runtime_gating.py:130: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+labs/kv_cache_compression/baseline_kv_cache.py:227: in capture_verification_payload
+    self.output = self._build_verification_output()
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <labs.kv_cache_compression.optimized_kv_cache_nvfp4.OptimizedKVCacheNVFP4Benchmark object at 0x35f1b3860>
+
+    def _build_verification_output(self) -> torch.Tensor:
+        if self.cache is None or not self._cache_output_ready:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        if self._accuracy_limits is None:
+>           raise RuntimeError("Uncalibrated KV run cannot produce an accepted verification payload")
+E           RuntimeError: Uncalibrated KV run cannot produce an accepted verification payload
+
+labs/kv_cache_compression/baseline_kv_cache.py:221: RuntimeError
+=============================== warnings summary ===============================
+../../../../../../opt/miniconda3/lib/python3.12/site-packages/reportlab/lib/rl_safe_eval.py:12
+  /opt/miniconda3/lib/python3.12/site-packages/reportlab/lib/rl_safe_eval.py:12: DeprecationWarning: ast.NameConstant is deprecated and will be removed in Python 3.14; use ast.Constant instead
+    haveNameConstant = hasattr(ast,'NameConstant')
+
+ch15/placement_sim.py:35
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/ch15/placement_sim.py:35: RuntimeWarning: [ch15] placement_sim expects torch>=2.10 with CUDA 13 for Blackwell (B200/B300, GB200/GB300); falling back to compatibility mode.
+    warnings.warn(
+
+tests/test_anti_cheat_edge_cases.py: 4 warnings
+tests/test_anti_cheat_protections.py: 5 warnings
+tests/test_audit_wave1_harness.py: 5 warnings
+tests/test_benchmark_story_metadata.py: 1 warning
+tests/test_protection_effectiveness.py: 1 warning
+tests/test_seed_config_immutability.py: 2 warnings
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/harness/benchmark_harness.py:4866: RuntimeWarning: ENVIRONMENT INVALID: Non-Linux platform 'darwin' is not supported for benchmark validity checks.
+    warn_module.warn(message, RuntimeWarning)
+
+tests/test_anti_cheat_edge_cases.py::TestWorkloadEdgeCases::test_undeclared_shortcuts_skip_layers
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/benchmark/verify_runner.py:721: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+  Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:836.)
+    max_diff = float(diff.max())
+
+tests/test_anti_cheat_edge_cases.py::TestEvaluationEdgeCases::test_timeout_manipulation_extend
+tests/test_anti_cheat_edge_cases.py::TestExtremeValues::test_very_large_tensor
+tests/test_anti_cheat_protections.py::TestTimingProtections::test_clock_drift_monotonic
+tests/test_anti_cheat_protections.py::TestWorkloadProtections::test_early_exit_config_immutability
+tests/test_anti_cheat_protections.py::TestEvaluationProtections::test_timeout_manipulation_immutability
+tests/test_anti_cheat_protections.py::TestEvaluationProtectionsExtended::test_self_modifying_tests_prevention
+tests/test_protection_effectiveness.py::TestMissingEdgeCases::test_cuda_oom_recovery
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/harness/benchmark_harness.py:4914: RuntimeWarning: BENCHMARK_FN ANTI-PATTERN WARNING: benchmark_fn() contains hot-path work that will distort timings or hide the real kernel cost.
+  - benchmark_fn() allocates tensors via torch.ones_like() (line 68); preallocate reusable buffers in setup() unless allocation cost is the benchmarked behavior
+    warn_module.warn(message, RuntimeWarning)
+
+tests/test_environment_validation_enforcement.py::test_environment_virtualization_strict_is_warning_only
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/harness/benchmark_harness.py:4856: RuntimeWarning: ENVIRONMENT WARNING: Cgroup mount (/sys/fs/cgroup) not found; cannot validate cgroup resource limits.
+    warn_module.warn(f"ENVIRONMENT WARNING: {warning}", RuntimeWarning)
+
+tests/test_fail_fast_helper_narrowing.py::test_benchmark_harness_warns_when_mark_execution_complete_fails_on_cpu
+tests/test_fail_fast_helper_narrowing.py::test_benchmark_harness_warns_once_when_force_tensor_evaluation_fails_on_cpu
+tests/test_target_override_resolution.py::test_harness_applies_target_overrides_before_get_config
+  <string>:94: UserWarning: Warmup iterations (0) for BenchmarkConfig is below minimum (5). This may include JIT/compile overhead in measurements, causing inaccurate results. Automatically raising to 5. If you intentionally need warmup=0, add internal warmup in setup() instead.
+
+tests/test_training_speed_common.py::test_training_speed_model_output_shape_cpu
+tests/test_training_speed_common.py::test_training_speed_model_reuses_position_id_buffer_cpu
+  /opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/transformer.py:392: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/final-local/full-cpu-attempt-1.xml -
+=========================== short test summary info ============================
+SKIPPED [1] tests/integration/test_bench_commands_manifest.py:109: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_bench_commands_manifest.py:150: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_benchmark_discovery.py:35: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_benchmark_discovery.py:54: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_benchmark_discovery.py:79: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_benchmark_discovery.py:90: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_benchmark_discovery.py:104: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_benchmark_discovery.py:134: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_benchmark_discovery.py:149: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_benchmark_discovery.py:156: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_benchmark_discovery.py:166: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_benchmark_execution.py:35: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_benchmark_execution.py:82: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_benchmark_execution.py:128: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_benchmark_execution.py:168: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_benchmark_execution.py:183: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_benchmark_execution.py:227: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_benchmark_peak_import.py:15: CUDA required - benchmark_peak imports Transformer Engine and CUDA libraries
+SKIPPED [8] tests/integration/test_ch20_multiple_all_techniques.py:116: CUDA required - benchmark needs a NVIDIA GPU
+SKIPPED [1] tests/integration/test_ch20_multiple_all_techniques.py:147: CUDA required - benchmark needs a NVIDIA GPU
+SKIPPED [1] tests/integration/test_ch20_multiple_all_techniques.py:161: CUDA required - benchmark needs a NVIDIA GPU
+SKIPPED [1] tests/integration/test_comparison_workflow.py:47: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_comparison_workflow.py:99: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_comparison_workflow.py:123: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_comparison_workflow.py:159: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_comparison_workflow.py:167: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_metrics_collection.py:33: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_metrics_collection.py:76: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_metrics_collection.py:114: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/integration/test_metrics_collection.py:157: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [9] tests/integration/_strict_gpu_env.py:14: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:44: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:48: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:52: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:56: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:60: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:84: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:137: Missing production protection: no nested-profiler rejection guard is implemented; a single profiler context did not test nesting
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:230: Missing production protection: no uninitialized-memory provenance detector; filling torch.empty before comparison erases the condition
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:292: Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:299: Missing production protection: no per-operation CPU spillover detector is implemented; wall-time measurement alone does not identify execution placement
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:303: Missing production protection: no per-operation CPU spillover detector is implemented; wall-time measurement alone does not identify execution placement
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:327: Missing production protection: no background-thread computation isolation guard; process isolation does not forbid threads inside a benchmark
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:400: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:404: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:421: Missing production protection: no page-fault or managed-memory event detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:431: Missing production protection: no host callback execution detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:433: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:439: Missing production protection: no cuBLAS workspace precomputation detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:443: Missing production protection: no persistent kernel lifetime detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:447: Missing production protection: no undeclared GPU execution detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:451: Missing production protection: no CUDA context switch enforcement detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:455: Missing production protection: no driver-overhead attribution detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:459: Missing production protection: no cooperative launch inspection detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:463: Missing production protection: no device-side dynamic launch inspection detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:467: Missing production protection: no page-fault or managed-memory event detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:491: Missing production protection: no compiler-backend parity policy detector is implemented; eager versus compiled equivalence alone cannot enforce fair compiler modes
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:498: Missing production protection: no autotuning variance or compiler-mode parity detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:525: Missing production protection: DistributedTopology does not encode ring versus tree algorithm, so it cannot enforce this claimed policy
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:529: Missing production protection: no rank barrier timing detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:533: Missing production protection: no gradient bucket-size parity field or detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:537: Missing production protection: no async gradient completion timing detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:552: Missing production protection: no expected-versus-observed compute-capability comparison is performed by validate_environment
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:556: Missing production protection: GPU state consistency detects clock drops, not clock boosts or absolute clock locking
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:560: Missing production protection: no process-priority parity detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:577: Missing production protection: GPUState has no power-limit field and check_gpu_state_consistency does not compare power limits
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:582: real CUDA/NVML driver provenance integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:598: Missing production protection: RunManifest does not record cuDNN version or compare baseline/optimized library versions
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:655: Missing production protection: no statistical-power or minimum-samples-based-on-variance detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:679: Missing production protection: no background CPU noise or process-priority detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:706: Missing production protection: no evaluation-threshold policy or dataset evaluator contract is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:710: Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:714: Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:718: Missing production protection: no test-source immutability guard is implemented in the benchmark protection path
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:728: Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:801: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:807: Missing production protection: no concurrent-allocation race detector is implemented; successful allocations did not validate a protection
+SKIPPED [1] tests/test_anti_cheat_protections.py:131: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:138: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:142: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:146: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:150: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:425: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:455: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:460: Missing production protection: no undeclared-GPU execution detector; environment inventory only warns that multiple devices exist
+SKIPPED [1] tests/test_anti_cheat_protections.py:463: Missing production protection: no CUDA context-switch enforcement detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:671: Missing production protection: validate_environment does not compare expected and observed GPU identities
+SKIPPED [1] tests/test_anti_cheat_protections.py:543: Clock-lock capability unavailable: real CUDA device required
+SKIPPED [1] tests/test_anti_cheat_protections.py:702: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:751: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:782: Missing production protection: no background CPU process noise/isolation detector; synchronizing CUDA does not provide OS isolation
+SKIPPED [1] tests/test_anti_cheat_protections.py:816: Missing protection: no dataset provenance/holdout-overlap detector is implemented; set arithmetic is not detector coverage
+SKIPPED [1] tests/test_anti_cheat_protections.py:845: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:858: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:877: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:896: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:911: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:926: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:991: Missing protection: no dataset provenance/holdout-overlap detector is implemented; set arithmetic is not detector coverage
+SKIPPED [1] tests/test_anti_cheat_protections.py:1084: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1090: Missing production protection: no in-process background-thread computation guard
+SKIPPED [1] tests/test_anti_cheat_protections.py:1100: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1104: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1126: Missing production protection: no page-fault event detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1140: Missing production protection: no CUDA host-callback execution detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1143: Missing production protection: no cuBLAS workspace precomputation detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1146: Missing production protection: no persistent-kernel lifetime detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1149: Missing production protection: no driver-overhead attribution detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1152: Missing production protection: no cooperative-launch inspector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1155: Missing production protection: no device-side dynamic-launch inspector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1158: Missing production protection: no managed-memory page-fault event detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1178: Missing production protection: no compiler-backend parity policy detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1181: Missing production protection: no compiler-autotuning variance classifier
+SKIPPED [1] tests/test_anti_cheat_protections.py:1208: Missing production protection: no rank-barrier timing detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1211: Missing production protection: no gradient bucket-size parity field or detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1214: Missing production protection: no asynchronous gradient completion timing detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1216: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1302: Missing production protection: no OS or GPU overcommit policy detector exists; memory-growth warnings do not establish it
+SKIPPED [1] tests/test_anti_cheat_protections.py:1307: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1369: Missing production protection: RunManifest records a driver version but no cross-run driver-version lock is enforced
+SKIPPED [1] tests/test_anti_cheat_protections.py:1372: Missing production protection: RunManifest does not record cuDNN/cuBLAS version parity or enforce a cross-run library lock
+SKIPPED [1] tests/test_anti_cheat_protections.py:1445: Missing protection: no dataset provenance/holdout-overlap detector is implemented; set arithmetic is not detector coverage
+SKIPPED [1] tests/test_anti_cheat_protections.py:1456: Missing production protection: version provenance capture does not enforce version locking
+SKIPPED [1] tests/test_anti_cheat_protections.py:1489: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1518: A count of test names is not protection coverage; inspect named behavioral tests and explicit missing-protection skips
+SKIPPED [3] tests/test_audit_wave1_attention_regressions.py:139: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [1] tests/test_audit_wave1_attention_regressions.py:153: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [8] tests/test_audit_wave1_attention_regressions.py:166: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [1] tests/test_audit_wave1_attention_regressions.py:181: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [2] tests/test_audit_wave1_attention_regressions.py:193: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [1] tests/test_audit_wave1_attention_regressions.py:217: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [1] tests/test_audit_wave1_attention_regressions.py:240: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [1] tests/test_audit_wave1_attention_regressions.py:290: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [3] tests/test_audit_wave1_attention_regressions.py:310: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [2] tests/test_audit_wave1_attention_regressions.py:332: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [1] tests/test_audit_wave1_attention_regressions.py:357: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [1] tests/test_audit_wave1_attention_regressions.py:382: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [1] tests/test_audit_wave1_hybrid_ep.py:349: Actual four CUDA devices and NCCL required; CPU Gloo is not CUDA acceptance
+SKIPPED [1] tests/test_audit_wave1_kv_handoff.py:82: Actual NCCL and two CUDA GPUs required
+SKIPPED [3] tests/test_audit_wave1_kv_overlap.py:18: Actual CUDA streams and matmul/copy overlap required
+SKIPPED [1] tests/test_audit_wave1_moe_journey.py:36: Actual CUDA D2H metadata lifetime check requires a GPU
+SKIPPED [4] tests/test_audit_wave1_moe_ptx.py:134: Actual CUDA layer math and reviewed policy required
+SKIPPED [1] tests/test_audit_wave1_moe_triton.py:200: Actual CUDA required; no CPU result qualifies a GPU kernel
+SKIPPED [27] tests/test_audit_wave1_moe_triton.py:211: Actual CUDA and Triton execution required
+SKIPPED [1] tests/test_audit_wave1_moe_triton.py:244: Actual CUDA needed for differentiable CUDA route
+SKIPPED [1] tests/test_audit_wave1_moe_triton.py:260: Actual two CUDA devices required for noncurrent-device inference
+SKIPPED [6] tests/test_audit_wave1_nanochat_regressions.py:97: requires real CUDA graphs and streams
+SKIPPED [1] tests/test_audit_wave1_nanochat_regressions.py:135: requires real CUDA stream ordering and D2H
+SKIPPED [1] tests/test_audit_wave1_nanochat_regressions.py:211: requires real CUDA work on a side stream
+SKIPPED [1] tests/test_audit_wave1_native_fp8.py:155: Actual native FP8 CUDA execution required
+SKIPPED [1] tests/test_audit_wave1_numerics_regressions.py:339: Actual CUDA required; CPU checks do not qualify GPU numerics
+SKIPPED [1] tests/test_audit_wave1_peak_metrics.py:206: Actual CUDA GPU required for FP8 scaled-mm and complete output comparison
+SKIPPED [1] tests/test_audit_wave1_peak_metrics.py:223: Actual CUDA GPU and Transformer Engine NVFP4 kernel required
+SKIPPED [1] tests/test_audit_wave1_peak_metrics.py:233: Actual CUDA GPU required for copy timing
+SKIPPED [1] tests/test_audit_wave1_peak_metrics.py:242: Two actual CUDA GPUs required to test a noncurrent measurement device
+SKIPPED [1] tests/test_audit_wave1_peak_metrics.py:260: Two actual CUDA GPUs required for peer-copy timing and byte accounting
+SKIPPED [7] tests/test_audit_wave1_prefill_full_output.py:235: Actual CUDA device required; CPU payload checks are not GPU qualification
+SKIPPED [1] tests/test_audit_wave1_router_telemetry.py:72: Actual two-GPU vLLM stack required
+SKIPPED [1] tests/test_audit_wave1_tooling_regressions.py:156: FP8 template runtime requires real CUDA and TE2.18
+SKIPPED [1] tests/test_audit_wave1_zero2.py:124: Production reduce-scatter hook requires NCCL and two real GPUs
+SKIPPED [1] tests/test_audit_wave1_zero2_parity_cuda.py:358: HOLD: Explicit opt-in required after allocating exactly two CUDA devices.
+SKIPPED [1] tests/test_benchmark_correctness.py:128: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_correctness.py:158: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_correctness.py:189: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_correctness.py:223: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_correctness.py:258: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_correctness.py:298: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_harness.py:183: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_harness.py:211: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_harness.py:227: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_harness.py:247: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_harness.py:272: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_harness.py:300: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_harness.py:338: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_harness.py:356: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_harness.py:397: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_harness.py:427: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_harness.py:446: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_harness.py:465: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_harness.py:490: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_harness.py:504: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_harness.py:518: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_harness.py:543: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_harness.py:572: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_harness_subprocess_regressions.py:97: requires Linux torchrun rendezvous
+SKIPPED [1] tests/test_benchmark_hygiene_regressions.py:24991: Actual descendant reaping requires the production Linux /proc backend
+SKIPPED [1] tests/test_benchmark_regime_configs.py:19: CUDA allocation required by setup
+SKIPPED [1] tests/test_benchmark_regression.py:51: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_regression.py:93: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_regression.py:118: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_regression.py:149: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_regression.py:181: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_benchmark_verification.py:285: CUDA required
+SKIPPED [1] tests/test_benchmark_verification.py:296: CUDA required
+SKIPPED [1] tests/test_benchmark_verification.py:307: CUDA required
+SKIPPED [1] tests/test_benchmark_verification.py:327: CUDA required
+SKIPPED [1] tests/test_benchmark_verification.py:336: CUDA required
+SKIPPED [1] tests/test_benchmark_verification.py:371: CUDA required
+SKIPPED [1] tests/test_benchmark_verification.py:379: CUDA required
+SKIPPED [1] tests/test_benchmark_verification.py:387: CUDA required
+SKIPPED [1] tests/test_benchmark_verification.py:409: CUDA required
+SKIPPED [1] tests/test_benchmark_verification.py:421: CUDA required
+SKIPPED [1] tests/test_benchmark_verification.py:438: CUDA required
+SKIPPED [1] tests/test_benchmark_verification.py:454: CUDA required
+SKIPPED [1] tests/test_benchmark_verification.py:471: CUDA required
+SKIPPED [1] tests/test_benchmark_verification.py:509: CUDA required
+SKIPPED [1] tests/test_benchmark_verification.py:540: CUDA required
+SKIPPED [1] tests/test_benchmark_verification.py:616: CUDA required
+SKIPPED [1] tests/test_benchmark_verification.py:644: CUDA required
+SKIPPED [1] tests/test_blackwell_gemm_optimizations_lab.py:318: CUDA required for Blackwell grouped GEMM validation
+SKIPPED [1] tests/test_blackwell_gemm_optimizations_lab.py:364: CUDA required for Blackwell grouped GEMM validation
+SKIPPED [1] tests/test_blackwell_optimizations.py:129: CUDA not available
+SKIPPED [1] tests/test_blackwell_optimizations.py:166: CUDA not available
+SKIPPED [1] tests/test_blackwell_optimizations.py:438: CUDA not available
+SKIPPED [1] tests/test_blackwell_optimizations.py:495: CUDA not available
+SKIPPED [1] tests/test_blackwell_optimizations.py:547: CUDA not available
+SKIPPED [1] tests/test_blackwell_optimizations.py:581: Transformer Engine not available
+SKIPPED [1] tests/test_blackwell_optimizations.py:626: Requires Blackwell GPU
+SKIPPED [1] tests/test_blackwell_optimizations.py:640: Requires Blackwell GPU
+SKIPPED [1] tests/test_blackwell_optimizations.py:750: Requires CUDA and FP8
+SKIPPED [1] tests/test_blackwell_optimizations.py:804: Requires CUDA
+SKIPPED [1] tests/test_blackwell_optimizations.py:862: Requires CUDA and FP8
+SKIPPED [1] tests/test_blackwell_optimizations.py:911: Requires CUDA
+SKIPPED [1] tests/test_blackwell_optimizations.py:951: Requires CUDA and FP8
+SKIPPED [1] tests/test_blackwell_optimizations.py:1014: Requires CUDA
+SKIPPED [1] tests/test_blackwell_optimizations.py:1067: Requires CUDA and FP8
+SKIPPED [1] tests/test_blackwell_optimizations.py:1124: Requires CUDA and FP8
+SKIPPED [1] tests/test_blackwell_stack.py:25: Blackwell architecture detection requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:25: torch.compile requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:25: CUDA 13 stream integration requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:25: CUDA profiler and NVTX requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:25: Triton kernel requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:25: CUDA timing smoke check requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:185: distributed inference requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:306: distributed inference requires a real CUDA device
+SKIPPED [2] tests/test_cache_aware_disagg_lab.py:225: 2+ GPUs required for multi-GPU wrapper spec
+SKIPPED [1] tests/test_cache_aware_disagg_lab.py:253: CUDA required for cache-aware lab metrics
+SKIPPED [1] tests/test_cache_aware_disagg_lab.py:310: 2+ GPUs required for cache-aware multi-GPU lab
+SKIPPED [3] tests/test_ch03_ch04_validity_regressions.py:23: CUDA required
+SKIPPED [3] tests/test_ch03_ch04_validity_regressions.py:55: CUDA required
+SKIPPED [1] tests/test_ch04_nixl_tier_handoff_pair.py:101: CUDA required for ch04 nixl tier handoff benchmark
+SKIPPED [2] tests/test_ch04_symmetric_memory_perf_runtime.py:10: requires CUDA
+SKIPPED [1] tests/test_ch05_decompression_runtime.py:127: CUDA required for GPU decompression
+SKIPPED [4] tests/test_ch06_setup_validity_regressions.py:156: CUDA required
+SKIPPED [2] tests/test_ch06_setup_validity_regressions.py:191: CUDA required
+SKIPPED [2] tests/test_ch08_setup_validity_regressions.py:109: CUDA required
+SKIPPED [2] tests/test_ch08_setup_validity_regressions.py:137: CUDA required
+SKIPPED [2] tests/test_ch08_setup_validity_regressions.py:165: CUDA required
+SKIPPED [4] tests/test_ch08_setup_validity_regressions.py:194: CUDA required
+SKIPPED [1] tests/test_ch17_moe_router_topology.py:49: CUDA required for MoE local-capacity parity
+SKIPPED [1] tests/test_ch17_prefill_decode_event_reuse.py:35: CUDA required
+SKIPPED [1] tests/test_ch17_prefill_decode_event_reuse.py:74: CUDA required
+SKIPPED [1] tests/test_ch19_adaptive_parallelism_pair.py:231: CUDA required for chapter 19 adaptive-parallelism benchmark pair
+SKIPPED [1] tests/test_ch19_dynamic_precision_pair.py:648: CUDA required for chapter 19 dynamic-precision benchmark pair
+SKIPPED [1] tests/test_ch19_dynamic_quantized_cache_pair.py:18: CUDA required for dynamic_quantized_cache benchmarks
+SKIPPED [1] tests/test_ch19_dynamic_quantized_cache_pair.py:54: CUDA required for dynamic_quantized_cache benchmarks
+SKIPPED [1] tests/test_decode_optimization_config.py:810: CUDA required for decode event setup
+SKIPPED [13] tests/test_deep_dive_failure_regressions.py:35: CUDA required for deep-dive regression coverage
+SKIPPED [1] tests/test_deep_dive_failure_regressions.py:74: CUDA required for deep-dive regression coverage
+SKIPPED [1] tests/test_deep_dive_failure_regressions.py:81: CUDA required for deep-dive regression coverage
+SKIPPED [13] tests/test_deep_dive_failure_regressions.py:101: CUDA required for deep-dive regression coverage
+SKIPPED [5] tests/test_deep_dive_failure_regressions.py:140: CUDA required for deep-dive regression coverage
+SKIPPED [1] tests/test_deep_dive_failure_regressions.py:171: CUDA required for deep-dive regression coverage
+SKIPPED [2] tests/test_deep_dive_failure_regressions.py:185: CUDA required for deep-dive regression coverage
+SKIPPED [1] tests/test_demos_cli.py:73: CUDA not available
+SKIPPED [1] tests/test_flashattention_gluon_runtime.py:43: CUDA required
+SKIPPED [1] tests/test_flashattention_gluon_runtime.py:59: CUDA required
+SKIPPED [4] tests/test_fullstack_cluster_shared_benchmark_wrappers.py:32: CUDA required for benchmark wrappers
+SKIPPED [2] tests/test_fullstack_cluster_shared_benchmark_wrappers.py:65: CUDA required for benchmark wrappers
+SKIPPED [1] tests/test_fullstack_cluster_shared_benchmark_wrappers.py:634: CUDA required for benchmark wrappers
+SKIPPED [1] tests/test_fullstack_cluster_shared_benchmark_wrappers.py:650: CUDA required for benchmark wrappers
+SKIPPED [1] tests/test_harness_protection_failures.py:132: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_harness_protection_failures.py:141: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_harness_protection_failures.py:150: CUDA required - NVIDIA GPU and tools must be available
+SKIPPED [1] tests/test_kv_optimization_append_paths.py:205: CUDA required for KV append parity
+SKIPPED [1] tests/test_kv_optimization_append_paths.py:234: CUDA required for KV runtime checks
+SKIPPED [1] tests/test_kv_optimization_append_paths.py:272: CUDA required for KV append parity
+SKIPPED [1] tests/test_kv_optimization_append_paths.py:309: CUDA with torch.float8_e4m3fn required for FP8 KV runtime checks
+SKIPPED [2] tests/test_moe_cuda_decode_attention_runtime.py:19: CUDA required
+SKIPPED [1] tests/test_moe_cuda_ptx_common.py:22: CUDA required for moe_cuda_ptx validation
+SKIPPED [2] tests/test_moe_journey_runtime_hotpath.py:391: CUDA required
+SKIPPED [1] tests/test_occupancy_tuning.py:85: requires CUDA
+SKIPPED [1] tests/test_protection_effectiveness.py:74: real CUDA stream execution required
+SKIPPED [1] tests/test_protection_effectiveness.py:173: real CUDA stream execution required
+SKIPPED [1] tests/test_recsys_sequence_ranking.py:246: requires CUDA and Triton
+SKIPPED [1] tests/test_recsys_sequence_ranking.py:271: requires CUDA and Triton
+SKIPPED [1] tests/test_review_findings_regressions.py:471: CUDA required for speculative decoding stability check
+SKIPPED [1] tests/test_run_benchmarks_profiler_contract.py:547: requires Linux /proc process-group enumeration
+SKIPPED [1] tests/test_seed_config_immutability.py:182: torchrun benchmark validity requires Linux
+SKIPPED [1] tests/test_seed_config_immutability.py:246: torchrun benchmark validity requires Linux
+SKIPPED [1] tests/test_speculative_decode_token_mlp.py:55: requires CUDA and Triton
+SKIPPED [1] tests/test_speculative_decode_token_mlp.py:189: CUDA required for lab speculative decode
+SKIPPED [1] tests/test_speculative_decode_token_mlp.py:220: CUDA required for trusted speculative decode
+SKIPPED [1] tests/test_speculative_decode_token_mlp.py:256: CUDA required for transition-table speculative decode
+SKIPPED [8] tests/test_static_input_signatures.py:11: CUDA required for benchmark instantiation
+SKIPPED [1] tests/test_symmetric_memory_inference.py:62: Symmetric-memory demo requires runtime support and at least two GPUs
+SKIPPED [1] tests/test_symmetric_memory_inference.py:74: Symmetric-memory demo requires runtime support and at least two GPUs
+SKIPPED [1] tests/test_symmetric_memory_inference.py:86: Symmetric-memory demo requires runtime support and at least two GPUs
+SKIPPED [1] tests/test_top_k_kernel_runtime.py:323: CUDA required
+SKIPPED [1] tests/test_training_hotpath_lab.py:364: CUDA required for fused metric output reuse check
+SKIPPED [1] tests/test_training_hotpath_lab.py:387: CUDA required for fused segment output reuse check
+SKIPPED [1] tests/test_training_hotpath_lab.py:410: CUDA required for training-hotpath lab parity checks
+SKIPPED [1] tests/test_training_hotpath_lab.py:434: CUDA required for training-hotpath lab parity checks
+SKIPPED [1] tests/test_training_hotpath_lab.py:458: CUDA required for training-hotpath lab parity checks
+SKIPPED [1] tests/test_training_hotpath_lab.py:492: CUDA required for packed-linear workspace reuse check
+SKIPPED [1] tests/test_triton_compat_arch.py:84: could not import 'triton': No module named 'triton'
+SKIPPED [1] tests/test_verification_e2e.py:47: CUDA required for end-to-end verification tests
+SKIPPED [1] tests/test_verification_e2e.py:98: CUDA required for end-to-end verification tests
+SKIPPED [1] tests/test_verification_e2e.py:120: CUDA required for end-to-end verification tests
+SKIPPED [1] tests/test_verification_e2e.py:154: CUDA required for end-to-end verification tests
+SKIPPED [1] tests/test_verification_e2e.py:171: CUDA required for end-to-end verification tests
+SKIPPED [1] tests/test_verification_e2e.py:189: CUDA required for end-to-end verification tests
+SKIPPED [1] tests/test_verification_e2e.py:211: CUDA required for end-to-end verification tests
+SKIPPED [1] tests/test_verification_e2e.py:233: CUDA required for end-to-end verification tests
+SKIPPED [1] tests/test_verification_e2e.py:274: CUDA required for end-to-end verification tests
+SKIPPED [1] tests/test_verification_e2e.py:279: CUDA required for end-to-end verification tests
+SKIPPED [1] tests/test_verification_e2e.py:296: CUDA required for end-to-end verification tests
+SKIPPED [1] tests/test_verification_e2e.py:315: CUDA required for end-to-end verification tests
+SKIPPED [1] tests/test_verification_e2e.py:334: CUDA required for end-to-end verification tests
+SKIPPED [1] tests/test_verification_e2e.py:353: CUDA required for end-to-end verification tests
+FAILED tests/test_benchmark_pair_intent_docs.py::test_train_distributed_readme_marks_single_gpu_fsdp2_as_comparison_surface
+FAILED tests/test_labs_runtime_gating.py::test_kv_cache_verification_output_is_built_after_benchmark[BaselineKVCacheBenchmark]
+FAILED tests/test_labs_runtime_gating.py::test_kv_cache_verification_output_is_built_after_benchmark[OptimizedKVCacheNVFP4Benchmark]
+3 failed, 3940 passed, 448 skipped, 34 warnings in 441.05s (0:07:21)

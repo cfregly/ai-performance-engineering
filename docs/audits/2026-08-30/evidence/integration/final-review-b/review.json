@@ -1,0 +1,1029 @@
+{
+  "scope": "Bounded final read-only review of LOCAL-019 withdrawal, training README/generator, root README historical-table wording, and reconciliation of original 128 audit findings",
+  "created_utc": "2026-08-30T23:57:02.649926+00:00",
+  "reviewer": "audit_wave1_plan_b",
+  "independence_limit": "Reviewer authored LOCAL-019 implementation. This review independently checks parent-owned documentation/ledger and verifies consistency with frozen implementation; it is not a separate-author review of the LOCAL-019 source patch.",
+  "source_hashes": {
+    "code/labs/train_distributed/training_utils/torchrun_harness.py": "faf2903b81f3825422764a9819031375a287bbec28f1327899dcabd3bfd548b0",
+    "code/core/harness/benchmark_harness.py": "97aafb1fe60e84d18f16a25882aa4cb49e715e70b3217baf3a700881311128e9",
+    "code/tests/test_audit_wave1_torchrun_verification.py": "5512a4fd6d6252ee1dac2e3c5d86e42f45abdcba9b8d6a94d64c80a9867c6de8",
+    "code/labs/train_distributed/README.md": "5bcbe995fa625d2fed7481fe67acd4cc9c9a67559fc1dc145b5cedee20980a64",
+    "code/core/scripts/refresh_readmes.py": "e7d508a8fda4a1b87aef33d2135c67766753bb19fc22673817d4a215fba823da",
+    "code/README.md": "bc777fd1bb198c1096b844473d10cf410fc05406419ca1274305f0d824f1b6a4",
+    "docs/audits/2026-08-30/wave-1-source.json": "474779ab49b67c5c888e5f689b2400204b6d0f46f304219cedd0773694b6e1ba",
+    "docs/audits/2026-08-30/wave-1-inventory.md": "367897feee9613ecd6f529e5f7b142dcaa796fd5b6025b3e23bec807d695bdf4",
+    "docs/audits/2026-08-30/remediation-ledger.json": "7616ff3d3f502edd356fded85c66cd0c0cfb08626146e8589db1805e9f96c058",
+    "docs/audits/2026-08-30/evidence/torchrun-verification/receipt.json": "ba528b7a5540497eaa5d9506093862dc95c69b6599d2b758c2e94a9fcab0f736",
+    "docs/audits/2026-08-30/evidence/torchrun-verification/final-integration.xml": "89a38c0863b2a4bb38a02d37d3aed3e557459d5bc8b64943f044b9a10139ea28",
+    "docs/audits/2026-08-30/evidence/documentation/cpu-capture-archive-manifest.json": "0735c494e43e7d46dde6203ee54f4d17ea795f170d1bd20ce470b721b8f9a64b"
+  },
+  "findings": [
+    {
+      "id": "FINAL-B-001",
+      "priority": "P2",
+      "status": "accepted_by_parent_fix_pending_after_full_test_freeze",
+      "title": "Historical fallback claims an artifact is preserved although only hardcoded rows are available locally",
+      "locations": [
+        {
+          "path": "code/README.md",
+          "line": 32
+        },
+        {
+          "path": "code/core/scripts/refresh_readmes.py",
+          "line": 256
+        }
+      ],
+      "evidence": [
+        "README explicitly says the source artifact is preserved and labels the historical path as Source artifact.",
+        "The cited summary path is absent relative to code/ and repository root; the tier-1 index is also absent.",
+        "_latest_tier1_summary returns (None,None,[]) when index.json is absent. _fallback_body then renders fixed literals from _fallback_tier1_representative_rows with no missing-index warning.",
+        "Both README render checks pass, so the unsupported provenance wording is in the generator as well as generated README.",
+        "A bounded search found no matching artifact entry in the documentation evidence/archive; no assertion is made that the original file cannot exist outside this checkout."
+      ],
+      "impact": "A reader can mistake retained generator values for currently inspectable historical evidence; the no-requalification warning does not establish preservation or provenance.",
+      "requested_fix": "Keep historical values and the no-requalification warning, but make fallback wording state that the values are retained in generator rows, the cited original artifact is unavailable in this checkout, and lineage/measurements were not verified. When a real artifact is loaded, describe only that observed state.",
+      "parent_disposition": "Parent accepted; defer generator/root README edit until running full pytest finishes, then rerender and refresh impacted checks/manifests."
+    }
+  ],
+  "accepted_checks": [
+    "Generic wrapper no longer constructs Linear/meta tensors, a numerical signature or a tolerance. Its execution/verification hooks reject before child launch, including cached-payload paths.",
+    "Harness getter invocation is outside an exception-swallowing block; noncallable getter raises TypeError and only an explicit None return permits module fallback.",
+    "Training README consistently describes wrapper execution/qualification as unavailable. CLI examples inspect help/metadata or execute local tests; old timings are marked historical and unqualified.",
+    "Canonical bare-metal and explicitly approved virtualized/noncanonical boundaries are stated; child training correctness remains separate from launcher success and ZeRO-specific gates.",
+    "Root README historical table and aggregate speedups are expressly not qualification of the repaired revision. One fallback provenance overclaim remains as FINAL-B-001."
+  ],
+  "local019_source_receipt_matches": {
+    "code/labs/train_distributed/training_utils/torchrun_harness.py": true,
+    "code/core/harness/benchmark_harness.py": true,
+    "code/tests/test_audit_wave1_torchrun_verification.py": true
+  },
+  "prior_cpu_receipt": {
+    "path": "docs/audits/2026-08-30/evidence/torchrun-verification/receipt.json",
+    "result": "66 passed, 2 existing Linux-only skips; all 32 LOCAL-019 cases pass",
+    "observed_in_this_review": "Existing receipt and XML read only; not rerun during global freeze",
+    "runtime_limit": "Real CPU child launch checks are not CUDA/NCCL/training/numerical/performance qualification"
+  },
+  "generator_check": {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "code/core/scripts/refresh_readmes.py",
+      "--check",
+      "--target",
+      "README.md",
+      "--target",
+      "labs/train_distributed"
+    ],
+    "environment_override": {
+      "PYTHONDONTWRITEBYTECODE": "1"
+    },
+    "exit_code": 0,
+    "stdout": "All 2 README target(s) are in sync.\n",
+    "stderr": "",
+    "writes": false
+  },
+  "historical_artifact_presence": {
+    "missing_paths": [
+      "code/artifacts/history/tier1/20260329_e2e_truthful_canonical_main_4a8c827a__tier1/summary.json",
+      "artifacts/history/tier1/20260329_e2e_truthful_canonical_main_4a8c827a__tier1/summary.json",
+      "code/artifacts/history/tier1/index.json"
+    ],
+    "first_read_attempt": {
+      "exit_code": 1,
+      "error": "FileNotFoundError reading code/artifacts/history/tier1/20260329_e2e_truthful_canonical_main_4a8c827a__tier1/summary.json",
+      "meaning": "Expected path unavailable; no artifact content could be verified"
+    }
+  },
+  "wave_1_reconciliation": {
+    "errors": [],
+    "capture_sha256": "474779ab49b67c5c888e5f689b2400204b6d0f46f304219cedd0773694b6e1ba",
+    "capture_count": 128,
+    "ledger_count": 128,
+    "inventory_count": 128,
+    "package_assignment_count": 128,
+    "severity_counts": {
+      "critical": 5,
+      "high": 37,
+      "medium": 58,
+      "low": 28
+    },
+    "preserved_fields": [
+      "id",
+      "original_severity",
+      "original_location",
+      "original_title",
+      "source_domains",
+      "source_review_labels",
+      "source_record_index"
+    ],
+    "source_text_membership": "Every source_text present in immutable full_rendered_text",
+    "records": [
+      {
+        "id": "W1-001",
+        "source_record_index": 0,
+        "primary_package": "P03",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "febc357e3046c01d147e886f6cff1aa33274b7fa05c4e95d87c68f36dd3be75c"
+      },
+      {
+        "id": "W1-002",
+        "source_record_index": 1,
+        "primary_package": "P04",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "3a3ee62d376abad441c9594e348d5fa48bcbcde3f6dfae00ee71551bc53d69d9"
+      },
+      {
+        "id": "W1-003",
+        "source_record_index": 2,
+        "primary_package": "P05",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "edfa435f6cbf108b6900e2a8c6282817af058b3ebcd256a3e537449dc86ff0b8"
+      },
+      {
+        "id": "W1-004",
+        "source_record_index": 3,
+        "primary_package": "P06",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "218b94ff581e0859b29b8a34921ac0343eb1d1aa3ac1a5a4c2eaa325ca87420f"
+      },
+      {
+        "id": "W1-005",
+        "source_record_index": 4,
+        "primary_package": "P01",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "08af887fa7a379d8adf476ce7872a53ebca14a6fb6555e1489927b6bdc045a64"
+      },
+      {
+        "id": "W1-006",
+        "source_record_index": 5,
+        "primary_package": "P02",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "5273d4efa0f1128dda1f4bbdb3526a5c24291604295e2505cd07caabbe967a3a"
+      },
+      {
+        "id": "W1-007",
+        "source_record_index": 6,
+        "primary_package": "P01",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "7fafa659dda43713e63d4909f7da46edf1a29c23a51fec02621662131175fa09"
+      },
+      {
+        "id": "W1-008",
+        "source_record_index": 7,
+        "primary_package": "P03",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "4cd539d8f79ddcfc12a25d0e76065b2b9cd28d1ec08e1b2076a147e39305272b"
+      },
+      {
+        "id": "W1-009",
+        "source_record_index": 8,
+        "primary_package": "P03",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "9fde35c7e5c3f995f525988f9d2006ad5074b05f9d4a6523db0ea6ffb374f574"
+      },
+      {
+        "id": "W1-010",
+        "source_record_index": 9,
+        "primary_package": "P03",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "1fa9e9cee61bfc7017276405feba3ab8094d0a9f1be455a09f9f178a780de3a9"
+      },
+      {
+        "id": "W1-011",
+        "source_record_index": 10,
+        "primary_package": "P03",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "1bb8b37e7ee188d6c58c0069e27016a191c83ff17ded896e2547d291cc698f71"
+      },
+      {
+        "id": "W1-012",
+        "source_record_index": 11,
+        "primary_package": "P03",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "b695d8fc444a093529ab6c854ebf33afca7c5a037b8927b969e49b9209c89aef"
+      },
+      {
+        "id": "W1-013",
+        "source_record_index": 12,
+        "primary_package": "P03",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "a29b7de4996865fc67482179499c73b1a38cec60f914443c9cc6194ce081712d"
+      },
+      {
+        "id": "W1-014",
+        "source_record_index": 13,
+        "primary_package": "P03",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "5719570d179184e6943fa2765485f00692d3a5f6224656dac76013caa677f2a9"
+      },
+      {
+        "id": "W1-015",
+        "source_record_index": 14,
+        "primary_package": "P03",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "08f8e69e9813278bbdb331dbddc69514d09e274e08de5f05ae71f1d0612fb682"
+      },
+      {
+        "id": "W1-016",
+        "source_record_index": 15,
+        "primary_package": "P07",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "7cea53ff44b731ef30e827dd9f9e0a18de2dc4198fc31887feea265b659322eb"
+      },
+      {
+        "id": "W1-017",
+        "source_record_index": 16,
+        "primary_package": "P10",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "22c552ed9a5473a3ffb340c01ea9d4f78e148339bf427d78ba9cda5121c8e3d3"
+      },
+      {
+        "id": "W1-018",
+        "source_record_index": 17,
+        "primary_package": "P09",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "ab6e37197ef246233941235fe5c554c799ae7826f17f7f04be210c039b1cce95"
+      },
+      {
+        "id": "W1-019",
+        "source_record_index": 18,
+        "primary_package": "P04",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "fb6b0705203a4642bb1e2e470be413f472e81d051186e0684d999d0c85926a6b"
+      },
+      {
+        "id": "W1-020",
+        "source_record_index": 19,
+        "primary_package": "P04",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "4f2e13e97a41185e1c91d1ae8f52bf04fb0fcbcc5e9333d6c819176288a681c4"
+      },
+      {
+        "id": "W1-021",
+        "source_record_index": 20,
+        "primary_package": "P02",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "ca00a6d76e1cd96cdeea5202770e5c3661cd5df0915e66e7242077c30fec05d7"
+      },
+      {
+        "id": "W1-022",
+        "source_record_index": 21,
+        "primary_package": "P07",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "2c8feb1062d45a1b3d71227ef784fcbb9b54d43f872256ca22d0f6f70d143d58"
+      },
+      {
+        "id": "W1-023",
+        "source_record_index": 22,
+        "primary_package": "P10",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "a9fe8854595ba16bf9dbe21c1c9b283eb84aaf14b28617ba7615e9fe1ea1c77a"
+      },
+      {
+        "id": "W1-024",
+        "source_record_index": 23,
+        "primary_package": "P09",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "be8216bd44bd4b44ab87ea2ac26390db5b4233e36c198f83e8f87935786fe75b"
+      },
+      {
+        "id": "W1-025",
+        "source_record_index": 24,
+        "primary_package": "P01",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "4220ae91418937f7a1a176d44646eab2c2a77431f2f8192bfd92cd57e521337c"
+      },
+      {
+        "id": "W1-026",
+        "source_record_index": 25,
+        "primary_package": "P04",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "1ddd6f6bc20698cf581462d69dd9331c5bd77ba94a7388531703d886402a82e1"
+      },
+      {
+        "id": "W1-027",
+        "source_record_index": 26,
+        "primary_package": "P04",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "c21069002216980acaf4217c7925938aac6e17bccf2882611edc163ac7c9dbea"
+      },
+      {
+        "id": "W1-028",
+        "source_record_index": 27,
+        "primary_package": "P06",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "3b3d987092bd6aefd701bcdfbd66bb7eaa39cbf277b67cb417992ef4f876f2a7"
+      },
+      {
+        "id": "W1-029",
+        "source_record_index": 28,
+        "primary_package": "P06",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "30bd713658d884ac9b586d75c430450642ca4836092e42855fc75bf5e48617ac"
+      },
+      {
+        "id": "W1-030",
+        "source_record_index": 29,
+        "primary_package": "P08",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "759de9ef2e29cf976f414b0300b30687480527492eb4e5c99d9ba37bd871b627"
+      },
+      {
+        "id": "W1-031",
+        "source_record_index": 30,
+        "primary_package": "P08",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "f10249da6bedaa36d7832864f8f0e65d9a282b7cb13fef5f9530bf8bf611dcca"
+      },
+      {
+        "id": "W1-032",
+        "source_record_index": 31,
+        "primary_package": "P06",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "b486cb56cefd357cd7c20dbaae25338fb46f95cc3b13b12da67b2e193afa610f"
+      },
+      {
+        "id": "W1-033",
+        "source_record_index": 32,
+        "primary_package": "P06",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "ce6f45df60d3c45ab90df7b603448675b9845713795ff902dddf42cb360450c5"
+      },
+      {
+        "id": "W1-034",
+        "source_record_index": 33,
+        "primary_package": "P05",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "a36cd1782e705db1a9b3e98cc8f98430440014c4a853cbd4693dca0da72fb102"
+      },
+      {
+        "id": "W1-035",
+        "source_record_index": 34,
+        "primary_package": "P05",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "959eef95311b2271b24bbd1069c109aa53688b44d4453272f9769e82afc115a4"
+      },
+      {
+        "id": "W1-036",
+        "source_record_index": 35,
+        "primary_package": "P05",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "d28f445c15ec96a3d20ecfd8dfad01dd9ef92547977e291d5aefe54bbf950032"
+      },
+      {
+        "id": "W1-037",
+        "source_record_index": 36,
+        "primary_package": "P08",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "8d7fc8b06b33b7c0d09e980e2f97feb28f4346b0b97ea29cbfd57014e3ca6beb"
+      },
+      {
+        "id": "W1-038",
+        "source_record_index": 37,
+        "primary_package": "P08",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "b0bc392f3d79ce6d23ec48c4590d53d8a93d18cae1a6f8f5ea24ae7075ca57df"
+      },
+      {
+        "id": "W1-039",
+        "source_record_index": 38,
+        "primary_package": "P07",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "ea89a53ea75ace1166e3005916350e0cfc3aeec26eb8bd3432a556562cd76e6f"
+      },
+      {
+        "id": "W1-040",
+        "source_record_index": 39,
+        "primary_package": "P02",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "3d8bdbd84d784f0b2c9184e6e4fa634adf7651e088cc28a8efbc3f7f85375d72"
+      },
+      {
+        "id": "W1-041",
+        "source_record_index": 40,
+        "primary_package": "P02",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "7ba7a8c4c72f2c456787e0d7d34f540b5c955c164882e5bfefba4b438d95608f"
+      },
+      {
+        "id": "W1-042",
+        "source_record_index": 41,
+        "primary_package": "P11",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "2e8eed43848b44a9018f6f32ab782ff03ad7a95d88e32f0779eab79baffe45b3"
+      },
+      {
+        "id": "W1-043",
+        "source_record_index": 42,
+        "primary_package": "P11",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "8978f2ec3c50d2827793d432148c3a8330fbd330ed22e890b29d150e98dbdc8b"
+      },
+      {
+        "id": "W1-044",
+        "source_record_index": 43,
+        "primary_package": "P11",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "6c4890ea4de560ae93173f6a9691e2f4c0b98676a83843ef18aa2a3fea935e1e"
+      },
+      {
+        "id": "W1-045",
+        "source_record_index": 44,
+        "primary_package": "P03",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "d737e4517e5c6ccbab8ed08a6b9a38ca0cce6a390072933c36c97c0f7eee9780"
+      },
+      {
+        "id": "W1-046",
+        "source_record_index": 45,
+        "primary_package": "P03",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "14cfcf97e07fbbdeeacf812877048d985126a65eef9f2f85280860d6a28cbf76"
+      },
+      {
+        "id": "W1-047",
+        "source_record_index": 46,
+        "primary_package": "P03",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "eee1ced1596e0fef1aca66d0aad115acf2e87ed668e591815395b21c63e6b2cd"
+      },
+      {
+        "id": "W1-048",
+        "source_record_index": 47,
+        "primary_package": "P03",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "e1b5cebc9110c0f43fdbcfbefa0ba7153cea723ab53ce9c560cb88669867f3a8"
+      },
+      {
+        "id": "W1-049",
+        "source_record_index": 48,
+        "primary_package": "P03",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "71cf675bc42537028b2e3eace20c0d6e89832bcb457281fec97e886174464cd9"
+      },
+      {
+        "id": "W1-050",
+        "source_record_index": 49,
+        "primary_package": "P03",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "3d1bb8cac75314228df11908cd4513c877f57da51de521c7807827792c5deced"
+      },
+      {
+        "id": "W1-051",
+        "source_record_index": 50,
+        "primary_package": "P03",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "fc1ab1bb621b9f9c3a4fc077beb1ca8e8da2ad0857371b646efdb80e8d0e408c"
+      },
+      {
+        "id": "W1-052",
+        "source_record_index": 51,
+        "primary_package": "P01",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "f28ce9abb2e15f5eaba1c2074c1e3af157b791db6559a25fe2af2cdb7df300d7"
+      },
+      {
+        "id": "W1-053",
+        "source_record_index": 52,
+        "primary_package": "P09",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "bac2b97d289ffbd78502c8a4eaaaa5745ee1860ac4d52e0dc68f01787726bbfc"
+      },
+      {
+        "id": "W1-054",
+        "source_record_index": 53,
+        "primary_package": "P02",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "1e69d0fba9a48a9fa63ab2b1653fdeb46f35e3e4625c0fcf114d098c6a2ba89a"
+      },
+      {
+        "id": "W1-055",
+        "source_record_index": 54,
+        "primary_package": "P09",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "813d2dda29b5fbc8776034f98cf3e7a3ce1e8760c8ba7dc16e3e2a535fe2e718"
+      },
+      {
+        "id": "W1-056",
+        "source_record_index": 55,
+        "primary_package": "P09",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "f85d2ee4e9773036451e440f4294c29c0a6bb4fa14eb069585378d2acdf033e5"
+      },
+      {
+        "id": "W1-057",
+        "source_record_index": 56,
+        "primary_package": "P01",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "f2141b3b48a57ff513f27d75843a85735c713cdb049d026446b2d31208451649"
+      },
+      {
+        "id": "W1-058",
+        "source_record_index": 57,
+        "primary_package": "P09",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "217ea7d6f99b00064904493edcb21cea5d826b499d7578e916de108569ce1c70"
+      },
+      {
+        "id": "W1-059",
+        "source_record_index": 58,
+        "primary_package": "P10",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "afcef1c7828000dc222fc63d07f08f72e68d360bc0674ea3099f4f13efde81ef"
+      },
+      {
+        "id": "W1-060",
+        "source_record_index": 59,
+        "primary_package": "P10",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "e51c6d461d672a34239423b42c23de6254edccdf84a367f627381896635c6e4a"
+      },
+      {
+        "id": "W1-061",
+        "source_record_index": 60,
+        "primary_package": "P02",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "2b3de2aa9c80b11aebd5a7dde2ef64254c43f62b3c40b6c2a1adf553bebccbc0"
+      },
+      {
+        "id": "W1-062",
+        "source_record_index": 61,
+        "primary_package": "P02",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "203e553ad3e8d139b932a8dda6c092b2d143d473c0c52478b23f369a9e08a2fa"
+      },
+      {
+        "id": "W1-063",
+        "source_record_index": 62,
+        "primary_package": "P02",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "c748b9ddc0ec7f3a788acd47f5f54b4813e0089e9f1aa342aff0de9ec1314f8d"
+      },
+      {
+        "id": "W1-064",
+        "source_record_index": 63,
+        "primary_package": "P10",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "bae8bfc5b3ef306c7fb6b05a52ff87c3c47ccfcaebe6e6a08097d63bb37e1766"
+      },
+      {
+        "id": "W1-065",
+        "source_record_index": 64,
+        "primary_package": "P04",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "cb8a77880fa84ad4186227981f3a24f853432826928e2eecf3d4a863e683a413"
+      },
+      {
+        "id": "W1-066",
+        "source_record_index": 65,
+        "primary_package": "P07",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "25c5e54eb5fbde7ef38dd61ddabe671cc42df6472117071db72df0f8c263169f"
+      },
+      {
+        "id": "W1-067",
+        "source_record_index": 66,
+        "primary_package": "P01",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "ab735adfee250644d9eb5ac24aabb39dacc9f70300a2fa45bacf57d5ad8cf91a"
+      },
+      {
+        "id": "W1-068",
+        "source_record_index": 67,
+        "primary_package": "P04",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "6e913cc38490f3fc04d4dd1c099e320015883eef4efc6a9c72e3a90e39e6446e"
+      },
+      {
+        "id": "W1-069",
+        "source_record_index": 68,
+        "primary_package": "P04",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "37b3ec0744a05107e953e3bf06e6252039a3156a956e3aa471f084dc0c517fb9"
+      },
+      {
+        "id": "W1-070",
+        "source_record_index": 69,
+        "primary_package": "P04",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "ef63ae38dd38ff52ae11723bdf37b3366e23c62a74b4ae98fd4bd314868e99b7"
+      },
+      {
+        "id": "W1-071",
+        "source_record_index": 70,
+        "primary_package": "P07",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "d26939d6a73c8365773093a3088f9a24ecd018cdf4a4d8f6ad10ce83675a7228"
+      },
+      {
+        "id": "W1-072",
+        "source_record_index": 71,
+        "primary_package": "P07",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "e391819b5a046bfde9bbe92292d3e22c1d25e8e80daf1ebaf3cc888f607ad73d"
+      },
+      {
+        "id": "W1-073",
+        "source_record_index": 72,
+        "primary_package": "P07",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "e5f4681b08856467597d4e6461da8b6775be70333572e7d9021c1d3d5f3970da"
+      },
+      {
+        "id": "W1-074",
+        "source_record_index": 73,
+        "primary_package": "P07",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "764427b8eb8b3a2aad1f8b4d105847d584e68c46be8ba74e4d98475dd09feb93"
+      },
+      {
+        "id": "W1-075",
+        "source_record_index": 74,
+        "primary_package": "P06",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "9c639027ac9209054c64f3c43b4a5ddf85df260b9952c985ea7d7d0ebc0aa6d0"
+      },
+      {
+        "id": "W1-076",
+        "source_record_index": 75,
+        "primary_package": "P06",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "24d881ac9c9d83c3bd2fd5c68abaeaf743761eda3923922133200b0272fd793a"
+      },
+      {
+        "id": "W1-077",
+        "source_record_index": 76,
+        "primary_package": "P08",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "8a0a1a2b4855aa1371aac1fb85f20cba0866f719be1c1d7c814ec88c00c5a107"
+      },
+      {
+        "id": "W1-078",
+        "source_record_index": 77,
+        "primary_package": "P06",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "064ee1d5999c8925d9f1e28375aaa61172663c71cdcd92212b3f5a74024a1a6e"
+      },
+      {
+        "id": "W1-079",
+        "source_record_index": 78,
+        "primary_package": "P06",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "f8b06940d00d86ab0c517477c5141b11969a229cc9838c78c6edc6ac850f4083"
+      },
+      {
+        "id": "W1-080",
+        "source_record_index": 79,
+        "primary_package": "P06",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "5ea618e0a5ea9f159d524dc103ffed4e02063ec236f0369b9ec160860d66e253"
+      },
+      {
+        "id": "W1-081",
+        "source_record_index": 80,
+        "primary_package": "P06",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "6610de6a059e9b57eeac5fbcf9fa45b5ea63f83c8f6bc7d792ee9c0b37658941"
+      },
+      {
+        "id": "W1-082",
+        "source_record_index": 81,
+        "primary_package": "P06",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "81be924eeecb056eb3d86e7ebf1cfdadd35399fc74851985ed54283f05720b89"
+      },
+      {
+        "id": "W1-083",
+        "source_record_index": 82,
+        "primary_package": "P06",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "bfcae4a8d7fdfee1bcd611909b2a3c8f1463ed9ba5f37286b28888cb4b006b61"
+      },
+      {
+        "id": "W1-084",
+        "source_record_index": 83,
+        "primary_package": "P06",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "8a214f8c34808a9ee5f57af2358b3ecc20dc627c4a20396f5f7ab86bdcdcec97"
+      },
+      {
+        "id": "W1-085",
+        "source_record_index": 84,
+        "primary_package": "P05",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "255d7ea186d9bc5a84e9684d9bad7fa17a9a38fdc9279907113041d68db008f3"
+      },
+      {
+        "id": "W1-086",
+        "source_record_index": 85,
+        "primary_package": "P08",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "d940532727e87d965c06190694d22ff25c69d7972ae774521c1edb70ae7315fd"
+      },
+      {
+        "id": "W1-087",
+        "source_record_index": 86,
+        "primary_package": "P08",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "ae51adfac75a779e09aa3ad5b39fbf258de492e34d0700c0a400065b2d0f8553"
+      },
+      {
+        "id": "W1-088",
+        "source_record_index": 87,
+        "primary_package": "P07",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "69fb175effbe84e4b0f0e8e958134ab01a5627bd54739a930cd0289f92f86a17"
+      },
+      {
+        "id": "W1-089",
+        "source_record_index": 88,
+        "primary_package": "P07",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "44ff49ab02023b7b16c1cbd8468b61d6e32375ef7116069d4dd235fd86cc8481"
+      },
+      {
+        "id": "W1-090",
+        "source_record_index": 89,
+        "primary_package": "P07",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "518604995e2f0579ddcb145f9b7e7b5f4c4489ab34045a5b9d538de9c90725a4"
+      },
+      {
+        "id": "W1-091",
+        "source_record_index": 90,
+        "primary_package": "P06",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "e95ca6c4b5dfba56061717b177882bc604d4d18406336c7407cca695488a1c63"
+      },
+      {
+        "id": "W1-092",
+        "source_record_index": 91,
+        "primary_package": "P10",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "23466f1f199061a288b69007f5669438c8354ee2db72dddd3a89e6ead529951f"
+      },
+      {
+        "id": "W1-093",
+        "source_record_index": 92,
+        "primary_package": "P02",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "c4f0319affdc489b28a41ed338ca2eeb9f0b81073aba71c40b4cc4fc1615aea2"
+      },
+      {
+        "id": "W1-094",
+        "source_record_index": 93,
+        "primary_package": "P09",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "49b6153fec5fb09437c590072fba93456959a3fab84df62cf44557a712627ec3"
+      },
+      {
+        "id": "W1-095",
+        "source_record_index": 94,
+        "primary_package": "P02",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "8edc7c595adb5f54deb98c9e0a92070383397ae767cb2fb105cd2bfaa75aaa88"
+      },
+      {
+        "id": "W1-096",
+        "source_record_index": 95,
+        "primary_package": "P11",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "e7e0b86bb79e6bc5534f8346da2a18918bebed66c9e49877c317f29c840d083b"
+      },
+      {
+        "id": "W1-097",
+        "source_record_index": 96,
+        "primary_package": "P11",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "01e7e0ed673d8cbc922dc2af0dd7807f5448ab9e545e704d0d12e477f351f101"
+      },
+      {
+        "id": "W1-098",
+        "source_record_index": 97,
+        "primary_package": "P11",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "720c368f10773bd60582464de7ce085490cf6305a0681ed6f6b3aa36c9547ddf"
+      },
+      {
+        "id": "W1-099",
+        "source_record_index": 98,
+        "primary_package": "P11",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "d8693609e17fafa8e95c38b86ab95219e00bf42f129ed45fb5963c8e34a04ce1"
+      },
+      {
+        "id": "W1-100",
+        "source_record_index": 99,
+        "primary_package": "P11",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "ad1baa35e290664c017f613494e72f3262e16acbc07186c99e6e4bb170bc4074"
+      },
+      {
+        "id": "W1-101",
+        "source_record_index": 100,
+        "primary_package": "P11",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "eb5f9f32a994f18190ba08e68aba1751234edbaccb280ccda60c65e09cc14d9d"
+      },
+      {
+        "id": "W1-102",
+        "source_record_index": 101,
+        "primary_package": "P03",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "9f7cb22f396087489121e78059fc3fbe6bf635e314c1a5948fd6d189a4543c27"
+      },
+      {
+        "id": "W1-103",
+        "source_record_index": 102,
+        "primary_package": "P03",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "7699284874ff6090fc90e05defe0f62cff668cf628be6d85e32a6b9d49fa067a"
+      },
+      {
+        "id": "W1-104",
+        "source_record_index": 103,
+        "primary_package": "P03",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "1338474b635956b2708944844a6b7f478396ea0b6595e8b0abba41ccfd9863d0"
+      },
+      {
+        "id": "W1-105",
+        "source_record_index": 104,
+        "primary_package": "P03",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "6f6463a241a64cd47ce67202480e3be0c2cc402cc78306769f5a5df25ba4bb74"
+      },
+      {
+        "id": "W1-106",
+        "source_record_index": 105,
+        "primary_package": "P10",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "64b90764a98b34c7d4b01115d17b13fe6aab6751d71e8b7b5f0d6d1b721a54b1"
+      },
+      {
+        "id": "W1-107",
+        "source_record_index": 106,
+        "primary_package": "P10",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "002afbb4b78f5734b70ffbc2d921efb23b2f9684dbfdcde8ab3ccf5d7ed87b4f"
+      },
+      {
+        "id": "W1-108",
+        "source_record_index": 107,
+        "primary_package": "P09",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "c384b7a5d5edfeeb58146a0841581a310a9f4f2b15b7fa423372260709393b2c"
+      },
+      {
+        "id": "W1-109",
+        "source_record_index": 108,
+        "primary_package": "P04",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "5a385796f58d9fae8b39269b6d4f15d30d98bd628ab8281b073cb37da39b8652"
+      },
+      {
+        "id": "W1-110",
+        "source_record_index": 109,
+        "primary_package": "P10",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "6c08ec824154331215a2f15ef9fbd395538549a13bd7996bb2617bffe8a37739"
+      },
+      {
+        "id": "W1-111",
+        "source_record_index": 110,
+        "primary_package": "P01",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "d8ed01aacc935a53395b32dd9e4311f4e3cb96eed768d84b47f3a94b865a474c"
+      },
+      {
+        "id": "W1-112",
+        "source_record_index": 111,
+        "primary_package": "P01",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "690031ee5d21c5c02c2d2da591f988c488ff832f4ef6bbe979cc7729e5a59eeb"
+      },
+      {
+        "id": "W1-113",
+        "source_record_index": 112,
+        "primary_package": "P10",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "f1e155f876e5d90291b7b1d6b4d2726efde3ad054cce6dabdd5a1a283a68ae53"
+      },
+      {
+        "id": "W1-114",
+        "source_record_index": 113,
+        "primary_package": "P06",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "144cc3b9e5a949ed1151ac4638a518068b263f49dcc59d9b6b1a4610f6e5e3ee"
+      },
+      {
+        "id": "W1-115",
+        "source_record_index": 114,
+        "primary_package": "P01",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "618a2c5fcd6cfaf822a91fb5b8ad98057a26e467ee22cd7e988491f5277e04fb"
+      },
+      {
+        "id": "W1-116",
+        "source_record_index": 115,
+        "primary_package": "P04",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "15bb1f3732f274bf9255a2b3a68fde7c3d0de9a8ba402846f0647ec3b4a9db4d"
+      },
+      {
+        "id": "W1-117",
+        "source_record_index": 116,
+        "primary_package": "P04",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "3f6df1e3ca889a9751261c918126ac6ae20f574dade05bba19eb72824c221fe2"
+      },
+      {
+        "id": "W1-118",
+        "source_record_index": 117,
+        "primary_package": "P07",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "01a806da0b288c2552e5efcd579c70479c935187c646f5d1fbadf09bedadc916"
+      },
+      {
+        "id": "W1-119",
+        "source_record_index": 118,
+        "primary_package": "P08",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "9015ed3e928009497a16b96a55807a03404b82197fffd8ae020ac0ceece75098"
+      },
+      {
+        "id": "W1-120",
+        "source_record_index": 119,
+        "primary_package": "P06",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "6b84314896565362b8fc38658f84413051dc3d783465492b2e281f187ea38a0e"
+      },
+      {
+        "id": "W1-121",
+        "source_record_index": 120,
+        "primary_package": "P05",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "dccc469431b2d9ce639d892cf046af9e9a2d42e1851cc2965e0c835c79f7b05f"
+      },
+      {
+        "id": "W1-122",
+        "source_record_index": 121,
+        "primary_package": "P08",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "04f8aa78839d803a4ee78741281d2060a9cf22ec58f20c029217c615d3c628df"
+      },
+      {
+        "id": "W1-123",
+        "source_record_index": 122,
+        "primary_package": "P08",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "f2bacc3f621dedd0177ff5e60363d0ad1b2d60ef35bd34c2c1117ada5fe4c579"
+      },
+      {
+        "id": "W1-124",
+        "source_record_index": 123,
+        "primary_package": "P01",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "ca4a426da3ece68ab79c86805906c6097000ecea95c7e9b076aefdc8103a229f"
+      },
+      {
+        "id": "W1-125",
+        "source_record_index": 124,
+        "primary_package": "P01",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "da0cbfeea165ede173718ab859b3ce7aa9312540ce66ecc68936f24b04cbfacf"
+      },
+      {
+        "id": "W1-126",
+        "source_record_index": 125,
+        "primary_package": "P02",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "541ec322805faa38d7691b1b0b607960a2a96b6ea8c5d31c6d43548c04bf167d"
+      },
+      {
+        "id": "W1-127",
+        "source_record_index": 126,
+        "primary_package": "P02",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "6fe3e27eecad0ac041396a5aa7aab1585f0d5942c363ec2463c9001b97544c42"
+      },
+      {
+        "id": "W1-128",
+        "source_record_index": 127,
+        "primary_package": "P02",
+        "original_metadata_reconciled": true,
+        "source_text_sha256": "ed0e6ef511b960289c16f04d8d6cc974d675432d37414ca1786289bdd2918fdd"
+      }
+    ],
+    "separate_refutation_ids": [
+      "W1-R001"
+    ],
+    "wave_2_status": "awaiting_report",
+    "wave_2_required": true
+  },
+  "limits": [
+    "No GPU, network, training or full pytest run launched by this review",
+    "No production, test, generated documentation, ledger or prior evidence file changed",
+    "Source and CPU evidence do not close target runtime gates",
+    "Original 128-count includes no LOCAL discoveries; W1-R001 refutation remains separate and wave2 remains pending"
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "status": "IDENTICAL_SHARED_TYPER_PACKAGE_FILES",
+  "published_wheels": [
+    {
+      "package": "typer",
+      "url": "https://files.pythonhosted.org/packages/c9/62/d4ba7afe2096d5659ec3db8b15d8665bdcb92a3c6ff0b95e99895b335a9c/typer-0.15.4-py3-none-any.whl",
+      "artifact": "typer-0.15.4-py3-none-any.whl",
+      "sha256": "eb0651654dcdea706780c466cf06d8f174405a659ffff8f163cfbfee98c0e173"
+    },
+    {
+      "package": "typer-slim",
+      "url": "https://files.pythonhosted.org/packages/b6/7f/44304801838529b1051e00fb30e1750cacd10da31da1f3b0fa0e96ae6045/typer_slim-0.15.4-py3-none-any.whl",
+      "artifact": "typer_slim-0.15.4-py3-none-any.whl",
+      "sha256": "6d134e1b048da37ceacc1ccc3ad28a6f966c8f0833cc1513cf12a21de0da8ed8"
+    }
+  ],
+  "shared_files": [
+    {
+      "path": "typer/__init__.py",
+      "sha256": "bc9f8b917100790568c716564364306d3941c93a66636a1fe805ca7e12c5c228"
+    },
+    {
+      "path": "typer/__main__.py",
+      "sha256": "6d8b7d7846a845059d7a3107143f11131f63c5511d669b44085b15ec5e3d2279"
+    },
+    {
+      "path": "typer/_completion_classes.py",
+      "sha256": "b0c5b7351b93c795d3434cdf3d596bca36889b2d1ca48cbd50a520a6e94f6ac0"
+    },
+    {
+      "path": "typer/_completion_shared.py",
+      "sha256": "e2514e5215d2af2d9b21947d6a5ed4ab7de2b69812ce0e9e6a0aae032b0d98e1"
+    },
+    {
+      "path": "typer/_typing.py",
+      "sha256": "9ec67e4ca70c94602daa259733ad2bf7baeab56319c5d8708ff6242e8f3f9de3"
+    },
+    {
+      "path": "typer/cli.py",
+      "sha256": "61a5e90ee77bc11b430ac26c5a41352f404f5a1a481c068f6ef64d2d327ce78c"
+    },
+    {
+      "path": "typer/colors.py",
+      "sha256": "7b8da3f2e079db484ba57e42ff47e247738ea0814c6e13b700366fbfa865015f"
+    },
+    {
+      "path": "typer/completion.py",
+      "sha256": "775022a6daec13051e48f41a200e688afe13dd7cb7303ab9a375488cadfd41e8"
+    },
+    {
+      "path": "typer/core.py",
+      "sha256": "faddba3009c09f7ff042087a5092d8f7f7b3a37169d8abd0cc3a24504ecfd320"
+    },
+    {
+      "path": "typer/main.py",
+      "sha256": "99dbeda826f852bb377bb587567c316508a8a24768d3dc5950f803bf53b923b1"
+    },
+    {
+      "path": "typer/models.py",
+      "sha256": "43abfd05062eb4d947e388bb7e7d186d9f8e7915ec8226f5a3fb51e204e6aa8c"
+    },
+    {
+      "path": "typer/params.py",
+      "sha256": "311542c113f334c90e75853a54d54691ac17fe00286336e209f2ffb58711eb1f"
+    },
+    {
+      "path": "typer/py.typed",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "typer/rich_utils.py",
+      "sha256": "c137aa1ee120b8c8533fb037c4df8cdcba517db0440dcf0e8d4b4c43f65c3ffe"
+    },
+    {
+      "path": "typer/testing.py",
+      "sha256": "31bfc7a939293f0db8aac558c4242b0c9a63abfa0e1e582a6696ae5a87f192ad"
+    },
+    {
+      "path": "typer/utils.py",
+      "sha256": "1b4a9d7435f4e98b47b8c24d0a68fe7eb2c96246317d46bb8b03ba28e4d7d852"
+    }
+  ],
+  "count": 16,
+  "limitation": "Both distributions own the same package paths. Matching0.15.4 wheels are byte-identical for all shared package files; this does not make separate uninstall operations safe or imply one depends on the other."
+}

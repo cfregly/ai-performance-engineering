@@ -1,0 +1,22 @@
+{
+  "command": [
+    "/opt/miniconda3/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-rs",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_blackwell_gemm_optimizations_lab.py",
+    "tests/test_flashattention_gluon_runtime.py",
+    "tests/test_labs_schedule_and_entrypoints.py",
+    "tests/test_min_speedup_contracts.py",
+    "tests/test_occupancy_tuning.py",
+    "--junitxml=/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/optional-dependency-collection/pytest-after.xml"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "environment": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+  },
+  "exit_code": 0
+}

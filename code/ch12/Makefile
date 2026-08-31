@@ -61,17 +61,21 @@ optimized_dynamic_parallelism_device_verify$(SUFFIX): optimized_dynamic_parallel
 	$(NVCC) $(NVCC_FLAGS) -rdc=true -DVERIFY=1 -o $@ $< -lcudadevrt $(NVCC_LIBS) $(CUDA_NVTX_LDFLAGS)
 
 # Architecture targets
-b200: ARCH=sm_100
-b200: clean all
+b200:
+	$(MAKE) ARCH=sm_100 clean
+	$(MAKE) ARCH=sm_100 all
 
-gb10: ARCH=sm_121
-gb10: clean all
+gb10:
+	$(MAKE) ARCH=sm_121 clean
+	$(MAKE) ARCH=sm_121 all
 
-b300: ARCH=sm_103
-b300: clean all
+b300:
+	$(MAKE) ARCH=sm_103 clean
+	$(MAKE) ARCH=sm_103 all
 
-gb300: ARCH=sm_103
-gb300: clean all
+gb300:
+	$(MAKE) ARCH=sm_103 clean
+	$(MAKE) ARCH=sm_103 all
 
 compare: clean
 	@set -e; for arch in $(ARCH_LIST); do \
@@ -96,3 +100,6 @@ profile-all: profile-nsys profile-ncu profile-hta
 clean:
 	rm -f *_sm100 *_sm103 *_sm120 *_sm121 *_sm122 *_sm123 *.o *.so *.a
 	rm -f nsys_* ncu_* hta_* perf_* comprehensive_*
+
+# Rebuild both graph variants when their workload/reference changes.
+baseline_cuda_graphs$(SUFFIX) baseline_cuda_graphs_verify$(SUFFIX) optimized_cuda_graphs$(SUFFIX) optimized_cuda_graphs_verify$(SUFFIX): cuda_graphs_workload.cuh

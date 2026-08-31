@@ -1,0 +1,3 @@
+All checks passed!
+/opt/miniconda3/lib/python3.12/site-packages/mlx/core/__init__.pyi:1653: error: Invalid syntax  [syntax]
+Found 1 error in 1 file (errors prevented further checking)

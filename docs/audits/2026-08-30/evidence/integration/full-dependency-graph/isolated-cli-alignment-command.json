@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+    "-m",
+    "pip",
+    "install",
+    "--no-cache-dir",
+    "--only-binary",
+    ":all:",
+    "--index-url",
+    "https://pypi.org/simple",
+    "--report",
+    "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/full-dependency-graph/isolated-cli-alignment-report.json",
+    "fsspec==2024.6.1",
+    "setuptools==80.10.2"
+  ],
+  "exit_code": 0,
+  "scope": "Align existing CLI venv components to resolvedfullgraph; does not installcompletegraph."
+}

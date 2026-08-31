@@ -61,7 +61,7 @@ TOOLS: Dict[str, ToolSpec] = {
     ),
     "dump-hw": ToolSpec(
         name="dump-hw",
-        script_path=REPO_ROOT / "core" / "scripts" / "utilities" / "dump_hardware_capabilities.py",
+        script_path=REPO_ROOT / "scripts" / "utilities" / "dump_hardware_capabilities.py",
         description="Dump hardware capability JSON.",
     ),
     "probe-hw": ToolSpec(

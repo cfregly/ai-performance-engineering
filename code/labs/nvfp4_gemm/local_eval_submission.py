@@ -64,6 +64,18 @@ def _build_data_batch(reference_mod: Any, case: dict[str, int | str], *, count: 
     return out
 
 
+def _verify_submission(sample: Any, submission_mod: Any, reference_mod: Any) -> tuple[bool, str]:
+    """Run the real checker with independent inputs and a stable output snapshot.
+
+    Submissions and references may both mutate/return their C buffer. Neither
+    buffer nor a reused output workspace may become the reference's destination.
+    """
+    reference_data = _clone_tree(sample)
+    submission_data = _clone_tree(sample)
+    got = _clone_tree(submission_mod.custom_kernel(submission_data))
+    return reference_mod.check_implementation(reference_data, got)
+
+
 def _run_case(
     submission_mod: Any,
     reference_mod: Any,
@@ -81,9 +93,7 @@ def _run_case(
     if verify:
         count = min(max(1, verify_count), len(data_batch))
         for idx in range(count):
-            data = _clone_tree(data_batch[idx])
-            got = submission_mod.custom_kernel(data)
-            ok, msg = reference_mod.check_implementation(data, got)
+            ok, msg = _verify_submission(data_batch[idx], submission_mod, reference_mod)
             if not ok:
                 raise RuntimeError(f"{case['name']} verify failed at sample {idx}: {msg}")
         torch.cuda.synchronize()

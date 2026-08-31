@@ -1,16 +1,15 @@
-// TMA (Tensor Memory Accelerator) Test for Blackwell
-// Tests TMA async bulk copy operations for high-bandwidth data movement
+// Shared-memory scalar GEMM controls (legacy test_tma file/target name).
+// No TMA, asynchronous copy, tensor-core, or TMEM instruction is issued.
 
 #include <cuda_runtime.h>
-#include <cuda.h>
-#include <cuda/barrier>
-#include <cooperative_groups.h>
-#include <stdio.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cmath>
 
-// TMA descriptor (simplified representation)
-// On real hardware, use cuTensorMapCreate or CUTLASS TMA utilities
+#define CUDA_CHECK(call) do { const cudaError_t err = (call); if (err != cudaSuccess) { \
+  std::fprintf(stderr, "%s: %s\n", #call, cudaGetErrorString(err)); std::exit(1); } } while (0)
 
-// Basic TMA-style async copy using cp.async.bulk
+// Single-stage scalar shared-memory tiling.
 template<int TILE_M, int TILE_N, int TILE_K>
 __global__ void tma_gemm_kernel(
     const float* __restrict__ A,
@@ -18,15 +17,12 @@ __global__ void tma_gemm_kernel(
     float* __restrict__ C,
     int M, int N, int K
 ) {
-    namespace cg = cooperative_groups;
+    static_assert(TILE_M * TILE_N <= 1024, "block exceeds CUDA thread limit");
+    static_assert(TILE_K <= TILE_M && TILE_K <= TILE_N, "tile loads require enough x/y threads");
     
-    // Shared memory for TMA staging
+    // Shared memory for tiled scalar computation
     __shared__ float smem_A[TILE_M][TILE_K];
     __shared__ float smem_B[TILE_K][TILE_N];
-    
-    // Use simple synchronization instead of barriers
-    // Barrier for async operations would require static initialization
-    // which is not supported in CUDA 13.0 for device code
     
     int bx = blockIdx.x;
     int by = blockIdx.y;
@@ -42,8 +38,7 @@ __global__ void tma_gemm_kernel(
     int num_k_tiles = (K + TILE_K - 1) / TILE_K;
     
     for (int kt = 0; kt < num_k_tiles; ++kt) {
-        // TMA-style async bulk copy from global to shared memory
-        // In real TMA, this would use special TMA instructions
+        // Ordinary thread-issued global loads into shared memory.
         
         // Load A tile
         if (ty < TILE_M && tx < TILE_K) {
@@ -86,7 +81,7 @@ __global__ void tma_gemm_kernel(
     }
 }
 
-// Advanced TMA with multi-stage pipeline
+// Multi-buffer scalar control; loads are synchronous, not TMA.
 template<int TILE_M, int TILE_N, int TILE_K, int NUM_STAGES>
 __global__ void tma_pipelined_gemm_kernel(
     const float* __restrict__ A,
@@ -94,12 +89,12 @@ __global__ void tma_pipelined_gemm_kernel(
     float* __restrict__ C,
     int M, int N, int K
 ) {
-    // Multi-stage shared memory buffers (reduced size for B200)
-    __shared__ float smem_A[2][TILE_M][TILE_K];  // Use 2 stages instead of NUM_STAGES
-    __shared__ float smem_B[2][TILE_K][TILE_N];
-    
-    // Use simple synchronization
-    const int ACTUAL_STAGES = 2;
+    static_assert(TILE_M * TILE_N <= 1024, "block exceeds CUDA thread limit");
+    static_assert(TILE_K <= TILE_M && TILE_K <= TILE_N, "tile loads require enough x/y threads");
+    static_assert(NUM_STAGES > 0, "at least one buffer is required");
+    __shared__ float smem_A[NUM_STAGES][TILE_M][TILE_K];
+    __shared__ float smem_B[NUM_STAGES][TILE_K][TILE_N];
+    const int ACTUAL_STAGES = NUM_STAGES;
     
     int bx = blockIdx.x;
     int by = blockIdx.y;
@@ -192,7 +187,7 @@ __global__ void tma_pipelined_gemm_kernel(
 
 bool verify_result(const float* C, int M, int N, float expected) {
     for (int i = 0; i < M * N; ++i) {
-        if (fabs(C[i] - expected) > 1e-3) {
+        if (!std::isfinite(C[i]) || fabs(C[i] - expected) > 1e-3) {
             printf("Verification failed at index %d: expected %f, got %f\n", 
                    i, expected, C[i]);
             return false;
@@ -202,33 +197,23 @@ bool verify_result(const float* C, int M, int N, float expected) {
 }
 
 int main() {
-    printf("=== Blackwell TMA (Tensor Memory Accelerator) Test ===\n\n");
+    printf("=== Shared-memory scalar GEMM controls (legacy test_tma target) ===\n\n");
     
     // Check compute capability
     cudaDeviceProp prop;
-    cudaGetDeviceProperties(&prop, 0);
+    CUDA_CHECK(cudaGetDeviceProperties(&prop, 0));
     printf("Device: %s\n", prop.name);
     printf("Compute Capability: %d.%d\n", prop.major, prop.minor);
     
-    if (prop.major < 10) {
-        printf("TMA requires Blackwell (SM 10.0+). This device is SM %d.%d\n", 
-               prop.major, prop.minor);
-        return 1;
-    }
-    
-    printf("TMA supported: YES\n");
-    printf("TMA Features:\n");
-    printf("  - Async bulk tensor copy\n");
-    printf("  - Hardware-accelerated data movement\n");
-    printf("  - Multi-dimensional tensor addressing\n");
-    printf("  - Reduced register pressure\n\n");
-    
+    printf("This control uses ordinary shared-memory loads and scalar FP32 arithmetic.\n");
+    printf("It does not exercise TMA; TMA was introduced with Hopper (SM90).\n\n");
+
     // Test configuration
     const int M = 2048;
     const int N = 2048;
     const int K = 2048;
-    const int TILE_M = 64;
-    const int TILE_N = 64;
+    const int TILE_M = 32;
+    const int TILE_N = 32;
     const int TILE_K = 32;
     const int NUM_STAGES = 4;
     
@@ -243,65 +228,70 @@ int main() {
     
     // Allocate device memory
     float *d_A, *d_B, *d_C;
-    cudaMalloc(&d_A, M * K * sizeof(float));
-    cudaMalloc(&d_B, K * N * sizeof(float));
-    cudaMalloc(&d_C, M * N * sizeof(float));
+    CUDA_CHECK(cudaMalloc(&d_A, M * K * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_B, K * N * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_C, M * N * sizeof(float)));
     
-    cudaMemcpy(d_A, h_A, M * K * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_B, h_B, K * N * sizeof(float), cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(d_A, h_A, M * K * sizeof(float), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_B, h_B, K * N * sizeof(float), cudaMemcpyHostToDevice));
     
-    // Test 1: Basic TMA GEMM
-    printf("Test 1: Basic TMA GEMM\n");
+    // Test 1: Single-buffer scalar GEMM
+    printf("Test 1: Single-buffer scalar GEMM\n");
     dim3 block1(TILE_N, TILE_M);
     dim3 grid1((N + TILE_N - 1) / TILE_N, (M + TILE_M - 1) / TILE_M);
     
     cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
+    CUDA_CHECK(cudaEventCreate(&start));
+    CUDA_CHECK(cudaEventCreate(&stop));
     
-    cudaEventRecord(start);
+    CUDA_CHECK(cudaEventRecord(start));
     tma_gemm_kernel<TILE_M, TILE_N, TILE_K><<<grid1, block1>>>(d_A, d_B, d_C, M, N, K);
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaEventRecord(stop));
+    CUDA_CHECK(cudaEventSynchronize(stop));
     
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
         printf("Kernel launch failed: %s\n", cudaGetErrorString(err));
+        return 1;
     }
     
     float ms1 = 0;
-    cudaEventElapsedTime(&ms1, start, stop);
+    CUDA_CHECK(cudaEventElapsedTime(&ms1, start, stop));
     
-    cudaMemcpy(h_C, d_C, M * N * sizeof(float), cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpy(h_C, d_C, M * N * sizeof(float), cudaMemcpyDeviceToHost));
     
     float expected = (float)K;
     bool passed1 = verify_result(h_C, M, N, expected);
     printf("  Time: %.3f ms\n", ms1);
     printf("  Result: %s\n\n", passed1 ? "PASSED" : "FAILED");
     
-    // Test 2: TMA with Multi-Stage Pipeline
-    printf("Test 2: TMA with %d-Stage Pipeline\n", NUM_STAGES);
-    cudaMemset(d_C, 0, M * N * sizeof(float));
+    // Test 2: Scalar GEMM with multiple buffers
+    printf("Test 2: Scalar GEMM with %d buffers\n", NUM_STAGES);
+    CUDA_CHECK(cudaMemset(d_C, 0, M * N * sizeof(float)));
     
-    cudaEventRecord(start);
+    CUDA_CHECK(cudaEventRecord(start));
     tma_pipelined_gemm_kernel<TILE_M, TILE_N, TILE_K, NUM_STAGES><<<grid1, block1>>>(d_A, d_B, d_C, M, N, K);
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaEventRecord(stop));
+    CUDA_CHECK(cudaEventSynchronize(stop));
     
     err = cudaGetLastError();
     if (err != cudaSuccess) {
         printf("Kernel launch failed: %s\n", cudaGetErrorString(err));
+        return 1;
     }
     
     float ms2 = 0;
-    cudaEventElapsedTime(&ms2, start, stop);
+    CUDA_CHECK(cudaEventElapsedTime(&ms2, start, stop));
     
-    cudaMemcpy(h_C, d_C, M * N * sizeof(float), cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpy(h_C, d_C, M * N * sizeof(float), cudaMemcpyDeviceToHost));
     
     bool passed2 = verify_result(h_C, M, N, expected);
     printf("  Time: %.3f ms\n", ms2);
     printf("  Result: %s\n", passed2 ? "PASSED" : "FAILED");
-    printf("  Speedup: %.2fx\n\n", ms1 / ms2);
+    if (!passed1 || !passed2 || !std::isfinite(ms1) || !std::isfinite(ms2) || ms1 <= 0 || ms2 <= 0) return 1;
+    if (ms2 > 0) printf("  Verified control time ratio: %.2fx\n\n", ms1 / ms2);
     
     // Performance metrics
     double flops = 2.0 * M * N * K;
@@ -309,29 +299,29 @@ int main() {
     double tflops2 = flops / (ms2 * 1e9);
     
     printf("Performance:\n");
-    printf("  Basic TMA: %.2f TFLOPS\n", tflops1);
-    printf("  Pipelined TMA: %.2f TFLOPS\n", tflops2);
+    printf("  Single-buffer scalar: %.2f TFLOPS\n", tflops1);
+    printf("  Multi-buffer scalar: %.2f TFLOPS\n", tflops2);
     
     // Bandwidth estimation
     double bytes_transferred = (M * K + K * N + M * N) * sizeof(float);
     double bw1 = bytes_transferred / (ms1 * 1e6); // GB/s
     double bw2 = bytes_transferred / (ms2 * 1e6);
     
-    printf("\nBandwidth:\n");
-    printf("  Basic TMA: %.2f GB/s\n", bw1);
-    printf("  Pipelined TMA: %.2f GB/s\n", bw2);
+    printf("\nIdeal minimum-traffic rate (not measured memory bandwidth):\n");
+    printf("  Single-buffer scalar: %.2f GB/s\n", bw1);
+    printf("  Multi-buffer scalar: %.2f GB/s\n", bw2);
     
     // Cleanup
-    cudaFree(d_A);
-    cudaFree(d_B);
-    cudaFree(d_C);
+    CUDA_CHECK(cudaFree(d_A));
+    CUDA_CHECK(cudaFree(d_B));
+    CUDA_CHECK(cudaFree(d_C));
     delete[] h_A;
     delete[] h_B;
     delete[] h_C;
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
+    CUDA_CHECK(cudaEventDestroy(start));
+    CUDA_CHECK(cudaEventDestroy(stop));
     
-    printf("\n=== TMA Test Complete ===\n");
+    printf("\n=== Shared-memory control complete ===\n");
     printf("Status: %s\n", (passed1 && passed2) ? "ALL TESTS PASSED" : "SOME TESTS FAILED");
     
     return (passed1 && passed2) ? 0 : 1;

@@ -35,7 +35,9 @@ __device__ inline float dot_product(const float* q, const float* k, int head_dim
         }
         __syncthreads();
     }
-    return smem[0];
+    const float result = smem[0];
+    __syncthreads(); // Readers finish before the next token reuses the reduction buffer.
+    return result;
 }
 
 __global__ void persistent_decode_kernel(
@@ -73,6 +75,11 @@ __global__ void persistent_decode_kernel(
 
 void persistent_decode_cuda(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor out, int blocks) {
     TORCH_CHECK(q.is_cuda(), "q must be CUDA tensor");
+    TORCH_CHECK(q.dim() == 3 && k.dim() == 3 && v.dim() == 3, "q/k/v must be rank 3");
+    TORCH_CHECK(k.device() == q.device() && v.device() == q.device() && out.device() == q.device(), "All tensors must share the CUDA device");
+    TORCH_CHECK(q.is_contiguous() && k.is_contiguous() && v.is_contiguous() && out.is_contiguous(), "All tensors must be contiguous");
+    TORCH_CHECK(k.scalar_type() == torch::kFloat && v.scalar_type() == torch::kFloat, "k/v must be float32");
+    TORCH_CHECK(blocks > 0, "blocks must be positive");
     TORCH_CHECK(q.scalar_type() == torch::kFloat, "q must be float32");
     TORCH_CHECK(q.sizes() == k.sizes() && q.sizes() == v.sizes(), "q/k/v shapes must match");
     TORCH_CHECK(out.is_cuda(), "out must be CUDA tensor");
@@ -81,6 +88,7 @@ void persistent_decode_cuda(torch::Tensor q, torch::Tensor k, torch::Tensor v, t
     const int batch = static_cast<int>(q.size(0));
     const int seq_len = static_cast<int>(q.size(1));
     const int head_dim = static_cast<int>(q.size(2));
+    TORCH_CHECK(batch > 0 && seq_len > 0 && head_dim > 0, "Input dimensions must be positive");
     
     TORCH_CHECK(head_dim <= MAX_HEAD_DIM, "head_dim exceeds MAX_HEAD_DIM");
     TORCH_CHECK(seq_len <= MAX_SEQ_LEN, "seq_len exceeds MAX_SEQ_LEN");

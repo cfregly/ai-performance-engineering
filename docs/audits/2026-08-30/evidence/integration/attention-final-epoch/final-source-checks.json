@@ -1,0 +1,12 @@
+{
+  "python_compile": [
+    "run_cuda_acceptance.py",
+    "test_gate_controls.py"
+  ],
+  "source_manifest_files": 115,
+  "all_manifest_hashes_current": true,
+  "manifest_matches_actual_preflight": true,
+  "entire_old_attention_evidence_unchanged": true,
+  "original_retained_files": 22,
+  "scope": "Python/source identity and CPU controls only; no NVCC or GPU validation"
+}

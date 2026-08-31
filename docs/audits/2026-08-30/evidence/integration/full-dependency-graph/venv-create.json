@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "/opt/miniconda3/bin/python",
+    "-m",
+    "venv",
+    "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv"
+  ],
+  "exit_code": 0,
+  "task_root": "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8",
+  "created_utc": "2026-08-31T00:47:08.276919+00:00"
+}

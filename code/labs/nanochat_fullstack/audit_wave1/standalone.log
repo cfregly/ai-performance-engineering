@@ -1,0 +1,6 @@
+PASS: identical-weight CTA hint parity on CPU SDPA; no clustered kernel claimed
+SKIP test_cta_backend: requires a real CUDA device; CPU does not qualify this optimization
+SKIP test_persistent_decode: requires a real CUDA device; CPU does not qualify this optimization
+SKIP test_integration: requires a real CUDA device; CPU does not qualify this optimization
+1 checks passed; 3 capability checks skipped
+CUDA qualification is incomplete; skipped checks are not passes

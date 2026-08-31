@@ -1,0 +1,89 @@
+{
+  "timestamp_utc": "2026-08-30T22:57:09.143259+00:00",
+  "scope": [
+    "W1-028",
+    "W1-078",
+    "W1-114"
+  ],
+  "baseline_revision": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "branch": "codex/audit-remediation-20260830",
+  "source_sha256": {
+    "code/labs/dynamic_router/vllm_runner.py": "7c7cf9da7b02d9889aa71d7cc08362b3c7fa5c3100add0ecf05ccdd58f42aeee",
+    "code/labs/moe_cuda/optimized_kv_transfer.py": "b6aec5d1d013bd3411a5b366a819dd341a18df2accbfec590be86d48b53e63f0",
+    "code/labs/cache_aware_disagg_inference/cache_aware_disagg_multigpu_common.py": "b64156345e2f9abfc3eaf51572ee0036c6a80c7d8b9a8cef535f56d0303e546f",
+    "code/tests/test_audit_wave1_router_telemetry.py": "7fc042338bc7d7b648c5f82152fd5eb8fc39576adf6eeb590bc186a2eef90b2a",
+    "code/tests/test_audit_wave1_kv_overlap.py": "072ba976bb99fa44327d4d908478c5e35051685455b85fdc5c72be360383ee48",
+    "code/tests/test_audit_wave1_kv_handoff.py": "2d2525ce5783dd9f9d3967f602de3d85078ff4706dde47723f4b32f7149afddb"
+  },
+  "environment": {
+    "python": "3.12.2",
+    "torch": "2.8.0",
+    "cuda_available": false,
+    "platform": "macOS-26.5.2-arm64-arm-64bit"
+  },
+  "mechanisms": {
+    "W1-028": "Separate first-token milliseconds from tokens-per-poll-step EMA; count cumulative RequestOutput token deltas once; share parser across standard and V1 loops. Observe TTFT after engine output processing; omit unobserved latency and decay throughput on idle polls. Existing tpot field remains explicitly a throughput proxy, not milliseconds/token.",
+    "W1-078": "Compute waits for prior copy completion and caller-stream input updates; warmup uses same compute-event-copy dependency; create streams during setup on selected device, synchronize before releasing owned buffers. Remove unused double-buffer depth claim.",
+    "W1-114": "Pack the logical batch/cache-prefix view before P2P send, matching contiguous receive shape."
+  },
+  "attempts": [
+    {
+      "log": "handoff-before.txt",
+      "exit_code": 1,
+      "result": "1 failed,1 NCCL skip: actual Gloo rejects noncontiguous source at dist.send."
+    },
+    {
+      "log": "handoff-after.txt",
+      "exit_code": 0,
+      "result": "12 passed,5 skips across new handoff + existing cache-aware tests."
+    },
+    {
+      "log": "router-original-mechanisms.json",
+      "result": "Original actual Python parser emits cumulative 1,2,3 counts; corrected parser emits1,1,1; original AST binds throughput to both snapshot fields. Payload fixture only, no vLLM runtime."
+    },
+    {
+      "log": "router-after.txt",
+      "exit_code": 0,
+      "result": "4 passed,1 actual2GPU/vLLM/local-model skip."
+    },
+    {
+      "log": "integration.txt",
+      "cwd": "code",
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_audit_wave1_router_telemetry.py tests/test_audit_wave1_kv_overlap.py tests/test_audit_wave1_kv_handoff.py tests/test_cache_aware_disagg_lab.py -q -p no:cacheprovider",
+      "exit_code": 0,
+      "result": "17 passed,9 skips in4.00s."
+    },
+    {
+      "check": "selected Ruff E9,F63,F7,F82,B006,B023 and git diff --check",
+      "result": "pass"
+    }
+  ],
+  "upstream_contracts": [
+    {
+      "url": "https://raw.githubusercontent.com/vllm-project/vllm/v0.16.0/vllm/sampling_params.py",
+      "verified": "RequestOutputKind.CUMULATIVE is the default; explicitly selected for both wrapper entrypoints."
+    },
+    {
+      "url": "https://raw.githubusercontent.com/vllm-project/vllm/v0.16.0/vllm/outputs.py",
+      "verified": "RequestOutput/CompletionOutput cumulative token payload contract."
+    }
+  ],
+  "hardware_acceptance_pending": [
+    "Actual NCCL test repeats36 handoffs across batch1/2/3,length1/3/8,active/warm sources and both directions; CPU Gloo is not a substitute.",
+    "Three actual CUDA stream cases repeat32 iterations with changing exactly representable input values, real consumer delay and full-output exact CPU references. No CUDA race reproduction occurred locally.",
+    "Real2GPU vLLM gate requires explicit AISP_AUDIT_VLLM_MODEL local directory and pinned serving stack. No model download or engine launch occurred."
+  ],
+  "limitations": [
+    "Original W1-078 fixed-input workload is byte-identical across calls, so missing back-pressure does not establish observable corruption in that original workload. Changed-input gate is prepared, not run.",
+    "NCCL noncontiguous behavior is version-dependent; local Gloo rejection does not establish whether target NCCL throws or transmits incorrect storage order.",
+    "Existing benchmark verification samples for KV overlap remain small; the new separate acceptance gate compares full outputs. No new speedup or historical result is accepted."
+  ],
+  "evidence_sha256": {
+    "router-original-mechanisms.json": "d15c1c33bf6e87a40392a4c402bd35876f4f061dc90d6a6227ed486289492ca1",
+    "original-router-mechanisms.py": "c69140f342c0c68bbc352fd7ed0b76a68459732c483a4db2ace177588831d832",
+    "handoff-after.txt": "136942906df7a483c180666355dbeb31bb6f4ff1810a2beb3a11555f40905514",
+    "handoff-before.txt": "29761c9e54347756c283930fe7792e41c9176bc53c9674c7abd7f94b34f5f2ae",
+    "router-after.txt": "722124a277d452d2ce03807f49a5569dc7be30e0d80f41bcdd7d597cdb52e2f3",
+    "integration.txt": "8b6d43e797e44d8fb1fac9908bccaa1f2eb1bd3ca5a4fe84c9f4cc93854f01b4"
+  }
+}

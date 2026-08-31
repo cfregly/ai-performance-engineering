@@ -3,7 +3,7 @@
  * ==========================================
  * 
  * Uses actual TMA multicast to broadcast B tiles to all CTAs in a cluster.
- * Only the cluster leader issues TMA loads for B, other CTAs receive via multicast.
+ * Each CTA loads a distinct half of B and multicasts it to both CTAs.
  * 
  * Key concepts:
  * - SM90_TMA_LOAD_MULTICAST for B tiles
@@ -83,11 +83,14 @@ gemm_tma_multicast(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
 
   // Get cluster info
   uint32_t cluster_rank = cute::block_rank_in_cluster();
-  bool is_cluster_leader = (cluster_rank == 0);
 
   // Each CTA in cluster processes different M tiles, same N tile
   int tile_m = blockIdx.x;
   int tile_n = blockIdx.y;
+  // Padded CTAs still participate in the pipeline/cluster protocol. Only
+  // real tiles may access the output allocation in the epilogue.
+  const bool output_tile_valid = tile_m < grid_m && tile_n < grid_n;
+
 
   auto mma_coord = make_coord(tile_m, tile_n, _);
 
@@ -147,45 +150,51 @@ gemm_tma_multicast(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   // TMA partitions
   auto [tAgA_0, tAsA_0] = tma_partition(tma_atom_A, Int<0>{}, Layout<_1>{},
       group_modes<0,3>(tCsA_0), group_modes<0,3>(tCgCoordA));
-  auto [tBgB_0, tBsB_0] = tma_partition(tma_atom_B, Int<0>{}, Layout<_1>{},
+  auto [tBgB_0, tBsB_0] = tma_partition(tma_atom_B, cluster_rank, Layout<_2>{},
       group_modes<0,3>(tCsB_0), group_modes<0,3>(tCgCoordB));
   auto [tAgA_1, tAsA_1] = tma_partition(tma_atom_A, Int<0>{}, Layout<_1>{},
       group_modes<0,3>(tCsA_1), group_modes<0,3>(tCgCoordA));
-  auto [tBgB_1, tBsB_1] = tma_partition(tma_atom_B, Int<0>{}, Layout<_1>{},
+  auto [tBgB_1, tBsB_1] = tma_partition(tma_atom_B, cluster_rank, Layout<_2>{},
       group_modes<0,3>(tCsB_1), group_modes<0,3>(tCgCoordB));
   auto [tAgA_2, tAsA_2] = tma_partition(tma_atom_A, Int<0>{}, Layout<_1>{},
       group_modes<0,3>(tCsA_2), group_modes<0,3>(tCgCoordA));
-  auto [tBgB_2, tBsB_2] = tma_partition(tma_atom_B, Int<0>{}, Layout<_1>{},
+  auto [tBgB_2, tBsB_2] = tma_partition(tma_atom_B, cluster_rank, Layout<_2>{},
       group_modes<0,3>(tCsB_2), group_modes<0,3>(tCgCoordB));
   auto [tAgA_3, tAsA_3] = tma_partition(tma_atom_A, Int<0>{}, Layout<_1>{},
       group_modes<0,3>(tCsA_3), group_modes<0,3>(tCgCoordA));
-  auto [tBgB_3, tBsB_3] = tma_partition(tma_atom_B, Int<0>{}, Layout<_1>{},
+  auto [tBgB_3, tBsB_3] = tma_partition(tma_atom_B, cluster_rank, Layout<_2>{},
       group_modes<0,3>(tCsB_3), group_modes<0,3>(tCgCoordB));
 
-  int tma_bytes_A = sizeof(make_tensor_like(tAsA_0));
-  int tma_bytes_B = sizeof(make_tensor_like(tBsB_0));
+  // Each CTA receives its full A tile and BOTH B slices. Count full logical
+  // tiles, independent of the per-CTA TMA partition's iterator/layout shape.
+  int tma_bytes_A = sizeof(TypeA) * size(tCsA_0);
+  int tma_bytes_B = sizeof(TypeB) * size(tCsB_0);
   int tma_bytes = tma_bytes_A + tma_bytes_B;
 
   // Initialize barriers
-  // For multicast: producer arrival count = 1 (leader), consumer = 2 (both CTAs)
+  // Each full barrier has one local expect-tx arrival; each empty barrier
+  // receives one MMA-completion arrival from each of the two consumer CTAs.
   if (elect_one_warp && elect_one_thr) {
     for (int s = 0; s < kStages; ++s) {
       cute::initialize_barrier(storage.full_barrier[s], 1);
-      cute::initialize_barrier(storage.empty_barrier[s], 1);
+      cute::initialize_barrier(storage.empty_barrier[s], 2);
     }
     cute::initialize_barrier(storage.mma_barrier, 1);
   }
+  cutlass::arch::fence_barrier_init();
   __syncthreads();
+  // A CTA may target the peer's barriers and shared memory only after
+  // both CTAs have initialized them and published initialization.
+  cute::cluster_sync();
 
   int num_k_tiles = size<3>(tCgA);
   int full_phase[kStages] = {0, 0, 0, 0};
+  int empty_phase[kStages] = {};
   int mma_phase = 0;
 
-  // Issue TMA with multicast for B
-  // - ALL CTAs load A
-  // - Only cluster LEADER issues B load with multicast mask
-  // - Hardware delivers B to ALL CTAs in mask
-  // - All CTAs' barriers need to account for receiving A + B
+  // Every CTA loads A and one distinct B slice, multicast to both CTAs.
+  // Full-B completion therefore depends on BOTH producers passing their
+  // previous empty-phase wait before either consumer can commit a new phase.
   auto issue_tma = [&](int stage, int k_tile) {
     // All CTAs expect to receive both A and B bytes
     // For multicast: TMA delivers B to all targeted CTAs
@@ -195,28 +204,19 @@ gemm_tma_multicast(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
       case 0:
         // Everyone loads A
         copy(tma_atom_A.with(storage.full_barrier[0]), tAgA_0(_, k_tile), tAsA_0);
-        // Only leader issues B multicast - delivers to ALL CTAs
-        if (is_cluster_leader) {
-          copy(tma_atom_B.with(storage.full_barrier[0], mcast_mask_b), tBgB_0(_, k_tile), tBsB_0);
-        }
+        copy(tma_atom_B.with(storage.full_barrier[0], mcast_mask_b), tBgB_0(_, k_tile), tBsB_0);
         break;
       case 1:
         copy(tma_atom_A.with(storage.full_barrier[1]), tAgA_1(_, k_tile), tAsA_1);
-        if (is_cluster_leader) {
-          copy(tma_atom_B.with(storage.full_barrier[1], mcast_mask_b), tBgB_1(_, k_tile), tBsB_1);
-        }
+        copy(tma_atom_B.with(storage.full_barrier[1], mcast_mask_b), tBgB_1(_, k_tile), tBsB_1);
         break;
       case 2:
         copy(tma_atom_A.with(storage.full_barrier[2]), tAgA_2(_, k_tile), tAsA_2);
-        if (is_cluster_leader) {
-          copy(tma_atom_B.with(storage.full_barrier[2], mcast_mask_b), tBgB_2(_, k_tile), tBsB_2);
-        }
+        copy(tma_atom_B.with(storage.full_barrier[2], mcast_mask_b), tBgB_2(_, k_tile), tBsB_2);
         break;
       case 3:
         copy(tma_atom_A.with(storage.full_barrier[3]), tAgA_3(_, k_tile), tAsA_3);
-        if (is_cluster_leader) {
-          copy(tma_atom_B.with(storage.full_barrier[3], mcast_mask_b), tBgB_3(_, k_tile), tBsB_3);
-        }
+        copy(tma_atom_B.with(storage.full_barrier[3], mcast_mask_b), tBgB_3(_, k_tile), tBsB_3);
         break;
     }
   };
@@ -232,37 +232,58 @@ gemm_tma_multicast(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   __syncthreads();
 
   // Mainloop
-  for (int k = 0; k < num_k_tiles; ++k) {
-    int curr = k % kStages;
-    int next_k = k + (kStages - 1);
-    int next_s = next_k % kStages;
+  // Only the producer/consumer warp advances pipeline phases. Other warps
+  // park at the CTA synchronization below instead of racing barrier reuse.
+  if (elect_one_warp) {
+    for (int k = 0; k < num_k_tiles; ++k) {
+      int curr = k % kStages;
+      int next_k = k + (kStages - 1);
+      int next_s = next_k % kStages;
 
-    // Issue next TMA first
-    if (next_k < num_k_tiles && elect_one_warp && elect_one_thr) {
-      issue_tma(next_s, next_k);
-    }
-
-    // Wait for current
-    cute::wait_barrier(storage.full_barrier[curr], full_phase[curr]);
-    full_phase[curr] ^= 1;
-
-    // Execute MMA
-    if (elect_one_warp) {
-      auto& tCrA = (curr == 0) ? tCrA_0 : (curr == 1) ? tCrA_1 : 
-                   (curr == 2) ? tCrA_2 : tCrA_3;
-      auto& tCrB = (curr == 0) ? tCrB_0 : (curr == 1) ? tCrB_1 : 
-                   (curr == 2) ? tCrB_2 : tCrB_3;
-
-      for (int kb = 0; kb < size<2>(tCrA_0); ++kb) {
-        gemm(tiled_mma, tCrA(_, _, kb), tCrB(_, _, kb), tCtAcc);
-        tiled_mma.accumulate_ = UMMA::ScaleOut::One;
+      // Issue next TMA first
+      if (next_k < num_k_tiles && elect_one_warp && elect_one_thr) {
+        // TMA may overwrite this stage only after its prior MMA reads finish.
+        // The first fill has no prior consumer; later fills alternate parity.
+        if (next_k >= kStages) {
+          cute::wait_barrier(storage.empty_barrier[next_s], empty_phase[next_s]);
+          empty_phase[next_s] ^= 1;
+        }
+        issue_tma(next_s, next_k);
       }
+
+      // Wait for current
+      cute::wait_barrier(storage.full_barrier[curr], full_phase[curr]);
+      full_phase[curr] ^= 1;
+
+      // Execute MMA
+      if (elect_one_warp) {
+        auto& tCrA = (curr == 0) ? tCrA_0 : (curr == 1) ? tCrA_1 :
+                     (curr == 2) ? tCrA_2 : tCrA_3;
+        auto& tCrB = (curr == 0) ? tCrB_0 : (curr == 1) ? tCrB_1 :
+                     (curr == 2) ? tCrB_2 : tCrB_3;
+
+        for (int kb = 0; kb < size<2>(tCrA_0); ++kb) {
+          gemm(tiled_mma, tCrA(_, _, kb), tCrB(_, _, kb), tCtAcc);
+          tiled_mma.accumulate_ = UMMA::ScaleOut::One;
+        }
       
-      uint64_t* empty_ptr = reinterpret_cast<uint64_t*>(&storage.empty_barrier[curr]);
-      cutlass::arch::umma_arrive(empty_ptr);
+        uint64_t* empty_ptr = reinterpret_cast<uint64_t*>(&storage.empty_barrier[curr]);
+        // Both CTAs consume the multicast B tile. Each consumer signals both
+        // empty barriers; either producer must observe both arrivals to refill.
+        cutlass::arch::umma_arrive_multicast(empty_ptr, mcast_mask_b);
+      }
     }
   }
 
+  // Drain every stage's final multicast commit before any CTA can retire
+  // the shared-memory barriers targeted by its peer.
+  if (elect_one_warp && elect_one_thr) {
+    for (int k = num_k_tiles - min(kStages, num_k_tiles); k < num_k_tiles; ++k) {
+      int stage = k % kStages;
+      cute::wait_barrier(storage.empty_barrier[stage], empty_phase[stage]);
+      empty_phase[stage] ^= 1;
+    }
+  }
   __syncthreads();
   if (elect_one_warp) {
     cutlass::arch::umma_arrive(&storage.mma_barrier);
@@ -273,19 +294,19 @@ gemm_tma_multicast(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   auto tiled_t2r_copy = make_tmem_copy(SM100_TMEM_LOAD_32dp32b1x{}, tCtAcc);
   auto thr_t2r_copy = tiled_t2r_copy.get_slice(threadIdx.x);
 
-  Tensor tDgC = thr_t2r_copy.partition_D(tCgC);
-  Tensor tDrC = make_fragment_like(tDgC);
-  copy(tDgC, tDrC);
-
   Tensor tDtAcc = thr_t2r_copy.partition_S(tCtAcc);
   Tensor tDgD = thr_t2r_copy.partition_D(tCgD);
   Tensor tDrAcc = make_tensor<Accumulator>(shape(tDgD));
   copy(tiled_t2r_copy, tDtAcc, tDrAcc);
 
-  axpby(1.0f, tDrAcc, 0.0f, tDrC);
-  copy(tDrC, tDgD);
+  // beta=0: never read C, especially from a padded CTA's out-of-range tile.
+  if (output_tile_valid) {
+    copy(tDrAcc, tDgD);
+  }
 
   __syncthreads();
+  // All cluster participants, including padding, have drained remote work.
+  cute::cluster_sync();
   if (elect_one_warp) {
     tmem_allocator.release_allocation_lock();
     tmem_allocator.free(tmem_base, decltype(tmem_allocator)::Sm100TmemCapacityColumns);
@@ -336,20 +357,22 @@ torch::Tensor run_tma_multicast_matmul(torch::Tensor a, torch::Tensor b) {
 
   // Use regular TMA for A, multicast TMA for B
   auto tma_atom_A = make_tma_atom(TmaLoadA{}, mA, sA_layout, select<0, 2>(mma_tiler));
-  auto tma_atom_B = make_tma_atom(TmaLoadB{}, mB, sB_layout, select<1, 2>(mma_tiler));
+  auto tma_atom_B = make_tma_atom(
+      TmaLoadB{}, mB, sB_layout, select<1, 2>(mma_tiler), Int<2>{});
 
   int grid_m = (m + size(bM) - 1) / size(bM);
   int grid_n = (n + size(bN) - 1) / size(bN);
 
-  // Grid must be divisible by cluster size
-  if (grid_m % 2 != 0) grid_m += 1;
+  // Preserve the logical tile count passed to the kernel. Padding only
+  // affects launch geometry; padded CTAs must not store to d_buffer.
+  int launch_grid_m = ((grid_m + 1) / 2) * 2;
 
   // Multicast mask: both CTAs in cluster receive B (mask = 0b11)
   // For 2x1 cluster, CTA 0 and CTA 1 both receive the B tile
   uint16_t mcast_mask_b = 0x3;
 
   dim3 dimBlock(128);
-  dim3 dimGrid(grid_m, grid_n);
+  dim3 dimGrid(launch_grid_m, grid_n);
   int smem_bytes = sizeof(SharedStorageT);
 
   // Cluster launch
@@ -398,4 +421,3 @@ torch::Tensor matmul_tcgen05_tma_multicast(torch::Tensor a, torch::Tensor b) {
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("matmul_tcgen05_tma_multicast", &matmul_tcgen05_tma_multicast);
 }
-

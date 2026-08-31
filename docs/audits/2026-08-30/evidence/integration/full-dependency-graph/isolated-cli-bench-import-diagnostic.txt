@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/benchmark/bench_commands.py", line 106, in <module>
+    from core.env import apply_env_defaults, dump_environment_and_capabilities
+  File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/env/__init__.py", line 5, in <module>
+    from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/utils/compile_utils.py", line 16, in <module>
+    import torch
+ModuleNotFoundError: No module named 'torch'

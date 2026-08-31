@@ -68,7 +68,7 @@ class BaselineOzakiSchemeBenchmark(CudaBinaryBenchmark):
         return None
 
     def get_output_tolerance(self) -> tuple[float, float]:
-        return (1e-2, 1e-2)
+        return (0.0, 0.0)
 
 
 def get_benchmark() -> BaseBenchmark:

@@ -4,7 +4,7 @@ Self-contained tcgen05 kernel loader for the Matching cuBLAS lab.
 This module JIT-compiles the tcgen05 GEMM kernels without depending on
 any other chapter or common code.
 
-ONLY includes working kernels that exist in this directory.
+Includes source variants in this directory; build and runtime acceptance are target specific.
 """
 
 from __future__ import annotations
@@ -48,14 +48,18 @@ def _get_cuda_flags() -> list[str]:
         raise RuntimeError("CUTLASS include directory not found.")
     
     major, minor = torch.cuda.get_device_capability()
-    if major == 10 and minor >= 3:
+    if (major, minor) == (10, 3):
         # Blackwell Ultra (GB300, sm_103). sm_100a cubins are arch-locked and give
         # "no kernel image is available" on sm_103, so target sm_103a explicitly.
         flags.append("-gencode=arch=compute_103a,code=sm_103a")
-    elif major >= 10:
+    elif (major, minor) == (10, 0):
         flags.append("-gencode=arch=compute_100a,code=sm_100a")
     else:
-        raise RuntimeError(f"tcgen05 requires SM 10.0+ (Blackwell). Got SM {major}.{minor}")
+        raise RuntimeError(
+            f"This tcgen05 implementation requires exact SM 10.0 (sm_100a) or "
+            f"SM 10.3 (sm_103a); got SM {major}.{minor}. Architecture-specific "
+            "instructions are not forward-compatible with other Blackwell targets."
+        )
     
     return flags
 
@@ -66,9 +70,15 @@ def _load_kernel(source_file: Path, name_prefix: str, extra_cuda_flags: tuple[st
         raise FileNotFoundError(f"{source_file.name} not found in {_LAB_DIR}")
 
     cuda_flags = _get_cuda_flags() + list(extra_cuda_flags)
-    src_hash = hashlib.md5(
-        source_file.read_bytes() + "|".join(extra_cuda_flags).encode()
-    ).hexdigest()[:8]
+    # Architecture-specific cubins and PyTorch extension ABIs must never share
+    # a cached module just because their CUDA source text is identical.
+    build_identity = "\0".join([
+        *cuda_flags, str(torch.__version__), str(torch.version.cuda),
+        str(torch.compiled_with_cxx11_abi()),
+    ])
+    src_hash = hashlib.sha256(
+        source_file.read_bytes() + build_identity.encode()
+    ).hexdigest()[:16]
     build_name = f"{name_prefix}_{src_hash}"
     build_dir = Path(_get_build_directory(build_name, verbose=False))
     shared_object = build_dir / f"{build_name}.so"

@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "scope": "Adjacent integration discovery: five Darwin pytest collection failures caused by eager optional Triton imports. No new original audit ID.",
+  "status": "SOURCE_AND_REAL_CPU_PASS__CUDA_TRITON_EXECUTION_HOLD",
+  "source_sha256": {
+    "code/labs/occupancy_tuning/__init__.py": "d0b992aa2614f95e2cce5899e08f77d19060ecc14c88583283b1f96604f974b9",
+    "code/labs/occupancy_tuning/triton_matmul_schedules.py": "4ac62de101756f9db1858d4fa2a7fd38712977c9366bcb6e118a19f2942f7d2e",
+    "code/labs/occupancy_tuning/sweep_schedules.py": "a2ea457f26503d36678974915384c09f02f25bad18aa60a4bb301b2f3fb90eca",
+    "code/labs/blackwell_gemm_optimizations/blackwell_grouped_gemm_autotune.py": "c59e393b774a0f617b619cc56afa5d68aa4820ae90bca1d0a7cd149d836e8f21",
+    "code/labs/blackwell_gemm_optimizations/blackwell_grouped_gemm_common.py": "e4de9d8ed39d3522a13fe072dd8389f7a17ad2057fb0d3847289c28822bcf20a",
+    "code/labs/blackwell_gemm_optimizations/blackwell_grouped_gemm_kernel.py": "83e2d666e6e5d10fac4633ea926819e43347cd7ad253516c154d41c2174a7243",
+    "code/tests/test_blackwell_gemm_optimizations_lab.py": "7ac534aa95a5e75bfdc90858e8db282578b195a3c98b305261090af72d297139",
+    "code/tests/test_flashattention_gluon_runtime.py": "e83fee7478d0f9b0a8992387768b06584a172aecd035ccdf92fd907188b69d66",
+    "code/tests/test_labs_schedule_and_entrypoints.py": "0e7c9400012ae71402dd8ee699c0f79a783c9037dec9f69eee69abff2eb41e50",
+    "code/tests/test_min_speedup_contracts.py": "d17e408710ee34a9a8280df4638b0d7737b8ec89a1011e80518ba8e470b6fd8f",
+    "code/tests/test_occupancy_tuning.py": "225a09b942862b331d1424b9cd7d1c1ec21761d3b2f3e2368019dddc82771c0b"
+  },
+  "changed_files": [
+    "code/labs/occupancy_tuning/__init__.py",
+    "code/labs/occupancy_tuning/triton_matmul_schedules.py",
+    "code/labs/occupancy_tuning/sweep_schedules.py",
+    "code/labs/blackwell_gemm_optimizations/blackwell_grouped_gemm_autotune.py",
+    "code/labs/blackwell_gemm_optimizations/blackwell_grouped_gemm_common.py",
+    "code/labs/blackwell_gemm_optimizations/blackwell_grouped_gemm_kernel.py",
+    "code/tests/test_blackwell_gemm_optimizations_lab.py",
+    "code/tests/test_flashattention_gluon_runtime.py",
+    "code/tests/test_occupancy_tuning.py"
+  ],
+  "unchanged_but_now_runnable_tests": [
+    "code/tests/test_labs_schedule_and_entrypoints.py",
+    "code/tests/test_min_speedup_contracts.py"
+  ],
+  "read_only_attention_dependencies": {
+    "code/labs/flashattention_gluon/flashattention_gluon_common.py": "ea01c2b56b5cbeddca2f9e548490faf86a4a9970b239855cd81448c0e0c6ac57",
+    "code/labs/flashattention_gluon/baseline_flashattention_gluon.py": "952cf0e197e1f72af9ee26a09fdab85116838c7c18407d4f28f5db0d2150bcd2",
+    "code/labs/flashattention_gluon/optimized_flashattention_gluon.py": "8d1ef0c690e9525a53dd6de042a7fb6329959a97859a94a25e95571d0e59ec30"
+  },
+  "environment": {
+    "python": "3.12.2 | packaged by conda-forge | (main, Feb 16 2024, 20:54:21) [Clang 16.0.6 ]",
+    "executable": "/opt/miniconda3/bin/python",
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "torch": "2.8.0",
+    "cuda_build": null,
+    "cuda_available": false,
+    "triton_available": false,
+    "pinned_gpu_stack": false
+  },
+  "before": {
+    "exit_code": 2,
+    "collection_errors": 5,
+    "test_modules": "All five assigned files failed before test collection; exact output and command retained."
+  },
+  "after": {
+    "collection_exit_code": 0,
+    "collected_cases": 46,
+    "normal_pytest": {
+      "tests": 46,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 5,
+      "passed": 41
+    },
+    "normal_pytest_elapsed_seconds": "6.722",
+    "cuda_skips": 5,
+    "dependency_or_module_skips_on_this_host": 0
+  },
+  "mechanisms": [
+    "Occupancy package preserves __all__ and lazily resolves each public name to the actual Triton module or function; no stand-in is provided.",
+    "Occupancy schedules, configuration parsing and benchmark factories import normally on CPU. Actual kernel imports happen in setup/benchmark construction before measured iterations.",
+    "Blackwell grouped-GEMM routing/packing/reference helpers import normally on CPU. A cached loader resolves the actual kernel module during GPU setup or a direct run_variant request.",
+    "The six unchanged triton.Config constructor expressions move into a cached factory. Legacy FULL_STACK_AUTOTUNE_CONFIGS access still returns the shared actual Config list, requiring the real dependency.",
+    "FlashAttention runtime imports are local to the existing CUDA tests. Missing Triton is an explicit capability skip; a broken installed dependency is not caught or converted into success.",
+    "The optimized FlashAttention test no longer substitutes torch.add as a fake attention kernel. It calls the actual resolver/kernel, preserves buffer checks and adds a full-output FP32 mathematical reference check; this CUDA path was not run here."
+  ],
+  "validation": {
+    "all_original_test_function_ids_preserved": true,
+    "autotune_constructor_expressions_unchanged": true,
+    "kernel_and_helper_function_count": 7,
+    "kernel_bodies_and_parameters_unchanged": true,
+    "real_cpu_routes": "Existing balanced/skewed packing, token counts, output-storage reuse, schedule lookup and benchmark factory/config/contract tests all execute normally.",
+    "fresh_subprocess_controls": "Actual imports and CPU helper/factory execution leave the relevant GPU kernel module unloaded.",
+    "missing_dependency_controls": "Actual missing Triton produces ModuleNotFoundError for all four occupancy public kernel APIs and both new/legacy Config access. No dependency or GPU availability was mocked.",
+    "actual_clis": [
+      "python -m labs.occupancy_tuning.sweep_schedules --list",
+      "python -m labs.blackwell_gemm_optimizations.compare_blackwell_grouped_gemm_matrix --help"
+    ],
+    "python_source_compile": "PASS; not CUDA/Triton compilation",
+    "scoped_git_diff_check": "PASS"
+  },
+  "independent_source_reviews": [
+    {
+      "reviewer": "root",
+      "result": "No source-change request. Real kernels/configs preserved, setup resolves imports before measurements, CPU metadata paths are real. Cached loader lookup remains measured; no performance claim."
+    },
+    {
+      "reviewer": "audit_wave1_plan_a",
+      "result": "No additional actionable import/lifetime concern; public APIs, setup timing boundary and actual Config factory behavior reviewed. GPU acceptance not inferred."
+    }
+  ],
+  "integration_boundaries": [
+    "No blanket module skip, command-level file exclusion, mock module, fake GPU capability, replacement backend, shared environment install, or production kernel math change.",
+    "Two assigned CPU test files needed no edits after the production import repair.",
+    "A separate agent owns the hygiene test file; their earlier normal factory/source checks passed, and their subsequent stale-assertion integration remains separately tracked.",
+    "Only the five assigned test files were collected/executed here. Parent owns final full-suite integration after all writers freeze.",
+    "Actual CUDA/Triton compilation, kernel numerics, stream/device behavior, sanitizer checks and performance remain HOLD on this CPU-only environment."
+  ],
+  "artifacts": {
+    "blackwell-help.txt": "c13a62655eab8df4b602373659e4aba422138424010d6ef4c9fc3f591e2436e4",
+    "cli-collection-commands.json": "4d4fdd2bf5d64c36690c743db1593cb8b631c04fe352b6fc6be685299f24fa46",
+    "collection-after.txt": "76b67772ef9569b0131b3df1f97849069f4933301afe6de1510199f3cf13af74",
+    "collection-before-command.json": "105384200430524c0903e5f37eee5068115c27283e5fa887036e7ec7bab16853",
+    "collection-before.txt": "d59ec8f835f6b8df307c2a2f1f7bdb6fb18de64442391c6e96a5c5c165c65346",
+    "occupancy-list.txt": "06c2a6b822e0b583553b44d78d2d92903bd6dbbb226fdb51c6a68b59b7316050",
+    "original-labs--blackwell_gemm_optimizations--blackwell_grouped_gemm_autotune.py": "0784c21bf30a2576794f6e7c10f00595fc9f0bac4352b6ff9370f5adf1153889",
+    "original-labs--blackwell_gemm_optimizations--blackwell_grouped_gemm_common.py": "a26daf9f92b462d4f3c4b32ee4626363183b0ddfb35aa3482f43c993af103994",
+    "original-labs--blackwell_gemm_optimizations--blackwell_grouped_gemm_kernel.py": "f0784f34bab73ffd11e5f65916fcf758cf2bee5beab7a1232424c92c6d80a2df",
+    "original-labs--occupancy_tuning--__init__.py": "72ab32cb8580ce5554aaa514ce0090dabceb7f7ca97191db231af3023794eac5",
+    "original-labs--occupancy_tuning--sweep_schedules.py": "6651f09b30ec08fc1cb442c9964b3d95e8208626107216bb112b751c89d096dd",
+    "original-labs--occupancy_tuning--triton_matmul_schedules.py": "bc379f4ae058256db6628122a1a5c76e950f8e0db5a42a174a6e7185ffb8b4f1",
+    "original-production-sources.json": "368688586ceb5b354ef1bf6509d742e867e8b9b79d7e666ee4bd4ead1f1c8f42",
+    "original-sources.json": "76fd3a0dd3d741fd171835f248b7294a87c392b956736c9b57e63e3e5bce8a9b",
+    "original-test_blackwell_gemm_optimizations_lab.py": "db1fa5670789e6416abe41c6a18418c774d4bbfc4fee7690432bd482191fddac",
+    "original-test_flashattention_gluon_runtime.py": "902bbc1e5d4fdf1cf380a3eb004c333ce85e2173bb22e676da3cfb0c1c0aa451",
+    "original-test_labs_schedule_and_entrypoints.py": "0e7c9400012ae71402dd8ee699c0f79a783c9037dec9f69eee69abff2eb41e50",
+    "original-test_min_speedup_contracts.py": "d17e408710ee34a9a8280df4638b0d7737b8ec89a1011e80518ba8e470b6fd8f",
+    "original-test_occupancy_tuning.py": "fccdfdbaf2e4cfee369c13f81e6a4f6b111406346cbc5993413045e6cc9d63f5",
+    "pytest-after-command.json": "9a4b2d5acbcca964a6043c2987b15cb997f9f8541ac986732a46b6f4bbddbf2b",
+    "pytest-after.txt": "c08432ac09d0a817d752e848a06a846d7f2938468f85e0097b42f7e19795e1df",
+    "pytest-after.xml": "7554c4f0eb7110195071e05977eda16eafbef6fa198093c18c2cf41ab49d4720",
+    "source-equivalence.json": "07f1996c326ea6eef5f25d4c5326519da772a6995a44c81f6d52447ca1110124",
+    "syntax-diff-check.json": "2d7327e06d615bca7585b4ead4a6c5b368b8f7fd3300149ff948a4a25d9fd148"
+  }
+}

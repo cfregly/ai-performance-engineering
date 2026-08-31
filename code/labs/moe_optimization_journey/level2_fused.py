@@ -1,22 +1,18 @@
 #!/usr/bin/env python3
-"""Level 2: Triton Fused SiLU*Up.
+"""Level 2: Fused SiLU and multiplication.
 
-ADDS: Custom Triton kernel that fuses SiLU activation with elementwise multiply.
+Requests fused SiLU/multiply in the shared BF16 model; Triton execution depends on runtime availability.
 
-Before: gate → memory → SiLU → memory → multiply → memory
-After:  gate → memory → fused_silu_mul → memory
-
-This eliminates one kernel launch and one memory round-trip.
-
-Cumulative: batched + fused
-"""
+The filename and class are retained for compatibility. The LEVEL mapping,
+not a legacy filename, determines execution. These shared levels do not use
+FP8 quantization. No speedup is established by selecting a level."""
 import torch
 
 from labs.moe_optimization_journey.moe_benchmark import MoEJourneyBenchmark, run_level
 
 
 class Level2Fused(MoEJourneyBenchmark):
-    """Level 2: + Triton fused SiLU*up."""
+    """Shared level 2: Fused SiLU and multiplication."""
     LEVEL = 2
 
 def get_benchmark() -> Level2Fused:

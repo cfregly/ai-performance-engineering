@@ -16,9 +16,18 @@ BASE_NCU_METRICS: List[str] = [
     "lts__throughput.avg.pct_of_peak_sustained_elapsed",
     "sm__sass_data_bytes_mem_shared_op_ld.sum",
     "sm__sass_data_bytes_mem_shared_op_st.sum",
-    "sm__sass_thread_inst_executed_op_fp32_pred_on.sum",
-    "sm__sass_thread_inst_executed_op_fp16_pred_on.sum",
-    "gpu__time_duration.avg",
+    "dram__bytes_read.sum",
+    "dram__bytes_write.sum",
+    "smsp__sass_thread_inst_executed_op_ffma_pred_on.sum",
+    "smsp__sass_thread_inst_executed_op_fadd_pred_on.sum",
+    "smsp__sass_thread_inst_executed_op_fmul_pred_on.sum",
+    "smsp__sass_thread_inst_executed_op_hfma_pred_on.sum",
+    "smsp__sass_thread_inst_executed_op_hadd_pred_on.sum",
+    "smsp__sass_thread_inst_executed_op_hmul_pred_on.sum",
+    "smsp__sass_thread_inst_executed_op_dfma_pred_on.sum",
+    "smsp__sass_thread_inst_executed_op_dadd_pred_on.sum",
+    "smsp__sass_thread_inst_executed_op_dmul_pred_on.sum",
+    "gpu__time_duration.sum",
 ]
 
 BASE_NSYS_TRACE_MODULES: List[str] = [

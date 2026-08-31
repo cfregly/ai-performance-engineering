@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "arch_detection.cuh"
+#include "tma_2d_layout.hpp"
 
 namespace cuda_tma {
 
@@ -99,15 +100,15 @@ inline bool make_2d_tensor_map(
     int box_width,
     int box_height,
     CUtensorMapSwizzle swizzle_mode) {
-    // Tensor map layout is {rows, cols}. We accept width/height inputs in the
-    // usual (cols, rows) order and flip them to match the driver API contract.
+    // Row-major float matrix: dimension 0 is columns, dimension 1 is rows.
+    // Device TMA coordinates must be (column, row), matching box_width/box_height.
+    // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html
     constexpr uint32_t rank = 2;
-    std::uint64_t dims[rank] = {static_cast<std::uint64_t>(height),
-                                static_cast<std::uint64_t>(width)};
-    std::uint64_t stride[rank - 1] = {static_cast<std::uint64_t>(ld * sizeof(float))};
-    std::uint32_t box[rank] = {static_cast<uint32_t>(box_height),
-                               static_cast<uint32_t>(box_width)};
-    std::uint32_t elem_stride[rank] = {1, 1};
+    const auto layout = make_2d_tensor_map_layout(width, height, ld, box_width, box_height);
+    const auto& dims = layout.dimensions;
+    const auto& stride = layout.strides_bytes;
+    const auto& box = layout.box;
+    const auto& elem_stride = layout.element_strides;
 
     constexpr auto interleave = CU_TENSOR_MAP_INTERLEAVE_NONE;
     constexpr auto promotion = CU_TENSOR_MAP_L2_PROMOTION_NONE;

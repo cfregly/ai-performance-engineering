@@ -1,0 +1,145 @@
+{
+  "original_findings": [
+    {
+      "id": "W1-004",
+      "wave": 1,
+      "source_record_index": 3,
+      "original_severity": "critical",
+      "triaged_severity": null,
+      "original_location": "code/labs/train_distributed/optimized_zero2_multigpu.py:147",
+      "original_title": "Optimized ZeRO-2 never runs the optimizer: overlap_with_ddp=True makes step() a no-op",
+      "source_domains": [
+        "codesign-systems"
+      ],
+      "source_review_labels": [
+        "Co-design / distributed",
+        "verified by independent skeptic"
+      ],
+      "primary_package": "P06",
+      "related_findings": [
+        "W1-091"
+      ],
+      "status": "awaiting_runtime",
+      "owner": "root",
+      "source_revalidation": {
+        "state": "reproduced_and_changed",
+        "revision": "b57e4c6a9e261c09ac09208705d040c81b03d35e"
+      },
+      "reproducer": "evidence/zero2/receipt.json",
+      "accepted_fix_design": "Real two-rank CPU updates/reference/state checks pass; production NCCL and supported-GPU acceptance pending. Details and source hashes are in the attached package receipts.",
+      "acceptance_contract": "AUDIT_REMEDIATION_PLAN.md work package P06; specialize to a behavior-level check during reproduction",
+      "planning_caution": "Demonstrate real parameter updates and rank agreement across multiple steps before reusing this approach for W1-091.",
+      "changed_files": [
+        "code/labs/train_distributed/optimized_zero2_multigpu.py",
+        "code/labs/train_distributed/training_utils/memory.py",
+        "code/tests/test_audit_wave1_zero2.py"
+      ],
+      "fix_revision": null,
+      "verification": {
+        "source_and_cpu": "passed_on_local_cpu_environment",
+        "integration": "Current dependency/HTTP follow-up ordinary code/tests: 3948 passed, 449 explicit skips, zero failures; all 321 source hashes and tracked diff stable. All prior 4391 test IDs retained; six new cases; original obsolete HTTP case changed from false pass to explicit skip. Existing Darwin/torch2.8 CPU environment, not pinned Linux/GPU qualification. See evidence/integration/pinned-linux-integration/receipt.json",
+        "build": "requirements_pending_triage",
+        "gpu_correctness": "pending_NCCL_two_GPU",
+        "performance": "no_new_performance_claim",
+        "documentation": "pending"
+      },
+      "attempts": [
+        {
+          "receipt": "evidence/zero2/receipt.json",
+          "result": "awaiting_runtime"
+        },
+        {
+          "receipt": "evidence/zero2-parity/receipt.json",
+          "result": "awaiting_runtime",
+          "scope": "Matched-workload followup; prior optimizer sourceepochs retained"
+        }
+      ],
+      "evidence": [
+        "evidence/zero2/receipt.json",
+        "evidence/zero2-parity/receipt.json",
+        "evidence/integration/final-local/receipt.json",
+        "evidence/integration/pinned-linux-integration/receipt.json"
+      ],
+      "disposition_reason": "Real two-rank CPU updates/reference/state checks pass; production NCCL and supported-GPU acceptance pending.",
+      "independent_review": null,
+      "reproduction_scope": "The linked record specifies original-source/host controls and prepared runtime reproducers. A pointer is not evidence that an unavailable CUDA reproducer ran."
+    },
+    {
+      "id": "W1-091",
+      "wave": 1,
+      "source_record_index": 90,
+      "original_severity": "medium",
+      "triaged_severity": null,
+      "original_location": "code/labs/train_distributed/optimized_zero2.py:77",
+      "original_title": "Optimized single-GPU ZeRO-2 requires a DDP comm hook that does not exist in any PyTorch release",
+      "source_domains": [
+        "codesign-systems"
+      ],
+      "source_review_labels": [
+        "Co-design / distributed",
+        "verified by independent skeptic"
+      ],
+      "primary_package": "P06",
+      "related_findings": [
+        "W1-004"
+      ],
+      "status": "awaiting_runtime",
+      "owner": "root",
+      "source_revalidation": {
+        "state": "reproduced_and_changed",
+        "revision": "b57e4c6a9e261c09ac09208705d040c81b03d35e"
+      },
+      "reproducer": "evidence/zero2/single-receipt.json",
+      "accepted_fix_design": "Use repaired shared communication and explicit-step optimizer helpers.",
+      "acceptance_contract": "AUDIT_REMEDIATION_PLAN.md work package P06; specialize to a behavior-level check during reproduction",
+      "planning_caution": "Do not copy the multi-GPU implementation before W1-004 is repaired and optimizer updates are verified.",
+      "changed_files": [
+        "code/labs/train_distributed/optimized_zero2.py",
+        "code/tests/test_audit_wave1_zero2_single.py"
+      ],
+      "fix_revision": null,
+      "verification": {
+        "source_and_cpu": "Actual one-rank Gloo optimizer updates match dense AdamW for three steps; combined 18 passed, 1 two-GPU skip",
+        "integration": "Current dependency/HTTP follow-up ordinary code/tests: 3948 passed, 449 explicit skips, zero failures; all 321 source hashes and tracked diff stable. All prior 4391 test IDs retained; six new cases; original obsolete HTTP case changed from false pass to explicit skip. Existing Darwin/torch2.8 CPU environment, not pinned Linux/GPU qualification. See evidence/integration/pinned-linux-integration/receipt.json",
+        "build": "requirements_pending_triage",
+        "gpu_correctness": "HOLD: actual CUDA acceptance pending",
+        "performance": "no new performance claim",
+        "documentation": "pending"
+      },
+      "attempts": [
+        {
+          "receipt": "evidence/zero2/single-receipt.json",
+          "result": "awaiting_runtime"
+        },
+        {
+          "receipt": "evidence/zero2-parity/receipt.json",
+          "result": "awaiting_runtime",
+          "scope": "Matched-workload followup; prior optimizer sourceepochs retained"
+        }
+      ],
+      "evidence": [
+        "evidence/zero2/single-receipt.json",
+        "evidence/zero2-parity/receipt.json",
+        "evidence/integration/final-local/receipt.json",
+        "evidence/integration/pinned-linux-integration/receipt.json"
+      ],
+      "disposition_reason": "Nonexistent hook removed; real CPU update verified. CUDA/NCCL acceptance and baseline workload parity remain open.",
+      "independent_review": null,
+      "reproduction_scope": "The linked record specifies original-source/host controls and prepared runtime reproducers. A pointer is not evidence that an unavailable CUDA reproducer ran."
+    }
+  ],
+  "adjacent": [
+    {
+      "id": "LOCAL-019",
+      "title": "Torchrun wrapper signature model does not verify child-process training",
+      "owner": "root",
+      "status": "source_fixed",
+      "scope": "False surrogate verification withdrawn;61genericfactories metadata retained but allharness execution/verification explicitlyunsupported. Re-enable requires actualchild-result protocol+independentreference, not hardwarealone. GenuineCPUlaunch tests66pass2Linuxskips; GPU/trainingqualification notclaimed.",
+      "evidence": [
+        "evidence/torchrun-verification/receipt.json",
+        "evidence/integration/final-local/receipt.json"
+      ]
+    }
+  ],
+  "meaning": "Historical observed status only. Owner decides updates; this review recommends tracking functional restoration as open implementation work."
+}

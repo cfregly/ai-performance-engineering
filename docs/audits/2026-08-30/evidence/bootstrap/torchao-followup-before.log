@@ -1,0 +1,89 @@
+..FFFFF......                                                            [100%]
+=================================== FAILURES ===================================
+______ test_pinned_stable_stack_uses_compatible_published_stable_sources _______
+
+    def test_pinned_stable_stack_uses_compatible_published_stable_sources() -> None:
+        sources = _resolve_pytorch_sources(CODE_ROOT / "requirements_latest.txt")
+    
+        assert sources["PYTORCH_TORCH_VERSION"] == "2.9.1+cu130"
+        assert sources["PYTORCH_CU130_INDEX"] == "https://download.pytorch.org/whl/cu130"
+        assert sources["PYTORCH_TORCH_FIND_LINKS"] == (
+            "https://download.pytorch.org/whl/cu130/torch/"
+        )
+        assert sources["PYTORCH_TORCHAUDIO_INDEX"] == sources["PYTORCH_CU130_INDEX"]
+>       assert sources["PYTORCH_TORCHAO_VERSION"] == "0.15.0+cu130"
+E       AssertionError: assert '0.16.0.dev20251213+cu130' == '0.15.0+cu130'
+E         
+E         - 0.15.0+cu130
+E         + 0.16.0.dev20251213+cu130
+
+tests/test_setup_bootstrap.py:150: AssertionError
+_______________ test_nightly_requirements_select_nightly_sources _______________
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1524/test_nightly_requirements_sele0')
+
+    def test_nightly_requirements_select_nightly_sources(tmp_path: Path) -> None:
+        requirements = tmp_path / "requirements.txt"
+        requirements.write_text(
+            "torch==2.10.0.dev20251213+cu130\ntriton==3.6.0+git8fedd49b\n"
+            "torchao==0.17.0.dev20260301+cu130\n",
+            encoding="utf-8",
+        )
+        sources = _resolve_pytorch_sources(requirements)
+    
+        assert sources["PYTORCH_CU130_INDEX"] == (
+            "https://download.pytorch.org/whl/nightly/cu130"
+        )
+        assert sources["PYTORCH_TORCH_FIND_LINKS"] == (
+            "https://download.pytorch.org/whl/nightly/cu130/torch/"
+        )
+        assert sources["PYTORCH_TORCHAUDIO_INDEX"] == sources["PYTORCH_CU130_INDEX"]
+>       assert sources["PYTORCH_TORCHAO_VERSION"] == "0.17.0.dev20260301+cu130"
+E       AssertionError: assert '0.16.0.dev20251213+cu130' == '0.17.0.dev20260301+cu130'
+E         
+E         - 0.17.0.dev20260301+cu130
+E         ?    ^         ^^ --
+E         + 0.16.0.dev20251213+cu130
+E         ?    ^         ^^^^
+
+tests/test_setup_bootstrap.py:171: AssertionError
+____ test_aarch64_uses_published_torchaudio_version_without_changing_torch _____
+
+    def test_aarch64_uses_published_torchaudio_version_without_changing_torch() -> None:
+        sources = _resolve_pytorch_sources(
+            CODE_ROOT / "requirements_latest.txt", architecture="aarch64"
+        )
+>       assert sources["PYTORCH_TORCHAUDIO_VERSION"] == "2.9.1"
+E       AssertionError: assert '2.9.1+cu130' == '2.9.1'
+E         
+E         - 2.9.1
+E         + 2.9.1+cu130
+
+tests/test_setup_bootstrap.py:180: AssertionError
+___ test_aarch64_missing_torchao_cuda_wheel_fails_with_source_build_guidance ___
+
+    def test_aarch64_missing_torchao_cuda_wheel_fails_with_source_build_guidance() -> None:
+        setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+        preflight = 'require_torchao_cuda_wheel_support "${FLASH_ATTN_ARCH}"'
+>       assert preflight in setup
+E       assert 'require_torchao_cuda_wheel_support "${FLASH_ATTN_ARCH}"' in '#!/bin/bash\n\n#\n# AI Performance Engineering Setup Script\n# ========================================\n#\n# This sc...rmation, see the README.md file and chapter-specific documentation."\necho ""\necho "Happy performance engineering!"\n'
+
+tests/test_setup_bootstrap.py:188: AssertionError
+____________ test_torchao_pin_is_deferred_until_after_torch_install ____________
+
+    def test_torchao_pin_is_deferred_until_after_torch_install() -> None:
+        setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+        requirements = (CODE_ROOT / "requirements_latest.txt").read_text(encoding="utf-8")
+>       assert "torchao==0.15.0+cu130" in requirements.splitlines()
+E       assert 'torchao==0.15.0+cu130' in ['# AI Performance Engineering - Blackwell Requirements', '# Target: Blackwell B200 (SM100) with PyTorch 2.9.1+cu130, ...ompatibility metadata. It is", '# not a resolved dependency lock. This file remains the environment source.', '#', ...]
+E        +  where ['# AI Performance Engineering - Blackwell Requirements', '# Target: Blackwell B200 (SM100) with PyTorch 2.9.1+cu130, ...ompatibility metadata. It is", '# not a resolved dependency lock. This file remains the environment source.', '#', ...] = <built-in method splitlines of str object at 0x1021e6c00>()
+E        +    where <built-in method splitlines of str object at 0x1021e6c00> = '# AI Performance Engineering - Blackwell Requirements\n# Target: Blackwell B200 (SM100) with PyTorch 2.9.1+cu130, CUD...red over flake8, but flake8 is kept for compatibility\n# - fsspec[http] version kept compatible with datasets 2.21.0\n'.splitlines
+
+tests/test_setup_bootstrap.py:207: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_setup_bootstrap.py::test_pinned_stable_stack_uses_compatible_published_stable_sources
+FAILED tests/test_setup_bootstrap.py::test_nightly_requirements_select_nightly_sources
+FAILED tests/test_setup_bootstrap.py::test_aarch64_uses_published_torchaudio_version_without_changing_torch
+FAILED tests/test_setup_bootstrap.py::test_aarch64_missing_torchao_cuda_wheel_fails_with_source_build_guidance
+FAILED tests/test_setup_bootstrap.py::test_torchao_pin_is_deferred_until_after_torch_install
+5 failed, 8 passed in 0.29s

@@ -1,0 +1,4 @@
+# These logs are immutable audit attempts referenced by the dated receipts.
+# Runtime caches and raw profile directories retain their repository exclusions;
+# portable copies of required profile evidence have separate hash manifests.
+!*.log

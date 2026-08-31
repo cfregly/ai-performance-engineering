@@ -1,0 +1,11 @@
+{
+  "command": [
+    "/opt/miniconda3/bin/python",
+    "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/profiling/extract_pytorch_profile.py",
+    "capture",
+    "--output",
+    "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-p11-review-inbfmyvb/summary.csv"
+  ],
+  "cwd": "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-p11-review-inbfmyvb",
+  "exit_code": 1
+}

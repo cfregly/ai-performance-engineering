@@ -5,10 +5,8 @@
  * Combines the no-wait CUTLASS pattern with swizzled tile scheduling
  * for improved L2 cache utilization.
  * 
- * Performance improvements:
- * - No MMA barrier wait: +43% over 4-stage (42% -> 60%)
- * - Swizzled tiles: +1-2% L2 improvement
- * - Combined: Targeting 60%+ of cuBLAS
+ * Stage reuse waits for the previous MMA consumer to finish. Historical
+ * timings from the version without this wait are not correctness-qualified.
  */
 
 #include <ATen/cuda/CUDAContext.h>
@@ -183,10 +181,12 @@ gemm_no_wait_swizzle(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
     }
     cute::initialize_barrier(storage.mma_barrier, 1);
   }
+  cutlass::arch::fence_barrier_init();
   __syncthreads();
 
   int num_k_tiles = size<3>(tCgA);
   int full_phase[kStages] = {0, 0, 0, 0};
+  int empty_phase[kStages] = {};
   int mma_phase = 0;
 
   auto issue_tma = [&](int stage, int k_tile) {
@@ -221,32 +221,42 @@ gemm_no_wait_swizzle(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   }
   __syncthreads();
 
-  // Mainloop with no-wait pattern
-  for (int k = 0; k < num_k_tiles; ++k) {
-    int curr = k % kStages;
-    int next_k = k + (kStages - 1);
-    int next_s = next_k % kStages;
+  // Mainloop with asynchronous MMA and explicit producer stage-reuse waits
+  // Only the producer/consumer warp advances pipeline phases. Other warps
+  // park at the CTA synchronization below instead of racing barrier reuse.
+  if (elect_one_warp) {
+    for (int k = 0; k < num_k_tiles; ++k) {
+      int curr = k % kStages;
+      int next_k = k + (kStages - 1);
+      int next_s = next_k % kStages;
 
-    cute::wait_barrier(storage.full_barrier[curr], full_phase[curr]);
-    full_phase[curr] ^= 1;
+      cute::wait_barrier(storage.full_barrier[curr], full_phase[curr]);
+      full_phase[curr] ^= 1;
 
-    if (elect_one_warp) {
-      auto& tCrA = (curr == 0) ? tCrA_0 : (curr == 1) ? tCrA_1 : 
-                   (curr == 2) ? tCrA_2 : tCrA_3;
-      auto& tCrB = (curr == 0) ? tCrB_0 : (curr == 1) ? tCrB_1 : 
-                   (curr == 2) ? tCrB_2 : tCrB_3;
+      if (elect_one_warp) {
+        auto& tCrA = (curr == 0) ? tCrA_0 : (curr == 1) ? tCrA_1 :
+                     (curr == 2) ? tCrA_2 : tCrA_3;
+        auto& tCrB = (curr == 0) ? tCrB_0 : (curr == 1) ? tCrB_1 :
+                     (curr == 2) ? tCrB_2 : tCrB_3;
 
-      for (int kb = 0; kb < size<2>(tCrA_0); ++kb) {
-        gemm(tiled_mma, tCrA(_, _, kb), tCrB(_, _, kb), tCtAcc);
-        tiled_mma.accumulate_ = UMMA::ScaleOut::One;
-      }
+        for (int kb = 0; kb < size<2>(tCrA_0); ++kb) {
+          gemm(tiled_mma, tCrA(_, _, kb), tCrB(_, _, kb), tCtAcc);
+          tiled_mma.accumulate_ = UMMA::ScaleOut::One;
+        }
       
-      uint64_t* empty_ptr = reinterpret_cast<uint64_t*>(&storage.empty_barrier[curr]);
-      cutlass::arch::umma_arrive(empty_ptr);
-    }
+        uint64_t* empty_ptr = reinterpret_cast<uint64_t*>(&storage.empty_barrier[curr]);
+        cutlass::arch::umma_arrive(empty_ptr);
+      }
 
-    if (next_k < num_k_tiles && elect_one_warp && elect_one_thr) {
-      issue_tma(next_s, next_k);
+      if (next_k < num_k_tiles && elect_one_warp && elect_one_thr) {
+        // TMA may overwrite this stage only after its prior MMA reads finish.
+        // The first fill has no prior consumer; later fills alternate parity.
+        if (next_k >= kStages) {
+          cute::wait_barrier(storage.empty_barrier[next_s], empty_phase[next_s]);
+          empty_phase[next_s] ^= 1;
+        }
+        issue_tma(next_s, next_k);
+      }
     }
   }
 

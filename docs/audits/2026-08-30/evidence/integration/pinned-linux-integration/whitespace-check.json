@@ -1,0 +1,12 @@
+{
+  "at": "2026-08-31T00:38:43.015220+00:00",
+  "command": [
+    "git",
+    "diff",
+    "--check"
+  ],
+  "exit_code": 0,
+  "stdout": "",
+  "stderr": "",
+  "scope": "Tracked patch whitespace check; no source mutation."
+}

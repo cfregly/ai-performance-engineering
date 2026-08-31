@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "/opt/miniconda3/bin/python",
+    "-m",
+    "pytest",
+    "tests/test_repository_configuration.py::test_cpu_ci_installs_direct_collection_dependencies",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "--junitxml=/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/tokenizers-before.xml"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "exit_code": 1,
+  "elapsed_seconds": 1.82838773727417
+}

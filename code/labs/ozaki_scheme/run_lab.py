@@ -12,6 +12,7 @@ REPO_ROOT = LAB_DIR.parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from labs.ozaki_scheme.accuracy_policy import configured_accuracy
 from labs.ozaki_scheme.lab_utils import (
     build_lab,
     common_args_from_values,
@@ -60,12 +61,12 @@ def main() -> int:
     baseline = run_binary(f"baseline_ozaki_scheme{suffix}", common_args)
     dynamic = run_binary(
         f"optimized_ozaki_scheme_dynamic{suffix}",
-        common_args
+        common_args + configured_accuracy("dynamic")[0]
         + ["--dynamic-max-bits", str(args.dynamic_max_bits), "--dynamic-offset", str(args.dynamic_offset)],
     )
     fixed = run_binary(
         f"optimized_ozaki_scheme_fixed{suffix}",
-        common_args + ["--fixed-bits", str(args.fixed_bits)],
+        common_args + configured_accuracy("fixed")[0] + ["--fixed-bits", str(args.fixed_bits)],
     )
 
     baseline_ms = float(baseline["time_ms"])

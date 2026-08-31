@@ -21,6 +21,10 @@ COMPARE_CHAPTERS = (
     "ch10",
     "ch11",
     "ch12",
+    "ch16",
+    "ch18",
+    "ch19",
+    "ch20",
 )
 ARCHITECTURES = ("sm_100", "sm_103", "sm_120", "sm_121")
 EXPECTED_GENCODE = {

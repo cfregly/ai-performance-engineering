@@ -1,0 +1,76 @@
+{
+  "status": "SOURCE_AND_HOST_CONTROLS_PASS_CUDA_HOLD",
+  "source_review": "independent review found no additional actionable source concern",
+  "owned_source_sha256": {
+    "code/tests/test_audit_wave1_zero2_parity_cuda.py": "b1c66e6bc9d20259a0260514e469e52be970c2b17aba0aaa7c57ba932fa5847b"
+  },
+  "read_only_dependency_sha256": {
+    "code/labs/train_distributed/zero2_common.py": "4e3cecbbd972f93febba8d4e46128c1924c5f3410af6d226b90ebe4091db0d10",
+    "code/labs/train_distributed/baseline_zero2.py": "168337db169218f91077f56366d4c66915e52d5f53ca52e3448d16baa814bc4c",
+    "code/labs/train_distributed/optimized_zero2.py": "61bdda99a0903d79dc8374223c6d661f86f61e7f2715d318260302cdb61c9201",
+    "code/labs/train_distributed/baseline_zero2_multigpu.py": "c0c56e8e882665fd14ca25633f01de69e7130a9ecb980d07b8ac1073d0c7ef4b",
+    "code/labs/train_distributed/optimized_zero2_multigpu.py": "65778560c2b6a094829cb098c1667e2e71ebfd7932a72c61a654279b5f9ea211",
+    "code/labs/train_distributed/training_utils/torchrun_harness.py": "7cec3cdf803499f5388f6c87d1f09487f738e318855f141d7adbb3f3cad152ce"
+  },
+  "host_validation": {
+    "passed": 6,
+    "cuda_tests_skipped": 1,
+    "duration_seconds": 0.08,
+    "command_record": "host-command-final.json"
+  },
+  "real_cli_preflights": [
+    {
+      "attempt": "without-opt-in-attempt-2",
+      "exit_code": 3,
+      "status": "HOLD"
+    },
+    {
+      "attempt": "cuda-unavailable-attempt-2",
+      "exit_code": 3,
+      "status": "HOLD"
+    }
+  ],
+  "cuda_training_launched": false,
+  "cuda_acceptance": "HOLD",
+  "prepared_rank_update_checks": 32,
+  "prepared_microbatches_per_update": 2,
+  "prepared_world_size": 2,
+  "separate_acceptance_gap": "TorchrunScriptBenchmark verifies unrelated toy forward output, not actual training results",
+  "pending": [
+    "Actual two-GPU NCCL/BF16 training",
+    "Pinned stack qualification",
+    "Default workload scale",
+    "torch.compile mode",
+    "CLI/harness training-result integration",
+    "GPU sanitizer validation",
+    "Performance and memory claims"
+  ],
+  "host_environment": {
+    "python": "3.12.2",
+    "platform": "Darwin",
+    "machine": "arm64"
+  },
+  "artifacts": {
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/README.md": "9a4c92b0ab338747c56375098e3a364dc8db56adb0d36a2346b864b386f1221c",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-1/report.json": "6d7730d072443efe62ac88bdde449b161927dcfad951b4c12c3865ff67b71185",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-1.txt": "00fc61c3719e7e5d825bf1806a1257e1af9181a0eabcbb6e912d5564f4f566c2",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-2/report.json": "92eb2a736e148a644700acd9b1c321ac57e410fb110b8d61033d9c85d57c7213",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-2.txt": "0bd807e2267d9ff892b715a497fbf8536c7a1fa8ee560ec3aa1f245e916246f1",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/host-command-attempt-1.json": "2a8459eda8d8f123e9a1a8948a847f179bf660c9d6138acea2108df684021dfd",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/host-command-final.json": "2a8459eda8d8f123e9a1a8948a847f179bf660c9d6138acea2108df684021dfd",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/host-tests-attempt-1.txt": "2bdbcb7a3227209ff2d0994f76866e540dabb8487718197f64d13132c3ee35c5",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/host-tests-final.txt": "ae1113732f989385e304d2e5d57ed42d0bcb76f547e8a6c38801299973d56b5a",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/independent-review.txt": "6a41bd230ff4266e2b743a3b722c32fe0964cfbdf4ec09641dced72fe0ab344a",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/preflight-commands-attempt-1.json": "c30983c21d52e5a72c9346d85aa809cfd2053e35af502dc9b8909b33940fb9c5",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/preflight-commands-final.json": "bc81113765302d4b88f4f0ab8133ceac5bb282676da4e82e252a77d5dc005287",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/source-checks-attempt-1.txt": "55f3aa8fc3023fce409a980b2be1bccb5771ba75070c59ef2130dbaea0dd2499",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/source-checks-final.txt": "34ada257c437460886a9312f41cdda8ecbb6c3d85c54e176b34d3e85d851b8c0",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/source-manifest.json": "161413c4b6e1cfb420c001a64f009d3eae30c888da5e3f4ae68b5a300cb515b5",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-1/report.json": "c69456a59b82fe30e0a5d123add229925bba0e51073f49dae4a597bff28bb08a",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-1.txt": "7f49ae18bbcf413b06ddf47dcc7170f08c1da43a6c9165068a76aff498b26891",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-2/report.json": "6921b3e5f0ec1003f1816e11892841d797fe6167b4a79ab96328ea4ff068e2cc",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-2.txt": "ccfd45a0bc6364c8ff9adae43e7009849038b44b072b753771d45b19efe9d179"
+  },
+  "artifact_count": 19,
+  "all_artifacts_git_trackable": true
+}

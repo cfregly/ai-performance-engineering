@@ -1,0 +1,19 @@
+{
+  "recorded_at": "2026-08-31T00:37:11.202492+00:00",
+  "system": "Darwin",
+  "machine": "arm64",
+  "python": "3.12.2",
+  "python_executable": "/opt/miniconda3/bin/python",
+  "packages": {
+    "torch": "2.8.0",
+    "triton": null,
+    "pytest": "8.4.2",
+    "numpy": "1.26.4",
+    "pydantic": "2.12.5",
+    "requests": "2.32.5",
+    "tokenizers": "0.22.0",
+    "fastapi": "0.138.1",
+    "uvicorn": "0.35.0"
+  },
+  "scope": "Actual current host distribution metadata, not pinned Linux dependency installation or runtime/GPU discovery. No package was installed or upgraded in this host environment."
+}

@@ -1,0 +1,5 @@
+Usage: python -m cli.aisp profile ncu [OPTIONS] [SCRIPT]
+Try 'python -m cli.aisp profile ncu -h' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ Invalid value for '--launch-count': 'not-an-int' is not a valid integer.     │
+╰──────────────────────────────────────────────────────────────────────────────╯

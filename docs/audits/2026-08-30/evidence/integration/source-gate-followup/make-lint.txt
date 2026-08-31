@@ -1,0 +1,24 @@
+Running strict benchmark contract audit...
+/opt/miniconda3/bin/python -m core.scripts.linting.check_benchmarks --include-unpaired --fail-on-warnings
+Checking 932 benchmark files...
+
+
+================================================================================
+SUMMARY
+================================================================================
+Files checked: 932
+Files with errors: 0
+Total errors: 0
+Total warnings: 0
+
+Running repository-wide first-party Ruff correctness checks...
+ruff check . --select E9,F63,F7,F82,B006,B023
+All checks passed!
+
+Running focused autonomous campaign Ruff checks...
+ruff check core/optimization/campaign.py core/optimization/campaign_evidence.py core/optimization/evidence_validation.py core/harness/llm_patch_worker.py core/optimization/search/mcts_optimizer.py core/analysis/llm_patch_promotion.py tests/test_optimization_campaign.py tests/test_campaign_evidence.py tests/test_llm_patch_worker.py tests/test_mcts_optimizer.py tests/test_llm_patch_promotion.py tests/test_repository_configuration.py
+All checks passed!
+
+Running focused autonomous campaign mypy checks...
+/opt/miniconda3/bin/python -m mypy core/optimization/campaign.py core/analysis/llm_patch_promotion.py
+Success: no issues found in 2 source files

@@ -3,7 +3,7 @@
 🚀 aisp - AI Systems Performance CLI
 
 Single entry point for the AI Performance Engineering system.
-Defaults: no args → launch the benchmark TUI.
+Defaults: no args → launch the interactive benchmark analysis menu.
 
 ARCHITECTURE:
     This CLI uses the unified PerformanceEngine (10 domains) as its backend.
@@ -36,7 +36,7 @@ DOMAIN MODEL (10 domains in core/engine.py):
    10. export     - CSV, PDF, HTML reports
 
 QUICK START:
-    aisp                    # Launch interactive TUI
+    aisp                    # Launch interactive benchmark analysis menu
     aisp system status      # System status overview
     aisp gpu info           # GPU information
     aisp ai ask "Why slow?" # Ask AI about performance
@@ -247,6 +247,18 @@ if typer:
 
 if typer:
 
+    def _run_benchmark_menu(data_file: Optional[Path] = None) -> None:
+        """Use the same working analysis menu as ``aisp bench tui --simple``."""
+        try:
+            from core.benchmark.bench_commands import _run_basic_menu
+
+            _run_basic_menu(data_file)
+        except (EOFError, KeyboardInterrupt):
+            typer.echo("\nExiting benchmark analysis menu.")
+        except Exception as exc:
+            typer.echo(f"Benchmark menu error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+
     @app.callback(invoke_without_command=True)
     def _root(
         ctx: typer.Context,
@@ -258,18 +270,13 @@ if typer:
             help="Enable TorchDynamo/TORCH_LOGS output (disabled by default for cleaner CLI)",
         ),
     ) -> None:
-        """Default: launch the benchmark TUI when no subcommand is provided."""
+        """Default: launch the benchmark analysis menu when no subcommand is provided."""
         ctx.obj = {"verbose": verbose, "json_output": json_output}
         if not dynamo_logs:
             for key in ["TORCH_LOGS", "TORCH_COMPILE_DEBUG"]:
                 os.environ.pop(key, None)
         if ctx.invoked_subcommand is None:
-            from cli.tui import run_tui
-            try:
-                run_tui()
-            except Exception as exc:  # pragma: no cover - curses may fail in CI
-                typer.echo(f"TUI error: {exc}", err=True)
-                raise typer.Exit(code=1)
+            _run_benchmark_menu()
             raise typer.Exit()
 
 
@@ -1135,36 +1142,59 @@ if typer and profile_app is not None:
         else:
             typer.echo(f"❌ Analysis failed: {result.get('error', 'Unknown error')}")
 
-    @profile_app.command("data-loading", help="Data loading pipeline analysis")
+    @profile_app.command(
+        "data-loading",
+        help="Read-only DataLoader settings and CPU/GPU locality observations",
+    )
     def profile_data_loading(ctx: typer.Context) -> None:
-        """Analyze data loading pipeline for bottlenecks."""
-        from core.perf_core_base import PerformanceCore
+        """Report configured DataLoader recommendations and observed locality."""
+        from core.perf_core_base import PerformanceCoreBase
         
-        core = PerformanceCore()
+        core = PerformanceCoreBase()
         result = core.get_data_loading_analysis()
         
         if result.get("success"):
-            typer.echo("\n📦 Data Loading Analysis\n")
-            
-            config = result.get("config", {})
-            if config:
-                typer.echo(f"Current Configuration:")
-                for key, value in config.items():
+            typer.echo("\n📦 Data Loading Analysis (read-only)\n")
+            typer.echo(f"Schema: {result.get('schema_version', 'unknown')}")
+
+            settings = result.get("dataloader_kwargs", {})
+            if settings:
+                typer.echo("\nRecommended DataLoader Settings:")
+                for key, value in settings.items():
                     typer.echo(f"  {key}: {value}")
-            
-            bottlenecks = result.get("bottlenecks", [])
-            if bottlenecks:
-                typer.echo(f"\n⚠️  Bottlenecks Detected:")
-                for b in bottlenecks:
-                    typer.echo(f"  • {b}")
-            
-            recommendations = result.get("recommendations", [])
-            if recommendations:
-                typer.echo(f"\n💡 Recommendations:")
-                for rec in recommendations:
-                    typer.echo(f"  • {rec}")
+
+            cpu = result.get("cpu", {})
+            typer.echo("\nObserved CPU:")
+            typer.echo(f"  architecture: {cpu.get('cpu_arch') or 'unknown'}")
+            typer.echo(f"  model: {cpu.get('cpu_model') or 'unknown'}")
+            typer.echo(f"  Grace status: {cpu.get('grace_status', 'unknown')}")
+
+            mapping = result.get("gpu_numa_mapping", {})
+            gpu_id = result.get("gpu_id")
+            typer.echo("\nObserved GPU/NUMA Locality:")
+            typer.echo(f"  GPU: {gpu_id if gpu_id is not None else 'unknown'}")
+            typer.echo(f"  mapping status: {mapping.get('status', 'unknown')}")
+            numa_node = mapping.get("numa_node")
+            typer.echo(f"  NUMA node: {numa_node if numa_node is not None else 'unknown'}")
+            typer.echo(f"  provenance: {mapping.get('provenance', 'unknown')}")
+
+            affinity = result.get("current_cpu_affinity")
+            typer.echo("\nObserved Process Affinity:")
+            typer.echo(f"  status: {result.get('current_affinity_status', 'unknown')}")
+            typer.echo(f"  CPU IDs: {affinity if affinity is not None else 'unknown'}")
+            typer.echo(f"  affinity applied: {result.get('affinity_applied', False)}")
+            typer.echo(
+                f"  provenance: {result.get('current_affinity_provenance', 'unknown')}"
+            )
+
+            notes = result.get("notes", [])
+            if notes:
+                typer.echo("\nNotes:")
+                for note in notes:
+                    typer.echo(f"  • {note}")
         else:
             typer.echo(f"❌ Analysis failed: {result.get('error', 'Unknown error')}")
+            raise typer.Exit(code=1)
 
 
 # =============================================================================
@@ -2038,17 +2068,12 @@ if typer:
             raise typer.Exit(code=1)
 
     # Top-level utility commands
-    @app.command("tui", help="Launch interactive terminal UI")
+    @app.command("tui", help="Launch interactive benchmark analysis menu")
     def tui_command(
         ctx: typer.Context,
         data_file: Optional[Path] = typer.Option(None, "--data-file", "-d", help="Path to benchmark_test_results.json"),
     ) -> None:
-        from cli.tui import run_tui
-        try:
-            run_tui(str(data_file) if data_file else None)
-        except Exception as exc:  # pragma: no cover - curses may fail in CI
-            typer.echo(f"TUI error: {exc}", err=True)
-            raise typer.Exit(code=1)
+        _run_benchmark_menu(data_file)
 
     @app.command("dashboard", help="Launch web dashboard")
     def dashboard_command(

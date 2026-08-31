@@ -1,0 +1,201 @@
+{
+  "captured_at": "2026-08-30T22:27:15.368267+00:00",
+  "package": "P05 nanochat dense decode correctness",
+  "git_head": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "git_branch": "codex/audit-remediation-20260830",
+  "lineage": "uncommitted scoped source on recorded HEAD; exact current file hashes below; no git mutations by this agent",
+  "findings": {
+    "W1-003": {
+      "implementation": "source remediation implemented",
+      "acceptance": "HOLD: real CUDA validation still required"
+    },
+    "W1-034": {
+      "implementation": "source remediation implemented",
+      "acceptance": "HOLD: real CUDA validation still required"
+    },
+    "W1-035": {
+      "implementation": "source remediation implemented",
+      "acceptance": "HOLD: real CUDA validation still required"
+    },
+    "W1-036": {
+      "implementation": "source remediation implemented",
+      "acceptance": "HOLD: real CUDA validation still required"
+    },
+    "W1-085": {
+      "implementation": "source remediation implemented",
+      "acceptance": "HOLD: real CUDA validation still required"
+    },
+    "W1-121": {
+      "implementation": "source remediation implemented",
+      "acceptance": "HOLD: real CUDA validation still required"
+    }
+  },
+  "finding_notes": {
+    "W1-003": "CPU device-position/rotary/full-mask numerical oracle passed; actual CUDA replay not run",
+    "W1-034": "stream wait/record_stream implemented; real CUDA producer/consumer test skipped; CPU side-stream requests explicitly fail rather than eager fallback",
+    "W1-035": "D2H now blocking before host read; real CUDA transfers skipped",
+    "W1-036": "all-stream synchronized wall timing implemented; real side-stream timer test skipped",
+    "W1-085": "actual CPU Engine benchmark control path passed; CUDA/FA3/CTA requested-backend failures explicit; graph/stream benchmark qualification pending",
+    "W1-121": "same-weight nonzero CPU hint parity passes; actual cluster/backend/integration tests skipped; existing original main already exited1 on raised exceptions"
+  },
+  "adjacent_discoveries": [
+    "rounded KV prefill copied full source capacity into prefix slice; reproduced from b57e4c6a9 and fixed",
+    "non-flash SDPA backend tuple violated list/single-backend API; reproduced and fixed at lab boundary",
+    "B200 mode config changes did not update attention-module cached flags; propagated and unavailable FA3 now errors",
+    "CPU GQA cannot use only fused backend preferences; explicit supported math selection added"
+  ],
+  "environment": {
+    "python_executable": "/opt/miniconda3/bin/python",
+    "python": "3.12.2",
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "torch": "2.8.0",
+    "pytest": "8.4.2",
+    "cuda_available": false,
+    "torch_cuda_version": null,
+    "qualification": "existing CPU env, not pinned CUDA stack"
+  },
+  "commands": [
+    {
+      "cwd": "code",
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 NANOCHAT_DISABLE_COMPILE=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider tests/test_audit_wave1_nanochat_regressions.py labs/nanochat_fullstack/test_new_optimizations.py",
+      "exit_code": 0,
+      "outcome": "12 passed, 11 skipped in 1.49s",
+      "log": "final-strict-tests.log"
+    },
+    {
+      "cwd": "code",
+      "command": "NANOCHAT_DISABLE_COMPILE=1 /opt/miniconda3/bin/python -m labs.nanochat_fullstack.test_new_optimizations",
+      "exit_code": 0,
+      "outcome": "1 CPU hint parity check passed; 3 CUDA capability checks explicitly skipped",
+      "log": "standalone.log"
+    },
+    {
+      "cwd": "code",
+      "command": "/opt/miniconda3/bin/python scripts/linting/check_benchmarks.py labs/nanochat_fullstack",
+      "exit_code": 0,
+      "outcome": "2 benchmark files; 0 errors; 0 warnings; static only",
+      "log": "lint.log"
+    },
+    {
+      "cwd": "code",
+      "command": "/opt/miniconda3/bin/python -m py_compile labs/nanochat_fullstack/nanochat/engine.py labs/nanochat_fullstack/nanochat/gpt.py labs/nanochat_fullstack/benchmark_incremental_optimizations.py labs/nanochat_fullstack/scripts/bench_b200_flags.py labs/nanochat_fullstack/test_new_optimizations.py labs/nanochat_fullstack/tests/test_engine_smoke.py tests/test_audit_wave1_nanochat_regressions.py labs/nanochat_fullstack/audit_wave1/verify_existing_cpu.py",
+      "exit_code": 0,
+      "outcome": "syntax check passed for all seven changed Python files and evidence replay helper",
+      "log": "pycompile.log"
+    },
+    {
+      "cwd": ".",
+      "command": "git diff --check -- code/labs/nanochat_fullstack code/tests/test_audit_wave1_nanochat_regressions.py",
+      "exit_code": 0,
+      "outcome": "no whitespace errors",
+      "log": "diffcheck.log"
+    },
+    {
+      "cwd": "code",
+      "command": "runpy.run_path(\"labs/nanochat_fullstack/tests/test_engine.py\"); direct invocation of the16 named CPU tests listed in existing-cpu.log",
+      "exit_code": 0,
+      "outcome": "16 existing CPU test function checks passed, no tokenizer or full-lab-suite qualification",
+      "log": "existing-cpu.log",
+      "replay_command": "NANOCHAT_DISABLE_COMPILE=1 /opt/miniconda3/bin/python -m labs.nanochat_fullstack.audit_wave1.verify_existing_cpu",
+      "replay_log": "existing-cpu-module-replay.log",
+      "replay_exit_code": 0
+    },
+    {
+      "cwd": "code",
+      "command": "read/compile original engine via git show b57e4c6a9:code/labs/nanochat_fullstack/nanochat/engine.py; actual torch prefix-copy and SDPA context boundary calls",
+      "exit_code": 0,
+      "outcome": "two adjacent original defects reproduced without CUDA",
+      "log": "prerequisites-before.log"
+    }
+  ],
+  "diagnostic_attempts": [
+    {
+      "log": "before.log",
+      "outcome": "6 failed,4 skipped; includes CPU unsupported fused GQA failure before graph tests; not CUDA reproduction"
+    },
+    {
+      "log": "first-pass.log",
+      "outcome": "5 failed,1 passed,4 skipped; CPU fused GQA unsupported"
+    },
+    {
+      "log": "cache-pass.log",
+      "outcome": "5 failed,1 passed,4 skipped; exposed real tuple/list SDPA API mismatch"
+    },
+    {
+      "log": "pass.log",
+      "outcome": "7 passed,7 CUDA skipped after supported CPU backend correction"
+    },
+    {
+      "log": "expanded-pass.log",
+      "outcome": "11 passed,11 CUDA skipped"
+    },
+    {
+      "log": "existing-cpu-replay.log",
+      "outcome": "direct script invocation failed ModuleNotFoundError labs; corrected to package -m invocation,16checks passed (existing-cpu-module-replay.log)"
+    }
+  ],
+  "original_source": "docs/audits/2026-08-30/wave-1-source.json",
+  "official_references": [
+    {
+      "url": "https://docs.pytorch.org/docs/2.8/notes/cuda.html",
+      "supports": [
+        "explicit stream dependencies and allocator lifetimes",
+        "side-stream graph warmup",
+        "fixed-memory capture/replay requirements"
+      ],
+      "accessed": "2026-08-30"
+    }
+  ],
+  "remaining_gates": [
+    "real CUDA FP32/BF16 per-step replay vs eager and valid-KV comparisons for batches1/2/3 and fresh cache recapture",
+    "real CUDA side-stream producer/consumer lifetime and token D2H behavior",
+    "real all-stream wall timer versus side-stream CUDA events",
+    "actual cluster-capable backend/integration checks (CPU hint parity is not backend execution)",
+    "pinned-stack representative alternating A/B profiling/clock/topology/raw timing evidence; no speedup claim"
+  ],
+  "unsupported_graph_modes": [
+    "padded/masked decode",
+    "multi-token decode",
+    "custom resident/clustered kernels",
+    "CPU",
+    "capacity/rotary overflow",
+    "compiler-managed graphs nested inside manual graphs"
+  ],
+  "limitations": [
+    "no GPU or checkpoint download/paid calls",
+    "full-capacity masked SDPA may increase attention work compared with eager prefix attention",
+    "no actual CUDA races reproduced on this CPU-only host",
+    "the16 existing tests were called directly to avoid unrelated tokenizer auto-build conftest; not a full lab test run",
+    "initial red diagnostic logs are retained but not counted as GPU proof"
+  ],
+  "source_sha256": {
+    "code/labs/nanochat_fullstack/nanochat/engine.py": "76eb69ae795221b0cb5e133780e80617722bd61cfd92e735c229e3188d12320b",
+    "code/labs/nanochat_fullstack/nanochat/gpt.py": "5893aa454ea6134652de52c7bc92679effe8f28272801c43cb71f7dfe31551d3",
+    "code/labs/nanochat_fullstack/benchmark_incremental_optimizations.py": "2764da60e3ea030cba09a9436bbeaf30ab3394de538a69d34eeeac3c1d82c2e1",
+    "code/labs/nanochat_fullstack/scripts/bench_b200_flags.py": "27f7fa06a6ac39339c34fbb58c5aa827b87d572c327585e6a8ab0a85a39187ec",
+    "code/labs/nanochat_fullstack/test_new_optimizations.py": "a5bb9c4ec4a89492058d850045ff785675a7619f31c280a118a3aa902c4d515a",
+    "code/labs/nanochat_fullstack/tests/test_engine_smoke.py": "a18023748df92cf6ecf1e6cb67e899c6f0386d87994747c3a3a608f51add0dff",
+    "code/tests/test_audit_wave1_nanochat_regressions.py": "1422b6cc4dd29cc038a11a1355613f3d1de29da639e65ab466e9db5fc653212b"
+  },
+  "evidence_sha256": {
+    "README.md": "46c4ec0bd57c2b2312b196ee329daded2448894b39e28cb8905d71ef49d64df7",
+    "before.log": "37c7dca3319857b4c63f6b42d77eff2b17ce37f5f9c2caf14eb3b14efc4fac1d",
+    "benchmark_workload_spec.yaml": "04d3321106045c3b136ec2417c90685d4395ffa4041a41f0201b38d560df247d",
+    "cache-pass.log": "3855c59a3bdf0b146910499506a96c85d5b260750c7649c7195d852ae259372f",
+    "diffcheck.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "existing-cpu-module-replay.log": "8380b20f7201568512a3bafbb4037c05a0624e9883d591bc1f50214f70995c29",
+    "existing-cpu-replay.log": "5e45f87d02698c5f76c6b633cbac5ea6490f2dd2663c8c93c613f4f650470c9c",
+    "existing-cpu.log": "8380b20f7201568512a3bafbb4037c05a0624e9883d591bc1f50214f70995c29",
+    "expanded-pass.log": "184fa25badf0a2e1a57f3bfbc76ae0807f79d57a74ad7612c0c83210ce6603f7",
+    "final-strict-tests.log": "cc91e3d6819a33917dd64a20c0a6a435acad84c2f422156bf07cfe15b3dfb723",
+    "final-tests.log": "4e1df63fa12149358343735952473db89b1a733e509aff0f3e390dba9501ddc7",
+    "first-pass.log": "c07ee46abe629ab83fd2b244de0952c0f45b2644a90994078ee851d06fd2127b",
+    "lint.log": "e8d5727639107d6a357c127e06e4850f9ed0b994cff77fcf4fc395185a44a1ab",
+    "pass.log": "ee95789e4199233d21574b2ee0aedc71814c3692a20c150e381443d0b5993364",
+    "performance_intake.yaml": "ccb7658a0f590d4ca5ab1c9bdc60d671707f2ed44cdab30018acc05e7f3e2c24",
+    "prerequisites-before.log": "e4795ae9f7d7707f3ddebba012cfe9df290a84d264ef905830eae2d2b9516e88",
+    "pycompile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "standalone.log": "3dc7ba5662613382f0a02a4df68f2f0c2aa3defd2f21d7fbd0bf974480128007",
+    "verify_existing_cpu.py": "7ed339ea02a28adbfa34266fe9b97fa357f639d40f8cabbab187bf0e84db70eb"
+  }
+}

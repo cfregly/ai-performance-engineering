@@ -1,0 +1,9 @@
+.................................................sss.................... [ 72%]
+..........................s                                              [100%]
+------------- generated xml file: /tmp/aisp-peak-metrics-first.xml -------------
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_audit_wave1_peak_metrics.py:197: Actual CUDA GPU required for FP8 scaled-mm and complete output comparison
+SKIPPED [1] tests/test_audit_wave1_peak_metrics.py:213: Actual CUDA GPU and Transformer Engine NVFP4 kernel required
+SKIPPED [1] tests/test_audit_wave1_peak_metrics.py:223: Actual CUDA GPU required for copy timing
+SKIPPED [1] tests/integration/test_benchmark_peak_import.py:15: CUDA required - benchmark_peak imports Transformer Engine and CUDA libraries
+95 passed, 4 skipped in 1.70s

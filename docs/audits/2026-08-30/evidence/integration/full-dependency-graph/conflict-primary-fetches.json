@@ -1,0 +1,26 @@
+[
+  {
+    "url": "https://pypi.org/pypi/fastapi/0.121.3/json",
+    "artifact": "fastapi-0.121.3-pypi.json",
+    "sha256": "79f60d21fd5588307853826f0463f26d132bcae011551f6f65678253f18a0a20",
+    "captured_utc": "2026-08-31T00:48:06.167318+00:00"
+  },
+  {
+    "url": "https://pypi.org/pypi/fastapi-cli/0.0.8/json",
+    "artifact": "fastapi-cli-0.0.8-pypi.json",
+    "sha256": "217bc8c1a2929835fbeffd22101887adca145f01af2ce13cc55e7b423d7b2c54",
+    "captured_utc": "2026-08-31T00:48:06.202511+00:00"
+  },
+  {
+    "url": "https://pypi.org/pypi/typer/0.15.4/json",
+    "artifact": "typer-0.15.4-pypi.json",
+    "sha256": "4515fd592a422ca184f5eb1558825a01e76596e095826c6cd630e79aa99a0762",
+    "captured_utc": "2026-08-31T00:48:06.243463+00:00"
+  },
+  {
+    "url": "https://pypi.org/pypi/typer-slim/0.15.4/json",
+    "artifact": "typer-slim-0.15.4-pypi.json",
+    "sha256": "2a2d6988e2bc9d8be82b58d68553e454004d80eba7f2f7bfd6ac14afcfda5c7b",
+    "captured_utc": "2026-08-31T00:48:06.280959+00:00"
+  }
+]

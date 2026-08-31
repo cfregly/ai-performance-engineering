@@ -1,0 +1,16 @@
+                                                                                
+ Usage: python -m cli.aisp bench list-targets [OPTIONS]                         
+                                                                                
+ List available benchmark targets in chapter:example format.                    
+                                                                                
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --chapter     -c      TEXT  Limit output to a single chapter (e.g., ch15 or  │
+│                             labs/blackwell_matmul).                          │
+│                             [default: None]                                  │
+│ --bench-root  -r      PATH  Root directory to scan for benchmarks (defaults  │
+│                             to repo root).                                   │
+│                             [default: None]                                  │
+│ --help        -h            Show this message and exit.                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

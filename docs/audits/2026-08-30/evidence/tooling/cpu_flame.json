@@ -1,0 +1,61 @@
+{
+  "name": "Trace events (summed duration)",
+  "value": 6732.487,
+  "children": [
+    {
+      "name": "user_annotation",
+      "value": 1845.4470000000001,
+      "children": [
+        {
+          "name": "audit_cpu_matmul",
+          "value": 1845.4470000000001,
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "cpu_op",
+      "value": 2392.04,
+      "children": [
+        {
+          "name": "aten::matmul",
+          "value": 808.8050000000001,
+          "children": []
+        },
+        {
+          "name": "aten::mm",
+          "value": 658.177,
+          "children": []
+        },
+        {
+          "name": "aten::resolve_conj",
+          "value": 0.8340000000000002,
+          "children": []
+        },
+        {
+          "name": "aten::relu_",
+          "value": 557.5930000000001,
+          "children": []
+        },
+        {
+          "name": "aten::clamp_min_",
+          "value": 366.63100000000003,
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "Trace",
+      "value": 2495.0,
+      "children": [
+        {
+          "name": "PyTorch Profiler (0)",
+          "value": 2495.0,
+          "children": []
+        }
+      ]
+    }
+  ],
+  "trace_path": "/tmp/audit-p10-tooling-dogfood/cpu_trace.json",
+  "artifact_path": "/tmp/audit-p10-tooling-dogfood/cpu_trace.json"
+}

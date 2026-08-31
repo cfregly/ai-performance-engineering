@@ -1,10 +1,20 @@
 # Lab - Distributed Training Playbook
 
 ## Summary
-Collects distributed-training recipes for Blackwell clusters: DDP, FSDP, ZeRO-1/2/3, symmetric memory, and flash-attention-aware all-reduce handling, all runnable through the harness.
+Collects distributed-training recipes: DDP, FSDP, ZeRO-1/2/3, symmetric memory and flash-attention-aware all-reduce handling. Direct training scripts remain available; generic torchrun-wrapper benchmark qualification is currently unsupported.
+
+## Generic wrapper verification unavailable
+The shared `training_utils/torchrun_harness.py` wrapper formerly verified an unrelated parent-side Linear model before launching the real child. That surrogate has been removed. Its factories and configuration remain discoverable, but harness execution and verification now stop explicitly before launch until child-produced training results and an independent reference are implemented. A failed launch-spec getter is propagated rather than replaced with a fallback script. Direct training entrypoints are unchanged; executing them alone is not correctness or performance acceptance. The separate ZeRO training tests do not supply a verification protocol for other wrappers.
 
 ## Problem
 Distributed training has too many "optimized" labels that mean different things. This lab is here to keep DDP compression, pipeline schedules, and symmetric-memory training as separate benchmarked choices so you can see what actually helps on the current stack.
+
+## ZeRO comparison validity
+The ZeRO-2 named pair uses a shared seven-linear-layer GELU model, FP32 model parameters, BF16 CUDA autocast, identical rank-specific inputs, accumulation, AdamW settings, clipping, one warmup update and the same measured training loop. The optional communication payload is BF16 in both variants. The optimized path shards optimizer state and uses reduce-scatter/all-gather to restore complete gradients; it does not overlap optimizer updates or keep gradients sharded through the optimizer step.
+
+The original single baseline used ReLU and executed two training runs, while its optimized peer used GELU and one run. Other precision, clipping and timing differences also invalidated that comparison. Historical ZeRO timings are not accepted evidence for the repaired pair. The generic torchrun wrapper's small signature model has been withdrawn because it did not verify child-process training. Acceptance requires the separate full training tests, including actual two-GPU NCCL/BF16 checks, before any new speed or memory claim.
+
+Inner training throughput counts batch rows as samples, not hidden-vector elements as tokens. Harness process-wall timing includes startup and warmup and must remain labeled separately.
 
 ## Baseline Path
 - conservative DDP, pipeline, and symmetric-memory paths
@@ -14,10 +24,10 @@ Distributed training has too many "optimized" labels that mean different things.
 ## Optimized Path
 - overlap-aware pipeline schedules
 - compression-aware DDP variants
-- symmetric-memory and sharding strategies run through the same harness
+- direct symmetric-memory and sharding scripts; generic harness qualification is unavailable
 
-## Measured Delta
-Representative strict result from `artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/`:
+## Historical Delta (not requalified by this audit)
+Stored historical results from `artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/`; this audit does not requalify their original verification or timing contracts:
 
 | Target | Baseline | Optimized | Measured delta |
 | --- | ---: | ---: | ---: |
@@ -26,23 +36,22 @@ Representative strict result from `artifacts/runs/20260302_full_strict_chapter_l
 | `pipeline_dualpipe` | `154.106 ms` | `105.111 ms` | `1.47x` |
 | `symmem_training` | `177.269 ms` | `167.167 ms` | `1.06x` |
 
-The useful point is that the lab shows more than one kind of "distributed optimization." Compression and pipeline scheduling move the needle more than the current symmetric-memory path on this local setup.
+These records remain available for lineage. Fresh source, workload, actual-output and timing evidence is required before repeating their performance claims; generic wrapper metadata is not child-training evidence.
 
-Treat single-GPU `fsdp2` on `b200` as a supplementary comparison surface with a local comparison contract. The real FSDP2 speed gate stays on the multi-GPU `2x_b200` contract where sharding and overlap can actually change the communication story.
+FSDP2 wrapper execution is also unavailable until actual child training is verified. Future FSDP2 qualification must distinguish single-GPU behavior from real multi-GPU sharding; old labels do not certify either.
 
-## Profiler Evidence
+## Profiler workflow status
 ```bash
-python -m cli.aisp bench run --targets labs/train_distributed:ddp_compression --profile deep_dive --single-gpu
-python -m cli.aisp bench run --targets labs/train_distributed:pipeline_1f1b --profile deep_dive --single-gpu
+python -m cli.aisp profile torch --help
+python -m cli.aisp bench run --help
 ```
 
-For the multi-GPU variants, keep using `torchrun` through the lab utilities. The single-GPU harness targets are the evidence-first entrypoint, not a replacement for real cluster validation.
+These commands inspect options only. Generic training wrappers cannot currently produce a qualified harness profile or comparison. Profile a direct script only on an allocated, authorized target, and retain actual training verification separately.
 
 ## Repro Commands
 ```bash
 python -m cli.aisp bench list-targets --chapter labs/train_distributed
-python -m cli.aisp bench run --targets labs/train_distributed:ddp_compression --profile minimal
-python -m cli.aisp bench run --targets labs/train_distributed:pipeline_1f1b --profile minimal
+python -m pytest -q tests/test_audit_wave1_zero2_parity.py tests/test_audit_wave1_torchrun_verification.py
 ```
 
 ## Learning Goals
@@ -61,26 +70,24 @@ python -m cli.aisp bench run --targets labs/train_distributed:pipeline_1f1b --pr
 | `baseline_zero1.py`, `baseline_zero2.py`, `baseline_zero3.py`, `optimized_zero1.py`, `optimized_zero2.py`, `optimized_zero3.py`, `baseline_zero1_multigpu.py`, `baseline_zero2_multigpu.py`, `baseline_zero3_multigpu.py`, `optimized_zero1_multigpu.py`, `optimized_zero2_multigpu.py`, `optimized_zero3_multigpu.py`, `zero1.py`, `zero2.py`, `zero3.py` | ZeRO implementations (1/2/3) plus helpers for parameter partitioning. |
 | `training_utils/`, `utils.py`, `__init__.py` | Shared launch utilities, argument parsing, and harness exports. |
 
-## Running the Benchmarks
-Use the benchmark harness for quick comparisons or drive the Typer CLI when you need repeatable artifact capture.
+## Discovery and local validation
+Run from code/. These commands inspect metadata and exercise local contracts; they do not launch a qualified training benchmark.
 ```bash
 python -m cli.aisp bench list-targets --chapter labs/train_distributed
-python -m cli.aisp bench run --targets labs/train_distributed --profile minimal
+python -m cli.aisp bench run --help
+python -m pytest -q tests/test_audit_wave1_zero2_parity.py tests/test_audit_wave1_torchrun_verification.py
 ```
-- Targets follow the `labs/train_distributed:<workload>` naming convention listed by `list-targets`.
-- Use `--target-extra-arg labs/train_distributed:<workload>="--flag value"` to sweep schedule knobs.
-- Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited environments.
-- Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.
+- Generic wrapper setup, verification and launch-spec requests fail explicitly; no speed or memory claim is accepted from them.
+- Canonical or publish-grade GPU results require bare metal. A virtualized current-host rerun requires explicit user approval, locked clocks, recorded provenance and a non-canonical label.
 
 ## Validation Checklist
-- `python -m cli.aisp bench run --targets labs/train_distributed --profile minimal` runs every distributed configuration registered with the harness.
-- `python labs/train_distributed/train_fsdp.py --validate` confirms numerical parity between FSDP shards and the baseline DDP path.
-- `python labs/train_distributed/optimized_zero3_multigpu.py --summary` shows reduced peak memory vs the baseline script.
+- From `code/`, run `python -m pytest -q tests/test_audit_wave1_zero2_parity.py tests/test_audit_wave1_zero2_single.py tests/test_audit_wave1_zero2.py` for the local source/CPU checks; CUDA skips remain unverified.
+- Actual two-GPU training checks are in `tests/test_audit_wave1_zero2_parity_cuda.py`. Run only with an allocated compatible CUDA/NCCL target; local CPU passes do not qualify sharding, streams, memory savings or performance.
+- Use `python -m cli.aisp bench list-targets --chapter labs/train_distributed` to inspect registered workload names before selecting a run. A successful launch alone does not verify child training.
 
 ## Notes
-- Set `TORCHRUN_ARGS` or pass `--torchrun-env` via the CLI when launching multi-node tests.
-- `utils.py` exposes helper functions (like `resolve_topology()`) that can be reused in other labs.
+- Inspect `python -m cli.aisp bench run --help` and `training_utils/torchrun_harness.py` for the supported launcher configuration; use the allocated topology and preserve launcher arguments with results.
 - FSDP/FSDP2 benchmarks default to `labs/train_distributed/data/tinystories_packed_seq128.jsonl` plus `labs/train_distributed/data/tinyllama_config.json`, with `AISP_TINYSTORIES_LAYERS=4` to keep the model small. Override with `AISP_TINYSTORIES_PACKED_PATH`, `AISP_TINYSTORIES_LOCAL_PATH`, `AISP_TINYSTORIES_CONFIG_PATH`, or `AISP_TINYSTORIES_LAYERS`.
 - Scale up by increasing `AISP_TINYSTORIES_LAYERS` or swapping to a larger config and pairing it with a packed dataset that matches the new sequence length.
 - Set `AISP_FSDP_DISABLE_FP8=1` to keep the minimal BF16 path; unset it when you want to exercise the FP8 conversion on larger workloads.
-- On single-GPU `b200`, `fsdp2` remains runnable for regression tracking and profiler capture, but the benchmark is judged as a local comparison contract rather than a canonical speed claim.
+- The generic `fsdp2` wrapper retains metadata but rejects harness execution. Direct script execution is not a substitute for a child-result contract or multi-GPU correctness evidence.

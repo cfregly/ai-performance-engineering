@@ -1,0 +1,5 @@
+......................................s                                  [100%]
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/source-gate-followup/root-source-fixes/focused-attempt-1.xml -
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_audit_wave1_native_fp8.py:155: Actual native FP8 CUDA execution required
+38 passed, 1 skipped in 6.57s

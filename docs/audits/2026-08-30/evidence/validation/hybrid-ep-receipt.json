@@ -1,0 +1,293 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-30",
+  "slice": "P06 hybrid expert-parallel routing, replica initialization, storage and autograd",
+  "original_findings": [
+    "W1-029",
+    "W1-075",
+    "W1-076"
+  ],
+  "status": "SOURCE_AND_REAL_CPU_GLOO_PASS__CUDA_NCCL_BF16_MULTIHOST_SANITIZERS_PERFORMANCE_HOLD",
+  "original_commit": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "source_files": [
+    {
+      "path": "code/labs/fullstack_cluster/moe_hybrid_ep_common.py",
+      "sha256": "7a599dd6111d830babecf3959da576a445a5d887882e679ddb8ab7bbb0500acb"
+    },
+    {
+      "path": "code/tests/test_audit_wave1_hybrid_ep.py",
+      "sha256": "3774d045f826a69991bb5dd737a12ffb724a2ce4c7f8b81597f0b08378959995"
+    },
+    {
+      "path": "code/tests/test_fullstack_cluster_shared_benchmark_wrappers.py",
+      "sha256": "759e37625535859e5fad74b5f9bbc73a70d17ae3afc1aa71a69df599cdde4525"
+    }
+  ],
+  "original_module_sha256": "f388d8003c1fa821371c469878fca23a212a47c79bd9a6e50e93d7c827c4eb96",
+  "adjacent_discoveries_unassigned_original_ids": [
+    "Trainable expert parameters made the original torch.mul(out=...) helper fail autograd.",
+    "Functional list all-to-all returned detached backing storage instead of its autograd results.",
+    "Only creating the local subgroup on each rank violated globally ordered new_group participation.",
+    "Separate token and route-weight collective backward nodes diverged on zero-receive ranks; actual Gloo aborted on message-size mismatch.",
+    "World-stream work must be synchronized before switching to the local NCCL process group."
+  ],
+  "stable_test_command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -s -rs -p no:cacheprovider tests/test_audit_wave1_hybrid_ep.py tests/test_fullstack_cluster_shared_benchmark_wrappers.py --basetemp=/tmp/aisp-hybrid-stable-ranks-20260830 --junitxml=/tmp/aisp-hybrid-stable.xml > /tmp/aisp-hybrid-stable.txt 2>&1",
+  "stable_test_cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "stable_result": {
+    "passed": 14,
+    "skipped": 9,
+    "failed": 0,
+    "seconds": 4.55,
+    "real_gloo_ranks": 4,
+    "rank_checks_each": 7,
+    "new_cpu_tests_passed": 4,
+    "existing_cpu_wrapper_tests_passed": 10,
+    "existing_cuda_wrapper_cases_skipped": 8,
+    "new_actual_four_gpu_nccl_case_skipped": 1
+  },
+  "attempts": [
+    {
+      "name": "first",
+      "result": "1 failed, 3 passed",
+      "reason": "Actual Gloo functional-list scatter cannot receive uneven tensor sizes; not a NCCL failure."
+    },
+    {
+      "name": "single",
+      "result": "1 failed, 3 passed",
+      "reason": "Actual Gloo backward abort from mismatched collective messages with independent token/weight nodes on empty receiver paths."
+    },
+    {
+      "name": "packed",
+      "result": "4 passed",
+      "reason": "Single differentiable payload fixes consistent rank participation in backward."
+    },
+    {
+      "name": "wrappers-before",
+      "result": "1 failed, 9 passed, 8 skipped",
+      "reason": "Obsolete source assertions required unnamespaced cache labels and later detached-return/current-device spellings."
+    },
+    {
+      "name": "stronger",
+      "result": "14 passed, 8 skipped",
+      "reason": "Expert parameter gradient controls and narrow wrapper assertion updates."
+    },
+    {
+      "name": "final",
+      "result": "14 passed, 9 skipped"
+    },
+    {
+      "name": "final-ranks",
+      "result": "14 passed, 9 skipped"
+    },
+    {
+      "name": "stable",
+      "result": "14 passed, 9 skipped"
+    }
+  ],
+  "original_reproduction": {
+    "command": "PYTHONPATH=code /opt/miniconda3/bin/python docs/audits/2026-08-30/evidence/validation/hybrid-ep-original-mechanisms.py --source docs/audits/2026-08-30/evidence/validation/hybrid-ep-original-source.py --output /tmp/aisp-hybrid-original-ranks > /tmp/aisp-hybrid-original.txt 2>&1",
+    "exit_code": 0,
+    "result": "EXPECTED_ORIGINAL_FAILURES_REPRODUCED",
+    "real_gloo_ranks": 4,
+    "adapter": "Only the original count-storage cuda_device property selects actual CPU tensors; unchanged original route control flow and real Gloo collectives.",
+    "observations": [
+      "All ranks original expert helper rejects autograd out=mul",
+      "Replicas differ before updates",
+      "Ranks 0/2 skip communication and return empty",
+      "Ranks 1/3 hit actual 5-second Gloo timeouts"
+    ],
+    "limits": [
+      "No original CUDA execution",
+      "Original subgroup creation failure established from source/API contract, not separately runtime-reproduced",
+      "Aborted intermediate processes may not emit final per-rank JSON; retain available files and process logs"
+    ]
+  },
+  "new_gpu_gate": {
+    "executed": false,
+    "dtype": "float32 with TF32 disabled",
+    "four_gpu_local_test": "tests/test_audit_wave1_hybrid_ep.py::test_four_gpu_nccl_forward_backward_and_reuse_match_serial_reference",
+    "production_entrypoint": "DeepSeekHybridEPModule.forward_loss",
+    "reference": "Serial global float64 CPU oracle using explicit token/expert selection, no route helpers",
+    "routing_patterns": [
+      "skewed to node 0 with empty remote senders and empty receivers",
+      "local-only destinations with globally empty remote phase",
+      "mixed destinations and unequal per-rank sizes"
+    ],
+    "variants": [
+      "baseline",
+      "optimized without overlap",
+      "optimized local_remote overlap"
+    ],
+    "steps_per_case": 3,
+    "planned_checks_per_rank": 54,
+    "checks": [
+      "full output tensors",
+      "loss",
+      "input gradients",
+      "all expert and replicated parameter gradients",
+      "averaged replica gradients via parameter updates",
+      "three repeated optimizer steps",
+      "no-grad capacity reuse at full/smaller/full token counts"
+    ],
+    "containment": "Local test 300-second parent deadline plus 45-second process-group timeout; terminate/kill owned child ranks on failure. External multi-host launcher must bound/clean entire job.",
+    "limits": [
+      "Local four-GPU test creates two logical node groups; this is not inter-node fabric acceptance",
+      "Optional torchrun entrypoint requires four ranks and two local ranks per host",
+      "No GPU run, BF16 qualification, sanitizer run, performance claim, or physical fabric qualification"
+    ]
+  },
+  "source_review": {
+    "reviewer": "root",
+    "result": "No further actionable production-diff source concern; residual multi-process-group backward ordering requires full hybrid CUDA gate."
+  },
+  "primary_contract_references": [
+    "https://docs.pytorch.org/docs/2.9/distributed.html#groups",
+    "https://github.com/pytorch/pytorch/blob/v2.8.0/torch/distributed/nn/functional.py"
+  ],
+  "boundaries": [
+    "No GPU lease or remote launch",
+    "No shared environment installs",
+    "No benchmark truth mocks",
+    "No root plan or ledger changes",
+    "No Git mutations",
+    "No historical performance artifacts changed"
+  ],
+  "artifacts": [
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-before-packed-payload.py",
+      "sha256": "aedece39f42c87cc005c03316d67e03dadea3eecb73263478b930c80d79b1f5c"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-compile.json",
+      "sha256": "a39104b44311b8d01521a8206aea952bbb29c6fbfeb8df261cb06535c4c0d895"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-diff-check.json",
+      "sha256": "a64b327670e84317c6efafbcaa7ac29754331a1e70c704bae8573f1a9ee11736"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-environment.json",
+      "sha256": "f5256a7799f1d53eb6bff082980489c2cd20835a7be23d7e94dd6f7c1d8f829a"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-final-ranks.txt",
+      "sha256": "f765c599cae7e719cfd35969ce2dc154c41a6d055d4d6ecd9b3a51b1ddebde45"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-final-ranks.xml",
+      "sha256": "2bb09e6553ae0fe8ee0edb8dffdf3b792a45ab575950babf37dfaece871861ab"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-final.txt",
+      "sha256": "6f09dd12c362b8acd76fe609dc4c0d11f3cd699eefd511ccffc1240abaceab33"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-final.xml",
+      "sha256": "158a3eb346951a6f17fa1acc2f85ac3f281256c2d86e533b0142b4bb6eb290ef"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-first.txt",
+      "sha256": "76687e4eed46340d529e9ddedb96c0e511bb40dcc863bc2ad1ffa0d17af59d5e"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-first.xml",
+      "sha256": "ab6e75b1f333a3be1d779a9236b793bf57f651bb7981489b2089e05f78818c66"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-original-mechanisms.py",
+      "sha256": "0b8376a525bb38b3e466c47c439596aa2f0b8deac74e67ac17adcded6b6b0076"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-original-rank-0.json",
+      "sha256": "9c54d2425b5c4e2992e03d20206989c6993584605bb063ddbd16a8e1d8308859"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-original-rank-1.json",
+      "sha256": "bfcbd3a5cdbe7a61526aa9c7fe8b17aba3612a33274cf92c2de504db99506828"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-original-rank-2.json",
+      "sha256": "b7b2c7de1dcd369329d6246deb87d3624eb18aa4545345bda4f413a3fee95535"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-original-rank-3.json",
+      "sha256": "5313243bf4ca101e64f430581152464ff38e127b150c8404a08cfd53b8bb5d1b"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-original-source.py",
+      "sha256": "f388d8003c1fa821371c469878fca23a212a47c79bd9a6e50e93d7c827c4eb96"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-original.txt",
+      "sha256": "51ae87648cf9925bfdeefcabf122af35fc681106885bcc79e5c520fc1e30a8f3"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-packed.txt",
+      "sha256": "b1ba9ce995e292de23f4d74905a5fc83c8a3fb8bd3fc680f920d3eac16689b7e"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-packed.xml",
+      "sha256": "802b7092fc804163c9f7cfb07a17c992fd0ca462ea456eff3118bf972b6791ca"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-review.md",
+      "sha256": "be451ec79f197db11eca1cadc6e9c75254ac50562d2e7e9a7b27cf8e96ab5749"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-ruff.json",
+      "sha256": "3879eacae650825c52556cbfc4301d736be0750fe9dc2dd23566e051c4810ced"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-single.txt",
+      "sha256": "23fa4457a79c9f4a5296bd018d83d7893c342f16ae2cd09dec6fbdc55ce1285d"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-single.xml",
+      "sha256": "bd5ee942b4b5d4936add731baacdf2fce75e2474b45d161ed5227c7d2b48c5e4"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-source-files.json",
+      "sha256": "bae3387c4dff5de4f2048dbb2cacd26ddb36190a0874fb453d3f6251e1d18283"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-stable-rank-0.json",
+      "sha256": "d5250f480bbcf140ea42c2e3edba37cb414301121477461f79fd8199b1c0948c"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-stable-rank-1.json",
+      "sha256": "50f3920ea22385c22541dbe2deef885267991dede47275a295753e2a02f3bbc2"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-stable-rank-2.json",
+      "sha256": "473c625c7ed302c6d7ac35e2d5aa828040c3e503ff48a43f5ef7f2708c9b8e01"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-stable-rank-3.json",
+      "sha256": "4a1fa1a88ed3c008315be1806ec375a15d21a02c2f66934d2794aa6ad24730c8"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-stable.txt",
+      "sha256": "52a9607fb703371ee9566c3bbf069427864e7a3d84e36bffa79ea7ec99a6b8cd"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-stable.xml",
+      "sha256": "a5ff8fcd3c0059e4b9fd5f54bbefe1249cd3a8cabaeb3fc39cde2b3cca68aa2a"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-stronger.txt",
+      "sha256": "33bb5d983bbe2531ee623ed42daefd9f4e46a2b0cf86c09160fdece9cdc17bb3"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-stronger.xml",
+      "sha256": "5d716a02a0705ed4afc50772fed67e78c858879c605e72947065b07a6f93e973"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-wrappers-before.txt",
+      "sha256": "89c5b719987e81e85073b09f59d059ed2c5bef37d157c31372186fbd159250d2"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/hybrid-ep-wrappers-before.xml",
+      "sha256": "79bb97fc6925f565ad47df44183f70fcbe03a81fb0ad23976215cccf0d0e8055"
+    }
+  ]
+}

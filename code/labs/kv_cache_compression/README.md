@@ -1,65 +1,57 @@
-# Lab - KV Cache Compression
+# Lab - Quantized Projection Compute with BF16 KV Cache
 
 ## Summary
-Tests whether compressing the KV cache is worth it for this workload, instead of assuming lower memory footprint automatically means better serving latency.
+This lab compares per-tensor delayed-scaling FP8 projection GEMMs with NVFP4 projection GEMMs. Both paths store K and V as BF16. The directory name is retained for compatibility; neither path compresses the KV cache.
 
-## Problem
-KV-cache compression is attractive because the memory story is obvious, but the latency story often is not. This lab exists to keep those two questions separate.
+## Storage and workload
+Both variants use batch 8, hidden dimension 16384, 64 heads, 4096 prefill tokens, and 128 decode steps of 128 tokens. The two cache tensors contain 5,368,709,120 elements and occupy 10,737,418,240 bytes at BF16. `kv_cache.storage_bytes`, `storage_bits_per_element`, and `compression_ratio` are calculated from the allocated tensors. The compression ratio relative to BF16 is 1.0, and the optimization goal is compute speed.
 
-## Baseline Path
-- uncompressed KV cache path
-- simple latency/memory reference
-- no compression overhead in the hot path
+The FP8 recipe is `DelayedScaling`; it is not MXFP8 block scaling. The NVFP4 recipe uses supported `NVFP4BlockScaling()` defaults. Both retain identical unquantized BF16 parameter representations while Transformer Engine autocast chooses the low-precision GEMMs.
 
-## Optimized Path
-- compressed KV cache representation
-- same benchmark harness and validation contract
-- tests whether the memory tradeoff is actually latency-positive here
+## Accuracy gate: target calibration pending
+Every token, head, and channel in both K and V is checked against an independent PyTorch BF16 projection reference using the original weights and inputs. The reference bypasses Transformer Engine's GEMMs and packing. Checks reject shape mismatches, non-finite values and aliased reference storage; relative L2 and maximum error normalized by reference magnitude avoid signed-checksum cancellation. Verification then snapshots the full cache for the harness pair comparison.
 
-## Measured Delta
-Representative strict result from `artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/`:
+No workload accuracy bound has been calibrated. An accepted benchmark run requires `AISP_KV_CACHE_ACCURACY_POLICY` pointing to a JSON file with `schema_version: 1`, separate `fp8` and `nvfp4` objects, and the fields `relative_l2`, `normalized_max_abs`, `pairwise_rtol`, `pairwise_atol`. The first three must be finite and in `[0,1)`; the last must be finite and nonnegative. Bounds are deliberately not supplied here. Configuring bounds is not evidence that they are appropriate or that this workload passes them.
 
-| Target | Baseline | Optimized | Measured delta |
-| --- | ---: | ---: | ---: |
-| `kv_cache` | `6066.040 ms` | `5897.083 ms` | `1.03x` |
+Collect measurements on the actual CUDA/Transformer Engine host before reviewing a policy:
 
-The important takeaway is restraint: the compressed path helps, but only slightly on this workload. This is exactly the kind of lab where a clean benchmark pair prevents an overclaim.
-
-## Profiler Evidence
 ```bash
-python -m cli.aisp bench run --targets labs/kv_cache_compression:kv_cache --profile deep_dive --single-gpu
+python -m labs.kv_cache_compression.calibrate_accuracy --variant fp8 --seed 42 --output /tmp/kv-fp8-seed42.json
+python -m labs.kv_cache_compression.calibrate_accuracy --variant nvfp4 --seed 42 --output /tmp/kv-nvfp4-seed42.json
 ```
 
-## Repro Commands
+Repeat with other fixed seeds and preserve the hardware, software and workload metadata. These commands collect error metrics only; they do not accept output or claim a speedup. After independent accuracy review, run:
+
 ```bash
-python -m cli.aisp bench list-targets --chapter labs/kv_cache_compression
-python -m cli.aisp bench run --targets labs/kv_cache_compression:kv_cache --profile minimal
+AISP_KV_CACHE_ACCURACY_POLICY=/absolute/path/reviewed-policy.json python -m cli.aisp bench run --targets labs/kv_cache_compression:kv_cache --profile minimal
 ```
+
+The historical 6066.040/5897.083 ms measurements used the old permissive verifier and are not evidence for the revised accuracy contract or cache compression. Fresh GPU accuracy, memory and performance measurements remain pending.
 
 ## Learning Goals
-- Measure the latency cost/benefit of KV-cache compression under the harness contract.
-- Keep memory-saving and latency-saving claims distinct.
-- Make it easy to inspect whether compression overhead dominates the win.
+- Compare FP8 and NVFP4 projection GEMMs with the same BF16 KV cache storage.
+- Measure full-cache numerical error before reviewing any accuracy policy.
+- Keep allocated storage bytes separate from compute precision and latency.
 
 ## Directory Layout
 | Path | Description |
 | --- | --- |
-| `baseline_kv_cache.py`, `optimized_kv_cache_nvfp4.py` | Baseline and compressed KV-cache benchmark pair. |
-| `kv_cache_common.py` | Shared workload setup. |
+| `baseline_kv_cache.py`, `optimized_kv_cache_nvfp4.py` | FP8/NVFP4 compute benchmark pair with BF16 cache storage. |
+| `kv_cache_common.py` | Shared attention workload and cache allocation. |
+| `accuracy.py`, `calibrate_accuracy.py` | Independent full-cache reference, explicit policy, and measurement-only driver. |
 
-## Running the Benchmarks
-Use the benchmark harness for quick comparisons or drive the Typer CLI when you need repeatable artifact capture.
+## Collecting Accuracy Measurements
+Run on the actual CUDA/Transformer Engine host, preserving target and workload metadata.
 ```bash
-python -m cli.aisp bench list-targets --chapter labs/kv_cache_compression
-python -m cli.aisp bench run --targets labs/kv_cache_compression --profile minimal
+python -m labs.kv_cache_compression.calibrate_accuracy --variant fp8 --seed 42 --output /tmp/kv-fp8-seed42.json
+python -m labs.kv_cache_compression.calibrate_accuracy --variant nvfp4 --seed 42 --output /tmp/kv-nvfp4-seed42.json
 ```
-- Targets follow the `labs/kv_cache_compression:<workload>` naming convention listed by `list-targets`.
-- Use `--target-extra-arg labs/kv_cache_compression:<workload>="--flag value"` to sweep schedule knobs.
-- Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited environments.
-- Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.
+- These collect error metrics without accepting an accuracy threshold. Accepted benchmark runs require the separately reviewed policy described above.
 
 ## Validation Checklist
-- `python -m cli.aisp bench run --targets labs/kv_cache_compression:kv_cache --profile minimal` should keep the compressed path verification-clean and modestly ahead on this hardware.
+- Require an independently reviewed accuracy policy and full-output comparisons before accepting timing.
+- Reject zeros, corruption, non-finite values, aliasing, and shape mismatches using the independent reference.
+- Verify allocated cache storage bytes and the BF16-relative compression ratio of 1.0.
 
 ## Notes
-- This is a good lab for demonstrating that some memory optimizations are valuable mostly for capacity, not for giant latency wins.
+- CPU source checks do not qualify CUDA accuracy, Transformer Engine kernels, memory measurements, or performance.

@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "/opt/miniconda3/bin/python",
+    "docs/audits/2026-08-30/evidence/integration/prefill-full-output/recheck_original_mechanisms.py"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering",
+  "exit_code": 0,
+  "report": "original-mechanisms-rechecked.json",
+  "scope": "CPU-only diagnostic; no benchmark timing, GPU runtime or GPU simulation"
+}

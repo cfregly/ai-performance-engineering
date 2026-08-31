@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "git",
+    "diff",
+    "--check",
+    "--",
+    "code/tests/test_labs_runtime_gating.py"
+  ],
+  "exit_code": 0,
+  "source_ast_parse": "PASS",
+  "scope_proof": "scope-proof.json",
+  "diff_check_output": "diff-check.txt"
+}

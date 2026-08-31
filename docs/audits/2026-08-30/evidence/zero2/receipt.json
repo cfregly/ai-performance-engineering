@@ -1,0 +1,52 @@
+{
+  "finding_ids": [
+    "W1-004"
+  ],
+  "timestamp": "2026-08-30T22:10:46.688807+00:00",
+  "base_revision": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "candidate": "uncommitted codex/audit-remediation-20260830",
+  "environment": {
+    "python": "3.12.2",
+    "os": "macOS-26.5.2-arm64-arm-64bit",
+    "torch": "2.8.0",
+    "cuda_available": false,
+    "gloo_available": true
+  },
+  "reproduction": "Extracted existing optimizer construction verbatim into _build_optimizer called by production main, retaining overlap_with_ddp=True. Real two-rank Gloo DDP test failed on zero parameter delta at first explicit step; no library behavior mocked.",
+  "fix": "Explicit optimizer steps use overlap_with_ddp=False; production hook remains separate from optimizer execution. Memory reporting reads the local .optim state held by ZeroRedundancyOptimizer. Docstring no longer claims optimizer/gradient overlap or persistent gradient sharding.",
+  "checks": [
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_audit_wave1_zero2.py -q -p no:cacheprovider",
+      "phase": "before",
+      "result": "1 failed, 1 skipped",
+      "log": "before.txt"
+    },
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_audit_wave1_zero2.py tests/test_train_distributed_lab.py -q -p no:cacheprovider",
+      "phase": "after",
+      "result": "10 passed, 1 skipped",
+      "log": "after.txt"
+    }
+  ],
+  "verified_behavior": [
+    "Both real CPU ranks change parameters at all three steps and match dense global-batch AdamW after two microbatches per step.",
+    "Rank replicas are bitwise equal after each update.",
+    "Each rank owns nonempty strict subset of optimizer state, with AdamW step=3, nonzero moments and reported memory."
+  ],
+  "limitations": [
+    "CPU/Gloo test does not run production NCCL reduce-scatter/all-gather hook; that separate two-GPU regression is skipped on this host.",
+    "Pinned torch2.9.1 CUDA installation and supported multi-GPU runtime acceptance remain required.",
+    "This change provides no performance result and does not validate any historical speedup.",
+    "Existing baseline/optimized model dtype and gradient-clipping differences require workload equivalence review before accepting performance."
+  ],
+  "sources": [
+    "https://docs.pytorch.org/docs/2.9/distributed.optim.html",
+    "https://docs.pytorch.org/docs/stable/ddp_comm_hooks.html",
+    "installed torch2.8.0 ZeroRedundancyOptimizer.step inspected directly"
+  ],
+  "files_sha256": {
+    "code/labs/train_distributed/optimized_zero2_multigpu.py": "b1565ce16de05d1eba31b1b65ac6737cedf63d57035652a896cc52b862be4769",
+    "code/labs/train_distributed/training_utils/memory.py": "1e72b5aa9174036d41ba97053ebd506c962ae0077ec65faabde96f05ccc3b607",
+    "code/tests/test_audit_wave1_zero2.py": "2359fae931efc4ae6e48e9c996020d7f3835160e024e760fb33ebc974136616c"
+  }
+}

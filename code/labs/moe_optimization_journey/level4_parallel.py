@@ -1,23 +1,18 @@
 #!/usr/bin/env python3
-"""Level 4: Multi-Stream Expert Parallelism.
+"""Level 4: Sorted per-expert GEMMs.
 
-ADDS: Run expert groups on different CUDA streams.
-Based on ch15/expert_parallelism.py and 
-ch15/optimized_moe_overlap_shared_expert.py patterns.
+Adds sorting and per-expert GEMMs to the shared BF16 model; no multi-stream dispatch is enabled.
 
-- Overlaps expert computation across streams
-- Better GPU utilization
-- Real expert parallelism pattern
-
-Cumulative: batched + permuted + grouped + parallel
-"""
+The filename and class are retained for compatibility. The LEVEL mapping,
+not a legacy filename, determines execution. These shared levels do not use
+FP8 quantization. No speedup is established by selecting a level."""
 import torch
 
 from labs.moe_optimization_journey.moe_benchmark import MoEJourneyBenchmark, run_level
 
 
 class Level4Parallel(MoEJourneyBenchmark):
-    """Level 4: + Multi-stream expert parallelism."""
+    """Shared level 4: Sorted per-expert GEMMs."""
     LEVEL = 4
 
 def get_benchmark() -> Level4Parallel:

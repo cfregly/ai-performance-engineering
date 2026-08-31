@@ -1,0 +1,15 @@
+{
+  "arch": "sm_90",
+  "status": "HOLD",
+  "checks": [],
+  "started_at_utc": "2026-08-30T23:16:05Z",
+  "source_sha256": {
+    "tests/cuda/feature_cuda_validation.cu": "f933d8b148856bd4fab089450dd848a65652f8fab02938a8404a575beceb415e",
+    "core/benchmark/blackwell_optimizations/blackwell_optimizations/test_all_features.cu": "862d33fd0d9c8bb1f8722063a796aa663994108068e5fff230b6e96f1fac19d1",
+    "core/benchmark/blackwell_optimizations/blackwell_optimizations/test_tma.cu": "59b1c3422f574683975f5a56f1e7200f54efec0873925c64a1368bddc3be726f",
+    "tests/cuda/run_feature_cuda_validation.py": "0f31df4ae79343765755b9f5291b85c7e4fc2782a9395500b841f1352dfe586a",
+    "tests/cuda/validation_process.py": "47019ab4daa7d09d73a9721c2ee68e1b1999b18d1022e25d17dd7089f26f277d"
+  },
+  "sanitizers": "all",
+  "reason": "nvcc unavailable; no CUDA compilation or device execution occurred"
+}

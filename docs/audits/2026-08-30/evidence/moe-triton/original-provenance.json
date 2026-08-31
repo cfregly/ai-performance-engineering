@@ -1,0 +1,12 @@
+[
+  {
+    "file": "triton_fused_moe.py",
+    "capture_sha256": "5ac9fd96a10a53cde8a3a998bea1e415615870a7bf00931de29c2e20e8b8fb38",
+    "exact_reviewed_b57_source": true
+  },
+  {
+    "file": "triton_kernels.py",
+    "capture_sha256": "15580781938e784f1b80c6043519b86db65d463a1c48dff1a50fa61d1edd0447",
+    "exact_reviewed_b57_source": true
+  }
+]

@@ -1,0 +1,9 @@
+{
+  "available": false,
+  "links_per_gpu": {},
+  "total_bandwidth_gbs": 0,
+  "link_details": [],
+  "warnings": [
+    "Failed to query NVLink status: [Errno 2] No such file or directory: 'nvidia-smi'"
+  ]
+}

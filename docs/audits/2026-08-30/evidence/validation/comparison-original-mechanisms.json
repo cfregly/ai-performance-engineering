@@ -1,0 +1,70 @@
+{
+  "evidence_kind": "synthetic reporting arithmetic; no GPU measurements",
+  "baseline_revision": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "cases": {
+    "slower_latency": {
+      "original": {
+        "regression": false,
+        "regression_pct": null,
+        "improvement_pct": 100.0,
+        "ratio": 2.0,
+        "unit": "x"
+      },
+      "fixed": {
+        "regression": true,
+        "regression_pct": 100.0,
+        "improvement_pct": null,
+        "ratio": 0.5,
+        "unit": "ms"
+      }
+    },
+    "bandwidth_loss": {
+      "original": {
+        "regression": false,
+        "regression_pct": 90.0,
+        "improvement_pct": null,
+        "ratio": 0.1,
+        "unit": "GB/s"
+      },
+      "fixed": {
+        "regression": true,
+        "regression_pct": 90.0,
+        "improvement_pct": null,
+        "ratio": 0.1,
+        "unit": "GB/s"
+      }
+    },
+    "routing_noise": {
+      "original": {
+        "regression": true,
+        "regression_pct": 3.0,
+        "improvement_pct": null,
+        "ratio": 0.970873786407767,
+        "unit": "ms"
+      },
+      "fixed": {
+        "regression": false,
+        "regression_pct": 3.0,
+        "improvement_pct": null,
+        "ratio": 0.970873786407767,
+        "unit": "ms"
+      }
+    },
+    "ttft_loss": {
+      "original": {
+        "regression": false,
+        "regression_pct": 10.0,
+        "improvement_pct": null,
+        "ratio": 0.9090909090909091,
+        "unit": "ms"
+      },
+      "fixed": {
+        "regression": true,
+        "regression_pct": 10.0,
+        "improvement_pct": null,
+        "ratio": 0.9090909090909091,
+        "unit": "ms"
+      }
+    }
+  }
+}

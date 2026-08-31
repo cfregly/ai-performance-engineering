@@ -1,0 +1,16 @@
+ch07:async_prefetch
+ch07:copy_scalar
+ch07:copy_scalar_vectorized
+ch07:copy_uncoalesced
+ch07:copy_uncoalesced_coalesced
+ch07:float4_vector
+ch07:hbm_copy
+ch07:hbm_peak
+ch07:lookup
+ch07:matmul
+ch07:matmul_tiled
+ch07:memory_access
+ch07:tma_bulk_tensor_2d
+ch07:tma_copy
+ch07:transpose
+ch07:transpose_padded

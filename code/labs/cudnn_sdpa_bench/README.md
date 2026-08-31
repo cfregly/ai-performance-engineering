@@ -16,14 +16,14 @@ Attention backend choices are often treated as an implementation detail. This la
 - same shapes and validation contract
 - tuned to answer "does backend choice alone move the result?" rather than mixing in unrelated changes
 
-## Measured Delta
-Representative strict result from `artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/`:
+## Historical Delta (backend attribution unverified)
+Earlier representative result from `artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/`:
 
 | Target | Baseline | Optimized | Measured delta |
 | --- | ---: | ---: | ---: |
 | `flash_sdp` | `0.345 ms` | `0.282 ms` | `1.22x` |
 
-This is not a giant benchmark pair, and that is useful. The lab exists to show a real backend-selection delta without pretending it is a bigger architectural win than it is.
+The earlier implementation allowed a requested cuDNN run to fall back to Flash. This table therefore does not establish a cuDNN-versus-Flash delta. Explicit backend requests are now pinned and fail if unavailable; only `auto` permits fallback. Fresh GPU verification and profiler evidence are required before attributing a speedup to backend selection.
 
 ## Profiler Evidence
 ```bash

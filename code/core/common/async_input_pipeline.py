@@ -113,9 +113,7 @@ class AsyncInputPipelineBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return batch_gpu
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
+        # The harness controls RNG seeding, including fresh-input verification.
         # This is a performance benchmark; allow cuDNN to pick fastest kernels.
         torch.backends.cudnn.benchmark = True
 
@@ -160,10 +158,16 @@ class AsyncInputPipelineBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self._prefetched_batch is None:
             raise RuntimeError("Prefetch buffer not initialized (setup() must run)")
         with self._nvtx_range(self.label):
+            # The harness may execute on a stream different from setup().
+            self.compute_stream = torch.cuda.current_stream(self.device)
             # Current batch is the one prefetched during the previous iteration.
             if self._prefetch_event is not None and self.compute_stream is not None:
                 self.compute_stream.wait_event(self._prefetch_event)
             batch_gpu = self._prefetched_batch
+            if self.copy_stream is not None:
+                # Waiting orders execution; record_stream separately protects the
+                # allocation if Python drops it while compute is still queued.
+                batch_gpu.record_stream(self.compute_stream)
 
             # Kick off H2D for the *next* batch on the copy stream while we run compute.
             next_cpu = self._next_batch_cpu()

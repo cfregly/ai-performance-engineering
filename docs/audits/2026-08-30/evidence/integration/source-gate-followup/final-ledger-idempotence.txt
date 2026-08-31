@@ -1,0 +1,83 @@
+{
+  "ledger": "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/remediation-ledger.json",
+  "would_write": false,
+  "original_status_counts": {
+    "source_fixed": 52,
+    "awaiting_runtime": 76
+  },
+  "adjacent_status_counts": {
+    "source_fixed": 30,
+    "awaiting_runtime": 12
+  },
+  "targeted_source_gate_checkpoint": {
+    "checkpoint_type": "TARGETED_FOCUSED_SOURCE_GATES",
+    "status": "PASS_FOCUSED_SOURCE_GATES__FULL_CPU_NOT_RERUN__LINUX_CUDA_GPU_AND_WAVE2_PENDING",
+    "at": "2026-08-31T03:03:00.266693+00:00",
+    "receipt": "evidence/integration/source-gate-followup/receipt.json",
+    "receipt_sha256": "438e8a44ea06adac23b19fbf2376c136365e6301a2d98724ebdda5cc260601ad",
+    "source_manifest": "evidence/integration/source-gate-followup/source-targeted-final.json",
+    "source_manifest_sha256": "d8b278022540a426e582ea3f65bcdb0ab93639dec477223ce247a07ee6031e9c",
+    "source_entry_count": 392,
+    "source_present_file_count": 388,
+    "source_deleted_path_count": 4,
+    "source_stable_during_run": true,
+    "tracked_diff_sha256": "2ec6c0ac1a634b54742171b221c2d81152a8e1573597f625a66575fed3fef719",
+    "targeted_gates": {
+      "make_lint": {
+        "status": "PASS",
+        "exit_code": 0,
+        "evidence": {
+          "make-lint.txt": "cc20ff49bcf2c0de50fdc09a62a3fdb1a365d566cacfaeaea86fbb6ade9c0414"
+        }
+      },
+      "static": {
+        "status": "PASS",
+        "exit_code": 0,
+        "evidence": {
+          "targeted-static.txt": "d4f324ef7174ce6ce6b4620b2dc2eea7803f7af08ac32cca60c8fb0d750ad7b4"
+        }
+      },
+      "import_edges": {
+        "status": "PASS",
+        "exit_code": 0,
+        "evidence": {
+          "import-edges.txt": "ab04c4b9944f38756bcb42410f6ebeb91172acdf0278436e17623494d784936e"
+        }
+      }
+    },
+    "focused_tp_findings": [
+      "LOCAL-038",
+      "LOCAL-039",
+      "LOCAL-040",
+      "LOCAL-041",
+      "LOCAL-042"
+    ],
+    "diagnostic_full_cpu": {
+      "status": "FAIL_DIAGNOSTIC_PRESERVED",
+      "exit_code": 1,
+      "passed": 4181,
+      "skipped": 450,
+      "failed": 1,
+      "errors": 0,
+      "rerun_after_final_tp_fixes": false,
+      "interpretation": "Preserved diagnostic failure that led to final TP attention fixes; it is not a post-fix integration result.",
+      "evidence": {
+        "full-cpu.txt": "d70ca9bf436a5c2144f25d1e5e391880d939e0702081f7eb416bf63b647ca4ea",
+        "full-cpu.xml": "623d35f104627e9229ae865fbf388f0203148b7c6ab95516201c1ae1ad85498a"
+      }
+    },
+    "fresh_full_cpu_after_final_tp_fixes": "NOT_RERUN_AT_USER_DIRECTION",
+    "semantic_receipt": "evidence/integration/semantic-seam-closure/receipt.json",
+    "semantic_receipt_sha256": "8741df5f7986ddf792762344b270ba3854811e6b1f34479ef2bca2a8004bcc81",
+    "zero2_receipt": "evidence/integration/zero2-child-protocol/supplement-receipt.json",
+    "zero2_receipt_sha256": "1ffdf5e1bf3a88b2a241efdcc870f978c9943a5fbc71b790a5a3298f94bc96a6",
+    "dependency_receipt": "evidence/integration/full-dependency-review/receipt.json",
+    "dependency_receipt_sha256": "3400f4a28f78adae6f409a62baad75f32e9d8854343041d01990f7644f111775",
+    "wave2_check": "evidence/intake/second-wave-check-post-seams.json",
+    "wave2_check_sha256": "62b605b003417e3f1dd5e84ea74aa645345b3970bfc1b9ff174b2acc02a9668a",
+    "runtime_handoff": "evidence/integration/pinned-linux-integration/runtime-update.md",
+    "wave_2": "awaiting_report",
+    "goal_complete": false
+  },
+  "wave2_last_check": "evidence/intake/second-wave-check-post-seams.json"
+}

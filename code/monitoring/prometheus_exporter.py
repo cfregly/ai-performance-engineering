@@ -25,6 +25,29 @@ from core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def format_prometheus_metrics(metrics: Dict[str, float]) -> str:
+    """Serialize a snapshot with one HELP/TYPE pair per metric family."""
+    lines = []
+    emitted = set()
+    for name, value in sorted(metrics.items()):
+        family = name.split('{', 1)[0]
+        if family not in emitted:
+            if family.startswith('gpu_'):
+                description = 'GPU metric'
+            elif family.startswith('training_'):
+                description = 'Training metric'
+            elif family.startswith('inference_'):
+                description = 'Inference metric'
+            else:
+                description = None
+            if description is not None:
+                lines.append(f'# HELP {family} {description}')
+                lines.append(f'# TYPE {family} gauge')
+            emitted.add(family)
+        lines.append(f'{name} {value}')
+    return '\n'.join(lines) + '\n'
+
+
 class MetricsCollector:
     """Collect GPU and training/inference metrics."""
     
@@ -124,30 +147,11 @@ class MetricsCollector:
     
     def format_prometheus(self) -> str:
         """Format metrics in Prometheus exposition format."""
-        lines = []
-        
-        # Collect fresh GPU metrics
-        gpu_metrics = self.collect_gpu_metrics()
-        
-        # Combine all metrics
-        all_metrics = {**self.metrics, **gpu_metrics}
-        
+        # Snapshot application metrics under the writer lock, then collect GPU
+        # telemetry without holding that lock across CUDA calls/formatting.
         with self.lock:
-            for name, value in sorted(all_metrics.items()):
-                # Add help text for common metrics
-                if name.startswith('gpu_memory'):
-                    lines.append(f'# HELP {name.split("{")[0]} GPU memory metric')
-                    lines.append(f'# TYPE {name.split("{")[0]} gauge')
-                elif name.startswith('training'):
-                    lines.append(f'# HELP {name} Training metric')
-                    lines.append(f'# TYPE {name} gauge')
-                elif name.startswith('inference'):
-                    lines.append(f'# HELP {name} Inference metric')
-                    lines.append(f'# TYPE {name} gauge')
-                
-                lines.append(f'{name} {value}')
-        
-        return '\n'.join(lines) + '\n'
+            application_metrics = dict(self.metrics)
+        return format_prometheus_metrics({**application_metrics, **self.collect_gpu_metrics()})
 
 
 class PrometheusHandler(BaseHTTPRequestHandler):

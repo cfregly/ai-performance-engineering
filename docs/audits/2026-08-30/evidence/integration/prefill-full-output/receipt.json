@@ -1,0 +1,145 @@
+{
+  "status": "PASS_CPU_SOURCE_GPU_HOLD",
+  "created_utc": "2026-08-30T23:58:42.356952+00:00",
+  "original_audit_ids": [],
+  "scope": "Adjacent integration discoveries in prefill/decode complete-output verification, copy workload parity, graph refresh, stream producer ordering and output signature; original 128 IDs unchanged.",
+  "discoveries": [
+    {
+      "name": "Partial decode payload and absent prefill validation",
+      "before": "All four old captures omit tail decode elements and every prefill element; old validate_result accepts injected corruption.",
+      "reproduction": "original-mechanisms-rechecked.json",
+      "fix": "Preallocated flat full decode+prefill payload, actual prefill source input, full independent decode validation and exact prefill validation before capture."
+    },
+    {
+      "name": "Prefill workload mismatch",
+      "before": "Baseline descriptor-pair prefill performs copy then add, giving 2*source, while its peer performs copy.",
+      "reproduction": "original-mechanisms-rechecked.json",
+      "fix": "Baseline performs the same copy-only work. Historical timings remain unqualified."
+    },
+    {
+      "name": "Stale FULL graph inputs",
+      "before": "FULL replay uses setup-captured graph q/k/v without refreshing from actual benchmark inputs.",
+      "evidence_kind": "source review; no pre-fix CUDA reproduction",
+      "fix": "Refresh graph q/k/v on decode stream before every FULL replay, within the measured region."
+    },
+    {
+      "name": "Missing side-stream input production dependency",
+      "before": "Both optimized paths lack explicit caller-to-prefill/decode stream dependencies at benchmark entry.",
+      "evidence_kind": "source review; no pre-fix CUDA reproduction",
+      "fix": "Existing side streams wait for caller stream input writes; existing fan-in remains."
+    },
+    {
+      "name": "Partial common output signature",
+      "before": "Common static signature still declares one sequence and eight tokens after peer outputs became complete.",
+      "fix": "Declare the complete batch, sequence and head-dimension output shape."
+    }
+  ],
+  "owned_source_sha256": {
+    "code/labs/persistent_decode/baseline_tma_prefill_decode.py": "24838f26dc2c50800ccda28e24d1c0e92d8c8bd7d7ee43301dc013a28c052f9b",
+    "code/labs/persistent_decode/optimized_tma_prefill_decode.py": "5c01331ae35be8975c6e070af8bc0ddf3dd28ad5d4e02eb2efd62b1b63719497",
+    "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py": "ff54f675b862bd3c72330e839b6461e6d01a02ec76cc35a7ccfa5c5bfb9465e9",
+    "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py": "7f3c16ab16961332e08fa5acef20c58483b268a3c268513a36f476ccaa25daa9",
+    "code/labs/persistent_decode/persistent_decode_common.py": "59b13fcbeac492772d47382efe5b04e3321fcbb3467098e46759755d7111d8ad",
+    "code/tests/test_audit_wave1_prefill_full_output.py": "ef1164f7fdd036216c93d7f333f7391dd503760394e4eda97960f481e5db828a"
+  },
+  "read_only_dependency_sha256": {
+    "code/labs/persistent_decode/tma_extension.py": "675fc3fb5faf72e274a72d2c86e31a67743150d467c41295c542ea759e3d03d8",
+    "code/core/common/headers/tma_helpers.cuh": "4c8a88560d1cc5e04ff1b99110453119fefc98aa17faaee462ce0133abc942ba",
+    "code/core/common/headers/tma_2d_layout.hpp": "645f624cc2cd7a7b1f18e6d0c734e1b48407394d478f18aee46f0dd8927c8834",
+    "code/core/common/headers/arch_detection.cuh": "c32cae59cab37e0d0ad70bdc8784a09385207ff1849f592d7c5fb0a12338da32",
+    "code/tests/cuda/validation_process.py": "47019ab4daa7d09d73a9721c2ee68e1b1999b18d1022e25d17dd7089f26f277d"
+  },
+  "root_owned_document_snapshot_sha256": {
+    "code/labs/persistent_decode/README.md": "095740beda6c680964e0c8d5ffeef92476eef5b7a539aabb78fff9660d33a4a1",
+    "code/core/scripts/refresh_readmes.py": "e7d508a8fda4a1b87aef33d2135c67766753bb19fc22673817d4a215fba823da"
+  },
+  "environment": {
+    "python_executable": "/opt/miniconda3/bin/python",
+    "python": "3.12.2",
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "torch": "2.8.0",
+    "torch_cuda": null,
+    "cuda_available": false,
+    "pinned_gpu_stack": false
+  },
+  "pytest_first": {
+    "tests": 39,
+    "passed": 32,
+    "skipped": 7,
+    "failures": 0,
+    "errors": 0,
+    "seconds": 1.567,
+    "timestamp": "2026-08-30T19:53:38.113606-04:00"
+  },
+  "pytest_final": {
+    "tests": 135,
+    "passed": 102,
+    "skipped": 33,
+    "failures": 0,
+    "errors": 0,
+    "seconds": 4.43,
+    "timestamp": "2026-08-30T19:54:54.744639-04:00"
+  },
+  "command_records": [
+    "pytest-first-command.json",
+    "pytest-final-command.json",
+    "cuda-preflight-command.json",
+    "original-mechanisms-command.json",
+    "source-checks.json"
+  ],
+  "cuda_preflight": {
+    "status": "HOLD",
+    "exit_code": 3,
+    "checks": 0,
+    "reason": "Actual CUDA device required; CPU payload checks are not GPU qualification",
+    "report": "cuda-preflight-hold/report.json"
+  },
+  "prepared_cuda_gate": {
+    "cases": 7,
+    "changed_input_iterations_per_case": 3,
+    "actual_local_executions": 0,
+    "bounded_child_seconds": 300,
+    "process_group_timeout_cleanup": "code/tests/cuda/validation_process.py",
+    "reference": "Independent float64 dot-times-V cast to FP32 plus exact prefill source copy; fixed dyadic inputs only",
+    "retention": "Full actual outputs and references saved before validation; payloads, partial progress and failure traceback retained",
+    "sanitizer_execution": false
+  },
+  "independent_review": {
+    "parent": "Read five production files and new CPU/CUDA gate; source accepted with inherited tolerance limitation. No CUDA acceptance.",
+    "hygiene_receipt": "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json",
+    "hygiene_receipt_sha256": "cf15abcf9faa8b07009d80e682d9064b9d3991e551ff7541c5f06a89dd2504f7",
+    "hygiene_outcome": "552 passed, one Linux-only skip; five production source hashes match. CPU/source assertions only."
+  },
+  "limitations": [
+    "CPU payload fixtures intentionally bypass CUDA constructors/setup; no GPU mocks or benchmark-success simulation.",
+    "Actual CUDA/TMA/native-copy/graphs/stream ordering and target extension build remain unexecuted.",
+    "Existing general decode tolerance rtol=0.1/atol=1.0 is unchanged and uncalibrated.",
+    "Prepared exact dyadic FP32 references do not qualify arbitrary or lower-precision inputs.",
+    "Sanitizer and performance gates remain pending; historical timing artifacts unchanged and unqualified for repaired workload."
+  ],
+  "evidence_files_sha256": {
+    "README.md": "6c9bb7b83d7557f6158cac2194381eee66e11f088e6e0f0f24ddc22c60a41325",
+    "cuda-preflight-command.json": "b07bae0ecd3929efd3ff072f7361f4a13c8a02354ba9a2248f8e884f0710f8b2",
+    "cuda-preflight-hold/report.json": "56937aea5fc263c5df4aac57918ecbc3ecb5ff8f6fcdae1663628716e0bd387a",
+    "cuda-preflight-output.txt": "494ac8041e7d9e3f59a0d15a2231a33747dfde6622f037a05fa506071dde94cf",
+    "original-baseline_native_tma_prefill_decode.py": "43427f27efdf22aad2d456212ddfb6b6eb68d122da5875c6c59c4ba8472a3fc3",
+    "original-baseline_tma_prefill_decode.py": "baec3cc9367fb3c0417e847b0e1cbdb46da694eef93750f89cc4c44647cc5cce",
+    "original-capture-reproduction.json": "40e9901dbbafd7a29ed79eab6b7d89d842125ff624114802bacdcd3592a6b81d",
+    "original-mechanisms-command.json": "7f5341c002a8be702df57efe3b4af53b89949e9fce520a3a47764a4bc5ac8d51",
+    "original-mechanisms-rechecked.json": "57bf3dd74e16546b85cab78c1cbcf22e1f741e7e9a4c79436ac3be6a749bcdca",
+    "original-optimized_native_tma_prefill_decode.py": "5b0356053c4977f07080007cf1807600b9876f82782840e0ab82da834afbd521",
+    "original-optimized_tma_prefill_decode.py": "e24bef6eb0489281d54ed71579db42df894a3d8d4dece9d99cd6cb3d620e33fa",
+    "original-persistent_decode_common.py": "8c2e49dd225cf885faa53723c87294c9680853f66640a94131f4b9b4ce43e968",
+    "original-source-manifest.json": "8ceb828ed03b3ae925285cae1730f70883d24d6bfabae25ddaf175f5aa99c3b7",
+    "pytest-final-command.json": "25dbbd966582dc1fa18169be36f1b1665b7659c73fd0aef0e6c58403eeb7d810",
+    "pytest-final.txt": "b5d4b55a45cadcabe354794aeb6081d9af19a6d9232e0c342a9c9ed79f4f2d70",
+    "pytest-final.xml": "7be8d45b7171672a806e470b42075726a6860f4784113e68b2f37d2b67a35d4c",
+    "pytest-first-command.json": "962a7520b855ddba255a6df35462e6b518b9201004efe98d0e78fc634eeb2c71",
+    "pytest-first.txt": "5d271f7560f11ad75f4f9336d87ef612e5a3c0afbed6164152c1d8b5c1f0a48d",
+    "pytest-first.xml": "fe7663794365afb77e4ee8947b912a5c350e1c27c410480191a9450cfb3a18ab",
+    "recheck_original_mechanisms.py": "e68a6c796416db9a4097628d4839a60b3dd22c6e20caa31e20a85a3bbed4abc8",
+    "scoped-change-from-preserved-sources.diff.txt": "dd60f587bb0bdc6b5d8ff4550ae8912a38f59fcd92f4b0c2c78a261519b657db",
+    "source-checks.json": "68e5ee59e98b3905a3664506ab66cfe38451b0b39045e1d2267b16b63a6d38f2"
+  },
+  "frozen": true
+}

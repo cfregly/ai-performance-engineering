@@ -1,10 +1,10 @@
-# Lab - FlashAttention Gluon
+# Lab - Tiled Triton Attention (legacy Gluon target)
 
 ## Summary
-Benchmarks a FlashAttention-style optimized path against a simpler attention reference so the local Gluon-flavored integration stays measured and honest.
+Benchmarks ordinary tiled Triton attention with online softmax against an eager attention reference. Historical Gluon target/module names remain compatible; no Gluon DSL, warp specialization, or TMA implementation is claimed.
 
 ## Problem
-Attention-stack integrations can look "fast" because the benchmark is fuzzy. This lab keeps the pair narrow so you can see whether the Gluon-oriented optimized path really buys anything on this stack.
+Attention-stack integrations can look "fast" because the benchmark is fuzzy. This lab keeps the pair narrow so you can see whether the tiled Triton path improves this workload on the target stack.
 
 ## Baseline Path
 - simple attention reference path
@@ -23,7 +23,7 @@ Representative strict result from `artifacts/runs/20260302_full_strict_chapter_l
 | --- | ---: | ---: | ---: |
 | `flashattention_gluon` | `0.205 ms` | `0.154 ms` | `1.33x` |
 
-This is a modest but real backend/path win. The useful part is that the result stays measured and reproducible instead of being hidden in a broader model benchmark.
+This is a historical divisible-length, noncausal workload result. It does not qualify the corrected tail masking, causal masking, padded head dimension, or current runtime. Fresh CUDA numerical and performance checks remain pending.
 
 ## Profiler Evidence
 ```bash
@@ -37,7 +37,7 @@ python -m cli.aisp bench run --targets labs/flashattention_gluon:flashattention_
 ```
 
 ## Learning Goals
-- Keep the local FlashAttention/Gluon integration benchmarked as a clean pair.
+- Compare tiled ordinary-Triton attention with the eager reference using identical shapes and masks.
 - Measure backend-path value without mixing in unrelated model-level effects.
 - Use a small, stable attention benchmark as an integration health signal.
 
@@ -60,7 +60,9 @@ python -m cli.aisp bench run --targets labs/flashattention_gluon --profile minim
 - Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.
 
 ## Validation Checklist
-- `python -m cli.aisp bench run --targets labs/flashattention_gluon:flashattention_gluon --profile minimal` should keep the optimized path ahead on validated hardware.
+- Check nonmultiples of 64, negative scores, causal and noncausal modes, and non-power-of-two head dimensions against PyTorch SDPA. Invalid columns receive negative infinity before softmax.
+- Nonzero dropout is explicitly unsupported; output buffers must not alias inputs.
+- `python -m cli.aisp bench run --targets labs/flashattention_gluon:flashattention_gluon --profile minimal` must pass numerical checks before any new speedup is accepted.
 
 ## Notes
 - Treat this as an integration-health benchmark more than as a giant architectural headline win.

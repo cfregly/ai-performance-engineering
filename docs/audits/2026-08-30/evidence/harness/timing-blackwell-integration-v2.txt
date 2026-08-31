@@ -1,0 +1,12 @@
+................................sssssssss.............                   [100%]
+=============================== warnings summary ===============================
+tests/test_audit_wave1_harness.py::test_detector_switches_are_independent[False-False]
+tests/test_audit_wave1_harness.py::test_detector_switches_are_independent[False-True]
+tests/test_audit_wave1_harness.py::test_detector_switches_are_independent[True-False]
+tests/test_audit_wave1_harness.py::test_detector_switches_are_independent[True-True]
+tests/test_audit_wave1_harness.py::test_antipattern_detection_still_rejects_logging_when_sync_detection_is_off
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/harness/benchmark_harness.py:4867: RuntimeWarning: ENVIRONMENT INVALID: Non-Linux platform 'darwin' is not supported for benchmark validity checks.
+    warn_module.warn(message, RuntimeWarning)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+45 passed, 9 skipped, 5 warnings in 16.95s

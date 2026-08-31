@@ -1,0 +1,10 @@
+{
+  "command": [
+    "/opt/miniconda3/bin/python",
+    "code/labs/moe_optimization_journey/triton_fused_moe.py"
+  ],
+  "exit_code": 1,
+  "stdout": "",
+  "stderr": "Traceback (most recent call last):\n  File \"/Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/moe_optimization_journey/triton_fused_moe.py\", line 12, in <module>\n    import triton\nModuleNotFoundError: No module named 'triton'\n",
+  "classification": "Dependency unavailable; no original Triton compilation or kernel execution occurred"
+}

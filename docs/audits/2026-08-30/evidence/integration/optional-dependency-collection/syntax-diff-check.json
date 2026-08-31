@@ -1,0 +1,36 @@
+{
+  "compiled_python_paths": [
+    "code/labs/occupancy_tuning/__init__.py",
+    "code/labs/occupancy_tuning/triton_matmul_schedules.py",
+    "code/labs/occupancy_tuning/sweep_schedules.py",
+    "code/labs/blackwell_gemm_optimizations/blackwell_grouped_gemm_autotune.py",
+    "code/labs/blackwell_gemm_optimizations/blackwell_grouped_gemm_common.py",
+    "code/labs/blackwell_gemm_optimizations/blackwell_grouped_gemm_kernel.py",
+    "code/tests/test_blackwell_gemm_optimizations_lab.py",
+    "code/tests/test_flashattention_gluon_runtime.py",
+    "code/tests/test_labs_schedule_and_entrypoints.py",
+    "code/tests/test_min_speedup_contracts.py",
+    "code/tests/test_occupancy_tuning.py"
+  ],
+  "scope": "Python source compile only, not a CUDA/Triton compile",
+  "diff_check_command": [
+    "git",
+    "diff",
+    "--check",
+    "--",
+    "code/labs/occupancy_tuning/__init__.py",
+    "code/labs/occupancy_tuning/triton_matmul_schedules.py",
+    "code/labs/occupancy_tuning/sweep_schedules.py",
+    "code/labs/blackwell_gemm_optimizations/blackwell_grouped_gemm_autotune.py",
+    "code/labs/blackwell_gemm_optimizations/blackwell_grouped_gemm_common.py",
+    "code/labs/blackwell_gemm_optimizations/blackwell_grouped_gemm_kernel.py",
+    "code/tests/test_blackwell_gemm_optimizations_lab.py",
+    "code/tests/test_flashattention_gluon_runtime.py",
+    "code/tests/test_labs_schedule_and_entrypoints.py",
+    "code/tests/test_min_speedup_contracts.py",
+    "code/tests/test_occupancy_tuning.py"
+  ],
+  "exit_code": 0,
+  "stdout": "",
+  "stderr": ""
+}

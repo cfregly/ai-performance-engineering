@@ -38,17 +38,21 @@ compare: clean
 		$(MAKE) ARCH=$${arch} all; \
 	done
 
-b200: ARCH=sm_100
-b200: clean all
+b200:
+	$(MAKE) ARCH=sm_100 clean
+	$(MAKE) ARCH=sm_100 all
 
-gb10: ARCH=sm_121
-gb10: clean all
+gb10:
+	$(MAKE) ARCH=sm_121 clean
+	$(MAKE) ARCH=sm_121 all
 
-b300: ARCH=sm_103
-b300: clean all
+b300:
+	$(MAKE) ARCH=sm_103 clean
+	$(MAKE) ARCH=sm_103 all
 
-gb300: ARCH=sm_103
-gb300: clean all
+gb300:
+	$(MAKE) ARCH=sm_103 clean
+	$(MAKE) ARCH=sm_103 all
 
 clean:
 	rm -f *_sm100 *_sm103 *_sm120 *_sm121 *_sm122 *_sm123 *.o *.so *.a

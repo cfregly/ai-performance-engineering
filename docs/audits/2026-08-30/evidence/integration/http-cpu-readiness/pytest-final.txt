@@ -1,0 +1,5 @@
+s................                                                        [100%]
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/http-cpu-readiness/pytest-final.xml -
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_http_microbench.py:133: Legacy routes /api/microbench/disk, /api/microbench/loopback and /api/export/html are absent from the dashboard API; their microbenchmark/export functionality is unavailable through these routes and remains unverified.
+16 passed, 1 skipped in 3.95s

@@ -12,6 +12,7 @@ import gc
 import json
 import importlib
 import inspect
+import math
 import os
 import random
 import re
@@ -670,6 +671,15 @@ class BenchmarkMode(Enum):
     TRITON = "triton"  # Use triton.testing.do_bench
     PYTORCH = "pytorch"  # Use torch.utils.benchmark.Timer
     CUSTOM = "custom"  # Use CUDA Events / time.perf_counter
+
+
+class _ObservedTimings(list):
+    """Internal timing samples with their observation unit, preserved in results."""
+
+    def __init__(self, values, *, sample_scope: Optional[str], iterations_per_sample: Optional[int]):
+        super().__init__(values)
+        self.sample_scope = sample_scope
+        self.iterations_per_sample = iterations_per_sample
 
 
 class ExecutionMode(str, Enum):
@@ -1529,6 +1539,9 @@ class TorchrunLaunchSpec:
     multi_gpu_required: bool = False
     name: Optional[str] = None
     config_arg_map: Dict[str, str] = field(default_factory=dict)
+    # Opt-in post-exit transport hook.  Generic torchrun benchmarks leave this
+    # unset; the four ZeRO adapters use it to validate fresh per-rank results.
+    result_callback: Optional[str] = None
 
 
 # BenchmarkResult is provided by benchmark_models.py
@@ -2360,6 +2373,22 @@ class BenchmarkHarness:
         self._annotate_launch_metadata(result, config, world_size=self._world_size_hint(config))
         return result
     
+    @staticmethod
+    def _extract_tokens_per_s(lines: List[str]) -> Optional[float]:
+        """Read reported token throughput without requiring a literal backslash."""
+        pattern = re.compile(r"([0-9][0-9,.]*)\s*(tok(?:ens)?/s|toks/s)", re.IGNORECASE)
+        best: Optional[float] = None
+        for line in lines:
+            match = pattern.search(line)
+            if not match:
+                continue
+            try:
+                candidate = float(match.group(1).replace(",", ""))
+                best = candidate if best is None else max(best, candidate)
+            except ValueError:
+                continue
+        return best
+
     def _benchmark_with_torchrun(self, benchmark: BaseBenchmark, config: BenchmarkConfig) -> PydanticBenchmarkResult:
         """Launch benchmark via torchrun for multi-GPU targets."""
         import inspect
@@ -2383,33 +2412,28 @@ class BenchmarkHarness:
                     filtered.append(stripped)
             return filtered
 
-        def _extract_tokens_per_s(lines: List[str]) -> Optional[float]:
-            pattern = re.compile(r"([0-9][0-9,\\.]+)\\s*(tok(?:ens)?/s|toks/s|tok/s)", re.IGNORECASE)
-            best: Optional[float] = None
-            for line in lines:
-                match = pattern.search(line)
-                if not match:
-                    continue
-                try:
-                    candidate = float(match.group(1).replace(",", ""))
-                    best = candidate if best is None else max(best, candidate)
-                except ValueError:
-                    continue
-            return best
-
         errors: List[str] = []
-        spec: Optional[TorchrunLaunchSpec] = None
-        try:
-            getter = getattr(benchmark, "get_torchrun_spec", None)
-            if callable(getter):
-                spec = getter(config)
-        except Exception as exc:  # pragma: no cover - defensive
-            errors.append(f"Failed to build torchrun spec: {exc}")
+        getter = getattr(benchmark, "get_torchrun_spec", None)
+        if not callable(getter):
+            raise TypeError("A torchrun benchmark must expose a callable get_torchrun_spec()")
+        # A declared spec may reject unsupported verification or an invalid
+        # configuration. Preserve that failure before constructing any launcher.
+        spec: Optional[TorchrunLaunchSpec] = getter(config)
         if spec is None:
-            # Fallback to module path if provided
+            # BaseBenchmark's default getter explicitly returns None.
             benchmark_module = inspect.getmodule(benchmark) or inspect.getmodule(benchmark.__class__)
             module_path = Path(getattr(benchmark_module, "__file__", "")).resolve()
             spec = TorchrunLaunchSpec(script_path=module_path)
+        result_callback = None
+        if spec.result_callback is not None:
+            if not isinstance(spec.result_callback, str) or not spec.result_callback:
+                raise TypeError("TorchrunLaunchSpec.result_callback must be a non-empty method name")
+            result_callback = getattr(benchmark, spec.result_callback, None)
+            if not callable(result_callback):
+                raise TypeError(
+                    f"Torchrun result callback {spec.result_callback!r} must be callable on "
+                    f"{benchmark.__class__.__name__}"
+                )
         print(
             f"[harness] torchrun spec script={spec.script_path} module={spec.module_name} args={spec.script_args}",
             flush=True,
@@ -2460,22 +2484,15 @@ class BenchmarkHarness:
             print("[harness] sockets unavailable; launching torchrun wrapper directly (single process)", flush=True)
             torchrun_cmd = [sys.executable]
         else:
-            torchrun_path = shutil.which("torchrun")
-            if torchrun_path:
-                torchrun_cmd = [
-                    torchrun_path,
-                    "--nproc_per_node",
-                    str(nproc_per_node),
-                ]
-            else:
-                # Avoid relying on PATH/entrypoints; works even when the venv isn't activated.
-                torchrun_cmd = [
-                    sys.executable,
-                    "-m",
-                    "torch.distributed.run",
-                    "--nproc_per_node",
-                    str(nproc_per_node),
-                ]
+            # A PATH torchrun can belong to another Python/PyTorch environment.
+            # Preserve the actual harness interpreter and dependency versions.
+            torchrun_cmd = [
+                sys.executable,
+                "-m",
+                "torch.distributed.run",
+                "--nproc_per_node",
+                str(nproc_per_node),
+            ]
         if getattr(config, "nnodes", None):
             torchrun_cmd.extend(["--nnodes", str(config.nnodes)])
         if getattr(config, "rdzv_backend", None) or getattr(config, "nnodes", None):
@@ -2583,6 +2600,12 @@ class BenchmarkHarness:
         timeout_limit = float(timeout_limit)
 
         try:
+            launch_wall_ns = time.time_ns()
+            launch_monotonic_ns = time.monotonic_ns()
+            if result_callback is not None:
+                env["AISP_TORCHRUN_RESULT_LAUNCH_WALL_NS"] = str(launch_wall_ns)
+                env["AISP_TORCHRUN_RESULT_LAUNCH_MONOTONIC_NS"] = str(launch_monotonic_ns)
+            start = time.perf_counter()
             process = subprocess.Popen(
                 full_cmd,
                 stdout=subprocess.PIPE,
@@ -2591,7 +2614,6 @@ class BenchmarkHarness:
                 preexec_fn=_benchmark_child_preexec,
                 env=env,
             )
-            start = time.time()
             try:
                 stdout, stderr = process.communicate(timeout=timeout_limit)
             except subprocess.TimeoutExpired:
@@ -2600,7 +2622,7 @@ class BenchmarkHarness:
                     process.wait(timeout=2)
                 except subprocess.TimeoutExpired:
                     os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-                elapsed = time.time() - start
+                elapsed = time.perf_counter() - start
                 return self._create_timeout_result(
                     stage="measurement",
                     duration=elapsed,
@@ -2609,7 +2631,9 @@ class BenchmarkHarness:
                     benchmark_name=spec.name or getattr(benchmark, "name", None) or benchmark.__class__.__name__,
                     config=config,
                 )
-            elapsed = time.time() - start
+            elapsed = time.perf_counter() - start
+            finish_monotonic_ns = time.monotonic_ns()
+            finish_wall_ns = time.time_ns()
             if process.returncode != 0:
                 stdout_lines = stdout.splitlines() if stdout else []
                 stderr_lines = [line.strip() for line in (stderr or "").splitlines() if line.strip()]
@@ -2648,17 +2672,35 @@ class BenchmarkHarness:
                     tail = stderr_lines[-8:]
                     if tail:
                         errors.append("stderr_tail: " + " | ".join(tail))
+            elif result_callback is not None:
+                result_callback(
+                    spec=spec,
+                    config=config,
+                    launch_wall_ns=launch_wall_ns,
+                    launch_monotonic_ns=launch_monotonic_ns,
+                    finish_wall_ns=finish_wall_ns,
+                    finish_monotonic_ns=finish_monotonic_ns,
+                    returncode=int(process.returncode),
+                    stdout=stdout,
+                    stderr=stderr,
+                )
         except FileNotFoundError:
             raise RuntimeError("SKIPPED: torchrun not found in PATH.")
 
         stdout_lines = stdout.splitlines() if stdout else []
         filtered_lines = _filter_logs(stdout_lines, dedupe=spec.parse_rank0_only)
-        tokens_per_s = _extract_tokens_per_s(filtered_lines)
+        tokens_per_s = self._extract_tokens_per_s(filtered_lines)
 
+        # This parent observed one process interval, not each training step.
+        # Keep it as one sample; the amortized value is a separately labeled
+        # derived metric and includes launcher/setup/warmup work.
         iterations = getattr(config, "iterations", None) or 1
-        per_iter_ms = (elapsed * 1000.0) / max(iterations, 1)
-        times_ms = [per_iter_ms] * max(iterations, 1)
+        times_ms = _ObservedTimings(
+            [elapsed * 1000.0], sample_scope="process_wall", iterations_per_sample=1,
+        )
         result = self._compute_stats(times_ms, config)
+        result.custom_metrics["torchrun.requested_iterations"] = float(iterations)
+        result.custom_metrics["torchrun.amortized_ms_per_requested_iteration"] = elapsed * 1000.0 / iterations
 
         if tokens_per_s is not None:
             result.throughput = ThroughputStats(
@@ -3268,6 +3310,7 @@ class BenchmarkHarness:
         ncu_metrics: Dict[str, float] = {}
         proton_metrics: Dict[str, float] = {}
         times_ms: List[float] = []
+        child_timing: Optional[TimingStats] = None
         inference_timing_data: Optional[Dict[str, List[float]]] = None
         seed_metadata = copy.deepcopy(getattr(self, "_seed_info", None))
         child_custom_metrics: Optional[Dict[str, float]] = None
@@ -3494,22 +3537,18 @@ class BenchmarkHarness:
                         benchmark_result = PydanticBenchmarkResult.model_validate_json(result_json_str)
                         child_gpu_metrics = getattr(benchmark_result, "gpu_metrics", None)
                         
-                        # Extract timing data
+                        # Preserve the child's measured summary when raw samples
+                        # are unavailable. Synthesized samples would invent tail
+                        # percentiles and misrepresent the measurement history.
+                        child_timing = benchmark_result.timing.model_copy(deep=True)
                         if benchmark_result.timing.raw_times_ms:
-                            times_ms = benchmark_result.timing.raw_times_ms
-                        else:
-                            # Reconstruct from statistics if raw times not available
-                            mean_time = benchmark_result.timing.mean_ms
-                            std_time = benchmark_result.timing.std_ms
-                            iterations = benchmark_result.timing.iterations
-                            import numpy as np
-                            synthetic_times = np.random.normal(mean_time, std_time, iterations)
-                            synthetic_times = np.clip(
-                                synthetic_times,
-                                benchmark_result.timing.min_ms,
-                                benchmark_result.timing.max_ms
+                            times_ms = _ObservedTimings(
+                                benchmark_result.timing.raw_times_ms,
+                                sample_scope=child_timing.sample_scope,
+                                iterations_per_sample=child_timing.iterations_per_sample,
                             )
-                            times_ms = synthetic_times.tolist()
+                        else:
+                            self._validate_timing_summary(child_timing)
                         
                         # Extract memory data
                         if benchmark_result.memory:
@@ -3607,16 +3646,19 @@ class BenchmarkHarness:
                     else:
                         errors.extend(result_dict.get("errors", ["Subprocess execution failed"]))
                         times_ms = cast(List[float], [])
+                        child_timing = None
                         if stderr:
                             _maybe_write_subprocess_stderr(stderr, benchmark_name, config)
                 except json.JSONDecodeError as e:
                     errors.append(f"Failed to parse subprocess output: {e}")
                     errors.append(f"Output: {stdout[:500]}")
                     times_ms = cast(List[float], [])
+                    child_timing = None
                 except Exception as e:
                     errors.append(f"Error processing subprocess result: {e}")
                     errors.append(f"Traceback: {traceback.format_exc()}")
                     times_ms = cast(List[float], [])
+                    child_timing = None
         
         except subprocess.TimeoutExpired:
             # TIMEOUT - kill the process group
@@ -3686,9 +3728,10 @@ class BenchmarkHarness:
                 logger.error(f"Benchmark '{benchmark_name}' failed during subprocess execution")
                 logger.error(f"Error: {error_msg}")
             times_ms = cast(List[float], [])
+            child_timing = None
         
         # Don't raise if we already returned a timeout result
-        if not times_ms and 'timeout_result' not in locals():
+        if not times_ms and child_timing is None and 'timeout_result' not in locals():
             # Build comprehensive error message with context
             config_summary = (
                 f"iterations={config.iterations}, warmup={config.warmup}, "
@@ -3746,8 +3789,17 @@ class BenchmarkHarness:
                 watchdog=stage_watchdog,
             )
         
-        # Compute statistics
-        result = self._compute_stats(times_ms, config)
+        # Compute statistics only from actual samples. Summary-only children
+        # retain exactly the statistics they supplied, including absent percentiles.
+        if times_ms:
+            result = self._compute_stats(times_ms, config)
+            if child_timing is not None:
+                result.timing.sample_scope = child_timing.sample_scope
+                result.timing.iterations_per_sample = child_timing.iterations_per_sample
+                result.timing.warmup_iterations = child_timing.warmup_iterations
+        else:
+            assert child_timing is not None
+            result = self._result_from_timing(child_timing, config)
         if child_gpu_metrics is not None:
             result.gpu_metrics = child_gpu_metrics
         if child_custom_metrics is not None:
@@ -4755,7 +4807,11 @@ class BenchmarkHarness:
             raise RuntimeError(f"Triton benchmarking mode requested but Triton not available: {e}") from e
     
     def _benchmark_pytorch(self, fn: Callable, config: BenchmarkConfig) -> List[float]:
-        """Use PyTorch's Timer."""
+        """Retain every observed Timer block mean; never resample to a requested count.
+
+        Timer chooses its block size/count using min_run_time_ms. The result's
+        iterations field counts measured blocks, not config.iterations calls.
+        """
         try:
             from torch.utils.benchmark import Timer
             
@@ -4770,23 +4826,14 @@ class BenchmarkHarness:
                 min_run_time=config.min_run_time_ms / 1000.0  # Convert to seconds
             )
             
-            # measurement.times is already in seconds; tolerate tuple returns from mocks
-            if hasattr(measurement, "times"):
-                raw_times = measurement.times
-            elif isinstance(measurement, (tuple, list)) and measurement:
-                raw_times = measurement[0]
-            else:
-                raise RuntimeError("PyTorch Timer returned unexpected measurement format")
-
-            times_ms = [t * 1000 for t in raw_times]
-
-            # If we got fewer iterations than requested, pad with repeats.
-            if len(times_ms) < config.iterations:
-                times_ms = (times_ms * ((config.iterations // len(times_ms)) + 1))[:config.iterations]
-            elif len(times_ms) > config.iterations:
-                times_ms = times_ms[:config.iterations]
-
-            return times_ms
+            # Measurement.times divides each actual block interval by its
+            # number_per_run. These are block means, not individual-call tails.
+            if not measurement.times or measurement.number_per_run < 1:
+                raise RuntimeError("PyTorch Timer returned no measured blocks")
+            return _ObservedTimings(
+                [t * 1000 for t in measurement.times],
+                sample_scope="block_mean", iterations_per_sample=measurement.number_per_run,
+            )
         except Exception as e:
             # NO SILENT FALLBACK - PyTorch Timer mode was explicitly requested
             raise RuntimeError(f"PyTorch Timer benchmarking failed: {e}") from e
@@ -4815,6 +4862,7 @@ class BenchmarkHarness:
 
         # Some benchmarks (e.g., external CUDA binaries) report their own timing.
         benchmark_obj = getattr(fn, "__self__", None)
+        allowed_antipatterns = getattr(benchmark_obj, "allowed_benchmark_fn_antipatterns", ())
         use_reported_time = bool(getattr(benchmark_obj, "use_reported_time", False))
         range_name = getattr(config, "name", None) or getattr(fn, "__name__", "benchmark_fn")
         
@@ -4858,11 +4906,6 @@ class BenchmarkHarness:
 
         # 2b. Inspect benchmark_fn source for explicit synchronization in the hot path.
         if benchmark_obj is not None and getattr(config, "detect_benchmark_fn_sync", True):
-            allowed_antipatterns = getattr(
-                benchmark_obj,
-                "allowed_benchmark_fn_antipatterns",
-                (),
-            )
             sync_ok, sync_findings = check_benchmark_fn_sync_calls(
                 fn,
                 allowed_codes=allowed_antipatterns,
@@ -5775,7 +5818,8 @@ class BenchmarkHarness:
         n = len(sorted_times)
         
         # Compute percentiles - ensure percentiles is a list
-        percentiles = config.percentiles if config.percentiles is not None else [25, 50, 75, 99]
+        process_wall = getattr(times_ms, "sample_scope", None) == "process_wall"
+        percentiles = [] if process_wall else (config.percentiles if config.percentiles is not None else [25, 50, 75, 99])
         percentiles_dict = {}
         for p in percentiles:
             idx = int((p / 100.0) * (n - 1))
@@ -5783,7 +5827,7 @@ class BenchmarkHarness:
             percentiles_dict[p] = sorted_times[idx]
         
         # Extract p50/p90/p95/p99 from percentiles
-        p50 = percentiles_dict.get(50.0) or statistics.median(valid_times_ms)
+        p50 = None if process_wall else (percentiles_dict.get(50.0) or statistics.median(valid_times_ms))
         p90 = percentiles_dict.get(90.0)
         p95 = percentiles_dict.get(95.0)
         p99 = percentiles_dict.get(99.0)
@@ -5800,11 +5844,18 @@ class BenchmarkHarness:
             p99_ms=p99,
             percentiles=percentiles_dict,
             iterations=n,
-            warmup_iterations=config.warmup,
+            warmup_iterations=0 if process_wall else config.warmup,
             raw_times_ms=valid_times_ms,  # Store cleaned data, not original
+            sample_scope=getattr(times_ms, "sample_scope", None),
+            iterations_per_sample=getattr(times_ms, "iterations_per_sample", None),
             schemaVersion="1.0",
         )
-        
+        return self._result_from_timing(timing, config)
+
+    def _result_from_timing(
+        self, timing: TimingStats, config: BenchmarkConfig
+    ) -> PydanticBenchmarkResult:
+        """Wrap reported timing without inventing missing samples or percentiles."""
         device_index = None
         if torch.cuda.is_available():
             device_index = self.device.index if getattr(self.device, "index", None) is not None else torch.cuda.current_device()
@@ -5831,6 +5882,29 @@ class BenchmarkHarness:
         )
         self._annotate_launch_metadata(result, config)
         return result
+
+    @staticmethod
+    def _validate_timing_summary(timing: TimingStats) -> None:
+        """Reject unusable summary-only child results without inventing samples."""
+        if timing.iterations <= 0 or timing.warmup_iterations < 0:
+            raise ValueError("Invalid timing summary: iteration counts must describe an executed run")
+        for name in ("mean_ms", "median_ms", "std_ms", "min_ms", "max_ms"):
+            value = getattr(timing, name)
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(f"Invalid timing summary: {name} must be finite and nonnegative")
+        if not timing.min_ms <= timing.mean_ms <= timing.max_ms:
+            raise ValueError("Invalid timing summary: mean_ms must be within min_ms/max_ms")
+        if not timing.min_ms <= timing.median_ms <= timing.max_ms:
+            raise ValueError("Invalid timing summary: median_ms must be within min_ms/max_ms")
+        for percentile, value in timing.percentiles.items():
+            if not math.isfinite(percentile) or not 0 <= percentile <= 100:
+                raise ValueError("Invalid timing summary: percentile must be between 0 and 100")
+            if not math.isfinite(value) or not timing.min_ms <= value <= timing.max_ms:
+                raise ValueError("Invalid timing summary: percentile value must be within min_ms/max_ms")
+        for name in ("p50_ms", "p90_ms", "p95_ms", "p99_ms"):
+            value = getattr(timing, name)
+            if value is not None and (not math.isfinite(value) or not timing.min_ms <= value <= timing.max_ms):
+                raise ValueError(f"Invalid timing summary: {name} must be within min_ms/max_ms")
 
     def _resolve_workload_metadata(self, benchmark: BaseBenchmark) -> Optional[WorkloadMetadata]:
         """Resolve workload metadata declared by the benchmark (if any)."""

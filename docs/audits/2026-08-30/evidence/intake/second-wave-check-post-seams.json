@@ -1,0 +1,16 @@
+{
+  "checked_at": "2026-08-31T02:17:11.005981+00:00",
+  "url": "https://claude.ai/code/artifact/9a311b78-5dac-4ea7-909f-e52993ab8e0e",
+  "method": "Fresh Playwright navigation to the supplied artifact; accessibility-tree searches for second wave, 128, and Not yet reviewed.",
+  "page_title": "AI Performance Engineering Audit",
+  "reviewed_revision": "b57e4c6a9",
+  "confirmed_findings": 128,
+  "wave_2_status": "awaiting_report",
+  "observations": [
+    "The page still reports 128 confirmed findings.",
+    "No page match for second wave was present.",
+    "The footer remains headed Not yet reviewed and lists future coverage areas plus a suggested next pass.",
+    "The footer is an unreviewed inventory, not a completed second-wave report."
+  ],
+  "limits": "Only the supplied artifact was inspected. No handle to the separate session or an unshared second-wave artifact was available; absence here is not zero findings."
+}

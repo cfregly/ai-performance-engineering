@@ -1,0 +1,7 @@
+Available schedules:
+  - bm64_bn64_bk32: Small tile that minimizes per-block resources (baseline for comparison).
+  - bm128_bn128_bk64: Larger tile that improves compute density on Blackwell's high-bandwidth SM.
+  - bm128_bn256_bk64: Wide-N tile with more warps for higher throughput on large matrices.
+  - bm64_bn256_bk32: Wide-N tile that keeps smaller M/K tiles while increasing work per launch.
+  - bm128_bn128_bk32_nw8: More warps for better latency hiding; good for memory-bound scenarios.
+  - bm64_bn64_bk32_nw2: Small tile for high occupancy; useful for verifying Proton vs Nsight agreement.

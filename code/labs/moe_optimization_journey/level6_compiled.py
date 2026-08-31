@@ -1,22 +1,17 @@
 #!/usr/bin/env python3
-"""Level 6: CUDA graphs on the shared MoE journey model.
+"""Level 6: CUDA graph replay of the expert path.
 
-ADDS: expert-path CUDA graph capture/replay on top of the BMM-fused path.
+Requests CUDA graph capture/replay for the shared BF16 expert path; inspect capture metrics to establish actual execution.
 
-This keeps the manual optimization journey cumulative:
-- batched routing
-- fused SiLU*up
-- memory reuse
-- grouped routing
-- BMM-fused experts
-- CUDA graph replay for the hot expert path
-"""
+The filename and class are retained for compatibility. The LEVEL mapping,
+not a legacy filename, determines execution. These shared levels do not use
+FP8 quantization. No speedup is established by selecting a level."""
 
 from labs.moe_optimization_journey.moe_benchmark import MoEJourneyBenchmark, run_level
 
 
 class Level6Compiled(MoEJourneyBenchmark):
-    """Level 6: + CUDA graph replay on the MoE expert path."""
+    """Shared level 6: CUDA graph replay of the expert path."""
 
     LEVEL = 6
 

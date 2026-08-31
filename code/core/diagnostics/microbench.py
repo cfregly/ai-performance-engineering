@@ -299,6 +299,29 @@ def mem_hierarchy_test(
     })
 
 
+def _prepare_fp8_matmul(size: int, device):
+    """Prepare real E4M3 operands and the PyTorch scaled-mm operation.
+
+    Sampling float8 directly and ordinary @ are not supported FP8 GEMM APIs.
+    Unit scales preserve the quantized operand values; no different precision
+    is substituted if the actual scaled-mm backend rejects this device.
+    """
+    import torch
+    if not hasattr(torch, "float8_e4m3fn") or not callable(getattr(torch, "_scaled_mm", None)):
+        raise RuntimeError("FP8 requires torch.float8_e4m3fn and torch._scaled_mm")
+    if size <= 0 or size % 16:
+        raise ValueError("FP8 scaled-mm size must be a positive multiple of 16")
+    a = torch.randn((size, size), device=device, dtype=torch.bfloat16).to(torch.float8_e4m3fn)
+    b = torch.randn((size, size), device=device, dtype=torch.bfloat16).to(torch.float8_e4m3fn).t()
+    scale_a = torch.ones((), device=device, dtype=torch.float32)
+    scale_b = torch.ones((), device=device, dtype=torch.float32)
+
+    def run():
+        return torch._scaled_mm(a, b, scale_a, scale_b, out_dtype=torch.bfloat16, use_fast_accum=False)
+
+    return a, b, run
+
+
 def tensor_core_bench(
     size: int = 4096,
     precision: str = "fp16",
@@ -321,14 +344,10 @@ def tensor_core_bench(
         "tf32": torch.float32,
         "fp32": torch.float32,
     }
-    placeholder_used = False
-
     if precision_lower == "fp8":
-        if hasattr(torch, "float8_e4m3fn"):
-            dtype_map["fp8"] = getattr(torch, "float8_e4m3fn")
-        else:
-            dtype_map["fp8"] = torch.float16
-            placeholder_used = True
+        if not hasattr(torch, "float8_e4m3fn") or not callable(getattr(torch, "_scaled_mm", None)):
+            return _with_meta({"error": "FP8 requires float8_e4m3fn and torch._scaled_mm; no precision fallback"})
+        dtype_map["fp8"] = torch.float8_e4m3fn
     elif precision_lower == "int8":
         return _with_meta({"error": "INT8 matmul not supported in this minimal microbench; use fp16/bf16/tf32"})
 
@@ -341,22 +360,33 @@ def tensor_core_bench(
     from core.harness.validity_checks import capture_gpu_state
 
     gpu_state_before = capture_gpu_state(device_index)
-    a = torch.randn((size, size), device=device, dtype=dtype)
-    b = torch.randn((size, size), device=device, dtype=dtype)
+    if precision_lower == "fp8":
+        try:
+            a, b, run_matmul = _prepare_fp8_matmul(size, device)
+            # Establish actual backend support before reporting or timing FP8.
+            run_matmul()
+        except (RuntimeError, NotImplementedError, ValueError) as exc:
+            return _with_meta({"error": f"FP8 scaled-mm unavailable/failed: {exc}", "precision": precision})
+    else:
+        a = torch.randn((size, size), device=device, dtype=dtype)
+        b = torch.randn((size, size), device=device, dtype=dtype)
+
+        def run_matmul():
+            return a @ b
     torch.cuda.synchronize()
 
     deadline = _now() + timeout_seconds if timeout_seconds and timeout_seconds > 0 else None
     timeout_hit = False
 
     for _ in range(max(0, warmup)):
-        c = a @ b
+        c = run_matmul()
     torch.cuda.synchronize()
 
     samples_s: list[float] = []
     c = None
     for _ in range(max(0, iters)):
         start = _now()
-        c = a @ b
+        c = run_matmul()
         torch.cuda.synchronize()
         samples_s.append(_now() - start)
         if deadline and _now() > deadline:
@@ -369,7 +399,7 @@ def tensor_core_bench(
     tflops = (flops / elapsed) / 1e12 if elapsed and elapsed > 0 else None
     gpu_state_after = capture_gpu_state(device_index)
 
-    c_final = c if c is not None else (a @ b)
+    c_final = c if c is not None else run_matmul()
     return _with_meta({
         "size": size,
         "precision": precision,
@@ -379,7 +409,10 @@ def tensor_core_bench(
         "warmup": warmup,
         "timing": summary,
         "output_shape": list(c_final.shape),
-        "placeholder_used": placeholder_used,
+        "placeholder_used": False,
+        "operand_dtype": str(a.dtype),
+        "output_dtype": str(c_final.dtype),
+        "matmul_api": "torch._scaled_mm" if precision_lower == "fp8" else "torch.matmul",
         "timeout_seconds": timeout_seconds,
         "timeout_hit": timeout_hit,
         **_gpu_state_payload(gpu_state_before, gpu_state_after),

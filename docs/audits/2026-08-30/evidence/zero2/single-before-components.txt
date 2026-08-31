@@ -1,0 +1,23 @@
+def _build_training_components(model, learning_rate, device_ids=None):
+    ddp_model = DDP(
+        model,
+        device_ids=device_ids,
+        static_graph=True,
+        gradient_as_bucket_view=True,
+        bucket_cap_mb=25,
+    )
+    hook = getattr(comm_hooks, "batched_reduce_scatter_hook", None)
+    if hook is None:
+        raise RuntimeError("SKIPPED: PyTorch build missing batched_reduce_scatter_hook required for optimized ZeRO-2.")
+    ddp_model.register_comm_hook(state=dist.group.WORLD, hook=hook)
+
+    optimizer = ZeroRedundancyOptimizer(
+        ddp_model.parameters(),
+        overlap_with_ddp=True,
+        gradient_as_bucket_view=True,
+        **_optimizer_cfg(ddp_model.parameters(), learning_rate),
+    )
+
+    return ddp_model, optimizer
+
+

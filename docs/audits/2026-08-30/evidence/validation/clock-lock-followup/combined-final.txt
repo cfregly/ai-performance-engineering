@@ -1,0 +1,129 @@
+sssss..s...s................s............sss...s......ss.s.ssssssssss... [ 17%]
+s.s...ssss..sss....sss......s..s...ssss.s.........ss............sssss... [ 35%]
+................ssss.................................ss.s..s..s..s..ssss [ 53%]
+ss...s...sssss.sssssss.ss.ssss..s.sss........ss...sss..............s.... [ 71%]
+........................................................................ [ 89%]
+.........................................                                [100%]
+=============================== warnings summary ===============================
+tests/test_anti_cheat_edge_cases.py: 4 warnings
+tests/test_anti_cheat_protections.py: 5 warnings
+tests/test_protection_effectiveness.py: 1 warning
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/harness/benchmark_harness.py:4867: RuntimeWarning: ENVIRONMENT INVALID: Non-Linux platform 'darwin' is not supported for benchmark validity checks.
+    warn_module.warn(message, RuntimeWarning)
+
+tests/test_anti_cheat_edge_cases.py::TestWorkloadEdgeCases::test_undeclared_shortcuts_skip_layers
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/benchmark/verify_runner.py:721: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+  Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:836.)
+    max_diff = float(diff.max())
+
+tests/test_anti_cheat_edge_cases.py::TestEvaluationEdgeCases::test_timeout_manipulation_extend
+tests/test_anti_cheat_edge_cases.py::TestExtremeValues::test_very_large_tensor
+tests/test_anti_cheat_protections.py::TestTimingProtections::test_clock_drift_monotonic
+tests/test_anti_cheat_protections.py::TestWorkloadProtections::test_early_exit_config_immutability
+tests/test_anti_cheat_protections.py::TestEvaluationProtections::test_timeout_manipulation_immutability
+tests/test_anti_cheat_protections.py::TestEvaluationProtectionsExtended::test_self_modifying_tests_prevention
+tests/test_protection_effectiveness.py::TestMissingEdgeCases::test_cuda_oom_recovery
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/harness/benchmark_harness.py:4915: RuntimeWarning: BENCHMARK_FN ANTI-PATTERN WARNING: benchmark_fn() contains hot-path work that will distort timings or hide the real kernel cost.
+  - benchmark_fn() allocates tensors via torch.ones_like() (line 68); preallocate reusable buffers in setup() unless allocation cost is the benchmarked behavior
+    warn_module.warn(message, RuntimeWarning)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/validation/clock-lock-followup/combined-final.xml -
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:44: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:48: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:52: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:56: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:60: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:84: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:137: Missing production protection: no nested-profiler rejection guard is implemented; a single profiler context did not test nesting
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:230: Missing production protection: no uninitialized-memory provenance detector; filling torch.empty before comparison erases the condition
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:292: Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:299: Missing production protection: no per-operation CPU spillover detector is implemented; wall-time measurement alone does not identify execution placement
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:303: Missing production protection: no per-operation CPU spillover detector is implemented; wall-time measurement alone does not identify execution placement
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:327: Missing production protection: no background-thread computation isolation guard; process isolation does not forbid threads inside a benchmark
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:400: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:404: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:421: Missing production protection: no page-fault or managed-memory event detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:431: Missing production protection: no host callback execution detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:433: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:439: Missing production protection: no cuBLAS workspace precomputation detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:443: Missing production protection: no persistent kernel lifetime detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:447: Missing production protection: no undeclared GPU execution detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:451: Missing production protection: no CUDA context switch enforcement detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:455: Missing production protection: no driver-overhead attribution detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:459: Missing production protection: no cooperative launch inspection detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:463: Missing production protection: no device-side dynamic launch inspection detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:467: Missing production protection: no page-fault or managed-memory event detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:491: Missing production protection: no compiler-backend parity policy detector is implemented; eager versus compiled equivalence alone cannot enforce fair compiler modes
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:498: Missing production protection: no autotuning variance or compiler-mode parity detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:525: Missing production protection: DistributedTopology does not encode ring versus tree algorithm, so it cannot enforce this claimed policy
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:529: Missing production protection: no rank barrier timing detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:533: Missing production protection: no gradient bucket-size parity field or detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:537: Missing production protection: no async gradient completion timing detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:552: Missing production protection: no expected-versus-observed compute-capability comparison is performed by validate_environment
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:556: Missing production protection: GPU state consistency detects clock drops, not clock boosts or absolute clock locking
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:560: Missing production protection: no process-priority parity detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:577: Missing production protection: GPUState has no power-limit field and check_gpu_state_consistency does not compare power limits
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:582: real CUDA/NVML driver provenance integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:598: Missing production protection: RunManifest does not record cuDNN version or compare baseline/optimized library versions
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:655: Missing production protection: no statistical-power or minimum-samples-based-on-variance detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:679: Missing production protection: no background CPU noise or process-priority detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:706: Missing production protection: no evaluation-threshold policy or dataset evaluator contract is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:710: Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:714: Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:718: Missing production protection: no test-source immutability guard is implemented in the benchmark protection path
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:728: Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:801: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:807: Missing production protection: no concurrent-allocation race detector is implemented; successful allocations did not validate a protection
+SKIPPED [1] tests/test_anti_cheat_protections.py:131: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:138: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:142: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:146: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:150: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:425: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:455: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:460: Missing production protection: no undeclared-GPU execution detector; environment inventory only warns that multiple devices exist
+SKIPPED [1] tests/test_anti_cheat_protections.py:463: Missing production protection: no CUDA context-switch enforcement detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:654: Missing production protection: validate_environment does not compare expected and observed GPU identities
+SKIPPED [1] tests/test_anti_cheat_protections.py:543: Clock-lock capability unavailable: real CUDA device required
+SKIPPED [1] tests/test_anti_cheat_protections.py:685: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:734: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:765: Missing production protection: no background CPU process noise/isolation detector; synchronizing CUDA does not provide OS isolation
+SKIPPED [1] tests/test_anti_cheat_protections.py:799: Missing protection: no dataset provenance/holdout-overlap detector is implemented; set arithmetic is not detector coverage
+SKIPPED [1] tests/test_anti_cheat_protections.py:828: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:841: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:860: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:879: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:894: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:909: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:974: Missing protection: no dataset provenance/holdout-overlap detector is implemented; set arithmetic is not detector coverage
+SKIPPED [1] tests/test_anti_cheat_protections.py:1067: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1073: Missing production protection: no in-process background-thread computation guard
+SKIPPED [1] tests/test_anti_cheat_protections.py:1083: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1087: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1109: Missing production protection: no page-fault event detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1123: Missing production protection: no CUDA host-callback execution detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1126: Missing production protection: no cuBLAS workspace precomputation detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1129: Missing production protection: no persistent-kernel lifetime detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1132: Missing production protection: no driver-overhead attribution detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1135: Missing production protection: no cooperative-launch inspector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1138: Missing production protection: no device-side dynamic-launch inspector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1141: Missing production protection: no managed-memory page-fault event detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1161: Missing production protection: no compiler-backend parity policy detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1164: Missing production protection: no compiler-autotuning variance classifier
+SKIPPED [1] tests/test_anti_cheat_protections.py:1191: Missing production protection: no rank-barrier timing detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1194: Missing production protection: no gradient bucket-size parity field or detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1197: Missing production protection: no asynchronous gradient completion timing detector
+SKIPPED [1] tests/test_anti_cheat_protections.py:1199: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1285: Missing production protection: no OS or GPU overcommit policy detector exists; memory-growth warnings do not establish it
+SKIPPED [1] tests/test_anti_cheat_protections.py:1290: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1352: Missing production protection: RunManifest records a driver version but no cross-run driver-version lock is enforced
+SKIPPED [1] tests/test_anti_cheat_protections.py:1355: Missing production protection: RunManifest does not record cuDNN/cuBLAS version parity or enforce a cross-run library lock
+SKIPPED [1] tests/test_anti_cheat_protections.py:1428: Missing protection: no dataset provenance/holdout-overlap detector is implemented; set arithmetic is not detector coverage
+SKIPPED [1] tests/test_anti_cheat_protections.py:1439: Missing production protection: version provenance capture does not enforce version locking
+SKIPPED [1] tests/test_anti_cheat_protections.py:1472: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1501: A count of test names is not protection coverage; inspect named behavioral tests and explicit missing-protection skips
+SKIPPED [1] tests/test_protection_effectiveness.py:74: real CUDA stream execution required
+SKIPPED [1] tests/test_protection_effectiveness.py:173: real CUDA stream execution required
+305 passed, 96 skipped, 18 warnings in 11.35s

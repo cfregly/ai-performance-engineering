@@ -1,0 +1,12 @@
+....................................................sssss............... [ 66%]
+...............................s.s...                                    [100%]
+--------- generated xml file: /tmp/aisp-peak-metrics-final-source.xml ----------
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_audit_wave1_peak_metrics.py:206: Actual CUDA GPU required for FP8 scaled-mm and complete output comparison
+SKIPPED [1] tests/test_audit_wave1_peak_metrics.py:223: Actual CUDA GPU and Transformer Engine NVFP4 kernel required
+SKIPPED [1] tests/test_audit_wave1_peak_metrics.py:233: Actual CUDA GPU required for copy timing
+SKIPPED [1] tests/test_audit_wave1_peak_metrics.py:242: Two actual CUDA GPUs required to test a noncurrent measurement device
+SKIPPED [1] tests/test_audit_wave1_peak_metrics.py:260: Two actual CUDA GPUs required for peer-copy timing and byte accounting
+SKIPPED [1] tests/integration/test_benchmark_peak_import.py:15: CUDA required - benchmark_peak imports Transformer Engine and CUDA libraries
+SKIPPED [1] tests/integration/_strict_gpu_env.py:14: CUDA required - NVIDIA GPU and tools must be available
+102 passed, 7 skipped in 4.30s

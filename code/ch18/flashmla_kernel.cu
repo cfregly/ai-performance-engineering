@@ -1,9 +1,11 @@
-// Book sample (Chapter 18): illustrative FlashMLA-like decode sketch for Blackwell (sm_120).
-// For production use FlashMLA/ThunderMLA or PyTorch FlexDecoding kernels; error handling omitted.
+// Chapter 18: one-block-per-head scaled dot-product decode reference.
+// This illustrates correct attention math, not a production FlashMLA implementation.
+// Launch a power-of-two block with head_dim <= blockDim.x <= 1024.
 
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include <cstdio>
+#include <cassert>
 #include "../core/common/nvtx_utils.cuh"
 
 __global__ void flashmla_decode(const half* __restrict__ q,
@@ -14,33 +16,46 @@ __global__ void flashmla_decode(const half* __restrict__ q,
                                 int num_heads,
                                 int head_dim,
                                 int stride) {
+  assert(num_heads > 0 && head_dim > 0 && head_dim <= blockDim.x);
+  assert(blockDim.x <= 1024 && (blockDim.x & (blockDim.x - 1)) == 0);
   int batch = blockIdx.x / num_heads;
   int head = blockIdx.x % num_heads;
-  if (threadIdx.x >= head_dim) return;
+  assert(lengths[batch] >= 0 && lengths[batch] <= stride / (num_heads * head_dim));
+  const int d = threadIdx.x;
+  const bool active = d < head_dim;
+  __shared__ float partial[1024];
   const half* q_head = q + (batch * num_heads + head) * head_dim;
   const half* k_head = k_cache + batch * stride + head * head_dim;
   const half* v_head = v_cache + batch * stride + head * head_dim;
-  half acc = __float2half(0.f);
-  half denom = __float2half(0.f);
+  float acc = 0.0f;
+  float denom = 0.0f;
+  float running_max = -INFINITY;
   for (int pos = 0; pos < lengths[batch]; ++pos) {
-    half score = __float2half(0.f);
-    for (int d = threadIdx.x; d < head_dim; d += blockDim.x) {
-      score = __hfma(q_head[d], k_head[pos * num_heads * head_dim + d], score);
+    partial[d] = active ? __half2float(q_head[d]) *
+        __half2float(k_head[pos * num_heads * head_dim + d]) : 0.0f;
+    __syncthreads();
+    for (int offset = blockDim.x / 2; offset > 0; offset >>= 1) {
+      if (d < offset) partial[d] += partial[d + offset];
+      __syncthreads();
     }
-    score = __hdiv(score, __float2half(sqrtf((float)head_dim)));
-    half weight = hexp(score);
-    denom = __hadd(denom, weight);
-    for (int d = threadIdx.x; d < head_dim; d += blockDim.x) {
-      acc = __hfma(weight, v_head[pos * num_heads * head_dim + d], acc);
-    }
+    const float score = partial[0] * rsqrtf(static_cast<float>(head_dim));
+    __syncthreads(); // All threads read the sum before the next token reuses it.
+    const float next_max = fmaxf(running_max, score);
+    const float alpha = expf(running_max - next_max);
+    const float weight = expf(score - next_max);
+    denom = denom * alpha + weight;
+    if (active) acc = acc * alpha + weight * __half2float(v_head[pos * num_heads * head_dim + d]);
+    running_max = next_max;
   }
-  for (int d = threadIdx.x; d < head_dim; d += blockDim.x) {
-    out[(batch * num_heads + head) * head_dim + d] = __hdiv(acc, denom);
+  if (active) {
+    out[(batch * num_heads + head) * head_dim + d] = __float2half(denom > 0 ? acc / denom : 0.0f);
   }
 }
 
+#ifndef FLASHMLA_NO_MAIN
 int main() {
     NVTX_RANGE("main");
-  printf("FlashMLA decode sketch\n");
+  printf("Scaled dot-product decode reference (not a timed FlashMLA implementation)\n");
   return 0;
 }
+#endif

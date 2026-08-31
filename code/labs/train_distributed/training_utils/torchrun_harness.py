@@ -1,13 +1,11 @@
-"""Lightweight helpers for launching training demos via the benchmark harness."""
+"""Training-script metadata; generic child-training verification is unavailable."""
 
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, NoReturn, Optional
 
 import torch
-import torch.nn as nn
 
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -15,12 +13,23 @@ from core.harness.benchmark_harness import (
     LaunchVia,
     TorchrunLaunchSpec,
 )
-from core.benchmark.verification import PrecisionFlags, InputSignature
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 
 
-class TorchrunScriptBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Wrap a script-based training demo so the harness can launch it via torchrun."""
+CHILD_TRAINING_VERIFICATION_UNSUPPORTED = (
+    "SKIPPED: TorchrunScriptBenchmark actual child-training verification is unsupported. "
+    "The wrapper does not collect child model outputs, losses, gradients or optimizer state. "
+    "Run the training script directly; harness comparison requires a child-produced "
+    "verification contract and an independent reference."
+)
+
+
+class TorchrunScriptBenchmark(BaseBenchmark):
+    """Keep script configuration discoverable without certifying unrelated work.
+
+    Direct training entrypoints remain usable. Harness execution and verification
+    fail until the actual child training exposes an independently checked result.
+    A parent-side toy forward cannot establish that contract.
+    """
 
     def __init__(
         self,
@@ -47,117 +56,42 @@ class TorchrunScriptBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._env = dict(env) if env else {}
         self._target_label = target_label
         self.name = name or self._script_path.stem
-        # Compliance: verification interface
-        self.register_workload_metadata(requests_per_iteration=1.0)
-        self._batch_size = 4
-        self._hidden_dim, self._meta_dim = self._resolve_signature_dims()
-        self._model: Optional[nn.Linear] = None
-        self._input: Optional[torch.Tensor] = None
-        self._meta: Optional[torch.Tensor] = None
-        self._output: Optional[torch.Tensor] = None
-        self._parameter_count = 0
 
-    def _signature_seed(self) -> int:
-        identity = f"{self._target_label or self.name}|{self._script_path.name}"
-        digest = hashlib.sha256(identity.encode("utf-8")).digest()
-        return int.from_bytes(digest[:4], byteorder="little", signed=False)
-
-    def _resolve_signature_dims(self) -> Tuple[int, int]:
-        seed = self._signature_seed()
-        hidden = 128 + (seed % 128)
-        meta = 32 + ((seed >> 8) % 64)
-        return hidden, meta
-
-    def _signature_world_size(self) -> int:
-        if self._default_nproc_per_node is not None:
-            return int(self._default_nproc_per_node)
-        return 2 if self._multi_gpu_required else 1
+    def _unsupported_child_verification(self) -> NoReturn:
+        raise RuntimeError(CHILD_TRAINING_VERIFICATION_UNSUPPORTED)
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
-        self._model = nn.Linear(self._hidden_dim, self._hidden_dim, bias=False).to(self.device)
-        self._input = torch.randn(
-            self._batch_size,
-            self._hidden_dim,
-            device=self.device,
-            dtype=torch.float32,
-        )
-        self._meta = torch.randn(
-            self._batch_size,
-            self._meta_dim,
-            device=self.device,
-            dtype=torch.float32,
-        )
-        self._parameter_count = sum(p.numel() for p in self._model.parameters())
+        self._unsupported_child_verification()
 
     def benchmark_fn(self) -> None:
-        if self._model is None or self._input is None or self._meta is None:
-            raise RuntimeError("setup() must run before benchmark_fn()")
-        with torch.inference_mode():
-            output = self._model(self._input)
-            meta_scale = self._meta.mean(dim=-1, keepdim=True)
-            output.add_(meta_scale)
-            self._output = output
+        self._unsupported_child_verification()
 
     def capture_verification_payload(self) -> None:
-        if self._output is None or self._input is None or self._meta is None:
-            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        world_size = self._resolve_nproc_per_node() or 1
-        tf32_enabled = torch.cuda.is_available() and bool(torch.backends.cuda.matmul.allow_tf32)
-        self._set_verification_payload(
-            inputs={"input": self._input, "meta": self._meta},
-            output=self._output,
-            batch_size=self._batch_size,
-            parameter_count=int(self._parameter_count),
-            precision_flags=PrecisionFlags(tf32=tf32_enabled),
-            output_tolerance=(0.1, 1.0),
-            signature_overrides={"world_size": world_size},
-        )
+        self._unsupported_child_verification()
 
-    def _prepare_verification_payload(self) -> None:
-        if hasattr(self, "_subprocess_verify_output"):
-            return
-        self.setup()
-        try:
-            self.benchmark_fn()
-            self.capture_verification_payload()
-            self._subprocess_verify_output = self.get_verify_output()
-            self._subprocess_output_tolerance = self.get_output_tolerance()
-            self._subprocess_input_signature = self.get_input_signature()
-        finally:
-            self.teardown()
+    def _prepare_verification_payload(self) -> NoReturn:
+        # Retained for callers of the former helper; stale cached attributes must
+        # never turn unobserved child training into accepted verification.
+        self._unsupported_child_verification()
+
+    def get_verify_inputs(self) -> NoReturn:
+        self._unsupported_child_verification()
+
+    def get_verify_output(self) -> NoReturn:
+        self._unsupported_child_verification()
+
+    def get_input_signature(self) -> NoReturn:
+        self._unsupported_child_verification()
+
+    def get_output_tolerance(self) -> NoReturn:
+        self._unsupported_child_verification()
 
     def teardown(self) -> None:
-        self._model = None
-        self._input = None
-        self._meta = None
-        self._output = None
-        torch.cuda.empty_cache()
-
-    def validate_result(self) -> Optional[str]:
-        if self._output is None:
-            return "No output captured"
+        # No surrogate tensors or CUDA resources are allocated by this wrapper.
         return None
 
-    def get_input_signature(self) -> InputSignature:
-        tf32_enabled = torch.cuda.is_available() and bool(torch.backends.cuda.matmul.allow_tf32)
-        return InputSignature(
-            shapes={
-                "input": (self._batch_size, self._hidden_dim),
-                "meta": (self._batch_size, self._meta_dim),
-                "output": (self._batch_size, self._hidden_dim),
-            },
-            dtypes={
-                "input": "torch.float32",
-                "meta": "torch.float32",
-                "output": "torch.float32",
-            },
-            batch_size=self._batch_size,
-            parameter_count=int(self._hidden_dim * self._hidden_dim),
-            precision_flags=PrecisionFlags(tf32=tf32_enabled),
-            world_size=self._signature_world_size(),
-        )
+    def validate_result(self) -> str:
+        return CHILD_TRAINING_VERIFICATION_UNSUPPORTED
 
     def _resolve_nproc_per_node(self) -> Optional[int]:
         if self._default_nproc_per_node is None and not self._multi_gpu_required:
@@ -190,12 +124,6 @@ class TorchrunScriptBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return cfg
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
-        self._prepare_verification_payload()
-        return TorchrunLaunchSpec(
-            script_path=self._script_path,
-            script_args=list(self._base_args),
-            env=dict(self._env),
-            multi_gpu_required=self._multi_gpu_required,
-            config_arg_map=self._config_arg_map,
-            name=self.name,
-        )
+        # The harness must not launch and time a generic training child while
+        # presenting an unrelated parent-side tensor as correctness evidence.
+        self._unsupported_child_verification()

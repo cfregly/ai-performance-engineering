@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/profiling/extract_pytorch_profile.py", line 148, in <module>
+    sys.exit(main(sys.argv[1:]))
+             ^^^^^^^^^^^^^^^^^^
+  File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/profiling/extract_pytorch_profile.py", line 143, in main
+    write_outputs(data, pathlib.Path(args.output_prefix))
+  File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/profiling/extract_pytorch_profile.py", line 83, in write_outputs
+    meta_path = out_prefix.with_suffix("_metadata.csv")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.12/pathlib.py", line 651, in with_suffix
+    raise ValueError("Invalid suffix %r" % (suffix))
+ValueError: Invalid suffix '_metadata.csv'

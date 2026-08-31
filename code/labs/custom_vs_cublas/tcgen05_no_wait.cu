@@ -157,10 +157,12 @@ gemm_no_wait(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
     }
     cute::initialize_barrier(storage.mma_barrier, 1);
   }
+  cutlass::arch::fence_barrier_init();
   __syncthreads();
 
   int num_k_tiles = size<3>(tCgA);
   int full_phase[kStages] = {0, 0, 0, 0};
+  int empty_phase[kStages] = {};
   int mma_phase = 0;
 
   // Lambda for issuing TMA
@@ -197,48 +199,52 @@ gemm_no_wait(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   __syncthreads();
 
   // Mainloop: CUTLASS producer/consumer pattern
-  // Consumer only signals empty_barrier, doesn't wait for it
-  for (int k = 0; k < num_k_tiles; ++k) {
-    int curr = k % kStages;
-    int next_k = k + (kStages - 1);
-    int next_s = next_k % kStages;
+  // Consumer commits stage completion; producer waits before stage reuse.
+  // Only the producer/consumer warp advances pipeline phases. Other warps
+  // park at the CTA synchronization below instead of racing barrier reuse.
+  if (elect_one_warp) {
+    for (int k = 0; k < num_k_tiles; ++k) {
+      int curr = k % kStages;
+      int next_k = k + (kStages - 1);
+      int next_s = next_k % kStages;
 
-    // Consumer: Wait for TMA to fill current stage (full_barrier)
-    cute::wait_barrier(storage.full_barrier[curr], full_phase[curr]);
-    full_phase[curr] ^= 1;
+      // Consumer: Wait for TMA to fill current stage (full_barrier)
+      cute::wait_barrier(storage.full_barrier[curr], full_phase[curr]);
+      full_phase[curr] ^= 1;
 
-    // Consumer: Execute MMA (no wait for empty_barrier!)
-    if (elect_one_warp) {
-      auto& tCrA = (curr == 0) ? tCrA_0 : (curr == 1) ? tCrA_1 : 
-                   (curr == 2) ? tCrA_2 : tCrA_3;
-      auto& tCrB = (curr == 0) ? tCrB_0 : (curr == 1) ? tCrB_1 : 
-                   (curr == 2) ? tCrB_2 : tCrB_3;
+      // Consumer: Execute MMA after TMA completion.
+      if (elect_one_warp) {
+        auto& tCrA = (curr == 0) ? tCrA_0 : (curr == 1) ? tCrA_1 :
+                     (curr == 2) ? tCrA_2 : tCrA_3;
+        auto& tCrB = (curr == 0) ? tCrB_0 : (curr == 1) ? tCrB_1 :
+                     (curr == 2) ? tCrB_2 : tCrB_3;
 
-      for (int kb = 0; kb < size<2>(tCrA_0); ++kb) {
-        gemm(tiled_mma, tCrA(_, _, kb), tCrB(_, _, kb), tCtAcc);
-        tiled_mma.accumulate_ = UMMA::ScaleOut::One;
-      }
+        for (int kb = 0; kb < size<2>(tCrA_0); ++kb) {
+          gemm(tiled_mma, tCrA(_, _, kb), tCrB(_, _, kb), tCtAcc);
+          tiled_mma.accumulate_ = UMMA::ScaleOut::One;
+        }
       
-      // Consumer: Signal this stage is consumed via umma_arrive
-      // The MMA hardware will signal when it has finished reading SMEM
-      uint64_t* empty_ptr = reinterpret_cast<uint64_t*>(&storage.empty_barrier[curr]);
-      cutlass::arch::umma_arrive(empty_ptr);
-    }
+        // Consumer: Signal this stage is consumed via umma_arrive
+        // The MMA hardware will signal when it has finished reading SMEM
+        uint64_t* empty_ptr = reinterpret_cast<uint64_t*>(&storage.empty_barrier[curr]);
+        cutlass::arch::umma_arrive(empty_ptr);
+      }
 
-    // Producer: Issue next TMA after consumer releases current stage
-    // But we need to ensure the PREVIOUS use of next_s is complete
-    // For the first kStages-1 iterations, this is not needed (stages are empty)
-    if (next_k < num_k_tiles && elect_one_warp && elect_one_thr) {
-      // If next_s was used before (k >= kStages-1), wait for it to be empty
-      // Wait on empty_barrier for next_s from (kStages-1) iterations ago
-      // Actually, in this implementation we just trust the pipeline depth
-      // and issue unconditionally - if we run too fast, TMA will stall
-      issue_tma(next_s, next_k);
+      // Producer: wait for the previous use of next_s before refilling it.
+      if (next_k < num_k_tiles && elect_one_warp && elect_one_thr) {
+        // TMA may overwrite this stage only after its prior MMA reads finish.
+        // The first fill has no prior consumer; later fills alternate parity.
+        if (next_k >= kStages) {
+          cute::wait_barrier(storage.empty_barrier[next_s], empty_phase[next_s]);
+          empty_phase[next_s] ^= 1;
+        }
+        issue_tma(next_s, next_k);
+      }
     }
   }
 
   // Wait for ALL MMA operations to complete before epilogue
-  // Need to wait on all empty_barriers to ensure all umma_arrives complete
+  // The final commit tracks all earlier MMA instructions in this CTA.
   __syncthreads();
   if (elect_one_warp) {
     cutlass::arch::umma_arrive(&storage.mma_barrier);

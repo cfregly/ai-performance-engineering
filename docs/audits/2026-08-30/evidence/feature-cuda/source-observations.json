@@ -1,0 +1,31 @@
+{
+  "original_finding_count": 9,
+  "source_inventory_unchanged": 128,
+  "findings": {
+    "W1-019": "Legal32x32 launch; initial publication and reuse-reader barriers; cluster-padded grid; checked errors; accurate scalar/cluster/FP8 labels.",
+    "W1-020": "Legal32x32 launch; NUM_STAGES drives actual buffer count; checked runtime/verification before throughput; ordinary scalar shared-memory labels.",
+    "W1-027": "Column bias mapped through same output partition before SiLU; positive/same-device/floating-bias guards; full-output extension gate prepared.",
+    "W1-065": "Real cluster enum query under CUDA version guard; Hopper TMA detection; device guard before launcher/capability queries; no nonexistent TMA attribute.",
+    "W1-069": "Legacy no_wait stage labels now require explicit empty-barrier reuse; no hardware-handles-WAR or fixed43percent claim.",
+    "W1-070": "Read frozen cluster header confirms ordinary TMA/no multicast; corrected stage6 and stage11 labels and removed multicast gap attribution.",
+    "W1-109": "Scalar control no longer gates or labels TMA as Blackwell-only; Hopper introduction identified.",
+    "W1-116": "Inert nonexistent-API source retired, exact original preserved; canonical TMA multicast implementation kept frozen.",
+    "W1-117": "Ideal traffic formula uses actual dimensions and input/output byte sizes; no hardcoded5461/crossover or bottleneck claim."
+  },
+  "adjacent_discoveries": [
+    "Basic tcgen05 parity observers could be lapped; per-K CTA rendezvous now prevents advancing either barrier before all128 observers finish.",
+    "Lab loader target fallthrough and cache omitted architecture/Torch ABI; exact10.0/10.3 gate and corresponding cache identity controls added.",
+    "Feature Makefile run_all masked real failures; removed shell fallback and tested real exit23.",
+    "Lab runner silently substituted backend and accepted global-normalized corruption; now no fallback, full-output checks, nonfinite rejection and no throughput on failure.",
+    "Grace launchers ignored CUDA attribute/property failure and requested redundant dynamic storage for static-only TMA kernel; error checks added and unused request removed."
+  ],
+  "acceptance": {
+    "source_host": "PASS",
+    "cuda_compile": "HOLD",
+    "cuda_extension_import": "HOLD",
+    "gpu_full_outputs": "HOLD",
+    "sanitizers": "HOLD",
+    "performance": "NOT_CLAIMED",
+    "multi_device_controls": "HOLD; require separate explicit allocation/flag"
+  }
+}

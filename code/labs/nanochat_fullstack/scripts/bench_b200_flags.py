@@ -7,6 +7,7 @@ see the incremental benefit on Blackwell (B200).
 """
 
 import argparse
+import time
 from typing import Callable, Dict, Tuple
 
 import torch
@@ -16,14 +17,14 @@ from nanochat.engine import Engine, KVCache
 
 
 def _time_cuda_region_seconds(fn: Callable[[], None]) -> float:
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-    current_stream = torch.cuda.current_stream()
-    start.record(current_stream)
+    # End-to-end region latency includes host submission and all CUDA streams.
+    # Synchronizing after a current-stream end event does not repair that event
+    # if another stream's work was never joined into its dependency chain.
+    torch.cuda.synchronize()
+    start = time.perf_counter()
     fn()
-    end.record(current_stream)
-    end.synchronize()
-    return start.elapsed_time(end) / 1000.0
+    torch.cuda.synchronize()
+    return time.perf_counter() - start
 
 
 def configure_mode(mode: str, config) -> Dict[str, bool]:
@@ -32,6 +33,10 @@ def configure_mode(mode: str, config) -> Dict[str, bool]:
     Returns a dict describing which flags were enabled.
     """
     enabled = {}
+    config.enable_persistent_decode = False
+    config.use_cuda_graphs = False
+    config.kv_block_size = None
+    config.kv_page_size = None
     # Explicitly set global SDP kernel preferences for reproducibility.
     if mode == "baseline":
         # Math-only fallback, FA3 off.
@@ -130,6 +135,8 @@ def bench_once(
 
 
 def run_benchmark(args):
+    if not torch.cuda.is_available():
+        raise RuntimeError("B200 flag sweep requires a real CUDA device")
     device = torch.device("cuda")
     model, tokenizer, _ = load_model("sft", device=device, phase="eval")
     model.to(dtype=args.dtype, device=device)
@@ -138,6 +145,15 @@ def run_benchmark(args):
     results = []
     for mode in modes:
         enabled = configure_mode(mode, model.config)
+        # Attention modules cache flags at construction; changing config alone
+        # does not activate a different attention backend on a loaded model.
+        for block in model.transformer.h:
+            block.attn.use_flash_sdp = model.config.use_flash_sdp
+            block.attn.use_flash3 = model.config.use_flash3
+            if model.config.use_flash3:
+                block.attn._init_flash3()
+                if not block.attn.use_flash3 or block.attn.flash3_fn is None:
+                    raise RuntimeError(f"{mode} requested FA3, but its backend is unavailable: {block.attn.flash3_error}")
         engine = None
         if getattr(model.config, "enable_persistent_decode", False) or getattr(model.config, "use_cuda_graphs", False):
             engine = Engine(model, tokenizer, enable_batch_decode=False)
@@ -160,6 +176,8 @@ def run_benchmark(args):
             dict(
                 mode=mode,
                 enabled=enabled,
+                decode_execution=engine.decode_execution_mode if engine else "eager",
+                timing="synchronized_wall_seconds_including_host_submission",
                 prefill_tok_s=prefill_total / args.iters,
                 decode_tok_s=decode_total / args.iters,
             )
@@ -191,7 +209,7 @@ def main():
         prefill_gain = (res["prefill_tok_s"] / base_prefill - 1.0) * 100 if base_prefill else 0.0
         decode_gain = (res["decode_tok_s"] / base_decode - 1.0) * 100 if base_decode else 0.0
         print(
-            f"{res['mode']:>12} | flags: {flag_str:<35} | prefill {res['prefill_tok_s']:.1f} tok/s ({prefill_gain:+.1f}%) | "
+            f"{res['mode']:>12} | execution: {res['decode_execution']} | flags: {flag_str:<35} | prefill {res['prefill_tok_s']:.1f} tok/s ({prefill_gain:+.1f}%) | "
             f"decode {res['decode_tok_s']:.1f} tok/s ({decode_gain:+.1f}%)"
         )
 

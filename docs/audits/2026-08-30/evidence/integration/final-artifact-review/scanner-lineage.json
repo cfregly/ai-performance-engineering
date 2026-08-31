@@ -1,0 +1,9 @@
+{
+  "derived_from": "docs/audits/2026-08-30/evidence/integration/artifact-review/audit_artifacts.py",
+  "original_sha256": "c2d3965bd1b5a8fd70027bbf0de9e638da9987c2a64d4084f8c29dbf798c0cfe",
+  "changes": [
+    "Write snapshots only into a new immediate child, refusing overwrite.",
+    "Include explicit SHA256 review manifests, original-production-sources, and root pre-suite source snapshots."
+  ],
+  "scope": "No tests, builds, GPU, source or prior evidence edits."
+}

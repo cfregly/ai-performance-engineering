@@ -1,0 +1,69 @@
+{
+  "cases": {
+    "baseline-multigpu": {
+      "artifacts": {
+        "rank-0.json": "94d885126837150ba66ad326d9682c49d90d3dd6753edc835a718dcefa98aaea",
+        "rank-0.pt": "738282f131056a75e6378ac8d8dd03c7271212576433520811046c2d3f8d494c",
+        "rank-1.json": "9423fcc37a96b2f7879cbcccf2609ab675fa62fa1ee85214993d1535021a3881",
+        "rank-1.pt": "465bad044cef82d4cedd24f746d388ed0580c4ecbe7a8e16f9f2bd38719486bc"
+      },
+      "mode": "baseline",
+      "parameter_count": 14,
+      "status": "PASS_INDEPENDENT_REFERENCE",
+      "variant": "multigpu",
+      "world_size": 2
+    },
+    "baseline-single": {
+      "artifacts": {
+        "rank-0.json": "17f002008ff55f95211fe2837bfc1a2a5a94eb50439bbb67102892b28f8e13a3",
+        "rank-0.pt": "e22a5208babc8201a62bb48881d2f39e3dbf16cfa528b601b62c6c646b52af48"
+      },
+      "mode": "baseline",
+      "parameter_count": 14,
+      "status": "PASS_INDEPENDENT_REFERENCE",
+      "variant": "single",
+      "world_size": 1
+    },
+    "optimized-multigpu": {
+      "artifacts": {
+        "rank-0.json": "42942657a6bbc07632c60c5d22d8bb89b3096dc0fdb6525a126858293d9bdcb7",
+        "rank-0.pt": "a6197a81ec8a3db3bc82b0dfd0fc07bb70d975b112d102177f8694e009ae3268",
+        "rank-1.json": "824067a07638c643e95b04a57ceff6b4e7c06dd271df6ff4ec70f21cadd02789",
+        "rank-1.pt": "3ddaf38d38b5d2445f942d85f1235607f4d732152b048e8386276f5f5fb2738a"
+      },
+      "mode": "optimized",
+      "parameter_count": 14,
+      "status": "PASS_INDEPENDENT_REFERENCE",
+      "variant": "multigpu",
+      "world_size": 2
+    },
+    "optimized-single": {
+      "artifacts": {
+        "rank-0.json": "836be570105de9837b964e1cd83108b80b5af6cddf37f146b9359da6a20ddc8c",
+        "rank-0.pt": "9945960178a39482b91d5b2aa4bf826d1a576f228ba5e9cf6b44a8d41e4c3444"
+      },
+      "mode": "optimized",
+      "parameter_count": 14,
+      "status": "PASS_INDEPENDENT_REFERENCE",
+      "variant": "single",
+      "world_size": 1
+    }
+  },
+  "pairs": {
+    "multigpu": {
+      "max_abs_diff": 0.0,
+      "status": "PASS_BASELINE_OPTIMIZED_MATCH",
+      "tensor_count": 29,
+      "worst_tensor": "parameter:0.bias"
+    },
+    "single": {
+      "max_abs_diff": 0.0,
+      "status": "PASS_BASELINE_OPTIMIZED_MATCH",
+      "tensor_count": 29,
+      "worst_tensor": "parameter:0.bias"
+    }
+  },
+  "performance_claim": false,
+  "schema_version": 1,
+  "status": "PASS_ALL_FOUR_ZERO2_CPU_GLOO_VERIFICATION_ONLY"
+}

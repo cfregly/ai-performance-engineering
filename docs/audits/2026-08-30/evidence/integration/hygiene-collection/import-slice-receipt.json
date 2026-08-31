@@ -1,0 +1,33 @@
+{
+  "status": "COLLECTION_FIXED_FULL_SUITE_NOT_GREEN",
+  "source_sha256": "ebd05f7bf7fe3fe7d016f72343918680e81115ee527534f7bb90c9865d98a5fc",
+  "collection_count": 553,
+  "selected_cpu_passed": 8,
+  "selected_cpu_skipped": 0,
+  "whole_file_diagnostic": {
+    "passed": 278,
+    "failed": 10,
+    "stopped_at_maxfail": 10
+  },
+  "original_assertions_retained": 30,
+  "other_existing_functions_changed": false,
+  "next_authorized_work": "Reconcile stale test assertions with intentional Wave1 source repairs without restoring incorrect production behavior or skipping CPU tests",
+  "artifacts": {
+    "docs/audits/2026-08-30/evidence/integration/hygiene-collection/collection-after-command.json": "59c5ed63fda649d1e09cb79c15877910200b7e0fb745d9b1a287668482d526f7",
+    "docs/audits/2026-08-30/evidence/integration/hygiene-collection/collection-after.txt": "25ac948c995d7b6d8c8f2396c50226ba0fd544eccae6c3c0f6c7c16aa3f3cbe2",
+    "docs/audits/2026-08-30/evidence/integration/hygiene-collection/collection-before-command.json": "cea8b4721908ae9137f7d5626959d3c2df682aa93d9876ea5a9312f91f499d32",
+    "docs/audits/2026-08-30/evidence/integration/hygiene-collection/collection-before.txt": "8bc4ca680a800cc7198a2ce9b46a8247cb8371725710fc40f00390ce398db965",
+    "docs/audits/2026-08-30/evidence/integration/hygiene-collection/cpu-source-command-attempt-1.json": "db6fab97f48a416790cb8f407d8f7c10554d95993057b4e872fd1b068ed434b0",
+    "docs/audits/2026-08-30/evidence/integration/hygiene-collection/cpu-source-command-attempt-2.json": "eb2bb2e7355679334fea1dc4f8abc1ffb69f671ed707b91cc04a03aeb6b7c822",
+    "docs/audits/2026-08-30/evidence/integration/hygiene-collection/cpu-source-tests-attempt-1.txt": "1c9f1ad37561952c31a550b499bebaebcf5d1a8e94dacbdb8cd7c508cd3b8fb9",
+    "docs/audits/2026-08-30/evidence/integration/hygiene-collection/cpu-source-tests-attempt-2.txt": "1c38689e8fa7fefbff9802351282ffa0241f496832c1578a2743efe6c82c53eb",
+    "docs/audits/2026-08-30/evidence/integration/hygiene-collection/import-slice-test_benchmark_hygiene_regressions.py.txt": "ebd05f7bf7fe3fe7d016f72343918680e81115ee527534f7bb90c9865d98a5fc",
+    "docs/audits/2026-08-30/evidence/integration/hygiene-collection/independent-import-review.txt": "abd66faf3cdaf9eafaf20e741da98602d8a22badf7bdfebc9af6b33e2ef23b1d",
+    "docs/audits/2026-08-30/evidence/integration/hygiene-collection/intermediate-unexecuted-optional-skip.diff.txt": "8cd7c44b024964494b9c86afeb0dd3e9361a11e4127ee269251f99f66f5a8307",
+    "docs/audits/2026-08-30/evidence/integration/hygiene-collection/original-test_benchmark_hygiene_regressions.py.txt": "f8b484c65d74cc9a6f0069ae7772d483340789a79cee38ceb8e8bade8b11f74c",
+    "docs/audits/2026-08-30/evidence/integration/hygiene-collection/scope-and-assertion-preservation.json": "7478b50b748f46cab564b24a11a6751726d3eeb4f923a327bb45ad276f16510f",
+    "docs/audits/2026-08-30/evidence/integration/hygiene-collection/scoped-change.diff.txt": "29c0f36fba63068da13bb70cb473464ed9720b5fa2366783c36d6ac3f59a347b",
+    "docs/audits/2026-08-30/evidence/integration/hygiene-collection/whole-file-diagnostic-attempt-1.txt": "f840a416e85c4b0dcef78dd2a03a608f0de081208ecf2cb8b5aaff0ec233d1a6",
+    "docs/audits/2026-08-30/evidence/integration/hygiene-collection/whole-file-diagnostic-command-attempt-1.json": "3a9ef41873513989ba7994f986651049d2de4b77f1258f67c8f95db204a40766"
+  }
+}

@@ -1,0 +1,29 @@
+usage: compare_blackwell_grouped_gemm_matrix.py [-h]
+                                                [--token-counts TOKEN_COUNTS [TOKEN_COUNTS ...]]
+                                                [--num-experts NUM_EXPERTS]
+                                                [--hidden-dim HIDDEN_DIM]
+                                                [--expert-ffn-dim EXPERT_FFN_DIM]
+                                                [--dtype {fp16,bf16}]
+                                                [--histogram {balanced,skewed}]
+                                                [--warmup WARMUP]
+                                                [--repeats REPEATS]
+                                                [--include-experimental]
+                                                [--csv CSV]
+
+Direct matrix runner for the Blackwell grouped-GEMM optimization lab.
+
+options:
+  -h, --help            show this help message and exit
+  --token-counts TOKEN_COUNTS [TOKEN_COUNTS ...]
+                        Token-count matrix to benchmark.
+  --num-experts NUM_EXPERTS
+  --hidden-dim HIDDEN_DIM
+  --expert-ffn-dim EXPERT_FFN_DIM
+  --dtype {fp16,bf16}
+  --histogram {balanced,skewed}
+  --warmup WARMUP
+  --repeats REPEATS
+  --include-experimental
+                        Also benchmark the negative-control schedules from the
+                        slide deck.
+  --csv CSV             Optional CSV output path.

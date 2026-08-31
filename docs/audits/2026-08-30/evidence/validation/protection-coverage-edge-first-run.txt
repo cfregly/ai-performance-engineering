@@ -1,0 +1,164 @@
+ssssssss...s................s............sss...s..FF..ss.s.ssssssssss... [ 58%]
+sFs...ssss..sss....sss......s..s...ssss.s...F.....ss                     [100%]
+=================================== FAILURES ===================================
+___________ TestMemoryEdgeCases.test_preallocated_output_exact_shape ___________
+
+self = <tests.test_anti_cheat_edge_cases.TestMemoryEdgeCases object at 0x148c61730>
+runner = <core.benchmark.verify_runner.VerifyRunner object at 0x148e68c50>
+
+    def test_preallocated_output_exact_shape(self, runner):
+        'Preallocated storage is allowed when recomputed; cached output is rejected.'
+        class Preallocated(TensorWork):
+            def setup(self):
+                super().setup()
+                self.storage = torch.empty(64)
+                self.output = self.storage[16:48].view(4, 8)
+            def benchmark_fn(self):
+                self.output.copy_(self.input * 2)
+        work = Preallocated()
+        work.setup()
+        work.benchmark_fn()
+>       assert runner._run_jitter_check(work, work.get_input_signature(), VerifyConfig()) == (True, None)
+E       AssertionError: assert (False, 'Jitt...hed outputs.') == (True, None)
+E         
+E         At index 0 diff: False != True
+E         Use -v to get more diff
+
+tests/test_anti_cheat_edge_cases.py:337: AssertionError
+______________ TestMemoryEdgeCases.test_preallocated_output_view _______________
+
+self = <tests.test_anti_cheat_edge_cases.TestMemoryEdgeCases object at 0x148c601a0>
+runner = <core.benchmark.verify_runner.VerifyRunner object at 0x148e63b60>
+
+    def test_preallocated_output_view(self, runner):
+        'Preallocated storage is allowed when recomputed; cached output is rejected.'
+        class Preallocated(TensorWork):
+            def setup(self):
+                super().setup()
+                self.storage = torch.empty(64)
+                self.output = self.storage[16:48].view(4, 8)
+            def benchmark_fn(self):
+                self.output.copy_(self.input * 2)
+        work = Preallocated()
+        work.setup()
+        work.benchmark_fn()
+>       assert runner._run_jitter_check(work, work.get_input_signature(), VerifyConfig()) == (True, None)
+E       AssertionError: assert (False, 'Jitt...hed outputs.') == (True, None)
+E         
+E         At index 0 diff: False != True
+E         Use -v to get more diff
+
+tests/test_anti_cheat_edge_cases.py:354: AssertionError
+_____________ TestCompileEdgeCases.test_guard_failure_control_flow _____________
+
+self = <tests.test_anti_cheat_edge_cases.TestCompileEdgeCases object at 0x148cb0ad0>
+
+    def test_guard_failure_control_flow(self):
+>       assert_compile_guard_counts()
+
+tests/test_anti_cheat_edge_cases.py:469: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def assert_compile_guard_counts():
+        from core.harness.validity_checks import clear_compile_cache, get_compile_state
+    
+        assert clear_compile_cache()
+        try:
+            before = get_compile_state()["compile_count"]
+    
+            def work(value, multiply):
+                return value * 2 if multiply else value + 1
+    
+            compiled = torch.compile(work, backend="eager", dynamic=False)
+            value = torch.arange(8, dtype=torch.float32)
+            torch.testing.assert_close(compiled(value, True), work(value, True))
+            first = get_compile_state()["compile_count"]
+>           assert first > before
+E           AssertionError
+
+tests/protection_test_utils.py:306: AssertionError
+___________ TestBoundaryConditions.test_timing_variance_coefficient ____________
+
+self = <tests.test_anti_cheat_edge_cases.TestBoundaryConditions object at 0x148cb3230>
+
+    def test_timing_variance_coefficient(self):
+        'Graph replay variance diagnostic, not a general timing acceptance policy.'
+        from core.harness.validity_checks import GraphCaptureCheatDetector, GraphCaptureState
+        detector = GraphCaptureCheatDetector()
+        detector.capture_state = GraphCaptureState(capture_start_time=0.0, capture_end_time=0.001)
+        detector.replay_times = [1.0, 1.0, 1.0]
+>       assert detector.check_cheating()[0]
+               ^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'GraphCaptureCheatDetector' object has no attribute 'check_cheating'
+
+tests/test_anti_cheat_edge_cases.py:720: AttributeError
+=============================== warnings summary ===============================
+tests/test_anti_cheat_edge_cases.py::TestTimingEdgeCases::test_warmup_bleed_jit_compilation
+tests/test_anti_cheat_edge_cases.py::TestLocationEdgeCases::test_jit_compilation_first_call_slow
+tests/test_anti_cheat_edge_cases.py::TestEvaluationEdgeCases::test_timeout_manipulation_extend
+tests/test_anti_cheat_edge_cases.py::TestExtremeValues::test_very_large_tensor
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/harness/benchmark_harness.py:4866: RuntimeWarning: ENVIRONMENT INVALID: Non-Linux platform 'darwin' is not supported for benchmark validity checks.
+    warn_module.warn(message, RuntimeWarning)
+
+tests/test_anti_cheat_edge_cases.py::TestWorkloadEdgeCases::test_undeclared_shortcuts_skip_layers
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/benchmark/verify_runner.py:721: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+  Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:836.)
+    max_diff = float(diff.max())
+
+tests/test_anti_cheat_edge_cases.py::TestEvaluationEdgeCases::test_timeout_manipulation_extend
+tests/test_anti_cheat_edge_cases.py::TestExtremeValues::test_very_large_tensor
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/harness/benchmark_harness.py:4914: RuntimeWarning: BENCHMARK_FN ANTI-PATTERN WARNING: benchmark_fn() contains hot-path work that will distort timings or hide the real kernel cost.
+  - benchmark_fn() allocates tensors via torch.ones_like() (line 68); preallocate reusable buffers in setup() unless allocation cost is the benchmarked behavior
+    warn_module.warn(message, RuntimeWarning)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:45: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:49: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:53: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:57: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:61: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:65: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:70: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:75: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:111: Missing production protection: no nested-profiler rejection guard is implemented; a single profiler context did not test nesting
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:204: Missing production protection: no uninitialized-memory provenance detector; filling torch.empty before comparison erases the condition
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:266: Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:273: Missing production protection: no per-operation CPU spillover detector is implemented; wall-time measurement alone does not identify execution placement
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:277: Missing production protection: no per-operation CPU spillover detector is implemented; wall-time measurement alone does not identify execution placement
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:301: Missing production protection: no background-thread computation isolation guard; process isolation does not forbid threads inside a benchmark
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:375: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:379: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:396: Missing production protection: no page-fault or managed-memory event detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:406: Missing production protection: no host callback execution detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:408: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:414: Missing production protection: no cuBLAS workspace precomputation detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:418: Missing production protection: no persistent kernel lifetime detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:422: Missing production protection: no undeclared GPU execution detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:426: Missing production protection: no CUDA context switch enforcement detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:430: Missing production protection: no driver-overhead attribution detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:434: Missing production protection: no cooperative launch inspection detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:438: Missing production protection: no device-side dynamic launch inspection detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:442: Missing production protection: no page-fault or managed-memory event detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:466: Missing production protection: no compiler-backend parity policy detector is implemented; eager versus compiled equivalence alone cannot enforce fair compiler modes
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:473: Missing production protection: no autotuning variance or compiler-mode parity detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:500: Missing production protection: DistributedTopology does not encode ring versus tree algorithm, so it cannot enforce this claimed policy
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:504: Missing production protection: no rank barrier timing detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:508: Missing production protection: no gradient bucket-size parity field or detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:512: Missing production protection: no async gradient completion timing detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:527: Missing production protection: no expected-versus-observed compute-capability comparison is performed by validate_environment
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:531: Missing production protection: GPU state consistency detects clock drops, not clock boosts or absolute clock locking
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:535: Missing production protection: no process-priority parity detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:552: Missing production protection: GPUState has no power-limit field and check_gpu_state_consistency does not compare power limits
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:556: Missing production protection: the prior test checked the CUDA runtime string, not driver provenance; actual driver capture requires a CUDA/NVML integration fixture
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:560: Missing production protection: RunManifest does not record cuDNN version or compare baseline/optimized library versions
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:617: Missing production protection: no statistical-power or minimum-samples-based-on-variance detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:641: Missing production protection: no background CPU noise or process-priority detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:668: Missing production protection: no evaluation-threshold policy or dataset evaluator contract is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:672: Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:676: Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:680: Missing production protection: no test-source immutability guard is implemented in the benchmark protection path
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:690: Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:763: real CUDA protection integration requires a device
+SKIPPED [1] tests/test_anti_cheat_edge_cases.py:769: Missing production protection: no concurrent-allocation race detector is implemented; successful allocations did not validate a protection
+4 failed, 72 passed, 48 skipped, 7 warnings in 2.24s

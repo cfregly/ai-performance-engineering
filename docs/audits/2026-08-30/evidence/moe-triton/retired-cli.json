@@ -1,0 +1,9 @@
+{
+  "command": [
+    "/opt/miniconda3/bin/python",
+    "code/labs/moe_optimization_journey/triton_fused_moe.py"
+  ],
+  "exit_code": 3,
+  "stdout": "",
+  "stderr": "Retired incomplete Triton MoE experiment: full intermediate and output tiles and top-k combine were not implemented. No kernel or benchmark result is produced. Use level4_triton.GroupedMoEExperts for the separately named sorted PyTorch expert path; it is not a fused Triton FFN.\n"
+}

@@ -1,0 +1,15 @@
+{
+  "ask_success": false,
+  "error_type": "llm_unavailable",
+  "citations": 2,
+  "citation_fields": [
+    "chapter",
+    "chapter_title",
+    "content",
+    "line_number",
+    "relevance_score",
+    "section"
+  ],
+  "explain_success": true,
+  "key_points": 2
+}

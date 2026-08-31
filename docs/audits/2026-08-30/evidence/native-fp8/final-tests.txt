@@ -1,0 +1,40 @@
+.....................Fs.......s.........ss                               [100%]
+=================================== FAILURES ===================================
+______ test_calibration_records_unavailable_or_invalid_actual_environment ______
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1613/test_calibration_records_unava0')
+
+    def test_calibration_records_unavailable_or_invalid_actual_environment(tmp_path):
+        output = tmp_path / "attempt.json"
+        command = [sys.executable, "-m", "labs.moe_optimization_journey.calibrate_native_fp8",
+                   "--output", str(output), "--hidden-size", "17"]
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=45)
+>       report = json.loads(output.read_text())
+                            ^^^^^^^^^^^^^^^^^^
+
+code/tests/test_audit_wave1_native_fp8.py:137: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/miniconda3/lib/python3.12/pathlib.py:1027: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1613/test_calibration_records_unava0/attempt.json')
+mode = 'r', buffering = -1, encoding = 'locale', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: '/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1613/test_calibration_records_unava0/attempt.json'
+
+/opt/miniconda3/lib/python3.12/pathlib.py:1013: FileNotFoundError
+=========================== short test summary info ============================
+FAILED code/tests/test_audit_wave1_native_fp8.py::test_calibration_records_unavailable_or_invalid_actual_environment
+1 failed, 37 passed, 4 skipped in 1.41s

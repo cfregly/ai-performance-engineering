@@ -1,0 +1,1052 @@
+{
+  "method": "Union of original reviewed manifest and final prefill source/dependency hashes, recursively expanded resolvable static core/labs/tests Python imports, local package initializers, pytest configuration. Third-party packages are runtime metadata, not included source qualification. Dynamic extension source/header inputs explicitly included by parent manifests. Local quoted CUDA header includes expanded recursively.",
+  "paths": [
+    "code/ch18/__init__.py",
+    "code/ch18/flashmla_kernel.cu",
+    "code/conftest.py",
+    "code/core/__init__.py",
+    "code/core/benchmark/__init__.py",
+    "code/core/benchmark/blackwell_requirements.py",
+    "code/core/benchmark/defaults.py",
+    "code/core/benchmark/models.py",
+    "code/core/benchmark/quarantine.py",
+    "code/core/benchmark/run_manifest.py",
+    "code/core/benchmark/tcgen05_requirements.py",
+    "code/core/benchmark/triton_compat.py",
+    "code/core/benchmark/utils.py",
+    "code/core/benchmark/verification.py",
+    "code/core/benchmark/verification_mixin.py",
+    "code/core/benchmark/verify_runner.py",
+    "code/core/benchmark/wrapper_utils.py",
+    "code/core/common/__init__.py",
+    "code/core/common/async_input_pipeline.py",
+    "code/core/common/device_utils.py",
+    "code/core/common/headers/arch_detection.cuh",
+    "code/core/common/headers/tma_2d_layout.hpp",
+    "code/core/common/headers/tma_helpers.cuh",
+    "code/core/common/nvtx_label_utils.cuh",
+    "code/core/common/nvtx_utils.cuh",
+    "code/core/common/tcgen05/__init__.py",
+    "code/core/harness/__init__.py",
+    "code/core/harness/arch_config.py",
+    "code/core/harness/backend_policy.py",
+    "code/core/harness/benchmark_harness.py",
+    "code/core/harness/cuda_capabilities.py",
+    "code/core/harness/hardware_capabilities.py",
+    "code/core/harness/l2_cache_utils.py",
+    "code/core/harness/validity_checks.py",
+    "code/core/harness/verify_output_codec.py",
+    "code/core/hot_path_checks.py",
+    "code/core/profiling/__init__.py",
+    "code/core/profiling/extract_nsys_summary.py",
+    "code/core/profiling/flame_graph.py",
+    "code/core/profiling/gpu_memory_logger.py",
+    "code/core/profiling/gpu_telemetry.py",
+    "code/core/profiling/hta_capture.py",
+    "code/core/profiling/hta_integration.py",
+    "code/core/profiling/memory.py",
+    "code/core/profiling/metrics_extractor.py",
+    "code/core/profiling/nsight_automation.py",
+    "code/core/profiling/nvtx_helper.py",
+    "code/core/profiling/profiler.py",
+    "code/core/profiling/profiler_config.py",
+    "code/core/profiling/profiler_wrapper.py",
+    "code/core/profiling/profiling_runner.py",
+    "code/core/profiling/timeline.py",
+    "code/core/profiling/torch_profiler.py",
+    "code/core/utils/__init__.py",
+    "code/core/utils/build_utils.py",
+    "code/core/utils/compile_utils.py",
+    "code/core/utils/extension_loader_template.py",
+    "code/core/utils/extension_prewarm.py",
+    "code/core/utils/logger.py",
+    "code/core/utils/python_entrypoints.py",
+    "code/core/utils/warning_filters.py",
+    "code/core/verification/__init__.py",
+    "code/core/verification/kernel_correctness/__init__.py",
+    "code/core/verification/kernel_correctness/formal_verifier.py",
+    "code/core/verification/kernel_correctness/manual_verifier.py",
+    "code/labs/__init__.py",
+    "code/labs/cudnn_sdpa_bench/README.md",
+    "code/labs/cudnn_sdpa_bench/__init__.py",
+    "code/labs/cudnn_sdpa_bench/baseline_flash_sdp.py",
+    "code/labs/decode_optimization/README.md",
+    "code/labs/decode_optimization/__init__.py",
+    "code/labs/decode_optimization/baseline_decode_warp_specialized.py",
+    "code/labs/decode_optimization/decode_common.py",
+    "code/labs/decode_optimization/optimized_decode_warp_specialized.py",
+    "code/labs/flashattention4/README.md",
+    "code/labs/flashattention4/__init__.py",
+    "code/labs/flashattention4/flashattention4_common.py",
+    "code/labs/flashattention_gluon/README.md",
+    "code/labs/flashattention_gluon/__init__.py",
+    "code/labs/flashattention_gluon/baseline_flashattention_gluon.py",
+    "code/labs/flashattention_gluon/flashattention_gluon_common.py",
+    "code/labs/flashattention_gluon/optimized_flashattention_gluon.py",
+    "code/labs/flexattention/__init__.py",
+    "code/labs/flexattention/flex_attention_cute.py",
+    "code/labs/flexattention/flexattention_common.py",
+    "code/labs/persistent_decode/README.md",
+    "code/labs/persistent_decode/__init__.py",
+    "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py",
+    "code/labs/persistent_decode/baseline_persistent_decode.py",
+    "code/labs/persistent_decode/baseline_tma_prefill_decode.py",
+    "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py",
+    "code/labs/persistent_decode/optimized_persistent_decode_cuda.py",
+    "code/labs/persistent_decode/optimized_persistent_decode_graphs.py",
+    "code/labs/persistent_decode/optimized_persistent_decode_triton.py",
+    "code/labs/persistent_decode/optimized_tma_prefill_decode.py",
+    "code/labs/persistent_decode/paged_kv_offload_common.py",
+    "code/labs/persistent_decode/persistent_decode_common.py",
+    "code/labs/persistent_decode/persistent_decode_ext.cu",
+    "code/labs/persistent_decode/tma_extension.py",
+    "code/pyproject.toml",
+    "code/pytest.ini",
+    "code/tests/__init__.py",
+    "code/tests/conftest.py",
+    "code/tests/cuda/validation_process.py",
+    "code/tests/test_audit_wave1_attention_regressions.py",
+    "code/tests/test_audit_wave1_prefill_full_output.py"
+  ],
+  "static_import_edges": [
+    {
+      "importer": "code/labs/persistent_decode/paged_kv_offload_common.py",
+      "module": "core.benchmark.verification",
+      "path": "code/core/benchmark/verification.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/paged_kv_offload_common.py",
+      "module": "core.benchmark.verification_mixin",
+      "path": "code/core/benchmark/verification_mixin.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/paged_kv_offload_common.py",
+      "module": "core.harness.arch_config",
+      "path": "code/core/harness/arch_config.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/paged_kv_offload_common.py",
+      "module": "core.harness.benchmark_harness",
+      "path": "code/core/harness/benchmark_harness.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.utils.compile_utils",
+      "path": "code/core/utils/compile_utils.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.benchmark.verification_mixin",
+      "path": "code/core/benchmark/verification_mixin.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.harness.backend_policy",
+      "path": "code/core/harness/backend_policy.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.harness.verify_output_codec",
+      "path": "code/core/harness/verify_output_codec.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.benchmark.models",
+      "path": "code/core/benchmark/models.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.harness.validity_checks",
+      "path": "code/core/harness/validity_checks.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.utils.python_entrypoints",
+      "path": "code/core/utils/python_entrypoints.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.profiling.gpu_memory_logger",
+      "path": "code/core/profiling/gpu_memory_logger.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.profiling.gpu_telemetry",
+      "path": "code/core/profiling/gpu_telemetry.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.benchmark.verification",
+      "path": "code/core/benchmark/verification.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.profiling.profiling_runner",
+      "path": "code/core/profiling/profiling_runner.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.profiling.profiler_wrapper",
+      "path": "code/core/profiling/profiler_wrapper.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.utils.logger",
+      "path": "code/core/utils/logger.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.benchmark.defaults",
+      "path": "code/core/benchmark/defaults.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.benchmark.defaults",
+      "path": "code/core/benchmark/defaults.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.profiling.nvtx_helper",
+      "path": "code/core/profiling/nvtx_helper.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.profiling.nvtx_helper",
+      "path": "code/core/profiling/nvtx_helper.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.harness.validity_checks",
+      "path": "code/core/harness/validity_checks.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.benchmark.run_manifest",
+      "path": "code/core/benchmark/run_manifest.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.benchmark.run_manifest",
+      "path": "code/core/benchmark/run_manifest.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.benchmark.verification",
+      "path": "code/core/benchmark/verification.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.benchmark.verify_runner",
+      "path": "code/core/benchmark/verify_runner.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.benchmark.verification",
+      "path": "code/core/benchmark/verification.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.benchmark.verify_runner",
+      "path": "code/core/benchmark/verify_runner.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.harness.validity_checks",
+      "path": "code/core/harness/validity_checks.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.harness.validity_checks",
+      "path": "code/core/harness/validity_checks.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.benchmark.quarantine",
+      "path": "code/core/benchmark/quarantine.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.harness.validity_checks",
+      "path": "code/core/harness/validity_checks.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.harness.l2_cache_utils",
+      "path": "code/core/harness/l2_cache_utils.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.verification.kernel_correctness",
+      "path": "code/core/verification/kernel_correctness/__init__.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.verification.kernel_correctness",
+      "path": "code/core/verification/kernel_correctness/__init__.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.profiling",
+      "path": "code/core/profiling/__init__.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.profiling.profiler_config",
+      "path": "code/core/profiling/profiler_config.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.harness.l2_cache_utils",
+      "path": "code/core/harness/l2_cache_utils.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.harness.l2_cache_utils",
+      "path": "code/core/harness/l2_cache_utils.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.harness.validity_checks",
+      "path": "code/core/harness/validity_checks.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.harness.validity_checks",
+      "path": "code/core/harness/validity_checks.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.harness.validity_checks",
+      "path": "code/core/harness/validity_checks.py"
+    },
+    {
+      "importer": "code/core/harness/benchmark_harness.py",
+      "module": "core.profiling.profiling_runner",
+      "path": "code/core/profiling/profiling_runner.py"
+    },
+    {
+      "importer": "code/core/profiling/profiler_config.py",
+      "module": "core.profiling.nvtx_helper",
+      "path": "code/core/profiling/nvtx_helper.py"
+    },
+    {
+      "importer": "code/core/profiling/__init__.py",
+      "module": "core.profiling.profiler",
+      "path": "code/core/profiling/profiler.py"
+    },
+    {
+      "importer": "code/core/profiling/__init__.py",
+      "module": "core.profiling.memory",
+      "path": "code/core/profiling/memory.py"
+    },
+    {
+      "importer": "code/core/profiling/__init__.py",
+      "module": "core.profiling.flame_graph",
+      "path": "code/core/profiling/flame_graph.py"
+    },
+    {
+      "importer": "code/core/profiling/__init__.py",
+      "module": "core.profiling.timeline",
+      "path": "code/core/profiling/timeline.py"
+    },
+    {
+      "importer": "code/core/profiling/__init__.py",
+      "module": "core.profiling.hta_integration",
+      "path": "code/core/profiling/hta_integration.py"
+    },
+    {
+      "importer": "code/core/profiling/__init__.py",
+      "module": "core.profiling.torch_profiler",
+      "path": "code/core/profiling/torch_profiler.py"
+    },
+    {
+      "importer": "code/core/profiling/__init__.py",
+      "module": "core.profiling.hta_capture",
+      "path": "code/core/profiling/hta_capture.py"
+    },
+    {
+      "importer": "code/core/profiling/hta_capture.py",
+      "module": "core.profiling.hta_integration",
+      "path": "code/core/profiling/hta_integration.py"
+    },
+    {
+      "importer": "code/core/profiling/hta_capture.py",
+      "module": "core.profiling.nsight_automation",
+      "path": "code/core/profiling/nsight_automation.py"
+    },
+    {
+      "importer": "code/core/profiling/hta_capture.py",
+      "module": "core.utils.logger",
+      "path": "code/core/utils/logger.py"
+    },
+    {
+      "importer": "code/core/profiling/nsight_automation.py",
+      "module": "core.utils.logger",
+      "path": "code/core/utils/logger.py"
+    },
+    {
+      "importer": "code/core/profiling/torch_profiler.py",
+      "module": "core.utils.logger",
+      "path": "code/core/utils/logger.py"
+    },
+    {
+      "importer": "code/core/verification/kernel_correctness/__init__.py",
+      "module": "core.verification.kernel_correctness.manual_verifier",
+      "path": "code/core/verification/kernel_correctness/manual_verifier.py"
+    },
+    {
+      "importer": "code/core/verification/kernel_correctness/__init__.py",
+      "module": "core.verification.kernel_correctness.formal_verifier",
+      "path": "code/core/verification/kernel_correctness/formal_verifier.py"
+    },
+    {
+      "importer": "code/core/verification/kernel_correctness/formal_verifier.py",
+      "module": "core.verification.kernel_correctness.manual_verifier",
+      "path": "code/core/verification/kernel_correctness/manual_verifier.py"
+    },
+    {
+      "importer": "code/core/harness/l2_cache_utils.py",
+      "module": "core.harness.hardware_capabilities",
+      "path": "code/core/harness/hardware_capabilities.py"
+    },
+    {
+      "importer": "code/core/benchmark/quarantine.py",
+      "module": "core.benchmark.verification",
+      "path": "code/core/benchmark/verification.py"
+    },
+    {
+      "importer": "code/core/benchmark/verify_runner.py",
+      "module": "core.harness.backend_policy",
+      "path": "code/core/harness/backend_policy.py"
+    },
+    {
+      "importer": "code/core/benchmark/verify_runner.py",
+      "module": "core.benchmark.verification",
+      "path": "code/core/benchmark/verification.py"
+    },
+    {
+      "importer": "code/core/benchmark/verify_runner.py",
+      "module": "core.benchmark.quarantine",
+      "path": "code/core/benchmark/quarantine.py"
+    },
+    {
+      "importer": "code/core/benchmark/verify_runner.py",
+      "module": "core.harness.validity_checks",
+      "path": "code/core/harness/validity_checks.py"
+    },
+    {
+      "importer": "code/core/benchmark/verify_runner.py",
+      "module": "core.harness.validity_checks",
+      "path": "code/core/harness/validity_checks.py"
+    },
+    {
+      "importer": "code/core/benchmark/verify_runner.py",
+      "module": "core.harness.validity_checks",
+      "path": "code/core/harness/validity_checks.py"
+    },
+    {
+      "importer": "code/core/benchmark/run_manifest.py",
+      "module": "core.profiling.gpu_telemetry",
+      "path": "code/core/profiling/gpu_telemetry.py"
+    },
+    {
+      "importer": "code/core/benchmark/run_manifest.py",
+      "module": "core.utils.logger",
+      "path": "code/core/utils/logger.py"
+    },
+    {
+      "importer": "code/core/benchmark/run_manifest.py",
+      "module": "core.harness.validity_checks",
+      "path": "code/core/harness/validity_checks.py"
+    },
+    {
+      "importer": "code/core/profiling/profiler_wrapper.py",
+      "module": "core.harness.benchmark_harness",
+      "path": "code/core/harness/benchmark_harness.py"
+    },
+    {
+      "importer": "code/core/profiling/profiling_runner.py",
+      "module": "core.utils.python_entrypoints",
+      "path": "code/core/utils/python_entrypoints.py"
+    },
+    {
+      "importer": "code/core/profiling/profiling_runner.py",
+      "module": "core.harness.benchmark_harness",
+      "path": "code/core/harness/benchmark_harness.py"
+    },
+    {
+      "importer": "code/core/profiling/profiling_runner.py",
+      "module": "core.profiling.metrics_extractor",
+      "path": "code/core/profiling/metrics_extractor.py"
+    },
+    {
+      "importer": "code/core/profiling/profiling_runner.py",
+      "module": "core.profiling.metrics_extractor",
+      "path": "code/core/profiling/metrics_extractor.py"
+    },
+    {
+      "importer": "code/core/profiling/profiling_runner.py",
+      "module": "core.profiling",
+      "path": "code/core/profiling/__init__.py"
+    },
+    {
+      "importer": "code/core/profiling/profiling_runner.py",
+      "module": "core.profiling.profiler_config",
+      "path": "code/core/profiling/profiler_config.py"
+    },
+    {
+      "importer": "code/core/profiling/profiling_runner.py",
+      "module": "core.profiling.profiler_wrapper",
+      "path": "code/core/profiling/profiler_wrapper.py"
+    },
+    {
+      "importer": "code/core/profiling/profiling_runner.py",
+      "module": "core.harness.benchmark_harness",
+      "path": "code/core/harness/benchmark_harness.py"
+    },
+    {
+      "importer": "code/core/profiling/metrics_extractor.py",
+      "module": "core.benchmark.models",
+      "path": "code/core/benchmark/models.py"
+    },
+    {
+      "importer": "code/core/profiling/metrics_extractor.py",
+      "module": "core.profiling.extract_nsys_summary",
+      "path": "code/core/profiling/extract_nsys_summary.py"
+    },
+    {
+      "importer": "code/core/harness/validity_checks.py",
+      "module": "core.hot_path_checks",
+      "path": "code/core/hot_path_checks.py"
+    },
+    {
+      "importer": "code/core/harness/validity_checks.py",
+      "module": "core.utils.logger",
+      "path": "code/core/utils/logger.py"
+    },
+    {
+      "importer": "code/core/benchmark/models.py",
+      "module": "core.benchmark.run_manifest",
+      "path": "code/core/benchmark/run_manifest.py"
+    },
+    {
+      "importer": "code/core/harness/backend_policy.py",
+      "module": "core.utils.compile_utils",
+      "path": "code/core/utils/compile_utils.py"
+    },
+    {
+      "importer": "code/core/harness/arch_config.py",
+      "module": "core.utils.compile_utils",
+      "path": "code/core/utils/compile_utils.py"
+    },
+    {
+      "importer": "code/core/harness/arch_config.py",
+      "module": "core.utils.warning_filters",
+      "path": "code/core/utils/warning_filters.py"
+    },
+    {
+      "importer": "code/core/harness/arch_config.py",
+      "module": "core.benchmark.triton_compat",
+      "path": "code/core/benchmark/triton_compat.py"
+    },
+    {
+      "importer": "code/core/harness/arch_config.py",
+      "module": "core.utils.extension_prewarm",
+      "path": "code/core/utils/extension_prewarm.py"
+    },
+    {
+      "importer": "code/core/utils/extension_prewarm.py",
+      "module": "core.utils.python_entrypoints",
+      "path": "code/core/utils/python_entrypoints.py"
+    },
+    {
+      "importer": "code/core/utils/extension_prewarm.py",
+      "module": "core.common",
+      "path": "code/core/common/__init__.py"
+    },
+    {
+      "importer": "code/core/utils/extension_prewarm.py",
+      "module": "core.common.tcgen05",
+      "path": "code/core/common/tcgen05/__init__.py"
+    },
+    {
+      "importer": "code/core/common/tcgen05/__init__.py",
+      "module": "core.benchmark.tcgen05_requirements",
+      "path": "code/core/benchmark/tcgen05_requirements.py"
+    },
+    {
+      "importer": "code/core/common/tcgen05/__init__.py",
+      "module": "core.harness.hardware_capabilities",
+      "path": "code/core/harness/hardware_capabilities.py"
+    },
+    {
+      "importer": "code/core/benchmark/tcgen05_requirements.py",
+      "module": "core.benchmark.blackwell_requirements",
+      "path": "code/core/benchmark/blackwell_requirements.py"
+    },
+    {
+      "importer": "code/core/benchmark/blackwell_requirements.py",
+      "module": "core.harness.cuda_capabilities",
+      "path": "code/core/harness/cuda_capabilities.py"
+    },
+    {
+      "importer": "code/core/harness/cuda_capabilities.py",
+      "module": "core.harness.hardware_capabilities",
+      "path": "code/core/harness/hardware_capabilities.py"
+    },
+    {
+      "importer": "code/core/benchmark/verification_mixin.py",
+      "module": "core.benchmark.verification",
+      "path": "code/core/benchmark/verification.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/optimized_persistent_decode_triton.py",
+      "module": "core.benchmark.verification_mixin",
+      "path": "code/core/benchmark/verification_mixin.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/optimized_persistent_decode_triton.py",
+      "module": "core.harness.benchmark_harness",
+      "path": "code/core/harness/benchmark_harness.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/optimized_persistent_decode_triton.py",
+      "module": "labs.persistent_decode.persistent_decode_common",
+      "path": "code/labs/persistent_decode/persistent_decode_common.py"
+    },
+    {
+      "importer": "code/labs/flashattention_gluon/baseline_flashattention_gluon.py",
+      "module": "core.benchmark.verification_mixin",
+      "path": "code/core/benchmark/verification_mixin.py"
+    },
+    {
+      "importer": "code/labs/flashattention_gluon/baseline_flashattention_gluon.py",
+      "module": "core.harness.benchmark_harness",
+      "path": "code/core/harness/benchmark_harness.py"
+    },
+    {
+      "importer": "code/labs/flashattention_gluon/baseline_flashattention_gluon.py",
+      "module": "labs.flashattention_gluon.flashattention_gluon_common",
+      "path": "code/labs/flashattention_gluon/flashattention_gluon_common.py"
+    },
+    {
+      "importer": "code/labs/flashattention_gluon/optimized_flashattention_gluon.py",
+      "module": "core.benchmark.verification_mixin",
+      "path": "code/core/benchmark/verification_mixin.py"
+    },
+    {
+      "importer": "code/labs/flashattention_gluon/optimized_flashattention_gluon.py",
+      "module": "core.harness.benchmark_harness",
+      "path": "code/core/harness/benchmark_harness.py"
+    },
+    {
+      "importer": "code/labs/flashattention_gluon/optimized_flashattention_gluon.py",
+      "module": "labs.flashattention_gluon.flashattention_gluon_common",
+      "path": "code/labs/flashattention_gluon/flashattention_gluon_common.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.cudnn_sdpa_bench.baseline_flash_sdp",
+      "path": "code/labs/cudnn_sdpa_bench/baseline_flash_sdp.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.cudnn_sdpa_bench.baseline_flash_sdp",
+      "path": "code/labs/cudnn_sdpa_bench/baseline_flash_sdp.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.flashattention4.flashattention4_common",
+      "path": "code/labs/flashattention4/flashattention4_common.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.flashattention4.flashattention4_common",
+      "path": "code/labs/flashattention4/flashattention4_common.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.flexattention.flex_attention_cute",
+      "path": "code/labs/flexattention/flex_attention_cute.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.persistent_decode.paged_kv_offload_common",
+      "path": "code/labs/persistent_decode/paged_kv_offload_common.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.persistent_decode.persistent_decode_common",
+      "path": "code/labs/persistent_decode/persistent_decode_common.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.persistent_decode.persistent_decode_common",
+      "path": "code/labs/persistent_decode/persistent_decode_common.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.persistent_decode.optimized_persistent_decode_triton",
+      "path": "code/labs/persistent_decode/optimized_persistent_decode_triton.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.persistent_decode.persistent_decode_common",
+      "path": "code/labs/persistent_decode/persistent_decode_common.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.persistent_decode.optimized_persistent_decode_cuda",
+      "path": "code/labs/persistent_decode/optimized_persistent_decode_cuda.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.flashattention_gluon.flashattention_gluon_common",
+      "path": "code/labs/flashattention_gluon/flashattention_gluon_common.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.flexattention.flex_attention_cute",
+      "path": "code/labs/flexattention/flex_attention_cute.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.persistent_decode.paged_kv_offload_common",
+      "path": "code/labs/persistent_decode/paged_kv_offload_common.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "core.common.async_input_pipeline",
+      "path": "code/core/common/async_input_pipeline.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.persistent_decode.paged_kv_offload_common",
+      "path": "code/labs/persistent_decode/paged_kv_offload_common.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.cudnn_sdpa_bench.baseline_flash_sdp",
+      "path": "code/labs/cudnn_sdpa_bench/baseline_flash_sdp.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.persistent_decode.optimized_persistent_decode_graphs",
+      "path": "code/labs/persistent_decode/optimized_persistent_decode_graphs.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.persistent_decode.persistent_decode_common",
+      "path": "code/labs/persistent_decode/persistent_decode_common.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.persistent_decode.paged_kv_offload_common",
+      "path": "code/labs/persistent_decode/paged_kv_offload_common.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.persistent_decode.tma_extension",
+      "path": "code/labs/persistent_decode/tma_extension.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.decode_optimization.decode_common",
+      "path": "code/labs/decode_optimization/decode_common.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.decode_optimization.baseline_decode_warp_specialized",
+      "path": "code/labs/decode_optimization/baseline_decode_warp_specialized.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_attention_regressions.py",
+      "module": "labs.decode_optimization.optimized_decode_warp_specialized",
+      "path": "code/labs/decode_optimization/optimized_decode_warp_specialized.py"
+    },
+    {
+      "importer": "code/core/common/async_input_pipeline.py",
+      "module": "core.benchmark.verification_mixin",
+      "path": "code/core/benchmark/verification_mixin.py"
+    },
+    {
+      "importer": "code/core/common/async_input_pipeline.py",
+      "module": "core.harness.benchmark_harness",
+      "path": "code/core/harness/benchmark_harness.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/optimized_tma_prefill_decode.py",
+      "module": "core.benchmark.blackwell_requirements",
+      "path": "code/core/benchmark/blackwell_requirements.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/optimized_tma_prefill_decode.py",
+      "module": "core.benchmark.verification_mixin",
+      "path": "code/core/benchmark/verification_mixin.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/optimized_tma_prefill_decode.py",
+      "module": "core.harness.benchmark_harness",
+      "path": "code/core/harness/benchmark_harness.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/optimized_tma_prefill_decode.py",
+      "module": "core.harness.cuda_capabilities",
+      "path": "code/core/harness/cuda_capabilities.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/optimized_tma_prefill_decode.py",
+      "module": "labs.persistent_decode.persistent_decode_common",
+      "path": "code/labs/persistent_decode/persistent_decode_common.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/persistent_decode_common.py",
+      "module": "core.benchmark.verification",
+      "path": "code/core/benchmark/verification.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/persistent_decode_common.py",
+      "module": "core.common.device_utils",
+      "path": "code/core/common/device_utils.py"
+    },
+    {
+      "importer": "code/labs/flexattention/flexattention_common.py",
+      "module": "core.common.device_utils",
+      "path": "code/core/common/device_utils.py"
+    },
+    {
+      "importer": "code/labs/decode_optimization/decode_common.py",
+      "module": "core.profiling.nvtx_helper",
+      "path": "code/core/profiling/nvtx_helper.py"
+    },
+    {
+      "importer": "code/labs/decode_optimization/decode_common.py",
+      "module": "core.benchmark.verification",
+      "path": "code/core/benchmark/verification.py"
+    },
+    {
+      "importer": "code/labs/decode_optimization/decode_common.py",
+      "module": "core.benchmark.verification_mixin",
+      "path": "code/core/benchmark/verification_mixin.py"
+    },
+    {
+      "importer": "code/labs/decode_optimization/decode_common.py",
+      "module": "core.benchmark.wrapper_utils",
+      "path": "code/core/benchmark/wrapper_utils.py"
+    },
+    {
+      "importer": "code/labs/decode_optimization/decode_common.py",
+      "module": "core.harness.benchmark_harness",
+      "path": "code/core/harness/benchmark_harness.py"
+    },
+    {
+      "importer": "code/labs/decode_optimization/decode_common.py",
+      "module": "core.harness.hardware_capabilities",
+      "path": "code/core/harness/hardware_capabilities.py"
+    },
+    {
+      "importer": "code/labs/decode_optimization/decode_common.py",
+      "module": "core.harness.arch_config",
+      "path": "code/core/harness/arch_config.py"
+    },
+    {
+      "importer": "code/labs/decode_optimization/decode_common.py",
+      "module": "core.utils.compile_utils",
+      "path": "code/core/utils/compile_utils.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/baseline_tma_prefill_decode.py",
+      "module": "core.benchmark.verification_mixin",
+      "path": "code/core/benchmark/verification_mixin.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/baseline_tma_prefill_decode.py",
+      "module": "core.harness.benchmark_harness",
+      "path": "code/core/harness/benchmark_harness.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/baseline_tma_prefill_decode.py",
+      "module": "core.benchmark.blackwell_requirements",
+      "path": "code/core/benchmark/blackwell_requirements.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/baseline_tma_prefill_decode.py",
+      "module": "labs.persistent_decode.persistent_decode_common",
+      "path": "code/labs/persistent_decode/persistent_decode_common.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py",
+      "module": "core.benchmark.verification_mixin",
+      "path": "code/core/benchmark/verification_mixin.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py",
+      "module": "core.harness.benchmark_harness",
+      "path": "code/core/harness/benchmark_harness.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py",
+      "module": "labs.persistent_decode.persistent_decode_common",
+      "path": "code/labs/persistent_decode/persistent_decode_common.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py",
+      "module": "labs.persistent_decode.tma_extension",
+      "path": "code/labs/persistent_decode/tma_extension.py"
+    },
+    {
+      "importer": "code/labs/decode_optimization/baseline_decode_warp_specialized.py",
+      "module": "labs.decode_optimization.decode_common",
+      "path": "code/labs/decode_optimization/decode_common.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py",
+      "module": "core.benchmark.verification_mixin",
+      "path": "code/core/benchmark/verification_mixin.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py",
+      "module": "core.harness.benchmark_harness",
+      "path": "code/core/harness/benchmark_harness.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py",
+      "module": "labs.persistent_decode.persistent_decode_common",
+      "path": "code/labs/persistent_decode/persistent_decode_common.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py",
+      "module": "labs.persistent_decode.tma_extension",
+      "path": "code/labs/persistent_decode/tma_extension.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/baseline_persistent_decode.py",
+      "module": "core.benchmark.verification_mixin",
+      "path": "code/core/benchmark/verification_mixin.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/baseline_persistent_decode.py",
+      "module": "core.harness.benchmark_harness",
+      "path": "code/core/harness/benchmark_harness.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/baseline_persistent_decode.py",
+      "module": "labs.persistent_decode.persistent_decode_common",
+      "path": "code/labs/persistent_decode/persistent_decode_common.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_prefill_full_output.py",
+      "module": "labs.persistent_decode.persistent_decode_common",
+      "path": "code/labs/persistent_decode/persistent_decode_common.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_prefill_full_output.py",
+      "module": "tests.cuda.validation_process",
+      "path": "code/tests/cuda/validation_process.py"
+    },
+    {
+      "importer": "code/tests/test_audit_wave1_prefill_full_output.py",
+      "module": "labs.persistent_decode.optimized_tma_prefill_decode",
+      "path": "code/labs/persistent_decode/optimized_tma_prefill_decode.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/optimized_persistent_decode_cuda.py",
+      "module": "core.benchmark.verification_mixin",
+      "path": "code/core/benchmark/verification_mixin.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/optimized_persistent_decode_cuda.py",
+      "module": "core.harness.benchmark_harness",
+      "path": "code/core/harness/benchmark_harness.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/optimized_persistent_decode_cuda.py",
+      "module": "core.utils.extension_loader_template",
+      "path": "code/core/utils/extension_loader_template.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/optimized_persistent_decode_cuda.py",
+      "module": "labs.persistent_decode.persistent_decode_common",
+      "path": "code/labs/persistent_decode/persistent_decode_common.py"
+    },
+    {
+      "importer": "code/core/utils/extension_loader_template.py",
+      "module": "core.utils.build_utils",
+      "path": "code/core/utils/build_utils.py"
+    },
+    {
+      "importer": "code/core/utils/extension_loader_template.py",
+      "module": "core.utils.python_entrypoints",
+      "path": "code/core/utils/python_entrypoints.py"
+    },
+    {
+      "importer": "code/labs/cudnn_sdpa_bench/baseline_flash_sdp.py",
+      "module": "core.benchmark.verification_mixin",
+      "path": "code/core/benchmark/verification_mixin.py"
+    },
+    {
+      "importer": "code/labs/cudnn_sdpa_bench/baseline_flash_sdp.py",
+      "module": "core.harness.benchmark_harness",
+      "path": "code/core/harness/benchmark_harness.py"
+    },
+    {
+      "importer": "code/labs/cudnn_sdpa_bench/baseline_flash_sdp.py",
+      "module": "core.profiling.nvtx_helper",
+      "path": "code/core/profiling/nvtx_helper.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/optimized_persistent_decode_graphs.py",
+      "module": "core.benchmark.verification_mixin",
+      "path": "code/core/benchmark/verification_mixin.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/optimized_persistent_decode_graphs.py",
+      "module": "core.harness.benchmark_harness",
+      "path": "code/core/harness/benchmark_harness.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/optimized_persistent_decode_graphs.py",
+      "module": "labs.persistent_decode.optimized_persistent_decode_triton",
+      "path": "code/labs/persistent_decode/optimized_persistent_decode_triton.py"
+    },
+    {
+      "importer": "code/labs/persistent_decode/optimized_persistent_decode_graphs.py",
+      "module": "labs.persistent_decode.persistent_decode_common",
+      "path": "code/labs/persistent_decode/persistent_decode_common.py"
+    },
+    {
+      "importer": "code/labs/flashattention4/flashattention4_common.py",
+      "module": "core.benchmark.utils",
+      "path": "code/core/benchmark/utils.py"
+    },
+    {
+      "importer": "code/labs/flashattention4/flashattention4_common.py",
+      "module": "core.utils.compile_utils",
+      "path": "code/core/utils/compile_utils.py"
+    },
+    {
+      "importer": "code/core/benchmark/utils.py",
+      "module": "core.utils.logger",
+      "path": "code/core/utils/logger.py"
+    },
+    {
+      "importer": "code/labs/flexattention/flex_attention_cute.py",
+      "module": "labs.flexattention.flexattention_common",
+      "path": "code/labs/flexattention/flexattention_common.py"
+    },
+    {
+      "importer": "code/labs/decode_optimization/optimized_decode_warp_specialized.py",
+      "module": "labs.decode_optimization.decode_common",
+      "path": "code/labs/decode_optimization/decode_common.py"
+    }
+  ],
+  "explicit_final_additions": [
+    "code/conftest.py",
+    "code/pyproject.toml",
+    "code/core/common/nvtx_utils.cuh"
+  ],
+  "excluded_document_generator": {
+    "path": "code/core/scripts/refresh_readmes.py",
+    "reason": "Root-owned README generator is not used by the runtime gate; root may finalize its unrelated fallback and code/README. Current persistent_decode/README.md remains manifest-bound."
+  }
+}

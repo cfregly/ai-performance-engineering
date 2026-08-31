@@ -1,0 +1,6 @@
+Reviewer: /root/repo_plan_context
+Scope: tcgen05_gemm.cu, test_tma.cu, test_all_features.cu; read-only source review, no compile or GPU run.
+Initial review: bias broadcast follows identical CTA/TMEM output partition; dtype/device/length checks present; scalar publication/reuse barriers and padded cluster CTAs consistent.
+Actionable discovery: warp0 could lap parity observers; added CTA rendezvous after every MMA wait and before barrier reuse.
+Re-review: rendezvous prevents reuse while another observer still waits that phase; no further actionable source concern found in the bounded three-file review.
+Actual compile, long-K/full-output and sanitizer acceptance remain HOLD.

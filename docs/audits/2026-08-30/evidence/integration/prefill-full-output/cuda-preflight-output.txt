@@ -1,0 +1,5 @@
+{
+  "status": "HOLD",
+  "reason": "Actual CUDA device required; CPU payload checks are not GPU qualification",
+  "checks": 0
+}

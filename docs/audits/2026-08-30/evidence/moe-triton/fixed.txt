@@ -1,0 +1,9 @@
+..................ssssssssssssssssssssssssssssss.........ss              [100%]
+-------------- generated xml file: /tmp/aisp-moe-triton-fixed.xml --------------
+=========================== short test summary info ============================
+SKIPPED [1] code/tests/test_audit_wave1_moe_triton.py:200: Actual CUDA required; no CPU result qualifies a GPU kernel
+SKIPPED [27] code/tests/test_audit_wave1_moe_triton.py:211: Actual CUDA and Triton execution required
+SKIPPED [1] code/tests/test_audit_wave1_moe_triton.py:244: Actual CUDA needed for differentiable CUDA route
+SKIPPED [1] code/tests/test_audit_wave1_moe_triton.py:260: Actual two CUDA devices required for noncurrent-device inference
+SKIPPED [2] code/tests/test_moe_journey_runtime_hotpath.py:391: CUDA required
+27 passed, 32 skipped in 1.39s

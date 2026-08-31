@@ -1,0 +1,59 @@
+                                                                                
+ Usage: python -m cli.aisp bench [OPTIONS] COMMAND [ARGS]...                    
+                                                                                
+ Run and profile benchmarks                                                     
+                                                                                
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help  -h        Show this message and exit.                                │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ run                       Run benchmarks - discover, run, and summarize      │
+│                           results.                                           │
+│ run-tier1                 Run the canonical tier-1 suite and write           │
+│                           summary/history artifacts.                         │
+│ run-e2e                   Run tier1, optional full sweep, cluster common     │
+│                           eval, and optional fabric eval in one orchestrated │
+│                           flow.                                              │
+│ run-e2e-status                                                               │
+│ watch-e2e                                                                    │
+│ explore                   Copy a baseline benchmark, run LLM variants with   │
+│                           profiling, and compare utilization.                │
+│ verify                    Verify benchmark pairs for correctness without     │
+│                           measuring performance.                             │
+│ list-targets              List available benchmark targets in                │
+│                           chapter:example format.                            │
+│ list-chapters             List all discoverable chapters and labs.           │
+│ analyze                   Analyze benchmark results: Pareto frontier,        │
+│                           trade-offs, and recommendations.                   │
+│ summary                   Show a quick summary of benchmark results.         │
+│ opportunities             Rank benchmark evidence by next optimization       │
+│                           opportunity.                                       │
+│ opportunity-catalog       Mine runnable benchmark pairs into a frontier      │
+│                           target catalog.                                    │
+│ opportunity-run-summary   Summarize evidence produced by an opportunity run  │
+│                           queue.                                             │
+│ triage                    Post-benchmark triage: analyze results and get     │
+│                           actionable recommendations.                        │
+│ expectations              Report expectation entries that miss a target      │
+│                           improvement threshold.                             │
+│ whatif                    What-If Solver: Find optimizations that fit your   │
+│                           constraints.                                       │
+│ stacking                  Show which optimizations combine well together.    │
+│ power                     Analyze power efficiency (ops/watt) of benchmarks. │
+│ cost                      Calculate cost savings ($/token) for               │
+│                           optimizations.                                     │
+│ scaling                   Analyze how optimizations scale with workload      │
+│                           size.                                              │
+│ report                    Generate PDF/HTML report from benchmark results.   │
+│ verify-report             Generate verification report with anti-cheat       │
+│                           status and theoretical peaks.                      │
+│ theoretical-peak          Show theoretical peak performance for a GPU.       │
+│ quarantine-report         Generate report of quarantined benchmarks.         │
+│ export                    Export benchmark results to csv/markdown/json.     │
+│ compare-runs              Diff two benchmark JSON files and show speedup     │
+│                           deltas.                                            │
+│ tui                       Open the interactive benchmark analysis menu.      │
+│ audit                     Audit benchmark verification compliance.           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

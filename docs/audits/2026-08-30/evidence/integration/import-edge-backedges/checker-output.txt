@@ -1,0 +1,1 @@
+core/perf_core_base.py:2550: Core code must not import 'ch04.gb200_grace_numa_optimization' (labs/ch back-edge)

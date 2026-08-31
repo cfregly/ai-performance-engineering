@@ -30,7 +30,10 @@ def get_scenario_pairs() -> Mapping[str, ScenarioPair]:
 
     These are planning scenarios: baseline and optimized are intentionally
     different designs, so they are exposed as a tool rather than a benchmark.
+    The first five retain their original 128-GPU DGX A100 sizing preset;
+    the two explicitly named GB200 scenarios use their separate 576-GPU preset.
     """
+    dgx_cluster, dgx_model = SPEC_PRESETS["dgx_a100_175b"]
     gpt_cluster, gpt_model = _gpt_cluster_model()
     deepseek_cluster, deepseek_model = _deepseek_cluster_model()
 
@@ -38,8 +41,8 @@ def get_scenario_pairs() -> Mapping[str, ScenarioPair]:
 
     scenarios["memory_budget"] = ScenarioPair(
         name="memory_budget",
-        cluster=gpt_cluster,
-        model=gpt_model,
+        cluster=dgx_cluster,
+        model=dgx_model,
         baseline=ParallelismPlan(
             name="Baseline memory budget (overcommitted HBM)",
             dp=4,
@@ -84,8 +87,8 @@ def get_scenario_pairs() -> Mapping[str, ScenarioPair]:
 
     scenarios["moe_grouping"] = ScenarioPair(
         name="moe_grouping",
-        cluster=gpt_cluster,
-        model=gpt_model,
+        cluster=dgx_cluster,
+        model=dgx_model,
         baseline=ParallelismPlan(
             name="Baseline expert grouping (cross-node EP=8)",
             dp=2,
@@ -130,8 +133,8 @@ def get_scenario_pairs() -> Mapping[str, ScenarioPair]:
 
     scenarios["network_affinity"] = ScenarioPair(
         name="network_affinity",
-        cluster=gpt_cluster,
-        model=gpt_model,
+        cluster=dgx_cluster,
+        model=dgx_model,
         baseline=ParallelismPlan(
             name="Baseline network affinity (DP-dominated)",
             dp=8,
@@ -176,8 +179,8 @@ def get_scenario_pairs() -> Mapping[str, ScenarioPair]:
 
     scenarios["parallelism_breakdown"] = ScenarioPair(
         name="parallelism_breakdown",
-        cluster=gpt_cluster,
-        model=gpt_model,
+        cluster=dgx_cluster,
+        model=dgx_model,
         baseline=ParallelismPlan(
             name="Baseline parallelism factorization (underspecified)",
             dp=2,
@@ -222,8 +225,8 @@ def get_scenario_pairs() -> Mapping[str, ScenarioPair]:
 
     scenarios["pipeline_schedule"] = ScenarioPair(
         name="pipeline_schedule",
-        cluster=gpt_cluster,
-        model=gpt_model,
+        cluster=dgx_cluster,
+        model=dgx_model,
         baseline=ParallelismPlan(
             name="Baseline pipeline schedule (64-stage mindset)",
             dp=4,

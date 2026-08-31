@@ -1,0 +1,59 @@
+{
+  "config": {
+    "backend": "gloo",
+    "batch_size": 3,
+    "betas": [
+      0.9,
+      0.95
+    ],
+    "device_type": "cpu",
+    "eps": 1e-08,
+    "grad_accum": 2,
+    "hidden_size": 8,
+    "input_seed": 73001,
+    "learning_rate": 0.001,
+    "mode": "optimized",
+    "model_seed": 42017,
+    "optimizer": {
+      "amsgrad": false,
+      "betas": [
+        0.9,
+        0.95
+      ],
+      "eps": 1e-08,
+      "fused": true,
+      "lr": 0.001,
+      "maximize": false,
+      "weight_decay": 0.05
+    },
+    "process_torch_seed": 42,
+    "profile_kind": "verification-only",
+    "updates": 3,
+    "variant": "multigpu",
+    "weight_decay": 0.05,
+    "world_size": 2
+  },
+  "freshness": {
+    "finished_monotonic_ns": 274158891537208,
+    "finished_wall_ns": 1788138589086559000,
+    "launch_monotonic_ns": 274155683924208,
+    "launch_wall_ns": 1788138585878919000,
+    "started_monotonic_ns": 274158866196083,
+    "started_wall_ns": 1788138589061217000
+  },
+  "payload_file": "rank-1.pt",
+  "payload_sha256": "3ddaf38d38b5d2445f942d85f1235607f4d732152b048e8386276f5f5fb2738a",
+  "payload_size": 29890,
+  "rank": 1,
+  "rng_after": {
+    "cpu_state_sha256": "5feb54a46230d321d888e9b43cf5a57492665f199e4377408d79ee460e36679c",
+    "torch_initial_seed": 42
+  },
+  "rng_before": {
+    "cpu_state_sha256": "5feb54a46230d321d888e9b43cf5a57492665f199e4377408d79ee460e36679c",
+    "torch_initial_seed": 42
+  },
+  "run_id": "adapter-proof-optimized-static-2c",
+  "schema_version": "aisp.zero2.child-result.v1",
+  "world_size": 2
+}

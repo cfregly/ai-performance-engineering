@@ -1,0 +1,160 @@
+# AI Performance Engineering - Blackwell Requirements
+# Target: Blackwell B200 (SM100) with PyTorch 2.9.1+cu130, CUDA 13.0, Triton 3.5.1
+# All versions are pinned to exact versions for reproducible builds
+# uv.lock contains only the repository's Python compatibility metadata. It is
+# not a resolved dependency lock. This file remains the environment source.
+#
+# GB300 / Blackwell Ultra (sm_103) note (verified 2026-06-09): the validated, working
+# GB300 toolchain is the NGC torch 2.12 base (CUDA 13; arch_list sm_100 + compute_120,
+# which forward-compat JITs onto sm_103) PLUS the source fixes in docs/gb300-runbook.md.
+# Two pins do NOT help GB300: (a) torch==2.9.1+cu130 fails to import on sm_103 hosts
+# (ModuleNotFoundError: torch._opaque_base); (b) triton==3.5.0 still aborts sm_103
+# max-autotune (LLVM cannot select tcgen05.wait.st) with torch 2.12, same as triton 3.7
+# -- so the max-autotune->default fallback guard is required regardless of triton version.
+# See docs/gb300-runbook.md "Toolchain GB300-readiness". The 2.9.1 pin is the B200 baseline.
+
+# Core PyTorch ecosystem (CUDA 13 wheels)
+-f ./third_party/wheels
+--extra-index-url https://download.pytorch.org/whl/cu130
+# Resolve the exact +cu130 torch pin below from the official stable CUDA index.
+# Keep PyPI available for the remaining packages and local wheels when present.
+# torchvision will be installed separately with --no-deps to prevent torch override
+
+# PyTorch 2.9.1 CUDA wheel metadata requires this exact Linux dependency.
+triton==3.5.1
+
+# Build tooling compatibility
+packaging==25.0
+ninja==1.13.0
+nvidia-mathdx==25.6.0
+
+# Monitoring and system insight
+nvidia-ml-py==12.560.30
+psutil==7.1.0
+GPUtil==1.4.0
+py-cpuinfo==9.0.0
+
+# Data processing stack
+numpy==2.1.2
+pandas==2.3.2
+scikit-learn==1.7.2
+pillow==11.3.0
+
+# Visualization & reporting
+matplotlib==3.10.6
+seaborn==0.13.2
+tensorboard==2.20.0
+wandb==0.22.0
+plotly==6.3.0
+bokeh==3.8.0
+dash==3.2.0
+
+# Storage I/O bindings (GPUDirect Storage)
+cuda-python==13.0.3
+kvikio-cu13==25.10.0
+
+# CUTLASS backend for torch.compile (includes Python API and C++ headers).
+# Use the [cu13] extra and exactly 4.5.2. This is the version validated for the
+# Blackwell B200 and GB300 setup. It adds the Blackwell Ultra arches
+# (sm_103/sm_103a/sm_103f) to the CuTe-DSL Arch enum, and the [cu13] extra pulls
+# the CUDA-13 backend libs. 4.3.0 (base-only) lacks sm_103a, so the Python
+# CuTe-DSL JIT labs (e.g. labs/block_scaling) cannot target GB300/sm_103.
+nvidia-cutlass-dsl[cu13]==4.5.2
+
+# Development workflow
+jupyter==1.1.1
+ipykernel==6.30.1
+black==25.9.0
+isort==5.13.2
+ruff==0.8.4
+flake8==7.3.0
+mypy==1.18.2
+pre-commit==4.0.1
+pytest==8.3.4
+# CI repeats these exact test pins because its CPU runner does not install the
+# full CUDA environment from this file.
+pytest-cov==7.1.0
+coverage[toml]==7.15.2
+hypothesis==6.148.2  # Property-based testing for benchmark integrity tests
+pyyaml==6.0.2
+pydantic==2.12.4
+pydantic-core==2.41.5  # Required by pydantic 2.12.4
+typer==0.12.0
+typer-slim[standard]==0.12.0  # Required by typer 0.12.0 and typer-cli 0.12.0
+click==8.1.7  # Pin to Typer-compatible Click to avoid CLI help/runtime errors
+rich==13.7.0
+
+# Dashboard API server
+fastapi==0.121.3
+uvicorn==0.38.0
+httpx==0.28.1
+requests==2.34.2  # Direct dependency of the full CPU HTTP integration tests
+
+# Model development helpers
+transformers==4.56.0
+datasets==2.21.0
+accelerate==0.29.0
+sentencepiece==0.2.0
+tokenizers==0.22.2
+# Pin dependencies to prevent conflicts
+huggingface-hub==0.34.6  # Required by transformers 4.56.0 and tokenizers 0.22.2
+
+# Optional model serving & optimization
+torchtitan==0.2.0
+# Tested benchmark-host serving ABI matrix (pin these together).
+# setup.sh may install torch from cached wheels; keep that install on this exact version.
+torch==2.9.1+cu130
+# Upstream torchao compatibility matrix pairs 0.15.0 with torch 2.9.1.
+# The official +cu130 wheel is x86_64-only; ARM CUDA requires a validated source build.
+torchao==0.15.0+cu130
+vllm==0.16.0
+flashinfer-python==0.6.3
+# vLLM runtime dependencies for no-deps wheel installs on benchmark hosts.
+cbor2==5.8.0
+msgspec==0.20.0
+gguf==0.18.0
+ijson==3.5.0
+pybase64==1.4.3
+setproctitle==1.3.7
+diskcache==5.6.3
+partial-json-parser==0.2.1.1.post7
+lm-format-enforcer==0.11.3
+outlines_core==0.2.11
+llguidance==1.3.0
+xgrammar==0.1.29
+compressed-tensors==0.13.0
+depyf==0.20.0
+watchfiles==1.1.1
+blake3==1.0.8
+anthropic==0.112.0
+openai==2.44.0
+openai-harmony==0.0.8
+model-hosting-container-standards==0.1.13
+mcp==1.28.0
+grpcio-reflection==1.78.0
+ordered-set==4.1.0
+
+# GPU compression & pipeline helpers
+
+# Profiling & diagnostics
+py-spy==0.4.1
+memory-profiler==0.61.0
+line-profiler==5.0.0
+pyinstrument==5.1.1
+snakeviz==2.2.2
+
+# Experiment management & search
+optuna==4.5.0
+hyperopt==0.2.7
+ray==2.49.2
+
+# Scalable data utilities
+dask==2025.9.1
+xarray==2025.6.1
+fsspec[http]==2024.6.1
+
+# Notes
+# - Install DeepSpeed/Fairscale or other distributed frameworks separately as needed
+# - Ensure CUDA 13 toolkit/driver is present on systems building custom extensions
+# - ruff is preferred over flake8, but flake8 is kept for compatibility
+# - fsspec[http] version kept compatible with datasets 2.21.0

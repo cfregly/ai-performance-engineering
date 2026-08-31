@@ -1,0 +1,36 @@
+{
+  "command": [
+    "/opt/miniconda3/bin/python",
+    "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/profiling/extract_pytorch_profile.py",
+    "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844",
+    "--output-prefix",
+    "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/documentation/profile-extraction/root-cpu-smoke"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "exit_code": 0,
+  "read_only_input_sha256": {
+    "docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/trace.json": "db466403ead96e2a69850fc508b4c23d9fc9f71d60d08cbaa805e17c1f54011d",
+    "docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/chrome_trace_full.json": "db466403ead96e2a69850fc508b4c23d9fc9f71d60d08cbaa805e17c1f54011d",
+    "docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/key_averages_full.json": "0137e5bf38601bdaa60e62b8ece925ecfdea2d11f9d5afbf8299399827e3eb9d",
+    "docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/summary_full.txt": "dc3033b72b9904be2d3254fa3439c2588293cce747275ad1db11f9a7fcdc91f9",
+    "docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/metadata.json": "9a1768c95620fb3334df48f425190c922aaf7b3b23f5772a00aa908a5db85bf7",
+    "docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/torch_profile_summary.json": "14742f7af8d181e20eac3ca6bfff017f1628b2f3d28a19f353ad53e100f34e36"
+  },
+  "capture_type": "actual CPU torch.profiler, not CUDA",
+  "input_metadata": {
+    "script": "tests/fixtures/mcp_torch_profile_target.py",
+    "args": [],
+    "mode": "full",
+    "start_time": 1788131926.007521,
+    "duration_seconds": 0.00938105583190918,
+    "torch_version": "2.8.0",
+    "cuda_available": false,
+    "cuda_device": null,
+    "error": null,
+    "nvtx_label": "aisp_torch_profile",
+    "force_lineinfo": true
+  },
+  "operator_count": 16,
+  "round_trip": "PASS; every operator name/count/numerical field matched source JSON exactly",
+  "source_sha256": "ff963205bac84411fb50ea7eff22c1d4d6fa9d4c14be5e949ca255fb1c3db928"
+}

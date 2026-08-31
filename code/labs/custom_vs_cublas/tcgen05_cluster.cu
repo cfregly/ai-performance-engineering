@@ -1,12 +1,10 @@
 /**
- * Cluster Launch with TMA Multicast
+ * Cluster Launch with Independent TMA Loads
  * ==================================
  * 
  * Uses cudaLaunchKernelEx with cluster configuration (2x1).
- * TMA multicast broadcasts B tiles to multiple CTAs in a cluster,
- * reducing memory traffic.
- * 
- * Cluster shape 2x1: Two CTAs along M dimension share B tiles.
+ * Both operands use ordinary SM90_TMA_LOAD; this kernel does not multicast.
+ * The two CTAs along M independently load B tiles and compute their outputs.
  */
 
 #include <ATen/cuda/CUDAContext.h>
@@ -78,6 +76,10 @@ gemm_cluster(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   // Each CTA in cluster processes a different M tile but same N tile
   int tile_m = blockIdx.x;  // Unique per CTA
   int tile_n = blockIdx.y;  // Same for both CTAs in cluster
+  // Padded CTAs still participate in the pipeline/cluster protocol. Only
+  // real tiles may access the output allocation in the epilogue.
+  const bool output_tile_valid = tile_m < grid_m && tile_n < grid_n;
+
 
   auto mma_coord = make_coord(tile_m, tile_n, _);
 
@@ -162,10 +164,12 @@ gemm_cluster(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
     }
     cute::initialize_barrier(storage.mma_barrier, 1);
   }
+  cutlass::arch::fence_barrier_init();
   __syncthreads();
 
   int num_k_tiles = size<3>(tCgA);
   int full_phase[kStages] = {0, 0, 0, 0};
+  int empty_phase[kStages] = {};
   int mma_phase = 0;
 
   auto issue_tma = [&](int stage, int k_tile) {
@@ -201,34 +205,44 @@ gemm_cluster(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   __syncthreads();
 
   // Mainloop
-  for (int k = 0; k < num_k_tiles; ++k) {
-    int curr = k % kStages;
-    int next_k = k + (kStages - 1);
-    int next_s = next_k % kStages;
+  // Only the producer/consumer warp advances pipeline phases. Other warps
+  // park at the CTA synchronization below instead of racing barrier reuse.
+  if (elect_one_warp) {
+    for (int k = 0; k < num_k_tiles; ++k) {
+      int curr = k % kStages;
+      int next_k = k + (kStages - 1);
+      int next_s = next_k % kStages;
 
-    // Issue next TMA first
-    if (next_k < num_k_tiles && elect_one_warp && elect_one_thr) {
-      issue_tma(next_s, next_k);
-    }
-
-    // Wait for current
-    cute::wait_barrier(storage.full_barrier[curr], full_phase[curr]);
-    full_phase[curr] ^= 1;
-
-    // Execute MMA
-    if (elect_one_warp) {
-      auto& tCrA = (curr == 0) ? tCrA_0 : (curr == 1) ? tCrA_1 : 
-                   (curr == 2) ? tCrA_2 : tCrA_3;
-      auto& tCrB = (curr == 0) ? tCrB_0 : (curr == 1) ? tCrB_1 : 
-                   (curr == 2) ? tCrB_2 : tCrB_3;
-
-      for (int kb = 0; kb < size<2>(tCrA_0); ++kb) {
-        gemm(tiled_mma, tCrA(_, _, kb), tCrB(_, _, kb), tCtAcc);
-        tiled_mma.accumulate_ = UMMA::ScaleOut::One;
+      // Issue next TMA first
+      if (next_k < num_k_tiles && elect_one_warp && elect_one_thr) {
+        // TMA may overwrite this stage only after its prior MMA reads finish.
+        // The first fill has no prior consumer; later fills alternate parity.
+        if (next_k >= kStages) {
+          cute::wait_barrier(storage.empty_barrier[next_s], empty_phase[next_s]);
+          empty_phase[next_s] ^= 1;
+        }
+        issue_tma(next_s, next_k);
       }
+
+      // Wait for current
+      cute::wait_barrier(storage.full_barrier[curr], full_phase[curr]);
+      full_phase[curr] ^= 1;
+
+      // Execute MMA
+      if (elect_one_warp) {
+        auto& tCrA = (curr == 0) ? tCrA_0 : (curr == 1) ? tCrA_1 :
+                     (curr == 2) ? tCrA_2 : tCrA_3;
+        auto& tCrB = (curr == 0) ? tCrB_0 : (curr == 1) ? tCrB_1 :
+                     (curr == 2) ? tCrB_2 : tCrB_3;
+
+        for (int kb = 0; kb < size<2>(tCrA_0); ++kb) {
+          gemm(tiled_mma, tCrA(_, _, kb), tCrB(_, _, kb), tCtAcc);
+          tiled_mma.accumulate_ = UMMA::ScaleOut::One;
+        }
       
-      uint64_t* empty_ptr = reinterpret_cast<uint64_t*>(&storage.empty_barrier[curr]);
-      cutlass::arch::umma_arrive(empty_ptr);
+        uint64_t* empty_ptr = reinterpret_cast<uint64_t*>(&storage.empty_barrier[curr]);
+        cutlass::arch::umma_arrive(empty_ptr);
+      }
     }
   }
 
@@ -248,7 +262,9 @@ gemm_cluster(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   Tensor tDrAcc = make_tensor<Accumulator>(shape(tDgD));
   copy(tiled_t2r_copy, tDtAcc, tDrAcc);
 
-  copy(tDrAcc, tDgD);  // D = accumulator (beta=0)
+  if (output_tile_valid) {
+    copy(tDrAcc, tDgD);  // D = accumulator (beta=0)
+  }
 
   __syncthreads();
   if (elect_one_warp) {
@@ -305,11 +321,12 @@ torch::Tensor run_cluster_matmul(torch::Tensor a, torch::Tensor b) {
   int grid_m = (m + size(bM) - 1) / size(bM);
   int grid_n = (n + size(bN) - 1) / size(bN);
 
-  // Grid must be divisible by cluster size
-  if (grid_m % 2 != 0) grid_m += 1;
+  // Preserve the logical tile count passed to the kernel. Padding only
+  // affects launch geometry; padded CTAs must not store to d_buffer.
+  int launch_grid_m = ((grid_m + 1) / 2) * 2;
 
   dim3 dimBlock(128);
-  dim3 dimGrid(grid_m, grid_n);
+  dim3 dimGrid(launch_grid_m, grid_n);
   int smem_bytes = sizeof(SharedStorageT);
 
   // Use cudaLaunchKernelEx for cluster launch

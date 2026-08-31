@@ -1,0 +1,46 @@
+run_metadata:
+  benchmark_layer: component
+  benchmark_grade: realism
+  use_case: engineering_debug
+  owner: audit_wave1_P08
+  reviewed_base: b57e4c6a9
+comparison_axis:
+  variable_under_test: compute_precision_and_implementation
+  constants_locked: [input_tensors, weights, shape, seed, output_contract, timing_mode]
+workloads:
+  kv_cache:
+    batch: 8
+    hidden: 16384
+    heads: 64
+    prefill: 4096
+    decode_step_tokens: 128
+    decode_steps: 128
+    storage_dtype: bf16
+    control_compute: delayed_scaling_fp8
+    candidate_compute: nvfp4
+    independent_reference: pytorch_bf16_layernorm_and_linear_all_KV_elements
+    quality_bounds: null
+  nvfp4_group_gemm:
+    shapes_source: code/labs/nvfp4_group_gemm/nvfp4_group_gemm_common.py_COMPETITION_CASES
+    requests_per_iteration: 15
+    output_dtype: float16
+    baseline: original_E2M1_unpack_and_scales_FP64_matmul
+    candidate: custom_tcgen05_kernel
+    existing_output_contract: {rtol: 0.001, atol: 0.001}
+    target_qualification: pending
+  ozaki:
+    M: 4096
+    N: 4096
+    K: 4096
+    seed: 2026
+    input_scale: 0.001
+    baseline: native_fp64
+    dynamic: {max_bits: 16, offset: -56}
+    fixed: {bits: 12}
+    independent_reference: separate_native_fp64_array
+    quality_bounds: null
+execution:
+  CPU_evidence_only: true
+  required_GPU_artifacts: [source_hashes, compiler_versions, driver, CUDA, TE_version, GPU_model, clocks, seeds, per_element_error_metrics, negative_control_rejections, repeated_timings, traces]
+  promote_historical_expectations: false
+  current_status: HOLD

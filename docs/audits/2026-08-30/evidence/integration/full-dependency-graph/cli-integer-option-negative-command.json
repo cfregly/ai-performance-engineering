@@ -1,0 +1,19 @@
+{
+  "case": "integer-option-negative",
+  "argv": [
+    "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+    "-m",
+    "cli.aisp",
+    "profile",
+    "ncu",
+    "--launch-count",
+    "not-an-int"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "exit_code": 2,
+  "expected_exit": 2,
+  "expected_text": "not a valid integer",
+  "status": "PASS",
+  "elapsed_seconds": 2.4798910829704255,
+  "output": "cli-integer-option-negative.txt"
+}

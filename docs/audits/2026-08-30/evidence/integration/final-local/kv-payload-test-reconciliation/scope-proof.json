@@ -1,0 +1,21 @@
+{
+  "original_top_level_nodes": 45,
+  "new_top_level_nodes": 45,
+  "changed_top_level_nodes": [
+    "test_kv_cache_verification_output_is_built_after_benchmark"
+  ],
+  "signature_and_parameterization_unchanged": true,
+  "existing_test_ids_preserved": true,
+  "all_other_top_level_imports_classes_functions_unchanged": true,
+  "collected_cases_by_file": {
+    "tests.test_labs_runtime_gating": 24,
+    "tests.test_audit_wave1_numerics_regressions": 37
+  },
+  "skips": [
+    {
+      "classname": "tests.test_audit_wave1_numerics_regressions",
+      "name": "test_group_real_cuda_custom_kernel_against_independent_reference",
+      "message": "Actual CUDA required; CPU checks do not qualify GPU numerics"
+    }
+  ]
+}

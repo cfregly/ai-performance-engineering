@@ -2,13 +2,11 @@
 
 from pathlib import Path
 
-from core.utils.extension_loader_template import load_cuda_extension_v2
 from core.profiling.nvtx_stub import ensure_nvtx_stub
+from core.utils.extension_loader_template import load_cuda_extension_v2
 
 NVTX_CFLAG = "-DENABLE_NVTX_PROFILING"
 NVCC_ALLOW_UNSUPPORTED = "--allow-unsupported-compiler"
-_NVTX_STUB_LIB = ensure_nvtx_stub()
-NVTX_LDFLAGS = [f"-L{_NVTX_STUB_LIB.parent}", "-lnvToolsExt"]
 
 _EXTENSION_DIR = Path(__file__).parent
 _COMMON_HEADERS = _EXTENSION_DIR.parent.parent / "core" / "common" / "headers"
@@ -18,13 +16,19 @@ def _cuda_flags() -> list[str]:
     return ["-lineinfo", f"-I{_COMMON_HEADERS}", NVTX_CFLAG, NVCC_ALLOW_UNSUPPORTED]
 
 
+def _nvtx_ldflags() -> list[str]:
+    """Resolve the build dependency only inside a tracked extension loader."""
+    stub_library = ensure_nvtx_stub()
+    return [f"-L{stub_library.parent}", "-lnvToolsExt"]
+
+
 def load_kernel_fusion_extension():
     """Load the kernel fusion CUDA extension."""
     return load_cuda_extension_v2(
         name="kernel_fusion_kernels",
         sources=[_EXTENSION_DIR / "kernel_fusion_kernels.cu"],
         extra_cuda_cflags=_cuda_flags(),
-        extra_ldflags=list(NVTX_LDFLAGS),
+        extra_ldflags=_nvtx_ldflags(),
     )
 
 
@@ -34,7 +38,7 @@ def load_graph_bandwidth_extension():
         name="graph_bandwidth_kernels",
         sources=[_EXTENSION_DIR / "graph_bandwidth_kernels.cu"],
         extra_cuda_cflags=_cuda_flags(),
-        extra_ldflags=list(NVTX_LDFLAGS),
+        extra_ldflags=_nvtx_ldflags(),
     )
 
 
@@ -44,7 +48,7 @@ def load_work_queue_extension():
         name="work_queue_kernels",
         sources=[_EXTENSION_DIR / "work_queue_kernels.cu"],
         extra_cuda_cflags=_cuda_flags(),
-        extra_ldflags=list(NVTX_LDFLAGS),
+        extra_ldflags=_nvtx_ldflags(),
     )
 
 
@@ -54,7 +58,7 @@ def load_cuda_graphs_extension():
         name="cuda_graphs_kernels",
         sources=[_EXTENSION_DIR / "cuda_graphs_kernels.cu"],
         extra_cuda_cflags=_cuda_flags(),
-        extra_ldflags=list(NVTX_LDFLAGS),
+        extra_ldflags=_nvtx_ldflags(),
     )
 
 
@@ -64,5 +68,5 @@ def load_bias_relu_residual_extension():
         name="bias_relu_residual_kernels",
         sources=[_EXTENSION_DIR / "bias_relu_residual_kernels.cu"],
         extra_cuda_cflags=_cuda_flags(),
-        extra_ldflags=list(NVTX_LDFLAGS),
+        extra_ldflags=_nvtx_ldflags(),
     )

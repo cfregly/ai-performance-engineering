@@ -1,0 +1,1 @@
+Wrote /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/documentation/profile-extraction/root-cpu-smoke_metadata.csv and /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/documentation/profile-extraction/root-cpu-smoke_operators.csv

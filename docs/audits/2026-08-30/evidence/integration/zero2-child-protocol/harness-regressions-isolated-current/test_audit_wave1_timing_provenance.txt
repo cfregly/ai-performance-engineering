@@ -1,0 +1,3 @@
+....                                                                     [100%]
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/zero2-child-protocol/harness-regressions-isolated-current/test_audit_wave1_timing_provenance.xml -
+4 passed in 5.03s

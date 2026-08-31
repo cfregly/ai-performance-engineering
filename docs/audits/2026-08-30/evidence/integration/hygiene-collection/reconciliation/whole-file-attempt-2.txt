@@ -1,0 +1,17 @@
+........................................................................ [ 13%]
+........................................................................ [ 26%]
+........................................................................ [ 39%]
+........................................................................ [ 52%]
+........................................................................ [ 65%]
+........................................................................ [ 78%]
+........................................................................ [ 91%]
+...................................s.............                        [100%]
+=============================== warnings summary ===============================
+tests/test_benchmark_hygiene_regressions.py::test_ch15_placement_sim_batches_session_rng_samples
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/ch15/placement_sim.py:35: RuntimeWarning: [ch15] placement_sim expects torch>=2.10 with CUDA 13 for Blackwell (B200/B300, GB200/GB300); falling back to compatibility mode.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_benchmark_hygiene_regressions.py:24991: Actual descendant reaping requires the production Linux /proc backend
+552 passed, 1 skipped, 1 warning in 8.59s

@@ -1,0 +1,186 @@
+{
+  "time_utc": "2026-08-30T22:40:38.546287+00:00",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "python_version": "3.12.2",
+  "git_head": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "git_branch": "codex/audit-remediation-20260830",
+  "source_sha256": {
+    "code/ch01/Makefile": "d70c5e394797b0f7f8b70345a90655226aaaaeb49bc46814ab8b1f5c2774b45a",
+    "code/ch02/Makefile": "12783744b2ca4dabba772073fa104446e8f171f6ae2fd5d0f4bb0511fc2f0f70",
+    "code/ch03/Makefile": "6a012da94f03e6f738af5835ac0d492db04761d3b1ce309a20f1f233a578d273",
+    "code/ch04/Makefile": "f7c4e14c67bb5286dcf7b714f3f6b581b1273bba979d645b151d4a221d2876b0",
+    "code/ch05/Makefile": "c43f7449663dfa0c73fad1b30d2a936ac1086aa8b72936cb8c1e1abce55a33a7",
+    "code/ch06/Makefile": "f9d6c32d7915cb4b938258cb8301c431f8e2c5b623f486cf8ae52b7fada6f900",
+    "code/ch07/Makefile": "6bf7d88fcbf371866cea8f5d3878107327a88282182848ec57754512b8d720fb",
+    "code/ch08/Makefile": "13f3447362236719467f6f1baab1d6ff9456b46a4413ef39623a9175514f602e",
+    "code/ch09/Makefile": "3f3e080c4ff0e3f9c15b8fdb4c98a72d399002b78b8f49d0620fb0b1226b9c29",
+    "code/ch10/Makefile": "7635ffdcca1920248b020e0a7211a1c8b1d4f6b962433dc26c3323a31e947015",
+    "code/ch11/Makefile": "531e21565f3386d040a84280948a67b22a9fec9bdca39ea2bea44e6a9b6899ab",
+    "code/ch12/Makefile": "2846357a6bb8d4076c76876072f9b8efa385dbe52088601fa05c57d3ea09210f",
+    "code/ch13/Makefile": "719a87dfafb019d92d8c3c8849ffd75880f252c3d9cb6c762714d2446fea3c4c",
+    "code/ch14/Makefile": "8ac18dca8f5d9932261c32112702d242399fc39a33712885c840f0af36f99680",
+    "code/ch15/Makefile": "5ae2a083c45752f00427538ff024d45f88561451060d1500fd7ce6224a813461",
+    "code/ch16/Makefile": "1f728644a39e496c6c92ba061b80fcbada38c6953f40f95dcb547334145de256",
+    "code/ch17/Makefile": "811011a13b852813db963b445a24d1b7877244d73bef999083025e3091e3cc0a",
+    "code/ch18/Makefile": "c13d235dad0e717eaa50f3817f08b7e833f70bac4587f7b317d339407cd1346b",
+    "code/ch19/Makefile": "53360081ff53a006b293536e396fe6b836a498de84b610a2df86ca4f1a2efd56",
+    "code/ch20/Makefile": "990789eda077bab4c35a0a0e4d1c26ca6f5f37c47a3e8b03bb14e811ba18c440",
+    "code/core/common/cuda_arch.mk": "c4dcab53cd1bab8c488bae1a7ae5996a4be05d206832d41f3ae74a6d3d7bfd13",
+    "code/core/benchmark/detect_sm.py": "3101a93e9ebc0179ad374a28dc7d238850f766020bf42cb9221a581831856837",
+    "code/labs/nvfp4_gemm/Makefile": "b6f29e01283304b290782a3739cc0ba400d09554a85bddacf92dc6cf17284c5c",
+    "code/labs/ozaki_scheme/Makefile": "347863d02f4a7ae47426ab929da197136ee14eadf08db56c9b1e0407c8150644",
+    "code/labs/custom_vs_cublas/Makefile": "df37a4cf3305bf787f5cf28ba9a75dee9fd1c05b234884ab77d3675872b90f6c",
+    "code/labs/custom_vs_cublas/cutlass_gemm/CMakeLists.txt": "894f51590542d1194a56a3c198421412da0a147faad889e8b376ef4f06a04ba4",
+    "code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake": "ff6901777aaa441dcc795e242195b899735e7ea2280becf7a8231bcbb8c34441",
+    "code/labs/custom_vs_cublas/cutlass_gemm/build.sh": "49e09e3e781cca9c9304b77c007a414b707ae775e900c0e223a1a8b8b402cfe4",
+    "code/core/scripts/build_tma_demos.sh": "f5378d297a05c999e04150f599a8bcf65a6d5a800bfff30f58a651810e8eb93e",
+    "code/core/scripts/run_warp_specialization_ci.sh": "b46608d84a962eb41e9b7381da97d156f32c18a332c8015037007b5da18c9389",
+    "code/core/scripts/ci/run_compare_builds.sh": "8140d1b7a90b92db59ce7b449484c7182756cbafc17b63a70191676ffc2ca40d",
+    "code/core/verification/verify_tma_sm121.py": "feee6a936f25a1c9d1fc7a9dbb52effb0d0239c1261fee070055ea4320b0a338",
+    "code/core/verification/tma_cuda_probe.py": "d6170388e29544f39013fde2ad2917efa306fa11a9870fa41c2028976b74314e",
+    "code/tests/test_build_entrypoints.py": "9135ce5708f2e934f37946c17a81f836ecde8bf6863c1bdc9e82b6789f3257ab",
+    "code/tests/test_dual_arch_make_contract.py": "9f66c7929d2469be142a0d118baee5df51c044f2b110bc3387441133ae462551",
+    "code/tests/test_repository_configuration.py": "969b40b361f936160b98dc99a93a7c90e4f93d0e1dc4e74fb5dcfb522f06fd57"
+  },
+  "checks": [
+    {
+      "label": "after",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_build_entrypoints.py",
+        "tests/test_dual_arch_make_contract.py",
+        "tests/test_repository_configuration.py",
+        "tests/test_ch10_makefile_contract.py",
+        "tests/test_tma_2d_layout.py"
+      ],
+      "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+      "exit_code": 0,
+      "output": "after.txt"
+    },
+    {
+      "label": "bash-syntax",
+      "command": [
+        "bash",
+        "-n",
+        "core/scripts/build_tma_demos.sh",
+        "core/scripts/run_warp_specialization_ci.sh",
+        "core/scripts/ci/run_compare_builds.sh",
+        "labs/custom_vs_cublas/cutlass_gemm/build.sh"
+      ],
+      "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+      "exit_code": 0,
+      "output": "bash-syntax.txt"
+    },
+    {
+      "label": "diff-check",
+      "command": [
+        "git",
+        "diff",
+        "--check",
+        "--",
+        "code/ch01/Makefile",
+        "code/ch02/Makefile",
+        "code/ch03/Makefile",
+        "code/ch04/Makefile",
+        "code/ch05/Makefile",
+        "code/ch06/Makefile",
+        "code/ch07/Makefile",
+        "code/ch08/Makefile",
+        "code/ch09/Makefile",
+        "code/ch10/Makefile",
+        "code/ch11/Makefile",
+        "code/ch12/Makefile",
+        "code/ch13/Makefile",
+        "code/ch14/Makefile",
+        "code/ch15/Makefile",
+        "code/ch16/Makefile",
+        "code/ch17/Makefile",
+        "code/ch18/Makefile",
+        "code/ch19/Makefile",
+        "code/ch20/Makefile",
+        "code/core/common/cuda_arch.mk",
+        "code/core/benchmark/detect_sm.py",
+        "code/labs/nvfp4_gemm/Makefile",
+        "code/labs/ozaki_scheme/Makefile",
+        "code/labs/custom_vs_cublas/Makefile",
+        "code/labs/custom_vs_cublas/cutlass_gemm/CMakeLists.txt",
+        "code/labs/custom_vs_cublas/cutlass_gemm/BlackwellBuildConfig.cmake",
+        "code/labs/custom_vs_cublas/cutlass_gemm/build.sh",
+        "code/core/scripts/build_tma_demos.sh",
+        "code/core/scripts/run_warp_specialization_ci.sh",
+        "code/core/scripts/ci/run_compare_builds.sh",
+        "code/core/verification/verify_tma_sm121.py",
+        "code/core/verification/tma_cuda_probe.py",
+        "code/tests/test_build_entrypoints.py",
+        "code/tests/test_dual_arch_make_contract.py",
+        "code/tests/test_repository_configuration.py"
+      ],
+      "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering",
+      "exit_code": 0,
+      "output": "diff-check.txt"
+    },
+    {
+      "label": "cmake-version",
+      "command": [
+        "/opt/homebrew/bin/cmake",
+        "--version"
+      ],
+      "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+      "exit_code": 0,
+      "output": "cmake-version.txt"
+    },
+    {
+      "label": "torch-metadata",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "-c",
+        "import json,torch;print(json.dumps({'version':torch.__version__,'cuda':torch.version.cuda,'cxx11_abi':torch.compiled_with_cxx11_abi()}))"
+      ],
+      "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+      "exit_code": 0,
+      "output": "torch-metadata.txt"
+    },
+    {
+      "label": "cuda-configure-unavailable",
+      "command": [
+        "/opt/homebrew/bin/cmake",
+        "-S",
+        "/Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/cutlass_gemm",
+        "-B",
+        "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-cutlass-cmake-zdx18_du/build",
+        "-DCMAKE_CUDA_ARCHITECTURES=100a;103a",
+        "-DPython_EXECUTABLE=/opt/miniconda3/bin/python"
+      ],
+      "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+      "exit_code": 1,
+      "output": "cuda-configure-unavailable.txt"
+    },
+    {
+      "label": "sm121-missing-tool",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "-c",
+        "from core.verification.tma_cuda_probe import run_cuda_tma_sample; result=run_cuda_tma_sample(); print('STATUS='+result); raise SystemExit(3 if result=='skip' else 1)"
+      ],
+      "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+      "exit_code": 3,
+      "output": "sm121-missing-tool.txt"
+    }
+  ],
+  "acceptance": {
+    "source_orchestration": "PASS",
+    "cuda_compilation": "NOT_RUN",
+    "device_link": "NOT_RUN",
+    "extension_import": "NOT_RUN",
+    "gpu_correctness": "NOT_RUN",
+    "reason": "No nvcc or supported CUDA GPU on this macOS arm64 host; CMake policy and Torch metadata checks are host-only."
+  },
+  "test_environment": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+  }
+}

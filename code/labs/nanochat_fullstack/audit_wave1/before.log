@@ -1,0 +1,913 @@
+FFFFFFssss                                                               [100%]
+=================================== FAILURES ===================================
+__ test_device_position_cache_matches_eager_and_full_sequence_each_step[1-1] ___
+
+batch = 1, prompt_len = 1
+
+    @pytest.mark.parametrize("batch,prompt_len", [(1, 1), (2, 3), (3, 5)])
+    @torch.inference_mode()
+    def test_device_position_cache_matches_eager_and_full_sequence_each_step(batch, prompt_len):
+        model = make_model()
+        tokens = torch.randint(0, 64, (batch, prompt_len + 6))
+        eager, static = make_cache(model, batch), make_cache(model, batch)
+>       model(tokens[:, :prompt_len], kv_cache=eager)
+
+tests/test_audit_wave1_nanochat_regressions.py:35: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:711: in forward
+    x = block(x, cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:478: in forward
+    x = x + self.attn(norm(x), cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = CausalSelfAttention(
+  (c_q): Linear(in_features=16, out_features=16, bias=False)
+  (c_k): Linear(in_features=16, out_...): Linear(in_features=16, out_features=8, bias=False)
+  (c_proj): Linear(in_features=16, out_features=16, bias=False)
+)
+x = tensor([[[-0.3036, -2.8732, -0.8922, -0.2150, -0.1137,  0.1359, -0.0856,
+          -1.6255, -0.6190,  0.7794, -0.4450, -0.0290,  0.6225,  1.4591,
+          -0.6502, -0.0316]]])
+cos_sin = (tensor([[[[1., 1., 1., 1.]]]], dtype=torch.bfloat16), tensor([[[[0., 0., 0., 0.]]]], dtype=torch.bfloat16))
+kv_cache = <nanochat.engine.KVCache object at 0x16fd86fc0>
+attention_mask = None, token_mask = None
+
+    def forward(self, x, cos_sin, kv_cache, attention_mask=None, token_mask=None):
+        B, T, C = x.size()
+    
+        # CTA clustering hint for attention kernels (Blackwell/Hopper optimization)
+        # Note: Full CTA clustering requires custom CUDA kernels with __cluster_dims__ annotations
+        # or FlashAttention-3 cluster support. This flag enables best-effort optimizations:
+        # 1. Use larger tile sizes when T >= threshold (better SM occupancy)
+        # 2. Provide hint to flash_attn_varlen_func if it supports clustering
+        # 3. Enable when custom cluster kernels become available
+        use_cta_hint = self.use_cta_clustering and T >= self.cta_cluster_seq_threshold
+    
+        # Project the input to get queries, keys, and values
+        q = self.c_q(x).view(B, T, self.n_head, self.head_dim)
+        k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim)
+        v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim)
+    
+        # Apply Rotary Embeddings to queries and keys to get relative positional encoding
+        cos, sin = cos_sin
+        if not torch.is_grad_enabled() or not q.requires_grad:
+            q = apply_rotary_emb(q, cos, sin, out=self._rotary_buffer("_rotary_q_cache", q))
+            k = apply_rotary_emb(k, cos, sin, out=self._rotary_buffer("_rotary_k_cache", k))
+        else:
+            q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin) # QK rotary embedding
+        q, k = norm(q), norm(k) # QK norm
+        q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2) # make head be batch dim, i.e. (B, T, H, D) -> (B, H, T, D)
+    
+        # Apply KV cache: insert current k,v into cache, get the full view so far
+        if kv_cache is not None:
+            cache_token_mask = token_mask if self.use_padded_attention else None
+            if cache_token_mask is not None:
+                assert cache_token_mask.shape[0] == B and cache_token_mask.shape[1] == T, f"token_mask shape mismatch: {cache_token_mask.shape} vs ({B}, {T})"
+            cache_max_len = attention_mask.size(-1) if cache_token_mask is not None and attention_mask is not None else None
+            k, v = kv_cache.insert_kv(self.layer_idx, k, v, token_mask=cache_token_mask, max_cache_len=cache_max_len)
+        Tq = q.size(2) # number of queries in this forward pass
+        Tk = k.size(2) # number of keys/values in total (in the cache + current forward pass)
+    
+        # Attention: queries attend to keys/values autoregressively. A few cases to handle:
+        enable_gqa = self.n_head != self.n_kv_head # Group Query Attention (GQA): duplicate key/value heads to match query heads if desired
+        use_mask = self.use_padded_attention and attention_mask is not None
+        if attention_mask is not None and not self.use_padded_attention:
+            raise ValueError("attention_mask provided but use_padded_attention=False")
+        # Allow callers to force efficient/math paths when flash/TE is undesired.
+        sdpa_order = None if self.use_flash_sdp else _NON_FLASH_SDP_BACKENDS
+        attn_mask = None
+        if use_mask:
+            if attention_mask.dim() == 2:
+                key_mask = attention_mask[:, None, None, :]
+            elif attention_mask.dim() == 3:
+                key_mask = attention_mask[:, None, :, :]
+            else:
+                key_mask = attention_mask
+            key_mask = key_mask.to(dtype=torch.bool, device=q.device)
+            assert key_mask.size(-1) == Tk, f"attention_mask length mismatch: {key_mask.size(-1)} != {Tk}"
+            if kv_cache is not None and Tq == 1 and Tq != Tk:
+                attn_mask = key_mask
+            elif kv_cache is not None and Tq != Tk:
+                causal = self._prefix_causal_mask_for(Tq, Tk, q.device)
+                attn_mask = self._padded_attn_mask_for(key_mask, causal)
+            else:
+                causal = self._causal_mask_for(Tq, Tk, q.device)
+                attn_mask = self._padded_attn_mask_for(key_mask, causal)
+        fa3_out = None
+        if attn_mask is None and self._flash3_supported(q, attn_mask):
+            fa3_out = self._flash3_attention(q, k, v, kv_cache, enable_gqa=enable_gqa, use_clustering=use_cta_hint)
+        if fa3_out is not None:
+            y = fa3_out
+        else:
+            if self.use_clustered_attention_kernel:
+                y = self.clustered_attention_kernel(
+                    q,
+                    k,
+                    v,
+                    attn_mask=attn_mask,
+                    causal=(kv_cache is None or Tq == Tk) if kv_cache is None else (Tq == Tk or Tq == 1),
+                    num_sm_clusters=self._auto_cluster_size(Tk) if use_cta_hint else None,
+                    enable_gqa=enable_gqa and self.n_head != self.n_kv_head,
+                )
+            else:
+                with self.sdpa_ctx_factory(sdpa_order):
+                    if attn_mask is not None:
+                        y = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, enable_gqa=enable_gqa)
+                    elif kv_cache is None or Tq == Tk:
+>                       y = F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=enable_gqa)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E                       RuntimeError: No available kernel.  Aborting execution.
+
+labs/nanochat_fullstack/nanochat/gpt.py:445: RuntimeError
+__ test_device_position_cache_matches_eager_and_full_sequence_each_step[2-3] ___
+
+batch = 2, prompt_len = 3
+
+    @pytest.mark.parametrize("batch,prompt_len", [(1, 1), (2, 3), (3, 5)])
+    @torch.inference_mode()
+    def test_device_position_cache_matches_eager_and_full_sequence_each_step(batch, prompt_len):
+        model = make_model()
+        tokens = torch.randint(0, 64, (batch, prompt_len + 6))
+        eager, static = make_cache(model, batch), make_cache(model, batch)
+>       model(tokens[:, :prompt_len], kv_cache=eager)
+
+tests/test_audit_wave1_nanochat_regressions.py:35: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:711: in forward
+    x = block(x, cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:478: in forward
+    x = x + self.attn(norm(x), cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = CausalSelfAttention(
+  (c_q): Linear(in_features=16, out_features=16, bias=False)
+  (c_k): Linear(in_features=16, out_...): Linear(in_features=16, out_features=8, bias=False)
+  (c_proj): Linear(in_features=16, out_features=16, bias=False)
+)
+x = tensor([[[-0.3036, -2.8732, -0.8922, -0.2150, -0.1137,  0.1359, -0.0856,
+          -1.6255, -0.6190,  0.7794, -0.4450,....5750, -0.0096,
+           1.9160,  0.7466, -0.7431, -0.3256, -1.0699, -1.1788,  1.2973,
+           0.7202, -0.5312]]])
+cos_sin = (tensor([[[[ 1.0000,  1.0000,  1.0000,  1.0000]],
+
+         [[ 0.5391,  0.9961,  1.0000,  1.0000]],
+
+         [[-0.416...],
+
+         [[0.8398, 0.0996, 0.0100, 0.0010]],
+
+         [[0.9102, 0.1982, 0.0200, 0.0020]]]], dtype=torch.bfloat16))
+kv_cache = <nanochat.engine.KVCache object at 0x3158ce990>
+attention_mask = None, token_mask = None
+
+    def forward(self, x, cos_sin, kv_cache, attention_mask=None, token_mask=None):
+        B, T, C = x.size()
+    
+        # CTA clustering hint for attention kernels (Blackwell/Hopper optimization)
+        # Note: Full CTA clustering requires custom CUDA kernels with __cluster_dims__ annotations
+        # or FlashAttention-3 cluster support. This flag enables best-effort optimizations:
+        # 1. Use larger tile sizes when T >= threshold (better SM occupancy)
+        # 2. Provide hint to flash_attn_varlen_func if it supports clustering
+        # 3. Enable when custom cluster kernels become available
+        use_cta_hint = self.use_cta_clustering and T >= self.cta_cluster_seq_threshold
+    
+        # Project the input to get queries, keys, and values
+        q = self.c_q(x).view(B, T, self.n_head, self.head_dim)
+        k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim)
+        v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim)
+    
+        # Apply Rotary Embeddings to queries and keys to get relative positional encoding
+        cos, sin = cos_sin
+        if not torch.is_grad_enabled() or not q.requires_grad:
+            q = apply_rotary_emb(q, cos, sin, out=self._rotary_buffer("_rotary_q_cache", q))
+            k = apply_rotary_emb(k, cos, sin, out=self._rotary_buffer("_rotary_k_cache", k))
+        else:
+            q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin) # QK rotary embedding
+        q, k = norm(q), norm(k) # QK norm
+        q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2) # make head be batch dim, i.e. (B, T, H, D) -> (B, H, T, D)
+    
+        # Apply KV cache: insert current k,v into cache, get the full view so far
+        if kv_cache is not None:
+            cache_token_mask = token_mask if self.use_padded_attention else None
+            if cache_token_mask is not None:
+                assert cache_token_mask.shape[0] == B and cache_token_mask.shape[1] == T, f"token_mask shape mismatch: {cache_token_mask.shape} vs ({B}, {T})"
+            cache_max_len = attention_mask.size(-1) if cache_token_mask is not None and attention_mask is not None else None
+            k, v = kv_cache.insert_kv(self.layer_idx, k, v, token_mask=cache_token_mask, max_cache_len=cache_max_len)
+        Tq = q.size(2) # number of queries in this forward pass
+        Tk = k.size(2) # number of keys/values in total (in the cache + current forward pass)
+    
+        # Attention: queries attend to keys/values autoregressively. A few cases to handle:
+        enable_gqa = self.n_head != self.n_kv_head # Group Query Attention (GQA): duplicate key/value heads to match query heads if desired
+        use_mask = self.use_padded_attention and attention_mask is not None
+        if attention_mask is not None and not self.use_padded_attention:
+            raise ValueError("attention_mask provided but use_padded_attention=False")
+        # Allow callers to force efficient/math paths when flash/TE is undesired.
+        sdpa_order = None if self.use_flash_sdp else _NON_FLASH_SDP_BACKENDS
+        attn_mask = None
+        if use_mask:
+            if attention_mask.dim() == 2:
+                key_mask = attention_mask[:, None, None, :]
+            elif attention_mask.dim() == 3:
+                key_mask = attention_mask[:, None, :, :]
+            else:
+                key_mask = attention_mask
+            key_mask = key_mask.to(dtype=torch.bool, device=q.device)
+            assert key_mask.size(-1) == Tk, f"attention_mask length mismatch: {key_mask.size(-1)} != {Tk}"
+            if kv_cache is not None and Tq == 1 and Tq != Tk:
+                attn_mask = key_mask
+            elif kv_cache is not None and Tq != Tk:
+                causal = self._prefix_causal_mask_for(Tq, Tk, q.device)
+                attn_mask = self._padded_attn_mask_for(key_mask, causal)
+            else:
+                causal = self._causal_mask_for(Tq, Tk, q.device)
+                attn_mask = self._padded_attn_mask_for(key_mask, causal)
+        fa3_out = None
+        if attn_mask is None and self._flash3_supported(q, attn_mask):
+            fa3_out = self._flash3_attention(q, k, v, kv_cache, enable_gqa=enable_gqa, use_clustering=use_cta_hint)
+        if fa3_out is not None:
+            y = fa3_out
+        else:
+            if self.use_clustered_attention_kernel:
+                y = self.clustered_attention_kernel(
+                    q,
+                    k,
+                    v,
+                    attn_mask=attn_mask,
+                    causal=(kv_cache is None or Tq == Tk) if kv_cache is None else (Tq == Tk or Tq == 1),
+                    num_sm_clusters=self._auto_cluster_size(Tk) if use_cta_hint else None,
+                    enable_gqa=enable_gqa and self.n_head != self.n_kv_head,
+                )
+            else:
+                with self.sdpa_ctx_factory(sdpa_order):
+                    if attn_mask is not None:
+                        y = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, enable_gqa=enable_gqa)
+                    elif kv_cache is None or Tq == Tk:
+>                       y = F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=enable_gqa)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E                       RuntimeError: No available kernel.  Aborting execution.
+
+labs/nanochat_fullstack/nanochat/gpt.py:445: RuntimeError
+__ test_device_position_cache_matches_eager_and_full_sequence_each_step[3-5] ___
+
+batch = 3, prompt_len = 5
+
+    @pytest.mark.parametrize("batch,prompt_len", [(1, 1), (2, 3), (3, 5)])
+    @torch.inference_mode()
+    def test_device_position_cache_matches_eager_and_full_sequence_each_step(batch, prompt_len):
+        model = make_model()
+        tokens = torch.randint(0, 64, (batch, prompt_len + 6))
+        eager, static = make_cache(model, batch), make_cache(model, batch)
+>       model(tokens[:, :prompt_len], kv_cache=eager)
+
+tests/test_audit_wave1_nanochat_regressions.py:35: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:711: in forward
+    x = block(x, cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:478: in forward
+    x = x + self.attn(norm(x), cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = CausalSelfAttention(
+  (c_q): Linear(in_features=16, out_features=16, bias=False)
+  (c_k): Linear(in_features=16, out_...): Linear(in_features=16, out_features=8, bias=False)
+  (c_proj): Linear(in_features=16, out_features=16, bias=False)
+)
+x = tensor([[[-0.3036, -2.8732, -0.8922, -0.2150, -0.1137,  0.1359, -0.0856,
+          -1.6255, -0.6190,  0.7794, -0.4450,....4244,  1.0334,
+          -0.9868, -0.2860,  1.7297, -0.5611, -0.1962, -1.2522, -0.7233,
+          -0.3696, -1.0282]]])
+cos_sin = (tensor([[[[ 1.0000,  1.0000,  1.0000,  1.0000]],
+
+         [[ 0.5391,  0.9961,  1.0000,  1.0000]],
+
+         [[-0.416...     [[ 0.1416,  0.2949,  0.0300,  0.0030]],
+
+         [[-0.7578,  0.3887,  0.0400,  0.0040]]]], dtype=torch.bfloat16))
+kv_cache = <nanochat.engine.KVCache object at 0x3158cc680>
+attention_mask = None, token_mask = None
+
+    def forward(self, x, cos_sin, kv_cache, attention_mask=None, token_mask=None):
+        B, T, C = x.size()
+    
+        # CTA clustering hint for attention kernels (Blackwell/Hopper optimization)
+        # Note: Full CTA clustering requires custom CUDA kernels with __cluster_dims__ annotations
+        # or FlashAttention-3 cluster support. This flag enables best-effort optimizations:
+        # 1. Use larger tile sizes when T >= threshold (better SM occupancy)
+        # 2. Provide hint to flash_attn_varlen_func if it supports clustering
+        # 3. Enable when custom cluster kernels become available
+        use_cta_hint = self.use_cta_clustering and T >= self.cta_cluster_seq_threshold
+    
+        # Project the input to get queries, keys, and values
+        q = self.c_q(x).view(B, T, self.n_head, self.head_dim)
+        k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim)
+        v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim)
+    
+        # Apply Rotary Embeddings to queries and keys to get relative positional encoding
+        cos, sin = cos_sin
+        if not torch.is_grad_enabled() or not q.requires_grad:
+            q = apply_rotary_emb(q, cos, sin, out=self._rotary_buffer("_rotary_q_cache", q))
+            k = apply_rotary_emb(k, cos, sin, out=self._rotary_buffer("_rotary_k_cache", k))
+        else:
+            q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin) # QK rotary embedding
+        q, k = norm(q), norm(k) # QK norm
+        q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2) # make head be batch dim, i.e. (B, T, H, D) -> (B, H, T, D)
+    
+        # Apply KV cache: insert current k,v into cache, get the full view so far
+        if kv_cache is not None:
+            cache_token_mask = token_mask if self.use_padded_attention else None
+            if cache_token_mask is not None:
+                assert cache_token_mask.shape[0] == B and cache_token_mask.shape[1] == T, f"token_mask shape mismatch: {cache_token_mask.shape} vs ({B}, {T})"
+            cache_max_len = attention_mask.size(-1) if cache_token_mask is not None and attention_mask is not None else None
+            k, v = kv_cache.insert_kv(self.layer_idx, k, v, token_mask=cache_token_mask, max_cache_len=cache_max_len)
+        Tq = q.size(2) # number of queries in this forward pass
+        Tk = k.size(2) # number of keys/values in total (in the cache + current forward pass)
+    
+        # Attention: queries attend to keys/values autoregressively. A few cases to handle:
+        enable_gqa = self.n_head != self.n_kv_head # Group Query Attention (GQA): duplicate key/value heads to match query heads if desired
+        use_mask = self.use_padded_attention and attention_mask is not None
+        if attention_mask is not None and not self.use_padded_attention:
+            raise ValueError("attention_mask provided but use_padded_attention=False")
+        # Allow callers to force efficient/math paths when flash/TE is undesired.
+        sdpa_order = None if self.use_flash_sdp else _NON_FLASH_SDP_BACKENDS
+        attn_mask = None
+        if use_mask:
+            if attention_mask.dim() == 2:
+                key_mask = attention_mask[:, None, None, :]
+            elif attention_mask.dim() == 3:
+                key_mask = attention_mask[:, None, :, :]
+            else:
+                key_mask = attention_mask
+            key_mask = key_mask.to(dtype=torch.bool, device=q.device)
+            assert key_mask.size(-1) == Tk, f"attention_mask length mismatch: {key_mask.size(-1)} != {Tk}"
+            if kv_cache is not None and Tq == 1 and Tq != Tk:
+                attn_mask = key_mask
+            elif kv_cache is not None and Tq != Tk:
+                causal = self._prefix_causal_mask_for(Tq, Tk, q.device)
+                attn_mask = self._padded_attn_mask_for(key_mask, causal)
+            else:
+                causal = self._causal_mask_for(Tq, Tk, q.device)
+                attn_mask = self._padded_attn_mask_for(key_mask, causal)
+        fa3_out = None
+        if attn_mask is None and self._flash3_supported(q, attn_mask):
+            fa3_out = self._flash3_attention(q, k, v, kv_cache, enable_gqa=enable_gqa, use_clustering=use_cta_hint)
+        if fa3_out is not None:
+            y = fa3_out
+        else:
+            if self.use_clustered_attention_kernel:
+                y = self.clustered_attention_kernel(
+                    q,
+                    k,
+                    v,
+                    attn_mask=attn_mask,
+                    causal=(kv_cache is None or Tq == Tk) if kv_cache is None else (Tq == Tk or Tq == 1),
+                    num_sm_clusters=self._auto_cluster_size(Tk) if use_cta_hint else None,
+                    enable_gqa=enable_gqa and self.n_head != self.n_kv_head,
+                )
+            else:
+                with self.sdpa_ctx_factory(sdpa_order):
+                    if attn_mask is not None:
+                        y = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, enable_gqa=enable_gqa)
+                    elif kv_cache is None or Tq == Tk:
+>                       y = F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=enable_gqa)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E                       RuntimeError: No available kernel.  Aborting execution.
+
+labs/nanochat_fullstack/nanochat/gpt.py:445: RuntimeError
+____ test_graph_cache_reset_clears_mode_and_invalidates_capture_generation _____
+
+    @torch.inference_mode()
+    def test_graph_cache_reset_clears_mode_and_invalidates_capture_generation():
+        model = make_model()
+        cache = make_cache(model)
+>       model(torch.tensor([[1, 2], [3, 4]]), kv_cache=cache)
+
+tests/test_audit_wave1_nanochat_regressions.py:59: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:711: in forward
+    x = block(x, cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:478: in forward
+    x = x + self.attn(norm(x), cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = CausalSelfAttention(
+  (c_q): Linear(in_features=16, out_features=16, bias=False)
+  (c_k): Linear(in_features=16, out_...): Linear(in_features=16, out_features=8, bias=False)
+  (c_proj): Linear(in_features=16, out_features=16, bias=False)
+)
+x = tensor([[[ 5.2624e-01,  1.5407e+00, -1.2960e+00, -9.6331e-04, -1.4268e+00,
+          -3.3275e-01, -1.3016e+00, -1.2459...e-01,  5.5409e-01,
+          -1.0871e+00, -1.0550e+00, -4.1075e-01,  7.7448e-02,  5.3036e-01,
+          -2.6356e+00]]])
+cos_sin = (tensor([[[[1.0000, 1.0000, 1.0000, 1.0000]],
+
+         [[0.5391, 0.9961, 1.0000, 1.0000]]]], dtype=torch.bfloat16), tensor([[[[0.0000, 0.0000, 0.0000, 0.0000]],
+
+         [[0.8398, 0.0996, 0.0100, 0.0010]]]], dtype=torch.bfloat16))
+kv_cache = <nanochat.engine.KVCache object at 0x3159746e0>
+attention_mask = None, token_mask = None
+
+    def forward(self, x, cos_sin, kv_cache, attention_mask=None, token_mask=None):
+        B, T, C = x.size()
+    
+        # CTA clustering hint for attention kernels (Blackwell/Hopper optimization)
+        # Note: Full CTA clustering requires custom CUDA kernels with __cluster_dims__ annotations
+        # or FlashAttention-3 cluster support. This flag enables best-effort optimizations:
+        # 1. Use larger tile sizes when T >= threshold (better SM occupancy)
+        # 2. Provide hint to flash_attn_varlen_func if it supports clustering
+        # 3. Enable when custom cluster kernels become available
+        use_cta_hint = self.use_cta_clustering and T >= self.cta_cluster_seq_threshold
+    
+        # Project the input to get queries, keys, and values
+        q = self.c_q(x).view(B, T, self.n_head, self.head_dim)
+        k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim)
+        v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim)
+    
+        # Apply Rotary Embeddings to queries and keys to get relative positional encoding
+        cos, sin = cos_sin
+        if not torch.is_grad_enabled() or not q.requires_grad:
+            q = apply_rotary_emb(q, cos, sin, out=self._rotary_buffer("_rotary_q_cache", q))
+            k = apply_rotary_emb(k, cos, sin, out=self._rotary_buffer("_rotary_k_cache", k))
+        else:
+            q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin) # QK rotary embedding
+        q, k = norm(q), norm(k) # QK norm
+        q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2) # make head be batch dim, i.e. (B, T, H, D) -> (B, H, T, D)
+    
+        # Apply KV cache: insert current k,v into cache, get the full view so far
+        if kv_cache is not None:
+            cache_token_mask = token_mask if self.use_padded_attention else None
+            if cache_token_mask is not None:
+                assert cache_token_mask.shape[0] == B and cache_token_mask.shape[1] == T, f"token_mask shape mismatch: {cache_token_mask.shape} vs ({B}, {T})"
+            cache_max_len = attention_mask.size(-1) if cache_token_mask is not None and attention_mask is not None else None
+            k, v = kv_cache.insert_kv(self.layer_idx, k, v, token_mask=cache_token_mask, max_cache_len=cache_max_len)
+        Tq = q.size(2) # number of queries in this forward pass
+        Tk = k.size(2) # number of keys/values in total (in the cache + current forward pass)
+    
+        # Attention: queries attend to keys/values autoregressively. A few cases to handle:
+        enable_gqa = self.n_head != self.n_kv_head # Group Query Attention (GQA): duplicate key/value heads to match query heads if desired
+        use_mask = self.use_padded_attention and attention_mask is not None
+        if attention_mask is not None and not self.use_padded_attention:
+            raise ValueError("attention_mask provided but use_padded_attention=False")
+        # Allow callers to force efficient/math paths when flash/TE is undesired.
+        sdpa_order = None if self.use_flash_sdp else _NON_FLASH_SDP_BACKENDS
+        attn_mask = None
+        if use_mask:
+            if attention_mask.dim() == 2:
+                key_mask = attention_mask[:, None, None, :]
+            elif attention_mask.dim() == 3:
+                key_mask = attention_mask[:, None, :, :]
+            else:
+                key_mask = attention_mask
+            key_mask = key_mask.to(dtype=torch.bool, device=q.device)
+            assert key_mask.size(-1) == Tk, f"attention_mask length mismatch: {key_mask.size(-1)} != {Tk}"
+            if kv_cache is not None and Tq == 1 and Tq != Tk:
+                attn_mask = key_mask
+            elif kv_cache is not None and Tq != Tk:
+                causal = self._prefix_causal_mask_for(Tq, Tk, q.device)
+                attn_mask = self._padded_attn_mask_for(key_mask, causal)
+            else:
+                causal = self._causal_mask_for(Tq, Tk, q.device)
+                attn_mask = self._padded_attn_mask_for(key_mask, causal)
+        fa3_out = None
+        if attn_mask is None and self._flash3_supported(q, attn_mask):
+            fa3_out = self._flash3_attention(q, k, v, kv_cache, enable_gqa=enable_gqa, use_clustering=use_cta_hint)
+        if fa3_out is not None:
+            y = fa3_out
+        else:
+            if self.use_clustered_attention_kernel:
+                y = self.clustered_attention_kernel(
+                    q,
+                    k,
+                    v,
+                    attn_mask=attn_mask,
+                    causal=(kv_cache is None or Tq == Tk) if kv_cache is None else (Tq == Tk or Tq == 1),
+                    num_sm_clusters=self._auto_cluster_size(Tk) if use_cta_hint else None,
+                    enable_gqa=enable_gqa and self.n_head != self.n_kv_head,
+                )
+            else:
+                with self.sdpa_ctx_factory(sdpa_order):
+                    if attn_mask is not None:
+                        y = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, enable_gqa=enable_gqa)
+                    elif kv_cache is None or Tq == Tk:
+>                       y = F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=enable_gqa)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E                       RuntimeError: No available kernel.  Aborting execution.
+
+labs/nanochat_fullstack/nanochat/gpt.py:445: RuntimeError
+____________ test_prefill_copies_valid_prefix_from_rounded_storage _____________
+
+    @torch.inference_mode()
+    def test_prefill_copies_valid_prefix_from_rounded_storage():
+        model = make_model()
+        source = make_cache(model, batch=1, capacity=3, block_size=4)
+>       model(torch.tensor([[1, 2, 3]]), kv_cache=source)
+
+tests/test_audit_wave1_nanochat_regressions.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:711: in forward
+    x = block(x, cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:478: in forward
+    x = x + self.attn(norm(x), cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = CausalSelfAttention(
+  (c_q): Linear(in_features=16, out_features=16, bias=False)
+  (c_k): Linear(in_features=16, out_...): Linear(in_features=16, out_features=8, bias=False)
+  (c_proj): Linear(in_features=16, out_features=16, bias=False)
+)
+x = tensor([[[ 5.2624e-01,  1.5407e+00, -1.2960e+00, -9.6331e-04, -1.4268e+00,
+          -3.3275e-01, -1.3016e+00, -1.2459...e+00,  7.1119e-01,
+          -1.1525e+00, -4.3047e-01, -7.7295e-02, -9.9260e-01,  1.2445e-01,
+           8.3167e-01]]])
+cos_sin = (tensor([[[[ 1.0000,  1.0000,  1.0000,  1.0000]],
+
+         [[ 0.5391,  0.9961,  1.0000,  1.0000]],
+
+         [[-0.416...],
+
+         [[0.8398, 0.0996, 0.0100, 0.0010]],
+
+         [[0.9102, 0.1982, 0.0200, 0.0020]]]], dtype=torch.bfloat16))
+kv_cache = <nanochat.engine.KVCache object at 0x315976120>
+attention_mask = None, token_mask = None
+
+    def forward(self, x, cos_sin, kv_cache, attention_mask=None, token_mask=None):
+        B, T, C = x.size()
+    
+        # CTA clustering hint for attention kernels (Blackwell/Hopper optimization)
+        # Note: Full CTA clustering requires custom CUDA kernels with __cluster_dims__ annotations
+        # or FlashAttention-3 cluster support. This flag enables best-effort optimizations:
+        # 1. Use larger tile sizes when T >= threshold (better SM occupancy)
+        # 2. Provide hint to flash_attn_varlen_func if it supports clustering
+        # 3. Enable when custom cluster kernels become available
+        use_cta_hint = self.use_cta_clustering and T >= self.cta_cluster_seq_threshold
+    
+        # Project the input to get queries, keys, and values
+        q = self.c_q(x).view(B, T, self.n_head, self.head_dim)
+        k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim)
+        v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim)
+    
+        # Apply Rotary Embeddings to queries and keys to get relative positional encoding
+        cos, sin = cos_sin
+        if not torch.is_grad_enabled() or not q.requires_grad:
+            q = apply_rotary_emb(q, cos, sin, out=self._rotary_buffer("_rotary_q_cache", q))
+            k = apply_rotary_emb(k, cos, sin, out=self._rotary_buffer("_rotary_k_cache", k))
+        else:
+            q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin) # QK rotary embedding
+        q, k = norm(q), norm(k) # QK norm
+        q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2) # make head be batch dim, i.e. (B, T, H, D) -> (B, H, T, D)
+    
+        # Apply KV cache: insert current k,v into cache, get the full view so far
+        if kv_cache is not None:
+            cache_token_mask = token_mask if self.use_padded_attention else None
+            if cache_token_mask is not None:
+                assert cache_token_mask.shape[0] == B and cache_token_mask.shape[1] == T, f"token_mask shape mismatch: {cache_token_mask.shape} vs ({B}, {T})"
+            cache_max_len = attention_mask.size(-1) if cache_token_mask is not None and attention_mask is not None else None
+            k, v = kv_cache.insert_kv(self.layer_idx, k, v, token_mask=cache_token_mask, max_cache_len=cache_max_len)
+        Tq = q.size(2) # number of queries in this forward pass
+        Tk = k.size(2) # number of keys/values in total (in the cache + current forward pass)
+    
+        # Attention: queries attend to keys/values autoregressively. A few cases to handle:
+        enable_gqa = self.n_head != self.n_kv_head # Group Query Attention (GQA): duplicate key/value heads to match query heads if desired
+        use_mask = self.use_padded_attention and attention_mask is not None
+        if attention_mask is not None and not self.use_padded_attention:
+            raise ValueError("attention_mask provided but use_padded_attention=False")
+        # Allow callers to force efficient/math paths when flash/TE is undesired.
+        sdpa_order = None if self.use_flash_sdp else _NON_FLASH_SDP_BACKENDS
+        attn_mask = None
+        if use_mask:
+            if attention_mask.dim() == 2:
+                key_mask = attention_mask[:, None, None, :]
+            elif attention_mask.dim() == 3:
+                key_mask = attention_mask[:, None, :, :]
+            else:
+                key_mask = attention_mask
+            key_mask = key_mask.to(dtype=torch.bool, device=q.device)
+            assert key_mask.size(-1) == Tk, f"attention_mask length mismatch: {key_mask.size(-1)} != {Tk}"
+            if kv_cache is not None and Tq == 1 and Tq != Tk:
+                attn_mask = key_mask
+            elif kv_cache is not None and Tq != Tk:
+                causal = self._prefix_causal_mask_for(Tq, Tk, q.device)
+                attn_mask = self._padded_attn_mask_for(key_mask, causal)
+            else:
+                causal = self._causal_mask_for(Tq, Tk, q.device)
+                attn_mask = self._padded_attn_mask_for(key_mask, causal)
+        fa3_out = None
+        if attn_mask is None and self._flash3_supported(q, attn_mask):
+            fa3_out = self._flash3_attention(q, k, v, kv_cache, enable_gqa=enable_gqa, use_clustering=use_cta_hint)
+        if fa3_out is not None:
+            y = fa3_out
+        else:
+            if self.use_clustered_attention_kernel:
+                y = self.clustered_attention_kernel(
+                    q,
+                    k,
+                    v,
+                    attn_mask=attn_mask,
+                    causal=(kv_cache is None or Tq == Tk) if kv_cache is None else (Tq == Tk or Tq == 1),
+                    num_sm_clusters=self._auto_cluster_size(Tk) if use_cta_hint else None,
+                    enable_gqa=enable_gqa and self.n_head != self.n_kv_head,
+                )
+            else:
+                with self.sdpa_ctx_factory(sdpa_order):
+                    if attn_mask is not None:
+                        y = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, enable_gqa=enable_gqa)
+                    elif kv_cache is None or Tq == Tk:
+>                       y = F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=enable_gqa)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E                       RuntimeError: No available kernel.  Aborting execution.
+
+labs/nanochat_fullstack/nanochat/gpt.py:445: RuntimeError
+_________ test_requested_cuda_graph_does_not_silently_run_eager_on_cpu _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x3158cc320>
+
+    def test_requested_cuda_graph_does_not_silently_run_eager_on_cpu(monkeypatch):
+        monkeypatch.setenv("NANOCHAT_DISABLE_COMPILE", "1")
+        engine = Engine(make_model(use_cuda_graphs=True), None)
+        with pytest.raises(RuntimeError, match="CUDA"):
+>           engine._execute_decode(torch.tensor([[1], [2]]), make_cache(engine.model))
+
+tests/test_audit_wave1_nanochat_regressions.py:86: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+labs/nanochat_fullstack/nanochat/engine.py:599: in _execute_decode
+    return self._decode_forward_step(ids, kv_cache, attention_mask, token_mask)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/engine.py:497: in _decode_forward_step
+    return self.model.forward(ids, kv_cache=kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:711: in forward
+    x = block(x, cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:478: in forward
+    x = x + self.attn(norm(x), cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = CausalSelfAttention(
+  (c_q): Linear(in_features=16, out_features=16, bias=False)
+  (c_k): Linear(in_features=16, out_...): Linear(in_features=16, out_features=8, bias=False)
+  (c_proj): Linear(in_features=16, out_features=16, bias=False)
+)
+x = tensor([[[ 5.2624e-01,  1.5407e+00, -1.2960e+00, -9.6331e-04, -1.4268e+00,
+          -3.3275e-01, -1.3016e+00, -1.2459...     -4.9653e-01, -4.9633e-01, -1.0372e+00,  3.9973e-01, -3.4539e-01,
+          -8.1830e-01]]], grad_fn=<MulBackward0>)
+cos_sin = (tensor([[[[1., 1., 1., 1.]]]], dtype=torch.bfloat16), tensor([[[[0., 0., 0., 0.]]]], dtype=torch.bfloat16))
+kv_cache = <nanochat.engine.KVCache object at 0x3158cfdd0>
+attention_mask = None, token_mask = None
+
+    def forward(self, x, cos_sin, kv_cache, attention_mask=None, token_mask=None):
+        B, T, C = x.size()
+    
+        # CTA clustering hint for attention kernels (Blackwell/Hopper optimization)
+        # Note: Full CTA clustering requires custom CUDA kernels with __cluster_dims__ annotations
+        # or FlashAttention-3 cluster support. This flag enables best-effort optimizations:
+        # 1. Use larger tile sizes when T >= threshold (better SM occupancy)
+        # 2. Provide hint to flash_attn_varlen_func if it supports clustering
+        # 3. Enable when custom cluster kernels become available
+        use_cta_hint = self.use_cta_clustering and T >= self.cta_cluster_seq_threshold
+    
+        # Project the input to get queries, keys, and values
+        q = self.c_q(x).view(B, T, self.n_head, self.head_dim)
+        k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim)
+        v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim)
+    
+        # Apply Rotary Embeddings to queries and keys to get relative positional encoding
+        cos, sin = cos_sin
+        if not torch.is_grad_enabled() or not q.requires_grad:
+            q = apply_rotary_emb(q, cos, sin, out=self._rotary_buffer("_rotary_q_cache", q))
+            k = apply_rotary_emb(k, cos, sin, out=self._rotary_buffer("_rotary_k_cache", k))
+        else:
+            q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin) # QK rotary embedding
+        q, k = norm(q), norm(k) # QK norm
+        q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2) # make head be batch dim, i.e. (B, T, H, D) -> (B, H, T, D)
+    
+        # Apply KV cache: insert current k,v into cache, get the full view so far
+        if kv_cache is not None:
+            cache_token_mask = token_mask if self.use_padded_attention else None
+            if cache_token_mask is not None:
+                assert cache_token_mask.shape[0] == B and cache_token_mask.shape[1] == T, f"token_mask shape mismatch: {cache_token_mask.shape} vs ({B}, {T})"
+            cache_max_len = attention_mask.size(-1) if cache_token_mask is not None and attention_mask is not None else None
+            k, v = kv_cache.insert_kv(self.layer_idx, k, v, token_mask=cache_token_mask, max_cache_len=cache_max_len)
+        Tq = q.size(2) # number of queries in this forward pass
+        Tk = k.size(2) # number of keys/values in total (in the cache + current forward pass)
+    
+        # Attention: queries attend to keys/values autoregressively. A few cases to handle:
+        enable_gqa = self.n_head != self.n_kv_head # Group Query Attention (GQA): duplicate key/value heads to match query heads if desired
+        use_mask = self.use_padded_attention and attention_mask is not None
+        if attention_mask is not None and not self.use_padded_attention:
+            raise ValueError("attention_mask provided but use_padded_attention=False")
+        # Allow callers to force efficient/math paths when flash/TE is undesired.
+        sdpa_order = None if self.use_flash_sdp else _NON_FLASH_SDP_BACKENDS
+        attn_mask = None
+        if use_mask:
+            if attention_mask.dim() == 2:
+                key_mask = attention_mask[:, None, None, :]
+            elif attention_mask.dim() == 3:
+                key_mask = attention_mask[:, None, :, :]
+            else:
+                key_mask = attention_mask
+            key_mask = key_mask.to(dtype=torch.bool, device=q.device)
+            assert key_mask.size(-1) == Tk, f"attention_mask length mismatch: {key_mask.size(-1)} != {Tk}"
+            if kv_cache is not None and Tq == 1 and Tq != Tk:
+                attn_mask = key_mask
+            elif kv_cache is not None and Tq != Tk:
+                causal = self._prefix_causal_mask_for(Tq, Tk, q.device)
+                attn_mask = self._padded_attn_mask_for(key_mask, causal)
+            else:
+                causal = self._causal_mask_for(Tq, Tk, q.device)
+                attn_mask = self._padded_attn_mask_for(key_mask, causal)
+        fa3_out = None
+        if attn_mask is None and self._flash3_supported(q, attn_mask):
+            fa3_out = self._flash3_attention(q, k, v, kv_cache, enable_gqa=enable_gqa, use_clustering=use_cta_hint)
+        if fa3_out is not None:
+            y = fa3_out
+        else:
+            if self.use_clustered_attention_kernel:
+                y = self.clustered_attention_kernel(
+                    q,
+                    k,
+                    v,
+                    attn_mask=attn_mask,
+                    causal=(kv_cache is None or Tq == Tk) if kv_cache is None else (Tq == Tk or Tq == 1),
+                    num_sm_clusters=self._auto_cluster_size(Tk) if use_cta_hint else None,
+                    enable_gqa=enable_gqa and self.n_head != self.n_kv_head,
+                )
+            else:
+                with self.sdpa_ctx_factory(sdpa_order):
+                    if attn_mask is not None:
+                        y = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, enable_gqa=enable_gqa)
+                    elif kv_cache is None or Tq == Tk:
+>                       y = F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=enable_gqa)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E                       RuntimeError: No available kernel.  Aborting execution.
+
+labs/nanochat_fullstack/nanochat/gpt.py:445: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x3158cc320>
+
+    def test_requested_cuda_graph_does_not_silently_run_eager_on_cpu(monkeypatch):
+        monkeypatch.setenv("NANOCHAT_DISABLE_COMPILE", "1")
+        engine = Engine(make_model(use_cuda_graphs=True), None)
+>       with pytest.raises(RuntimeError, match="CUDA"):
+E       AssertionError: Regex pattern did not match.
+E        Regex: 'CUDA'
+E        Input: 'No available kernel.  Aborting execution.'
+
+tests/test_audit_wave1_nanochat_regressions.py:85: AssertionError
+=============================== warnings summary ===============================
+tests/test_audit_wave1_nanochat_regressions.py::test_device_position_cache_matches_eager_and_full_sequence_each_step[1-1]
+tests/test_audit_wave1_nanochat_regressions.py::test_device_position_cache_matches_eager_and_full_sequence_each_step[2-3]
+tests/test_audit_wave1_nanochat_regressions.py::test_device_position_cache_matches_eager_and_full_sequence_each_step[3-5]
+tests/test_audit_wave1_nanochat_regressions.py::test_graph_cache_reset_clears_mode_and_invalidates_capture_generation
+tests/test_audit_wave1_nanochat_regressions.py::test_prefill_copies_valid_prefix_from_rounded_storage
+tests/test_audit_wave1_nanochat_regressions.py::test_requested_cuda_graph_does_not_silently_run_eager_on_cpu
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/nanochat_fullstack/nanochat/gpt.py:445: UserWarning: Flash attention kernel not used because: (Triggered internally at /Users/runner/work/pytorch/pytorch/pytorch/aten/src/ATen/native/transformers/sdp_utils_cpp.cpp:99.)
+    y = F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=enable_gqa)
+
+tests/test_audit_wave1_nanochat_regressions.py::test_device_position_cache_matches_eager_and_full_sequence_each_step[1-1]
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/nanochat_fullstack/nanochat/gpt.py:445: UserWarning: For dense input, both fused kernels require query, key and value to have the same num_heads. Query.sizes(): [1, 2, 1, 8], Key sizes(): [1, 1, 1, 8], Value sizes(): [1, 1, 1, 8] instead. To broadcast dense inputs, try using unsqueeze and expand_to before passing them into the kernel. (Triggered internally at /Users/runner/work/pytorch/pytorch/pytorch/aten/src/ATen/native/transformers/sdp_utils_cpp.h:426.)
+    y = F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=enable_gqa)
+
+tests/test_audit_wave1_nanochat_regressions.py::test_device_position_cache_matches_eager_and_full_sequence_each_step[2-3]
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/nanochat_fullstack/nanochat/gpt.py:445: UserWarning: For dense input, both fused kernels require query, key and value to have the same num_heads. Query.sizes(): [2, 2, 3, 8], Key sizes(): [2, 1, 3, 8], Value sizes(): [2, 1, 3, 8] instead. To broadcast dense inputs, try using unsqueeze and expand_to before passing them into the kernel. (Triggered internally at /Users/runner/work/pytorch/pytorch/pytorch/aten/src/ATen/native/transformers/sdp_utils_cpp.h:426.)
+    y = F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=enable_gqa)
+
+tests/test_audit_wave1_nanochat_regressions.py::test_device_position_cache_matches_eager_and_full_sequence_each_step[3-5]
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/nanochat_fullstack/nanochat/gpt.py:445: UserWarning: For dense input, both fused kernels require query, key and value to have the same num_heads. Query.sizes(): [3, 2, 5, 8], Key sizes(): [3, 1, 5, 8], Value sizes(): [3, 1, 5, 8] instead. To broadcast dense inputs, try using unsqueeze and expand_to before passing them into the kernel. (Triggered internally at /Users/runner/work/pytorch/pytorch/pytorch/aten/src/ATen/native/transformers/sdp_utils_cpp.h:426.)
+    y = F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=enable_gqa)
+
+tests/test_audit_wave1_nanochat_regressions.py::test_graph_cache_reset_clears_mode_and_invalidates_capture_generation
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/nanochat_fullstack/nanochat/gpt.py:445: UserWarning: For dense input, both fused kernels require query, key and value to have the same num_heads. Query.sizes(): [2, 2, 2, 8], Key sizes(): [2, 1, 2, 8], Value sizes(): [2, 1, 2, 8] instead. To broadcast dense inputs, try using unsqueeze and expand_to before passing them into the kernel. (Triggered internally at /Users/runner/work/pytorch/pytorch/pytorch/aten/src/ATen/native/transformers/sdp_utils_cpp.h:426.)
+    y = F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=enable_gqa)
+
+tests/test_audit_wave1_nanochat_regressions.py::test_prefill_copies_valid_prefix_from_rounded_storage
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/nanochat_fullstack/nanochat/gpt.py:445: UserWarning: For dense input, both fused kernels require query, key and value to have the same num_heads. Query.sizes(): [1, 2, 3, 8], Key sizes(): [1, 1, 3, 8], Value sizes(): [1, 1, 3, 8] instead. To broadcast dense inputs, try using unsqueeze and expand_to before passing them into the kernel. (Triggered internally at /Users/runner/work/pytorch/pytorch/pytorch/aten/src/ATen/native/transformers/sdp_utils_cpp.h:426.)
+    y = F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=enable_gqa)
+
+tests/test_audit_wave1_nanochat_regressions.py::test_requested_cuda_graph_does_not_silently_run_eager_on_cpu
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/nanochat_fullstack/nanochat/gpt.py:445: UserWarning: For dense input, both fused kernels require query, key and value to have the same num_heads. Query.sizes(): [2, 2, 1, 8], Key sizes(): [2, 1, 1, 8], Value sizes(): [2, 1, 1, 8] instead. To broadcast dense inputs, try using unsqueeze and expand_to before passing them into the kernel. (Triggered internally at /Users/runner/work/pytorch/pytorch/pytorch/aten/src/ATen/native/transformers/sdp_utils_cpp.h:426.)
+    y = F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=enable_gqa)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_audit_wave1_nanochat_regressions.py::test_device_position_cache_matches_eager_and_full_sequence_each_step[1-1]
+FAILED tests/test_audit_wave1_nanochat_regressions.py::test_device_position_cache_matches_eager_and_full_sequence_each_step[2-3]
+FAILED tests/test_audit_wave1_nanochat_regressions.py::test_device_position_cache_matches_eager_and_full_sequence_each_step[3-5]
+FAILED tests/test_audit_wave1_nanochat_regressions.py::test_graph_cache_reset_clears_mode_and_invalidates_capture_generation
+FAILED tests/test_audit_wave1_nanochat_regressions.py::test_prefill_copies_valid_prefix_from_rounded_storage
+FAILED tests/test_audit_wave1_nanochat_regressions.py::test_requested_cuda_graph_does_not_silently_run_eager_on_cpu
+6 failed, 4 skipped, 12 warnings in 1.63s

@@ -1,0 +1,289 @@
+{
+  "schema_version": 1,
+  "recorded_at_utc": "2026-08-30T22:12:38.264247+00:00",
+  "reviewed_commit": "b57e4c6a9",
+  "current_head": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "package": "P10 API and parser slice",
+  "original_source_inventory_count": 128,
+  "findings": [
+    {
+      "id": "W1-017",
+      "status": "fixed_cpu_verified"
+    },
+    {
+      "id": "W1-023",
+      "status": "fixed_cpu_verified"
+    },
+    {
+      "id": "W1-059",
+      "status": "fixed_cpu_verified"
+    },
+    {
+      "id": "W1-060",
+      "status": "fixed_cpu_verified"
+    },
+    {
+      "id": "W1-064",
+      "status": "fixed_cpu_verified"
+    },
+    {
+      "id": "W1-107",
+      "status": "fixed_cpu_verified"
+    },
+    {
+      "id": "W1-110",
+      "status": "fixed_cpu_verified"
+    }
+  ],
+  "adjacent_discoveries": [
+    {
+      "description": "Retired Anthropic Sonnet 4 default persisted in the shared client and three legacy advisors",
+      "status": "fixed_cpu_loopback_verified",
+      "replacement": "claude-sonnet-4-6",
+      "scope": "Compatible default model ID and override consistency; no migration to Sonnet 5"
+    }
+  ],
+  "environment": {
+    "python_executable": "/opt/miniconda3/bin/python",
+    "python": "3.12.2",
+    "packages": {
+      "pytest": "8.4.2",
+      "torch": "2.8.0",
+      "typer": "0.15.4",
+      "anthropic": "0.109.2",
+      "openai": "2.44.0"
+    },
+    "cuda_available": false,
+    "pinned_gpu_stack": false,
+    "dependencies_installed_or_changed": false
+  },
+  "validation": [
+    {
+      "phase": "before initial API fixes",
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider tests/test_audit_wave1_api_regressions.py",
+      "cwd": "code",
+      "exit_code": 1,
+      "result": "23 failed, 3 passed in 17.28s",
+      "log": "api-before.log"
+    },
+    {
+      "phase": "initial API fixes",
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider tests/test_audit_wave1_api_regressions.py tests/test_engine_fail_fast.py",
+      "cwd": "code",
+      "exit_code": 0,
+      "result": "37 passed, 3 retired-model warnings in 21.98s",
+      "log": "api-first-slice-tests.log"
+    },
+    {
+      "phase": "existing CLI smoke",
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider tests/test_cli_smoke.py::test_help_exits_cleanly tests/test_cli_smoke.py::test_bench_list_targets_help tests/test_cli_smoke.py::test_bench_analyze_help tests/test_cli_smoke.py::test_bench_whatif_help",
+      "cwd": "code",
+      "exit_code": 0,
+      "result": "4 passed in 10.72s",
+      "log": "cli-smoke.log"
+    },
+    {
+      "phase": "retired default reproduction",
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider tests/test_audit_wave1_api_regressions.py -k anthropic_model_default",
+      "cwd": "code",
+      "exit_code": 1,
+      "result": "1 failed, 2 passed, 35 deselected in 0.07s",
+      "log": "anthropic-default-before.log"
+    },
+    {
+      "phase": "before parser fixes",
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider tests/test_audit_wave1_parser_regressions.py",
+      "cwd": "code",
+      "exit_code": 1,
+      "result": "9 failed, 3 passed in 0.57s",
+      "log": "parsers-before.log"
+    },
+    {
+      "phase": "initial combined validation",
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider tests/test_audit_wave1_api_regressions.py tests/test_audit_wave1_parser_regressions.py tests/test_engine_fail_fast.py tests/test_perf_core_runtime_warnings.py",
+      "cwd": "code",
+      "exit_code": 0,
+      "result": "63 passed in 32.74s",
+      "log": "api-parsers-pass63.log"
+    },
+    {
+      "phase": "additional topology boundaries",
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider tests/test_audit_wave1_api_regressions.py tests/test_audit_wave1_parser_regressions.py tests/test_engine_fail_fast.py tests/test_perf_core_runtime_warnings.py",
+      "cwd": "code",
+      "exit_code": 0,
+      "result": "65 passed in 33.30s",
+      "log": "api-parsers-pass65.log"
+    },
+    {
+      "phase": "legacy model default reproduction",
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider tests/test_audit_wave1_api_regressions.py -k 'legacy_anthropic or parallelism_advisor'",
+      "cwd": "code",
+      "exit_code": 1,
+      "result": "3 failed, 3 passed, 42 deselected, 2 retired-model warnings in 1.72s",
+      "log": "legacy-models-before.log"
+    },
+    {
+      "phase": "final combined validation",
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider tests/test_audit_wave1_api_regressions.py tests/test_audit_wave1_parser_regressions.py tests/test_engine_fail_fast.py tests/test_perf_core_runtime_warnings.py",
+      "cwd": "code",
+      "exit_code": 0,
+      "result": "71 passed in 34.78s",
+      "log": "final-tests.log"
+    },
+    {
+      "phase": "real default CLI",
+      "command": "/opt/miniconda3/bin/python -m cli.aisp < /dev/null",
+      "cwd": "code",
+      "exit_code": 0,
+      "result": "Real analysis menu rendered and EOF exited cleanly",
+      "log": "default-cli.log"
+    },
+    {
+      "phase": "real local NVLink status",
+      "command": "/opt/miniconda3/bin/python -c 'import json; from core.engine import get_engine; print(json.dumps(get_engine().gpu.nvlink(), indent=2))'",
+      "cwd": "code",
+      "exit_code": 0,
+      "result": "Unavailable with explicit nvidia-smi-missing warning; no NVLink hardware claimed",
+      "log": "live-local-nvlink-unavailable.log"
+    },
+    {
+      "phase": "syntax",
+      "command": "/opt/miniconda3/bin/python -m py_compile code/cli/aisp.py code/core/llm.py code/core/engine.py code/core/benchmark/bench_commands.py code/core/perf_core_base.py code/core/analysis/distributed_analysis.py code/core/analysis/llm_advisor.py code/core/analysis/llm_profile_analyzer.py code/core/optimization/parallelism_planner/llm_advisor.py code/tests/test_audit_wave1_api_regressions.py code/tests/test_audit_wave1_parser_regressions.py",
+      "cwd": ".",
+      "exit_code": 0,
+      "result": "All changed Python files compiled"
+    },
+    {
+      "phase": "whitespace",
+      "command": "git diff --check -- code/cli/aisp.py code/core/llm.py code/core/engine.py code/core/benchmark/bench_commands.py code/core/perf_core_base.py code/core/analysis/distributed_analysis.py code/core/analysis/llm_advisor.py code/core/analysis/llm_profile_analyzer.py code/core/optimization/parallelism_planner/llm_advisor.py code/tests/test_audit_wave1_api_regressions.py code/tests/test_audit_wave1_parser_regressions.py",
+      "cwd": ".",
+      "exit_code": 0,
+      "result": "No whitespace errors"
+    }
+  ],
+  "official_sources": [
+    {
+      "url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+      "checked_date": "2026-08-30",
+      "supports": "Sonnet 4 retirement on 2026-06-15, Sonnet 4.6 replacement and availability"
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/models/sonnet-4-6/overview",
+      "checked_date": "2026-08-30",
+      "supports": "Sonnet 4.6 remains available although newer Sonnet models exist"
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/models/sonnet-5/migration-guide",
+      "checked_date": "2026-08-30",
+      "supports": "Sonnet 5 requires sampling/thinking response changes; excluded from compatible ID repair"
+    },
+    {
+      "url": "https://docs.nvidia.com/deploy/nvidia-smi/index.html",
+      "checked_date": "2026-08-30",
+      "supports": "topo -m reports GPU peer matrix entries; NV# identifies a bonded set of NVLinks"
+    }
+  ],
+  "limitations": [
+    "CPU/control-plane verification only; no CUDA benchmarks or live NVLink-host success receipt.",
+    "HTTP tests use local protocol fixtures, not real models or paid provider endpoints.",
+    "No private prompts transmitted and no live hosted-provider availability or quality claimed.",
+    "Explicit caller-selected models and provider-specific limits remain caller/provider responsibilities.",
+    "Existing CPU environment differs from the pinned GPU stack: anthropic 0.109.2 locally versus repository pin 0.112.0."
+  ],
+  "source_files": {
+    "code/cli/aisp.py": {
+      "sha256": "23ce03bd8e2021e6999fcb00c77016669f034ce1ed5281e34e535aa29eb1bdb5",
+      "bytes": 102397
+    },
+    "code/core/llm.py": {
+      "sha256": "5599704325f793025f1e2c418b9bf9d64c2c78ff5563c6d07e10340ca6aa0bd4",
+      "bytes": 18835
+    },
+    "code/core/engine.py": {
+      "sha256": "08dbc75f0e0f0ca9c1c8196ddcce9da4d87c5a539e77a35071320e8823294c65",
+      "bytes": 52901
+    },
+    "code/core/benchmark/bench_commands.py": {
+      "sha256": "3f3859d83185c0f7aa664bcd415ca200e9020dd22cf4b4373e561cb96357df0a",
+      "bytes": 185358
+    },
+    "code/core/perf_core_base.py": {
+      "sha256": "e213c847b382b1b887601a203f4f4470888dd35ab8a338495482a71277660766",
+      "bytes": 132702
+    },
+    "code/core/analysis/distributed_analysis.py": {
+      "sha256": "6e46d39c0c79e4d86cf523547911c8337de1b861fee886c00a39886a52385e65",
+      "bytes": 22679
+    },
+    "code/core/analysis/llm_advisor.py": {
+      "sha256": "57594bfd3cf4275ea2430aeb575546b25ea0a6066c0b2216cb24f43e5c82d794",
+      "bytes": 32331
+    },
+    "code/core/analysis/llm_profile_analyzer.py": {
+      "sha256": "327f8f6fc657bd8084351090b4d66ae34ab4fd234a265d7e38ea66715569b618",
+      "bytes": 46768
+    },
+    "code/core/optimization/parallelism_planner/llm_advisor.py": {
+      "sha256": "84906cf80a9c0575c027d78fcf4d1f73ec55e03fbb37902d64acd8ebbcde1eaf",
+      "bytes": 26847
+    },
+    "code/tests/test_audit_wave1_api_regressions.py": {
+      "sha256": "a3825143b22e41d4a6e638d74c27b26fd4bc50c4e07446b151fb2d5e76e0e6be",
+      "bytes": 12761
+    },
+    "code/tests/test_audit_wave1_parser_regressions.py": {
+      "sha256": "331c7a1995cad2e3678a323592c3edb90960af8beb011dfbdd997cba8b9b0218",
+      "bytes": 8302
+    }
+  },
+  "artifacts": {
+    "api-before.log": {
+      "sha256": "c6936a4a343cae62d833953a0b59fa9ab90f7ac47b889ae5f48d9678c562fe84",
+      "bytes": 36663
+    },
+    "api-first-slice-tests.log": {
+      "sha256": "af0294b778ab951dbafc5ce128bab5e323685186394656be7c12756f69b4066b",
+      "bytes": 1155
+    },
+    "cli-smoke.log": {
+      "sha256": "117b2cf3452b945a2a5ff5d52422511ce47735c247cedc343ac8fae24d133b6c",
+      "bytes": 99
+    },
+    "default-cli.log": {
+      "sha256": "9ab997055b3f07a0065bae1bbb30a6028b2166246c9b86835aef4e3f5e4c8ca4",
+      "bytes": 438
+    },
+    "anthropic-default-before.log": {
+      "sha256": "9c75c916a5ae1d6c8fd88d91c4cd65193d3e5d4a1783abe289be98a38a0c25d7",
+      "bytes": 1804
+    },
+    "parsers-before.log": {
+      "sha256": "a4d435f7ac03db6a053fa58375ca639d559c00d1f4714dce3eaadb974fb2c447",
+      "bytes": 10276
+    },
+    "api-parsers-pass63.log": {
+      "sha256": "9f610a9b42ef2fcbb3323d8552760c6ffe558382da17a20d0ba2fa623507c26c",
+      "bytes": 100
+    },
+    "api-parsers-pass65.log": {
+      "sha256": "8b2a421e573a28154d990944c6840fac3191f92a6b1676463e45cf777094829d",
+      "bytes": 100
+    },
+    "legacy-models-before.log": {
+      "sha256": "ba32c598a666b8a5f9875ac2ec5d22d2dc4e61b7bccf64642d26e3c2c9989dfa",
+      "bytes": 7076
+    },
+    "final-tests.log": {
+      "sha256": "b2feb712bc9f8c755cf8f3fe0712cfc280f7ff384a3ff32f2618d4882168dbe2",
+      "bytes": 100
+    },
+    "live-local-nvlink-unavailable.log": {
+      "sha256": "189bdb4fde7e6ffe0596c1edb69381a2a2c0c3acfdd64617502cbb27626940d6",
+      "bytes": 206
+    },
+    "book-smoke.log": {
+      "sha256": "09dba6e017c67cc51dc82dd887367faa5f9bbf365f4df1e1d83acacda39e945c",
+      "bytes": 261
+    }
+  }
+}

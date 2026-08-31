@@ -1,0 +1,119 @@
+{
+  "base": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "cuda_available": false,
+  "cuda_compiled": false,
+  "cuda_executed": false,
+  "W016_evidence_kind": "CPU mathematical translation of old per-thread softmax, not execution of CUDA binary",
+  "W066": {
+    "old_requested_cudnn_selection_on_CPU": "flash",
+    "new_requested_cudnn_selection_on_CPU": "cudnn",
+    "old_actual_torch_context_flags": {
+      "cudnn": true,
+      "flash": true,
+      "math": false,
+      "mem_efficient": true
+    },
+    "new_actual_torch_context_flags": {
+      "cudnn": true,
+      "flash": false,
+      "math": false,
+      "mem_efficient": false
+    }
+  },
+  "W016": {
+    "old_per_dimension_softmax": [
+      8.044297218322754,
+      9.441927909851074
+    ],
+    "true_SDPA": [
+      1.9557032585144043,
+      8.044297218322754
+    ],
+    "max_abs_difference": 6.08859395980835,
+    "fp16_unshifted_exp_overflows": true
+  },
+  "W072": {
+    "alibi": {
+      "old_count": 4194304,
+      "actual_mask_count": 2098176,
+      "new_count": 2098176,
+      "old_numerator_overcount": 1.9990239141044412
+    },
+    "softcap": {
+      "old_count": 4194304,
+      "actual_mask_count": 2098176,
+      "new_count": 2098176,
+      "old_numerator_overcount": 1.9990239141044412
+    }
+  },
+  "W074": {
+    "evidence_kind": "Real CPU SDPA under the two axis interpretations; no CuTe kernel executed",
+    "public_BHSD": [
+      2,
+      3,
+      7,
+      5
+    ],
+    "correct_CuTe_BSHD": [
+      2,
+      7,
+      3,
+      5
+    ],
+    "wrong_sequence_length": 3,
+    "right_sequence_length": 7,
+    "max_abs_output_difference": 3.0658040046691895
+  },
+  "source_only_original_checks": {
+    "W022": {
+      "path": "code/core/common/async_input_pipeline.py",
+      "sha256": "14fa8b26736a912a69e2d67869ac87f5604ed1b11668e835b03c3cc62a28f88d",
+      "quote": "batch_gpu = batch_cpu.to(self.device, non_blocking=self.cfg.non_blocking)",
+      "gpu_race_reproduced": false
+    },
+    "W039": {
+      "path": "code/labs/persistent_decode/persistent_decode_ext.cu",
+      "sha256": "a426dd4e1ba100f6b5409e2b7caea22ea41b9c30334d7ba77d8e49e0b200ea88",
+      "quote": "return smem[0];",
+      "gpu_race_reproduced": false
+    },
+    "W088": {
+      "path": "code/labs/persistent_decode/optimized_persistent_decode_triton.py",
+      "sha256": "93d1a419efdb3049611ca0fcdc02cde2bbe566816409ad889e0bd3a28059350d",
+      "quote": "self._num_items = min(self.batch, self.num_programs)",
+      "gpu_race_reproduced": false
+    },
+    "W089": {
+      "path": "code/labs/persistent_decode/paged_kv_offload_common.py",
+      "sha256": "05a6fcfcabf8127580f92c2bae2b2d8929b2040a8a28c3481773247a415dc41d",
+      "quote": "target[..., :slice_len, :].copy_(self._host_page_view(start, slice_len))",
+      "gpu_race_reproduced": false
+    },
+    "W090": {
+      "path": "code/labs/persistent_decode/tma_extension.py",
+      "sha256": "0bbb5582fa818f7f54131252ade155370f0f69de339b1c98f71336e46f1dc772",
+      "quote": "cuda::memcpy_async(&smem[threadIdx.x], &src[global_idx], sizeof(float), pipe);",
+      "gpu_race_reproduced": false
+    },
+    "W118": {
+      "path": "code/labs/decode_optimization/baseline_decode_warp_specialized.py",
+      "sha256": "e544b1dd804b692906cc469a157b75287765889e6bb293127ac132d8c9e3913d",
+      "quote": "Baseline for warp-specialized Triton decode",
+      "gpu_race_reproduced": false
+    }
+  },
+  "W071": {
+    "source": "HANDOFF.md:47",
+    "classification": "Historical 2026-08-17 recorded result; not a fresh GPU run",
+    "baseline_ms": 3.429079,
+    "optimized_ms": 3.572818,
+    "ratio": 0.9597687315726691,
+    "gate": 1.05,
+    "provider_fix_requalified": false
+  },
+  "W073": {
+    "classification": "Original source has zero-filled tail loads and no negative-infinity score mask; CUDA gate pending",
+    "public_API_tail_and_causal_affected": true,
+    "shipped_1024_noncausal_pair_affected_by_these_two_faults": false
+  }
+}

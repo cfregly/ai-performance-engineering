@@ -1,10 +1,9 @@
 /**
- * Stage 10: 4-stage tcgen05 WITHOUT MMA barrier
- * =============================================
- * 
- * Hypothesis: The MMA barrier is redundant for correctness
- * because the TMA barrier already ensures data is ready.
- * Removing it should reduce pipeline bubbles.
+ * Legacy Stage 10 entrypoint: 4-stage tcgen05 with required MMA completion
+ * =====================================================================
+ * TMA completion only makes operands ready. It does not finish the MMA that
+ * reads those operands or writes the accumulator. Keep producer stage-reuse
+ * waits and a final accumulator-completion barrier even for this experiment.
  */
 
 #include <ATen/cuda/CUDAContext.h>
@@ -38,7 +37,8 @@ struct NoMmaBarrierSharedStorage {
   alignas(128) cute::ArrayEngine<TypeA_, cute::cosize_v<ASmemLayout>> smem_A[kStages];
   alignas(128) cute::ArrayEngine<TypeB_, cute::cosize_v<BSmemLayout>> smem_B[kStages];
   alignas(16) cute::uint64_t tma_barrier[kStages];
-  // NO MMA barrier!
+  alignas(16) cute::uint64_t empty_barrier[kStages];
+  alignas(16) cute::uint64_t mma_barrier;
   alignas(16) cute::uint32_t tmem_base_ptr;
 
   CUTE_DEVICE auto tensor_sA(int stage) {
@@ -141,16 +141,20 @@ gemm_no_mma_barrier(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
 
   int tma_bytes = sizeof(make_tensor_like(tAsA_0)) + sizeof(make_tensor_like(tBsB_0));
 
-  // Init only TMA barriers
+  // Initialize both producer-ready and consumer-complete barriers.
   if (elect_one_warp && elect_one_thr) {
     for (int s = 0; s < kStages; ++s) {
       cute::initialize_barrier(storage.tma_barrier[s], 1);
+      cute::initialize_barrier(storage.empty_barrier[s], 1);
     }
+    cute::initialize_barrier(storage.mma_barrier, 1);
   }
+  cutlass::arch::fence_barrier_init();
   __syncthreads();
 
   int num_k_tiles = size<3>(tCgA);
   int tma_phase[kStages] = {0, 0, 0, 0};
+  int empty_phase[kStages] = {};
 
   auto issue_tma = [&](int stage, int k_tile) {
     cute::set_barrier_transaction_bytes(storage.tma_barrier[stage], tma_bytes);
@@ -183,36 +187,49 @@ gemm_no_mma_barrier(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
     if (num_k_tiles > 2) issue_tma(2, 2);
   }
 
-  // Mainloop: NO MMA BARRIER!
-  for (int k = 0; k < num_k_tiles; ++k) {
-    int curr = k % kStages;
-    int next_k = k + 3;
-    int next_s = next_k % kStages;
+  // Mainloop: overlap different stages, but wait before reusing each stage.
+  // Only the producer/consumer warp advances pipeline phases. Other warps
+  // park at the CTA synchronization below instead of racing barrier reuse.
+  if (elect_one_warp) {
+    for (int k = 0; k < num_k_tiles; ++k) {
+      int curr = k % kStages;
+      int next_k = k + 3;
+      int next_s = next_k % kStages;
 
-    // Wait for TMA
-    cute::wait_barrier(storage.tma_barrier[curr], tma_phase[curr]);
-    tma_phase[curr] ^= 1;
+      // Wait for TMA
+      cute::wait_barrier(storage.tma_barrier[curr], tma_phase[curr]);
+      tma_phase[curr] ^= 1;
 
-    // Issue next TMA (overlapped with MMA)
-    if (next_k < num_k_tiles && elect_one_warp && elect_one_thr) {
-      issue_tma(next_s, next_k);
-    }
-
-    // MMA without additional barrier
-    if (elect_one_warp) {
-      auto& tCrA = (curr == 0) ? tCrA_0 : (curr == 1) ? tCrA_1 : (curr == 2) ? tCrA_2 : tCrA_3;
-      auto& tCrB = (curr == 0) ? tCrB_0 : (curr == 1) ? tCrB_1 : (curr == 2) ? tCrB_2 : tCrB_3;
-
-      for (int kb = 0; kb < size<2>(tCrA_0); ++kb) {
-        gemm(tiled_mma, tCrA(_, _, kb), tCrB(_, _, kb), tCtAcc);
-        tiled_mma.accumulate_ = UMMA::ScaleOut::One;
+      // Issue next TMA (overlapped with MMA)
+      if (next_k < num_k_tiles && elect_one_warp && elect_one_thr) {
+        if (next_k >= kStages) {
+          cute::wait_barrier(storage.empty_barrier[next_s], empty_phase[next_s]);
+          empty_phase[next_s] ^= 1;
+        }
+        issue_tma(next_s, next_k);
       }
-      // NO umma_arrive, NO mma_barrier wait!
+
+      // Commit completion after all MMA reads from the current stage.
+      if (elect_one_warp) {
+        auto& tCrA = (curr == 0) ? tCrA_0 : (curr == 1) ? tCrA_1 : (curr == 2) ? tCrA_2 : tCrA_3;
+        auto& tCrB = (curr == 0) ? tCrB_0 : (curr == 1) ? tCrB_1 : (curr == 2) ? tCrB_2 : tCrB_3;
+
+        for (int kb = 0; kb < size<2>(tCrA_0); ++kb) {
+          gemm(tiled_mma, tCrA(_, _, kb), tCrB(_, _, kb), tCtAcc);
+          tiled_mma.accumulate_ = UMMA::ScaleOut::One;
+        }
+        cutlass::arch::umma_arrive(
+            reinterpret_cast<uint64_t*>(&storage.empty_barrier[curr]));
+      }
     }
   }
 
   // Ensure all MMA complete before epilogue
   __syncthreads();
+  if (elect_one_warp) {
+    cutlass::arch::umma_arrive(&storage.mma_barrier);
+  }
+  cute::wait_barrier(storage.mma_barrier, 0);
 
   // Epilogue
   auto tiled_t2r_copy = make_tmem_copy(SM100_TMEM_LOAD_32dp32b1x{}, tCtAcc);
@@ -311,4 +328,3 @@ torch::Tensor matmul_tcgen05_no_mma_barrier(torch::Tensor a, torch::Tensor b) {
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("matmul_tcgen05_no_mma_barrier", &matmul_tcgen05_no_mma_barrier);
 }
-

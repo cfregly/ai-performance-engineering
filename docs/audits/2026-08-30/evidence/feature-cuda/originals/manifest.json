@@ -1,0 +1,18 @@
+{
+  "code/core/benchmark/blackwell_optimizations/blackwell_optimizations/test_tma.cu": {
+    "sha256": "a302db7c415e21dfad41d4a17127b299e659d4640c3898db2fb0ca05823767fc",
+    "preserved_as": "test_tma.cu.txt"
+  },
+  "code/core/benchmark/blackwell_optimizations/blackwell_optimizations/test_all_features.cu": {
+    "sha256": "d369f51f11265c697d0438fedcf76f13f0c2338986bd19f38d7556fd8bba45bf",
+    "preserved_as": "test_all_features.cu.txt"
+  },
+  "code/labs/custom_vs_cublas/run_lab.py": {
+    "sha256": "a98f46efdd6e03c0eed2e8e8f49c25953d409d21113238267d27257f368e6acf",
+    "preserved_as": "run_lab.py.txt"
+  },
+  "code/labs/custom_vs_cublas/experimental/tcgen05_multicast.cu": {
+    "sha256": "2c38e8f2f563e23e0356a309cd2724b7c0baaa092c17232d5fc5119780683894",
+    "preserved_as": "tcgen05_multicast.cu.txt"
+  }
+}

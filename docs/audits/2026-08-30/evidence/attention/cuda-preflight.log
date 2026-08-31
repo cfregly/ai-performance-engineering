@@ -1,0 +1,2 @@
+exit_code=2
+{"status": "HOLD", "reason": "Actual CUDA GPU and nvcc are required; skipped tests cannot qualify this package", "gpu_executed": false, "performance_qualified": false}

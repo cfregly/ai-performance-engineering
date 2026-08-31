@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "package": "P07_attention_and_prefill_current_epoch_acceptance_driver",
+  "created_utc": "2026-08-31T00:04:24.661335+00:00",
+  "status": "PASS_SOURCE_AND_CPU_GATE_CONTROLS_ACTUAL_CUDA_HOLD",
+  "original_audit_ids_modified": false,
+  "source_review_lineage": {
+    "original_attention": {
+      "receipt": "docs/audits/2026-08-30/evidence/attention/receipt.json",
+      "status": "source_and_CPU_contracts_verified_CUDA_compilation_runtime_and_performance_HOLD",
+      "finding_ids": [
+        "W1-016",
+        "W1-022",
+        "W1-039",
+        "W1-066",
+        "W1-071",
+        "W1-072",
+        "W1-073",
+        "W1-074",
+        "W1-088",
+        "W1-089",
+        "W1-090",
+        "W1-118"
+      ],
+      "preserved_entire_evidence_directory": true
+    },
+    "prefill_followup_receipt": "docs/audits/2026-08-30/evidence/integration/prefill-full-output/receipt.json",
+    "root_read_only_review": "independent-source-review.md",
+    "lineage_sha256": {
+      "docs/audits/2026-08-30/evidence/attention/receipt.json": "d3a6787b242b593c1fa2f4d9bfb7702ca19f34224033eb552e64d062e7459985",
+      "docs/audits/2026-08-30/evidence/attention/source_manifest.json": "c9768fe501d2d114b87ef95f649666f4656f9fdacbfb0db8fba17b2ed8b06661",
+      "docs/audits/2026-08-30/evidence/integration/prefill-full-output/receipt.json": "5be4ba0cd1d1c1aad288842587bc889671484917dbc8de63a2945745208e2907"
+    }
+  },
+  "operational_command": [
+    "python",
+    "docs/audits/2026-08-30/evidence/integration/attention-final-epoch/run_cuda_acceptance.py",
+    "--output-dir",
+    "/absolute/path/to/a/fresh/attention-attempt"
+  ],
+  "source_manifest": {
+    "path": "source_manifest.json",
+    "sha256": "fa136e6942d8af98e5a235cf7868de00e9662cafd9907a6406ce58fa1be98a4e",
+    "files": 115,
+    "method": "dependency-inventory.json",
+    "delta": "manifest-delta.json",
+    "new_driver_sha256": "4b8346d15cf102d611706931fab8012ab4e49cb9dd6348e92ec93f82faab5270",
+    "old_driver_sha256": "3956071068863e080f8602f95ac2cf1f0c994d999aba50b2bb93f72981ede5d8",
+    "diff": "driver-diff-from-original.patch",
+    "persistent_readme_sha256": "095740beda6c680964e0c8d5ffeef92476eef5b7a539aabb78fff9660d33a4a1",
+    "unrelated_generator_and_code_readme_excluded": true
+  },
+  "selection": {
+    "command_record": "collection-command.json",
+    "actual_collection_status": "PASS",
+    "expression": "test_real_",
+    "counts": {
+      "attention": 25,
+      "prefill": 7,
+      "total": 32
+    },
+    "total_collected_before_deselection": 104,
+    "deselected": 72,
+    "exact_nodeids": "expected_cuda_cases.json",
+    "acceptance": "All32 exact identities, zero failures/errors/skips, zero return codes and matching source before/between/after cases. Additional/substituted/duplicate identities do not count."
+  },
+  "gate_control_tests": {
+    "command_record": "gate-controls-command.json",
+    "passed": 16,
+    "skipped": 0,
+    "failures": 0,
+    "errors": 0,
+    "seconds": 0.041,
+    "scope": "Actual filesystem mutation/deletion and report/selection parser controls only; fixture report acceptance is not GPU execution or a GPU result."
+  },
+  "current_epoch_cpu_preflight": {
+    "command_record": "current-epoch-preflight-command.json",
+    "result": "current-epoch-cpu-preflight/result.json",
+    "status": "HOLD",
+    "exit_code": 2,
+    "source_mismatches": 0,
+    "cuda_tests_dispatched": false,
+    "gpu_executed": false,
+    "reason": "Actual CUDA GPU and nvcc are required; skipped tests cannot qualify this package"
+  },
+  "old_epoch_cpu_preflight": {
+    "command_record": "old-epoch-preflight-command.json",
+    "result": "old-epoch-cpu-preflight/result.json",
+    "status": "HOLD",
+    "exit_code": 2,
+    "source_mismatches": 4,
+    "gpu_executed": false,
+    "reason": "Old reviewed source epoch correctly rejects four later files; no old artifact edited."
+  },
+  "execution_limits": {
+    "outer_case_timeout_seconds": 600,
+    "prefill_inner_timeout_seconds": 300,
+    "per_case_processes": 32,
+    "external_dependencies": "Actual CUDA13+ Torch build, nvcc, supported current Blackwell capability and functioning original Triton/FlashAttention-CuTe/cuDNN dependencies. Version metadata alone does not qualify an environment.",
+    "separate_hardware_authorization_required": true
+  },
+  "limitations": [
+    "No actual GPU execution, NVCC build, sanitizer or performance measurement performed.",
+    "Driver controls and source hashes do not establish GPU numerical correctness.",
+    "Original25 cases remain unchanged; new7 cases run actual frozen prefill paths.",
+    "Existing decode rtol=.1/atol=1.0 remains uncalibrated; exact dyadic FP32 prefill controls do not qualify arbitrary/lower-precision data.",
+    "Static local import/header inventory is conservative; third-party packages and dynamic environment state are not source-qualified.",
+    "Original historical timings and receipts preserved, no retroactive performance acceptance."
+  ],
+  "environment": {
+    "python_executable": "/opt/miniconda3/bin/python",
+    "python": "3.12.2",
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "torch": "2.8.0",
+    "cuda_build": null,
+    "cuda_available": false,
+    "nvcc": null
+  },
+  "evidence_files_sha256": {
+    "README.md": "5e8b547acaf5fcfc338d699aa49447b42ca3549d5028c35d8532c109c119c2b1",
+    "collection-command.json": "179ada96d833d92f296d39276fb317e1b118e7968249bb18e16c3a8d7a2edcc9",
+    "collection.txt": "629b8bf513b90ef0dac82ec1076e30537df339ccadf9d1f86c07e6992fef760d",
+    "current-epoch-cpu-preflight/result.json": "c4a6268ad0ed498c61308c0b8253f3faed683752b3ef6b18a1898e85fd3e9ca6",
+    "current-epoch-preflight-command.json": "cb1e0ba8435cd57ab335f0a3286e96918f2c65c8f60fd7d67c31cca23c1c06f2",
+    "current-epoch-preflight.txt": "4749560321c61dea86d4961364f09ffe2b90ce40def11f82745738b8445c7c65",
+    "dependency-inventory.json": "6925eb4c11be8c42d08313b1e68209888ee69b42a0920430070b550222f64b66",
+    "driver-diff-from-original.patch": "2ceafe89bb04e8d133ecd40dfd2c0b226d7a58b268fe55df92bfe0320987d456",
+    "expected_cuda_cases.json": "c91c3803f4cdbf1f3ea68148f3bfdd9e5cb17e5187185a89eb68d8a110ae385f",
+    "final-source-checks.json": "cc742931d441c1836299daa9c5fa3485503f8bbf11a1f0f3387e18f05869befa",
+    "gate-controls-command.json": "ee0974de28685abbd66054312ccb8dcf96c2f0efbe3a939b3de730fbd2f9db03",
+    "gate-controls.txt": "be236d4eb86c62b3006489a97e95debf1c32e842895d9f635d2157d146b3f39c",
+    "gate-controls.xml": "611aaff443541aa423019bd258720b2875eecbc1978a62d2fe01f84b4db43585",
+    "independent-source-review.md": "5571faf7cf5e694ea5e61f3f40ec6e5f760ef9458557364e3fa704a51ea30126",
+    "manifest-delta.json": "54bdf9fb0a39a45cf5ee20c0e4aad97ef9151cfe89f13bba6e3b42ed254476de",
+    "old-epoch-cpu-preflight/result.json": "e2751c1184872be21e1c7efdf2838699cf57f32d5f123b7fe106b3bd93be1cbd",
+    "old-epoch-preflight-command.json": "cf8951b6a0ab4eeb70d2aa1b65be0205fafa92d463bcdc11593cf522fb1517ec",
+    "old-epoch-preflight.txt": "f4d348f0d4eb6c89ad1b69be06d6599299ca05911afd6cddd1027bd5075cfbce",
+    "original-attention-evidence-hashes.json": "6d5a12db379f8f6d6e90b7542b65945ce42817124bb28058425aa2b8aa59a9f1",
+    "run_cuda_acceptance.py": "4b8346d15cf102d611706931fab8012ab4e49cb9dd6348e92ec93f82faab5270",
+    "source_manifest.json": "fa136e6942d8af98e5a235cf7868de00e9662cafd9907a6406ce58fa1be98a4e",
+    "test_gate_controls.py": "46a6a6f0fbdacef4f7daa03905ba9b1d58884b3b785566d885800b0ef52a4e30"
+  },
+  "frozen": true
+}

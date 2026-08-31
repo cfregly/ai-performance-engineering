@@ -1,0 +1,42 @@
+[
+  {
+    "url": "https://download.pytorch.org/whl/cpu/torch/",
+    "artifact": "torch-cpu-index.html.txt",
+    "sha256": "4ab1e6e904e71e78941188ed9ab8c5b629fe36b188f18a2252c429559030a88c",
+    "bytes": 376117,
+    "status": 200,
+    "captured_utc": "2026-08-31T00:30:44.998501+00:00"
+  },
+  {
+    "url": "https://pypi.org/pypi/vllm/0.16.0/json",
+    "artifact": "vllm-0.16.0-pypi.json",
+    "sha256": "93d1e73a73b151ccf1816ce28e6e22f552d6f7e12f6a0de614fd9c148a5e4ab2",
+    "bytes": 129252,
+    "status": 200,
+    "captured_utc": "2026-08-31T00:30:45.049358+00:00"
+  },
+  {
+    "url": "https://pypi.org/pypi/torchtitan/0.2.0/json",
+    "artifact": "torchtitan-0.2.0-pypi.json",
+    "sha256": "0230d3e640162d07cc481ded31555233db911b8aa8e2a7d6136f73030c0dbe51",
+    "bytes": 15673,
+    "status": 200,
+    "captured_utc": "2026-08-31T00:30:45.085964+00:00"
+  },
+  {
+    "url": "https://pypi.org/pypi/tokenizers/0.22.2/json",
+    "artifact": "tokenizers-0.22.2-pypi.json",
+    "sha256": "f7487f5630c723c64a7cc2cf4be4c9331492e332f48d054996cc850ecbe678f1",
+    "bytes": 29095,
+    "status": 200,
+    "captured_utc": "2026-08-31T00:30:45.126113+00:00"
+  },
+  {
+    "url": "https://pypi.org/pypi/GPUtil/1.4.0/json",
+    "artifact": "gputil-1.4.0-pypi.json",
+    "sha256": "edc441714d05721a2e187f05245a05704b1bfd7141ebf7c1e9f1a7d1c6b4b562",
+    "bytes": 1918,
+    "status": 200,
+    "captured_utc": "2026-08-31T00:30:45.162331+00:00"
+  }
+]

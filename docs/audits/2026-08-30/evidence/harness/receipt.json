@@ -1,0 +1,47 @@
+{
+  "finding_ids": [
+    "W1-061",
+    "W1-062",
+    "W1-063"
+  ],
+  "base_revision": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "candidate": "uncommitted source on codex/audit-remediation-20260830; file hashes below",
+  "environment": {
+    "python": "3.12.2",
+    "os": "macOS-26.5.2-arm64-arm-64bit",
+    "torch": "2.8.0",
+    "cuda_available": false
+  },
+  "checks": [
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_audit_wave1_harness.py tests/test_benchmark_fn_sync_detection.py tests/test_benchmark_harness_subprocess_regressions.py -q -p no:cacheprovider",
+      "result": "50 passed, 1 skipped, 5 warnings",
+      "log": "harness-transport-after.txt"
+    },
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_audit_wave1_harness.py tests/test_benchmark_fn_sync_detection.py tests/test_benchmark_harness_subprocess_regressions.py tests/test_audit_wave1_comparison.py tests/test_benchmark_comparison.py tests/test_benchmark_metrics.py tests/test_core_review_regressions.py -q -p no:cacheprovider",
+      "result": "144 passed, 1 skipped, 5 warnings",
+      "log": "integration-after.txt"
+    },
+    {
+      "command": "/opt/miniconda3/bin/ruff check tests/test_audit_wave1_harness.py --output-format concise",
+      "result": "passed"
+    }
+  ],
+  "baseline_notes": [
+    "Initial baseline helper tests included missing-new-helper failures and are not all independent behavior reproductions. Original-source mechanism receipt records Gaussian fabrication and parser failures.",
+    "First combined integration attempt named nonexistent tests/test_comparison.py; pytest exit 4 and zero tests. Corrected command above ran tests/test_benchmark_comparison.py."
+  ],
+  "limitations": [
+    "Actual CPU isolated runner was exercised; protocol fixtures use real subprocess pipes through a narrow command seam, not GPU emulation.",
+    "One existing torchrun rendezvous test is Linux-only and skipped on Darwin.",
+    "Five non-Linux environment diagnostics are preserved; these are control-flow tests, not canonical benchmark measurements.",
+    "No CUDA correctness or performance claim. Final revision verification still required."
+  ],
+  "files_sha256": {
+    "code/core/harness/benchmark_harness.py": "f6a64f13ce29a5e6fb8fcdb538b454cb26e98a70a32c2a20bade17931971e3ff",
+    "code/tests/test_audit_wave1_harness.py": "b653db2e89f26e7dffc82288a5b26473c00eda29a64bb6ace5294411a8de9cb7",
+    "code/core/benchmark/comparison.py": "9f0e71fd6e36c25ac176f0f3862a05643a329a105be0f3ce8e48f75825c434f6",
+    "code/tests/test_audit_wave1_comparison.py": "a78cfa32498896b5648252b8ca4748f973016a30077faadfdbc1945819c6b936"
+  }
+}

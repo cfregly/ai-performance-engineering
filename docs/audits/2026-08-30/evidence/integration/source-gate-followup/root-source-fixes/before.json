@@ -1,0 +1,13 @@
+{
+  "at": "2026-08-31T00:53:08.966467+00:00",
+  "files": {
+    "code/labs/moe_optimization_journey/native_fp8_math.py": {
+      "sha256": "82b34b1f068a6e3668d51b2f18305b5bb1e3bf3c3fe90686942e695a234e0687",
+      "snapshot": "native_fp8_math.py.before.txt"
+    },
+    "code/core/scripts/check_import_edges.py": {
+      "sha256": "dc51c7b42fee08d60a6317076db734adc695a67c1f2cc041d4ea7fbd08f04a3a",
+      "snapshot": "check_import_edges.py.before.txt"
+    }
+  }
+}

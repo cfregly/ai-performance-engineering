@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "findings": [
+    "W1-081"
+  ],
+  "source_status": "fixed_and_independently_reviewed",
+  "runtime_status": "HOLD_no_CUDA_GEMM_or_calibration",
+  "baseline": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "created_at": "2026-08-30T23:20:16.110838+00:00",
+  "source_sha256": {
+    "code/labs/moe_optimization_journey/level6_native_fp8.py": "9f666eb3f79387aadaab8f8676551cce666ae4feb5e618c0015d06a745e07298",
+    "code/labs/moe_optimization_journey/native_fp8_math.py": "82b34b1f068a6e3668d51b2f18305b5bb1e3bf3c3fe90686942e695a234e0687",
+    "code/labs/moe_optimization_journey/calibrate_native_fp8.py": "45df08f8914eb438bee2fb203692ee16ad34e8c9c21e4f7a09adbe8cea463356",
+    "code/tests/test_audit_wave1_native_fp8.py": "87d89cc5dad793964452fe0a76e7828e870d8f386ce2c1d13eaa6b863d7a779e",
+    "code/labs/moe_optimization_journey/README.md": "d72de82079cc8a286e54eddc08b9c759ecb30f324ce9f8f0bb87bad6bb22c309"
+  },
+  "related_source_changes": [
+    "code/core/scripts/refresh_readmes.py",
+    "code/tests/test_benchmark_hygiene_regressions.py"
+  ],
+  "related_source_limits": "Shared generator/hygiene files have subsequent independently owned changes; full final integration remains pending.",
+  "tests": {
+    "passed": 38,
+    "skipped": 4,
+    "failed": 0,
+    "log": "post-review-tests.txt",
+    "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider code/tests/test_audit_wave1_native_fp8.py code/tests/test_audit_wave1_moe_journey.py code/tests/test_moe_journey_runtime_hotpath.py"
+  },
+  "review": "Scale/layout/full-reference source review accepted; failure artifact and harness seed follow-ups implemented. Actual CUDA remains HOLD.",
+  "performance_qualified": false,
+  "accuracy_policy_calibrated": false,
+  "adjacent_defects": [
+    "Missing unsort/top-k output combination",
+    "Eight-element payload could not verify complete output",
+    "Fresh-input harness seed ignored by hardcoded seed",
+    "Calibration attempt originally lost failure/HOLD artifacts"
+  ],
+  "artifacts": {
+    "ruff.txt": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "final-tests.txt": "a08f0d6270176c5f83d5287eab9d85eb2dbd0623fa46f89ab9a71891a9d76d7f",
+    "combined-tests.txt": "b0a3ee201946c784b8353e5ef19b705b9c6e4d67f507e274e4adf185ca615ba5",
+    "README.md": "be121e86658a32dfcf95df80bae8fc9e585b04d93cc41ae28d2cc79646082cc8",
+    "original-level6_native_fp8.py.txt": "14472b03299fe6388906f362531bcd7d958e9a14afd91e3b7bd15b9ebb9ebd6b",
+    "first-tests.txt": "f9f89433401a12700367fd0fa76aab68f8ccf4f89a47f9dbe6db986b869f54cf",
+    "post-review-tests.txt": "0172b3c5c8e9e85435face28e8e772b1dcf17519e4086fa294cbc8ed3495db52",
+    "post-review-ruff.txt": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "cuda-preflight.txt": "466538830046f5e15f5ebdbc67cb040b90cb6f4a7bb1d2127886b2bf6106c63b",
+    "cuda-preflight-after-review.txt": "e253ee84549165281dbd52178f41c38b2323e6ceae951348017fdfed4b792ac8",
+    "cuda-preflight-after-review.json": "ca7c628c83ec09cbf0c1845aaaa10896767b7d841b68502cd4652dc949d92806"
+  }
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "original_path": "cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/chrome_trace_full.json",
+    "archival_path": "cpu-capture-archive/007-chrome_trace_full.json",
+    "sha256": "db466403ead96e2a69850fc508b4c23d9fc9f71d60d08cbaa805e17c1f54011d",
+    "bytes": 179839
+  },
+  {
+    "original_path": "cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/key_averages_full.json",
+    "archival_path": "cpu-capture-archive/008-key_averages_full.json",
+    "sha256": "0137e5bf38601bdaa60e62b8ece925ecfdea2d11f9d5afbf8299399827e3eb9d",
+    "bytes": 4325
+  },
+  {
+    "original_path": "cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/metadata.json",
+    "archival_path": "cpu-capture-archive/009-metadata.json",
+    "sha256": "9a1768c95620fb3334df48f425190c922aaf7b3b23f5772a00aa908a5db85bf7",
+    "bytes": 329
+  },
+  {
+    "original_path": "cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/summary_full.txt",
+    "archival_path": "cpu-capture-archive/010-summary_full.txt",
+    "sha256": "dc3033b72b9904be2d3254fa3439c2588293cce747275ad1db11f9a7fcdc91f9",
+    "bytes": 13516
+  },
+  {
+    "original_path": "cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/torch_profile_summary.json",
+    "archival_path": "cpu-capture-archive/011-torch_profile_summary.json",
+    "sha256": "14742f7af8d181e20eac3ca6bfff017f1628b2f3d28a19f353ad53e100f34e36",
+    "bytes": 4786
+  },
+  {
+    "original_path": "cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/trace.json",
+    "archival_path": "cpu-capture-archive/012-trace.json",
+    "sha256": "db466403ead96e2a69850fc508b4c23d9fc9f71d60d08cbaa805e17c1f54011d",
+    "bytes": 179839
+  }
+]

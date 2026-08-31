@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "status": "OPEN_FUNCTIONAL_IMPLEMENTATION_GAP",
+  "scope": "Read-only W1-004/W1-091 and LOCAL-019 completion fidelity review",
+  "conclusion": "Restore actual child training verification for the four ZeRO factories. Generic withdrawal is mitigation, not complete restoration.",
+  "inventory": {
+    "total": 61,
+    "zero2": 4,
+    "other_preexisting_explicit_refusal": 3,
+    "other_existing_child_paths_not_runtime_qualified": 54
+  },
+  "minimum_next_slice": "One ZeRO-specific result/reference adapter through zero2.py and zero2_common.run_training, four factories, minimal actual harness transport/verification integration.",
+  "source_changes": false,
+  "tests_or_repository_runtime": false,
+  "gpu_or_remote": false,
+  "source_manifest_sha256": "1243e8e2f8b4d645005ded5ebb32aa530351c2f8c4e50d9769da5e9eb400964a",
+  "inventory_sha256": "7b0de90e76542d08632bba790100f7dd0039e61960976654619126c233bcf2a2",
+  "review_sha256": "dd05ec9c052d3522e2fd8a6e11c9e8173a99a94ebe84b05c9f6a5b55fd6bd4f9",
+  "original_findings_sha256": "fc2a9a4c976b8caee3e081a17b59ce175120de56f0ab1c4a6c5f4f4ac4cb2f43",
+  "status_observation_sha256": "89f34ecb0840655229d3568c132cc9e6cddc1a23c935112096b9591ae517f032",
+  "limitations": [
+    "No blanket claim that other54 were supported or unsupported; no exhaustive child runtime audit.",
+    "Existing optimizer CPU/helper evidence remains valid only within original scope; no CLI/NCCL qualification from this review.",
+    "Original symmetric-memory removed single-GPU/fallback features are not authorized for restoration.",
+    "Owner alone updates goal/plan/ledger."
+  ]
+}

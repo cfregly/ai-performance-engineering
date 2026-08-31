@@ -1,0 +1,39 @@
+                                                                                
+ Usage: python -m cli.aisp profile torch [OPTIONS] SCRIPT                       
+                                                                                
+ Run torch.profiler capture (Chrome trace + summary)                            
+                                                                                
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *    script      PATH  Python script to profile [default: None] [required]   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --mode                                       TEXT     Profiler preset        │
+│                                                       (full/memory/flops/mo… │
+│                                                       [default: full]        │
+│ --output-name     -o                         TEXT     Base name for capture  │
+│                                                       folder                 │
+│                                                       [default: None]        │
+│ --output-dir                                 PATH     Base artifacts         │
+│                                                       directory (default:    │
+│                                                       artifacts/runs)        │
+│                                                       [default: None]        │
+│ --nvtx-label                                 TEXT     NVTX/record_function   │
+│                                                       label for correlation  │
+│                                                       [default:              │
+│                                                       aisp_torch_profile]    │
+│ --no-nvtx                                             Disable NVTX range     │
+│                                                       emission               │
+│ --force-lineinfo      --no-force-lineinfo             Force -lineinfo for    │
+│                                                       better source mapping  │
+│                                                       [default:              │
+│                                                       force-lineinfo]        │
+│ --timeout                                    INTEGER  Optional timeout in    │
+│                                                       seconds                │
+│                                                       [default: None]        │
+│ --arg             -a                         TEXT     Arguments forwarded to │
+│                                                       the script             │
+│ --help            -h                                  Show this message and  │
+│                                                       exit.                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

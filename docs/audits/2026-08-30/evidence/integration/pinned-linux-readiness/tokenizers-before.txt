@@ -1,0 +1,26 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_____________ test_cpu_ci_installs_direct_collection_dependencies ______________
+
+    def test_cpu_ci_installs_direct_collection_dependencies() -> None:
+        workflow = _load_workflow("benchmark-validation.yml")
+        install = next(step["run"] for step in workflow["jobs"]["validate"]["steps"]
+                       if step["name"] == "Install CPU test dependencies")
+        requirements = (CODE_ROOT / "requirements_latest.txt").read_text(encoding="utf-8")
+        # HTTP tests import requests; nanochat.engine imports tokenizers transitively
+        # through checkpoint_manager. Both imports happen during ordinary collection.
+        for package in ("requests", "tokenizers"):
+            pins = [line.split("#", 1)[0].strip() for line in requirements.splitlines()
+                    if line.strip().startswith(f"{package}==")]
+            assert len(pins) == 1, f"The full CPU suite directly imports {package}"
+>           assert pins[0] in install.split(), f"Clean CPU CI must install {pins[0]} before collection"
+E           AssertionError: Clean CPU CI must install tokenizers==0.22.2 before collection
+E           assert 'tokenizers==0.22.2' in ['python', '-m', 'pip', 'install', '--upgrade', 'pip', ...]
+E            +  where ['python', '-m', 'pip', 'install', '--upgrade', 'pip', ...] = <built-in method split of str object at 0x12c236140>()
+E            +    where <built-in method split of str object at 0x12c236140> = 'python -m pip install --upgrade pip\npython -m pip install \\\n  pytest==8.3.4 \\\n  pytest-cov==7.1.0 \\\n  coverage...nai==2.44.0 \\\n  triton==3.5.1\npython -m pip install torch==2.9.1 --index-url https://download.pytorch.org/whl/cpu\n'.split
+
+tests/test_repository_configuration.py:504: AssertionError
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/tokenizers-before.xml -
+=========================== short test summary info ============================
+FAILED tests/test_repository_configuration.py::test_cpu_ci_installs_direct_collection_dependencies
+1 failed in 0.12s

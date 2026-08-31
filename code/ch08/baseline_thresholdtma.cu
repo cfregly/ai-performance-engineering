@@ -71,12 +71,12 @@ int main() {
     cudaDeviceSynchronize();
 
     const int iterations = 50;
-    cudaEventRecord(start);
+    cudaEventRecord(start, stream);
     for (int i = 0; i < iterations; ++i) {
         NVTX_RANGE("iteration");
         launch_threshold_naive(d_input, d_output, threshold, count, stream);
     }
-    cudaEventRecord(stop);
+    cudaEventRecord(stop, stream);
     cudaEventSynchronize(stop);
 
     float total_ms = 0.0f;

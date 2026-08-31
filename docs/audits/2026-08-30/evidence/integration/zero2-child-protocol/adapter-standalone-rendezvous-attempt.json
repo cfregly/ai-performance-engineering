@@ -1,0 +1,12 @@
+{
+  "child_process_observed": false,
+  "diagnostic": "The launcher stalled before spawning a child on this host. The next attempt used the established static-loopback rendezvous.",
+  "launcher": "torch.distributed.run --standalone",
+  "mode": "baseline",
+  "result_artifact_count": 0,
+  "schema_version": 1,
+  "status": "FAIL_RENDEZVOUS_TIMEOUT",
+  "timeout_seconds": 120,
+  "variant": "single",
+  "world_size": 1
+}

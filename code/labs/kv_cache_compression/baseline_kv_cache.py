@@ -1,4 +1,4 @@
-"""Baseline KV-cache benchmark using MXFP8 block scaling."""
+"""Per-tensor delayed-scaling FP8 compute with BF16 KV-cache storage."""
 
 from __future__ import annotations
 
@@ -12,6 +12,9 @@ import torch.nn as nn
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.env import apply_env_defaults
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from labs.kv_cache_compression.accuracy import (
+    assert_cache_accuracy, cache_accuracy, load_accuracy_limits, reference_cache,
+)
 from labs.kv_cache_compression.kv_cache_common import (
     KVCache,
     KVCacheAttention,
@@ -59,7 +62,7 @@ except Exception as exc:  # pragma: no cover
 
 
 class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """MXFP8 KV-cache benchmark (prefill + decode)."""
+    """FP8 compute benchmark (prefill + decode); the cache itself remains BF16."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -89,6 +92,9 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._batch_size_tensor: Optional[torch.Tensor] = None
         self._seq_meta_tensor: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._accuracy_variant = "fp8"
+        self._accuracy_limits = None
+        self._accuracy_metrics: dict[str, float] = {}
 
     def _resolve_device(self) -> torch.device:
         return resolve_device()
@@ -96,13 +102,17 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         self._setup_with_recipe(self.fp8_recipe)
 
-    def _setup_with_recipe(self, recipe) -> None:
+    def _setup_with_recipe(self, recipe, *, require_accuracy_policy: bool = True) -> None:
         if not TE_AVAILABLE or recipe is None:
             raise RuntimeError(f"SKIPPED: Transformer Engine not available: {TE_IMPORT_ERROR}")
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
-        with quantized_model_init(enabled=True, recipe=recipe):
+        self._accuracy_limits = (load_accuracy_limits(self._accuracy_variant)
+                                 if require_accuracy_policy else None)
+        self.device = self._resolve_device()
+        # Preserve common BF16 weights for an independent unquantized reference.
+        # TE autocast still selects FP8/NVFP4 GEMMs during the benchmark.
+        # The harness owns RNG seeding; do not reset it inside setup().
+        with quantized_model_init(enabled=False):
             self.model = KVCacheAttention(
                 hidden_dim=self.hidden_dim,
                 num_heads=self.num_heads,
@@ -149,16 +159,9 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._seq_meta_tensor[0] = self.prefill_seq
         self._seq_meta_tensor[1] = self.decode_seq
         self._seq_meta_tensor[2] = self.decode_steps
-        self._verify_output_buffer = torch.empty(
-            2,
-            self.batch_size,
-            1,
-            1,
-            min(8, self.hidden_dim // self.num_heads),
-            device=self.device,
-            dtype=torch.float32,
-        )
-        self._calibrate_fp8(recipe)
+        self._verify_output_buffer = None  # Full snapshot is allocated outside timing.
+        if recipe.delayed():
+            self._calibrate_fp8(recipe)
         self._warmup_runtime(recipe)
         self._cache_output_ready = False
         torch.cuda.synchronize()
@@ -203,26 +206,22 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Benchmark cache not initialized")
         self._cache_output_ready = True
 
+    def measure_accuracy(self) -> dict[str, float]:
+        if self.cache is None or self.model is None or not self._cache_output_ready:
+            raise RuntimeError("benchmark_fn() must run before accuracy measurement")
+        reference = reference_cache(self.model, self._prefill_groups + self._decode_groups, self.cache)
+        if self._accuracy_limits is None:
+            return cache_accuracy(self.cache, reference)
+        return assert_cache_accuracy(self.cache, reference, self._accuracy_limits)
+
     def _build_verification_output(self) -> torch.Tensor:
         if self.cache is None or not self._cache_output_ready:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        if self._verify_output_buffer is None:
-            raise RuntimeError("setup() must initialize verification output buffer")
-        k_slice = self.cache.cache_k[
-            :,
-            : min(1, self.cache.cache_k.shape[1]),
-            :1,
-            : min(8, self.cache.cache_k.shape[-1]),
-        ]
-        v_slice = self.cache.cache_v[
-            :,
-            : min(1, self.cache.cache_v.shape[1]),
-            :1,
-            : min(8, self.cache.cache_v.shape[-1]),
-        ]
-        self._verify_output_buffer[0].copy_(k_slice)
-        self._verify_output_buffer[1].copy_(v_slice)
-        return self._verify_output_buffer
+        if self._accuracy_limits is None:
+            raise RuntimeError("Uncalibrated KV run cannot produce an accepted verification payload")
+        self._accuracy_metrics = self.measure_accuracy()
+        # Snapshot all tokens, heads and channels; no one-token/eight-value probe.
+        return torch.cat((self.cache.cache_k.reshape(-1), self.cache.cache_v.reshape(-1)))
 
     def capture_verification_payload(self) -> None:
         self.output = self._build_verification_output()
@@ -232,6 +231,12 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={
                 "batch_size": self._batch_size_tensor,
                 "seq_meta": self._seq_meta_tensor,
+                **{f"prefill_{i}": value for i, value in enumerate(self.prefill_inputs)},
+                "decode": self.decode_inputs[0],
+                "qkv_weight": self.model.qkv.weight.detach(),
+                "qkv_bias": self.model.qkv.bias.detach(),
+                "ln_weight": self.model.ln.weight.detach(),
+                "ln_bias": self.model.ln.bias.detach(),
             },
             output=self.output,
             batch_size=self.batch_size,
@@ -241,7 +246,7 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "bf16": self.tensor_dtype == torch.bfloat16,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
-            output_tolerance=(1.0, 10.0),
+            output_tolerance=(self._accuracy_limits.pairwise_rtol, self._accuracy_limits.pairwise_atol),
         )
 
     def teardown(self) -> None:
@@ -256,6 +261,7 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._seq_meta_tensor = None
         self._verify_output_buffer = None
         self._cache_output_ready = False
+        self._accuracy_metrics = {}
         torch.cuda.empty_cache()
 
     def validate_result(self) -> Optional[str]:
@@ -263,6 +269,12 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             return "Cache not initialized"
         if not cache_is_finite(self.cache):
             return "Non-finite entries detected in KV cache"
+        if self._accuracy_limits is None:
+            return "Uncalibrated KV accuracy policy; runtime acceptance is pending"
+        try:
+            self._accuracy_metrics = self.measure_accuracy()
+        except (AssertionError, RuntimeError) as exc:
+            return str(exc)
         return None
 
     def get_config(self) -> BenchmarkConfig:
@@ -272,15 +284,24 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def get_custom_metrics(self) -> Optional[dict]:
         """Return inference metrics."""
         total_tokens = self.prefill_seq + self.decode_seq * self.decode_steps
+        if self.cache is None:
+            raise RuntimeError("Cache storage metrics require setup()")
+        tensors = (self.cache.cache_k, self.cache.cache_v)
+        storage_bytes = sum(t.numel() * t.element_size() for t in tensors)
+        bf16_bytes = sum(t.numel() * 2 for t in tensors)
         return {
+            "kv_cache.storage_bytes": float(storage_bytes),
+            "kv_cache.storage_bits_per_element": float(8 * storage_bytes / sum(t.numel() for t in tensors)),
+            "kv_cache.compression_ratio": float(bf16_bytes / storage_bytes),
+            **{f"kv_cache.accuracy.{k}": v for k, v in self._accuracy_metrics.items()},
             "kv_cache.batch_size": float(self.batch_size),
             "kv_cache.seq_len": float(total_tokens),
             "kv_cache.hidden_dim": float(self.hidden_dim),
         }
 
     def get_optimization_goal(self) -> str:
-        """Memory optimization - lower memory usage is better."""
-        return "memory"
+        """Compare projection-compute latency; both caches occupy the same bytes."""
+        return "speed"
 
 
 def get_benchmark() -> BaseBenchmark:

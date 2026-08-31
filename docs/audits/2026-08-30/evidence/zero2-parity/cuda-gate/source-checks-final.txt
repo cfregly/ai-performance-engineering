@@ -1,0 +1,2 @@
+ast.parse: PASS
+git diff --check: PASS (exit 0)

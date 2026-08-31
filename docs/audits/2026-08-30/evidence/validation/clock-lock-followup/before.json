@@ -1,0 +1,23 @@
+{
+  "source_path": "code/tests/test_anti_cheat_protections.py",
+  "source_sha256": "b03c60bd445a7cba7db4dca4573fb8288c7f5db47c3bbd09776626709b4b0456",
+  "scope": "Exact original AST exception-handler execution only; no CUDA capability or successful lock is simulated. Not GPU evidence.",
+  "method_source": "def test_frequency_boost_clock_locking(self):\n        \"\"\"Test that GPU clocks can be locked.\n\n        Protection: lock_gpu_clocks()\n        Attack: Overclocked for benchmark only\n        \"\"\"\n        from core.harness.benchmark_harness import lock_gpu_clocks\n\n        # Clock locking should be available as context manager\n        # (May not work without root, but should not crash)\n        try:\n            with lock_gpu_clocks():\n                x = torch.randn(100, device=\"cuda\")\n        except (RuntimeError, PermissionError) as exc:\n            message = str(exc).lower()\n            assert (\n                \"permission\" in message\n                or \"insufficient permissions\" in message\n                or \"failed to lock gpu clocks\" in message\n                or \"clock lock failed\" in message\n                or \"nvidia-smi\" in message\n            ), f\"Unexpected lock_gpu_clocks failure: {exc}\"",
+  "cases": [
+    {
+      "exception_type": "PermissionError",
+      "message": "Insufficient permissions",
+      "outcome": "handler completes: original test would PASS after failed lock"
+    },
+    {
+      "exception_type": "RuntimeError",
+      "message": "GPU clock lock failed without a captured verification error",
+      "outcome": "handler completes: original test would PASS after failed lock"
+    },
+    {
+      "exception_type": "RuntimeError",
+      "message": "Failed to lock GPU clocks: nvidia-smi failed",
+      "outcome": "handler completes: original test would PASS after failed lock"
+    }
+  ]
+}

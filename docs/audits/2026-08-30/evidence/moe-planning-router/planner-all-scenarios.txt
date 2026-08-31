@@ -1,0 +1,348 @@
+
+=== memory_budget ===
+Cluster: DGX A100 (16 nodes, dual HDR100) (128 GPUs)
+Model assumptions: 175B MoE Transformer
+Planning estimates only; these are not measured performance results.
+Plan: Baseline memory budget (overcommitted HBM)
+  Parallelism (DP×PP×TP×EP): 4×4×1×8 = 128 GPUs (OK)
+  Nodes/stage: 1.0 | GPUs/stage: 8.0
+  Stage layers: [24, 24, 24, 24] (dense [18, 18, 18, 18], MoE [6, 6, 6, 6])
+  Pipeline bubble: 0.11
+  Step time breakdown (ms) -> compute 393.2, DP 3500.0, pipeline 9277.1, EP 225.5, total 13395.8
+  Throughput: 939,316 tokens/s
+  Memory (GB) -> params 10.2, optimizer 25.5, grads 10.2, activations 24.2; margin 9.9
+  Tokens/gpu 16,384, per-expert 8,192 (capacity 8,602)
+  Hotspots:
+    - DP gradient all-reduce dominates step time
+    - Estimated pipeline transfer time is high on InfiniBand (2 x 100 Gb/s per node)
+  Affinity:
+    - Nodes per replica: 4.0, nodes per stage: 1.0
+    - Per-stage TP×EP grid: 1×8 -> 8 GPUs (available 8.0)
+    - EP communication: within-node NVLink (0.6 TB/s configured)
+  Notes:
+    - Full hidden state per GPU plus 64-seq micro-batch blows past 80 GB
+    - No activation checkpointing, so dense blocks stash every tensor
+    - 24 in-flight micro-batches also inflate optimizer/shard residency
+---
+Plan: Optimized memory budget (balanced activations)
+  Parallelism (DP×PP×TP×EP): 4×4×2×4 = 128 GPUs (OK)
+  Nodes/stage: 1.0 | GPUs/stage: 8.0
+  Stage layers: [24, 24, 24, 24] (dense [18, 18, 18, 18], MoE [6, 6, 6, 6])
+  Pipeline bubble: 0.16
+  Step time breakdown (ms) -> compute 196.6, DP 3500.0, pipeline 3092.4, EP 32.2, total 6821.2
+  Throughput: 614,893 tokens/s
+  Memory (GB) -> params 10.2, optimizer 25.5, grads 10.2, activations 10.2; margin 23.9
+  Tokens/gpu 16,384, per-expert 8,192 (capacity 9,216)
+  Hotspots:
+    - DP gradient all-reduce dominates step time
+    - Estimated pipeline transfer time is high on InfiniBand (2 x 100 Gb/s per node)
+  Affinity:
+    - Nodes per replica: 4.0, nodes per stage: 1.0
+    - Per-stage TP×EP grid: 2×4 -> 8 GPUs (available 8.0)
+    - EP communication: within-node NVLink (0.6 TB/s configured)
+  Notes:
+    - Tensor parallelism halves the hidden slice per GPU, freeing activation headroom
+    - Checkpoint every other dense block + 85% of MoE blocks to keep margin ≥15 GB
+    - Micro-batch capped at 32 sequences so we can still hold 16 chunks in flight
+
+Modeled comparison: step-time ratio=1.96x  throughput ratio=0.65x
+
+=== moe_grouping ===
+Cluster: DGX A100 (16 nodes, dual HDR100) (128 GPUs)
+Model assumptions: 175B MoE Transformer
+Planning estimates only; these are not measured performance results.
+Plan: Baseline expert grouping (cross-node EP=8)
+  Parallelism (DP×PP×TP×EP): 2×4×2×8 = 128 GPUs (OK)
+  Nodes/stage: 2.0 | GPUs/stage: 16.0
+  Stage layers: [24, 24, 24, 24] (dense [18, 18, 18, 18], MoE [6, 6, 6, 6])
+  Pipeline bubble: 0.20
+  Step time breakdown (ms) -> compute 73.7, DP 7000.0, pipeline 1739.5, EP 507.3, total 9320.5
+  Throughput: 126,564 tokens/s
+  Memory (GB) -> params 5.1, optimizer 12.7, grads 5.1, activations 7.2; margin 49.9
+  Tokens/gpu 6,144, per-expert 6,144 (capacity 5,837)
+  Hotspots:
+    - Expert groups span nodes, requiring all-to-all traffic over InfiniBand (2 x 100 Gb/s per node)
+    - Expert load ratio 1.05 exceeds capacity
+    - DP gradient all-reduce dominates step time
+    - Estimated pipeline transfer time is high on InfiniBand (2 x 100 Gb/s per node)
+  Affinity:
+    - Nodes per replica: 8.0, nodes per stage: 2.0
+    - Per-stage TP×EP grid: 2×8 -> 16 GPUs (available 16.0)
+    - EP communication: cross-node over InfiniBand (2 x 100 Gb/s per node)
+  Notes:
+    - Each pipeline stage spans two nodes so EP groups straddle HDR100 links
+    - Capacity factor 1.0 gives no safety margin for hot experts, so drops spike
+    - Per-GPU tokens stay high because micro-batch partitioning ignores EP fan-out
+---
+Plan: Optimized expert grouping (EP kept on-node)
+  Parallelism (DP×PP×TP×EP): 4×4×2×4 = 128 GPUs (OK)
+  Nodes/stage: 1.0 | GPUs/stage: 8.0
+  Stage layers: [24, 24, 24, 24] (dense [18, 18, 18, 18], MoE [6, 6, 6, 6])
+  Pipeline bubble: 0.14
+  Step time breakdown (ms) -> compute 196.6, DP 3500.0, pipeline 3478.9, EP 36.2, total 7211.8
+  Throughput: 654,290 tokens/s
+  Memory (GB) -> params 10.2, optimizer 25.5, grads 10.2, activations 10.8; margin 23.4
+  Tokens/gpu 16,384, per-expert 8,192 (capacity 9,216)
+  Hotspots:
+    - DP gradient all-reduce dominates step time
+    - Estimated pipeline transfer time is high on InfiniBand (2 x 100 Gb/s per node)
+  Affinity:
+    - Nodes per replica: 4.0, nodes per stage: 1.0
+    - Per-stage TP×EP grid: 2×4 -> 8 GPUs (available 8.0)
+    - EP communication: within-node NVLink (0.6 TB/s configured)
+  Notes:
+    - EP groups fit inside a single node so MoE all-to-all stays on NVSwitch
+    - Each GPU hosts four experts (32 per stage) which aligns with the 128-expert target
+    - Router slack (capacity 1.25) + top-2 gating keeps load balance auxiliary loss effective
+
+Modeled comparison: step-time ratio=1.29x  throughput ratio=5.17x
+
+=== network_affinity ===
+Cluster: DGX A100 (16 nodes, dual HDR100) (128 GPUs)
+Model assumptions: 175B MoE Transformer
+Planning estimates only; these are not measured performance results.
+Plan: Baseline network affinity (DP-dominated)
+  Parallelism (DP×PP×TP×EP): 8×2×1×8 = 128 GPUs (OK)
+  Nodes/stage: 1.0 | GPUs/stage: 8.0
+  Stage layers: [48, 48] (dense [36, 36], MoE [12, 12])
+  Pipeline bubble: 0.09
+  Step time breakdown (ms) -> compute 98.3, DP 1750.0, pipeline 322.1, EP 23.5, total 2193.9
+  Throughput: 1,194,869 tokens/s
+  Memory (GB) -> params 20.4, optimizer 50.9, grads 20.4, activations 12.4; margin -24.1
+  Tokens/gpu 4,096, per-expert 2,048 (capacity 2,150)
+  Hotspots:
+    - Memory overcommitted by 24.1 GB (activation tuning needed)
+    - DP gradient all-reduce dominates step time
+    - Estimated pipeline transfer time is high on InfiniBand (2 x 100 Gb/s per node)
+  Affinity:
+    - Nodes per replica: 2.0, nodes per stage: 1.0
+    - Per-stage TP×EP grid: 1×8 -> 8 GPUs (available 8.0)
+    - EP communication: within-node NVLink (0.6 TB/s configured)
+  Notes:
+    - Eight DP replicas cause full-parameter all-reduce over HDR100 every step
+    - Only two pipeline stages so activation transfers are massive and cross-node
+    - No affinity guidance for NIC binding or NVSwitch locality
+    - Tight HBM headroom; consider more checkpointing or smaller micro-batch
+    - Pipeline filled with ≥2× stages worth of micro-batches
+---
+Plan: Optimized network affinity (hierarchical collectives)
+  Parallelism (DP×PP×TP×EP): 4×4×2×4 = 128 GPUs (OK)
+  Nodes/stage: 1.0 | GPUs/stage: 8.0
+  Stage layers: [24, 24, 24, 24] (dense [18, 18, 18, 18], MoE [6, 6, 6, 6])
+  Pipeline bubble: 0.14
+  Step time breakdown (ms) -> compute 196.6, DP 3500.0, pipeline 3478.9, EP 36.2, total 7211.8
+  Throughput: 654,290 tokens/s
+  Memory (GB) -> params 10.2, optimizer 25.5, grads 10.2, activations 10.6; margin 23.6
+  Tokens/gpu 16,384, per-expert 8,192 (capacity 9,216)
+  Hotspots:
+    - DP gradient all-reduce dominates step time
+    - Estimated pipeline transfer time is high on InfiniBand (2 x 100 Gb/s per node)
+  Affinity:
+    - Nodes per replica: 4.0, nodes per stage: 1.0
+    - Per-stage TP×EP grid: 2×4 -> 8 GPUs (available 8.0)
+    - EP communication: within-node NVLink (0.6 TB/s configured)
+  Notes:
+    - DP=4 leaves each replica on four nodes so NCCL trees stay shallow
+    - Stage neighbors share InfiniBand pairs -> easy NIC pinning for pipeline sends
+    - EP dispatch + TP all-reduce never leave NVSwitch so HDR100 handles only DP/PP traffic
+
+Modeled comparison: step-time ratio=0.30x  throughput ratio=0.55x
+
+=== parallelism_breakdown ===
+Cluster: DGX A100 (16 nodes, dual HDR100) (128 GPUs)
+Model assumptions: 175B MoE Transformer
+Planning estimates only; these are not measured performance results.
+Plan: Baseline parallelism factorization (underspecified)
+  Parallelism (DP×PP×TP×EP): 2×16×1×2 = 64 GPUs (MISMATCH)
+  Nodes/stage: 0.5 | GPUs/stage: 4.0
+  Stage layers: [6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6] (dense [4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5], MoE [2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1])
+  Pipeline bubble: 0.65
+  Step time breakdown (ms) -> compute 393.2, DP 7000.0, pipeline 3865.5, EP 257.7, total 11516.4
+  Throughput: 45,525 tokens/s
+  Memory (GB) -> params 10.2, optimizer 25.5, grads 10.2, activations 9.2; margin 24.9
+  Tokens/gpu 16,384, per-expert 4,096 (capacity 4,096)
+  Hotspots:
+    - World size 64 does not match available GPUs 128
+    - Pipeline stage has <1 node; configuration invalid
+    - Stage GPU count 4.0 does not match TP×EP grid 2
+    - Pipeline bubble 0.65 wastes >20% of a pass
+    - Expert groups span nodes, requiring all-to-all traffic over InfiniBand (2 x 100 Gb/s per node)
+    - DP gradient all-reduce dominates step time
+    - Estimated pipeline transfer time is high on InfiniBand (2 x 100 Gb/s per node)
+  Affinity:
+    - Nodes per replica: 8.0, nodes per stage: 0.5
+    - Per-stage TP×EP grid: 1×2 -> 2 GPUs (available 4.0)
+    - EP communication: cross-node over InfiniBand (2 x 100 Gb/s per node)
+  Notes:
+    - Intentionally mismatched world size (only 64 ranks assigned to a 128 GPU cluster)
+    - Expert groups bleed across nodes so token exchanges pound HDR100 instead of NVSwitch
+    - TP degree of 1 leaves each GPU with the full hidden size, inflating activation memory
+---
+Plan: Optimized parallelism factorization (4×4×2×4)
+  Parallelism (DP×PP×TP×EP): 4×4×2×4 = 128 GPUs (OK)
+  Nodes/stage: 1.0 | GPUs/stage: 8.0
+  Stage layers: [24, 24, 24, 24] (dense [18, 18, 18, 18], MoE [6, 6, 6, 6])
+  Pipeline bubble: 0.16
+  Step time breakdown (ms) -> compute 196.6, DP 3500.0, pipeline 3092.4, EP 32.2, total 6821.2
+  Throughput: 614,893 tokens/s
+  Memory (GB) -> params 10.2, optimizer 25.5, grads 10.2, activations 10.8; margin 23.4
+  Tokens/gpu 16,384, per-expert 8,192 (capacity 9,216)
+  Hotspots:
+    - DP gradient all-reduce dominates step time
+    - Estimated pipeline transfer time is high on InfiniBand (2 x 100 Gb/s per node)
+  Affinity:
+    - Nodes per replica: 4.0, nodes per stage: 1.0
+    - Per-stage TP×EP grid: 2×4 -> 8 GPUs (available 8.0)
+    - EP communication: within-node NVLink (0.6 TB/s configured)
+  Notes:
+    - TP×EP grid (2×4) fits within a single DGX node so NVSwitch handles the heavy traffic
+    - 4 DP replicas fully tile the 16 nodes, keeping optimizer sharding localized
+    - Micro-batch of 32 sequences with 16 in-flight chunks fills the 4-stage pipeline
+
+Modeled comparison: step-time ratio=1.69x  throughput ratio=13.51x
+
+=== pipeline_schedule ===
+Cluster: DGX A100 (16 nodes, dual HDR100) (128 GPUs)
+Model assumptions: 175B MoE Transformer
+Planning estimates only; these are not measured performance results.
+Plan: Baseline pipeline schedule (64-stage mindset)
+  Parallelism (DP×PP×TP×EP): 4×8×1×4 = 128 GPUs (OK)
+  Nodes/stage: 0.5 | GPUs/stage: 4.0
+  Stage layers: [36, 12, 12, 12, 12, 6, 3, 3] (dense [33, 9, 9, 9, 9, 3, 0, 0], MoE [3, 3, 3, 3, 3, 3, 3, 3])
+  Pipeline bubble: 0.54
+  Step time breakdown (ms) -> compute 98.3, DP 3500.0, pipeline 676.5, EP 6.0, total 4280.8
+  Throughput: 91,856 tokens/s
+  Memory (GB) -> params 30.6, optimizer 76.4, grads 30.6, activations 11.0; margin -68.5
+  Tokens/gpu 4,096, per-expert 2,048 (capacity 2,048)
+  Hotspots:
+    - Pipeline stage has <1 node; configuration invalid
+    - Pipeline bubble 0.54 wastes >20% of a pass
+    - Memory overcommitted by 68.5 GB (activation tuning needed)
+    - DP gradient all-reduce dominates step time
+    - Estimated pipeline transfer time is high on InfiniBand (2 x 100 Gb/s per node)
+  Affinity:
+    - Nodes per replica: 4.0, nodes per stage: 0.5
+    - Per-stage TP×EP grid: 1×4 -> 4 GPUs (available 4.0)
+    - EP communication: within-node NVLink (0.6 TB/s configured)
+  Notes:
+    - 8 pipeline stages squeezed into 4 nodes -> half-node stages and tiny micro-batches
+    - Micro-batches (6) barely exceed the stage count (8), so pipeline bubbles dominate
+    - Stage splits ignore embedding/output heft, leaving stage0 as a straggler
+    - Tight HBM headroom; consider more checkpointing or smaller micro-batch
+---
+Plan: Optimized pipeline (4 stages / 20 micro-batches)
+  Parallelism (DP×PP×TP×EP): 4×4×2×4 = 128 GPUs (OK)
+  Nodes/stage: 1.0 | GPUs/stage: 8.0
+  Stage layers: [26, 22, 24, 24] (dense [20, 16, 18, 18], MoE [6, 6, 6, 6])
+  Pipeline bubble: 0.13
+  Step time breakdown (ms) -> compute 196.6, DP 3500.0, pipeline 3865.5, EP 40.3, total 7602.3
+  Throughput: 689,640 tokens/s
+  Memory (GB) -> params 11.0, optimizer 27.6, grads 11.0, activations 10.8; margin 19.6
+  Tokens/gpu 16,384, per-expert 8,192 (capacity 9,216)
+  Hotspots:
+    - DP gradient all-reduce dominates step time
+    - Estimated pipeline transfer time is high on InfiniBand (2 x 100 Gb/s per node)
+  Affinity:
+    - Nodes per replica: 4.0, nodes per stage: 1.0
+    - Per-stage TP×EP grid: 2×4 -> 8 GPUs (available 8.0)
+    - EP communication: within-node NVLink (0.6 TB/s configured)
+  Notes:
+    - Stage 0 soaks the embedding + first 24 blocks; remaining stages split evenly
+    - 20 micro-batches keep ≥2×PP chunks in flight so pipeline bubbles stay under 10%
+    - Checkpoint dense layers every other block to buy the micro-batch headroom
+
+Modeled comparison: step-time ratio=0.56x  throughput ratio=7.51x
+
+=== gpt_gb200 ===
+Cluster: GB200 NVL72 (8 racks, dual 800G CX8) (576 GPUs)
+Model assumptions: GPT-OSS-120B MoE
+Planning estimates only; these are not measured performance results.
+Plan: Baseline GPT-OSS-120B (DP9×PP8×TP2×EP4)
+  Parallelism (DP×PP×TP×EP): 9×8×2×4 = 576 GPUs (OK)
+  Nodes/stage: 1.0 | GPUs/stage: 8.0
+  Stage layers: [12, 12, 12, 12, 12, 12, 12, 12] (dense [8, 8, 8, 8, 8, 8, 8, 8], MoE [4, 4, 4, 4, 4, 4, 4, 4])
+  Pipeline bubble: 0.23
+  Step time breakdown (ms) -> compute 589.8, DP 133.3, pipeline 3382.3, EP 40.3, total 4145.7
+  Throughput: 10,243,682 tokens/s
+  Memory (GB) -> params 3.5, optimizer 8.7, grads 3.5, activations 13.6; margin 162.7
+  Tokens/gpu 49,152, per-expert 24,576 (capacity 27,034)
+  Hotspots:
+    - Pipeline bubble 0.23 wastes >20% of a pass
+    - Estimated pipeline transfer time is high on InfiniBand (2 x 800 Gb/s per node)
+  Affinity:
+    - Nodes per replica: 8.0, nodes per stage: 1.0
+    - Per-stage TP×EP grid: 2×4 -> 8 GPUs (available 8.0)
+    - EP communication: within-node NVLink (1.8 TB/s configured)
+  Notes:
+    - Matches the original GB200 NVL72 layout with PP=8 (bubble ~23%)
+    - Stage splits are even; no special handling for embedding/head
+---
+Plan: Optimized GPT-OSS-120B (DP8×PP6×TP3×EP4)
+  Parallelism (DP×PP×TP×EP): 8×6×3×4 = 576 GPUs (OK)
+  Nodes/stage: 1.5 | GPUs/stage: 12.0
+  Stage layers: [18, 16, 16, 16, 15, 15] (dense [12, 10, 11, 11, 10, 10], MoE [6, 6, 5, 5, 5, 5])
+  Pipeline bubble: 0.14
+  Step time breakdown (ms) -> compute 524.3, DP 150.0, pipeline 4295.0, EP 47.7, total 5017.0
+  Throughput: 13,376,354 tokens/s
+  Memory (GB) -> params 3.5, optimizer 8.7, grads 3.5, activations 15.4; margin 160.9
+  Tokens/gpu 65,536, per-expert 32,768 (capacity 36,045)
+  Hotspots:
+    - Estimated pipeline transfer time is high on InfiniBand (2 x 800 Gb/s per node)
+  Affinity:
+    - Nodes per replica: 9.0, nodes per stage: 1.5
+    - Per-stage TP×EP grid: 3×4 -> 12 GPUs (available 12.0)
+    - EP communication: within-node NVLink (1.8 TB/s configured)
+  Notes:
+    - PP reduced to 6 with deeper micro-batching (32) to cut bubble
+    - Stage0 takes extra layers for embeddings/head; later stages balanced
+    - TP raised to 3 to trim per-rank params/activations without leaving NVLink
+
+Modeled comparison: step-time ratio=0.83x  throughput ratio=1.31x
+
+=== deepseek_gb200 ===
+Cluster: GB200 NVL72 (8 racks, dual 800G CX8) (576 GPUs)
+Model assumptions: DeepSeek-R1-678B MoE
+Planning estimates only; these are not measured performance results.
+Plan: Baseline DeepSeek-R1-678B (DP9×PP8×TP2×EP4)
+  Parallelism (DP×PP×TP×EP): 9×8×2×4 = 576 GPUs (OK)
+  Nodes/stage: 1.0 | GPUs/stage: 8.0
+  Stage layers: [16, 16, 16, 16, 16, 16, 16, 16] (dense [10, 10, 10, 10, 10, 10, 10, 10], MoE [6, 6, 6, 6, 6, 6, 6, 6])
+  Pipeline bubble: 0.23
+  Step time breakdown (ms) -> compute 524.3, DP 753.3, pipeline 3156.8, EP 37.6, total 4472.0
+  Throughput: 6,330,843 tokens/s
+  Memory (GB) -> params 19.7, optimizer 49.3, grads 19.7, activations 15.5; margin 87.7
+  Tokens/gpu 32,768, per-expert 16,384 (capacity 18,022)
+  Hotspots:
+    - Pipeline bubble 0.23 wastes >20% of a pass
+    - DP gradient all-reduce dominates step time
+    - Estimated pipeline transfer time is high on InfiniBand (2 x 800 Gb/s per node)
+  Affinity:
+    - Nodes per replica: 8.0, nodes per stage: 1.0
+    - Per-stage TP×EP grid: 2×4 -> 8 GPUs (available 8.0)
+    - EP communication: within-node NVLink (1.8 TB/s configured)
+  Notes:
+    - Even 8-stage pipeline leaves ~23% bubble and high PP traffic
+    - Uses conservative micro-batch to respect 678B footprint
+---
+Plan: Optimized DeepSeek-R1-678B (DP8×PP6×TP3×EP4)
+  Parallelism (DP×PP×TP×EP): 8×6×3×4 = 576 GPUs (OK)
+  Nodes/stage: 1.5 | GPUs/stage: 12.0
+  Stage layers: [22, 21, 21, 21, 21, 22] (dense [14, 13, 13, 13, 13, 14], MoE [8, 8, 8, 8, 8, 8])
+  Pipeline bubble: 0.12
+  Step time breakdown (ms) -> compute 349.5, DP 847.5, pipeline 3382.3, EP 37.6, total 4616.9
+  Throughput: 8,176,221 tokens/s
+  Memory (GB) -> params 18.1, optimizer 45.2, grads 18.1, activations 14.4; margin 96.2
+  Tokens/gpu 32,768, per-expert 16,384 (capacity 18,022)
+  Hotspots:
+    - DP gradient all-reduce dominates step time
+    - Estimated pipeline transfer time is high on InfiniBand (2 x 800 Gb/s per node)
+  Affinity:
+    - Nodes per replica: 9.0, nodes per stage: 1.5
+    - Per-stage TP×EP grid: 3×4 -> 12 GPUs (available 12.0)
+    - EP communication: within-node NVLink (1.8 TB/s configured)
+  Notes:
+    - PP=6 with 36 micro-batches reduces bubble vs the 8-stage baseline
+    - TP=3 lowers per-rank params/activations to ease HBM pressure
+    - Stages rebalanced to keep early/late blocks heavier for embeds/head
+
+Modeled comparison: step-time ratio=0.97x  throughput ratio=1.29x

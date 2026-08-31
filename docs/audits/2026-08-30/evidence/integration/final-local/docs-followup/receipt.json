@@ -1,0 +1,36 @@
+{
+  "status": "PASS_SOURCE_AND_DOCUMENTATION",
+  "source_files": {
+    "code/core/scripts/refresh_readmes.py": "d42b205c1d5d060a223be56e5769f102ef9fb15c89bbc3a61fb2972ff7c48fc7",
+    "code/README.md": "14fb4c3b7d0d5e814c3f89336a11b2dc037920b5cb4cb0dadae217316959985f",
+    "code/tests/test_benchmark_pair_intent_docs.py": "ee9676eb97716661a20a482364cbe77ba76cf08a0c1ce366407207d2fd2404e9"
+  },
+  "changes": [
+    "Historical fallback no longer claims missing artifact preserved; checks actual local availability and declares unverified lineage/measurements",
+    "Existing FSDP documentation test ID now enforces actual child-training verification unavailability; historical comparison labels cannot certify execution"
+  ],
+  "test_result": {
+    "passed": 36,
+    "failed": 0,
+    "skipped": 0,
+    "seconds": 1.81,
+    "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_refresh_readmes.py tests/test_benchmark_pair_intent_docs.py -q -p no:cacheprovider",
+    "log": "tests.txt",
+    "junit": "tests.xml"
+  },
+  "review": {
+    "reviewer": "audit_wave1_plan_b",
+    "finding": "FINAL-B-001",
+    "disposition": "Corrected and independently reviewed; no remaining actionable issue in bounded correction",
+    "limits": "Not a new GPU run, historical lineage recovery, whole-repo audit or acceptance of old measurements"
+  },
+  "artifacts": {
+    "before.json": "e814f070c8804851c557fd2edb1930e55c927b87522f33597f1c41c4a74aa5bc",
+    "code--tests--test_benchmark_pair_intent_docs.py.txt": "8ab3304ea80a195e6e514fbcec322c1ab6d3b8e3e160364514169a2c281f1d5b",
+    "tests.txt": "7c39003dc7d7c56de049a10f11251a2e6796bda12f886776ee8e4b0f3a4b3b8e",
+    "code--core--scripts--refresh_readmes.py.txt": "e7d508a8fda4a1b87aef33d2135c67766753bb19fc22673817d4a215fba823da",
+    "full-cpu-source-stability.json": "d8a578829c1455a0c16c92b0523fb1a60e848e96737f80438912467ae566df41",
+    "tests.xml": "9692a9f712967d6dda2b909f0bc48b4c765cf1e44b010c741978d4d88456e983",
+    "code--README.md.txt": "bc777fd1bb198c1096b844473d10cf410fc05406419ca1274305f0d824f1b6a4"
+  }
+}

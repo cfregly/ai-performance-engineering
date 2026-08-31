@@ -1,0 +1,1 @@
+HOLD: actual CUDA GPU required; no FP8 numerical evidence collected

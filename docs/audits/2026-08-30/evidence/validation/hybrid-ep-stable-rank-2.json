@@ -1,0 +1,15 @@
+{
+  "rank": 2,
+  "backend": "gloo",
+  "cuda_used": false,
+  "checks": [
+    "ordered_node_groups",
+    "replica_broadcast_preserves_expert_shards",
+    "replica_gradients_and_optimizer_step",
+    "remote_single_forward_backward",
+    "same_node_single_forward_backward",
+    "all_empty_single_forward_backward",
+    "balanced_world_list_forward_backward"
+  ],
+  "status": "PASS"
+}

@@ -1,0 +1,11 @@
+{
+  "command": [
+    "/usr/bin/c++",
+    "-E",
+    "-x",
+    "c++",
+    "/Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/experimental/tcgen05_multicast.cu"
+  ],
+  "exit_code": 1,
+  "expected": "nonzero with explicit retirement error"
+}

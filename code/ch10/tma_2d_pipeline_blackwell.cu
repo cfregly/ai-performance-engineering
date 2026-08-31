@@ -8,7 +8,7 @@
  * with TMA transfers using CUDA C++17 primitives.
  *
  * Key features demonstrated:
- *  - CU_TENSOR_MAP_SWIZZLE_128B for HBM3e alignment on Blackwell B200/B300
+ *  - Row-major descriptors with swizzle and L2 promotion disabled
  *  - cuda::device::experimental::cp_async_bulk_tensor_2d_* helpers
  *  - cuda::barrier based staging for multi-buffer pipelines
  *
@@ -165,8 +165,8 @@ __global__ void tma_2d_pipeline_kernel(
             cde::cp_async_bulk_tensor_2d_global_to_shared(
                 &stage_buffers[stage],
                 &in_desc,
-                row_base,
                 g_col0,
+                row_base,
                 bar);
             stage_tokens[stage] = cuda::device::barrier_arrive_tx(bar, 1, BYTES_PER_CHUNK);
         } else {
@@ -203,8 +203,8 @@ __global__ void tma_2d_pipeline_kernel(
             if (threadIdx.x == 0 && threadIdx.y == 0) {
                 cde::cp_async_bulk_tensor_2d_shared_to_global(
                     &out_desc,
-                    row_base,
                     g_col0,
+                    row_base,
                     &stage_buffers[stage]);
                 cde::cp_async_bulk_commit_group();
                 cde::cp_async_bulk_wait_group_read<0>();
@@ -512,7 +512,7 @@ int main(int argc, char** argv) {
         std::printf("✓ Bulk TMA transfers via cp.async.bulk.tensor.2d (%d-row chunk, %d-column tile)\n",
                     selected.chunk_m,
                     selected.tile_n);
-        std::printf("✓ Descriptor-backed TMA transfers with L2 promotion enabled\n");
+        std::printf("✓ Descriptor-backed TMA transfers (swizzle=none, L2 promotion=none)\n");
         std::printf("✓ cuda::barrier orchestrates staging and overlap between compute and TMA IO\n");
     } else {
         std::printf("✓ Baseline pipeline executed with cooperative loads (no TMA descriptors used)\n");

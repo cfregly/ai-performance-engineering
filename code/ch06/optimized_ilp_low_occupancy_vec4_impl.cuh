@@ -180,24 +180,26 @@ inline int run_ilp_low_occupancy_vec4(const char* title, int max_active_blocks_o
 
     bool indep_correct = true;
     bool unrolled_correct = true;
-    for (int i = 0; i < N && i < 1000; ++i) {
-        float expected_indep = h_input[i] * 7.0f - 4.0f;
-        if (fabsf(h_output_indep[i] - expected_indep) > 1e-5f) {
+    for (int i = 0; i < N; ++i) {
+        const float expected_indep = h_input[i] * 7.0f - 4.0f;
+        if (!std::isfinite(h_output_indep[i]) ||
+            fabsf(h_output_indep[i] - expected_indep) > 1e-5f * std::max(1.0f, fabsf(expected_indep))) {
             indep_correct = false;
-            break;
         }
-        if (i < N - 3) {
-            float expected_unrolled = 0.0f;
-            switch (i % 4) {
-                case 0: expected_unrolled = h_input[i] * 2.0f + 1.0f; break;
-                case 1: expected_unrolled = h_input[i] * 3.0f - 5.0f; break;
-                case 2: expected_unrolled = h_input[i] * 4.0f + 2.0f; break;
-                case 3: expected_unrolled = h_input[i] * 5.0f - 3.0f; break;
-            }
-            if (fabsf(h_output_unrolled[i] - expected_unrolled) > 1e-5f) {
-                unrolled_correct = false;
-                break;
-            }
+        float expected_unrolled = 0.0f;
+        switch (i % 8) {
+            case 0: expected_unrolled = h_input[i] * 2.0f + 1.0f; break;
+            case 1: expected_unrolled = h_input[i] * 3.0f - 5.0f; break;
+            case 2: expected_unrolled = h_input[i] * 4.0f + 2.0f; break;
+            case 3: expected_unrolled = h_input[i] * 5.0f - 3.0f; break;
+            case 4: expected_unrolled = h_input[i] * 2.5f + 0.5f; break;
+            case 5: expected_unrolled = h_input[i] * 3.5f - 2.0f; break;
+            case 6: expected_unrolled = h_input[i] * 4.5f + 1.5f; break;
+            case 7: expected_unrolled = h_input[i] * 5.5f - 4.0f; break;
+        }
+        if (!std::isfinite(h_output_unrolled[i]) ||
+            fabsf(h_output_unrolled[i] - expected_unrolled) > 1e-5f * std::max(1.0f, fabsf(expected_unrolled))) {
+            unrolled_correct = false;
         }
     }
 
@@ -206,7 +208,7 @@ inline int run_ilp_low_occupancy_vec4(const char* title, int max_active_blocks_o
     printf("  Independent:     %s\n", indep_correct ? "✓ Correct" : "✗ Incorrect");
     printf("  Vectorized ILP:  %s\n", unrolled_correct ? "✓ Correct" : "✗ Incorrect");
     if (indep_time > 0 && unrolled_time > 0) {
-        printf("  Speedup:         %.2fx (vectorized vs scalar)\n", indep_time / unrolled_time);
+        printf("  Time ratio:      %.2fx (different arithmetic workloads, not a speedup comparison)\n", indep_time / unrolled_time);
     }
     printf("\nKey insight: Float8 (256-bit) vectorization + 8-way ILP maximize memory bandwidth.\n");
     printf("========================================\n");

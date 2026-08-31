@@ -34,6 +34,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.append(str(REPO_ROOT))
 
 from core.utils.compile_utils import enable_tf32
+from core.benchmark.metrics import compute_copy_bandwidth_metrics, hardware_specs_for_device
 from core.harness.serving_stack import (
     configure_serving_stack_runtime_env,
     preload_serving_stack_shared_libs,
@@ -57,87 +58,72 @@ with suppress_benchmark_import_warnings(context="benchmark_peak TF32 setup"):
         if hasattr(torch, 'set_float32_matmul_precision'):
             torch.set_float32_matmul_precision("high")
 
-# FAIL FAST: Transformer Engine is REQUIRED
-try:
-    with suppress_benchmark_import_warnings(context="benchmark_peak transformer_engine import"):
-        import transformer_engine.pytorch as te
-        import transformer_engine.pytorch.constants as te_constants
-except (ImportError, OSError) as e:
-    lib_dirs_hint = ", ".join(_SERVING_STACK_LIB_DIRS) if _SERVING_STACK_LIB_DIRS else "none discovered"
-    preloaded_hint = ", ".join(sorted(_SERVING_STACK_PRELOADED_LIBS)) if _SERVING_STACK_PRELOADED_LIBS else "none"
-    raise RuntimeError(
-        "Transformer Engine is REQUIRED but failed to import.\n"
-        f"Error: {e}\n"
-        f"Serving-stack CUDA library dirs: {lib_dirs_hint}\n"
-        f"Preloaded CUDA shared libs: {preloaded_hint}\n"
-        "Ensure the serving-stack CUDA wheel libraries are installed and visible."
-    ) from e
+TE_AVAILABLE = False
+FP8_AVAILABLE = False
+FP4_AVAILABLE = False
+FP6_AVAILABLE = False
+te = None
+te_recipe = None
 
-TE_AVAILABLE = True
-FP8_AVAILABLE = hasattr(te, 'fp8_autocast')
-FP4_AVAILABLE = hasattr(te_constants, 'NVFP4_BLOCK_SCALING_SIZE')
-FP6_AVAILABLE = hasattr(te_constants, 'NVFP6_BLOCK_SCALING_SIZE')
 
-if not FP8_AVAILABLE:
-    raise RuntimeError("Transformer Engine FP8 support is REQUIRED but not available")
+def _load_transformer_engine() -> None:
+    """Load the required execution dependency, without blocking CPU arithmetic imports.
+
+    Availability describes exported APIs, not successful recipe/kernel execution.
+    Missing dependencies still fail explicitly before a low-precision measurement.
+    """
+    global te, te_recipe, TE_AVAILABLE, FP8_AVAILABLE, FP4_AVAILABLE, FP6_AVAILABLE
+    if TE_AVAILABLE:
+        return
+    try:
+        with suppress_benchmark_import_warnings(context="benchmark_peak transformer_engine import"):
+            import transformer_engine.pytorch as imported_te
+            import transformer_engine.common.recipe as imported_recipe
+    except (ImportError, OSError) as exc:
+        raise RuntimeError(
+            "Transformer Engine is REQUIRED but failed to import. "
+            f"Serving-stack CUDA library dirs: {_SERVING_STACK_LIB_DIRS}. Error: {exc}"
+        ) from exc
+    if not callable(getattr(imported_te, "autocast", None)) and not callable(
+        getattr(imported_te, "fp8_autocast", None)
+    ):
+        raise RuntimeError("Transformer Engine low-precision autocast is REQUIRED but unavailable")
+    te, te_recipe = imported_te, imported_recipe
+    FP8_AVAILABLE = callable(getattr(te_recipe, "DelayedScaling", None))
+    FP4_AVAILABLE = callable(getattr(te_recipe, "NVFP4BlockScaling", None))
+    FP6_AVAILABLE = callable(getattr(te_recipe, "NVFP6BlockScaling", None))
+    if not FP8_AVAILABLE:
+        raise RuntimeError("Transformer Engine FP8 recipe support is REQUIRED but unavailable")
+    TE_AVAILABLE = True
+
+
+def _make_low_precision_recipe(precision: str):
+    _load_transformer_engine()
+    recipe_name = {"fp4": "NVFP4BlockScaling", "fp6": "NVFP6BlockScaling", "fp8": "DelayedScaling"}[precision]
+    factory = getattr(te_recipe, recipe_name, None)
+    if not callable(factory):
+        raise RuntimeError(f"Transformer Engine {precision.upper()} requires {recipe_name}, which is unavailable")
+    # NVFP4BlockScaling is itself the recipe, not a DelayedScaling keyword.
+    return factory()
+
+
+def _low_precision_autocast(recipe):
+    _load_transformer_engine()
+    if callable(getattr(te, "autocast", None)):
+        return te.autocast(enabled=True, recipe=recipe)
+    return te.fp8_autocast(enabled=True, fp8_recipe=recipe)
 
 
 def maybe_force_triton_arch() -> None:
-    """Force Triton to use a base arch when ptxas doesn't know micro-arch suffixes."""
-    if os.environ.get("TRITON_CODEGEN_ARCH"):
-        return
+    """Compatibility entrypoint: never retarget a device or rewrite generated PTX.
 
-    if not torch.cuda.is_available():
-        return
-
-    major, minor = torch.cuda.get_device_capability()
-    # Older/newer ptxas builds may not recognize micro-arch suffices like sm_121a.
-    if (major, minor) == (12, 1):
-        os.environ["TRITON_CODEGEN_ARCH"] = "sm_121"
-        os.environ.setdefault("TRITON_GLOBAL_DEVICE_ARCH", "sm_121")
-        os.environ.setdefault("TORCH_CUDA_ARCH_LIST", "12.1")
-        _install_ptxas_wrapper()
+    The compiler must either support the actual target or report it unsupported.
+    """
+    return
 
 
 def _install_ptxas_wrapper() -> None:
-    """Place a shim earlier in PATH that strips unsupported sm_121a -> sm_121."""
-    real_ptxas = shutil.which("ptxas")
-    if not real_ptxas:
-        return
-
-    wrapper_dir = Path(__file__).resolve().parent / ".ptxas_shim"
-    wrapper_dir.mkdir(exist_ok=True)
-    wrapper_path = wrapper_dir / "ptxas"
-
-    script = """#!/usr/bin/env bash
-set -euo pipefail
-real_ptxas="{real_ptxas}"
-args=()
-ptx_file=""
-for a in "$@"; do
-  args+=("${{a//sm_121a/sm_121}}")
-  if [[ -z "$ptx_file" && "$a" == *.ptx ]]; then
-    ptx_file="$a"
-  fi
-done
-# Rewrite PTX target if present
-if [[ -n "$ptx_file" && -f "$ptx_file" ]]; then
-  sed -i 's/sm_121a/sm_121/g' "$ptx_file"
-fi
-exec "$real_ptxas" "${{args[@]}}"
-""".format(real_ptxas=real_ptxas)
-    # Write only if missing or different to avoid chmod on every run.
-    if not wrapper_path.exists() or wrapper_path.read_text() != script:
-        wrapper_path.write_text(script)
-        wrapper_path.chmod(0o755)
-
-    # Prepend shim to PATH so Triton picks it up.
-    path_parts = os.environ.get("PATH", "").split(os.pathsep)
-    if str(wrapper_dir) not in path_parts:
-        os.environ["PATH"] = str(wrapper_dir) + os.pathsep + os.environ.get("PATH", "")
-
-    # Hint Triton to use the shim instead of its bundled ptxas copy.
-    os.environ.setdefault("TRITON_PTXAS_PATH", str(wrapper_path))
+    raise RuntimeError("PTX target rewriting is unsupported; install a toolchain for the actual GPU target")
 
 
 def get_ptxas_info() -> dict:
@@ -187,30 +173,38 @@ def measure_hbm_bandwidth(device: torch.device = None, size_gb: float = 4.0, ite
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
         
-        start_event.record()
+        start_event.record(torch.cuda.current_stream(device))
         for _ in range(iterations):
             y.copy_(x)
-        end_event.record()
+        end_event.record(torch.cuda.current_stream(device))
         torch.cuda.synchronize(device)
         
         elapsed_ms = start_event.elapsed_time(end_event)
         if elapsed_ms <= 0:
             raise RuntimeError("HBM bandwidth measurement returned non-positive elapsed time")
-        elapsed_s = elapsed_ms / 1000.0
-        bandwidth_gbs = (size_bytes * iterations / elapsed_s) / 1e9
-        bandwidth_tbs = bandwidth_gbs / 1000.0
+        accounting = compute_copy_bandwidth_metrics(x.numel() * x.element_size(), iterations, elapsed_ms)
+        bandwidth_gbs = accounting["peak_bandwidth_gbs"]
+        bandwidth_tbs = accounting["peak_bandwidth_tbs"]
         
-        # Theoretical peak for B200 is ~8.0 TB/s
-        theoretical_tbs = 8.0
-        utilization = (bandwidth_tbs / theoretical_tbs * 100) if theoretical_tbs > 0 else 0.0
+        # Do not assign the B200 peak to every CUDA SKU. Raw bandwidth remains usable.
+        gpu_name = torch.cuda.get_device_name(device)
+        props = torch.cuda.get_device_properties(device)
+        try:
+            profile = hardware_specs_for_device(gpu_name, (props.major, props.minor))
+            theoretical_tbs = profile.hbm_bandwidth_gbps / 1000.0
+        except ValueError:
+            theoretical_tbs = None
+        utilization = bandwidth_tbs / theoretical_tbs * 100 if theoretical_tbs else None
         
         print(f"  Result: {bandwidth_tbs:.3f} TB/s ({bandwidth_gbs:.1f} GB/s)")
-        print(f"  Utilization: {utilization:.1f}%")
+        if utilization is not None:
+            print(f"  Utilization: {utilization:.1f}%")
         
         return {
-            "peak_bandwidth_tbs": bandwidth_tbs,
-            "peak_bandwidth_gbs": bandwidth_gbs,
+            **accounting,
             "peak_utilization_percent": utilization,
+            "theoretical_bandwidth_tbs": theoretical_tbs,
+            "gpu_name": gpu_name,
         }
     except Exception as e:
         raise RuntimeError(f"HBM bandwidth measurement failed: {e}") from e
@@ -243,10 +237,10 @@ def measure_fp16_compute(device: torch.device = None, matrix_size: int = 8192, i
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
         
-        start_event.record()
+        start_event.record(torch.cuda.current_stream(device))
         for _ in range(iterations):
             torch.mm(a, b, out=c)
-        end_event.record()
+        end_event.record(torch.cuda.current_stream(device))
         torch.cuda.synchronize(device)
         
         elapsed_ms = start_event.elapsed_time(end_event)
@@ -296,10 +290,10 @@ def measure_bf16_compute(device: torch.device = None, matrix_size: int = 8192, i
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
         
-        start_event.record()
+        start_event.record(torch.cuda.current_stream(device))
         for _ in range(iterations):
             torch.mm(a, b, out=c)
-        end_event.record()
+        end_event.record(torch.cuda.current_stream(device))
         torch.cuda.synchronize(device)
         
         elapsed_ms = start_event.elapsed_time(end_event)
@@ -327,8 +321,7 @@ def measure_fp4_compute(device: torch.device = None, matrix_size: int = 8192, it
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA not available - cannot measure compute TFLOPS")
     
-    if not FP4_AVAILABLE:
-        raise RuntimeError("Transformer Engine FP4 (NVFP4) is REQUIRED but not available")
+    fp4_recipe = _make_low_precision_recipe("fp4")
     
     print(f"\nMeasuring FP4 compute performance...")
     print(f"  Matrix size: {matrix_size}x{matrix_size}")
@@ -352,30 +345,18 @@ def measure_fp4_compute(device: torch.device = None, matrix_size: int = 8192, it
             params_dtype=torch.float16,
         ).to(device)
         
-        # Create FP4 recipe using DelayedScaling with NVFP4BlockScaling
-        from transformer_engine.common.recipe import DelayedScaling, NVFP4BlockScaling
-        
-        try:
-            # Create FP4 recipe with NVFP4BlockScaling
-            fp4_recipe = DelayedScaling(
-                float8_block_scaling=NVFP4BlockScaling()
-            )
-            print(f"  Created FP4 recipe: {type(fp4_recipe).__name__} with NVFP4BlockScaling")
-        except (AttributeError, TypeError, ImportError) as e:
-            error_msg = f"Failed to create FP4 recipe: {e}. FP4 measurement requires NVFP4BlockScaling support."
-            print(f"  ERROR: {error_msg}")
-            raise RuntimeError(error_msg) from e
+        print(f"  Created FP4 recipe: {type(fp4_recipe).__name__}")
         
         # Initialize the layer INSIDE autocast context with FP4 recipe
         # This ensures parameters are properly initialized for FP4
-        with te.fp8_autocast(enabled=True, fp8_recipe=fp4_recipe):
+        with _low_precision_autocast(fp4_recipe):
             # Do initial forward pass to initialize FP4 weights properly
             _ = fp4_linear(x)
         
         torch.cuda.synchronize(device)
         
         # Warmup - FP4 uses fp8_autocast API with FP4 recipe
-        with te.fp8_autocast(enabled=True, fp8_recipe=fp4_recipe):
+        with _low_precision_autocast(fp4_recipe):
             for _ in range(10):
                 _ = fp4_linear(x)
         torch.cuda.synchronize(device)
@@ -384,11 +365,11 @@ def measure_fp4_compute(device: torch.device = None, matrix_size: int = 8192, it
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
         
-        start_event.record()
-        with te.fp8_autocast(enabled=True, fp8_recipe=fp4_recipe):
+        start_event.record(torch.cuda.current_stream(device))
+        with _low_precision_autocast(fp4_recipe):
             for _ in range(iterations):
                 _ = fp4_linear(x)
-        end_event.record()
+        end_event.record(torch.cuda.current_stream(device))
         torch.cuda.synchronize(device)
         
         elapsed_ms = start_event.elapsed_time(end_event)
@@ -405,6 +386,8 @@ def measure_fp4_compute(device: torch.device = None, matrix_size: int = 8192, it
         return {
             "peak_tflops": tflops,
             "matrix_size": matrix_size,
+            "precision": "fp4",
+            "recipe": type(fp4_recipe).__name__,
         }
     except Exception as e:
         raise RuntimeError(f"FP4 measurement failed: {e}") from e
@@ -419,6 +402,7 @@ def measure_fp6_compute(device: torch.device = None, matrix_size: int = 8192, it
         raise RuntimeError("CUDA not available - cannot measure compute TFLOPS")
     
     # FP6 is optional - skip if not available
+    _load_transformer_engine()
     if not FP6_AVAILABLE:
         return {"peak_tflops": None, "error": "Transformer Engine FP6 (NVFP6) not available (optional)"}
     
@@ -439,23 +423,10 @@ def measure_fp6_compute(device: torch.device = None, matrix_size: int = 8192, it
             params_dtype=torch.float16,
         ).to(device)
         
-        # Create FP6 recipe - check if NVFP6BlockScaling is available
-        from transformer_engine.common.recipe import DelayedScaling
-        
-        # Check if NVFP6BlockScaling exists (may not be available in all TE versions)
-        try:
-            from transformer_engine.common.recipe import NVFP6BlockScaling
-            fp6_recipe = DelayedScaling(
-                float8_block_scaling=NVFP6BlockScaling()
-            )
-            print(f"  Created FP6 recipe: {type(fp6_recipe).__name__} with NVFP6BlockScaling")
-        except (AttributeError, ImportError) as e:
-            error_msg = f"FP6 (NVFP6) is not available in this Transformer Engine version: {e}. NVFP6BlockScaling not found."
-            print(f"  Skipping FP6: {error_msg}")
-            return {"peak_tflops": None, "error": error_msg}
+        fp6_recipe = _make_low_precision_recipe("fp6")
         
         def _run(iterations_to_run: int) -> None:
-            with te.fp8_autocast(enabled=True, fp8_recipe=fp6_recipe):
+            with _low_precision_autocast(fp6_recipe):
                 for _ in range(iterations_to_run):
                     _ = fp6_linear(x)
         
@@ -465,9 +436,9 @@ def measure_fp6_compute(device: torch.device = None, matrix_size: int = 8192, it
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
         
-        start_event.record()
+        start_event.record(torch.cuda.current_stream(device))
         _run(iterations)
-        end_event.record()
+        end_event.record(torch.cuda.current_stream(device))
         torch.cuda.synchronize(device)
         
         elapsed_ms = start_event.elapsed_time(end_event)
@@ -496,8 +467,7 @@ def measure_fp8_compute(device: torch.device = None, matrix_size: int = 8192, it
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA not available - cannot measure compute TFLOPS")
     
-    if not FP8_AVAILABLE:
-        raise RuntimeError("Transformer Engine FP8 is REQUIRED but not available")
+    fp8_recipe = _make_low_precision_recipe("fp8")
     
     print(f"\nMeasuring FP8 compute performance...")
     print(f"  Matrix size: {matrix_size}x{matrix_size}")
@@ -522,7 +492,7 @@ def measure_fp8_compute(device: torch.device = None, matrix_size: int = 8192, it
         x = torch.randn(1024, in_features, device=device, dtype=torch.float16)
         
         # Warmup
-        with te.fp8_autocast():
+        with _low_precision_autocast(fp8_recipe):
             for _ in range(10):
                 _ = fp8_linear(x)
         torch.cuda.synchronize(device)
@@ -531,11 +501,11 @@ def measure_fp8_compute(device: torch.device = None, matrix_size: int = 8192, it
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
         
-        start_event.record()
-        with te.fp8_autocast():
+        start_event.record(torch.cuda.current_stream(device))
+        with _low_precision_autocast(fp8_recipe):
             for _ in range(iterations):
                 _ = fp8_linear(x)
-        end_event.record()
+        end_event.record(torch.cuda.current_stream(device))
         torch.cuda.synchronize(device)
         
         elapsed_ms = start_event.elapsed_time(end_event)
@@ -558,7 +528,7 @@ def measure_fp8_compute(device: torch.device = None, matrix_size: int = 8192, it
 
 
 def measure_l2_cache_bandwidth(device: torch.device = None, size_mb: float = 50.0, iterations: int = 20) -> dict:
-    """Measure L2 cache bandwidth by using data that fits in L2 cache."""
+    """Time a cache-sized copy; profiler evidence is required to call it L2 bandwidth."""
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
@@ -570,11 +540,11 @@ def measure_l2_cache_bandwidth(device: torch.device = None, size_mb: float = 50.
     l2_cache_size_bytes = getattr(props, 'l2_cache_size', 0)
     l2_cache_size_mb = l2_cache_size_bytes / (1024**2)
     
-    # Use a size that fits comfortably in L2 cache (75% of L2 size)
+    # Both the source and destination must fit: together at most 75% of L2.
     if l2_cache_size_bytes > 0:
-        test_size_mb = min(size_mb, l2_cache_size_mb * 0.75)
+        test_size_mb = min(size_mb, l2_cache_size_mb * 0.75 / 2)
     else:
-        test_size_mb = size_mb  # Fallback if L2 size unknown
+        return {"peak_bandwidth_gbs": None, "error": "L2 cache size unknown; cannot select a cache-sized working set"}
     
     print(f"\nMeasuring L2 cache bandwidth...")
     print(f"  L2 cache size: {l2_cache_size_mb:.1f} MB" if l2_cache_size_bytes > 0 else "  L2 cache size: Unknown")
@@ -598,24 +568,27 @@ def measure_l2_cache_bandwidth(device: torch.device = None, size_mb: float = 50.
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
         
-        start_event.record()
+        start_event.record(torch.cuda.current_stream(device))
         for _ in range(iterations):
             y.copy_(x)
-        end_event.record()
+        end_event.record(torch.cuda.current_stream(device))
         torch.cuda.synchronize(device)
         
         elapsed_ms = start_event.elapsed_time(end_event)
         if elapsed_ms <= 0:
             raise RuntimeError("L2 cache bandwidth measurement returned non-positive elapsed time")
-        elapsed_s = elapsed_ms / 1000.0
-        bandwidth_gbs = (size_bytes * iterations / elapsed_s) / 1e9
+        accounting = compute_copy_bandwidth_metrics(x.numel() * x.element_size(), iterations, elapsed_ms)
+        bandwidth_gbs = accounting["peak_bandwidth_gbs"]
         
         print(f"  Result: {bandwidth_gbs:.1f} GB/s")
         
         return {
-            "peak_bandwidth_gbs": bandwidth_gbs,
+            **accounting,
             "l2_cache_size_mb": l2_cache_size_mb,
             "test_size_mb": test_size_mb,
+            "working_set_bytes": 2 * x.numel() * x.element_size(),
+            "measurement": "cache_sized_copy_effective_bandwidth",
+            "cache_residency_verified": False,
         }
     except Exception as e:
         raise RuntimeError(f"L2 cache bandwidth measurement failed: {e}") from e
@@ -653,8 +626,8 @@ def measure_shared_memory_info(device: torch.device = None) -> dict:
         raise RuntimeError(f"Measurement failed: {e}") from e
 
 
-def measure_nvlink_bandwidth(device: torch.device = None, iterations: int = 20) -> dict:
-    """Measure NVLink bandwidth between GPUs (if multi-GPU available)."""
+def measure_nvlink_bandwidth(device: torch.device = None, iterations: int = 20, *, size_mb: int = 1024) -> dict:
+    """Measure one-way peer-copy payload bandwidth; topology must identify the link."""
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
@@ -664,15 +637,16 @@ def measure_nvlink_bandwidth(device: torch.device = None, iterations: int = 20) 
     gpu_count = torch.cuda.device_count()
     if gpu_count < 2:
         return {"peak_bandwidth_gbs": None, "error": "Multi-GPU not available (requires 2+ GPUs)"}
+    if not torch.cuda.can_device_access_peer(0, 1):
+        return {"peak_bandwidth_gbs": None, "error": "GPU 0 cannot access GPU 1 via peer copy"}
     
-    print(f"\nMeasuring NVLink bandwidth...")
+    print(f"\nMeasuring peer-copy payload bandwidth (link topology unverified)...")
     print(f"  GPU count: {gpu_count}")
     print(f"  Testing GPU 0 -> GPU 1")
     print(f"  Iterations: {iterations}")
     
     try:
         # Use ~1GB for bandwidth test
-        size_mb = 1024
         size = size_mb * 1024 * 1024 // 4  # float32
         
         # Create tensors on different GPUs
@@ -682,23 +656,30 @@ def measure_nvlink_bandwidth(device: torch.device = None, iterations: int = 20) 
         with torch.cuda.device(1):
             dst = torch.empty(size, device='cuda:1')
         
-        # Warmup
-        for _ in range(10):
-            dst.copy_(src)
-        torch.cuda.synchronize()
-        
-        # Benchmark
-        start_event = torch.cuda.Event(enable_timing=True)
-        end_event = torch.cuda.Event(enable_timing=True)
-        
-        start_event.record()
-        for _ in range(iterations):
-            dst.copy_(src)
-        end_event.record()
-        torch.cuda.synchronize()
+        torch.cuda.synchronize(0)
+        torch.cuda.synchronize(1)
+        # PyTorch's cross-device copy runs on the source current stream and
+        # establishes a dependency on the destination stream. Time that source
+        # stream explicitly rather than the caller's potentially unrelated GPU.
+        with torch.cuda.device(0):
+            for _ in range(10):
+                dst.copy_(src, non_blocking=True)
+            torch.cuda.synchronize(0)
+            torch.cuda.synchronize(1)
+            start_event = torch.cuda.Event(enable_timing=True)
+            end_event = torch.cuda.Event(enable_timing=True)
+            start_event.record(torch.cuda.current_stream(0))
+            for _ in range(iterations):
+                dst.copy_(src, non_blocking=True)
+            end_event.record(torch.cuda.current_stream(0))
+            torch.cuda.synchronize(0)
+            torch.cuda.synchronize(1)
         
         elapsed_ms = start_event.elapsed_time(end_event)
-        bandwidth_gbs = (size_mb / 1024) / (elapsed_ms / 1000) * iterations
+        accounting = compute_copy_bandwidth_metrics(
+            src.numel() * src.element_size(), iterations, elapsed_ms, traffic="one_way_payload"
+        )
+        bandwidth_gbs = accounting["peak_bandwidth_gbs"]
         
         print(f"  Result: {bandwidth_gbs:.2f} GB/s")
         
@@ -707,8 +688,12 @@ def measure_nvlink_bandwidth(device: torch.device = None, iterations: int = 20) 
         torch.cuda.empty_cache()
         
         return {
-            "peak_bandwidth_gbs": bandwidth_gbs,
+            **accounting,
             "gpu_count": gpu_count,
+            "source_device": 0,
+            "destination_device": 1,
+            "transport": "cuda_peer_copy",
+            "nvlink_verified": False,
         }
     except Exception as e:
         raise RuntimeError(f"NVLink bandwidth measurement failed: {e}") from e
@@ -805,10 +790,10 @@ def measure_torch_compile_speedup(
             start_event = torch.cuda.Event(enable_timing=True)
             end_event = torch.cuda.Event(enable_timing=True)
 
-            start_event.record()
+            start_event.record(torch.cuda.current_stream(device))
             for _ in range(iterations):
                 _ = compute_fn(a, b)
-            end_event.record()
+            end_event.record(torch.cuda.current_stream(device))
             torch.cuda.synchronize(device)
             eager_time_ms = start_event.elapsed_time(end_event)
 
@@ -831,10 +816,10 @@ def measure_torch_compile_speedup(
                     torch.cuda.synchronize(device)
 
                     # Benchmark compiled
-                    start_event.record()
+                    start_event.record(torch.cuda.current_stream(device))
                     for _ in range(iterations):
                         _ = compiled_fn(a, b)
-                    end_event.record()
+                    end_event.record(torch.cuda.current_stream(device))
                     torch.cuda.synchronize(device)
                     compiled_time_ms = start_event.elapsed_time(end_event)
                     speedup = eager_time_ms / compiled_time_ms if compiled_time_ms > 0 else 1.0
@@ -901,6 +886,7 @@ def run_peak_benchmarks(output_dir: Path = None) -> dict:
         return {"error": "CUDA not available"}
 
     maybe_force_triton_arch()
+    _load_transformer_engine()
     device = torch.device("cuda")
     ptxas_info = get_ptxas_info()
 
@@ -916,7 +902,7 @@ def run_peak_benchmarks(output_dir: Path = None) -> dict:
     print(f"FP8 Available: {FP8_AVAILABLE}")
     bf16_supported = getattr(torch.cuda, "is_bf16_supported", lambda: False)()
     print(f"BF16 Supported: {bf16_supported}")
-    print(f"TRITON_CODEGEN_ARCH: {os.environ.get('TRITON_CODEGEN_ARCH')} (auto-set for cc 12.1 to avoid sm_121a)")
+    print(f"TRITON_CODEGEN_ARCH: {os.environ.get('TRITON_CODEGEN_ARCH')} (user override; no automatic retargeting)")
     print(f"ptxas: {ptxas_info['path']} | version: {ptxas_info['version']}")
     
     results = {
@@ -1013,10 +999,10 @@ def run_peak_benchmarks(output_dir: Path = None) -> dict:
         print(f"BF16 Compute: Not available ({results['bf16_compute']['error']})")
     
     if results["l2_cache"].get("peak_bandwidth_gbs"):
-        print(f"L2 Cache Bandwidth: {results['l2_cache']['peak_bandwidth_gbs']:.1f} GB/s")
+        print(f"Cache-sized copy bandwidth (residency unverified): {results['l2_cache']['peak_bandwidth_gbs']:.1f} GB/s")
     
     if results["nvlink"].get("peak_bandwidth_gbs"):
-        print(f"NVLink Bandwidth (GPU 0->1): {results['nvlink']['peak_bandwidth_gbs']:.2f} GB/s")
+        print(f"Peer-copy bandwidth (GPU 0->1; link unverified): {results['nvlink']['peak_bandwidth_gbs']:.2f} GB/s")
     elif results["nvlink"].get("error"):
         print(f"NVLink: Not available ({results['nvlink']['error']})")
     

@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""Level 4: Grouped expert routing on the shared journey model.
+"""Level 4: Sorted per-expert GEMMs.
 
-ADDS: Sort tokens by expert and execute grouped expert work.
+Adds sorting and per-expert GEMMs to the shared BF16 model; no multi-stream dispatch is enabled.
 
-Cumulative: batched + fused + mem_efficient + grouped
-"""
+The filename and class are retained for compatibility. The LEVEL mapping,
+not a legacy filename, determines execution. These shared levels do not use
+FP8 quantization. No speedup is established by selecting a level."""
 
 from labs.moe_optimization_journey.moe_benchmark import MoEJourneyBenchmark, run_level
 
 
 class Level4Graphs(MoEJourneyBenchmark):
-    """Level 4 shared grouped-routing benchmark."""
+    """Shared level 4: Sorted per-expert GEMMs."""
 
     LEVEL = 4
 

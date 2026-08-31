@@ -102,7 +102,9 @@ int main() {
     void *d_input, *d_output;
     CUDA_CHECK(cudaMalloc(&d_input, bytes));
     CUDA_CHECK(cudaMalloc(&d_output, bytes));
-    CUDA_CHECK(cudaMemset(d_input, 0x3C, bytes));  // Initialize to 1.0 in FP8
+    // Use the CUDA conversion instead of assuming an FP8 byte encoding.
+    const __nv_fp8_e4m3 one(1.0f);
+    CUDA_CHECK(cudaMemset(d_input, one.__x, bytes));
     
     cudaEvent_t start, stop;
     CUDA_CHECK(cudaEventCreate(&start));
@@ -194,4 +196,3 @@ int main() {
     
     return 0;
 }
-

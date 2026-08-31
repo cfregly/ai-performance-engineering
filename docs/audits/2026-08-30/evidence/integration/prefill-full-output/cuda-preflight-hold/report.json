@@ -1,0 +1,22 @@
+{
+  "status": "HOLD",
+  "checks": [],
+  "torch": "2.8.0",
+  "cuda": null,
+  "source_sha256": {
+    "tests/test_audit_wave1_prefill_full_output.py": "ef1164f7fdd036216c93d7f333f7391dd503760394e4eda97960f481e5db828a",
+    "labs/persistent_decode/persistent_decode_common.py": "59b13fcbeac492772d47382efe5b04e3321fcbb3467098e46759755d7111d8ad",
+    "labs/persistent_decode/tma_extension.py": "675fc3fb5faf72e274a72d2c86e31a67743150d467c41295c542ea759e3d03d8",
+    "core/common/headers/tma_helpers.cuh": "4c8a88560d1cc5e04ff1b99110453119fefc98aa17faaee462ce0133abc942ba",
+    "core/common/headers/tma_2d_layout.hpp": "645f624cc2cd7a7b1f18e6d0c734e1b48407394d478f18aee46f0dd8927c8834",
+    "core/common/headers/arch_detection.cuh": "c32cae59cab37e0d0ad70bdc8784a09385207ff1849f592d7c5fb0a12338da32",
+    "tests/cuda/validation_process.py": "47019ab4daa7d09d73a9721c2ee68e1b1999b18d1022e25d17dd7089f26f277d",
+    "labs/persistent_decode/baseline_tma_prefill_decode.py": "24838f26dc2c50800ccda28e24d1c0e92d8c8bd7d7ee43301dc013a28c052f9b",
+    "labs/persistent_decode/optimized_tma_prefill_decode.py": "5c01331ae35be8975c6e070af8bc0ddf3dd28ad5d4e02eb2efd62b1b63719497",
+    "labs/persistent_decode/baseline_native_tma_prefill_decode.py": "ff54f675b862bd3c72330e839b6461e6d01a02ec76cc35a7ccfa5c5bfb9465e9",
+    "labs/persistent_decode/optimized_native_tma_prefill_decode.py": "7f3c16ab16961332e08fa5acef20c58483b268a3c268513a36f476ccaa25daa9"
+  },
+  "scope": "Real CUDA whole-output/fresh-input checks only; no sanitizer or performance qualification",
+  "reason": "Actual CUDA device required; CPU payload checks are not GPU qualification",
+  "artifacts_sha256": {}
+}

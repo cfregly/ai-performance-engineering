@@ -84,7 +84,7 @@ import re
 import subprocess
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Callable, Union
 
@@ -974,12 +974,11 @@ class AIDomain:
         
         # Get book citations
         if include_citations:
-            try:
-                from core.book import get_book_citations
-                citations = get_book_citations(question, max_citations=3)
-                result["citations"] = citations
-            except ImportError:
-                result["citations"] = []
+            from core.book import get_citations
+
+            result["citations"] = [
+                asdict(citation) for citation in get_citations(question, max_results=3)
+            ]
         
         # Get LLM response
         try:
@@ -1016,7 +1015,7 @@ class AIDomain:
             return {"success": False, "error": "concept is required"}
         try:
             import re
-            from core.book import BookCitation, TECHNIQUE_CHAPTERS, get_citations
+            from core.book import TECHNIQUE_CHAPTERS, get_citations
 
             citations = get_citations(concept, max_results=3)
             if not citations:
@@ -1027,11 +1026,11 @@ class AIDomain:
                 }
 
             def _summary(text: str) -> str:
-                sentences = re.split(r"(?<=[.!?])\\s+", text.strip())
+                sentences = re.split(r"(?<=[.!?])\s+", text.strip())
                 return " ".join(sentences[:2]).strip()
 
             def _key_points(text: str) -> List[str]:
-                bullets = re.findall(r"^(?:[-*]|\\d+\\.)\\s+(.*)$", text, flags=re.MULTILINE)
+                bullets = re.findall(r"^(?:[-*]|\d+\.)\s+(.*)$", text, flags=re.MULTILINE)
                 if bullets:
                     return [bp.strip() for bp in bullets[:5] if bp.strip()]
                 summary = _summary(text)

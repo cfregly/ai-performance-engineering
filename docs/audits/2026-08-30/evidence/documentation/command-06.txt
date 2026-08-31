@@ -1,0 +1,7 @@
+ch01:gemm
+ch01:gemm_batched
+ch01:gemm_strided
+ch01:nvfp4_mlp
+ch01:performance
+ch01:performance_fp16
+ch01:performance_fusion

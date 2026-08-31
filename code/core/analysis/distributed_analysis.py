@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -105,30 +106,63 @@ class ClusterDiscovery:
         return gpus
     
     def discover_nvlink_topology(self) -> Dict[int, List[int]]:
-        """Discover NVLink connections between GPUs."""
-        nvlink = {}
+        """Return peer GPU IDs from the NV# entries in ``nvidia-smi topo -m``.
+
+        Local NVLink port IDs from ``nvlink -s`` do not identify peer GPUs.
+        The matrix also does not distinguish direct links from NVSwitch paths.
+        """
         try:
             result = subprocess.run(
-                ['nvidia-smi', 'nvlink', '-s'],
+                ['nvidia-smi', 'topo', '-m'],
                 capture_output=True, text=True, timeout=10
             )
-            if result.returncode == 0:
-                # Parse NVLink status
-                current_gpu = None
-                for line in result.stdout.split('\n'):
-                    if 'GPU' in line and ':' in line:
-                        try:
-                            current_gpu = int(line.split('GPU')[1].split(':')[0].strip())
-                            nvlink[current_gpu] = []
-                        except:
-                            pass
-                    elif current_gpu is not None and 'Link' in line and 'Active' in line.lower():
-                        # Has active NVLink
-                        pass
-        except Exception:
-            pass
-        
-        return nvlink
+            if result.returncode != 0:
+                raise ValueError(result.stderr.strip() or f"nvidia-smi exited {result.returncode}")
+
+            nvlink: Dict[int, List[int]] = {}
+            gpu_columns = None
+            for line in result.stdout.splitlines():
+                cells = line.split()
+                if not cells:
+                    continue
+                if gpu_columns is None:
+                    columns = [
+                        (index, int(match.group(1)))
+                        for index, cell in enumerate(cells)
+                        if (match := re.fullmatch(r"GPU(\d+)", cell, flags=re.IGNORECASE))
+                    ]
+                    is_data_row = any(
+                        re.fullmatch(r"X|NV\d+|SYS|NODE|PHB|PXB|PIX", cell, flags=re.IGNORECASE)
+                        for cell in cells[1:]
+                    )
+                    if columns and not is_data_row:
+                        gpu_columns = columns
+                    continue
+
+                gpu_match = re.fullmatch(r"GPU(\d+)", cells[0], flags=re.IGNORECASE)
+                if not gpu_match:
+                    continue
+                gpu_id = int(gpu_match.group(1))
+                if len(cells) <= max(index for index, _ in gpu_columns) + 1:
+                    raise ValueError(f"incomplete matrix row for GPU {gpu_id}")
+                for index, _ in gpu_columns:
+                    if not re.fullmatch(
+                        r"X|NV[1-9]\d*|SYS|NODE|PHB|PXB|PIX", cells[index + 1], flags=re.IGNORECASE
+                    ):
+                        raise ValueError(f"unrecognized matrix entry for GPU {gpu_id}: {cells[index + 1]}")
+                nvlink[gpu_id] = [
+                    peer_id
+                    for index, peer_id in gpu_columns
+                    if peer_id != gpu_id
+                    and re.fullmatch(r"NV[1-9]\d*", cells[index + 1], flags=re.IGNORECASE)
+                ]
+
+            if gpu_columns is None or set(nvlink) != {gpu_id for _, gpu_id in gpu_columns}:
+                raise ValueError("missing GPU matrix header or rows")
+            return nvlink
+        except (OSError, subprocess.SubprocessError, ValueError) as exc:
+            print(f"Warning: Could not query NVLink topology: {exc}", file=sys.stderr)
+            return {}
     
     def discover_slurm_nodes(self) -> List[str]:
         """Discover nodes in SLURM allocation."""
@@ -194,10 +228,8 @@ class ClusterDiscovery:
         ib_available, ib_bandwidth = self.check_infiniband()
         
         # Determine interconnect
-        if nvlink_topo and len(local_gpus) > 1:
+        if any(nvlink_topo.values()) and len(local_gpus) > 1:
             interconnect = "nvlink"
-            if len(local_gpus) >= 8:
-                interconnect = "nvswitch"
         elif ib_available:
             interconnect = "infiniband"
         else:

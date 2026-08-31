@@ -1,0 +1,194 @@
+ssssssssssssssssssssssssssssssssssssssss.........sssss..s...s........... [  1%]
+.....s............sss...s......ss.s.ssssssssss...s.s...ssss..sss....sss. [  3%]
+.....s..s...ssss.s.........ss............sssss...................ssss... [  4%]
+............................................ss.s..s..s..s..ssssss...s... [  6%]
+sssss.sssssss.ss.ssss..s.sss........ss...ss............................. [  7%]
+........................................................................ [  9%]
+.sssssssssssssssss.ssssssss............................................. [ 10%]
+..................rank=0 phase=remote single=True forward
+rank=3 phase=remote single=True forward
+rank=2 phase=remote single=True forward
+rank=1 phase=remote single=True forward
+rank=2 phase=remote single=True backward
+rank=1 phase=remote single=True backward
+rank=3 phase=remote single=True backward
+rank=0 phase=remote single=True backward
+rank=1 phase=same_node single=True forward
+rank=3 phase=same_node single=True forward
+rank=0 phase=same_node single=True forward
+rank=2 phase=same_node single=True forward
+rank=0 phase=same_node single=True backward
+rank=1 phase=same_node single=True backward
+rank=2 phase=same_node single=True backward
+rank=3 phase=same_node single=True backward
+rank=1 phase=all_empty single=True forward
+rank=2 phase=all_empty single=True forward
+rank=3 phase=all_empty single=True forward
+rank=0 phase=all_empty single=True forward
+rank=0 phase=all_empty single=True backward
+rank=1 phase=all_empty single=True backward
+rank=2 phase=all_empty single=True backward
+rank=3 phase=all_empty single=True backward
+rank=3 phase=balanced_world single=False forward
+rank=0 phase=balanced_world single=False forward
+rank=2 phase=balanced_world single=False forward
+rank=1 phase=balanced_world single=False forward
+rank=1 phase=balanced_world single=False backward
+rank=3 phase=balanced_world single=False backward
+rank=0 phase=balanced_world single=False backward
+rank=2 phase=balanced_world single=False backward
+.s.s.sss.......s..................................ssss [ 12%]
+...................ssssssssssssssssssssssssssssss.......sssssss....s.... [ 13%]
+..................s....................................s................ [ 15%]
+..................................................sssss................. [ 17%]
+...............sssssss....s....................s........................ [ 18%]
+..................s.............s.............................s......... [ 20%]
+..........................................ssssss........................ [ 21%]
+........................................................................ [ 23%]
+........................................................................ [ 24%]
+.......sssssssssssssssss.s.............................................. [ 26%]
+........................................................................ [ 27%]
+........................................................................ [ 29%]
+........................................................................ [ 31%]
+........................................................................ [ 32%]
+........................................................................ [ 34%]
+........................................................................ [ 35%]
+.............................................................s.......... [ 37%]
+........................................................................ [ 38%]
+........................s.......sssss..............sssssssssssssss...ss. [ 40%]
+.................................................................ssss... [ 41%]
+.ssssssssssssssssssssss................................................. [ 43%]
+........................................................................ [ 45%]
+........................ssss...............ssssss........s.....ss..s.... [ 46%]
+ssssss....ssssssssss.................................................... [ 48%]
+...............................................................sss...... [ 49%]
+.....s............sss.................graph mismatch at 256: 1.75431061 versus 0.754310553
+graph mismatch at 256: nan versus 0.754310553
+.................................. [ 51%]
+........................................................................ [ 52%]
+............s.s..............................s.......................... [ 54%]
+........................................................................ [ 55%]
+..........................................................ssssssssssssss [ 57%]
+sssssssssssssssssssssss....s............................................ [ 59%]
+........................................................................ [ 60%]
+........................................................................ [ 62%]
+........................................................................ [ 63%]
+...........................ss..ssssss..........ss.......sss............. [ 65%]
+........................s............................................... [ 66%]
+......................ssss.............................................. [ 68%]
+........................................................................ [ 69%]
+........................................................................ [ 71%]
+.....................................................s.s.......s........ [ 73%]
+..............ss.................s.......................ss............. [ 74%]
+............................s..............................Test queue: /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1762/test_queue_records_failure_and0/queue
+==> fails [candidate] test:fails
+==> continues [control] test:continues
+Invalid completion evidence: runs[0].roles.job.result must be an object with path and sha256
+Invalid completion evidence: runs[1].roles.job.result must be an object with path and sha256
+complete
+Queue completed with 2 failed job(s).
+............. [ 76%]
+........................................................................ [ 77%]
+........................................................................ [ 79%]
+........................................................................ [ 80%]
+..................................................s..............s...... [ 82%]
+.................................................................ss..... [ 83%]
+........................................................................ [ 85%]
+..s..................................................................... [ 87%]
+........................................................................ [ 88%]
+........s..............................................................s [ 90%]
+s.........................s.....ssssssssssssss.......................... [ 91%]
+........................................................................ [ 93%]
+..................................................s............F........ [ 94%]
+..........................ssssss..................s..................... [ 96%]
+........................................................................ [ 97%]
+..........................................................ssssssssssssss [ 99%]
+........................                                                 [100%]
+=================================== FAILURES ===================================
+________ test_tensor_parallel_attention_with_kv_cache_matches_reference ________
+
+    def test_tensor_parallel_attention_with_kv_cache_matches_reference():
+        torch.manual_seed(1)
+        attn = TensorParallelAttention(
+            d_model=64,
+            num_heads=4,
+            num_gpus=1,
+            max_batch_size=8,
+            max_seq_len=32,
+        )
+        x = torch.randn(2, 4, 64)
+    
+        kv_cache: List[Optional[Tuple[torch.Tensor, torch.Tensor]]] = [
+            (
+                torch.randn(attn.heads_per_gpu, 3, attn.head_dim),
+                torch.randn(attn.heads_per_gpu, 3, attn.head_dim),
+            ),
+            None,
+        ]
+    
+        module_out, key_local, value_local = attn(x, kv_cache=kv_cache)
+        ref_out, ref_key, ref_value = _reference_attention(attn, x, kv_cache=_clone_kv_cache(kv_cache))
+    
+>       torch.testing.assert_close(module_out, ref_out, rtol=1e-3, atol=1e-3)
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 256 / 512 (50.0%)
+E       Greatest absolute difference: nan at index (1, 0, 0) (up to 0.001 allowed)
+E       Greatest relative difference: nan at index (1, 0, 0) (up to 0.001 allowed)
+
+tests/test_tp_attention.py:201: AssertionError
+----------------------------- Captured stdout call -----------------------------
+[GPU 0] TP Attention: processing 4 heads
+=============================== warnings summary ===============================
+../../../../../../opt/miniconda3/lib/python3.12/site-packages/reportlab/lib/rl_safe_eval.py:12
+  /opt/miniconda3/lib/python3.12/site-packages/reportlab/lib/rl_safe_eval.py:12: DeprecationWarning: ast.NameConstant is deprecated and will be removed in Python 3.14; use ast.Constant instead
+    haveNameConstant = hasattr(ast,'NameConstant')
+
+ch15/placement_sim.py:35
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/ch15/placement_sim.py:35: RuntimeWarning: [ch15] placement_sim expects torch>=2.10 with CUDA 13 for Blackwell (B200/B300, GB200/GB300); falling back to compatibility mode.
+    warnings.warn(
+
+tests/test_anti_cheat_edge_cases.py: 4 warnings
+tests/test_anti_cheat_protections.py: 5 warnings
+tests/test_audit_wave1_harness.py: 5 warnings
+tests/test_benchmark_story_metadata.py: 1 warning
+tests/test_protection_effectiveness.py: 1 warning
+tests/test_seed_config_immutability.py: 2 warnings
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/harness/benchmark_harness.py:4898: RuntimeWarning: ENVIRONMENT INVALID: Non-Linux platform 'darwin' is not supported for benchmark validity checks.
+    warn_module.warn(message, RuntimeWarning)
+
+tests/test_anti_cheat_edge_cases.py::TestWorkloadEdgeCases::test_undeclared_shortcuts_skip_layers
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/benchmark/verify_runner.py:721: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+  Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:836.)
+    max_diff = float(diff.max())
+
+tests/test_anti_cheat_edge_cases.py::TestEvaluationEdgeCases::test_timeout_manipulation_extend
+tests/test_anti_cheat_edge_cases.py::TestExtremeValues::test_very_large_tensor
+tests/test_anti_cheat_protections.py::TestTimingProtections::test_clock_drift_monotonic
+tests/test_anti_cheat_protections.py::TestWorkloadProtections::test_early_exit_config_immutability
+tests/test_anti_cheat_protections.py::TestEvaluationProtections::test_timeout_manipulation_immutability
+tests/test_anti_cheat_protections.py::TestEvaluationProtectionsExtended::test_self_modifying_tests_prevention
+tests/test_protection_effectiveness.py::TestMissingEdgeCases::test_cuda_oom_recovery
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/harness/benchmark_harness.py:4946: RuntimeWarning: BENCHMARK_FN ANTI-PATTERN WARNING: benchmark_fn() contains hot-path work that will distort timings or hide the real kernel cost.
+  - benchmark_fn() allocates tensors via torch.ones_like() (line 68); preallocate reusable buffers in setup() unless allocation cost is the benchmarked behavior
+    warn_module.warn(message, RuntimeWarning)
+
+tests/test_environment_validation_enforcement.py::test_environment_virtualization_strict_is_warning_only
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/harness/benchmark_harness.py:4888: RuntimeWarning: ENVIRONMENT WARNING: Cgroup mount (/sys/fs/cgroup) not found; cannot validate cgroup resource limits.
+    warn_module.warn(f"ENVIRONMENT WARNING: {warning}", RuntimeWarning)
+
+tests/test_fail_fast_helper_narrowing.py::test_benchmark_harness_warns_when_mark_execution_complete_fails_on_cpu
+tests/test_fail_fast_helper_narrowing.py::test_benchmark_harness_warns_once_when_force_tensor_evaluation_fails_on_cpu
+tests/test_target_override_resolution.py::test_harness_applies_target_overrides_before_get_config
+  <string>:94: UserWarning: Warmup iterations (0) for BenchmarkConfig is below minimum (5). This may include JIT/compile overhead in measurements, causing inaccurate results. Automatically raising to 5. If you intentionally need warmup=0, add internal warmup in setup() instead.
+
+tests/test_training_speed_common.py::test_training_speed_model_output_shape_cpu
+tests/test_training_speed_common.py::test_training_speed_model_reuses_position_id_buffer_cpu
+  /opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/transformer.py:392: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/source-gate-followup/full-cpu.xml -
+=========================== short test summary info ============================
+FAILED tests/test_tp_attention.py::test_tensor_parallel_attention_with_kv_cache_matches_reference
+1 failed, 4181 passed, 450 skipped, 34 warnings in 535.53s (0:08:55)

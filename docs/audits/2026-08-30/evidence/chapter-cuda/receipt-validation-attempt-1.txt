@@ -1,0 +1,5 @@
+Receipt assembly attempt failed before writing validation-receipts.json.
+The extra whole-file whitespace assertion failed on code/ch02/memory_transfer_pcie_demo.cu, which has inherited trailing whitespace outside this slice's edited lines.
+The existing scoped git diff --check had passed. Source hashes had not failed.
+Do not rewrite unrelated inherited whitespace to satisfy this check; the corrected receipt validates all source hashes/newlines, whitespace in new files, and git diff --check for tracked changes.
+Exit: 1. No CUDA execution occurred.

@@ -127,7 +127,7 @@ fi
 
 # Comprehensive capability report
 if command -v "$PYTHON_BIN" >/dev/null 2>&1; then
-    (cd "$(dirname "${BASH_SOURCE[0]}")/../.." && "$PYTHON_BIN" core/scripts/utilities/dump_hardware_capabilities.py) \
+    (cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && "$PYTHON_BIN" -m scripts.utilities.dump_hardware_capabilities) \
         >"$OUT_DIR/hardware_capabilities.txt" 2>"$OUT_DIR/hardware_capabilities.err" || true
 else
     echo "$PYTHON_BIN not found in PATH" >"$OUT_DIR/hardware_capabilities.txt"

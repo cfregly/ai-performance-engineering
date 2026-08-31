@@ -1,4 +1,7 @@
 #pragma once
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
 
 struct StageSpec {
     float scale;
@@ -17,3 +20,24 @@ inline constexpr StageSpec kStageSpecs[] = {
 
 inline constexpr int kStageCount = sizeof(kStageSpecs) / sizeof(StageSpec);
 inline constexpr int kInnerPasses = 3;
+
+// Independent scalar reference, used by the bounded --verify acceptance run.
+inline bool verify_graph_output(const float* output, int count, int iterations) {
+    for (int i = 0; i < count; ++i) {
+        double value = std::sin(0.001f * static_cast<float>(i));
+        for (int iteration = 0; iteration < iterations; ++iteration) {
+            for (const auto& stage : kStageSpecs) {
+                for (int pass = 0; pass < kInnerPasses; ++pass) {
+                    value = std::tanh(value * stage.scale + stage.bias);
+                    value = 0.65 * std::sin(value * stage.frequency + 0.05 * pass)
+                          + 0.35 * std::cos(value * 0.35 + 0.02 * pass);
+                }
+            }
+        }
+        if (!std::isfinite(output[i]) || std::abs(output[i] - value) > 2e-5 * std::max(1.0, std::abs(value))) {
+            std::fprintf(stderr, "graph mismatch at %d: %.9g versus %.9g\n", i, output[i], value);
+            return false;
+        }
+    }
+    return true;
+}

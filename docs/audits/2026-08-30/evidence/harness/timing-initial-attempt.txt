@@ -1,0 +1,91 @@
+FFFF                                                                     [100%]
+=================================== FAILURES ===================================
+____________ test_timer_does_not_pad_or_discard_observed_blocks[1] _____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x34f4e6720>
+iterations = 1
+
+    @pytest.mark.parametrize("iterations", [1, 10])
+    def test_timer_does_not_pad_or_discard_observed_blocks(monkeypatch, iterations):
+        # A real PyTorch Measurement supplies block means. This is a timing-payload
+        # fixture, not a measured performance result; real CPU Timer is checked below.
+        measurement = Measurement(
+>           number_per_run=4, raw_times=[0.008, 0.020], task_spec=TaskSpec(stmt="fn()"),
+                                                                  ^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: TaskSpec.__init__() missing 1 required positional argument: 'setup'
+
+tests/test_audit_wave1_timing_provenance.py:32: TypeError
+____________ test_timer_does_not_pad_or_discard_observed_blocks[10] ____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x34f4e7d40>
+iterations = 10
+
+    @pytest.mark.parametrize("iterations", [1, 10])
+    def test_timer_does_not_pad_or_discard_observed_blocks(monkeypatch, iterations):
+        # A real PyTorch Measurement supplies block means. This is a timing-payload
+        # fixture, not a measured performance result; real CPU Timer is checked below.
+        measurement = Measurement(
+>           number_per_run=4, raw_times=[0.008, 0.020], task_spec=TaskSpec(stmt="fn()"),
+                                                                  ^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: TaskSpec.__init__() missing 1 required positional argument: 'setup'
+
+tests/test_audit_wave1_timing_provenance.py:32: TypeError
+________ test_real_cpu_timer_preserves_observed_block_count_and_output _________
+
+    def test_real_cpu_timer_preserves_observed_block_count_and_output():
+        harness, config = cpu_harness(iterations=100000)
+        inputs = torch.arange(32, dtype=torch.float32)
+        output = torch.empty_like(inputs)
+        calls = 0
+    
+        def work():
+            nonlocal calls
+            calls += 1
+            torch.add(inputs, 3, out=output)
+    
+        samples = harness._benchmark_pytorch(work, config)
+        result = harness._compute_stats(samples, config)
+>       assert 0 < result.timing.iterations == len(result.timing.raw_times_ms) < config.iterations
+E       AssertionError: assert 100000 < 100000
+E        +  where 100000 = len([0.0015420420095324516, 0.0014594999956898391, 0.0014742500497959554, 0.0014664169866591692, 0.001403207948897034, 0.0014037499786354601, ...])
+E        +    where [0.0015420420095324516, 0.0014594999956898391, 0.0014742500497959554, 0.0014664169866591692, 0.001403207948897034, 0.0014037499786354601, ...] = TimingStats(mean_ms=0.0014497985328681534, median_ms=0.0014594999956898391, std_ms=4.8265250027635456e-05, min_ms=0.00...24516, 0.0014594999956898391, 0.0014742500497959554, 0.0014664169866591692, 0.001403207948897034], schemaVersion='1.0').raw_times_ms
+E        +      where TimingStats(mean_ms=0.0014497985328681534, median_ms=0.0014594999956898391, std_ms=4.8265250027635456e-05, min_ms=0.00...24516, 0.0014594999956898391, 0.0014742500497959554, 0.0014664169866591692, 0.001403207948897034], schemaVersion='1.0') = BenchmarkResult(timing=TimingStats(mean_ms=0.0014497985328681534, median_ms=0.0014594999956898391, std_ms=4.8265250027..._generation': None, 'pcie_link_width': None, 'performance_state': None, 'throttle_reasons': None}, schemaVersion='1.0').timing
+E        +  and   100000 = BenchmarkConfig(iterations=100000, warmup=5, min_run_time_ms=10, percentiles=[25, 50, 75, 99], enable_memory_tracking=...hold_mb=100.0, nsys_timeout_seconds=540, ncu_timeout_seconds=10800, proton_timeout_seconds=540, timeout_multiplier=3.0).iterations
+
+tests/test_audit_wave1_timing_provenance.py:58: AssertionError
+___________ test_real_torchrun_reports_one_observed_process_interval ___________
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1557/test_real_torchrun_reports_one0')
+
+    def test_real_torchrun_reports_one_observed_process_interval(tmp_path):
+        script = tmp_path / "cpu_work.py"
+        output = tmp_path / "result.txt"
+        script.write_text(
+            "import argparse\nfrom pathlib import Path\nimport torch\n"
+            "p=argparse.ArgumentParser(); p.add_argument('--steps', type=int); a=p.parse_args()\n"
+            "x=torch.arange(8); y=x.clone()\n"
+            "for _ in range(a.steps): y.add_(x)\n"
+            f"Path({str(output)!r}).write_text(str(y.tolist()))\n"
+            "print('123 tokens/s')\n"
+        )
+        harness, config = cpu_harness(iterations=7, mode=BenchmarkMode.CUSTOM)
+        result = harness._benchmark_with_torchrun(CPUProcess(script), config)
+>       assert not result.errors, result.errors
+E       AssertionError: ['Torchrun launch exceeded timeout']
+E       assert not ['Torchrun launch exceeded timeout']
+E        +  where ['Torchrun launch exceeded timeout'] = BenchmarkResult(timing=TimingStats(mean_ms=0.0, median_ms=0.0, std_ms=0.0, min_ms=0.0, max_ms=0.0, p50_ms=None, p90_ms...rministic_mode': False}, custom_metrics={}, story_metadata=None, runtime_env={}, gpu_metrics=None, schemaVersion='1.0').errors
+
+tests/test_audit_wave1_timing_provenance.py:92: AssertionError
+----------------------------- Captured stdout call -----------------------------
+[harness] _benchmark_with_torchrun start
+[harness] torchrun spec script=/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1557/test_real_torchrun_reports_one0/cpu_work.py module=None args=[]
+[harness] torchrun cmd: /opt/homebrew/bin/torchrun --nproc_per_node 1 --rdzv_backend c10d --rdzv_endpoint 127.0.0.1:0 -m core.harness.torchrun_wrapper --aisp-target-script /private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1557/test_real_torchrun_reports_one0/cpu_work.py --aisp-expected-torch-seed 42 --steps 7
+[harness] torchrun env passthrough: ['CUDA_VISIBLE_DEVICES']
+=========================== short test summary info ============================
+FAILED tests/test_audit_wave1_timing_provenance.py::test_timer_does_not_pad_or_discard_observed_blocks[1]
+FAILED tests/test_audit_wave1_timing_provenance.py::test_timer_does_not_pad_or_discard_observed_blocks[10]
+FAILED tests/test_audit_wave1_timing_provenance.py::test_real_cpu_timer_preserves_observed_block_count_and_output
+FAILED tests/test_audit_wave1_timing_provenance.py::test_real_torchrun_reports_one_observed_process_interval
+4 failed in 41.62s

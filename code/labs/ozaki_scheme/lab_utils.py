@@ -23,6 +23,8 @@ _METRIC_PATTERNS: Final[dict[str, re.Pattern[str]]] = {
     "tflops": re.compile(r"TFLOPS:\s*([0-9.eE+-]+)"),
     "retained_bits": re.compile(r"RETAINED_BITS:\s*(-?\d+)"),
     "emulation_used": re.compile(r"EMULATION_USED:\s*(\d+)"),
+    "relative_l2_error": re.compile(r"RELATIVE_L2_ERROR:\s*([0-9.eE+-]+)"),
+    "normalized_max_abs_error": re.compile(r"NORMALIZED_MAX_ABS_ERROR:\s*([0-9.eE+-]+)"),
     "max_abs_error": re.compile(r"MAX_ABS_ERROR:\s*([0-9.eE+-]+)"),
     "mean_abs_error": re.compile(r"MEAN_ABS_ERROR:\s*([0-9.eE+-]+)"),
     "checksum": re.compile(r"RESULT_CHECKSUM:\s*([0-9.eE+-]+)"),

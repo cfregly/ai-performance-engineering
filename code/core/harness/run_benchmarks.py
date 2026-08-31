@@ -12263,7 +12263,7 @@ def main():
     
     # Dump hardware capabilities at start - MUST succeed
     logger.info("Dumping hardware capabilities...")
-    dump_caps_path = repo_root / "core" / "scripts" / "utilities" / "dump_hardware_capabilities.py"
+    dump_caps_path = repo_root / "scripts" / "utilities" / "dump_hardware_capabilities.py"
     if not dump_caps_path.exists():
         raise FileNotFoundError(
             f"Hardware capabilities script not found: {dump_caps_path}\n"
@@ -12271,7 +12271,7 @@ def main():
             f"This is a critical configuration error."
         )
     result = _run_repo_python_module(
-        "core.scripts.utilities.dump_hardware_capabilities",
+        "scripts.utilities.dump_hardware_capabilities",
         "--fast",
         timeout=15,
     )
@@ -12281,7 +12281,7 @@ def main():
     
     # Pre-compile CUDA extensions before running benchmarks - MUST succeed
     logger.info("Pre-compiling CUDA extensions...")
-    precompile_path = repo_root / "core" / "scripts" / "utilities" / "precompile_cuda_extensions.py"
+    precompile_path = repo_root / "scripts" / "utilities" / "precompile_cuda_extensions.py"
     if not precompile_path.exists():
         raise FileNotFoundError(
             f"Pre-compilation script not found: {precompile_path}\n"
@@ -12289,7 +12289,7 @@ def main():
             f"This is a critical configuration error."
         )
     result = _run_repo_python_module(
-        "core.scripts.utilities.precompile_cuda_extensions",
+        "scripts.utilities.precompile_cuda_extensions",
         timeout=300,
     )
     logger.info(result.stdout)

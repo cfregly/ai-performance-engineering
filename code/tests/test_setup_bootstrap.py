@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -77,3 +78,265 @@ def test_bootstrap_propagates_injected_submodule_git_failure(tmp_path: Path) -> 
     assert result.returncode == 42
     assert calls[-1] == f"-C {REPOSITORY_ROOT} submodule update --init --recursive"
     assert "Repository bootstrap complete" not in result.stdout
+
+
+def _pytorch_source_script() -> str:
+    """Execute the real source-selection blocks without privileged setup actions."""
+    setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+    defaults = setup.split("PYTORCH_TORCH_VERSION=", 1)[1].split(
+        "GPU_CLOCK_SERVICE_PATH=", 1
+    )[0]
+    pins = setup.split("# Single-source serving stack pins", 1)[1].split(
+        "# Detect FlashInfer availability", 1
+    )[0]
+    return (
+        "set -e\n"
+        'REQUIREMENTS_FILE="$1"\n'
+        'VLLM_PIP_SPEC=""\n'
+        'FLASHINFER_EXPECTED_VERSION=""\n'
+        'FLASH_ATTN_ARCH="${2:-x86_64}"\n'
+        f"PYTORCH_TORCH_VERSION={defaults}\n"
+        f"# Single-source serving stack pins{pins}\n"
+    )
+
+
+def _resolve_pytorch_sources(
+    requirements: Path,
+    *,
+    find_links_override: str | None = None,
+    architecture: str = "x86_64",
+) -> dict[str, str]:
+    source_vars = (
+        "PYTORCH_TORCH_VERSION",
+        "PYTORCH_CU130_INDEX",
+        "PYTORCH_TORCH_FIND_LINKS",
+        "PYTORCH_TORCHAUDIO_INDEX",
+        "PYTORCH_TORCHAUDIO_VERSION",
+        "PYTORCH_TORCHAO_INDEX",
+        "PYTORCH_TORCHAO_VERSION",
+        "PYTORCH_TRITON_INDEX",
+        "PYTORCH_TRITON_VERSION",
+    )
+    script = _pytorch_source_script()
+    for name in source_vars:
+        script += f'printf "SOURCE:{name}=%s\\n" "${{{name}:-}}"\n'
+    env = os.environ.copy()
+    env.pop("PYTORCH_TORCH_FIND_LINKS", None)
+    if find_links_override is not None:
+        env["PYTORCH_TORCH_FIND_LINKS"] = find_links_override
+    result = subprocess.run(
+        ["/bin/bash", "-s", "--", str(requirements), architecture],
+        input=script,
+        check=True,
+        capture_output=True,
+        env=env,
+        text=True,
+    )
+    return dict(
+        line.removeprefix("SOURCE:").split("=", 1)
+        for line in result.stdout.splitlines()
+        if line.startswith("SOURCE:")
+    )
+
+
+def test_pinned_stable_stack_uses_compatible_published_stable_sources() -> None:
+    sources = _resolve_pytorch_sources(CODE_ROOT / "requirements_latest.txt")
+
+    assert sources["PYTORCH_TORCH_VERSION"] == "2.9.1+cu130"
+    assert sources["PYTORCH_CU130_INDEX"] == "https://download.pytorch.org/whl/cu130"
+    assert sources["PYTORCH_TORCH_FIND_LINKS"] == (
+        "https://download.pytorch.org/whl/cu130/torch/"
+    )
+    assert sources["PYTORCH_TORCHAUDIO_INDEX"] == sources["PYTORCH_CU130_INDEX"]
+    assert sources["PYTORCH_TORCHAO_VERSION"] == "0.15.0+cu130"
+    assert sources["PYTORCH_TORCHAO_INDEX"] == sources["PYTORCH_CU130_INDEX"]
+    assert sources["PYTORCH_TRITON_INDEX"] == "https://download.pytorch.org/whl"
+    # The official torch 2.9.1+cu130 wheel requires triton==3.5.1 on Linux.
+    assert sources["PYTORCH_TRITON_VERSION"] == "3.5.1"
+
+
+def test_nightly_requirements_select_nightly_sources(tmp_path: Path) -> None:
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text(
+        "torch==2.10.0.dev20251213+cu130\ntriton==3.6.0+git8fedd49b\n"
+        "torchao==0.17.0.dev20260301+cu130\n",
+        encoding="utf-8",
+    )
+    sources = _resolve_pytorch_sources(requirements)
+
+    assert sources["PYTORCH_CU130_INDEX"] == (
+        "https://download.pytorch.org/whl/nightly/cu130"
+    )
+    assert sources["PYTORCH_TORCH_FIND_LINKS"] == (
+        "https://download.pytorch.org/whl/nightly/cu130/torch/"
+    )
+    assert sources["PYTORCH_TORCHAUDIO_INDEX"] == sources["PYTORCH_CU130_INDEX"]
+    assert sources["PYTORCH_TORCHAO_VERSION"] == "0.17.0.dev20260301+cu130"
+    assert sources["PYTORCH_TORCHAO_INDEX"] == sources["PYTORCH_CU130_INDEX"]
+    assert sources["PYTORCH_TRITON_INDEX"] == "https://download.pytorch.org/whl/nightly"
+
+
+def test_missing_requirements_retains_the_compatible_stable_defaults(tmp_path: Path) -> None:
+    sources = _resolve_pytorch_sources(tmp_path / "missing-requirements.txt")
+    assert sources["PYTORCH_TORCH_VERSION"] == "2.9.1+cu130"
+    assert sources["PYTORCH_TORCHAO_VERSION"] == "0.15.0+cu130"
+    assert sources["PYTORCH_CU130_INDEX"] == sources["PYTORCH_TORCHAO_INDEX"]
+    assert sources["PYTORCH_TRITON_INDEX"] == "https://download.pytorch.org/whl"
+    # The official torch 2.9.1+cu130 wheel requires triton==3.5.1 on Linux.
+    assert sources["PYTORCH_TRITON_VERSION"] == "3.5.1"
+
+
+def test_aarch64_uses_published_torchaudio_version_without_changing_torch() -> None:
+    sources = _resolve_pytorch_sources(
+        CODE_ROOT / "requirements_latest.txt", architecture="aarch64"
+    )
+    assert sources["PYTORCH_TORCHAUDIO_VERSION"] == "2.9.1"
+    assert sources["PYTORCH_TORCH_VERSION"] == "2.9.1+cu130"
+    assert sources["PYTORCH_TORCHAUDIO_INDEX"] == "https://download.pytorch.org/whl/cu130"
+
+
+def test_aarch64_missing_torchao_cuda_wheel_fails_with_source_build_guidance() -> None:
+    setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+    preflight = 'require_torchao_cuda_wheel_support "${FLASH_ATTN_ARCH}"'
+    assert preflight in setup
+    assert setup.index(preflight) < setup.index('TEMP_REQUIREMENTS="')
+    result = subprocess.run(
+        ["/bin/bash", "-s", "--", str(CODE_ROOT / "requirements_latest.txt"), "aarch64"],
+        input=_pytorch_source_script() + f"\n{preflight}\n",
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "No official aarch64 CUDA wheel" in result.stderr
+    assert "torchao==0.15.0+cu130" in result.stderr
+    assert "v0.15.0" in result.stderr
+    assert "source build" in result.stderr
+
+
+def test_torchao_pin_is_deferred_until_after_torch_install() -> None:
+    setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+    requirements = (CODE_ROOT / "requirements_latest.txt").read_text(encoding="utf-8")
+    assert "torchao==0.15.0+cu130" in requirements.splitlines()
+    exclusions = re.findall(r"REQUIREMENTS_EXCLUDE_REGEX='([^']+)'", setup)
+    assert exclusions
+    for exclusion in exclusions:
+        result = subprocess.run(
+            ["grep", "-Ev", exclusion],
+            input="torch==2.9.1+cu130\ntorchao==0.15.0+cu130\nnumpy==2.1.2\n",
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+        assert result.stdout == "numpy==2.1.2\n"
+
+
+def test_explicit_torch_find_links_is_preserved() -> None:
+    sources = _resolve_pytorch_sources(
+        CODE_ROOT / "requirements_latest.txt",
+        find_links_override="/opt/aisp/pytorch-wheels",
+    )
+    assert sources["PYTORCH_TORCH_FIND_LINKS"] == "/opt/aisp/pytorch-wheels"
+    assert sources["PYTORCH_CU130_INDEX"] == "https://download.pytorch.org/whl/cu130"
+
+
+def test_all_pytorch_install_sites_use_the_selected_package_source() -> None:
+    setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+    installs = re.findall(
+        r"^if ! (pip_install .*?); then$", setup, re.MULTILINE | re.DOTALL
+    )
+    package_sources = {
+        "TORCH": "PYTORCH_CU130_INDEX",
+        "TORCHAUDIO": "PYTORCH_TORCHAUDIO_INDEX",
+        "TORCHAO": "PYTORCH_TORCHAO_INDEX",
+        "TRITON": "PYTORCH_TRITON_INDEX",
+    }
+    for package, source in package_sources.items():
+        matching = [
+            install
+            for install in installs
+            if f'==${{PYTORCH_{package}_VERSION}}"' in install
+        ]
+        assert len(matching) == (2 if package == "TORCH" else 1), package
+        for install in matching:
+            assert f'--index-url "${{{source}}}"' in install
+            if package == "TORCH":
+                assert '--find-links "${PYTORCH_TORCH_FIND_LINKS}"' in install
+    triton_retry = setup.split('if ! python3 -c "import triton"', 1)[1].split("else", 1)[0]
+    assert '--index-url "${PYTORCH_TRITON_INDEX}"' in triton_retry
+
+
+def test_requirements_quickstart_exposes_the_cu130_index() -> None:
+    requirements = (CODE_ROOT / "requirements_latest.txt").read_text(encoding="utf-8")
+    active_lines = {
+        line.strip()
+        for line in requirements.splitlines()
+        if not line.lstrip().startswith("#")
+    }
+    assert "--extra-index-url https://download.pytorch.org/whl/cu130" in active_lines
+
+
+def _report_cudnn(
+    tmp_path: Path, package_info: str, exit_code: int = 0
+) -> subprocess.CompletedProcess[str]:
+    setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+    match = re.search(
+        r"^report_installed_cudnn\(\) \{\n.*?^\}", setup, re.MULTILINE | re.DOTALL
+    )
+    assert match is not None, "setup summary must query cuDNN, not print a fixed version"
+    summary = setup.split("# Final summary\n", 1)[1]
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    query_log = tmp_path / "dpkg-query.log"
+    query = bin_dir / "dpkg-query"
+    query.write_text(
+        '#!/bin/sh\nprintf "%s\\n" "$@" > "$AISP_TEST_DPKG_LOG"\n'
+        'printf "%s\\n" "$AISP_TEST_DPKG_INFO"\nexit "$AISP_TEST_DPKG_EXIT"\n',
+        encoding="utf-8",
+    )
+    query.chmod(0o755)
+    env = os.environ.copy()
+    env.update(
+        PATH=f"{bin_dir}:/usr/bin:/bin",
+        AISP_TEST_DPKG_INFO=package_info,
+        AISP_TEST_DPKG_EXIT=str(exit_code),
+        AISP_TEST_DPKG_LOG=str(query_log),
+    )
+    result = subprocess.run(
+        ["/bin/bash", "-s"],
+        input=f'set -e\n{match.group(0)}\nCUDNN_VERSION="9.16.0.29"\n{summary}',
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert query_log.read_text(encoding="utf-8").splitlines() == [
+        "-W",
+        r"-f=${db:Status-Status}\t${Version}\n",
+        "libcudnn9-cuda-13",
+    ]
+    return result
+
+
+def test_cudnn_summary_reports_actual_package_even_when_it_differs_from_pin(
+    tmp_path: Path,
+) -> None:
+    result = _report_cudnn(tmp_path, "installed\t9.17.0.42-1")
+    assert result.returncode == 0, result.stderr
+    assert "libcudnn9-cuda-13 9.17.0.42-1" in result.stdout
+    assert "requested 9.16.0.29-1" in result.stdout
+    assert "matches PyTorch" not in result.stdout
+
+
+def test_cudnn_summary_fails_when_package_query_fails(tmp_path: Path) -> None:
+    result = _report_cudnn(tmp_path, "", exit_code=1)
+    assert result.returncode != 0
+    assert "ERROR:" in result.stderr
+    assert "cuDNN system package:" not in result.stdout
+    assert "Setup Complete!" not in result.stdout
+
+
+def test_cudnn_summary_fails_for_unconfigured_package(tmp_path: Path) -> None:
+    result = _report_cudnn(tmp_path, "unpacked\t9.16.0.29-1")
+    assert result.returncode != 0
+    assert "ERROR:" in result.stderr

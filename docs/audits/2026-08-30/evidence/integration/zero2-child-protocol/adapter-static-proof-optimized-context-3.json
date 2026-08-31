@@ -1,0 +1,22 @@
+{
+  "artifacts": [
+    "rank-0.json",
+    "rank-0.pt",
+    "rank-1.json",
+    "rank-1.pt"
+  ],
+  "diagnostic": "Actual static-loopback torchrun child completed the verification-only profile; no performance timing was collected.",
+  "finish_monotonic_ns": 274159617889875,
+  "finish_wall_ns": 1788138589812917000,
+  "launch_monotonic_ns": 274155683924208,
+  "launch_wall_ns": 1788138585878919000,
+  "mode": "optimized",
+  "rendezvous": "static loopback with an ephemeral local port",
+  "result_directory": "<temporary-result-directory>",
+  "returncode": 0,
+  "run_id": "adapter-proof-optimized-static-2c",
+  "schema_version": 1,
+  "status": "PASS_VERIFICATION_ONLY",
+  "variant": "multigpu",
+  "world_size": 2
+}

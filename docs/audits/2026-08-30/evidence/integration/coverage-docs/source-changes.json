@@ -1,0 +1,16 @@
+[
+  {
+    "path": "code/core/scripts/refresh_readmes.py",
+    "before_sha256": "e17ac6b9daf7edd63175290b929e7ff04af9f10d2d7e10592abd7841989d0ec4",
+    "after_sha256": "a76d6b9e1054441edc1d935bfd3743737a3f9c310a1d4ba90509780d68eabf16",
+    "inventory_rows": 95,
+    "unchanged_first_400_lines": true
+  },
+  {
+    "path": "code/AGENTS.md",
+    "before_sha256": "2716960df5f311a9d6c118d203a0703eec48e6051cafa1d6ba30c3b5c1571c0d",
+    "after_sha256": "28003eb35b85147a868501f164180db99596b7714a4cabc40621f13c2ba101b6",
+    "inventory_rows": 95,
+    "unchanged_first_400_lines": true
+  }
+]

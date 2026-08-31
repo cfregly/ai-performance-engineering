@@ -23,20 +23,20 @@ test: all
 compare:
 	@echo "Chapter 17 is Python-focused - no architecture-specific builds needed"
 
-b200: ARCH=sm_100
-b200: all
+b200:
+	$(MAKE) ARCH=sm_100 all
 	@echo "✓ Configured for B200 (Python scripts use runtime architecture detection)"
 
-gb10: ARCH=sm_121
-gb10: all
+gb10:
+	$(MAKE) ARCH=sm_121 all
 	@echo "✓ Configured for GB10 (Python scripts use runtime architecture detection)"
 
-b300: ARCH=sm_103
-b300: all
+b300:
+	$(MAKE) ARCH=sm_103 all
 	@echo "✓ Configured for B300 (Python scripts use runtime architecture detection)"
 
-gb300: ARCH=sm_103
-gb300: all
+gb300:
+	$(MAKE) ARCH=sm_103 all
 	@echo "✓ Configured for GB300 (Python scripts use runtime architecture detection)"
 
 clean:

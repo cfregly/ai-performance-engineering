@@ -13,6 +13,7 @@ from labs.persistent_decode.optimized_persistent_decode_triton import persistent
 from labs.persistent_decode.persistent_decode_common import (
     build_decode_input_signature,
     build_inputs,
+    validate_decode_output,
     get_decode_options,
     get_decode_profile,
     resolve_device,
@@ -74,11 +75,8 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
         self._verify_output_buffer: torch.Tensor | None = None
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.inputs = build_inputs(self.device)
-        self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
+        self._output_view = self.inputs.out
         self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)
         self.prefill_out = torch.empty((self.batch, self.seq_len), device=self.device, dtype=torch.float32)
         self._full_events = {
@@ -95,6 +93,16 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
         self._capture_graphs()
 
     def _capture_graphs(self) -> None:
+        # Compile/load the exact kernel outside capture; the first graph launch
+        # must not also initialize a Triton module or its CUDA workspaces.
+        persistent_decode_kernel[(min(self.batch, self.num_programs),)](
+            self.inputs.q, self.inputs.k, self.inputs.v, self.inputs.out,
+            self.inputs.work_seq_ids, self.inputs.work_steps, self.batch,
+            head_dim=self.head_dim, max_steps=self.seq_len, BLOCK_K=self.block_k,
+            num_warps=2, num_stages=1,
+        )
+        self.prefill_out.copy_((self.inputs.q * self.inputs.k).sum(dim=-1))
+        torch.cuda.synchronize()
         self._capture_piecewise_graphs()
         self._capture_full_graph()
 
@@ -108,8 +116,8 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
         # Capture persistent decode kernel
         self.decode_graph = torch.cuda.CUDAGraph()
         torch.cuda.synchronize()
-        num_items = min(self.batch, self.num_programs)
-        grid = (max(1, num_items),)
+        num_items = self.batch
+        grid = (min(self.batch, self.num_programs),)
         BLOCK_K = self.block_k
         with torch.cuda.graph(self.decode_graph):
             persistent_decode_kernel[grid](
@@ -132,8 +140,8 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
         if self.graph_mode == GraphMode.PIECEWISE:
             return
         self.full_graph = torch.cuda.CUDAGraph()
-        num_items = min(self.batch, self.num_programs)
-        grid = (max(1, num_items),)
+        num_items = self.batch
+        grid = (min(self.batch, self.num_programs),)
         BLOCK_K = self.block_k
         with torch.cuda.graph(self.full_graph):
             qk = (self.inputs.q * self.inputs.k).sum(dim=-1)
@@ -234,6 +242,7 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
     def capture_verification_payload(self) -> None:
         if self.inputs is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
+        validate_decode_output(self.inputs)
         self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={
@@ -300,8 +309,10 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
     def validate_result(self) -> str | None:
         if self.inputs is None:
             return "Inputs not initialized"
-        if not torch.isfinite(self.inputs.out).all():
-            return "Non-finite output detected"
+        try:
+            validate_decode_output(self.inputs)
+        except AssertionError as exc:
+            return str(exc)
         return None
 
 def get_benchmark() -> BaseBenchmark:

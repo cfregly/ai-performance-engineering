@@ -1,0 +1,49 @@
+objective:
+  primary_kpi: correctness_and_truthful_work_accounting
+  secondary_kpis: [latency_ms_after_correctness, effective_attention_flops]
+benchmark:
+  layer: micro
+  grade: realism
+  variable_under_test: attention_decode_implementation
+workload:
+  type: inference
+  model: synthetic attention and decode kernels; no downloaded model
+  constraints:
+    - original source findings W1-016/022/039/066/071/072/073/074/088/089/090/118
+    - no omitted sequences, phantom keys, ignored causal flags or mislabeled providers
+    - independent full-output checks and explicit unsupported paths
+    - no guessed relaxed tolerances or historical performance qualification
+slos:
+  latency_ms: {p50: null, p95: null, p99: null}
+  cost_budget: no paid services or GPU allocation
+  FA4_existing_speed_gate: 1.05x after correctness and actual provider selection
+environment:
+  hardware:
+    gpu: []
+    cpu: local macOS arm64; exact platform in environment.json
+    topology: no CUDA runtime or GPU lease
+  software:
+    python: 3.12.2 existing miniconda CPU environment
+    pytorch: 2.8.0 CPU
+    cuda: absent
+    target_stack: pending pinned GPU environment; local CPU env is not target qualification
+  data_pipeline: [synthetic local tensors, optional memmap/pinned KV staging]
+current_baseline:
+  latency_ms: null
+  tokens_per_second: null
+  profile_artifacts: []
+hot_path_model:
+  path: attention kernels, persistent decode and asynchronous H2D staging
+  phase: steady_state
+  invocation_frequency: per_batch
+  operation_cost_source: source inspection only; no current GPU profile
+  expected_dominant_cost: not established without target traces
+  best_case_primary_kpi_improvement_pct: null
+evidence:
+  baseline_artifact: root HANDOFF.md August17 FA4 history only
+  profile_artifacts: []
+  static_review_findings: [all 12 P07 IDs; see receipt]
+candidate_optimizations: [complete dot reduction, stable softmax, tail masks, grid stride, buffer ownership fences]
+risk_guardrails:
+  correctness_tests: [CPU production comparator and masks, 25 actual CUDA cases pending]
+  change_windows: [GPU work only after separate hardware custody]

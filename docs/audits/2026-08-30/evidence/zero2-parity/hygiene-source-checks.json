@@ -1,0 +1,31 @@
+{
+  "kind": "Exact isolated host source contracts; not whole-module pytest; missing unrelated Triton imports not mocked",
+  "results": [
+    {
+      "function": "test_dtype_byte_sizing_avoids_empty_tensor_metadata_allocations",
+      "result": "PASS",
+      "function_sha256": "625e7f2fc104d8241040fc4d75fdfe946eda416c09fcc163cbbc7f975d3122a0"
+    },
+    {
+      "function": "test_train_distributed_optimized_wrappers_log_detached_loss_values",
+      "result": "PASS",
+      "function_sha256": "d80e14c8979eaa1c84d0129ab5e6fae79346d737db033c5f0b9ceba65f8593d9"
+    },
+    {
+      "function": "test_train_distributed_baseline_wrappers_log_detached_loss_values",
+      "result": "PASS",
+      "function_sha256": "7bc4a33b766e4afcf721df3f0b9baf5944c940468b0e05d739b3799d3f716e69"
+    },
+    {
+      "function": "test_train_distributed_zero_scripts_reuse_synthetic_batch_buffers",
+      "result": "PASS",
+      "function_sha256": "60796ffd08e20a6e5d4aa038e0a9d19e21e95554ca232744b531e5e6ef8e9515"
+    },
+    {
+      "function": "test_train_distributed_matched_zero2_keeps_reporting_outside_measured_updates",
+      "result": "PASS",
+      "function_sha256": "be814a46cc5ba29e5744a5bdc15ec7976202ffe5de44390908da8e166c483ad0"
+    }
+  ],
+  "file_sha256": "686828ced8411e05037e3b4ad1fe703ca050b7951a324ac8245383d7e052c777"
+}

@@ -1,0 +1,27 @@
+[
+  {
+    "path": "HANDOFF.md",
+    "sha256": "47fe3e48cfc6b141e54c9f056f185c202e591364804d31444c3110e7df502d74",
+    "role": "read_only_context_not_changed_by_P07"
+  },
+  {
+    "path": "code/labs/flashattention4/tflops_microbench.py",
+    "sha256": "f07b863f759a1d0bca468854e7483c7ecf4ba668b9cbc0591c25ae2dde8b4ffb",
+    "role": "read_only_context_not_changed_by_P07"
+  },
+  {
+    "path": "code/labs/flexattention/flexattention_common.py",
+    "sha256": "bcd1ef6b167351d4eb139475a5edf86f491e55d816703c35d4e47af03a557a1f",
+    "role": "read_only_context_not_changed_by_P07"
+  },
+  {
+    "path": "code/labs/persistent_decode/optimized_tma_prefill_decode.py",
+    "sha256": "e24bef6eb0489281d54ed71579db42df894a3d8d4dece9d99cd6cb3d620e33fa",
+    "role": "read_only_context_not_changed_by_P07"
+  },
+  {
+    "path": "code/labs/decode_optimization/decode_common.py",
+    "sha256": "13abaa20b58b90bc67d61d228d76d582074518c840b92b97a19fa9d2578fec09",
+    "role": "read_only_context_not_changed_by_P07"
+  }
+]

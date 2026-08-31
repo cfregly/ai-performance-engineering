@@ -1,27 +1,18 @@
 #!/usr/bin/env python3
-"""Level 4: Grouped GEMM (Production MoE Pattern).
+"""Level 4: Sorted per-expert GEMMs.
 
-ADDS: Sort tokens by expert + run contiguous per-expert GEMM.
+Adds sorting and per-expert GEMMs to the shared BF16 model; no multi-stream dispatch is enabled.
 
-This is how production MoE systems work (vLLM, SGLang):
-1. bucket_by_expert() from ch19/mxfp8_moe_common.py
-2. Run GEMM per expert on contiguous memory
-3. Restore original token order
-
-Benefits:
-- Contiguous memory access per expert
-- Better cache utilization
-- Enables CUTLASS grouped GEMM
-
-Cumulative: batched + fused + mem_efficient + grouped
-"""
+The filename and class are retained for compatibility. The LEVEL mapping,
+not a legacy filename, determines execution. These shared levels do not use
+FP8 quantization. No speedup is established by selecting a level."""
 import torch
 
 from labs.moe_optimization_journey.moe_benchmark import MoEJourneyBenchmark, run_level
 
 
 class Level4Grouped(MoEJourneyBenchmark):
-    """Level 4: + Grouped GEMM (sort + per-expert)."""
+    """Shared level 4: Sorted per-expert GEMMs."""
     LEVEL = 4
 
 def get_benchmark() -> Level4Grouped:

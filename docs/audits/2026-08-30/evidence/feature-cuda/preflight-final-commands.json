@@ -1,0 +1,70 @@
+[
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "code/tests/cuda/run_feature_cuda_validation.py",
+      "--arch",
+      "sm_100a",
+      "--output-dir",
+      "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm100a-attempt-2"
+    ],
+    "exit_code": 3,
+    "log": "preflight-final-1.txt",
+    "elapsed_seconds": 0.04217758303275332
+  },
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "code/tests/cuda/run_feature_cuda_validation.py",
+      "--arch",
+      "sm_90",
+      "--output-dir",
+      "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm90-attempt-2"
+    ],
+    "exit_code": 3,
+    "log": "preflight-final-2.txt",
+    "elapsed_seconds": 0.03962491697166115
+  },
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "code/tests/cuda/run_feature_extensions_validation.py",
+      "--case",
+      "bias_silu",
+      "--arch",
+      "sm_100a",
+      "--output-dir",
+      "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/feature-cuda/bias-sm100a-attempt-2"
+    ],
+    "exit_code": 3,
+    "log": "preflight-final-3.txt",
+    "elapsed_seconds": 0.040998041979037225
+  },
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "code/tests/cuda/run_feature_extensions_validation.py",
+      "--case",
+      "grace_tma",
+      "--arch",
+      "sm_90",
+      "--output-dir",
+      "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/feature-cuda/grace-sm90-attempt-2"
+    ],
+    "exit_code": 3,
+    "log": "preflight-final-4.txt",
+    "elapsed_seconds": 0.04224400001112372
+  },
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "code/labs/custom_vs_cublas/run_lab.py",
+      "--stage",
+      "2",
+      "--verify"
+    ],
+    "exit_code": 3,
+    "log": "preflight-final-5.txt",
+    "elapsed_seconds": 0.9083611249807291
+  }
+]

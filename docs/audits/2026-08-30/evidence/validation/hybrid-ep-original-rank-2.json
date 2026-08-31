@@ -1,0 +1,12 @@
+{
+  "rank": 2,
+  "backend": "actual_gloo",
+  "cuda_used": false,
+  "replicas_equal_before_any_update": false,
+  "original_autograd_error": "mul(): functions with out=... arguments don't support automatic differentiation, but one of the arguments requires grad.",
+  "route_outcome": "returned_without_collectives",
+  "output_shape": [
+    0,
+    4
+  ]
+}

@@ -25,17 +25,18 @@ from core.harness.serving_stack import get_serving_stack_pins
 try:
     from vllm.engine.arg_utils import EngineArgs
     from vllm.engine.llm_engine import LLMEngine
-    from vllm.sampling_params import SamplingParams
+    from vllm.sampling_params import RequestOutputKind, SamplingParams
 except Exception as exc:  # pragma: no cover - optional dep
     EngineArgs = None  # type: ignore
     LLMEngine = None  # type: ignore
     SamplingParams = None  # type: ignore
+    RequestOutputKind = None  # type: ignore
     _IMPORT_ERROR = exc
 else:
     _IMPORT_ERROR = None
 
 from labs.dynamic_router.topology import TopologySnapshot, detect_topology
-from labs.dynamic_router.router_policy import Router, SequenceInfo
+from labs.dynamic_router.router_policy import EWMA, Router, SequenceInfo
 from labs.dynamic_router.router_round_robin import Request
 
 
@@ -155,6 +156,42 @@ class _RequestRuntime:
     ttft_ms: Optional[float] = None
     finished: bool = False
     role: str = "shared"
+    observed_output_tokens: int = 0
+
+    def observe_cumulative_tokens(self, total: int, observed_at: float) -> Tuple[int, Optional[float]]:
+        """Consume one cumulative request output, returning delta and new TTFT."""
+        if total < self.observed_output_tokens:
+            raise RuntimeError("Cumulative vLLM output token count decreased")
+        delta = total - self.observed_output_tokens
+        self.observed_output_tokens = total
+        first_ttft = None
+        if self.ttft_ms is None and delta > 0:
+            self.ttft_ms = (observed_at - self.admitted_at) * 1000.0
+            first_ttft = self.ttft_ms
+        return delta, first_ttft
+
+
+class _RoutingTelemetry:
+    """Keep first-token milliseconds separate from output tokens per poll step.
+
+    The existing router's `tpot` field represents a higher-is-better throughput
+    proxy here, not time per output token. No tokens/second claim is made.
+    """
+
+    def __init__(self) -> None:
+        self.ttft_ms = EWMA(0.3)
+        self.tokens_per_step = EWMA(0.3)
+
+    def observe(self, ttft_samples: List[Tuple[str, float]], tokens: int) -> None:
+        for _, sample in ttft_samples:
+            self.ttft_ms.update(sample)
+        self.tokens_per_step.update(float(tokens))
+
+    def snapshot_args(self) -> Dict[str, Optional[float]]:
+        return {
+            "ttft_ema": self.ttft_ms.get(default=None),
+            "tpot_ema": self.tokens_per_step.get(),
+        }
 
 
 class _VllmWrapper:
@@ -188,7 +225,8 @@ class _VllmWrapper:
         self._inflight: Dict[str, _RequestRuntime] = {}
 
     def add_request(self, rt: _RequestRuntime) -> None:
-        params = SamplingParams(temperature=0.0, max_tokens=rt.req.expected_new_tokens)
+        params = SamplingParams(temperature=0.0, max_tokens=rt.req.expected_new_tokens,
+                                output_kind=RequestOutputKind.CUMULATIVE)
         self.engine.add_request(
             request_id=rt.req.req_id,
             inputs=rt.req.req_id + " " + "x" * rt.req.prompt_tokens,
@@ -197,7 +235,7 @@ class _VllmWrapper:
         )
         self._inflight[rt.req.req_id] = rt
 
-    def step(self, now: float) -> Tuple[List[str], List[Tuple[str, float]], int]:
+    def step(self, now: Optional[float] = None) -> Tuple[List[str], List[Tuple[str, float]], int]:
         """
         Advance engine.
 
@@ -207,6 +245,12 @@ class _VllmWrapper:
           - tokens_emitted: total tokens emitted this step
         """
         outputs = self.engine.step()
+        # A pre-step caller timestamp omits the engine work that emits the first
+        # token. Retain the argument for compatibility, but observe after step.
+        return self._consume_request_outputs(outputs, time.time())
+
+    def _consume_request_outputs(self, outputs, observed_at: float) -> Tuple[List[str], List[Tuple[str, float]], int]:
+        """Parse cumulative vLLM output payloads without timing or engine mocks."""
         ttft_samples: List[Tuple[str, float]] = []
         finished_ids: List[str] = []
         tokens_emitted = 0
@@ -218,10 +262,10 @@ class _VllmWrapper:
             # Detect first token
             if ro.outputs:
                 output_token_count = sum(len(o.token_ids) for o in ro.outputs)
-                if rt.ttft_ms is None and output_token_count > 0:
-                    rt.ttft_ms = (now - rt.admitted_at) * 1000.0
-                    ttft_samples.append((rid, rt.ttft_ms))
-                tokens_emitted += output_token_count
+                delta, first_ttft = rt.observe_cumulative_tokens(output_token_count, observed_at)
+                if first_ttft is not None:
+                    ttft_samples.append((rid, first_ttft))
+                tokens_emitted += delta
             if ro.finished:
                 finished_ids.append(rid)
                 rt.finished = True
@@ -231,15 +275,14 @@ class _VllmWrapper:
     def queue_depth(self) -> int:
         return self.engine.get_num_unfinished_requests()
 
-    def snapshot_metrics(self, ttft_ema: float, tpot_ema: float) -> Dict[str, float]:
+    def snapshot_metrics(self, ttft_ema: Optional[float], tpot_ema: float) -> Dict[str, float]:
         mem_free_gb = 0.0
         if torch.cuda.is_available():
             torch.cuda.synchronize(self.device_index)
             free_bytes, _ = torch.cuda.mem_get_info(self.device_index)
             mem_free_gb = free_bytes / (1024**3)
         host_local = max(mem_free_gb * 0.25, 0.0)
-        return {
-            "ttft_ms": ttft_ema,
+        metrics = {
             "tpot": tpot_ema,
             "queue_depth": float(self.queue_depth()),
             "mem_free_gb": mem_free_gb,
@@ -247,6 +290,9 @@ class _VllmWrapper:
             "host_kv_local_gb": host_local,
             "host_kv_remote_gb": 0.0,
         }
+        if ttft_ema is not None:
+            metrics["ttft_ms"] = ttft_ema
+        return metrics
 
 
 class _VllmV1Wrapper(_VllmWrapper):
@@ -297,7 +343,8 @@ class _VllmV1Wrapper(_VllmWrapper):
         self._inflight: Dict[str, _RequestRuntime] = {}
 
     def add_request(self, rt: _RequestRuntime) -> None:
-        params = SamplingParams(temperature=0.0, max_tokens=rt.req.expected_new_tokens)
+        params = SamplingParams(temperature=0.0, max_tokens=rt.req.expected_new_tokens,
+                                output_kind=RequestOutputKind.CUMULATIVE)
         self.engine.add_request(
             request_id=rt.req.req_id,
             inputs=rt.req.req_id + " " + "x" * rt.req.prompt_tokens,
@@ -306,7 +353,7 @@ class _VllmV1Wrapper(_VllmWrapper):
         )
         self._inflight[rt.req.req_id] = rt
 
-    def step(self, now: float) -> Tuple[List[str], List[Tuple[str, float]], int]:
+    def step(self, now: Optional[float] = None) -> Tuple[List[str], List[Tuple[str, float]], int]:
         outputs_dict, executed = self._core.step_fn()
         ttft_samples: List[Tuple[str, float]] = []
         finished_ids: List[str] = []
@@ -331,29 +378,9 @@ class _VllmV1Wrapper(_VllmWrapper):
                 # Scheduler stats and MM cache logging are best-effort here.
                 self.engine.output_processor.update_scheduler_stats(engine_core_outputs.scheduler_stats)
 
-                for ro in processed.request_outputs:
-                    rid = ro.request_id
-                    rt = self._inflight.get(rid)
-                    if rt is None:
-                        continue
-                    try:
-                        ro_outputs = ro.outputs
-                    except AttributeError:
-                        ro_outputs = None
-                    if ro_outputs:
-                        output_token_count = sum(len(o.token_ids) for o in ro_outputs)
-                        if rt.ttft_ms is None and output_token_count > 0:
-                            rt.ttft_ms = (now - rt.admitted_at) * 1000.0
-                            ttft_samples.append((rid, rt.ttft_ms))
-                        tokens_emitted += output_token_count
-                    try:
-                        is_finished = ro.finished
-                    except AttributeError:
-                        is_finished = False
-                    if is_finished:
-                        finished_ids.append(rid)
-                        rt.finished = True
-                        self._inflight.pop(rid, None)
+                finished_ids, ttft_samples, tokens_emitted = self._consume_request_outputs(
+                    processed.request_outputs, time.time(),
+                )
 
         # Keep polling if scheduler deferred execution this step.
         if executed is False and not finished_ids:
@@ -488,8 +515,7 @@ def run_vllm_routing_with_topology(
     ttft_samples: List[float] = []
     ttft_total_ms = 0.0
     completed = 0
-    tpot_ema: Dict[str, float] = {gid: 0.0 for gid in engines}
-    alpha = 0.3
+    telemetry = {gid: _RoutingTelemetry() for gid in engines}
     engine_ids = tuple(engines)
 
     # Submit all requests up front
@@ -509,8 +535,7 @@ def run_vllm_routing_with_topology(
     while active:
         active = False
         for gid, eng in engines.items():
-            now = time.time()
-            finished_ids, ttft_new, tokens = eng.step(now)
+            finished_ids, ttft_new, tokens = eng.step()
             if finished_ids or eng.queue_depth() > 0:
                 active = True
             completed += len(finished_ids)
@@ -518,12 +543,10 @@ def run_vllm_routing_with_topology(
                 for _, sample in ttft_new:
                     ttft_samples.append(sample)
                     ttft_total_ms += sample
-            # Update simple TPOT EMA
-            if tokens > 0:
-                tpot_ema[gid] = alpha * (tokens) + (1.0 - alpha) * tpot_ema[gid]
+            telemetry[gid].observe(ttft_new, tokens)
             # Push metrics into router
             if router:
-                router.update_metrics(gid, eng.snapshot_metrics(ttft_ema=tpot_ema[gid], tpot_ema=tpot_ema[gid]))
+                router.update_metrics(gid, eng.snapshot_metrics(**telemetry[gid].snapshot_args()))
         time.sleep(0.01)
         if completed >= req_count_val:
             break
@@ -536,7 +559,7 @@ def run_vllm_routing_with_topology(
     }
     summary["ttft_ms_p50"], summary["ttft_ms_p95"] = _percentiles(ttft_samples, (50.0, 95.0))
     for gid in engines:
-        summary[f"tpot_tok_per_step_{gid}"] = tpot_ema[gid]
+        summary[f"tpot_tok_per_step_{gid}"] = telemetry[gid].tokens_per_step.get()
     return summary
 
 
@@ -698,17 +721,14 @@ def run_dual_pool_vllm_with_topology(
     queue_depth_totals: Dict[str, float] = {"prefill": 0.0, "decode": 0.0}
     queue_depth_counts: Dict[str, int] = {"prefill": 0, "decode": 0}
     completed: Set[str] = set()
-    alpha = 0.3
-    ttft_ema: Dict[str, float] = {h.gpu_id: 0.0 for h in handles}
-    tpot_ema: Dict[str, float] = {h.gpu_id: 0.0 for h in handles}
+    telemetry = {h.gpu_id: _RoutingTelemetry() for h in handles}
 
     active = True
     while active:
         active = False
         for handle in handles:
             eng = engines[handle.gpu_id]
-            now = time.time()
-            finished_ids, ttft_new, tokens = eng.step(now)
+            finished_ids, ttft_new, tokens = eng.step()
             if finished_ids or eng.queue_depth() > 0:
                 active = True
             for rid, ttft_ms in ttft_new:
@@ -716,12 +736,10 @@ def run_dual_pool_vllm_with_topology(
                 role = req_roles.get(rid, "shared")
                 if role in pool_ttft:
                     pool_ttft[role].append(ttft_ms)
-                ttft_ema[handle.gpu_id] = alpha * ttft_ms + (1.0 - alpha) * ttft_ema[handle.gpu_id]
-            if tokens > 0:
-                tpot_ema[handle.gpu_id] = alpha * tokens + (1.0 - alpha) * tpot_ema[handle.gpu_id]
+            telemetry[handle.gpu_id].observe(ttft_new, tokens)
             router.update_metrics(
                 handle.gpu_id,
-                eng.snapshot_metrics(ttft_ema=ttft_ema[handle.gpu_id], tpot_ema=tpot_ema[handle.gpu_id]),
+                eng.snapshot_metrics(**telemetry[handle.gpu_id].snapshot_args()),
             )
             qd = eng.queue_depth()
             if handle.is_prefill:
@@ -771,7 +789,7 @@ def run_dual_pool_vllm_with_topology(
         "max_tokens": float(max_tokens_val),
     }
     for gid in engines:
-        summary[f"tpot_tok_per_step_{gid}"] = tpot_ema[gid]
+        summary[f"tpot_tok_per_step_{gid}"] = telemetry[gid].tokens_per_step.get()
     return summary
 
 

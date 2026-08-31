@@ -1,0 +1,9 @@
+{
+  "status": "PASS_LOCAL_INTEGRATION",
+  "sources_unchanged": true,
+  "scoped_test_receipt": "kv-payload-test-reconciliation/receipt.json",
+  "independent_review": "kv-payload-independent-review.json",
+  "full_suite": "full-cpu-attempt-2-summary.json",
+  "original_three_failures": "full-cpu-attempt-1-summary.json",
+  "no_gpu_qualification": true
+}

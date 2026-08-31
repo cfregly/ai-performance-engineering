@@ -1,0 +1,18 @@
+{
+  "status": "PASS_METADATA_SOURCE_AND_VERSION_RETENTION_ONLY",
+  "first_pypi_resolved_packages": 51,
+  "union_resolved_packages": 58,
+  "all_prior_versions_retained": true,
+  "triton_pypi_cp312_linux_wheel": "triton-3.5.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+  "triton_pypi_wheel_sha256": "d2c6b915a03888ab931a9fd3e55ba36785e1fe70cbea0b40c6ef93b20fc85232",
+  "torch_cpu_link": {
+    "href": "https://download-r2.pytorch.org/whl/cpu/torch-2.9.1%2Bcpu-cp312-cp312-manylinux_2_28_x86_64.whl#sha256=7417d8c565f219d3455654cb431c6d892a3eb40246055e14d645422de13b9ea1",
+    "data-dist-info-metadata": "sha256=8c7548e1ac8ff4459eb2e8e71e3a8cd7345215fb49bc7d08368fa427666af1ed",
+    "data-core-metadata": "sha256=8c7548e1ac8ff4459eb2e8e71e3a8cd7345215fb49bc7d08368fa427666af1ed",
+    "data-upload-time": "2026-01-23T15:13:04Z"
+  },
+  "limitations": [
+    "uv target metadata resolution is not literal pip transactions or Linux installation",
+    "Only direct CPU workflow pins were required; this is not a full CUDA environment lock"
+  ]
+}

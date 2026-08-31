@@ -1,0 +1,119 @@
+FFFF                                                                     [100%]
+=================================== FAILURES ===================================
+________________ test_real_capture_cli_csv_round_trip[relative] ________________
+
+real_cpu_capture = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1619/real_cpu_profile0/capture')
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1619/test_real_capture_cli_csv_roun0')
+selector = 'relative'
+
+    @pytest.mark.parametrize("selector", ["relative", "absolute", "absolute_glob"])
+    def test_real_capture_cli_csv_round_trip(real_cpu_capture, tmp_path, selector):
+        capture = real_cpu_capture
+        pattern = {"relative": capture.name, "absolute": str(capture),
+                   "absolute_glob": str(capture.parent / "capt*")}[selector]
+        prefix = tmp_path / "roundtrip.v1"
+        result = subprocess.run([sys.executable, str(EXTRACTOR), pattern, "--output-prefix", str(prefix)],
+                                cwd=capture.parent, capture_output=True, text=True, timeout=10)
+>       assert result.returncode == 0, result.stdout + result.stderr
+E       AssertionError: Traceback (most recent call last):
+E           File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/profiling/extract_pytorch_profile.py", line 148, in <module>
+E             sys.exit(main(sys.argv[1:]))
+E                      ^^^^^^^^^^^^^^^^^^
+E           File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/profiling/extract_pytorch_profile.py", line 143, in main
+E             write_outputs(data, pathlib.Path(args.output_prefix))
+E           File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/profiling/extract_pytorch_profile.py", line 83, in write_outputs
+E             meta_path = out_prefix.with_suffix("_metadata.csv")
+E                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "/opt/miniconda3/lib/python3.12/pathlib.py", line 651, in with_suffix
+E             raise ValueError("Invalid suffix %r" % (suffix))
+E         ValueError: Invalid suffix '_metadata.csv'
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/opt/miniconda3/bin/python', '/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/pr... in with_suffix\n    raise ValueError("Invalid suffix %r" % (suffix))\nValueError: Invalid suffix \'_metadata.csv\'\n').returncode
+
+code/tests/test_extract_pytorch_profile.py:43: AssertionError
+________________ test_real_capture_cli_csv_round_trip[absolute] ________________
+
+real_cpu_capture = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1619/real_cpu_profile0/capture')
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1619/test_real_capture_cli_csv_roun1')
+selector = 'absolute'
+
+    @pytest.mark.parametrize("selector", ["relative", "absolute", "absolute_glob"])
+    def test_real_capture_cli_csv_round_trip(real_cpu_capture, tmp_path, selector):
+        capture = real_cpu_capture
+        pattern = {"relative": capture.name, "absolute": str(capture),
+                   "absolute_glob": str(capture.parent / "capt*")}[selector]
+        prefix = tmp_path / "roundtrip.v1"
+        result = subprocess.run([sys.executable, str(EXTRACTOR), pattern, "--output-prefix", str(prefix)],
+                                cwd=capture.parent, capture_output=True, text=True, timeout=10)
+>       assert result.returncode == 0, result.stdout + result.stderr
+E       AssertionError: Traceback (most recent call last):
+E           File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/profiling/extract_pytorch_profile.py", line 148, in <module>
+E             sys.exit(main(sys.argv[1:]))
+E                      ^^^^^^^^^^^^^^^^^^
+E           File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/profiling/extract_pytorch_profile.py", line 138, in main
+E             data = scan(args.patterns)
+E                    ^^^^^^^^^^^^^^^^^^^
+E           File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/profiling/extract_pytorch_profile.py", line 68, in scan
+E             for directory in base.glob(pat):
+E           File "/opt/miniconda3/lib/python3.12/pathlib.py", line 1090, in glob
+E             raise NotImplementedError("Non-relative patterns are unsupported")
+E         NotImplementedError: Non-relative patterns are unsupported
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/opt/miniconda3/bin/python', '/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/pr...plementedError("Non-relative patterns are unsupported")\nNotImplementedError: Non-relative patterns are unsupported\n').returncode
+
+code/tests/test_extract_pytorch_profile.py:43: AssertionError
+_____________ test_real_capture_cli_csv_round_trip[absolute_glob] ______________
+
+real_cpu_capture = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1619/real_cpu_profile0/capture')
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1619/test_real_capture_cli_csv_roun2')
+selector = 'absolute_glob'
+
+    @pytest.mark.parametrize("selector", ["relative", "absolute", "absolute_glob"])
+    def test_real_capture_cli_csv_round_trip(real_cpu_capture, tmp_path, selector):
+        capture = real_cpu_capture
+        pattern = {"relative": capture.name, "absolute": str(capture),
+                   "absolute_glob": str(capture.parent / "capt*")}[selector]
+        prefix = tmp_path / "roundtrip.v1"
+        result = subprocess.run([sys.executable, str(EXTRACTOR), pattern, "--output-prefix", str(prefix)],
+                                cwd=capture.parent, capture_output=True, text=True, timeout=10)
+>       assert result.returncode == 0, result.stdout + result.stderr
+E       AssertionError: Traceback (most recent call last):
+E           File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/profiling/extract_pytorch_profile.py", line 148, in <module>
+E             sys.exit(main(sys.argv[1:]))
+E                      ^^^^^^^^^^^^^^^^^^
+E           File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/profiling/extract_pytorch_profile.py", line 138, in main
+E             data = scan(args.patterns)
+E                    ^^^^^^^^^^^^^^^^^^^
+E           File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/profiling/extract_pytorch_profile.py", line 68, in scan
+E             for directory in base.glob(pat):
+E           File "/opt/miniconda3/lib/python3.12/pathlib.py", line 1090, in glob
+E             raise NotImplementedError("Non-relative patterns are unsupported")
+E         NotImplementedError: Non-relative patterns are unsupported
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/opt/miniconda3/bin/python', '/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/pr...plementedError("Non-relative patterns are unsupported")\nNotImplementedError: Non-relative patterns are unsupported\n').returncode
+
+code/tests/test_extract_pytorch_profile.py:43: AssertionError
+_______ test_unrelated_directory_does_not_create_an_empty_success_report _______
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1619/test_unrelated_directory_does_0')
+
+    def test_unrelated_directory_does_not_create_an_empty_success_report(tmp_path):
+        directory = tmp_path / "ordinary_directory"
+        directory.mkdir()
+        result = subprocess.run([sys.executable, str(EXTRACTOR), directory.name, "--output-prefix", str(tmp_path / "summary")],
+                                cwd=tmp_path, capture_output=True, text=True, timeout=10)
+        assert result.returncode == 1
+>       assert "No PyTorch profiler directories found" in result.stderr
+E       assert 'No PyTorch profiler directories found' in 'Traceback (most recent call last):\n  File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/profiling/e..., in with_suffix\n    raise ValueError("Invalid suffix %r" % (suffix))\nValueError: Invalid suffix \'_metadata.csv\'\n'
+E        +  where 'Traceback (most recent call last):\n  File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/profiling/e..., in with_suffix\n    raise ValueError("Invalid suffix %r" % (suffix))\nValueError: Invalid suffix \'_metadata.csv\'\n' = CompletedProcess(args=['/opt/miniconda3/bin/python', '/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/pr... in with_suffix\n    raise ValueError("Invalid suffix %r" % (suffix))\nValueError: Invalid suffix \'_metadata.csv\'\n').stderr
+
+code/tests/test_extract_pytorch_profile.py:67: AssertionError
+=========================== short test summary info ============================
+FAILED code/tests/test_extract_pytorch_profile.py::test_real_capture_cli_csv_round_trip[relative]
+FAILED code/tests/test_extract_pytorch_profile.py::test_real_capture_cli_csv_round_trip[absolute]
+FAILED code/tests/test_extract_pytorch_profile.py::test_real_capture_cli_csv_round_trip[absolute_glob]
+FAILED code/tests/test_extract_pytorch_profile.py::test_unrelated_directory_does_not_create_an_empty_success_report
+4 failed in 2.75s

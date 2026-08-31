@@ -1,0 +1,36 @@
+{
+  "reviewed_base": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "kind": "actual original CPU model builders; not CUDA training",
+  "source_files": [
+    {
+      "path": "code/labs/train_distributed/baseline_zero2.py",
+      "sha256": "aa845a2e92de8a7c08f16099b9c21c152865be892165057659e205d093f2b8ec",
+      "archive": "original-baseline_zero2.py.txt",
+      "relu_count": 6,
+      "gelu_count": 0
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_zero2.py",
+      "sha256": "121ee2e2e3f82eca8ac2291270f73d64fddf747f39398e57a8fd7699bde9d85a",
+      "archive": "original-optimized_zero2.py.txt",
+      "relu_count": 0,
+      "gelu_count": 6
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_zero2_multigpu.py",
+      "sha256": "9c7832f65fa9c84a674af0b195edac6346b876b95c19b7a92e761093ef219f35",
+      "archive": "original-baseline_zero2_multigpu.py.txt",
+      "relu_count": 0,
+      "gelu_count": 6
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_zero2_multigpu.py",
+      "sha256": "75b9d845d854df156513d06def486c5c45d6473bff2d0ab29698f831fcb5b43f",
+      "archive": "original-optimized_zero2_multigpu.py.txt",
+      "relu_count": 0,
+      "gelu_count": 6
+    }
+  ],
+  "single_baseline_vs_optimized_max_abs_difference": 0.1426897644996643,
+  "all_optimized_and_multigpu_builders_equal": true
+}

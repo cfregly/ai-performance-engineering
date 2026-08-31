@@ -1,0 +1,24 @@
+{
+  "status": "PASS_SOURCE_AND_HOST_CONTROL_ONLY",
+  "supersedes": "earlier deletion state, not historical evidence",
+  "earlier_receipt_sha256": "ab776a9dac6201889272ba59d1606dbae056a09696bbdad6b84b9c3963fd82c9",
+  "source_sha256": {
+    "code/labs/custom_vs_cublas/experimental/tcgen05_multicast.cu": "f642f9f0a071ff88e39436eb757cca0b38e088c28b70afa2303ea1ef3a3a9d31",
+    "code/tests/test_blackwell_feature_sources.py": "32756d0be4b5bad59e4cf160c760a0aacb032dfc1f1400bb503d5347ceb82d62"
+  },
+  "frozen_peer_sha256": {
+    "code/labs/custom_vs_cublas/experimental/tcgen05_tma_multicast.cu": "bacf28de21aa01d25d36e98a993c0366af488c8be9b15f12acf971b3e8d439aa"
+  },
+  "artifacts": {
+    "docs/audits/2026-08-30/evidence/feature-cuda/retirement-followup/README.md": "028efcd660eda80a61d68b375a31deba6d04f268fa3191a75bf4dccdf4ebf0c0",
+    "docs/audits/2026-08-30/evidence/feature-cuda/retirement-followup/host-command.json": "b581cf2c09844c43314e531dd8ea3edaf2c6f7a0f3e0999c7d426b37891030c6",
+    "docs/audits/2026-08-30/evidence/feature-cuda/retirement-followup/host-tests.txt": "4cb3cab2f844b880e669e2ff505b363ed58e2402dac23c49a898fdcf63cc6b61",
+    "docs/audits/2026-08-30/evidence/feature-cuda/retirement-followup/preprocessor-command.json": "e6ec8f8b6235c09c83c466b7cb470402e0bf3f820f79f6318af2b2180804f928",
+    "docs/audits/2026-08-30/evidence/feature-cuda/retirement-followup/preprocessor-failure.txt": "651f85b1f003a2b1b103eb1a1117e6a3e6542a208452dd614c24f5461264841f"
+  },
+  "pending": [
+    "CUDA compilation",
+    "full-output device validation",
+    "compute-sanitizer"
+  ]
+}

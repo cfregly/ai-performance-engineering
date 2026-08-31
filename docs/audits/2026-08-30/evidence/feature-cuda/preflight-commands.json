@@ -1,0 +1,70 @@
+[
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "code/tests/cuda/run_feature_cuda_validation.py",
+      "--arch",
+      "sm_100a",
+      "--output-dir",
+      "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm100a-attempt-1"
+    ],
+    "exit_code": 3,
+    "log": "preflight-1.txt",
+    "elapsed_seconds": 0.045675542030949146
+  },
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "code/tests/cuda/run_feature_cuda_validation.py",
+      "--arch",
+      "sm_90",
+      "--output-dir",
+      "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm90-attempt-1"
+    ],
+    "exit_code": 3,
+    "log": "preflight-2.txt",
+    "elapsed_seconds": 0.03907766699558124
+  },
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "code/tests/cuda/run_feature_extensions_validation.py",
+      "--case",
+      "bias_silu",
+      "--arch",
+      "sm_100a",
+      "--output-dir",
+      "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/feature-cuda/bias-sm100a-attempt-1"
+    ],
+    "exit_code": 3,
+    "log": "preflight-3.txt",
+    "elapsed_seconds": 0.04016654199222103
+  },
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "code/tests/cuda/run_feature_extensions_validation.py",
+      "--case",
+      "grace_tma",
+      "--arch",
+      "sm_90",
+      "--output-dir",
+      "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/feature-cuda/grace-sm90-attempt-1"
+    ],
+    "exit_code": 3,
+    "log": "preflight-4.txt",
+    "elapsed_seconds": 0.04175833403132856
+  },
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "code/labs/custom_vs_cublas/run_lab.py",
+      "--stage",
+      "2",
+      "--verify"
+    ],
+    "exit_code": 3,
+    "log": "preflight-5.txt",
+    "elapsed_seconds": 1.0323215000098571
+  }
+]

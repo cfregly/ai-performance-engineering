@@ -1,0 +1,22 @@
+{
+  "scope": "Archived original CPU toy computation; no GPU or child-training acceptance",
+  "archived_source_sha256": "7cec3cdf803499f5388f6c87d1f09487f738e318855f141d7adbb3f3cad152ce",
+  "child_launched": false,
+  "child_would_exit": 37,
+  "different_child_args": [
+    [
+      "--mode",
+      "baseline"
+    ],
+    [
+      "--mode",
+      "corrupt"
+    ]
+  ],
+  "identical_verification_outputs": true,
+  "output_shape": [
+    4,
+    186
+  ],
+  "output_abs_max": 2.0499534606933594
+}

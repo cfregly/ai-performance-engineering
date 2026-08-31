@@ -3,6 +3,7 @@
 #include <cooperative_groups.h>
 #include <cuda/pipeline>
 #include <limits>
+#include <cstdint>
 #include <mutex>
 
 #include "threshold_common.cuh"
@@ -11,7 +12,7 @@ namespace ch08 {
 
 namespace cg = cooperative_groups;
 
-#if CUDA_VERSION >= 12000
+#if CUDART_VERSION >= 12000
 template <int ValuesPerThread>
 __global__ void threshold_tma_pipeline_kernel(
     const float* __restrict__ inputs,
@@ -28,7 +29,7 @@ __global__ void threshold_tma_pipeline_kernel(
         return;
     }
 
-    extern __shared__ float shmem[];
+    extern __shared__ __align__(16) float shmem[];
     auto stage_ptr = [&](int stage) {
         return shmem + stage * tile_span;
     };
@@ -43,12 +44,15 @@ __global__ void threshold_tma_pipeline_kernel(
         }
         pipe.producer_acquire();
         const size_t elems = min(tile_span, count - offset);
-        cuda::memcpy_async(
-            block,
-            stage_ptr(stage),
-            inputs + offset,
-            cuda::aligned_size_t<16>(elems * sizeof(float)),
-            pipe);
+        const size_t copy_bytes = static_cast<size_t>(elems) * sizeof(float);
+        if (copy_bytes % 16 == 0 &&
+            reinterpret_cast<uintptr_t>(inputs + offset) % 16 == 0) {
+            cuda::memcpy_async(block, stage_ptr(stage), inputs + offset,
+                               cuda::aligned_size_t<16>(copy_bytes), pipe);
+        } else {
+            // Ragged counts or offset input views cannot promise 16-byte alignment.
+            cuda::memcpy_async(block, stage_ptr(stage), inputs + offset, copy_bytes, pipe);
+        }
         pipe.producer_commit();
         return true;
     };
@@ -118,7 +122,7 @@ __global__ void threshold_tma_pipeline_kernel(
     (void)count;
 #endif
 }
-#endif  // CUDA_VERSION >= 12000
+#endif  // CUDART_VERSION >= 12000
 
 template <int ValuesPerThread>
 inline cudaError_t launch_threshold_tma_pipeline_variant(
@@ -127,7 +131,7 @@ inline cudaError_t launch_threshold_tma_pipeline_variant(
     float threshold,
     int count,
     cudaStream_t stream) {
-#if CUDA_VERSION >= 12000
+#if CUDART_VERSION >= 12000
     const dim3 block(kThresholdOptimizedThreads);
     constexpr int values_per_thread = ValuesPerThread;
     constexpr int stages = 2;
@@ -164,7 +168,7 @@ inline cudaError_t launch_threshold_tma_pipeline(
     float threshold,
     int count,
     cudaStream_t stream) {
-#if CUDA_VERSION >= 12000
+#if CUDART_VERSION >= 12000
     constexpr int candidates[] = {4, 6, 8};
     static std::mutex cache_mutex;
     static int cached_device = -1;

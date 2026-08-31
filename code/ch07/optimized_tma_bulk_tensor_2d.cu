@@ -75,7 +75,7 @@ __global__ void tma_bulk_copy_kernel(const __grid_constant__ CUtensorMap in_desc
 
     if (threadIdx.x == 0 && threadIdx.y == 0) {
         cde::cp_async_bulk_tensor_2d_global_to_shared(
-            tile, &in_desc, tile_row, tile_col, *bar);
+            tile, &in_desc, tile_col, tile_row, *bar);
         cde::cp_async_bulk_commit_group();
     }
     cuda::barrier<cuda::thread_scope_block>::arrival_token token;
@@ -92,7 +92,7 @@ __global__ void tma_bulk_copy_kernel(const __grid_constant__ CUtensorMap in_desc
 
     if (threadIdx.x == 0 && threadIdx.y == 0) {
         cde::cp_async_bulk_tensor_2d_shared_to_global(
-            &out_desc, tile_row, tile_col, tile);
+            &out_desc, tile_col, tile_row, tile);
         cde::cp_async_bulk_commit_group();
         cde::cp_async_bulk_wait_group_read<0>();
     }

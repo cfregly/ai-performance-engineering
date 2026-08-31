@@ -1,0 +1,19 @@
+................................sssssss................................. [ 53%]
+......sssssssssssssssss.ssssssss..............................s          [100%]
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/prefill-full-output/pytest-final.xml -
+=========================== short test summary info ============================
+SKIPPED [7] tests/test_audit_wave1_prefill_full_output.py:235: Actual CUDA device required; CPU payload checks are not GPU qualification
+SKIPPED [3] tests/test_audit_wave1_attention_regressions.py:139: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [1] tests/test_audit_wave1_attention_regressions.py:153: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [8] tests/test_audit_wave1_attention_regressions.py:166: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [1] tests/test_audit_wave1_attention_regressions.py:181: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [2] tests/test_audit_wave1_attention_regressions.py:193: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [1] tests/test_audit_wave1_attention_regressions.py:217: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [1] tests/test_audit_wave1_attention_regressions.py:240: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [1] tests/test_audit_wave1_attention_regressions.py:290: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [3] tests/test_audit_wave1_attention_regressions.py:310: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [2] tests/test_audit_wave1_attention_regressions.py:332: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [1] tests/test_audit_wave1_attention_regressions.py:357: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [1] tests/test_audit_wave1_attention_regressions.py:382: Actual CUDA runtime required; host checks are not GPU qualification
+SKIPPED [1] tests/test_decode_optimization_config.py:810: CUDA required for decode event setup
+102 passed, 33 skipped in 4.43s

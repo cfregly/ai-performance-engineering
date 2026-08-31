@@ -1,0 +1,2 @@
+exit_code=3
+{"status": "HOLD", "accepted": false, "gpu_executed": false, "reason": "Actual CUDA unavailable; no numerical evidence collected"}

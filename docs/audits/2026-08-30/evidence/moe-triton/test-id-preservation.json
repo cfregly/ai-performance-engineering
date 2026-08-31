@@ -1,0 +1,16 @@
+{
+  "all_original_function_ids_preserved": true,
+  "function_count": 10,
+  "names": [
+    "test_level4_grouped_moe_batches_expert_count_metadata_reads",
+    "test_level4_grouped_moe_overwrites_sorted_expert_output",
+    "test_level4_grouped_moe_unsort_scatter_matches_reference",
+    "test_moe_bmm_fusion_reuses_offset_buffer_without_cat",
+    "test_moe_journey_level_benchmarks_record_events_on_captured_stream",
+    "test_moe_journey_run_level_uses_reused_cuda_events",
+    "test_moe_journey_timing_events_and_verification_clone_stay_out_of_hot_path",
+    "test_moe_route_weight_normalization_uses_selected_logit_softmax",
+    "test_triton_fused_moe_benchmark_reuses_precomputed_max_tokens",
+    "test_triton_fused_moe_uses_overwritten_output_and_inplace_offsets"
+  ]
+}

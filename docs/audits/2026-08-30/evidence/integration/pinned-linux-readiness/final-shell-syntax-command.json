@@ -1,0 +1,9 @@
+{
+  "argv": [
+    "bash",
+    "-n",
+    "code/setup.sh"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering",
+  "exit_code": 0
+}

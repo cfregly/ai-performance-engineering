@@ -1,0 +1,11 @@
+ssssssss.............                                                    [100%]
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_blackwell_stack.py:25: Blackwell architecture detection requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:25: torch.compile requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:25: CUDA 13 stream integration requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:25: CUDA profiler and NVTX requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:25: Triton kernel requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:25: CUDA timing smoke check requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:174: distributed inference requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:295: distributed inference requires a real CUDA device
+13 passed, 8 skipped in 3.45s

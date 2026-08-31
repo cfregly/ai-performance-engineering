@@ -3,6 +3,23 @@
 ## Summary
 Packages a staged MoE optimization story from naive execution to quantized/padded fast paths so you can measure which step is actually doing the work.
 
+## Shared level mapping and compatibility names
+| Shared level | Actual requested path |
+| --- | --- |
+| 0 | Naive expert loops |
+| 1 | Batched expert computation |
+| 2 | Fused SiLU and multiplication |
+| 3 | Intermediate-buffer reuse |
+| 4 | Sorted per-expert GEMMs |
+| 5 | Padded batched GEMMs |
+| 6 | CUDA graph replay of the expert path |
+| 7 | torch.compile on the graph-friendly model |
+
+The shared benchmark casts models to BF16. Legacy names are compatibility aliases: level2_fp8/streams/sorted/permuted request level2 fusion; level3_grouped/sorted/fp8 request level3 buffer reuse; level4_parallel requests grouped dispatch; optimized_moe_expert_parallel requests level5 BMM. None of these names enables FP8 or multi-stream/distributed execution. Runtime availability and capture/compile metrics must confirm actual kernel paths. The separate level6_native_fp8 experiment is not one of these shared wrappers. Its native E4M3 path includes activation scaling in timing, combines all routed outputs, and checks full outputs against original BF16 weights. Normal setup requires AISP_NATIVE_FP8_ACCURACY_POLICY; no accuracy or speedup is accepted without reviewed limits and actual target evidence. Collect errors with python -m labs.moe_optimization_journey.calibrate_native_fp8 --output /tmp/native-fp8-unique-attempt.json. This calibration records failures and never grants acceptance; retained CPU reference weights are part of its memory cost.
+
+## Incomplete Triton experiments withdrawn
+The incomplete standalone Triton MoE/FFN and raw grouped-GEMM experiments were withdrawn; legacy `triton_fused_moe` calls fail explicitly and emit no performance result. The active SiLU-times-up helper uses differentiable PyTorch whenever either input needs gradients, and also uses explicit PyTorch on CPU or without Triton. Only eligible CUDA inference launches the elementwise Triton kernel, including any required contiguous copies in the call. This is activation fusion, not a fused full expert FFN. Actual CUDA numerical, device, stream and memcheck acceptance remains HOLD.
+
 ## Problem
 MoE optimization is often told as a narrative, not a benchmarked sequence. This lab keeps the sequence explicit so you can see which stage of the journey is providing the real win.
 
@@ -16,15 +33,15 @@ MoE optimization is often told as a narrative, not a benchmarked sequence. This 
 - separate padded/quantized route for a more production-like fast path
 - designed to attribute wins to concrete optimization steps
 
-## Measured Delta
-Representative strict results from `artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/`:
+## Historical Delta (not requalified by this audit)
+Historical results, preserved without recertifying their source/accuracy contracts, from `artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/`:
 
 | Target | Baseline | Optimized | Measured delta |
 | --- | ---: | ---: | ---: |
 | `moe` | `41.938 ms` | `1.217 ms` | `34.47x` |
 | `moe_pad_quant` | `4.681 ms` | `1.790 ms` | `2.62x` |
 
-The spread is useful. The big win is in the core MoE path, while the padded/quantized lane is a smaller, still-real follow-on improvement.
+These records do not establish that legacy wrappers named FP8, streams, or expert parallelism executed those techniques. Fresh correctness and profiler evidence is required before attributing or repeating these speedup claims.
 
 ## Profiler Evidence
 ```bash

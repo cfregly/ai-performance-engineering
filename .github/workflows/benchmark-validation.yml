@@ -80,15 +80,21 @@ jobs:
             coverage[toml]==7.15.2 \
             pyyaml==6.0.2 \
             pydantic==2.12.4 \
-            typer==0.12.0 \
+            typer==0.15.4 \
             click==8.1.7 \
-            rich==13.7.0 \
+            rich==13.7.1 \
             psutil==7.1.0 \
             numpy==2.1.2 \
             fastapi==0.121.3 \
             uvicorn==0.38.0 \
-            httpx==0.28.1
-          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+            httpx==0.28.1 \
+            requests==2.34.2 \
+            tokenizers==0.22.2 \
+            hypothesis==6.148.2 \
+            anthropic==0.112.0 \
+            openai==2.44.0 \
+            triton==3.5.1
+          python -m pip install torch==2.9.1 --index-url https://download.pytorch.org/whl/cpu
 
       - name: Run core contract tests
         run: |
@@ -123,6 +129,20 @@ jobs:
             tests/test_validate_benchmark_pairs_tools.py::test_ch04_no_overlap_torchrun_specs_use_public_target_names \
             tests/test_validate_benchmark_pairs_tools.py::test_ch04_additional_torchrun_specs_build_without_side_effects \
             tests/test_validate_benchmark_pairs_tools.py::test_ch04_nvshmem_torchrun_specs_preserve_variant_contracts
+
+      - name: Run full CPU test suite
+        # Collect every test file, including verification/anti-cheat suites.
+        # Tests requiring real CUDA must report an explicit, narrow skip.
+        # code/conftest.py provides timeout support with external plugins disabled.
+        run: python -m pytest tests -q -ra -o timeout=120 --junitxml=artifacts/pytest-cpu.xml
+
+      - name: Upload CPU test evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-cpu-${{ github.run_id }}-${{ github.run_attempt }}
+          path: code/artifacts/pytest-cpu.xml
+          if-no-files-found: warn
 
       - name: Validate shell entrypoints
         run: |

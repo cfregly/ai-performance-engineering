@@ -1,0 +1,20 @@
+{
+  "argv": [
+    "/opt/miniconda3/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_setup_bootstrap.py::test_pinned_stable_stack_uses_compatible_published_stable_sources",
+    "tests/test_setup_bootstrap.py::test_missing_requirements_retains_the_compatible_stable_defaults",
+    "tests/test_repository_configuration.py::test_cpu_ci_installs_direct_http_test_dependency",
+    "--junitxml=/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/host-before.xml"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "env": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+  },
+  "exit_code": 1,
+  "elapsed_seconds": 2.4405009746551514
+}

@@ -1,0 +1,21 @@
+PASS: 19 changed production/test Python files plus 2 evidence scripts parsed.
+code/core/common/async_input_pipeline.py
+code/labs/cudnn_sdpa_bench/baseline_flash_sdp.py
+code/labs/decode_optimization/baseline_decode_warp_specialized.py
+code/labs/decode_optimization/optimized_decode_warp_specialized.py
+code/labs/flashattention4/flashattention4_common.py
+code/labs/flashattention_gluon/baseline_flashattention_gluon.py
+code/labs/flashattention_gluon/flashattention_gluon_common.py
+code/labs/flashattention_gluon/optimized_flashattention_gluon.py
+code/labs/flexattention/flex_attention_cute.py
+code/labs/persistent_decode/baseline_native_tma_prefill_decode.py
+code/labs/persistent_decode/baseline_persistent_decode.py
+code/labs/persistent_decode/optimized_native_tma_prefill_decode.py
+code/labs/persistent_decode/optimized_persistent_decode_cuda.py
+code/labs/persistent_decode/optimized_persistent_decode_graphs.py
+code/labs/persistent_decode/optimized_persistent_decode_triton.py
+code/labs/persistent_decode/paged_kv_offload_common.py
+code/labs/persistent_decode/persistent_decode_common.py
+code/labs/persistent_decode/tma_extension.py
+code/tests/test_audit_wave1_attention_regressions.py
+CUDA/C++ not compiled.

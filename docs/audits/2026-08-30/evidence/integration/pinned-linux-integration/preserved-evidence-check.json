@@ -1,0 +1,18 @@
+{
+  "at": "2026-08-31T00:35:06.959151+00:00",
+  "earlier_manifest_files": 731,
+  "unchanged_files": 730,
+  "current_path_changes": [
+    {
+      "path": "docs/audits/2026-08-30/STATUS.md",
+      "recorded": "b0f177a9e153d9be3b21b68659aae3a8552de3120eb17d7c76be240fde42bf68",
+      "current": "91e2a66429e7ca54d65f62af00adea1b68684d18e352cde9d95b2e86bf50b8c9",
+      "preserved_copy": "STATUS.md.before",
+      "preserved_copy_matches": true
+    }
+  ],
+  "expected_mutable_status_change_only": true,
+  "attention_manifest_files": 115,
+  "attention_source_mismatches": [],
+  "scope": "Historical evidence readback and current attention source identity only; no CUDA execution or current source acceptance inferred."
+}

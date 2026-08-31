@@ -1,0 +1,15 @@
+{
+  "status": "INTERRUPTED_UNBOUNDED_REQUEST",
+  "command": [
+    "/opt/miniconda3/bin/python",
+    "docs/audits/2026-08-30/evidence/integration/http-cpu-readiness/reproduce_original.py"
+  ],
+  "exit_code": 130,
+  "owned_pid": 56262,
+  "termination": "SIGINT after observing blocked requests.get with no timeout on reserved loopback port",
+  "trace_terminal_frame": "urllib3/util/connection.py:73 sock.connect(sa); KeyboardInterrupt",
+  "stdout_artifact": "original-false-pass.json",
+  "stdout_bytes": 0,
+  "reproducer_sha256": "a0f3d6ff76107e1669486504ecb305c6e24178476105844c31e7e5d554d6c483",
+  "limitation": "Does not establish caught-RuntimeError false pass; it reproduced the unbounded readiness probe."
+}

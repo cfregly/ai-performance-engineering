@@ -214,11 +214,11 @@ test-cov:
 # =============================================================================
 
 validate:
-	python core/scripts/validate_imports.py
-	python core/scripts/check_import_edges.py
+	$(PYTHON) -m core.scripts.validate_imports
+	$(PYTHON) -m core.scripts.check_import_edges
 
 validate-ch%:
-	python core/scripts/validate_imports.py --chapter $*
+	$(PYTHON) -m core.scripts.validate_imports --chapter $*
 
 # CUTLASS setup verification (critical for Blackwell/SM100a builds)
 verify-cutlass:

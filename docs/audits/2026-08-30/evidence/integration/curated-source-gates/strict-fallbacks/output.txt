@@ -1,0 +1,2 @@
+Scanned patterns: ch*, labs, core
+Findings: 0

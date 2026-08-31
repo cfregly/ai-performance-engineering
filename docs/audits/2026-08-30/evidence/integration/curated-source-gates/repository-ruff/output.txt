@@ -1,0 +1,63 @@
+tests/test_audit_wave1_hybrid_ep.py:290:56: B023 Function definition does not bind loop variable `observed`
+    |
+288 |                     observed = []
+289 |                     handle = model.output_proj.register_forward_hook(
+290 |                         lambda _module, _args, output: observed.append(output.detach().clone())
+    |                                                        ^^^^^^^^ B023
+291 |                     )
+292 |                     try:
+    |
+
+tests/test_audit_wave1_zero2_parity_cuda.py:95:59: B023 Function definition does not bind loop variable `kind`
+   |
+93 |             assert torch.isfinite(wanted).all(), (kind, name)
+94 |             torch.testing.assert_close(got, wanted, rtol=rtol, atol=atol,
+95 |                                        msg=lambda msg: f"{kind}/{name}: {msg}")
+   |                                                           ^^^^ B023
+   |
+
+tests/test_audit_wave1_zero2_parity_cuda.py:95:66: B023 Function definition does not bind loop variable `name`
+   |
+93 |             assert torch.isfinite(wanted).all(), (kind, name)
+94 |             torch.testing.assert_close(got, wanted, rtol=rtol, atol=atol,
+95 |                                        msg=lambda msg: f"{kind}/{name}: {msg}")
+   |                                                                  ^^^^ B023
+   |
+
+tests/test_audit_wave1_zero2_parity_cuda.py:161:69: B023 Function definition does not bind loop variable `name`
+    |
+159 |             assert torch.isfinite(state[key]).all()
+160 |             torch.testing.assert_close(state[key], expected[name][key], rtol=5e-4, atol=3e-7,
+161 |                                        msg=lambda msg: f"optimizer/{name}/{key}: {msg}")
+    |                                                                     ^^^^ B023
+    |
+
+tests/test_audit_wave1_zero2_parity_cuda.py:161:76: B023 Function definition does not bind loop variable `key`
+    |
+159 |             assert torch.isfinite(state[key]).all()
+160 |             torch.testing.assert_close(state[key], expected[name][key], rtol=5e-4, atol=3e-7,
+161 |                                        msg=lambda msg: f"optimizer/{name}/{key}: {msg}")
+    |                                                                            ^^^ B023
+    |
+
+tests/test_blackwell_feature_sources.py:223:81: B023 Function definition does not bind loop variable `capability`
+    |
+221 |     source.write_text("// cache identity input\n")
+222 |     for capability, abi in (((10, 0), False), ((10, 3), False), ((10, 3), True)):
+223 |         monkeypatch.setattr(module.torch.cuda, "get_device_capability", lambda: capability)
+    |                                                                                 ^^^^^^^^^^ B023
+224 |         monkeypatch.setattr(module.torch, "compiled_with_cxx11_abi", lambda: abi)
+225 |         module._load_kernel(source, "test")
+    |
+
+tests/test_blackwell_feature_sources.py:224:78: B023 Function definition does not bind loop variable `abi`
+    |
+222 |     for capability, abi in (((10, 0), False), ((10, 3), False), ((10, 3), True)):
+223 |         monkeypatch.setattr(module.torch.cuda, "get_device_capability", lambda: capability)
+224 |         monkeypatch.setattr(module.torch, "compiled_with_cxx11_abi", lambda: abi)
+    |                                                                              ^^^ B023
+225 |         module._load_kernel(source, "test")
+226 |     assert len({call["name"] for call in calls}) == 3
+    |
+
+Found 7 errors.

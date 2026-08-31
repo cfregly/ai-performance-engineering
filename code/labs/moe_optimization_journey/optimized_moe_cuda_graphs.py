@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""Optimized MoE: CUDA graphs.
+"""Compatibility entrypoint for shared MoE level 6: CUDA graph replay of the expert path.
 
-Pairs with: baseline_moe.py
-
-This wrapper must stay workload-equivalent with the baseline benchmark. Use the
-MoEJourneyBenchmark implementation (Level 6) to keep parameter_count, inputs,
-and verification semantics consistent across levels.
-"""
+Requests CUDA graph capture/replay for the shared BF16 expert path; inspect capture metrics to establish actual execution.
+The target name is retained; legacy FP8/streams/parallel labels are not
+evidence that those techniques execute. Shared-model precision is BF16.
+Fresh correctness and profiling evidence is required for a speedup claim."""
 from labs.moe_optimization_journey.level5_cudagraphs import Level6CUDAGraphs
 
 

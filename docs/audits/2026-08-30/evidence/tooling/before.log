@@ -1,0 +1,314 @@
+FFFFFFFFFFFFFFFs                                                         [100%]
+=================================== FAILURES ===================================
+__________ test_prometheus_families_parse_once_with_all_gpu_series[0] __________
+
+count = 0
+
+    @pytest.mark.parametrize('count', [0, 1, 2, 8])
+    def test_prometheus_families_parse_once_with_all_gpu_series(count):
+>       text = exporter.format_prometheus_metrics({**gpu_series(count), 'training_loss': 0.125,
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                                   'inference_ttft_ms': 4.5})
+E       AttributeError: module 'monitoring.prometheus_exporter' has no attribute 'format_prometheus_metrics'
+
+tests/test_audit_wave1_tooling_regressions.py:42: AttributeError
+__________ test_prometheus_families_parse_once_with_all_gpu_series[1] __________
+
+count = 1
+
+    @pytest.mark.parametrize('count', [0, 1, 2, 8])
+    def test_prometheus_families_parse_once_with_all_gpu_series(count):
+>       text = exporter.format_prometheus_metrics({**gpu_series(count), 'training_loss': 0.125,
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                                   'inference_ttft_ms': 4.5})
+E       AttributeError: module 'monitoring.prometheus_exporter' has no attribute 'format_prometheus_metrics'
+
+tests/test_audit_wave1_tooling_regressions.py:42: AttributeError
+__________ test_prometheus_families_parse_once_with_all_gpu_series[2] __________
+
+count = 2
+
+    @pytest.mark.parametrize('count', [0, 1, 2, 8])
+    def test_prometheus_families_parse_once_with_all_gpu_series(count):
+>       text = exporter.format_prometheus_metrics({**gpu_series(count), 'training_loss': 0.125,
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                                   'inference_ttft_ms': 4.5})
+E       AttributeError: module 'monitoring.prometheus_exporter' has no attribute 'format_prometheus_metrics'
+
+tests/test_audit_wave1_tooling_regressions.py:42: AttributeError
+__________ test_prometheus_families_parse_once_with_all_gpu_series[8] __________
+
+count = 8
+
+    @pytest.mark.parametrize('count', [0, 1, 2, 8])
+    def test_prometheus_families_parse_once_with_all_gpu_series(count):
+>       text = exporter.format_prometheus_metrics({**gpu_series(count), 'training_loss': 0.125,
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                                   'inference_ttft_ms': 4.5})
+E       AttributeError: module 'monitoring.prometheus_exporter' has no attribute 'format_prometheus_metrics'
+
+tests/test_audit_wave1_tooling_regressions.py:42: AttributeError
+____________ test_prometheus_http_scrape_is_complete_and_parseable _____________
+
+    def test_prometheus_http_scrape_is_complete_and_parseable():
+        class FixtureCollector:
+            # Input fixture only: do not claim CUDA telemetry collection ran.
+            def format_prometheus(self):
+                return exporter.format_prometheus_metrics(gpu_series(8))
+    
+        class Handler(exporter.PrometheusHandler):
+            collector = FixtureCollector()
+    
+        server = HTTPServer(('127.0.0.1', 0), Handler)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+>           with urlopen(f'http://127.0.0.1:{server.server_port}/metrics', timeout=5) as response:
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_audit_wave1_tooling_regressions.py:70: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/miniconda3/lib/python3.12/urllib/request.py:215: in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/urllib/request.py:515: in open
+    response = self._open(req, data)
+               ^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/urllib/request.py:532: in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+/opt/miniconda3/lib/python3.12/urllib/request.py:492: in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/urllib/request.py:1373: in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/urllib/request.py:1348: in do_open
+    r = h.getresponse()
+        ^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/http/client.py:1423: in getresponse
+    response.begin()
+/opt/miniconda3/lib/python3.12/http/client.py:331: in begin
+    version, status, reason = self._read_status()
+                              ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <http.client.HTTPResponse object at 0x1291ce9b0>
+
+    def _read_status(self):
+        line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+        if len(line) > _MAXLINE:
+            raise LineTooLong("status line")
+        if self.debuglevel > 0:
+            print("reply:", repr(line))
+        if not line:
+            # Presumably, the server closed the connection before
+            # sending a valid response.
+>           raise RemoteDisconnected("Remote end closed connection without"
+                                     " response")
+E           http.client.RemoteDisconnected: Remote end closed connection without response
+
+/opt/miniconda3/lib/python3.12/http/client.py:300: RemoteDisconnected
+----------------------------- Captured stderr call -----------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 59266)
+Traceback (most recent call last):
+  File "/opt/miniconda3/lib/python3.12/socketserver.py", line 318, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/opt/miniconda3/lib/python3.12/socketserver.py", line 349, in process_request
+    self.finish_request(request, client_address)
+  File "/opt/miniconda3/lib/python3.12/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/opt/miniconda3/lib/python3.12/socketserver.py", line 761, in __init__
+    self.handle()
+  File "/opt/miniconda3/lib/python3.12/http/server.py", line 436, in handle
+    self.handle_one_request()
+  File "/opt/miniconda3/lib/python3.12/http/server.py", line 424, in handle_one_request
+    method()
+  File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/monitoring/prometheus_exporter.py", line 162, in do_GET
+    metrics = self.collector.format_prometheus()
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/tests/test_audit_wave1_tooling_regressions.py", line 61, in format_prometheus
+    return exporter.format_prometheus_metrics(gpu_series(8))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'monitoring.prometheus_exporter' has no attribute 'format_prometheus_metrics'
+----------------------------------------
+_____________ test_real_flame_cli_creates_requested_artifact[json] _____________
+
+trace = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1554/test_real_flame_cli_creates_re0/trace.json')
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1554/test_real_flame_cli_creates_re0')
+suffix = 'json'
+
+    @pytest.mark.parametrize('suffix', ['json', 'html'])
+    def test_real_flame_cli_creates_requested_artifact(trace, tmp_path, suffix):
+        output = tmp_path/f'flame.{suffix}'
+        result = cli('profile','flame',trace,'--output',output)
+        assert result.returncode == 0, result.stderr + result.stdout
+>       assert output.is_file() and output.stat().st_size > 0
+E       AssertionError: assert (False)
+E        +  where False = is_file()
+E        +    where is_file = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1554/test_real_flame_cli_creates_re0/flame.json').is_file
+
+tests/test_audit_wave1_tooling_regressions.py:104: AssertionError
+_____________ test_real_flame_cli_creates_requested_artifact[html] _____________
+
+trace = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1554/test_real_flame_cli_creates_re1/trace.json')
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1554/test_real_flame_cli_creates_re1')
+suffix = 'html'
+
+    @pytest.mark.parametrize('suffix', ['json', 'html'])
+    def test_real_flame_cli_creates_requested_artifact(trace, tmp_path, suffix):
+        output = tmp_path/f'flame.{suffix}'
+        result = cli('profile','flame',trace,'--output',output)
+        assert result.returncode == 0, result.stderr + result.stdout
+>       assert output.is_file() and output.stat().st_size > 0
+E       AssertionError: assert (False)
+E        +  where False = is_file()
+E        +    where is_file = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1554/test_real_flame_cli_creates_re1/flame.html').is_file
+
+tests/test_audit_wave1_tooling_regressions.py:104: AssertionError
+_____________________ test_flame_html_escapes_trace_names ______________________
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1554/test_flame_html_escapes_trace_0')
+
+    def test_flame_html_escapes_trace_names(tmp_path):
+        trace = tmp_path/'unsafe.json'
+        trace.write_text(json.dumps([{'ph':'X','name':'</script><img src=x onerror=alert(1)>','dur':25}]))
+        output = tmp_path/'safe.html'
+        result = cli('profile','flame',trace,'--output',output)
+        assert result.returncode == 0, result.stderr
+>       assert '<img ' not in output.read_text()
+                              ^^^^^^^^^^^^^^^^^^
+
+tests/test_audit_wave1_tooling_regressions.py:122: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/miniconda3/lib/python3.12/pathlib.py:1027: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1554/test_flame_html_escapes_trace_0/safe.html')
+mode = 'r', buffering = -1, encoding = 'locale', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: '/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1554/test_flame_html_escapes_trace_0/safe.html'
+
+/opt/miniconda3/lib/python3.12/pathlib.py:1013: FileNotFoundError
+_ test_flame_rejects_invalid_or_empty_trace_without_success_artifact[{bad json] _
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1554/test_flame_rejects_invalid_or_0')
+payload = '{bad json'
+
+    @pytest.mark.parametrize('payload', ['{bad json', '{"traceEvents":[]}', '{"traceEvents":[{"ph":"X","name":"bad","dur":NaN}]}'])
+    def test_flame_rejects_invalid_or_empty_trace_without_success_artifact(tmp_path, payload):
+        trace, output = tmp_path/'bad.json', tmp_path/'flame.html'
+        trace.write_text(payload)
+        result = cli('profile','flame',trace,'--output',output)
+>       assert result.returncode != 0
+E       assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/opt/miniconda3/bin/python', '-m', 'cli.aisp', 'profile', 'flame', '/private/var/folders/tn/kp...flame_rejects_invalid_or_0/bad.json...\nUse 'aisp profile compare' for baseline vs optimized comparison.\n", stderr='').returncode
+
+tests/test_audit_wave1_tooling_regressions.py:131: AssertionError
+_ test_flame_rejects_invalid_or_empty_trace_without_success_artifact[{"traceEvents":[]}] _
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1554/test_flame_rejects_invalid_or_1')
+payload = '{"traceEvents":[]}'
+
+    @pytest.mark.parametrize('payload', ['{bad json', '{"traceEvents":[]}', '{"traceEvents":[{"ph":"X","name":"bad","dur":NaN}]}'])
+    def test_flame_rejects_invalid_or_empty_trace_without_success_artifact(tmp_path, payload):
+        trace, output = tmp_path/'bad.json', tmp_path/'flame.html'
+        trace.write_text(payload)
+        result = cli('profile','flame',trace,'--output',output)
+>       assert result.returncode != 0
+E       assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/opt/miniconda3/bin/python', '-m', 'cli.aisp', 'profile', 'flame', '/private/var/folders/tn/kp...flame_rejects_invalid_or_1/bad.json...\nUse 'aisp profile compare' for baseline vs optimized comparison.\n", stderr='').returncode
+
+tests/test_audit_wave1_tooling_regressions.py:131: AssertionError
+_ test_flame_rejects_invalid_or_empty_trace_without_success_artifact[{"traceEvents":[{"ph":"X","name":"bad","dur":NaN}]}] _
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1554/test_flame_rejects_invalid_or_2')
+payload = '{"traceEvents":[{"ph":"X","name":"bad","dur":NaN}]}'
+
+    @pytest.mark.parametrize('payload', ['{bad json', '{"traceEvents":[]}', '{"traceEvents":[{"ph":"X","name":"bad","dur":NaN}]}'])
+    def test_flame_rejects_invalid_or_empty_trace_without_success_artifact(tmp_path, payload):
+        trace, output = tmp_path/'bad.json', tmp_path/'flame.html'
+        trace.write_text(payload)
+        result = cli('profile','flame',trace,'--output',output)
+>       assert result.returncode != 0
+E       assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/opt/miniconda3/bin/python', '-m', 'cli.aisp', 'profile', 'flame', '/private/var/folders/tn/kp...flame_rejects_invalid_or_2/bad.json...\nUse 'aisp profile compare' for baseline vs optimized comparison.\n", stderr='').returncode
+
+tests/test_audit_wave1_tooling_regressions.py:131: AssertionError
+______ test_missing_or_unimplemented_profile_command_exits_nonzero[flame] ______
+
+command = 'flame'
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1554/test_missing_or_unimplemented_0')
+
+    @pytest.mark.parametrize('command', ['flame', 'memory', 'kernels'])
+    def test_missing_or_unimplemented_profile_command_exits_nonzero(command, tmp_path):
+        result = cli('profile',command,tmp_path/'missing.json')
+>       assert result.returncode != 0
+E       assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/opt/miniconda3/bin/python', '-m', 'cli.aisp', 'profile', 'flame', '/private/var/folders/tn/kp...ing_or_unimplemented_0/missing.json...\nUse 'aisp profile compare' for baseline vs optimized comparison.\n", stderr='').returncode
+
+tests/test_audit_wave1_tooling_regressions.py:138: AssertionError
+_____ test_missing_or_unimplemented_profile_command_exits_nonzero[memory] ______
+
+command = 'memory'
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1554/test_missing_or_unimplemented_1')
+
+    @pytest.mark.parametrize('command', ['flame', 'memory', 'kernels'])
+    def test_missing_or_unimplemented_profile_command_exits_nonzero(command, tmp_path):
+        result = cli('profile',command,tmp_path/'missing.json')
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/opt/miniconda3/bin/python', '-m', 'cli.aisp', 'profile', 'memory', '/private/var/folders/tn/k...c2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-\n1554/test_missing_or_unimplemented_1/missing.json\n', stderr='').returncode
+
+tests/test_audit_wave1_tooling_regressions.py:138: AssertionError
+_____ test_missing_or_unimplemented_profile_command_exits_nonzero[kernels] _____
+
+command = 'kernels'
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1554/test_missing_or_unimplemented_2')
+
+    @pytest.mark.parametrize('command', ['flame', 'memory', 'kernels'])
+    def test_missing_or_unimplemented_profile_command_exits_nonzero(command, tmp_path):
+        result = cli('profile',command,tmp_path/'missing.json')
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['/opt/miniconda3/bin/python', '-m', 'cli.aisp', 'profile', 'kernels', '/private/var/folders/tn/...c2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-\n1554/test_missing_or_unimplemented_2/missing.json\n', stderr='').returncode
+
+tests/test_audit_wave1_tooling_regressions.py:138: AssertionError
+_____________ test_fp8_scenario_is_versioned_integration_guidance ______________
+
+    def test_fp8_scenario_is_versioned_integration_guidance():
+        scenario = next(s for s in get_scenarios()['scenarios'] if s['id'] == 'fp8')
+>       assert scenario['code_example_kind'] == 'integration_template'
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'code_example_kind'
+
+tests/test_audit_wave1_tooling_regressions.py:143: KeyError
+=========================== short test summary info ============================
+FAILED tests/test_audit_wave1_tooling_regressions.py::test_prometheus_families_parse_once_with_all_gpu_series[0]
+FAILED tests/test_audit_wave1_tooling_regressions.py::test_prometheus_families_parse_once_with_all_gpu_series[1]
+FAILED tests/test_audit_wave1_tooling_regressions.py::test_prometheus_families_parse_once_with_all_gpu_series[2]
+FAILED tests/test_audit_wave1_tooling_regressions.py::test_prometheus_families_parse_once_with_all_gpu_series[8]
+FAILED tests/test_audit_wave1_tooling_regressions.py::test_prometheus_http_scrape_is_complete_and_parseable
+FAILED tests/test_audit_wave1_tooling_regressions.py::test_real_flame_cli_creates_requested_artifact[json]
+FAILED tests/test_audit_wave1_tooling_regressions.py::test_real_flame_cli_creates_requested_artifact[html]
+FAILED tests/test_audit_wave1_tooling_regressions.py::test_flame_html_escapes_trace_names
+FAILED tests/test_audit_wave1_tooling_regressions.py::test_flame_rejects_invalid_or_empty_trace_without_success_artifact[{bad json]
+FAILED tests/test_audit_wave1_tooling_regressions.py::test_flame_rejects_invalid_or_empty_trace_without_success_artifact[{"traceEvents":[]}]
+FAILED tests/test_audit_wave1_tooling_regressions.py::test_flame_rejects_invalid_or_empty_trace_without_success_artifact[{"traceEvents":[{"ph":"X","name":"bad","dur":NaN}]}]
+FAILED tests/test_audit_wave1_tooling_regressions.py::test_missing_or_unimplemented_profile_command_exits_nonzero[flame]
+FAILED tests/test_audit_wave1_tooling_regressions.py::test_missing_or_unimplemented_profile_command_exits_nonzero[memory]
+FAILED tests/test_audit_wave1_tooling_regressions.py::test_missing_or_unimplemented_profile_command_exits_nonzero[kernels]
+FAILED tests/test_audit_wave1_tooling_regressions.py::test_fp8_scenario_is_versioned_integration_guidance
+15 failed, 1 skipped in 23.56s

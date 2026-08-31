@@ -1,0 +1,32 @@
+{
+  "command": [
+    "/opt/miniconda3/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_benchmark_hygiene_regressions.py::test_ch01_training_mlp_uses_inplace_relu_modules",
+    "tests/test_benchmark_hygiene_regressions.py::test_ch01_fused_microbatches_preallocate_output_buffers",
+    "tests/test_benchmark_hygiene_regressions.py::test_ch01_fp16_benchmark_precomputes_microbatch_groups",
+    "tests/test_benchmark_hygiene_regressions.py::test_ch02_cublas_metrics_report_gemm_workload_not_transfer_placeholders",
+    "tests/test_benchmark_hygiene_regressions.py::test_occupancy_tuning_variants_match_their_filenames",
+    "tests/test_benchmark_hygiene_regressions.py::test_occupancy_tuning_schedule_preserves_inference_and_validation_hygiene",
+    "tests/test_benchmark_hygiene_regressions.py::test_real_world_model_entrypoints_return_harness_benchmarks",
+    "tests/test_benchmark_hygiene_regressions.py::test_flexattention_metrics_use_attention_formula_and_hot_paths_skip_clone"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "exit_code": 0,
+  "source_before": {
+    "code/tests/test_benchmark_hygiene_regressions.py": "ebd05f7bf7fe3fe7d016f72343918680e81115ee527534f7bb90c9865d98a5fc",
+    "code/labs/occupancy_tuning/__init__.py": "d0b992aa2614f95e2cce5899e08f77d19060ecc14c88583283b1f96604f974b9",
+    "code/labs/occupancy_tuning/triton_matmul_schedules.py": "4ac62de101756f9db1858d4fa2a7fd38712977c9366bcb6e118a19f2942f7d2e",
+    "code/labs/occupancy_tuning/sweep_schedules.py": "a2ea457f26503d36678974915384c09f02f25bad18aa60a4bb301b2f3fb90eca"
+  },
+  "source_after": {
+    "code/tests/test_benchmark_hygiene_regressions.py": "ebd05f7bf7fe3fe7d016f72343918680e81115ee527534f7bb90c9865d98a5fc",
+    "code/labs/occupancy_tuning/__init__.py": "d0b992aa2614f95e2cce5899e08f77d19060ecc14c88583283b1f96604f974b9",
+    "code/labs/occupancy_tuning/triton_matmul_schedules.py": "4ac62de101756f9db1858d4fa2a7fd38712977c9366bcb6e118a19f2942f7d2e",
+    "code/labs/occupancy_tuning/sweep_schedules.py": "a2ea457f26503d36678974915384c09f02f25bad18aa60a4bb301b2f3fb90eca"
+  }
+}

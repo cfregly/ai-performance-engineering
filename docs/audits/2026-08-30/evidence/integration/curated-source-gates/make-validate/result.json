@@ -1,0 +1,19 @@
+{
+  "command": [
+    "make",
+    "validate"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "started_at": "2026-08-31T00:47:55.685531+00:00",
+  "timeout_seconds": 180,
+  "environment_overrides": {
+    "PATH": "/opt/miniconda3/bin:/Users/admin/.antigravity/antigravity/bin:/opt/homebrew/opt/postgresql@17/bin:/Users/admin/.local/bin:/Users/admin/.bun/bin:/Users/admin/.opencode/bin:/Applications/NVIDIA Nsight Systems.app/Contents/target-linux-x64/:/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/postgresql@17/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/opt/X11/bin:/Library/Apple/usr/bin:/Library/TeX/texbin:/Users/admin/.codex/tmp/arg0/codex-arg08qStTt:/Users/admin/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/admin/.antigravity/antigravity/bin:/opt/homebrew/opt/postgresql@17/bin:/Users/admin/.local/bin:/Users/admin/.bun/bin:/Users/admin/.opencode/bin:/Applications/NVIDIA Nsight Systems.app/Contents/target-linux-x64:/opt/homebrew/opt/llvm/bin:/opt/miniconda3/bin:/opt/miniconda3/condabin:/Users/admin/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "RUFF_CACHE_DIR": "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/curated-source-gates/make-validate/ruff-cache",
+    "MYPY_CACHE_DIR": "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/curated-source-gates/make-validate/mypy-cache"
+  },
+  "pid": 67129,
+  "exit_code": 2,
+  "timed_out": false,
+  "elapsed_seconds": 0.08357166702626273
+}

@@ -1,0 +1,5 @@
+tests/test_full_virtualized_rerun_portable_expectations.py:6: Use core.scripts.* instead of importing 'scripts.full_virtualized_rerun' directly
+tests/test_mcp_docs.py:6: Use core.scripts.* instead of importing 'scripts.generate_mcp_docs' directly
+tests/test_queue_restore.py:8: Use core.scripts.* instead of importing 'scripts' directly
+tests/test_review_findings_regressions.py:16: Use core.scripts.* instead of importing 'scripts.canonical_queue_batches' directly
+tests/test_review_findings_regressions.py:22: Use core.scripts.* instead of importing 'scripts.full_virtualized_rerun' directly

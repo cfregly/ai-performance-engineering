@@ -1,0 +1,3 @@
+expected_exit_code=2
+actual_exit_code=2
+{"status": "FAILED_NOT_ACCEPTED", "accepted": false, "gpu_executed": false, "reason": "num_tokens must be > 0"}

@@ -1,0 +1,257 @@
+{
+  "schema_version": 1,
+  "package": "P08_numerics",
+  "source_count": 128,
+  "finding_ids": [
+    "W1-030",
+    "W1-031",
+    "W1-037",
+    "W1-038",
+    "W1-077",
+    "W1-086",
+    "W1-087",
+    "W1-119",
+    "W1-122",
+    "W1-123"
+  ],
+  "reviewed_base": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "captured_at": "2026-08-30T22:53:14.052998+00:00",
+  "wave1_source_sha256": "474779ab49b67c5c888e5f689b2400204b6d0f46f304219cedd0773694b6e1ba",
+  "status": "source_and_CPU_contracts_verified_GPU_runtime_and_calibration_HOLD",
+  "tests": {
+    "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider tests/test_audit_wave1_numerics_regressions.py tests/test_ozaki_scheme_lab.py",
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+    "passed": 41,
+    "skipped": 1,
+    "failed": 0,
+    "seconds": 6.66,
+    "skip_reason": "Actual CUDA custom grouped kernel requires real SM100; no CUDA available"
+  },
+  "static_linter": {
+    "entrypoints": 15,
+    "errors": 0,
+    "warnings": 0
+  },
+  "python_syntax_files": 35,
+  "cuda_compiled": false,
+  "cuda_executed": false,
+  "performance_claim": false,
+  "accuracy_thresholds_calibrated": false,
+  "historical_expectations_replaced": false,
+  "original_claim_qualification": {
+    "W1-031": "Unsupported constructor keywords are silently ignored under pydantic2.12.5 for officialTE2.18 and unversioned local recipe; the claimed TypeError is not reproduced."
+  },
+  "source_files": [
+    {
+      "path": "code/ch19/optimized_nvfp4_training.py",
+      "sha256": "8f553f3ee9d585d8c230b0a8a9a874f53a48a9bed58ee639be58bae74b7d844a",
+      "reviewed_base_sha256": "22e1ba9366b31746f93e26d30bb701556b4aa547d639cfb3704517d1c0e7fa0f"
+    },
+    {
+      "path": "code/labs/kv_cache_compression/README.md",
+      "sha256": "f05a0421c31abae0a06fd55f22161878541da8c6c873b86464394ba726fa57db",
+      "reviewed_base_sha256": "aba0704db40121a58fb64f930e99c5a17fed8571e7c655e8cfe9f54b6e04e582"
+    },
+    {
+      "path": "code/labs/kv_cache_compression/accuracy.py",
+      "sha256": "03983a6c1474273cc2d406577015f77a5376dcb90c17f3a8033dd8fdcd4197a6",
+      "reviewed_base_sha256": null
+    },
+    {
+      "path": "code/labs/kv_cache_compression/baseline_kv_cache.py",
+      "sha256": "6e192a20671da0b6572f358fcf002db6184ceabb0382811e4eb02ab0041cf443",
+      "reviewed_base_sha256": "3ad069f236df6fac196d133ef78a99d6e559bad70100fb80dea4e74ac2098585"
+    },
+    {
+      "path": "code/labs/kv_cache_compression/calibrate_accuracy.py",
+      "sha256": "73485ea918284cfa0ad214136b7b1a91c229f867dfb6292d2916d4caffdb5755",
+      "reviewed_base_sha256": null
+    },
+    {
+      "path": "code/labs/kv_cache_compression/optimized_kv_cache_nvfp4.py",
+      "sha256": "279464d15f98f3dbe7bf0deb0e00027a20885c9aead65361ea8234cb5f79fdba",
+      "reviewed_base_sha256": "6b801bfed93353d711313e87903c8e409080297b6b5bf61b2ccec76c07c059ea"
+    },
+    {
+      "path": "code/labs/nvfp4_gemm/local_eval_submission.py",
+      "sha256": "2249c677f4f5d2668ec199822ad9bbe8b07011f7b0ffa314ba6e73a2bcad049b",
+      "reviewed_base_sha256": "677f9e8c0b7ea9c5bc14afea42f72b7171dff0511f00fcc921e86fb724f723a7"
+    },
+    {
+      "path": "code/labs/nvfp4_gemv/local_eval.py",
+      "sha256": "d3085d3f9758048587582f6ea809367078052b3387e9ce9390fc8b9bbe9221f5",
+      "reviewed_base_sha256": "b019252f2a1f27c11e284424c214eebf177d18f5ce947aa9f5bd41f5e8814624"
+    },
+    {
+      "path": "code/labs/nvfp4_gemv/optimized_submission.py",
+      "sha256": "950030b8e33a831fce0f7536cde39de57855dcbfa9b42fcfe276b2d08920c404",
+      "reviewed_base_sha256": "85584341c5feba146e455a88abe8c1989dfc68248bb54052b487ef8cba247127"
+    },
+    {
+      "path": "code/labs/nvfp4_group_gemm/README.md",
+      "sha256": "3bc687151b45edf1b19f715c471aab3870df1707f474ea92ef67c730a33d4bee",
+      "reviewed_base_sha256": "adfd4d5a94029f1aad802feb68dc15794767c94a4c162924e8b1043a3b500144"
+    },
+    {
+      "path": "code/labs/nvfp4_group_gemm/baseline_nvfp4_group_gemm.py",
+      "sha256": "8d25482e4214ae356abf10e9f2c9be6d9502b64e4f220af95d77c48a32f2493d",
+      "reviewed_base_sha256": "6b14db0ddf0c92ded51941057191b4f5d4defde9ff46e9f010c40cbffb839a0a"
+    },
+    {
+      "path": "code/labs/nvfp4_group_gemm/baseline_nvfp4_group_gemm_g2_n3072_k4096.py",
+      "sha256": "8d25482e4214ae356abf10e9f2c9be6d9502b64e4f220af95d77c48a32f2493d",
+      "reviewed_base_sha256": "2e1b50a1026cd5e8c8fba144c36cf32eba732f6615c97523449fe3ad93316017"
+    },
+    {
+      "path": "code/labs/nvfp4_group_gemm/baseline_nvfp4_group_gemm_g2_n4096_k1536.py",
+      "sha256": "98f4ca8c32cb0f56098c8a761b6e29b8329fed7b5c68b986ac671de637b331ea",
+      "reviewed_base_sha256": "6aa38ffdd41ece57265eb099ff09c4b371d6c686c98b1400ad3697d486d52ea4"
+    },
+    {
+      "path": "code/labs/nvfp4_group_gemm/baseline_nvfp4_group_gemm_g8_n4096_k7168.py",
+      "sha256": "b14834bec0770e11c9fc7f884936f57b07a1f5d683ec06231c9a9a841b9393f2",
+      "reviewed_base_sha256": "ac20003652977577c8e429b1a19b267f123954637132c89beb5612d6e7124296"
+    },
+    {
+      "path": "code/labs/nvfp4_group_gemm/baseline_nvfp4_group_gemm_g8_n7168_k2048.py",
+      "sha256": "b075453dce68223d627452f4816e7c4d49d5ddfab7a4dcc3b6bb2cbbefa92c17",
+      "reviewed_base_sha256": "d85d2d49b194191d00d33343441499d3bcb91baa16bf27534ccf72bd5409dbd7"
+    },
+    {
+      "path": "code/labs/nvfp4_group_gemm/nvfp4_group_gemm_common.py",
+      "sha256": "59ff4713fe7c3acbc9999e2ce9b1effa946db1dd4b01d9f46cea685c4bb53016",
+      "reviewed_base_sha256": "f392e70852e571d216bdd1c11314da3288b911c1d3e277e805e3595c8152b194"
+    },
+    {
+      "path": "code/labs/nvfp4_group_gemm/reference_math.py",
+      "sha256": "b02113a223daa3ab63b9d4b1fce9c16b84b93f7e83ee5dbbabf59489bed1dc5a",
+      "reviewed_base_sha256": null
+    },
+    {
+      "path": "code/labs/ozaki_scheme/Makefile",
+      "sha256": "f50c23779340df1ace9a6b724f4ccda03b5b7f8af218cb3dd60f393d74f73472",
+      "reviewed_base_sha256": "a8daf911907cd1512e290bb7e8f27bed891cbcfaca1769757404d8c6bf89a516"
+    },
+    {
+      "path": "code/labs/ozaki_scheme/README.md",
+      "sha256": "359efe931c9e24b88124f80325071067fdc48f868726416f3c7a76bc276408bb",
+      "reviewed_base_sha256": "43068c9a5b41afe7ef80ba76223f6791808aa210820317f74de6b0187795c7d0"
+    },
+    {
+      "path": "code/labs/ozaki_scheme/accuracy.h",
+      "sha256": "d14ecd809ec05ec09507e4ae42d3018b64502363bea602e5a4848c31da5cc348",
+      "reviewed_base_sha256": null
+    },
+    {
+      "path": "code/labs/ozaki_scheme/accuracy_policy.py",
+      "sha256": "935e3f1b279c25ee36adb8d1f23680444d4cf507c582fb180444fce7637f8fe1",
+      "reviewed_base_sha256": null
+    },
+    {
+      "path": "code/labs/ozaki_scheme/baseline_ozaki_scheme.py",
+      "sha256": "260d1b6d78059d474838ca9b26f3fc90bf955ce270f88e1fef5eef54c7f58b69",
+      "reviewed_base_sha256": "fb660dfceae410bac4b63447ddd16ac15f0c518b5ed44168f79e05d142647143"
+    },
+    {
+      "path": "code/labs/ozaki_scheme/lab_utils.py",
+      "sha256": "1881051a4b0e76f96414d1ef1157ce074cbc354d60e0bf5ba6b51261bafa4a22",
+      "reviewed_base_sha256": "c6483ffe3424eaf0a56708cd03335ba3dba85f9c384fb8878697e5ba5f402961"
+    },
+    {
+      "path": "code/labs/ozaki_scheme/narrative_checks.py",
+      "sha256": "5b7e4c726b43921d41e1d61ba6081ff1275a8f57ed64f7e46a2c753d98f788f8",
+      "reviewed_base_sha256": "06625bf37fdbb3ec3c12e1406df6b5ef9e67203b48165a6f1c4ac743a16dff6f"
+    },
+    {
+      "path": "code/labs/ozaki_scheme/optimized_ozaki_scheme_dynamic.py",
+      "sha256": "11b3258da80c5b2bef95e28cc8fa2ee8ae87561925dc69521200ad514eb02817",
+      "reviewed_base_sha256": "f9feea78758e4c5574693b7713b184426cd0833a54431195e39e3ebd54b4de20"
+    },
+    {
+      "path": "code/labs/ozaki_scheme/optimized_ozaki_scheme_fixed.py",
+      "sha256": "ee25c047f15776dca46b463a552142912eb8b47be65521e99a123291480d8bac",
+      "reviewed_base_sha256": "38f53347e7f371e5968f510e90803022c60143ce8e31e4ffe02da57789eff8af"
+    },
+    {
+      "path": "code/labs/ozaki_scheme/ozaki_scheme_common.cuh",
+      "sha256": "0d2fbd2b6a367dd640dd319f9d7343791e9f8279d2f72ea0f2a219b5fc3c13b9",
+      "reviewed_base_sha256": "cc6823df44cbc8f6a42d837a59d4fe8f9e38946300e3a887e84fe2e9462bea0c"
+    },
+    {
+      "path": "code/labs/ozaki_scheme/run_lab.py",
+      "sha256": "ccb726a3d4dfb2a396aef53931e068d44910f966addd6a5d61c6b458cbbc4ee6",
+      "reviewed_base_sha256": "b36b7a4f22762aeca7f1909f35db8fb96c5816e46441c4fb217ccdb64faf431c"
+    },
+    {
+      "path": "code/tests/test_audit_wave1_numerics_regressions.py",
+      "sha256": "4757f52eb8d040c28fbdeb4d9965a44aa9262341fd9cc7633f564500903f6f58",
+      "reviewed_base_sha256": null
+    }
+  ],
+  "evidence_files": [
+    {
+      "path": "docs/audits/2026-08-30/evidence/numerics/README.md",
+      "sha256": "920b6f8186d21810d140ccf3d04540b38e3f4ff0a13c9770bf73f8cb68b9767f"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/numerics/benchmark-lint.log",
+      "sha256": "f22027b59b61f95accd09c8959c6150d021eacda7fb4af6bf52addbae63fc0e0"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/numerics/benchmark_workload_spec.yaml",
+      "sha256": "e35245e1e443e05f0641bea4634e0cc4dc30e2292f4f8f4ff3bfdd42c0f50908"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/numerics/calibration-unavailable.log",
+      "sha256": "d07ab80c8f6a375a7d046e39b1174ccc880857bc5ec08e34e213815dd2062957"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/numerics/environment.json",
+      "sha256": "76a1397aaa72905eea36be4e314fb0d118261b1e7a68da4f1efe9b3d86ddfaa8"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/numerics/official-te218-constructor.json",
+      "sha256": "e69bab9ddf4c8a1222416ee48f712bb61d73faacaf764d084b52d0047f7efc0e"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/numerics/original-reproductions.json",
+      "sha256": "138ef02b9387213a07da9d6e4d3efef44747877087f61e9c849500ce84d2df48"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/numerics/performance_intake.yaml",
+      "sha256": "c6522f76c2d9e92c6fd63789b65686afbd6e7397c63a93047430204738d9dd51"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/numerics/reproduce_cpu.py",
+      "sha256": "257d533694a131f0011598ea5975b8033c83ddd0d7084e504808e17afaee9096"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/numerics/syntax.json",
+      "sha256": "8dbb86940e9c9f1575683b71baa339e75b41ff071a9865589fc406b1f5546948"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/numerics/tests-final.log",
+      "sha256": "590e679c56a1ead64637f4ff16a643995c4fbac00cd3b425ddcd213f511f91fc"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/numerics/tests-first-diagnostic.log",
+      "sha256": "33987a3146ecc7999d519f2a5e95efb1189c5fa35fed82177a7039de4fcb62d3"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/numerics/tests-second.log",
+      "sha256": "831dd4a8b630095c9ebcb3955a1a61ce3800351ef6948e20803c3fca3ea0734c"
+    }
+  ],
+  "remaining_gates": [
+    "NVFP4 GEMM/GEMV official CUDA evaluator all cases and output lifetime",
+    "NVFP4 group all shapes/request fusion/graph-vs-eager/negative controls on SM100",
+    "KV full-workload FP8/NVFP4 BF16-reference accuracy calibration and reviewed policy",
+    "Ozaki CUDA compile, full-array accuracy across seeds/scales/retained bits and reviewed policy",
+    "Actual GPU memory storage and repeated locked-clock performance with fresh profiles"
+  ],
+  "primary_sources": [
+    "https://raw.githubusercontent.com/NVIDIA/TransformerEngine/v2.18/transformer_engine/common/recipe/__init__.py",
+    "https://docs.nvidia.com/deeplearning/transformer-engine-releases/release-2.18/user-guide/api/common.html",
+    "https://docs.nvidia.com/cuda/cublas/index.html#floating-point-emulation"
+  ]
+}

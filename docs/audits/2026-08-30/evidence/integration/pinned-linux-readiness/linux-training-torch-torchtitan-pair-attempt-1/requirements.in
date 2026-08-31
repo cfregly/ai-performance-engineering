@@ -1,0 +1,2 @@
+torch==2.9.1+cu130
+torchtitan==0.2.0

@@ -1,0 +1,23 @@
+F..                                                                      [100%]
+=================================== FAILURES ===================================
+____________________ TestHardwareSpecs.test_blackwell_specs ____________________
+
+self = <tests.test_benchmark_metrics.TestHardwareSpecs object at 0x3257dcb00>
+
+    def test_blackwell_specs(self):
+        """Pin the HGX B200 per-GPU dense peaks, not sparse eight-GPU totals.
+    
+        NVIDIA HGX: 72 PF/s FP8 and 36 PF/s BF16 across eight GPUs,
+        with sparsity; dense is half. FP32 is 600 TF/s across eight.
+        https://www.nvidia.com/en-us/data-center/hgx/
+        """
+        assert BLACKWELL_B200.name == "NVIDIA B200"
+        assert BLACKWELL_B200.hbm_bandwidth_gbps == 8000.0
+>       assert BLACKWELL_B200.fp8_tflops == 4500.0
+E       AssertionError: assert 2500.0 == 4500.0
+E        +  where 2500.0 = HardwareSpecs(name='NVIDIA B200', hbm_bandwidth_gbps=8000.0, pcie_bandwidth_gbps=64.0, nvlink_bandwidth_gbps=900.0, fp32_tflops=80.0, fp16_tflops=160.0, fp8_tflops=2500.0, tensor_tflops=1250.0, num_sms=148, shared_mem_per_sm_kb=228.0).fp8_tflops
+
+tests/test_benchmark_metrics.py:53: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_benchmark_metrics.py::TestHardwareSpecs::test_blackwell_specs
+1 failed, 2 passed in 0.07s

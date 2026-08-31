@@ -1,0 +1,14 @@
+[
+  {
+    "path": "code/labs/fullstack_cluster/moe_hybrid_ep_common.py",
+    "sha256": "7a599dd6111d830babecf3959da576a445a5d887882e679ddb8ab7bbb0500acb"
+  },
+  {
+    "path": "code/tests/test_audit_wave1_hybrid_ep.py",
+    "sha256": "3774d045f826a69991bb5dd737a12ffb724a2ce4c7f8b81597f0b08378959995"
+  },
+  {
+    "path": "code/tests/test_fullstack_cluster_shared_benchmark_wrappers.py",
+    "sha256": "759e37625535859e5fad74b5f9bbc73a70d17ae3afc1aa71a69df599cdde4525"
+  }
+]

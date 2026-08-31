@@ -18,15 +18,19 @@ This lab is here to test two different questions cleanly:
 - prefers the experimental FLASH backend
 - falls back to compiled FlexAttention + TMA when the backend/toolchain combination cannot lower cleanly
 
-## Measured Delta
-Current validated harness result for the default `ALiBi` target from `artifacts/runs/20260306_023114__bench__profile_none_targets_labs_flashattention4_flashattention4_alibi/`:
+## Latest recorded validation and historical results
+The latest repository handoff, dated **2026-08-17** in `HANDOFF.md`, records the ALiBi target passing input/output verification but failing the 1.05x speed gate on B200:
 
 | Path | Latency | Relative |
 | --- | ---: | ---: |
-| Baseline (`baseline_flashattention4`) | `5.562 ms` | `1.00x` |
-| Optimized (`optimized_flashattention4_alibi`) | `0.385 ms` | `14.45x faster` |
+| Baseline | `3.429079 ms` | `1.00x` |
+| Optimized | `3.572818 ms` | `0.959769x` |
 
-This lab also carries an important negative result: the local stack does **not** currently reproduce the published Colfax/PyTorch FA4 envelope on the direct TFLOP/s microbench. That is a useful finding, not a documentation problem to hide.
+That run had a first-valid-provider selection defect. The source fix measures all correct compiled providers; B200 re-verification remains pending. The recorded result does not prove an inherent regression, but it does not support a current speedup claim.
+
+The March 6, 2026 virtualized-host result (5.562 ms / 0.385 ms, 14.45x) in `artifacts/runs/20260306_023114__bench__profile_none_targets_labs_flashattention4_flashattention4_alibi/` is historical and superseded as the latest validation record. It is not the current accepted result. ALiBi and softcap FLOP accounting now uses their actual causal masks, so earlier dense-count TFLOP/s figures for those modes also require recomputation.
+
+No new GPU measurement was performed for this audit repair, and reproducing the published Colfax/PyTorch envelope remains unverified.
 
 ## Profiler Evidence
 Use the harness for artifacted Nsight evidence:
@@ -100,12 +104,12 @@ Use `tflops_microbench.py` when you want something closer to the published Colfa
 The FLOP accounting matches the common SDPA forward convention used in vendor/blog comparisons:
 `forward_flops = 4 * batch * heads * head_dim * nonmasked_attention_elements`
 
-- For `dense`, `alibi`, and `softcap`, `nonmasked_attention_elements = q_seq_len * kv_seq_len`.
-- For `causal`, `windowed`, and `alibi_windowed`, only the unmasked score matrix entries are counted.
+- For `dense`, `nonmasked_attention_elements = q_seq_len * kv_seq_len`.
+- For `causal`, `alibi`, and `softcap`, count triangular causal attention pairs; for `windowed` and `alibi_windowed`, count the exact causal-window pairs. These are effective mathematical FLOPs, not measured hardware instructions.
 - `triton_flex` is the closest local proxy for the blog's Triton baseline: compiled FlexAttention with `USE_TMA=False`.
 
-## Current Local Results
-These measurements were taken on March 5, 2026 on the current local `torch 2.9.1+cu130` stack with harness clock locking enabled. This host is still virtualized, so treat the numbers as directional rather than canonical.
+## Historical Local Results (March 5, 2026)
+These historical measurements were recorded on March 5, 2026 with `torch 2.9.1+cu130` and harness clock locking on a virtualized host. They are preserved as recorded, not requalified against the corrected code or evidence of the current host state. The historical ALiBi TFLOPs/s entries used a dense numerator for causal work and are not corrected throughput rates; corrected accounting requires the causal pair count.
 
 ### Public Blog Shape (`B=2, H=8, S=2048, D=128`)
 | Mode | Backend | Median (ms) | TFLOPs/s | Flash vs Triton | Flash vs cuDNN | Published check |
@@ -130,7 +134,7 @@ These measurements were taken on March 5, 2026 on the current local `torch 2.9.1
 | `causal` | `triton_flex` | 2.200 | 250.0 | 15.6% | `1.00x` | `0.37x` |
 | `causal` | `cudnn_sdpa` | 0.814 | 675.1 | 42.1% | `2.70x` | `1.00x` |
 
-The local conclusion is straightforward: this stack does not currently reproduce the published Colfax or PyTorch FlashAttention-4 envelope. The larger probe rules out a pure small-shape saturation explanation because the local FLASH path still tops out at `307.5 TFLOPs/s` on dense and `242.9 TFLOPs/s` on causal, well below both Colfax's `1605 TFLOPs/s` peak and the local cuDNN path.
+That historical snapshot did not reproduce the published Colfax or PyTorch FlashAttention-4 envelope. Within that snapshot, the larger probe reported `307.5 TFLOPs/s` on dense and `242.9 TFLOPs/s` on causal, well below both Colfax's `1605 TFLOPs/s` peak and the local cuDNN path.
 
 ## Notes
 - Sources: Colfax Research's FlashAttention-4 article (`https://research.colfax-intl.com/flashattention-4-algorithm-and-kernel-pipelining-co-design-for-asymmetric-hardware-scaling/`) and the PyTorch FlexAttention + FlashAttention-4 integration post (`https://pytorch.org/blog/flexattention-flashattention-4-fast-and-flexible/`).

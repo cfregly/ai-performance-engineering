@@ -1,0 +1,261 @@
+{
+  "claim_boundary": {
+    "accepted_claim": "The current 90 direct specifications have a complete 327-package Linux-target dependency metadata solution under the single reviewed GPUtil source-distribution exception.",
+    "documentation_check": "docs/environment.md:34-55 and STATUS.md:20,31-48 explicitly separate metadata resolution from installation/runtime qualification; no Linux-install success claim was found.",
+    "rejected_claims": [
+      "The 327 packages were installed on Linux.",
+      "The CPU GitHub Actions workflow ran.",
+      "The CUDA environment, imports, builds, GPU correctness, or performance were qualified.",
+      "GPUtil runtime GPU discovery was executed."
+    ]
+  },
+  "cpu_workflow": {
+    "all_first_transaction_versions_retained": true,
+    "all_workflow_pins_match_current_source": true,
+    "exact_pin_count": 20,
+    "exact_source_union_packages": 56,
+    "first_pypi_closure_packages": 49,
+    "pin_parity": {
+      "anthropic": {
+        "match": true,
+        "source": "anthropic==0.112.0",
+        "workflow": "anthropic==0.112.0"
+      },
+      "click": {
+        "match": true,
+        "source": "click==8.1.7",
+        "workflow": "click==8.1.7"
+      },
+      "coverage": {
+        "match": true,
+        "source": "coverage[toml]==7.15.2",
+        "workflow": "coverage[toml]==7.15.2"
+      },
+      "fastapi": {
+        "match": true,
+        "source": "fastapi==0.121.3",
+        "workflow": "fastapi==0.121.3"
+      },
+      "httpx": {
+        "match": true,
+        "source": "httpx==0.28.1",
+        "workflow": "httpx==0.28.1"
+      },
+      "hypothesis": {
+        "match": true,
+        "source": "hypothesis==6.148.2",
+        "workflow": "hypothesis==6.148.2"
+      },
+      "numpy": {
+        "match": true,
+        "source": "numpy==2.1.2",
+        "workflow": "numpy==2.1.2"
+      },
+      "openai": {
+        "match": true,
+        "source": "openai==2.44.0",
+        "workflow": "openai==2.44.0"
+      },
+      "psutil": {
+        "match": true,
+        "source": "psutil==7.1.0",
+        "workflow": "psutil==7.1.0"
+      },
+      "pydantic": {
+        "match": true,
+        "source": "pydantic==2.12.4",
+        "workflow": "pydantic==2.12.4"
+      },
+      "pytest": {
+        "match": true,
+        "source": "pytest==8.3.4",
+        "workflow": "pytest==8.3.4"
+      },
+      "pytest-cov": {
+        "match": true,
+        "source": "pytest-cov==7.1.0",
+        "workflow": "pytest-cov==7.1.0"
+      },
+      "pyyaml": {
+        "match": true,
+        "source": "pyyaml==6.0.2",
+        "workflow": "pyyaml==6.0.2"
+      },
+      "requests": {
+        "match": true,
+        "source": "requests==2.34.2",
+        "workflow": "requests==2.34.2"
+      },
+      "rich": {
+        "match": true,
+        "source": "rich==13.7.1",
+        "workflow": "rich==13.7.1"
+      },
+      "tokenizers": {
+        "match": true,
+        "source": "tokenizers==0.22.2",
+        "workflow": "tokenizers==0.22.2"
+      },
+      "torch": {
+        "match": true,
+        "note": "CPU workflow intentionally uses the official 2.9.1 CPU wheel; repository source pins the corresponding 2.9.1+cu130 CUDA build.",
+        "source": "torch==2.9.1+cu130",
+        "workflow": "torch==2.9.1"
+      },
+      "triton": {
+        "match": true,
+        "source": "triton==3.5.1",
+        "workflow": "triton==3.5.1"
+      },
+      "typer": {
+        "match": true,
+        "source": "typer==0.15.4",
+        "workflow": "typer==0.15.4"
+      },
+      "uvicorn": {
+        "match": true,
+        "source": "uvicorn==0.38.0",
+        "workflow": "uvicorn==0.38.0"
+      }
+    },
+    "scope": "Linux-target metadata resolution only. Neither package installation nor GitHub Actions execution occurred.",
+    "torch_source": "Exact official CPU wheel URL with sha256; resolution only."
+  },
+  "decision": {
+    "actual_linux_install": "NOT_EXECUTED",
+    "cpu_workflow_source_parity_and_metadata_resolution": "PASS",
+    "cuda_or_gpu_qualification": "NOT_EXECUTED",
+    "exact_three_pin_delta": "PASS",
+    "full_dependency_graph_metadata_resolution": "PASS",
+    "github_actions_cpu_workflow_execution": "NOT_EXECUTED",
+    "isolated_cli_runtime": "PASS_DARWIN_ARM64_CPU_ONLY"
+  },
+  "evidence_hashes": {
+    "docs/audits/2026-08-30/evidence/integration/full-dependency-graph/GPUtil-1.4.0.tar.gz": "099e52c65e512cdfa8c8763fca67f5a5c2afb63469602d5dcb4d296b3661efb9",
+    "docs/audits/2026-08-30/evidence/integration/full-dependency-graph/cli-acceptance-results.json": "11abf3fd1a9d8dfdd777aa2e8468d7d2592198e25e35d6e2e94e43828a09407b",
+    "docs/audits/2026-08-30/evidence/integration/full-dependency-graph/cpu-exact-sources-final-source-attempt-1/resolved-requirements.txt": "c004b33d0d396f8f677d87f4695e303212e81b2757a23199f369952870f9fa83",
+    "docs/audits/2026-08-30/evidence/integration/full-dependency-graph/cpu-first-pypi-final-source-attempt-1/resolved-requirements.txt": "9b0fce0941b70ee4e4f52e5325b4bd858fad4a5daf4e1db879dd81707a491460",
+    "docs/audits/2026-08-30/evidence/integration/full-dependency-graph/final-specifier-contract.json": "fd8983e80ca17a96b8b6beae713c7d9ac7fb7a5cbbed66dcd1c6150865017637",
+    "docs/audits/2026-08-30/evidence/integration/full-dependency-graph/full-90-final-source-attempt-1/command.json": "c925d47c72db98c31d70182d19fd27dc44279c65700434bacf3006b1c24179c9",
+    "docs/audits/2026-08-30/evidence/integration/full-dependency-graph/full-90-final-source-attempt-1/requirements.in": "aa388c2e21c8a2eba8307c99126215e01ba856616888203195157d76a6a0d15a",
+    "docs/audits/2026-08-30/evidence/integration/full-dependency-graph/full-90-final-source-attempt-1/resolved-requirements.txt": "b4f8c2163ae1ea14ca3dfcab75bc1c50dd24bc9a5a4a72f38b2e1fb92c83bec0",
+    "docs/audits/2026-08-30/evidence/integration/full-dependency-graph/gputil-source-review.json": "50d9afaf3111a6c5bb7208ccfa1b93728e0e9ada5481d87199d0f4f8cd18f545",
+    "docs/audits/2026-08-30/evidence/integration/full-dependency-graph/isolated-cli-regressions-final.xml": "559f97991d314470061ffc3a957085080e82bfb4c689c91fa92df4ca1244a8ef",
+    "docs/audits/2026-08-30/evidence/integration/full-dependency-graph/isolated-installed-final.json": "fcf25c518b0a3732484ce520c054d3c17047d45614bf6695d873318489edc99f",
+    "docs/audits/2026-08-30/evidence/integration/full-dependency-graph/typer-wheel-overlap.json": "dc5e3c71857c944da105c552572137c643cedd1a4eed9d6a72b8b74fa3859722"
+  },
+  "exact_pin_delta": {
+    "baseline": "full-dependency-graph/original-requirements_latest.txt captured immediately before the Typer/Rich remediation",
+    "changes": {
+      "rich": {
+        "new": "rich==13.7.1",
+        "old": "rich==13.7.0"
+      },
+      "typer": {
+        "new": "typer==0.15.4",
+        "old": "typer==0.12.0"
+      },
+      "typer-slim": {
+        "new": "typer-slim[standard]==0.15.4",
+        "old": "typer-slim[standard]==0.12.0"
+      }
+    },
+    "count": 3
+  },
+  "full_graph": {
+    "all_direct_specifiers_satisfied": true,
+    "binary_policy": {
+      "all_distributions": "wheel_required",
+      "gputil_version": "1.4.0",
+      "sole_source_exception": "gputil"
+    },
+    "canonical_source_equivalence": true,
+    "current_source_sha256": "4142cb1aced78f4f619e78eb8e86382c921ec2ad9c59d8fcdc7290beb026f66a",
+    "direct_spec_count": 90,
+    "gputil": {
+      "archive_sha256": "099e52c65e512cdfa8c8763fca67f5a5c2afb63469602d5dcb4d296b3661efb9",
+      "resolution_hash_matches_reviewed_archive": true,
+      "scope": "Build metadata reviewed; setup does not execute runtime GPU probing. GPUtil runtime and nvidia-smi behavior were not executed or qualified.",
+      "source_review_status": "REVIEWED_PURE_PYTHON_BUILD_METADATA_ONLY"
+    },
+    "local_find_links_boundary": "The missing code/third_party/wheels directory was omitted; every package specifier was retained unchanged.",
+    "resolved_unique_package_count": 327,
+    "resolver_exit_code": 0,
+    "resolver_input_direct_spec_count": 90,
+    "target": "CPython 3.12, x86_64-manylinux_2_31",
+    "timed_out": false
+  },
+  "isolated_cli": {
+    "aligned_versions": {
+      "click": "8.1.7",
+      "fsspec": "2024.6.1",
+      "rich": "13.7.1",
+      "setuptools": "80.10.2",
+      "torch": "2.9.1",
+      "typer": "0.15.4",
+      "typer-slim": "0.15.4"
+    },
+    "environment": {
+      "platform": "macOS-26.5.2-arm64-arm-64bit",
+      "python": "3.12.2 | packaged by conda-forge | (main, Feb 16 2024, 20:54:21) [Clang 16.0.6 ]",
+      "torch": "2.9.1 Darwin wheel; not CUDA or Linux qualification"
+    },
+    "fresh_review_rerun": {
+      "cli_acceptance": "10/10",
+      "focused_regressions": "52 passed in 20.19s",
+      "gpu_or_remote_actions": false,
+      "package_install_actions": false,
+      "pip_check": "PASS"
+    },
+    "pip_check": "PASS",
+    "recorded_cli_acceptance": {
+      "passed": 10,
+      "total": 10
+    },
+    "recorded_focused_regressions": {
+      "errors": 0,
+      "failed": 0,
+      "passed": 52,
+      "skipped": 0
+    },
+    "typer_distribution_overlap": {
+      "all_shared_files_byte_identical_at_0.15.4": true,
+      "residual_risk": "Both distributions own the same typer paths; separate uninstall operations remain unsafe.",
+      "shared_package_files": 16
+    }
+  },
+  "reconciliation_gap": {
+    "observed_locations": [
+      "docs/audits/2026-08-30/STATUS.md:17-20",
+      "docs/audits/2026-08-30/STATUS.md:44-48",
+      "docs/audits/2026-08-30/remediation-ledger.json:569-575",
+      "docs/audits/2026-08-30/remediation-ledger.json:9681-9701"
+    ],
+    "required": true,
+    "scope": "Existing mutable audit status and ledger still describe the earlier binary-only failure/58-package CPU checkpoint. They must be updated to the new 327-package full metadata resolution and 56-package CPU exact-source union while retaining Linux install/CI/GPU HOLD."
+  },
+  "repository": {
+    "branch": "codex/audit-remediation-20260830",
+    "head": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+    "working_tree": "dirty; review binds exact source hashes below"
+  },
+  "review_commands": [
+    "Independent canonical requirement parse and exact-specifier satisfaction check against the generated resolution.",
+    "Independent workflow pin extraction and parity check, with CPU Torch 2.9.1 mapped to source Torch 2.9.1+cu130.",
+    "Existing isolated venv: python -m pip check.",
+    "Existing isolated venv: 10 CLI help/registry/error-path subprocess cases.",
+    "Existing isolated venv: focused 52-test CLI/config/setup regression selection with bytecode and pytest cache disabled."
+  ],
+  "reviewed_at_utc": "2026-08-31T01:06:11.159766+00:00",
+  "reviewer": "dependency_final_review",
+  "schema_version": 1,
+  "source_hashes": {
+    ".github/workflows/benchmark-validation.yml": "18a42cc8a7f7e8b3b0c86384d05475a1e0ca7ceda2f0d254d2b7955430009629",
+    "code/cli/aisp.py": "23ce03bd8e2021e6999fcb00c77016669f034ce1ed5281e34e535aa29eb1bdb5",
+    "code/cli/commands/profiling.py": "b54529691814a251afda8fbde4ddde0bfbc848a7120824b527931e314ba8aad5",
+    "code/core/benchmark/bench_commands.py": "3f3859d83185c0f7aa664bcd415ca200e9020dd22cf4b4373e561cb96357df0a",
+    "code/requirements_latest.txt": "4142cb1aced78f4f619e78eb8e86382c921ec2ad9c59d8fcdc7290beb026f66a",
+    "code/tests/test_repository_configuration.py": "26d0868f521939936d2cb7661693e17c2fc91efc6c7a38f332e9128215affd1a"
+  },
+  "status": "PASS_SOURCE_DERIVED_FULL_GRAPH_AND_ISOLATED_CLI__LINUX_INSTALL_AND_CI_EXECUTION_HOLD"
+}

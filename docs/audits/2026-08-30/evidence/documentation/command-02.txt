@@ -1,0 +1,44 @@
+                                                                                
+ Usage: python -m cli.aisp bench verify [OPTIONS]                               
+                                                                                
+ Verify benchmark pairs for correctness without measuring performance.          
+                                                                                
+ Runs verification checks on baseline/optimized benchmark pairs: - Input        
+ signature matching (same batch size, dtypes, shapes) - Output correctness      
+ (optimized produces same outputs as baseline) - Jitter check (outputs change   
+ when inputs are perturbed) - Fresh-input check (different seeds produce        
+ different outputs) - Workload invariant check (same bytes/tokens/ops per       
+ iteration)                                                                     
+ Examples:     aisp bench verify                     # Verify all chapters      
+ aisp bench verify -t ch11            # Verify chapter 11     aisp bench verify 
+ -t ch11:streams    # Verify specific example     aisp bench verify --json      
+ # JSON output for CI                                                           
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --targets           -t      TEXT  Chapter(s) or chapter:example pairs to     │
+│                                   verify. Repeat the flag for multiple       │
+│                                   targets. Omit or use 'all' for every       │
+│                                   chapter.                                   │
+│                                   [default: None]                            │
+│ --bench-root        -r      PATH  Root directory to scan for benchmarks      │
+│                                   (defaults to repo root).                   │
+│                                   [default: None]                            │
+│ --verify-phase      -p      TEXT  Verification enforcement phase: 'detect'   │
+│                                   (report only), 'quarantine' (exclude       │
+│                                   non-compliant), 'gate' (default, strict    │
+│                                   enforcement)                               │
+│                                   [default: gate]                            │
+│ --skip-jitter                     Skip jitter check (output changes when     │
+│                                   inputs are perturbed)                      │
+│ --skip-fresh-input                Skip fresh-input check (different seeds    │
+│                                   produce different outputs)                 │
+│ --skip-workload                   Skip workload invariant check              │
+│                                   (bytes/tokens/ops per iteration)           │
+│ --json                            Output results as JSON                     │
+│ --verbose           -v            Verbose output with detailed comparison    │
+│                                   info                                       │
+│ --clear-cache                     Clear golden output cache before           │
+│                                   verification                               │
+│ --help              -h            Show this message and exit.                │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

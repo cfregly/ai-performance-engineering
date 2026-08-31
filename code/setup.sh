@@ -9,7 +9,7 @@
 #   2. Python 3.12
 #   3. CUDA 13.0.2 toolkit + cuBLAS 13.1.0.3 (Update 2) repository
 #   4. The canonical PyTorch/Triton stack pinned in requirements_latest.txt
-#      (torch==2.9.1+cu130, triton==3.5.0) for CUDA 13.0.2; versions are
+#      (torch==2.9.1+cu130, triton==3.5.1) for CUDA 13.0.2; versions are
 #      single-sourced from requirements_latest.txt, not the nightly defaults below
 #   5. NVIDIA Nsight Systems 2025.3.2 (for timeline profiling)
 #   6. NVIDIA Nsight Compute 2025.3.1 (for kernel metrics)
@@ -35,11 +35,11 @@
 #   - Fixes Python APT module (python3-apt) compatibility
 #   - Disables problematic command-not-found APT hook
 #   - Removes duplicate deadsnakes repository entries
-#   - Upgrades Python to 3.12 (required by PyTorch 2.10 dev builds)
+#   - Upgrades Python to 3.12 for the pinned PyTorch stack
 #   - Auto-upgrades NVIDIA driver to 580+ if needed (will prompt reboot)
 #   - Installs CUDA 13.0.2 toolkit and libraries
 #   - Installs latest Nsight tools (2025.x)
-#   - Prepares for PyTorch 2.10-dev (source build) with CUDA 13.0.2
+#   - Installs pinned PyTorch CUDA 13 wheels (no source build)
 #   - Removes conflicting system packages (python3-optree, etc.)
 #   - Installs nvidia-ml-py (replaces deprecated pynvml)
 #   - Configures NVIDIA kernel modules for profiling
@@ -203,9 +203,9 @@ echo "AI Performance Engineering Setup Script"
 echo "=========================================="
 echo "This script will install:"
 echo "  • NVIDIA Driver 580.126.09 (auto-upgrade if needed)"
-echo "  • Python 3.12 (PyTorch 2.10-dev compatible)"
+echo "  • Python 3.12 for the pinned PyTorch stack"
 echo "  • CUDA 13.0.2 toolkit + cuBLAS 13.1.0.3 (Update 2) repository"
-echo "  • Environment configured for PyTorch 2.10-dev source build"
+echo "  • PyTorch CUDA 13 wheels pinned by requirements_latest.txt"
 echo "  • NVIDIA Nsight Systems 2025.3.2 (latest)"
 echo "  • NVIDIA Nsight Compute 2025.3.1 (latest)"
 echo "  • All project dependencies"
@@ -362,16 +362,39 @@ CMAKE_CUDA_ARCH_LIST_VALUE="100;103;121;122"
 TORCH_SM_ARCH_LIST_VALUE="sm_100;sm_103;sm_121;sm_122"
 CUTLASS_NVCC_ARCHS_VALUE_DEFAULT="100;103;121;122"
 CUTLASS_NVCC_ARCHS_VALUE="${CUTLASS_NVCC_ARCHS_VALUE_DEFAULT}"
-PYTORCH_NIGHTLY_DATE="20251213"
-PYTORCH_TORCH_VERSION="2.10.0.dev${PYTORCH_NIGHTLY_DATE}+cu130"
-# PYTORCH_TORCHVISION_VERSION="0.25.0.dev${PYTORCH_NIGHTLY_DATE}+cu130"
-PYTORCH_TORCHAUDIO_VERSION="2.10.0.dev${PYTORCH_NIGHTLY_DATE}+cu130"
-PYTORCH_TORCHAO_VERSION="0.16.0.dev${PYTORCH_NIGHTLY_DATE}+cu130"
-PYTORCH_TRITON_VERSION="3.6.0+git8fedd49b"
+# Keep fallback defaults aligned with the requirements' supported stable stack.
+PYTORCH_TORCH_VERSION="2.9.1+cu130"
+PYTORCH_TORCHAUDIO_VERSION="2.9.1+cu130"
+# torchao 0.15.0 is the upstream ABI-compatible release for torch 2.9.1.
+PYTORCH_TORCHAO_VERSION="0.15.0+cu130"
+PYTORCH_TRITON_VERSION="3.5.1"
+PYTORCH_STABLE_INDEX="https://download.pytorch.org/whl"
 PYTORCH_NIGHTLY_INDEX="https://download.pytorch.org/whl/nightly"
-PYTORCH_CU130_INDEX_ROOT="https://download.pytorch.org/whl/nightly/cu130"
-PYTORCH_CU130_INDEX="${PYTORCH_CU130_INDEX_ROOT}"
-PYTORCH_TORCH_FIND_LINKS="${PYTORCH_TORCH_FIND_LINKS:-https://download.pytorch.org/whl/nightly/cu130/torch/}"
+
+pytorch_package_index() {
+    local version="$1"
+    local cuda_variant="${2:-}"
+    local index="${PYTORCH_STABLE_INDEX}"
+    case "${version}" in
+        *.dev*|*+git*) index="${PYTORCH_NIGHTLY_INDEX}" ;;
+    esac
+    if [ -n "${cuda_variant}" ]; then
+        index="${index}/${cuda_variant}"
+    fi
+    printf '%s\n' "${index}"
+}
+
+require_torchao_cuda_wheel_support() {
+    local architecture="$1"
+    if [ "${architecture}" = "aarch64" ] && [ "${PYTORCH_TORCHAO_VERSION}" = "0.15.0+cu130" ]; then
+        echo "ERROR: No official aarch64 CUDA wheel is published for torchao==${PYTORCH_TORCHAO_VERSION}." >&2
+        echo "       This binary-wheel setup cannot complete on that platform; no CPU substitute will be installed." >&2
+        echo "       A separate torchao v0.15.0 source build against torch 2.9.1 and CUDA 13 requires target validation." >&2
+        echo "       Upstream build instructions: https://github.com/pytorch/ao/tree/v0.15.0#installation" >&2
+        return 1
+    fi
+}
+
 GPU_CLOCK_SERVICE_PATH="/etc/systemd/system/gpu-clock-pin.service"
 echo "Project root: $PROJECT_ROOT"
 cd "$PROJECT_ROOT"
@@ -917,8 +940,6 @@ if not all(entry["ok"] or entry["ok"] is None for entry in status.values()):
 PY
 }
 
-TORCHAO_EXTRA_INDEX_URL="${PYTORCH_CU130_INDEX}"
-
 # Check Ubuntu version
 if ! command -v lsb_release &> /dev/null; then
     echo "Installing lsb-release..."
@@ -1242,8 +1263,10 @@ pip_install --upgrade --ignore-installed pip setuptools packaging
 pip_install --no-cache-dir --upgrade --ignore-installed wheel
 
 install_torchao_packages() {
-    echo "Installing torchao (nightly, CUDA 13.x / cu130 index)..."
-    local install_args=(--no-cache-dir --upgrade --ignore-installed torchao --extra-index-url "${TORCHAO_EXTRA_INDEX_URL}")
+    echo "Installing torchao ${PYTORCH_TORCHAO_VERSION} from ${PYTORCH_TORCHAO_INDEX}..."
+    local install_args=(--no-cache-dir --upgrade --ignore-installed --only-binary=:all:
+        "torchao==${PYTORCH_TORCHAO_VERSION}" --index-url "${PYTORCH_TORCHAO_INDEX}"
+        --extra-index-url "https://pypi.org/simple")
     if pip_install "${install_args[@]}"; then
         echo "torchao installed in system Python site-packages"
     else
@@ -1356,20 +1379,35 @@ if ! apt install -y --allow-downgrades "libnccl2=${NCCL_SHORT_VERSION}-1+cuda13.
     apt install -y libnccl2 libnccl-dev
 fi
 
-# Install cuDNN 9.16.0.29-1 (latest in CUDA 13 repo, matches current system pin)
-# Following NVIDIA's approach: PyTorch bundles cuDNN, but we install a matching system version for build tools
+report_installed_cudnn() {
+    local package_info package_status package_version
+    if ! package_info="$(dpkg-query -W -f='${db:Status-Status}\t${Version}\n' libcudnn9-cuda-13)"; then
+        echo "ERROR: Cannot query installed libcudnn9-cuda-13 for the setup summary." >&2
+        return 1
+    fi
+    IFS=$'\t' read -r package_status package_version <<< "${package_info}"
+    if [ "${package_status}" != "installed" ] || [ -z "${package_version}" ]; then
+        echo "ERROR: libcudnn9-cuda-13 is not fully installed: ${package_info}" >&2
+        return 1
+    fi
+    printf 'cuDNN system package: libcudnn9-cuda-13 %s (requested %s-1)\n' \
+        "${package_version}" "${CUDNN_VERSION}"
+}
+
+# Install system cuDNN for build tools. PyTorch's bundled runtime is independent;
+# do not claim its version matches the system package without checking it.
 echo ""
-echo "Installing cuDNN 9.16.0.29-1 for CUDA ${CUDA_SHORT_VERSION}..."
+echo "Installing cuDNN ${CUDNN_VERSION}-1 for CUDA ${CUDA_SHORT_VERSION}..."
 # Remove any older cuDNN versions first
 apt remove -y libcudnn9-cuda-13 libcudnn9-dev-cuda-13 libcudnn9-headers-cuda-13 2>/dev/null || true
 # Install the exact version if available; otherwise fall back to repo latest
-if apt-cache madison libcudnn9-cuda-13 | grep -q "9.16.0.29-1"; then
-    apt install -y "libcudnn9-cuda-13=9.16.0.29-1" \
-                   "libcudnn9-dev-cuda-13=9.16.0.29-1" \
-                   "libcudnn9-headers-cuda-13=9.16.0.29-1"
-    echo "✓ Installed cuDNN 9.16.0.29-1 (CUDA 13)"
+if apt-cache madison libcudnn9-cuda-13 | grep -Fq "${CUDNN_VERSION}-1"; then
+    apt install -y "libcudnn9-cuda-13=${CUDNN_VERSION}-1" \
+                   "libcudnn9-dev-cuda-13=${CUDNN_VERSION}-1" \
+                   "libcudnn9-headers-cuda-13=${CUDNN_VERSION}-1"
+    echo "✓ Installed cuDNN ${CUDNN_VERSION}-1 (CUDA 13)"
 else
-    echo "WARNING: cuDNN 9.16.0.29-1 not available, installing latest..."
+    echo "WARNING: cuDNN ${CUDNN_VERSION}-1 not available, installing latest..."
     apt install -y libcudnn9-cuda-13 libcudnn9-dev-cuda-13 libcudnn9-headers-cuda-13
 fi
 # Pin the version to prevent upgrades
@@ -1801,6 +1839,7 @@ REQUIREMENTS_FILE="$PROJECT_ROOT/requirements_latest.txt"
 # This keeps setup-time ABI checks aligned with runtime benchmark checks.
 if [ -f "$REQUIREMENTS_FILE" ]; then
     REQ_TORCH_VERSION="$(grep -E '^torch==' "$REQUIREMENTS_FILE" | head -n 1 | cut -d= -f3 || true)"
+    REQ_TORCHAO_VERSION="$(grep -E '^torchao==' "$REQUIREMENTS_FILE" | head -n 1 | cut -d= -f3 || true)"
     REQ_TRITON_VERSION="$(grep -E '^triton==' "$REQUIREMENTS_FILE" | head -n 1 | cut -d= -f3 || true)"
     REQ_VLLM_VERSION="$(grep -E '^vllm==' "$REQUIREMENTS_FILE" | head -n 1 | cut -d= -f3 || true)"
     REQ_FLASHINFER_VERSION="$(grep -E '^flashinfer-python==' "$REQUIREMENTS_FILE" | head -n 1 | cut -d= -f3 || true)"
@@ -1809,8 +1848,10 @@ if [ -f "$REQUIREMENTS_FILE" ]; then
         PYTORCH_TORCH_VERSION="${REQ_TORCH_VERSION}"
         PYTORCH_TORCHAUDIO_VERSION="${REQ_TORCH_VERSION}"
     fi
-    # Single-source Triton too so setup-time installs match the requirements pin
-    # (requirements pins triton==3.5.0; the default above is a 3.6 nightly).
+    if [ -n "${REQ_TORCHAO_VERSION}" ]; then
+        PYTORCH_TORCHAO_VERSION="${REQ_TORCHAO_VERSION}"
+    fi
+    # Single-source Triton too so setup-time installs match the requirements pin.
     if [ -n "${REQ_TRITON_VERSION}" ]; then
         PYTORCH_TRITON_VERSION="${REQ_TRITON_VERSION}"
     fi
@@ -1823,12 +1864,29 @@ if [ -f "$REQUIREMENTS_FILE" ]; then
 
     echo "Serving stack pins (from requirements_latest.txt):"
     echo "  torch==${PYTORCH_TORCH_VERSION}"
+    echo "  torchao==${PYTORCH_TORCHAO_VERSION}"
     echo "  triton==${PYTORCH_TRITON_VERSION}"
     echo "  ${VLLM_PIP_SPEC}"
     echo "  flashinfer-python==${FLASHINFER_EXPECTED_VERSION}"
 fi
 
+# The official cu130 aarch64 wheel keeps the same torchaudio release version
+# without the +cu130 suffix used by its x86_64 wheel and by torch itself.
+if [ "${FLASH_ATTN_ARCH}" = "aarch64" ] && [ "${PYTORCH_TORCHAUDIO_VERSION}" = "2.9.1+cu130" ]; then
+    PYTORCH_TORCHAUDIO_VERSION="2.9.1"
+fi
+
+# Resolve sources after the requirements pins above have replaced the defaults.
+# Each package chooses its own channel, including Triton's optional +git builds.
+PYTORCH_CU130_INDEX="$(pytorch_package_index "${PYTORCH_TORCH_VERSION}" cu130)"
+PYTORCH_TORCH_FIND_LINKS="${PYTORCH_TORCH_FIND_LINKS:-${PYTORCH_CU130_INDEX}/torch/}"
+PYTORCH_TORCHAUDIO_INDEX="$(pytorch_package_index "${PYTORCH_TORCHAUDIO_VERSION}" cu130)"
+PYTORCH_TORCHAO_INDEX="$(pytorch_package_index "${PYTORCH_TORCHAO_VERSION}" cu130)"
+PYTORCH_TRITON_INDEX="$(pytorch_package_index "${PYTORCH_TRITON_VERSION}")"
+
 # Detect FlashInfer availability (flashinfer-python wheels target Python 3.10-3.14)
+# Fail before bulk requirements or PyTorch replacement on unsupported platforms.
+require_torchao_cuda_wheel_support "${FLASH_ATTN_ARCH}"
 FLASHINFER_SPEC=""
 SKIP_FLASHINFER=0
 if [ -f "$REQUIREMENTS_FILE" ]; then
@@ -1853,12 +1911,12 @@ fi
 # post-CUDA step (prevents CPU torch overrides and vLLM ABI drift).
 TEMP_REQUIREMENTS="/tmp/requirements_no_torch_deps.txt"
 if [ -f "$REQUIREMENTS_FILE" ]; then
-    REQUIREMENTS_EXCLUDE_REGEX='^(accelerate==|torchtitan==|torch==|vllm==)'
+    REQUIREMENTS_EXCLUDE_REGEX='^(accelerate==|torchtitan==|torch==|torchao==|vllm==)'
     if [ "${SKIP_FLASHINFER}" -eq 1 ]; then
-        REQUIREMENTS_EXCLUDE_REGEX='^(accelerate==|torchtitan==|torch==|vllm==|flashinfer-python==)'
+        REQUIREMENTS_EXCLUDE_REGEX='^(accelerate==|torchtitan==|torch==|torchao==|vllm==|flashinfer-python==)'
     fi
     grep -Ev "${REQUIREMENTS_EXCLUDE_REGEX}" "$REQUIREMENTS_FILE" > "$TEMP_REQUIREMENTS" || true
-    echo "Created temporary requirements file excluding torch/vLLM/accelerate/torchtitan"
+    echo "Created temporary requirements file excluding torch/torchao/vLLM/accelerate/torchtitan"
     echo "  (these are installed later in a pinned, post-CUDA compatibility step)"
 fi
 
@@ -1912,21 +1970,21 @@ fi
 # Install PyTorch CUDA 13 stack (binary wheels only, no source builds)
 echo ""
 echo "============================================================================"
-echo "Installing PyTorch nightly 2.10 cu130 stack (binary wheels only)"
+echo "Installing PyTorch ${PYTORCH_TORCH_VERSION} cu130 stack (binary wheels only)"
 echo "============================================================================"
 echo ""
 
 echo "Removing any existing PyTorch installations..."
 pip_uninstall -y torch torchvision torchdata functorch pytorch-triton >/dev/null 2>&1 || true
 
-echo "Installing torch ${PYTORCH_TORCH_VERSION} + torchaudio/torchao (cu130 nightly)..."
+echo "Installing torch ${PYTORCH_TORCH_VERSION} from ${PYTORCH_CU130_INDEX}..."
 if ! pip_install --no-cache-dir --upgrade --ignore-installed \
     --index-url "${PYTORCH_CU130_INDEX}" \
     --find-links "${PYTORCH_TORCH_FIND_LINKS}" \
     --extra-index-url "https://pypi.org/simple" \
     --only-binary=":all:" \
     "torch==${PYTORCH_TORCH_VERSION}"; then
-    echo "ERROR: torch ${PYTORCH_TORCH_VERSION} install failed from nightly cu130 index"
+    echo "ERROR: torch ${PYTORCH_TORCH_VERSION} install failed from ${PYTORCH_CU130_INDEX}"
     exit 1
 fi
 
@@ -1942,25 +2000,25 @@ fi
 # fi
 
 if ! pip_install --no-cache-dir --upgrade --ignore-installed \
-    --index-url "${PYTORCH_CU130_INDEX}" \
+    --index-url "${PYTORCH_TORCHAUDIO_INDEX}" \
     --extra-index-url "https://pypi.org/simple" \
     --only-binary=":all:" \
     "torchaudio==${PYTORCH_TORCHAUDIO_VERSION}"; then
-    echo "ERROR: torchaudio install failed from nightly cu130 index"
+    echo "ERROR: torchaudio ${PYTORCH_TORCHAUDIO_VERSION} install failed from ${PYTORCH_TORCHAUDIO_INDEX}"
     exit 1
 fi
 
 if ! pip_install --no-cache-dir --upgrade --ignore-installed \
-    --index-url "${PYTORCH_CU130_INDEX}" \
+    --index-url "${PYTORCH_TORCHAO_INDEX}" \
     --extra-index-url "https://pypi.org/simple" \
     --only-binary=":all:" \
     "torchao==${PYTORCH_TORCHAO_VERSION}"; then
-    echo "ERROR: torchao install failed from nightly cu130 index"
+    echo "ERROR: torchao ${PYTORCH_TORCHAO_VERSION} install failed from ${PYTORCH_TORCHAO_INDEX}"
     exit 1
 fi
 
 if ! pip_install --no-cache-dir --upgrade --ignore-installed \
-    --index-url "${PYTORCH_NIGHTLY_INDEX}" \
+    --index-url "${PYTORCH_TRITON_INDEX}" \
     --extra-index-url "https://pypi.org/simple" \
     --only-binary=":all:" \
     "triton==${PYTORCH_TRITON_VERSION}"; then
@@ -1994,7 +2052,7 @@ if expected and torch.__version__ != expected:
 print(f"[setup] torch cu13 confirmed: {torch.__version__} (cuda {cuda_ver})")
 PY
 then
-    echo "ERROR: cu130 torch install did not deliver the expected nightly build."
+    echo "ERROR: cu130 torch install did not deliver the expected pinned version."
     exit 1
 fi
 
@@ -2142,9 +2200,9 @@ pip_install --no-cache-dir --upgrade --ignore-installed --no-deps tokenizers==0.
 # Triton should be bundled with PyTorch, but install it explicitly to ensure it's available
 echo "Verifying triton availability (required by Transformer Engine)..."
 if ! python3 -c "import triton" 2>/dev/null; then
-    echo "  Triton not found. Installing triton from PyTorch nightly index (with --no-deps to prevent torch override)..."
+    echo "  Triton not found. Installing ${PYTORCH_TRITON_VERSION} from ${PYTORCH_TRITON_INDEX} (with --no-deps to prevent torch override)..."
     pip_install --no-cache-dir --upgrade --no-deps \
-        --index-url "${PYTORCH_NIGHTLY_INDEX}" \
+        --index-url "${PYTORCH_TRITON_INDEX}" \
         --extra-index-url "https://pypi.org/simple" \
         --only-binary=":all:" \
         "triton==${PYTORCH_TRITON_VERSION}" || {
@@ -3704,7 +3762,7 @@ run_with_te_env() {
 TE_WHEEL_DIR="${THIRD_PARTY_DIR}/wheels"
 mkdir -p "${TE_WHEEL_DIR}"
 
-# Keep torch pinned to cu130 nightly wheel (cu13 deps) for TE builds
+# Keep the same pinned cu130 wheel and resolved source for TE builds.
 if ! pip_install --no-cache-dir --force-reinstall --ignore-installed --no-deps \
     --index-url "${PYTORCH_CU130_INDEX}" \
     --find-links "${PYTORCH_TORCH_FIND_LINKS}" \
@@ -3862,12 +3920,13 @@ echo "Final cleanup (APT/pip caches)..."
 reclaim_disk_space_basic
 
 # Final summary
+CUDNN_INSTALL_SUMMARY="$(report_installed_cudnn)"
 echo ""
 echo "Setup Complete!"
 echo "=================="
 echo ""
 echo "Installed:"
-echo "  • PyTorch source build (${PYTORCH_BUILD_VERSION:-custom}) with NVIDIA arch list"
+echo "  • PyTorch ${PYTORCH_TORCH_VERSION} CUDA wheel from ${PYTORCH_CU130_INDEX}"
 echo "  • CUDA ${CUDA_FULL_VERSION} toolchain and development tools"
 echo "  • NCCL ${NCCL_SHORT_VERSION} (Blackwell-optimized with NVLS support)"
 echo "  • NVSHMEM 3.4.5 runtime and headers (CUDA 13)"
@@ -3894,7 +3953,7 @@ echo "                                      import torch"
 echo "                                      print(torch.cuda.get_arch_list())"
 echo "                                    PY"
 echo "                                    (expect ['sm_100', 'sm_103', 'sm_121', 'compute_121'])"
-echo "  • cuDNN: Installed 9.15.1.9-1 (matches PyTorch's compile-time version; PyTorch bundles 9.13.0 but we use system 9.15.1)"
+echo "  • ${CUDNN_INSTALL_SUMMARY}"
 echo "  • Before additional builds: source /etc/profile.d/cuda-${CUDA_SHORT_VERSION}.sh (or start a new shell)"
 echo "For more information, see the README.md file and chapter-specific documentation."
 echo ""

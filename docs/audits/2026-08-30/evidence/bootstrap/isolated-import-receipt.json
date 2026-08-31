@@ -1,0 +1,16 @@
+{
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "python": "3.12.2 | packaged by conda-forge | (main, Feb 16 2024, 20:54:21) [Clang 16.0.6 ]",
+  "torch": "2.9.1",
+  "torchao": "0.15.0",
+  "cuda_available": false,
+  "torchao_skip_loading_so_files": false,
+  "torchao_native_libraries": [],
+  "converted_module": "Float8Linear",
+  "imported_api": [
+    "Float8LinearConfig",
+    "convert_to_float8_training",
+    "quantize_"
+  ],
+  "boundary": "Isolated macOS Python API import and conversion only; CUDA native ABI, FP8 execution, and Linux bootstrap are untested."
+}

@@ -316,7 +316,7 @@ def test_run_repo_python_module_uses_module_entrypoint_from_repo_root(monkeypatc
     monkeypatch.setattr(run_benchmarks_mod.subprocess, "run", _fake_run)
 
     run_benchmarks_mod._run_repo_python_module(
-        "core.scripts.utilities.dump_hardware_capabilities",
+        "scripts.utilities.dump_hardware_capabilities",
         "--fast",
         timeout=15,
     )
@@ -324,7 +324,7 @@ def test_run_repo_python_module_uses_module_entrypoint_from_repo_root(monkeypatc
     assert captured["cmd"] == [
         sys.executable,
         "-m",
-        "core.scripts.utilities.dump_hardware_capabilities",
+        "scripts.utilities.dump_hardware_capabilities",
         "--fast",
     ]
     kwargs = captured["kwargs"]

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Level 7: torch.compile on the baseline MoE workload.
+"""Level 7: torch.compile on the graph-friendly model.
 
-This reuses the shared MoEJourneyBenchmark stack but enables the Level 7
-optimization flag so the model is created with torch.compile (mode="max-autotune")
-on the same batch/seq/hidden dimensions as the baseline.
-"""
+Requests torch.compile for the shared BF16 graph-friendly model; inspect compilation and graph metrics to establish actual execution.
+
+The filename and class are retained for compatibility. The LEVEL mapping,
+not a legacy filename, determines execution. These shared levels do not use
+FP8 quantization. No speedup is established by selecting a level."""
 
 import torch
 
@@ -12,7 +13,7 @@ from labs.moe_optimization_journey.moe_benchmark import MoEJourneyBenchmark, run
 
 
 class Level7Compiled(MoEJourneyBenchmark):
-    """torch.compile applied to the baseline MoE workload."""
+    """Shared level 7: torch.compile on the graph-friendly model."""
 
     LEVEL = 7
 

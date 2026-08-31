@@ -176,6 +176,20 @@ jobs:
               handle.write("```\n")
           PY
 
+      - name: Run verification tests on the attested GPU runner
+        # Serialized by the existing tier1-nightly-producer concurrency group.
+        # Skips in JUnit are missing hardware/feature coverage, never passes.
+        run: |
+          python -m pytest tests -q -ra -o timeout=600 --junitxml=artifacts/pytest-gpu.xml
+
+      - name: Upload GPU test evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-b200-${{ github.run_id }}-${{ github.run_attempt }}
+          path: code/artifacts/pytest-gpu.xml
+          if-no-files-found: warn
+
       - name: Run canonical tier-1 suite
         id: run_tier1
         continue-on-error: ${{ env.TIER1_ACCEPT_HISTORY_ANCHOR == 'true' }}

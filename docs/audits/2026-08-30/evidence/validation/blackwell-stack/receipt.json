@@ -1,0 +1,35 @@
+{
+  "recorded_at": "2026-08-30T22:35:42.983427+00:00",
+  "finding": "W1-095",
+  "base_revision": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "status": "source_fixed_gpu_acceptance_pending",
+  "before": {
+    "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_blackwell_stack.py -q -p no:cacheprovider",
+    "result": "8 passed on actual CPU-only environment; missing CUDA incorrectly returned success"
+  },
+  "after": {
+    "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_blackwell_stack.py tests/test_audit_wave1_blackwell_validation.py -q -ra -p no:cacheprovider",
+    "result": "13 CPU control-routing checks passed; all8actualGPUchecks explicitly skipped"
+  },
+  "scope": [
+    "Pre-work exception injection verifies routing only, never CUDA numerical correctness.",
+    "Compile/launch/import/profiler failures propagate once prerequisites are present.",
+    "CUDA13 stream check does not infer TMA or cudaMallocAsync from runtime version.",
+    "Distributed cases require explicit two-rank torchrun; NCCL initialization errors fail, teardown is scoped.",
+    "Standalone command returns3/UNAVAILABLE on CPU and actual pytest exit status on CUDA."
+  ],
+  "required_gates": [
+    "All six single-GPU checks on pinned supported CUDA stack with numerical assertions and profiler CUDA events.",
+    "Two distributed checks under bounded torchrun --nproc-per-node=2 with serialized GPU lease."
+  ],
+  "source_sha256": {
+    "code/tests/test_blackwell_stack.py": "1f112e84e2516f91e78d8e073c773eba50426fe1dc4705c0f8c9224f16de0afd",
+    "code/tests/test_audit_wave1_blackwell_validation.py": "186b8b11c3fae8513c1b6651a4a0051aaa2695db46dfa0d79939fd1e92011b1e"
+  },
+  "primary_references": [
+    "https://docs.pytorch.org/docs/2.9/generated/torch.compile.html",
+    "https://docs.pytorch.org/docs/2.9/profiler.html",
+    "https://docs.pytorch.org/docs/2.9/distributed.html"
+  ],
+  "final_combined_gate": "45passed9skips5warnings; see evidence/harness/timing-blackwell-integration-v2.txt"
+}

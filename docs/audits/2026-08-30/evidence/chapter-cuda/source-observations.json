@@ -1,0 +1,272 @@
+{
+  "audit_source_sha256": "474779ab49b67c5c888e5f689b2400204b6d0f46f304219cedd0773694b6e1ba",
+  "original_audit_count": 128,
+  "original_findings_in_slice": [
+    {
+      "id": "W1-008",
+      "title": "Baseline timing measures only host enqueue: events on legacy stream, kernels on non-blocking stream",
+      "severity": "high",
+      "original_location": "code/ch08/baseline_thresholdtma.cu:74",
+      "live_source_revalidated": true,
+      "source_fix": "Record both baseline events on the nonblocking work stream.",
+      "source_status": "FIXED",
+      "cuda_acceptance": "HOLD: no nvcc, compatible CUDA toolchain or device execution on this host"
+    },
+    {
+      "id": "W1-009",
+      "title": "cp.async wait_group off-by-one: each block's last tile is consumed before its copy is guaranteed complete",
+      "severity": "high",
+      "original_location": "code/ch08/threshold_async_kernel.cuh:133",
+      "live_source_revalidated": true,
+      "source_fix": "The final remaining cp.async group is drained before consuming it; explicit shared alignment.",
+      "source_status": "FIXED",
+      "cuda_acceptance": "HOLD: no nvcc, compatible CUDA toolchain or device execution on this host"
+    },
+    {
+      "id": "W1-010",
+      "title": "Tile swizzle drops/duplicates output tiles whenever grid_n is not a multiple of 8",
+      "severity": "high",
+      "original_location": "code/ch10/tcgen05_warp_specialized.cu:81",
+      "live_source_revalidated": true,
+      "source_fix": "Bijection for partial N tile groups; initialized barriers published before use; positive/same-device input guards.",
+      "source_status": "FIXED",
+      "cuda_acceptance": "HOLD: no nvcc, compatible CUDA toolchain or device execution on this host"
+    },
+    {
+      "id": "W1-011",
+      "title": "Timed region records events on default stream while kernels run on non-blocking streams \u2014 measures launch overhead only",
+      "severity": "high",
+      "original_location": "code/ch11/streams_ordered_demo.cu:118",
+      "live_source_revalidated": true,
+      "source_fix": "Visit every chunk, mapping chunk index modulo three reusable stream slots.",
+      "source_status": "FIXED",
+      "cuda_acceptance": "HOLD: no nvcc, compatible CUDA toolchain or device execution on this host"
+    },
+    {
+      "id": "W1-012",
+      "title": "No inter-stream dependencies: H2D copy, compute, and D2H copy race across three independent streams",
+      "severity": "high",
+      "original_location": "code/ch11/streams_ordered_demo.cu:90",
+      "live_source_revalidated": true,
+      "source_fix": "Explicit allocation, H2D, compute, D2H and reuse event dependencies.",
+      "source_status": "FIXED",
+      "cuda_acceptance": "HOLD: no nvcc, compatible CUDA toolchain or device execution on this host"
+    },
+    {
+      "id": "W1-013",
+      "title": "Vectorization 'speedup' compares a baseline doing 2 kernel launches/iter against optimized doing 1 \u2014 ~2x inflated",
+      "severity": "high",
+      "original_location": "code/ch11/streams_overlap_demo.cu:221",
+      "live_source_revalidated": true,
+      "source_fix": "Same scalar/vector/shared transforms, launch counts and reset inputs; pipeline job counts also match.",
+      "source_status": "FIXED",
+      "cuda_acceptance": "HOLD: no nvcc, compatible CUDA toolchain or device execution on this host"
+    },
+    {
+      "id": "W1-014",
+      "title": "Same wrong-stream event timing: stop event does not wait for kernels launched on non-blocking streams",
+      "severity": "high",
+      "original_location": "code/ch11/streams_warp_specialized_demo.cu:186",
+      "live_source_revalidated": true,
+      "source_fix": "Timing start fans out to all workers and stop joins completion events; timed outputs checked.",
+      "source_status": "FIXED",
+      "cuda_acceptance": "HOLD: no nvcc, compatible CUDA toolchain or device execution on this host"
+    },
+    {
+      "id": "W1-015",
+      "title": "Graph-replay benchmark records events on default stream while replays run on non-blocking stream",
+      "severity": "high",
+      "original_location": "code/ch12/optimized_cuda_graphs.cu:107",
+      "live_source_revalidated": true,
+      "source_fix": "Both graph timers use the work stream, with measured inputs reset after warmup.",
+      "source_status": "FIXED",
+      "cuda_acceptance": "HOLD: no nvcc, compatible CUDA toolchain or device execution on this host"
+    },
+    {
+      "id": "W1-045",
+      "title": "Occupancy queried with 0 dynamic shared memory but kernel launched with block_size*4 bytes; divergent __syncthreads in partial block",
+      "severity": "medium",
+      "original_location": "code/ch06/occupancy_api.cu:62",
+      "live_source_revalidated": true,
+      "source_fix": "Occupancy callback matches actual dynamic shared bytes; tail threads participate in barrier.",
+      "source_status": "FIXED",
+      "cuda_acceptance": "HOLD: no nvcc, compatible CUDA toolchain or device execution on this host"
+    },
+    {
+      "id": "W1-046",
+      "title": "Host verification uses a 4-wide coefficient pattern against the kernel's 8-wide pattern, so the demo always reports Incorrect and exits 1",
+      "severity": "medium",
+      "original_location": "code/ch06/optimized_ilp_low_occupancy_vec4_impl.cuh:191",
+      "live_source_revalidated": true,
+      "source_fix": "Every output uses the eight-lane scalar reference; NaN/Inf rejected.",
+      "source_status": "FIXED",
+      "cuda_acceptance": "HOLD: no nvcc, compatible CUDA toolchain or device execution on this host"
+    },
+    {
+      "id": "W1-048",
+      "title": "Chunking mismatch: array split into 8 pipeline chunks but only 3 are ever transferred or processed",
+      "severity": "medium",
+      "original_location": "code/ch11/streams_ordered_demo.cu:73",
+      "live_source_revalidated": true,
+      "source_fix": "Multi-stream pipeline timing waits for final D2H on every active stream lane.",
+      "source_status": "FIXED",
+      "cuda_acceptance": "HOLD: no nvcc, compatible CUDA toolchain or device execution on this host"
+    },
+    {
+      "id": "W1-049",
+      "title": "scale_kernel_async is launched with the Float8-sized grid on Blackwell, so it only processes half the array and reports ~2x inflated bandwidth",
+      "severity": "medium",
+      "original_location": "code/ch11/streams_overlap_demo.cu:278",
+      "live_source_revalidated": true,
+      "source_fix": "Shared kernel always uses a four-values-per-thread grid independent of Float8 selection.",
+      "source_status": "FIXED",
+      "cuda_acceptance": "HOLD: no nvcc, compatible CUDA toolchain or device execution on this host"
+    },
+    {
+      "id": "W1-050",
+      "title": "'Three-way pipeline' overlap benchmark runs copy and compute on the same stream because stream2 aliases stream1",
+      "severity": "medium",
+      "original_location": "code/ch11/streams_overlap_demo.cu:193",
+      "live_source_revalidated": true,
+      "source_fix": "Copy and compute streams are distinct nonblocking streams.",
+      "source_status": "FIXED",
+      "cuda_acceptance": "HOLD: no nvcc, compatible CUDA toolchain or device execution on this host"
+    },
+    {
+      "id": "W1-051",
+      "title": "Default-stream cudaMemcpy races with kernels still running on the non-blocking stream",
+      "severity": "medium",
+      "original_location": "code/ch11/streams_overlap_demo.cu:296",
+      "live_source_revalidated": true,
+      "source_fix": "D2H copies occur after computation through stream order or explicit events.",
+      "source_status": "FIXED",
+      "cuda_acceptance": "HOLD: no nvcc, compatible CUDA toolchain or device execution on this host"
+    },
+    {
+      "id": "W1-102",
+      "title": "PCIe 5.0 \"~128 GB/s theoretical max\" is unreachable for this benchmark's sequential-transfer metric",
+      "severity": "low",
+      "original_location": "code/ch02/memory_transfer_pcie_demo.cu:98",
+      "live_source_revalidated": true,
+      "source_fix": "Sequential effective bandwidth is not compared with full-duplex theoretical sum; bottleneck not asserted.",
+      "source_status": "FIXED",
+      "cuda_acceptance": "HOLD: no nvcc, compatible CUDA toolchain or device execution on this host"
+    },
+    {
+      "id": "W1-103",
+      "title": "Comment claims 0x3C initializes FP8 buffer to 1.0, but 0x3C is 1.5 in E4M3",
+      "severity": "low",
+      "original_location": "code/ch07/fp8_32byte_loads_demo.cu:105",
+      "live_source_revalidated": true,
+      "source_fix": "The FP8 one byte comes from CUDA e4m3 conversion.",
+      "source_status": "FIXED",
+      "cuda_acceptance": "HOLD: no nvcc, compatible CUDA toolchain or device execution on this host"
+    },
+    {
+      "id": "W1-104",
+      "title": "aligned_size_t<16> constructed with a size that is not a multiple of 16 for ragged tails (undefined behavior)",
+      "severity": "low",
+      "original_location": "code/ch08/threshold_tma_kernel.cuh:50",
+      "live_source_revalidated": true,
+      "source_fix": "Only aligned sizes and input pointers get the aligned-size promise; ordinary-size copy handles tails/views.",
+      "source_status": "FIXED",
+      "cuda_acceptance": "HOLD: no nvcc, compatible CUDA toolchain or device execution on this host"
+    },
+    {
+      "id": "W1-105",
+      "title": "Header claims 'No atomics needed - single writer per cluster' and an 8-CTA cluster; the kernel uses atomicAdd from all 4 CTAs",
+      "severity": "low",
+      "original_location": "code/ch10/optimized_dsmem_reduction_warp_specialized.cu:11",
+      "live_source_revalidated": true,
+      "source_fix": "Comments and output describe four CTAs and one DSMEM atomic per CTA.",
+      "source_status": "FIXED",
+      "cuda_acceptance": "HOLD: no nvcc, compatible CUDA toolchain or device execution on this host"
+    }
+  ],
+  "adjacent_discoveries_not_added_to_original_count": [
+    {
+      "label": "P03-adjacent-01",
+      "paths": [
+        "code/ch11/streams_ordered_demo.cu"
+      ],
+      "issue": "Three compute passes copied the intermediate d_in; large integer inputs grew to nonfinite values.",
+      "change": "Copy final d_out and validate all bounded nonuniform inputs."
+    },
+    {
+      "label": "P03-adjacent-02",
+      "paths": [
+        "code/ch11/streams_overlap_demo.cu"
+      ],
+      "issue": "Shared-staging barriers were inside a per-thread bounds branch; ragged tails performed different arithmetic.",
+      "change": "Uniform barrier participation and identical full arithmetic for partial vectors."
+    },
+    {
+      "label": "P03-adjacent-03",
+      "paths": [
+        "code/ch11/streams_overlap_demo.cu"
+      ],
+      "issue": "Sequential pipeline processed twice as many jobs; variants reused modified input; automatic TMA claim lacked evidence.",
+      "change": "Equal jobs/reset/feedback and truthful shared-staging labels."
+    },
+    {
+      "label": "P03-adjacent-04",
+      "paths": [
+        "code/ch10/optimized_dsmem_reduction_warp_specialized.cu"
+      ],
+      "issue": "Vector load checked only first lane against N.",
+      "change": "Require all four lanes in bounds or load the tail scalarly."
+    },
+    {
+      "label": "P03-adjacent-05",
+      "paths": [
+        "code/ch11/streams_warp_specialized_demo.cu"
+      ],
+      "issue": "Only the first of two passes was copied/checked; timed feedback outputs were unverified and mismatch did not fail.",
+      "change": "Copy/check final pass and all active timed buffers; reject nonfinite and return failure."
+    },
+    {
+      "label": "P03-adjacent-06",
+      "paths": [
+        "code/ch12/baseline_cuda_graphs.cu",
+        "code/ch12/optimized_cuda_graphs.cu"
+      ],
+      "issue": "Warmup counts differed and mutated the measured input.",
+      "change": "Reset both measured inputs and expose bounded full-output verification of real entrypoints."
+    },
+    {
+      "label": "P03-adjacent-07",
+      "paths": [
+        "code/ch10/tcgen05_warp_specialized.cu"
+      ],
+      "issue": "Barrier publication fence absent; empty/mixed-device inputs not rejected explicitly.",
+      "change": "Publish init before CTA sync; device guard and positive same-device input checks; logical TMA byte count."
+    },
+    {
+      "label": "P03-adjacent-08",
+      "paths": [
+        "code/ch06/optimized_ilp_low_occupancy_vec4_impl.cuh"
+      ],
+      "issue": "Time comparison of different scalar/vector arithmetic was labeled speedup.",
+      "change": "Label a time ratio of different workloads, not an equivalent-work speedup."
+    },
+    {
+      "label": "P03-adjacent-09",
+      "paths": [
+        "code/ch08/threshold_tma_kernel.cuh",
+        "code/ch08/threshold_async_kernel.cuh"
+      ],
+      "issue": "Alignment declaration and input-view alignment were not encoded locally; runtime-header users depended on driver-header macro import order.",
+      "change": "Explicit shared alignment, guard aligned-copy input pointer and use CUDART_VERSION from included runtime header."
+    },
+    {
+      "label": "P03-review-01",
+      "paths": [
+        "code/tests/cuda/run_ch10_warp_specialized_validation.py",
+        "code/tests/cuda/validation_process.py"
+      ],
+      "issue": "Initial candidate JIT compile/import was not bounded; killing only a parent can leave compiler descendants running.",
+      "change": "Compile/import in bounded child and terminate its owned process group on timeout; real CPU descendant negative control."
+    }
+  ],
+  "runtime_evidence": "None; all actual CUDA preflight attempts ended with HOLD/exit3 before compilation or execution."
+}

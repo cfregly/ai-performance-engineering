@@ -1,0 +1,252 @@
+{
+  "source_files": {
+    "code/labs/train_distributed/training_utils/torchrun_harness.py": "7cec3cdf803499f5388f6c87d1f09487f738e318855f141d7adbb3f3cad152ce",
+    "code/core/harness/benchmark_harness.py": "1f35a30c0216f3ae7f9a64ff5898125278efc9f7490fe2cf21829dcd9d2d3585"
+  },
+  "affected_wrappers": [
+    {
+      "path": "code/labs/train_distributed/baseline_ddp.py",
+      "sha256": "588bbce0fd496d2f263174e5d8ddd5bd279b51db037d4536c7d37fe34c3631c7"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_ddp_compression.py",
+      "sha256": "780d587066f2b8a631b5f07e415a39214689e6a2016c54b55619e5c120406161"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_ddp_compression_multigpu_int8.py",
+      "sha256": "6eb5652f3b0cd35e486d296903387d73691f4cd97e8aa443ca91ff01e07add7d"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_ddp_compression_multigpu_powersgd.py",
+      "sha256": "3f181484b9e98c96fccc7c41ea94c6e24a3a01e116fb9b8344deb89d69943ca6"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_ddp_flash.py",
+      "sha256": "a56a29a6b2e3c429edb3b9d9f473db5b06203bf3b941e1c69cc03cbb684e503b"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_ddp_flash_multigpu.py",
+      "sha256": "12b2164b0737c66d4b6e935edce794d46bff643f9b74510712e32f87d2ca344e"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_ddp_multigpu.py",
+      "sha256": "779b6815329a434e7e5eade1feab94ff3b772b9bdd3199b6ca76ab31ad0c074a"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_fsdp.py",
+      "sha256": "21a2cad810ac5d87947002e6c74f01ff3142cf01df797a02f20dba7f8199c425"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_fsdp2.py",
+      "sha256": "8bf8c634ded54274bf01b0193abadb992573feecc640f915d43ed1b5fbebd4c3"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_fsdp2_multigpu.py",
+      "sha256": "b210bd9b46d4e1af28685ffbae6b920c9b4646947dab1b78ef71be6e087391dc"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_fsdp_multigpu.py",
+      "sha256": "94957cd8b95a0c6277f01947f32262d6e095c9e81c7e7122cb65ee6edf28f0db"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_pipeline_1f1b.py",
+      "sha256": "55b03ad7d5238024e70a51ffafbec7ce3d31fa62689d6c6b5881b5e9ffa11ad6"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_pipeline_1f1b_multigpu.py",
+      "sha256": "6b22832f87835dd80d880884e750cb00a6f82a0a39c3f73cff79587fb41d7f8d"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_pipeline_1f1b_to_gpipe_multigpu.py",
+      "sha256": "01ce9a632ecf8755eae13641bdedded13a3d7a98d5d9afcc3a26f808af2ded94"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_pipeline_dualpipe.py",
+      "sha256": "a7be2ba047c5b3663e3cc41a8aaf3d41c04b1d93a656148981795863a0c310b9"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_pipeline_dualpipe_multigpu.py",
+      "sha256": "2fe8c5348ff3b71928cbcfc75e16712de95d3930fb68254172d3ef0ed8169c89"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_pipeline_dualpipev.py",
+      "sha256": "b8d857d321572eccfeb0d66848862db9d98de7bb46e1d5a6cd92093585eab229"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_pipeline_dualpipev_multigpu.py",
+      "sha256": "ea65ba14e9832b63f26cfaef4a0fd6c8d4b7dfe08abdc35d6e2bbe66fac641bf"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_pipeline_gpipe.py",
+      "sha256": "2b04c635bf0cb3ce93de3537769eb363c214d42a13c264b213d31c283fcad8b9"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_pipeline_gpipe_multigpu.py",
+      "sha256": "408ea5d4284f17b03fbb841cfc0979c03236fb5c7759f7972f9953c9820c447b"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_pipeline_gpipe_to_dualpipe_multigpu.py",
+      "sha256": "4cc2522a997b11747532215bb54647f2a80b9a6391d7ab2b3c235e20e60a1fca"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_pipeline_gpipe_to_dualpipev_multigpu.py",
+      "sha256": "ae9c9087962efdc6473ddf33993cb45c78181bbbc8181af3937b6c975d5f7e99"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_symmem_training.py",
+      "sha256": "e8b15ab84b2ee82461a6dd92e4ffe8e0eac23b1b2703060f7cbb7fd4e85de01c"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_symmem_training_multigpu.py",
+      "sha256": "bf798c7ccef3a3891f94b1eade2c708494b600fa4818c827a5a733f72cb4f606"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_zero1.py",
+      "sha256": "7208228dc069d48836a4f5b5909e6b5548cd648ec2940a853d4c1bf92537841e"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_zero1_multigpu.py",
+      "sha256": "ed06edc473b4f390fd6aaf6a1ead946cf3508319b35971eaddb1ab44fe41d1f0"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_zero2.py",
+      "sha256": "168337db169218f91077f56366d4c66915e52d5f53ca52e3448d16baa814bc4c"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_zero2_multigpu.py",
+      "sha256": "c0c56e8e882665fd14ca25633f01de69e7130a9ecb980d07b8ac1073d0c7ef4b"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_zero3.py",
+      "sha256": "914796ed71422c8b91c9a767a54028c21442093ba9c2cdc22cab0e266537a5e5"
+    },
+    {
+      "path": "code/labs/train_distributed/baseline_zero3_multigpu.py",
+      "sha256": "0d30964f626c387feaa52135be1170dace0fdf671a0ed65c7cdbe7b958224f1d"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_ddp.py",
+      "sha256": "3aa17a9d8f17c898975e0bd223f4df7d21e48ee467a28671b00fd5892abba678"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_ddp_compression_int8.py",
+      "sha256": "a9cb22f1aad3ffdd9d84ebc94bef0c1931be1e3f8655e017589fcdde5595f21b"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_ddp_compression_multigpu_int8.py",
+      "sha256": "f387e3d25a775139c832c9c1723ca54742c2b50d8bfae342a392fa2f4ed9b021"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_ddp_compression_multigpu_powersgd.py",
+      "sha256": "3cc39e8e52e6f6193312cfd8abd208c295654bd93bdea0b52a45635b58aa9c8c"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_ddp_compression_powersgd.py",
+      "sha256": "c12281ec0b99988cfe55adc50753c8d6bd94270491c757cc484ac1dc864e7c92"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_ddp_flash.py",
+      "sha256": "bbaac66c66a9801517875450ed9a9b81e259d1075d70c7f8bd59f95720e5a5bd"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_ddp_flash_multigpu.py",
+      "sha256": "7b8f6ed4cd2e09f03d5718cc1df930bbcfcea8fe5546a2fbd0b4713cb6ed679d"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_ddp_multigpu.py",
+      "sha256": "c0d846bebdcbf303dec0e852d3f7e55c6f9c88a1843264c6f35eda8682903909"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_fsdp.py",
+      "sha256": "fa7cf475deb7f54d6da2df986b67b5085e4b243d37567ccff510510b286a3174"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_fsdp2.py",
+      "sha256": "5aba1a6379aa8cae554be5dab65b41a2f828c583ceccf95673468a6618c4735f"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_fsdp2_multigpu.py",
+      "sha256": "da7f2b6e1eb39371b56d93166cbf30ab0e0058e5411f8f40ed53431564a7e2af"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_fsdp_multigpu.py",
+      "sha256": "bb54cfd05606e695c5a151fb64aaa7290ff3752f438878d7c1473f964a2ac77c"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_pipeline_1f1b.py",
+      "sha256": "c19e528888dee39ebc0fc15ba6dbff7800a347051779df6a5e52f749ac78a7ee"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_pipeline_1f1b_multigpu.py",
+      "sha256": "f7ce6dba2b95cc66bcc75d30d4d5ceaed89fba99b10feef526d2e5b075e4b970"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_pipeline_1f1b_to_gpipe_multigpu.py",
+      "sha256": "d1f19c42c3328879b0a093a13b03ba3655c4533e978da9d0f40fbfc7dbb651cf"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_pipeline_dualpipe.py",
+      "sha256": "46f034dabe689273b835d5d11c27c65eca07da9fb1d70431f3eca9eeec8d9550"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_pipeline_dualpipe_multigpu.py",
+      "sha256": "1d439d5b6dd6ad57ce549d11fd9d3ee23740b6c414673b539a67fe6b93ffc554"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_pipeline_dualpipev.py",
+      "sha256": "4032afc641c055c458095007604d805d2ed12cc19bb9e03d31191bd69fb48f64"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_pipeline_dualpipev_multigpu.py",
+      "sha256": "8db72cb7694e6e60d5cf7f2382e677fbfc173a3c281ffe0f15abb108e53ffe1b"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_pipeline_gpipe.py",
+      "sha256": "c1220f80906313dcd4843e5f12e0c22b739f0afffe41b2f40b118d5fc3f7d80f"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_pipeline_gpipe_multigpu.py",
+      "sha256": "5e28c3accacb035f3232d1569559b43ec120f55b544b9fb4494c6a141d4ca4ed"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_pipeline_gpipe_to_dualpipe_multigpu.py",
+      "sha256": "cdaf792e1c20c6d24b4283f6ebfd0df54407dedc20956a9a97e77e20c7fa2444"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_pipeline_gpipe_to_dualpipev_multigpu.py",
+      "sha256": "4d052a729e8161a0b3f2f36ebc31d1ad888d0e4a00fd769e932a41b2034fd17f"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_symmem_training.py",
+      "sha256": "322544c01af316ed599d3fd426156c49f2ea54d05a6a752da3b70d0c800d9ca4"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_symmem_training_multigpu.py",
+      "sha256": "8a05d9f76a5043324af702b9486f52cba8bf907c3b96814df941a4cccbad3ed7"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_zero1.py",
+      "sha256": "7c110741cc2f40aa7b4588faa07bbf1a5458058d5360a5c285d965c0729da212"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_zero1_multigpu.py",
+      "sha256": "a1fc0d39ee7a7ebb71f427867ba638e940041310ff950b895bc3ffc4ce4d2709"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_zero2.py",
+      "sha256": "61bdda99a0903d79dc8374223c6d661f86f61e7f2715d318260302cdb61c9201"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_zero2_multigpu.py",
+      "sha256": "65778560c2b6a094829cb098c1667e2e71ebfd7932a72c61a654279b5f9ea211"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_zero3.py",
+      "sha256": "4d9f260e7b4e1252ada8bcd06c1465593fd3f5fcbe8cf620808b9d13205e07a2"
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_zero3_multigpu.py",
+      "sha256": "1e4f41e7cf3d640e485fdbe31ce0c283e43fd1994d4dc022fe62385cd6c21b97"
+    }
+  ]
+}

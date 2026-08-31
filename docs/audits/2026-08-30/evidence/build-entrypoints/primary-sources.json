@@ -1,0 +1,45 @@
+{
+  "captured_at_utc": "2026-08-30T22:38:59.250377+00:00",
+  "sources": [
+    {
+      "url": "https://developer.nvidia.com/cuda/gpus",
+      "resolved_url": "https://developer.nvidia.com/cuda/gpus",
+      "sha256": "84a87472a0e1dae80619f1e1c69cd23b176d64e44988d1b15d08eec89f3b47df",
+      "bytes": 24563
+    },
+    {
+      "url": "https://docs.nvidia.com/cuda/archive/13.0.0/cuda-compiler-driver-nvcc/index.html",
+      "resolved_url": "https://docs.nvidia.com/cuda/archive/13.0.0/cuda-compiler-driver-nvcc/index.html",
+      "sha256": "90fe5c98000dab8a9cee75d40e4f7ef0ad8c2a47e9ef9962f6e1271d49e9a2a8",
+      "bytes": 396284
+    },
+    {
+      "url": "https://cmake.org/cmake/help/v3.31/prop_tgt/CUDA_ARCHITECTURES.html",
+      "resolved_url": "https://cmake.org/cmake/help/v3.31/prop_tgt/CUDA_ARCHITECTURES.html",
+      "sha256": "d143ceb0bb1687f9d1c12ae3e4caf20c380422eb5b2e6ca956902e4012f5fa61",
+      "bytes": 11422
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Kitware/CMake/v3.31.8/Modules/Internal/CMakeCUDAArchitecturesValidate.cmake",
+      "resolved_url": "https://raw.githubusercontent.com/Kitware/CMake/v3.31.8/Modules/Internal/CMakeCUDAArchitecturesValidate.cmake",
+      "sha256": "d815f2ef6ec41a135eaac23ee88967c6e25f8a9a31c63ad67a5964dc7270bc47",
+      "bytes": 918
+    },
+    {
+      "url": "https://docs.pytorch.org/docs/2.9/generated/torch.compiled_with_cxx11_abi.html",
+      "fetch_error": "HTTP Error 403: Forbidden"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/pytorch/pytorch/v2.9.1/torch/utils/cpp_extension.py",
+      "resolved_url": "https://raw.githubusercontent.com/pytorch/pytorch/v2.9.1/torch/utils/cpp_extension.py",
+      "sha256": "52ba4de5deedd894e2bdafc9b7f40526dbc2cc1e4c560bbae3b38d4a5dcab0c6",
+      "bytes": 132302
+    },
+    {
+      "url": "https://raw.githubusercontent.com/pytorch/pytorch/v2.9.1/cmake/TorchConfig.cmake.in",
+      "resolved_url": "https://raw.githubusercontent.com/pytorch/pytorch/v2.9.1/cmake/TorchConfig.cmake.in",
+      "sha256": "52d186de5772f0eb41432b137d8168926206f1f89b9c9701a868b847ceb00916",
+      "bytes": 5345
+    }
+  ]
+}

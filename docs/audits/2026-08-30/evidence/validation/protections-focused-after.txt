@@ -1,0 +1,90 @@
+sssss................s..sssssss..ssss..s..s..s..sssssss..s...sssssssssss [ 26%]
+sssss.ssss.ssssssss......ss.sssss..............s........................ [ 53%]
+........................................................................ [ 80%]
+...................................................                      [100%]
+=============================== warnings summary ===============================
+tests/test_anti_cheat_protections.py::TestTimingProtections::test_clock_drift_monotonic
+tests/test_anti_cheat_protections.py::TestTimingProtections::test_profiler_overhead_profile_free_path
+tests/test_anti_cheat_protections.py::TestWorkloadProtections::test_early_exit_config_immutability
+tests/test_anti_cheat_protections.py::TestEvaluationProtections::test_timeout_manipulation_immutability
+tests/test_anti_cheat_protections.py::TestEvaluationProtectionsExtended::test_self_modifying_tests_prevention
+tests/test_protection_effectiveness.py::TestMissingEdgeCases::test_cuda_oom_recovery
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/harness/benchmark_harness.py:4856: RuntimeWarning: ENVIRONMENT INVALID: Non-Linux platform 'darwin' is not supported for benchmark validity checks.
+    warn_module.warn(message, RuntimeWarning)
+
+tests/test_anti_cheat_protections.py::TestTimingProtections::test_clock_drift_monotonic
+tests/test_anti_cheat_protections.py::TestWorkloadProtections::test_early_exit_config_immutability
+tests/test_anti_cheat_protections.py::TestEvaluationProtections::test_timeout_manipulation_immutability
+tests/test_anti_cheat_protections.py::TestEvaluationProtectionsExtended::test_self_modifying_tests_prevention
+tests/test_protection_effectiveness.py::TestMissingEdgeCases::test_cuda_oom_recovery
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/harness/benchmark_harness.py:4904: RuntimeWarning: BENCHMARK_FN ANTI-PATTERN WARNING: benchmark_fn() contains hot-path work that will distort timings or hide the real kernel cost.
+  - benchmark_fn() allocates tensors via torch.ones_like() (line 65); preallocate reusable buffers in setup() unless allocation cost is the benchmarked behavior
+    warn_module.warn(message, RuntimeWarning)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_anti_cheat_protections.py:125: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:132: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:148: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:176: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:180: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:411: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:466: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:496: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:511: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:522: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:542: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:550: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:564: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:634: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:645: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:669: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:680: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:729: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:759: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:801: Missing protection: no dataset provenance/holdout-overlap detector is implemented; set arithmetic is not detector coverage
+SKIPPED [1] tests/test_anti_cheat_protections.py:830: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:841: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:858: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:877: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:892: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:907: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:922: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:982: Missing protection: no dataset provenance/holdout-overlap detector is implemented; set arithmetic is not detector coverage
+SKIPPED [1] tests/test_anti_cheat_protections.py:1075: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1080: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1097: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1111: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1132: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1142: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1157: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1167: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1180: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1189: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1200: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1210: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1217: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1235: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1248: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1256: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1293: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1300: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1307: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1314: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1422: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1433: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1441: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1449: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1510: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1517: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1524: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1531: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1603: Missing protection: no dataset provenance/holdout-overlap detector is implemented; set arithmetic is not detector coverage
+SKIPPED [1] tests/test_anti_cheat_protections.py:1613: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1631: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1640: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1649: CUDA required for anti-cheat protection tests
+SKIPPED [1] tests/test_anti_cheat_protections.py:1678: A count of test names is not protection coverage; inspect named behavioral tests and explicit missing-protection skips
+SKIPPED [1] tests/test_protection_effectiveness.py:74: real CUDA stream execution required
+SKIPPED [1] tests/test_protection_effectiveness.py:173: real CUDA stream execution required
+203 passed, 64 skipped, 11 warnings in 6.34s

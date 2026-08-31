@@ -11,7 +11,7 @@ HARNESS_MODULE="core.scripts.harness.profile_harness"
 DEFAULT_NCU_METRICS_RAW="$(PYTHONPATH="${REPO_ROOT}${PYTHONPATH:+:${PYTHONPATH}}" "$PYTHON_DEFAULT" -c "from core.scripts.harness.metrics_config import BASE_NCU_METRICS; print(','.join(BASE_NCU_METRICS))" 2>/dev/null || true)"
 DEFAULT_NCU_METRICS="${DEFAULT_NCU_METRICS_RAW//$'\n'/}"
 if [[ -z "$DEFAULT_NCU_METRICS" ]]; then
-    DEFAULT_NCU_METRICS="sm__throughput.avg.pct_of_peak_sustained_elapsed,sm__warps_active.avg.pct_of_peak_sustained_active,smsp__sass_average_branch_divergence.pct,dram__throughput.avg.pct_of_peak_sustained_elapsed,lts__t_sectors.avg.pct_of_peak_sustained_elapsed,shared_load_sectors,shared_store_sectors,flop_count_sp,flop_count_hp,gpu__time_elapsed.avg"
+    DEFAULT_NCU_METRICS="sm__throughput.avg.pct_of_peak_sustained_elapsed,sm__warps_active.avg.pct_of_peak_sustained_active,dram__throughput.avg.pct_of_peak_sustained_elapsed,lts__throughput.avg.pct_of_peak_sustained_elapsed,dram__bytes_read.sum,dram__bytes_write.sum,smsp__sass_thread_inst_executed_op_ffma_pred_on.sum,smsp__sass_thread_inst_executed_op_fadd_pred_on.sum,smsp__sass_thread_inst_executed_op_fmul_pred_on.sum,smsp__sass_thread_inst_executed_op_hfma_pred_on.sum,smsp__sass_thread_inst_executed_op_hadd_pred_on.sum,smsp__sass_thread_inst_executed_op_hmul_pred_on.sum,smsp__sass_thread_inst_executed_op_dfma_pred_on.sum,smsp__sass_thread_inst_executed_op_dadd_pred_on.sum,smsp__sass_thread_inst_executed_op_dmul_pred_on.sum,gpu__time_duration.sum"
 fi
 
 DEFAULT_NSYS_TRACE_RAW="$(PYTHONPATH="${REPO_ROOT}${PYTHONPATH:+:${PYTHONPATH}}" "$PYTHON_DEFAULT" -c "from core.scripts.harness.metrics_config import BASE_NSYS_TRACE_MODULES; print(','.join(BASE_NSYS_TRACE_MODULES))" 2>/dev/null || true)"

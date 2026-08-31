@@ -1,9 +1,9 @@
-"""Baseline for warp-specialized Triton decode: eager PyTorch math.
+"""Eager PyTorch decode baseline with persistent prefill state.
 
 This baseline matches `optimized_decode_warp_specialized.py` exactly (same
 prompt/decode lengths, hidden size, and host/stream settings) but uses the
-standard PyTorch decode path. This keeps the Triton warp-specialized comparison
-workload-equivalent.
+standard PyTorch decode path. The comparison measures eager decode versus CUDA Graph replay; no Triton
+kernel or warp specialization is used. The filename is retained for compatibility.
 """
 
 from __future__ import annotations
@@ -40,6 +40,8 @@ class PersistentPrefillBaselineBenchmark(DecodeBenchmark):
 
         current_stream = torch.cuda.current_stream()
         stream = self.compute_stream or current_stream
+        if stream != current_stream:
+            stream.wait_stream(current_stream)
         with torch.cuda.stream(stream), torch.inference_mode(), self.sdpa_ctx_factory():
             # Reset on the same stream that consumes the state to keep ordering explicit.
             self.state_buffer.copy_(self._prefilled_state)
@@ -65,6 +67,6 @@ def get_benchmark() -> DecodeBenchmark:
         use_cuda_graphs=False,
         graph_full_iteration=False,
         use_torch_compile=False,
-        label="baseline_decode_warp_specialized",
+        label="baseline_decode_graph_persistent",
     )
     return attach_benchmark_metadata(PersistentPrefillBaselineBenchmark(cfg), __file__)

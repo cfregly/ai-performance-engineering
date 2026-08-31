@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import argparse
 from typing import List, Optional
-from contextlib import nullcontext
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.attention import SDPBackend, sdpa_kernel
-from torch.backends.cuda import SDPAParams, can_use_cudnn_attention
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
@@ -22,45 +20,37 @@ _BACKEND_CHOICES = ("auto", "cudnn", "flash", "math")
 
 def _resolve_backend(cli_choice: Optional[str] = None) -> str:
     """Resolve backend selection from an explicit CLI choice or default to auto."""
-    if cli_choice in _BACKEND_CHOICES:
-        return cli_choice  # type: ignore[return-value]
-    return "auto"
+    if cli_choice is None:
+        return "auto"
+    choice = cli_choice.lower()
+    if choice not in _BACKEND_CHOICES:
+        raise ValueError(f"Unknown SDPA backend: {cli_choice}")
+    return choice
 
 
 def _select_backend(requested: Optional[str]) -> str:
-    """Choose a backend, falling back when cuDNN is unsupported."""
-    backend = _resolve_backend(requested).lower()
-    if backend != "cudnn":
-        return backend
-    if not torch.cuda.is_available():
-        return "flash"
-    try:
-        q = torch.randn(1, 1, 4, 64, device="cuda", dtype=torch.float16)
-        params = SDPAParams(q, q, q, None, 0.0, False, False)
-        if not can_use_cudnn_attention(params, False):
-            return "flash"
-    except Exception:
-        return "flash"
-    return backend
+    """Preserve explicit backend intent; actual dispatch must succeed or raise."""
+    return _resolve_backend(requested).lower()
 
 
 def _sdpa_context(backend: str):
     """Return the configured SDPA context."""
     backend = backend.lower()
     if backend == "cudnn":
-        preference = []
-        for name in ("CUDNN_ATTENTION", "FLASH_ATTENTION", "EFFICIENT_ATTENTION"):
-            if hasattr(SDPBackend, name):
-                preference.append(getattr(SDPBackend, name))
-        return sdpa_kernel(preference)
+        if not hasattr(SDPBackend, "CUDNN_ATTENTION"):
+            raise RuntimeError("This PyTorch version does not expose the cuDNN SDPA backend")
+        return sdpa_kernel([SDPBackend.CUDNN_ATTENTION])
     if backend == "flash":
         return sdpa_kernel([SDPBackend.FLASH_ATTENTION])
     if backend == "math":
         if hasattr(SDPBackend, "MATH"):
             return sdpa_kernel([getattr(SDPBackend, "MATH")])
-        return nullcontext()
+        raise RuntimeError("This PyTorch version does not expose the math SDPA backend")
 
-    # Auto: try cuDNN, then Flash, then efficient attention.
+    if backend != "auto":
+        raise ValueError(f"Unknown SDPA backend: {backend}")
+
+    # Auto allows cuDNN, Flash, and efficient attention; PyTorch chooses dispatch.
     preference = []
     for name in ("CUDNN_ATTENTION", "FLASH_ATTENTION", "EFFICIENT_ATTENTION"):
         if hasattr(SDPBackend, name):

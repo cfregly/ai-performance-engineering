@@ -42,17 +42,27 @@ class TestHardwareSpecs:
     """Test hardware specification dataclasses."""
     
     def test_blackwell_specs(self):
-        """Test Blackwell B200 specs are reasonable."""
+        """Pin the HGX B200 per-GPU dense peaks, not sparse eight-GPU totals.
+
+        NVIDIA HGX: 72 PF/s FP8 and 36 PF/s BF16 across eight GPUs,
+        with sparsity; dense is half. FP32 is 600 TF/s across eight.
+        https://www.nvidia.com/en-us/data-center/hgx/
+        """
         assert BLACKWELL_B200.name == "NVIDIA B200"
-        assert BLACKWELL_B200.hbm_bandwidth_gbps >= 8000.0
-        assert BLACKWELL_B200.num_sms > 100
-        assert BLACKWELL_B200.fp8_tflops > 1000
+        assert BLACKWELL_B200.hbm_bandwidth_gbps == 8000.0
+        assert BLACKWELL_B200.fp8_tflops == 4500.0
+        assert BLACKWELL_B200.tensor_tflops == 2250.0
+        assert BLACKWELL_B200.fp32_tflops == 75.0
     
     def test_hopper_specs(self):
         """Test Hopper H100 specs are reasonable."""
         assert HOPPER_H100.name == "NVIDIA H100"
         assert HOPPER_H100.hbm_bandwidth_gbps >= 3000.0
         assert HOPPER_H100.num_sms > 100
+        # H100 SXM is already dense: published sparse FP8 is 3958 TF/s.
+        # Do not apply the audit's erroneous extra factor of one-half.
+        assert HOPPER_H100.fp8_tflops == 1979.0
+        assert HOPPER_H100.tensor_tflops == pytest.approx(1979.0 / 2, abs=1.0)
     
     def test_detect_hardware_returns_specs(self):
         """Test that detect_hardware_specs returns valid specs."""

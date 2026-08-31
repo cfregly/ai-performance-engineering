@@ -1,0 +1,75 @@
+{
+  "reviewed_commit": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "environment": {
+    "python": "3.12.2 | packaged by conda-forge | (main, Feb 16 2024, 20:54:21) [Clang 16.0.6 ]",
+    "torch": "2.8.0",
+    "cuda_available": false
+  },
+  "scope": "CPU arithmetic, real artifact loader, real CPU tensor preparation, and source-extracted metadata method; no GPU measurements",
+  "hbm_bytes": {
+    "original_expression_gbs": 1.073741824,
+    "corrected_gbs": 2.147483648
+  },
+  "peer_bytes": {
+    "original_expression_gbs": 1.0,
+    "corrected_gbs": 1.073741824
+  },
+  "b200_fp8_dense_tflops": {
+    "original": 2500.0,
+    "corrected": 4500.0
+  },
+  "ridge_classification_ai400": {
+    "original": {
+      "roofline.arithmetic_intensity": 400.0,
+      "roofline.ridge_point": 312.5,
+      "roofline.peak_tflops": 2500.0,
+      "roofline.peak_gbps": 8000.0,
+      "roofline.is_compute_bound": 1.0
+    },
+    "corrected": {
+      "roofline.arithmetic_intensity": 400.0,
+      "roofline.ridge_point": 562.5,
+      "roofline.peak_tflops": 4500.0,
+      "roofline.peak_gbps": 8000.0,
+      "roofline.is_compute_bound": 0.0
+    }
+  },
+  "memory_ceiling": {
+    "original_1ms": 4.0,
+    "original_2ms": 2.0,
+    "corrected_1ms": 32.0,
+    "corrected_2ms": 32.0
+  },
+  "legacy_hbm_artifact": {
+    "original_peaks": {
+      "hbm_bandwidth_tbs": 3.5,
+      "hbm3e_bandwidth_tbs": 3.5
+    },
+    "corrected_peaks": {},
+    "corrected_warnings": [
+      "Rejected HBM target from /var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-peak-original-8h3i6415/benchmark_peak_results_original_fixture.json: missing read+write accounting version 2 provenance. Legacy payload-only artifacts are preserved but require a new measurement or explicit reviewed arithmetic migration."
+    ],
+    "preserved": true
+  },
+  "target_rewrite": {
+    "original": "sm_120",
+    "corrected": "sm_121a"
+  },
+  "float8_operand_preparation": {
+    "original_randn": {
+      "succeeded": false,
+      "error_type": "NotImplementedError",
+      "error": "\"normal_kernel_cpu\" not implemented for 'Float8_e4m3fn'"
+    },
+    "corrected_a_dtype": "torch.float8_e4m3fn",
+    "corrected_b_dtype": "torch.float8_e4m3fn",
+    "a_stride": [
+      16,
+      1
+    ],
+    "b_stride": [
+      1,
+      16
+    ]
+  }
+}

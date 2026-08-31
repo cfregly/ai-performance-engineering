@@ -1,0 +1,217 @@
+non-bijective schedule for 2 x 1
+FFFFFFFFFF                                                               [100%]
+=================================== FAILURES ===================================
+_____________ test_production_tile_schedule_covers_every_tile_once _____________
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1579/test_production_tile_schedule_0')
+
+    def test_production_tile_schedule_covers_every_tile_once(tmp_path):
+        compiler = shutil.which("c++")
+        if compiler is None:
+            pytest.skip("host C++ compiler unavailable")
+        probe = tmp_path / "coverage.cpp"
+        probe.write_text(r'''
+    #include "ch10/grouped_tile_schedule.cuh"
+    #include <cstdio>
+    #include <vector>
+    int main() {
+      for (int m : {1, 2, 3, 9}) for (int n : {1, 2, 7, 8, 9, 15, 16, 17}) {
+        std::vector<int> visits(m * n);
+        for (int i = 0; i < m * n; ++i) {
+          const auto tile = ch10::grouped_tile_coord(i, m, n);
+          if (tile.m < 0 || tile.m >= m || tile.n < 0 || tile.n >= n) return 1;
+          ++visits[tile.m * n + tile.n];
+        }
+        for (int count : visits) if (count != 1) {
+          std::fprintf(stderr, "non-bijective schedule for %d x %d\n", m, n);
+          return 2;
+        }
+      }
+    }
+    ''')
+        binary = tmp_path / "coverage"
+        subprocess.run([compiler, "-std=c++17", "-I", str(CODE), str(probe), "-o", str(binary)], check=True)
+>       subprocess.run([str(binary)], check=True)
+
+code/tests/test_chapter_cuda_contracts.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = False, timeout = None, check = True
+popenargs = (['/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1579/test_production_tile_schedule_0/coverage'],)
+kwargs = {}
+process = <Popen: returncode: 2 args: ['/private/var/folders/tn/kptc2mn55wlclhrzlvg316...>
+stdout = None, stderr = None, retcode = 2
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1579/test_production_tile_schedule_0/coverage']' returned non-zero exit status 2.
+
+/opt/miniconda3/lib/python3.12/subprocess.py:571: CalledProcessError
+_ test_single_stream_timer_records_both_events_on_work_stream[ch08/baseline_thresholdtma.cu] _
+
+path = 'ch08/baseline_thresholdtma.cu'
+
+    @pytest.mark.parametrize("path", ["ch08/baseline_thresholdtma.cu", "ch12/baseline_cuda_graphs.cu", "ch12/optimized_cuda_graphs.cu"])
+    def test_single_stream_timer_records_both_events_on_work_stream(path):
+        text = source(path)
+>       assert "cudaEventRecord(start, stream)" in text
+E       AssertionError: assert 'cudaEventRecord(start, stream)' in '// Baseline threshold binary gated for Blackwell TMA comparisons.\n\n#include <cuda_runtime.h>\n#include <iostream>\n...entDestroy(stop);\n    cudaStreamDestroy(stream);\n    cudaFree(d_input);\n    cudaFree(d_output);\n    return 0;\n}\n'
+
+code/tests/test_chapter_cuda_contracts.py:51: AssertionError
+_ test_single_stream_timer_records_both_events_on_work_stream[ch12/baseline_cuda_graphs.cu] _
+
+path = 'ch12/baseline_cuda_graphs.cu'
+
+    @pytest.mark.parametrize("path", ["ch08/baseline_thresholdtma.cu", "ch12/baseline_cuda_graphs.cu", "ch12/optimized_cuda_graphs.cu"])
+    def test_single_stream_timer_records_both_events_on_work_stream(path):
+        text = source(path)
+>       assert "cudaEventRecord(start, stream)" in text
+E       AssertionError: assert 'cudaEventRecord(start, stream)' in '// baseline_cuda_graphs.cu -- Multiple micro-kernels launched separately (baseline).\n\n#include <cuda_runtime.h>\n\n...aEventDestroy(stop));\n  CUDA_CHECK(cudaStreamDestroy(stream));\n  CUDA_CHECK(cudaFree(device_ptr));\n  return 0;\n}\n'
+
+code/tests/test_chapter_cuda_contracts.py:51: AssertionError
+_ test_single_stream_timer_records_both_events_on_work_stream[ch12/optimized_cuda_graphs.cu] _
+
+path = 'ch12/optimized_cuda_graphs.cu'
+
+    @pytest.mark.parametrize("path", ["ch08/baseline_thresholdtma.cu", "ch12/baseline_cuda_graphs.cu", "ch12/optimized_cuda_graphs.cu"])
+    def test_single_stream_timer_records_both_events_on_work_stream(path):
+        text = source(path)
+>       assert "cudaEventRecord(start, stream)" in text
+E       AssertionError: assert 'cudaEventRecord(start, stream)' in '// optimized_cuda_graphs.cu -- Capture & replay micro-kernels with CUDA Graphs (optimized).\n\n#include <cuda_runtime...aEventDestroy(stop));\n  CUDA_CHECK(cudaStreamDestroy(stream));\n  CUDA_CHECK(cudaFree(device_ptr));\n  return 0;\n}\n'
+
+code/tests/test_chapter_cuda_contracts.py:51: AssertionError
+_____________ test_final_async_group_is_drained_before_consumption _____________
+
+    def test_final_async_group_is_drained_before_consumption():
+        text = source("ch08/threshold_async_kernel.cuh")
+>       assert "(tiles_enqueued - tiles_processed) > 1" in text
+E       assert '(tiles_enqueued - tiles_processed) > 1' in '#pragma once\n\n#include "threshold_common.cuh"\n\nnamespace ch08 {\n\nenum class ThresholdAsyncLaunchResult {\n    k...daErrorNotSupported;\n    }\n    return ThresholdAsyncLaunchResult::kUnsupported;\n#endif\n}\n\n}  // namespace ch08\n'
+
+code/tests/test_chapter_cuda_contracts.py:59: AssertionError
+__________ test_unaligned_threshold_tail_does_not_claim_aligned_size ___________
+
+    def test_unaligned_threshold_tail_does_not_claim_aligned_size():
+        text = source("ch08/threshold_tma_kernel.cuh")
+>       assert "copy_bytes % 16 == 0" in text
+E       AssertionError: assert 'copy_bytes % 16 == 0' in '#pragma once\n\n#include <cooperative_groups.h>\n#include <cuda/pipeline>\n#include <limits>\n#include <mutex>\n\n#in...hreshold;\n    (void)count;\n    (void)stream;\n    return cudaErrorNotSupported;\n#endif\n}\n\n}  // namespace ch08\n'
+
+code/tests/test_chapter_cuda_contracts.py:64: AssertionError
+____________ test_occupancy_query_accounts_for_actual_dynamic_smem _____________
+
+    def test_occupancy_query_accounts_for_actual_dynamic_smem():
+        text = source("ch06/occupancy_api.cu")
+>       assert "cudaOccupancyMaxPotentialBlockSizeVariableSMem(" in text
+E       AssertionError: assert 'cudaOccupancyMaxPotentialBlockSizeVariableSMem(' in '// occupancy_api.cu -- demonstrate cudaOccupancyMaxPotentialBlockSize (CUDA 13.0).\n\n#include <cuda_runtime.h>\n#inc...K(cudaFreeAsync(d_data, stream));\n  CUDA_CHECK(cudaStreamDestroy(stream));\n  cudaFreeHost(h_data);\n  return 0;\n}\n'
+
+code/tests/test_chapter_cuda_contracts.py:71: AssertionError
+________ test_shared_kernel_has_uniform_barrier_and_four_element_launch ________
+
+    def test_shared_kernel_has_uniform_barrier_and_four_element_launch():
+        text = source("ch11/streams_overlap_demo.cu")
+>       assert "scale_kernel_async<<<grid_vec_float4" in text
+E       AssertionError: assert 'scale_kernel_async<<<grid_vec_float4' in '// basic_streams.cu -- CUDA 13.0 stream overlap demo with error handling.\n\n#include <cuda_runtime.h>\n#include <cst...);\n  CUDA_CHECK(cudaFree(d_b));\n  CUDA_CHECK(cudaFreeHost(h_a));\n  CUDA_CHECK(cudaFreeHost(h_b));\n  return 0;\n}\n'
+
+code/tests/test_chapter_cuda_contracts.py:77: AssertionError
+_____________________ test_stream_timing_joins_all_workers _____________________
+
+    def test_stream_timing_joins_all_workers():
+        for path in ("ch11/streams_ordered_demo.cu", "ch11/streams_warp_specialized_demo.cu"):
+            text = source(path)
+>           assert "cudaStreamWaitEvent(timing_stream," in text
+E           assert 'cudaStreamWaitEvent(timing_stream,' in '/**\n * Stream-Ordered Memory Allocator - Enhanced for CUDA 13 & Blackwell\n * ======================================...56-byte granularity\\n");\n    printf("5. Event-based reuse improves memory efficiency\\n");\n    \n    return 0;\n}\n'
+
+code/tests/test_chapter_cuda_contracts.py:86: AssertionError
+__________ test_ilp_reference_checks_all_eight_lanes_and_every_output __________
+
+    def test_ilp_reference_checks_all_eight_lanes_and_every_output():
+        text = source("ch06/optimized_ilp_low_occupancy_vec4_impl.cuh")
+>       assert "i < N && i < 1000" not in text
+E       AssertionError: assert 'i < N && i < 1000' not in '#pragma onc...rride);\n}\n'
+E         
+E         'i < N && i < 1000' is contained here:
+E           nt i = 0; i < N && i < 1000; ++i) {
+E                   float expected_indep = h_input[i] * 7.0f - 4.0f;
+E                   if (fabsf(h_output_indep[i] - expected_indep) > 1e-5f) {
+E                       indep_correct = false;
+E                       break;...
+E         
+E         ...Full output truncated (41 lines hidden), use '-vv' to show
+
+code/tests/test_chapter_cuda_contracts.py:93: AssertionError
+=========================== short test summary info ============================
+FAILED code/tests/test_chapter_cuda_contracts.py::test_production_tile_schedule_covers_every_tile_once
+FAILED code/tests/test_chapter_cuda_contracts.py::test_single_stream_timer_records_both_events_on_work_stream[ch08/baseline_thresholdtma.cu]
+FAILED code/tests/test_chapter_cuda_contracts.py::test_single_stream_timer_records_both_events_on_work_stream[ch12/baseline_cuda_graphs.cu]
+FAILED code/tests/test_chapter_cuda_contracts.py::test_single_stream_timer_records_both_events_on_work_stream[ch12/optimized_cuda_graphs.cu]
+FAILED code/tests/test_chapter_cuda_contracts.py::test_final_async_group_is_drained_before_consumption
+FAILED code/tests/test_chapter_cuda_contracts.py::test_unaligned_threshold_tail_does_not_claim_aligned_size
+FAILED code/tests/test_chapter_cuda_contracts.py::test_occupancy_query_accounts_for_actual_dynamic_smem
+FAILED code/tests/test_chapter_cuda_contracts.py::test_shared_kernel_has_uniform_barrier_and_four_element_launch
+FAILED code/tests/test_chapter_cuda_contracts.py::test_stream_timing_joins_all_workers
+FAILED code/tests/test_chapter_cuda_contracts.py::test_ilp_reference_checks_all_eight_lanes_and_every_output
+10 failed in 0.52s

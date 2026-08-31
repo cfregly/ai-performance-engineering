@@ -1,0 +1,38 @@
+...........rank=0 phase=remote single=True forward
+rank=2 phase=remote single=True forward
+rank=3 phase=remote single=True forward
+rank=1 phase=remote single=True forward
+rank=2 phase=remote single=True backward
+rank=1 phase=remote single=True backward
+rank=0 phase=remote single=True backward
+rank=3 phase=remote single=True backward
+rank=1 phase=same_node single=True forward
+rank=3 phase=same_node single=True forward
+rank=0 phase=same_node single=True forward
+rank=2 phase=same_node single=True forward
+rank=0 phase=same_node single=True backward
+rank=3 phase=same_node single=True backward
+rank=2 phase=same_node single=True backward
+rank=1 phase=same_node single=True backward
+rank=3 phase=all_empty single=True forward
+rank=1 phase=all_empty single=True forward
+rank=2 phase=all_empty single=True forward
+rank=0 phase=all_empty single=True forward
+rank=3 phase=all_empty single=True backward
+rank=0 phase=all_empty single=True backward
+rank=1 phase=all_empty single=True backward
+rank=2 phase=all_empty single=True backward
+rank=3 phase=balanced_world single=False forward
+rank=0 phase=balanced_world single=False forward
+rank=2 phase=balanced_world single=False forward
+rank=1 phase=balanced_world single=False forward
+rank=2 phase=balanced_world single=False backward
+rank=0 phase=balanced_world single=False backward
+rank=1 phase=balanced_world single=False backward
+rank=3 phase=balanced_world single=False backward
+.s......s...................................................  [100%]
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/curated-source-gates/validator-after.xml -
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_audit_wave1_hybrid_ep.py:349: Actual four CUDA devices and NCCL required; CPU Gloo is not CUDA acceptance
+SKIPPED [1] tests/test_audit_wave1_zero2_parity_cuda.py:358: HOLD: Explicit opt-in required after allocating exactly two CUDA devices.
+69 passed, 2 skipped in 7.40s

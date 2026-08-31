@@ -56,10 +56,12 @@ def get_decode_options() -> DecodeOptions:
 def get_decode_profile() -> DecodeProfile:
     base = _PROFILE_BY_TIER.get(_OPTIONS.tier, _PROFILE_BY_TIER["medium"])
     prof = replace(base)
-    if _OPTIONS.block_k:
+    if _OPTIONS.block_k is not None:
         prof.block_k = _OPTIONS.block_k
-    if _OPTIONS.num_programs:
+    if _OPTIONS.num_programs is not None:
         prof.num_programs = _OPTIONS.num_programs
+    if prof.num_programs <= 0 or prof.block_k <= 0 or prof.block_k & (prof.block_k - 1):
+        raise ValueError("num_programs must be positive and block_k a positive power of two")
     return prof
 
 
@@ -89,6 +91,49 @@ class DecodeInputs:
     work_counter: torch.Tensor
 
 
+def validate_decode_output(inputs: DecodeInputs) -> None:
+    """Check every sequence/token against independent vectorized dot-times-V math."""
+    actual = inputs.out
+    if actual.shape != inputs.q.shape or not torch.isfinite(actual).all():
+        raise AssertionError("Decode output has wrong shape or non-finite values")
+    if any(actual.untyped_storage().data_ptr() == tensor.untyped_storage().data_ptr()
+           for tensor in (inputs.q, inputs.k, inputs.v)):
+        raise AssertionError("Decode output aliases an input")
+    reference = ((inputs.q.float() * inputs.k.float()).sum(-1, keepdim=True) * inputs.v.float()).to(actual.dtype)
+    # Retain the existing pair's numerical budget; the complete-output and
+    # dropped-sequence checks must pass before its harness payload is accepted.
+    for index in range(actual.shape[0]):
+        if reference[index].count_nonzero() and not actual[index].count_nonzero():
+            raise AssertionError(f"Decode sequence {index} was not computed")
+    torch.testing.assert_close(actual, reference, rtol=0.1, atol=1.0)
+
+
+def build_prefill_decode_verification_buffers(
+    inputs: DecodeInputs, prefill_dst: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Allocate complete decode/prefill payload storage before timed execution."""
+    if prefill_dst.device != inputs.out.device:
+        raise ValueError("Prefill and decode outputs must share a device")
+    decode_elements = inputs.out.numel()
+    payload = torch.empty(
+        decode_elements + prefill_dst.numel(), device=inputs.out.device,
+        dtype=torch.float32,
+    )
+    decode_view = payload[:decode_elements].view_as(inputs.out)
+    prefill_view = payload[decode_elements:].view_as(prefill_dst)
+    return payload, decode_view, prefill_view
+
+
+def validate_prefill_decode_output(
+    inputs: DecodeInputs, prefill_src: torch.Tensor, prefill_dst: torch.Tensor,
+) -> None:
+    """Validate every decode value and exact prefill copy outside timing."""
+    if prefill_dst.untyped_storage().data_ptr() == prefill_src.untyped_storage().data_ptr():
+        raise AssertionError("Prefill destination aliases its source")
+    torch.testing.assert_close(prefill_dst, prefill_src, rtol=0, atol=0)
+    validate_decode_output(inputs)
+
+
 def build_inputs(
     batch: int | torch.device | None = None,
     seq_len: int | None = None,
@@ -113,7 +158,7 @@ def build_inputs(
     if batch is None or seq_len is None or head_dim is None:
         batch, seq_len, head_dim = resolve_shapes()
 
-    generator = torch.Generator(device=device).manual_seed(42)
+    generator = torch.Generator(device=device).manual_seed(torch.initial_seed())
 
     quant = _OPTIONS.quantization.lower()
     dtype = torch.float32 if quant == "fp32" else torch.float16
@@ -168,7 +213,7 @@ def build_decode_input_signature(
             "q": (batch, seq_len, head_dim),
             "k": (batch, seq_len, head_dim),
             "v": (batch, seq_len, head_dim),
-            "output": (1, min(8, seq_len), head_dim),
+            "output": (batch, seq_len, head_dim),
         },
         dtypes={
             "q": input_dtype,

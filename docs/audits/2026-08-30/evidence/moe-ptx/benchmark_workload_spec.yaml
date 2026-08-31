@@ -1,0 +1,38 @@
+run_metadata:
+  benchmark_layer: micro
+  benchmark_grade: realism
+  use_case: engineering_debug
+  ticket_or_epic: W1-079
+comparison_axis:
+  variable_under_test: implementation
+  control: independent_unquantized_reference_from_original_snapshots
+  candidate: baseline_or_CUDA_BMM_layer
+  constants_locked: [shape, dtype, seed, weights, routing, device, runtime]
+workload:
+  type: inference
+  name: routed_top2_SwiGLU
+  model: {precision: bf16_or_fp16, weights_source: generated_local_with_recorded_seed}
+  CPU_fixture: {num_tokens: 65, hidden_dim: 48, expert_ffn_dim: 32, num_experts: 4}
+  bounded_GPU_gate: {num_tokens: 129, hidden_dim: 128, expert_ffn_dim: 64, num_experts: 4, seeds: [314159,8675309], repeats: 3}
+  full_lab: {num_tokens: 32768, hidden_dim: 7168, expert_ffn_dim: 2048, num_experts: 8}
+  routing: {top_k: 2, histogram: [balanced,skewed]}
+  quality_constraints:
+    threshold: externally_reviewed_policy_required_no_default
+    omission_allowed: false
+    NaN_allowed: false
+    reference_alias_allowed: false
+execution:
+  image: pending_pinned_target
+  hardware_tier: {gpu_model: pending_authorized_target, gpu_count: 1}
+measurement_policy:
+  correctness_before_performance: true
+  future_performance_trials: 5
+  raw_attempts_immutable: true
+  discard_requires_reason: true
+metrics:
+  primary: full_output_accuracy
+  secondary: [relative_l2, normalized_max_abs]
+artifacts:
+  require_manifest: true
+  require_sha256: true
+  current_status: HOLD_GPU_accuracy_and_performance

@@ -1,0 +1,6 @@
+{
+  "status": "failed before writing receipt.json",
+  "error": "importlib.metadata.PackageNotFoundError: No package metadata was found for nvidia-ml-py",
+  "cause": "Installed importable pynvml is supplied by a different distribution; version provenance now resolves module-to-distribution mapping instead of assuming its package name",
+  "production_or_test_change": false
+}

@@ -1,0 +1,14 @@
+{
+  "code/core/scripts/refresh_readmes.py": {
+    "original_snapshot": "code--core--scripts--refresh_readmes.py.txt",
+    "sha256": "e7d508a8fda4a1b87aef33d2135c67766753bb19fc22673817d4a215fba823da"
+  },
+  "code/README.md": {
+    "original_snapshot": "code--README.md.txt",
+    "sha256": "bc777fd1bb198c1096b844473d10cf410fc05406419ca1274305f0d824f1b6a4"
+  },
+  "code/tests/test_benchmark_pair_intent_docs.py": {
+    "original_snapshot": "code--tests--test_benchmark_pair_intent_docs.py.txt",
+    "sha256": "8ab3304ea80a195e6e514fbcec322c1ab6d3b8e3e160364514169a2c281f1d5b"
+  }
+}

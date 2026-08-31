@@ -1,0 +1,128 @@
+FFFFFFFFFF                                                               [100%]
+=================================== FAILURES ===================================
+_ test_arithmetic_intensity_uses_actual_dimensions_and_storage[4096-4096-4096-2-1365.3333333333333] _
+
+m = 4096, n = 4096, k = 4096, out_bytes = 2, expected = 1365.3333333333333
+
+    @pytest.mark.parametrize("m,n,k,out_bytes,expected", [(4096,4096,4096,2,4096/3), (4096,4096,4096,4,1024), (128,256,64,2,36.57142857142857)])
+    def test_arithmetic_intensity_uses_actual_dimensions_and_storage(m,n,k,out_bytes,expected):
+>       assert load_lab().gemm_arithmetic_intensity(m,n,k,output_bytes=out_bytes) == pytest.approx(expected)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'audit_run_lab' has no attribute 'gemm_arithmetic_intensity'
+
+code/tests/test_blackwell_feature_sources.py:22: AttributeError
+_ test_arithmetic_intensity_uses_actual_dimensions_and_storage[4096-4096-4096-4-1024] _
+
+m = 4096, n = 4096, k = 4096, out_bytes = 4, expected = 1024
+
+    @pytest.mark.parametrize("m,n,k,out_bytes,expected", [(4096,4096,4096,2,4096/3), (4096,4096,4096,4,1024), (128,256,64,2,36.57142857142857)])
+    def test_arithmetic_intensity_uses_actual_dimensions_and_storage(m,n,k,out_bytes,expected):
+>       assert load_lab().gemm_arithmetic_intensity(m,n,k,output_bytes=out_bytes) == pytest.approx(expected)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'audit_run_lab' has no attribute 'gemm_arithmetic_intensity'
+
+code/tests/test_blackwell_feature_sources.py:22: AttributeError
+_ test_arithmetic_intensity_uses_actual_dimensions_and_storage[128-256-64-2-36.57142857142857] _
+
+m = 128, n = 256, k = 64, out_bytes = 2, expected = 36.57142857142857
+
+    @pytest.mark.parametrize("m,n,k,out_bytes,expected", [(4096,4096,4096,2,4096/3), (4096,4096,4096,4,1024), (128,256,64,2,36.57142857142857)])
+    def test_arithmetic_intensity_uses_actual_dimensions_and_storage(m,n,k,out_bytes,expected):
+>       assert load_lab().gemm_arithmetic_intensity(m,n,k,output_bytes=out_bytes) == pytest.approx(expected)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'audit_run_lab' has no attribute 'gemm_arithmetic_intensity'
+
+code/tests/test_blackwell_feature_sources.py:22: AttributeError
+_____ test_cluster_and_overlap_labels_do_not_claim_unimplemented_features ______
+
+    def test_cluster_and_overlap_labels_do_not_claim_unimplemented_features():
+        module = load_lab()
+>       assert "does not multicast" in module.stage6_cluster.__doc__
+E       AssertionError: assert 'does not multicast' in 'Stage 6: Thread block cluster structure.\n    \n    Uses 3-stage pipeline optimized for cluster execution.\n    Cluster launch enables L2 multicast for better cache utilization.\n    '
+E        +  where 'Stage 6: Thread block cluster structure.\n    \n    Uses 3-stage pipeline optimized for cluster execution.\n    Cluster launch enables L2 multicast for better cache utilization.\n    ' = <function stage6_cluster at 0x30a845da0>.__doc__
+E        +    where <function stage6_cluster at 0x30a845da0> = <module 'audit_run_lab' from '/Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/custom_vs_cublas/run_lab.py'>.stage6_cluster
+
+code/tests/test_blackwell_feature_sources.py:27: AssertionError
+_ test_feature_control_launch_geometry_is_legal_and_errors_are_checked[test_tma.cu] _
+
+name = 'test_tma.cu'
+
+    @pytest.mark.parametrize("name", ["test_tma.cu", "test_all_features.cu"])
+    def test_feature_control_launch_geometry_is_legal_and_errors_are_checked(name):
+        source = (FEATURES / name).read_text()
+>       assert "const int TILE_M = 32;" in source
+E       assert 'const int TILE_M = 32;' in '// TMA (Tensor Memory Accelerator) Test for Blackwell\n// Tests TMA async bulk copy operations for high-bandwidth dat...assed1 && passed2) ? "ALL TESTS PASSED" : "SOME TESTS FAILED");\n    \n    return (passed1 && passed2) ? 0 : 1;\n}\n\n'
+
+code/tests/test_blackwell_feature_sources.py:36: AssertionError
+_ test_feature_control_launch_geometry_is_legal_and_errors_are_checked[test_all_features.cu] _
+
+name = 'test_all_features.cu'
+
+    @pytest.mark.parametrize("name", ["test_tma.cu", "test_all_features.cu"])
+    def test_feature_control_launch_geometry_is_legal_and_errors_are_checked(name):
+        source = (FEATURES / name).read_text()
+>       assert "const int TILE_M = 32;" in source
+E       assert 'const int TILE_M = 32;' in '// Comprehensive Blackwell Features Test\n// Tests all optimizations: TMEM, TMA, Clusters, FP8, Warp Specialization, ...ST COMPLETE\\n");\n    printf("========================================\\n");\n    \n    return passed ? 0 : 1;\n}\n\n'
+
+code/tests/test_blackwell_feature_sources.py:36: AssertionError
+____________ test_no_fake_tma_attribute_or_enum_preprocessor_probe _____________
+
+    def test_no_fake_tma_attribute_or_enum_preprocessor_probe():
+        source = (CODE / "labs/blackwell_matmul/grace_blackwell_kernels.cu").read_text()
+>       assert "cudaDevAttrTensorMemoryAccessSupported" not in source
+E       AssertionError: assert 'cudaDevAttr...essSupported' not in '#include <A...(); });\n}\n'
+E         
+E         'cudaDevAttrTensorMemoryAccessSupported' is contained here:
+E           );
+E           #ifdef cudaDevAttrTensorMemoryAccessSupported
+E             int value = 0;
+E             if (cudaDeviceGetAttribute(&value, cudaDevAttrTensorMemoryAccessSupported, device) ==
+E                 cudaSuccess) {...
+E         
+E         ...Full output truncated (218 lines hidden), use '-vv' to show
+
+code/tests/test_blackwell_feature_sources.py:45: AssertionError
+___________ test_fused_epilogue_fetches_bias_using_output_partition ____________
+
+    def test_fused_epilogue_fetches_bias_using_output_partition():
+        source = (CODE / "labs/custom_vs_cublas/tcgen05_gemm.cu").read_text()
+>       assert "make_stride(Int<0>{}, Int<1>{})" in source
+E       assert 'make_stride(Int<0>{}, Int<1>{})' in '#include <ATen/cuda/CUDAContext.h>\n#include <ATen/cuda/Exceptions.h>\n#include <torch/extension.h>\n\n#include <cuda...) {\n  m.def("matmul_tcgen05", &matmul_tcgen05);\n  m.def("matmul_tcgen05_bias_silu", &matmul_tcgen05_bias_silu);\n}\n'
+
+code/tests/test_blackwell_feature_sources.py:53: AssertionError
+_______ test_retired_nonexistent_multicast_api_has_no_production_source ________
+
+    def test_retired_nonexistent_multicast_api_has_no_production_source():
+>       assert not (CODE / "labs/custom_vs_cublas/experimental/tcgen05_multicast.cu").exists()
+E       AssertionError: assert not True
+E        +  where True = exists()
+E        +    where exists = (PosixPath('/Users/admin/dev/ai-perf/ai-performance-engineering/code') / 'labs/custom_vs_cublas/experimental/tcgen05_multicast.cu').exists
+
+code/tests/test_blackwell_feature_sources.py:59: AssertionError
+_________ test_feature_make_runner_propagates_a_real_failed_executable _________
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1601/test_feature_make_runner_propa0')
+
+    def test_feature_make_runner_propagates_a_real_failed_executable(tmp_path):
+        executable = tmp_path / "test_tmem"
+        executable.write_text("#!/bin/sh\nexit 23\n")
+        executable.chmod(0o755)
+        result = subprocess.run(["make", "-f", str(FEATURES / "Makefile"), "-o", "all", "run_all"], cwd=tmp_path,
+                                capture_output=True,text=True)
+>       assert result.returncode != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = CompletedProcess(args=['make', '-f', '/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/benchmark/blackwel...irectory\n/bin/sh: ./test_dsmem: No such file or directory\n/bin/sh: ./test_all_features: No such file or directory\n').returncode
+
+code/tests/test_blackwell_feature_sources.py:69: AssertionError
+=========================== short test summary info ============================
+FAILED code/tests/test_blackwell_feature_sources.py::test_arithmetic_intensity_uses_actual_dimensions_and_storage[4096-4096-4096-2-1365.3333333333333]
+FAILED code/tests/test_blackwell_feature_sources.py::test_arithmetic_intensity_uses_actual_dimensions_and_storage[4096-4096-4096-4-1024]
+FAILED code/tests/test_blackwell_feature_sources.py::test_arithmetic_intensity_uses_actual_dimensions_and_storage[128-256-64-2-36.57142857142857]
+FAILED code/tests/test_blackwell_feature_sources.py::test_cluster_and_overlap_labels_do_not_claim_unimplemented_features
+FAILED code/tests/test_blackwell_feature_sources.py::test_feature_control_launch_geometry_is_legal_and_errors_are_checked[test_tma.cu]
+FAILED code/tests/test_blackwell_feature_sources.py::test_feature_control_launch_geometry_is_legal_and_errors_are_checked[test_all_features.cu]
+FAILED code/tests/test_blackwell_feature_sources.py::test_no_fake_tma_attribute_or_enum_preprocessor_probe
+FAILED code/tests/test_blackwell_feature_sources.py::test_fused_epilogue_fetches_bias_using_output_partition
+FAILED code/tests/test_blackwell_feature_sources.py::test_retired_nonexistent_multicast_api_has_no_production_source
+FAILED code/tests/test_blackwell_feature_sources.py::test_feature_make_runner_propagates_a_real_failed_executable
+10 failed in 0.16s

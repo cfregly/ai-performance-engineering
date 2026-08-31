@@ -208,7 +208,7 @@ __global__ void descriptor_tma_2d_copy_kernel(
 
     cuda::barrier<cuda::thread_scope_block>::arrival_token token;
     if (threadIdx.x == 0 && threadIdx.y == 0) {
-        cde::cp_async_bulk_tensor_2d_global_to_shared(&tile, &in_desc, tile_m, tile_n, bar);
+        cde::cp_async_bulk_tensor_2d_global_to_shared(&tile, &in_desc, tile_n, tile_m, bar);
         token = cuda::device::barrier_arrive_tx(bar, 1, kTileBytes);
     } else {
         token = bar.arrive();
@@ -260,7 +260,7 @@ __global__ void descriptor_tma_2d_copy_kernel(
     __syncthreads();
 
     if (threadIdx.x == 0 && threadIdx.y == 0) {
-        cde::cp_async_bulk_tensor_2d_shared_to_global(&out_desc, tile_m, tile_n, &output_tile);
+        cde::cp_async_bulk_tensor_2d_shared_to_global(&out_desc, tile_n, tile_m, &output_tile);
         cde::cp_async_bulk_commit_group();
         cde::cp_async_bulk_wait_group_read<0>();
     }

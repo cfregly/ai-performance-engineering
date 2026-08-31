@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "package": "P06_moe_ptx_accuracy_slice",
+  "source_count": 128,
+  "finding_ids": [
+    "W1-079"
+  ],
+  "reviewed_base": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "captured_at": "2026-08-30T23:20:33.493678+00:00",
+  "wave1_source_sha256": "474779ab49b67c5c888e5f689b2400204b6d0f46f304219cedd0773694b6e1ba",
+  "status": "source_and_CPU_contracts_verified_GPU_calibration_correctness_and_performance_HOLD",
+  "tests": {
+    "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider tests/test_audit_wave1_moe_ptx.py tests/test_moe_cuda_ptx_layer_contract.py tests/test_moe_cuda_ptx_common.py",
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+    "passed": 33,
+    "skipped": 5,
+    "failed": 0,
+    "seconds": 6.75,
+    "new_CUDA_cases_pending": 4,
+    "older_backward_slice_CUDA_case_pending": 1
+  },
+  "static_linter": {
+    "entrypoints": 2,
+    "errors": 0,
+    "warnings": 0
+  },
+  "python_syntax": {
+    "production_and_test": 2,
+    "evidence_scripts": 2
+  },
+  "cuda_compiled": false,
+  "cuda_executed": false,
+  "performance_claim": false,
+  "accuracy_thresholds_calibrated": false,
+  "actual_CPU_negative_controls": [
+    "Original all-zero accepted with both0.2and0.02atol",
+    "Original last element ignored outside32x32payload",
+    "New zero/dropped-row/corrupt-last/cancel/NaN/alias/short rejected by production comparator",
+    "Actual benchmark full capture/validate_result rejects last-element corruption",
+    "Failed calibration attempt persisted; overwrite refused"
+  ],
+  "qualifications": [
+    "Only layer forward verification changed; quant/grouped/backward surfaces not newly qualified",
+    "Existing0.02pairwisebudget restored but insufficient alone; independent scale-invariant policy required",
+    "Normal forward setup fails without reviewed policy; configured threshold is not measured evidence",
+    "Original CPU BF16/FP16 reference snapshots, complete logical output and harness-seeded inputs are preserved",
+    "Top-k generator implements exactly2; unsupported overrides now fail visibly",
+    "CUDA forward routing prepack remains outside timing; README withdrawal/correction applied by root and hashed here"
+  ],
+  "source_files": [
+    {
+      "path": "code/labs/moe_cuda_ptx/moe_cuda_ptx_common.py",
+      "sha256": "1f740b3924182657f0ce020691dbe7e37320d9888389732ba70b6e2f5ebb1532",
+      "reviewed_base_sha256": "7d6a4609eeb721ae5e9983c8ed080c57b9a0677b0a54338606bcfb02d238cfac"
+    },
+    {
+      "path": "code/tests/test_audit_wave1_moe_ptx.py",
+      "sha256": "4fe0772063f62766afe294d94e83d002ee30e9e3ec914e7294a9ac7f115d1b13",
+      "reviewed_base_sha256": null
+    },
+    {
+      "path": "code/labs/moe_cuda_ptx/README.md",
+      "sha256": "5912d11c9286d006a0a331655560b63ca9dcbd37105ae7a1035d4f466da92fd3",
+      "reviewed_base_sha256": "f9923b3aca10810dbd95bdf757512fabad33df87886dfaad4f87627267322489"
+    }
+  ],
+  "evidence_files": [
+    {
+      "path": "README.md",
+      "sha256": "2d901e517bedd1e1638eed9432a6e442bd1aed63bb49d3ecf98afbbfd8061603"
+    },
+    {
+      "path": "attempts.md",
+      "sha256": "be839c4cb445a8ce9eb48f1574958933ab7a9aeaa05578cff417ed403914020b"
+    },
+    {
+      "path": "benchmark_workload_spec.yaml",
+      "sha256": "485233815593540d24826209a65e9e8d9a08ed4d51b95449c9e785545b9a636b"
+    },
+    {
+      "path": "calibrate_layer_accuracy.py",
+      "sha256": "0b5ced025d61eff0fd88d6a42982b2e494e5495f17ae77c7c4f886617bd5ccd3"
+    },
+    {
+      "path": "cuda-preflight.json",
+      "sha256": "761d9df7cd72b9447dd3ffff4fe991da22cfbdd262512b3af063306dbd69c509"
+    },
+    {
+      "path": "cuda-preflight.log",
+      "sha256": "d84dffc341831ac6ea228ff5d87304a6a5c0525a21746fd2eea47f5e06dc4afa"
+    },
+    {
+      "path": "diff-check.log",
+      "sha256": "bde294368bfed77c2cddf8cec271d398aee9cdbab3b26e1059281bd33adb0120"
+    },
+    {
+      "path": "environment.json",
+      "sha256": "91d8baf63c0ddaa0d39295e0649c07735ce197e40fe5e8f0d54f1f829514566e"
+    },
+    {
+      "path": "invalid-config-attempt.json",
+      "sha256": "b1249bdfb46b04566f24e1c1298f61481875214c14af87fc8fb95bea84240862"
+    },
+    {
+      "path": "invalid-config-command.log",
+      "sha256": "ba32c9605e161304e703296903c2a46de87957c486a62be5ec7c95325281caa6"
+    },
+    {
+      "path": "linter.log",
+      "sha256": "e8d5727639107d6a357c127e06e4850f9ed0b994cff77fcf4fc395185a44a1ab"
+    },
+    {
+      "path": "no-overwrite-command.log",
+      "sha256": "d696ff647ed4be79f6c181987f813a260cce3f9e358436fc86d61fcc42dd60a3"
+    },
+    {
+      "path": "original-reproduction.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original_reproductions.json",
+      "sha256": "c27db5b0ec6dbf1df09ca416fde272006f435c229498d98026cb885d9727a8ca"
+    },
+    {
+      "path": "original_reproductions.py",
+      "sha256": "191c523cd23eaa8485d3ba879d6a88b061e3f2a91cf33308932e0ac145559490"
+    },
+    {
+      "path": "performance_intake.yaml",
+      "sha256": "4051fedb4929a1b86d48915f3025af2f6312816f102d4ee6851ddd8965e1f034"
+    },
+    {
+      "path": "proposed-lab-readme.md",
+      "sha256": "8f635d7cfb0ecb9e508603a3680dcd24642e0d20b268b3cb0a2ed1ac94fa6a69"
+    },
+    {
+      "path": "source_manifest.json",
+      "sha256": "f8b198f193170a526b3b1e78cb9dd2a593112bb0e73e89b2ca23a56c520e7b7d"
+    },
+    {
+      "path": "syntax.log",
+      "sha256": "bc6bd0b73e28aaa4c2f0c17a500319dc62cc0091a1607bfc85c4755c3f81c712"
+    },
+    {
+      "path": "tests-final.log",
+      "sha256": "bf193f13fa1da637e18b898d5a5f12202d0eba4129218f7a7895ad5e722bd1c5"
+    },
+    {
+      "path": "tests-first.log",
+      "sha256": "21e5cfd9a84806ec56a469cb683a83a67a6561b53c8818d8caa82be4599a2161"
+    }
+  ]
+}

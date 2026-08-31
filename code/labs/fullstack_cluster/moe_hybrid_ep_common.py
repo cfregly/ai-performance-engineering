@@ -125,6 +125,18 @@ def _metric_should_average(key: str) -> bool:
     return key.endswith("_pct") or key.endswith("_ms") or key in _AVERAGED_REDUCED_METRIC_KEYS
 
 
+def _create_local_group(rank: int, world_size: int, local_world_size: int):
+    """All world ranks create every subgroup in the same global order."""
+    selected = None
+    if world_size > 1 and local_world_size > 1:
+        for start in range(0, world_size, local_world_size):
+            ranks = list(range(start, min(world_size, start + local_world_size)))
+            group = dist.new_group(ranks=ranks)
+            if rank in ranks:
+                selected = group
+    return selected
+
+
 def init_topology(backend: str = "nccl") -> TopologyInfo:
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA required for moe_hybrid_ep benchmark")
@@ -154,11 +166,7 @@ def init_topology(backend: str = "nccl") -> TopologyInfo:
     elif dist.is_initialized():
         initialized = True
 
-    local_group = None
-    if world_size > 1 and local_world_size > 1:
-        local_group = dist.new_group(
-            ranks=list(range(node_rank * local_world_size, (node_rank + 1) * local_world_size))
-        )
+    local_group = _create_local_group(rank, world_size, local_world_size)
 
     return TopologyInfo(
         rank=rank,
@@ -340,7 +348,9 @@ class DeepSeekHybridEPModule(nn.Module):
         self._aux_metric_buffer: Optional[torch.Tensor] = None
         self._aux_metric_host_buffer: Optional[torch.Tensor] = None
         self._aux_metric_list_buffer = [0.0] * 4
-        self._comm_stream = torch.cuda.Stream() if optimized else None
+        # Allocate only when CUDA overlap is actually executed. CPU collective
+        # correctness tests exercise the same route helpers with real Gloo.
+        self._comm_stream = None
 
     @property
     def cuda_device(self) -> torch.device:
@@ -350,6 +360,13 @@ class DeepSeekHybridEPModule(nn.Module):
         yield from self.input_proj.parameters()
         yield from self.output_proj.parameters()
         yield from self.router.parameters()
+
+    def synchronize_replicated_parameters(self) -> None:
+        """Initialize replicas identically while leaving sharded experts distinct."""
+        if self.topology.world_size > 1:
+            with torch.no_grad():
+                for parameter in self.replicated_parameters():
+                    dist.broadcast(parameter, src=0)
 
     def _expert_bias(self, device: torch.device, dtype: torch.dtype) -> Optional[torch.Tensor]:
         if self.route_mode != "topology_aware":
@@ -552,24 +569,27 @@ class DeepSeekHybridEPModule(nn.Module):
             metric_list[metric_idx] = float(host_buffer[metric_idx])
         return metric_list
 
-    def _apply_local_experts(self, tokens: torch.Tensor, expert_ids: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
+    def _apply_local_experts(self, tokens: torch.Tensor, expert_ids: torch.Tensor, weights: torch.Tensor, *, buffer_namespace: str = "local") -> torch.Tensor:
         if tokens.numel() == 0:
             return tokens
+        differentiable = torch.is_grad_enabled() and (
+            tokens.requires_grad or weights.requires_grad or any(p.requires_grad for p in self.experts.parameters())
+        )
         outputs = self._buffer(
-            "local_outputs",
+            f"{buffer_namespace}.local_outputs",
             tuple(tokens.shape),
             tokens.dtype,
-            reuse=self.optimized,
+            reuse=self.optimized and not differentiable,
             device=tokens.device,
         )
         sort_idx = torch.argsort(expert_ids)
         sorted_tokens = tokens.index_select(0, sort_idx)
         sorted_weights = weights.index_select(0, sort_idx)
         sorted_outputs = self._buffer(
-            "local_sorted_outputs",
+            f"{buffer_namespace}.local_sorted_outputs",
             tuple(sorted_tokens.shape),
             sorted_tokens.dtype,
-            reuse=self.optimized,
+            reuse=self.optimized and not differentiable,
             device=sorted_tokens.device,
         )
         expert_count_list = self._local_expert_count_list(expert_ids)
@@ -579,7 +599,11 @@ class DeepSeekHybridEPModule(nn.Module):
             if next_offset > offset:
                 expert_out = expert(sorted_tokens[offset:next_offset])
                 out_slice = sorted_outputs[offset:next_offset]
-                torch.mul(expert_out, sorted_weights[offset:next_offset], out=out_slice)
+                if differentiable:
+                    # CopySlices retains the real autograd graph; out=mul does not.
+                    out_slice.copy_(expert_out * sorted_weights[offset:next_offset])
+                else:
+                    torch.mul(expert_out, sorted_weights[offset:next_offset], out=out_slice)
             offset = next_offset
         outputs.index_copy_(0, sort_idx, sorted_outputs)
         return outputs
@@ -591,10 +615,11 @@ class DeepSeekHybridEPModule(nn.Module):
         group: Optional[dist.ProcessGroup],
         group_size: int,
         group_rank: int,
+        device: Optional[torch.device] = None,
     ) -> List[int]:
         if group_size == 1:
             return [int(send_counts[0] if send_counts else 0)]
-        device = self.cuda_device
+        device = device if device is not None else self.cuda_device
         if (
             self._exchange_count_send_buffer is None
             or self._exchange_count_send_buffer.device != device
@@ -658,8 +683,10 @@ class DeepSeekHybridEPModule(nn.Module):
         recv = tensor.new_empty(recv_shape)
         recv_parts = self._split_list(recv, recv_counts)
         send_parts = self._split_list(tensor, send_counts)
-        dist_nn.all_to_all(recv_parts, send_parts, group=group)
-        return recv
+        received = dist_nn.all_to_all(recv_parts, send_parts, group=group)
+        # Functional collectives attach their backward node to returned tensors,
+        # not to the original preallocated backing tensor.
+        return torch.cat(received, dim=0)
 
     def _all_to_all_single(
         self,
@@ -674,7 +701,11 @@ class DeepSeekHybridEPModule(nn.Module):
         if len(send_counts) == 1:
             return tensor
         recv_shape = (sum(int(x) for x in recv_counts), *tensor.shape[1:])
-        output = self._buffer(label, recv_shape, tensor.dtype, reuse=reuse, device=tensor.device)
+        output = self._buffer(
+            label, recv_shape, tensor.dtype,
+            reuse=reuse and not (torch.is_grad_enabled() and tensor.requires_grad),
+            device=tensor.device,
+        )
         return dist_nn.all_to_all_single(
             output,
             tensor,
@@ -698,8 +729,8 @@ class DeepSeekHybridEPModule(nn.Module):
         reuse: bool,
         event_label: str,
     ) -> Tuple[torch.Tensor, Optional[PhaseEvents]]:
-        if tokens.numel() == 0:
-            return tokens, None
+        # Zero sends do not imply zero receives. Every group member must enter
+        # the count exchange and both directions of all-to-all, including empty ranks.
         sort_idx = torch.argsort(dest_ranks)
         inverse_sort = torch.empty_like(sort_idx)
         inverse_sort[sort_idx] = self._range_indices(sort_idx.numel(), sort_idx.device)
@@ -708,14 +739,15 @@ class DeepSeekHybridEPModule(nn.Module):
         sorted_token_indices = token_indices.index_select(0, sort_idx)
         sorted_local_ids = local_expert_ids.index_select(0, sort_idx)
         send_counts = self._destination_count_list(dest_ranks, group_size)
-        recv_counts = self._exchange_counts(send_counts, group=group, group_size=group_size, group_rank=group_rank)
+        recv_counts = self._exchange_counts(send_counts, group=group, group_size=group_size, group_rank=group_rank, device=tokens.device)
 
-        events = self._phase_events(event_label)
-        current_stream = torch.cuda.current_stream()
-        events.start.record(current_stream)
+        events = self._phase_events(event_label) if tokens.is_cuda else None
+        current_stream = torch.cuda.current_stream(tokens.device) if tokens.is_cuda else None
+        if events is not None:
+            events.start.record(current_stream)
 
         meta = self._buffer(
-            "route_meta",
+            f"{event_label}.route_meta",
             (sort_idx.numel(), 2),
             sorted_token_indices.dtype,
             reuse=reuse,
@@ -723,28 +755,37 @@ class DeepSeekHybridEPModule(nn.Module):
         )
         meta[:, 0].copy_(sorted_token_indices)
         meta[:, 1].copy_(sorted_local_ids)
+        # One differentiable payload gives all ranks the same backward collective
+        # dependency, including ranks that receive no tokens. Separate token and
+        # weight nodes can execute in different orders when an empty expert path
+        # never consumes its weights, mismatching distributed backward messages.
+        payload = torch.cat((sorted_tokens, sorted_weights), dim=1)
         if use_single:
-            recv_tokens = self._all_to_all_single(sorted_tokens, send_counts, recv_counts, group=group, label="recv_tokens", reuse=reuse)
-            recv_weights = self._all_to_all_single(sorted_weights, send_counts, recv_counts, group=group, label="recv_weights", reuse=reuse)
-            recv_meta = self._all_to_all_single(meta, send_counts, recv_counts, group=group, label="recv_meta", reuse=reuse)
+            received = self._all_to_all_single(payload, send_counts, recv_counts, group=group, label=f"{event_label}.recv_payload", reuse=reuse)
+            recv_meta = self._all_to_all_single(meta, send_counts, recv_counts, group=group, label=f"{event_label}.recv_meta", reuse=reuse)
         else:
-            recv_tokens = self._all_to_all_list(sorted_tokens, send_counts, recv_counts, group=group)
-            recv_weights = self._all_to_all_list(sorted_weights, send_counts, recv_counts, group=group)
+            received = self._all_to_all_list(payload, send_counts, recv_counts, group=group)
             recv_meta = self._all_to_all_list(meta, send_counts, recv_counts, group=group)
-        events.mid.record(current_stream)
+        recv_tokens = received[:, :tokens.shape[1]]
+        recv_weights = received[:, tokens.shape[1]:]
+        if events is not None:
+            events.mid.record(current_stream)
 
         expert_outputs = self._apply_local_experts(
             recv_tokens,
             recv_meta[:, 1].to(torch.int64),
             recv_weights,
+            buffer_namespace=event_label,
         )
-        events.mid2.record(current_stream)
+        if events is not None:
+            events.mid2.record(current_stream)
 
         if use_single:
-            returned = self._all_to_all_single(expert_outputs, recv_counts, send_counts, group=group, label="return_tokens", reuse=reuse)
+            returned = self._all_to_all_single(expert_outputs, recv_counts, send_counts, group=group, label=f"{event_label}.return_tokens", reuse=reuse)
         else:
             returned = self._all_to_all_list(expert_outputs, recv_counts, send_counts, group=group)
-        events.end.record(current_stream)
+        if events is not None:
+            events.end.record(current_stream)
 
         return returned.index_select(0, inverse_sort), events
 
@@ -803,7 +844,7 @@ class DeepSeekHybridEPModule(nn.Module):
             "combined_outputs",
             tuple(hidden.shape),
             hidden.dtype,
-            reuse=self.optimized,
+            reuse=self.optimized and not torch.is_grad_enabled(),
             device=hidden.device,
         )
         combined.zero_()
@@ -854,9 +895,8 @@ class DeepSeekHybridEPModule(nn.Module):
             same_rank_count_int, same_node_count_int, remote_count_int = (
                 int(count) for count in route_type_counts
             )
-            overlap_active = (
-                remote_count_int > 0 and self.topology.world_size > 1 and overlap_mode == "local_remote"
-            )
+            remote_collective_required = self.topology.hybrid_enabled and self.topology.world_size > 1
+            overlap_active = remote_collective_required and overlap_mode == "local_remote"
             if overlap_active:
                 local_branch_start, local_branch_end = self._event_pair("local_branch")
                 remote_branch_start, remote_branch_end = self._event_pair("remote_branch")
@@ -866,8 +906,11 @@ class DeepSeekHybridEPModule(nn.Module):
                 overlap_window_events = (overlap_window_start, overlap_window_end)
                 overlap_window_start.record(current_stream)
             if overlap_active:
-                assert self._comm_stream is not None
+                if self._comm_stream is None:
+                    self._comm_stream = torch.cuda.Stream(device=hidden.device)
                 self._comm_stream.wait_stream(current_stream)
+                for tensor in (expanded_tokens, expanded_weights, owner_ranks, token_indices, local_expert_ids, remote_node_mask):
+                    tensor.record_stream(self._comm_stream)
                 with torch.cuda.stream(self._comm_stream):
                     remote_branch_start.record(self._comm_stream)
                     remote_outputs, remote_events = self._roundtrip_routes(
@@ -898,7 +941,11 @@ class DeepSeekHybridEPModule(nn.Module):
                 combined.index_add_(0, token_indices[same_rank_mask], local_outputs)
                 same_rank_end.record(current_stream)
                 same_rank_events = (same_rank_start, same_rank_end)
-            if same_node_count_int > 0 and self.topology.local_group is not None:
+            if self.topology.local_group is not None:
+                if overlap_active:
+                    # Finish world-communicator work before entering another NCCL
+                    # process group. Same-rank expert compute above still overlaps.
+                    current_stream.wait_stream(self._comm_stream)
                 local_group_ranks = owner_ranks[same_node_mask] % self.topology.local_world_size
                 same_node_outputs, same_node_events = self._roundtrip_routes(
                     tokens=expanded_tokens[same_node_mask],
@@ -919,7 +966,7 @@ class DeepSeekHybridEPModule(nn.Module):
             if overlap_active and local_branch_events is not None:
                 local_branch_events[1].record(current_stream)
 
-            if remote_outputs is None and remote_count_int > 0 and self.topology.world_size > 1:
+            if remote_outputs is None and remote_collective_required:
                 if remote_branch_events is not None:
                     remote_branch_events[0].record(current_stream)
                 remote_outputs, remote_events = self._roundtrip_routes(
@@ -941,6 +988,7 @@ class DeepSeekHybridEPModule(nn.Module):
             if remote_outputs is not None:
                 if self._comm_stream is not None and overlap_mode == "local_remote":
                     current_stream.wait_stream(self._comm_stream)
+                    remote_outputs.record_stream(current_stream)
                 combined.index_add_(0, token_indices[remote_node_mask], remote_outputs)
             if overlap_active and overlap_window_events is not None:
                 overlap_window_events[1].record(current_stream)
@@ -1074,6 +1122,7 @@ class HybridEPTrainer:
             route_mode=args.route_mode,
             optimized=optimized,
         ).to(device=self.device, dtype=self.dtype)
+        self.model.synchronize_replicated_parameters()
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=args.learning_rate)
         data_seed = 4242 + topology.rank
         generator = torch.Generator(device=self.device)

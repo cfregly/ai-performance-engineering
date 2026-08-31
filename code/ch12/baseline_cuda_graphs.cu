@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <vector>
 
 #include "cuda_graphs_workload.cuh"
@@ -41,7 +42,7 @@ __global__ void stage_kernel(float* data,
   data[idx] = x;
 }
 
-int main() {
+int main(int argc, char** argv) {
     NVTX_RANGE("main");
   int device = 0;
   CUDA_CHECK(cudaGetDevice(&device));
@@ -53,8 +54,15 @@ int main() {
       prop.major,
       prop.minor);
 
-  constexpr int N = 1 << 14;    // Smaller batch amplifies launch overhead.
-  constexpr int ITER = 20000;   // Total iterations for timing.
+  int N = 1 << 14, ITER = 20000;
+  bool verify = false;
+  for (int i = 1; i < argc; ++i) {
+    if (std::strcmp(argv[i], "--elements") == 0 && i + 1 < argc) N = std::atoi(argv[++i]);
+    else if (std::strcmp(argv[i], "--iterations") == 0 && i + 1 < argc) ITER = std::atoi(argv[++i]);
+    else if (std::strcmp(argv[i], "--verify") == 0) verify = true;
+    else return 1;
+  }
+  if (N <= 0 || ITER <= 0) return 1;
   const size_t bytes = N * sizeof(float);
 
   std::vector<float> host(N);
@@ -84,16 +92,20 @@ int main() {
   launch_pipeline(stream);
   CUDA_CHECK(cudaStreamSynchronize(stream));
 
+  // Use the original input for measured work after warmup.
+  CUDA_CHECK(cudaMemcpyAsync(device_ptr, host.data(), N * sizeof(float), cudaMemcpyHostToDevice, stream));
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+
   cudaEvent_t start, stop;
   CUDA_CHECK(cudaEventCreate(&start));
   CUDA_CHECK(cudaEventCreate(&stop));
 
-  CUDA_CHECK(cudaEventRecord(start));
+  CUDA_CHECK(cudaEventRecord(start, stream));
   for (int iter = 0; iter < ITER; ++iter) {
       NVTX_RANGE("iteration");
     launch_pipeline(stream);
   }
-  CUDA_CHECK(cudaEventRecord(stop));
+  CUDA_CHECK(cudaEventRecord(stop, stream));
   CUDA_CHECK(cudaStreamSynchronize(stream));
   CUDA_CHECK(cudaGetLastError());
 
@@ -105,6 +117,8 @@ int main() {
       total_ms / static_cast<float>(ITER));
 
   CUDA_CHECK(cudaMemcpy(host.data(), device_ptr, bytes, cudaMemcpyDeviceToHost));
+  const bool correct = !verify || verify_graph_output(host.data(), N, ITER);
+  if (verify) std::printf("Graph full-output verification: %s\n", correct ? "PASS" : "FAIL");
   double checksum = 0.0;
   for (float v : host) {
       NVTX_RANGE("verify");
@@ -116,5 +130,5 @@ int main() {
   CUDA_CHECK(cudaEventDestroy(stop));
   CUDA_CHECK(cudaStreamDestroy(stream));
   CUDA_CHECK(cudaFree(device_ptr));
-  return 0;
+  return correct ? 0 : 1;
 }

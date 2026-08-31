@@ -1,5 +1,6 @@
 import os
 
+import pytest
 import torch
 
 from nanochat.engine import Engine, KVCache
@@ -42,21 +43,14 @@ def test_cuda_graphs_disabled_when_persistent_decode_enabled(monkeypatch):
     assert engine._persistent_stream is None
 
 
-def test_cuda_graphs_disabled_after_kv_growth(monkeypatch):
+def test_cuda_graph_request_rejects_cpu_inputs(monkeypatch):
     monkeypatch.setenv("NANOCHAT_DISABLE_COMPILE", "1")
     config = _small_config(enable_persistent_decode=False, use_cuda_graphs=True)
     model = GPT(config)
     tokenizer = _StubTokenizer()
     engine = Engine(model, tokenizer, enable_batch_decode=False)
 
-    # Patch out the heavy forward path
-    engine._decode_forward_step = lambda *args, **kwargs: torch.zeros((1, 1, 1))
-
     kv_cache = KVCache(**engine._kv_cache_params(batch_size=1, seq_len=2))
-    kv_cache.cache_gen += 1  # simulate reallocation
-
     ids = torch.tensor([[1]], dtype=torch.long)
-    _ = engine._execute_decode(ids, kv_cache)
-
-    # Graphs should recapture instead of being permanently disabled
-    assert engine._decode_graph_disabled is False
+    with pytest.raises(RuntimeError, match="CUDA"):
+        engine._execute_decode(ids, kv_cache)

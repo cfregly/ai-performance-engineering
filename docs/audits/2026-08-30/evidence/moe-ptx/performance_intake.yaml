@@ -1,0 +1,31 @@
+objective:
+  primary_kpi: reject_incorrect_full_layer_outputs
+  secondary_kpis: [relative_l2, normalized_max_abs]
+benchmark:
+  layer: micro
+  grade: realism
+  variable_under_test: MoE_BF16_or_FP16_layer_compute_and_verification
+workload:
+  type: inference
+  model: routed top-2 SwiGLU; unquantized layer forward
+  constraints: [no accepted omitted rows, independent complete reference, no guessed numerical threshold]
+environment:
+  hardware: {gpu: [], cpu: macOS_arm64, topology: no_GPU_lease}
+  software: {python: 3.12.2, pytorch: 2.8.0_CPU, cuda: absent}
+current_baseline:
+  latency_ms: null
+  tokens_per_second: null
+hot_path_model:
+  path: run_layer_baseline_and_run_layer_cuda
+  phase: steady_state
+  invocation_frequency: per_batch
+  operation_cost_source: source_review_only
+  expected_dominant_cost: pending_actual_GPU_profile
+  best_case_primary_kpi_improvement_pct: null
+evidence:
+  baseline_artifact: original_reproductions.json_actual_CPU
+  profile_artifacts: []
+  static_review_findings: [W1-079]
+risk_guardrails:
+  correctness_tests: [full_output_reference, zero_drop_corrupt_cancel_NaN_alias_controls]
+  change_windows: [CUDA_only_after_separate_custody]

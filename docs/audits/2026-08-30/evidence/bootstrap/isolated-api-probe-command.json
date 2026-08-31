@@ -1,0 +1,10 @@
+{
+  "command": [
+    "/tmp/aisp-torchao-compat-zi7v6xmy/venv/bin/python",
+    "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/bootstrap/isolated-api-probe.py",
+    "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/bootstrap/isolated-import-receipt.json"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering",
+  "exit_code": 0,
+  "captured_at_utc": "2026-08-30T22:11:08Z"
+}

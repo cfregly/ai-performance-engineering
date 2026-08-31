@@ -1,0 +1,221 @@
+[
+  {
+    "path": "code/labs/moe_optimization_journey/level0_naive.py",
+    "sha256": "d1f25999ff944fe6dc310c46ae10c4aef4deae86c66c4ef8fa296ead36ea8a22",
+    "module_docstring": "Level 0: Naive MoE Baseline.\n\nNO OPTIMIZATIONS - Sequential expert execution with Python loops.\nThis is our starting point for measuring compound improvements.\n\nExpected: ~25ms baseline",
+    "class_docstring": "Level 0: Naive baseline."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level1_batched.py",
+    "sha256": "8fd9f3fcd507c97ff98fd07801fdf7b28d6a52d44a96f5c4c7ad43df3520ffb9",
+    "module_docstring": "Level 1: Batched Expert Execution.\n\nADDS: Batched matmul for parallel expert computation.\n- Eliminates Python loops\n- All experts computed via single batched einsum\n- ~2-3x speedup over Level 0\n\nCumulative: Level 0 + batched execution",
+    "class_docstring": "Level 1: + Batched expert execution."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level2_compiled.py",
+    "sha256": "a8ebb12aa4f70ac0d67366acb9c3771d2b653fef2ddcd06ee3db81d237e5042e",
+    "module_docstring": "Level 2: torch.compile - The Grand Finale!\n\nADDS: TorchInductor kernel fusion.\n- Automatically fuses operations across einsum/attention\n- Generates optimized CUDA kernels\n- Compounds with batched execution for ~28x total speedup!\n\nCumulative: batched + torch.compile\nThis is the FULLY OPTIMIZED version.",
+    "class_docstring": "Level 2: + torch.compile (the finale!)."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level2_fp8.py",
+    "sha256": "70781fff84a9af83f09e988c340082fa9b03aaef063ec708524365cfa54b7f05",
+    "module_docstring": "Level 2: FP8 Reduced Precision.\n\nADDS: Lower precision computation.\n- Reduces memory bandwidth requirements\n- Faster tensor operations\n- Uses bfloat16 as FP8 approximation\n\nCumulative: batched + FP8",
+    "class_docstring": "Level 2: + FP8 simulation."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level2_fused.py",
+    "sha256": "66312463c3ec2556ccb409a69fd3b806b44b8005e90998d5cbaae586af3c51ec",
+    "module_docstring": "Level 2: Triton Fused SiLU*Up.\n\nADDS: Custom Triton kernel that fuses SiLU activation with elementwise multiply.\n\nBefore: gate \u2192 memory \u2192 SiLU \u2192 memory \u2192 multiply \u2192 memory\nAfter:  gate \u2192 memory \u2192 fused_silu_mul \u2192 memory\n\nThis eliminates one kernel launch and one memory round-trip.\n\nCumulative: batched + fused",
+    "class_docstring": "Level 2: + Triton fused SiLU*up."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level2_permuted.py",
+    "sha256": "5c4a2fa18c6d88a14a85cdfa94eec55089053bc3a2b4075170b6c7ee563292ca",
+    "module_docstring": "Level 2: Token Permutation.\n\nADDS: Sort tokens by expert for memory coalescing.\nBased on ch19/mxfp8_moe_common.py bucket_by_expert() pattern.\n\n- Groups tokens going to same expert together\n- Better cache utilization\n- Enables grouped GEMM in later levels\n\nCumulative: batched + permuted",
+    "class_docstring": "Level 2: + Token permutation."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level2_sorted.py",
+    "sha256": "c4b424fd5b4b8ff22bab66a55caf70ef991e5c0a1623b61434cd636b71256dc6",
+    "module_docstring": "Level 2: Token Sorting for Memory Coalescing.\n\nADDS: Sort tokens by expert before computation.\n- Groups tokens going to same expert together\n- Better memory access patterns (coalescing)\n- Reduces random memory access overhead\n\nCumulative: batched + token sorting",
+    "class_docstring": "Level 2: + Token sorting."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level2_streams.py",
+    "sha256": "c3f1b53085e6523c978e8cb26329b08d157eb5f18ec1a98d0a7586ae7f366a41",
+    "module_docstring": "Level 2: Multi-Stream Expert Parallelism.\n\nADDS: Run top-K experts on parallel CUDA streams.\n- Overlaps expert computations\n- Based on ch15/expert_parallelism.py pattern\n- Reduces total execution time by hiding latency\n\nCumulative: batched + multi-stream",
+    "class_docstring": "Level 2: + Multi-stream expert parallelism."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level3_compiled.py",
+    "sha256": "e6fed42a3b766177197f21a24b433e42149b0179119f585a6a378c693601026b",
+    "module_docstring": "Level 3: torch.compile - The Grand Finale!\n\nADDS: TorchInductor kernel fusion.\n- Automatically fuses operations\n- Generates optimized CUDA kernels\n- The best compound optimization!\n\nCumulative: ALL previous optimizations + torch.compile\nThis is the FULLY OPTIMIZED version achieving ~24x speedup!",
+    "class_docstring": "Level 3: + torch.compile (the finale!)."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level3_fp8.py",
+    "sha256": "69ecd2d84886d56d678e0e128a7c5a6cf8c7180488d51f0cbab432446fb62f33",
+    "module_docstring": "Level 3: FP8 Quantization.\n\nADDS: 8-bit floating point precision.\n- Reduces memory bandwidth requirements\n- Faster computation on supported hardware\n- Uses Transformer Engine when available\n\nCumulative: batched + sorting + FP8",
+    "class_docstring": "Level 3: + FP8 quantization."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level3_grouped.py",
+    "sha256": "f6ba9ea647a1dc23af2f65dd0cc1787667c3d88155103108e67986b513facb2b",
+    "module_docstring": "Level 3: Grouped GEMM.\n\nADDS: Per-expert GEMM on sorted tokens.\nThis is how CUTLASS grouped GEMM works in production MoE.\n\n- Each expert gets contiguous token batch\n- Better GPU utilization per expert\n- Enables expert-level parallelism\n\nCumulative: batched + permuted + grouped",
+    "class_docstring": "Level 3: + Grouped GEMM per expert."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level3_memefficient.py",
+    "sha256": "6e71391df5260e6f65b50f7193138b7b9cb9fcb8e221a737847335200c390605",
+    "module_docstring": "Level 3: Memory Efficient Execution.\n\nADDS: Reuse pre-allocated buffers instead of creating new tensors.\n\nBenefits:\n- Reduces memory allocation overhead\n- Less garbage collection pressure\n- Better memory locality\n\nCumulative: batched + fused + mem_efficient",
+    "class_docstring": "Level 3: + Memory efficient (buffer reuse)."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level3_sorted.py",
+    "sha256": "42fb5924caed0bee012254cb877e2c822b57a1782cfc00688506a565c843ee09",
+    "module_docstring": "Level 3: Token Sorting for Memory Coalescing.\n\nADDS: Sort tokens by expert before computation.\n- Memory coalescing: consecutive tokens go to same expert\n- Better cache utilization\n- ~1.2-1.4x speedup over Level 2\n\nCumulative: Level 0 + batched + torch.compile + token sorting",
+    "class_docstring": "Level 3: + Token sorting."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level4_graphs.py",
+    "sha256": "d78a60c43be37317a1051a1af49728f859cda43d4cc37bfd214c2a5712047d59",
+    "module_docstring": "Level 4: Grouped expert routing on the shared journey model.\n\nADDS: Sort tokens by expert and execute grouped expert work.\n\nCumulative: batched + fused + mem_efficient + grouped",
+    "class_docstring": "Level 4 shared grouped-routing benchmark."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level4_grouped.py",
+    "sha256": "4eead6b8e9fb5147bbb511cac4c722bd53d485e7d2d50b0ba6bad7b31fe1f130",
+    "module_docstring": "Level 4: Grouped GEMM (Production MoE Pattern).\n\nADDS: Sort tokens by expert + run contiguous per-expert GEMM.\n\nThis is how production MoE systems work (vLLM, SGLang):\n1. bucket_by_expert() from ch19/mxfp8_moe_common.py\n2. Run GEMM per expert on contiguous memory\n3. Restore original token order\n\nBenefits:\n- Contiguous memory access per expert\n- Better cache utilization\n- Enables CUTLASS grouped GEMM\n\nCumulative: batched + fused + mem_efficient + grouped",
+    "class_docstring": "Level 4: + Grouped GEMM (sort + per-expert)."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level4_parallel.py",
+    "sha256": "b9843ad384c977e0d6114689b8c595ca776775435e0ea60f4768c0f2716a86ed",
+    "module_docstring": "Level 4: Multi-Stream Expert Parallelism.\n\nADDS: Run expert groups on different CUDA streams.\nBased on ch15/expert_parallelism.py and \nch15/optimized_moe_overlap_shared_expert.py patterns.\n\n- Overlaps expert computation across streams\n- Better GPU utilization\n- Real expert parallelism pattern\n\nCumulative: batched + permuted + grouped + parallel",
+    "class_docstring": "Level 4: + Multi-stream expert parallelism."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level4_sorted.py",
+    "sha256": "ed5101eac13d67f7a01d9af31161f1e5d70b1e10e3eed68960947ad305c7118f",
+    "module_docstring": "Level 4: Token Sorting.\n\nADDS: Sort tokens by expert for memory coalescing.\n- Consecutive tokens processed by same expert\n- Better cache utilization\n- May provide additional speedup on top of previous levels\n\nCumulative: batched + torch.compile + FP8 + sorting",
+    "class_docstring": "Level 4: + Token sorting."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level5_bmm_fusion.py",
+    "sha256": "475dc2b69f494c0d1212559f0cca6ad9df4574f4bb4ef1189291179570b6db13",
+    "module_docstring": "Level 5: BMM Fusion - Vectorized scatter + single BMM.\n\nThis is the BIG optimization that gives 1.85x speedup at Llama-7B dimensions!\n\nInstead of 8 separate cuBLAS calls (one per expert):\n1. Scatter tokens into padded tensor (vectorized)\n2. Run ONE torch.bmm() for ALL experts\n3. Gather results back\n\nBenefits:\n- Single kernel launch (vs 8)\n- Better SM utilization\n- Larger effective matrix size \u2192 higher TFLOPS",
+    "class_docstring": null
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level5_compiled.py",
+    "sha256": "2b0ad85fef69410c4da228dd90e9e49c71b65b0a87a2519247ed6c2fbcef6935",
+    "module_docstring": "Level 5: BMM fusion on the shared journey model.\n\nADDS: Vectorized scatter plus a single batched-matmul expert path.\n\nCumulative: batched + fused + mem_efficient + grouped + BMM fusion",
+    "class_docstring": "Level 5 shared BMM-fusion benchmark."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level5_cudagraphs.py",
+    "sha256": "00ef043e30c00923ba660247f9fa3de505cec5cef07b9cdd27fbfaec7a4da763",
+    "module_docstring": "Level 6: CUDA Graphs.\n\nADDS: Capture kernel sequence for replay with minimal overhead.\n\nCUDA Graphs eliminate:\n- Kernel launch latency\n- CPU-GPU synchronization overhead\n- Python interpreter overhead\n\nNote: Requires static shapes for graph capture.\n\nCumulative: batched + fused + mem_efficient + grouped + BMM fusion + cuda_graphs",
+    "class_docstring": "Level 6: + CUDA Graphs."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level5_expert_parallel.py",
+    "sha256": "497a1cce5d752f59b2487130120aeb9c36b851d7aea6e39f20a2539ee3e6c7ee",
+    "module_docstring": "Level 5: Expert Parallel variant aligned with the baseline dimensions.\n\nThis keeps the same batch/sequence sizes as the baseline while enabling the\nLevel 5 optimizations (grouped routing + fused BMM path). It exists to give\nthe harness a concrete module for optimized_moe_expert_parallel.py to import.",
+    "class_docstring": "Expert-parallelized MoE with Level 5 optimizations."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level5_graphs.py",
+    "sha256": "668776b823e3ee81feab10b5bb62a3dd753d5eec961abcf813eb72e50589a1a6",
+    "module_docstring": "Level 5: BMM fusion on the shared journey model.\n\nADDS: Vectorized scatter plus a single batched-matmul expert path.\n\nCumulative: batched + fused + mem_efficient + grouped + BMM fusion",
+    "class_docstring": "Level 5 shared BMM-fusion benchmark."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level6_compiled.py",
+    "sha256": "25ed61e12a456b4992b0af5e21b2c08446235a7aa5c2df32be127bd57b5cc178",
+    "module_docstring": "Level 6: CUDA graphs on the shared MoE journey model.\n\nADDS: expert-path CUDA graph capture/replay on top of the BMM-fused path.\n\nThis keeps the manual optimization journey cumulative:\n- batched routing\n- fused SiLU*up\n- memory reuse\n- grouped routing\n- BMM-fused experts\n- CUDA graph replay for the hot expert path",
+    "class_docstring": "Level 6: + CUDA graph replay on the MoE expert path."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/level7_compiled.py",
+    "sha256": "142063e51a18c0cec9babdeab958af18775af7fdbd7c5bbb0e6b6cb288963be0",
+    "module_docstring": "Level 7: torch.compile on the baseline MoE workload.\n\nThis reuses the shared MoEJourneyBenchmark stack but enables the Level 7\noptimization flag so the model is created with torch.compile (mode=\"max-autotune\")\non the same batch/seq/hidden dimensions as the baseline.",
+    "class_docstring": "torch.compile applied to the baseline MoE workload."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe.py",
+    "sha256": "721d1b3c32f60a2057eddba329d2637256652567f459c10a9f2ab3094ee43eba",
+    "module_docstring": "Optimized MoE: Level 7 (torch.compile on the graph-friendly path)."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_batched.py",
+    "sha256": "8e6f3565354901f7a7b995a424b648b82a716c1bf51b7e8db27661f6ffd26ddb",
+    "module_docstring": "Optimized MoE: Level 1 (Batched)."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_bmm_fusion.py",
+    "sha256": "79ed33dc212fd263983ed5d63e12946d9a88e9ac8cfc71331f640ac5b1656800",
+    "module_docstring": "Optimized MoE with BMM Fusion.\n\nThis wrapper runs Level 5 (BMM Fusion) for the aisp bench CLI."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_compiled.py",
+    "sha256": "e6380c7da38cef0205e368afb37a282656ed1cacce54c101dc6a2f334a2d2bed",
+    "module_docstring": "Optimized MoE with torch.compile enabled (Level 7)."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_cuda_graphs.py",
+    "sha256": "7393cf33c38f36e703c8c08f0ae4b7a53d37cfde48b4d3bbcb6945be9b55e95a",
+    "module_docstring": "Optimized MoE: CUDA graphs.\n\nPairs with: baseline_moe.py\n\nThis wrapper must stay workload-equivalent with the baseline benchmark. Use the\nMoEJourneyBenchmark implementation (Level 6) to keep parameter_count, inputs,\nand verification semantics consistent across levels."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_expert_parallel.py",
+    "sha256": "e4d9f4efb4a8ac4fa2cd9ef1cdf6f976dc3904ee79921cceab733ac84961b4ad",
+    "module_docstring": "Optimized MoE Level 5: Expert Parallelism.\n\nOptimization: Multi-stream expert execution for overlapped compute.\nExpected speedup: ~1.2x over Level 4"
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_fp8.py",
+    "sha256": "c69f5dbee4fc02018635044ffbb0722bf6e8638ee7a18ff1f1a5975ee5cdecbd",
+    "module_docstring": "Optimized MoE: Level 2 (FP8)."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_fused.py",
+    "sha256": "bdff1c002ea3c44dc12e2b4bfa83cf757f9704d56e8290007522f21aceecee40",
+    "module_docstring": "Optimized MoE: Level 2 (Triton Fused)."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_grouped.py",
+    "sha256": "552ad47ba2d404e33b7ee4b41157ef6218e7678ebe6cad15484850227cbd6da1",
+    "module_docstring": "Optimized MoE: Level 4 (Grouped GEMM)."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_memefficient.py",
+    "sha256": "5150587303b9ede52aee3e25ab32238d3d2cda8e827e9116bc7e7075349f0f70",
+    "module_docstring": "Optimized MoE: Level 3 (Memory Efficient)."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_parallel.py",
+    "sha256": "87d54c7cb194ff75702b61cf354ad1d3f750499d0c2005b90934b3a2bfe3a038",
+    "module_docstring": "Optimized MoE: Level 4 (Expert Parallelism)."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_permuted.py",
+    "sha256": "50633e91d125b7f5498c438b71163f9756f1fc9f6fbcdbd1c92b66991c89524d",
+    "module_docstring": "Optimized MoE: Level 2 (Token Permutation)."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_sorted.py",
+    "sha256": "d31928864ab298950ec4787341b4cc1f4abffc968e92a84d08e8735f31d5e05f",
+    "module_docstring": "Optimized MoE: Level 2 (Sorted)."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_streams.py",
+    "sha256": "3157d9d58a7fe18d7a3c651f24d9a39d05da7b04f807b5734e8d92743d26e95f",
+    "module_docstring": "Optimized MoE: Level 2 (Multi-Stream)."
+  },
+  {
+    "path": "code/labs/moe_optimization_journey/optimized_moe_triton.py",
+    "sha256": "a162380464351f32093adb8f6d1ea408373f2dd58b765e8830ce4c5c1adca110",
+    "module_docstring": "Optimized MoE: Triton fused SiLU*up (Level 2).\n\nPairs with: baseline_moe.py\n\nThis wrapper must stay workload-equivalent with the baseline benchmark. Use the\nMoEJourneyBenchmark implementation (Level 2) to keep parameter_count, inputs,\nand verification semantics consistent."
+  }
+]

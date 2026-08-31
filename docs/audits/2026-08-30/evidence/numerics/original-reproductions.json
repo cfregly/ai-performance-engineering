@@ -1,0 +1,24 @@
+{
+  "reviewed_base": "b57e4c6a9",
+  "scope": "CPU verifier/components only; no GPU timing",
+  "W1-030_old_allzero_passes": {
+    "1e-05": true,
+    "1": true,
+    "1000000.0": true
+  },
+  "W1-037": {
+    "original_shared_C_zero_passes": true,
+    "new_isolated_zero_passes": false
+  },
+  "W1-122_original_cache_releases_source_storage": true,
+  "W1-087_old_allzero_passes": true,
+  "W1-087_checksum_cancelled_corruption_passes": true,
+  "W1-086_original_baselines_use_custom_kernel": {
+    "baseline_nvfp4_group_gemm.py": true,
+    "baseline_nvfp4_group_gemm_g2_n3072_k4096.py": true,
+    "baseline_nvfp4_group_gemm_g2_n4096_k1536.py": true,
+    "baseline_nvfp4_group_gemm_g8_n4096_k7168.py": true,
+    "baseline_nvfp4_group_gemm_g8_n7168_k2048.py": true
+  },
+  "W1-123_old_documented_path_missing": true
+}

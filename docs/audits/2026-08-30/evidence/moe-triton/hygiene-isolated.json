@@ -1,0 +1,7 @@
+{
+  "source_file": "/Users/admin/dev/ai-perf/ai-performance-engineering/code/tests/test_benchmark_hygiene_regressions.py",
+  "function": "test_cuda_event_timing_waits_on_terminal_event_not_whole_device",
+  "source_sha256": "5382aa5f4df2258cd395919497cc5ae0b979a9283dbb9ec5907df18ccbb08574",
+  "method": "Execute exact AST function with its real host dependencies; unrelated module imports omitted, no Triton or GPU mocked",
+  "status": "PASS"
+}

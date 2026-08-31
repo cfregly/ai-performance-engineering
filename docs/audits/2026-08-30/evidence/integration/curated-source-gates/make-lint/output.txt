@@ -1,0 +1,17 @@
+Running strict benchmark contract audit...
+/opt/miniconda3/bin/python -m core.scripts.linting.check_benchmarks --include-unpaired --fail-on-warnings
+Checking 932 benchmark files...
+
+❌ labs/moe_optimization_journey/level6_native_fp8.py
+
+================================================================================
+SUMMARY
+================================================================================
+Files checked: 932
+Files with errors: 1
+Total errors: 0
+Total warnings: 1
+
+Failed files:
+  - labs/moe_optimization_journey/level6_native_fp8.py
+make: *** [lint-trusted] Error 1

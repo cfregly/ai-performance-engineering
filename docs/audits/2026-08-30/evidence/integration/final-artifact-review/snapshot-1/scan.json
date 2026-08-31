@@ -1,0 +1,1419 @@
+{
+  "snapshot_utc": "2026-08-30T23:57:26.638909+00:00",
+  "head": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "evidence_files_scanned": 625,
+  "manifests_scanned": 79,
+  "explicit_hash_references": 1449,
+  "parse_errors": [],
+  "manifest_snapshot_sha256": {
+    "docs/audits/2026-08-30/evidence/documentation/cpu-capture-archive-manifest.json": "0735c494e43e7d46dde6203ee54f4d17ea795f170d1bd20ce470b721b8f9a64b",
+    "docs/audits/2026-08-30/evidence/documentation/original-sources.json": "1b252ce52a98fdd8ee56753a41ea63ae0581ad63864854735c4135812b6d9a93",
+    "docs/audits/2026-08-30/evidence/documentation/receipt.json": "e26a8d7c2c8ba02fc36b6399ff3a2c61b038859f33862df56695cad8cfe978dd",
+    "docs/audits/2026-08-30/evidence/attention/source_manifest.json": "c9768fe501d2d114b87ef95f649666f4656f9fdacbfb0db8fba17b2ed8b06661",
+    "docs/audits/2026-08-30/evidence/attention/receipt.json": "d3a6787b242b593c1fa2f4d9bfb7702ca19f34224033eb552e64d062e7459985",
+    "docs/audits/2026-08-30/evidence/tooling/receipt.json": "d0fabff85442beceeb786dc258cd7862cedc30902979271c065ff36ef2e73ba4",
+    "docs/audits/2026-08-30/evidence/moe-triton/source-files.json": "40f18a23b25162a52b634646fa459d465d906a8a5a5881a40b03b6c885fc8a4b",
+    "docs/audits/2026-08-30/evidence/moe-triton/receipt.json": "f1d00db12d8ca6755a9648f295becff3225c8ef14167dfbc141edc053a3130ae",
+    "docs/audits/2026-08-30/evidence/bootstrap/validation-receipts.json": "4d4fa0427eb54e2368289db9fc64836678de37409d6b87ed3839d67471ee5efc",
+    "docs/audits/2026-08-30/evidence/bootstrap/validation-receipts.pre-log-migration.json": "acc1ead26df3ace4d068414df8eeadfc1d00ac834a68bc9d874d6be87967bcb5",
+    "docs/audits/2026-08-30/evidence/bootstrap/isolated-import-receipt.json": "e167190d1ea150f33afc16eebcb31e137edec70c57b6aeeb8b52919aa804108f",
+    "docs/audits/2026-08-30/evidence/bootstrap/log-migration.json": "f4f4013e6846a9142a34256a585f57511e325aa2b9d7d895b9c77b1ea1efef78",
+    "docs/audits/2026-08-30/evidence/native-fp8/receipt.json": "42490a6a2ead58a94c32654e266d5bd64e47e37f4b27623ce21db693192fd8e1",
+    "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json": "d6f09a2ddc502897330dff1d60e64625590ff057b2d73c221d74296fba803c11",
+    "docs/audits/2026-08-30/evidence/moe-ptx/source_manifest.json": "f8b198f193170a526b3b1e78cb9dd2a593112bb0e73e89b2ca23a56c520e7b7d",
+    "docs/audits/2026-08-30/evidence/moe-ptx/receipt.json": "ea38c9e0678806978be083a700a733f7f281982fef61c23c4301d104432d7629",
+    "docs/audits/2026-08-30/evidence/integration/receipt.json": "2329bc4027fd2460f6df5a6d8194f39ccd1a98b1de8ccf74cf309e08a050aec4",
+    "docs/audits/2026-08-30/evidence/tma/validation-receipts.json": "ba06cfb01b17647f30b78ad4dba9d54df79358406b1f2a80bbc52aae427ad945",
+    "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json": "f567ee5f067ae440426b6412769a102db39d69d97455e888c516f65dbd5b74d3",
+    "docs/audits/2026-08-30/evidence/numerics/receipt.json": "366cec2d3c74e1fcc2abd5dabd0f2f679ebb8240ca1998f61fc007b65661268f",
+    "docs/audits/2026-08-30/evidence/harness/timing-provenance-receipt.json": "57a7c9bcd88898e6b2ff80d6f875c3c20deed12cc6482494e9bea92c5d4fecfa",
+    "docs/audits/2026-08-30/evidence/harness/receipt.json": "e3284140a4efcbe7b5122db82be2e79a2105023fff72b69171a90c99c91dd2e0",
+    "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json": "4e9dabd403b535348c55bad245b7e590440912540f45e91cd54323b5411fe1f9",
+    "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json": "e70b12884137e9640fb640aa0961421cf2a4e13852d3e90f37e0f1001144ac45",
+    "docs/audits/2026-08-30/evidence/torchrun-verification/receipt.json": "ba528b7a5540497eaa5d9506093862dc95c69b6599d2b758c2e94a9fcab0f736",
+    "docs/audits/2026-08-30/evidence/api/receipt.json": "811ecb84b8bb9c326e77497d86ba00cd0f14c20556fd3a5ebac3ca9e84c889b8",
+    "docs/audits/2026-08-30/evidence/feature-cuda/source-manifest.json": "26062dcd47047212ec0238557e1a856b1e613dcc3c5235b4017ec672bd0b7ef0",
+    "docs/audits/2026-08-30/evidence/feature-cuda/validation-receipts.json": "ab776a9dac6201889272ba59d1606dbae056a09696bbdad6b84b9c3963fd82c9",
+    "docs/audits/2026-08-30/evidence/zero2/single-receipt.json": "e569e40bf844597889ba43a926e905ea9aa2f0e68403e8cd4e832431f8c23dc7",
+    "docs/audits/2026-08-30/evidence/zero2/receipt.json": "649a7b6a52678951baefd4a20c472b7c31df73ea4cc87e54c670fbf1bb231a7d",
+    "docs/audits/2026-08-30/evidence/routing-kv/receipt.json": "3123bdef1da868009db8a0f76a3cd75742cdb6373b4eaa63d9f679138c8722ce",
+    "docs/audits/2026-08-30/evidence/moe-planning-router/receipt.json": "ff8bc86ebd5ae77910ba035bc1f38a29e0fa0a626fbc3c84683a5cbe480840bb",
+    "docs/audits/2026-08-30/evidence/validation/protection-coverage-receipt.json": "809c67de9f024211e1dd64059dd99170d4eed515e9920b7449f85aef6dafef54",
+    "docs/audits/2026-08-30/evidence/validation/comparison-protection-receipt.json": "fd701589f81b48f8df141b4893f411f259765789b799c8e79aff1a5f1400984a",
+    "docs/audits/2026-08-30/evidence/validation/hybrid-ep-source-files.json": "bae3387c4dff5de4f2048dbb2cacd26ddb36190a0874fb453d3f6251e1d18283",
+    "docs/audits/2026-08-30/evidence/validation/peak-metrics-source-files.json": "c251fbb822cb37be6c57b57d62ecb359fe356db8cb830c070a918ccf202c6d42",
+    "docs/audits/2026-08-30/evidence/validation/cuda-stage-no-device-receipt.json": "69577c5e5f915f0d5864c0f115108da13a0d8d12b65fb841767a450d122f0988",
+    "docs/audits/2026-08-30/evidence/validation/peak-metrics-receipt.json": "c832d539eb8f4f458463f21b4cbc1e5eb2b698aeb0267ba00b012735deef43bd",
+    "docs/audits/2026-08-30/evidence/validation/cuda-stage-lifetime-receipt.json": "84188c74588acacdfffcb2cf7204b616bb53f0732da4410c945cf2f577167a67",
+    "docs/audits/2026-08-30/evidence/validation/hybrid-ep-receipt.json": "6455589874b8807e8ab2dfbfef6ae3b34f93f2cd361aaaba0f473ad76ad97e75",
+    "docs/audits/2026-08-30/evidence/zero2-parity/receipt.json": "a4693c17d683e322ea414f96e90f78bf9558c0c49c43a801b18b7b09ded5c522",
+    "docs/audits/2026-08-30/evidence/documentation/profile-extraction/validation-receipts.json": "67071176852050a4854b9be66fbfb2901c0e5e710fec9a94310fbf5be8be622f",
+    "docs/audits/2026-08-30/evidence/documentation/profile-extraction/root-cpu-receipt.json": "e104f840ac896217262f425c08900e61dec1bdf908f280665a6c4af637bde566",
+    "docs/audits/2026-08-30/evidence/bootstrap/initial-source-validation/receipts.json": "4a4e792e976809de98f5848c0031ce3da9b2bd72c760e45ad871c1b42892935f",
+    "docs/audits/2026-08-30/evidence/bootstrap/initial-source-validation/receipts.pre-log-migration.json": "e8220905364b3763f49624657c093ae448708b769af5c111b6f3d70df0c8946e",
+    "docs/audits/2026-08-30/evidence/integration/coverage-docs/source-changes.json": "4dd6e8ea13b33564e2466fe0306acb57eccd75e92c7ecd2767f0d0baf17caae7",
+    "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json": "a1df04a77c1a00150c85073bae2c9358a8dc534f6b6f92bf719cedc59852baad",
+    "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json": "8f02542d463922fb528151c9e04b598db89e053c709e489c05b6b897983b79cc",
+    "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json": "cf15abcf9faa8b07009d80e682d9064b9d3991e551ff7541c5f06a89dd2504f7",
+    "docs/audits/2026-08-30/evidence/integration/hygiene-collection/import-slice-receipt.json": "8b6cbba34061c4930edb0499798c3aa344325379dc61b8af048c7f020065a1cd",
+    "docs/audits/2026-08-30/evidence/integration/artifact-review/review-files-sha256.json": "1beaa7e83d7fda6267615cc381375e23012f05ae23c151e3d87fced51e8a075d",
+    "docs/audits/2026-08-30/evidence/integration/prefill-full-output/original-source-manifest.json": "8ceb828ed03b3ae925285cae1730f70883d24d6bfabae25ddaf175f5aa99c3b7",
+    "docs/audits/2026-08-30/evidence/integration/optional-dependency-collection/original-sources.json": "76fd3a0dd3d741fd171835f248b7294a87c392b956736c9b57e63e3e5bce8a9b",
+    "docs/audits/2026-08-30/evidence/integration/optional-dependency-collection/original-production-sources.json": "368688586ceb5b354ef1bf6509d742e867e8b9b79d7e666ee4bd4ead1f1c8f42",
+    "docs/audits/2026-08-30/evidence/integration/optional-dependency-collection/receipt.json": "865ad97d0773143c33bcde6ad8d1f14f36db079479c898ed293791c820590f19",
+    "docs/audits/2026-08-30/evidence/integration/prefill-full-output/cuda-preflight-hold/report.json": "56937aea5fc263c5df4aac57918ecbc3ecb5ff8f6fcdae1663628716e0bd387a",
+    "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-preflight/report.json": "e18b5041915978b88bc681ab9360ac4c9d99e16fce028d4754f95dedc499dede",
+    "docs/audits/2026-08-30/evidence/chapter-cuda/tcgen05-gpu-preflight/report.json": "5fba5d26c81f189f4ae7fd41e5165b04dddebe9f9815a7d9519e39c7fa57f5d8",
+    "docs/audits/2026-08-30/evidence/chapter-cuda/tcgen05-gpu-final-preflight/report.json": "a58a848b59debecb5b29b71d071f321dd116a54c4c22cf6dce35a1a9f8653597",
+    "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json": "7318e85cd6759d699de724073a6c13b0fcf38c83df49c10820ae17097ff3e52b",
+    "docs/audits/2026-08-30/evidence/feature-cuda/bias-sm100a-attempt-1/report.json": "583b8be008608c099fdcce39be9d87086a837530a625b318a0ccdefd6d24092e",
+    "docs/audits/2026-08-30/evidence/feature-cuda/grace-sm90-attempt-2/report.json": "80aa300f338b56aa3d89721675287e1b91310a684fcfe81214437227c050a6d7",
+    "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm90-attempt-1/report.json": "43380cf0fef132634deea7159528b7e47309722381cdbc0b81dfe65d8680a668",
+    "docs/audits/2026-08-30/evidence/feature-cuda/originals/manifest.json": "a58c68d4b919121a09ca0b343812ea7656947f5e1d5763e1ca1817192e7c5858",
+    "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm100a-attempt-2/report.json": "20e5509f9b0bd57778e757c13f5353196ab0a83b8540a0b4c27d46e10416bf1d",
+    "docs/audits/2026-08-30/evidence/feature-cuda/grace-sm90-attempt-1/report.json": "60665612dcf4b3be3c13179e29ffbef92c0c47213be567f585d70fce7f7c6e8b",
+    "docs/audits/2026-08-30/evidence/feature-cuda/bias-sm100a-attempt-2/report.json": "2735ac77dcba6e6fc349972383e5a513df82e84f97faf2dd765ed4dbd4b260aa",
+    "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm90-attempt-2/report.json": "8a66bdfda6e307a1c3b8888365a9a6e403d15f041ace7da78e523f26d658960c",
+    "docs/audits/2026-08-30/evidence/feature-cuda/standalone-sm100a-attempt-1/report.json": "3852a736a9e39ce99d229c947a7efcca6f30eb1b2dc454a46667c867b3a6ea1c",
+    "docs/audits/2026-08-30/evidence/feature-cuda/retirement-followup/validation-receipts.json": "6c572d4544c741f43e1e8296646290a1c955ea0583febb95195c88b3809194d7",
+    "docs/audits/2026-08-30/evidence/validation/blackwell-stack/receipt.json": "777909a21c401ad77160df6a06819c5eb40d9dc1ff9774b792a40066dc376b1f",
+    "docs/audits/2026-08-30/evidence/validation/clock-lock-followup/receipt-assembly-attempt.json": "a68e9136c7c778aebe87b0a397478e4cbb6b66fe4586c82230972b68b2753270",
+    "docs/audits/2026-08-30/evidence/validation/clock-lock-followup/receipt.json": "e90d4b1e57815fa7e591594f9e1d604806761e2927a0c2dab8a5264d19d69463",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/source-manifest.json": "161413c4b6e1cfb420c001a64f009d3eae30c888da5e3f4ae68b5a300cb515b5",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/validation-receipts.json": "e10a2809d6a952518baa3a944bd0eadbd7b6c4ce9b60a3c6c88ede451df2075a",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-2/report.json": "6921b3e5f0ec1003f1816e11892841d797fe6167b4a79ab96328ea4ff068e2cc",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-2/report.json": "92eb2a736e148a644700acd9b1c321ac57e410fb110b8d61033d9c85d57c7213",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-1/report.json": "c69456a59b82fe30e0a5d123add229925bba0e51073f49dae4a597bff28bb08a",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-1/report.json": "6d7730d072443efe62ac88bdde449b161927dcfad951b4c12c3865ff67b71185"
+  },
+  "ignored_files": [
+    {
+      "path": "docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/trace.json",
+      "rule": ".gitignore:3:profiles/",
+      "sha256": "db466403ead96e2a69850fc508b4c23d9fc9f71d60d08cbaa805e17c1f54011d",
+      "byte_identical_unignored_copies": [
+        "docs/audits/2026-08-30/evidence/documentation/cpu-capture-archive/007-chrome_trace_full.json",
+        "docs/audits/2026-08-30/evidence/documentation/cpu-capture-archive/012-trace.json",
+        "docs/audits/2026-08-30/evidence/documentation/profile-extraction/actual-cpu-inputs/trace.json",
+        "docs/audits/2026-08-30/evidence/documentation/profile-extraction/actual-cpu-inputs/chrome_trace_full.json"
+      ],
+      "disposable": false
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/chrome_trace_full.json",
+      "rule": ".gitignore:3:profiles/",
+      "sha256": "db466403ead96e2a69850fc508b4c23d9fc9f71d60d08cbaa805e17c1f54011d",
+      "byte_identical_unignored_copies": [
+        "docs/audits/2026-08-30/evidence/documentation/cpu-capture-archive/007-chrome_trace_full.json",
+        "docs/audits/2026-08-30/evidence/documentation/cpu-capture-archive/012-trace.json",
+        "docs/audits/2026-08-30/evidence/documentation/profile-extraction/actual-cpu-inputs/trace.json",
+        "docs/audits/2026-08-30/evidence/documentation/profile-extraction/actual-cpu-inputs/chrome_trace_full.json"
+      ],
+      "disposable": false
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/key_averages_full.json",
+      "rule": ".gitignore:3:profiles/",
+      "sha256": "0137e5bf38601bdaa60e62b8ece925ecfdea2d11f9d5afbf8299399827e3eb9d",
+      "byte_identical_unignored_copies": [
+        "docs/audits/2026-08-30/evidence/documentation/cpu-capture-archive/008-key_averages_full.json",
+        "docs/audits/2026-08-30/evidence/documentation/profile-extraction/actual-cpu-inputs/key_averages_full.json"
+      ],
+      "disposable": false
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/summary_full.txt",
+      "rule": ".gitignore:3:profiles/",
+      "sha256": "dc3033b72b9904be2d3254fa3439c2588293cce747275ad1db11f9a7fcdc91f9",
+      "byte_identical_unignored_copies": [
+        "docs/audits/2026-08-30/evidence/documentation/cpu-capture-archive/010-summary_full.txt",
+        "docs/audits/2026-08-30/evidence/documentation/profile-extraction/actual-cpu-inputs/summary_full.txt"
+      ],
+      "disposable": false
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/metadata.json",
+      "rule": ".gitignore:3:profiles/",
+      "sha256": "9a1768c95620fb3334df48f425190c922aaf7b3b23f5772a00aa908a5db85bf7",
+      "byte_identical_unignored_copies": [
+        "docs/audits/2026-08-30/evidence/documentation/cpu-capture-archive/009-metadata.json",
+        "docs/audits/2026-08-30/evidence/documentation/profile-extraction/actual-cpu-inputs/metadata.json"
+      ],
+      "disposable": false
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844/torch_profile_summary.json",
+      "rule": ".gitignore:3:profiles/",
+      "sha256": "14742f7af8d181e20eac3ca6bfff017f1628b2f3d28a19f353ad53e100f34e36",
+      "byte_identical_unignored_copies": [
+        "docs/audits/2026-08-30/evidence/documentation/cpu-capture-archive/011-torch_profile_summary.json",
+        "docs/audits/2026-08-30/evidence/documentation/profile-extraction/actual-cpu-inputs/torch_profile_summary.json"
+      ],
+      "disposable": false
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/validation/__pycache__/hybrid-ep-original-source.cpython-312.pyc",
+      "rule": ".gitignore:38:__pycache__/",
+      "sha256": "d7a4b9f364d5a55f85626023de2c26c5748eb7146738f3a4a95fbe52b3cf1728",
+      "byte_identical_unignored_copies": [],
+      "disposable": true
+    }
+  ],
+  "scoped_log_exceptions": [
+    {
+      "path": "docs/audits/2026-08-30/evidence/attention/tests-expanded-before-extra-gates.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/attention/cuda-preflight.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/attention/tests-first.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/attention/diff-check.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/attention/tests-expanded.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/attention/tests-final.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/attention/linter-final.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/attention/syntax.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/tooling/first.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/tooling/reproduction.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/tooling/diffcheck.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/tooling/pycompile.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/tooling/json-command.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/tooling/combined.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/tooling/final.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/tooling/before.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/tooling/html-command.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/bootstrap/pytest.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/bootstrap/bash-syntax.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/bootstrap/isolated-install.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/bootstrap/torchao-followup-before.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/bootstrap/diff-check.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/bootstrap/resolve-x86-triton.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/bootstrap/resolve-arm-torch-audio.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/bootstrap/resolve-arm-torchao-unavailable.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/bootstrap/isolated-api-probe.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/bootstrap/resolve-x86-stack.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-ptx/cuda-preflight.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-ptx/tests-first.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-ptx/linter.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-ptx/diff-check.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-ptx/invalid-config-command.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-ptx/tests-final.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-ptx/syntax.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/moe-ptx/no-overwrite-command.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/numerics/tests-final.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/numerics/calibration-unavailable.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/numerics/tests-second.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/numerics/tests-first-diagnostic.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/numerics/benchmark-lint.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/api/anthropic-default-before.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/api/book-smoke.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/api/legacy-models-before.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/api/parsers-before.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/api/cli-smoke.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/api/live-local-nvlink-unavailable.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/api/final-tests.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/api/api-before.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/api/api-parsers-pass65.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/api/api-first-slice-tests.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/api/default-cli.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/api/api-parsers-pass63.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/bootstrap/initial-source-validation/pytest.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/bootstrap/initial-source-validation/index-torchaudio.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/bootstrap/initial-source-validation/index-torchao.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/bootstrap/initial-source-validation/bash-syntax.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/bootstrap/initial-source-validation/diff-check.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/bootstrap/initial-source-validation/index-triton.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/bootstrap/initial-source-validation/index-torch.log",
+      "rule": "docs/audits/2026-08-30/.gitignore:4:!*.log"
+    }
+  ],
+  "artifact_hash_mismatches": [],
+  "missing_hash_references": [],
+  "source_hash_drift": [
+    {
+      "path": "code/AGENTS.md",
+      "current_sha256": "e4cca5f7ac816f4a11410063b217d61b2e2146ab9d9cd80f8b6bc0b0d902d27e",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/integration/coverage-docs/source-changes.json",
+          "pointer": "/1",
+          "raw_path": "code/AGENTS.md",
+          "expected_sha256": "28003eb35b85147a868501f164180db99596b7714a4cabc40621f13c2ba101b6",
+          "historical_archive": false,
+          "resolved_path": "code/AGENTS.md",
+          "exists": true,
+          "current_sha256": "e4cca5f7ac816f4a11410063b217d61b2e2146ab9d9cd80f8b6bc0b0d902d27e",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/ch07/Makefile",
+      "current_sha256": "6bf7d88fcbf371866cea8f5d3878107327a88282182848ec57754512b8d720fb",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/tma/validation-receipts.json",
+          "pointer": "/source_sha256/code/ch07/Makefile",
+          "raw_path": "code/ch07/Makefile",
+          "expected_sha256": "bb44a06e10028ca2a4d089256542eba8efb084baa409f90220bf1584bda8fcba",
+          "historical_archive": false,
+          "resolved_path": "code/ch07/Makefile",
+          "exists": true,
+          "current_sha256": "6bf7d88fcbf371866cea8f5d3878107327a88282182848ec57754512b8d720fb",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/ch08/threshold_async_kernel.cuh",
+      "current_sha256": "6c1a02868022ee2df39ac7bbc0eff6d148c0f8cbce6c95e7a59dcaec786cfde7",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+        "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+        "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-preflight/report.json",
+          "pointer": "/source_sha256/ch08/threshold_async_kernel.cuh",
+          "raw_path": "ch08/threshold_async_kernel.cuh",
+          "expected_sha256": "897ddfd31d4da5f2f9a23d229049a5b897246f25863d865f52656ba0c3209faf",
+          "historical_archive": false,
+          "resolved_path": "code/ch08/threshold_async_kernel.cuh",
+          "exists": true,
+          "current_sha256": "6c1a02868022ee2df39ac7bbc0eff6d148c0f8cbce6c95e7a59dcaec786cfde7",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/ch08/threshold_tma_kernel.cuh",
+      "current_sha256": "e54accbcc4664d9b4ef4fe8313aa5f93bb038b21dfcf16598e74b8f84f658c4a",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+        "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+        "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-preflight/report.json",
+          "pointer": "/source_sha256/ch08/threshold_tma_kernel.cuh",
+          "raw_path": "ch08/threshold_tma_kernel.cuh",
+          "expected_sha256": "bf9b559f0c1d22f9abc9e76fa2823fc22944e725ed835518c8fe009affdc7e5c",
+          "historical_archive": false,
+          "resolved_path": "code/ch08/threshold_tma_kernel.cuh",
+          "exists": true,
+          "current_sha256": "e54accbcc4664d9b4ef4fe8313aa5f93bb038b21dfcf16598e74b8f84f658c4a",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/ch10/Makefile",
+      "current_sha256": "7635ffdcca1920248b020e0a7211a1c8b1d4f6b962433dc26c3323a31e947015",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/tma/validation-receipts.json",
+          "pointer": "/source_sha256/code/ch10/Makefile",
+          "raw_path": "code/ch10/Makefile",
+          "expected_sha256": "d2275afcf9112c7b4a0f6df04ad7cf43e770fc88156033e357e5837d8d6f88fb",
+          "historical_archive": false,
+          "resolved_path": "code/ch10/Makefile",
+          "exists": true,
+          "current_sha256": "7635ffdcca1920248b020e0a7211a1c8b1d4f6b962433dc26c3323a31e947015",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/ch11/streams_warp_specialized_demo.cu",
+      "current_sha256": "47b73f9e368b2a4a56f40c78d15f4d3487f6303705be768d34a1385272eee9b0",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+        "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+        "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-preflight/report.json",
+          "pointer": "/source_sha256/ch11/streams_warp_specialized_demo.cu",
+          "raw_path": "ch11/streams_warp_specialized_demo.cu",
+          "expected_sha256": "9465e1404337ba6643e2bb5642232a4e6c99f338b9e92535573cd70224a389ca",
+          "historical_archive": false,
+          "resolved_path": "code/ch11/streams_warp_specialized_demo.cu",
+          "exists": true,
+          "current_sha256": "47b73f9e368b2a4a56f40c78d15f4d3487f6303705be768d34a1385272eee9b0",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/ch12/Makefile",
+      "current_sha256": "18e4bb9af5c424aa41d353be59d1dc13b55b6684f0d5754371f0158f4e2511f4",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+        "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+          "pointer": "/source_sha256/code/ch12/Makefile",
+          "raw_path": "code/ch12/Makefile",
+          "expected_sha256": "2846357a6bb8d4076c76876072f9b8efa385dbe52088601fa05c57d3ea09210f",
+          "historical_archive": false,
+          "resolved_path": "code/ch12/Makefile",
+          "exists": true,
+          "current_sha256": "18e4bb9af5c424aa41d353be59d1dc13b55b6684f0d5754371f0158f4e2511f4",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/core/benchmark/verify_runner.py",
+      "current_sha256": "16eeddaeefa19bf11a10379d157cd12ec27ab6065d4893c9d8b30288b2982963",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+        "docs/audits/2026-08-30/evidence/validation/clock-lock-followup/receipt.json",
+        "docs/audits/2026-08-30/evidence/validation/protection-coverage-receipt.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/validation/comparison-protection-receipt.json",
+          "pointer": "/sha256/code/core/benchmark/verify_runner.py",
+          "raw_path": "code/core/benchmark/verify_runner.py",
+          "expected_sha256": "cb3062d9679c10a26ffe665d8627e2863ebb3324af2699dee395cf8358d95704",
+          "historical_archive": false,
+          "resolved_path": "code/core/benchmark/verify_runner.py",
+          "exists": true,
+          "current_sha256": "16eeddaeefa19bf11a10379d157cd12ec27ab6065d4893c9d8b30288b2982963",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/core/harness/benchmark_harness.py",
+      "current_sha256": "97aafb1fe60e84d18f16a25882aa4cb49e715e70b3217baf3a700881311128e9",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+        "docs/audits/2026-08-30/evidence/torchrun-verification/receipt.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/harness/timing-provenance-receipt.json",
+          "pointer": "/source_sha256/code/core/harness/benchmark_harness.py",
+          "raw_path": "code/core/harness/benchmark_harness.py",
+          "expected_sha256": "1f35a30c0216f3ae7f9a64ff5898125278efc9f7490fe2cf21829dcd9d2d3585",
+          "historical_archive": false,
+          "resolved_path": "code/core/harness/benchmark_harness.py",
+          "exists": true,
+          "current_sha256": "97aafb1fe60e84d18f16a25882aa4cb49e715e70b3217baf3a700881311128e9",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        },
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/harness/receipt.json",
+          "pointer": "/files_sha256/code/core/harness/benchmark_harness.py",
+          "raw_path": "code/core/harness/benchmark_harness.py",
+          "expected_sha256": "f6a64f13ce29a5e6fb8fcdb538b454cb26e98a70a32c2a20bade17931971e3ff",
+          "historical_archive": false,
+          "resolved_path": "code/core/harness/benchmark_harness.py",
+          "exists": true,
+          "current_sha256": "97aafb1fe60e84d18f16a25882aa4cb49e715e70b3217baf3a700881311128e9",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        },
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/torchrun-verification/receipt.json",
+          "pointer": "/source_files_before/code/core/harness/benchmark_harness.py",
+          "raw_path": "code/core/harness/benchmark_harness.py",
+          "expected_sha256": "1f35a30c0216f3ae7f9a64ff5898125278efc9f7490fe2cf21829dcd9d2d3585",
+          "historical_archive": false,
+          "resolved_path": "code/core/harness/benchmark_harness.py",
+          "exists": true,
+          "current_sha256": "97aafb1fe60e84d18f16a25882aa4cb49e715e70b3217baf3a700881311128e9",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        },
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/validation/clock-lock-followup/receipt.json",
+          "pointer": "/read_only_dependency_hashes/code/core/harness/benchmark_harness.py",
+          "raw_path": "code/core/harness/benchmark_harness.py",
+          "expected_sha256": "1f35a30c0216f3ae7f9a64ff5898125278efc9f7490fe2cf21829dcd9d2d3585",
+          "historical_archive": false,
+          "resolved_path": "code/core/harness/benchmark_harness.py",
+          "exists": true,
+          "current_sha256": "97aafb1fe60e84d18f16a25882aa4cb49e715e70b3217baf3a700881311128e9",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/core/scripts/refresh_readmes.py",
+      "current_sha256": "e7d508a8fda4a1b87aef33d2135c67766753bb19fc22673817d4a215fba823da",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/integration/coverage-docs/source-changes.json",
+          "pointer": "/0",
+          "raw_path": "code/core/scripts/refresh_readmes.py",
+          "expected_sha256": "a76d6b9e1054441edc1d935bfd3743737a3f9c310a1d4ba90509780d68eabf16",
+          "historical_archive": false,
+          "resolved_path": "code/core/scripts/refresh_readmes.py",
+          "exists": true,
+          "current_sha256": "e7d508a8fda4a1b87aef33d2135c67766753bb19fc22673817d4a215fba823da",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/labs/custom_vs_cublas/experimental/tcgen05_multicast.cu",
+      "current_sha256": "f642f9f0a071ff88e39436eb757cca0b38e088c28b70afa2303ea1ef3a3a9d31",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/feature-cuda/retirement-followup/validation-receipts.json",
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/feature-cuda/source-manifest.json",
+          "pointer": "/owned_paths/code/labs/custom_vs_cublas/experimental/tcgen05_multicast.cu",
+          "raw_path": "code/labs/custom_vs_cublas/experimental/tcgen05_multicast.cu",
+          "expected_state": "deleted",
+          "historical_archive": false,
+          "resolved_path": "code/labs/custom_vs_cublas/experimental/tcgen05_multicast.cu",
+          "exists": true,
+          "current_sha256": "f642f9f0a071ff88e39436eb757cca0b38e088c28b70afa2303ea1ef3a3a9d31"
+        }
+      ]
+    },
+    {
+      "path": "code/labs/moe_optimization_journey/README.md",
+      "current_sha256": "2e67af4adb89711241ac251741ee57419c22f4feb6bf6e97609989f9ba4dce1c",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/native-fp8/receipt.json",
+          "pointer": "/source_sha256/code/labs/moe_optimization_journey/README.md",
+          "raw_path": "code/labs/moe_optimization_journey/README.md",
+          "expected_sha256": "d72de82079cc8a286e54eddc08b9c759ecb30f324ce9f8f0bb87bad6bb22c309",
+          "historical_archive": false,
+          "resolved_path": "code/labs/moe_optimization_journey/README.md",
+          "exists": true,
+          "current_sha256": "2e67af4adb89711241ac251741ee57419c22f4feb6bf6e97609989f9ba4dce1c",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        },
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json",
+          "pointer": "/source_sha256/code/labs/moe_optimization_journey/README.md",
+          "raw_path": "code/labs/moe_optimization_journey/README.md",
+          "expected_sha256": "0719cb2895cf19083b8c8bb0ccbd7fcc4dbbc94f8a1c930c51cdef73df2c265c",
+          "historical_archive": false,
+          "resolved_path": "code/labs/moe_optimization_journey/README.md",
+          "exists": true,
+          "current_sha256": "2e67af4adb89711241ac251741ee57419c22f4feb6bf6e97609989f9ba4dce1c",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/labs/ozaki_scheme/Makefile",
+      "current_sha256": "f50c23779340df1ace9a6b724f4ccda03b5b7f8af218cb3dd60f393d74f73472",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+        "docs/audits/2026-08-30/evidence/numerics/receipt.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+          "pointer": "/source_sha256/code/labs/ozaki_scheme/Makefile",
+          "raw_path": "code/labs/ozaki_scheme/Makefile",
+          "expected_sha256": "347863d02f4a7ae47426ab929da197136ee14eadf08db56c9b1e0407c8150644",
+          "historical_archive": false,
+          "resolved_path": "code/labs/ozaki_scheme/Makefile",
+          "exists": true,
+          "current_sha256": "f50c23779340df1ace9a6b724f4ccda03b5b7f8af218cb3dd60f393d74f73472",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/labs/persistent_decode/README.md",
+      "current_sha256": "095740beda6c680964e0c8d5ffeef92476eef5b7a539aabb78fff9660d33a4a1",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+          "pointer": "/14",
+          "raw_path": "code/labs/persistent_decode/README.md",
+          "expected_sha256": "f929ce2ca06cb97d2a091d19c25fb8618d3b9317cae78a9dee5b33bc55e912e9",
+          "historical_archive": false,
+          "resolved_path": "code/labs/persistent_decode/README.md",
+          "exists": true,
+          "current_sha256": "095740beda6c680964e0c8d5ffeef92476eef5b7a539aabb78fff9660d33a4a1",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        },
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/attention/receipt.json",
+          "pointer": "/source_files/14",
+          "raw_path": "code/labs/persistent_decode/README.md",
+          "expected_sha256": "f929ce2ca06cb97d2a091d19c25fb8618d3b9317cae78a9dee5b33bc55e912e9",
+          "historical_archive": false,
+          "resolved_path": "code/labs/persistent_decode/README.md",
+          "exists": true,
+          "current_sha256": "095740beda6c680964e0c8d5ffeef92476eef5b7a539aabb78fff9660d33a4a1",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py",
+      "current_sha256": "ff54f675b862bd3c72330e839b6461e6d01a02ec76cc35a7ccfa5c5bfb9465e9",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+        "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+        "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json",
+        "docs/audits/2026-08-30/evidence/integration/prefill-full-output/cuda-preflight-hold/report.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+          "pointer": "/15",
+          "raw_path": "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py",
+          "expected_sha256": "43427f27efdf22aad2d456212ddfb6b6eb68d122da5875c6c59c4ba8472a3fc3",
+          "historical_archive": false,
+          "resolved_path": "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py",
+          "exists": true,
+          "current_sha256": "ff54f675b862bd3c72330e839b6461e6d01a02ec76cc35a7ccfa5c5bfb9465e9",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": [
+            "docs/audits/2026-08-30/evidence/integration/prefill-full-output/original-baseline_native_tma_prefill_decode.py"
+          ]
+        },
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/attention/receipt.json",
+          "pointer": "/source_files/15",
+          "raw_path": "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py",
+          "expected_sha256": "43427f27efdf22aad2d456212ddfb6b6eb68d122da5875c6c59c4ba8472a3fc3",
+          "historical_archive": false,
+          "resolved_path": "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py",
+          "exists": true,
+          "current_sha256": "ff54f675b862bd3c72330e839b6461e6d01a02ec76cc35a7ccfa5c5bfb9465e9",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": [
+            "docs/audits/2026-08-30/evidence/integration/prefill-full-output/original-baseline_native_tma_prefill_decode.py"
+          ]
+        }
+      ]
+    },
+    {
+      "path": "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py",
+      "current_sha256": "7f3c16ab16961332e08fa5acef20c58483b268a3c268513a36f476ccaa25daa9",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+        "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+        "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json",
+        "docs/audits/2026-08-30/evidence/integration/prefill-full-output/cuda-preflight-hold/report.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+          "pointer": "/17",
+          "raw_path": "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py",
+          "expected_sha256": "5b0356053c4977f07080007cf1807600b9876f82782840e0ab82da834afbd521",
+          "historical_archive": false,
+          "resolved_path": "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py",
+          "exists": true,
+          "current_sha256": "7f3c16ab16961332e08fa5acef20c58483b268a3c268513a36f476ccaa25daa9",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": [
+            "docs/audits/2026-08-30/evidence/integration/prefill-full-output/original-optimized_native_tma_prefill_decode.py"
+          ]
+        },
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/attention/receipt.json",
+          "pointer": "/source_files/17",
+          "raw_path": "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py",
+          "expected_sha256": "5b0356053c4977f07080007cf1807600b9876f82782840e0ab82da834afbd521",
+          "historical_archive": false,
+          "resolved_path": "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py",
+          "exists": true,
+          "current_sha256": "7f3c16ab16961332e08fa5acef20c58483b268a3c268513a36f476ccaa25daa9",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": [
+            "docs/audits/2026-08-30/evidence/integration/prefill-full-output/original-optimized_native_tma_prefill_decode.py"
+          ]
+        }
+      ]
+    },
+    {
+      "path": "code/labs/persistent_decode/persistent_decode_common.py",
+      "current_sha256": "59b13fcbeac492772d47382efe5b04e3321fcbb3467098e46759755d7111d8ad",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+        "docs/audits/2026-08-30/evidence/integration/hygiene-collection/source-manifest.json",
+        "docs/audits/2026-08-30/evidence/integration/hygiene-collection/validation-receipts.json",
+        "docs/audits/2026-08-30/evidence/integration/prefill-full-output/cuda-preflight-hold/report.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/attention/source_manifest.json",
+          "pointer": "/22",
+          "raw_path": "code/labs/persistent_decode/persistent_decode_common.py",
+          "expected_sha256": "8c2e49dd225cf885faa53723c87294c9680853f66640a94131f4b9b4ce43e968",
+          "historical_archive": false,
+          "resolved_path": "code/labs/persistent_decode/persistent_decode_common.py",
+          "exists": true,
+          "current_sha256": "59b13fcbeac492772d47382efe5b04e3321fcbb3467098e46759755d7111d8ad",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": [
+            "docs/audits/2026-08-30/evidence/integration/prefill-full-output/original-persistent_decode_common.py"
+          ]
+        },
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/attention/receipt.json",
+          "pointer": "/source_files/22",
+          "raw_path": "code/labs/persistent_decode/persistent_decode_common.py",
+          "expected_sha256": "8c2e49dd225cf885faa53723c87294c9680853f66640a94131f4b9b4ce43e968",
+          "historical_archive": false,
+          "resolved_path": "code/labs/persistent_decode/persistent_decode_common.py",
+          "exists": true,
+          "current_sha256": "59b13fcbeac492772d47382efe5b04e3321fcbb3467098e46759755d7111d8ad",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": [
+            "docs/audits/2026-08-30/evidence/integration/prefill-full-output/original-persistent_decode_common.py"
+          ]
+        }
+      ]
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_zero2.py",
+      "current_sha256": "61bdda99a0903d79dc8374223c6d661f86f61e7f2715d318260302cdb61c9201",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+        "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-1/report.json",
+        "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-2/report.json",
+        "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/source-manifest.json",
+        "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/validation-receipts.json",
+        "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-1/report.json",
+        "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-2/report.json",
+        "docs/audits/2026-08-30/evidence/zero2-parity/receipt.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/zero2/single-receipt.json",
+          "pointer": "/source_sha256/code/labs/train_distributed/optimized_zero2.py",
+          "raw_path": "code/labs/train_distributed/optimized_zero2.py",
+          "expected_sha256": "35ccdc8746e7d08b0654f463bbb3ad74d5d68997a22d42b3ca40ed8a9fefb799",
+          "historical_archive": false,
+          "resolved_path": "code/labs/train_distributed/optimized_zero2.py",
+          "exists": true,
+          "current_sha256": "61bdda99a0903d79dc8374223c6d661f86f61e7f2715d318260302cdb61c9201",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/labs/train_distributed/optimized_zero2_multigpu.py",
+      "current_sha256": "65778560c2b6a094829cb098c1667e2e71ebfd7932a72c61a654279b5f9ea211",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+        "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-1/report.json",
+        "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-2/report.json",
+        "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/source-manifest.json",
+        "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/validation-receipts.json",
+        "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-1/report.json",
+        "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-2/report.json",
+        "docs/audits/2026-08-30/evidence/zero2-parity/receipt.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/zero2/single-receipt.json",
+          "pointer": "/source_sha256/code/labs/train_distributed/optimized_zero2_multigpu.py",
+          "raw_path": "code/labs/train_distributed/optimized_zero2_multigpu.py",
+          "expected_sha256": "b1565ce16de05d1eba31b1b65ac6737cedf63d57035652a896cc52b862be4769",
+          "historical_archive": false,
+          "resolved_path": "code/labs/train_distributed/optimized_zero2_multigpu.py",
+          "exists": true,
+          "current_sha256": "65778560c2b6a094829cb098c1667e2e71ebfd7932a72c61a654279b5f9ea211",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        },
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/zero2/receipt.json",
+          "pointer": "/files_sha256/code/labs/train_distributed/optimized_zero2_multigpu.py",
+          "raw_path": "code/labs/train_distributed/optimized_zero2_multigpu.py",
+          "expected_sha256": "b1565ce16de05d1eba31b1b65ac6737cedf63d57035652a896cc52b862be4769",
+          "historical_archive": false,
+          "resolved_path": "code/labs/train_distributed/optimized_zero2_multigpu.py",
+          "exists": true,
+          "current_sha256": "65778560c2b6a094829cb098c1667e2e71ebfd7932a72c61a654279b5f9ea211",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/labs/train_distributed/training_utils/torchrun_harness.py",
+      "current_sha256": "faf2903b81f3825422764a9819031375a287bbec28f1327899dcabd3bfd548b0",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+        "docs/audits/2026-08-30/evidence/torchrun-verification/receipt.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/torchrun-verification/receipt.json",
+          "pointer": "/source_files_before/code/labs/train_distributed/training_utils/torchrun_harness.py",
+          "raw_path": "code/labs/train_distributed/training_utils/torchrun_harness.py",
+          "expected_sha256": "7cec3cdf803499f5388f6c87d1f09487f738e318855f141d7adbb3f3cad152ce",
+          "historical_archive": false,
+          "resolved_path": "code/labs/train_distributed/training_utils/torchrun_harness.py",
+          "exists": true,
+          "current_sha256": "faf2903b81f3825422764a9819031375a287bbec28f1327899dcabd3bfd548b0",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": [
+            "docs/audits/2026-08-30/evidence/torchrun-verification/torchrun_harness.before.py.txt"
+          ]
+        },
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/source-manifest.json",
+          "pointer": "/code/labs/train_distributed/training_utils/torchrun_harness.py",
+          "raw_path": "code/labs/train_distributed/training_utils/torchrun_harness.py",
+          "expected_sha256": "7cec3cdf803499f5388f6c87d1f09487f738e318855f141d7adbb3f3cad152ce",
+          "historical_archive": false,
+          "resolved_path": "code/labs/train_distributed/training_utils/torchrun_harness.py",
+          "exists": true,
+          "current_sha256": "faf2903b81f3825422764a9819031375a287bbec28f1327899dcabd3bfd548b0",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": [
+            "docs/audits/2026-08-30/evidence/torchrun-verification/torchrun_harness.before.py.txt"
+          ]
+        },
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/validation-receipts.json",
+          "pointer": "/read_only_dependency_sha256/code/labs/train_distributed/training_utils/torchrun_harness.py",
+          "raw_path": "code/labs/train_distributed/training_utils/torchrun_harness.py",
+          "expected_sha256": "7cec3cdf803499f5388f6c87d1f09487f738e318855f141d7adbb3f3cad152ce",
+          "historical_archive": false,
+          "resolved_path": "code/labs/train_distributed/training_utils/torchrun_harness.py",
+          "exists": true,
+          "current_sha256": "faf2903b81f3825422764a9819031375a287bbec28f1327899dcabd3bfd548b0",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": [
+            "docs/audits/2026-08-30/evidence/torchrun-verification/torchrun_harness.before.py.txt"
+          ]
+        },
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-2/report.json",
+          "pointer": "/source_sha256/labs/train_distributed/training_utils/torchrun_harness.py",
+          "raw_path": "labs/train_distributed/training_utils/torchrun_harness.py",
+          "expected_sha256": "7cec3cdf803499f5388f6c87d1f09487f738e318855f141d7adbb3f3cad152ce",
+          "historical_archive": false,
+          "resolved_path": "code/labs/train_distributed/training_utils/torchrun_harness.py",
+          "exists": true,
+          "current_sha256": "faf2903b81f3825422764a9819031375a287bbec28f1327899dcabd3bfd548b0",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": [
+            "docs/audits/2026-08-30/evidence/torchrun-verification/torchrun_harness.before.py.txt"
+          ]
+        },
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-2/report.json",
+          "pointer": "/source_sha256/labs/train_distributed/training_utils/torchrun_harness.py",
+          "raw_path": "labs/train_distributed/training_utils/torchrun_harness.py",
+          "expected_sha256": "7cec3cdf803499f5388f6c87d1f09487f738e318855f141d7adbb3f3cad152ce",
+          "historical_archive": false,
+          "resolved_path": "code/labs/train_distributed/training_utils/torchrun_harness.py",
+          "exists": true,
+          "current_sha256": "faf2903b81f3825422764a9819031375a287bbec28f1327899dcabd3bfd548b0",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": [
+            "docs/audits/2026-08-30/evidence/torchrun-verification/torchrun_harness.before.py.txt"
+          ]
+        },
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-1/report.json",
+          "pointer": "/source_sha256/labs/train_distributed/training_utils/torchrun_harness.py",
+          "raw_path": "labs/train_distributed/training_utils/torchrun_harness.py",
+          "expected_sha256": "7cec3cdf803499f5388f6c87d1f09487f738e318855f141d7adbb3f3cad152ce",
+          "historical_archive": false,
+          "resolved_path": "code/labs/train_distributed/training_utils/torchrun_harness.py",
+          "exists": true,
+          "current_sha256": "faf2903b81f3825422764a9819031375a287bbec28f1327899dcabd3bfd548b0",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": [
+            "docs/audits/2026-08-30/evidence/torchrun-verification/torchrun_harness.before.py.txt"
+          ]
+        },
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-1/report.json",
+          "pointer": "/source_sha256/labs/train_distributed/training_utils/torchrun_harness.py",
+          "raw_path": "labs/train_distributed/training_utils/torchrun_harness.py",
+          "expected_sha256": "7cec3cdf803499f5388f6c87d1f09487f738e318855f141d7adbb3f3cad152ce",
+          "historical_archive": false,
+          "resolved_path": "code/labs/train_distributed/training_utils/torchrun_harness.py",
+          "exists": true,
+          "current_sha256": "faf2903b81f3825422764a9819031375a287bbec28f1327899dcabd3bfd548b0",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": [
+            "docs/audits/2026-08-30/evidence/torchrun-verification/torchrun_harness.before.py.txt"
+          ]
+        }
+      ]
+    },
+    {
+      "path": "code/tests/cuda/chapter_cuda_validation.cu",
+      "current_sha256": "bb8eee8173fec1c9bf8f80a8a38d320f95c909947811c2331e56ea10b2a3fdd3",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+        "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+        "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-preflight/report.json",
+          "pointer": "/source_sha256/tests/cuda/chapter_cuda_validation.cu",
+          "raw_path": "tests/cuda/chapter_cuda_validation.cu",
+          "expected_sha256": "f1fdbb3293c5fd35e0f686aca7575d0c366cc9087ee869737c84f0c7cc47fa52",
+          "historical_archive": false,
+          "resolved_path": "code/tests/cuda/chapter_cuda_validation.cu",
+          "exists": true,
+          "current_sha256": "bb8eee8173fec1c9bf8f80a8a38d320f95c909947811c2331e56ea10b2a3fdd3",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/tests/cuda/run_ch10_warp_specialized_validation.py",
+      "current_sha256": "5fabd910031af07109d51538fe5ced15079f56bc21a9fbc3833243a7ceb33e95",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+        "docs/audits/2026-08-30/evidence/chapter-cuda/tcgen05-gpu-final-preflight/report.json",
+        "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/chapter-cuda/tcgen05-gpu-preflight/report.json",
+          "pointer": "/source_sha256/tests/cuda/run_ch10_warp_specialized_validation.py",
+          "raw_path": "tests/cuda/run_ch10_warp_specialized_validation.py",
+          "expected_sha256": "eb821edbaa6e98211e99c1195b9c2cb77c90d84f81ad7cad5608cf7140eb3302",
+          "historical_archive": false,
+          "resolved_path": "code/tests/cuda/run_ch10_warp_specialized_validation.py",
+          "exists": true,
+          "current_sha256": "5fabd910031af07109d51538fe5ced15079f56bc21a9fbc3833243a7ceb33e95",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/tests/cuda/run_chapter_cuda_validation.py",
+      "current_sha256": "b7f0a028b2aa5c9455e712214fbb01e5aa30d46948d8400aa6772e12d8750a7b",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight/report.json",
+        "docs/audits/2026-08-30/evidence/chapter-cuda/source-manifest.json",
+        "docs/audits/2026-08-30/evidence/chapter-cuda/validation-receipts.json",
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-preflight/report.json",
+          "pointer": "/source_sha256/tests/cuda/run_chapter_cuda_validation.py",
+          "raw_path": "tests/cuda/run_chapter_cuda_validation.py",
+          "expected_sha256": "080b91aff8cc0652b019d29e7d09328f91db1626ed821736183dcdb41729f2a7",
+          "historical_archive": false,
+          "resolved_path": "code/tests/cuda/run_chapter_cuda_validation.py",
+          "exists": true,
+          "current_sha256": "b7f0a028b2aa5c9455e712214fbb01e5aa30d46948d8400aa6772e12d8750a7b",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/tests/cuda/run_feature_extensions_validation.py",
+      "current_sha256": "4e1768e0bfa419326016e896d522210a872d6e6ebb03df98dd2aabcf108f7874",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/feature-cuda/bias-sm100a-attempt-2/report.json",
+        "docs/audits/2026-08-30/evidence/feature-cuda/grace-sm90-attempt-2/report.json",
+        "docs/audits/2026-08-30/evidence/feature-cuda/source-manifest.json",
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/feature-cuda/bias-sm100a-attempt-1/report.json",
+          "pointer": "/source_sha256/tests/cuda/run_feature_extensions_validation.py",
+          "raw_path": "tests/cuda/run_feature_extensions_validation.py",
+          "expected_sha256": "e300e28f36580fc8917591e2cd252f6b1156a52403b9e60315e4d87872e869ca",
+          "historical_archive": false,
+          "resolved_path": "code/tests/cuda/run_feature_extensions_validation.py",
+          "exists": true,
+          "current_sha256": "4e1768e0bfa419326016e896d522210a872d6e6ebb03df98dd2aabcf108f7874",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        },
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/feature-cuda/grace-sm90-attempt-1/report.json",
+          "pointer": "/source_sha256/tests/cuda/run_feature_extensions_validation.py",
+          "raw_path": "tests/cuda/run_feature_extensions_validation.py",
+          "expected_sha256": "e300e28f36580fc8917591e2cd252f6b1156a52403b9e60315e4d87872e869ca",
+          "historical_archive": false,
+          "resolved_path": "code/tests/cuda/run_feature_extensions_validation.py",
+          "exists": true,
+          "current_sha256": "4e1768e0bfa419326016e896d522210a872d6e6ebb03df98dd2aabcf108f7874",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/tests/protection_test_utils.py",
+      "current_sha256": "bacedb4b85d24df893b2133ba26dbb4a1419eeb61cb58f8cddf00dda3dffdfd1",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+        "docs/audits/2026-08-30/evidence/torchrun-verification/receipt.json",
+        "docs/audits/2026-08-30/evidence/validation/clock-lock-followup/receipt.json",
+        "docs/audits/2026-08-30/evidence/validation/protection-coverage-receipt.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/validation/comparison-protection-receipt.json",
+          "pointer": "/sha256/code/tests/protection_test_utils.py",
+          "raw_path": "code/tests/protection_test_utils.py",
+          "expected_sha256": "6b8b8f630131671be837b9f0c2615bbee0da3c270fbfc06082bb998104253c30",
+          "historical_archive": false,
+          "resolved_path": "code/tests/protection_test_utils.py",
+          "exists": true,
+          "current_sha256": "bacedb4b85d24df893b2133ba26dbb4a1419eeb61cb58f8cddf00dda3dffdfd1",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/tests/test_anti_cheat_protections.py",
+      "current_sha256": "0a9464e77a170b459d1d4e3d4e7c914aa3947afd1512d83dc9f97aecc1f47c45",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+        "docs/audits/2026-08-30/evidence/validation/clock-lock-followup/receipt.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/validation/protection-coverage-receipt.json",
+          "pointer": "/files/code/tests/test_anti_cheat_protections.py",
+          "raw_path": "code/tests/test_anti_cheat_protections.py",
+          "expected_sha256": "b03c60bd445a7cba7db4dca4573fb8288c7f5db47c3bbd09776626709b4b0456",
+          "historical_archive": false,
+          "resolved_path": "code/tests/test_anti_cheat_protections.py",
+          "exists": true,
+          "current_sha256": "0a9464e77a170b459d1d4e3d4e7c914aa3947afd1512d83dc9f97aecc1f47c45",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        },
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/validation/comparison-protection-receipt.json",
+          "pointer": "/sha256/code/tests/test_anti_cheat_protections.py",
+          "raw_path": "code/tests/test_anti_cheat_protections.py",
+          "expected_sha256": "3b1119e98b878f60cbc0703d4a69cc18c3c028dfb8193ddef8f98103922307db",
+          "historical_archive": false,
+          "resolved_path": "code/tests/test_anti_cheat_protections.py",
+          "exists": true,
+          "current_sha256": "0a9464e77a170b459d1d4e3d4e7c914aa3947afd1512d83dc9f97aecc1f47c45",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/tests/test_audit_wave1_harness.py",
+      "current_sha256": "7f832cc35eb3d928a80fdd6b95e3122087d6c196997c878bf6c1d4bafd54d392",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/harness/timing-provenance-receipt.json",
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+        "docs/audits/2026-08-30/evidence/torchrun-verification/receipt.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/harness/receipt.json",
+          "pointer": "/files_sha256/code/tests/test_audit_wave1_harness.py",
+          "raw_path": "code/tests/test_audit_wave1_harness.py",
+          "expected_sha256": "b653db2e89f26e7dffc82288a5b26473c00eda29a64bb6ace5294411a8de9cb7",
+          "historical_archive": false,
+          "resolved_path": "code/tests/test_audit_wave1_harness.py",
+          "exists": true,
+          "current_sha256": "7f832cc35eb3d928a80fdd6b95e3122087d6c196997c878bf6c1d4bafd54d392",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/tests/test_audit_wave1_zero2_parity_cuda.py",
+      "current_sha256": "b1c66e6bc9d20259a0260514e469e52be970c2b17aba0aaa7c57ba932fa5847b",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+        "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-2/report.json",
+        "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/source-manifest.json",
+        "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/validation-receipts.json",
+        "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-2/report.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/without-opt-in-attempt-1/report.json",
+          "pointer": "/source_sha256/tests/test_audit_wave1_zero2_parity_cuda.py",
+          "raw_path": "tests/test_audit_wave1_zero2_parity_cuda.py",
+          "expected_sha256": "7ea8c90f7650b0df62f78c44ae7ca49e3b5205032c08b160c784bc3121c02f62",
+          "historical_archive": false,
+          "resolved_path": "code/tests/test_audit_wave1_zero2_parity_cuda.py",
+          "exists": true,
+          "current_sha256": "b1c66e6bc9d20259a0260514e469e52be970c2b17aba0aaa7c57ba932fa5847b",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        },
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/cuda-unavailable-attempt-1/report.json",
+          "pointer": "/source_sha256/tests/test_audit_wave1_zero2_parity_cuda.py",
+          "raw_path": "tests/test_audit_wave1_zero2_parity_cuda.py",
+          "expected_sha256": "7ea8c90f7650b0df62f78c44ae7ca49e3b5205032c08b160c784bc3121c02f62",
+          "historical_archive": false,
+          "resolved_path": "code/tests/test_audit_wave1_zero2_parity_cuda.py",
+          "exists": true,
+          "current_sha256": "b1c66e6bc9d20259a0260514e469e52be970c2b17aba0aaa7c57ba932fa5847b",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/tests/test_blackwell_feature_sources.py",
+      "current_sha256": "32756d0be4b5bad59e4cf160c760a0aacb032dfc1f1400bb503d5347ceb82d62",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/feature-cuda/retirement-followup/validation-receipts.json",
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/feature-cuda/source-manifest.json",
+          "pointer": "/owned_paths/code/tests/test_blackwell_feature_sources.py",
+          "raw_path": "code/tests/test_blackwell_feature_sources.py",
+          "expected_sha256": "2c03003757bf33ec7e8ee6bf0c3ef984baeae02591199167e92f1038f7048504",
+          "historical_archive": false,
+          "resolved_path": "code/tests/test_blackwell_feature_sources.py",
+          "exists": true,
+          "current_sha256": "32756d0be4b5bad59e4cf160c760a0aacb032dfc1f1400bb503d5347ceb82d62",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/tests/test_moe_journey_runtime_hotpath.py",
+      "current_sha256": "d6baeb0fce611e8f99b5bd71e9d5db2808417fe5faee7964e6348a4357cf17ad",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json",
+        "docs/audits/2026-08-30/evidence/moe-triton/receipt.json",
+        "docs/audits/2026-08-30/evidence/moe-triton/source-files.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/moe-journey/metadata-wrappers-receipt.json",
+          "pointer": "/source_sha256/code/tests/test_moe_journey_runtime_hotpath.py",
+          "raw_path": "code/tests/test_moe_journey_runtime_hotpath.py",
+          "expected_sha256": "eefbc7b2019bb95af8605bd0512a6a2152ed4b54aa240feaaf71031c10cf7555",
+          "historical_archive": false,
+          "resolved_path": "code/tests/test_moe_journey_runtime_hotpath.py",
+          "exists": true,
+          "current_sha256": "d6baeb0fce611e8f99b5bd71e9d5db2808417fe5faee7964e6348a4357cf17ad",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    },
+    {
+      "path": "code/tests/test_repository_configuration.py",
+      "current_sha256": "969b40b361f936160b98dc99a93a7c90e4f93d0e1dc4e74fb5dcfb522f06fd57",
+      "current_covered_by": [
+        "docs/audits/2026-08-30/evidence/build-entrypoints/validation-receipts.json",
+        "docs/audits/2026-08-30/evidence/integration/final-local/source-before-full-cpu.json"
+      ],
+      "historical_mismatches": [
+        {
+          "receipt": "docs/audits/2026-08-30/evidence/integration/receipt.json",
+          "pointer": "/files_sha256/code/tests/test_repository_configuration.py",
+          "raw_path": "code/tests/test_repository_configuration.py",
+          "expected_sha256": "6c5d31b658001ba4b5d43ae6738ada24bf74922c59f230cf615d4449c593b560",
+          "historical_archive": false,
+          "resolved_path": "code/tests/test_repository_configuration.py",
+          "exists": true,
+          "current_sha256": "969b40b361f936160b98dc99a93a7c90e4f93d0e1dc4e74fb5dcfb522f06fd57",
+          "hash_matches": false,
+          "preserved_bytes_elsewhere": []
+        }
+      ]
+    }
+  ],
+  "unresolved_path_strings_for_manual_triage": [],
+  "markdown_file_links": [
+    {
+      "document": "docs/audits/2026-08-30/evidence/tooling/README.md",
+      "raw_path": "receipt.json",
+      "resolved_path": "docs/audits/2026-08-30/evidence/tooling/receipt.json",
+      "exists": true
+    },
+    {
+      "document": "docs/audits/2026-08-30/evidence/tooling/README.md",
+      "raw_path": "cpu_trace.json",
+      "resolved_path": "docs/audits/2026-08-30/evidence/tooling/cpu_trace.json",
+      "exists": true
+    },
+    {
+      "document": "docs/audits/2026-08-30/evidence/tooling/README.md",
+      "raw_path": "cpu_flame.html",
+      "resolved_path": "docs/audits/2026-08-30/evidence/tooling/cpu_flame.html",
+      "exists": true
+    },
+    {
+      "document": "docs/audits/2026-08-30/evidence/tooling/README.md",
+      "raw_path": "cpu_flame.json",
+      "resolved_path": "docs/audits/2026-08-30/evidence/tooling/cpu_flame.json",
+      "exists": true
+    },
+    {
+      "document": "docs/audits/2026-08-30/evidence/api/README.md",
+      "raw_path": "receipt.json",
+      "resolved_path": "docs/audits/2026-08-30/evidence/api/receipt.json",
+      "exists": true
+    }
+  ],
+  "manifest_changed_during_scan": [],
+  "ledger": {
+    "ledger_snapshot_sha256": "7616ff3d3f502edd356fded85c66cd0c0cfb08626146e8589db1805e9f96c058",
+    "ledger_changed_while_reading": false,
+    "source_sha256": "474779ab49b67c5c888e5f689b2400204b6d0f46f304219cedd0773694b6e1ba",
+    "recorded_source_sha256": "474779ab49b67c5c888e5f689b2400204b6d0f46f304219cedd0773694b6e1ba",
+    "source_hash_matches": true,
+    "source_count": 128,
+    "ledger_count": 128,
+    "source_ids_exact": true,
+    "ledger_ids_exact": true,
+    "package_assignment_count": 128,
+    "package_ids_exact_once": true,
+    "source_severities": {
+      "critical": 5,
+      "high": 37,
+      "medium": 58,
+      "low": 28
+    },
+    "original_field_drift": [],
+    "wave2_required": true,
+    "wave2_status": "awaiting_report"
+  }
+}

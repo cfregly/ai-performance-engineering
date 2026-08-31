@@ -1,0 +1,61 @@
+{
+  "timestamp_utc": "2026-08-30T22:50:09.799712+00:00",
+  "baseline_revision": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "working_branch": "codex/audit-remediation-20260830",
+  "scope": [
+    "W1-033",
+    "W1-084",
+    "W1-120",
+    "adjacent DP=1 communication and decimal network-rate units"
+  ],
+  "environment": {
+    "python": "3.12.2",
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "torch": "2.8.0",
+    "cuda_available": false
+  },
+  "source_sha256": {
+    "code/labs/moe_parallelism/scenarios.py": "3987db7c5b391607405984ce1807877a1b9e0c81bd957fab9e7ab989ea01d3ad",
+    "code/labs/moe_parallelism/plan.py": "a356e6940e950ef3574399633ed0100e56ed6b187d656f45e5634a6d7674eb65",
+    "code/labs/moe_parallelism/run_lab.py": "576cb0822b5ac29952fd882eb39d93c2ff866e6dccfd03d40582a9467b1ae678",
+    "code/labs/moe_parallelism/README.md": "23dd9275248e70be93b6380bbfb444bdcc82897250ee68295f0eb5afdc80b35e",
+    "code/labs/moe_cuda/optimized_router.py": "81c0444045b77c4ba280671832d1b3c360d2ebd5adca44ed67c7e8c7220f1dc1",
+    "code/tests/test_audit_wave1_moe_planning_router.py": "e8a4bfd5a2f35b01c6d956f23d1e136868efdd52b7e06070af38d582b1034306"
+  },
+  "attempts": [
+    {
+      "log": "before.txt",
+      "result": "12 failed, 3 passed on original behavior"
+    },
+    {
+      "log": "after.txt",
+      "result": "15 passed after source changes"
+    },
+    {
+      "log": "integration.txt",
+      "result": "18 passed, 1 two-GPU skip in 4.68s; includes new zero-network single-rank case plus ZeRO checks"
+    },
+    {
+      "log": "planner-all-scenarios.txt",
+      "command": "/opt/miniconda3/bin/python -m labs.moe_parallelism.run_lab",
+      "cwd": "code",
+      "exit_code": 0,
+      "result": "All seven actual CPU planner scenarios emitted cluster/model context and modeled comparison labels"
+    },
+    {
+      "command": "/opt/miniconda3/bin/python code/core/scripts/refresh_readmes.py --check --target labs/moe_parallelism",
+      "exit_code": 0
+    },
+    {
+      "command": "ruff check selected source/tests --select E9,F63,F7,F82,B006,B023",
+      "exit_code": 0
+    }
+  ],
+  "limitations": [
+    "Planner is an uncalibrated analytical sizing model, not measured throughput or validated vendor/model specifications.",
+    "First five scenarios use the DGX 128-GPU preset; two explicit GB200 scenarios retain their distinct 576-GPU scope.",
+    "AdaptiveTopKMoE uses dense expert computation before top-k output selection; no sparse-compute performance claim.",
+    "Actual CPU double-precision forward/backward oracle checks distinct FC2 weights, top-k1/2/4, noncontiguous inputs, empty and varied batches; actual CUDA acceptance pending.",
+    "README generator remains root-owned and may change in later documentation work. Its hash is deliberately not used as the source identity of this focused mechanism."
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "command": [
+    "/opt/miniconda3/bin/python",
+    "-m",
+    "py_compile",
+    "code/labs/moe_optimization_journey/triton_fused_moe.py",
+    "code/labs/moe_optimization_journey/triton_kernels.py",
+    "code/labs/moe_optimization_journey/moe_model.py",
+    "code/tests/test_audit_wave1_moe_triton.py",
+    "code/tests/test_moe_journey_runtime_hotpath.py",
+    "code/tests/cuda/run_moe_triton_validation.py"
+  ],
+  "exit_code": 0,
+  "stdout": "",
+  "stderr": ""
+}

@@ -6,7 +6,7 @@
 #   # optional: USE_ARCH_SUFFIX := 0  # to disable suffixing targets
 #
 # Exposes:
-#   ARCH                - Selected GPU architecture (default: sm_100)
+#   ARCH                - Explicit or detected GPU architecture
 #   ARCH_NAME           - Human-readable architecture label
 #   ARCH_SUFFIX         - Suffix (_sm100, _sm103, _sm120, _sm121) for architecture-specific binaries
 #   TARGET_SUFFIX       - Suffix applied when USE_ARCH_SUFFIX is 1
@@ -37,16 +37,36 @@ CUDA_COMMON_DIR := $(dir $(CUDA_ARCH_MK_PATH))
 DEFAULT_ARCH := sm_100
 AUTO_ARCH_DETECTION ?= 1
 
+# These entry points do not build for the parent's parsed architecture. Hardware
+# aliases recurse with an explicit ARCH, compare iterates its ARCH_LIST, and
+# clean does not compile. Let them parse without requiring a visible GPU.
+_CUDA_ARCH_DISPATCH_GOALS := b200 b300 gb10 gb300 compare clean
+ifneq ($(filter b200 b300 gb10 gb300,$(MAKECMDGOALS)),)
+  ifneq ($(words $(MAKECMDGOALS)),1)
+    $(error Run a hardware alias by itself; use compare for sequential multi-architecture builds.)
+  endif
+endif
+_CUDA_ARCH_DEFER_DETECTION := 0
+ifneq ($(strip $(MAKECMDGOALS)),)
+  ifeq ($(strip $(filter-out $(_CUDA_ARCH_DISPATCH_GOALS),$(MAKECMDGOALS))),)
+    _CUDA_ARCH_DEFER_DETECTION := 1
+  endif
+endif
+
 ifeq ($(origin ARCH), undefined)
   ifeq ($(AUTO_ARCH_DETECTION),1)
-    DETECTED_ARCH := $(strip $(shell $(PYTHON) $(CUDA_COMMON_DIR)/../benchmark/detect_sm.py 2>/dev/null))
+    ifeq ($(_CUDA_ARCH_DEFER_DETECTION),0)
+      DETECTED_ARCH := $(strip $(shell $(PYTHON) $(CUDA_COMMON_DIR)/../benchmark/detect_sm.py 2>/dev/null))
+    endif
   endif
 endif
 
 ifeq ($(strip $(DETECTED_ARCH)),)
   ifeq ($(AUTO_ARCH_DETECTION),1)
     ifeq ($(origin ARCH), undefined)
-      $(error [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly.)
+      ifeq ($(_CUDA_ARCH_DEFER_DETECTION),0)
+        $(error [cuda_arch] Unable to auto-detect GPU architecture. Set ARCH=<sm_100|sm_103|sm_120|sm_121> explicitly.)
+      endif
     endif
   endif
   ARCH ?= $(DEFAULT_ARCH)
@@ -76,30 +96,30 @@ CUDA_13_ARCH_LIST := sm_100 sm_103 sm_120 sm_121
 ARCH_LIST ?= $(CUDA_13_ARCH_LIST)
 
 ifeq ($(ARCH),sm_121)
-ARCH_NAME := Grace-Blackwell GB10 (CC 12.1)
+ARCH_NAME := Blackwell GB10 / DGX Spark (CC 12.1)
 ARCH_SUFFIX := _sm121
 CUDA_ARCH_GENCODE := -gencode arch=compute_121,code=[sm_121,compute_121]
-HOST_ARCH_FLAGS := -Xcompiler -mcpu=native
 else ifeq ($(ARCH),sm_100)
-ARCH_NAME := Blackwell B200/B300 (CC 10.0)
+ARCH_NAME := Blackwell B200/GB200 (CC 10.0)
 ARCH_SUFFIX := _sm100
-# Use sm_100a for cluster/DSMEM support on Blackwell (CUDA 13.0+)
+# Architecture-specific instructions such as tcgen05 require the 'a' target.
 CUDA_ARCH_GENCODE := -gencode arch=compute_100a,code=[sm_100a,compute_100a]
-HOST_ARCH_FLAGS :=
 else ifeq ($(ARCH),sm_120)
-ARCH_NAME := Grace-Blackwell GB200 (CC 12.0)
+ARCH_NAME := Blackwell GeForce RTX 50-series / RTX PRO (CC 12.0)
 ARCH_SUFFIX := _sm120
 CUDA_ARCH_GENCODE := -gencode arch=compute_120,code=[sm_120,compute_120]
-HOST_ARCH_FLAGS := -Xcompiler -mcpu=native
 else ifeq ($(ARCH),sm_103)
-ARCH_NAME := Blackwell Ultra B300 (CC 10.3)
+ARCH_NAME := Blackwell Ultra B300/GB300 (CC 10.3)
 ARCH_SUFFIX := _sm103
-# Use sm_103a for cluster/DSMEM support on Blackwell Ultra (CUDA 13.0+)
+# The 100a and 103a targets are distinct; neither substitutes for the other.
 CUDA_ARCH_GENCODE := -gencode arch=compute_103a,code=[sm_103a,compute_103a]
-HOST_ARCH_FLAGS :=
 else
 $(error Unsupported ARCH=$(ARCH). Supported values: $(CUDA_13_ARCH_LIST))
 endif
+
+# GPU compute capability does not determine the host CPU's instruction set.
+# Callers may opt into host tuning explicitly, including for cross compilation.
+HOST_ARCH_FLAGS ?=
 
 # Base nvcc flags shared across the project. Chapters may append additional flags as needed.
 CUDA_CXX_STANDARD ?= 17

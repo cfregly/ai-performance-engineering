@@ -1,4 +1,4 @@
-"""Persistent decode in Triton with a device-side work queue."""
+"""Persistent Triton decode with grid-stride assignment of all sequence work items."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from labs.persistent_decode.persistent_decode_common import (
     build_inputs,
+    validate_decode_output,
     build_decode_input_signature,
     get_decode_options,
     get_decode_profile,
@@ -34,32 +35,29 @@ def persistent_decode_kernel(
     max_steps: tl.constexpr,
     BLOCK_K: tl.constexpr,
 ):
-    pid = tl.program_id(0)  # one program per sequence
-    if pid >= num_items:
-        return
+    for item in range(tl.program_id(0), num_items, tl.num_programs(0)):
+        seq_id = tl.load(work_seq_ids_ptr + item)
+        num_step = tl.load(work_steps_ptr + item)
 
-    seq_id = tl.load(work_seq_ids_ptr + pid)
-    num_step = tl.load(work_steps_ptr + pid)
+        for t in range(0, max_steps):
+            active = num_step > t
+            base = (seq_id * max_steps + t) * head_dim
+            offs = tl.arange(0, BLOCK_K)
+            dot = tl.zeros((), dtype=tl.float32)
 
-    for t in range(0, max_steps):
-        active = num_step > t
-        base = (seq_id * max_steps + t) * head_dim
-        offs = tl.arange(0, BLOCK_K)
-        dot = tl.zeros((), dtype=tl.float32)
+            for k0 in range(0, head_dim, BLOCK_K):
+                k_idx = k0 + offs
+                mask = (k_idx < head_dim) & active
+                q = tl.load(Q_ptr + base + k_idx, mask=mask, other=0.0)
+                k = tl.load(K_ptr + base + k_idx, mask=mask, other=0.0)
+                dot += tl.sum(q * k, axis=0)
 
-        for k0 in range(0, head_dim, BLOCK_K):
-            k_idx = k0 + offs
-            mask = (k_idx < head_dim) & active
-            q = tl.load(Q_ptr + base + k_idx, mask=mask, other=0.0)
-            k = tl.load(K_ptr + base + k_idx, mask=mask, other=0.0)
-            dot += tl.sum(q * k, axis=0)
-
-        # Write vector output = V * dot
-        for k0 in range(0, head_dim, BLOCK_K):
-            k_idx = k0 + offs
-            mask = (k_idx < head_dim) & active
-            v = tl.load(V_ptr + base + k_idx, mask=mask, other=0.0)
-            tl.store(OUT_ptr + base + k_idx, v * dot, mask=mask)
+            # Write vector output = V * dot
+            for k0 in range(0, head_dim, BLOCK_K):
+                k_idx = k0 + offs
+                mask = (k_idx < head_dim) & active
+                v = tl.load(V_ptr + base + k_idx, mask=mask, other=0.0)
+                tl.store(OUT_ptr + base + k_idx, v * dot, mask=mask)
 
 
 class OptimizedPersistentDecodeTritonBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -80,16 +78,13 @@ class OptimizedPersistentDecodeTritonBenchmark(VerificationPayloadMixin, BaseBen
         self.output: Optional[torch.Tensor] = None
         self._output_view: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
-        self._num_items = min(self.batch, self.num_programs)
-        self._launch_grid = (max(1, self._num_items),)
+        self._num_items = self.batch
+        self._launch_grid = (min(self.batch, self.num_programs),)
         self._block_k_const = self.block_k
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.inputs = build_inputs(self.device)
-        self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
+        self._output_view = self.inputs.out
         self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)
         self._synchronize()
 
@@ -136,6 +131,7 @@ class OptimizedPersistentDecodeTritonBenchmark(VerificationPayloadMixin, BaseBen
     def capture_verification_payload(self) -> None:
         if self.inputs is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        validate_decode_output(self.inputs)
         self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={
@@ -187,8 +183,10 @@ class OptimizedPersistentDecodeTritonBenchmark(VerificationPayloadMixin, BaseBen
     def validate_result(self) -> str | None:
         if self.inputs is None:
             return "Inputs not initialized"
-        if not torch.isfinite(self.inputs.out).all():
-            return "Non-finite output detected"
+        try:
+            validate_decode_output(self.inputs)
+        except AssertionError as exc:
+            return str(exc)
         return None
 
 def get_benchmark() -> BaseBenchmark:

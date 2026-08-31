@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
-"""Level 4: Triton-Optimized MoE with Grouped GEMM.
+"""Level 4 compatibility demo: sorted PyTorch expert GEMMs.
 
-OPTIMIZATION: Use Triton's grouped GEMM pattern for efficient MoE.
-
-Key changes from Level 2:
-1. Grouped GEMM: Process all experts in one kernel launch
-2. Memory coalescing: Reorder tokens by expert for better access
-3. Reduced indexing: Eliminate per-token expert lookups
-4. Autotuned tile sizes for MoE workloads
-
-Expected speedup: 1.2-1.5x over Level 2
+GroupedMoEExperts sorts token assignments and runs separate PyTorch matmuls
+for each populated expert. The legacy Triton filename/class names are retained;
+the auxiliary Triton kernel below is not launched by this benchmark. No single
+kernel launch, Triton execution, or speedup is established by those names.
 """
 
 from __future__ import annotations
@@ -282,7 +277,9 @@ class GroupedMoEExperts(nn.Module):
         torch.cumsum(expert_counts, dim=0, out=expert_offsets)
         expert_offsets.sub_(expert_counts)
         expert_metadata[1].copy_(expert_counts)
-        expert_metadata_host.copy_(expert_metadata, non_blocking=expert_counts.device.type == "cuda")
+        # Python immediately reads this pinned host buffer. A nonblocking D2H
+        # transfer would leave those reads racing the current CUDA stream.
+        expert_metadata_host.copy_(expert_metadata, non_blocking=False)
         expert_offsets_cpu = expert_metadata_host[0]
         expert_counts_cpu = expert_metadata_host[1]
         

@@ -1,0 +1,16 @@
+.................sssssss....s.sss.sssssssss.............                 [100%]
+=========================== short test summary info ============================
+SKIPPED [6] tests/test_audit_wave1_nanochat_regressions.py:97: requires real CUDA graphs and streams
+SKIPPED [1] tests/test_audit_wave1_nanochat_regressions.py:135: requires real CUDA stream ordering and D2H
+SKIPPED [1] tests/test_audit_wave1_nanochat_regressions.py:211: requires real CUDA work on a side stream
+SKIPPED [3] ../../../../../../opt/miniconda3/lib/python3.12/site-packages/_pytest/unittest.py:385: requires a real CUDA device; CPU does not qualify this optimization
+SKIPPED [1] tests/test_audit_wave1_zero2.py:124: Production reduce-scatter hook requires NCCL and two real GPUs
+SKIPPED [1] tests/test_blackwell_stack.py:25: Blackwell architecture detection requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:25: torch.compile requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:25: CUDA 13 stream integration requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:25: CUDA profiler and NVTX requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:25: Triton kernel requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:25: CUDA timing smoke check requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:174: distributed inference requires a real CUDA device
+SKIPPED [1] tests/test_blackwell_stack.py:295: distributed inference requires a real CUDA device
+36 passed, 20 skipped in 7.34s

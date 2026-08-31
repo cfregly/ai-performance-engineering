@@ -1,0 +1,29 @@
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+____________ test_timer_does_not_pad_or_discard_observed_blocks[1] _____________
+tests/test_audit_wave1_timing_provenance.py:38: in test_timer_does_not_pad_or_discard_observed_blocks
+    assert samples == [2.0, 5.0]
+E   assert [2.0] == [2.0, 5.0]
+E     
+E     Right contains one more item: 5.0
+E     Use -v to get more diff
+____________ test_timer_does_not_pad_or_discard_observed_blocks[10] ____________
+tests/test_audit_wave1_timing_provenance.py:38: in test_timer_does_not_pad_or_discard_observed_blocks
+    assert samples == [2.0, 5.0]
+E   assert [2.0, 5.0, 2....2.0, 5.0, ...] == [2.0, 5.0]
+E     
+E     Left contains 8 more items, first extra item: 2.0
+E     Use -v to get more diff
+________ test_real_cpu_timer_preserves_observed_block_count_and_output _________
+tests/test_audit_wave1_timing_provenance.py:59: in test_real_cpu_timer_preserves_observed_block_count_and_output
+    assert 0 < result.timing.iterations == len(result.timing.raw_times_ms) < config.iterations
+E   AssertionError: assert 100000 < 100000
+E    +  where 100000 = len([0.0016117080231197178, 0.0014892920153215528, 0.0015974590205587447, 0.0016047080280259252, 0.0015245000249706209, 0.0015204169903881848, ...])
+E    +    where [0.0016117080231197178, 0.0014892920153215528, 0.0015974590205587447, 0.0016047080280259252, 0.0015245000249706209, 0.0015204169903881848, ...] = TimingStats(mean_ms=0.0015529352136841043, median_ms=0.0015245000249706209, std_ms=4.6233351733146375e-05, min_ms=0.00...447, 0.0016047080280259252, 0.0015245000249706209], sample_scope=None, iterations_per_sample=None, schemaVersion='1.0').raw_times_ms
+E    +      where TimingStats(mean_ms=0.0015529352136841043, median_ms=0.0015245000249706209, std_ms=4.6233351733146375e-05, min_ms=0.00...447, 0.0016047080280259252, 0.0015245000249706209], sample_scope=None, iterations_per_sample=None, schemaVersion='1.0') = BenchmarkResult(timing=TimingStats(mean_ms=0.0015529352136841043, median_ms=0.0015245000249706209, std_ms=4.6233351733..._generation': None, 'pcie_link_width': None, 'performance_state': None, 'throttle_reasons': None}, schemaVersion='1.0').timing
+E    +  and   100000 = BenchmarkConfig(iterations=100000, warmup=5, min_run_time_ms=10, percentiles=[25, 50, 75, 99], enable_memory_tracking=...hold_mb=100.0, nsys_timeout_seconds=540, ncu_timeout_seconds=10800, proton_timeout_seconds=540, timeout_multiplier=3.0).iterations
+=========================== short test summary info ============================
+FAILED tests/test_audit_wave1_timing_provenance.py::test_timer_does_not_pad_or_discard_observed_blocks[1]
+FAILED tests/test_audit_wave1_timing_provenance.py::test_timer_does_not_pad_or_discard_observed_blocks[10]
+FAILED tests/test_audit_wave1_timing_provenance.py::test_real_cpu_timer_preserves_observed_block_count_and_output
+3 failed, 1 deselected in 0.46s

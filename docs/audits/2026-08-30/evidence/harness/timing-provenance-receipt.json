@@ -1,0 +1,58 @@
+{
+  "recorded_at": "2026-08-30T22:40:00.788850+00:00",
+  "finding": "LOCAL-005, related W1-061",
+  "base_revision": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "status": "source_and_CPU_verified_final_integration_pending",
+  "observation_contract": [
+    "PyTorch Timer keeps all actual block means from blocked_autorange; no repeat-padding or truncation to config.iterations. iterations counts observed blocks; iterations_per_sample is the actual number_per_run.",
+    "Torchrun uses the harness interpreter and monotonic process-wall timing, one raw observed sample, no per-step percentile distribution. A separately labeled amortized metric divides that process interval by requested iterations; it includes startup/setup/warmup overhead.",
+    "Optional TimingStats observation fields serialize and survive real isolated CPU Timer subprocess transport. Unknown older sample scope stays unspecified."
+  ],
+  "reproduction": {
+    "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python ../docs/audits/2026-08-30/evidence/harness/timing-provenance-reproducer.py",
+    "result": "expected3failed1deselected; exact original Timer body discards second sample, repeats two samples to10, and expands actualCPUobservations to100000",
+    "method": "Read originalgitblob and bind function only inside isolated testdriver process; no checkout restoration or source rollback"
+  },
+  "validation": [
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_audit_wave1_timing_provenance.py -q -p no:cacheprovider",
+      "result": "4passed5.52s; realCPU Timer and real one-rank CPUtorchrun; noGPU"
+    },
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_audit_wave1_timing_provenance.py tests/test_audit_wave1_harness.py tests/test_benchmark_harness_subprocess_regressions.py tests/test_blackwell_stack.py tests/test_audit_wave1_blackwell_validation.py -q -p no:cacheprovider",
+      "result": "45passed9skipped5Darwinenvironmentwarnings16.95s",
+      "log": "timing-blackwell-integration-v2.txt"
+    }
+  ],
+  "diagnostics_preserved": [
+    "Firstredattempt4failures:oneactualTimerrepetition failure, two missingTaskSpec.setup fixtureerrors, and torchrun40stimeout. These are not four original behavior reproductions.",
+    "Firstintegration3failures26passes17skips:fixtureerrors pluslaunchtimeout; corrected fixture and used staticloopback rendezvous. Independent exactoriginalTimer replay establishes the threebehaviorfailures.",
+    "Separate torchrun probe with currentinterpreter showed c10d reverse-DNShostname unavailable on thisMac. Own probe terminated withSIGTERM exit143; testusesstaticloopback. Do not attribute timeout conclusively to globaltorchrun interpreter.",
+    "PATHselectedglobal /opt/homebrew/bin/torchrun rather than the active interpreter. Production launcher now uses sys.executable -m torch.distributed.run to keep environment consistent.",
+    "One reproducer invocation initially used wrong cwd/path; the new script was moved to correct audit evidence directory, without deleting existing files.",
+    "Transient source patch placed process_wall setup in neighboring TTFT method; scopedruff identified undefinednames immediately; corrected before final v2tests."
+  ],
+  "limits": [
+    "NoCUDAexecution or performancequalification.",
+    "Do not compare historical per-step labels or paddedraw distributions as equivalent to new observation contract.",
+    "Full final source/CI integration is stillrequired."
+  ],
+  "primary_reference": "https://docs.pytorch.org/docs/2.9/benchmark_utils.html",
+  "source_sha256": {
+    "code/core/harness/benchmark_harness.py": "1f35a30c0216f3ae7f9a64ff5898125278efc9f7490fe2cf21829dcd9d2d3585",
+    "code/core/benchmark/models.py": "d7c551643c7a04ed10f26442514ebebfada5caee6313e41f5a823b5ddcaf4499",
+    "code/tests/test_audit_wave1_timing_provenance.py": "0ba1f9d76b51116f4dd49e76ff00148ece135f508bee2cf7bd0a3bbd3f4967b1",
+    "code/tests/test_audit_wave1_harness.py": "7f832cc35eb3d928a80fdd6b95e3122087d6c196997c878bf6c1d4bafd54d392",
+    "code/tests/test_benchmark_harness.py": "ad12b85d018f4fd0e13cffac19a72ed3271eb24ce4031cc118b006b0e5bfbc66"
+  },
+  "evidence_sha256": {
+    "timing-initial-attempt.txt": "0b4c4f08851e9533fbb50afac80f6a693d04e697bcbcc651516d2b1b8ba5d7dc",
+    "timing-original-replay.txt": "bebe2ca90c076d54e2f90e72c29fea75b5e923e2522fa26799548cae1009b468",
+    "timing-first-integration.txt": "92d452a424dfaa4e7af0d239cab7672523bed5f5692c9f6de58093a11d32c352",
+    "timing-fixture-diagnostic.txt": "29eca6c540250b40b8f10ae6a6db019a330d3845fed8aa1a9a65fcdb59734367",
+    "timing-torchrun-dns-diagnostic.txt": "dbc1a6a133b20f55ac635ee9a3e1e1fa82104ef35182ed3da0a69f48be357a5b",
+    "timing-focused-pass.txt": "311c535ad7ec6aab8d3e34cc0dae4a8c8f21510602b4799414b95765b0d48926",
+    "timing-blackwell-integration-v1.txt": "bc44671f9560f0f318ef878b301e1e2736ad352e289e1da6d1679b2b29bd8446",
+    "timing-blackwell-integration-v2.txt": "bafb6203475eecbaea1fa06bafb2e73452165bfe953add348b83f90c89e4b982"
+  }
+}

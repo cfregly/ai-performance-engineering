@@ -1,0 +1,27 @@
+{
+  "changed_existing_functions": [
+    "test_custom_vs_cublas_batches_correctness_scale_reads",
+    "test_dynamic_router_vllm_runner_caches_engine_ids",
+    "test_kv_cache_compression_reuses_capture_metadata_tensors",
+    "test_lab_utility_timers_record_on_current_stream",
+    "test_nanochat_attention_reuses_non_flash_sdpa_backend_order",
+    "test_nanochat_b200_flag_benchmark_uses_cuda_event_timing",
+    "test_nanochat_incremental_benchmark_uses_cuda_event_timing",
+    "test_nvfp4_group_gemm_reuses_verification_output_buffer",
+    "test_occupancy_tuning_variants_match_their_filenames",
+    "test_persistent_decode_baseline_reuses_decode_step_buffers",
+    "test_persistent_decode_tma_baselines_precompute_host_loop_views",
+    "test_persistent_decode_verification_clone_stays_out_of_hot_path",
+    "test_remaining_benchmark_wrappers_cache_verification_parameter_count",
+    "test_run_benchmarks_reaps_current_run_descendants"
+  ],
+  "added_functions": [
+    "test_occupancy_tuning_schedule_preserves_inference_and_validation_hygiene"
+  ],
+  "removed_functions": [],
+  "original_test_ids_preserved": true,
+  "new_skipped_test_ids": [
+    "test_run_benchmarks_reaps_current_run_descendants"
+  ],
+  "skip_reason": "Only actual Linux /proc runtime is unsupported on Darwin; Linux missing /proc is a failure."
+}

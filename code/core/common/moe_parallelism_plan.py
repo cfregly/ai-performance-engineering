@@ -20,9 +20,12 @@ def _bytes_to_gb(value: float) -> float:
 
 
 def _bytes_to_ms(value_bytes: float, bandwidth_GBps: float) -> float:
+    # Network rates are decimal GB/s, unlike the binary memory-size helper.
+    if value_bytes == 0:
+        return 0.0
     if bandwidth_GBps <= 0:
         return math.inf
-    seconds = value_bytes / (bandwidth_GBps * (1024 ** 3))
+    seconds = value_bytes / (bandwidth_GBps * 1e9)
     return seconds * 1e3
 
 
@@ -259,6 +262,10 @@ class PlanReport:
     affinity: List[str]
     notes: List[str]
 
+    @property
+    def memory_per_device_gb(self) -> float:
+        return self.total_memory_gb
+
     def as_dict(self) -> Dict[str, float]:
         return {
             "world_size": float(self.world_size),
@@ -354,7 +361,7 @@ class PlanEvaluator:
             / max(tp_ep_product, 1)
         ) * self.COMPUTE_COEFF
 
-        dp_bytes = params_total_bytes / max(plan.dp, 1)
+        dp_bytes = params_total_bytes / plan.dp if plan.dp > 1 else 0.0
         dp_time_ms = _bytes_to_ms(dp_bytes, cluster.nic_bandwidth_GBps)
 
         pipeline_bytes = (
@@ -372,7 +379,7 @@ class PlanEvaluator:
             * hidden_per_gpu
             * model.dtype_bytes
             * plan.microbatches
-            * max(plan.ep - 1, 1)
+            * max(plan.ep - 1, 0)
         )
         ep_bandwidth = (
             cluster.nic_bandwidth_GBps if plan.cross_node_ep else cluster.nvlink_bandwidth_GBps
@@ -419,8 +426,9 @@ class PlanEvaluator:
             hotspots.append(
                 f"Memory overcommitted by {abs(memory_margin_gb):.1f} GB (activation tuning needed)"
             )
-        if plan.cross_node_ep:
-            hotspots.append("Expert groups span nodes, forcing HDR100 all-to-all traffic")
+        network_label = f"{cluster.interconnect} ({cluster.nics_per_node} x {cluster.nic_bandwidth_gbps:g} Gb/s per node)"
+        if plan.cross_node_ep and plan.ep > 1:
+            hotspots.append(f"Expert groups span nodes, requiring all-to-all traffic over {network_label}")
         if not load_balance_ok:
             hotspots.append(
                 f"Expert load ratio {tokens_per_expert / max(capacity_limit_tokens, 1e-6):.2f} exceeds capacity"
@@ -428,7 +436,7 @@ class PlanEvaluator:
         if dp_time_ms > compute_ms * 0.6:
             hotspots.append("DP gradient all-reduce dominates step time")
         if pipeline_time_ms > compute_ms * 0.4:
-            hotspots.append("Pipeline activation transfers saturate HDR100")
+            hotspots.append(f"Estimated pipeline transfer time is high on {network_label}")
 
         affinity.append(
             f"Nodes per replica: {nodes_per_replica:.1f}, nodes per stage: {nodes_per_stage:.1f}"
@@ -438,7 +446,10 @@ class PlanEvaluator:
         )
         affinity.append(
             "EP communication: "
-            + ("cross-node over HDR100" if plan.cross_node_ep else "kept on NVSwitch per node")
+            + ("none (EP=1)" if plan.ep == 1 else (
+                f"cross-node over {network_label}" if plan.cross_node_ep
+                else f"within-node NVLink ({cluster.nvlink_bandwidth_tbps:g} TB/s configured)"
+            ))
         )
 
         notes = list(plan.notes)
@@ -475,7 +486,7 @@ class PlanEvaluator:
             activation_gb=activation_gb,
             total_memory_gb=total_memory_gb,
             memory_margin_gb=memory_margin_gb,
-            ep_cross_node=plan.cross_node_ep,
+            ep_cross_node=plan.cross_node_ep and plan.ep > 1,
             tokens_per_gpu=tokens_per_gpu,
             tokens_per_expert=tokens_per_expert,
             capacity_limit_tokens=capacity_limit_tokens,

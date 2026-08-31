@@ -1,0 +1,12 @@
+{
+  "status": "PASS_CURRENT_IDENTITY_ONLY",
+  "receipt_hashes": {
+    "attention-final-epoch/receipt.json": "7321e0b1f8d4f557d5cd83fa5b68e87e714350f96ae7601c4716e621f80cf1a7",
+    "runtime-handoff.md": "010b325c94d897c0078e16812c979ed649b0af3104b33fc2d7d67dfc1a1a8674",
+    "final-artifact-review/review.json": "bf01845104c36ee07e9382bd19ea4a0e447ddacd139d53358280cbe6a104e122",
+    "final-local/kv-payload-test-reconciliation/receipt.json": "2612240ce8241f9c2d96211c705d1d750aef190bd969f7ecf623698d3af834ec"
+  },
+  "attention_gate_current_sources": 115,
+  "whole_cpu_run_sources_unchanged": 320,
+  "runtime_qualification": false
+}

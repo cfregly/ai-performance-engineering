@@ -1,4 +1,4 @@
-"""Optimized FlashAttention lab: Gluon/Triton warp-specialized kernel (fallback to flash-attn)."""
+"""Optimized attention lab: ordinary tiled Triton kernel with online softmax."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from labs.flashattention_gluon.flashattention_gluon_common import (
 
 
 class OptimizedFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Optimized attention: fused kernel (prefer Gluon warp specialization; fallback flash-attn)."""
+    """Ordinary Triton tiled attention; no Gluon or FlashAttention fallback."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -43,9 +43,6 @@ class OptimizedFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchm
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.kernel = resolve_gluon_flash_attention()
         self.inputs = build_flashattention_inputs(
             batch=self.batch,

@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+    "-m",
+    "pip",
+    "install",
+    "--no-cache-dir",
+    "--only-binary",
+    ":all:",
+    "--index-url",
+    "https://pypi.org/simple",
+    "--report",
+    "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/full-dependency-graph/isolated-cli-pip-report.json",
+    "typer==0.15.4",
+    "typer-slim[standard]==0.15.4",
+    "rich==13.7.1",
+    "click==8.1.7",
+    "pytest==8.3.4",
+    "pyyaml==6.0.2",
+    "pydantic==2.12.4"
+  ],
+  "cwd": "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8",
+  "exit_code": 0,
+  "elapsed_seconds": 3.5318191051483154,
+  "scope": "Actual installation into new task venv only. Darwin pure CLI/runtime packages, no Torch/GPU installation."
+}

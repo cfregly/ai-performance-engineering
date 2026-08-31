@@ -1,0 +1,7 @@
+py_compile: PASS (2 files)
+All checks passed!
+fatal_ruff: PASS (2 files)
+git_diff_check: PASS
+e7d9179cb1a6ba0080753875c31ff6dc7ceba2b635306b2bd9e1581312db459d  code/ch16/inference_serving_multigpu.py
+ea63414dcf087013fdd8269813461a73dd4fee4372969afb29ee13c041bc017a  code/tests/test_tp_attention.py
+b085105debcb3950c4441674dc4699fa708528b5d117b7c52b25fe62c999fdab  code/AGENTS.md

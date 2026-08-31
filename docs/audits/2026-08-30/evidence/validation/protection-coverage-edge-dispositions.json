@@ -1,0 +1,746 @@
+[
+  {
+    "id": "TestTimingEdgeCases.test_unsynced_streams_multiple_streams",
+    "status": "cuda_runtime_hold",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestTimingEdgeCases.test_unsynced_streams_nested_streams",
+    "status": "cuda_runtime_hold",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestTimingEdgeCases.test_unsynced_streams_priority_streams",
+    "status": "cuda_runtime_hold",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestTimingEdgeCases.test_async_ops_chained_operations",
+    "status": "cuda_runtime_hold",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestTimingEdgeCases.test_async_ops_mixed_cpu_gpu",
+    "status": "cuda_runtime_hold",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestTimingEdgeCases.test_event_timing_zero_duration",
+    "status": "cuda_runtime_hold",
+    "limitation": "Real timing-gap rejection, including a synchronized clean control; no fabricated event durations.",
+    "body": null
+  },
+  {
+    "id": "TestTimingEdgeCases.test_event_timing_very_long_duration",
+    "status": "cuda_runtime_hold",
+    "limitation": "Real timing-gap rejection, including a synchronized clean control; no fabricated event durations.",
+    "body": null
+  },
+  {
+    "id": "TestTimingEdgeCases.test_timer_granularity_sub_microsecond",
+    "status": "cuda_runtime_hold",
+    "limitation": "Real timing-gap rejection, including a synchronized clean control; no fabricated event durations.",
+    "body": null
+  },
+  {
+    "id": "TestTimingEdgeCases.test_warmup_bleed_jit_compilation",
+    "status": "cpu_behavior",
+    "limitation": "Real CPU JIT and harness phase separation; no first-call speed assumption.",
+    "body": null
+  },
+  {
+    "id": "TestTimingEdgeCases.test_warmup_bleed_cudnn_autotuning",
+    "status": "cpu_behavior",
+    "limitation": "Actual backend-policy mutation detection; no cuDNN timing or GPU claim.",
+    "body": null
+  },
+  {
+    "id": "TestTimingEdgeCases.test_clock_drift_long_benchmark",
+    "status": "cpu_behavior",
+    "limitation": "Clock-drop diagnostic classifier, not a measured long GPU run.",
+    "body": null
+  },
+  {
+    "id": "TestTimingEdgeCases.test_profiler_overhead_nested_profilers",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no nested-profiler rejection guard is implemented; a single profiler context did not test nesting')"
+  },
+  {
+    "id": "TestOutputEdgeCases.test_constant_output_single_value",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestOutputEdgeCases.test_constant_output_near_constant",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestOutputEdgeCases.test_stale_cache_after_input_change",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestOutputEdgeCases.test_approximation_drift_accumulated_error",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestOutputEdgeCases.test_approximation_drift_fp16_accumulation",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestOutputEdgeCases.test_nan_from_division_by_zero",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestOutputEdgeCases.test_nan_from_sqrt_negative",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestOutputEdgeCases.test_nan_propagation",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestOutputEdgeCases.test_inf_from_overflow",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestOutputEdgeCases.test_inf_from_division",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestOutputEdgeCases.test_ground_truth_contains_nan",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestOutputEdgeCases.test_shape_mismatch_broadcast_ambiguity",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestOutputEdgeCases.test_shape_mismatch_transposed",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestOutputEdgeCases.test_dtype_mismatch_float_precisions",
+    "status": "cpu_behavior",
+    "limitation": "Runtime input dtype enforcement; no claim that output dtype coercion is a detector.",
+    "body": null
+  },
+  {
+    "id": "TestOutputEdgeCases.test_dtype_mismatch_int_vs_float",
+    "status": "cpu_behavior",
+    "limitation": "Runtime input dtype enforcement; no claim that output dtype coercion is a detector.",
+    "body": null
+  },
+  {
+    "id": "TestOutputEdgeCases.test_denormalized_values_detection",
+    "status": "cpu_behavior",
+    "limitation": "Exact comparator rejects flushing subnormal values to zero; default tolerance is unchanged.",
+    "body": null
+  },
+  {
+    "id": "TestOutputEdgeCases.test_uninitialized_memory_torch_empty",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no uninitialized-memory provenance detector; filling torch.empty before comparison erases the condition')"
+  },
+  {
+    "id": "TestWorkloadEdgeCases.test_batch_shrinking_by_one",
+    "status": "cpu_behavior",
+    "limitation": "Production signature equivalence rejects changed workload metadata, including zero batch versus nonzero.",
+    "body": null
+  },
+  {
+    "id": "TestWorkloadEdgeCases.test_batch_shrinking_zero_batch",
+    "status": "cpu_behavior",
+    "limitation": "Production signature equivalence rejects changed workload metadata, including zero batch versus nonzero.",
+    "body": null
+  },
+  {
+    "id": "TestWorkloadEdgeCases.test_sequence_truncation_by_one",
+    "status": "cpu_behavior",
+    "limitation": "Production signature equivalence rejects changed workload metadata, including zero batch versus nonzero.",
+    "body": null
+  },
+  {
+    "id": "TestWorkloadEdgeCases.test_hidden_downsampling_power_of_two",
+    "status": "cpu_behavior",
+    "limitation": "Production signature equivalence rejects changed workload metadata, including zero batch versus nonzero.",
+    "body": null
+  },
+  {
+    "id": "TestWorkloadEdgeCases.test_precision_mismatch_tf32",
+    "status": "cpu_behavior",
+    "limitation": "Production signature equivalence rejects changed workload metadata, including zero batch versus nonzero.",
+    "body": null
+  },
+  {
+    "id": "TestWorkloadEdgeCases.test_precision_mismatch_fp8_variants",
+    "status": "cpu_behavior",
+    "limitation": "FP8 variant identity is carried by actual signature dtype strings, not the shared fp8 flag.",
+    "body": null
+  },
+  {
+    "id": "TestWorkloadEdgeCases.test_undeclared_shortcuts_skip_layers",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestWorkloadEdgeCases.test_early_exit_threshold_boundary",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestWorkloadEdgeCases.test_sparsity_mismatch_one_percent_difference",
+    "status": "cpu_behavior",
+    "limitation": "Production signature equivalence rejects changed workload metadata, including zero batch versus nonzero.",
+    "body": null
+  },
+  {
+    "id": "TestWorkloadEdgeCases.test_sparsity_mismatch_near_zero",
+    "status": "cpu_behavior",
+    "limitation": "Production signature equivalence rejects changed workload metadata, including zero batch versus nonzero.",
+    "body": null
+  },
+  {
+    "id": "TestWorkloadEdgeCases.test_attention_mask_causal_vs_full",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestWorkloadEdgeCases.test_kv_cache_size_off_by_one",
+    "status": "cpu_behavior",
+    "limitation": "Production signature equivalence rejects changed workload metadata, including zero batch versus nonzero.",
+    "body": null
+  },
+  {
+    "id": "TestWorkloadEdgeCases.test_train_test_overlap_single_sample",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented')"
+  },
+  {
+    "id": "TestLocationEdgeCases.test_cpu_spillover_single_op_on_cpu",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no per-operation CPU spillover detector is implemented; wall-time measurement alone does not identify execution placement')"
+  },
+  {
+    "id": "TestLocationEdgeCases.test_cpu_spillover_data_dependent_branch",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no per-operation CPU spillover detector is implemented; wall-time measurement alone does not identify execution placement')"
+  },
+  {
+    "id": "TestLocationEdgeCases.test_setup_precomputation_cached_result",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestLocationEdgeCases.test_graph_capture_computation_in_capture",
+    "status": "cpu_behavior",
+    "limitation": "Timing diagnostic classification, not a captured graph or measured GPU work.",
+    "body": null
+  },
+  {
+    "id": "TestLocationEdgeCases.test_warmup_computation_result_reused",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestLocationEdgeCases.test_background_thread_computation",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no background-thread computation isolation guard; process isolation does not forbid threads inside a benchmark')"
+  },
+  {
+    "id": "TestLocationEdgeCases.test_lazy_evaluation_never_materialized",
+    "status": "cpu_behavior",
+    "limitation": "The production materializer reports a capability warning for a real meta tensor; it does not reject the run.",
+    "body": null
+  },
+  {
+    "id": "TestLocationEdgeCases.test_jit_compilation_first_call_slow",
+    "status": "cpu_behavior",
+    "limitation": "Real CPU JIT and harness phase separation; no first-call speed assumption.",
+    "body": null
+  },
+  {
+    "id": "TestMemoryEdgeCases.test_preallocated_output_exact_shape",
+    "status": "cpu_behavior",
+    "limitation": "Preallocated storage is allowed when recomputed; cached output is rejected.",
+    "body": null
+  },
+  {
+    "id": "TestMemoryEdgeCases.test_preallocated_output_view",
+    "status": "cpu_behavior",
+    "limitation": "Preallocated storage is allowed when recomputed; cached output is rejected.",
+    "body": null
+  },
+  {
+    "id": "TestMemoryEdgeCases.test_input_output_aliasing_inplace",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestMemoryEdgeCases.test_input_output_aliasing_view",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestMemoryEdgeCases.test_pinned_memory_transfer_timing",
+    "status": "cuda_runtime_hold",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestMemoryEdgeCases.test_memory_pool_cached_allocation",
+    "status": "cuda_runtime_hold",
+    "limitation": "Real CUDA allocator cleanup integration; does not claim cached address reuse is cheating.",
+    "body": null
+  },
+  {
+    "id": "TestMemoryEdgeCases.test_fragmentation_many_small_allocs",
+    "status": "cpu_behavior",
+    "limitation": "Production peak-memory diagnostic, not proof of fragmentation detection or an allocation stress test.",
+    "body": null
+  },
+  {
+    "id": "TestMemoryEdgeCases.test_page_fault_first_access",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no page-fault or managed-memory event detector is implemented')"
+  },
+  {
+    "id": "TestMemoryEdgeCases.test_swap_interference_large_allocation",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestCudaEdgeCases.test_host_callback_with_stream",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no host callback execution detector is implemented')"
+  },
+  {
+    "id": "TestCudaEdgeCases.test_async_memcpy_stream_ordering",
+    "status": "cuda_runtime_hold",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestCudaEdgeCases.test_workspace_precomputed_cublas",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no cuBLAS workspace precomputation detector is implemented')"
+  },
+  {
+    "id": "TestCudaEdgeCases.test_persistent_kernel_occupancy",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no persistent kernel lifetime detector is implemented')"
+  },
+  {
+    "id": "TestCudaEdgeCases.test_undeclared_multi_gpu_single_declared",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no undeclared GPU execution detector is implemented')"
+  },
+  {
+    "id": "TestCudaEdgeCases.test_context_switch_device_change",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no CUDA context switch enforcement detector is implemented')"
+  },
+  {
+    "id": "TestCudaEdgeCases.test_driver_overhead_many_small_kernels",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no driver-overhead attribution detector is implemented')"
+  },
+  {
+    "id": "TestCudaEdgeCases.test_cooperative_launch_grid_sync",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no cooperative launch inspection detector is implemented')"
+  },
+  {
+    "id": "TestCudaEdgeCases.test_dynamic_parallelism_nested_launch",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no device-side dynamic launch inspection detector is implemented')"
+  },
+  {
+    "id": "TestCudaEdgeCases.test_unified_memory_managed_allocation",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no page-fault or managed-memory event detector is implemented')"
+  },
+  {
+    "id": "TestCompileEdgeCases.test_cache_hit_shape_variation",
+    "status": "cpu_behavior",
+    "limitation": "Real CPU Dynamo cache hit and reset behavior, with graph execution checked.",
+    "body": null
+  },
+  {
+    "id": "TestCompileEdgeCases.test_trace_reuse_dynamic_shapes",
+    "status": "cpu_behavior",
+    "limitation": "Real CPU Dynamo cache hit and reset behavior, with graph execution checked.",
+    "body": null
+  },
+  {
+    "id": "TestCompileEdgeCases.test_mode_inconsistency_train_vs_eval",
+    "status": "cpu_behavior",
+    "limitation": "Output verification detects this real mode-dependent difference; no general mode-policy validator is implied.",
+    "body": null
+  },
+  {
+    "id": "TestCompileEdgeCases.test_inductor_asymmetry_different_backends",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no compiler-backend parity policy detector is implemented; eager versus compiled equivalence alone cannot enforce fair compiler modes')"
+  },
+  {
+    "id": "TestCompileEdgeCases.test_guard_failure_control_flow",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestCompileEdgeCases.test_autotuning_variance_repeated_runs",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no autotuning variance or compiler-mode parity detector is implemented')"
+  },
+  {
+    "id": "TestCompileEdgeCases.test_symbolic_shape_specialization",
+    "status": "cpu_behavior",
+    "limitation": "Production signature equivalence rejects changed workload metadata, including zero batch versus nonzero.",
+    "body": null
+  },
+  {
+    "id": "TestDistributedEdgeCases.test_rank_skipping_single_rank",
+    "status": "cpu_behavior",
+    "limitation": "Rank receipt validation, not a distributed execution measurement.",
+    "body": null
+  },
+  {
+    "id": "TestDistributedEdgeCases.test_collective_shortcircuit_single_element",
+    "status": "cpu_behavior",
+    "limitation": "Verifies a missing reduction result; no multiprocess collective is claimed.",
+    "body": null
+  },
+  {
+    "id": "TestDistributedEdgeCases.test_topology_mismatch_ring_vs_tree",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: DistributedTopology does not encode ring versus tree algorithm, so it cannot enforce this claimed policy')"
+  },
+  {
+    "id": "TestDistributedEdgeCases.test_barrier_timing_straggler",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no rank barrier timing detector is implemented')"
+  },
+  {
+    "id": "TestDistributedEdgeCases.test_gradient_bucketing_different_sizes",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no gradient bucket-size parity field or detector is implemented')"
+  },
+  {
+    "id": "TestDistributedEdgeCases.test_async_gradient_overlap",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no async gradient completion timing detector is implemented')"
+  },
+  {
+    "id": "TestDistributedEdgeCases.test_pipeline_bubble_microbatch_count",
+    "status": "cpu_behavior",
+    "limitation": "Declared per-rank workload comparison, not timing or detecting pipeline bubbles.",
+    "body": null
+  },
+  {
+    "id": "TestDistributedEdgeCases.test_shard_size_imbalanced",
+    "status": "cpu_behavior",
+    "limitation": "Declared shard dimensions are compared; no multiprocess run is claimed.",
+    "body": null
+  },
+  {
+    "id": "TestEnvironmentEdgeCases.test_device_mismatch_compute_capability",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no expected-versus-observed compute-capability comparison is performed by validate_environment')"
+  },
+  {
+    "id": "TestEnvironmentEdgeCases.test_frequency_boost_detection",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: GPU state consistency detects clock drops, not clock boosts or absolute clock locking')"
+  },
+  {
+    "id": "TestEnvironmentEdgeCases.test_priority_elevation_process_nice",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no process-priority parity detector is implemented')"
+  },
+  {
+    "id": "TestEnvironmentEdgeCases.test_memory_overcommit_reservation",
+    "status": "cpu_behavior",
+    "limitation": "Detects excessive allocated-memory growth in diagnostic snapshots; no OS overcommit policy detector is implied.",
+    "body": null
+  },
+  {
+    "id": "TestEnvironmentEdgeCases.test_numa_gpu_affinity",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestEnvironmentEdgeCases.test_cpu_governor_consistency",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestEnvironmentEdgeCases.test_thermal_throttling_temperature_check",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestEnvironmentEdgeCases.test_power_limit_variation",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: GPUState has no power-limit field and check_gpu_state_consistency does not compare power limits')"
+  },
+  {
+    "id": "TestEnvironmentEdgeCases.test_driver_version_recorded",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: the prior test checked the CUDA runtime string, not driver provenance; actual driver capture requires a CUDA/NVML integration fixture')"
+  },
+  {
+    "id": "TestEnvironmentEdgeCases.test_library_version_cudnn",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: RunManifest does not record cuDNN version or compare baseline/optimized library versions')"
+  },
+  {
+    "id": "TestEnvironmentEdgeCases.test_container_cgroup_limits",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestEnvironmentEdgeCases.test_virtualization_detection",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestStatisticalEdgeCases.test_outlier_injection_single_extreme",
+    "status": "cpu_behavior",
+    "limitation": "Reporting fidelity only. No production statistical outlier/omission/cherry-pick classifier exists; that requirement stays open.",
+    "body": null
+  },
+  {
+    "id": "TestStatisticalEdgeCases.test_outlier_injection_median_robust",
+    "status": "cpu_behavior",
+    "limitation": "Reporting fidelity only. No production statistical outlier/omission/cherry-pick classifier exists; that requirement stays open.",
+    "body": null
+  },
+  {
+    "id": "TestStatisticalEdgeCases.test_variance_gaming_consistent_slow",
+    "status": "cpu_behavior",
+    "limitation": "Reporting fidelity only. No production statistical outlier/omission/cherry-pick classifier exists; that requirement stays open.",
+    "body": null
+  },
+  {
+    "id": "TestStatisticalEdgeCases.test_percentile_selection_p50_vs_p99",
+    "status": "cpu_behavior",
+    "limitation": "Reporting fidelity only. No production statistical outlier/omission/cherry-pick classifier exists; that requirement stays open.",
+    "body": null
+  },
+  {
+    "id": "TestStatisticalEdgeCases.test_insufficient_samples_high_variance",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no statistical-power or minimum-samples-based-on-variance detector is implemented')"
+  },
+  {
+    "id": "TestStatisticalEdgeCases.test_cold_start_first_iteration_slow",
+    "status": "cpu_behavior",
+    "limitation": "Reporting fidelity only. No production statistical outlier/omission/cherry-pick classifier exists; that requirement stays open.",
+    "body": null
+  },
+  {
+    "id": "TestStatisticalEdgeCases.test_gc_interference_collection_pause",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestStatisticalEdgeCases.test_background_noise_cpu_bound",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no background CPU noise or process-priority detector is implemented')"
+  },
+  {
+    "id": "TestStatisticalEdgeCases.test_cherry_picking_best_of_n",
+    "status": "cpu_behavior",
+    "limitation": "Reporting fidelity only. No production statistical outlier/omission/cherry-pick classifier exists; that requirement stays open.",
+    "body": null
+  },
+  {
+    "id": "TestEvaluationEdgeCases.test_eval_code_exploitation_hardcoded",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestEvaluationEdgeCases.test_timeout_manipulation_extend",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestEvaluationEdgeCases.test_metric_gaming_threshold_tuning",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no evaluation-threshold policy or dataset evaluator contract is implemented')"
+  },
+  {
+    "id": "TestEvaluationEdgeCases.test_data_leakage_feature_from_label",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented')"
+  },
+  {
+    "id": "TestEvaluationEdgeCases.test_overfitting_train_on_test",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented')"
+  },
+  {
+    "id": "TestEvaluationEdgeCases.test_self_modifying_immutable_test",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no test-source immutability guard is implemented in the benchmark protection path')"
+  },
+  {
+    "id": "TestEvaluationEdgeCases.test_memorization_hash_detection",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestEvaluationEdgeCases.test_missing_holdout_temporal_split",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented')"
+  },
+  {
+    "id": "TestBoundaryConditions.test_tolerance_exactly_at_boundary",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestBoundaryConditions.test_workload_mismatch_at_one_percent",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestBoundaryConditions.test_sparsity_at_detection_threshold",
+    "status": "cpu_behavior",
+    "limitation": "Signature sparsity policy is exact matching; no invented 1% tolerance.",
+    "body": null
+  },
+  {
+    "id": "TestBoundaryConditions.test_timing_variance_coefficient",
+    "status": "cpu_behavior",
+    "limitation": "Graph replay variance diagnostic, not a general timing acceptance policy.",
+    "body": null
+  },
+  {
+    "id": "TestExtremeValues.test_very_large_tensor",
+    "status": "cpu_behavior",
+    "limitation": "Real failure propagation; explicit injected OOM avoids allocating most of the device or claiming actual exhaustion.",
+    "body": null
+  },
+  {
+    "id": "TestExtremeValues.test_very_small_values",
+    "status": "cpu_behavior",
+    "limitation": "Exact comparator rejects flushing subnormal values to zero; default tolerance is unchanged.",
+    "body": null
+  },
+  {
+    "id": "TestExtremeValues.test_zero_dimensions",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestExtremeValues.test_single_element",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestExtremeValues.test_maximum_dimensions",
+    "status": "cpu_behavior",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestRaceConditions.test_concurrent_stream_operations",
+    "status": "cuda_runtime_hold",
+    "limitation": null,
+    "body": null
+  },
+  {
+    "id": "TestRaceConditions.test_concurrent_allocations",
+    "status": "unsupported_open",
+    "limitation": "Requirement remains open; this retained test ID is not passing coverage.",
+    "body": "pytest.skip('Missing production protection: no concurrent-allocation race detector is implemented; successful allocations did not validate a protection')"
+  }
+]

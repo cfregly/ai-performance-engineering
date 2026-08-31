@@ -14,5 +14,6 @@ pytestmark = pytest.mark.skipif(
 
 def test_benchmark_peak_imports_with_serving_stack_runtime() -> None:
     module = importlib.import_module("core.benchmark.benchmark_peak")
+    module._load_transformer_engine()
     assert module.TE_AVAILABLE is True
     assert isinstance(module._SERVING_STACK_LIB_DIRS, list)

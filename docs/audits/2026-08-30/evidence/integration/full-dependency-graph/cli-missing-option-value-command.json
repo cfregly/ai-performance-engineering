@@ -1,0 +1,18 @@
+{
+  "case": "missing-option-value",
+  "argv": [
+    "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+    "-m",
+    "cli.aisp",
+    "bench",
+    "list-targets",
+    "--chapter"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "exit_code": 2,
+  "expected_exit": 2,
+  "expected_text": "requires an argument",
+  "status": "PASS",
+  "elapsed_seconds": 2.474685875000432,
+  "output": "cli-missing-option-value.txt"
+}

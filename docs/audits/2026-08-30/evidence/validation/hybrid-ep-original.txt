@@ -1,0 +1,47 @@
+{
+  "status": "EXPECTED_ORIGINAL_FAILURES_REPRODUCED",
+  "ranks": [
+    {
+      "rank": 0,
+      "backend": "actual_gloo",
+      "cuda_used": false,
+      "replicas_equal_before_any_update": false,
+      "original_autograd_error": "mul(): functions with out=... arguments don't support automatic differentiation, but one of the arguments requires grad.",
+      "route_outcome": "returned_without_collectives",
+      "output_shape": [
+        0,
+        4
+      ]
+    },
+    {
+      "rank": 1,
+      "backend": "actual_gloo",
+      "cuda_used": false,
+      "replicas_equal_before_any_update": false,
+      "original_autograd_error": "mul(): functions with out=... arguments don't support automatic differentiation, but one of the arguments requires grad.",
+      "route_outcome": "collective_failed",
+      "route_error": "[/Users/runner/work/pytorch/pytorch/pytorch/third_party/gloo/gloo/transport/uv/unbound_buffer.cc:101] Timed out waiting 5000ms for send operation to complete"
+    },
+    {
+      "rank": 2,
+      "backend": "actual_gloo",
+      "cuda_used": false,
+      "replicas_equal_before_any_update": false,
+      "original_autograd_error": "mul(): functions with out=... arguments don't support automatic differentiation, but one of the arguments requires grad.",
+      "route_outcome": "returned_without_collectives",
+      "output_shape": [
+        0,
+        4
+      ]
+    },
+    {
+      "rank": 3,
+      "backend": "actual_gloo",
+      "cuda_used": false,
+      "replicas_equal_before_any_update": false,
+      "original_autograd_error": "mul(): functions with out=... arguments don't support automatic differentiation, but one of the arguments requires grad.",
+      "route_outcome": "collective_failed",
+      "route_error": "[/Users/runner/work/pytorch/pytorch/pytorch/third_party/gloo/gloo/transport/uv/unbound_buffer.cc:101] Timed out waiting 5000ms for send operation to complete"
+    }
+  ]
+}

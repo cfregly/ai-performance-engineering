@@ -29,8 +29,7 @@ from ch19.mxfp8_moe_common import (
 
 # Try to import Triton kernels
 try:
-    from labs.moe_optimization_journey.triton_kernels import fused_silu_mul
-    TRITON_AVAILABLE = True
+    from labs.moe_optimization_journey.triton_kernels import TRITON_AVAILABLE, fused_silu_mul
 except ImportError:
     TRITON_AVAILABLE = False
     def fused_silu_mul(gate, up):
@@ -382,15 +381,11 @@ class MoEExperts(nn.Module):
     def forward_fused(
         self, x: torch.Tensor, expert_indices: torch.Tensor, expert_weights: torch.Tensor,
     ) -> torch.Tensor:
-        """Level 2: FUSED - Triton kernel fuses SiLU * up.
-        
-        The SiLU activation and elementwise multiply are fused into
-        one Triton kernel, eliminating a memory round-trip.
-        
-        Before: gate→memory→SiLU→memory→multiply→memory
-        After:  gate→memory→fused_silu_mul→memory
-        
-        Speedup: Additional ~1.2x on top of batched
+        """Level 2: CUDA inference can fuse SiLU * up with Triton.
+
+        Trainable gate/up tensors use differentiable PyTorch operations. CPU or
+        missing-Triton execution also uses PyTorch; those paths are not evidence
+        of Triton execution or a kernel-launch/speedup improvement.
         """
         batch_seq, top_k = expert_indices.shape
         
@@ -403,7 +398,7 @@ class MoEExperts(nn.Module):
         gate = torch.einsum('bkh,bkhi->bki', x_exp, w1_sel)
         up = torch.einsum('bkh,bkhi->bki', x_exp, w3_sel)
         
-        # FUSED: SiLU(gate) * up in one kernel
+        # Select Triton inference or the explicitly differentiable PyTorch path.
         hidden = fused_silu_mul(gate, up)
         
         out = torch.einsum('bki,bkih->bkh', hidden, w2_sel)

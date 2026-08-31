@@ -25,6 +25,14 @@ Supported backends (auto-detected from env):
     - Anthropic (ANTHROPIC_API_KEY)
     - Ollama (OLLAMA_HOST)
     - vLLM (VLLM_API_BASE)
+
+Anthropic defaults to claude-sonnet-4-6, the documented replacement for the
+Sonnet 4 model retired on June 15, 2026. ANTHROPIC_MODEL, then PERF_LLM_MODEL,
+can explicitly override it. Lifecycle checked August 30, 2026:
+https://platform.claude.com/docs/en/about-claude/model-deprecations
+
+The default output budget is 4096 tokens. LLM_MAX_TOKENS takes precedence over
+PERF_LLM_MAX_TOKENS, and llm_call(max_tokens=...) overrides the configured budget.
 """
 
 import os
@@ -36,6 +44,7 @@ from core.utils.dotenv import load_repo_dotenv, reset_repo_dotenv_cache
 
 # Find repo root for .env loading
 CODE_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
 
 
 # =============================================================================
@@ -56,16 +65,21 @@ class LLMConfig:
     def from_env(cls) -> 'LLMConfig':
         """Load config from environment with provider-specific defaults."""
         _load_env()
-        # Favor very high default; cap to provider constraints at call time.
-        env_max = int(os.environ.get("LLM_MAX_TOKENS") or os.environ.get("PERF_LLM_MAX_TOKENS", "131072"))
-        env_max = max(env_max, 131072)
+        # Keep environment-backed and explicitly constructed configs consistent.
+        env_max = int(
+            os.environ.get("LLM_MAX_TOKENS")
+            or os.environ.get("PERF_LLM_MAX_TOKENS")
+            or cls.max_tokens
+        )
+        if env_max <= 0:
+            raise ValueError("LLM_MAX_TOKENS/PERF_LLM_MAX_TOKENS must be a positive integer")
 
         def _select(provider: str) -> 'LLMConfig':
             provider = provider.lower()
             if provider == "anthropic":
                 return cls(
                     provider="anthropic",
-                    model=os.environ.get("ANTHROPIC_MODEL") or os.environ.get("PERF_LLM_MODEL") or "claude-sonnet-4-20250514",
+                    model=os.environ.get("ANTHROPIC_MODEL") or os.environ.get("PERF_LLM_MODEL") or DEFAULT_ANTHROPIC_MODEL,
                     api_key=os.environ.get("ANTHROPIC_API_KEY"),
                     base_url=None,
                     temperature=float(os.environ.get("PERF_LLM_TEMPERATURE", "0.7")),
@@ -189,7 +203,8 @@ def llm_call(
         prompt: The user prompt
         system: Optional system prompt
         temperature: Override default temperature
-        max_tokens: Override default max_tokens
+        max_tokens: Positive integer overriding the configured output-token budget.
+            Provider/model limits still apply; this client does not raise or clamp the budget.
         json_mode: Request JSON output (OpenAI/Anthropic)
     
     Returns:
@@ -197,6 +212,7 @@ def llm_call(
     
     Raises:
         RuntimeError: If no LLM backend is available
+        ValueError: If the output-token budget is not a positive integer
     """
     config = get_config()
     
@@ -204,14 +220,9 @@ def llm_call(
         raise RuntimeError("No LLM backend configured. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or configure Ollama.")
     
     temp = temperature if temperature is not None else config.temperature
-    # Favor caller override, then config, with a very high floor (provider will clamp if needed)
-    tokens = max(
-        t for t in [
-            max_tokens if max_tokens is not None else 0,
-            config.max_tokens or 0,
-            131072,
-        ] if isinstance(t, (int, float))
-    )
+    tokens = max_tokens if max_tokens is not None else config.max_tokens
+    if isinstance(tokens, bool) or not isinstance(tokens, int) or tokens <= 0:
+        raise ValueError("max_tokens must be a positive integer")
     
     if config.provider == 'openai':
         return _call_openai(prompt, system, temp, tokens, json_mode, config)

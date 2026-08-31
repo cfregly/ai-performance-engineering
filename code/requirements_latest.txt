@@ -1,5 +1,5 @@
 # AI Performance Engineering - Blackwell Requirements
-# Target: Blackwell B200 (SM100) with PyTorch 2.9.1+cu130, CUDA 13.0, Triton 3.5.0
+# Target: Blackwell B200 (SM100) with PyTorch 2.9.1+cu130, CUDA 13.0, Triton 3.5.1
 # All versions are pinned to exact versions for reproducible builds
 # uv.lock contains only the repository's Python compatibility metadata. It is
 # not a resolved dependency lock. This file remains the environment source.
@@ -15,12 +15,13 @@
 
 # Core PyTorch ecosystem (CUDA 13 wheels)
 -f ./third_party/wheels
-# --index-url https://download.pytorch.org/whl/cu130
-# torch is installed by setup.sh from the cached wheel; omit here to avoid duplicate installs
+--extra-index-url https://download.pytorch.org/whl/cu130
+# Resolve the exact +cu130 torch pin below from the official stable CUDA index.
+# Keep PyPI available for the remaining packages and local wheels when present.
 # torchvision will be installed separately with --no-deps to prevent torch override
 
-# Optional: install upstream Triton if you author custom GPU kernels outside of
-triton==3.5.0
+# PyTorch 2.9.1 CUDA wheel metadata requires this exact Linux dependency.
+triton==3.5.1
 
 # Build tooling compatibility
 packaging==25.0
@@ -78,15 +79,18 @@ hypothesis==6.148.2  # Property-based testing for benchmark integrity tests
 pyyaml==6.0.2
 pydantic==2.12.4
 pydantic-core==2.41.5  # Required by pydantic 2.12.4
-typer==0.12.0
-typer-slim[standard]==0.12.0  # Required by typer 0.12.0 and typer-cli 0.12.0
+# FastAPI's standard CLI requires Typer >=0.15.1. Keep the full and slim
+# distributions on the same release because both provide the typer package.
+typer==0.15.4
+typer-slim[standard]==0.15.4
 click==8.1.7  # Pin to Typer-compatible Click to avoid CLI help/runtime errors
-rich==13.7.0
+rich==13.7.1  # rich-toolkit (FastAPI standard CLI) requires >=13.7.1
 
 # Dashboard API server
 fastapi==0.121.3
 uvicorn==0.38.0
 httpx==0.28.1
+requests==2.34.2  # Direct dependency of the full CPU HTTP integration tests
 
 # Model development helpers
 transformers==4.56.0
@@ -102,6 +106,9 @@ torchtitan==0.2.0
 # Tested benchmark-host serving ABI matrix (pin these together).
 # setup.sh may install torch from cached wheels; keep that install on this exact version.
 torch==2.9.1+cu130
+# Upstream torchao compatibility matrix pairs 0.15.0 with torch 2.9.1.
+# The official +cu130 wheel is x86_64-only; ARM CUDA requires a validated source build.
+torchao==0.15.0+cu130
 vllm==0.16.0
 flashinfer-python==0.6.3
 # vLLM runtime dependencies for no-deps wheel installs on benchmark hosts.

@@ -1,0 +1,426 @@
+FFFFF.ssss                                                               [100%]
+=================================== FAILURES ===================================
+__ test_device_position_cache_matches_eager_and_full_sequence_each_step[1-1] ___
+
+batch = 1, prompt_len = 1
+
+    @pytest.mark.parametrize("batch,prompt_len", [(1, 1), (2, 3), (3, 5)])
+    @torch.inference_mode()
+    def test_device_position_cache_matches_eager_and_full_sequence_each_step(batch, prompt_len):
+        model = make_model()
+        tokens = torch.randint(0, 64, (batch, prompt_len + 6))
+        eager, static = make_cache(model, batch), make_cache(model, batch)
+>       model(tokens[:, :prompt_len], kv_cache=eager)
+
+tests/test_audit_wave1_nanochat_regressions.py:36: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:721: in forward
+    x = block(x, cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:483: in forward
+    x = x + self.attn(norm(x), cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:446: in forward
+    with self.sdpa_ctx_factory(sdpa_order):
+/opt/miniconda3/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+backends = (<SDPBackend.EFFICIENT_ATTENTION: 2>, <SDPBackend.MATH: 0>)
+set_priority = False
+
+    @contextlib.contextmanager
+    def sdpa_kernel(
+        backends: Union[list[SDPBackend], SDPBackend], set_priority: bool = False
+    ):
+        r"""
+        Context manager to select which backend to use for scaled dot product attention.
+    
+        .. warning:: This function is beta and subject to change.
+    
+        Args:
+            backends (Union[List[SDPBackend], SDPBackend]): A backend or list of backends for scaled dot product attention.
+            set_priority_order (bool=False): Whether the ordering of the backends is interpreted as their priority order.
+    
+        Example:
+    
+        .. code-block:: python
+    
+            from torch.nn.functional import scaled_dot_product_attention
+            from torch.nn.attention import SDPBackend, sdpa_kernel
+    
+            # Only enable flash attention backend
+            with sdpa_kernel(SDPBackend.FLASH_ATTENTION):
+                scaled_dot_product_attention(...)
+    
+            # Enable the Math or Efficient attention backends
+            with sdpa_kernel([SDPBackend.MATH, SDPBackend.EFFICIENT_ATTENTION]):
+                scaled_dot_product_attention(...)
+    
+        This context manager can be used to select which backend to use for scaled dot product attention.
+        Upon exiting the context manager, the previous state of the flags will be restored, enabling all backends.
+        """
+>       assert isinstance(backends, (list, SDPBackend)), (
+            "Backend must be an instance of SDPBackend or a list of SDPBackend instances"
+        )
+E       AssertionError: Backend must be an instance of SDPBackend or a list of SDPBackend instances
+
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/attention/__init__.py:135: AssertionError
+__ test_device_position_cache_matches_eager_and_full_sequence_each_step[2-3] ___
+
+batch = 2, prompt_len = 3
+
+    @pytest.mark.parametrize("batch,prompt_len", [(1, 1), (2, 3), (3, 5)])
+    @torch.inference_mode()
+    def test_device_position_cache_matches_eager_and_full_sequence_each_step(batch, prompt_len):
+        model = make_model()
+        tokens = torch.randint(0, 64, (batch, prompt_len + 6))
+        eager, static = make_cache(model, batch), make_cache(model, batch)
+>       model(tokens[:, :prompt_len], kv_cache=eager)
+
+tests/test_audit_wave1_nanochat_regressions.py:36: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:721: in forward
+    x = block(x, cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:483: in forward
+    x = x + self.attn(norm(x), cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:446: in forward
+    with self.sdpa_ctx_factory(sdpa_order):
+/opt/miniconda3/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+backends = (<SDPBackend.EFFICIENT_ATTENTION: 2>, <SDPBackend.MATH: 0>)
+set_priority = False
+
+    @contextlib.contextmanager
+    def sdpa_kernel(
+        backends: Union[list[SDPBackend], SDPBackend], set_priority: bool = False
+    ):
+        r"""
+        Context manager to select which backend to use for scaled dot product attention.
+    
+        .. warning:: This function is beta and subject to change.
+    
+        Args:
+            backends (Union[List[SDPBackend], SDPBackend]): A backend or list of backends for scaled dot product attention.
+            set_priority_order (bool=False): Whether the ordering of the backends is interpreted as their priority order.
+    
+        Example:
+    
+        .. code-block:: python
+    
+            from torch.nn.functional import scaled_dot_product_attention
+            from torch.nn.attention import SDPBackend, sdpa_kernel
+    
+            # Only enable flash attention backend
+            with sdpa_kernel(SDPBackend.FLASH_ATTENTION):
+                scaled_dot_product_attention(...)
+    
+            # Enable the Math or Efficient attention backends
+            with sdpa_kernel([SDPBackend.MATH, SDPBackend.EFFICIENT_ATTENTION]):
+                scaled_dot_product_attention(...)
+    
+        This context manager can be used to select which backend to use for scaled dot product attention.
+        Upon exiting the context manager, the previous state of the flags will be restored, enabling all backends.
+        """
+>       assert isinstance(backends, (list, SDPBackend)), (
+            "Backend must be an instance of SDPBackend or a list of SDPBackend instances"
+        )
+E       AssertionError: Backend must be an instance of SDPBackend or a list of SDPBackend instances
+
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/attention/__init__.py:135: AssertionError
+__ test_device_position_cache_matches_eager_and_full_sequence_each_step[3-5] ___
+
+batch = 3, prompt_len = 5
+
+    @pytest.mark.parametrize("batch,prompt_len", [(1, 1), (2, 3), (3, 5)])
+    @torch.inference_mode()
+    def test_device_position_cache_matches_eager_and_full_sequence_each_step(batch, prompt_len):
+        model = make_model()
+        tokens = torch.randint(0, 64, (batch, prompt_len + 6))
+        eager, static = make_cache(model, batch), make_cache(model, batch)
+>       model(tokens[:, :prompt_len], kv_cache=eager)
+
+tests/test_audit_wave1_nanochat_regressions.py:36: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:721: in forward
+    x = block(x, cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:483: in forward
+    x = x + self.attn(norm(x), cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:446: in forward
+    with self.sdpa_ctx_factory(sdpa_order):
+/opt/miniconda3/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+backends = (<SDPBackend.EFFICIENT_ATTENTION: 2>, <SDPBackend.MATH: 0>)
+set_priority = False
+
+    @contextlib.contextmanager
+    def sdpa_kernel(
+        backends: Union[list[SDPBackend], SDPBackend], set_priority: bool = False
+    ):
+        r"""
+        Context manager to select which backend to use for scaled dot product attention.
+    
+        .. warning:: This function is beta and subject to change.
+    
+        Args:
+            backends (Union[List[SDPBackend], SDPBackend]): A backend or list of backends for scaled dot product attention.
+            set_priority_order (bool=False): Whether the ordering of the backends is interpreted as their priority order.
+    
+        Example:
+    
+        .. code-block:: python
+    
+            from torch.nn.functional import scaled_dot_product_attention
+            from torch.nn.attention import SDPBackend, sdpa_kernel
+    
+            # Only enable flash attention backend
+            with sdpa_kernel(SDPBackend.FLASH_ATTENTION):
+                scaled_dot_product_attention(...)
+    
+            # Enable the Math or Efficient attention backends
+            with sdpa_kernel([SDPBackend.MATH, SDPBackend.EFFICIENT_ATTENTION]):
+                scaled_dot_product_attention(...)
+    
+        This context manager can be used to select which backend to use for scaled dot product attention.
+        Upon exiting the context manager, the previous state of the flags will be restored, enabling all backends.
+        """
+>       assert isinstance(backends, (list, SDPBackend)), (
+            "Backend must be an instance of SDPBackend or a list of SDPBackend instances"
+        )
+E       AssertionError: Backend must be an instance of SDPBackend or a list of SDPBackend instances
+
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/attention/__init__.py:135: AssertionError
+____ test_graph_cache_reset_clears_mode_and_invalidates_capture_generation _____
+
+    @torch.inference_mode()
+    def test_graph_cache_reset_clears_mode_and_invalidates_capture_generation():
+        model = make_model()
+        cache = make_cache(model)
+>       model(torch.tensor([[1, 2], [3, 4]]), kv_cache=cache)
+
+tests/test_audit_wave1_nanochat_regressions.py:60: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:721: in forward
+    x = block(x, cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:483: in forward
+    x = x + self.attn(norm(x), cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:446: in forward
+    with self.sdpa_ctx_factory(sdpa_order):
+/opt/miniconda3/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+backends = (<SDPBackend.EFFICIENT_ATTENTION: 2>, <SDPBackend.MATH: 0>)
+set_priority = False
+
+    @contextlib.contextmanager
+    def sdpa_kernel(
+        backends: Union[list[SDPBackend], SDPBackend], set_priority: bool = False
+    ):
+        r"""
+        Context manager to select which backend to use for scaled dot product attention.
+    
+        .. warning:: This function is beta and subject to change.
+    
+        Args:
+            backends (Union[List[SDPBackend], SDPBackend]): A backend or list of backends for scaled dot product attention.
+            set_priority_order (bool=False): Whether the ordering of the backends is interpreted as their priority order.
+    
+        Example:
+    
+        .. code-block:: python
+    
+            from torch.nn.functional import scaled_dot_product_attention
+            from torch.nn.attention import SDPBackend, sdpa_kernel
+    
+            # Only enable flash attention backend
+            with sdpa_kernel(SDPBackend.FLASH_ATTENTION):
+                scaled_dot_product_attention(...)
+    
+            # Enable the Math or Efficient attention backends
+            with sdpa_kernel([SDPBackend.MATH, SDPBackend.EFFICIENT_ATTENTION]):
+                scaled_dot_product_attention(...)
+    
+        This context manager can be used to select which backend to use for scaled dot product attention.
+        Upon exiting the context manager, the previous state of the flags will be restored, enabling all backends.
+        """
+>       assert isinstance(backends, (list, SDPBackend)), (
+            "Backend must be an instance of SDPBackend or a list of SDPBackend instances"
+        )
+E       AssertionError: Backend must be an instance of SDPBackend or a list of SDPBackend instances
+
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/attention/__init__.py:135: AssertionError
+____________ test_prefill_copies_valid_prefix_from_rounded_storage _____________
+
+    @torch.inference_mode()
+    def test_prefill_copies_valid_prefix_from_rounded_storage():
+        model = make_model()
+        source = make_cache(model, batch=1, capacity=3, block_size=4)
+>       model(torch.tensor([[1, 2, 3]]), kv_cache=source)
+
+tests/test_audit_wave1_nanochat_regressions.py:75: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:721: in forward
+    x = block(x, cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:483: in forward
+    x = x + self.attn(norm(x), cos_sin, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1773: in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/modules/module.py:1784: in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/nanochat_fullstack/nanochat/gpt.py:446: in forward
+    with self.sdpa_ctx_factory(sdpa_order):
+/opt/miniconda3/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+backends = (<SDPBackend.EFFICIENT_ATTENTION: 2>, <SDPBackend.MATH: 0>)
+set_priority = False
+
+    @contextlib.contextmanager
+    def sdpa_kernel(
+        backends: Union[list[SDPBackend], SDPBackend], set_priority: bool = False
+    ):
+        r"""
+        Context manager to select which backend to use for scaled dot product attention.
+    
+        .. warning:: This function is beta and subject to change.
+    
+        Args:
+            backends (Union[List[SDPBackend], SDPBackend]): A backend or list of backends for scaled dot product attention.
+            set_priority_order (bool=False): Whether the ordering of the backends is interpreted as their priority order.
+    
+        Example:
+    
+        .. code-block:: python
+    
+            from torch.nn.functional import scaled_dot_product_attention
+            from torch.nn.attention import SDPBackend, sdpa_kernel
+    
+            # Only enable flash attention backend
+            with sdpa_kernel(SDPBackend.FLASH_ATTENTION):
+                scaled_dot_product_attention(...)
+    
+            # Enable the Math or Efficient attention backends
+            with sdpa_kernel([SDPBackend.MATH, SDPBackend.EFFICIENT_ATTENTION]):
+                scaled_dot_product_attention(...)
+    
+        This context manager can be used to select which backend to use for scaled dot product attention.
+        Upon exiting the context manager, the previous state of the flags will be restored, enabling all backends.
+        """
+>       assert isinstance(backends, (list, SDPBackend)), (
+            "Backend must be an instance of SDPBackend or a list of SDPBackend instances"
+        )
+E       AssertionError: Backend must be an instance of SDPBackend or a list of SDPBackend instances
+
+/opt/miniconda3/lib/python3.12/site-packages/torch/nn/attention/__init__.py:135: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_audit_wave1_nanochat_regressions.py::test_device_position_cache_matches_eager_and_full_sequence_each_step[1-1]
+FAILED tests/test_audit_wave1_nanochat_regressions.py::test_device_position_cache_matches_eager_and_full_sequence_each_step[2-3]
+FAILED tests/test_audit_wave1_nanochat_regressions.py::test_device_position_cache_matches_eager_and_full_sequence_each_step[3-5]
+FAILED tests/test_audit_wave1_nanochat_regressions.py::test_graph_cache_reset_clears_mode_and_invalidates_capture_generation
+FAILED tests/test_audit_wave1_nanochat_regressions.py::test_prefill_copies_valid_prefix_from_rounded_storage
+5 failed, 1 passed, 4 skipped in 1.69s

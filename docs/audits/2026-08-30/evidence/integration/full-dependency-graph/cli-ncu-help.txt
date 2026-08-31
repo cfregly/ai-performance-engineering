@@ -1,0 +1,90 @@
+                                                                                
+ Usage: python -m cli.aisp profile ncu [OPTIONS] [SCRIPT]                       
+                                                                                
+ Run Nsight Compute capture                                                     
+                                                                                
+                                                                                
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│   script      [SCRIPT]  Python script to profile (optional when using        │
+│                         --command)                                           │
+│                         [default: None]                                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --command            -c                         TEXT     Command to profile  │
+│                                                          (quote it), e.g.,   │
+│                                                          "python train.py    │
+│                                                          --batch 8"          │
+│                                                          [default: None]     │
+│ --arg                -a                         TEXT     Arguments forwarded │
+│                                                          to the script       │
+│ --kernel                                        TEXT     Specific kernel     │
+│                                                          filter (regex)      │
+│                                                          [default: None]     │
+│ --kernel-filter                                 TEXT     Specific kernel     │
+│                                                          filter (regex)      │
+│                                                          [default: None]     │
+│ --kernel-name-base                              TEXT     NCU kernel name     │
+│                                                          base for filter     │
+│                                                          matching (e.g.,     │
+│                                                          function,           │
+│                                                          demangled)          │
+│                                                          [default: None]     │
+│ --nvtx-include                                  TEXT     NCU NVTX include    │
+│                                                          filter              │
+│                                                          (repeatable);       │
+│                                                          useful with         │
+│                                                          --profile-from-sta… │
+│                                                          off                 │
+│ --profile-from-sta…                             TEXT     NCU profiling gate: │
+│                                                          on/off (set off to  │
+│                                                          capture only after  │
+│                                                          cudaProfilerStart)  │
+│                                                          [default: None]     │
+│ --output-name        -o                         TEXT     Output name         │
+│                                                          [default: None]     │
+│ --output-dir                                    PATH     Base artifacts      │
+│                                                          directory (default: │
+│                                                          artifacts/runs)     │
+│                                                          [default: None]     │
+│ --workload-type                                 TEXT     Workload metrics:   │
+│                                                          memory_bound,       │
+│                                                          compute_bound,      │
+│                                                          tensor_core (used   │
+│                                                          when                │
+│                                                          --metric-set=full)  │
+│                                                          [default:           │
+│                                                          memory_bound]       │
+│ --metric-set                                    TEXT     NCU set: full,      │
+│                                                          roofline, minimal,  │
+│                                                          speed-of-light,     │
+│                                                          basic               │
+│                                                          [default: full]     │
+│ --replay-mode                                   TEXT     NCU replay mode:    │
+│                                                          application (all    │
+│                                                          launches) or kernel │
+│                                                          (one instance per   │
+│                                                          kernel)             │
+│                                                          [default:           │
+│                                                          application]        │
+│ --launch-skip                                   INTEGER  Kernel launches to  │
+│                                                          skip before         │
+│                                                          profiling           │
+│                                                          [default: None]     │
+│ --launch-count                                  INTEGER  Kernel launches to  │
+│                                                          profile             │
+│                                                          [default: None]     │
+│ --pm-sampling-inte…                             INTEGER  Nsight Compute      │
+│                                                          pm-sampling-interv… │
+│                                                          (cycles)            │
+│                                                          [default: None]     │
+│ --force-lineinfo         --no-force-lineinfo             Force -lineinfo for │
+│                                                          source mapping      │
+│                                                          [default:           │
+│                                                          force-lineinfo]     │
+│ --timeout                                       INTEGER  Optional timeout in │
+│                                                          seconds             │
+│                                                          [default: None]     │
+│ --help               -h                                  Show this message   │
+│                                                          and exit.           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

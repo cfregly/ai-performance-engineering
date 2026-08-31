@@ -1,0 +1,101 @@
+[
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "-m",
+      "cli.aisp",
+      "bench",
+      "run",
+      "--help"
+    ],
+    "cwd": "code",
+    "exit_code": 0,
+    "log": "command-01.txt"
+  },
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "-m",
+      "cli.aisp",
+      "bench",
+      "verify",
+      "--help"
+    ],
+    "cwd": "code",
+    "exit_code": 0,
+    "log": "command-02.txt"
+  },
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "-m",
+      "cli.aisp",
+      "profile",
+      "torch",
+      "--help"
+    ],
+    "cwd": "code",
+    "exit_code": 0,
+    "log": "command-03.txt"
+  },
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "-m",
+      "cli.aisp",
+      "profile",
+      "nsys",
+      "--help"
+    ],
+    "cwd": "code",
+    "exit_code": 0,
+    "log": "command-04.txt"
+  },
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "-m",
+      "cli.aisp",
+      "profile",
+      "ncu",
+      "--help"
+    ],
+    "cwd": "code",
+    "exit_code": 0,
+    "log": "command-05.txt"
+  },
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "-m",
+      "cli.aisp",
+      "bench",
+      "list-targets",
+      "--chapter",
+      "ch01"
+    ],
+    "cwd": "code",
+    "exit_code": 0,
+    "log": "command-06.txt"
+  },
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "core/profiling/extract_nsys_summary.py",
+      "--help"
+    ],
+    "cwd": "code",
+    "exit_code": 0,
+    "log": "command-07.txt"
+  },
+  {
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "core/profiling/extract_pytorch_profile.py",
+      "--help"
+    ],
+    "cwd": "code",
+    "exit_code": 0,
+    "log": "command-08.txt"
+  }
+]

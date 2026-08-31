@@ -46,6 +46,7 @@ Error Recovery:
 Author: Blackwell Performance Engineering Team
 """
 
+import operator
 import os
 import threading
 import time
@@ -58,6 +59,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.attention.bias import causal_lower_right
 
 from core.benchmark.utils import scalar_tensor_to_float
 from core.benchmark.gpu_requirements import require_min_gpus
@@ -713,6 +715,7 @@ class TensorParallelAttention(nn.Module):
         *,
         max_batch_size: int,
         max_seq_len: int,
+        max_explicit_mask_elements: int = 16_777_216,
     ):
         super().__init__()
         self.d_model = d_model
@@ -720,6 +723,14 @@ class TensorParallelAttention(nn.Module):
         self.num_gpus = num_gpus
         self.max_batch_size = max_batch_size
         self.max_seq_len = max_seq_len
+        if isinstance(max_explicit_mask_elements, bool):
+            raise ValueError("max_explicit_mask_elements must be a positive integer")
+        try:
+            self.max_explicit_mask_elements = operator.index(max_explicit_mask_elements)
+        except TypeError as exc:
+            raise ValueError("max_explicit_mask_elements must be a positive integer") from exc
+        if self.max_explicit_mask_elements <= 0:
+            raise ValueError("max_explicit_mask_elements must be a positive integer")
         if num_heads % num_gpus != 0:
             raise ValueError(
                 f"num_heads ({num_heads}) must be divisible by num_gpus ({num_gpus}) "
@@ -752,7 +763,7 @@ class TensorParallelAttention(nn.Module):
         self.out_proj = nn.Linear(d_model // num_gpus, d_model, bias=False)
         
         print(f"[GPU {self.rank}] TP Attention: processing {self.heads_per_gpu} heads")
-        self._valid_mask_workspace: Optional[torch.Tensor] = None
+        self._causal_mask_workspace: Optional[torch.Tensor] = None
         self._attn_k_workspace: Optional[torch.Tensor] = None
         self._attn_v_workspace: Optional[torch.Tensor] = None
         self._local_key_workspace: Optional[torch.Tensor] = None
@@ -825,39 +836,97 @@ class TensorParallelAttention(nn.Module):
             self._attn_merge_buffer = torch.empty(merge_shape, dtype=dtype, device=device)
             self._attn_output_buffer = torch.empty(output_shape, dtype=dtype, device=device)
 
-    def _ensure_workspaces(
+    def _validate_token_lengths(
+        self,
+        input_lengths: Optional[List[int]],
+        batch_size: int,
+        seq_len: int,
+    ) -> List[int]:
+        if input_lengths is None:
+            return [seq_len] * batch_size
+        if len(input_lengths) != batch_size:
+            raise ValueError("input_lengths size must match batch size")
+
+        token_lengths: List[int] = []
+        for batch_idx, value in enumerate(input_lengths):
+            if isinstance(value, bool):
+                raise ValueError(f"input_lengths[{batch_idx}] must be an integer")
+            try:
+                token_length = operator.index(value)
+            except TypeError as exc:
+                raise ValueError(
+                    f"input_lengths[{batch_idx}] must be an integer"
+                ) from exc
+            if token_length < 0 or token_length > seq_len:
+                raise ValueError(
+                    f"input_lengths[{batch_idx}]={token_length} must be between 0 and {seq_len}"
+                )
+            token_lengths.append(token_length)
+        return token_lengths
+
+    def _grow_cached_kv_workspace(
+        self,
+        workspace: Optional[torch.Tensor],
+        batch_size: int,
+        required_seq_len: int,
+        dtype: torch.dtype,
+        device: torch.device,
+    ) -> torch.Tensor:
+        if workspace is not None and workspace.device == device and workspace.dtype == dtype:
+            if workspace.size(0) >= batch_size and workspace.size(2) >= required_seq_len:
+                return workspace
+            batch_capacity = max(batch_size, workspace.size(0))
+            sequence_capacity = max(required_seq_len, workspace.size(2))
+        else:
+            batch_capacity = batch_size
+            sequence_capacity = required_seq_len
+        return torch.empty(
+            (batch_capacity, self.heads_per_gpu, sequence_capacity, self.head_dim),
+            dtype=dtype,
+            device=device,
+        )
+
+    def _ensure_cached_kv_workspaces(
         self,
         batch_size: int,
         required_seq_len: int,
         dtype: torch.dtype,
         device: torch.device,
-    ) -> None:
-        if batch_size > self.max_batch_size:
-            raise ValueError(
-                f"Batch size {batch_size} exceeds configured max_batch_size={self.max_batch_size}"
-            )
-        if required_seq_len > self.max_seq_len:
-            raise ValueError(
-                f"Sequence length {required_seq_len} exceeds configured max_seq_len={self.max_seq_len}"
-            )
-
-        needs_refresh = (
-            self._attn_k_workspace is None
-            or self._attn_k_workspace.device != device
-            or self._attn_k_workspace.dtype != dtype
-            or self._attn_k_workspace.size(0) < batch_size
-            or self._attn_k_workspace.size(2) < required_seq_len
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        self._attn_k_workspace = self._grow_cached_kv_workspace(
+            self._attn_k_workspace,
+            batch_size,
+            required_seq_len,
+            dtype,
+            device,
         )
+        self._attn_v_workspace = self._grow_cached_kv_workspace(
+            self._attn_v_workspace,
+            batch_size,
+            required_seq_len,
+            dtype,
+            device,
+        )
+        return self._attn_k_workspace, self._attn_v_workspace
 
-        if needs_refresh:
-            shape = (batch_size, self.heads_per_gpu, required_seq_len, self.head_dim)
-            self._attn_k_workspace = torch.empty(shape, dtype=dtype, device=device)
-            self._attn_v_workspace = torch.empty_like(self._attn_k_workspace)
-            self._valid_mask_workspace = torch.empty(
-                (batch_size, required_seq_len),
-                dtype=torch.bool,
-                device=device,
-            )
+    def _ensure_explicit_mask_workspace(
+        self,
+        required_elements: int,
+        device: torch.device,
+    ) -> torch.Tensor:
+        workspace = self._causal_mask_workspace
+        if workspace is not None and workspace.device == device:
+            if workspace.numel() >= required_elements:
+                return workspace
+            capacity = max(required_elements, workspace.numel())
+        else:
+            capacity = required_elements
+        self._causal_mask_workspace = torch.empty(
+            capacity,
+            dtype=torch.bool,
+            device=device,
+        )
+        return self._causal_mask_workspace
 
     def forward(
         self, 
@@ -870,6 +939,8 @@ class TensorParallelAttention(nn.Module):
             self._pending_work.wait()
             self._pending_work = None
         batch_size, seq_len, _ = x.shape
+        token_lengths = self._validate_token_lengths(input_lengths, batch_size, seq_len)
+        full_token_lengths = all(length == seq_len for length in token_lengths)
         
         # Project to Q, K, V for this GPU's heads
         qkv = self.qkv_proj(x)
@@ -878,24 +949,33 @@ class TensorParallelAttention(nn.Module):
         
         # Attention computation using FlexAttention (fallback to SDPA)
         q = q.transpose(1, 2)  # (batch, heads, seq, head_dim)
+        cache_requires_grad = kv_cache is not None and any(
+            entry is not None and (entry[0].requires_grad or entry[1].requires_grad)
+            for entry in kv_cache
+        )
+        use_functional_kv = torch.is_grad_enabled() and (
+            q.requires_grad or k.requires_grad or v.requires_grad or cache_requires_grad
+        )
         self._ensure_local_workspaces(batch_size, seq_len, k.dtype, k.device)
-        if self._local_key_workspace is None or self._local_value_workspace is None:
-            raise RuntimeError("Local KV workspaces not configured")
-        key_local = self._local_key_workspace[:batch_size, :, :seq_len, :]
-        value_local = self._local_value_workspace[:batch_size, :, :seq_len, :]
-        key_local.copy_(k.transpose(1, 2))
-        value_local.copy_(v.transpose(1, 2))
+        if use_functional_kv:
+            key_local = k.transpose(1, 2).clone(memory_format=torch.contiguous_format)
+            value_local = v.transpose(1, 2).clone(memory_format=torch.contiguous_format)
+        else:
+            if self._local_key_workspace is None or self._local_value_workspace is None:
+                raise RuntimeError("Local KV workspaces not configured")
+            key_local = self._local_key_workspace[:batch_size, :, :seq_len, :]
+            value_local = self._local_value_workspace[:batch_size, :, :seq_len, :]
+            key_local.copy_(k.transpose(1, 2))
+            value_local.copy_(v.transpose(1, 2))
         
         scale = 1.0 / (self.head_dim ** 0.5)
 
-        if input_lengths is None:
-            token_lengths = [seq_len] * batch_size
-        else:
-            if len(input_lengths) != batch_size:
-                raise ValueError("input_lengths size must match batch size")
-            token_lengths = [int(v) for v in input_lengths]
-
         if kv_cache is None:
+            use_mask_free_attention = full_token_lengths
+        else:
+            use_mask_free_attention = False
+
+        if use_mask_free_attention:
             if self._force_sdpa or not _flex_attention_supported(
                 q, key_local, value_local, head_dim=self.head_dim
             ):
@@ -911,9 +991,14 @@ class TensorParallelAttention(nn.Module):
                 out = _call_flex_attention_scaled(q, key_local, value_local, scale)
         else:
             cache_entries: List[Tuple[int, Optional[torch.Tensor], Optional[torch.Tensor]]] = []
+            cache_lengths: List[int] = []
             max_total_len = 0
             for idx in range(batch_size):
-                cache_entry = kv_cache[idx] if idx < len(kv_cache) else None
+                cache_entry = (
+                    kv_cache[idx]
+                    if kv_cache is not None and idx < len(kv_cache)
+                    else None
+                )
                 if cache_entry is None:
                     cache_len = 0
                     cache_k = None
@@ -927,47 +1012,133 @@ class TensorParallelAttention(nn.Module):
                         f"Sequence length {total_len} exceeds configured max_seq_len={self.max_seq_len}"
                     )
                 cache_entries.append((cache_len, cache_k, cache_v))
+                cache_lengths.append(cache_len)
                 max_total_len = max(max_total_len, total_len)
 
             required_seq_len = max_total_len if max_total_len > 0 else 1
             has_padding = False
-            self._ensure_workspaces(batch_size, required_seq_len, key_local.dtype, key_local.device)
-            attn_k = self._attn_k_workspace[:batch_size, :, :required_seq_len, :]
-            attn_v = self._attn_v_workspace[:batch_size, :, :required_seq_len, :]
-            valid_mask = self._valid_mask_workspace[:batch_size, :required_seq_len]
-            valid_mask.fill_(False)
-
-            for idx, (cache_len, cache_k, cache_v) in enumerate(cache_entries):
-                write_pos = 0
-                if cache_len == 0:
-                    pass
-                else:
-                    attn_k[idx, :, :cache_len, :].copy_(cache_k)
-                    attn_v[idx, :, :cache_len, :].copy_(cache_v)
-                    write_pos = cache_len
-                    valid_mask[idx, :cache_len] = True
+            for idx, (cache_len, _cache_k, _cache_v) in enumerate(cache_entries):
+                write_pos = cache_len
                 delta_len = token_lengths[idx]
-                if delta_len > 0:
-                    end_pos = write_pos + delta_len
-                    attn_k[idx, :, write_pos:end_pos, :].copy_(key_local[idx, :, :delta_len, :])
-                    attn_v[idx, :, write_pos:end_pos, :].copy_(value_local[idx, :, :delta_len, :])
-                    valid_mask[idx, write_pos:end_pos] = True
                 if write_pos + delta_len < required_seq_len:
                     has_padding = True
 
-            attn_bias = (
-                valid_mask.view(batch_size, 1, 1, required_seq_len)
-                if has_padding
-                else None
+            uniform_full_layout = full_token_lengths and len(set(cache_lengths)) == 1
+            if has_padding:
+                uniform_full_layout = False
+            mask_elements = batch_size * seq_len * required_seq_len
+            use_explicit_mask = (
+                not uniform_full_layout
+                and mask_elements <= self.max_explicit_mask_elements
             )
 
-            if self._force_sdpa or not _flex_attention_supported(
-                q,
-                attn_k,
-                attn_v,
-                attn_bias=attn_bias,
-                head_dim=self.head_dim,
-            ):
+            if not uniform_full_layout and not use_explicit_mask:
+                sample_outputs: List[torch.Tensor] = []
+                for idx, (cache_len, cache_k, cache_v) in enumerate(cache_entries):
+                    delta_len = token_lengths[idx]
+                    if delta_len == 0:
+                        sample_outputs.append(q[idx : idx + 1].mul(0.0))
+                        continue
+                    sample_k = key_local[idx, :, :delta_len, :]
+                    sample_v = value_local[idx, :, :delta_len, :]
+                    if cache_len > 0:
+                        if cache_k is None or cache_v is None:
+                            raise RuntimeError("Cached KV entry is incomplete")
+                        sample_k = torch.cat((cache_k, sample_k), dim=1)
+                        sample_v = torch.cat((cache_v, sample_v), dim=1)
+                    sample_bias = causal_lower_right(delta_len, cache_len + delta_len)
+                    with prefer_flash_sdpa():
+                        sample_out = F.scaled_dot_product_attention(
+                            q[idx : idx + 1, :, :delta_len, :],
+                            sample_k.unsqueeze(0),
+                            sample_v.unsqueeze(0),
+                            dropout_p=0.0,
+                            attn_mask=sample_bias,
+                            is_causal=False,
+                        )
+                    if delta_len < seq_len:
+                        sample_out = F.pad(sample_out, (0, 0, 0, seq_len - delta_len))
+                    sample_outputs.append(sample_out)
+                out = torch.cat(sample_outputs, dim=0)
+            else:
+                if use_functional_kv:
+                    padded_keys: List[torch.Tensor] = []
+                    padded_values: List[torch.Tensor] = []
+                    for idx, (cache_len, cache_k, cache_v) in enumerate(cache_entries):
+                        delta_len = token_lengths[idx]
+                        sample_k = key_local[idx, :, :delta_len, :]
+                        sample_v = value_local[idx, :, :delta_len, :]
+                        if cache_len > 0:
+                            if cache_k is None or cache_v is None:
+                                raise RuntimeError("Cached KV entry is incomplete")
+                            sample_k = torch.cat((cache_k, sample_k), dim=1)
+                            sample_v = torch.cat((cache_v, sample_v), dim=1)
+                        padding = required_seq_len - (cache_len + delta_len)
+                        if padding > 0:
+                            sample_k = F.pad(sample_k, (0, 0, 0, padding))
+                            sample_v = F.pad(sample_v, (0, 0, 0, padding))
+                        padded_keys.append(sample_k)
+                        padded_values.append(sample_v)
+                    attn_k = torch.stack(padded_keys, dim=0)
+                    attn_v = torch.stack(padded_values, dim=0)
+                else:
+                    key_workspace, value_workspace = self._ensure_cached_kv_workspaces(
+                        batch_size,
+                        required_seq_len,
+                        key_local.dtype,
+                        key_local.device,
+                    )
+                    attn_k = key_workspace[:batch_size, :, :required_seq_len, :]
+                    attn_v = value_workspace[:batch_size, :, :required_seq_len, :]
+                    for idx, (cache_len, cache_k, cache_v) in enumerate(cache_entries):
+                        write_pos = cache_len
+                        if cache_len > 0:
+                            if cache_k is None or cache_v is None:
+                                raise RuntimeError("Cached KV entry is incomplete")
+                            attn_k[idx, :, :cache_len, :].copy_(cache_k)
+                            attn_v[idx, :, :cache_len, :].copy_(cache_v)
+                        delta_len = token_lengths[idx]
+                        if delta_len > 0:
+                            end_pos = write_pos + delta_len
+                            attn_k[idx, :, write_pos:end_pos, :].copy_(
+                                key_local[idx, :, :delta_len, :]
+                            )
+                            attn_v[idx, :, write_pos:end_pos, :].copy_(
+                                value_local[idx, :, :delta_len, :]
+                            )
+                        valid_end = write_pos + delta_len
+                        if write_pos + delta_len < required_seq_len:
+                            attn_k[idx, :, valid_end:required_seq_len, :].zero_()
+                            attn_v[idx, :, valid_end:required_seq_len, :].zero_()
+
+                if uniform_full_layout:
+                    attn_bias = causal_lower_right(seq_len, required_seq_len)
+                else:
+                    mask_workspace = self._ensure_explicit_mask_workspace(
+                        mask_elements,
+                        key_local.device,
+                    )
+                    valid_mask = mask_workspace[:mask_elements].view(
+                        batch_size, seq_len, required_seq_len
+                    )
+                    valid_mask.fill_(False)
+                    for idx, (cache_len, _cache_k, _cache_v) in enumerate(cache_entries):
+                        delta_len = token_lengths[idx]
+                        if delta_len == 0:
+                            continue
+                        if cache_len > 0:
+                            valid_mask[idx, :delta_len, :cache_len] = True
+                        current_causal_mask = valid_mask[
+                            idx,
+                            :delta_len,
+                            cache_len : cache_len + delta_len,
+                        ]
+                        current_causal_mask.fill_(True)
+                        current_causal_mask.tril_()
+                    attn_bias = valid_mask.view(
+                        batch_size, 1, seq_len, required_seq_len
+                    )
+
                 with prefer_flash_sdpa():
                     out = F.scaled_dot_product_attention(
                         q,
@@ -975,10 +1146,15 @@ class TensorParallelAttention(nn.Module):
                         attn_v,
                         dropout_p=0.0,
                         attn_mask=attn_bias,
-                        is_causal=True,
+                        is_causal=False,
                     )
-            else:
-                out = _call_flex_attention_scaled(q, attn_k, attn_v, scale)
+                if not full_token_lengths:
+                    query_positions = torch.arange(seq_len, device=q.device).view(1, seq_len)
+                    active_queries = query_positions < torch.tensor(
+                        token_lengths,
+                        device=q.device,
+                    ).view(batch_size, 1)
+                    out = out.masked_fill(~active_queries.view(batch_size, 1, seq_len, 1), 0.0)
         
         # Reshape and project
         merge_buffer = self._attn_merge_buffer

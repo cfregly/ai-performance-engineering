@@ -1,0 +1,28 @@
+{
+  "scope": "All retained package artifacts except this digest; disposable Python bytecode excluded",
+  "files_sha256": {
+    "README.md": "5e8b547acaf5fcfc338d699aa49447b42ca3549d5028c35d8532c109c119c2b1",
+    "collection-command.json": "179ada96d833d92f296d39276fb317e1b118e7968249bb18e16c3a8d7a2edcc9",
+    "collection.txt": "629b8bf513b90ef0dac82ec1076e30537df339ccadf9d1f86c07e6992fef760d",
+    "current-epoch-cpu-preflight/result.json": "c4a6268ad0ed498c61308c0b8253f3faed683752b3ef6b18a1898e85fd3e9ca6",
+    "current-epoch-preflight-command.json": "cb1e0ba8435cd57ab335f0a3286e96918f2c65c8f60fd7d67c31cca23c1c06f2",
+    "current-epoch-preflight.txt": "4749560321c61dea86d4961364f09ffe2b90ce40def11f82745738b8445c7c65",
+    "dependency-inventory.json": "6925eb4c11be8c42d08313b1e68209888ee69b42a0920430070b550222f64b66",
+    "driver-diff-from-original.patch": "2ceafe89bb04e8d133ecd40dfd2c0b226d7a58b268fe55df92bfe0320987d456",
+    "expected_cuda_cases.json": "c91c3803f4cdbf1f3ea68148f3bfdd9e5cb17e5187185a89eb68d8a110ae385f",
+    "final-source-checks.json": "cc742931d441c1836299daa9c5fa3485503f8bbf11a1f0f3387e18f05869befa",
+    "gate-controls-command.json": "ee0974de28685abbd66054312ccb8dcf96c2f0efbe3a939b3de730fbd2f9db03",
+    "gate-controls.txt": "be236d4eb86c62b3006489a97e95debf1c32e842895d9f635d2157d146b3f39c",
+    "gate-controls.xml": "611aaff443541aa423019bd258720b2875eecbc1978a62d2fe01f84b4db43585",
+    "independent-source-review.md": "5571faf7cf5e694ea5e61f3f40ec6e5f760ef9458557364e3fa704a51ea30126",
+    "manifest-delta.json": "54bdf9fb0a39a45cf5ee20c0e4aad97ef9151cfe89f13bba6e3b42ed254476de",
+    "old-epoch-cpu-preflight/result.json": "e2751c1184872be21e1c7efdf2838699cf57f32d5f123b7fe106b3bd93be1cbd",
+    "old-epoch-preflight-command.json": "cf8951b6a0ab4eeb70d2aa1b65be0205fafa92d463bcdc11593cf522fb1517ec",
+    "old-epoch-preflight.txt": "f4d348f0d4eb6c89ad1b69be06d6599299ca05911afd6cddd1027bd5075cfbce",
+    "original-attention-evidence-hashes.json": "6d5a12db379f8f6d6e90b7542b65945ce42817124bb28058425aa2b8aa59a9f1",
+    "receipt.json": "7321e0b1f8d4f557d5cd83fa5b68e87e714350f96ae7601c4716e621f80cf1a7",
+    "run_cuda_acceptance.py": "4b8346d15cf102d611706931fab8012ab4e49cb9dd6348e92ec93f82faab5270",
+    "source_manifest.json": "fa136e6942d8af98e5a235cf7868de00e9662cafd9907a6406ce58fa1be98a4e",
+    "test_gate_controls.py": "46a6a6f0fbdacef4f7daa03905ba9b1d58884b3b785566d885800b0ef52a4e30"
+  }
+}

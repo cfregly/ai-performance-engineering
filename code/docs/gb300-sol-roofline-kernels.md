@@ -1,5 +1,8 @@
 # GB300 Speed-of-Light roofline: custom-CUDA-kernel labs
 
+> **2026-08-30 correction:** This retained report uses historical FP8 7.5-PFLOP/s and/or FP16/BF16 3.75-PFLOP/s roofline denominators. For GB300 NVL72, the published dense per-GPU denominators are 5.0 and 2.5 PFLOP/s. See [corrected definitions and interpretation](gb300-roofline-corrections-2026-08-30.md). Original measurements and tables below are preserved; this correction does not recertify them or update native profiler percentages.
+
+
 SoL-grounding of the repo custom-CUDA-kernel GEMM/compute labs on one GB300 node
 (Blackwell Ultra, sm_103, cc 10.3, 152 SMs, 4 GPU). Goal: find which dominant kernels sit
 far below Speed-of-Light with an addressable bottleneck (real headroom) vs which are

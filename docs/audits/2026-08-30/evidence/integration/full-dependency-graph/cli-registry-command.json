@@ -1,0 +1,19 @@
+{
+  "case": "registry",
+  "argv": [
+    "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+    "-m",
+    "cli.aisp",
+    "bench",
+    "list-targets",
+    "--chapter",
+    "ch07"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "exit_code": 0,
+  "expected_exit": 0,
+  "expected_text": "ch07:",
+  "status": "PASS",
+  "elapsed_seconds": 3.2222863340284675,
+  "output": "cli-registry.txt"
+}

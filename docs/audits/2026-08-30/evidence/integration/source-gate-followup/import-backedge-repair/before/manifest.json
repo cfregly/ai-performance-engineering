@@ -1,0 +1,70 @@
+{
+  "files": [
+    {
+      "bytes": 3861,
+      "path": "code/core/analysis/compare_benchmark_pairs.py",
+      "sha256": "9937d15ca585ecbf72312035b40222f526e334a9037c163951d38d6027a9cb85"
+    },
+    {
+      "bytes": 17924,
+      "path": "code/core/common/moe_parallelism_plan.py",
+      "sha256": "b8c50b5f3f15bcbbc7d2d0c56ad15db0d6678062fdc29841b8b48bd522f3f93f"
+    },
+    {
+      "bytes": 28700,
+      "path": "code/core/analysis/deep_profiling_report.py",
+      "sha256": "bf5add116ef9f931336f51a01816ee630345310ca3ae5ce71e3161160c00755e"
+    },
+    {
+      "bytes": 12160,
+      "path": "code/ch08/roofline.py",
+      "sha256": "579cc27fc77bb0471c27c4295fa5e64cfd3968e7c6338e63e255743a793c0300"
+    },
+    {
+      "bytes": 17695,
+      "path": "code/ch17/blackwell_profiling_guide.py",
+      "sha256": "af036f03f77e4e48cdbce71f40c32819b6257efa3aec4e20ee53c17b091c09c6"
+    },
+    {
+      "bytes": 4405,
+      "path": "code/core/profiling/nsys_summary.py",
+      "sha256": "b2300e800a7391d6b619a4d72eddeb379529c928c8da1b2a0cea952438f0bc9f"
+    },
+    {
+      "bytes": 17628,
+      "path": "code/core/benchmark/precision_power_sweep.py",
+      "sha256": "349e8dfb290067c774e3c64fd701b311b3fbba7520e372a15bbe381cad835b4a"
+    },
+    {
+      "bytes": 132702,
+      "path": "code/core/perf_core_base.py",
+      "sha256": "e213c847b382b1b887601a203f4f4470888dd35ab8a338495482a71277660766"
+    },
+    {
+      "bytes": 9418,
+      "path": "code/core/scripts/utilities/dump_hardware_capabilities.py",
+      "sha256": "112d21445c5ccd5d7aadf9f5921a820989c19cc5c8eba8c4d671dd6f544e47c6"
+    },
+    {
+      "bytes": 3474,
+      "path": "code/core/scripts/utilities/precompile_cuda_extensions.py",
+      "sha256": "d565cf672094ae5112e4aa9dda22bad59320dff9eb34e7259ae05c5914b233c3"
+    },
+    {
+      "bytes": 13737,
+      "path": "code/core/utils/extension_prewarm.py",
+      "sha256": "fe3ab3d68d5237708be16a570aaa344947147f65233f268c9430add5437da2b2"
+    },
+    {
+      "bytes": 1345904,
+      "path": "code/tests/test_benchmark_hygiene_regressions.py",
+      "sha256": "307af3b7dcc99bebf21544c87a5ecb145d2a84872874d844fa4d7af1b9315f73"
+    },
+    {
+      "bytes": 2010,
+      "path": "code/tests/test_firstparty_correctness_regressions.py",
+      "sha256": "ae6d4080c7264be6af840aec545aaeef332ba10632f49dd0110a461c3c863b6a"
+    }
+  ],
+  "schema_version": 1
+}

@@ -1,0 +1,120 @@
+{
+  "captured_at": "2026-08-30T23:11:45.978369+00:00",
+  "python": "3.12.2 | packaged by conda-forge | (main, Feb 16 2024, 20:54:21) [Clang 16.0.6 ]",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "torch": "2.8.0",
+  "cuda_build": null,
+  "cuda_available": false,
+  "nvcc": null,
+  "gpu_executed": false,
+  "status": "HOLD",
+  "performance_qualified": false,
+  "head": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "source_files": [
+    {
+      "path": "code/ch18/flashmla_kernel.cu",
+      "sha256": "948b108f65c3cd7026afedffc159a78479ac65c33a2edc7fc4783dd48173f811"
+    },
+    {
+      "path": "code/core/common/async_input_pipeline.py",
+      "sha256": "333f606ad377fb4cd700ecc5d1aad6e865e5cf0e25b530b6a91634d01bba4f7b"
+    },
+    {
+      "path": "code/labs/cudnn_sdpa_bench/README.md",
+      "sha256": "da87c0076ad46ee648c93cb4c467e8175e4f76eb051d5a01ddc7d17fa93b9c36"
+    },
+    {
+      "path": "code/labs/cudnn_sdpa_bench/baseline_flash_sdp.py",
+      "sha256": "c149f4875f00ef1574d88fc6828c4d7b960c0c1883d18b9f59ddde6ba4131b79"
+    },
+    {
+      "path": "code/labs/decode_optimization/README.md",
+      "sha256": "44caaed405f1f053f75f72ca38217a8769119a5ba302b778ae98ba5f229789a4"
+    },
+    {
+      "path": "code/labs/decode_optimization/baseline_decode_warp_specialized.py",
+      "sha256": "0f42144add0b0a72333372c8d9ccb515ed21b5eb3d9f5c5162dd750a6fa4e05b"
+    },
+    {
+      "path": "code/labs/decode_optimization/optimized_decode_warp_specialized.py",
+      "sha256": "a5d789dc20a05cbb013d6e4e536f8bc647044882ee6b38b64d84aac925a0d3df"
+    },
+    {
+      "path": "code/labs/flashattention4/README.md",
+      "sha256": "ec5d507722df6bb884ec2123148b69bf9fd544e964863e85a2196279d3dadc71"
+    },
+    {
+      "path": "code/labs/flashattention4/flashattention4_common.py",
+      "sha256": "a72dc8345a72767229e59ff79ac03472c43a03cb85a3b14160faedeae0aa20b1"
+    },
+    {
+      "path": "code/labs/flashattention_gluon/README.md",
+      "sha256": "905de3db3bfdde3479ad9758d69af0114081c8e8961bf660470aaabbb2032521"
+    },
+    {
+      "path": "code/labs/flashattention_gluon/baseline_flashattention_gluon.py",
+      "sha256": "952cf0e197e1f72af9ee26a09fdab85116838c7c18407d4f28f5db0d2150bcd2"
+    },
+    {
+      "path": "code/labs/flashattention_gluon/flashattention_gluon_common.py",
+      "sha256": "ea01c2b56b5cbeddca2f9e548490faf86a4a9970b239855cd81448c0e0c6ac57"
+    },
+    {
+      "path": "code/labs/flashattention_gluon/optimized_flashattention_gluon.py",
+      "sha256": "8d1ef0c690e9525a53dd6de042a7fb6329959a97859a94a25e95571d0e59ec30"
+    },
+    {
+      "path": "code/labs/flexattention/flex_attention_cute.py",
+      "sha256": "5d3a61471df1bfef00f5d8e6c245a45d9bfa055a7b995789ef5907442dadd157"
+    },
+    {
+      "path": "code/labs/persistent_decode/README.md",
+      "sha256": "f929ce2ca06cb97d2a091d19c25fb8618d3b9317cae78a9dee5b33bc55e912e9"
+    },
+    {
+      "path": "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py",
+      "sha256": "43427f27efdf22aad2d456212ddfb6b6eb68d122da5875c6c59c4ba8472a3fc3"
+    },
+    {
+      "path": "code/labs/persistent_decode/baseline_persistent_decode.py",
+      "sha256": "b10c53d42430fa42cff45db889879ab2bf7b6d14b04e018ec55c51bf65ff63d8"
+    },
+    {
+      "path": "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py",
+      "sha256": "5b0356053c4977f07080007cf1807600b9876f82782840e0ab82da834afbd521"
+    },
+    {
+      "path": "code/labs/persistent_decode/optimized_persistent_decode_cuda.py",
+      "sha256": "b48694f43a25cd6da0ad17c857579013c4018ce901db62c721fd37d99e889739"
+    },
+    {
+      "path": "code/labs/persistent_decode/optimized_persistent_decode_graphs.py",
+      "sha256": "c23a70f24c4f9245e200a910abb3410693047f924197e366cb1d808f98042fce"
+    },
+    {
+      "path": "code/labs/persistent_decode/optimized_persistent_decode_triton.py",
+      "sha256": "2c3a95cc348d5ac9897dca4959b23b999322991ed21fa3992c583177ba826b93"
+    },
+    {
+      "path": "code/labs/persistent_decode/paged_kv_offload_common.py",
+      "sha256": "d806e5b8fc2ba3829082a8eb614abef31e0b7fb804e336cbe62001babe482a1d"
+    },
+    {
+      "path": "code/labs/persistent_decode/persistent_decode_common.py",
+      "sha256": "8c2e49dd225cf885faa53723c87294c9680853f66640a94131f4b9b4ce43e968"
+    },
+    {
+      "path": "code/labs/persistent_decode/persistent_decode_ext.cu",
+      "sha256": "42722bf82da876e7a2b38aea352ea0e4b17341148b3516a132fc9cda0e2386ff"
+    },
+    {
+      "path": "code/labs/persistent_decode/tma_extension.py",
+      "sha256": "675fc3fb5faf72e274a72d2c86e31a67743150d467c41295c542ea759e3d03d8"
+    },
+    {
+      "path": "code/tests/test_audit_wave1_attention_regressions.py",
+      "sha256": "445905e7b9f741cd4cf22c709f4a07f8b392ba92e1d123e8d673c8e00a9a18e8"
+    }
+  ],
+  "reason": "Actual CUDA GPU and nvcc are required; skipped tests cannot qualify this package"
+}

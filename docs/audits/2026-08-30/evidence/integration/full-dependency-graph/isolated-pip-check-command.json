@@ -1,0 +1,9 @@
+{
+  "argv": [
+    "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+    "-m",
+    "pip",
+    "check"
+  ],
+  "exit_code": 0
+}

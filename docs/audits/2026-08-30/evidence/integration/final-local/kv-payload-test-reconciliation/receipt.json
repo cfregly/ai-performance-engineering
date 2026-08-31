@@ -1,0 +1,97 @@
+{
+  "created_utc": "2026-08-31T00:07:37.604980+00:00",
+  "status": "PASS_REAL_CPU_TEST_RECONCILIATION__GPU_ACCEPTANCE_HOLD",
+  "scope": "Only one existing parameterized test function changed; no production code changes and no original finding additions/removals. Parent owns full-suite integration.",
+  "source_sha256": {
+    "code/tests/test_labs_runtime_gating.py": "f3bf62d9d09a17e603e462b99b46f8bc01074acdda8fc6884c58453709f5f168"
+  },
+  "original_source": {
+    "archival_path": "docs/audits/2026-08-30/evidence/integration/final-local/kv-payload-test-reconciliation/original-test_labs_runtime_gating.py.txt",
+    "sha256": "5562ae1cc2a9302aae7285cb82404b3e74a129fb91c3b136f22b11c761d1a519"
+  },
+  "read_only_dependency_sha256": {
+    "code/labs/kv_cache_compression/baseline_kv_cache.py": "6e192a20671da0b6572f358fcf002db6184ceabb0382811e4eb02ab0041cf443",
+    "code/labs/kv_cache_compression/optimized_kv_cache_nvfp4.py": "279464d15f98f3dbe7bf0deb0e00027a20885c9aead65361ea8234cb5f79fdba",
+    "code/labs/kv_cache_compression/kv_cache_common.py": "5d27f2cba0a59b8e513533930233dee50fde6e0222eb0ab0740a4e843a6333b0",
+    "code/labs/kv_cache_compression/accuracy.py": "03983a6c1474273cc2d406577015f77a5376dcb90c17f3a8033dd8fdcd4197a6",
+    "code/core/benchmark/verification_mixin.py": "a9bcf2313dfde02a6bf976b6712193609f56de84d668dec3c747d1d4c5ce9a29",
+    "code/core/harness/arch_config.py": "c6a5a340834ad724f9b2df7c10cdb727358e5095eb466fad7797e77347b8480a",
+    "code/tests/test_audit_wave1_numerics_regressions.py": "4757f52eb8d040c28fbdeb4d9965a44aa9262341fd9cc7633f564500903f6f58"
+  },
+  "source_scope_proof": "scope-proof.json",
+  "changes": [
+    "Replace partial fixture without model/input groups/policy with real CPU BF16 model/cache operations.",
+    "Check missing-policy rejection before granting a synthetic exact-zero policy only for fixed CPU inputs.",
+    "Independently construct analytic K=2*tokens+channel_bias and V=-2*tokens-channel_bias; compare all192elements from12distinctbatch/tokenrows and two heads/four channels.",
+    "Preserve stack/cat post-timing boundary control; restore before actual reference/capture execution.",
+    "Reject aliased candidate/reference and corruption in final K/V elements; retain previously captured snapshot unchanged."
+  ],
+  "validation": {
+    "whole_runtime_file": {
+      "passed": 24,
+      "skipped": 0
+    },
+    "whole_numerics_file": {
+      "passed": 36,
+      "skipped": 1,
+      "skip_reason": "Actual CUDA required; CPU checks do not qualify GPU numerics"
+    },
+    "combined_log": "combined-attempt-1.txt",
+    "combined_junit": "combined-attempt-1.xml",
+    "pytest_reported_seconds": 6.96,
+    "exit_code": 0,
+    "source_ast_scope": "PASS:45original/currenttop-levelnodes; onlynamedtestchanged; decorator/signature preserved",
+    "scoped_git_diff_check": "PASS"
+  },
+  "preserved_attempts": [
+    {
+      "path": "before-observation.json",
+      "outcome": "Parent full-suite run rejected both original uncalibrated fixtures; original full XML path/hash and both failure traces retained."
+    },
+    {
+      "path": "focused-command-attempt-1.json",
+      "outcome": "2FAIL due solely to test author using tolerance.rtol/atol when get_output_tolerance returns a tuple; source snapshot and full failure log preserved. Actual fullcache/reference comparisons had already passed."
+    },
+    {
+      "path": "combined-command-attempt-1.json",
+      "outcome": "60PASS1actualCUDA-SKIP after correcting tuple assertion; no test excluded."
+    }
+  ],
+  "independent_review": [
+    {
+      "reviewer": "root",
+      "outcome": "Read revised test; accepted actual productionCPU model writes,12distinct balancedBF16rows,exactclosed-formK/V,policyrefusal,192elementpayload and nonalias. No CUDA/TEsuccess claim."
+    }
+  ],
+  "environment": {
+    "python_executable": "/opt/miniconda3/bin/python",
+    "python": "3.12.2",
+    "torch": "2.8.0",
+    "torch_cuda": null,
+    "cuda_available": false,
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "pinned_gpu_stack": false
+  },
+  "limitations": [
+    "The benchmark GPU setup and benchmark_fn were deliberately not invoked; actual CPU model forward/cache writes and capture/validation hooks were exercised.",
+    "Exact synthetic CPU accuracy policy is not a guessed GPU quantization threshold or workload calibration.",
+    "Existing numerics actualCUDA gate was explicitly skipped; noCUDA/TE/NVFP4/FP8 kernel, sanitizer, benchmark timing or performance qualification.",
+    "Parent full-suite attempt2 is separate and running; this receipt does not claim its outcome."
+  ],
+  "artifacts": {
+    "README.md": "3a3aa777d7d73bdc696ba21df75ffa34c7d2b3352bf0f29018978ff67633e9e5",
+    "before-observation.json": "3c7520c70cafde5fe7891d90b11f11beeaa8ce49a7afc0cbd96981b5018e40c5",
+    "combined-attempt-1.txt": "e417430b21ecf0453602ca2759389d1de5d5f2e1e9006de6471de9b4b0d50bf2",
+    "combined-attempt-1.xml": "9b9f4399b119f331f33d8f8bd02c726385c137402839521132c7719eae3bff4c",
+    "combined-command-attempt-1.json": "3bea57b1512354ecf89150524875ebded1292fcf45ac8cdb8b40556ddfb1c412",
+    "diff-check.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "focused-attempt-1-source.py.txt": "d89a6fee9de9dc9e7d59d7cf2a61439989a070030a026967cf47e28fff803a1e",
+    "focused-attempt-1.txt": "4699cf6db9380612a19cf2fec2feb51a581b54b0966a70167c189a1b5fd2d5d7",
+    "focused-attempt-1.xml": "77ff689d0281cdd306c198577fe811635e53e721806106127fe8578273415c2c",
+    "focused-command-attempt-1.json": "ff2205886824aef5347b5e082d1fd7cde08dba69e5179b2117b8b252f10dc1dc",
+    "original-test_labs_runtime_gating.py.txt": "5562ae1cc2a9302aae7285cb82404b3e74a129fb91c3b136f22b11c761d1a519",
+    "scope-proof.json": "c82af69e85ee65d3c297d2b4baa26b3a6ce2b17380cf142a07434bfd27789191",
+    "source-change.patch.txt": "b07cf179a0662d6c46d4168ae2ea422b0a5aa3517a1920aab4d242beb3180a18",
+    "static-checks.json": "beee921167d583cf450624a0e400dcc84efc592fe28c03715e637d86bdb6b9ad"
+  }
+}

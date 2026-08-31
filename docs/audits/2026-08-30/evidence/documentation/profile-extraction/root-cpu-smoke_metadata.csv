@@ -1,0 +1,2 @@
+profile_dir,script,args,torch_version,duration_seconds,cuda_available,cuda_device,error
+/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844__profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260830_191844,tests/fixtures/mcp_torch_profile_target.py,,2.8.0,0.00938105583190918,False,,

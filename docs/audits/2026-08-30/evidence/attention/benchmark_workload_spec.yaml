@@ -1,0 +1,53 @@
+run_metadata:
+  benchmark_layer: micro
+  benchmark_grade: realism
+  use_case: engineering_debug
+  owner: root audit-remediation task
+  ticket_or_epic: P07 wave1 attention/decode
+comparison_axis:
+  variable_under_test: implementation
+  control: independent Torch Math SDPA or FP64 attention/dot-times-V reference
+  candidate: reviewed source_manifest.json
+  constants_locked: [seed, inputs, weights, dtype, layout, batch, sequence, dimensions, device, backend intent]
+workload:
+  type: inference
+  name: bounded attention/decode correctness matrix
+  matrix:
+    flashmla: {batch: 3, heads: 3, max_sequence: 7, lengths: [7, 3, 0], dimensions: [33, 64, 128, 1024], precision: fp16_with_FP64_reference}
+    reduction: {batch: 12, tokens: 64, dimensions: [33, 64, 128], blocks: 2, repeats: 25, precision: fp32_with_FP64_reference}
+    triton_decode: {batch: 12, tokens: 32, dimension: 64, programs: [1, 8, 12], repeats: 3}
+    triton_decode_graphs: {batch: 12, tokens: 64, dimension: 64, programs: 1, modes: [full, piecewise, full_and_piecewise], repeats: 3}
+    triton_attention: {batch: 2, heads: 3, sequence_dimension_pairs: [[1,16],[63,32],[65,40],[129,64]], causal: [false,true], precision: fp16}
+    cute: {batch: 2, heads: 3, sequence: 64, dimension: 64, precision: bf16}
+    cudnn: {batch: 8, sequence: 256, hidden: 512, heads: 8, precision: fp16, provider_required: cudnn}
+    staging: {memmap: true, pinned: true, repeat_calls: 8, stream_variants: [default, copy], host_worker: [false,true]}
+    thread_copy: {element_counts: [0,1,127,128,129,4097], precision: fp32, exact_equality: true, graph_repeats: 3}
+    graph_persistent: {batch: 2, prompt: 16, decode: 4, hidden: 64, vocab: 128, repeats: 4}
+  quality_constraints:
+    correctness_suite: tests/test_audit_wave1_attention_regressions.py
+    dropped_sequences_allowed: 0
+    NaN_allowed: false
+    aliased_or_corrupt_output_allowed: false
+    tolerance_policy: existing decode budget unchanged; new reference gates use Torch dtype defaults or exact copy/token equality
+execution:
+  image: unavailable; pinned CUDA image/environment must be recorded before target run
+  runtime_versions: {driver: pending, cuda: pending, pytorch: pending, triton: pending, cute: pending}
+  hardware_tier: {gpu_model: pending_authorized_target, gpu_count: 1}
+  scheduler_path: {platform: pending, placement_policy: exclusive_custody}
+measurement_policy:
+  correctness_before_timing: true
+  future_performance_trials: 5
+  raw_samples_immutable: true
+  discard_requires_written_reason: true
+  environment_controls: {gpu_clocks_recorded: true, topology_recorded: true, background_load_recorded: true}
+metrics:
+  primary: correctness
+  future_secondary: [latency_ms, tokens_per_second, effective_attention_tflops]
+diagnosis_policy:
+  required_signals: [real_cuda_outputs, compute_sanitizer, profiler_dispatch, copy_instruction_attribution]
+artifacts:
+  artifact_root: fresh directory passed to run_cuda_acceptance.py
+  require_manifest: true
+  require_sha256: true
+  raw_artifacts_immutable: true
+  current_gpu_status: HOLD

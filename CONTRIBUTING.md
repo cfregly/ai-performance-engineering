@@ -18,8 +18,8 @@ We welcome contributions from the community in many forms:
 ### Prerequisites
 
 - NVIDIA GPU with CUDA support
-- Python 3.8+
-- PyTorch with CUDA
+- Python 3.12 for the pinned repository environment
+- The supported CUDA/PyTorch stack documented in [Environment and Configuration](docs/environment.md)
 - Git
 
 ### Development Setup
@@ -32,8 +32,11 @@ cd ai-performance-engineering
 # Create a new branch for your contribution
 git checkout -b feature/your-feature-name
 
-# Install development dependencies
-pip install -r code/ch1/requirements.txt
+# Create an isolated environment from the code directory
+cd code
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements_latest.txt
 ```
 
 ## Contribution Guidelines
@@ -47,14 +50,14 @@ pip install -r code/ch1/requirements.txt
 
 ### File Organization
 
-- **New Examples**: Place in appropriate chapter directory (`code/chX/`)
-- **Tools**: Add to `tools/` directory
-- **Scripts**: Add to `scripts/` or the relevant chapter directory
+- **New Examples**: Place in appropriate chapter directory (`code/ch01/` through `code/ch20/`, or `code/labs/`)
+- **Tools**: Add to the appropriate `code/core/` package
+- **Scripts**: Add to `code/core/scripts/` or the relevant chapter/lab directory
 - **Documentation**: Update relevant README files
 
 ### Architecture Support
 
-The main branch targets **Blackwell B200/B300 (SM100)** exclusively. New examples should default to `ARCH ?= sm_100` and inherit the CUDA 12.9 toolchain. If you prototype support for other GPUs, keep it behind clearly documented flags or submit it as a separate branch.
+B200/GB200 are **SM100**; B300/GB300 are **SM103**. SM120/121 have separate feature constraints. Use the shared `code/core/common/cuda_arch.mk` selection and the CUDA 13 toolchain described in [the environment guide](docs/environment.md). Preserve explicit unsupported-target checks; do not rewrite one architecture as another to make a build proceed. The B200 dependency baseline does not qualify B300/GB300. See [NVIDIA compute capabilities](https://developer.nvidia.com/cuda/gpus).
 
 ## Development Workflow
 
@@ -81,32 +84,34 @@ The main branch targets **Blackwell B200/B300 (SM100)** exclusively. New example
 # Make your changes
 # Test your code thoroughly
 
-# Run tests (if applicable)
-python -m pytest tests/
+# From code/, run the repository suite (GPU requirements are explicit skips)
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest tests -q -ra -o timeout=120
 
-# Check code style
-black code/
-flake8 code/
+# Check only files touched by your change with the repository configuration
+python -m ruff check core/benchmark/comparison.py
 ```
 
 ### 3. Testing Your Changes
 
 #### **Performance Testing**
 ```bash
-# Run performance benchmarks
-./code/build_all.sh
+# From code/, discover the exact benchmark pair
+python -m cli.aisp bench list-targets --chapter ch01
 
-# Profile your changes
-python scripts/profile_harness.py --profile nsys --profile pytorch --examples ch6_add_parallel --output-root profiles/test_run
-
-# Compare with baseline
-python tools/comprehensive_profiling.py
+# On the supported target, check correctness before accepting measurements
+python -m cli.aisp bench verify --help
+python -m cli.aisp bench run --targets ch01:performance --profile minimal
 ```
 
+Use the [profiling guide](docs/tooling-and-profiling.md) for current capture
+commands and output analysis. A help invocation or source test does not execute
+a GPU benchmark, and a historical expectation file does not qualify new source.
+
 #### **Compatibility Testing**
-- Confirm runs on Blackwell B200/B300 hardware
-- Verify PyTorch 2.9 nightly/cu129 environment
-- Ensure CUDA 12.9 toolkit compatibility
+- Record the exact GPU SKU/capability, driver, toolkit, PyTorch and Triton versions.
+- Validate B200 and B300 separately; do not pool their timing or correctness evidence.
+- Use the CUDA 13 B200 baseline or an independently validated target-specific stack.
+- Run full-output numerical checks and applicable sanitizers on actual hardware.
 
 ### 4. Submitting Your Contribution
 
@@ -130,7 +135,7 @@ git push origin feature/your-feature-name
 
 ### Before Submitting
 
-- [ ] **Test thoroughly** on Blackwell hardware (or simulator)
+- [ ] **Test thoroughly** on the applicable hardware; label CPU/source checks, simulations and hardware checks separately
 - [ ] **Update documentation** if needed
 - [ ] **Add comments** for complex code
 - [ ] **Include performance benchmarks** for optimizations
@@ -151,7 +156,7 @@ Brief description of your changes
 - [ ] Blackwell workflow improvement
 
 ## Testing
-- [ ] Tested on Blackwell B200/B300 (sm_100)
+- [ ] Tested on the exact target: B200/GB200 (SM100) or B300/GB300 (SM103); attach separate receipts
 - [ ] Performance benchmarks included
 - [ ] Documentation updated
 
@@ -190,34 +195,24 @@ If you experiment with additional architectures, document the changes clearly an
 
 ### Example Benchmark Format
 
-```python
-# Performance benchmark example
-import time
-import torch
+Use the existing `BaseBenchmark` interfaces and a complete baseline/optimized
+pair, for example [the Chapter 1 baseline](code/ch01/baseline_performance.py).
+Provide deterministic equivalent inputs, an independent full-output reference,
+and an explicit numerical error policy. Let the harness own warmup, timing and
+post-timing verification. CUDA events must measure the executing stream or join
+all participating streams before stopping. Never time an empty loop or count
+requested operations that did not execute.
 
-def benchmark_kernel():
-    # Setup
-    device = torch.device('cuda')
-    size = 1024 * 1024
-    
-    # Warmup
-    for _ in range(10):
-        # Your kernel here
-        pass
-    
-    # Benchmark
-    start = time.time()
-    for _ in range(100):
-        # Your kernel here
-        pass
-    end = time.time()
-    
-    # Report
-    avg_time = (end - start) / 100
-    throughput = size / avg_time
-    print(f"Average time: {avg_time:.6f}s")
-    print(f"Throughput: {throughput:.2f} ops/s")
+From `code/`, discover and run the pair on its supported target:
+
+```bash
+python -m cli.aisp bench list-targets --chapter ch01
+python -m cli.aisp bench run --targets ch01:performance --profile minimal
 ```
+
+Preserve individual measurements and all validation failures; do not manufacture
+samples from a summary statistic or use profiler-overhead timings as ordinary
+latency. An unchanged source-level contract does not certify a new GPU run.
 
 ## Bug Reports
 
@@ -311,7 +306,7 @@ When updating documentation:
 
 ## License
 
-By contributing to this project, you agree that your contributions will be licensed under the same license as the project (MIT License).
+By contributing to this project, you agree that your contributions will be licensed under the same license as the project ([Apache License 2.0](LICENSE)).
 
 ## Recognition
 

@@ -1,0 +1,70 @@
+{
+  "scope": "Real CPU tensor/payload-control reproduction of actual production capture and validation methods; CUDA-only constructors/setup/streams/copy extensions/graphs not run and not mocked. Actual production decode tensor helpers run on CPU only to populate payload data. Prefill data is a control fixture, not GPU-copy evidence.",
+  "cuda_available": false,
+  "cases": [
+    {
+      "class": "BaselineTmaPrefillDecodeBenchmark",
+      "full_decode_shape": [
+        3,
+        11,
+        16
+      ],
+      "captured_shape": [
+        1,
+        8,
+        16
+      ],
+      "last_decode_and_prefill_corruption_omitted": true,
+      "validate_result_after_corruption": null,
+      "prefill_input_present_in_payload": false
+    },
+    {
+      "class": "OptimizedTmaPrefillDecodeBenchmark",
+      "full_decode_shape": [
+        3,
+        11,
+        16
+      ],
+      "captured_shape": [
+        1,
+        8,
+        16
+      ],
+      "last_decode_and_prefill_corruption_omitted": true,
+      "validate_result_after_corruption": null,
+      "prefill_input_present_in_payload": false
+    },
+    {
+      "class": "BaselineNativeTmaPrefillDecodeBenchmark",
+      "full_decode_shape": [
+        3,
+        11,
+        16
+      ],
+      "captured_shape": [
+        1,
+        8,
+        16
+      ],
+      "last_decode_and_prefill_corruption_omitted": true,
+      "validate_result_after_corruption": null,
+      "prefill_input_present_in_payload": false
+    },
+    {
+      "class": "OptimizedNativeTmaPrefillDecodeBenchmark",
+      "full_decode_shape": [
+        3,
+        11,
+        16
+      ],
+      "captured_shape": [
+        1,
+        8,
+        16
+      ],
+      "last_decode_and_prefill_corruption_omitted": true,
+      "validate_result_after_corruption": null,
+      "prefill_input_present_in_payload": false
+    }
+  ]
+}

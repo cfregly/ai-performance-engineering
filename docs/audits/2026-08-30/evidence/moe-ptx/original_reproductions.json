@@ -1,0 +1,37 @@
+{
+  "base": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "source_sha256": "7d6a4609eeb721ae5e9983c8ed080c57b9a0677b0a54338606bcfb02d238cfac",
+  "evidence_kind": "Actual Torch CPU operations and original benchmark/capture methods; no GPU execution",
+  "rows": [
+    {
+      "dtype": "torch.bfloat16",
+      "logical_shape": [
+        65,
+        48
+      ],
+      "payload_shape": [
+        1024
+      ],
+      "max_abs_reference": 0.003814697265625,
+      "last_element_corruption_ignored": true,
+      "all_zero_passes_original_tolerance": true,
+      "all_zero_passes_suggested_tolerance": true,
+      "zero_validate_result": null
+    },
+    {
+      "dtype": "torch.float16",
+      "logical_shape": [
+        65,
+        48
+      ],
+      "payload_shape": [
+        1024
+      ],
+      "max_abs_reference": 0.0038299560546875,
+      "last_element_corruption_ignored": true,
+      "all_zero_passes_original_tolerance": true,
+      "all_zero_passes_suggested_tolerance": true,
+      "zero_validate_result": null
+    }
+  ]
+}

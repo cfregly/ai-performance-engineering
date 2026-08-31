@@ -1,0 +1,11 @@
+Running torch.profiler (full) on tests/fixtures/mcp_torch_profile_target.py
+╭─────────────────────────── torch.profiler capture ───────────────────────────╮
+│ ✓ Trace:                                                                     │
+│ ../docs/audits/2026-08-30/evidence/documentation/cpu-profile/20260830_191844 │
+│ __profile_torch__docs_smoke/profiles/tools/torch/docs_smoke/docs-smoke_20260 │
+│ 830_191844/trace.json                                                        │
+│ Summary: torch_profile_summary.json                                          │
+│ Metadata: metadata.json                                                      │
+│ NVTX label: aisp_torch_profile                                               │
+│ Force lineinfo: True                                                         │
+╰──────────────────────────────────────────────────────────────────────────────╯

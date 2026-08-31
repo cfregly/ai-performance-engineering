@@ -1,0 +1,28 @@
+{
+  "scope": "All retained files except this manifest; disposable Python bytecode excluded",
+  "files_sha256": {
+    "README.md": "6c9bb7b83d7557f6158cac2194381eee66e11f088e6e0f0f24ddc22c60a41325",
+    "cuda-preflight-command.json": "b07bae0ecd3929efd3ff072f7361f4a13c8a02354ba9a2248f8e884f0710f8b2",
+    "cuda-preflight-hold/report.json": "56937aea5fc263c5df4aac57918ecbc3ecb5ff8f6fcdae1663628716e0bd387a",
+    "cuda-preflight-output.txt": "494ac8041e7d9e3f59a0d15a2231a33747dfde6622f037a05fa506071dde94cf",
+    "original-baseline_native_tma_prefill_decode.py": "43427f27efdf22aad2d456212ddfb6b6eb68d122da5875c6c59c4ba8472a3fc3",
+    "original-baseline_tma_prefill_decode.py": "baec3cc9367fb3c0417e847b0e1cbdb46da694eef93750f89cc4c44647cc5cce",
+    "original-capture-reproduction.json": "40e9901dbbafd7a29ed79eab6b7d89d842125ff624114802bacdcd3592a6b81d",
+    "original-mechanisms-command.json": "7f5341c002a8be702df57efe3b4af53b89949e9fce520a3a47764a4bc5ac8d51",
+    "original-mechanisms-rechecked.json": "57bf3dd74e16546b85cab78c1cbcf22e1f741e7e9a4c79436ac3be6a749bcdca",
+    "original-optimized_native_tma_prefill_decode.py": "5b0356053c4977f07080007cf1807600b9876f82782840e0ab82da834afbd521",
+    "original-optimized_tma_prefill_decode.py": "e24bef6eb0489281d54ed71579db42df894a3d8d4dece9d99cd6cb3d620e33fa",
+    "original-persistent_decode_common.py": "8c2e49dd225cf885faa53723c87294c9680853f66640a94131f4b9b4ce43e968",
+    "original-source-manifest.json": "8ceb828ed03b3ae925285cae1730f70883d24d6bfabae25ddaf175f5aa99c3b7",
+    "pytest-final-command.json": "25dbbd966582dc1fa18169be36f1b1665b7659c73fd0aef0e6c58403eeb7d810",
+    "pytest-final.txt": "b5d4b55a45cadcabe354794aeb6081d9af19a6d9232e0c342a9c9ed79f4f2d70",
+    "pytest-final.xml": "7be8d45b7171672a806e470b42075726a6860f4784113e68b2f37d2b67a35d4c",
+    "pytest-first-command.json": "962a7520b855ddba255a6df35462e6b518b9201004efe98d0e78fc634eeb2c71",
+    "pytest-first.txt": "5d271f7560f11ad75f4f9336d87ef612e5a3c0afbed6164152c1d8b5c1f0a48d",
+    "pytest-first.xml": "fe7663794365afb77e4ee8947b912a5c350e1c27c410480191a9450cfb3a18ab",
+    "receipt.json": "5be4ba0cd1d1c1aad288842587bc889671484917dbc8de63a2945745208e2907",
+    "recheck_original_mechanisms.py": "e68a6c796416db9a4097628d4839a60b3dd22c6e20caa31e20a85a3bbed4abc8",
+    "scoped-change-from-preserved-sources.diff.txt": "dd60f587bb0bdc6b5d8ff4550ae8912a38f59fcd92f4b0c2c78a261519b657db",
+    "source-checks.json": "68e5ee59e98b3905a3664506ab66cfe38451b0b39045e1d2267b16b63a6d38f2"
+  }
+}

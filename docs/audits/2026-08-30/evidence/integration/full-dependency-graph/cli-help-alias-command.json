@@ -1,0 +1,16 @@
+{
+  "case": "help-alias",
+  "argv": [
+    "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+    "-m",
+    "cli.aisp",
+    "help"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "exit_code": 0,
+  "expected_exit": 0,
+  "expected_text": "benchmark",
+  "status": "PASS",
+  "elapsed_seconds": 2.5159190419944935,
+  "output": "cli-help-alias.txt"
+}

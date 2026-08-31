@@ -1,0 +1,13 @@
+{
+  "command": [
+    "/opt/miniconda3/bin/python",
+    "-m",
+    "py_compile",
+    "code/labs/fullstack_cluster/moe_hybrid_ep_common.py",
+    "code/tests/test_audit_wave1_hybrid_ep.py",
+    "code/tests/test_fullstack_cluster_shared_benchmark_wrappers.py"
+  ],
+  "exit_code": 0,
+  "stdout": "",
+  "stderr": ""
+}

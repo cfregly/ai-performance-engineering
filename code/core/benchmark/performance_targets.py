@@ -11,8 +11,10 @@ baseline values.
 from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
 import json
 import copy
+import math
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
+from core.benchmark.metrics import compute_copy_bandwidth_metrics
 
 # Hints for Nsight Compute counter names when collecting bandwidth/efficiency.
 # These are informational; metrics remain numeric (min/target/unit).
@@ -27,7 +29,9 @@ TargetsDict = Dict[str, Dict[str, Any]]
 
 _DEFAULT_TARGETS: TargetsDict = {
     "overall": {
-        "hbm3e_bandwidth_tbs": {"min": 3.0, "target": 3.5, "unit": "TB/s", "realistic_max": 4.0},
+        # Same fallback policy expressed as read+write traffic (formerly payload-only).
+        # This arithmetic correction does not certify a measured hardware peak.
+        "hbm3e_bandwidth_tbs": {"min": 6.0, "target": 7.0, "unit": "TB/s", "realistic_max": 8.0},
         "fp16_compute_tflops": {"min": 1000, "target": 2000, "unit": "TFLOPS", "realistic_max": 1300},
         "torch_compile_speedup_small": {"min": 1.1, "target": 1.2, "unit": "x"},
         "torch_compile_speedup_large": {"min": 1.0, "target": 1.3, "unit": "x"},
@@ -234,10 +238,30 @@ def _get_peak_values(search_dir: Optional[Path] = None) -> Tuple[Dict[str, float
     
     # Extract HBM memory bandwidth (previously hbm3e, now hbm)
     hbm_data = benchmark_data.get("hbm") or benchmark_data.get("hbm3e")  # Support both
-    if hbm_data and "peak_bandwidth_tbs" in hbm_data:
-        peak_values["hbm_bandwidth_tbs"] = hbm_data["peak_bandwidth_tbs"]
-        # Also keep old name for compatibility
-        peak_values["hbm3e_bandwidth_tbs"] = hbm_data["peak_bandwidth_tbs"]
+    if hbm_data:
+        try:
+            if not isinstance(hbm_data, dict) or (
+                hbm_data.get("accounting_version") != 2
+                or hbm_data.get("byte_accounting") != "read_plus_write"
+                or hbm_data.get("bandwidth_unit") != "decimal_GB_per_s"
+            ):
+                raise ValueError("missing read+write accounting version 2 provenance")
+            recomputed = compute_copy_bandwidth_metrics(
+                hbm_data["payload_bytes"], hbm_data["iterations"], hbm_data["elapsed_ms"]
+            )
+            for field in ("bytes_per_iteration", "total_bytes", "peak_bandwidth_gbs", "peak_bandwidth_tbs"):
+                value = hbm_data[field]
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                    raise ValueError(f"invalid {field}")
+                if not math.isclose(value, recomputed[field], rel_tol=1e-9, abs_tol=0.0):
+                    raise ValueError(f"{field} disagrees with bytes/timing provenance")
+            peak_values["hbm_bandwidth_tbs"] = recomputed["peak_bandwidth_tbs"]
+            peak_values["hbm3e_bandwidth_tbs"] = recomputed["peak_bandwidth_tbs"]
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            warnings.append(
+                f"Rejected HBM target from {artifact_path}: {exc}. Legacy payload-only artifacts "
+                "are preserved but require a new measurement or explicit reviewed arithmetic migration."
+            )
     
     # Extract FP4 compute
     if "fp4_compute" in benchmark_data and "peak_tflops" in benchmark_data["fp4_compute"]:
@@ -263,7 +287,10 @@ def _get_peak_values(search_dir: Optional[Path] = None) -> Tuple[Dict[str, float
     if "torch_compile" in benchmark_data and "speedup" in benchmark_data["torch_compile"]:
         peak_values["torch_compile_speedup"] = benchmark_data["torch_compile"]["speedup"]
 
-    return peak_values, warnings, artifact_path, "measured_peak_results"
+    source = "measured_peak_results"
+    if warnings:
+        source = "partial_peak_results_with_warnings" if peak_values else "defaults_due_to_peak_results_warning"
+    return peak_values, warnings, artifact_path, source
 
 
 def _get_metrics_section(chapter_entry: Dict[str, Any]) -> Optional[Dict[str, Dict[str, Any]]]:

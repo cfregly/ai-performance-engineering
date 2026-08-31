@@ -1,0 +1,16 @@
+{
+  "status": "HOLD",
+  "case": "bias_silu",
+  "arch": "sm_100a",
+  "checks": [],
+  "source_sha256": {
+    "labs/custom_vs_cublas/tcgen05_gemm.cu": "c6974fbeac9ead75ba50710cd8976318bf7c117597d2a5315524d0c93fa38026",
+    "tests/cuda/run_feature_extensions_validation.py": "4e1768e0bfa419326016e896d522210a872d6e6ebb03df98dd2aabcf108f7874",
+    "tests/cuda/validation_process.py": "47019ab4daa7d09d73a9721c2ee68e1b1999b18d1022e25d17dd7089f26f277d",
+    "tests/cuda/run_feature_cuda_validation.py": "0f31df4ae79343765755b9f5291b85c7e4fc2782a9395500b841f1352dfe586a"
+  },
+  "sanitizers": "all",
+  "multi_device_controls_requested": false,
+  "started_at_utc": "2026-08-30T23:18:51Z",
+  "reason": "nvcc unavailable; no CUDA compilation or device execution occurred"
+}

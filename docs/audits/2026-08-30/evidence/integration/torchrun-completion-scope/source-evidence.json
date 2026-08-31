@@ -1,0 +1,41 @@
+{
+  "original_base": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "original_sha256": {
+    "code/labs/train_distributed/training_utils/torchrun_harness.py": "7cec3cdf803499f5388f6c87d1f09487f738e318855f141d7adbb3f3cad152ce",
+    "code/labs/train_distributed/README.md": "671d0837eb5c62cc531e26999616d4e9a7bacb55c2ecfe96b2d4d5a9e9fe4020",
+    "code/ch04/symmetric_memory_training_advanced.py": "e5ea9cb55618c5f2f77267d203ba5ad88e3f49a11328da84885bad9b09fbb1f8",
+    "code/labs/train_distributed/baseline_symmem_training.py": "e8b15ab84b2ee82461a6dd92e4ffe8e0eac23b1b2703060f7cbb7fd4e85de01c",
+    "code/labs/train_distributed/baseline_symmem_training_multigpu.py": "bf798c7ccef3a3891f94b1eade2c708494b600fa4818c827a5a733f72cb4f606",
+    "code/labs/train_distributed/baseline_zero2.py": "aa845a2e92de8a7c08f16099b9c21c152865be892165057659e205d093f2b8ec",
+    "code/labs/train_distributed/baseline_zero2_multigpu.py": "9c7832f65fa9c84a674af0b195edac6346b876b95c19b7a92e761093ef219f35",
+    "code/labs/train_distributed/optimized_symmem_training.py": "322544c01af316ed599d3fd426156c49f2ea54d05a6a752da3b70d0c800d9ca4",
+    "code/labs/train_distributed/optimized_zero2.py": "121ee2e2e3f82eca8ac2291270f73d64fddf747f39398e57a8fd7699bde9d85a",
+    "code/labs/train_distributed/optimized_zero2_multigpu.py": "75b9d845d854df156513d06def486c5c45d6473bff2d0ab29698f831fcb5b43f"
+  },
+  "current_sha256": {
+    "AUDIT_REMEDIATION_PLAN.md": "f79b8960df0460d866b4d3356d2dd149d961904e09ffa68ce4fe86690bb79355",
+    "docs/audits/2026-08-30/remediation-ledger.json": "30c294ed297551a712bb0a0416f4240dec1a60b0c82fc56679a73f3356cf75cc",
+    "docs/audits/2026-08-30/wave-1-source.json": "474779ab49b67c5c888e5f689b2400204b6d0f46f304219cedd0773694b6e1ba",
+    "code/labs/train_distributed/training_utils/torchrun_harness.py": "faf2903b81f3825422764a9819031375a287bbec28f1327899dcabd3bfd548b0",
+    "code/labs/train_distributed/zero2_common.py": "4e3cecbbd972f93febba8d4e46128c1924c5f3410af6d226b90ebe4091db0d10",
+    "code/labs/train_distributed/zero2.py": "b8c6c77d7b830a586842bf7be446021b58432c79ff51ed6b6c368abed73cb610",
+    "code/labs/train_distributed/baseline_zero2.py": "168337db169218f91077f56366d4c66915e52d5f53ca52e3448d16baa814bc4c",
+    "code/labs/train_distributed/optimized_zero2.py": "61bdda99a0903d79dc8374223c6d661f86f61e7f2715d318260302cdb61c9201",
+    "code/labs/train_distributed/baseline_zero2_multigpu.py": "c0c56e8e882665fd14ca25633f01de69e7130a9ecb980d07b8ac1073d0c7ef4b",
+    "code/labs/train_distributed/optimized_zero2_multigpu.py": "65778560c2b6a094829cb098c1667e2e71ebfd7932a72c61a654279b5f9ea211",
+    "code/core/harness/benchmark_harness.py": "97aafb1fe60e84d18f16a25882aa4cb49e715e70b3217baf3a700881311128e9",
+    "code/core/harness/torchrun_wrapper.py": "fc4eda9f27b6c2d3d1f5fff56800cbd6dd7763d6f8dee996836b1560626f5c03",
+    "code/core/benchmark/verify_runner.py": "16eeddaeefa19bf11a10379d157cd12ec27ab6065d4893c9d8b30288b2982963",
+    "code/tests/test_audit_wave1_zero2_parity.py": "6ca410e10f774f6371a00b23f526921f60ccf2034e9ab44334968831f629ae45",
+    "code/tests/test_audit_wave1_zero2_parity_cuda.py": "bf69a18398db203d6165b65a36bbd0f179098463873ded026f2308caee686825",
+    "code/tests/test_audit_wave1_torchrun_verification.py": "5512a4fd6d6252ee1dac2e3c5d86e42f45abdcba9b8d6a94d64c80a9867c6de8",
+    "docs/audits/2026-08-30/evidence/zero2-parity/receipt.json": "a4693c17d683e322ea414f96e90f78bf9558c0c49c43a801b18b7b09ded5c522",
+    "docs/audits/2026-08-30/evidence/zero2-parity/cuda-gate/validation-receipts.json": "e10a2809d6a952518baa3a944bd0eadbd7b6c4ce9b60a3c6c88ede451df2075a",
+    "docs/audits/2026-08-30/evidence/torchrun-verification/receipt.json": "ba528b7a5540497eaa5d9506093862dc95c69b6599d2b758c2e94a9fcab0f736"
+  },
+  "snapshot_limit": "Plan/ledger may be updated by their owner after this review. This is an observation epoch, not a source freeze or acceptance receipt.",
+  "executed_repository_code": false,
+  "tests_run": false,
+  "gpu_or_remote_work": false,
+  "install_or_git_mutation": false
+}

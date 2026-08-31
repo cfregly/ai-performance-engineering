@@ -257,7 +257,9 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaMemcpy(d_B, h_B.data(), bytes_B, cudaMemcpyHostToDevice));
 
     dim3 block(BLOCK_SIZE);
-    dim3 grid((M + TILE_M - 1) / TILE_M,
+    // Match the multicast launch's complete clusters for partial M tiles.
+    const int m_tiles = (M + TILE_M - 1) / TILE_M;
+    dim3 grid(((m_tiles + CLUSTER_M - 1) / CLUSTER_M) * CLUSTER_M,
               (N + TILE_N - 1) / TILE_N);
 
     cudaLaunchAttribute attrs[1]{};

@@ -167,7 +167,7 @@ Generated from `mcp.mcp_server.TOOLS`. Run `python -m scripts.generate_mcp_docs`
 ### Analyze (10)
 - `analyze_bottlenecks`: Identify performance bottlenecks: memory-bound, compute-bound, communication-bound, host-bound
 - `analyze_comm_overlap`: Communication/compute overlap analysis for distributed training
-- `analyze_dataloader`: DataLoader bottleneck analysis: worker efficiency, prefetch, throughput
+- `analyze_dataloader`: Read-only DataLoader recommendation and CPU/GPU locality snapshot
 - `analyze_energy`: Energy efficiency analysis: power consumption, efficiency metrics, green recommendations
 - `analyze_memory_patterns`: Memory access pattern analysis: warp divergence, bank conflicts, memory coalescing
 - `analyze_pareto`: Find Pareto-optimal configurations: best throughput/latency/memory tradeoffs

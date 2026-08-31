@@ -16,9 +16,7 @@ from ch19.baseline_vectorization_memory import VectorizationBenchmark
 from ch19.optimized_vectorization_memory import OptimizedVectorizationMemoryBenchmark
 
 
-pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-
-
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA allocation required by setup")
 def test_symmetric_memory_perf_uses_small_allocation_dominated_regime() -> None:
     baseline = BaselineSymmetricMemoryPerfBenchmark()
     optimized = OptimizedSymmetricMemoryPerfBenchmark()
@@ -52,6 +50,17 @@ def test_tensor_core_streams_use_overlap_friendly_regime() -> None:
     assert baseline.matrix_dim == optimized.matrix_dim == 768
     assert baseline.num_segments == optimized.num_segments == 24
     assert optimized.num_streams == 6
+
+
+@pytest.mark.skipif(torch.cuda.is_available(), reason="Checks the real missing-CUDA error")
+@pytest.mark.parametrize("benchmark_cls", [
+    BaselineTensorCoresStreamsBenchmark, OptimizedTensorCoresStreamsBenchmark,
+])
+def test_tensor_core_streams_require_cuda_before_setup_allocations(benchmark_cls) -> None:
+    benchmark = benchmark_cls()
+    with pytest.raises(RuntimeError, match="CUDA required for ch11"):
+        benchmark.setup()
+    assert benchmark.host_A is None
 
 
 def test_allreduce_rmsnorm_uses_larger_fusion_workload() -> None:

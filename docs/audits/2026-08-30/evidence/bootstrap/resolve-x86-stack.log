@@ -1,0 +1,14 @@
+Looking in indexes: https://download.pytorch.org/whl/cu130
+Collecting torch==2.9.1+cu130
+  Downloading https://download-r2.pytorch.org/whl/cu130/torch-2.9.1%2Bcu130-cp312-cp312-manylinux_2_28_x86_64.whl.metadata (30 kB)
+Collecting torchaudio==2.9.1+cu130
+  Downloading https://download-r2.pytorch.org/whl/cu130/torchaudio-2.9.1%2Bcu130-cp312-cp312-manylinux_2_28_x86_64.whl.metadata (6.9 kB)
+Collecting torchao==0.15.0+cu130
+  Downloading https://download.pytorch.org/whl/cu130/torchao-0.15.0%2Bcu130-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (22 kB)
+Downloading https://download-r2.pytorch.org/whl/cu130/torch-2.9.1%2Bcu130-cp312-cp312-manylinux_2_28_x86_64.whl (612.6 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 612.6/612.6 MB 41.2 MB/s eta 0:00:00
+Downloading https://download-r2.pytorch.org/whl/cu130/torchaudio-2.9.1%2Bcu130-cp312-cp312-manylinux_2_28_x86_64.whl (2.1 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.1/2.1 MB 26.4 MB/s eta 0:00:00
+Downloading https://download.pytorch.org/whl/cu130/torchao-0.15.0%2Bcu130-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (7.2 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 7.2/7.2 MB 19.9 MB/s eta 0:00:00
+Would install torch-2.9.1+cu130 torchao-0.15.0+cu130 torchaudio-2.9.1+cu130

@@ -1,0 +1,46 @@
+[
+  {
+    "name": "PyTorch2.8 record_stream",
+    "url": "https://docs.pytorch.org/docs/2.8/generated/torch.Tensor.record_stream.html",
+    "note": "Allocator lifetime and execution ordering are separate obligations.",
+    "captured_at": "2026-08-30T23:09:50.965602+00:00",
+    "retrieval_error": "HTTP Error 403: Forbidden",
+    "text_review": "web__run successfully opened the exact official PyTorch2.8 record_stream URL; lines71-80 describe allocator reuse and non-creation streams. Direct urllib metadata fetch separately returned403 and is retained above."
+  },
+  {
+    "name": "CUDA async copies",
+    "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/async-copies.html",
+    "note": "Elementwise 4/8/16 byte LDGSTS differs from bulk TMA. Higher-level memcpy_async does not alone guarantee a particular instruction.",
+    "captured_at": "2026-08-30T23:09:51.104857+00:00",
+    "bytes": 355840,
+    "sha256": "cfe1e567a85326402ea5243bbfbf77c5e4ff7e4a1b0065f9df00798a0d612def",
+    "resolved_url": "https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/async-copies.html"
+  },
+  {
+    "name": "Triton dot",
+    "url": "https://triton-lang.org/main/python-api/generated/triton.language.dot.html",
+    "note": "input_precision controls FP32 dot behavior; ieee avoids implicit TF32 truncation.",
+    "captured_at": "2026-08-30T23:09:51.219050+00:00",
+    "bytes": 15928,
+    "sha256": "a7768bbb5718bdc497951843a246b1bbd0c04411a60d68ed3a28dbc0368d63d4",
+    "resolved_url": "https://triton-lang.org/main/python-api/generated/triton.language.dot.html"
+  },
+  {
+    "name": "FlashAttention CuTe interface current upstream",
+    "url": "https://raw.githubusercontent.com/Dao-AILab/flash-attention/main/flash_attn/cute/interface.py",
+    "note": "Shape unpacking uses batch, seqlen, numheads, headdim. Current main is not an installed pinned backend validation.",
+    "captured_at": "2026-08-30T23:09:51.600984+00:00",
+    "bytes": 160946,
+    "sha256": "b0af7198dd03d639f549b70ada9e64f2ab7674936c6a508205190b537d8f45f8",
+    "resolved_url": "https://raw.githubusercontent.com/Dao-AILab/flash-attention/main/flash_attn/cute/interface.py"
+  },
+  {
+    "name": "PyTorch2.8 CUDA Stream binding",
+    "url": "https://raw.githubusercontent.com/pytorch/pytorch/v2.8.0/torch/csrc/cuda/Stream.cpp",
+    "note": "priority_range exists on CUDA C++ base. CPU-only hasattr false does not establish a CUDA API defect.",
+    "captured_at": "2026-08-30T23:09:51.963362+00:00",
+    "bytes": 6391,
+    "sha256": "d013ac717678a393ad7be77545b80aa0b5ba84935687ff8edd8d43990ff4e3c0",
+    "resolved_url": "https://raw.githubusercontent.com/pytorch/pytorch/v2.8.0/torch/csrc/cuda/Stream.cpp"
+  }
+]

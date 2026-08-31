@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import math
+import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Optional, Sequence
 
 import torch
@@ -65,8 +68,8 @@ class MoECudaPtxWorkload:
             raise ValueError("num_tokens must be > 0")
         if self.num_experts <= 1:
             raise ValueError("num_experts must be > 1")
-        if self.top_k <= 0 or self.top_k > self.num_experts:
-            raise ValueError("top_k must be in [1, num_experts]")
+        if self.top_k != 2:
+            raise ValueError("This workload implements top_k=2 routing only")
         if self.hidden_dim <= 0 or self.expert_ffn_dim <= 0:
             raise ValueError("hidden_dim and expert_ffn_dim must be > 0")
         if self.capacity_factor < 1.0:
@@ -87,6 +90,96 @@ class MoELabState:
     down_proj: torch.Tensor
     loss_grad: torch.Tensor
     route_counts_cpu: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class LayerAccuracyLimits:
+    """Reviewed, scale-invariant limits; no workload threshold is guessed here."""
+    relative_l2: float
+    normalized_max_abs: float
+
+    def __post_init__(self) -> None:
+        for name in ("relative_l2", "normalized_max_abs"):
+            value = getattr(self, name)
+            if not math.isfinite(value) or not 0 <= value < 1:
+                raise ValueError(f"{name} must be finite and in [0, 1)")
+
+    def check(self, errors: dict[str, float]) -> None:
+        if set(errors) != {"relative_l2", "normalized_max_abs"}:
+            raise ValueError("Both full-output error measurements are required")
+        if any(not math.isfinite(value) or value > getattr(self, name)
+               for name, value in errors.items()):
+            raise AssertionError(f"MoE layer output exceeds configured accuracy policy: {errors}")
+
+
+def load_layer_accuracy_limits() -> LayerAccuracyLimits:
+    path = os.environ.get("AISP_MOE_PTX_LAYER_ACCURACY_POLICY")
+    if not path:
+        raise RuntimeError(
+            "MoE layer forward accuracy is uncalibrated: "
+            "AISP_MOE_PTX_LAYER_ACCURACY_POLICY must name a reviewed policy. "
+            "The former absolute tolerance accepts an all-zero output; "
+            "a configured policy alone is not measured GPU accuracy evidence."
+        )
+    policy = json.loads(Path(path).read_text())
+    if policy.get("schema_version") != 1:
+        raise ValueError("MoE layer accuracy policy requires schema_version=1")
+    return LayerAccuracyLimits(**policy["moe_layer_forward"])
+
+
+def snapshot_layer_inputs(state: MoELabState) -> dict[str, torch.Tensor]:
+    """Retain independent original inputs/weights/routing outside timed compute."""
+    return {name: getattr(state, name).detach().to("cpu", copy=True) for name in (
+        "x", "expert_indices", "expert_weights", "gate_proj", "up_proj", "down_proj")}
+
+
+@torch.inference_mode()
+def reference_layer_forward(inputs: dict[str, torch.Tensor], device: torch.device) -> torch.Tensor:
+    """Complete unquantized reference from logical routes, with bounded scratch.
+
+    Does not call candidate packing, grouped BMM, scatter-combine, or baseline
+    output-buffer code. Original CPU snapshots remain separate from both paths.
+    """
+    x, ids, weights = inputs["x"], inputs["expert_indices"], inputs["expert_weights"]
+    result = torch.zeros(x.shape, device=device, dtype=x.dtype)
+    for expert in range(inputs["gate_proj"].shape[0]):
+        gate_w, up_w, down_w = (inputs[name][expert].to(device)
+                               for name in ("gate_proj", "up_proj", "down_proj"))
+        for slot in range(ids.shape[1]):
+            rows = torch.where(ids[:, slot] == expert)[0]
+            for start in range(0, rows.numel(), 128):
+                selected = rows[start:start + 128]
+                tokens = x.index_select(0, selected).to(device)
+                hidden = F.silu(tokens @ gate_w) * (tokens @ up_w)
+                weighted = (hidden @ down_w) * weights[selected, slot].to(device).unsqueeze(1)
+                result.index_add_(0, selected.to(device), weighted)
+    return result
+
+
+def measure_layer_output_errors(actual: torch.Tensor, expected: torch.Tensor) -> dict[str, float]:
+    """Inspect every row/element, reject omissions and preserve error magnitude."""
+    if actual.shape != expected.shape or actual.dtype != expected.dtype or actual.ndim != 2 or not actual.numel():
+        raise AssertionError("MoE layer output/reference shape or dtype differs or is empty")
+    if actual.untyped_storage().data_ptr() == expected.untyped_storage().data_ptr():
+        raise AssertionError("MoE layer reference aliases candidate storage")
+    error_squared = reference_squared = max_error = max_reference = 0.0
+    for start in range(0, actual.shape[0], 128):
+        got, ref = actual[start:start + 128].double(), expected[start:start + 128].double()
+        if not torch.isfinite(got).all() or not torch.isfinite(ref).all():
+            raise AssertionError("Nonfinite full MoE layer output/reference")
+        if torch.any((got.count_nonzero(dim=1) == 0) & (ref.count_nonzero(dim=1) != 0)):
+            raise AssertionError("MoE layer output omitted a nonzero token row")
+        delta = got - ref
+        error_squared += float(delta.square().sum())
+        reference_squared += float(ref.square().sum())
+        max_error = max(max_error, float(delta.abs().max()))
+        max_reference = max(max_reference, float(ref.abs().max()))
+    return {
+        "relative_l2": math.sqrt(error_squared / reference_squared) if reference_squared
+        else (0.0 if error_squared == 0 else math.inf),
+        "normalized_max_abs": max_error / max_reference if max_reference
+        else (0.0 if max_error == 0 else math.inf),
+    }
 
 
 @dataclass
@@ -147,12 +240,12 @@ def apply_workload_overrides(workload: MoECudaPtxWorkload, argv: list[str]) -> M
     elif args.dtype == "fp16":
         dtype = torch.float16
     updated = MoECudaPtxWorkload(
-        num_tokens=args.num_tokens or workload.num_tokens,
-        num_experts=args.num_experts or workload.num_experts,
-        top_k=args.top_k or workload.top_k,
-        hidden_dim=args.hidden_dim or workload.hidden_dim,
-        expert_ffn_dim=args.expert_ffn_dim or workload.expert_ffn_dim,
-        capacity_factor=args.capacity_factor or workload.capacity_factor,
+        num_tokens=workload.num_tokens if args.num_tokens is None else args.num_tokens,
+        num_experts=workload.num_experts if args.num_experts is None else args.num_experts,
+        top_k=workload.top_k if args.top_k is None else args.top_k,
+        hidden_dim=workload.hidden_dim if args.hidden_dim is None else args.hidden_dim,
+        expert_ffn_dim=workload.expert_ffn_dim if args.expert_ffn_dim is None else args.expert_ffn_dim,
+        capacity_factor=workload.capacity_factor if args.capacity_factor is None else args.capacity_factor,
         mode=args.mode or workload.mode,
         dtype=dtype,
         histogram=args.histogram or workload.histogram,
@@ -279,7 +372,7 @@ def build_routes(workload: MoECudaPtxWorkload, device: torch.device) -> tuple[to
 
 def build_state(workload: MoECudaPtxWorkload, device: torch.device) -> MoELabState:
     generator = torch.Generator(device="cpu")
-    generator.manual_seed(314159)
+    generator.manual_seed(torch.initial_seed())
 
     x = torch.randn(workload.num_tokens, workload.hidden_dim, generator=generator, dtype=torch.float32)
     x += torch.linspace(0.0, 1e-3, steps=workload.hidden_dim, dtype=torch.float32).view(1, -1)
@@ -766,6 +859,10 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verification_shape_tensor: Optional[torch.Tensor] = None
         self._routing_verification_tensor: Optional[torch.Tensor] = None
         self._benchmark_impl: Optional[Callable[[], None]] = None
+        self._layer_accuracy_limits: Optional[LayerAccuracyLimits] = None
+        self._layer_reference_inputs: Optional[dict[str, torch.Tensor]] = None
+        self._layer_reference_output: Optional[torch.Tensor] = None
+        self._layer_accuracy_errors: Optional[dict[str, float]] = None
         self._custom_metrics: dict[str, float] = {}
         self._refresh_workload_metadata()
 
@@ -839,7 +936,12 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         self.workload.validate()
         self._force_target_mode()
+        layer_forward = self.target == "moe_layer" and self.workload.mode == "forward"
+        self._layer_accuracy_limits = load_layer_accuracy_limits() if layer_forward else None
         self.state = build_state(self.workload, self.device)
+        if layer_forward:
+            self._layer_reference_inputs = snapshot_layer_inputs(self.state)
+            self._layer_reference_output = reference_layer_forward(self._layer_reference_inputs, self.device)
         route_counts_cpu = self.state.route_counts_cpu
         self._populate_metrics(route_counts_cpu)
 
@@ -873,7 +975,7 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         verify_rows = min(32, max(self.workload.num_tokens, self.workload.routed_tokens))
         verify_cols = min(32, self.workload.hidden_dim)
         self._verify_output_buffer = torch.empty(
-            verify_rows * verify_cols,
+            self.state.x.numel() if layer_forward else verify_rows * verify_cols,
             device=self.device,
             dtype=torch.float32,
         )
@@ -1249,15 +1351,20 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self.down_grad,
                 self._backward_verify_output_buffer,
             )
+        elif self.target == "moe_layer":
+            self._check_layer_forward_output()
+            if self._verify_output_buffer is None or self._layer_reference_inputs is None:
+                raise RuntimeError("setup() must initialize full layer verification storage")
+            verification = self._verify_output_buffer.view_as(self.outputs)
+            verification.copy_(self.outputs)
+            inputs = {"shape": self._verification_shape_tensor, **self._layer_reference_inputs}
         else:
             verification = build_tensor_slice_verification(self.outputs, self._verify_output_buffer)
 
+        # The layer path does not quantize. Its full-output scale-invariant
+        # policy must pass first; this legacy pairwise budget is not sufficient
+        # on its own (even its smaller absolute bound can accept all zeros).
         tolerance = (2e-2, 2e-2)
-        if self.target == "moe_layer" and mode == "forward":
-            # The end-to-end layer surface intentionally quantizes routed
-            # activations before grouped expert compute, so verification needs
-            # to allow the expected FP8 roundtrip drift.
-            tolerance = (5e-2, 2e-1)
 
         self._set_verification_payload(
             inputs=inputs,
@@ -1273,6 +1380,13 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
             },
             output_tolerance=tolerance,
         )
+
+    def _check_layer_forward_output(self) -> dict[str, float]:
+        if self.outputs is None or self._layer_reference_output is None or self._layer_accuracy_limits is None:
+            raise RuntimeError("Layer forward verification requires setup, output and reviewed accuracy policy")
+        self._layer_accuracy_errors = measure_layer_output_errors(self.outputs, self._layer_reference_output)
+        self._layer_accuracy_limits.check(self._layer_accuracy_errors)
+        return self._layer_accuracy_errors
 
     def teardown(self) -> None:
         self.state = None
@@ -1298,6 +1412,10 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verification_shape_tensor = None
         self._routing_verification_tensor = None
         self._benchmark_impl = None
+        self._layer_accuracy_limits = None
+        self._layer_reference_inputs = None
+        self._layer_reference_output = None
+        self._layer_accuracy_errors = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
@@ -1342,6 +1460,11 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
             return "benchmark_fn() did not produce output"
         if not torch.isfinite(self.outputs).all():
             return "Outputs contain non-finite values"
+        if self.target == "moe_layer" and self.workload.mode == "forward":
+            try:
+                self._check_layer_forward_output()
+            except AssertionError as exc:
+                return str(exc)
         if self.target == "moe_grouped_gemm_bwd" or self.workload.mode == "fwd_bwd":
             if self.x_grad is None or self.gate_grad is None or self.down_grad is None:
                 return "Backward path did not produce gradients"

@@ -1,0 +1,19 @@
+{
+  "status": "HOLD",
+  "case": "grace_tma",
+  "arch": "sm_90",
+  "checks": [],
+  "source_sha256": {
+    "labs/blackwell_matmul/grace_blackwell_kernels.cu": "fef565ffc3458e28ccd9617216f040d3f99f2f5fcc8e228e677dcb47029b2eb5",
+    "core/common/headers/tma_helpers.cuh": "4c8a88560d1cc5e04ff1b99110453119fefc98aa17faaee462ce0133abc942ba",
+    "core/common/headers/tma_2d_layout.hpp": "645f624cc2cd7a7b1f18e6d0c734e1b48407394d478f18aee46f0dd8927c8834",
+    "core/common/headers/arch_detection.cuh": "c32cae59cab37e0d0ad70bdc8784a09385207ff1849f592d7c5fb0a12338da32",
+    "tests/cuda/run_feature_extensions_validation.py": "4e1768e0bfa419326016e896d522210a872d6e6ebb03df98dd2aabcf108f7874",
+    "tests/cuda/validation_process.py": "47019ab4daa7d09d73a9721c2ee68e1b1999b18d1022e25d17dd7089f26f277d",
+    "tests/cuda/run_feature_cuda_validation.py": "0f31df4ae79343765755b9f5291b85c7e4fc2782a9395500b841f1352dfe586a"
+  },
+  "sanitizers": "all",
+  "multi_device_controls_requested": false,
+  "started_at_utc": "2026-08-30T23:18:51Z",
+  "reason": "nvcc unavailable; no CUDA compilation or device execution occurred"
+}

@@ -1,0 +1,21 @@
+{
+  "at": "2026-08-31T00:25:46.373431+00:00",
+  "files": {
+    "docs/environment.md": {
+      "sha256": "2a6618a04394ed7ba9ca28b05929ed1a7599fc105a77ff14293647ab5d3a41d4",
+      "copy": "environment.md.before"
+    },
+    "AUDIT_REMEDIATION_PLAN.md": {
+      "sha256": "ce47806755f68a5579b45d0bd692695d6400e8be293c5b9d631d2ce2d3b7d7d3",
+      "copy": "AUDIT_REMEDIATION_PLAN.md.before"
+    },
+    "docs/audits/2026-08-30/STATUS.md": {
+      "sha256": "b0f177a9e153d9be3b21b68659aae3a8552de3120eb17d7c76be240fde42bf68",
+      "copy": "STATUS.md.before"
+    },
+    "docs/audits/2026-08-30/remediation-ledger.json": {
+      "sha256": "47a44e502a1d5674cc4d09f6b9256008f409abd5a0678dbea21ecdb8fb58eae4",
+      "copy": "remediation-ledger.json.before"
+    }
+  }
+}

@@ -1,0 +1,4 @@
+.s.............s........................................................ [ 88%]
+.........                                                                [100%]
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/zero2-child-protocol/supplement-focused.xml -
+79 passed, 2 skipped in 36.62s

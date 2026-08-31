@@ -10,7 +10,8 @@ This module takes structured profiling data and uses LLMs to:
 
 Environment variables (via .env or .env.local):
     ANTHROPIC_API_KEY: API key for Claude
-    ANTHROPIC_MODEL: Model name (default: claude-sonnet-4-20250514)
+    ANTHROPIC_MODEL: Model name (default: claude-sonnet-4-6)
+    PERF_LLM_MODEL: Shared model override when ANTHROPIC_MODEL is unset
     OPENAI_API_KEY: API key for OpenAI
     OPENAI_MODEL: Model name (default: gpt-4o)
     LLM_PROVIDER: Default provider (anthropic, openai)
@@ -39,6 +40,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.llm import DEFAULT_ANTHROPIC_MODEL
 from core.utils.dotenv import load_repo_dotenv
 
 load_repo_dotenv(Path(__file__).resolve().parents[2])
@@ -488,7 +490,7 @@ class LLMProfileAnalyzer:
         if model:
             self.model = model
         elif self.provider == "anthropic":
-            self.model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+            self.model = os.getenv("ANTHROPIC_MODEL") or os.getenv("PERF_LLM_MODEL") or DEFAULT_ANTHROPIC_MODEL
         else:  # openai
             self.model = os.getenv("OPENAI_MODEL", "gpt-4o")
         

@@ -1,0 +1,26 @@
+{
+  "artifacts": [
+    "rank-0.json",
+    "rank-0.pt"
+  ],
+  "diagnostic": "Actual current-source torchrun child completed the verification-only profile; no performance timing was collected.",
+  "finish_monotonic_ns": 274887608470708,
+  "finish_wall_ns": 1788139317809422000,
+  "launch_monotonic_ns": 274883481776916,
+  "launch_wall_ns": 1788139313682693000,
+  "mode": "baseline",
+  "parameter_count": 14,
+  "rendezvous": "static loopback with an ephemeral local port",
+  "result_directory": "<temporary-result-directory>",
+  "returncode": 0,
+  "run_id": "current-source-baseline-single-1",
+  "schema_version": 1,
+  "source_sha256": {
+    "code/labs/train_distributed/optimized_zero2_multigpu.py": "b79386410651a6be6a5212c0f6133a30e2f27dfdba553e18a317c6c02a9eec56",
+    "code/labs/train_distributed/zero2_child_protocol.py": "818414d2434024d2b5a798a2bcdec837562f1ce8882e36467c32e0354eb3ff04",
+    "code/labs/train_distributed/zero2_common.py": "a978d11085b8622a11bd236d9e597e871082217e8034a2c2e1f5f5f60ef1bf4f"
+  },
+  "status": "PASS_CURRENT_SOURCE_VERIFICATION_ONLY",
+  "variant": "single",
+  "world_size": 1
+}

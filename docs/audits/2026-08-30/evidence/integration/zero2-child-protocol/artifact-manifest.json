@@ -1,0 +1,341 @@
+{
+  "captured_wall_ns": 1788139436320338000,
+  "file_count": 83,
+  "files": {
+    "__pycache__/validate_captured_matrix.cpython-312.pyc": {
+      "sha256": "57731a478ff17f2f51098170c4b23e02a198ca6b5baad2ab597e6a860308824a",
+      "size": 3109
+    },
+    "adapter-standalone-rendezvous-attempt.json": {
+      "sha256": "11f67c5543b5d9f0288f29b23ee18bebcfcb1d297935b3adcc7495aea3e3e663",
+      "size": 416
+    },
+    "adapter-static-proof-baseline-multigpu.json": {
+      "sha256": "340d5ccd12dc86dd4d6062b5b91a93dda65dbbcdc94bd806e92157eec0336fee",
+      "size": 726
+    },
+    "adapter-static-proof-context.json": {
+      "sha256": "a4d8b7d0f8154f5c1b57ba9cf683070a54bc06116e62eb60892ca32501364e55",
+      "size": 670
+    },
+    "adapter-static-proof-optimized-context-2.json": {
+      "sha256": "dd41bb5f59ab228d5ccd34eeeff259d8a663b6e2ba359728d1776b018acf2537",
+      "size": 605
+    },
+    "adapter-static-proof-optimized-context-3.json": {
+      "sha256": "449f1473481a7c77b853f2d75634d647be388529cb29def9ac22b113abd4c92c",
+      "size": 711
+    },
+    "adapter-static-proof-optimized-context.json": {
+      "sha256": "a36cbcbd4872c128335880c3d2a6465973646e48f85a3ba55af824bfff43f055",
+      "size": 629
+    },
+    "adapter-static-proof-optimized-single.json": {
+      "sha256": "4c398f906bbc8fdc55e8f3be0707d1014f01653f52372a18ed4d47135ac2deaa",
+      "size": 688
+    },
+    "commands.json": {
+      "sha256": "d2f935861b34762a323faebd3a0ba989d78cc05ac5ed0497ebb610354875c300",
+      "size": 3360
+    },
+    "current-baseline-multigpu.json": {
+      "sha256": "5ae021dd1acf01c654e31ede07759e2416ac08ddd24bce7985c1fe9fc00db8d5",
+      "size": 1152
+    },
+    "current-baseline-multigpu/rank-0.json": {
+      "sha256": "5519c2a9c54d91da45817d0e65f942aaf73e1b65ae54004b26a22b789a6915a3",
+      "size": 1526
+    },
+    "current-baseline-multigpu/rank-0.pt": {
+      "sha256": "d67483dfc90000dcd9a2dc9c283dffcab06468047723deafdcfbef7443161dde",
+      "size": 35102
+    },
+    "current-baseline-multigpu/rank-1.json": {
+      "sha256": "ca0022fb68a2efdac78ef696f55fa41e7eddff61a83af8d29c4a1f5dcdfe7e88",
+      "size": 1526
+    },
+    "current-baseline-multigpu/rank-1.pt": {
+      "sha256": "3c68a72b065b5a708c8677e89144da4834abad077682dca7865937bc9d866438",
+      "size": 35102
+    },
+    "current-baseline-single.json": {
+      "sha256": "9c5aa6f63226c3f8ded83e3e883174a1ad73f5fbb2fc120cc0503b822997062c",
+      "size": 1112
+    },
+    "current-baseline-single/rank-0.json": {
+      "sha256": "868f2719ff06c9f438eeb44d81154c3bf0340e46f65f517a5d805c4f9c011690",
+      "size": 1522
+    },
+    "current-baseline-single/rank-0.pt": {
+      "sha256": "b25087be2f7c4d5f643a818810b6edeffbe3ba38ec149d492dd66d662126df32",
+      "size": 35102
+    },
+    "current-optimized-multigpu.json": {
+      "sha256": "53277af7d2f8a63308cbfea48ceac98932adff68e081d3d2e81f3b8385323e3e",
+      "size": 1154
+    },
+    "current-optimized-multigpu/rank-0.json": {
+      "sha256": "aa1425a8d020384fd9918027464bb900023f133382a8e6f049a20433994cd100",
+      "size": 1528
+    },
+    "current-optimized-multigpu/rank-0.pt": {
+      "sha256": "674dae09ed5b3d9e9fafc1afe2010950ff6db15b3f2129617b9cf7addbf2789f",
+      "size": 25656
+    },
+    "current-optimized-multigpu/rank-1.json": {
+      "sha256": "eb3c556ff45e09531dd16937788a1932060fd4b940aa58d793ab8cd5b6ef8d93",
+      "size": 1528
+    },
+    "current-optimized-multigpu/rank-1.pt": {
+      "sha256": "6fd3a7500a7fbb0f2ff0ee81b41ed8875ebb51b0e5c94aedef0ec51bff6b1c48",
+      "size": 29890
+    },
+    "current-optimized-single.json": {
+      "sha256": "c47b0849db863fc435d7dba6b84ef66ab08c4a5a8ee329e3861e087be631e7fd",
+      "size": 1114
+    },
+    "current-optimized-single/rank-0.json": {
+      "sha256": "5139c7719ab215af92e34e77f2abe653046ff0e4e197bb0c8a710f6bcb1aa982",
+      "size": 1524
+    },
+    "current-optimized-single/rank-0.pt": {
+      "sha256": "c06cd8c6f755cb170f5e4dde4cc6cc313482a3c49e1e53809f99f1305c438eda",
+      "size": 35102
+    },
+    "harness-regressions-combined-attempt.json": {
+      "sha256": "bc24f8dc8ff3475369e802533f93ac7228c73766b7eb696ddfe9658f842dfcb4",
+      "size": 390
+    },
+    "harness-regressions-isolated-current/summary.json": {
+      "sha256": "387e8341d0b400ee79b55765231e060695ab22060e8c3f6478c07fb4ccc86972",
+      "size": 3610
+    },
+    "harness-regressions-isolated-current/test_audit_wave1_timing_provenance.txt": {
+      "sha256": "b0f8149a4335f2d329a87b6547164f6e5b81186acf229f6f51329f12376ba89a",
+      "size": 315
+    },
+    "harness-regressions-isolated-current/test_audit_wave1_timing_provenance.xml": {
+      "sha256": "1164e3e62afb8a6031c68b9eda756957c344519a5520c544e159359edf0818f7",
+      "size": 807
+    },
+    "harness-regressions-isolated-current/test_benchmark_harness_subprocess_regressions.txt": {
+      "sha256": "772cc5a0e0afe92c626d44196c17545dcddfe13834f9d926d0c1d13f74bf43d9",
+      "size": 337
+    },
+    "harness-regressions-isolated-current/test_benchmark_harness_subprocess_regressions.xml": {
+      "sha256": "e86c857978805ec4e5267563fa94c9204da340977aed027f5ed9407cf9222b77",
+      "size": 789
+    },
+    "harness-regressions-isolated-current/test_benchmark_hygiene_regressions.txt": {
+      "sha256": "f9d2b390d3481e624e2b0761147b467072909abba40351b0d8b3d71425d8bf3b",
+      "size": 1400
+    },
+    "harness-regressions-isolated-current/test_benchmark_hygiene_regressions.xml": {
+      "sha256": "f63989d5777eb6284f0c4e90a9bd6952f6fe2ccc85fe06b8da520ed8dab583b5",
+      "size": 80729
+    },
+    "harness-regressions-isolated-current/test_get_benchmark_presence.txt": {
+      "sha256": "d6550faaeee2f5d3599487af73147c18b1f93d261066b6750a16efdd34a16414",
+      "size": 308
+    },
+    "harness-regressions-isolated-current/test_get_benchmark_presence.xml": {
+      "sha256": "7bdb7675e424be4b3c7caf345a097754eea2ab5f3978e9c30eca75142a0fecfb",
+      "size": 657
+    },
+    "harness-regressions-isolated-current/test_run_benchmarks_cuda_wrapper_regression.txt": {
+      "sha256": "9649ffe9d12f9b4898ec2b78f63397942a306f415d3e193e030265801883fc2c",
+      "size": 325
+    },
+    "harness-regressions-isolated-current/test_run_benchmarks_cuda_wrapper_regression.xml": {
+      "sha256": "c88b4c739353c40fc165dd84494d865a1c51728759411a096309c067b2a3591a",
+      "size": 3716
+    },
+    "harness-regressions-isolated-current/test_run_benchmarks_profiler_contract.txt": {
+      "sha256": "d68ee7bf25073f88664179683d933340a18af5090530d0486880e1f4a3b3172b",
+      "size": 330
+    },
+    "harness-regressions-isolated-current/test_run_benchmarks_profiler_contract.xml": {
+      "sha256": "352285f11668cc8e9a09ad07a5b2bd1e9cfe0f71325155e0ed3f11bbb4aa95f5",
+      "size": 4009
+    },
+    "harness-regressions-isolated-current/test_seed_config_immutability.txt": {
+      "sha256": "4911c9c1a4788d5ddc832e5b37844081d44c56a6bed4d9a6bf9daeba75e14b0d",
+      "size": 942
+    },
+    "harness-regressions-isolated-current/test_seed_config_immutability.xml": {
+      "sha256": "925f3364fb254ab5b42d93452d9366dd378811021e1dc8d444a6b5283801f539",
+      "size": 1391
+    },
+    "harness-regressions-isolated-current/totals.json": {
+      "sha256": "d290ccd7569e3e6e6bd61153ac16bd0943aab966098994b50776ba18251e74a1",
+      "size": 206
+    },
+    "harness-regressions-isolated/summary.json": {
+      "sha256": "504333b559e8fdbfd38095f721827f973a973efa7096fae55cf170c0d9a08585",
+      "size": 3498
+    },
+    "harness-regressions-isolated/test_audit_wave1_timing_provenance.txt": {
+      "sha256": "84da21499f4b96b4c4942b0f727be7b9b8bbb0507328bc3888f04640bc77cd30",
+      "size": 307
+    },
+    "harness-regressions-isolated/test_audit_wave1_timing_provenance.xml": {
+      "sha256": "c7c3dbb2ee59cfcabadab97f07ea06d0f64f6f915dd8bb2ad5aff0d1552e223e",
+      "size": 807
+    },
+    "harness-regressions-isolated/test_benchmark_harness_subprocess_regressions.txt": {
+      "sha256": "66551b035e8196d44cd58063a5e310f35bde69c68f8d51b331d71a8ee42679b8",
+      "size": 329
+    },
+    "harness-regressions-isolated/test_benchmark_harness_subprocess_regressions.xml": {
+      "sha256": "8d911e8aa17a4953fdee3bd6e4b6686fc93327bd320e8f56ff8f7c99537eab19",
+      "size": 789
+    },
+    "harness-regressions-isolated/test_benchmark_hygiene_regressions.txt": {
+      "sha256": "544cbe19c7144be08b643506508c662e96a792d07b0dbab76662830676d20603",
+      "size": 1392
+    },
+    "harness-regressions-isolated/test_benchmark_hygiene_regressions.xml": {
+      "sha256": "15656abc34175b1f15d2ff163cb4b6c17bd0516c94c814dbdfc8000e5cc82a32",
+      "size": 80729
+    },
+    "harness-regressions-isolated/test_get_benchmark_presence.txt": {
+      "sha256": "8708631a38add3edbec37c10517ecc09c9698cbc1e25d1a8557c4ade7a23e191",
+      "size": 300
+    },
+    "harness-regressions-isolated/test_get_benchmark_presence.xml": {
+      "sha256": "306db5070b0f9dea8862cc00d8abd9edb0b1e1a22a2eb05b8b6e06588b5d0fa3",
+      "size": 657
+    },
+    "harness-regressions-isolated/test_run_benchmarks_cuda_wrapper_regression.txt": {
+      "sha256": "15ffa6538cb5b7cfefe2e8a5519337cbd3e5a43a8743efc2b5595037861f3677",
+      "size": 317
+    },
+    "harness-regressions-isolated/test_run_benchmarks_cuda_wrapper_regression.xml": {
+      "sha256": "b55d8a59a6c79ff67fe83c428e7bcc2cc70ed687b8e2a6351ccc2eb84b83dad1",
+      "size": 3716
+    },
+    "harness-regressions-isolated/test_run_benchmarks_profiler_contract.txt": {
+      "sha256": "869b3f51cfc8df2d0d82c67a60eeaa6ebf5fa20c6c92066135bc81a90c5ccb3e",
+      "size": 322
+    },
+    "harness-regressions-isolated/test_run_benchmarks_profiler_contract.xml": {
+      "sha256": "9ec335d28e926076f62db057c99e38002803558061a366c8bc63a161e5c9672b",
+      "size": 4009
+    },
+    "harness-regressions-isolated/test_seed_config_immutability.txt": {
+      "sha256": "24bc2c5ddd2f90e0bec47d3ab2628f626782d355c7a46bfba3803700860d1fcc",
+      "size": 934
+    },
+    "harness-regressions-isolated/test_seed_config_immutability.xml": {
+      "sha256": "340664541a4b3a3b9c73d8eaf1c1a7750918ee9a3b4755e82829d33791426ca3",
+      "size": 1391
+    },
+    "harness-regressions-isolated/totals.json": {
+      "sha256": "dde206101e70ebaf3f1f0f758e4a36d8002cddded747211725341a25bf495abb",
+      "size": 179
+    },
+    "harness-regressions.txt": {
+      "sha256": "78862f2511711e958e12c9674893b8850266da3095cd4188f4045a339bb45398",
+      "size": 3978
+    },
+    "matrix-revalidation-current.txt": {
+      "sha256": "7804c9288c5852b64f4fe0b8ce8ba93ac7e4e3a70b443d1c5ce6190eaf2d412b",
+      "size": 279
+    },
+    "matrix-revalidation.txt": {
+      "sha256": "7804c9288c5852b64f4fe0b8ce8ba93ac7e4e3a70b443d1c5ce6190eaf2d412b",
+      "size": 279
+    },
+    "matrix-validation.json": {
+      "sha256": "3c2ebaa24370128ba55297564d6bd0b088542b7d9a4bfb55db992cb4b79af654",
+      "size": 2422
+    },
+    "proof-baseline-multigpu/rank-0.json": {
+      "sha256": "94d885126837150ba66ad326d9682c49d90d3dd6753edc835a718dcefa98aaea",
+      "size": 1532
+    },
+    "proof-baseline-multigpu/rank-0.pt": {
+      "sha256": "738282f131056a75e6378ac8d8dd03c7271212576433520811046c2d3f8d494c",
+      "size": 35102
+    },
+    "proof-baseline-multigpu/rank-1.json": {
+      "sha256": "9423fcc37a96b2f7879cbcccf2609ab675fa62fa1ee85214993d1535021a3881",
+      "size": 1532
+    },
+    "proof-baseline-multigpu/rank-1.pt": {
+      "sha256": "465bad044cef82d4cedd24f746d388ed0580c4ecbe7a8e16f9f2bd38719486bc",
+      "size": 35102
+    },
+    "proof-baseline-single/rank-0.json": {
+      "sha256": "17f002008ff55f95211fe2837bfc1a2a5a94eb50439bbb67102892b28f8e13a3",
+      "size": 1521
+    },
+    "proof-baseline-single/rank-0.pt": {
+      "sha256": "e22a5208babc8201a62bb48881d2f39e3dbf16cfa528b601b62c6c646b52af48",
+      "size": 35102
+    },
+    "proof-optimized-multigpu/rank-0.json": {
+      "sha256": "42942657a6bbc07632c60c5d22d8bb89b3096dc0fdb6525a126858293d9bdcb7",
+      "size": 1526
+    },
+    "proof-optimized-multigpu/rank-0.pt": {
+      "sha256": "a6197a81ec8a3db3bc82b0dfd0fc07bb70d975b112d102177f8694e009ae3268",
+      "size": 25656
+    },
+    "proof-optimized-multigpu/rank-1.json": {
+      "sha256": "824067a07638c643e95b04a57ceff6b4e7c06dd271df6ff4ec70f21cadd02789",
+      "size": 1526
+    },
+    "proof-optimized-multigpu/rank-1.pt": {
+      "sha256": "3ddaf38d38b5d2445f942d85f1235607f4d732152b048e8386276f5f5fb2738a",
+      "size": 29890
+    },
+    "proof-optimized-single/rank-0.json": {
+      "sha256": "836be570105de9837b964e1cd83108b80b5af6cddf37f146b9359da6a20ddc8c",
+      "size": 1530
+    },
+    "proof-optimized-single/rank-0.pt": {
+      "sha256": "9945960178a39482b91d5b2aa4bf826d1a576f228ba5e9cf6b44a8d41e4c3444",
+      "size": 35102
+    },
+    "source-after.json": {
+      "sha256": "161489cceaccb87fbff83533988f94ce2a414ca7b8b4aa0e025a8919794a4a94",
+      "size": 3484
+    },
+    "source-before.json": {
+      "sha256": "ebc703fe2e66c2ec1456cbfd1721bc9cda05055f1c10b1fa4f091acff6d1c011",
+      "size": 2270
+    },
+    "targeted-tests-current.txt": {
+      "sha256": "b57597d801cdfdcd74fbd4ba00597f097f8cf2798d82d4089d49891282db40e4",
+      "size": 279
+    },
+    "targeted-tests-current.xml": {
+      "sha256": "786bc0c6fa7d68579929c31fa925d087fa2f0f9b052c2dcd23467cfaf5e025c2",
+      "size": 9605
+    },
+    "targeted-tests-final.txt": {
+      "sha256": "37208ade1fe5d56dd929056b49d3196bf9dcc24878a5a2d9fa9da2103145ca2e",
+      "size": 277
+    },
+    "targeted-tests-final.xml": {
+      "sha256": "4ce3542914b64f54aa8387380ad1003769b3b984c7a00303a976df3b46d61cbe",
+      "size": 9605
+    },
+    "targeted-tests.txt": {
+      "sha256": "bc5ef1766ab4f9694d109ec25e9df6f92298f009206977f4f828ab2fdcaf5aad",
+      "size": 271
+    },
+    "targeted-tests.xml": {
+      "sha256": "17e882b6be7a910cc1b01182d07fab1102535d663333420582e4c9c3504be71c",
+      "size": 9435
+    },
+    "validate_captured_matrix.py": {
+      "sha256": "663c3778f1cc2bdcff718511aa3f7a39e29054f181064f52873cb1a2fecc6a6f",
+      "size": 2596
+    }
+  },
+  "schema_version": 1,
+  "scope": "All package evidence before the immutable receipt. artifact-manifest.json and receipt.json are intentionally excluded.",
+  "total_bytes": 670392
+}

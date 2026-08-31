@@ -1,0 +1,12 @@
+Metadata-Version: 1.1
+Name: GPUtil
+Version: 1.4.0
+Summary: GPUtil is a Python module for getting the GPU status from NVIDA GPUs using nvidia-smi.
+Home-page: https://github.com/anderskm/gputil
+Author: Anders Krogh Mortensen
+Author-email: anderskroghm@gmail.com
+License: MIT
+Download-URL: https://github.com/anderskm/gputil/tarball/v1.4.0
+Description: UNKNOWN
+Keywords: gpu,utilization,load,memory,available,usage,free,select,nvidia
+Platform: UNKNOWN

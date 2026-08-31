@@ -1,0 +1,31 @@
+{
+  "recorded_at": "2026-08-31T00:26:22.748369+00:00",
+  "provenance": "Sanitized summary of tool results observed earlier in this continuation; not a raw terminal transcript.",
+  "route": "Local CPU-only Linux container via installed Docker Desktop; no GPU or remote host used.",
+  "daemon_start": {
+    "command": "docker desktop start --timeout 30",
+    "exit_code": 0,
+    "observed_engine_ready": true,
+    "side_effect": "Nine existing containers resumed through their restart policies. No existing container was modified or stopped by this task.",
+    "user_notified": true
+  },
+  "image_pull": {
+    "command": "docker pull --platform linux/amd64 python:3.12-slim-bookworm",
+    "exit_code": 1,
+    "error": "error getting credentials - err: exit status 1, out: The user name or passphrase you entered is not correct. (-25293)",
+    "status": "BLOCKED_KEYCHAIN_CREDENTIAL_HELPER",
+    "image_available_after_attempt": false,
+    "audit_container_created": false,
+    "credential_bypass_attempted": false,
+    "user_notified": true
+  },
+  "remaining_requirements": [
+    "Successful user-side Keychain/Docker credential unlock before retrying this route.",
+    "Actual isolated Linux CPU dependency installation and test execution; metadata resolution alone does not satisfy this."
+  ],
+  "limits": [
+    "No infrastructure IDs, unrelated container details, VM metadata, credentials or ports retained in this public-repository summary.",
+    "Docker daemon remains running; this task does not stop unrelated running workloads.",
+    "No GitHub workflow, paid compute, GPU probe, CUDA job, SSH session or unrelated VM execution occurred."
+  ]
+}

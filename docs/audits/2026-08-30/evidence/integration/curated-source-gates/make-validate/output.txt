@@ -1,0 +1,16 @@
+python core/scripts/validate_imports.py
+======================================================================
+Benchmark Import Validation
+======================================================================
+Validating all chapters...
+
+
+======================================================================
+Traceback (most recent call last):
+  File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/scripts/validate_imports.py", line 149, in <module>
+    main()
+  File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/core/scripts/validate_imports.py", line 122, in main
+    print(f"Results: {passed}/{total} passed ({100*passed/total:.1f}%)")
+                                               ~~~~~~~~~~^~~~~~
+ZeroDivisionError: division by zero
+make: *** [validate] Error 1

@@ -1,0 +1,10 @@
+{
+  "python": "3.12.2 | packaged by conda-forge | (main, Feb 16 2024, 20:54:21) [Clang 16.0.6 ]",
+  "executable": "/opt/miniconda3/bin/python",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "torch": "2.8.0",
+  "cuda_available": false,
+  "cuda_version": null,
+  "gloo_available": true,
+  "nccl_available": false
+}

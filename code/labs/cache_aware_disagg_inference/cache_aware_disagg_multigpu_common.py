@@ -364,7 +364,10 @@ def _stage_runtime_cache(
                 source = warm_cache_store.get(request_id)
             if source is None:
                 raise RuntimeError(f"Missing cache for peer handoff request {request_id}")
-            dist.send(source, dst=target_rank)
+            # Active prefixes can be strided views of a larger per-batch cache.
+            # P2P transports send storage order, not arbitrary tensor strides.
+            # Pack logical rows to match the receiver's contiguous layout.
+            dist.send(source.contiguous(), dst=target_rank)
             metrics["cache_misses"] += 1.0
             metrics["peer_handoffs"] += 1.0
             metrics["worker_switches"] += 1.0

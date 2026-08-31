@@ -1,0 +1,66 @@
+{
+  "timestamp": "2026-08-30T22:17:58.889367+00:00",
+  "candidate": "uncommitted codex/audit-remediation-20260830",
+  "finding_ids": [
+    "W1-006",
+    "W1-126",
+    "W1-127",
+    "W1-128"
+  ],
+  "batch_result": "243 passed, 6 skipped, 5 visible Darwin validity warnings in74.27s",
+  "batch_command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_audit_wave1_harness.py tests/test_benchmark_fn_sync_detection.py tests/test_benchmark_harness_subprocess_regressions.py tests/test_audit_wave1_comparison.py tests/test_benchmark_comparison.py tests/test_audit_wave1_api_regressions.py tests/test_audit_wave1_parser_regressions.py tests/test_engine_fail_fast.py tests/test_perf_core_runtime_warnings.py tests/test_setup_bootstrap.py tests/test_repository_configuration.py tests/test_refresh_readmes.py tests/test_audit_wave1_zero2.py tests/test_train_distributed_lab.py tests/test_benchmark_regime_configs.py tests/test_symmetric_memory_inference.py tests/test_validate_benchmark_pairs_tools.py -q -p no:cacheprovider",
+  "changes": [
+    "CPU config tests no longer blanket-skipped; ch11 constructor CUDA requirement deferred to setup, with real missing-CUDA rejection tests.",
+    "Three symmetric-memory demo precondition failures now pytest.skip instead of false passes.",
+    "NVSHMEM pair test has explicit assertions for multi-GPU valid results and explicit skip for missing runtime support.",
+    "Existing local examples now a regular package to avoid installed third-party namespace collision.",
+    "CPU workflow adds full tests-directory collection, required import dependencies and JUnit evidence; attested serialized B200 nightly runs full tests before canonical benchmarks."
+  ],
+  "attempt_notes": [
+    "An initial test-only patch matched an earlier similar branch and introduced a syntax error; corrected before any passing result. Both selection and diagnostic failures retained.",
+    "W1-126 source revalidation found a real CUDA check in the ch11 constructor; that check was moved to setup without allowing CPU execution of the workload.",
+    "A diagnostic launched while protection tests were still being rewritten hit transient CUDA-gating failures; not treated as final baseline or candidate acceptance. Stable diagnostic rerun remains separate.",
+    "Source review caught an initially proposed --timeout option before CI execution: repository conftest intentionally disables external plugins and supplies its own timeout ini setting. Corrected workflows to -o timeout=120/600, removed redundant plugin installation, and executed real pytest CLI/JUnit path:21 passed."
+  ],
+  "limitations": [
+    "Six integration skips are unavailable Linux/GPU paths; no GPU coverage is credited.",
+    "Full CPU suite on this Darwin host is not qualified: six Triton-dependent modules require Linux import environment. Diagnostic exclusions do not exist in the full CI commands.",
+    "GitHub workflows have not been executed, and the B200 GPU lease remains held by another task.",
+    "Triton/Anthropic/OpenAI added version publication checked at their exact PyPI project pages; full fresh CI dependency resolution is not yet proven.",
+    "GPU validation and final integrated source reconciliation still required."
+  ],
+  "files_sha256": {
+    ".github/workflows/benchmark-validation.yml": "1af4f41625fe280f68ab84c66d76710f68118000df409eccdd32d903a72a668b",
+    ".github/workflows/tier1-nightly.yml": "23bbece0e985441032989436502104373ad1e2cbed63babab04081e530f0d412",
+    "code/tests/test_repository_configuration.py": "6c5d31b658001ba4b5d43ae6738ada24bf74922c59f230cf615d4449c593b560",
+    "code/tests/test_benchmark_regime_configs.py": "17b1f1e08366da44ccc3179b2d05fd5f991429abf589238acb0c8f0626140a63",
+    "code/ch11/baseline_tensor_cores_streams.py": "7b00064e7617a8901f2ac12417e36733b227fdca4ecd7a880b724e14d9d11857",
+    "code/ch11/optimized_tensor_cores_streams.py": "ea9c0b1e34d305759b0cf46caf35422975b21b4dc57d4476b172f21731f9b592",
+    "code/tests/test_symmetric_memory_inference.py": "ce9deeb35549c7a699b142aafba603880d0b5e0abf473d2769a9aa8c9a7c7990",
+    "code/tests/test_validate_benchmark_pairs_tools.py": "cf7f03ba433cfe0cca5d07867c349096cfb3fbd74506d759f6a67de77102c534",
+    "code/examples/__init__.py": "dc3a141bfaf40ad1be9fbd63d3008e69ad7fc6cc26143f3570d27b8ed4af8bec"
+  },
+  "checks_after_batch": [
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_repository_configuration.py -q -ra -o timeout=120 --junitxml=/tmp/aisp-wave1-ci-options.xml",
+      "result": "21 passed in0.33s",
+      "log": "ci-options.txt"
+    }
+  ],
+  "broad_diagnostic": {
+    "result": "2 failed,2662 passed,436 skipped,27 warnings in334.25s",
+    "log": "cpu-diagnostic-broad.txt",
+    "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests -q -p no:cacheprovider --maxfail=10 --ignore=tests/test_benchmark_hygiene_regressions.py --ignore=tests/test_blackwell_gemm_optimizations_lab.py --ignore=tests/test_flashattention_gluon_runtime.py --ignore=tests/test_labs_schedule_and_entrypoints.py --ignore=tests/test_min_speedup_contracts.py --ignore=tests/test_occupancy_tuning.py",
+    "failures": [
+      "tests/test_mcp_tools.py::test_tool_call_returns_json_envelope[system_container]",
+      "tests/test_mcp_tools.py::test_tool_call_returns_json_envelope[benchmark_targets]"
+    ],
+    "failure_analysis": "Both tests compare git diff before/after a read-only tool call. Concurrent source edits changed that diff; serialized rerun passed without changing the tests or implementations.",
+    "serialized_rerun": {
+      "result": "2 passed in3.63s",
+      "log": "immutability-serialized.txt",
+      "coordination": "All three worker agents and parent paused repository writes before and during test execution."
+    },
+    "acceptance_limit": "Not a clean full-suite pass: six Triton-dependent modules omitted locally, CUDA cases skipped, and candidate source changed during broad run. Final immutable-revision CI/GPU gates remain required."
+  }
+}

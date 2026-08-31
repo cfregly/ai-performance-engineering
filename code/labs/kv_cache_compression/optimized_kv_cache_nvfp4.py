@@ -1,4 +1,4 @@
-"""Optimized KV-cache benchmark using NVFP4 block scaling."""
+"""NVFP4 projection compute with unchanged BF16 KV-cache storage."""
 
 from __future__ import annotations
 
@@ -21,15 +21,16 @@ else:  # pragma: no cover
 
 
 class OptimizedKVCacheNVFP4Benchmark(BaselineKVCacheBenchmark):
-    """Calibrate in FP8 and then run NVFP4 for KV-cache heavy attention."""
+    """Run NVFP4 GEMMs for KV-cache heavy attention; stored K/V remain BF16."""
 
     def __init__(self) -> None:
         super().__init__()
         self.nvfp4_recipe = (
-            te_recipe.NVFP4BlockScaling(calibration_steps=20, amax_history_len=16, fp4_tensor_block=16)
+            te_recipe.NVFP4BlockScaling()
             if TE_AVAILABLE
             else None
         )
+        self._accuracy_variant = "nvfp4"
         self.nvfp4_active = False
         self.output: Optional[torch.Tensor] = None
 
@@ -59,26 +60,6 @@ class OptimizedKVCacheNVFP4Benchmark(BaselineKVCacheBenchmark):
                 _ = self.model(decode, self.cache, offset)
         self._mark_cache_output_ready()
 
-    def capture_verification_payload(self) -> None:
-        self.output = self._build_verification_output()
-        if self._batch_size_tensor is None or self._seq_meta_tensor is None:
-            raise RuntimeError("setup() must initialize verification metadata tensors")
-        self._set_verification_payload(
-            inputs={
-                "batch_size": self._batch_size_tensor,
-                "seq_meta": self._seq_meta_tensor,
-            },
-            output=self.output,
-            batch_size=self.batch_size,
-            parameter_count=self._payload_parameter_count,
-            precision_flags={
-                "fp16": False,
-                "bf16": self.tensor_dtype == torch.bfloat16,
-                "tf32": torch.backends.cuda.matmul.allow_tf32,
-            },
-            output_tolerance=(1.0, 10.0),
-        )
-
     def get_custom_metrics(self) -> Optional[dict]:
         """Return NVFP4-specific metrics."""
         metrics = super().get_custom_metrics()
@@ -87,13 +68,12 @@ class OptimizedKVCacheNVFP4Benchmark(BaselineKVCacheBenchmark):
         metrics = dict(metrics)
         metrics.update({
             "kv_cache.nvfp4_active": 1.0 if self.nvfp4_active else 0.0,
-            "kv_cache.compression_ratio": 4.0 if self.nvfp4_active else 2.0,  # NVFP4=4x, FP8=2x
         })
         return metrics
 
     def get_optimization_goal(self) -> str:
-        """Memory optimization - lower memory usage is better."""
-        return "memory"
+        """Compare compute latency with unchanged BF16 cache storage."""
+        return "speed"
 
 
 def get_benchmark() -> BaselineKVCacheBenchmark:

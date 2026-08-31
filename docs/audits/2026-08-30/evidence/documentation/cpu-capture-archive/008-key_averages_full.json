@@ -1,0 +1,162 @@
+[
+  {
+    "name": "ProfilerStep*",
+    "count": 1,
+    "cpu_time_total_us": 4224.012,
+    "cuda_time_total_us": 0.0,
+    "self_cpu_time_total_us": 490.8059999999996,
+    "self_cuda_time_total_us": 0.0,
+    "cpu_memory_usage": 0,
+    "cuda_memory_usage": 0.0
+  },
+  {
+    "name": "compute_kernel:aisp_torch_profile",
+    "count": 1,
+    "cpu_time_total_us": 3733.206,
+    "cuda_time_total_us": 0.0,
+    "self_cpu_time_total_us": 641.773000000001,
+    "self_cuda_time_total_us": 0.0,
+    "cpu_memory_usage": 0,
+    "cuda_memory_usage": 0.0
+  },
+  {
+    "name": "aten::randn",
+    "count": 1,
+    "cpu_time_total_us": 2291.325,
+    "cuda_time_total_us": 0.0,
+    "self_cpu_time_total_us": 219.2559999999994,
+    "self_cuda_time_total_us": 0.0,
+    "cpu_memory_usage": 1048576,
+    "cuda_memory_usage": 0.0
+  },
+  {
+    "name": "aten::empty",
+    "count": 2,
+    "cpu_time_total_us": 8.04300000000012,
+    "cuda_time_total_us": 0.0,
+    "self_cpu_time_total_us": 8.04300000000012,
+    "self_cuda_time_total_us": 0.0,
+    "cpu_memory_usage": 1048624,
+    "cuda_memory_usage": 0.0
+  },
+  {
+    "name": "aten::normal_",
+    "count": 1,
+    "cpu_time_total_us": 2065.1510000000003,
+    "cuda_time_total_us": 0.0,
+    "self_cpu_time_total_us": 2065.1510000000003,
+    "self_cuda_time_total_us": 0.0,
+    "cpu_memory_usage": 0,
+    "cuda_memory_usage": 0.0
+  },
+  {
+    "name": "aten::matmul",
+    "count": 1,
+    "cpu_time_total_us": 547.5169999999998,
+    "cuda_time_total_us": 0.0,
+    "self_cpu_time_total_us": 191.46500000000015,
+    "self_cuda_time_total_us": 0.0,
+    "cpu_memory_usage": 1048576,
+    "cuda_memory_usage": 0.0
+  },
+  {
+    "name": "aten::mm",
+    "count": 1,
+    "cpu_time_total_us": 356.0519999999997,
+    "cuda_time_total_us": 0.0,
+    "self_cpu_time_total_us": 355.59500000000116,
+    "self_cuda_time_total_us": 0.0,
+    "cpu_memory_usage": 1048576,
+    "cuda_memory_usage": 0.0
+  },
+  {
+    "name": "aten::resolve_conj",
+    "count": 3,
+    "cpu_time_total_us": 0.4569999999985157,
+    "cuda_time_total_us": 0.0,
+    "self_cpu_time_total_us": 0.4569999999985157,
+    "self_cuda_time_total_us": 0.0,
+    "cpu_memory_usage": 0,
+    "cuda_memory_usage": 0.0
+  },
+  {
+    "name": "aten::sum",
+    "count": 1,
+    "cpu_time_total_us": 250.0079999999998,
+    "cuda_time_total_us": 0.0,
+    "self_cpu_time_total_us": 232.34199999999873,
+    "self_cuda_time_total_us": 0.0,
+    "cpu_memory_usage": 4,
+    "cuda_memory_usage": 0.0
+  },
+  {
+    "name": "aten::as_strided",
+    "count": 3,
+    "cpu_time_total_us": 2.2089999999998327,
+    "cuda_time_total_us": 0.0,
+    "self_cpu_time_total_us": 2.2089999999998327,
+    "self_cuda_time_total_us": 0.0,
+    "cpu_memory_usage": 0,
+    "cuda_memory_usage": 0.0
+  },
+  {
+    "name": "aten::fill_",
+    "count": 1,
+    "cpu_time_total_us": 0.9589999999998327,
+    "cuda_time_total_us": 0.0,
+    "self_cpu_time_total_us": 0.9589999999998327,
+    "self_cuda_time_total_us": 0.0,
+    "cpu_memory_usage": 0,
+    "cuda_memory_usage": 0.0
+  },
+  {
+    "name": "aten::unsqueeze",
+    "count": 1,
+    "cpu_time_total_us": 3.7080000000005384,
+    "cuda_time_total_us": 0.0,
+    "self_cpu_time_total_us": 3.4160000000001673,
+    "self_cuda_time_total_us": 0.0,
+    "cpu_memory_usage": 0,
+    "cuda_memory_usage": 0.0
+  },
+  {
+    "name": "aten::copy_",
+    "count": 1,
+    "cpu_time_total_us": 6.458000000000538,
+    "cuda_time_total_us": 0.0,
+    "self_cpu_time_total_us": 6.458000000000538,
+    "self_cuda_time_total_us": 0.0,
+    "cpu_memory_usage": 0,
+    "cuda_memory_usage": 0.0
+  },
+  {
+    "name": "aten::select",
+    "count": 1,
+    "cpu_time_total_us": 3.7910000000001673,
+    "cuda_time_total_us": 0.0,
+    "self_cpu_time_total_us": 3.4990000000007058,
+    "self_cuda_time_total_us": 0.0,
+    "cpu_memory_usage": 0,
+    "cuda_memory_usage": 0.0
+  },
+  {
+    "name": "aten::item",
+    "count": 1,
+    "cpu_time_total_us": 2.582999999999629,
+    "cuda_time_total_us": 0.0,
+    "self_cpu_time_total_us": 1.832999999999629,
+    "self_cuda_time_total_us": 0.0,
+    "cpu_memory_usage": 0,
+    "cuda_memory_usage": 0.0
+  },
+  {
+    "name": "aten::_local_scalar_dense",
+    "count": 1,
+    "cpu_time_total_us": 0.75,
+    "cuda_time_total_us": 0.0,
+    "self_cpu_time_total_us": 0.75,
+    "self_cuda_time_total_us": 0.0,
+    "cpu_memory_usage": 0,
+    "cuda_memory_usage": 0.0
+  }
+]

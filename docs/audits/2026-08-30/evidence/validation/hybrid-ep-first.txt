@@ -1,0 +1,155 @@
+...W0830 19:04:07.831000 19316 site-packages/torch/multiprocessing/spawn.py:169] Terminating process 19330 via signal SIGTERM
+W0830 19:04:07.832000 19316 site-packages/torch/multiprocessing/spawn.py:169] Terminating process 19332 via signal SIGTERM
+W0830 19:04:07.832000 19316 site-packages/torch/multiprocessing/spawn.py:169] Terminating process 19333 via signal SIGTERM
+F
+=================================== FAILURES ===================================
+__________ test_four_process_gloo_empty_routes_replicas_and_gradients __________
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1598/test_four_process_gloo_empty_r0')
+
+    @pytest.mark.skipif(not dist.is_available() or not dist.is_gloo_available(), reason="Actual Gloo backend required")
+    def test_four_process_gloo_empty_routes_replicas_and_gradients(tmp_path):
+        context = mp.spawn(_gloo_worker, args=(4, f"file://{tmp_path / 'store'}", str(tmp_path)), nprocs=4, join=False)
+        deadline = time.monotonic() + 60
+        try:
+>           while not context.join(timeout=1):
+                      ^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_audit_wave1_hybrid_ep.py:158: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <torch.multiprocessing.spawn.ProcessContext object at 0x34e3ac4a0>
+timeout = 1, grace_period = None
+
+    def join(
+        self, timeout: Optional[float] = None, grace_period: Optional[float] = None
+    ):
+        r"""Join one or more processes within spawn context.
+    
+        Attempt to join one or more processes in this spawn context.
+        If one of them exited with a non-zero exit status, this function
+        kills the remaining processes (optionally with a grace period)
+        and raises an exception with the cause of the first process exiting.
+    
+        Returns ``True`` if all processes have been joined successfully,
+        ``False`` if there are more processes that need to be joined.
+    
+        Args:
+            timeout (float): Wait this long (in seconds) before giving up on waiting.
+            grace_period (float): When any processes fail, wait this long (in seconds)
+                for others to shutdown gracefully before terminating them. If they
+                still don't exit, wait another grace period before killing them.
+        """
+        # Ensure this function can be called even when we're done.
+        if len(self.sentinels) == 0:
+            return True
+    
+        # Wait for any process to fail or all of them to succeed.
+        ready = multiprocessing.connection.wait(
+            self.sentinels.keys(),
+            timeout=timeout,
+        )
+    
+        error_index = None
+        for sentinel in ready:
+            index = self.sentinels.pop(sentinel)
+            process = self.processes[index]
+            process.join()
+            if process.exitcode != 0:
+                error_index = index
+                break
+    
+        # Return if there was no error.
+        if error_index is None:
+            # Return whether or not all processes have been joined.
+            return len(self.sentinels) == 0
+        # An error occurred. Clean-up all processes before returning.
+        # First, allow a grace period for processes to shutdown themselves.
+        if grace_period is not None:
+            self._join_procs_with_timeout(grace_period)
+        # Then, terminate processes that are still alive. Try SIGTERM first.
+        for process in self.processes:
+            if process.is_alive():
+                log.warning("Terminating process %s via signal SIGTERM", process.pid)
+                process.terminate()
+    
+        # Try SIGKILL if the process isn't going down after another grace_period.
+        # The reason is related to python signal handling is limited
+        # to main thread and if that is in c/c++ land and stuck it won't
+        # to handle it. We have seen processes getting stuck not handling
+        # SIGTERM for the above reason.
+        self._join_procs_with_timeout(30 if grace_period is None else grace_period)
+        for process in self.processes:
+            if process.is_alive():
+                log.warning(
+                    "Unable to shutdown process %s via SIGTERM , forcefully exiting via SIGKILL",
+                    process.pid,
+                )
+                process.kill()
+            process.join()
+    
+        # The file will only be created if the process crashed.
+        failed_process = self.processes[error_index]
+        if not os.access(self.error_files[error_index], os.R_OK):
+            exitcode = self.processes[error_index].exitcode
+            if exitcode < 0:
+                try:
+                    name = signal.Signals(-exitcode).name
+                except ValueError:
+                    name = f"<Unknown signal {-exitcode}>"
+                raise ProcessExitedException(
+                    f"process {error_index:d} terminated with signal {name}",
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                    signal_name=name,
+                )
+            else:
+                raise ProcessExitedException(
+                    f"process {error_index:d} terminated with exit code {exitcode:d}",
+                    error_index=error_index,
+                    error_pid=failed_process.pid,
+                    exit_code=exitcode,
+                )
+    
+        with open(self.error_files[error_index], "rb") as fh:
+            original_trace = pickle.load(fh)
+        msg = f"\n\n-- Process {error_index:d} terminated with the following error:\n"
+        msg += original_trace
+>       raise ProcessRaisedException(msg, error_index, failed_process.pid)
+E       torch.multiprocessing.spawn.ProcessRaisedException: 
+E       
+E       -- Process 1 terminated with the following error:
+E       Traceback (most recent call last):
+E         File "/opt/miniconda3/lib/python3.12/site-packages/torch/multiprocessing/spawn.py", line 90, in _wrap
+E           fn(i, *args)
+E         File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/tests/test_audit_wave1_hybrid_ep.py", line 127, in _gloo_worker
+E           actual, events = model._roundtrip_routes(
+E                            ^^^^^^^^^^^^^^^^^^^^^^^^
+E         File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/fullstack_cluster/moe_hybrid_ep_common.py", line 763, in _roundtrip_routes
+E           recv_tokens = self._all_to_all_list(sorted_tokens, send_counts, recv_counts, group=group)
+E                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E         File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/fullstack_cluster/moe_hybrid_ep_common.py", line 686, in _all_to_all_list
+E           received = dist_nn.all_to_all(recv_parts, send_parts, group=group)
+E                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E         File "/opt/miniconda3/lib/python3.12/site-packages/torch/distributed/nn/functional.py", line 171, in all_to_all
+E           return _AlltoAll.apply(group, output_tensor_list, *input_tensor_list)
+E                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E         File "/opt/miniconda3/lib/python3.12/site-packages/torch/autograd/function.py", line 576, in apply
+E           return super().apply(*args, **kwargs)  # type: ignore[misc]
+E                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E         File "/opt/miniconda3/lib/python3.12/site-packages/torch/distributed/nn/functional.py", line 389, in forward
+E           dist.scatter(out_tensor_list[i], to_send, i, group=group)
+E         File "/opt/miniconda3/lib/python3.12/site-packages/torch/distributed/c10d_logger.py", line 81, in wrapper
+E           return func(*args, **kwargs)
+E                  ^^^^^^^^^^^^^^^^^^^^^
+E         File "/opt/miniconda3/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py", line 4306, in scatter
+E           work = group.scatter(output_tensors, input_tensors, opts)
+E                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       RuntimeError: ProcessGroupGloo::scatter: invalid tensor size at index 2 (expected (0, 4), got (2, 4))
+
+/opt/miniconda3/lib/python3.12/site-packages/torch/multiprocessing/spawn.py:215: ProcessRaisedException
+---------------- generated xml file: /tmp/aisp-hybrid-first.xml ----------------
+=========================== short test summary info ============================
+FAILED tests/test_audit_wave1_hybrid_ep.py::test_four_process_gloo_empty_routes_replicas_and_gradients
+1 failed, 3 passed in 4.40s

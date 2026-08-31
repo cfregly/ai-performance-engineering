@@ -120,8 +120,8 @@ static __global__ void tma_copy_kernel(
         cuda_device::cp_async_bulk_tensor_2d_global_to_shared(
             &smem,
             &in_desc,
-            tile_y,
             tile_x,
+            tile_y,
             *bar);
         token = cuda::device::barrier_arrive_tx(*bar, 1, sizeof(smem));
     } else {
@@ -141,8 +141,8 @@ static __global__ void tma_copy_kernel(
     if (threadIdx.x == 0 && threadIdx.y == 0) {
         cuda_device::cp_async_bulk_tensor_2d_shared_to_global(
             &out_desc,
-            tile_y,
             tile_x,
+            tile_y,
             &smem);
         cuda_device::cp_async_bulk_commit_group();
         cuda_device::cp_async_bulk_wait_group_read<0>();
@@ -275,7 +275,7 @@ inline void run_simple_tma_demo() {
     std::vector<float> h_out(WIDTH * HEIGHT);
     cuda_tma::check_cuda(cudaMemcpy(h_out.data(), d_out, BYTES, cudaMemcpyDeviceToHost), "copy result");
 
-    std::printf("  ✓ TMA copied %dx%d tile (swizzle=128B, L2 promotion=128B)\n", HEIGHT, WIDTH);
+    std::printf("  ✓ TMA copied %dx%d tile (swizzle=none, L2 promotion=none)\n", HEIGHT, WIDTH);
     std::printf("  Sample output element: %.2f -> %.2f\n", h_in[0], h_out[0]);
 
     cudaFree(d_in);

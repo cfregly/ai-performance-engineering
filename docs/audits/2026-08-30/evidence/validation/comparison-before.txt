@@ -1,0 +1,373 @@
+FFFFFFFFFFF.F.F.F..F                                                     [100%]
+=================================== FAILURES ===================================
+_______ test_speedup_targets_do_not_invert_measured_latency[200.0-ch11] ________
+
+chapter = 'ch11', candidate_ms = 200.0
+
+    @pytest.mark.parametrize("chapter", ["ch11", "ch13", "ch14", "ch16", "ch19"])
+    @pytest.mark.parametrize("candidate_ms", [200.0, 50.0])
+    def test_speedup_targets_do_not_invert_measured_latency(
+        chapter: str, candidate_ms: float
+    ) -> None:
+        comparison = compare_all_metrics(_result(), _result(candidate_ms), chapter=chapter)
+        timing = next(
+            metric for metric in comparison.metric_comparisons if metric.metric_name == "timing.mean_ms"
+        )
+    
+>       assert timing.direction is MetricDirection.LOWER_IS_BETTER
+E       AssertionError: assert <MetricDirection.HIGHER_IS_BETTER: 'higher'> is <MetricDirection.LOWER_IS_BETTER: 'lower'>
+E        +  where <MetricDirection.HIGHER_IS_BETTER: 'higher'> = MetricComparison(metric_name='timing.mean_ms', display_name='Stream Speedup', baseline_value=100.0, optimized_value=20..._IS_BETTER: 'higher'>, unit='x', regression=False, regression_pct=None, improvement_pct=100.0, significant_change=True).direction
+E        +  and   <MetricDirection.LOWER_IS_BETTER: 'lower'> = MetricDirection.LOWER_IS_BETTER
+
+tests/test_audit_wave1_comparison.py:74: AssertionError
+------------------------------ Captured log call -------------------------------
+WARNING  core.benchmark.comparison:comparison.py:510 Chapter ch11 metrics ['stream_overlap_percent'] require raw profiler metrics. Set include_raw_metrics=True in compare_all_metrics() to enable these metrics.
+WARNING  core.benchmark.comparison:comparison.py:819 Chapter ch11 has 1 metric(s) requiring raw profiler data (paths contain '.raw.'), but include_raw_metrics=False. Set include_raw_metrics=True to enable these metrics. Note: NSYS bandwidth metrics (e.g., nvlink_bandwidth_gbs, hbm3e_bandwidth_tbs) require both include_raw_metrics=True and NSYS profiling enabled.
+_______ test_speedup_targets_do_not_invert_measured_latency[200.0-ch13] ________
+
+chapter = 'ch13', candidate_ms = 200.0
+
+    @pytest.mark.parametrize("chapter", ["ch11", "ch13", "ch14", "ch16", "ch19"])
+    @pytest.mark.parametrize("candidate_ms", [200.0, 50.0])
+    def test_speedup_targets_do_not_invert_measured_latency(
+        chapter: str, candidate_ms: float
+    ) -> None:
+        comparison = compare_all_metrics(_result(), _result(candidate_ms), chapter=chapter)
+        timing = next(
+            metric for metric in comparison.metric_comparisons if metric.metric_name == "timing.mean_ms"
+        )
+    
+>       assert timing.direction is MetricDirection.LOWER_IS_BETTER
+E       AssertionError: assert <MetricDirection.HIGHER_IS_BETTER: 'higher'> is <MetricDirection.LOWER_IS_BETTER: 'lower'>
+E        +  where <MetricDirection.HIGHER_IS_BETTER: 'higher'> = MetricComparison(metric_name='timing.mean_ms', display_name='Compiled Autograd Speedup', baseline_value=100.0, optimiz..._IS_BETTER: 'higher'>, unit='x', regression=False, regression_pct=None, improvement_pct=100.0, significant_change=True).direction
+E        +  and   <MetricDirection.LOWER_IS_BETTER: 'lower'> = MetricDirection.LOWER_IS_BETTER
+
+tests/test_audit_wave1_comparison.py:74: AssertionError
+_______ test_speedup_targets_do_not_invert_measured_latency[200.0-ch14] ________
+
+chapter = 'ch14', candidate_ms = 200.0
+
+    @pytest.mark.parametrize("chapter", ["ch11", "ch13", "ch14", "ch16", "ch19"])
+    @pytest.mark.parametrize("candidate_ms", [200.0, 50.0])
+    def test_speedup_targets_do_not_invert_measured_latency(
+        chapter: str, candidate_ms: float
+    ) -> None:
+        comparison = compare_all_metrics(_result(), _result(candidate_ms), chapter=chapter)
+        timing = next(
+            metric for metric in comparison.metric_comparisons if metric.metric_name == "timing.mean_ms"
+        )
+    
+>       assert timing.direction is MetricDirection.LOWER_IS_BETTER
+E       AssertionError: assert <MetricDirection.HIGHER_IS_BETTER: 'higher'> is <MetricDirection.LOWER_IS_BETTER: 'lower'>
+E        +  where <MetricDirection.HIGHER_IS_BETTER: 'higher'> = MetricComparison(metric_name='timing.mean_ms', display_name='Torch Compile Speedup (Large)', baseline_value=100.0, opt..._IS_BETTER: 'higher'>, unit='x', regression=False, regression_pct=None, improvement_pct=100.0, significant_change=True).direction
+E        +  and   <MetricDirection.LOWER_IS_BETTER: 'lower'> = MetricDirection.LOWER_IS_BETTER
+
+tests/test_audit_wave1_comparison.py:74: AssertionError
+_______ test_speedup_targets_do_not_invert_measured_latency[200.0-ch16] ________
+
+chapter = 'ch16', candidate_ms = 200.0
+
+    @pytest.mark.parametrize("chapter", ["ch11", "ch13", "ch14", "ch16", "ch19"])
+    @pytest.mark.parametrize("candidate_ms", [200.0, 50.0])
+    def test_speedup_targets_do_not_invert_measured_latency(
+        chapter: str, candidate_ms: float
+    ) -> None:
+        comparison = compare_all_metrics(_result(), _result(candidate_ms), chapter=chapter)
+        timing = next(
+            metric for metric in comparison.metric_comparisons if metric.metric_name == "timing.mean_ms"
+        )
+    
+>       assert timing.direction is MetricDirection.LOWER_IS_BETTER
+E       AssertionError: assert <MetricDirection.HIGHER_IS_BETTER: 'higher'> is <MetricDirection.LOWER_IS_BETTER: 'lower'>
+E        +  where <MetricDirection.HIGHER_IS_BETTER: 'higher'> = MetricComparison(metric_name='timing.mean_ms', display_name='Speedup', baseline_value=100.0, optimized_value=200.0, ra..._IS_BETTER: 'higher'>, unit='x', regression=False, regression_pct=None, improvement_pct=100.0, significant_change=True).direction
+E        +  and   <MetricDirection.LOWER_IS_BETTER: 'lower'> = MetricDirection.LOWER_IS_BETTER
+
+tests/test_audit_wave1_comparison.py:74: AssertionError
+_______ test_speedup_targets_do_not_invert_measured_latency[200.0-ch19] ________
+
+chapter = 'ch19', candidate_ms = 200.0
+
+    @pytest.mark.parametrize("chapter", ["ch11", "ch13", "ch14", "ch16", "ch19"])
+    @pytest.mark.parametrize("candidate_ms", [200.0, 50.0])
+    def test_speedup_targets_do_not_invert_measured_latency(
+        chapter: str, candidate_ms: float
+    ) -> None:
+        comparison = compare_all_metrics(_result(), _result(candidate_ms), chapter=chapter)
+        timing = next(
+            metric for metric in comparison.metric_comparisons if metric.metric_name == "timing.mean_ms"
+        )
+    
+>       assert timing.direction is MetricDirection.LOWER_IS_BETTER
+E       AssertionError: assert <MetricDirection.HIGHER_IS_BETTER: 'higher'> is <MetricDirection.LOWER_IS_BETTER: 'lower'>
+E        +  where <MetricDirection.HIGHER_IS_BETTER: 'higher'> = MetricComparison(metric_name='timing.mean_ms', display_name='FP8 Training Speedup', baseline_value=100.0, optimized_va..._IS_BETTER: 'higher'>, unit='x', regression=False, regression_pct=None, improvement_pct=100.0, significant_change=True).direction
+E        +  and   <MetricDirection.LOWER_IS_BETTER: 'lower'> = MetricDirection.LOWER_IS_BETTER
+
+tests/test_audit_wave1_comparison.py:74: AssertionError
+------------------------------ Captured log call -------------------------------
+WARNING  core.benchmark.comparison:comparison.py:622 Unknown chapter metric 'adaptive_parallelism_speedup' for ch19, skipping
+WARNING  core.benchmark.comparison:comparison.py:622 Unknown chapter metric 'dynamic_precision_speedup' for ch19, skipping
+WARNING  core.benchmark.comparison:comparison.py:622 Unknown chapter metric 'dynamic_quantized_cache_speedup' for ch19, skipping
+________ test_speedup_targets_do_not_invert_measured_latency[50.0-ch11] ________
+
+chapter = 'ch11', candidate_ms = 50.0
+
+    @pytest.mark.parametrize("chapter", ["ch11", "ch13", "ch14", "ch16", "ch19"])
+    @pytest.mark.parametrize("candidate_ms", [200.0, 50.0])
+    def test_speedup_targets_do_not_invert_measured_latency(
+        chapter: str, candidate_ms: float
+    ) -> None:
+        comparison = compare_all_metrics(_result(), _result(candidate_ms), chapter=chapter)
+        timing = next(
+            metric for metric in comparison.metric_comparisons if metric.metric_name == "timing.mean_ms"
+        )
+    
+>       assert timing.direction is MetricDirection.LOWER_IS_BETTER
+E       AssertionError: assert <MetricDirection.HIGHER_IS_BETTER: 'higher'> is <MetricDirection.LOWER_IS_BETTER: 'lower'>
+E        +  where <MetricDirection.HIGHER_IS_BETTER: 'higher'> = MetricComparison(metric_name='timing.mean_ms', display_name='Stream Speedup', baseline_value=100.0, optimized_value=50...ER_IS_BETTER: 'higher'>, unit='x', regression=True, regression_pct=50.0, improvement_pct=None, significant_change=True).direction
+E        +  and   <MetricDirection.LOWER_IS_BETTER: 'lower'> = MetricDirection.LOWER_IS_BETTER
+
+tests/test_audit_wave1_comparison.py:74: AssertionError
+------------------------------ Captured log call -------------------------------
+WARNING  core.benchmark.comparison:comparison.py:510 Chapter ch11 metrics ['stream_overlap_percent'] require raw profiler metrics. Set include_raw_metrics=True in compare_all_metrics() to enable these metrics.
+WARNING  core.benchmark.comparison:comparison.py:819 Chapter ch11 has 1 metric(s) requiring raw profiler data (paths contain '.raw.'), but include_raw_metrics=False. Set include_raw_metrics=True to enable these metrics. Note: NSYS bandwidth metrics (e.g., nvlink_bandwidth_gbs, hbm3e_bandwidth_tbs) require both include_raw_metrics=True and NSYS profiling enabled.
+________ test_speedup_targets_do_not_invert_measured_latency[50.0-ch13] ________
+
+chapter = 'ch13', candidate_ms = 50.0
+
+    @pytest.mark.parametrize("chapter", ["ch11", "ch13", "ch14", "ch16", "ch19"])
+    @pytest.mark.parametrize("candidate_ms", [200.0, 50.0])
+    def test_speedup_targets_do_not_invert_measured_latency(
+        chapter: str, candidate_ms: float
+    ) -> None:
+        comparison = compare_all_metrics(_result(), _result(candidate_ms), chapter=chapter)
+        timing = next(
+            metric for metric in comparison.metric_comparisons if metric.metric_name == "timing.mean_ms"
+        )
+    
+>       assert timing.direction is MetricDirection.LOWER_IS_BETTER
+E       AssertionError: assert <MetricDirection.HIGHER_IS_BETTER: 'higher'> is <MetricDirection.LOWER_IS_BETTER: 'lower'>
+E        +  where <MetricDirection.HIGHER_IS_BETTER: 'higher'> = MetricComparison(metric_name='timing.mean_ms', display_name='Compiled Autograd Speedup', baseline_value=100.0, optimiz...ER_IS_BETTER: 'higher'>, unit='x', regression=True, regression_pct=50.0, improvement_pct=None, significant_change=True).direction
+E        +  and   <MetricDirection.LOWER_IS_BETTER: 'lower'> = MetricDirection.LOWER_IS_BETTER
+
+tests/test_audit_wave1_comparison.py:74: AssertionError
+________ test_speedup_targets_do_not_invert_measured_latency[50.0-ch14] ________
+
+chapter = 'ch14', candidate_ms = 50.0
+
+    @pytest.mark.parametrize("chapter", ["ch11", "ch13", "ch14", "ch16", "ch19"])
+    @pytest.mark.parametrize("candidate_ms", [200.0, 50.0])
+    def test_speedup_targets_do_not_invert_measured_latency(
+        chapter: str, candidate_ms: float
+    ) -> None:
+        comparison = compare_all_metrics(_result(), _result(candidate_ms), chapter=chapter)
+        timing = next(
+            metric for metric in comparison.metric_comparisons if metric.metric_name == "timing.mean_ms"
+        )
+    
+>       assert timing.direction is MetricDirection.LOWER_IS_BETTER
+E       AssertionError: assert <MetricDirection.HIGHER_IS_BETTER: 'higher'> is <MetricDirection.LOWER_IS_BETTER: 'lower'>
+E        +  where <MetricDirection.HIGHER_IS_BETTER: 'higher'> = MetricComparison(metric_name='timing.mean_ms', display_name='Torch Compile Speedup (Large)', baseline_value=100.0, opt...ER_IS_BETTER: 'higher'>, unit='x', regression=True, regression_pct=50.0, improvement_pct=None, significant_change=True).direction
+E        +  and   <MetricDirection.LOWER_IS_BETTER: 'lower'> = MetricDirection.LOWER_IS_BETTER
+
+tests/test_audit_wave1_comparison.py:74: AssertionError
+________ test_speedup_targets_do_not_invert_measured_latency[50.0-ch16] ________
+
+chapter = 'ch16', candidate_ms = 50.0
+
+    @pytest.mark.parametrize("chapter", ["ch11", "ch13", "ch14", "ch16", "ch19"])
+    @pytest.mark.parametrize("candidate_ms", [200.0, 50.0])
+    def test_speedup_targets_do_not_invert_measured_latency(
+        chapter: str, candidate_ms: float
+    ) -> None:
+        comparison = compare_all_metrics(_result(), _result(candidate_ms), chapter=chapter)
+        timing = next(
+            metric for metric in comparison.metric_comparisons if metric.metric_name == "timing.mean_ms"
+        )
+    
+>       assert timing.direction is MetricDirection.LOWER_IS_BETTER
+E       AssertionError: assert <MetricDirection.HIGHER_IS_BETTER: 'higher'> is <MetricDirection.LOWER_IS_BETTER: 'lower'>
+E        +  where <MetricDirection.HIGHER_IS_BETTER: 'higher'> = MetricComparison(metric_name='timing.mean_ms', display_name='Speedup', baseline_value=100.0, optimized_value=50.0, rat...ER_IS_BETTER: 'higher'>, unit='x', regression=True, regression_pct=50.0, improvement_pct=None, significant_change=True).direction
+E        +  and   <MetricDirection.LOWER_IS_BETTER: 'lower'> = MetricDirection.LOWER_IS_BETTER
+
+tests/test_audit_wave1_comparison.py:74: AssertionError
+________ test_speedup_targets_do_not_invert_measured_latency[50.0-ch19] ________
+
+chapter = 'ch19', candidate_ms = 50.0
+
+    @pytest.mark.parametrize("chapter", ["ch11", "ch13", "ch14", "ch16", "ch19"])
+    @pytest.mark.parametrize("candidate_ms", [200.0, 50.0])
+    def test_speedup_targets_do_not_invert_measured_latency(
+        chapter: str, candidate_ms: float
+    ) -> None:
+        comparison = compare_all_metrics(_result(), _result(candidate_ms), chapter=chapter)
+        timing = next(
+            metric for metric in comparison.metric_comparisons if metric.metric_name == "timing.mean_ms"
+        )
+    
+>       assert timing.direction is MetricDirection.LOWER_IS_BETTER
+E       AssertionError: assert <MetricDirection.HIGHER_IS_BETTER: 'higher'> is <MetricDirection.LOWER_IS_BETTER: 'lower'>
+E        +  where <MetricDirection.HIGHER_IS_BETTER: 'higher'> = MetricComparison(metric_name='timing.mean_ms', display_name='FP8 Training Speedup', baseline_value=100.0, optimized_va...ER_IS_BETTER: 'higher'>, unit='x', regression=True, regression_pct=50.0, improvement_pct=None, significant_change=True).direction
+E        +  and   <MetricDirection.LOWER_IS_BETTER: 'lower'> = MetricDirection.LOWER_IS_BETTER
+
+tests/test_audit_wave1_comparison.py:74: AssertionError
+------------------------------ Captured log call -------------------------------
+WARNING  core.benchmark.comparison:comparison.py:622 Unknown chapter metric 'adaptive_parallelism_speedup' for ch19, skipping
+WARNING  core.benchmark.comparison:comparison.py:622 Unknown chapter metric 'dynamic_precision_speedup' for ch19, skipping
+WARNING  core.benchmark.comparison:comparison.py:622 Unknown chapter metric 'dynamic_quantized_cache_speedup' for ch19, skipping
+_______ test_chapter_latency_aliases_preserve_raw_timing_contract[ch04] ________
+
+chapter = 'ch04'
+
+    @pytest.mark.parametrize("chapter", ["ch04", "ch17"])
+    def test_chapter_latency_aliases_preserve_raw_timing_contract(chapter: str) -> None:
+        comparison = compare_all_metrics(_result(), _result(110.0), chapter=chapter)
+        timing = next(
+            metric for metric in comparison.metric_comparisons if metric.metric_name == "timing.mean_ms"
+        )
+>       assert timing.unit == "ms"
+E       AssertionError: assert 'μs' == 'ms'
+E         
+E         - ms
+E         + μs
+
+tests/test_audit_wave1_comparison.py:100: AssertionError
+------------------------------ Captured log call -------------------------------
+WARNING  core.benchmark.comparison:comparison.py:505 Chapter ch04 bandwidth metrics ['allreduce_bandwidth_gbs', 'p2p_bandwidth_gbs'] require NSYS raw metrics. Set include_raw_metrics=True in compare_all_metrics() and ensure NSYS profiling is enabled.
+WARNING  core.benchmark.comparison:comparison.py:819 Chapter ch04 has 1 metric(s) requiring raw profiler data (paths contain '.raw.'), but include_raw_metrics=False. Set include_raw_metrics=True to enable these metrics. Note: NSYS bandwidth metrics (e.g., nvlink_bandwidth_gbs, hbm3e_bandwidth_tbs) require both include_raw_metrics=True and NSYS profiling enabled.
+__ test_bandwidth_absolute_target_does_not_set_percent_threshold[100.0-True] ___
+
+candidate_gbps = 100.0, regressed = True
+
+    @pytest.mark.parametrize("candidate_gbps, regressed", [(100.0, True), (800.0, False)])
+    def test_bandwidth_absolute_target_does_not_set_percent_threshold(
+        candidate_gbps: float, regressed: bool
+    ) -> None:
+        comparison = compare_all_metrics(
+            _result(bandwidth_gbps=1000.0),
+            _result(bandwidth_gbps=candidate_gbps),
+            chapter="ch02",
+            include_raw_metrics=True,
+        )
+        bandwidth = next(
+            metric for metric in comparison.metric_comparisons
+            if metric.metric_name == "profiler_metrics.nsys.raw.memory_throughput_gb_per_s"
+        )
+>       assert bandwidth.regression is regressed
+E       AssertionError: assert False is True
+E        +  where False = MetricComparison(metric_name='profiler_metrics.nsys.raw.memory_throughput_gb_per_s', display_name='NVLink Bandwidth', ..._BETTER: 'higher'>, unit='GB/s', regression=False, regression_pct=90.0, improvement_pct=None, significant_change=False).regression
+
+tests/test_audit_wave1_comparison.py:120: AssertionError
+------------------------------ Captured log call -------------------------------
+WARNING  core.benchmark.comparison:comparison.py:505 Chapter ch02 bandwidth metrics ['nvlink_bandwidth_gbs', 'hbm3e_bandwidth_tbs'] require NSYS raw metrics. Set include_raw_metrics=True in compare_all_metrics() and ensure NSYS profiling is enabled.
+WARNING  core.benchmark.comparison:comparison.py:521 Chapter ch02 metrics ['nvswitch_bandwidth_tbs'] are not yet implemented (counter names TBD). These metrics will be skipped until counter names are confirmed.
+_ test_small_routing_target_does_not_replace_timing_percent_threshold[103.0-False] _
+
+candidate_ms = 103.0, regressed = False
+
+    @pytest.mark.parametrize("candidate_ms, regressed", [(103.0, False), (110.0, True)])
+    def test_small_routing_target_does_not_replace_timing_percent_threshold(
+        candidate_ms: float, regressed: bool
+    ) -> None:
+        comparison = compare_all_metrics(_result(), _result(candidate_ms), chapter="ch17")
+        timing = next(
+            metric for metric in comparison.metric_comparisons if metric.metric_name == "timing.mean_ms"
+        )
+>       assert timing.regression is regressed
+E       AssertionError: assert True is False
+E        +  where True = MetricComparison(metric_name='timing.mean_ms', display_name='Routing Overhead', baseline_value=100.0, optimized_value=...WER_IS_BETTER: 'lower'>, unit='ms', regression=True, regression_pct=3.0, improvement_pct=None, significant_change=True).regression
+
+tests/test_audit_wave1_comparison.py:138: AssertionError
+______ test_ttft_absolute_target_and_relative_regression_are_independent _______
+
+    def test_ttft_absolute_target_and_relative_regression_are_independent() -> None:
+        comparison = compare_all_metrics(
+>           _result(ttft_p99_ms=100.0), _result(ttft_p99_ms=110.0), chapter="ch17"
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+
+tests/test_audit_wave1_comparison.py:144: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+mean_ms = 100.0
+
+    def _result(
+        mean_ms: float = 100.0,
+        *,
+        bandwidth_gbps: float | None = None,
+        ttft_p99_ms: float | None = None,
+    ) -> BenchmarkResult:
+        profiler_metrics = None
+        if bandwidth_gbps is not None:
+            profiler_metrics = ProfilerMetrics(
+                nsys=NsysMetrics(raw_metrics={"memory_throughput_gb_per_s": bandwidth_gbps})
+            )
+        inference_timing = None
+        if ttft_p99_ms is not None:
+>           inference_timing = InferenceTimingStats(
+                ttft_mean_ms=ttft_p99_ms,
+                tpot_mean_ms=1.0,
+                ttft_p99_ms=ttft_p99_ms,
+            )
+E           pydantic_core._pydantic_core.ValidationError: 2 validation errors for InferenceTimingStats
+E           num_requests
+E             Field required [type=missing, input_value={'ttft_mean_ms': 100.0, '...0, 'ttft_p99_ms': 100.0}, input_type=dict]
+E               For further information visit https://errors.pydantic.dev/2.12/v/missing
+E           total_tokens_generated
+E             Field required [type=missing, input_value={'ttft_mean_ms': 100.0, '...0, 'ttft_p99_ms': 100.0}, input_type=dict]
+E               For further information visit https://errors.pydantic.dev/2.12/v/missing
+
+tests/test_audit_wave1_comparison.py:44: ValidationError
+________ test_file_backed_comparison_entrypoint_reports_slower_latency _________
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1510/test_file_backed_comparison_en0')
+
+    def test_file_backed_comparison_entrypoint_reports_slower_latency(tmp_path: Path) -> None:
+        baseline_path = tmp_path / "baseline.json"
+        candidate_path = tmp_path / "candidate.json"
+        baseline_path.write_text(_result().model_dump_json(), encoding="utf-8")
+        candidate_path.write_text(_result(200.0).model_dump_json(), encoding="utf-8")
+        script = """
+    import json
+    import sys
+    from pathlib import Path
+    from core.benchmark.models import BenchmarkResult
+    from core.benchmark.comparison import compare_and_display_all_metrics
+    baseline, candidate = [
+        BenchmarkResult.model_validate_json(Path(path).read_text()) for path in sys.argv[1:]
+    ]
+    comparison = compare_and_display_all_metrics(baseline, candidate, chapter='ch11', format_style='both')
+    timing = next(item for item in comparison.metric_comparisons if item.metric_name == 'timing.mean_ms')
+    print(json.dumps({'regression': timing.regression, 'ratio': timing.ratio, 'unit': timing.unit}))
+    """
+        process = subprocess.run(
+            [sys.executable, "-c", script, str(baseline_path), str(candidate_path)],
+            cwd=Path(__file__).resolve().parents[1],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+        assert process.returncode == 0, process.stdout + process.stderr
+        assert "REGRESS" in process.stdout
+>       assert "Mean Execution Time" in process.stdout
+E       assert 'Mean Execution Time' in '\n====================================================================================================\nMETRIC COMPAR...50x (100.0% worse)\n    • Min Execution Time: 0.50x (100.0% worse)\n{"regression": false, "ratio": 2.0, "unit": "x"}\n'
+E        +  where '\n====================================================================================================\nMETRIC COMPAR...50x (100.0% worse)\n    • Min Execution Time: 0.50x (100.0% worse)\n{"regression": false, "ratio": 2.0, "unit": "x"}\n' = CompletedProcess(args=['/opt/miniconda3/bin/python', '-c', "\nimport json\nimport sys\nfrom pathlib import Path\nfrom ...(e.g., nvlink_bandwidth_gbs, hbm3e_bandwidth_tbs) require both include_raw_metrics=True and NSYS profiling enabled.\n").stdout
+
+tests/test_audit_wave1_comparison.py:202: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_audit_wave1_comparison.py::test_speedup_targets_do_not_invert_measured_latency[200.0-ch11]
+FAILED tests/test_audit_wave1_comparison.py::test_speedup_targets_do_not_invert_measured_latency[200.0-ch13]
+FAILED tests/test_audit_wave1_comparison.py::test_speedup_targets_do_not_invert_measured_latency[200.0-ch14]
+FAILED tests/test_audit_wave1_comparison.py::test_speedup_targets_do_not_invert_measured_latency[200.0-ch16]
+FAILED tests/test_audit_wave1_comparison.py::test_speedup_targets_do_not_invert_measured_latency[200.0-ch19]
+FAILED tests/test_audit_wave1_comparison.py::test_speedup_targets_do_not_invert_measured_latency[50.0-ch11]
+FAILED tests/test_audit_wave1_comparison.py::test_speedup_targets_do_not_invert_measured_latency[50.0-ch13]
+FAILED tests/test_audit_wave1_comparison.py::test_speedup_targets_do_not_invert_measured_latency[50.0-ch14]
+FAILED tests/test_audit_wave1_comparison.py::test_speedup_targets_do_not_invert_measured_latency[50.0-ch16]
+FAILED tests/test_audit_wave1_comparison.py::test_speedup_targets_do_not_invert_measured_latency[50.0-ch19]
+FAILED tests/test_audit_wave1_comparison.py::test_chapter_latency_aliases_preserve_raw_timing_contract[ch04]
+FAILED tests/test_audit_wave1_comparison.py::test_bandwidth_absolute_target_does_not_set_percent_threshold[100.0-True]
+FAILED tests/test_audit_wave1_comparison.py::test_small_routing_target_does_not_replace_timing_percent_threshold[103.0-False]
+FAILED tests/test_audit_wave1_comparison.py::test_ttft_absolute_target_and_relative_regression_are_independent
+FAILED tests/test_audit_wave1_comparison.py::test_file_backed_comparison_entrypoint_reports_slower_latency
+15 failed, 5 passed in 4.01s

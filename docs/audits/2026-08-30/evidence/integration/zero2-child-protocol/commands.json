@@ -1,0 +1,39 @@
+{
+  "commands": [
+    {
+      "command": "cd code && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_audit_wave1_zero2_child_protocol.py tests/test_audit_wave1_torchrun_verification.py tests/test_audit_wave1_zero2.py tests/test_audit_wave1_zero2_parity.py tests/test_audit_wave1_zero2_single.py -q -p no:cacheprovider -o timeout=120 --junitxml=../docs/audits/2026-08-30/evidence/integration/zero2-child-protocol/targeted-tests-current.xml",
+      "exit_code": 0,
+      "name": "current_source_targeted_protocol_and_zero2_tests"
+    },
+    {
+      "command": "PYTHONPATH=code /opt/miniconda3/bin/python docs/audits/2026-08-30/evidence/integration/zero2-child-protocol/validate_captured_matrix.py",
+      "exit_code": 0,
+      "name": "current_captured_matrix_revalidation"
+    },
+    {
+      "command": "cd code && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_audit_wave1_zero2_child_protocol.py tests/test_audit_wave1_torchrun_verification.py tests/test_audit_wave1_zero2.py tests/test_audit_wave1_zero2_parity.py tests/test_audit_wave1_zero2_single.py -q -p no:cacheprovider -o timeout=120 --junitxml=../docs/audits/2026-08-30/evidence/integration/zero2-child-protocol/targeted-tests-final.xml",
+      "exit_code": 0,
+      "name": "targeted_protocol_and_zero2_tests"
+    },
+    {
+      "accepted": false,
+      "command": "cd code && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_audit_wave1_timing_provenance.py tests/test_benchmark_harness_subprocess_regressions.py tests/test_benchmark_hygiene_regressions.py tests/test_get_benchmark_presence.py tests/test_run_benchmarks_cuda_wrapper_regression.py tests/test_run_benchmarks_profiler_contract.py tests/test_seed_config_immutability.py -q -p no:cacheprovider -o timeout=120 --junitxml=../docs/audits/2026-08-30/evidence/integration/zero2-child-protocol/harness-regressions.xml",
+      "exit_code": 139,
+      "name": "combined_regressions_invalid_attempt"
+    }
+  ],
+  "isolated_current_results": "harness-regressions-isolated-current/summary.json",
+  "isolated_regression_command_template": "cd code && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest <one-test-file> -q -p no:cacheprovider -o timeout=120 --junitxml=<per-file-junit>",
+  "isolated_regression_files": [
+    "tests/test_audit_wave1_timing_provenance.py",
+    "tests/test_benchmark_harness_subprocess_regressions.py",
+    "tests/test_benchmark_hygiene_regressions.py",
+    "tests/test_get_benchmark_presence.py",
+    "tests/test_run_benchmarks_cuda_wrapper_regression.py",
+    "tests/test_run_benchmarks_profiler_contract.py",
+    "tests/test_seed_config_immutability.py"
+  ],
+  "note": "Dynamic result directories, tokens, launch clocks, and loopback ports are intentionally generated fresh and are not public infrastructure identifiers.",
+  "schema_version": 1,
+  "verification_only_torchrun_template": "PYTHONPATH=code /opt/miniconda3/bin/python -m torch.distributed.run --nproc_per_node <1-or-2> --nnodes 1 --rdzv_backend static --rdzv_endpoint 127.0.0.1:<ephemeral-local-port> -m core.harness.torchrun_wrapper --aisp-target-script code/labs/train_distributed/zero2.py --aisp-expected-torch-seed 42 --mode <baseline-or-optimized> --variant <single-or-multigpu> --verification-only --verification-backend gloo"
+}

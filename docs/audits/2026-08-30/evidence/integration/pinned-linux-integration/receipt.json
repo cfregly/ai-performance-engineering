@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-08-31T00:43:55.705001+00:00",
+  "status": "PASS_CURRENT_LOCAL_SOURCE_CPU_AND_SCOPED_LINUX_METADATA__LINUX_INSTALL_GPU_AND_WAVE2_PENDING",
+  "goal_complete": false,
+  "goal_turn_classification": "progress",
+  "baseline_revision": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "branch": "codex/audit-remediation-20260830",
+  "committed": false,
+  "original_findings": 128,
+  "original_status_counts": {
+    "awaiting_runtime": 76,
+    "source_fixed": 52
+  },
+  "adjacent_discoveries": 26,
+  "adjacent_status_counts": {
+    "awaiting_runtime": 11,
+    "source_fixed": 15
+  },
+  "source_manifest": {
+    "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/source-before-full-cpu.json",
+    "sha256": "db1e8cc60220f3fa2f71c8237b39eb46c732104f2b0478419e24b53d649daa47",
+    "files": 321,
+    "stable_during_run": true,
+    "current_hashes_rechecked": true,
+    "tracked_diff_stable": true,
+    "changes_from_previous_source_epoch": [
+      ".github/workflows/benchmark-validation.yml",
+      "code/requirements_latest.txt",
+      "code/setup.sh",
+      "code/tests/test_repository_configuration.py",
+      "code/tests/test_setup_bootstrap.py",
+      "docs/environment.md",
+      "code/tests/test_http_microbench.py"
+    ],
+    "exclusions": "Audit plan, mutable coordination records and evidence are separately snapshotted; they are not counted as source files."
+  },
+  "tests": {
+    "scope": "Ordinary code/tests in existing Darwin arm64 Python3.12.2 CPUtorch2.8.0 environment. Default quick benchmark-correctness selection retained; no CLI file exclusions.",
+    "cases": 4397,
+    "passed": 3948,
+    "skipped": 449,
+    "failed": 0,
+    "warnings": 34,
+    "pytest_seconds": 456.78,
+    "process_seconds": 460.8097140000318,
+    "original_case_ids_retained": 4391,
+    "added_cases": [
+      "tests.test_http_microbench::test_current_dashboard_http_readiness_and_campaign_guard",
+      "tests.test_http_microbench::test_dashboard_readiness_rejects_failed_owned_child",
+      "tests.test_http_microbench::test_dashboard_readiness_timeout_cleans_up_owned_child",
+      "tests.test_http_microbench::test_dashboard_requests_reject_killed_owned_child",
+      "tests.test_http_microbench::test_retired_http_routes_explicitly_return_not_found",
+      "tests.test_repository_configuration::test_cpu_ci_installs_direct_collection_dependencies"
+    ],
+    "changed_outcomes": [
+      {
+        "id": "tests.test_http_microbench::test_microbench_endpoints_start_stop",
+        "prior": "passed",
+        "current": "skipped"
+      }
+    ],
+    "summary": {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/full-cpu-summary.json",
+      "sha256": "2cc7d28d6d455f6e4dbcc4b97ad0b16b6ef9d5ce34ac9ead02f03b2b41003809"
+    },
+    "stdout": {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/full-cpu.txt",
+      "sha256": "ae2dcde2d4800a187910068821e4854ef7f6eb5404c36a761038d49b9b32ecd0"
+    },
+    "junit": {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/full-cpu.xml",
+      "sha256": "354a2ee1ebc8d4576edf14cae2b7c24f2e1e0e4809422136ae8b431858c5e0ae"
+    },
+    "process_result": {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/full-cpu-process-result.json",
+      "sha256": "9b514f519c902eab41db0077630a650c68d9da2259e57a4b35ef5404cdec05f9"
+    },
+    "environment": {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/environment.json",
+      "sha256": "28efbc41ca362cafe244faf89524bf5c5c6f10a0702229ce56f29b13abea8892"
+    }
+  },
+  "source_checks": {
+    "python_ast_and_fatal_ruff_files": 212,
+    "passed": true,
+    "receipt": {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/source-syntax.json",
+      "sha256": "c5a2fe720cb4e75797622c7812712d68a618e2584586381fe7aec6712ce54862"
+    },
+    "whitespace": {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/whitespace-check.json",
+      "sha256": "454d3320aaf766996fca287a439e78e077af9238129c0ba4736e6fcd73209e6a"
+    }
+  },
+  "dependency_followup": {
+    "receipt": {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/receipt.json",
+      "sha256": "9a94c963e835af6f84d7e86829e0156e2c3a4cd9f294ffa0302027860de7d470"
+    },
+    "independent_review": {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-review/review.json",
+      "sha256": "f2654375845a7f19269137363860bb60552e1718187f1d95ec0ead534650dd72"
+    },
+    "original_triton_conflict": "Reproduced by actual Linux-target resolver; active pin aligned to3.5.1.",
+    "corrected_cuda_pair_packages": 26,
+    "cpu_exact_sources_packages": 58,
+    "ci_added_dependencies": [
+      "requests==2.34.2",
+      "tokenizers==0.22.2"
+    ],
+    "full_cuda_graph": "HOLD. Binary-only diagnostic retaining90package specs stopped at GPUtil source-only distribution. Not a full install success or normal pip/setup version-conflict claim.",
+    "actual_linux_install_executed": false
+  },
+  "http_followup": {
+    "receipt": {
+      "path": "docs/audits/2026-08-30/evidence/integration/http-cpu-readiness/receipt.json",
+      "sha256": "e1ad9c088470f484cbec68e68c66739cf963ae022125ab810222f10353e8ba9e"
+    },
+    "root_review": {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/root-source-review.json",
+      "sha256": "18f36d88a899fc5d549233fb1dc21ac2f927fc0e1e18a3c2d850666a10422d0b"
+    },
+    "scope": "Actual ASGI HTTP/owned-child checks; original absent-route test explicitly unsupported. Legacy endpoint functionality not restored; production serve CLI not exercised by positive check."
+  },
+  "preservation": {
+    "historical_check": {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/preserved-evidence-check.json",
+      "sha256": "393457b44b72f97e263d63e296dfba42c8b4a21d71fb91b99918c194baa2b21b"
+    },
+    "new_package_check": {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/new-package-artifact-check.json",
+      "sha256": "c21910f6ce0b0c1ab62ad4691c521995e96ba773087fc1cfe9398e77c07db6f1"
+    },
+    "original_inventory_check": {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/original-inventory-check.json",
+      "sha256": "421a42c19f0f7cd6b917a48f75b22c39dbdcc0841a03e2cbb3c81af89757e665"
+    },
+    "earlier_unchanged_evidence_files": 730,
+    "prior_mutable_status_preserved": true,
+    "new_dependency_artifacts_verified": 121,
+    "new_http_artifacts_verified": 27,
+    "attention_source_hashes_unchanged": 115,
+    "tracked_files_deleted": 0
+  },
+  "wave_2": {
+    "status": "awaiting_report",
+    "last_check": {
+      "path": "docs/audits/2026-08-30/evidence/intake/second-wave-check-pinned-linux.json",
+      "sha256": "911e2beb39bd13e6bd1d2d1663ae50ebe5dc5dce257a2d89daa26fecb1ef6f73"
+    },
+    "confirmed_first_wave_findings": 128,
+    "missing_report_is_not_zero_findings": true
+  },
+  "remaining_acceptance": {
+    "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/runtime-update.md",
+    "sha256": "d84ef4c2be2e37b5ba88f748e26a6137411f94d69f3dc4f1d7c4c975b88d13a8"
+  },
+  "local_linux_route": {
+    "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/local-linux-route.json",
+    "sha256": "adda27d2330bf84a8f4f5c69374c82f0bd7a6ac738b4832fe6877d327406fdde"
+  },
+  "coordination_snapshots": {
+    "plan": {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/plan-snapshot.md",
+      "sha256": "f79b8960df0460d866b4d3356d2dd149d961904e09ffa68ce4fe86690bb79355"
+    },
+    "status": {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/status-snapshot.md",
+      "sha256": "c3e66853b7a00f2f758da1f2d156e9fe19076690dfac60a25a2ff65abeaa75b4"
+    },
+    "ledger": {
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/ledger-snapshot.json",
+      "sha256": "30c294ed297551a712bb0a0416f4240dec1a60b0c82fc56679a73f3356cf75cc"
+    }
+  },
+  "checkpoint_artifacts": {
+    "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/checkpoint-artifact-manifest.json",
+    "sha256": "82fff631ec369da8fe666763337403e63500cf610a22b4dc19417a9cceaeb9d1",
+    "files": 179
+  },
+  "not_performed": [
+    "Linux dependency installation or GitHub Actions execution",
+    "Full staged CUDA setup/import/ABI qualification",
+    "GPU probe/job/profile/clock or ownership changes",
+    "ARM CUDA source artifact qualification",
+    "Restoration of61unsupported generic training wrappers or3retired HTTP routes",
+    "New performance measurement or historical-result promotion",
+    "Commit/staging/push/merge/deployment",
+    "Credential bypass or unrelated container modification"
+  ],
+  "goal_boundaries": "Required runtime, hardware custody and completed second-wave intake remain open. This turn made concrete source/verification progress and does not satisfy the repeated-blocked-turn threshold."
+}

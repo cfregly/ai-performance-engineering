@@ -291,7 +291,9 @@ class TestPyTorchTimerCorrectness:
         harness = BenchmarkHarness(mode=BenchmarkMode.PYTORCH, config=config)
 
         result = harness.benchmark(benchmark)
-        assert result.timing.iterations == 10
+        assert result.timing.iterations == len(result.timing.raw_times_ms) > 0
+        assert result.timing.sample_scope == "block_mean"
+        assert result.timing.iterations_per_sample >= 1
         assert benchmark.calls > config.warmup
 
 

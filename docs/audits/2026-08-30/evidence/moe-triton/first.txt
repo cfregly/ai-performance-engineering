@@ -1,0 +1,7 @@
+.....ssssssssss.........ss                                               [100%]
+-------------- generated xml file: /tmp/aisp-moe-triton-first.xml --------------
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_audit_wave1_moe_triton.py:89: Actual CUDA required; no CPU result qualifies a GPU kernel
+SKIPPED [9] tests/test_audit_wave1_moe_triton.py:100: Actual CUDA and Triton execution required
+SKIPPED [2] tests/test_moe_journey_runtime_hotpath.py:391: CUDA required
+14 passed, 12 skipped in 1.70s

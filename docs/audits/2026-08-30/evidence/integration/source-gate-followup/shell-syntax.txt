@@ -1,0 +1,10 @@
+code/core/scripts/build_tma_demos.sh: exit=0
+code/core/scripts/ci/run_compare_builds.sh: exit=0
+code/core/scripts/profiling/ncu_profile.sh: exit=0
+code/core/scripts/profiling/perf_triage_bundle.sh: exit=0
+code/core/scripts/profiling/profile.sh: exit=0
+code/core/scripts/run_warp_specialization_ci.sh: exit=0
+code/labs/custom_vs_cublas/cutlass_gemm/build.sh: exit=0
+code/scripts/run_power_efficiency_sweeps.sh: exit=0
+code/setup.sh: exit=0
+SUMMARY checked=9 failed=0

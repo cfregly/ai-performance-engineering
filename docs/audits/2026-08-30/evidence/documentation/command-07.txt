@@ -1,0 +1,11 @@
+usage: extract_nsys_summary.py [-h] [--output OUTPUT] patterns [patterns ...]
+
+Extract Nsight Systems summary metrics to CSV
+
+positional arguments:
+  patterns         Glob pattern(s) or file path(s) to .nsys-rep or CSV files
+
+options:
+  -h, --help       show this help message and exit
+  --output OUTPUT  Destination CSV file (default:
+                   artifacts/runs/analysis/nsys_summary.csv)

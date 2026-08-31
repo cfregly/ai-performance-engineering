@@ -16,6 +16,7 @@ from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.utils.extension_loader_template import load_cuda_extension_v2
 from labs.persistent_decode.persistent_decode_common import (
     build_inputs,
+    validate_decode_output,
     build_decode_input_signature,
     get_decode_options,
     resolve_device,
@@ -73,8 +74,6 @@ class OptimizedPersistentDecodeCUDABenchmark(VerificationPayloadMixin, BaseBench
         """Initialize the persistent decode CUDA extension and inputs."""
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA required for persistent decode benchmark")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         
         # Try to load the extension - this may fail if not pre-built
         try:
@@ -86,7 +85,7 @@ class OptimizedPersistentDecodeCUDABenchmark(VerificationPayloadMixin, BaseBench
             ) from exc
         
         self.inputs = build_inputs(self.batch, self.seq_len, self.head_dim, self.device)
-        self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
+        self._output_view = self.inputs.out
         self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)
 
     def benchmark_fn(self) -> None:
@@ -103,7 +102,7 @@ class OptimizedPersistentDecodeCUDABenchmark(VerificationPayloadMixin, BaseBench
                 self.inputs.out,
                 self.blocks,
             )
-        # Capture a representative slice of the output
+        # Retain all sequences/tokens for verification
         self.output = self._output_view
         if self.inputs is None or self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
@@ -111,6 +110,7 @@ class OptimizedPersistentDecodeCUDABenchmark(VerificationPayloadMixin, BaseBench
     def capture_verification_payload(self) -> None:
         if self.inputs is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        validate_decode_output(self.inputs)
         self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={
@@ -164,8 +164,10 @@ class OptimizedPersistentDecodeCUDABenchmark(VerificationPayloadMixin, BaseBench
     def validate_result(self) -> str | None:
         if self.inputs is None:
             return "Inputs not initialized"
-        if not torch.isfinite(self.inputs.out).all():
-            return "Non-finite output detected"
+        try:
+            validate_decode_output(self.inputs)
+        except AssertionError as exc:
+            return str(exc)
         return None
 
 def get_benchmark() -> BaseBenchmark:

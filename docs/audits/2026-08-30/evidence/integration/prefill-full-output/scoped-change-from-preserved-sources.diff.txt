@@ -1,0 +1,428 @@
+--- original-baseline_tma_prefill_decode.py
++++ code/labs/persistent_decode/baseline_tma_prefill_decode.py
+@@ -1,7 +1,8 @@
+ """Baseline prefill vs. decode microbench without TMA shaping.
+ 
+ Emits two phases for Nsight Systems:
+-- Prefill: sequential "TMA-like" bulk copies + compute on the default stream.
++- Prefill: sequential bulk copies on the default stream, matching the optimized
++  path's copy-only workload.
+ - Decode: per-token work (host-driven loop).
+ """
+ 
+@@ -16,6 +17,8 @@
+ from core.benchmark.blackwell_requirements import ensure_blackwell_tma_supported
+ from labs.persistent_decode.persistent_decode_common import (
+     build_inputs,
++    build_prefill_decode_verification_buffers,
++    validate_prefill_decode_output,
+     resolve_device,
+     resolve_shapes,
+     tokens_per_iteration,
+@@ -23,7 +26,7 @@
+ 
+ 
+ class BaselineTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
+-    """Sequential copy/compute prefill followed by host-driven decode."""
++    """Sequential copy-only prefill followed by host-driven decode."""
+ 
+     def __init__(self) -> None:
+         super().__init__()
+@@ -39,6 +42,8 @@
+         self._prefill_work: tuple[tuple[torch.Tensor, torch.Tensor], ...] = ()
+         self._output_view: Optional[torch.Tensor] = None
+         self._verify_output_buffer: Optional[torch.Tensor] = None
++        self._verify_decode_view: Optional[torch.Tensor] = None
++        self._verify_prefill_view: Optional[torch.Tensor] = None
+         self.batch, self.seq_len, self.head_dim = resolve_shapes()
+         self.batch_size = self.batch
+         self.hidden_dim = self.head_dim
+@@ -80,23 +85,19 @@
+                 strict=True,
+             )
+         )
+-        self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
+-        self._verify_output_buffer = torch.empty(
+-            1,
+-            min(8, self.seq_len),
+-            self.head_dim,
+-            device=self.inputs.out.device,
+-            dtype=torch.float32,
+-        )
++        self._output_view = self.inputs.out
++        (
++            self._verify_output_buffer,
++            self._verify_decode_view,
++            self._verify_prefill_view,
++        ) = build_prefill_decode_verification_buffers(self.inputs, self.prefill_dst)
+         self._synchronize()
+ 
+     def _prefill_sequential(self) -> None:
+-        """Sequential copy + compute without any pipelining."""
++        """Sequential prefill copies without any pipelining."""
+         for src, dst in self._prefill_work:
+             # Real copy operation - no artificial delays
+             dst.copy_(src)
+-            # Add computation to simulate processing
+-            dst.add_(src)
+ 
+     def _decode_host_loop(self) -> None:
+         assert self._product_buffer is not None
+@@ -128,9 +129,14 @@
+     def capture_verification_payload(self) -> None:
+         if self.inputs is None or self.output is None or self._verify_output_buffer is None:
+             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+-        self._verify_output_buffer.copy_(self.output)
++        if self._verify_decode_view is None or self._verify_prefill_view is None:
++            raise RuntimeError("Verification output views not initialized")
++        validate_prefill_decode_output(self.inputs, self.prefill_src, self.prefill_dst)
++        self._verify_decode_view.copy_(self.inputs.out)
++        self._verify_prefill_view.copy_(self.prefill_dst)
+         self._set_verification_payload(
+             inputs={
++                "prefill_src": self.prefill_src.detach(),
+                 "q": self.inputs.q.detach(),
+                 "k": self.inputs.k.detach(),
+                 "v": self.inputs.v.detach(),
+@@ -156,6 +162,8 @@
+         self._prefill_work = ()
+         self._output_view = None
+         self._verify_output_buffer = None
++        self._verify_decode_view = None
++        self._verify_prefill_view = None
+ 
+     def get_config(self) -> BenchmarkConfig:
+         # Keep short; this is primarily for profiling with --profile / nsys
+@@ -176,8 +184,10 @@
+     def validate_result(self) -> str | None:
+         if self.inputs is None:
+             return "Inputs not initialized"
+-        if not torch.isfinite(self.inputs.out).all():
+-            return "Non-finite output detected"
++        try:
++            validate_prefill_decode_output(self.inputs, self.prefill_src, self.prefill_dst)
++        except AssertionError as exc:
++            return str(exc)
+         return None
+ 
+ def get_benchmark() -> BaseBenchmark:
+--- original-optimized_tma_prefill_decode.py
++++ code/labs/persistent_decode/optimized_tma_prefill_decode.py
+@@ -25,6 +25,8 @@
+ from core.harness.cuda_capabilities import tma_support_status
+ from labs.persistent_decode.persistent_decode_common import (
+     build_inputs,
++    build_prefill_decode_verification_buffers,
++    validate_prefill_decode_output,
+     get_stream_priorities,
+     resolve_device,
+     resolve_shapes,
+@@ -320,6 +322,8 @@
+         self.output: torch.Tensor | None = None
+         self._output_view: torch.Tensor | None = None
+         self._verify_output_buffer: torch.Tensor | None = None
++        self._verify_decode_view: torch.Tensor | None = None
++        self._verify_prefill_view: torch.Tensor | None = None
+ 
+     def setup(self) -> None:
+         ensure_blackwell_tma_supported("optimized_tma_prefill_decode")
+@@ -327,8 +331,7 @@
+         if torch.cuda.is_available():
+             torch.cuda.manual_seed_all(42)
+         self.inputs = build_inputs(self.device)
+-        self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
+-        self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)
++        self._output_view = self.inputs.out
+         # Skip on GPUs without TMA support to avoid false regressions.
+         supported, reason = tma_support_status()
+         if not supported:
+@@ -338,6 +341,11 @@
+             self.prefill_chunks, self.prefill_chunk_elems, device=self.device
+         )
+         self.prefill_dst = torch.empty_like(self.prefill_src)
++        (
++            self._verify_output_buffer,
++            self._verify_decode_view,
++            self._verify_prefill_view,
++        ) = build_prefill_decode_verification_buffers(self.inputs, self.prefill_dst)
+ 
+         # Graph-captured decode loop to cut host gaps during profiling.
+         self.graph_q = self.inputs.q.clone()
+@@ -447,6 +455,10 @@
+             raise RuntimeError("Inputs not initialized")
+ 
+         current_stream = torch.cuda.current_stream()
++        # Callers may have just refreshed inputs on their current stream.
++        for stream in self.prefill_streams:
++            stream.wait_stream(current_stream)
++        self.decode_stream.wait_stream(current_stream)
+         use_full = (
+             self.graph_mode == GraphMode.FULL
+             or (self.graph_mode == GraphMode.FULL_AND_PIECEWISE and self.seq_len <= self.max_capture_seq)
+@@ -457,6 +469,9 @@
+             with torch.inference_mode(), self._nvtx_range("full_graph_high_pri"):
+                 with torch.cuda.stream(self.decode_stream):
+                     start.record(self.decode_stream)
++                    self.graph_q.copy_(self.inputs.q)
++                    self.graph_k.copy_(self.inputs.k)
++                    self.graph_v.copy_(self.inputs.v)
+                     self.full_graph.replay()
+                     end.record(self.decode_stream)
+             current_stream.wait_stream(self.decode_stream)
+@@ -533,9 +548,14 @@
+     def capture_verification_payload(self) -> None:
+         if self.inputs is None or self.output is None or self._verify_output_buffer is None:
+             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
+-        self._verify_output_buffer.copy_(self.output)
++        if self._verify_decode_view is None or self._verify_prefill_view is None:
++            raise RuntimeError("Verification output views not initialized")
++        validate_prefill_decode_output(self.inputs, self.prefill_src, self.prefill_dst)
++        self._verify_decode_view.copy_(self.inputs.out)
++        self._verify_prefill_view.copy_(self.prefill_dst)
+         self._set_verification_payload(
+             inputs={
++                "prefill_src": self.prefill_src.detach(),
+                 "q": self.inputs.q,
+                 "k": self.inputs.k,
+                 "v": self.inputs.v,
+@@ -564,6 +584,8 @@
+         self.output = None
+         self._output_view = None
+         self._verify_output_buffer = None
++        self._verify_decode_view = None
++        self._verify_prefill_view = None
+         self._prefill_events = []
+         self._prefill_work = []
+         self._pending_graph_path = None
+@@ -590,8 +612,10 @@
+     def validate_result(self) -> str | None:
+         if self.inputs is None:
+             return "Inputs not initialized"
+-        if not torch.isfinite(self.inputs.out).all():
+-            return "Non-finite output detected"
++        try:
++            validate_prefill_decode_output(self.inputs, self.prefill_src, self.prefill_dst)
++        except AssertionError as exc:
++            return str(exc)
+         return None
+ 
+ def get_benchmark() -> BaseBenchmark:
+--- original-baseline_native_tma_prefill_decode.py
++++ code/labs/persistent_decode/baseline_native_tma_prefill_decode.py
+@@ -10,6 +10,8 @@
+ from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
+ from labs.persistent_decode.persistent_decode_common import (
+     build_inputs,
++    build_prefill_decode_verification_buffers,
++    validate_prefill_decode_output,
+     resolve_device,
+     resolve_shapes,
+     tokens_per_iteration,
+@@ -18,7 +20,7 @@
+ 
+ 
+ class BaselineNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
+-    """Sequential thread-scope async-copy copy/compute prefill + host decode."""
++    """Sequential thread-scope async-copy prefill + host decode."""
+ 
+     def __init__(self) -> None:
+         super().__init__()
+@@ -34,6 +36,8 @@
+         self._prefill_work: tuple[tuple[torch.Tensor, torch.Tensor], ...] = ()
+         self._output_view: Optional[torch.Tensor] = None
+         self._verify_output_buffer: Optional[torch.Tensor] = None
++        self._verify_decode_view: Optional[torch.Tensor] = None
++        self._verify_prefill_view: Optional[torch.Tensor] = None
+         self.batch, self.seq_len, self.head_dim = resolve_shapes()
+         self.batch_size = self.batch
+         self.hidden_dim = self.head_dim
+@@ -76,14 +80,12 @@
+                 strict=True,
+             )
+         )
+-        self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
+-        self._verify_output_buffer = torch.empty(
+-            1,
+-            min(8, self.seq_len),
+-            self.head_dim,
+-            device=self.inputs.out.device,
+-            dtype=torch.float32,
+-        )
++        self._output_view = self.inputs.out
++        (
++            self._verify_output_buffer,
++            self._verify_decode_view,
++            self._verify_prefill_view,
++        ) = build_prefill_decode_verification_buffers(self.inputs, self.prefill_dst)
+         self._synchronize()
+ 
+     def _prefill_native(self) -> None:
+@@ -121,9 +123,14 @@
+     def capture_verification_payload(self) -> None:
+         if self.inputs is None or self.output is None or self._verify_output_buffer is None:
+             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+-        self._verify_output_buffer.copy_(self.output)
++        if self._verify_decode_view is None or self._verify_prefill_view is None:
++            raise RuntimeError("Verification output views not initialized")
++        validate_prefill_decode_output(self.inputs, self.prefill_src, self.prefill_dst)
++        self._verify_decode_view.copy_(self.inputs.out)
++        self._verify_prefill_view.copy_(self.prefill_dst)
+         self._set_verification_payload(
+             inputs={
++                "prefill_src": self.prefill_src.detach(),
+                 "q": self.inputs.q.detach(),
+                 "k": self.inputs.k.detach(),
+                 "v": self.inputs.v.detach(),
+@@ -149,6 +156,8 @@
+         self._prefill_work = ()
+         self._output_view = None
+         self._verify_output_buffer = None
++        self._verify_decode_view = None
++        self._verify_prefill_view = None
+ 
+     def get_config(self) -> BenchmarkConfig:
+         return BenchmarkConfig(
+@@ -168,8 +177,10 @@
+     def validate_result(self) -> str | None:
+         if self.inputs is None:
+             return "Inputs not initialized"
+-        if not torch.isfinite(self.inputs.out).all():
+-            return "Non-finite output detected"
++        try:
++            validate_prefill_decode_output(self.inputs, self.prefill_src, self.prefill_dst)
++        except AssertionError as exc:
++            return str(exc)
+         return None
+ 
+ def get_benchmark() -> BaseBenchmark:
+--- original-optimized_native_tma_prefill_decode.py
++++ code/labs/persistent_decode/optimized_native_tma_prefill_decode.py
+@@ -11,6 +11,8 @@
+ from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
+ from labs.persistent_decode.persistent_decode_common import (
+     build_inputs,
++    build_prefill_decode_verification_buffers,
++    validate_prefill_decode_output,
+     get_stream_priorities,
+     resolve_device,
+     resolve_shapes,
+@@ -58,18 +60,24 @@
+         self.output: Optional[torch.Tensor] = None
+         self._output_view: Optional[torch.Tensor] = None
+         self._verify_output_buffer: Optional[torch.Tensor] = None
++        self._verify_decode_view: Optional[torch.Tensor] = None
++        self._verify_prefill_view: Optional[torch.Tensor] = None
+ 
+     def setup(self) -> None:
+         torch.manual_seed(42)
+         if torch.cuda.is_available():
+             torch.cuda.manual_seed_all(42)
+         self.inputs = build_inputs(self.device)
+-        self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
+-        self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)
++        self._output_view = self.inputs.out
+         self.prefill_src = torch.randn(
+             self.prefill_chunks, self.prefill_chunk_elems, device=self.device
+         )
+         self.prefill_dst = torch.empty_like(self.prefill_src)
++        (
++            self._verify_output_buffer,
++            self._verify_decode_view,
++            self._verify_prefill_view,
++        ) = build_prefill_decode_verification_buffers(self.inputs, self.prefill_dst)
+         self._async_copy_ext = load_async_copy()  # raises if unsupported
+         self._prefill_events = [
+             torch.cuda.Event(enable_timing=False, blocking=False)
+@@ -147,6 +155,10 @@
+             raise RuntimeError("Inputs not initialized")
+ 
+         current_stream = torch.cuda.current_stream()
++        # Order current-stream input refreshes before the side-stream work.
++        for stream in self.prefill_streams:
++            stream.wait_stream(current_stream)
++        self.decode_stream.wait_stream(current_stream)
+         with torch.inference_mode(), self._nvtx_range("prefill_native_shaped_low_pri"):
+             pref_events = self._prefill_shaped_native(async_only=True)
+         with torch.inference_mode(), self._nvtx_range("decode_graph_high_pri"):
+@@ -163,9 +175,14 @@
+     def capture_verification_payload(self) -> None:
+         if self.inputs is None or self.output is None or self._verify_output_buffer is None:
+             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+-        self._verify_output_buffer.copy_(self.output)
++        if self._verify_decode_view is None or self._verify_prefill_view is None:
++            raise RuntimeError("Verification output views not initialized")
++        validate_prefill_decode_output(self.inputs, self.prefill_src, self.prefill_dst)
++        self._verify_decode_view.copy_(self.inputs.out)
++        self._verify_prefill_view.copy_(self.prefill_dst)
+         self._set_verification_payload(
+             inputs={
++                "prefill_src": self.prefill_src.detach(),
+                 "q": self.inputs.q.detach(),
+                 "k": self.inputs.k.detach(),
+                 "v": self.inputs.v.detach(),
+@@ -187,6 +204,8 @@
+         self.output = None
+         self._output_view = None
+         self._verify_output_buffer = None
++        self._verify_decode_view = None
++        self._verify_prefill_view = None
+         self._prefill_events = []
+         self._prefill_work = []
+ 
+@@ -208,8 +227,10 @@
+     def validate_result(self) -> str | None:
+         if self.inputs is None:
+             return "Inputs not initialized"
+-        if not torch.isfinite(self.inputs.out).all():
+-            return "Non-finite output detected"
++        try:
++            validate_prefill_decode_output(self.inputs, self.prefill_src, self.prefill_dst)
++        except AssertionError as exc:
++            return str(exc)
+         return None
+ 
+ def get_benchmark() -> BaseBenchmark:
+--- original-persistent_decode_common.py
++++ code/labs/persistent_decode/persistent_decode_common.py
+@@ -106,6 +106,32 @@
+         if reference[index].count_nonzero() and not actual[index].count_nonzero():
+             raise AssertionError(f"Decode sequence {index} was not computed")
+     torch.testing.assert_close(actual, reference, rtol=0.1, atol=1.0)
++
++
++def build_prefill_decode_verification_buffers(
++    inputs: DecodeInputs, prefill_dst: torch.Tensor,
++) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
++    """Allocate complete decode/prefill payload storage before timed execution."""
++    if prefill_dst.device != inputs.out.device:
++        raise ValueError("Prefill and decode outputs must share a device")
++    decode_elements = inputs.out.numel()
++    payload = torch.empty(
++        decode_elements + prefill_dst.numel(), device=inputs.out.device,
++        dtype=torch.float32,
++    )
++    decode_view = payload[:decode_elements].view_as(inputs.out)
++    prefill_view = payload[decode_elements:].view_as(prefill_dst)
++    return payload, decode_view, prefill_view
++
++
++def validate_prefill_decode_output(
++    inputs: DecodeInputs, prefill_src: torch.Tensor, prefill_dst: torch.Tensor,
++) -> None:
++    """Validate every decode value and exact prefill copy outside timing."""
++    if prefill_dst.untyped_storage().data_ptr() == prefill_src.untyped_storage().data_ptr():
++        raise AssertionError("Prefill destination aliases its source")
++    torch.testing.assert_close(prefill_dst, prefill_src, rtol=0, atol=0)
++    validate_decode_output(inputs)
+ 
+ 
+ def build_inputs(
+@@ -187,7 +213,7 @@
+             "q": (batch, seq_len, head_dim),
+             "k": (batch, seq_len, head_dim),
+             "v": (batch, seq_len, head_dim),
+-            "output": (1, min(8, seq_len), head_dim),
++            "output": (batch, seq_len, head_dim),
+         },
+         dtypes={
+             "q": input_dtype,

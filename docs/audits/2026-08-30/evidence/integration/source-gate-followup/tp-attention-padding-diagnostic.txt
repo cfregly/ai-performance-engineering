@@ -1,0 +1,3 @@
+poisoned_padding_all_finite=False
+poisoned_padding_nan_count=64
+zero_padding_all_finite=True

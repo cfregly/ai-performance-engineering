@@ -3,8 +3,9 @@
 TMA Verification Script for Grace-Blackwell GB10
 =================================================
 
-This script verifies that TMA (Tensor Memory Accelerator) is properly enabled
-and engaged on Grace-Blackwell GB10 (SM 12.1) across:
+This script runs bounded correctness and sample-build checks on GB10 (SM 12.1).
+Compilation and torch.compile success do not establish TMA instruction use.
+The checks cover:
 1. CUDA C++ kernels
 2. Triton kernels
 3. PyTorch torch.compile
@@ -15,8 +16,7 @@ Usage:
 Requirements:
     - Grace-Blackwell GB10 GPU (SM 12.1)
     - CUDA 13.0+
-    - PyTorch 2.10+
-    - Triton 3.5+
+    - Repository-pinned PyTorch and Triton stack
 """
 
 import os
@@ -317,14 +317,14 @@ def test_triton_tma_gemm() -> str:
 
 def test_pytorch_compile_tma() -> str:
     """Test PyTorch torch.compile with TMA engagement."""
-    print_section("PyTorch torch.compile TMA Test")
+    print_section("PyTorch torch.compile GEMM correctness (TMA instructions not inspected)")
     
     try:
         # Simple GEMM function
         def matmul_fn(a, b):
             return torch.matmul(a, b)
         
-        # Compile with max-autotune to enable TMA-aware kernels
+        # Autotuning may choose a library or generated kernel; inspect code separately for TMA.
         compiled_fn = torch.compile(matmul_fn, mode='max-autotune')
         
         # Test with moderate-sized matrices
@@ -353,7 +353,7 @@ def test_pytorch_compile_tma() -> str:
             print(f"  - Matrix size: {M}x{K} @ {K}x{N}")
             print(f"  - Performance: {tflops:.2f} TFLOPS")
             print(f"  - Average time: {elapsed/10*1000:.2f} ms")
-            print(f"  - Mode: max-autotune (TMA-aware)")
+            print("  - Mode: max-autotune; TMA instruction use was not inspected")
             return "pass"
         else:
             print("ERROR: PyTorch torch.compile: FAILED (incorrect results)")
@@ -366,94 +366,17 @@ def test_pytorch_compile_tma() -> str:
 
 
 def test_cuda_tma_compilation() -> str:
-    """Test CUDA TMA kernel compilation for GB10."""
-    print_section("CUDA TMA Compilation Test")
-    
-    # Check if we have existing TMA examples
-    tma_examples = [
-        "ch10/tma_2d_pipeline_blackwell.cu",
-        "ch07/async_prefetch_tma.cu",
-    ]
-    
-    found_examples = []
-    for example in tma_examples:
-        full_path = os.path.join(os.path.dirname(__file__), example)
-        if os.path.exists(full_path):
-            found_examples.append(full_path)
-    
-    if not found_examples:
-        print("WARNING: No CUDA TMA examples found to compile")
-        print("   Expected examples in ch10/ or ch07/")
-        return "fail"
-    
-    print(f"Found {len(found_examples)} CUDA TMA example(s)")
-    
-    # Try to compile one example for SM 12.1
-    example = found_examples[0]
-    print(f"\nAttempting to compile: {os.path.basename(example)}")
-    print(f"Target: SM 12.1 (Grace-Blackwell GB10)")
-    
-    try:
-        # Compile for SM 12.1
-        output_binary = "/tmp/tma_test_sm121"
-        compile_cmd = [
-            'nvcc',
-            '-O3',
-            '-std=c++17',
-            '--expt-relaxed-constexpr',
-            '-arch=sm_121',  # GB10 target
-            example,
-            '-o', output_binary,
-            '-lcuda'
-        ]
-        
-        print(f"Command: {' '.join(compile_cmd)}")
-        result = subprocess.run(
-            compile_cmd,
-            capture_output=True,
-            text=True,
-            timeout=15  # 15 second timeout to prevent hangs
-        )
-        
-        if result.returncode == 0:
-            print("CUDA TMA compilation: PASSED")
-            print(f"  - Compiled for SM 12.1 (GB10)")
-            print(f"  - Output: {output_binary}")
-            
-            # Try to run it
-            if os.path.exists(output_binary):
-                print("\nAttempting to run compiled binary...")
-                run_env = os.environ.copy()
-                run_env["ENABLE_BLACKWELL_TMA"] = "1"
-                run_result = subprocess.run(
-                    [output_binary],
-                    capture_output=True,
-                    text=True,
-                    timeout=15,  # 15 second timeout to prevent hangs
-                    env=run_env
-                )
-                if run_result.returncode == 0:
-                    print("CUDA TMA execution: PASSED")
-                    print("\nOutput:")
-                    print(run_result.stdout)
-                else:
-                    print(f"WARNING: Execution failed with code {run_result.returncode}")
-                    if run_result.stderr:
-                        print(f"Error: {run_result.stderr}")
-            
-            return "pass"
-        else:
-            print("ERROR: CUDA TMA compilation: FAILED")
-            print(f"Error output:\n{result.stderr}")
-            return "fail"
-            
-    except subprocess.TimeoutExpired:
-        print("ERROR: CUDA TMA compilation: TIMEOUT")
-        return "fail"
-    except Exception as e:
-        print(f"ERROR: CUDA TMA compilation: FAILED")
-        print(f"   Error: {e}")
-        return "fail"
+    """Check real sample compilation/execution on the explicitly supported target."""
+    print_section("CUDA TMA Sample Compilation and Execution")
+    if not torch.cuda.is_available():
+        print("SKIPPED: no CUDA device; SM121 sample cannot be validated")
+        return "skip"
+    props = torch.cuda.get_device_properties(torch.cuda.current_device())
+    if (props.major, props.minor) != (12, 1):
+        print(f"SKIPPED: requires SM121, observed SM{props.major}{props.minor}")
+        return "skip"
+    from core.verification.tma_cuda_probe import run_cuda_tma_sample
+    return run_cuda_tma_sample()
 
 
 def print_summary(results: Dict[str, str]):
@@ -484,13 +407,13 @@ def print_summary(results: Dict[str, str]):
     print()
     if failed == 0:
         if skipped:
-            print("WARNING: TMA passed for available components; some checks were skipped.")
+            print("WARNING: Validation is incomplete because some checks were skipped.")
         else:
-            print("🎉 All TMA tests passed! TMA is properly enabled on your GB10.")
+            print("All checks passed within their stated scope. Confirm TMA instruction use separately.")
     else:
         print("WARNING: Some tests failed. Review the output above for details.")
     
-    return failed == 0
+    return failed == 0 and skipped == 0
 
 
 def main():
@@ -505,6 +428,10 @@ def main():
         print("\nERROR: Cannot proceed without CUDA GPU")
         return 1
     
+    if (gpu_info.get("major"), gpu_info.get("minor")) != (12, 1):
+        print("SKIPPED: this verifier requires an SM121 / GB10 target")
+        return 3
+
     if not gpu_info.get('tma_supported'):
         print("\nERROR: GPU does not support TMA")
         return 1
@@ -527,15 +454,17 @@ def main():
     results["Triton TMA GEMM"] = test_triton_tma_gemm()
     
     # Test 3: PyTorch compile
-    results["PyTorch torch.compile"] = test_pytorch_compile_tma()
+    results["PyTorch torch.compile correctness (TMA uninspected)"] = test_pytorch_compile_tma()
     
     # Test 4: CUDA compilation
-    results["CUDA TMA Compilation"] = test_cuda_tma_compilation()
+    results["CUDA sample compile/run (not full-output validation)"] = test_cuda_tma_compilation()
     
     # Print summary
     all_passed = print_summary(results)
     
-    return 0 if all_passed else 1
+    if all_passed:
+        return 0
+    return 1 if "fail" in results.values() else 3
 
 
 if __name__ == "__main__":

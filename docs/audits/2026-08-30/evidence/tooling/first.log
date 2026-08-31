@@ -1,0 +1,165 @@
+FFFFF..........s                                                         [100%]
+=================================== FAILURES ===================================
+__________ test_prometheus_families_parse_once_with_all_gpu_series[0] __________
+
+count = 0
+
+    @pytest.mark.parametrize('count', [0, 1, 2, 8])
+    def test_prometheus_families_parse_once_with_all_gpu_series(count):
+        text = exporter.format_prometheus_metrics({**gpu_series(count), 'training_loss': 0.125,
+                                                   'inference_ttft_ms': 4.5})
+>       strict_parse(text)
+
+tests/test_audit_wave1_tooling_regressions.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+text = '# HELP inference_ttft_ms Inference metric\n# TYPE inference_ttft_ms gauge\ninference_ttft_ms 4.5\n# HELP training_loss Training metric\n# TYPE training_loss gauge\ntraining_loss 0.125\n'
+
+    def strict_parse(text):
+        binary = shutil.which('promtool')
+        if not binary:
+            pytest.skip('strict Prometheus wire parser requires promtool')
+        result = subprocess.run([binary, 'check', 'metrics', '--lint=none'],
+                                input=text, text=True, capture_output=True, timeout=15)
+>       assert result.returncode == 0, result.stderr + result.stdout
+E       AssertionError: error: at least one of --extended or linting must be enabled
+E         Use --extended for cardinality analysis, or remove --lint=none to enable linting
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/opt/homebrew/bin/promtool', 'check', 'metrics', '--lint=none'], returncode=1, stdout='', stde...tended or linting must be enabled\nUse --extended for cardinality analysis, or remove --lint=none to enable linting\n').returncode
+
+tests/test_audit_wave1_tooling_regressions.py:37: AssertionError
+__________ test_prometheus_families_parse_once_with_all_gpu_series[1] __________
+
+count = 1
+
+    @pytest.mark.parametrize('count', [0, 1, 2, 8])
+    def test_prometheus_families_parse_once_with_all_gpu_series(count):
+        text = exporter.format_prometheus_metrics({**gpu_series(count), 'training_loss': 0.125,
+                                                   'inference_ttft_ms': 4.5})
+>       strict_parse(text)
+
+tests/test_audit_wave1_tooling_regressions.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+text = '# HELP gpu_memory_allocated_gb GPU metric\n# TYPE gpu_memory_allocated_gb gauge\ngpu_memory_allocated_gb{gpu="0"} 2.0... gauge\ninference_ttft_ms 4.5\n# HELP training_loss Training metric\n# TYPE training_loss gauge\ntraining_loss 0.125\n'
+
+    def strict_parse(text):
+        binary = shutil.which('promtool')
+        if not binary:
+            pytest.skip('strict Prometheus wire parser requires promtool')
+        result = subprocess.run([binary, 'check', 'metrics', '--lint=none'],
+                                input=text, text=True, capture_output=True, timeout=15)
+>       assert result.returncode == 0, result.stderr + result.stdout
+E       AssertionError: error: at least one of --extended or linting must be enabled
+E         Use --extended for cardinality analysis, or remove --lint=none to enable linting
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/opt/homebrew/bin/promtool', 'check', 'metrics', '--lint=none'], returncode=1, stdout='', stde...tended or linting must be enabled\nUse --extended for cardinality analysis, or remove --lint=none to enable linting\n').returncode
+
+tests/test_audit_wave1_tooling_regressions.py:37: AssertionError
+__________ test_prometheus_families_parse_once_with_all_gpu_series[2] __________
+
+count = 2
+
+    @pytest.mark.parametrize('count', [0, 1, 2, 8])
+    def test_prometheus_families_parse_once_with_all_gpu_series(count):
+        text = exporter.format_prometheus_metrics({**gpu_series(count), 'training_loss': 0.125,
+                                                   'inference_ttft_ms': 4.5})
+>       strict_parse(text)
+
+tests/test_audit_wave1_tooling_regressions.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+text = '# HELP gpu_memory_allocated_gb GPU metric\n# TYPE gpu_memory_allocated_gb gauge\ngpu_memory_allocated_gb{gpu="0"} 2.0... gauge\ninference_ttft_ms 4.5\n# HELP training_loss Training metric\n# TYPE training_loss gauge\ntraining_loss 0.125\n'
+
+    def strict_parse(text):
+        binary = shutil.which('promtool')
+        if not binary:
+            pytest.skip('strict Prometheus wire parser requires promtool')
+        result = subprocess.run([binary, 'check', 'metrics', '--lint=none'],
+                                input=text, text=True, capture_output=True, timeout=15)
+>       assert result.returncode == 0, result.stderr + result.stdout
+E       AssertionError: error: at least one of --extended or linting must be enabled
+E         Use --extended for cardinality analysis, or remove --lint=none to enable linting
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/opt/homebrew/bin/promtool', 'check', 'metrics', '--lint=none'], returncode=1, stdout='', stde...tended or linting must be enabled\nUse --extended for cardinality analysis, or remove --lint=none to enable linting\n').returncode
+
+tests/test_audit_wave1_tooling_regressions.py:37: AssertionError
+__________ test_prometheus_families_parse_once_with_all_gpu_series[8] __________
+
+count = 8
+
+    @pytest.mark.parametrize('count', [0, 1, 2, 8])
+    def test_prometheus_families_parse_once_with_all_gpu_series(count):
+        text = exporter.format_prometheus_metrics({**gpu_series(count), 'training_loss': 0.125,
+                                                   'inference_ttft_ms': 4.5})
+>       strict_parse(text)
+
+tests/test_audit_wave1_tooling_regressions.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+text = '# HELP gpu_memory_allocated_gb GPU metric\n# TYPE gpu_memory_allocated_gb gauge\ngpu_memory_allocated_gb{gpu="0"} 2.0... gauge\ninference_ttft_ms 4.5\n# HELP training_loss Training metric\n# TYPE training_loss gauge\ntraining_loss 0.125\n'
+
+    def strict_parse(text):
+        binary = shutil.which('promtool')
+        if not binary:
+            pytest.skip('strict Prometheus wire parser requires promtool')
+        result = subprocess.run([binary, 'check', 'metrics', '--lint=none'],
+                                input=text, text=True, capture_output=True, timeout=15)
+>       assert result.returncode == 0, result.stderr + result.stdout
+E       AssertionError: error: at least one of --extended or linting must be enabled
+E         Use --extended for cardinality analysis, or remove --lint=none to enable linting
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/opt/homebrew/bin/promtool', 'check', 'metrics', '--lint=none'], returncode=1, stdout='', stde...tended or linting must be enabled\nUse --extended for cardinality analysis, or remove --lint=none to enable linting\n').returncode
+
+tests/test_audit_wave1_tooling_regressions.py:37: AssertionError
+____________ test_prometheus_http_scrape_is_complete_and_parseable _____________
+
+    def test_prometheus_http_scrape_is_complete_and_parseable():
+        class FixtureCollector:
+            # Input fixture only: do not claim CUDA telemetry collection ran.
+            def format_prometheus(self):
+                return exporter.format_prometheus_metrics(gpu_series(8))
+    
+        class Handler(exporter.PrometheusHandler):
+            collector = FixtureCollector()
+    
+        server = HTTPServer(('127.0.0.1', 0), Handler)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            with urlopen(f'http://127.0.0.1:{server.server_port}/metrics', timeout=5) as response:
+                assert response.status == 200
+                assert 'version=0.0.4' in response.headers['Content-Type']
+                text = response.read().decode()
+>           strict_parse(text)
+
+tests/test_audit_wave1_tooling_regressions.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+text = '# HELP gpu_memory_allocated_gb GPU metric\n# TYPE gpu_memory_allocated_gb gauge\ngpu_memory_allocated_gb{gpu="0"} 2.0...\ngpu_sm_count{gpu="4"} 104.0\ngpu_sm_count{gpu="5"} 105.0\ngpu_sm_count{gpu="6"} 106.0\ngpu_sm_count{gpu="7"} 107.0\n'
+
+    def strict_parse(text):
+        binary = shutil.which('promtool')
+        if not binary:
+            pytest.skip('strict Prometheus wire parser requires promtool')
+        result = subprocess.run([binary, 'check', 'metrics', '--lint=none'],
+                                input=text, text=True, capture_output=True, timeout=15)
+>       assert result.returncode == 0, result.stderr + result.stdout
+E       AssertionError: error: at least one of --extended or linting must be enabled
+E         Use --extended for cardinality analysis, or remove --lint=none to enable linting
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/opt/homebrew/bin/promtool', 'check', 'metrics', '--lint=none'], returncode=1, stdout='', stde...tended or linting must be enabled\nUse --extended for cardinality analysis, or remove --lint=none to enable linting\n').returncode
+
+tests/test_audit_wave1_tooling_regressions.py:37: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_audit_wave1_tooling_regressions.py::test_prometheus_families_parse_once_with_all_gpu_series[0]
+FAILED tests/test_audit_wave1_tooling_regressions.py::test_prometheus_families_parse_once_with_all_gpu_series[1]
+FAILED tests/test_audit_wave1_tooling_regressions.py::test_prometheus_families_parse_once_with_all_gpu_series[2]
+FAILED tests/test_audit_wave1_tooling_regressions.py::test_prometheus_families_parse_once_with_all_gpu_series[8]
+FAILED tests/test_audit_wave1_tooling_regressions.py::test_prometheus_http_scrape_is_complete_and_parseable
+5 failed, 10 passed, 1 skipped in 23.93s

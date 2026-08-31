@@ -78,8 +78,8 @@ def _assert_evidence_sections(markdown: str) -> None:
     assert "## Problem" in markdown
     assert "## Baseline Path" in markdown
     assert "## Optimized Path" in markdown
-    assert "## Measured Delta" in markdown
-    assert "## Profiler Evidence" in markdown
+    assert "## Measured Delta" in markdown or "## Historical Delta" in markdown
+    assert "## Profiler Evidence" in markdown or "## Profiler workflow status" in markdown
     assert "## Repro Commands" in markdown
     assert markdown.index("## Problem") < markdown.index("## Learning Goals")
 
@@ -94,7 +94,7 @@ def test_root_readme_preserves_evidence_first_sections() -> None:
     markdown = _format_markdown(ENTRIES["README.md"])
 
     assert "## Tier-1 Canonical Suite" in markdown
-    assert "## Current Representative Deltas" in markdown
+    assert "## Historical Representative Deltas" in markdown
     assert "## Profiler Evidence" in markdown
     assert "## Optimization Opportunity Radar" in markdown
     assert "## Lab Navigation" in markdown
@@ -189,7 +189,6 @@ def test_ch10_and_priority_labs_render_custom_evidence_sections() -> None:
         flashinfer_attention_markdown,
         flashattention_gluon_markdown,
         fullstack_cluster_markdown,
-        kv_cache_compression_markdown,
         kv_markdown,
         cudnn_sdpa_markdown,
         decode_optimization_markdown,
@@ -209,6 +208,11 @@ def test_ch10_and_priority_labs_render_custom_evidence_sections() -> None:
         trtllm_phi_markdown,
     ):
         _assert_evidence_sections(markdown)
+
+    assert "## Storage and workload" in kv_cache_compression_markdown
+    assert "## Accuracy gate: target calibration pending" in kv_cache_compression_markdown
+    assert "neither path compresses the KV cache" in kv_cache_compression_markdown
+    assert "AISP_KV_CACHE_ACCURACY_POLICY" in kv_cache_compression_markdown
 
 
 def test_priority_readmes_match_generated_content() -> None:
@@ -301,8 +305,8 @@ def test_current_representative_deltas_prefer_tier1_history_when_available(tmp_p
 
     body = _render_current_representative_deltas_body(tmp_path)
 
-    assert "latest canonical tier-1 history summary" in body
-    assert "Representative suite speedup" in body
+    assert "stored historical tier-1 artifact" in body
+    assert "Stored suite speedup (not requalified)" in body
     assert "`labs/block_scaling:block_scaling`" in body
     assert "`0.200 ms`" in body
     assert "`0.100 ms`" in body

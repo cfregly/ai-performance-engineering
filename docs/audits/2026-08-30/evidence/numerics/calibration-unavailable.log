@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/kv_cache_compression/calibrate_accuracy.py", line 46, in <module>
+    main()
+  File "/Users/admin/dev/ai-perf/ai-performance-engineering/code/labs/kv_cache_compression/calibrate_accuracy.py", line 23, in main
+    raise RuntimeError("Accuracy calibration requires actual CUDA/Transformer Engine hardware")
+RuntimeError: Accuracy calibration requires actual CUDA/Transformer Engine hardware

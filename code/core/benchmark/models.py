@@ -51,6 +51,14 @@ class TimingStats(BaseModel):
     iterations: int = Field(..., description="Number of iterations executed")
     warmup_iterations: int = Field(..., description="Number of warmup iterations")
     raw_times_ms: Optional[List[float]] = Field(default=None, description="Raw timing measurements")
+    sample_scope: Optional[str] = Field(
+        default=None,
+        description="What each raw sample measures, e.g. block_mean or process_wall; None means unspecified",
+    )
+    iterations_per_sample: Optional[int] = Field(
+        default=None, ge=1,
+        description="Operations averaged into a block_mean sample, or process launches in a process_wall sample",
+    )
     
     schemaVersion: str = Field("1.0", description="Schema version for forward compatibility")
     

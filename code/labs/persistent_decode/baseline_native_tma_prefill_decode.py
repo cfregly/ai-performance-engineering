@@ -1,4 +1,4 @@
-"""Baseline native-TMA prefill vs. decode microbench (no fallbacks)."""
+"""Baseline thread-scope async-copy prefill vs. decode microbench (no fallbacks)."""
 
 from __future__ import annotations
 
@@ -10,15 +10,17 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from labs.persistent_decode.persistent_decode_common import (
     build_inputs,
+    build_prefill_decode_verification_buffers,
+    validate_prefill_decode_output,
     resolve_device,
     resolve_shapes,
     tokens_per_iteration,
 )
-from labs.persistent_decode.tma_extension import load_native_tma
+from labs.persistent_decode.tma_extension import load_async_copy
 
 
 class BaselineNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Sequential native-TMA copy/compute prefill + host decode."""
+    """Sequential thread-scope async-copy prefill + host decode."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -34,12 +36,14 @@ class BaselineNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenc
         self._prefill_work: tuple[tuple[torch.Tensor, torch.Tensor], ...] = ()
         self._output_view: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._verify_decode_view: Optional[torch.Tensor] = None
+        self._verify_prefill_view: Optional[torch.Tensor] = None
         self.batch, self.seq_len, self.head_dim = resolve_shapes()
         self.batch_size = self.batch
         self.hidden_dim = self.head_dim
         self.prefill_chunks = 8
         self.prefill_chunk_elems = 128 * 128
-        self._tma_ext = None
+        self._async_copy_ext = None
         self.register_workload_metadata(tokens_per_iteration=tokens_per_iteration())
 
     def setup(self) -> None:
@@ -54,7 +58,7 @@ class BaselineNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenc
         self._prefill_work = tuple(
             zip(self.prefill_src.unbind(0), self.prefill_dst.unbind(0), strict=True)
         )
-        self._tma_ext = load_native_tma()  # raises if unsupported
+        self._async_copy_ext = load_async_copy()  # raises if unsupported
         self._product_buffer = torch.empty(
             self.batch,
             self.head_dim,
@@ -76,20 +80,18 @@ class BaselineNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenc
                 strict=True,
             )
         )
-        self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
-        self._verify_output_buffer = torch.empty(
-            1,
-            min(8, self.seq_len),
-            self.head_dim,
-            device=self.inputs.out.device,
-            dtype=torch.float32,
-        )
+        self._output_view = self.inputs.out
+        (
+            self._verify_output_buffer,
+            self._verify_decode_view,
+            self._verify_prefill_view,
+        ) = build_prefill_decode_verification_buffers(self.inputs, self.prefill_dst)
         self._synchronize()
 
     def _prefill_native(self) -> None:
-        assert self._tma_ext is not None
+        assert self._async_copy_ext is not None
         for src, dst in self._prefill_work:
-            self._tma_ext.tma_copy(src, dst)
+            self._async_copy_ext.async_copy(src, dst)
 
     def _decode_host_loop(self) -> None:
         assert self._product_buffer is not None
@@ -121,9 +123,14 @@ class BaselineNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenc
     def capture_verification_payload(self) -> None:
         if self.inputs is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        self._verify_output_buffer.copy_(self.output)
+        if self._verify_decode_view is None or self._verify_prefill_view is None:
+            raise RuntimeError("Verification output views not initialized")
+        validate_prefill_decode_output(self.inputs, self.prefill_src, self.prefill_dst)
+        self._verify_decode_view.copy_(self.inputs.out)
+        self._verify_prefill_view.copy_(self.prefill_dst)
         self._set_verification_payload(
             inputs={
+                "prefill_src": self.prefill_src.detach(),
                 "q": self.inputs.q.detach(),
                 "k": self.inputs.k.detach(),
                 "v": self.inputs.v.detach(),
@@ -149,6 +156,8 @@ class BaselineNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenc
         self._prefill_work = ()
         self._output_view = None
         self._verify_output_buffer = None
+        self._verify_decode_view = None
+        self._verify_prefill_view = None
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(
@@ -160,16 +169,18 @@ class BaselineNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenc
     def get_custom_metrics(self) -> Optional[dict]:
         """Return inference metrics."""
         return {
-            "native_tma_prefill_d.batch_size": float(getattr(self, 'batch_size', 0)),
-            "native_tma_prefill_d.seq_len": float(getattr(self, 'seq_len', 0)),
-            "native_tma_prefill_d.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
+            "thread_async_copy_prefill_d.batch_size": float(getattr(self, 'batch_size', 0)),
+            "thread_async_copy_prefill_d.seq_len": float(getattr(self, 'seq_len', 0)),
+            "thread_async_copy_prefill_d.hidden_dim": float(getattr(self, 'hidden_dim', 0)),
         }
 
     def validate_result(self) -> str | None:
         if self.inputs is None:
             return "Inputs not initialized"
-        if not torch.isfinite(self.inputs.out).all():
-            return "Non-finite output detected"
+        try:
+            validate_prefill_decode_output(self.inputs, self.prefill_src, self.prefill_dst)
+        except AssertionError as exc:
+            return str(exc)
         return None
 
 def get_benchmark() -> BaseBenchmark:

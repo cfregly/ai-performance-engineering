@@ -1,0 +1,3 @@
+.s                                                                       [100%]
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/zero2-child-protocol/harness-regressions-isolated/test_benchmark_harness_subprocess_regressions.xml -
+1 passed, 1 skipped in 2.83s

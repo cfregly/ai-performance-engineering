@@ -1,0 +1,35 @@
+/Users/admin/dev/ai-perf/ai-performance-engineering/code/ch15/placement_sim.py:35: RuntimeWarning: [ch15] placement_sim expects torch>=2.10 with CUDA 13 for Blackwell (B200/B300, GB200/GB300); falling back to compatibility mode.
+  warnings.warn(
+======================================================================
+Benchmark Import Validation
+======================================================================
+Validating all chapters...
+
+  ❌ ch10.baseline_persistent_matmul_tma
+     ImportError: Triton is required for this example
+  ❌ ch10.optimized_persistent_matmul_tma
+     ImportError: Triton is required for this example
+  ❌ ch14.baseline_triton_persistent
+     ModuleNotFoundError: No module named 'triton'
+  ❌ ch14.optimized_cuda_python
+     ImportError: cuda-python is required for this benchmark. Install with: pip install cuda-python Or run: bash setup.sh
+  ❌ ch14.optimized_triton_persistent
+     ModuleNotFoundError: No module named 'triton'
+  ❌ ch16.optimized_flashinfer_block_sparse
+     ModuleNotFoundError: No module named 'flashinfer'
+Info: Transformer Engine not available. FP8 will use standard autocast.
+
+======================================================================
+Results: 594/600 passed (99.0%)
+
+❌ 6 failures:
+
+  ImportError (3 files):
+    - ch10.baseline_persistent_matmul_tma
+    - ch10.optimized_persistent_matmul_tma
+    - ch14.optimized_cuda_python
+
+  ModuleNotFoundError (3 files):
+    - ch14.baseline_triton_persistent
+    - ch14.optimized_triton_persistent
+    - ch16.optimized_flashinfer_block_sparse

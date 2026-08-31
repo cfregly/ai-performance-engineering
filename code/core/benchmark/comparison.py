@@ -114,8 +114,8 @@ def compare_results(
     Args:
         baseline_result: BenchmarkResult (Pydantic) from baseline run
         optimized_result: BenchmarkResult (Pydantic) from optimized run
-        regression_threshold_pct: Percentage degradation to consider a regression (None -> default 5%)
-        improvement_threshold_pct: Percentage improvement to consider significant (None -> default 5%)
+        regression_threshold_pct: Percentage degradation to consider a regression (None -> default 25%)
+        improvement_threshold_pct: Percentage improvement to consider significant (None -> default 25%)
         
     Returns:
         ComparisonResult with speedup and regression detection
@@ -435,6 +435,9 @@ def get_chapter_metric_config(chapter: str) -> Dict[str, Tuple[str, MetricDirect
     """Get chapter-specific metric configuration from performance_targets.py.
     
     Maps chapter metric names from performance_targets.py to BenchmarkResult metric paths.
+    Derived speedup targets are represented by the timing comparison's speedup,
+    not by reinterpreting raw milliseconds. Absolute target values are not
+    regression percentages; use the metric's configured percentage thresholds.
     Handles unknown metrics gracefully (skips with warning) and uses metadata when available.
     
     Args:
@@ -574,16 +577,6 @@ def get_chapter_metric_config(chapter: str) -> Dict[str, Tuple[str, MetricDirect
         "memory_reduction_percent": ("memory.peak_mb", "Memory Reduction", MetricDirection.LOWER_IS_BETTER, "%"),
         "quantization_memory_reduction_percent": ("memory.peak_mb", "Quantization Memory Reduction", MetricDirection.LOWER_IS_BETTER, "%"),
         
-        # Speedup metrics -> timing (derived, not extracted)
-        "speedup": ("timing.mean_ms", "Speedup", MetricDirection.HIGHER_IS_BETTER, "x"),
-        "stream_speedup": ("timing.mean_ms", "Stream Speedup", MetricDirection.HIGHER_IS_BETTER, "x"),
-        "fp8_speedup": ("timing.mean_ms", "FP8 Speedup", MetricDirection.HIGHER_IS_BETTER, "x"),
-        "torch_compile_speedup_small": ("timing.mean_ms", "Torch Compile Speedup (Small)", MetricDirection.HIGHER_IS_BETTER, "x"),
-        "torch_compile_speedup_large": ("timing.mean_ms", "Torch Compile Speedup (Large)", MetricDirection.HIGHER_IS_BETTER, "x"),
-        "compiled_autograd_speedup": ("timing.mean_ms", "Compiled Autograd Speedup", MetricDirection.HIGHER_IS_BETTER, "x"),
-        "flex_attention_speedup": ("timing.mean_ms", "Flex Attention Speedup", MetricDirection.HIGHER_IS_BETTER, "x"),
-        "fp8_training_speedup": ("timing.mean_ms", "FP8 Training Speedup", MetricDirection.HIGHER_IS_BETTER, "x"),
-        
         # CH4 Distributed Networking metrics
         "scaling_efficiency_percent": ("profiler_metrics.ncu.sm_throughput_pct", "Scaling Efficiency", MetricDirection.HIGHER_IS_BETTER, "%"),
         "topology_efficiency_percent": ("profiler_metrics.ncu.sm_throughput_pct", "Topology Efficiency", MetricDirection.HIGHER_IS_BETTER, "%"),
@@ -599,10 +592,26 @@ def get_chapter_metric_config(chapter: str) -> Dict[str, Tuple[str, MetricDirect
         "ttft_p99_mlperf_ms": ("inference_timing.ttft_p99_ms", "TTFT P99 (MLPerf)", MetricDirection.LOWER_IS_BETTER, "ms"),
         "tpot_p99_ms": ("inference_timing.tpot_p99_ms", "TPOT P99", MetricDirection.LOWER_IS_BETTER, "ms"),
     }
+    # These targets compare runs; they are not measurements stored in one result.
+    # compare_results() already calculates their timing ratio in its speedup field.
+    derived_speedup_metrics = {
+        "speedup",
+        "stream_speedup",
+        "fp8_speedup",
+        "torch_compile_speedup_small",
+        "torch_compile_speedup_large",
+        "compiled_autograd_speedup",
+        "flex_attention_speedup",
+        "fp8_training_speedup",
+        "adaptive_parallelism_speedup",
+        "dynamic_precision_speedup",
+        "dynamic_quantized_cache_speedup",
+        "deepseek_l2_speedup",
+    }
     
     for metric_name, metric_def in chapter_metrics.items():
-        # Skip TBD metrics (not yet implemented)
-        if metric_name in tbd_metric_keys:
+        # Skip unimplemented counters and ratios already supplied by the comparison.
+        if metric_name in tbd_metric_keys or metric_name in derived_speedup_metrics:
             continue
         
         # Try to find mapping
@@ -635,14 +644,12 @@ def get_chapter_metric_config(chapter: str) -> Dict[str, Tuple[str, MetricDirect
         if "unit" in metric_dict:
             unit = metric_dict["unit"]
         
-        # Get thresholds (use defaults if not specified)
-        regression_threshold = DEFAULT_THRESHOLD_PCT
-        improvement_threshold = DEFAULT_THRESHOLD_PCT
-        # Use target as threshold if available
-        if "target" in metric_dict:
-            threshold = metric_dict["target"]
-            regression_threshold = threshold
-            improvement_threshold = threshold
+        # Targets/minima are absolute values in the target's own units, evaluated
+        # separately by performance_targets.compute_status(). Reuse existing
+        # percentage thresholds; chapter-only raw counters use the global default.
+        base_config = METRIC_CONFIG.get(metric_path)
+        regression_threshold = base_config[3] if base_config else DEFAULT_THRESHOLD_PCT
+        improvement_threshold = base_config[4] if base_config else DEFAULT_THRESHOLD_PCT
         
         if metric_path in config:
             logger.info(
@@ -796,8 +803,8 @@ def compare_all_metrics(
     Args:
         baseline_result: Baseline BenchmarkResult
         optimized_result: Optimized BenchmarkResult
-        regression_threshold_pct: Threshold for detecting regressions. When None, use metric config or default 5%.
-        improvement_threshold_pct: Threshold for detecting improvements. When None, use metric config or default 5%.
+        regression_threshold_pct: Threshold for detecting regressions. When None, use metric config or default 25%.
+        improvement_threshold_pct: Threshold for detecting improvements. When None, use metric config or default 25%.
         include_timing: Include timing metrics (default: True)
         include_raw_metrics: Include raw profiler metrics (NCU/NSYS raw counters).
             Required for chapter bandwidth metrics (nvlink_bandwidth_gbs, hbm3e_bandwidth_tbs, etc.)
@@ -823,7 +830,11 @@ def compare_all_metrics(
                     f"Note: NSYS bandwidth metrics (e.g., nvlink_bandwidth_gbs, hbm3e_bandwidth_tbs) "
                     f"require both include_raw_metrics=True and NSYS profiling enabled."
                 )
-        merged_config.update(chapter_config)
+        # The result schema owns a known path's meaning, units and thresholds.
+        # Chapter aliases can add raw counters, but must not reinterpret an
+        # existing measurement (for example milliseconds as a higher-is-better ratio).
+        for metric_path, config in chapter_config.items():
+            merged_config.setdefault(metric_path, config)
     
     # Get timing comparison (legacy)
     timing_comparison = compare_results(

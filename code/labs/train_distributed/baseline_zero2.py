@@ -1,8 +1,11 @@
-"""Baseline ZeRO-2: shard optimizer state and gradients."""
+"""Matched dense-DDP/AdamW baseline for the ZeRO optimizer comparison.
+
+Legacy GradientSharder/train educational helpers remain available but are not
+executed by main() or the harness comparison.
+"""
 
 from __future__ import annotations
 
-import argparse
 import time
 from pathlib import Path
 
@@ -12,16 +15,13 @@ import torch.nn as nn
 from torch.optim import AdamW, Optimizer
 
 from labs.train_distributed.training_utils.memory import print_memory_stats
+from labs.train_distributed.training_utils.zero2_torchrun_benchmark import Zero2TorchrunBenchmark
 from labs.train_distributed.training_utils.utils import get
-from labs.train_distributed.training_utils.torchrun_harness import TorchrunScriptBenchmark
 
 
 def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--steps", type=int, default=20)
-    parser.add_argument("--hidden-size", type=int, default=10_000)
-    parser.add_argument("--batch-size", type=int, default=16)
-    return parser.parse_args()
+    from labs.train_distributed.zero2_common import parse_args as common_args
+    return common_args()
 
 
 class GradientSharder:
@@ -108,11 +108,8 @@ class GradientSharder:
 
 
 def _build_model(hidden_size: int, device):
-    layers = []
-    for _ in range(6):
-        layers.extend([nn.Linear(hidden_size, hidden_size), nn.ReLU(inplace=True)])
-    layers.append(nn.Linear(hidden_size, hidden_size))
-    return nn.Sequential(*layers).to(device)
+    from labs.train_distributed.zero2_common import build_model
+    return build_model(hidden_size, device)
 
 
 def _build_adamw(params) -> AdamW:
@@ -159,37 +156,17 @@ def train(model, optimizer, batch_size, device, steps, label):
 
 
 def main():
-    args = parse_args()
-    local_rank = get("lrank")
-    torch.cuda.set_device(local_rank)
-    dist.init_process_group("nccl", device_id=local_rank)
-    if get("ws") < 2:
-        print("Warning: baseline ZeRO-2 demo is running on a single GPU; sharding benefits require world_size>=2.")
-    rank = get("rank")
-    device = torch.device(f"cuda:{local_rank}")
-
-    baseline_model = _build_model(args.hidden_size, device)
-    baseline_opt = _build_adamw(baseline_model.parameters())
-    mem_baseline = train(baseline_model, baseline_opt, args.batch_size, device, args.steps, "baseline-adam")
-
-    zero2_model = _build_model(args.hidden_size, device)
-    zero2_opt = GradientSharder(_build_adamw(zero2_model.parameters()))
-    mem_zero2 = train(zero2_model, zero2_opt, args.batch_size, device, args.steps, "zero2")
-
-    if rank == 0:
-        saved = mem_baseline - mem_zero2
-        pct = (saved / mem_baseline * 100) if mem_baseline > 0 else 0
-        print(f"[summary] baseline peak: {mem_baseline:.2f} MB | zero2 peak: {mem_zero2:.2f} MB "
-              f"({saved:.2f} MB saved, {pct:.1f}% reduction)")
-
-    dist.destroy_process_group()
+    from labs.train_distributed.zero2_common import run_training
+    run_training(parse_args(), optimized=False, multi_gpu=False)
 
 
 def get_benchmark():
     """Expose torchrun-wrapped benchmark for the harness."""
-    return TorchrunScriptBenchmark(
+    return Zero2TorchrunBenchmark(
+        mode="baseline",
+        variant="single",
         script_path=Path(__file__).parent / "zero2.py",
-        base_args=["--mode", "baseline", "--variant", "single", "--batch-size", "16", "--hidden-size", "10000"],
+        base_args=["--mode", "baseline", "--variant", "single", "--batch-size", "16", "--hidden-size", "10000", "--grad-accum", "1"],
         config_arg_map={"iterations": "--steps"},
         target_label="labs/train_distributed:zero2",
         default_nproc_per_node=1,

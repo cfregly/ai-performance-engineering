@@ -7,28 +7,33 @@ import subprocess
 import sys
 from typing import Dict, Tuple
 
-# Canonical architecture table (aligned with book specs and expectation JSONs)
-# B200  -> CC 10.0, sm_100, 208 SMs
-# B300  -> CC 10.3, sm_103, high SM count
-# GB200/GB300 -> CC 12.1, sm_121 (canonical for all 12.x variants), high SM count
+# NVIDIA's GPU compute-capability table: https://developer.nvidia.com/cuda/gpus
+# B200/GB200 -> 10.0; B300/GB300 -> 10.3; RTX Blackwell -> 12.0;
+# GB10 / DGX Spark -> 12.1. Compute capability alone does not determine SM count.
 ARCH_SPECS: Dict[Tuple[int, int], Dict[str, object]] = {
     (10, 0): {
         "sm": "sm_100",
         "compute_capability": "10.0",
-        "sm_count": 208,
-        "label": "Blackwell B200",
+        "sm_count": None,
+        "label": "Blackwell B200/GB200",
     },
     (10, 3): {
         "sm": "sm_103",
         "compute_capability": "10.3",
-        "sm_count": "high",
-        "label": "Blackwell Ultra B300",
+        "sm_count": None,
+        "label": "Blackwell Ultra B300/GB300",
+    },
+    (12, 0): {
+        "sm": "sm_120",
+        "compute_capability": "12.0",
+        "sm_count": None,
+        "label": "Blackwell GeForce RTX 50-series / RTX PRO",
     },
     (12, 1): {
         "sm": "sm_121",
         "compute_capability": "12.1",
-        "sm_count": "high",
-        "label": "Grace-Blackwell GB200/GB300",
+        "sm_count": None,
+        "label": "Blackwell GB10 / DGX Spark",
     },
 }
 # Compute capability → sm string for build tooling (keeps legacy sm_12x variants)
@@ -41,14 +46,12 @@ SM_MAP: Dict[Tuple[int, int], str] = {
     (12, 3): "sm_123",
 }
 SM_REVERSE: Dict[str, Tuple[int, int]] = {sm: cc for cc, sm in SM_MAP.items()}
-# Normalize any 12.x variant to the canonical 12.1 Grace-Blackwell spec for reporting.
+# Metadata retains the observed capability; distinct 12.x devices are not aliases.
 ARCH_CANONICAL: Dict[Tuple[int, int], Tuple[int, int]] = {
     (10, 0): (10, 0),
     (10, 3): (10, 3),
-    (12, 0): (12, 1),
+    (12, 0): (12, 0),
     (12, 1): (12, 1),
-    (12, 2): (12, 1),
-    (12, 3): (12, 1),
 }
 
 
@@ -60,13 +63,13 @@ def map_cc(major: int, minor: int) -> str:
         # Default unknown 10.x to B200 (sm_100) unless minor is clearly Ultra (>=3)
         return "sm_103" if minor >= 3 else "sm_100"
     if major == 12:
-        # Normalize newer Grace-Blackwell minors to canonical sm_121
+        # Retain the existing selection fallback; build tooling validates targets.
         return "sm_121"
     return ""
 
 
 def get_arch_spec(major: int, minor: int) -> Dict[str, object]:
-    """Return canonical architecture metadata for a given CC."""
+    """Return architecture metadata without folding distinct compute capabilities."""
     normalized = ARCH_CANONICAL.get((major, minor), (major, minor))
     spec = ARCH_SPECS.get(normalized)
     if spec:

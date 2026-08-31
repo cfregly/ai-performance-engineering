@@ -1,0 +1,53 @@
+{
+  "classification": "Original allocation AST and actual CPU address controls; no original Triton compilation or GPU execution",
+  "original_wrapper_sha256": "1d5bdac8042b6f64f571ec5bcd9bc0c9ce53b91c8a774b4d5b68599292e426bd",
+  "original_allocation_expression": "torch.empty_like(gate)",
+  "original_allocated_output_requires_grad": false,
+  "original_input_requires_grad": true,
+  "logical_transposed_values": [
+    [
+      0.0,
+      4.0,
+      8.0
+    ],
+    [
+      1.0,
+      5.0,
+      9.0
+    ],
+    [
+      2.0,
+      6.0,
+      10.0
+    ],
+    [
+      3.0,
+      7.0,
+      11.0
+    ]
+  ],
+  "raw_contiguous_storage_values_reshaped": [
+    [
+      0.0,
+      1.0,
+      2.0
+    ],
+    [
+      3.0,
+      4.0,
+      5.0
+    ],
+    [
+      6.0,
+      7.0,
+      8.0
+    ],
+    [
+      9.0,
+      10.0,
+      11.0
+    ]
+  ],
+  "flat_storage_matches_logical_view": false,
+  "cuda_available": false
+}

@@ -10,7 +10,6 @@ import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
-from labs.occupancy_tuning import triton_matmul
 
 
 def _tcgen05_codegen_broken() -> bool:
@@ -167,6 +166,10 @@ class TritonMatmulProtonBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "unloadable tcgen05 kernel (LLVM ERROR: Cannot select); use the "
                 "repo-pinned Triton 3.5.0."
             )
+
+        # Schedule metadata and benchmark construction are CPU-safe. Import the
+        # real implementation during setup, before any measured kernel calls.
+        from labs.occupancy_tuning import triton_matmul
 
         device = torch.device("cuda")
         _ensure_inductor_env()

@@ -1,0 +1,25 @@
+{
+  "status": "HOLD",
+  "schema_version": 1,
+  "torch": "2.8.0",
+  "cuda": null,
+  "python": "3.12.2",
+  "config": {
+    "HIDDEN_SIZE": 4096,
+    "INTERMEDIATE_SIZE": 11008,
+    "NUM_EXPERTS": 8,
+    "TOP_K": 2,
+    "BATCH_SIZE": 16,
+    "SEQ_LEN": 4096
+  },
+  "seed": 42,
+  "errors": [],
+  "source_sha256": {
+    "level6_native_fp8.py": "9f666eb3f79387aadaab8f8676551cce666ae4feb5e618c0015d06a745e07298",
+    "native_fp8_math.py": "82b34b1f068a6e3668d51b2f18305b5bb1e3bf3c3fe90686942e695a234e0687",
+    "calibrate_native_fp8.py": "45df08f8914eb438bee2fb203692ee16ad34e8c9c21e4f7a09adbe8cea463356"
+  },
+  "limits": "Fixed seed/routing and three input amplitudes only. No latency, speedup or acceptance inferred.",
+  "reason": "Actual CUDA GPU required; no FP8 numerical evidence collected",
+  "exit_code": 3
+}

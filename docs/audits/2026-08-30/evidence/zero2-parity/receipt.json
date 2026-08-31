@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL-006 matched ZeRO training workload; W1-004/W1-091 optimizer follow-up",
+  "created_at": "2026-08-30T23:40:37.847733+00:00",
+  "reviewed_base": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "status": "CPU_TRAINING_PARITY_PASS__CUDA_NCCL_SCALE_AND_PERFORMANCE_HOLD",
+  "source_files": {
+    "code/labs/train_distributed/zero2_common.py": "4e3cecbbd972f93febba8d4e46128c1924c5f3410af6d226b90ebe4091db0d10",
+    "code/labs/train_distributed/baseline_zero2.py": "168337db169218f91077f56366d4c66915e52d5f53ca52e3448d16baa814bc4c",
+    "code/labs/train_distributed/optimized_zero2.py": "61bdda99a0903d79dc8374223c6d661f86f61e7f2715d318260302cdb61c9201",
+    "code/labs/train_distributed/baseline_zero2_multigpu.py": "c0c56e8e882665fd14ca25633f01de69e7130a9ecb980d07b8ac1073d0c7ef4b",
+    "code/labs/train_distributed/optimized_zero2_multigpu.py": "65778560c2b6a094829cb098c1667e2e71ebfd7932a72c61a654279b5f9ea211",
+    "code/tests/test_audit_wave1_zero2_parity.py": "6ca410e10f774f6371a00b23f526921f60ccf2034e9ab44334968831f629ae45",
+    "code/tests/test_audit_wave1_zero2_single.py": "f7b85433382fcde4cd65ace70dbcb768fc07e6bafdd135d7e34a176eb6d88eb7",
+    "code/tests/test_audit_wave1_zero2.py": "2359fae931efc4ae6e48e9c996020d7f3835160e024e760fb33ebc974136616c",
+    "code/tests/test_train_distributed_lab.py": "4a823b904ea0e3324dda34d081ba70c0ac8c2cf549aa3790198ec885146f67ea"
+  },
+  "tests": {
+    "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider code/tests/test_audit_wave1_zero2_parity.py code/tests/test_audit_wave1_zero2_single.py code/tests/test_audit_wave1_zero2.py code/tests/test_train_distributed_lab.py",
+    "cwd": "repository root",
+    "passed": 17,
+    "skipped": 1,
+    "seconds": 4.44,
+    "log": "matched-tests.txt",
+    "meaning": "Actual common model and one-rank Gloo training updates match independent dense AdamW; prior actualtwoGloorank optimizer check retained"
+  },
+  "original_reproduction": {
+    "path": "original-reproduction.json",
+    "single_model_max_abs_difference": 0.1426897644996643,
+    "kind": "actual original model builders on CPU"
+  },
+  "source_contracts": "hygiene-source-checks.json; five exact originalhostfunctions, notwhole-modulepytest",
+  "changes": [
+    "All fourentrypoints shareGELUmodel/FP32weights/BF16CUDAautocast/AdamW/clipping/data/warmup/timedtraining",
+    "One completewarmup thenidenticaltrainingloop; reportingafterfinalsync",
+    "Innerthroughput counts batchrow samples, processwall remainsseparate",
+    "Optimizer overlapdisabledandactualstateownership fix retained"
+  ],
+  "independent_review_and_cuda_gate": {
+    "path": "cuda-gate/validation-receipts.json",
+    "sha256": "e10a2809d6a952518baa3a944bd0eadbd7b6c4ce9b60a3c6c88ede451df2075a",
+    "host_controls_passed": 6,
+    "cuda_skipped": 1,
+    "preflights": "Both exit3HOLD,noGPUwork"
+  },
+  "limitations": [
+    "RealGPUtwo-rank fulltraining gatepreparedbutnotrun",
+    "No CUDA/NCCL/defaultscale/compile/performance/memoryqualification",
+    "Generic wrapper toy verification is tracked separately under LOCAL-019; this receipt does not verify child training through the harness",
+    "CurrentCPUtorch2.8.0isnotpinnedCUDAstack"
+  ],
+  "artifacts": {
+    "original-baseline_zero2.py.txt": "aa845a2e92de8a7c08f16099b9c21c152865be892165057659e205d093f2b8ec",
+    "original-optimized_zero2.py.txt": "121ee2e2e3f82eca8ac2291270f73d64fddf747f39398e57a8fd7699bde9d85a",
+    "original-reproduction.json": "dadcae049f3100668994a9aada9862e800b59359f952d4d9e52cd30965becc2a",
+    "combined-tests.txt": "4b8c458dd4d669137e923daf313a10a87ec309bb98ba303740d916c396caef3b",
+    "original-optimized_zero2_multigpu.py.txt": "75b9d845d854df156513d06def486c5c45d6473bff2d0ab29698f831fcb5b43f",
+    "original-baseline_zero2_multigpu.py.txt": "9c7832f65fa9c84a674af0b195edac6346b876b95c19b7a92e761093ef219f35",
+    "first-tests.txt": "febb908f4b2e5e37661241d0ffa6b631a39a8c4f60e99fa5c00c3b6dcbfad329",
+    "hygiene-source-checks.json": "aaed5c2e8307845eef1cfccb0f129300bebed55edc7a9c454d2c6cd938994535",
+    "reproduce_original.py": "f27de2094915c745c258ae09ea5fcabc6cea1fc04995fdd4be5e08d0c6fa1537",
+    "matched-tests.txt": "f0d72c2448b4ef8e4a8d7d359d2f0fef8dcb66570a7830b71bde72c6f54b0c4a"
+  }
+}

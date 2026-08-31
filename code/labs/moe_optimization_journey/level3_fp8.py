@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
-"""Level 3: FP8 Quantization.
+"""Level 3: Intermediate-buffer reuse.
 
-ADDS: 8-bit floating point precision.
-- Reduces memory bandwidth requirements
-- Faster computation on supported hardware
-- Uses Transformer Engine when available
+Adds buffer reuse to the shared BF16 model.
 
-Cumulative: batched + sorting + FP8
-"""
+The filename and class are retained for compatibility. The LEVEL mapping,
+not a legacy filename, determines execution. These shared levels do not use
+FP8 quantization. No speedup is established by selecting a level."""
 import torch
 
 from labs.moe_optimization_journey.moe_benchmark import MoEJourneyBenchmark, run_level
 
 
 class Level3FP8(MoEJourneyBenchmark):
-    """Level 3: + FP8 quantization."""
+    """Shared level 3: Intermediate-buffer reuse."""
     LEVEL = 3
 
 def get_benchmark() -> Level3FP8:

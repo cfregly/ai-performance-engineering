@@ -21,6 +21,10 @@ CHAPTERS=(
   ch10
   ch11
   ch12
+  ch16
+  ch18
+  ch19
+  ch20
 )
 
 echo "=== Dual-architecture compare builds ==="

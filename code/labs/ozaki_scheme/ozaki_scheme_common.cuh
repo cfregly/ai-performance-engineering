@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "../../core/common/headers/cuda_verify.cuh"
+#include "accuracy.h"
 
 namespace ozaki_scheme {
 
@@ -44,6 +45,9 @@ struct Options {
     int dynamic_offset = -56;
     int fixed_bits = 12;
     double input_scale = 0.001;
+    double relative_l2_limit = std::numeric_limits<double>::quiet_NaN();
+    double normalized_max_abs_limit = std::numeric_limits<double>::quiet_NaN();
+    bool accuracy_measure_only = false;
     std::size_t workspace_bytes = 64ull << 20;
     EmulationStrategy emulation_strategy = EmulationStrategy::kEager;
 };
@@ -54,6 +58,8 @@ struct Metrics {
     double checksum = 0.0;
     double max_abs_error = 0.0;
     double mean_abs_error = 0.0;
+    double relative_l2_error = 0.0;
+    double normalized_max_abs_error = 0.0;
     int retained_bits = -1;
     int emulation_used = 0;
 };
@@ -126,7 +132,7 @@ inline void validate_options(const Options& options) {
     if (options.dynamic_max_bits <= 0 || options.fixed_bits <= 0) {
         throw std::runtime_error("dynamic_max_bits and fixed_bits must be > 0");
     }
-    if (options.input_scale <= 0.0) {
+    if (!std::isfinite(options.input_scale) || options.input_scale <= 0.0) {
         throw std::runtime_error("input_scale must be > 0");
     }
 }
@@ -146,6 +152,9 @@ inline void print_usage(const char* program) {
         << "  --fixed-bits <int>           Retained bits for fixed Ozaki (default 12)\n"
         << "  --emulation-strategy <str>   One of default|performant|eager (default eager)\n"
         << "  --workspace-mb <int>         cuBLAS workspace cap in MiB (default 64)\n"
+        << "  --relative-l2-limit <float>  Required reviewed accuracy bound for emulation, [0,1)\n"
+        << "  --normalized-max-abs-limit <float> Required reviewed accuracy bound, [0,1)\n"
+        << "  --accuracy-measure-only     Collect errors; exit 2, no accepted timing/checksum\n"
         << "  -h, --help                   Show this help text\n";
 }
 
@@ -170,6 +179,10 @@ inline Options parse_args(int argc, char** argv) {
         if (arg == "-h" || arg == "--help") {
             print_usage(argv[0]);
             std::exit(0);
+        }
+        if (arg == "--accuracy-measure-only") {
+            options.accuracy_measure_only = true;
+            continue;
         }
         if (i + 1 >= argc) {
             throw std::runtime_error("Missing value after " + arg);
@@ -197,6 +210,10 @@ inline Options parse_args(int argc, char** argv) {
             options.emulation_strategy = parse_emulation_strategy(value);
         } else if (arg == "--input-scale") {
             parse_numeric_arg(value, &options.input_scale, "--input-scale");
+        } else if (arg == "--relative-l2-limit") {
+            parse_numeric_arg(value, &options.relative_l2_limit, "--relative-l2-limit");
+        } else if (arg == "--normalized-max-abs-limit") {
+            parse_numeric_arg(value, &options.normalized_max_abs_limit, "--normalized-max-abs-limit");
         } else if (arg == "--workspace-mb") {
             int workspace_mb = 0;
             parse_numeric_arg(value, &workspace_mb, "--workspace-mb");
@@ -361,6 +378,9 @@ inline void fill_host_matrix(std::vector<double>* data, int seed, double scale) 
 
 inline Metrics benchmark_variant(Variant variant, const Options& options) {
     validate_options(options);
+    if (variant != Variant::kNative && !options.accuracy_measure_only) {
+        validate_accuracy_limits(options.relative_l2_limit, options.normalized_max_abs_limit);
+    }
 
     int device = 0;
     OZAKI_CHECK_CUDA(cudaGetDevice(&device));
@@ -456,16 +476,15 @@ inline Metrics benchmark_variant(Variant variant, const Options& options) {
         if (variant != Variant::kNative) {
             std::vector<double> h_ref(c_elements);
             OZAKI_CHECK_CUDA(cudaMemcpy(h_ref.data(), d_ref, c_bytes, cudaMemcpyDeviceToHost));
-            double error_sum = 0.0;
-            double max_error = 0.0;
-            for (std::size_t i = 0; i < c_elements; ++i) {
-                const double diff = std::abs(h_c[i] - h_ref[i]);
-                max_error = std::max(max_error, diff);
-                error_sum += diff;
-                metrics.checksum += h_c[i];
+            const AccuracyMetrics accuracy = measure_accuracy(h_c.data(), h_ref.data(), c_elements);
+            metrics.max_abs_error = accuracy.max_abs_error;
+            metrics.mean_abs_error = accuracy.mean_abs_error;
+            metrics.relative_l2_error = accuracy.relative_l2;
+            metrics.normalized_max_abs_error = accuracy.normalized_max_abs;
+            if (!options.accuracy_measure_only) {
+                assert_accuracy(accuracy, options.relative_l2_limit, options.normalized_max_abs_limit);
             }
-            metrics.max_abs_error = max_error;
-            metrics.mean_abs_error = error_sum / static_cast<double>(c_elements);
+            for (double value : h_c) metrics.checksum += value;
             if (metrics.emulation_used == 0) {
                 throw std::runtime_error(
                     "Ozaki emulation descriptor fell back to native FP64; "
@@ -473,6 +492,7 @@ inline Metrics benchmark_variant(Variant variant, const Options& options) {
             }
         } else {
             for (double value : h_c) {
+                if (!std::isfinite(value)) throw std::runtime_error("Non-finite native FP64 result");
                 metrics.checksum += value;
             }
         }
@@ -486,7 +506,7 @@ inline Metrics benchmark_variant(Variant variant, const Options& options) {
 }
 
 inline void print_metrics(Variant variant, const Options& options, const Metrics& metrics) {
-    std::cout << std::fixed << std::setprecision(6);
+    std::cout << std::scientific << std::setprecision(17);
     std::cout << "VARIANT: " << variant_name(variant) << "\n";
     std::cout << "M: " << options.m << "\n";
     std::cout << "N: " << options.n << "\n";
@@ -504,9 +524,16 @@ inline void print_metrics(Variant variant, const Options& options, const Metrics
     }
     std::cout << "EMULATION_USED: " << metrics.emulation_used << "\n";
     std::cout << "RETAINED_BITS: " << metrics.retained_bits << "\n";
-    std::cout << "TFLOPS: " << metrics.tflops << "\n";
     std::cout << "MAX_ABS_ERROR: " << metrics.max_abs_error << "\n";
     std::cout << "MEAN_ABS_ERROR: " << metrics.mean_abs_error << "\n";
+    std::cout << "RELATIVE_L2_ERROR: " << metrics.relative_l2_error << "\n";
+    std::cout << "NORMALIZED_MAX_ABS_ERROR: " << metrics.normalized_max_abs_error << "\n";
+    if (options.accuracy_measure_only) {
+        std::cout << "ACCURACY_STATUS: MEASUREMENT_ONLY_NOT_ACCEPTED\n";
+        return;
+    }
+    std::cout << "ACCURACY_STATUS: " << (variant == Variant::kNative ? "NATIVE_REFERENCE" : "CONFIGURED_LIMITS_PASSED") << "\n";
+    std::cout << "TFLOPS: " << metrics.tflops << "\n";
     std::cout << "RESULT_CHECKSUM: " << metrics.checksum << "\n";
     VERIFY_PRINT_CHECKSUM(static_cast<float>(metrics.checksum));
     std::cout << "TIME_MS: " << metrics.time_ms << "\n";
@@ -516,7 +543,7 @@ inline int run_and_report(Variant variant, int argc, char** argv) {
     const Options options = parse_args(argc, argv);
     const Metrics metrics = benchmark_variant(variant, options);
     print_metrics(variant, options, metrics);
-    return 0;
+    return options.accuracy_measure_only ? 2 : 0;
 }
 
 }  // namespace ozaki_scheme

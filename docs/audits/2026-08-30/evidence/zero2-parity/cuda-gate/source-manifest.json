@@ -1,0 +1,9 @@
+{
+  "code/tests/test_audit_wave1_zero2_parity_cuda.py": "b1c66e6bc9d20259a0260514e469e52be970c2b17aba0aaa7c57ba932fa5847b",
+  "code/labs/train_distributed/zero2_common.py": "4e3cecbbd972f93febba8d4e46128c1924c5f3410af6d226b90ebe4091db0d10",
+  "code/labs/train_distributed/baseline_zero2.py": "168337db169218f91077f56366d4c66915e52d5f53ca52e3448d16baa814bc4c",
+  "code/labs/train_distributed/optimized_zero2.py": "61bdda99a0903d79dc8374223c6d661f86f61e7f2715d318260302cdb61c9201",
+  "code/labs/train_distributed/baseline_zero2_multigpu.py": "c0c56e8e882665fd14ca25633f01de69e7130a9ecb980d07b8ac1073d0c7ef4b",
+  "code/labs/train_distributed/optimized_zero2_multigpu.py": "65778560c2b6a094829cb098c1667e2e71ebfd7932a72c61a654279b5f9ea211",
+  "code/labs/train_distributed/training_utils/torchrun_harness.py": "7cec3cdf803499f5388f6c87d1f09487f738e318855f141d7adbb3f3cad152ce"
+}

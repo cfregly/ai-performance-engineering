@@ -1,0 +1,55 @@
+[
+  {
+    "name": "occupancy-list",
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "-m",
+      "labs.occupancy_tuning.sweep_schedules",
+      "--list"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+    "environment": {
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+    },
+    "exit_code": 0,
+    "output": "occupancy-list.txt"
+  },
+  {
+    "name": "blackwell-help",
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "-m",
+      "labs.blackwell_gemm_optimizations.compare_blackwell_grouped_gemm_matrix",
+      "--help"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+    "environment": {
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+    },
+    "exit_code": 0,
+    "output": "blackwell-help.txt"
+  },
+  {
+    "name": "collection-after",
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "-m",
+      "pytest",
+      "--collect-only",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_blackwell_gemm_optimizations_lab.py",
+      "tests/test_flashattention_gluon_runtime.py",
+      "tests/test_labs_schedule_and_entrypoints.py",
+      "tests/test_min_speedup_contracts.py",
+      "tests/test_occupancy_tuning.py"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+    "environment": {
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+    },
+    "exit_code": 0,
+    "output": "collection-after.txt"
+  }
+]

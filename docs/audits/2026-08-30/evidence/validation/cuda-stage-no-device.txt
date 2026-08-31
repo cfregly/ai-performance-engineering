@@ -1,0 +1,1 @@
+failed: /tmp/aisp-wave1-cuda-no-device-final-receipt.json

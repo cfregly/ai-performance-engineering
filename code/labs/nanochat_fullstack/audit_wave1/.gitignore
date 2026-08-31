@@ -1,0 +1,2 @@
+# Retain the audit's original test and failure logs beside their receipt.
+!*.log

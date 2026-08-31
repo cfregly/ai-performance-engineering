@@ -94,132 +94,58 @@ class ArchitectureConfig:
         self.config = self._get_architecture_config()
         self.cutlass_version = None
 
+    @staticmethod
+    def metadata_for_capability(capability: Optional[tuple[int, int]], device_name: str = "") -> Dict[str, Any]:
+        """Describe an observed capability without inferring an unobserved SKU/topology.
+
+        The mapping is NVIDIA's CUDA GPU table, not a compile/runtime qualification.
+        https://developer.nvidia.com/cuda/gpus
+        """
+        families = {
+            (10, 0): ("blackwell", "Blackwell B200/GB200 family"),
+            (10, 3): ("blackwell_ultra", "Blackwell Ultra B300/GB300 family"),
+            (12, 0): ("blackwell_consumer", "Blackwell GeForce RTX 50 / RTX PRO family"),
+            (12, 1): ("grace_blackwell", "GB10 / DGX Spark family"),
+        }
+        arch, family_name = families.get(capability, ("cpu" if capability is None else "other", "CPU" if capability is None else "Unclassified CUDA GPU"))
+        known_blackwell = capability in families
+        cc = f"{capability[0]}.{capability[1]}" if capability else None
+        return {
+            "architecture": arch,
+            "name": device_name or family_name,
+            "family": family_name,
+            "compute_capability": cc or "N/A",
+            "sm_version": f"sm_{capability[0]}{capability[1]}" if capability else "cpu",
+            "memory_bandwidth": "SKU-dependent; not inferred from compute capability",
+            "tensor_cores": "5th Gen family; SKU throughput not inferred" if known_blackwell else "Unknown",
+            "features": ["Stream-ordered Memory", "TMA"] if known_blackwell else [],
+            "cuda_features": ["Stream-ordered Memory", "TMA"] if known_blackwell else [],
+            "pytorch_optimizations": ["torch.compile with actual device capability"] if known_blackwell else [],
+            "triton_features": ["Actual-device code generation; toolchain support required"] if known_blackwell else [],
+            "profiling_tools": ["Nsight Systems", "Nsight Compute", "PyTorch Profiler"] if capability else [],
+            "tcgen05_supported": capability in {(10, 0), (10, 3)},
+            "runtime_qualified": False,
+        }
+
     def _detect_architecture(self) -> str:
+        self.compute_capability = None
+        self.device_name = ""
         with suppress_known_cuda_capability_warnings(context="ArchitectureConfig._detect_architecture"):
-            if not torch.cuda.is_available():
-                return "cpu"
-            props = torch.cuda.get_device_properties(0)
-        major, minor = props.major, props.minor
-        compute_capability = f"{major}.{minor}"
-
-        if major == GRACE_BLACKWELL_MAJOR:
-            return "grace_blackwell"
-
-        if major >= 10:
-            if major == 10 and minor >= 3:
-                return "blackwell_ultra"
-            return "blackwell"
-
-        return "other"
+            if torch.cuda.is_available():
+                props = torch.cuda.get_device_properties(0)
+                self.compute_capability = (props.major, props.minor)
+                self.device_name = props.name
+        return self.metadata_for_capability(self.compute_capability)["architecture"]
 
     def _get_architecture_config(self) -> Dict[str, Any]:
-        configs = {
-            "blackwell": {
-                "name": "Blackwell B200/B300",
-                "compute_capability": BLACKWELL_CC,
-                "sm_version": "sm_100",
-                "memory_bandwidth": "up to ~8 TB/s",
-                "tensor_cores": "5th Gen",
-                "features": ["HBM3e", "TMA", "NVLink-C2C", "Stream-ordered Memory"],
-                "cuda_features": ["Stream-ordered Memory", "TMA", "HBM3e optimisations", "NVLink-C2C"],
-                "pytorch_optimizations": [
-                    "torch.compile with max-autotune",
-                    "TMA-aware kernels",
-                    "HBM3e-aware allocation",
-                    "Stream-ordered memory APIs",
-                    "NVLink-C2C communication"
-                ],
-                "triton_features": [
-                    "Triton 3.5 Blackwell optimisations",
-                    "HBM3e access patterns",
-                    "TMA intrinsic support",
-                    "Stream-ordered memory",
-                    "Blackwell-tuned kernels"
-                ],
-                "profiling_tools": [
-                    "Nsight Systems 2025.x",
-                    "Nsight Compute 2025.x",
-                    "HTA",
-                    "PyTorch Profiler",
-                    "perf"
-                ],
-            },
-            "blackwell_ultra": {
-                "name": "Blackwell Ultra B300",
-                "compute_capability": BLACKWELL_ULTRA_CC,
-                "sm_version": "sm_103",
-                "memory_bandwidth": "up to ~9 TB/s",
-                "tensor_cores": "5th Gen",
-                "features": ["HBM3e (288 GB)", "TMA", "NVLink-C2C", "Stream-ordered Memory"],
-                "cuda_features": ["Stream-ordered Memory", "TMA", "HBM3e optimisations", "NVLink-C2C"],
-                "pytorch_optimizations": [
-                    "torch.compile with max-autotune",
-                    "TMA-aware kernels",
-                    "HBM3e-aware allocation",
-                    "Stream-ordered memory APIs",
-                    "NVLink-C2C communication"
-                ],
-                "triton_features": [
-                    "Triton 3.5 Blackwell optimisations",
-                    "HBM3e access patterns",
-                    "TMA intrinsic support",
-                    "Stream-ordered memory",
-                    "Blackwell Ultra tuned kernels"
-                ],
-                "profiling_tools": [
-                    "Nsight Systems 2025.x",
-                    "Nsight Compute 2025.x",
-                    "HTA",
-                    "PyTorch Profiler",
-                    "perf"
-                ],
-            },
-            "grace_blackwell": {
-                "name": "Grace-Blackwell GB10",
-                "compute_capability": "12.1",
-                "sm_version": "sm_121",
-                "memory_bandwidth": "Grace LPDDR5X up to ~500 GB/s (single Grace)",
-                "tensor_cores": "5th Gen (Blackwell-class)",
-                "features": ["Grace-Blackwell coherence fabric", "TMA", "HBM3e", "NVLink-C2C"],
-                "cuda_features": ["Stream-ordered Memory", "TMA", "HBM3e optimizations", "NVLink-C2C"],
-                "pytorch_optimizations": [
-                    "torch.compile with max-autotune",
-                    "TMA-aware kernels",
-                    "HBM3e-aware allocation",
-                    "Stream-ordered memory APIs",
-                    "NVLink-C2C communication"
-                ],
-                "triton_features": [
-                    "Triton 3.5 GB10 optimizations",
-                    "HBM3e access patterns",
-                    "TMA intrinsic support",
-                    "Stream-ordered memory",
-                    "GB10-tuned kernels"
-                ],
-                "profiling_tools": [
-                    "Nsight Systems 2025.x",
-                    "Nsight Compute 2025.x",
-                    "HTA",
-                    "PyTorch Profiler",
-                    "perf"
-                ],
-            },
-        }
+        return self.metadata_for_capability(self.compute_capability, self.device_name)
 
-        generic = {
-            "name": "Generic CUDA GPU",
-            "compute_capability": "Unknown",
-            "sm_version": "sm_unknown",
-            "memory_bandwidth": "Unknown",
-            "tensor_cores": "Unknown",
-            "features": [],
-            "cuda_features": [],
-            "pytorch_optimizations": [],
-            "triton_features": [],
-            "profiling_tools": [],
-        }
-
-        return configs.get(self.arch, generic)
+    def require_tcgen05(self) -> None:
+        if not self.config["tcgen05_supported"]:
+            raise RuntimeError(
+                f"tcgen05 is unsupported for {self.config['sm_version']}; "
+                "a different GPU target cannot be substituted"
+            )
 
     def get_sm_version(self) -> str:
         return self.config["sm_version"]
@@ -243,48 +169,32 @@ class ArchitectureConfig:
         return self.config["profiling_tools"]
 
     def _sanitize_arch_value(self, value: Optional[str]) -> Optional[str]:
-        if not value:
-            return value
-        sanitized = value
-        replacements = {
-            "sm_121a": "sm_120",
-            "sm121a": "sm120",
-            "121a": "120",
-            "12.1a": "12.0",
-        }
-        for needle, repl in replacements.items():
-            sanitized = sanitized.replace(needle, repl)
-        return sanitized
+        """Compatibility helper: preserve the caller's exact requested target."""
+        return value
 
     def _set_arch_env(self, key: str, fallback: str) -> None:
-        current = os.environ.get(key)
-        if current:
-            sanitized = self._sanitize_arch_value(current)
-            if sanitized and sanitized != current:
-                os.environ[key] = sanitized
-        else:
-            os.environ[key] = fallback
+        os.environ.setdefault(key, fallback)
+
+    def _configure_arch_environment(self) -> None:
+        if self.compute_capability is None or self.arch == "other":
+            return
+        major, minor = self.compute_capability
+        self._set_arch_env("TORCH_CUDA_ARCH_LIST", f"{major}.{minor}")
+        self._set_arch_env("CMAKE_CUDA_ARCHITECTURES", f"{major}{minor}")
+        self._set_arch_env("CUDAARCHS", f"{major}{minor}")
 
     def configure_pytorch_optimizations(self) -> None:
         with suppress_known_cuda_capability_warnings(context="ArchitectureConfig.configure_pytorch_optimizations"):
             if not torch.cuda.is_available():
                 return
 
-        if self.arch in ("blackwell", "blackwell_ultra"):
-            arch_list = "10.3" if self.arch == "blackwell_ultra" else "10.0"
-            cmake_arch = "103" if self.arch == "blackwell_ultra" else "100"
-            if "TORCH_CUDA_ARCH_LIST" not in os.environ:
-                os.environ["TORCH_CUDA_ARCH_LIST"] = arch_list
-            if "CMAKE_CUDA_ARCHITECTURES" not in os.environ:
-                os.environ["CMAKE_CUDA_ARCHITECTURES"] = cmake_arch
-        elif self.arch == "grace_blackwell":
-            # CUDA 13.0's ptxas refuses tcgen05/tensormap opcodes for sm_121/121a, so clamp to sm_120.
-            self._set_arch_env("TORCH_CUDA_ARCH_LIST", "12.0")
-            self._set_arch_env("CMAKE_CUDA_ARCHITECTURES", "120")
-            self._set_arch_env("CUDAARCHS", "120")
-        
+        self._configure_arch_environment()
+        # Unsupported targets must fail in their own toolchain; never pretend
+        # that a 12.1 device is 12.0 or that future capabilities are SM100.
+
         # PyTorch Inductor configuration
         inductor = getattr(torch, "_inductor", None)
+        cfg = None
         if inductor and hasattr(inductor, "config"):
             cfg = inductor.config
             # Enable PyTorch 2.10 features
@@ -311,25 +221,13 @@ class ArchitectureConfig:
             if hasattr(cfg, "aggressive_fusion"):
                 cfg.aggressive_fusion = True
         
-        # Triton 3.5 configuration for Blackwell and Grace-Blackwell
-        if self.arch in ("blackwell", "blackwell_ultra", "grace_blackwell"):
+        # Leave Triton's actual runtime capability untouched.
+        if self.arch in ("blackwell", "blackwell_ultra", "blackwell_consumer", "grace_blackwell"):
             try:
                 import triton
-                # Configure Triton 3.5 for appropriate architecture
-                if hasattr(triton.runtime, "driver"):
-                    if self.arch == "blackwell":
-                        triton.runtime.driver.set_active_device_capability(10, 0)
-                    elif self.arch == "blackwell_ultra":
-                        triton.runtime.driver.set_active_device_capability(10, 3)
-                    elif self.arch == "grace_blackwell":
-                        # CUDA 13.0 PTXAS lacks SM 12.1 support for tensormap ops; target SM 12.0 instead.
-                        triton.runtime.driver.set_active_device_capability(12, 0)
-            except (ImportError, AttributeError):
-                pass
-            
-            # Note: TMA is enabled automatically via compute capability configuration above
-            # and TMA API usage in kernels. No environment variables needed.
-            
+            except ImportError:
+                triton = None
+
             # Configure CUTLASS for torch.compile backend
             # Fix the cutlass_dir path to point to nvidia-cutlass-dsl installation
             if hasattr(cfg, "cuda") and hasattr(cfg.cuda, "cutlass_dir"):
@@ -379,7 +277,7 @@ class ArchitectureConfig:
                     if not version_ok and system_ptxas:
                         os.environ["TRITON_PTXAS_PATH"] = system_ptxas
                         if VERBOSE_EXPERIMENTAL_FEATURES:
-                            print(f"PASSED: Triton: using system ptxas at {system_ptxas} for SM 12.1 support")
+                            print(f"Triton: selected system ptxas at {system_ptxas}; target support still requires compilation")
                 except Exception as ex:
                     if VERBOSE_EXPERIMENTAL_FEATURES:
                         print(f"WARNING: Triton ptxas selection failed: {ex}")

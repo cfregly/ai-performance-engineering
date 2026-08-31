@@ -47,10 +47,13 @@ def main() -> None:
         )
 
         print(f"\n=== {name} ===")
+        print(f"Cluster: {scenario.cluster.name} ({scenario.cluster.gpus_total} GPUs)")
+        print(f"Model assumptions: {scenario.model.name}")
+        print("Planning estimates only; these are not measured performance results.")
         print(format_report(baseline))
         print("---")
         print(format_report(optimized))
-        print(f"\nComparison: speedup={step_speedup:.2f}x  throughput={throughput_ratio:.2f}x")
+        print(f"\nModeled comparison: step-time ratio={step_speedup:.2f}x  throughput ratio={throughput_ratio:.2f}x")
 
 
 if __name__ == "__main__":

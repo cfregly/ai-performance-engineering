@@ -1,0 +1,15 @@
+{
+  "checked_at": "2026-08-31T00:48:44.635096+00:00",
+  "url": "https://claude.ai/code/artifact/9a311b78-5dac-4ea7-909f-e52993ab8e0e",
+  "method": "Old tab ID reported missing; live tab listing empty. Opened supplied URL in a new tab; waited for actual DOM after Loading and read report.",
+  "reviewed_revision": "b57e4c6a9",
+  "confirmed_findings": 128,
+  "counts": {
+    "critical": 5,
+    "high": 37,
+    "medium": 58,
+    "low": 28
+  },
+  "wave_2_status": "awaiting_report",
+  "limits": "No live other-session process verified; this is input readback, not a verified process wait. Only the supplied artifact was inspected."
+}

@@ -97,9 +97,13 @@ class KVCache:
         self.kv_cache = None
         self.pos = 0 # current position in time in the cache
         self.row_pos = None # optional per-row positions when using padded variable-length inputs
-        self.cache_gen = 0  # incremented when storage grows
+        self.cache_gen = 0  # invalidates capture when storage grows or the cache resets
         self._batch_idx = None
         self._row_position_idx = None
+        self.graph_mode = False
+        self.graph_position = None
+        self._graph_key_positions = None
+        self.graph_attention_mask = None
 
     def _round_seq_len(self, seq_len):
         """Round sequence length to block/page boundaries to align with TMA paging."""
@@ -113,6 +117,34 @@ class KVCache:
     def reset(self):
         self.pos = 0
         self.row_pos = None
+        self.cache_gen += 1
+        self.graph_mode = False
+        self.graph_position = None
+        self._graph_key_positions = None
+        self.graph_attention_mask = None
+
+    def prepare_graph_decode(self):
+        """Set up fixed storage and device position for dense one-token replay.
+
+        Python ``pos`` is only a capacity guard/metadata counter outside capture.
+        KV indices, rotary indices, and the attention mask use graph_position.
+        """
+        if self.kv_cache is None or self.row_pos is not None:
+            raise ValueError("Graph decode requires a populated dense KV cache")
+        if self.pos >= self.kv_cache.size(4):
+            raise ValueError("Graph decode KV capacity exhausted; preallocate the decode length")
+        device = self.kv_cache.device
+        self.graph_position = torch.tensor([self.pos], dtype=torch.long, device=device)
+        self._graph_key_positions = torch.arange(self.kv_cache.size(4), device=device)
+        self.graph_attention_mask = torch.empty(self.kv_cache.size(4), dtype=torch.bool, device=device)
+        # Masked SDPA still reads full-capacity K/V; NaNs in an uninitialized tail
+        # can propagate through value products even at zero attention weight.
+        self.kv_cache[..., self.pos:, :].zero_()
+        self.graph_mode = True
+
+    def advance_graph_position(self):
+        """Advance host metadata after one real step (never during capture)."""
+        self.pos += 1
 
     def get_pos(self):
         return self.pos
@@ -146,7 +178,7 @@ class KVCache:
         dtype, device = other.kv_cache.dtype, other.kv_cache.device
         self.kv_cache = torch.empty(self.kv_shape, dtype=dtype, device=device)
         # 3) copy the data over
-        self.kv_cache[:, :, :, :, :other.pos, :] = other.kv_cache
+        self.kv_cache[:, :, :, :, :other.pos, :] = other.kv_cache[:, :, :, :, :other.pos, :]
         # 4) update the pos
         self.pos = other.pos
         if other.row_pos is not None:
@@ -227,6 +259,16 @@ class KVCache:
         return positions[:batch_size]
 
     def insert_kv(self, layer_idx, k, v, token_mask=None, max_cache_len=None):
+        if self.graph_mode:
+            if k.size(2) != 1 or token_mask is not None or self.row_pos is not None:
+                raise ValueError("Graph KV insertion supports dense single-token decode only")
+            keys, values = self.kv_cache[layer_idx, 0], self.kv_cache[layer_idx, 1]
+            keys.index_copy_(2, self.graph_position, k)
+            values.index_copy_(2, self.graph_position, v)
+            torch.le(self._graph_key_positions, self.graph_position, out=self.graph_attention_mask)
+            if layer_idx == self.kv_cache.size(0) - 1:
+                self.graph_position.add_(1)
+            return keys, values
         # Lazy initialize the cache here because we need to know the dtype/device
         if self.kv_cache is None:
             self.kv_cache = torch.empty(self.kv_shape, dtype=k.dtype, device=k.device)
@@ -403,23 +445,15 @@ class Engine:
             else None
         )
         
-        # Persistent decode state: preallocated buffers for steady-state decode
+        # The historical "persistent" flag uses a side stream and reusable
+        # buffers. It is not a resident CUDA kernel (that has a separate flag).
         self._persistent_logits_buffer = None
         self._persistent_probs_buffer = None
         self._persistent_stream = None
         if self.enable_persistent_decode and not self.use_cuda_graphs:
-            # Persistent decode path: 
-            # 1. Reuse buffers to minimize allocations
-            # 2. Use dedicated CUDA stream for decode pipeline
-            # 3. Preallocate common intermediate buffers
-            # This reduces kernel launch overhead in steady-state decode
             self.reuse_ids_buffer = True
-            if torch.cuda.is_available():
-                # Dedicated high-priority stream for decode operations
-                try:
-                    self._persistent_stream = torch.cuda.Stream(priority=-1)
-                except Exception:
-                    self._persistent_stream = None
+            if torch.cuda.is_available() and self.model.get_device().type == "cuda":
+                self._persistent_stream = torch.cuda.Stream(device=self.model.get_device(), priority=-1)
         self._decode_graph = None
         self._graph_stream = None
         self._graph_static_ids = None
@@ -428,6 +462,7 @@ class Engine:
         self._graph_output = None
         self._graph_device = None
         self._graph_cache_gen = None
+        self.decode_execution_mode = "not_run"
         if self.enable_batch_decode:
             self.model.config.use_padded_attention = True
             # propagate to attention modules (they cache the flag at init time)
@@ -438,6 +473,10 @@ class Engine:
 
     def _maybe_compile_model(self):
         """Use torch.compile by default on Blackwell/GB200 for steadier decode overhead."""
+        # Manual graph capture owns replay/state; nested compiler-managed graphs
+        # have a separate lifetime contract and are not supported in this mode.
+        if self.use_cuda_graphs:
+            return
         if os.getenv("NANOCHAT_DISABLE_COMPILE", "0") == "1":
             return
         if not torch.cuda.is_available() or not hasattr(torch, "compile"):
@@ -476,24 +515,25 @@ class Engine:
     def _decode_forward_step(self, ids, kv_cache, attention_mask=None, token_mask=None):
         """Decode forward path with optional persistent/graph gating."""
         if self.use_persistent_decode_kernel and self._persistent_decode_kernel is not None:
-            try:
-                return self._persistent_decode_kernel(self.model, ids, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
-            except NotImplementedError:
-                # Surface stub errors so the caller knows a real kernel is required
-                raise
-            except Exception:
-                if self._pd_runner is not None:
-                    self._pd_runner.reset()
-        # Persistent decode optimization: use dedicated stream and preallocated buffers
+            logits = self._persistent_decode_kernel(self.model, ids, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+            self.decode_execution_mode = "custom_kernel_or_explicit_stub"
+            return logits
         if self.enable_persistent_decode and self._persistent_stream is not None:
-            # Run decode in dedicated stream to allow better kernel pipelining
-            # and overlap with CPU operations (e.g., sampling, token processing)
+            caller = torch.cuda.current_stream(ids.device)
+            self._persistent_stream.wait_stream(caller)
+            for tensor in (ids, attention_mask, token_mask, kv_cache.kv_cache, kv_cache.row_pos):
+                if tensor is not None and tensor.is_cuda:
+                    tensor.record_stream(self._persistent_stream)
             with torch.cuda.stream(self._persistent_stream):
                 logits = self.model.forward(ids, kv_cache=kv_cache, attention_mask=attention_mask, token_mask=token_mask)
-            # Synchronize only if needed (caller will handle this in most cases)
+            caller.wait_stream(self._persistent_stream)
+            logits.record_stream(caller)
+            if kv_cache.kv_cache is not None:
+                kv_cache.kv_cache.record_stream(caller)
+            self.decode_execution_mode = "side_stream"
             return logits
         else:
-            # Standard decode path
+            self.decode_execution_mode = "eager"
             return self.model.forward(ids, kv_cache=kv_cache, attention_mask=attention_mask, token_mask=token_mask)
 
     def _reset_decode_graph(self):
@@ -505,6 +545,8 @@ class Engine:
         self._graph_output = None
         self._graph_device = None
         self._graph_cache_gen = None
+        self._graph_kv_cache = None
+        self._graph_cache_pointer = None
     
     def _get_or_create_persistent_buffer(self, name, shape, dtype, device):
         """Get or create a persistent buffer for decode operations (reduces allocations)."""
@@ -542,6 +584,8 @@ class Engine:
             return False
         if self._graph_static_ids.shape != ids.shape:
             return False
+        if self._graph_static_ids.dtype != ids.dtype:
+            return False
         if self._graph_device is None or self._graph_device != ids.device:
             return False
         attn_present = attention_mask is not None
@@ -557,45 +601,69 @@ class Engine:
             raise RuntimeError("CUDA graphs require CUDA runtimes")
         device = ids.device
         torch.cuda.synchronize(device)
+        kv_cache.prepare_graph_decode()
+        initial_pos = kv_cache.get_pos()
         self._decode_graph = torch.cuda.CUDAGraph()
         self._graph_stream = torch.cuda.Stream(device=device)
         self._graph_static_ids = ids.clone()
-        self._graph_static_attention = attention_mask.clone() if attention_mask is not None else None
-        self._graph_static_token_mask = token_mask.clone() if token_mask is not None else None
+        self._graph_static_attention = None
+        self._graph_static_token_mask = None
+        caller = torch.cuda.current_stream(device)
+        self._graph_stream.wait_stream(caller)
+        # Warm up kernels/allocators without consuming a logical token. Restore
+        # the device counter before every warmup and after capture.
+        with torch.cuda.stream(self._graph_stream):
+            for _ in range(3):
+                kv_cache.graph_position.fill_(initial_pos)
+                self.model.forward(self._graph_static_ids, kv_cache=kv_cache)
+        caller.wait_stream(self._graph_stream)
+        kv_cache.graph_position.fill_(initial_pos)
         with torch.cuda.graph(self._decode_graph, stream=self._graph_stream):
-            self._graph_output = self._decode_forward_step(
-                self._graph_static_ids,
-                kv_cache,
-                attention_mask=self._graph_static_attention,
-                token_mask=self._graph_static_token_mask,
-            )
+            self._graph_output = self.model.forward(self._graph_static_ids, kv_cache=kv_cache)
+        caller.wait_stream(self._graph_stream)
+        kv_cache.graph_position.fill_(initial_pos)
+        kv_cache.kv_cache[..., initial_pos:, :].zero_()
         self._graph_device = device
         self._graph_cache_gen = getattr(kv_cache, "cache_gen", None)
+        self._graph_kv_cache = kv_cache  # keep captured input storage alive
+        self._graph_cache_pointer = kv_cache.kv_cache.data_ptr()
 
     def _graph_decode(self, ids, kv_cache, attention_mask=None, token_mask=None):
+        if ids.size(1) != 1 or attention_mask is not None or token_mask is not None or kv_cache.row_pos is not None:
+            raise ValueError("CUDA graph decode supports dense single-token inputs; padded/masked decode is not supported")
+        if self.use_persistent_decode_kernel or getattr(self.model.config, "use_clustered_attention_kernel", False):
+            raise ValueError("CUDA graph decode does not support custom resident/clustered kernels")
+        if torch.is_grad_enabled():
+            raise RuntimeError("CUDA graph decode requires inference_mode or no_grad")
+        if kv_cache.kv_cache is None or kv_cache.get_pos() >= kv_cache.kv_cache.size(4):
+            raise ValueError("CUDA graph KV capacity exhausted or uninitialized; prefill and preallocate the decode length")
+        if kv_cache.get_pos() >= self.model.cos.size(1):
+            raise ValueError("CUDA graph decode exceeds the rotary embedding capacity")
         cache_gen = getattr(kv_cache, "cache_gen", None)
-        if (not self._graph_shapes_match(ids, attention_mask, token_mask)) or (cache_gen != self._graph_cache_gen):
+        if (not self._graph_shapes_match(ids, attention_mask, token_mask)
+                or cache_gen != self._graph_cache_gen
+                or kv_cache is not self._graph_kv_cache
+                or kv_cache.kv_cache.data_ptr() != self._graph_cache_pointer):
             self._capture_decode_graph(ids, kv_cache, attention_mask, token_mask)
         self._graph_static_ids.copy_(ids)
-        if self._graph_static_attention is not None and attention_mask is not None:
-            self._graph_static_attention.copy_(attention_mask)
-        if self._graph_static_token_mask is not None and token_mask is not None:
-            self._graph_static_token_mask.copy_(token_mask)
         self._decode_graph.replay()
+        kv_cache.advance_graph_position()
+        self.decode_execution_mode = "cuda_graph"
         return self._graph_output
 
     def _execute_decode(self, ids, kv_cache, attention_mask=None, token_mask=None):
-        if (
-            self.use_cuda_graphs
-            and not self._decode_graph_disabled
-            and torch.cuda.is_available()
-            and ids.is_cuda
-            and ids.size(1) == 1
-        ):
+        if self.use_cuda_graphs:
+            if not torch.cuda.is_available() or not ids.is_cuda:
+                raise RuntimeError("use_cuda_graphs=True requires CUDA inputs and runtime")
             try:
                 return self._graph_decode(ids, kv_cache, attention_mask, token_mask)
             except Exception:
                 self._reset_decode_graph()
+                raise  # never relabel failed capture/replay as eager success
+        if self.enable_persistent_decode and self._persistent_stream is None:
+            raise RuntimeError("enable_persistent_decode=True requires a CUDA model and dedicated stream")
+        if kv_cache.graph_mode:
+            raise RuntimeError("A graph KV cache must be reset before switching to eager decode")
         return self._decode_forward_step(ids, kv_cache, attention_mask, token_mask)
 
     def _attention_position_buffer(self, max_len, device):
@@ -916,7 +984,9 @@ class Engine:
     def _token_tensor_to_list(self, token_tensor):
         flat_tokens = token_tensor.reshape(-1)
         host_tokens = self._sample_host_token_buffer(flat_tokens.numel(), flat_tokens.device)
-        host_tokens.copy_(flat_tokens, non_blocking=flat_tokens.device.type == "cuda")
+        # Python consumes these tiny D2H results immediately. A pinned async
+        # copy must not be followed by tolist() until the transfer completes.
+        host_tokens.copy_(flat_tokens, non_blocking=False)
         return host_tokens.tolist()
 
     def _sample_batch_tokens(
@@ -989,7 +1059,7 @@ class Engine:
                 **self._sample_workspace(row_logits, top_k, temp),
             )
             sampled_device[sample_idx].copy_(next_id[0, 0])
-        sampled_host.copy_(sampled_device, non_blocking=sampled_device.device.type == "cuda")
+        sampled_host.copy_(sampled_device, non_blocking=False)
         next_tokens = sampled_host.tolist()
         if full_active_rows:
             return next_tokens

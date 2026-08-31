@@ -1,0 +1,16 @@
+{
+  "checked_at": "2026-08-31T00:27:45.516167+00:00",
+  "url": "https://claude.ai/code/artifact/9a311b78-5dac-4ea7-909f-e52993ab8e0e",
+  "method": "Live rendered in-app browser DOM of supplied artifact, read again during pinned-Linux dependency continuation.",
+  "reviewed_revision": "b57e4c6a9 (main)",
+  "confirmed_findings": 128,
+  "counts": {
+    "critical": 5,
+    "high": 37,
+    "medium": 58,
+    "low": 28
+  },
+  "wave_2_status": "awaiting_report",
+  "original_capture_sha256": "474779ab49b67c5c888e5f689b2400204b6d0f46f304219cedd0773694b6e1ba",
+  "limits": "Only supplied artifact checked; no access to an unshared separate report is implied."
+}

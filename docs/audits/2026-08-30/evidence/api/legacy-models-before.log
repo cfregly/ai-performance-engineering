@@ -1,0 +1,121 @@
+F...FF                                                                   [100%]
+=================================== FAILURES ===================================
+_ test_legacy_anthropic_clients_share_default_and_preserve_overrides[None-None] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x14fdece30>
+explicit_model = None, environment_model = None
+
+    @pytest.mark.parametrize("explicit_model", [None, "explicit-model"])
+    @pytest.mark.parametrize("environment_model", [None, "environment-model"])
+    def test_legacy_anthropic_clients_share_default_and_preserve_overrides(
+        monkeypatch, explicit_model, environment_model
+    ):
+        from core.analysis.llm_advisor import LLMConfig as AdvisorConfig
+        from core.analysis.llm_profile_analyzer import LLMProfileAnalyzer
+    
+        monkeypatch.delenv("PERF_LLM_MODEL", raising=False)
+        if environment_model is None:
+            monkeypatch.delenv("ANTHROPIC_MODEL", raising=False)
+        else:
+            monkeypatch.setenv("ANTHROPIC_MODEL", environment_model)
+        expected = explicit_model or environment_model or "claude-sonnet-4-6"
+        config = AdvisorConfig(provider="anthropic", model=explicit_model or "", api_key="local-fixture-key")
+        analyzer = LLMProfileAnalyzer(provider="anthropic", model=explicit_model, api_key="local-fixture-key")
+>       assert config.model == analyzer.model == expected
+E       AssertionError: assert 'claude-sonnet-4-20250514' == 'claude-sonnet-4-6'
+E         
+E         - claude-sonnet-4-6
+E         ?                 ^
+E         + claude-sonnet-4-20250514
+E         ?                 ^^^^^^^^
+
+tests/test_audit_wave1_api_regressions.py:90: AssertionError
+__ test_parallelism_advisor_sends_supported_default_or_override_locally[None] __
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x16c077b30>
+local_llm_endpoint = ('http://127.0.0.1:58176', [('/v1/messages', {'max_tokens': 8192, 'messages': [{'content': '\n# Optimization Request\n...ings)\n6. Include code examples and launch commands when helpful\n7. Warn about potential pitfalls or trade-offs\n'})])
+environment_model = None
+
+    @pytest.mark.parametrize("environment_model", [None, "explicit-anthropic-model"])
+    def test_parallelism_advisor_sends_supported_default_or_override_locally(
+        monkeypatch, local_llm_endpoint, environment_model
+    ):
+        pytest.importorskip("anthropic")
+        from core.optimization.parallelism_planner.llm_advisor import (
+            LLMOptimizationAdvisor,
+            OptimizationGoal,
+            OptimizationRequest,
+            SystemContext,
+        )
+    
+        base_url, requests = local_llm_endpoint
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", base_url)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "local-fixture-key")
+        monkeypatch.delenv("PERF_LLM_MODEL", raising=False)
+        if environment_model is None:
+            monkeypatch.delenv("ANTHROPIC_MODEL", raising=False)
+        else:
+            monkeypatch.setenv("ANTHROPIC_MODEL", environment_model)
+        request = OptimizationRequest(goal=OptimizationGoal.LATENCY, context=SystemContext(model_name="public-fixture"))
+        advice = LLMOptimizationAdvisor(llm_provider="anthropic").get_advice(request)
+        assert advice.raw_response == "local protocol fixture"
+        assert len(requests) == 1
+>       assert requests[0][1]["model"] == (environment_model or "claude-sonnet-4-6")
+E       AssertionError: assert 'claude-sonnet-4-20250514' == 'claude-sonnet-4-6'
+E         
+E         - claude-sonnet-4-6
+E         ?                 ^
+E         + claude-sonnet-4-20250514
+E         ?                 ^^^^^^^^
+
+tests/test_audit_wave1_api_regressions.py:117: AssertionError
+_ test_parallelism_advisor_sends_supported_default_or_override_locally[explicit-anthropic-model] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x30c5366f0>
+local_llm_endpoint = ('http://127.0.0.1:58180', [('/v1/messages', {'max_tokens': 8192, 'messages': [{'content': '\n# Optimization Request\n...ings)\n6. Include code examples and launch commands when helpful\n7. Warn about potential pitfalls or trade-offs\n'})])
+environment_model = 'explicit-anthropic-model'
+
+    @pytest.mark.parametrize("environment_model", [None, "explicit-anthropic-model"])
+    def test_parallelism_advisor_sends_supported_default_or_override_locally(
+        monkeypatch, local_llm_endpoint, environment_model
+    ):
+        pytest.importorskip("anthropic")
+        from core.optimization.parallelism_planner.llm_advisor import (
+            LLMOptimizationAdvisor,
+            OptimizationGoal,
+            OptimizationRequest,
+            SystemContext,
+        )
+    
+        base_url, requests = local_llm_endpoint
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", base_url)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "local-fixture-key")
+        monkeypatch.delenv("PERF_LLM_MODEL", raising=False)
+        if environment_model is None:
+            monkeypatch.delenv("ANTHROPIC_MODEL", raising=False)
+        else:
+            monkeypatch.setenv("ANTHROPIC_MODEL", environment_model)
+        request = OptimizationRequest(goal=OptimizationGoal.LATENCY, context=SystemContext(model_name="public-fixture"))
+        advice = LLMOptimizationAdvisor(llm_provider="anthropic").get_advice(request)
+        assert advice.raw_response == "local protocol fixture"
+        assert len(requests) == 1
+>       assert requests[0][1]["model"] == (environment_model or "claude-sonnet-4-6")
+E       AssertionError: assert 'claude-sonnet-4-20250514' == 'explicit-anthropic-model'
+E         
+E         - explicit-anthropic-model
+E         + claude-sonnet-4-20250514
+
+tests/test_audit_wave1_api_regressions.py:117: AssertionError
+=============================== warnings summary ===============================
+tests/test_audit_wave1_api_regressions.py::test_parallelism_advisor_sends_supported_default_or_override_locally[None]
+tests/test_audit_wave1_api_regressions.py::test_parallelism_advisor_sends_supported_default_or_override_locally[explicit-anthropic-model]
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/core/optimization/parallelism_planner/llm_advisor.py:436: DeprecationWarning: The model 'claude-sonnet-4-20250514' is deprecated and will reach end-of-life on June 15th, 2026.
+  Please migrate to a newer model. Visit https://docs.anthropic.com/en/docs/resources/model-deprecations for more information.
+    response = client.messages.create(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_audit_wave1_api_regressions.py::test_legacy_anthropic_clients_share_default_and_preserve_overrides[None-None]
+FAILED tests/test_audit_wave1_api_regressions.py::test_parallelism_advisor_sends_supported_default_or_override_locally[None]
+FAILED tests/test_audit_wave1_api_regressions.py::test_parallelism_advisor_sends_supported_default_or_override_locally[explicit-anthropic-model]
+3 failed, 3 passed, 42 deselected, 2 warnings in 1.72s

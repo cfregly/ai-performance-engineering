@@ -1,0 +1,178 @@
+[
+  {
+    "case": "root-help",
+    "argv": [
+      "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+      "-m",
+      "cli.aisp",
+      "--help"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+    "exit_code": 0,
+    "expected_exit": 0,
+    "expected_text": "distributed",
+    "status": "PASS",
+    "elapsed_seconds": 2.982853209017776,
+    "output": "cli-root-help.txt"
+  },
+  {
+    "case": "help-alias",
+    "argv": [
+      "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+      "-m",
+      "cli.aisp",
+      "help"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+    "exit_code": 0,
+    "expected_exit": 0,
+    "expected_text": "benchmark",
+    "status": "PASS",
+    "elapsed_seconds": 2.5159190419944935,
+    "output": "cli-help-alias.txt"
+  },
+  {
+    "case": "bench-help",
+    "argv": [
+      "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+      "-m",
+      "cli.aisp",
+      "bench",
+      "--help"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+    "exit_code": 0,
+    "expected_exit": 0,
+    "expected_text": "list-targets",
+    "status": "PASS",
+    "elapsed_seconds": 2.413572625024244,
+    "output": "cli-bench-help.txt"
+  },
+  {
+    "case": "nested-help",
+    "argv": [
+      "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+      "-m",
+      "cli.aisp",
+      "bench",
+      "list-targets",
+      "--help"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+    "exit_code": 0,
+    "expected_exit": 0,
+    "expected_text": "--chapter",
+    "status": "PASS",
+    "elapsed_seconds": 2.418214707984589,
+    "output": "cli-nested-help.txt"
+  },
+  {
+    "case": "ncu-help",
+    "argv": [
+      "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+      "-m",
+      "cli.aisp",
+      "profile",
+      "ncu",
+      "--help"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+    "exit_code": 0,
+    "expected_exit": 0,
+    "expected_text": "--launch-count",
+    "status": "PASS",
+    "elapsed_seconds": 2.457321249996312,
+    "output": "cli-ncu-help.txt"
+  },
+  {
+    "case": "inference-help",
+    "argv": [
+      "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+      "-m",
+      "cli.aisp",
+      "inference",
+      "vllm",
+      "--help"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+    "exit_code": 0,
+    "expected_exit": 0,
+    "expected_text": "--model-size",
+    "status": "PASS",
+    "elapsed_seconds": 2.4119604579755105,
+    "output": "cli-inference-help.txt"
+  },
+  {
+    "case": "registry",
+    "argv": [
+      "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+      "-m",
+      "cli.aisp",
+      "bench",
+      "list-targets",
+      "--chapter",
+      "ch07"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+    "exit_code": 0,
+    "expected_exit": 0,
+    "expected_text": "ch07:",
+    "status": "PASS",
+    "elapsed_seconds": 3.2222863340284675,
+    "output": "cli-registry.txt"
+  },
+  {
+    "case": "demos-registry",
+    "argv": [
+      "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+      "-m",
+      "cli.aisp",
+      "demos",
+      "list"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+    "exit_code": 0,
+    "expected_exit": 0,
+    "expected_text": "ch11-stream-overlap",
+    "status": "PASS",
+    "elapsed_seconds": 2.5492934579961,
+    "output": "cli-demos-registry.txt"
+  },
+  {
+    "case": "missing-option-value",
+    "argv": [
+      "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+      "-m",
+      "cli.aisp",
+      "bench",
+      "list-targets",
+      "--chapter"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+    "exit_code": 2,
+    "expected_exit": 2,
+    "expected_text": "requires an argument",
+    "status": "PASS",
+    "elapsed_seconds": 2.474685875000432,
+    "output": "cli-missing-option-value.txt"
+  },
+  {
+    "case": "integer-option-negative",
+    "argv": [
+      "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-full-dependency-zsyj1rh8/venv/bin/python",
+      "-m",
+      "cli.aisp",
+      "profile",
+      "ncu",
+      "--launch-count",
+      "not-an-int"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+    "exit_code": 2,
+    "expected_exit": 2,
+    "expected_text": "not a valid integer",
+    "status": "PASS",
+    "elapsed_seconds": 2.4798910829704255,
+    "output": "cli-integer-option-negative.txt"
+  }
+]

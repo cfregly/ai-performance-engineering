@@ -1,0 +1,14 @@
+{
+  "status": "HOLD",
+  "torch": "2.8.0",
+  "cuda": null,
+  "required_gpu_cases": {
+    "test_actual_cuda_sorted_pytorch_reference_covers_full_output": 1,
+    "test_active_triton_activation_matches_full_reference_and_updates_tail": 27,
+    "test_cuda_trainable_activation_uses_pytorch_and_preserves_backward": 1,
+    "test_triton_inference_honors_noncurrent_device_and_restores_caller": 1
+  },
+  "runs": [],
+  "scope": "Active activation and explicit PyTorch reference only; retired FFN kernels remain unavailable",
+  "reason": "Actual two CUDA devices required; no GPU or Triton execution attempted"
+}

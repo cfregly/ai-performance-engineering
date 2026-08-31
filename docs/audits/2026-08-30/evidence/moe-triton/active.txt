@@ -1,0 +1,21 @@
+ERROR: found no collectors for /Users/admin/dev/ai-perf/ai-performance-engineering/code/tests/test_benchmark_hygiene_regressions.py::test_cuda_event_timing_waits_on_terminal_event_not_whole_device
+
+
+==================================== ERRORS ====================================
+_________ ERROR collecting tests/test_benchmark_hygiene_regressions.py _________
+ImportError while importing test module '/Users/admin/dev/ai-perf/ai-performance-engineering/code/tests/test_benchmark_hygiene_regressions.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/miniconda3/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_benchmark_hygiene_regressions.py:37: in <module>
+    from labs.occupancy_tuning.optimized_proton_matmul_bm64_bn64_bk32_nw2 import (
+labs/occupancy_tuning/__init__.py:5: in <module>
+    from . import triton_matmul  # noqa: F401
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+labs/occupancy_tuning/triton_matmul.py:8: in <module>
+    import triton
+E   ModuleNotFoundError: No module named 'triton'
+------------- generated xml file: /tmp/aisp-moe-triton-active.xml --------------
+1 error in 6.28s

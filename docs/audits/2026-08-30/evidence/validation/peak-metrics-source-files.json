@@ -1,0 +1,19 @@
+{
+  "code/core/benchmark/metrics.py": "240c74dace7cb75b1f2a0718abd5dcff4eb8a5369aaaef5994dcc9534122c30f",
+  "code/core/benchmark/benchmark_peak.py": "24a8c4dce15ee4369d39234ccf5309d409b9872c769e11b6b2df5311832b2b44",
+  "code/core/benchmark/performance_targets.py": "3efef808acf4a584d800572f8a7c3ddbfcb7ff3adaf5db0109e62791d9034e08",
+  "code/core/harness/arch_config.py": "c6a5a340834ad724f9b2df7c10cdb727358e5095eb466fad7797e77347b8480a",
+  "code/core/diagnostics/microbench.py": "01919110d09ee970bae344f3680c04f409025f07db83deb0a22d7e6d96922e6d",
+  "code/tests/test_audit_wave1_peak_metrics.py": "81e6ad339b68f4802ea6a95d692196c197ce5e2e7d57dd1c3659cd1b598dbd63",
+  "code/tests/test_benchmark_metrics.py": "e68e96d175638a6fd2e4f2cee8499f0c1ef4b782040bf237dc6fe84a05395090",
+  "code/tests/integration/test_benchmark_peak_import.py": "648c4a036bbd03dd3f46115997491a9cd60d9e3497c69c5b61468379a2f1a5e2",
+  "code/docs/gb300-roofline-corrections-2026-08-30.md": "db500aca2ffd91e0ce8f641b85b10448a53c25b55c973752fddeef264b301710",
+  "code/docs/gb300-sol-roofline.md": "1dc6f45c46b7278f810240c3d1d479447139ddd3ccddf9a99a7234ebd2e0cc18",
+  "code/docs/gb300-sol-roofline-kernels.md": "05823cb1b3ae5a9f9343e1fd1e6dcb1132be1d085eb5c23d6fd79f25a57b8601",
+  "code/docs/gb300-sol-roofline-labs2.md": "f11515a8e6f628937c4ad11e2398a217bdc0e92da443aa5e009d1d4e331c0ad4",
+  "code/docs/gb300-sol-roofline-labs3.md": "6e54fd5e0f05b1e6feaea9258dc62e6558c50860bfc9b9e0c5edac219969abce",
+  "code/docs/gb300-moe-roofline.md": "c24708c53d5e512f224b9946f382fcc1752a08d147a5e565dcaaa28e187c2dfd",
+  "code/docs/gb300-blackwell-matmul-hostoverhead.md": "4d2e2efb3bf4c2546a115328f049b6bc804292d171d606211461753aac8cabb7",
+  "code/docs/gb300-gemm-occupancy-rewrite.md": "18941bd7dfab07b09c227fbe8cfc1ba8c948284793d6df9ef0d54f07ede58d96",
+  "code/docs/gb300-runbook.md": "44614027232cdcb98e96c2138e65a5462ac82ecc2e9810e8a100e6fb42ab2da7"
+}

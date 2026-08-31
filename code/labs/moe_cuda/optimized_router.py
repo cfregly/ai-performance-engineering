@@ -25,10 +25,10 @@ def _weighted_topk_sum_in_place_if_safe(fc2_out: torch.Tensor, gate_probs: torch
 
 
 class AdaptiveTopKMoE(nn.Module):
-    """Optimized sparse-routing MoE using batched expert computation.
-    
-    Instead of iterating through each expert in Python, we use a vectorized
-    approach that processes all tokens at once, leveraging CUDA parallelism.
+    """Batched dense expert computation with sparse top-k output selection.
+
+    Each expert keeps independent weights. This compatibility implementation
+    evaluates all experts; it does not claim sparse compute or a measured speedup.
     """
 
     def __init__(
@@ -50,11 +50,11 @@ class AdaptiveTopKMoE(nn.Module):
         self.gate_bias = nn.Parameter(torch.zeros(num_experts))
 
     def forward(self, tokens: torch.Tensor) -> torch.Tensor:
-        """Vectorized sparse MoE forward pass.
+        """Vectorized expert forward pass with top-k weighted output.
         
-        Key optimization: Instead of looping over experts, we compute all expert
-        outputs at once using a single large matmul, then select the top-k results.
-        This keeps everything on GPU with no Python control flow.
+        FC1 uses one large matmul and FC2 batches the independent expert weights.
+        Both layers evaluate all experts before top-k selection. This path is
+        compatible with CPU and CUDA; no sparse-compute speedup is implied.
         """
         batch = tokens.shape[0]
         
@@ -73,21 +73,20 @@ class AdaptiveTopKMoE(nn.Module):
         fc1_out = fc1_out.view(batch, self.num_experts, self.hidden_size * 2)
         fc1_out = torch.nn.functional.gelu(fc1_out)
         
-        # Select only the top-k experts' outputs (batch, top_k, hidden*2)
-        selected_fc1 = torch.gather(
-            fc1_out, 1, 
-            expert_ids.unsqueeze(-1).expand(-1, -1, self.hidden_size * 2)
+        # Each expert owns a distinct FC2 slice. Batch the expert dimension
+        # rather than replicating a weight matrix for every token/route. Both
+        # expert layers execute dense expert math; only the final selection is
+        # sparse. The harness entrypoint below uses GroupedTopKMoE separately.
+        expert_weights = self.expert_fc2.weight.view(
+            self.num_experts, self.hidden_size, self.hidden_size * 2,
         )
-        
-        # FC2 for selected experts: process in batched manner
-        # (batch * top_k, hidden*2) -> (batch * top_k, hidden)
-        selected_flat = selected_fc1.view(-1, self.hidden_size * 2)
-        
-        # Use weight slicing for FC2 based on selected experts
-        # Simplified: just use a single FC2 for all (loses some efficiency but compiles)
-        fc2_out = torch.nn.functional.linear(selected_flat, self.expert_fc2.weight[:self.hidden_size, :])
-        fc2_out = fc2_out.view(batch, self.top_k, self.hidden_size)
-        
+        all_fc2 = torch.bmm(
+            fc1_out.transpose(0, 1), expert_weights.transpose(1, 2),
+        ).transpose(0, 1)
+        fc2_out = torch.gather(
+            all_fc2, 1, expert_ids.unsqueeze(-1).expand(-1, -1, self.hidden_size),
+        )
+
         # Weighted sum by gate probabilities
         output = _weighted_topk_sum_in_place_if_safe(fc2_out, gate_probs)
         

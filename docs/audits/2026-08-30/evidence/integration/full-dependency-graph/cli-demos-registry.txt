@@ -1,0 +1,29 @@
+ch02-memory-transfer-nvlink: Chapter 2 NVLink-C2C memory transfer binary demo (non-benchmark).
+ch02-memory-transfer-pcie: Chapter 2 PCIe memory transfer binary demo (non-benchmark).
+ch02-memory-transfer-zero-copy: Chapter 2 zero-copy memory transfer binary demo (non-benchmark).
+ch03-green-context: Chapter 3 CUDA 13 green-context demo (non-benchmark).
+ch07-async-prefetch-2d: Chapter 7 async prefetch 2D TMA demo (non-benchmark).
+ch10-dsmem-reduction-fixed: Chapter 10 DSMEM reduction fixed binary demo (non-benchmark).
+ch10-tma-multicast: Chapter 10 TMA multicast demo (non-benchmark).
+ch10-tmem-triple-overlap: Chapter 10 TMEM triple-overlap demo (non-benchmark).
+ch10-warpgroup-specialization: Chapter 10 tcgen05 warpgroup specialization demo (non-benchmark).
+ch11-event-timing: Chapter 11 CUDA event timing demo (non-benchmark).
+ch11-memory-async: Chapter 11 async copy/compute overlap demo (non-benchmark).
+ch11-stream-overlap: Chapter 11 CUDA stream overlap demo (non-benchmark).
+ch11-stream-priority: Chapter 11 CUDA stream priority demo (non-benchmark).
+ch11-streams-ordered-cuda: Chapter 11 stream-ordered allocator binary demo (non-benchmark).
+ch11-streams-overlap-cuda: Chapter 11 CUDA streams overlap binary demo (non-benchmark).
+ch11-streams-warp-specialized-cuda: Chapter 11 warp-specialized streams binary demo (non-benchmark).
+ch12-graph-capture: Chapter 12 CUDA graph capture demo (non-benchmark).
+ch12-graph-replay: Chapter 12 CUDA graph replay microbenchmark demo (non-benchmark).
+ch12-instantiation-overhead: Chapter 12 CUDA graph instantiation overhead demo (non-benchmark).
+ch13-fp8-perchannel: Chapter 13 FP8 per-channel scaling demo (non-benchmark).
+ch15-context-parallel: Chapter 15 context-parallel demo (torchrun required).
+ch15-expert-parallel: Chapter 15 expert-parallel demo (torchrun optional; local mode supported).
+ch15-pipeline-parallel: Chapter 15 pipeline-parallel demo (torchrun required).
+ch15-speculative-decode: Chapter 15 speculative decoding demo runner (non-benchmark).
+ch15-tensor-parallel: Chapter 15 tensor-parallel demo (torchrun required).
+ch17-moe-router-topology: Chapter 17 MoE topology-aware routing demo (non-benchmark).
+ch17-moe-router-uniform: Chapter 17 MoE uniform routing demo (non-benchmark).
+ch18-v1-engine-loop: Chapter 18 V1 EngineCore polling-loop demo (non-benchmark).
+labs-decode-multigpu: Lab decode optimization: multi-GPU NVLink-C2C decode stress demo (torchrun required).

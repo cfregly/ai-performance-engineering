@@ -1,0 +1,37 @@
+F..                                                                      [100%]
+=================================== FAILURES ===================================
+_ test_anthropic_model_default_and_explicit_overrides[None-None-claude-sonnet-4-6] _
+
+budget_environment = None
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1375f38f0>
+provider_model = None, generic_model = None, expected = 'claude-sonnet-4-6'
+
+    @pytest.mark.parametrize(
+        "provider_model, generic_model, expected",
+        [
+            (None, None, "claude-sonnet-4-6"),
+            (None, "explicit-generic-model", "explicit-generic-model"),
+            ("explicit-anthropic-model", "explicit-generic-model", "explicit-anthropic-model"),
+        ],
+    )
+    def test_anthropic_model_default_and_explicit_overrides(
+        budget_environment, monkeypatch, provider_model, generic_model, expected
+    ):
+        monkeypatch.setenv("PERF_LLM_PROVIDER", "anthropic")
+        for key, value in (("ANTHROPIC_MODEL", provider_model), ("PERF_LLM_MODEL", generic_model)):
+            if value is None:
+                monkeypatch.delenv(key, raising=False)
+            else:
+                monkeypatch.setenv(key, value)
+>       assert llm.LLMConfig.from_env().model == expected
+E       AssertionError: assert 'claude-sonnet-4-20250514' == 'claude-sonnet-4-6'
+E         
+E         - claude-sonnet-4-6
+E         ?                 ^
+E         + claude-sonnet-4-20250514
+E         ?                 ^^^^^^^^
+
+tests/test_audit_wave1_api_regressions.py:69: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_audit_wave1_api_regressions.py::test_anthropic_model_default_and_explicit_overrides[None-None-claude-sonnet-4-6]
+1 failed, 2 passed, 35 deselected in 0.07s

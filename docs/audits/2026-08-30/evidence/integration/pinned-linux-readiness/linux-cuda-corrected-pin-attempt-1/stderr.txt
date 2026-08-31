@@ -1,0 +1,5 @@
+error: the argument '--no-build' cannot be used with '--only-binary <ONLY_BINARY>'
+
+Usage: uv pip compile --python <PYTHON> --python-version <PYTHON_VERSION> --python-platform <PYTHON_PLATFORM> --torch-backend <TORCH_BACKEND> --no-build --no-python-downloads --default-index <DEFAULT_INDEX> --cache-dir <CACHE_DIR> --no-progress --color <COLOR_CHOICE> --generate-hashes --emit-index-annotation --emit-index-url --output-file <OUTPUT_FILE> <SRC_FILE|--group <GROUP>>
+
+For more information, try '--help'.

@@ -1,0 +1,9 @@
+{
+  "diagnostic": "The combined pytest process reached the final progress segment, then segfaulted in pytest_runtest_makereport. It is not accepted as a pass.",
+  "junit_produced": false,
+  "log": "harness-regressions.txt",
+  "replacement_evidence": "harness-regressions-isolated/summary.json",
+  "returncode": 139,
+  "schema_version": 1,
+  "status": "FAIL_NATIVE_SEGFAULT_INDETERMINATE"
+}

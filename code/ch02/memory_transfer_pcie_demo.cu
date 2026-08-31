@@ -94,8 +94,10 @@ int main() {
     double bandwidth_gbs = (N * sizeof(float) * 2 / 1e9) / (avg_ms / 1000.0);  // 2x for H2D+D2H
     
     printf("Average time per iteration: %.3f ms\n", avg_ms);
-    printf("Bandwidth: %.1f GB/s (PCIe-limited)\n", bandwidth_gbs);
-    printf("Status: PCIe 5.0 bottleneck (~128 GB/s theoretical max)\n");
+    printf("Effective H2D+D2H bandwidth including compute: %.1f GB/s\n", bandwidth_gbs);
+    printf("Reference: PCIe 5.0 x16 is about 64 GB/s per direction before overhead.\n");
+    printf("These transfers are sequential; the 128 GB/s full-duplex sum is not this metric's ceiling.\n");
+    printf("The negotiated link and actual bottleneck are not measured by this demo.\n");
     
     CUDA_CHECK(cudaFree(d_input));
     CUDA_CHECK(cudaFree(d_output));

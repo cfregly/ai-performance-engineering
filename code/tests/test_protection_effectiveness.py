@@ -1,761 +1,401 @@
 #!/usr/bin/env python3
-"""
-NEGATIVE TESTS: Verify protections actually DETECT attacks.
+"""Behavior checks for protection detectors, with clean and violating controls.
 
-These tests intentionally try to CHEAT and verify the protection CATCHES it.
-If these tests pass, it means our protections are working.
-If these tests fail, our protections are broken.
-
-Test naming: test_{protection}_catches_{attack}
+CPU checks exercise real verification, diagnostic, and reporting entrypoints.
+Only stream execution needs CUDA. Diagnostic timing/GPU-state inputs are test
+fixtures, not measurements or hardware qualification. Statistical reporting
+checks preserve all supplied samples; no outlier or cherry-picking classifier
+exists, and these tests do not claim one. Test count is not protection coverage.
 """
 
 import gc
-import hashlib
-import random
-import threading
-import time
-from pathlib import Path
-from contextlib import contextmanager
+import statistics
+from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 import torch
-import numpy as np
 
-pytestmark = pytest.mark.skipif(
-    not torch.cuda.is_available(),
-    reason="CUDA required"
+from core.benchmark.models import TimingStats
+from core.benchmark.verification import (
+    InputSignature, PrecisionFlags, ToleranceSpec, compare_workload_metrics,
+    detect_seed_mutation, set_deterministic_seeds,
+)
+from core.harness.benchmark_harness import BenchmarkConfig, BenchmarkHarness
+from core.harness.validity_checks import (
+    GPUState, check_gpu_state_consistency,
+    check_graph_capture_integrity, check_input_output_aliasing,
+    check_setup_precomputation, gc_disabled,
+)
+from tests.protection_test_utils import (
+    TensorWork, audit_cuda_work, check_fresh_input, check_jitter, compare_tensors, cpu_harness,
+    make_runner, preserve_rng_state,
 )
 
+requires_cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason="real CUDA stream execution required")
 
-# =============================================================================
-# TIMING PROTECTION NEGATIVE TESTS
-# =============================================================================
+
+@pytest.fixture
+def runner(tmp_path):
+    with preserve_rng_state():
+        yield make_runner(tmp_path)
+
+
+@pytest.fixture(autouse=True)
+def restore_rng_state():
+    with preserve_rng_state():
+        yield
+
+
+def _signature(shape=(4, 8), dtype="float32"):
+    return InputSignature(
+        shapes={"input": shape}, dtypes={"input": dtype}, batch_size=shape[0],
+        parameter_count=0, precision_flags=PrecisionFlags(),
+    )
+
+
+def _assert_jitter_pair(runner):
+    assert check_jitter(runner, "real") == (True, None)
+    passed, reason = check_jitter(runner, "constant")
+    assert not passed
+    assert "output unchanged" in reason
+
+
+def _assert_fresh_pair(runner):
+    assert check_fresh_input(runner, "real") == (True, None)
+    passed, reason = check_fresh_input(runner, "cached")
+    assert not passed
+    assert "identical under a different seed" in reason
+
+
+
 
 class TestTimingProtectionsCatchAttacks:
-    """Verify timing protections actually catch timing attacks."""
-    
+    @requires_cuda
     def test_stream_auditor_catches_unsynced_work(self):
-        """NEGATIVE: StreamAuditor must detect work on non-default streams."""
-        from core.harness.validity_checks import StreamAuditor
-        
-        auditor = StreamAuditor()
-        auditor.start()
-        
-        # Do work on non-default stream WITHOUT syncing
-        s = torch.cuda.Stream()
-        with torch.cuda.stream(s):
-            x = torch.randn(1000, device="cuda")
-            y = x * 2  # Work on non-default stream
-        
-        auditor.stop()
-        
-        # Get auditor info
-        info = auditor.get_info()
-        issues = auditor.check_issues()
-        
-        # Auditor should capture stream usage
-        assert info is not None
-        
-        # Cleanup
-        s.synchronize()
-    
+        assert audit_cuda_work(True) == (True, [])
+        passed, reasons = audit_cuda_work(False)
+        assert not passed
+        assert any("STREAM SYNC WARNING" in reason for reason in reasons)
+
     def test_event_timing_catches_negative_elapsed(self):
-        """NEGATIVE: Must detect impossible negative timing."""
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        
-        # Record in correct order
-        start.record()
-        torch.randn(100, device="cuda")
-        end.record()
-        torch.cuda.synchronize()
-        
-        elapsed = start.elapsed_time(end)
-        
-        # Elapsed should NEVER be negative
-        assert elapsed >= 0, f"Impossible negative timing: {elapsed}ms"
-    
-    def test_warmup_detection_catches_computation_bleed(self):
-        """NEGATIVE: Must detect when warmup computation is reused."""
-        # Simulate warmup that computes result
-        warmup_result = torch.randn(1000, device="cuda") * 2
-        warmup_ptr = warmup_result.data_ptr()
-        
-        # "Timed" run that just returns warmup result
-        def cheating_benchmark():
-            return warmup_result  # CHEAT: returning warmup result
-        
-        result = cheating_benchmark()
-        
-        # Detection: same memory pointer means reuse
-        assert result.data_ptr() == warmup_ptr, "Should detect same memory"
-        
-        # Protection: verify different inputs produce different outputs
-        new_input = torch.randn(1000, device="cuda")
-        new_result = new_input * 2
-        assert new_result.data_ptr() != warmup_ptr, "Fresh computation has different memory"
+        """Validate timing payload rejection, not the behavior of CUDA events."""
+        valid = TimingStats(mean_ms=1, median_ms=1, std_ms=0, min_ms=1,
+                            max_ms=1, iterations=3, warmup_iterations=1)
+        BenchmarkHarness._validate_timing_summary(valid)
+        invalid = valid.model_copy(update={"mean_ms": -1.0, "min_ms": -1.0})
+        with pytest.raises(ValueError, match="nonnegative"):
+            BenchmarkHarness._validate_timing_summary(invalid)
 
+    def test_warmup_detection_catches_computation_bleed(self, runner):
+        """The fresh-input detector rejects output retained from an earlier run."""
+        _assert_fresh_pair(runner)
 
-# =============================================================================
-# OUTPUT PROTECTION NEGATIVE TESTS
-# =============================================================================
 
 class TestOutputProtectionsCatchAttacks:
-    """Verify output protections catch invalid outputs."""
-    
-    def test_nan_check_catches_nan_in_output(self):
-        """NEGATIVE: Must detect NaN in output tensor."""
-        output = torch.tensor([1.0, float('nan'), 2.0], device="cuda")
-        
-        has_nan = torch.isnan(output).any()
-        
-        assert has_nan, "FAILED: Did not detect NaN in output"
-    
-    def test_inf_check_catches_inf_in_output(self):
-        """NEGATIVE: Must detect Inf in output tensor."""
-        output = torch.tensor([1.0, float('inf'), 2.0], device="cuda")
-        
-        has_inf = torch.isinf(output).any()
-        
-        assert has_inf, "FAILED: Did not detect Inf in output"
-    
-    def test_constant_output_check_catches_hardcoded(self):
-        """NEGATIVE: Must detect constant/hardcoded output."""
-        # Simulate cheating benchmark that returns constant
-        def cheating_benchmark(x):
-            return torch.ones(100, device="cuda")  # CHEAT: ignores input
-        
-        # Run with different inputs
-        input1 = torch.randn(100, device="cuda")
-        input2 = torch.randn(100, device="cuda") * 10  # Very different
-        
-        output1 = cheating_benchmark(input1)
-        output2 = cheating_benchmark(input2)
-        
-        # Detection: outputs should differ for different inputs
-        outputs_identical = torch.allclose(output1, output2)
-        
-        assert outputs_identical, "This cheating benchmark returns identical outputs"
-        # The protection should CATCH this - constant outputs are suspicious
-    
-    def test_shape_mismatch_catches_wrong_shape(self):
-        """NEGATIVE: Must detect shape mismatch."""
-        expected_shape = (32, 64)
-        actual = torch.randn(64, 32, device="cuda")  # WRONG: transposed
-        
-        shape_matches = actual.shape == expected_shape
-        
-        assert not shape_matches, "FAILED: Did not detect shape mismatch"
-    
-    def test_dtype_mismatch_catches_wrong_dtype(self):
-        """NEGATIVE: Must detect dtype mismatch."""
-        expected_dtype = torch.float32
-        actual = torch.randn(100, device="cuda", dtype=torch.float16)  # WRONG
-        
-        dtype_matches = actual.dtype == expected_dtype
-        
-        assert not dtype_matches, "FAILED: Did not detect dtype mismatch"
-    
-    def test_tolerance_catches_large_difference(self):
-        """NEGATIVE: Must detect numerical difference beyond tolerance."""
-        from core.benchmark.verification import ToleranceSpec
-        
-        baseline = torch.ones(100, device="cuda")
-        optimized = torch.ones(100, device="cuda") * 1.1  # 10% different
-        
-        spec = ToleranceSpec(rtol=1e-5, atol=1e-8)
-        
-        # Should NOT be close
-        is_close = torch.allclose(baseline, optimized, rtol=spec.rtol, atol=spec.atol)
-        
-        assert not is_close, "FAILED: Did not detect 10% difference"
+    def test_nan_check_catches_nan_in_output(self, runner):
+        expected = torch.tensor([1.0, 2.0, 3.0])
+        assert compare_tensors(runner, expected, expected.clone()).passed
+        actual = expected.clone()
+        actual[1] = float("nan")
+        assert not compare_tensors(runner, expected, actual).passed
 
+    def test_inf_check_catches_inf_in_output(self, runner):
+        expected = torch.tensor([1.0, 2.0, 3.0])
+        assert compare_tensors(runner, expected, expected.clone()).passed
+        actual = expected.clone()
+        actual[1] = float("inf")
+        assert not compare_tensors(runner, expected, actual).passed
 
-# =============================================================================
-# WORKLOAD PROTECTION NEGATIVE TESTS  
-# =============================================================================
+    def test_constant_output_check_catches_hardcoded(self, runner):
+        _assert_jitter_pair(runner)
+
+    def test_shape_mismatch_catches_wrong_shape(self, runner):
+        expected = torch.ones(4, 8)
+        assert compare_tensors(runner, expected, expected.clone()).passed
+        result = compare_tensors(runner, expected, expected.T)
+        assert not result.passed
+        assert result.max_diff == float("inf")
+
+    def test_dtype_mismatch_catches_wrong_dtype(self, runner):
+        """Runtime input validation must reject a falsely declared dtype."""
+        signature = _signature()
+        runner._validate_inputs_match_signature(signature, {"input": torch.ones(4, 8)})
+        with pytest.raises(ValueError, match="dtype"):
+            runner._validate_inputs_match_signature(signature, {"input": torch.ones(4, 8, dtype=torch.float16)})
+
+    def test_tolerance_catches_large_difference(self, runner):
+        expected = torch.ones(8)
+        tolerance = ToleranceSpec(rtol=1e-5, atol=1e-8)
+        assert compare_tensors(runner, expected, expected + 1e-6, tolerance).passed
+        assert not compare_tensors(runner, expected, expected * 1.1, tolerance).passed
+
 
 class TestWorkloadProtectionsCatchAttacks:
-    """Verify workload protections catch workload reduction."""
-    
     def test_signature_catches_batch_shrinking(self):
-        """NEGATIVE: Must detect batch size reduction."""
-        from core.benchmark.verification import InputSignature, PrecisionFlags
-        
-        baseline = InputSignature(
-            shapes={"x": (32, 128)},
-            dtypes={"x": "float32"},
-            batch_size=32,
-            parameter_count=1000,
-            precision_flags=PrecisionFlags(),
-        )
-        
-        # Cheating: smaller batch
-        optimized = InputSignature(
-            shapes={"x": (16, 128)},
-            dtypes={"x": "float32"},
-            batch_size=16,  # CHEAT: half the batch
-            parameter_count=1000,
-            precision_flags=PrecisionFlags(),
-        )
-        
-        # Detection
-        signatures_match = (baseline.batch_size == optimized.batch_size and 
-                          baseline.shapes == optimized.shapes)
-        
-        assert not signatures_match, "FAILED: Did not detect batch shrinking"
-    
+        baseline = _signature((32, 128))
+        assert baseline.matches(_signature((32, 128)))
+        assert not baseline.matches(_signature((16, 128)))
+
     def test_signature_catches_sequence_truncation(self):
-        """NEGATIVE: Must detect sequence length reduction."""
-        from core.benchmark.verification import InputSignature, PrecisionFlags
-        
-        baseline = InputSignature(
-            shapes={"tokens": (32, 2048)},
-            dtypes={"tokens": "int64"},
-            batch_size=32,
-            parameter_count=1000,
-            precision_flags=PrecisionFlags(),
-        )
-        
-        # Cheating: shorter sequence
-        optimized = InputSignature(
-            shapes={"tokens": (32, 512)},  # CHEAT: 4x shorter
-            dtypes={"tokens": "int64"},
-            batch_size=32,
-            parameter_count=1000,
-            precision_flags=PrecisionFlags(),
-        )
-        
-        signatures_match = baseline.shapes == optimized.shapes
-        
-        assert not signatures_match, "FAILED: Did not detect sequence truncation"
-    
+        baseline = _signature((32, 2048), "int64")
+        assert baseline.matches(_signature((32, 2048), "int64"))
+        assert not baseline.matches(_signature((32, 512), "int64"))
+
     def test_workload_metrics_catches_reduced_work(self):
-        """NEGATIVE: Must detect reduced computation."""
-        baseline_flops = 1e12  # 1 TFLOP
-        optimized_flops = 5e11  # 0.5 TFLOP - CHEAT: half the work
-        
-        # 1% tolerance for workload matching
-        tolerance = 0.01
-        diff = abs(baseline_flops - optimized_flops) / baseline_flops
-        
-        within_tolerance = diff <= tolerance
-        
-        assert not within_tolerance, "FAILED: Did not detect 50% workload reduction"
+        baseline = {"flops_per_iteration": 1e12}
+        assert compare_workload_metrics(baseline, baseline)[0]
+        passed, deltas = compare_workload_metrics(baseline, {"flops_per_iteration": 5e11})
+        assert not passed
+        assert deltas["flops_per_iteration"] > 0.01
 
-
-# =============================================================================
-# MEMORY PROTECTION NEGATIVE TESTS
-# =============================================================================
 
 class TestMemoryProtectionsCatchAttacks:
-    """Verify memory protections catch memory exploits."""
-    
-    def test_aliasing_catches_input_output_same_memory(self):
-        """NEGATIVE: Must detect input-output aliasing."""
-        x = torch.randn(100, device="cuda")
-        input_ptr = x.data_ptr()
-        
-        # Cheating: in-place operation, output IS input
-        x.mul_(2)  # In-place
-        output_ptr = x.data_ptr()
-        
-        # Detection: same pointer means aliasing
-        is_aliased = input_ptr == output_ptr
-        
-        assert is_aliased, "This IS aliased - protection should flag it"
-    
+    def test_aliasing_catches_input_output_same_memory(self, runner):
+        runner._run_with_seed(TensorWork(), 42)
+        with pytest.raises(RuntimeError, match="OUTPUT ALIASING"):
+            runner._run_with_seed(TensorWork("alias"), 42)
+
     def test_preallocated_output_catches_prefilled(self):
-        """NEGATIVE: Must detect pre-filled output buffer."""
-        # Cheating: output is pre-computed
-        output = torch.randn(100, device="cuda") * 2  # Already computed!
-        expected_checksum = output.sum().item()
-        
-        def cheating_benchmark(input_tensor, output_buffer):
-            # Doesn't actually compute - output is already filled!
-            pass
-        
-        input_tensor = torch.randn(100, device="cuda")
-        cheating_benchmark(input_tensor, output)
-        
-        # Detection: output unchanged means pre-filled
-        actual_checksum = output.sum().item()
-        output_unchanged = abs(expected_checksum - actual_checksum) < 1e-6
-        
-        assert output_unchanged, "Output was pre-filled - protection should detect"
-    
-    def test_fresh_input_catches_cached_output(self):
-        """NEGATIVE: Must detect cached output (output doesn't change with input)."""
-        cached_output = torch.randn(100, device="cuda")
-        
-        def cheating_benchmark(x):
-            return cached_output  # CHEAT: returns cached, ignores input
-        
-        # Different inputs
-        input1 = torch.randn(100, device="cuda")
-        input2 = torch.randn(100, device="cuda") * 100
-        
-        output1 = cheating_benchmark(input1)
-        output2 = cheating_benchmark(input2)
-        
-        # Detection: outputs identical for different inputs
-        outputs_same = torch.allclose(output1, output2)
-        same_memory = output1.data_ptr() == output2.data_ptr()
-        
-        assert outputs_same and same_memory, "Cached output - protection should catch"
+        """Call the setup detector; preallocation alone is legitimate."""
+        output = torch.zeros(4)
+        get_outputs = lambda: {"output": output}
+        assert check_setup_precomputation(get_outputs, lambda: None) == (True, None)
+        passed, reason = check_setup_precomputation(get_outputs, lambda: output.fill_(42))
+        assert not passed
+        assert "PRE-COMPUTATION" in reason
 
+    def test_fresh_input_catches_cached_output(self, runner):
+        _assert_fresh_pair(runner)
 
-# =============================================================================
-# CUDA PROTECTION NEGATIVE TESTS
-# =============================================================================
 
 class TestCudaProtectionsCatchAttacks:
-    """Verify CUDA protections catch CUDA-specific exploits."""
-    
+    @requires_cuda
     def test_sync_catches_async_work_not_timed(self):
-        """NEGATIVE: Must detect work done but not timed."""
-        # Start timing
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        
-        start.record()
-        # Timer running, but work on different stream
-        s = torch.cuda.Stream()
-        with torch.cuda.stream(s):
-            # CHEAT: This work isn't on default stream
-            x = torch.randn(5000, 5000, device="cuda")
-            y = torch.mm(x, x.T)  # Heavy work
-        end.record()  # Ends timing on default stream
-        
-        torch.cuda.synchronize()  # Now sync everything
-        
-        timed_duration = start.elapsed_time(end)
-        
-        # The timed duration might be artificially low
-        # because the heavy work was on a different stream
-        # Protection: full device sync before end timing
-        assert timed_duration >= 0  # Basic sanity
-    
+        """Use the stream detector, not an elapsed-time nonnegativity assertion."""
+        assert audit_cuda_work(True) == (True, [])
+        passed, reasons = audit_cuda_work(False)
+        assert not passed
+        assert any("no synchronization" in reason for reason in reasons)
+
     def test_graph_capture_catches_work_in_capture(self):
-        """NEGATIVE: Must detect computation during graph capture."""
-        from core.harness.validity_checks import check_graph_capture_integrity
-        
-        # Simulate capture timing vs replay timing
-        x = torch.randn(1000, 1000, device="cuda")
-        
-        # Capture (includes computation time)
-        g = torch.cuda.CUDAGraph()
-        
-        capture_start = time.perf_counter()
-        s = torch.cuda.Stream()
-        s.wait_stream(torch.cuda.current_stream())
-        with torch.cuda.stream(s):
-            # Warmup
-            y = torch.mm(x, x.T)
-        torch.cuda.current_stream().wait_stream(s)
-        
-        with torch.cuda.graph(g):
-            y = torch.mm(x, x.T)
-        torch.cuda.synchronize()
-        capture_time = time.perf_counter() - capture_start
-        
-        # Replay (should be fast)
-        replay_times = []
-        for _ in range(3):
-            replay_start = time.perf_counter()
-            g.replay()
-            torch.cuda.synchronize()
-            replay_times.append(time.perf_counter() - replay_start)
-        
-        # If capture is much slower than replay, work was done in capture
-        avg_replay = sum(replay_times) / len(replay_times)
-        
-        # Check the integrity
-        result = check_graph_capture_integrity(
-            capture_time_ms=capture_time * 1000,
-            replay_times_ms=[t * 1000 for t in replay_times]
-        )
-        
-        assert result is not None  # Should have analysis
+        """Capture/replay diagnostic inputs; this does not qualify GPU graphs."""
+        assert check_graph_capture_integrity(2.0, [1.0, 1.1, 0.9]) == (True, None)
+        passed, reason = check_graph_capture_integrity(100.0, [1.0, 1.1, 0.9])
+        assert not passed
+        assert "Suspected work during capture" in reason
+        passed, reason = check_graph_capture_integrity(0.0, [0.0])
+        assert not passed
+        assert "near-zero" in reason
 
-
-# =============================================================================
-# STATISTICAL PROTECTION NEGATIVE TESTS
-# =============================================================================
 
 class TestStatisticalProtectionsCatchAttacks:
-    """Verify statistical protections catch gaming."""
-    
     def test_outlier_detection_catches_injected_outlier(self):
-        """NEGATIVE: Must detect injected outlier."""
-        # Normal measurements
-        measurements = [1.0, 1.1, 0.9, 1.05, 0.95, 1.02, 0.98]
-        
-        # Inject outlier to game the mean
-        measurements_with_outlier = measurements + [0.1]  # CHEAT: inject fast outlier
-        
-        import statistics
-        
-        mean_clean = statistics.mean(measurements)
-        mean_with_outlier = statistics.mean(measurements_with_outlier)
-        
-        # Detection: mean is significantly affected
-        diff_pct = abs(mean_clean - mean_with_outlier) / mean_clean * 100
-        
-        # More than 5% change suggests outlier manipulation
-        assert diff_pct > 5, f"FAILED: Outlier only changed mean by {diff_pct:.1f}%"
-    
+        """Reporting retains the outlier; no outlier classifier exists."""
+        harness, config = cpu_harness()
+        clean = [1.0, 1.1, 0.9, 1.05, 0.95]
+        contaminated = clean + [10.0]
+        clean_result = harness._compute_stats(clean, config).timing
+        result = harness._compute_stats(contaminated, config).timing
+        assert clean_result.raw_times_ms == clean
+        assert result.raw_times_ms == contaminated
+        assert result.iterations == len(contaminated)
+        assert result.max_ms == 10.0
+        assert result.mean_ms == statistics.mean(contaminated)
+
     def test_variance_check_catches_cherry_picking(self):
-        """NEGATIVE: Must detect cherry-picked results."""
-        import statistics
-        
-        # All runs
-        all_runs = [1.2, 1.0, 1.4, 1.1, 1.3, 1.5, 0.9, 1.25]
-        
-        # Cherry-picked (only best 3)
-        cherry_picked = sorted(all_runs)[:3]
-        
-        mean_all = statistics.mean(all_runs)
-        mean_cherry = statistics.mean(cherry_picked)
-        
-        # Detection: cherry-picked mean is suspiciously low
-        improvement_pct = (mean_all - mean_cherry) / mean_all * 100
-        
-        assert improvement_pct > 10, f"Cherry-picking should show >10% improvement, got {improvement_pct:.1f}%"
-    
-    def test_sample_count_catches_insufficient_samples(self):
-        """NEGATIVE: Must detect insufficient sample size."""
-        # Too few samples
-        samples = [1.0, 1.2, 0.9]  # Only 3 samples
-        
-        min_samples_required = 10
-        
-        has_enough = len(samples) >= min_samples_required
-        
-        assert not has_enough, "FAILED: Did not detect insufficient samples"
-    
+        """The reporter must retain slow samples; it cannot detect omitted input."""
+        harness, config = cpu_harness()
+        samples = [1.0, 1.1, 8.0, 1.2, 7.0]
+        result = harness._compute_stats(samples, config).timing
+        assert result.raw_times_ms == samples
+        assert result.iterations == 5
+        assert result.std_ms == pytest.approx(statistics.stdev(samples))
+        assert result.mean_ms > statistics.mean(sorted(samples)[:3])
+
+    def test_sample_count_catches_insufficient_samples(self, runner):
+        """Fairness rejects reduced declared samples, not statistical power."""
+        baseline = SimpleNamespace(config=BenchmarkConfig(iterations=50, warmup=5))
+        clean = SimpleNamespace(config=BenchmarkConfig(iterations=50, warmup=5))
+        reduced = SimpleNamespace(config=BenchmarkConfig(iterations=3, warmup=5))
+        assert runner._validate_timing_config(baseline, clean) == (True, None)
+        passed, reason = runner._validate_timing_config(baseline, reduced)
+        assert not passed
+        assert "measurement_iterations" in reason
+
     def test_gc_interference_catches_gc_during_timing(self):
-        """NEGATIVE: Must detect GC interference during timing."""
-        import gc
-        
-        # Create garbage
-        garbage = [torch.randn(1000) for _ in range(100)]
-        
-        # Measure with GC enabled
-        gc.enable()
-        gc.collect()  # Force collection
-        
-        start = time.perf_counter()
-        # GC might trigger during this
-        x = torch.randn(1000, device="cuda")
-        y = x * 2
-        torch.cuda.synchronize()
-        time_with_gc = time.perf_counter() - start
-        
-        # Measure with GC disabled
-        gc.disable()
-        
-        start = time.perf_counter()
-        x = torch.randn(1000, device="cuda")
-        y = x * 2
-        torch.cuda.synchronize()
-        time_without_gc = time.perf_counter() - start
-        
-        gc.enable()  # Re-enable
-        
-        # Protection should disable GC during timing
-        # Both times should be captured for comparison
-        assert time_with_gc >= 0 and time_without_gc >= 0
+        """GC guard disables collection and restores state even on failure."""
+        previous = gc.isenabled()
+        try:
+            gc.enable()
+            with gc_disabled():
+                assert not gc.isenabled()
+            assert gc.isenabled()
+            with pytest.raises(RuntimeError, match="injected work failure"):
+                with gc_disabled():
+                    assert not gc.isenabled()
+                    raise RuntimeError("injected work failure")
+            assert gc.isenabled()
+            gc.disable()
+            with gc_disabled():
+                assert not gc.isenabled()
+            assert not gc.isenabled()
+        finally:
+            gc.enable() if previous else gc.disable()
 
-
-# =============================================================================
-# SEED/DETERMINISM PROTECTION NEGATIVE TESTS
-# =============================================================================
 
 class TestSeedProtectionsCatchAttacks:
-    """Verify seed protections catch determinism violations."""
-    
-    def test_seed_mutation_catches_changed_seed(self):
-        """NEGATIVE: Must detect seed mutation during benchmark."""
-        # Set initial seed
-        initial_seed = 42
-        torch.manual_seed(initial_seed)
-        np.random.seed(initial_seed)
-        random.seed(initial_seed)
-        
-        # Capture initial state
-        initial_torch_seed = torch.initial_seed()
-        
-        # Simulate benchmark that CHEATS by changing seed
-        def cheating_benchmark():
-            torch.manual_seed(123)  # CHEAT: changes seed
-            return torch.randn(100)
-        
-        cheating_benchmark()
-        
-        # Detection: seed changed
-        final_seed = torch.initial_seed()
-        seed_mutated = initial_torch_seed != final_seed
-        
-        assert seed_mutated, "Seed was mutated - protection should detect"
-    
-    def test_determinism_catches_non_reproducible(self):
-        """NEGATIVE: Must detect non-reproducible results."""
-        torch.manual_seed(42)
-        
-        # Same seed should produce same result
-        result1 = torch.randn(100, device="cuda")
-        
-        torch.manual_seed(42)
-        result2 = torch.randn(100, device="cuda")
-        
-        # These should be identical with same seed
-        are_identical = torch.allclose(result1, result2)
-        
-        assert are_identical, "Same seed should produce identical results"
+    def test_seed_mutation_catches_changed_seed(self, runner):
+        seed_info = set_deterministic_seeds(42)
+        assert not detect_seed_mutation(seed_info)
+        torch.manual_seed(43)
+        assert detect_seed_mutation(seed_info)
+        runner._run_with_seed(TensorWork(), 42)
+        with pytest.raises(RuntimeError, match="mutated RNG seeds"):
+            runner._run_with_seed(TensorWork("mutate_seed"), 42)
 
+    def test_determinism_catches_non_reproducible(self, runner):
+        work = TensorWork()
+        first, *_ = runner._run_with_seed(work, 42)
+        repeated, *_ = runner._run_with_seed(work, 42)
+        changed, *_ = runner._run_with_seed(work, 43)
+        assert runner._compare_outputs(first, repeated).passed
+        assert not runner._compare_outputs(first, changed).passed
 
-# =============================================================================
-# JITTER CHECK NEGATIVE TESTS
-# =============================================================================
 
 class TestJitterProtectionsCatchAttacks:
-    """Verify jitter checks catch hardcoded outputs."""
-    
-    def test_jitter_catches_hardcoded_output(self):
-        """NEGATIVE: Must detect output that doesn't change with input jitter."""
-        def cheating_benchmark(x):
-            # CHEAT: ignores input, returns constant
-            return torch.ones(100, device="cuda")
-        
-        # Original input
-        input_original = torch.randn(100, device="cuda")
-        output_original = cheating_benchmark(input_original)
-        
-        # Jittered input (add small noise)
-        input_jittered = input_original + torch.randn_like(input_original) * 0.01
-        output_jittered = cheating_benchmark(input_jittered)
-        
-        # Detection: outputs should differ for jittered inputs
-        outputs_identical = torch.allclose(output_original, output_jittered)
-        
-        assert outputs_identical, "Hardcoded output - jitter check should catch"
-    
-    def test_jitter_accepts_legitimate_sensitivity(self):
-        """POSITIVE: Legitimate benchmark should respond to jitter."""
-        def legitimate_benchmark(x):
-            return x * 2 + 1  # Actually computes based on input
-        
-        input_original = torch.randn(100, device="cuda")
-        output_original = legitimate_benchmark(input_original)
-        
-        input_jittered = input_original + torch.randn_like(input_original) * 0.01
-        output_jittered = legitimate_benchmark(input_jittered)
-        
-        # Legitimate benchmark should produce different outputs
-        outputs_differ = not torch.allclose(output_original, output_jittered)
-        
-        assert outputs_differ, "Legitimate benchmark should respond to jitter"
+    def test_jitter_catches_hardcoded_output(self, runner):
+        _assert_jitter_pair(runner)
 
+    def test_jitter_accepts_legitimate_sensitivity(self, runner):
+        _assert_jitter_pair(runner)
 
-# =============================================================================
-# MISSING EDGE CASES - ADDITIONAL TESTS
-# =============================================================================
 
 class TestEnvironmentProtectionsCatchAttacks:
-    """Verify environment protections catch environment issues."""
-    
     def test_thermal_throttling_catches_temperature_change(self):
-        """NEGATIVE: Must detect thermal throttling conditions."""
-        # Run heavy workload to potentially cause throttling
-        x = torch.randn(5000, 5000, device="cuda")
-        
-        times = []
-        for i in range(5):
-            start = torch.cuda.Event(enable_timing=True)
-            end = torch.cuda.Event(enable_timing=True)
-            
-            start.record()
-            y = torch.mm(x, x.T)
-            end.record()
-            torch.cuda.synchronize()
-            
-            times.append(start.elapsed_time(end))
-        
-        # If thermal throttling, later iterations may be slower
-        # Protection should detect variance > threshold
-        import statistics
-        if len(times) > 1:
-            cv = statistics.stdev(times) / statistics.mean(times)
-            # High CV might indicate throttling
-            # We just verify we can measure this
-            assert cv >= 0, "Should be able to measure timing variance"
+        """Test state diagnostics without pretending to heat or qualify a GPU."""
+        before = GPUState(device_index=0, device_name="diagnostic fixture", temperature_c=50, clock_mhz=1500)
+        assert check_gpu_state_consistency(before, replace(before)) == (True, [])
+        after = replace(before, temperature_c=75, clock_mhz=1000, throttle_reason="HwThermalSlowdown")
+        consistent, reasons = check_gpu_state_consistency(before, after)
+        assert not consistent
+        assert any("temperature increased" in reason for reason in reasons)
+        assert any("clock dropped" in reason for reason in reasons)
+        assert any("throttling detected" in reason for reason in reasons)
 
 
 class TestMissingEdgeCases:
-    """Tests for commonly missed edge cases."""
-    
-    def test_empty_tensor_handling(self):
-        """Edge: Empty tensors should be handled correctly."""
-        empty = torch.empty(0, device="cuda")
-        
-        assert empty.numel() == 0
-        assert empty.sum().item() == 0  # Sum of empty is 0
-    
-    def test_negative_stride_handling(self):
-        """Edge: Negative strides (reversed tensors)."""
-        x = torch.arange(10, device="cuda")
-        reversed_x = x.flip(0)
-        
-        # Should still work correctly
-        assert reversed_x[0] == 9
-        assert reversed_x[-1] == 0
-    
-    def test_non_contiguous_tensor_handling(self):
-        """Edge: Non-contiguous tensors."""
-        x = torch.randn(10, 10, device="cuda")
-        non_contig = x[:, ::2]  # Every other column
-        
-        assert not non_contig.is_contiguous()
-        
-        # Operations should still work
-        result = non_contig.sum()
-        assert not torch.isnan(result)
-    
-    def test_very_small_learning_rate_precision(self):
-        """Edge: Very small values may lose precision."""
-        lr = 1e-10
-        x = torch.ones(100, device="cuda")
-        
-        # Very small update
-        x_updated = x - lr
-        
-        # Should see some change (precision permitting)
-        # FP32 has ~7 decimal digits precision
-        diff = (x - x_updated).abs().mean()
-        
-        # With FP32, 1e-10 might be lost
-        # This tests that we're aware of precision limits
-    
-    def test_integer_overflow_handling(self):
-        """Edge: Integer overflow."""
-        max_int32 = 2**31 - 1
-        x = torch.tensor([max_int32], dtype=torch.int32, device="cuda")
-        
-        # Overflow
-        y = x + 1
-        
-        # Should wrap around (undefined behavior in C, but PyTorch handles it)
-        assert y.item() != max_int32 + 1  # Would be -2147483648
-    
-    def test_mixed_precision_comparison(self):
-        """Edge: Comparing different precisions."""
-        fp32 = torch.randn(100, device="cuda", dtype=torch.float32)
-        fp16 = fp32.half()
-        fp32_back = fp16.float()
-        
-        # Roundtrip loses precision
-        max_diff = (fp32 - fp32_back).abs().max().item()
-        
-        assert max_diff > 0, "Should have some precision loss"
-        assert max_diff < 0.01, "But not too much"
-    
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.int64])
+    def test_empty_tensor_handling(self, runner, dtype):
+        empty = torch.empty(0, 4, dtype=dtype)
+        assert compare_tensors(runner, empty, empty.clone()).passed
+        assert not compare_tensors(runner, empty, torch.ones(1, 4, dtype=dtype)).passed
+        assert not compare_tensors(runner, empty, torch.empty(0, 8, dtype=dtype)).passed
+
+    def test_empty_tensor_does_not_bypass_remaining_outputs(self, runner):
+        expected = {"empty": torch.empty(0), "value": torch.ones(2)}
+        assert runner._compare_outputs(expected, expected).passed
+        assert not runner._compare_outputs(expected, {"empty": torch.empty(0), "value": torch.zeros(2)}).passed
+        assert not runner._compare_outputs(expected, {"empty": torch.empty(0)}).passed
+
+    def test_empty_tensor_preserves_custom_comparator(self, runner):
+        empty = torch.empty(0)
+        require_nonempty = ToleranceSpec(rtol=0, atol=0, comparator_fn=lambda expected, actual: expected.numel() > 0)
+        assert compare_tensors(runner, torch.ones(1), torch.ones(1), require_nonempty).passed
+        assert not compare_tensors(runner, empty, empty, require_nonempty).passed
+
+    def test_negative_stride_handling(self, runner):
+        # torch.flip materializes reversed values; PyTorch has no negative-stride
+        # Tensor views. Compare the values, without claiming stride support.
+        expected = torch.arange(10).flip(0)
+        assert compare_tensors(runner, expected, expected.clone()).passed
+        assert not compare_tensors(runner, expected, torch.arange(10)).passed
+
+    def test_non_contiguous_tensor_handling(self, runner):
+        expected = torch.arange(32.0).reshape(4, 8).T
+        assert not expected.is_contiguous()
+        assert compare_tensors(runner, expected, expected.contiguous()).passed
+        assert not compare_tensors(runner, expected, expected + 1).passed
+
+    def test_very_small_learning_rate_precision(self, runner):
+        expected = torch.tensor([1.0 - 1e-8], dtype=torch.float64)
+        lost_update = (torch.ones(1) - 1e-8).to(torch.float64)
+        tolerance = ToleranceSpec(rtol=0, atol=1e-10)
+        assert compare_tensors(runner, expected, expected.clone(), tolerance).passed
+        assert not compare_tensors(runner, expected, lost_update, tolerance).passed
+
+    def test_integer_overflow_handling(self, runner):
+        expected = torch.tensor([2**31], dtype=torch.int64)
+        overflow = (torch.tensor([2**31 - 1], dtype=torch.int32) + 1).to(torch.int64)
+        assert compare_tensors(runner, expected, expected.clone()).passed
+        assert not compare_tensors(runner, expected, overflow).passed
+
+    def test_mixed_precision_comparison(self, runner):
+        expected = torch.linspace(-1, 1, 100)
+        quantized = expected.half().float()
+        tolerance = ToleranceSpec(rtol=1e-3, atol=1e-3)
+        assert compare_tensors(runner, expected, quantized, tolerance).passed
+        assert not compare_tensors(runner, expected, quantized + 0.1, tolerance).passed
+
     def test_cuda_oom_recovery(self):
-        """Edge: OOM should be recoverable."""
-        try:
-            # Try to allocate huge tensor
-            huge = torch.randn(100000, 100000, device="cuda")
-            del huge
-        except RuntimeError as e:
-            if "out of memory" in str(e).lower():
-                # OOM is expected - verify we can recover
-                torch.cuda.empty_cache()
-                # Should be able to allocate small tensor now
-                small = torch.randn(100, device="cuda")
-                assert small is not None
-    
-    def test_gradient_checkpointing_memory(self):
-        """Edge: Gradient checkpointing affects memory but not output."""
-        model = torch.nn.Sequential(
-            torch.nn.Linear(100, 100),
-            torch.nn.ReLU(),
-            torch.nn.Linear(100, 100),
-        ).cuda()
-        
-        x = torch.randn(32, 100, device="cuda", requires_grad=True)
-        
-        # Without checkpointing
-        out1 = model(x)
-        
-        # Results should be same
-        out2 = model(x.detach().clone().requires_grad_(True))
-        
-        assert torch.allclose(out1, out2)
-    
-    def test_deterministic_algorithm_enforcement(self):
-        """Edge: Deterministic mode affects results."""
-        torch.backends.cudnn.deterministic = True
-        torch.manual_seed(42)
-        
-        x = torch.randn(32, 64, 128, 128, device="cuda")
-        conv = torch.nn.Conv2d(64, 64, 3, padding=1).cuda()
-        
-        result1 = conv(x)
-        
-        torch.manual_seed(42)
-        x = torch.randn(32, 64, 128, 128, device="cuda")
-        result2 = conv(x)
-        
-        torch.backends.cudnn.deterministic = False
-        
-        # With deterministic mode, should be identical
-        assert torch.allclose(result1, result2)
+        """Injected OOM propagation; no giant allocation or GPU recovery claim."""
+        harness, config = cpu_harness()
+        work = TensorWork()
+        work.setup()
+        samples, _ = harness._benchmark_custom(work.benchmark_fn, config)
+        assert len(samples) == config.iterations
 
+        def allocation_failure():
+            raise torch.OutOfMemoryError("injected allocation failure")
 
-# =============================================================================
-# VERIFICATION THAT TESTS ARE TESTING THE RIGHT THING
-# =============================================================================
+        with pytest.raises(torch.OutOfMemoryError, match="injected allocation failure"):
+            harness._benchmark_custom(allocation_failure, config)
+        # An independent real CPU computation still executes after the failure.
+        samples, _ = harness._benchmark_custom(work.benchmark_fn, config)
+        assert len(samples) == config.iterations
+        torch.testing.assert_close(work.output, work.input * 2)
+
+    def test_gradient_checkpointing_memory(self, runner):
+        """Verify real checkpointed gradients; this is not a memory-saving claim."""
+        from torch.utils.checkpoint import checkpoint
+        original = torch.arange(8.0, requires_grad=True)
+        candidate = original.detach().clone().requires_grad_(True)
+        original.square().sum().backward()
+        checkpoint(lambda value: value.square(), candidate, use_reentrant=False).sum().backward()
+        assert compare_tensors(runner, original.grad, candidate.grad).passed
+        assert not compare_tensors(runner, original.grad, candidate.grad + 1).passed
+
+    def test_deterministic_algorithm_enforcement(self, runner):
+        from core.harness.validity_checks import capture_precision_policy_state, check_precision_policy_consistency
+        before = capture_precision_policy_state()
+        assert check_precision_policy_consistency(before, before) == (True, [])
+        torch.use_deterministic_algorithms(not torch.are_deterministic_algorithms_enabled())
+        after = capture_precision_policy_state()
+        passed, reasons = check_precision_policy_consistency(before, after)
+        assert not passed
+        assert any("deterministic_algorithms" in reason for reason in reasons)
+
 
 class TestMetaTestValidity:
-    """Meta-tests that verify our tests are meaningful."""
-    
-    def test_nan_detection_actually_works(self):
-        """Verify NaN detection returns True for NaN, False for valid."""
-        valid_tensor = torch.randn(100, device="cuda")
-        nan_tensor = torch.tensor([float('nan')], device="cuda")
-        
-        assert not torch.isnan(valid_tensor).any(), "Valid tensor shouldn't have NaN"
-        assert torch.isnan(nan_tensor).any(), "NaN tensor should be detected"
-    
-    def test_tolerance_comparison_actually_works(self):
-        """Verify tolerance comparison works correctly."""
-        a = torch.ones(100, device="cuda")
-        b_close = torch.ones(100, device="cuda") + 1e-6  # Very close
-        b_far = torch.ones(100, device="cuda") + 1.0     # Far
-        
-        rtol, atol = 1e-5, 1e-8
-        
-        assert torch.allclose(a, b_close, rtol=rtol, atol=atol), "Close values should match"
-        assert not torch.allclose(a, b_far, rtol=rtol, atol=atol), "Far values shouldn't match"
-    
-    def test_shape_comparison_actually_works(self):
-        """Verify shape comparison works correctly."""
-        a = torch.randn(32, 64, device="cuda")
-        b_same = torch.randn(32, 64, device="cuda")
-        b_diff = torch.randn(64, 32, device="cuda")
-        
-        assert a.shape == b_same.shape, "Same shapes should match"
-        assert a.shape != b_diff.shape, "Different shapes shouldn't match"
-    
+    def test_nan_detection_actually_works(self, runner):
+        expected = torch.ones(3)
+        assert compare_tensors(runner, expected, expected.clone()).passed
+        assert not compare_tensors(runner, expected, torch.full_like(expected, float("nan"))).passed
+
+    def test_tolerance_comparison_actually_works(self, runner):
+        expected = torch.ones(3)
+        tolerance = ToleranceSpec(rtol=1e-3, atol=1e-5)
+        assert compare_tensors(runner, expected, expected + 1e-4, tolerance).passed
+        assert not compare_tensors(runner, expected, expected + 0.1, tolerance).passed
+
+    def test_shape_comparison_actually_works(self, runner):
+        expected = torch.ones(4, 8)
+        assert compare_tensors(runner, expected, expected.clone()).passed
+        assert not compare_tensors(runner, expected, expected.T).passed
+
     def test_memory_pointer_comparison_works(self):
-        """Verify memory pointer comparison detects aliasing."""
-        x = torch.randn(100, device="cuda")
-        y = x.clone()  # Different memory
-        z = x          # Same memory (alias)
-        
-        assert x.data_ptr() != y.data_ptr(), "Clone should have different memory"
-        assert x.data_ptr() == z.data_ptr(), "Alias should have same memory"
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--tb=short"])
+        value = torch.ones(8)
+        assert check_input_output_aliasing({"in": value}, {"out": value.clone()}) == (True, None)
+        passed, reason = check_input_output_aliasing({"in": value}, {"out": value})
+        assert not passed
+        assert "OUTPUT ALIASING" in reason

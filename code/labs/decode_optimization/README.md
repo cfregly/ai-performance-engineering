@@ -1,7 +1,7 @@
 # Lab - Decode Optimization
 
 ## Summary
-Decode-focused microbenchmarks that isolate serving-side wins such as pinned memory, streams, compile/graphs, FP8/FP4, warp specialization, and HuggingFace cache policy changes without dragging full attention stacks into every comparison.
+Decode-focused microbenchmarks that isolate serving-side wins such as pinned memory, streams, compile/graphs, FP8/FP4, decode-only CUDA Graph replay, and HuggingFace cache policy changes without dragging full attention stacks into every comparison.
 
 ## Problem
 Decode paths die by a thousand cuts: host staging, stream orchestration, cache policy, compile overhead, and kernel schedule all matter. This lab keeps those costs as separate targets so you can see what actually moves TTFT, TPOT, and total decode latency.
@@ -15,7 +15,7 @@ Decode paths die by a thousand cuts: host staging, stream orchestration, cache p
 - pinned inputs and dual-stream decode variants
 - `torch.compile` and CUDA Graph decode paths
 - setup-time prefill-state reuse for static-prefix serving paths
-- FP8/FP4 and warp-specialized kernels where the hardware supports them
+- FP8/FP4 compute and persistent-prefill CUDA Graph replay
 - static-cache HuggingFace loop for the cache-policy pair
 
 ## Measured Delta
@@ -47,7 +47,7 @@ python -m cli.aisp bench run --targets labs/decode_optimization:decode_hf_cache 
 python -m cli.aisp bench run --targets labs/decode_optimization:decode_warp_specialized --profile deep_dive --single-gpu
 ```
 
-Those targets cover the most useful slices: general decode orchestration, device-resident serving contracts, real decoder-loop cache policy, and the fused Triton kernel path.
+Those targets cover the most useful slices: general decode orchestration, device-resident serving contracts, real decoder-loop cache policy, and decode-only CUDA Graph replay with persistent prefill state.
 
 ## Repro Commands
 ```bash
@@ -59,7 +59,7 @@ python -m cli.aisp demos labs-decode-multigpu --nproc-per-node 4 -- --iters 4 --
 ## Learning Goals
 - Contrast eager vs pinned/streamed vs compiled/graph decode paths on the same workload.
 - Measure FP8/FP4 tensor-core benefits relative to FP16/BF16 baselines.
-- Validate Triton warp-specialized decode kernels against Python math and harness expectations.
+- Validate CUDA Graph replay against the same eager PyTorch decode math and persistent prefill state.
 - Observe NVLink-C2C behavior by scaling the decode loop across available GPUs.
 - Show when a prefix-cache/device-resident request path can remove recurring prompt-side H2D staging.
 - Show when a static-prefix request path can reuse prefill state instead of recomputing it per decode request.
@@ -74,7 +74,7 @@ python -m cli.aisp demos labs-decode-multigpu --nproc-per-node 4 -- --iters 4 --
 | `baseline_decode_candidate_logits.py`, `optimized_decode_candidate_logits.py` | Guided/constrained decode variant that compares full-vocabulary scoring plus candidate filtering with direct candidate-only projection. |
 | `baseline_decode_hf_cache.py`, `optimized_decode_hf_cache.py` | Real HuggingFace decoder-loop comparison: dynamic cache + per-step EOS sync vs static cache + compiled decode + batched EOS polling. |
 | `baseline_decode_fp8.py`, `optimized_decode_fp8.py`, `baseline_decode_fp4.py`, `optimized_decode_fp4.py` | Prefill-focused low-precision decode comparisons on hardware that supports them, including the intentional BF16/nn.Linear versus FP8/Transformer Engine TELinear path. |
-| `baseline_decode_warp_specialized.py`, `optimized_decode_warp_specialized.py` | Warp-specialized decode path plus its eager correctness reference. |
+| `baseline_decode_warp_specialized.py`, `optimized_decode_warp_specialized.py` | Decode-only CUDA Graph replay plus its eager PyTorch reference; filenames retain the legacy target name. |
 | `baseline_decode_double_buffer_tma.py`, `optimized_decode_double_buffer_tma.py`, `decode_common.py`, `decode_multigpu_demo.py` | CUDA double-buffer/TMA path, shared helpers, and the multi-GPU NVLink-C2C demo. |
 
 ## Running the Benchmarks
@@ -92,7 +92,7 @@ python -m cli.aisp bench run --targets labs/decode_optimization --profile minima
 - Baseline vs pinned/streams shows improved TTFT and TPOT with lower host wait time.
 - Compile/graph variants emit fewer kernels and higher tokens/sec than the baseline in harness output.
 - FP8/FP4 runs use a prefill-focused workload (`decode_tokens=0`) to surface tensor-core benefits; outputs remain within tolerance.
-- Warp-specialized Triton kernel is validated against a workload-matched eager baseline; the expectation file stays green.
+- The legacy `decode_warp_specialized` target contains no Triton or warp-specialized kernel. Its config labels identify eager versus graph-persistent decode; validate replay correctness and launch overhead on the target.
 - `decode_device_resident` emits zero prompt/payload copies per iteration on the optimized path while preserving the same model output.
 - `decode_prefix_state_cache` emits zero prefill computes per iteration on the optimized path while preserving the same short-decode output.
 - `decode_candidate_logits` emits the same constrained-token decode output while reducing the effective logits vocabulary from the full vocabulary to the candidate set.

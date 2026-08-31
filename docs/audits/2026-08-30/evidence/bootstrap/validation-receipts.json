@@ -1,0 +1,203 @@
+[
+  {
+    "label": "pytest",
+    "started_at_utc": "2026-08-30T22:09:44Z",
+    "command": [
+      "/opt/miniconda3/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_setup_bootstrap.py"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+    "environment": {
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+    },
+    "exit_code": 0,
+    "log": "pytest.txt",
+    "original_log": "pytest.log"
+  },
+  {
+    "label": "bash-syntax",
+    "started_at_utc": "2026-08-30T22:09:44Z",
+    "command": [
+      "/bin/bash",
+      "-n",
+      "code/setup.sh"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering",
+    "environment": {
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+    },
+    "exit_code": 0,
+    "log": "bash-syntax.txt",
+    "original_log": "bash-syntax.log"
+  },
+  {
+    "label": "diff-check",
+    "started_at_utc": "2026-08-30T22:09:44Z",
+    "command": [
+      "git",
+      "diff",
+      "--check",
+      "--",
+      "code/setup.sh",
+      "code/requirements_latest.txt",
+      "code/tests/test_setup_bootstrap.py"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering",
+    "environment": {
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+    },
+    "exit_code": 0,
+    "log": "diff-check.txt",
+    "original_log": "diff-check.log"
+  },
+  {
+    "label": "resolve-x86-stack",
+    "started_at_utc": "2026-08-30T22:09:44Z",
+    "command": [
+      "/tmp/aisp-torchao-compat-zi7v6xmy/venv/bin/python",
+      "-m",
+      "pip",
+      "install",
+      "--dry-run",
+      "--ignore-installed",
+      "--no-deps",
+      "--only-binary=:all:",
+      "--python-version",
+      "3.12",
+      "--implementation",
+      "cp",
+      "--abi",
+      "cp312",
+      "--no-cache-dir",
+      "--disable-pip-version-check",
+      "--platform",
+      "manylinux_2_28_x86_64",
+      "--index-url",
+      "https://download.pytorch.org/whl/cu130",
+      "--report",
+      "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/bootstrap/resolver-x86-stack.json",
+      "torch==2.9.1+cu130",
+      "torchaudio==2.9.1+cu130",
+      "torchao==0.15.0+cu130"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering",
+    "environment": {
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+    },
+    "exit_code": 0,
+    "log": "resolve-x86-stack.txt",
+    "original_log": "resolve-x86-stack.log"
+  },
+  {
+    "label": "resolve-arm-torch-audio",
+    "started_at_utc": "2026-08-30T22:09:44Z",
+    "command": [
+      "/tmp/aisp-torchao-compat-zi7v6xmy/venv/bin/python",
+      "-m",
+      "pip",
+      "install",
+      "--dry-run",
+      "--ignore-installed",
+      "--no-deps",
+      "--only-binary=:all:",
+      "--python-version",
+      "3.12",
+      "--implementation",
+      "cp",
+      "--abi",
+      "cp312",
+      "--no-cache-dir",
+      "--disable-pip-version-check",
+      "--platform",
+      "manylinux_2_28_aarch64",
+      "--index-url",
+      "https://download.pytorch.org/whl/cu130",
+      "--report",
+      "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/bootstrap/resolver-arm-torch-audio.json",
+      "torch==2.9.1+cu130",
+      "torchaudio==2.9.1"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering",
+    "environment": {
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+    },
+    "exit_code": 0,
+    "log": "resolve-arm-torch-audio.txt",
+    "original_log": "resolve-arm-torch-audio.log"
+  },
+  {
+    "label": "resolve-arm-torchao-unavailable",
+    "started_at_utc": "2026-08-30T22:09:44Z",
+    "command": [
+      "/tmp/aisp-torchao-compat-zi7v6xmy/venv/bin/python",
+      "-m",
+      "pip",
+      "install",
+      "--dry-run",
+      "--ignore-installed",
+      "--no-deps",
+      "--only-binary=:all:",
+      "--python-version",
+      "3.12",
+      "--implementation",
+      "cp",
+      "--abi",
+      "cp312",
+      "--no-cache-dir",
+      "--disable-pip-version-check",
+      "--platform",
+      "manylinux_2_28_aarch64",
+      "--index-url",
+      "https://download.pytorch.org/whl/cu130",
+      "torchao==0.15.0+cu130"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering",
+    "environment": {
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+    },
+    "exit_code": 1,
+    "log": "resolve-arm-torchao-unavailable.txt",
+    "original_log": "resolve-arm-torchao-unavailable.log"
+  },
+  {
+    "label": "resolve-x86-triton",
+    "started_at_utc": "2026-08-30T22:09:45Z",
+    "command": [
+      "/tmp/aisp-torchao-compat-zi7v6xmy/venv/bin/python",
+      "-m",
+      "pip",
+      "install",
+      "--dry-run",
+      "--ignore-installed",
+      "--no-deps",
+      "--only-binary=:all:",
+      "--python-version",
+      "3.12",
+      "--implementation",
+      "cp",
+      "--abi",
+      "cp312",
+      "--no-cache-dir",
+      "--disable-pip-version-check",
+      "--platform",
+      "manylinux_2_28_x86_64",
+      "--index-url",
+      "https://download.pytorch.org/whl",
+      "--report",
+      "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/bootstrap/resolver-x86-triton.json",
+      "triton==3.5.0"
+    ],
+    "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering",
+    "environment": {
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+    },
+    "exit_code": 0,
+    "log": "resolve-x86-triton.txt",
+    "original_log": "resolve-x86-triton.log"
+  }
+]

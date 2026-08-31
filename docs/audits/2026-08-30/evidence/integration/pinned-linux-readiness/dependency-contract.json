@@ -1,0 +1,70 @@
+{
+  "captured_utc": "2026-08-31T00:24:09.321329+00:00",
+  "status": "PASS_EXPLICIT_METADATA_CONTRACT__REAL_LINUX_RESOLVER_HOLD",
+  "official_torch_wheel_metadata_sha256": "6a3cacf846425d9c8a3aa9929623a3d1ca261d185064c912be2ab5902d4f0e37",
+  "torch_pin": "2.9.1+cu130",
+  "requires_dist": "triton==3.5.1; platform_system == \"Linux\"",
+  "explicit_target_marker_context": {
+    "platform_system": "Linux",
+    "sys_platform": "linux",
+    "platform_machine": "x86_64",
+    "python_version": "3.12",
+    "python_full_version": "3.12.0"
+  },
+  "original_triton_3_5_0_satisfies_required_specifier": false,
+  "current_triton_pin": "3.5.1",
+  "current_pin_satisfies_required_specifier": true,
+  "fresh_metadata_requirement_matches_preserved_original_resolver_metadata": true,
+  "published_cp312_triton_wheels": {
+    "x86_64": [
+      {
+        "filename": "triton-3.5.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+        "url": "https://files.pythonhosted.org/packages/f2/50/9a8358d3ef58162c0a415d173cfb45b67de60176e1024f71fbc4d24c0b6d/triton-3.5.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+        "sha256": "d2c6b915a03888ab931a9fd3e55ba36785e1fe70cbea0b40c6ef93b20fc85232"
+      }
+    ],
+    "aarch64": [
+      {
+        "filename": "triton-3.5.1-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+        "url": "https://files.pythonhosted.org/packages/db/53/2bcc46879910991f09c063eea07627baef2bc62fe725302ba8f46a2c1ae5/triton-3.5.1-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+        "sha256": "275a045b6ed670dd1bd005c3e6c2d61846c74c66f4512d6f33cc027b11de8fd4"
+      }
+    ]
+  },
+  "requests_pin": "2.34.2",
+  "requests_python_3_12_supported": true,
+  "cpu_workflow_pins_match_shared_requests_and_triton": true,
+  "cpu_workflow_package_specs": [
+    "pytest==8.3.4",
+    "pytest-cov==7.1.0",
+    "coverage[toml]==7.15.2",
+    "pyyaml==6.0.2",
+    "pydantic==2.12.4",
+    "typer==0.12.0",
+    "click==8.1.7",
+    "rich==13.7.0",
+    "psutil==7.1.0",
+    "numpy==2.1.2",
+    "fastapi==0.121.3",
+    "uvicorn==0.38.0",
+    "httpx==0.28.1",
+    "requests==2.34.2",
+    "hypothesis==6.148.2",
+    "anthropic==0.112.0",
+    "openai==2.44.0",
+    "triton==3.5.1",
+    "torch==2.9.1"
+  ],
+  "source_sha256": {
+    "code/requirements_latest.txt": "193324d594b71c6a1f9db4890814612f08df47ce74211866d2c5ba4668da86cf",
+    "code/setup.sh": "4b6515364cf289b31f323b4998e21d66ca263c5c51ac8b3e5ac445154ef8478e",
+    ".github/workflows/benchmark-validation.yml": "44a1449d3bfa496683a574fa169c6ad732982cf9fd0195a3042afc9c55cc88ea"
+  },
+  "limits": [
+    "No installed CUDA stack, native ABI import or GPU execution.",
+    "Explicit PEP508 marker/specifier evaluation is not a full dependency resolution or Linux environment.",
+    "Darwin pip --platform changes compatibility tags but does not establish Linux dependency-marker execution.",
+    "ARM still has no official exact torchao CUDA wheel; existing binary-bootstrap rejection remains.",
+    "Full supported Linux requirements resolution, installation and CI tests remain pending."
+  ]
+}

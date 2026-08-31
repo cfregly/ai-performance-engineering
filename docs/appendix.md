@@ -188,7 +188,7 @@ Always colocate multi-GPU jobs within an NVLink Switch domain if possible. Keepi
 
 ## Leverage unprecedented bandwidth
 
-Recognize that NVLink 5 has 900 GB/s per GPU in each direction, which doubles the per-GPU bandwidth versus the previous generation. An NVL72 rack provides 130 TB/s total bisection bandwidth. This drastically reduces communication wait times, as even tens of gigabytes of gradient data can be all-reduced in a few milliseconds at 1.8 TB/s. Design training algorithms, such as gradient synchronization and parameter sharding, to fully exploit this relatively free communication budget.
+NVLink 5 provides up to 900 GB/s per GPU per direction (1.8 TB/s bidirectional). NVIDIA lists approximately 130 TB/s NVLink bandwidth for a GB200 NVL72 rack: this is the aggregate bidirectional endpoint total (72 × 1.8 = 129.6 TB/s), not a measured bisection rate or an individual pair's bandwidth. Collective algorithm traffic, contention and protocol overhead still determine application latency. Measure the actual collective and message sizes before inferring synchronization cost. [NVIDIA GB200 NVL72 specifications](https://www.nvidia.com/en-us/data-center/gb200-nvl72/)
 
 ## Embrace modern collective algorithms
 
@@ -536,7 +536,7 @@ Use `cuda::pipeline`, `cp.async`, or TMA descriptors to stream tiles into shared
 
 ## Build asynchronous copy pipelines
 
-Hopper and Blackwell introduce `cp.async` and Tensor Memory Accelerator (TMA) engines that stream tiles into shared memory without stalling warps. Structure kernels with double-buffered stages—stage N computes while stage N+1 issues async copies. Size staging buffers as `BLOCK_ROWS × VALUES_PER_THREAD`, prefetch at least one stage ahead, and use CUDA’s `cuda::pipeline` helpers (or CUTLASS/Triton block pointers) to keep the SM fed continuously.
+Ampere (compute capability 8.0) introduced hardware-accelerated global-to-shared asynchronous copies using `cp.async`; Hopper introduced Tensor Memory Accelerator (TMA), with further capabilities on Blackwell. These are distinct mechanisms: a `cuda::memcpy_async` call alone does not prove tensor TMA instructions execute. [NVIDIA Ampere tuning guide](https://docs.nvidia.com/cuda/ampere-tuning-guide/index.html), [NVIDIA Hopper tuning guide](https://docs.nvidia.com/cuda/hopper-tuning-guide/index.html). Structure kernels with double-buffered stages—stage N computes while stage N+1 issues async copies. Size staging buffers as `BLOCK_ROWS × VALUES_PER_THREAD`, prefetch at least one stage ahead, and use CUDA’s `cuda::pipeline` helpers (or CUTLASS/Triton block pointers) to keep the SM fed continuously.
 
 ## Coordinate pipeline stages in shared memory
 
@@ -853,7 +853,7 @@ Pin network interrupts and threads to the CPU core(s) on the same NUMA node as t
 
 ## Optimize NCCL environment variables for your environment
 
-Experiment with NCCL parameters for large multinode jobs. For example, increase NCCL_NTHREADS, the number of CPU threads per GPU for NCCL, from the default 4 to 8 or 16 to drive higher bandwidth at the cost of more CPU usage. Increase NCCL_BUFFSIZE, the buffer size per GPU, from the default 1 MB to 4 MB or more for better throughput on large messages. If your cluster uses SHARP- capable switches, install the NCCL SHARP plugin and enable CollNet by setting NCCL_COLLNET_ENABLE=1, then use the SHARP plugin variables such as SHARP_COLL_ENABLE_SAT=1 as documented. Expect speedups only when your reductions are large enough and the network fabric supports SHARP offload.
+Start from NCCL's defaults and tune one parameter at a time with measured collectives. In NCCL 2.27.5, `NCCL_NTHREADS` selects **CUDA threads per communication block**, not CPU threads per GPU: supported values are 64, 128, 256 and 512; defaults are 512 on recent GPUs and 256 on some older GPUs. `NCCL_BUFFSIZE` controls the communication buffer between GPU pairs, in bytes, with default 4,194,304 (4 MiB). `NCCL_SOCKET_NTHREADS` is the separate CPU-helper setting for socket transport, per network connection, with platform-dependent defaults. Check the documentation for the installed NCCL version and preserve the selected settings with your results. [NCCL 2.27.5 environment-variable reference](https://docs.nvidia.com/deeplearning/nccl/archives/nccl_2275/user-guide/docs/env.html). SHARP/CollNet additionally require compatible fabric, plugin and collective support; environment variables alone do not demonstrate offload or a speedup.
 
 ## Use gradient accumulation for slow networks
 

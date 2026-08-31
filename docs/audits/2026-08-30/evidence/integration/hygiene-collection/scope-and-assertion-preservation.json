@@ -1,0 +1,12 @@
+{
+  "changed_existing_functions": [
+    "test_occupancy_tuning_variants_match_their_filenames"
+  ],
+  "added_functions": [
+    "test_occupancy_tuning_schedule_preserves_inference_and_validation_hygiene"
+  ],
+  "removed_functions": [],
+  "original_occupancy_assertions": 30,
+  "split_occupancy_assertions": 30,
+  "assertions_identical": true
+}

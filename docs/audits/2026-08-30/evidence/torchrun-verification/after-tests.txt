@@ -1,0 +1,47 @@
+.............................F.s                                         [100%]
+=================================== FAILURES ===================================
+____ test_explicit_none_spec_selects_fallback_script_before_launcher_error _____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x346aeebd0>
+
+    def test_explicit_none_spec_selects_fallback_script_before_launcher_error(monkeypatch):
+        """Observe a real command construction and an explicit failed spawn, not fake success."""
+        class DefaultSpec(BaseBenchmark):
+            def get_torchrun_spec(self, config=None):
+                return None
+    
+        harness, config = cpu_harness()
+        launches = []
+    
+        def unavailable_launcher(command, **kwargs):
+            launches.append(command)
+            raise OSError("LOCAL019 launcher unavailable control")
+    
+        monkeypatch.setattr("core.harness.benchmark_harness.subprocess.Popen", unavailable_launcher)
+>       result = harness._benchmark_with_torchrun(DefaultSpec(), config)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_audit_wave1_torchrun_verification.py:168: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+core/harness/benchmark_harness.py:2591: in _benchmark_with_torchrun
+    process = subprocess.Popen(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+command = ['/opt/miniconda3/bin/python', '-m', 'torch.distributed.run', '--nproc_per_node', '1', '--nnodes', ...]
+kwargs = {'env': {'AISP_BENCHMARK_OWNER_PID': '35376', 'AISP_BENCHMARK_OWNER_RUN_ID': '35376', 'BUN_INSTALL': '/Users/admin/.bu...b21d04b.sock', ...}, 'preexec_fn': <function _benchmark_child_preexec at 0x346a1dbc0>, 'stderr': -1, 'stdout': -1, ...}
+
+    def unavailable_launcher(command, **kwargs):
+        launches.append(command)
+>       raise OSError("LOCAL019 launcher unavailable control")
+E       OSError: LOCAL019 launcher unavailable control
+
+tests/test_audit_wave1_torchrun_verification.py:165: OSError
+----------------------------- Captured stdout call -----------------------------
+[harness] _benchmark_with_torchrun start
+[harness] torchrun spec script=/Users/admin/dev/ai-perf/ai-performance-engineering/code/tests/test_audit_wave1_torchrun_verification.py module=None args=[]
+[harness] torchrun cmd: /opt/miniconda3/bin/python -m torch.distributed.run --nproc_per_node 1 --nnodes 1 --rdzv_backend c10d --rdzv_endpoint 127.0.0.1:0 -m core.harness.torchrun_wrapper --aisp-target-script /Users/admin/dev/ai-perf/ai-performance-engineering/code/tests/test_audit_wave1_torchrun_verification.py --aisp-expected-torch-seed 42
+[harness] torchrun env passthrough: ['CUDA_VISIBLE_DEVICES']
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/torchrun-verification/after-tests.xml -
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_audit_wave1_torchrun_verification.py:195: real torchrun launcher integration requires supported Linux host
+1 failed, 30 passed, 1 skipped in 3.51s

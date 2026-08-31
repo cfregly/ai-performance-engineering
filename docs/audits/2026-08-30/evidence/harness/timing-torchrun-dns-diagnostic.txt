@@ -1,0 +1,10 @@
+W0830 18:32:19.851000 2449 site-packages/torch/distributed/elastic/multiprocessing/redirects.py:29] NOTE: Redirects are currently not supported in Windows or MacOs.
+[W830 18:32:19.746546000 socket.cpp:755] [c10d] The IPv6 network addresses of (181.1.168.192.in-addr.arpa, 59620) cannot be retrieved (gai error: 8 - nodename nor servname provided, or not known).
+[W830 18:32:20.051048000 socket.cpp:755] [c10d] The IPv6 network addresses of (181.1.168.192.in-addr.arpa, 59620) cannot be retrieved (gai error: 8 - nodename nor servname provided, or not known).
+[W830 18:32:20.600255000 socket.cpp:755] [c10d] The IPv6 network addresses of (181.1.168.192.in-addr.arpa, 59620) cannot be retrieved (gai error: 8 - nodename nor servname provided, or not known).
+[W830 18:32:21.181619000 socket.cpp:755] [c10d] The IPv6 network addresses of (181.1.168.192.in-addr.arpa, 59620) cannot be retrieved (gai error: 8 - nodename nor servname provided, or not known).
+[W830 18:32:23.830447000 socket.cpp:755] [c10d] The IPv6 network addresses of (181.1.168.192.in-addr.arpa, 59620) cannot be retrieved (gai error: 8 - nodename nor servname provided, or not known).
+[W830 18:32:25.436984000 socket.cpp:755] [c10d] The IPv6 network addresses of (181.1.168.192.in-addr.arpa, 59620) cannot be retrieved (gai error: 8 - nodename nor servname provided, or not known).
+[W830 18:32:31.862065000 socket.cpp:755] [c10d] The IPv6 network addresses of (181.1.168.192.in-addr.arpa, 59620) cannot be retrieved (gai error: 8 - nodename nor servname provided, or not known).
+[W830 18:32:36.259772000 socket.cpp:755] [c10d] The IPv6 network addresses of (181.1.168.192.in-addr.arpa, 59620) cannot be retrieved (gai error: 8 - nodename nor servname provided, or not known).
+[W830 18:32:49.075780000 socket.cpp:755] [c10d] The IPv6 network addresses of (181.1.168.192.in-addr.arpa, 59620) cannot be retrieved (gai error: 8 - nodename nor servname provided, or not known).

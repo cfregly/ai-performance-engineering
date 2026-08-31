@@ -707,6 +707,13 @@ class VerifyRunner:
             
             # Standard numeric comparison
             if exp_tensor.is_floating_point():
+                # Equal-shape empty outputs have no numeric differences to
+                # reduce. Keep allclose's dtype contract and custom-comparator
+                # precedence, but avoid max()/argmax() on an empty tensor.
+                if exp_tensor.numel() == 0:
+                    if not torch.allclose(exp_tensor, act_tensor, rtol=tol.rtol, atol=tol.atol):
+                        return ComparisonDetails(passed=False, tolerance_used=tol)
+                    continue
                 # Use allclose with tolerances
                 diff = torch.abs(exp_tensor - act_tensor)
                 rel_diff = diff / (torch.abs(exp_tensor) + 1e-12)
@@ -1173,12 +1180,33 @@ class VerifyRunner:
         
         # Save original input
         original_input = input_tensor.clone()
+        perturbation_started = False
         
         try:
+            # A legitimate benchmark may write into the same output storage on
+            # every iteration. Snapshot tensor leaves before rerunning it; a
+            # reference would compare the overwritten output against itself.
+            # The tree spec retains dict/list/tuple structure without touching
+            # benchmark-owned containers or tensor storage.
+            from torch.utils._pytree import tree_flatten
+
+            original_leaves, original_spec = tree_flatten(original_output)
+            original_leaves = [
+                leaf.detach().clone() if isinstance(leaf, torch.Tensor) else leaf
+                for leaf in original_leaves
+            ]
+            tensor_indices = [
+                index for index, leaf in enumerate(original_leaves)
+                if isinstance(leaf, torch.Tensor)
+            ]
+            if not tensor_indices:
+                return True, "Jitter check skipped: output contains no tensor leaves"
+
             # Perturb the input by adding small noise
             with torch.no_grad():
                 noise = torch.randn_like(input_tensor) * 0.01
                 input_tensor.add_(noise)
+                perturbation_started = True
             
             # Re-run benchmark
             benchmark.benchmark_fn()
@@ -1189,26 +1217,41 @@ class VerifyRunner:
                 try:
                     capture_hook()
                 except Exception as exc:
-                    return True, f"Jitter check skipped due to capture_verification_payload() error: {exc}"
+                    raise RuntimeError(f"capture_verification_payload() error: {exc}") from exc
             
             # Get new output
             try:
                 perturbed_output = benchmark.get_verify_output()
-            except (RuntimeError, NotImplementedError):
-                return True, None
+            except (RuntimeError, NotImplementedError) as exc:
+                raise RuntimeError(f"get_verify_output() error after perturbation: {exc}") from exc
             
             # Restore original input
             with torch.no_grad():
                 input_tensor.copy_(original_input)
             
-            # Check if output changed
-            if perturbed_output is not None and original_output is not None:
-                # Outputs should be DIFFERENT after perturbation
-                if torch.allclose(original_output, perturbed_output, rtol=1e-5, atol=1e-5):
-                    return False, (
-                        f"Jitter check failed: output unchanged after perturbing {tensor_name}. "
-                        "This suggests hardcoded/cached outputs."
-                    )
+            # Losing the output contract cannot establish input dependence.
+            if perturbed_output is None:
+                return False, "Jitter check failed: output missing after perturbation"
+            perturbed_leaves, perturbed_spec = tree_flatten(perturbed_output)
+            if original_spec != perturbed_spec:
+                return False, "Jitter check failed: output structure changed after perturbation"
+            unchanged = True
+            for index in tensor_indices:
+                expected_leaf = original_leaves[index]
+                actual_leaf = perturbed_leaves[index]
+                if not isinstance(actual_leaf, torch.Tensor):
+                    return False, "Jitter check failed: output tensor replaced by a non-tensor after perturbation"
+                if expected_leaf.shape != actual_leaf.shape or expected_leaf.dtype != actual_leaf.dtype:
+                    return False, "Jitter check failed: output shape or dtype changed after perturbation"
+                if not bool(torch.isfinite(expected_leaf).all()) or not bool(torch.isfinite(actual_leaf).all()):
+                    return False, "Jitter check failed: output contains nonfinite values"
+                if not torch.allclose(expected_leaf, actual_leaf, rtol=1e-5, atol=1e-5):
+                    unchanged = False
+            if unchanged:
+                return False, (
+                    f"Jitter check failed: output unchanged after perturbing {tensor_name}. "
+                    "This suggests hardcoded/cached outputs."
+                )
             
             return True, None
             
@@ -1220,7 +1263,11 @@ class VerifyRunner:
                     input_tensor.copy_(original_input)
             except Exception as restore_exc:
                 restore_error = f" Input restore also failed: {restore_exc}"
-            # Don't fail verification for jitter check errors - it's advisory
+            # Once inputs were perturbed, an execution/refresh/comparison error
+            # is not evidence that the output depends on them. Unsupported
+            # input perturbation remains advisory before any mutation occurs.
+            if perturbation_started or restore_error:
+                return False, f"Jitter check failed due to error: {e}.{restore_error or ''}".rstrip()
             return True, f"Jitter check skipped due to error: {e}.{restore_error or ''}".rstrip()
     
     def verify_baseline(

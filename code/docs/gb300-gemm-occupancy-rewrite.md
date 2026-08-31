@@ -1,5 +1,8 @@
 # GB300 gemm_cluster Occupancy Rewrite (dual-CTA variant) — Fronts E + E2
 
+> **2026-08-30 correction:** This retained report uses historical FP8 7.5-PFLOP/s and/or FP16/BF16 3.75-PFLOP/s roofline denominators. For GB300 NVL72, the published dense per-GPU denominators are 5.0 and 2.5 PFLOP/s. See [corrected definitions and interpretation](gb300-roofline-corrections-2026-08-30.md). Original measurements and tables below are preserved; this correction does not recertify them or update native profiler percentages.
+
+
 ## Verdict
 
 **WIN (measured, verified) — config (256,2): 1311 TFLOPS best / 1222 median,

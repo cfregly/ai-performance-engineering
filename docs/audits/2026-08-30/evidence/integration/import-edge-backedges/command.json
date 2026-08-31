@@ -1,0 +1,15 @@
+{
+  "command": [
+    "python3",
+    "code/core/scripts/check_import_edges.py",
+    "--root",
+    "code"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering",
+  "captured_at": "2026-08-31T01:12:37.582513+00:00",
+  "exit_code": 1,
+  "stdout_line_count": 1,
+  "stderr_line_count": 0,
+  "gpu_run": false,
+  "remote_run": false
+}

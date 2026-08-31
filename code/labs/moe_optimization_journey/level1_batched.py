@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
-"""Level 1: Batched Expert Execution.
+"""Level 1: Batched expert computation.
 
-ADDS: Batched matmul for parallel expert computation.
-- Eliminates Python loops
-- All experts computed via single batched einsum
-- ~2-3x speedup over Level 0
+Uses the shared batched BF16 model.
 
-Cumulative: Level 0 + batched execution
-"""
+The filename and class are retained for compatibility. The LEVEL mapping,
+not a legacy filename, determines execution. These shared levels do not use
+FP8 quantization. No speedup is established by selecting a level."""
 import torch
 
 from labs.moe_optimization_journey.moe_benchmark import MoEJourneyBenchmark, run_level
 
 
 class Level1Batched(MoEJourneyBenchmark):
-    """Level 1: + Batched expert execution."""
+    """Shared level 1: Batched expert computation."""
     LEVEL = 1
 
 def get_benchmark() -> Level1Batched:

@@ -1,5 +1,8 @@
 # GB300 Speed-of-Light roofline grounding of 7 shipped wins
 
+> **2026-08-30 correction:** This retained report uses historical FP8 7.5-PFLOP/s and/or FP16/BF16 3.75-PFLOP/s roofline denominators. For GB300 NVL72, the published dense per-GPU denominators are 5.0 and 2.5 PFLOP/s. See [corrected definitions and interpretation](gb300-roofline-corrections-2026-08-30.md). Original measurements and tables below are preserved; this correction does not recertify them or update native profiler percentages.
+
+
 Ratchet-the-champion pass: each shipped win is re-profiled with `ncu --set full` to decide
 whether its dominant GPU kernel is at its Speed-of-Light ceiling or still has headroom with an
 addressable bottleneck. Read-only diagnosis. No committed source was modified.

@@ -1,0 +1,20 @@
+{
+  "captured_at": "2026-08-30T23:09:52.051555+00:00",
+  "python": "3.12.2 | packaged by conda-forge | (main, Feb 16 2024, 20:54:21) [Clang 16.0.6 ]",
+  "executable": "/opt/miniconda3/bin/python",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "machine": "arm64",
+  "versions": {
+    "pytest": "8.4.2",
+    "torch": "2.8.0",
+    "numpy": "1.26.4",
+    "triton": null,
+    "flash-attn": null,
+    "nvidia-cutlass-dsl": null
+  },
+  "cuda_build": null,
+  "cuda_available": false,
+  "nvcc": null,
+  "gpu_lease": "Unavailable; no remote hardware contacted",
+  "environment_is_pinned_target": false
+}

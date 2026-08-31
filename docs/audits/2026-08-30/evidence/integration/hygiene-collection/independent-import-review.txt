@@ -1,0 +1,1 @@
+repo_plan_context read-only review: 30 assertions exactly preserved across the split; factory test uses actual normal imports and construction with no skip; all source assertions retained. No additional actionable concern. Reviewer own CPU tests confirm production lazy imports, not GPU execution.

@@ -1,0 +1,25 @@
+Reviewer: sibling agent /root/repo_plan_context, read-only; no writes, compilation, or GPU execution.
+
+W1-010 review:
+- Barrier publication follows initialization and precedes CTA synchronization.
+- Producer waits prior empty phase before stage reuse; consumer waits/toggles full phase and commits empty after MMA.
+- Final MMA barrier wait precedes TMEM epilogue; CTA synchronization precedes collective free.
+- No further actionable source lifetime concern under positive whole-tile preconditions. Compilation, full-output/parity and sanitizer acceptance remain HOLD.
+
+Stream/graph review:
+- Ordered allocation/H2D/compute/D2H/reuse dependencies, d_out copy, all-chunk coverage and timing fan-in are consistent.
+- Overlap variants use equal work/input reset; modes use equal two-buffer feedback jobs; tail math, uniform barrier and full-output checks are consistent.
+- Warp-stream timed verification covers every active final feedback buffer.
+- Graph baseline/replay share stage workload/reset and bounded verification.
+- No additional actionable CUDA source lifetime finding.
+
+Actionable gate finding and resolution:
+- Initial tcgen05 JIT compile/import had no timeout. Moved it to a bounded child.
+- Re-review confirms 300-second timeout, owned process session, killpg on timeout, captured outputs/exit124, module existence/hash checked before execution, and shared helper for build/run paths.
+- Ordinary compiler descendants are contained. Actual CUDA compile/runtime remains HOLD.
+
+Exact-comparison review:
+- Fixed input family uses operands on a 1/32 lattice; products/partial sums are on a 1/1024 lattice. K<=1088 keeps the accumulations within FP32's exact integer-scaled range.
+- Float64 reference and FP32 production accumulation then round to FP16; exact equality is justified for these seven constructed cases only, not arbitrary inputs.
+
+Review does not establish compilation, instruction emission, hardware safety, GPU correctness, or performance.

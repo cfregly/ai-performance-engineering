@@ -1,0 +1,2617 @@
+[
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestTimingEdgeCases.test_unsynced_streams_multiple_streams",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_stream_audit_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestTimingEdgeCases.test_unsynced_streams_nested_streams",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_stream_audit_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestTimingEdgeCases.test_unsynced_streams_priority_streams",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_stream_audit_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestTimingEdgeCases.test_async_ops_chained_operations",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_stream_audit_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestTimingEdgeCases.test_async_ops_mixed_cpu_gpu",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_stream_audit_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestTimingEdgeCases.test_event_timing_zero_duration",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Timing-summary diagnostic boundary, not a CUDA event measurement."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestTimingEdgeCases.test_event_timing_very_long_duration",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Large finite timing-summary boundary, not a long-running GPU allocation."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestTimingEdgeCases.test_timer_granularity_sub_microsecond",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Real CUDA adaptive iteration accumulation; no assertion of sub-microsecond hardware resolution."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestTimingEdgeCases.test_warmup_bleed_jit_compilation",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Real CPU JIT and harness phase separation; no first-call speed assumption."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestTimingEdgeCases.test_warmup_bleed_cudnn_autotuning",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Actual backend-policy mutation detection; no cuDNN timing or GPU claim."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestTimingEdgeCases.test_clock_drift_long_benchmark",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_gpu_state_controls"
+    ],
+    "scope_note": "Clock-drop diagnostic classifier, not a measured long GPU run."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestTimingEdgeCases.test_profiler_overhead_nested_profilers",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no nested-profiler rejection guard is implemented; a single profiler context did not test nesting"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestOutputEdgeCases.test_constant_output_single_value",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestOutputEdgeCases.test_constant_output_near_constant",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestOutputEdgeCases.test_stale_cache_after_input_change",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestOutputEdgeCases.test_approximation_drift_accumulated_error",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_comparison_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestOutputEdgeCases.test_approximation_drift_fp16_accumulation",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_comparison_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestOutputEdgeCases.test_nan_from_division_by_zero",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_comparison_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestOutputEdgeCases.test_nan_from_sqrt_negative",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_comparison_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestOutputEdgeCases.test_nan_propagation",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_comparison_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestOutputEdgeCases.test_inf_from_overflow",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_comparison_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestOutputEdgeCases.test_inf_from_division",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_comparison_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestOutputEdgeCases.test_ground_truth_contains_nan",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestOutputEdgeCases.test_shape_mismatch_broadcast_ambiguity",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_comparison_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestOutputEdgeCases.test_shape_mismatch_transposed",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_comparison_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestOutputEdgeCases.test_dtype_mismatch_float_precisions",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Runtime input dtype enforcement; no claim that output dtype coercion is a detector."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestOutputEdgeCases.test_dtype_mismatch_int_vs_float",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Runtime input dtype enforcement; no claim that output dtype coercion is a detector."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestOutputEdgeCases.test_denormalized_values_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_comparison_controls"
+    ],
+    "scope_note": "Exact comparator rejects flushing subnormal values to zero; default tolerance is unchanged."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestOutputEdgeCases.test_uninitialized_memory_torch_empty",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no uninitialized-memory provenance detector; filling torch.empty before comparison erases the condition"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestWorkloadEdgeCases.test_batch_shrinking_by_one",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_signature_controls"
+    ],
+    "scope_note": "Production signature equivalence rejects changed workload metadata, including zero batch versus nonzero."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestWorkloadEdgeCases.test_batch_shrinking_zero_batch",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_signature_controls"
+    ],
+    "scope_note": "Production signature equivalence rejects changed workload metadata, including zero batch versus nonzero."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestWorkloadEdgeCases.test_sequence_truncation_by_one",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_signature_controls"
+    ],
+    "scope_note": "Production signature equivalence rejects changed workload metadata, including zero batch versus nonzero."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestWorkloadEdgeCases.test_hidden_downsampling_power_of_two",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_signature_controls"
+    ],
+    "scope_note": "Production signature equivalence rejects changed workload metadata, including zero batch versus nonzero."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestWorkloadEdgeCases.test_precision_mismatch_tf32",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_signature_controls"
+    ],
+    "scope_note": "Production signature equivalence rejects changed workload metadata, including zero batch versus nonzero."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestWorkloadEdgeCases.test_precision_mismatch_fp8_variants",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "FP8 variant identity is carried by actual signature dtype strings, not the shared fp8 flag."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestWorkloadEdgeCases.test_undeclared_shortcuts_skip_layers",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_comparison_controls",
+      "assert_signature_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestWorkloadEdgeCases.test_early_exit_threshold_boundary",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_comparison_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestWorkloadEdgeCases.test_sparsity_mismatch_one_percent_difference",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_signature_controls"
+    ],
+    "scope_note": "Production signature equivalence rejects changed workload metadata, including zero batch versus nonzero."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestWorkloadEdgeCases.test_sparsity_mismatch_near_zero",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_signature_controls"
+    ],
+    "scope_note": "Production signature equivalence rejects changed workload metadata, including zero batch versus nonzero."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestWorkloadEdgeCases.test_attention_mask_causal_vs_full",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_comparison_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestWorkloadEdgeCases.test_kv_cache_size_off_by_one",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_signature_controls"
+    ],
+    "scope_note": "Production signature equivalence rejects changed workload metadata, including zero batch versus nonzero."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestWorkloadEdgeCases.test_train_test_overlap_single_sample",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestLocationEdgeCases.test_cpu_spillover_single_op_on_cpu",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no per-operation CPU spillover detector is implemented; wall-time measurement alone does not identify execution placement"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestLocationEdgeCases.test_cpu_spillover_data_dependent_branch",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no per-operation CPU spillover detector is implemented; wall-time measurement alone does not identify execution placement"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestLocationEdgeCases.test_setup_precomputation_cached_result",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestLocationEdgeCases.test_graph_capture_computation_in_capture",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Timing diagnostic classification, not a captured graph or measured GPU work."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestLocationEdgeCases.test_warmup_computation_result_reused",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestLocationEdgeCases.test_background_thread_computation",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no background-thread computation isolation guard; process isolation does not forbid threads inside a benchmark"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestLocationEdgeCases.test_lazy_evaluation_never_materialized",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_materialization_diagnostic"
+    ],
+    "scope_note": "The production materializer reports a capability warning for a real meta tensor; it does not reject the run."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestLocationEdgeCases.test_jit_compilation_first_call_slow",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Real CPU JIT and harness phase separation; no first-call speed assumption."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestMemoryEdgeCases.test_preallocated_output_exact_shape",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Preallocated storage is allowed when recomputed; cached output is rejected."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestMemoryEdgeCases.test_preallocated_output_view",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Preallocated storage is allowed when recomputed; cached output is rejected."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestMemoryEdgeCases.test_input_output_aliasing_inplace",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestMemoryEdgeCases.test_input_output_aliasing_view",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestMemoryEdgeCases.test_pinned_memory_transfer_timing",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_stream_audit_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestMemoryEdgeCases.test_memory_pool_cached_allocation",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Real CUDA allocator cleanup integration; does not claim cached address reuse is cheating."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestMemoryEdgeCases.test_fragmentation_many_small_allocs",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_memory_pattern_controls"
+    ],
+    "scope_note": "Production peak-memory diagnostic, not proof of fragmentation detection or an allocation stress test."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestMemoryEdgeCases.test_page_fault_first_access",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no page-fault or managed-memory event detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestMemoryEdgeCases.test_swap_interference_large_allocation",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_environment_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestCudaEdgeCases.test_host_callback_with_stream",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no host callback execution detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestCudaEdgeCases.test_async_memcpy_stream_ordering",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_stream_audit_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestCudaEdgeCases.test_workspace_precomputed_cublas",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no cuBLAS workspace precomputation detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestCudaEdgeCases.test_persistent_kernel_occupancy",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no persistent kernel lifetime detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestCudaEdgeCases.test_undeclared_multi_gpu_single_declared",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no undeclared GPU execution detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestCudaEdgeCases.test_context_switch_device_change",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no CUDA context switch enforcement detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestCudaEdgeCases.test_driver_overhead_many_small_kernels",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no driver-overhead attribution detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestCudaEdgeCases.test_cooperative_launch_grid_sync",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no cooperative launch inspection detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestCudaEdgeCases.test_dynamic_parallelism_nested_launch",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no device-side dynamic launch inspection detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestCudaEdgeCases.test_unified_memory_managed_allocation",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no page-fault or managed-memory event detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestCompileEdgeCases.test_cache_hit_shape_variation",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_compile_cache_reset"
+    ],
+    "scope_note": "Real CPU Dynamo cache hit and reset behavior, with graph execution checked."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestCompileEdgeCases.test_trace_reuse_dynamic_shapes",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_compile_cache_reset"
+    ],
+    "scope_note": "Real CPU Dynamo cache hit and reset behavior, with graph execution checked."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestCompileEdgeCases.test_mode_inconsistency_train_vs_eval",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_comparison_controls"
+    ],
+    "scope_note": "Output verification detects this real mode-dependent difference; no general mode-policy validator is implied."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestCompileEdgeCases.test_inductor_asymmetry_different_backends",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no compiler-backend parity policy detector is implemented; eager versus compiled equivalence alone cannot enforce fair compiler modes"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestCompileEdgeCases.test_guard_failure_control_flow",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_compile_guard_counts"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestCompileEdgeCases.test_autotuning_variance_repeated_runs",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no autotuning variance or compiler-mode parity detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestCompileEdgeCases.test_symbolic_shape_specialization",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_signature_controls"
+    ],
+    "scope_note": "Production signature equivalence rejects changed workload metadata, including zero batch versus nonzero."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestDistributedEdgeCases.test_rank_skipping_single_rank",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Rank receipt validation, not a distributed execution measurement."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestDistributedEdgeCases.test_collective_shortcircuit_single_element",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_comparison_controls"
+    ],
+    "scope_note": "Verifies a missing reduction result; no multiprocess collective is claimed."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestDistributedEdgeCases.test_topology_mismatch_ring_vs_tree",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: DistributedTopology does not encode ring versus tree algorithm, so it cannot enforce this claimed policy"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestDistributedEdgeCases.test_barrier_timing_straggler",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no rank barrier timing detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestDistributedEdgeCases.test_gradient_bucketing_different_sizes",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no gradient bucket-size parity field or detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestDistributedEdgeCases.test_async_gradient_overlap",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no async gradient completion timing detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestDistributedEdgeCases.test_pipeline_bubble_microbatch_count",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_signature_controls"
+    ],
+    "scope_note": "Declared per-rank workload comparison, not timing or detecting pipeline bubbles."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestDistributedEdgeCases.test_shard_size_imbalanced",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_signature_controls"
+    ],
+    "scope_note": "Declared shard dimensions are compared; no multiprocess run is claimed."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestEnvironmentEdgeCases.test_device_mismatch_compute_capability",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no expected-versus-observed compute-capability comparison is performed by validate_environment"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestEnvironmentEdgeCases.test_frequency_boost_detection",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: GPU state consistency detects clock drops, not clock boosts or absolute clock locking"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestEnvironmentEdgeCases.test_priority_elevation_process_nice",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no process-priority parity detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestEnvironmentEdgeCases.test_memory_overcommit_reservation",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_memory_pattern_controls"
+    ],
+    "scope_note": "Detects excessive allocated-memory growth in diagnostic snapshots; no OS overcommit policy detector is implied."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestEnvironmentEdgeCases.test_numa_gpu_affinity",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_environment_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestEnvironmentEdgeCases.test_cpu_governor_consistency",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_environment_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestEnvironmentEdgeCases.test_thermal_throttling_temperature_check",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_gpu_state_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestEnvironmentEdgeCases.test_power_limit_variation",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: GPUState has no power-limit field and check_gpu_state_consistency does not compare power limits"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestEnvironmentEdgeCases.test_driver_version_recorded",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "real CUDA/NVML driver provenance integration requires a device"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Compare actual driver provenance with NVML, separately from the CUDA runtime version."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestEnvironmentEdgeCases.test_library_version_cudnn",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: RunManifest does not record cuDNN version or compare baseline/optimized library versions"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestEnvironmentEdgeCases.test_container_cgroup_limits",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_environment_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestEnvironmentEdgeCases.test_virtualization_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_environment_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestStatisticalEdgeCases.test_outlier_injection_single_extreme",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Reporting fidelity only. No production statistical outlier/omission/cherry-pick classifier exists; that requirement stays open."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestStatisticalEdgeCases.test_outlier_injection_median_robust",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Reporting fidelity only. No production statistical outlier/omission/cherry-pick classifier exists; that requirement stays open."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestStatisticalEdgeCases.test_variance_gaming_consistent_slow",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Reporting fidelity only. No production statistical outlier/omission/cherry-pick classifier exists; that requirement stays open."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestStatisticalEdgeCases.test_percentile_selection_p50_vs_p99",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Reporting fidelity only. No production statistical outlier/omission/cherry-pick classifier exists; that requirement stays open."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestStatisticalEdgeCases.test_insufficient_samples_high_variance",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no statistical-power or minimum-samples-based-on-variance detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestStatisticalEdgeCases.test_cold_start_first_iteration_slow",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Reporting fidelity only. No production statistical outlier/omission/cherry-pick classifier exists; that requirement stays open."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestStatisticalEdgeCases.test_gc_interference_collection_pause",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestStatisticalEdgeCases.test_background_noise_cpu_bound",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no background CPU noise or process-priority detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestStatisticalEdgeCases.test_cherry_picking_best_of_n",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Reporting fidelity only. No production statistical outlier/omission/cherry-pick classifier exists; that requirement stays open."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestEvaluationEdgeCases.test_eval_code_exploitation_hardcoded",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestEvaluationEdgeCases.test_timeout_manipulation_extend",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_config_immutability"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestEvaluationEdgeCases.test_metric_gaming_threshold_tuning",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no evaluation-threshold policy or dataset evaluator contract is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestEvaluationEdgeCases.test_data_leakage_feature_from_label",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestEvaluationEdgeCases.test_overfitting_train_on_test",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestEvaluationEdgeCases.test_self_modifying_immutable_test",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no test-source immutability guard is implemented in the benchmark protection path"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestEvaluationEdgeCases.test_memorization_hash_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestEvaluationEdgeCases.test_missing_holdout_temporal_split",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestBoundaryConditions.test_tolerance_exactly_at_boundary",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestBoundaryConditions.test_workload_mismatch_at_one_percent",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestBoundaryConditions.test_sparsity_at_detection_threshold",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Signature sparsity policy is exact matching; no invented 1% tolerance."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestBoundaryConditions.test_timing_variance_coefficient",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Graph replay variance diagnostic, not a general timing acceptance policy."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestExtremeValues.test_very_large_tensor",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Real failure propagation; explicit injected OOM avoids allocating most of the device or claiming actual exhaustion."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestExtremeValues.test_very_small_values",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_comparison_controls"
+    ],
+    "scope_note": "Exact comparator rejects flushing subnormal values to zero; default tolerance is unchanged."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestExtremeValues.test_zero_dimensions",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestExtremeValues.test_single_element",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_comparison_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestExtremeValues.test_maximum_dimensions",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_comparison_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestRaceConditions.test_concurrent_stream_operations",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_stream_audit_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestRaceConditions.test_concurrent_allocations",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no concurrent-allocation race detector is implemented; successful allocations did not validate a protection"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Requirement remains open; this retained test ID is not passing coverage."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestAdjacentVerificationRegressions.test_jitter_snapshots_nested_reused_output",
+    "test_results": [
+      "pass",
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestAdjacentVerificationRegressions.test_jitter_restores_input_after_output_refresh_failure",
+    "test_results": [
+      "pass",
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestAdjacentVerificationRegressions.test_snapshot_does_not_hide_input_output_aliasing",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_edge_cases.py",
+    "id": "TestAdjacentVerificationRegressions.test_jitter_rejects_uncomparable_output",
+    "test_results": [
+      "pass",
+      "pass",
+      "pass",
+      "pass",
+      "pass",
+      "pass",
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestTimingProtections.test_unsynced_streams_detection",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestTimingProtections.test_incomplete_async_ops_protection",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_stream_audit_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestTimingProtections.test_event_timing_cross_validation",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_cuda_timing_cross_validation"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestTimingProtections.test_timer_granularity_adaptive_iterations",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "_check_adaptive_cuda_iterations"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestTimingProtections.test_warmup_bleed_isolation",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "_check_warmup_isolation"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestTimingProtections.test_clock_drift_monotonic",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Observe the actual monotonic clock used by CPU harness measurement."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestTimingProtections.test_profiler_overhead_profile_free_path",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "The actual timing callback executes without an active PyTorch profiler."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestOutputProtections.test_constant_output_jitter_check",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "_check_fresh_controls",
+      "_check_jitter_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestOutputProtections.test_stale_cache_fresh_input_check",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "_check_fresh_controls"
+    ],
+    "scope_note": "Reject cached results; allocating an output buffer is not itself cheating."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestOutputProtections.test_invalid_values_nan_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Output verification rejects a deliberately corrupted value."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestOutputProtections.test_invalid_values_inf_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Output verification rejects a deliberately corrupted value."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestOutputProtections.test_denormalized_values_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Numerical comparison catches wrong subnormal output; no slowdown classifier."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestOutputProtections.test_uninitialized_memory_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Output verification rejects a deliberately corrupted value."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestWorkloadProtections.test_undeclared_shortcuts_workload_invariant",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that undeclared shortcuts are detected.\n\nProtection: Workload invariant check\nAttack: Skips elements without declaring"
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestWorkloadProtections.test_early_exit_config_immutability",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "_check_config_mutation"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestWorkloadProtections.test_backend_precision_policy_mutation_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that backend precision policy mutations are detected.\n\nProtection: check_precision_policy_consistency()\nAttack: Toggle TF32 / matmul precision during timing"
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestWorkloadProtections.test_sparsity_mismatch_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that sparsity mismatches are detected.\n\nProtection: Sparsity ratio check\nAttack: Different sparsity patterns"
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestLocationProtections.test_cpu_spillover_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "The real source detector identifies an explicit host transfer."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestLocationProtections.test_setup_precomputation_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestLocationProtections.test_graph_capture_cheat_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Exercise graph diagnostics with explicit state fixtures, not GPU evidence."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestLocationProtections.test_graph_capture_thresholds_respected",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Graph capture cheat thresholds should gate detection."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestLocationProtections.test_lazy_evaluation_force_evaluation",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_materialization_diagnostic"
+    ],
+    "scope_note": "Real materialization failure produces a diagnostic; production does not fail the run."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestMemoryProtections.test_preallocated_output_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "_check_fresh_controls"
+    ],
+    "scope_note": "Reject cached results; allocating an output buffer is not itself cheating."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestMemoryProtections.test_input_output_aliasing_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that input-output aliasing is detected.\n\nProtection: check_input_output_aliasing()\nAttack: Output points to pre-filled input\n\nNote: check_input_output_aliasing returns (no_aliasing, message)\nwhere no_aliasing=True means NO aliasing detected (good)"
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestMemoryProtections.test_memory_pool_reset",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that memory pool can be reset.\n\nProtection: reset_cuda_memory_pool()\nAttack: Cached allocations skew timing"
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestCUDAProtections.test_async_memcpy_sync",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_stream_audit_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestCUDAProtections.test_undeclared_multi_gpu_detection",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no undeclared-GPU execution detector; environment inventory only warns that multiple devices exist"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestCUDAProtections.test_context_switch_handling",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no CUDA context-switch enforcement detector"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestCompileProtections.test_compilation_cache_clear",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_compile_cache_reset"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestCompileProtections.test_trace_reuse_reset",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_compile_cache_reset"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestCompileProtections.test_guard_failure_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_compile_guard_counts"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestDistributedProtections.test_rank_skipping_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that rank skipping is detected.\n\nProtection: check_rank_execution()\nAttack: Some ranks don't do work"
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestDistributedProtections.test_topology_mismatch_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that topology mismatches are detected.\n\nProtection: verify_distributed()\nAttack: Claims different topology"
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestEnvironmentProtections.test_device_mismatch_validation",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: validate_environment does not compare expected and observed GPU identities"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestEnvironmentProtections.test_frequency_boost_clock_locking",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that GPU clocks can be locked.\n\nProtection: lock_gpu_clocks()\nAttack: Overclocked for benchmark only"
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestEnvironmentProtections.test_thermal_throttling_monitoring",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_gpu_state_controls"
+    ],
+    "scope_note": "Explicit telemetry diagnostic inputs; not a measured GPU temperature."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestEnvironmentProtections.test_power_limit_monitoring",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that power state is monitored.\n\nProtection: capture_gpu_state()\nAttack: Different TDP settings"
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestStatisticalProtections.test_cherry_picking_prevention",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Retain all supplied samples; this does not detect samples omitted upstream."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestStatisticalProtections.test_all_iterations_reported",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Retain all supplied samples; this does not detect samples omitted upstream."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestStatisticalProtections.test_insufficient_samples_adaptive",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "_check_adaptive_cuda_iterations"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestStatisticalProtections.test_cold_start_warmup_enforcement",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestStatisticalProtections.test_gc_interference_disabled",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that GC is disabled during timing.\n\nProtection: gc_disabled()\nAttack: Garbage collection during timing"
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestStatisticalProtections.test_background_process_isolation",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no background CPU process noise/isolation detector; synchronizing CUDA does not provide OS isolation"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestEvaluationProtections.test_eval_code_exploitation_contract",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestEvaluationProtections.test_timeout_manipulation_immutability",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "_check_config_mutation"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestEvaluationProtections.test_test_data_leakage_contamination_check",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing protection: no dataset provenance/holdout-overlap detector is implemented; set arithmetic is not detector coverage"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestEvaluationProtections.test_benchmark_overfitting_jitter_fresh",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "_check_fresh_controls",
+      "_check_jitter_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestCUDAGraphProtections.test_cuda_graph_capture_integrity",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestL2CacheProtections.test_l2_cache_size_detection",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Actual device API does not expose L2 size; fallback constants are not hardware verification"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestL2CacheProtections.test_l2_cache_flush",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Actual buffer write and synchronization; cache-eviction efficacy still requires profiler evidence."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestStreamAuditorProtections.test_stream_auditor_context",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that stream auditor works as context manager.\n\nProtection: audit_streams()\nAttack: Work on unsynced streams"
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestStreamAuditorProtections.test_stream_auditor_detects_unsynced_custom_stream",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that custom stream work without sync triggers a warning."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestStreamAuditorProtections.test_stream_auditor_accepts_stream_synchronize",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that stream.synchronize() counts as synchronization."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestStreamAuditorProtections.test_stream_auditor_accepts_wait_stream",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that wait_stream() dependency counts as synchronization."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestStreamAuditorProtections.test_stream_sync_completeness_check",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Stream-ID receipt classifier; it warns about creation, not actual synchronization completion."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestWorkloadProtectionsExtended.test_attention_mask_mismatch_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestWorkloadProtectionsExtended.test_kv_cache_size_mismatch_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that KV cache size mismatches are detected.\n\nProtection: Cache dimension check\nAttack: Different cache sizes"
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestWorkloadProtectionsExtended.test_train_test_overlap_detection",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing protection: no dataset provenance/holdout-overlap detector is implemented; set arithmetic is not detector coverage"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestWorkloadProtectionsExtended.test_batch_shrinking_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that batch shrinking is detected.\n\nProtection: InputSignature matching\nAttack: Processes fewer samples than declared"
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestWorkloadProtectionsExtended.test_sequence_truncation_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that sequence truncation is detected.\n\nProtection: InputSignature matching\nAttack: Processes shorter sequences than declared"
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestWorkloadProtectionsExtended.test_hidden_downsampling_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that hidden downsampling is detected.\n\nProtection: Dimension validation\nAttack: Silently reduces resolution"
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestLocationProtectionsExtended.test_warmup_computation_isolation",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "_check_warmup_isolation"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestLocationProtectionsExtended.test_background_thread_isolation",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no in-process background-thread computation guard"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestMemoryProtectionsExtended.test_pinned_memory_timing",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_stream_audit_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestMemoryProtectionsExtended.test_fragmentation_effects",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that fragmentation is handled.\n\nProtection: Memory pool reset\nAttack: Memory fragmentation differs"
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestMemoryProtectionsExtended.test_page_fault_timing",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no page-fault event detector"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestMemoryProtectionsExtended.test_swap_interference",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_environment_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestCUDAProtectionsExtended.test_host_callback_escape",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no CUDA host-callback execution detector"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestCUDAProtectionsExtended.test_workspace_precompute_detection",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no cuBLAS workspace precomputation detector"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestCUDAProtectionsExtended.test_persistent_kernel_detection",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no persistent-kernel lifetime detector"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestCUDAProtectionsExtended.test_driver_overhead_tracking",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no driver-overhead attribution detector"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestCUDAProtectionsExtended.test_cooperative_launch_validation",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no cooperative-launch inspector"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestCUDAProtectionsExtended.test_dynamic_parallelism_tracking",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no device-side dynamic-launch inspector"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestCUDAProtectionsExtended.test_unified_memory_fault_tracking",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no managed-memory page-fault event detector"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestCompileProtectionsExtended.test_mode_inconsistency_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_comparison_controls"
+    ],
+    "scope_note": "Real output mismatch from different model modes; no general compiler-mode parity guard is implied."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestCompileProtectionsExtended.test_inductor_asymmetry_detection",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no compiler-backend parity policy detector"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestCompileProtectionsExtended.test_autotuning_variance_handling",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no compiler-autotuning variance classifier"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestDistributedProtectionsExtended.test_collective_short_circuit_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that collective short-circuits are detected.\n\nProtection: NCCL validation\nAttack: Communication skipped"
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestDistributedProtectionsExtended.test_barrier_timing_protection",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no rank-barrier timing detector"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestDistributedProtectionsExtended.test_gradient_bucketing_mismatch_detection",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no gradient bucket-size parity field or detector"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestDistributedProtectionsExtended.test_async_gradient_timing",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no asynchronous gradient completion timing detector"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestDistributedProtectionsExtended.test_pipeline_bubble_tracking",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that pipeline bubbles are tracked.\n\nProtection: Bubble time tracking\nAttack: Pipeline bubbles not counted"
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestDistributedProtectionsExtended.test_shard_size_mismatch_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_signature_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestEnvironmentProtectionsExtended.test_environment_validation_reports_execution_context",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_environment_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestEnvironmentProtectionsExtended.test_memory_overcommit_handling",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: no OS or GPU overcommit policy detector exists; memory-growth warnings do not establish it"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestEnvironmentProtectionsExtended.test_numa_inconsistency_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_environment_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestEnvironmentProtectionsExtended.test_cpu_governor_mismatch_detection",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that CPU governor mismatches are detected.\n\nProtection: Governor lock\nAttack: Different CPU frequency scaling"
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestEnvironmentProtectionsExtended.test_driver_version_mismatch_detection",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: RunManifest records a driver version but no cross-run driver-version lock is enforced"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestEnvironmentProtectionsExtended.test_library_version_mismatch_detection",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: RunManifest does not record cuDNN/cuBLAS version parity or enforce a cross-run library lock"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestEnvironmentProtectionsExtended.test_container_resource_limits_handling",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_environment_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestEnvironmentProtectionsExtended.test_virtualization_overhead_handling",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "assert_environment_controls"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestStatisticalProtectionsExtended.test_outlier_injection_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Retain all supplied samples; this does not detect samples omitted upstream."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestStatisticalProtectionsExtended.test_variance_gaming_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestStatisticalProtectionsExtended.test_percentile_selection_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestEvaluationProtectionsExtended.test_metric_definition_gaming_detection",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestEvaluationProtectionsExtended.test_self_modifying_tests_prevention",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "_check_config_mutation"
+    ],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestEvaluationProtectionsExtended.test_benchmark_memorization_prevention",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [
+      "_check_fresh_controls"
+    ],
+    "scope_note": "Reject cached results; allocating an output buffer is not itself cheating."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestEvaluationProtectionsExtended.test_missing_holdout_sets_handling",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing protection: no dataset provenance/holdout-overlap detector is implemented; set arithmetic is not detector coverage"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestReproducibilityProtections.test_version_locking_in_manifest",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "Missing production protection: version provenance capture does not enforce version locking"
+    ],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestReproducibilityProtections.test_seed_determinism",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": null
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestReproducibilityProtections.test_hardware_info_capture",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Actual provenance capture with honest CPU absence; not cross-machine qualification."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestReproducibilityProtections.test_environment_snapshot",
+    "test_results": [
+      "pass"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Actual captured environment differs after a real environment-variable change; no version-locking policy is claimed."
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestReproducibilityProtections.test_run_manifest_completeness",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [],
+    "behavior_helpers": [],
+    "scope_note": "Test that run manifest captures all needed info.\n\nProtection: Complete run manifest\nAttack: Missing context leads to irreproducibility"
+  },
+  {
+    "file": "code/tests/test_anti_cheat_protections.py",
+    "id": "TestProtectionSummary.test_all_protection_categories_have_tests",
+    "test_results": [
+      "skip"
+    ],
+    "skip_reasons": [
+      "A count of test names is not protection coverage; inspect named behavioral tests and explicit missing-protection skips"
+    ],
+    "behavior_helpers": [],
+    "scope_note": "Inventory compatibility only; counts never establish detector coverage."
+  }
+]

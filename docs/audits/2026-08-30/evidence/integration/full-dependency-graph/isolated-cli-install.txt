@@ -1,0 +1,72 @@
+Collecting typer==0.15.4
+  Downloading typer-0.15.4-py3-none-any.whl.metadata (15 kB)
+Collecting typer-slim==0.15.4 (from typer-slim[standard]==0.15.4)
+  Downloading typer_slim-0.15.4-py3-none-any.whl.metadata (15 kB)
+Collecting rich==13.7.1
+  Downloading rich-13.7.1-py3-none-any.whl.metadata (18 kB)
+Collecting click==8.1.7
+  Downloading click-8.1.7-py3-none-any.whl.metadata (3.0 kB)
+Collecting pytest==8.3.4
+  Downloading pytest-8.3.4-py3-none-any.whl.metadata (7.5 kB)
+Collecting pyyaml==6.0.2
+  Downloading PyYAML-6.0.2-cp312-cp312-macosx_11_0_arm64.whl.metadata (2.1 kB)
+Collecting pydantic==2.12.4
+  Downloading pydantic-2.12.4-py3-none-any.whl.metadata (89 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 89.9/89.9 kB 8.9 MB/s eta 0:00:00
+Collecting typing-extensions>=3.7.4.3 (from typer==0.15.4)
+  Downloading typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
+Collecting shellingham>=1.3.0 (from typer==0.15.4)
+  Downloading shellingham-1.5.4-py2.py3-none-any.whl.metadata (3.5 kB)
+Collecting markdown-it-py>=2.2.0 (from rich==13.7.1)
+  Downloading markdown_it_py-4.2.0-py3-none-any.whl.metadata (7.4 kB)
+Collecting pygments<3.0.0,>=2.13.0 (from rich==13.7.1)
+  Downloading pygments-2.21.0-py3-none-any.whl.metadata (2.5 kB)
+Collecting iniconfig (from pytest==8.3.4)
+  Downloading iniconfig-2.3.0-py3-none-any.whl.metadata (2.5 kB)
+Collecting packaging (from pytest==8.3.4)
+  Downloading packaging-26.3-py3-none-any.whl.metadata (3.5 kB)
+Collecting pluggy<2,>=1.5 (from pytest==8.3.4)
+  Downloading pluggy-1.6.0-py3-none-any.whl.metadata (4.8 kB)
+Collecting annotated-types>=0.6.0 (from pydantic==2.12.4)
+  Downloading annotated_types-0.8.0-py3-none-any.whl.metadata (15 kB)
+Collecting pydantic-core==2.41.5 (from pydantic==2.12.4)
+  Downloading pydantic_core-2.41.5-cp312-cp312-macosx_11_0_arm64.whl.metadata (7.3 kB)
+Collecting typing-inspection>=0.4.2 (from pydantic==2.12.4)
+  Downloading typing_inspection-0.4.4-py3-none-any.whl.metadata (2.6 kB)
+Collecting mdurl~=0.1 (from markdown-it-py>=2.2.0->rich==13.7.1)
+  Downloading mdurl-0.1.2-py3-none-any.whl.metadata (1.6 kB)
+Downloading typer-0.15.4-py3-none-any.whl (45 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 45.3/45.3 kB 348.7 MB/s eta 0:00:00
+Downloading typer_slim-0.15.4-py3-none-any.whl (45 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 45.3/45.3 kB 38.5 MB/s eta 0:00:00
+Downloading rich-13.7.1-py3-none-any.whl (240 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 240.7/240.7 kB 19.9 MB/s eta 0:00:00
+Downloading click-8.1.7-py3-none-any.whl (97 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 97.9/97.9 kB 95.0 MB/s eta 0:00:00
+Downloading pytest-8.3.4-py3-none-any.whl (343 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 343.1/343.1 kB 83.5 MB/s eta 0:00:00
+Downloading PyYAML-6.0.2-cp312-cp312-macosx_11_0_arm64.whl (173 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 173.3/173.3 kB 43.6 MB/s eta 0:00:00
+Downloading pydantic-2.12.4-py3-none-any.whl (463 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 463.4/463.4 kB 107.1 MB/s eta 0:00:00
+Downloading pydantic_core-2.41.5-cp312-cp312-macosx_11_0_arm64.whl (1.9 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.9/1.9 MB 80.2 MB/s eta 0:00:00
+Downloading annotated_types-0.8.0-py3-none-any.whl (13 kB)
+Downloading markdown_it_py-4.2.0-py3-none-any.whl (91 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 91.7/91.7 kB 34.4 MB/s eta 0:00:00
+Downloading pluggy-1.6.0-py3-none-any.whl (20 kB)
+Downloading pygments-2.21.0-py3-none-any.whl (1.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.3/1.3 MB 53.4 MB/s eta 0:00:00
+Downloading shellingham-1.5.4-py2.py3-none-any.whl (9.8 kB)
+Downloading typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 45.6/45.6 kB 136.9 MB/s eta 0:00:00
+Downloading typing_inspection-0.4.4-py3-none-any.whl (14 kB)
+Downloading iniconfig-2.3.0-py3-none-any.whl (7.5 kB)
+Downloading packaging-26.3-py3-none-any.whl (129 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 130.0/130.0 kB 47.9 MB/s eta 0:00:00
+Downloading mdurl-0.1.2-py3-none-any.whl (10.0 kB)
+Installing collected packages: typing-extensions, shellingham, pyyaml, pygments, pluggy, packaging, mdurl, iniconfig, click, annotated-types, typing-inspection, typer-slim, pytest, pydantic-core, markdown-it-py, rich, pydantic, typer
+Successfully installed annotated-types-0.8.0 click-8.1.7 iniconfig-2.3.0 markdown-it-py-4.2.0 mdurl-0.1.2 packaging-26.3 pluggy-1.6.0 pydantic-2.12.4 pydantic-core-2.41.5 pygments-2.21.0 pytest-8.3.4 pyyaml-6.0.2 rich-13.7.1 shellingham-1.5.4 typer-0.15.4 typer-slim-0.15.4 typing-extensions-4.16.0 typing-inspection-0.4.4
+
+[notice] A new release of pip is available: 24.0 -> 26.2.1
+[notice] To update, run: python -m pip install --upgrade pip

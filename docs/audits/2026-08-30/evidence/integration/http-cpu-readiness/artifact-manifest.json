@@ -1,0 +1,114 @@
+{
+  "files": {
+    "README.md": {
+      "sha256": "f5f7289f180a70c119b12f3958327ba10d22a5c2ca80b34facc0d8ff75cf521c",
+      "bytes": 2576
+    },
+    "child-logs/attempt-1/test_current_dashboard_http_re0/dashboard-child.log": {
+      "sha256": "89ed7bd8c00b23ab84328bc587a7a92e70b29dc5fa2f8c8d26a3c3df782195e3",
+      "bytes": 504
+    },
+    "child-logs/attempt-1/test_dashboard_readiness_rejec0/dashboard-child.log": {
+      "sha256": "99d32b628f90ceafcd6b432a312b53959759e6726cd8d06d92b30b2be9143cd6",
+      "bytes": 28
+    },
+    "child-logs/attempt-1/test_dashboard_readiness_timeo0/dashboard-child.log": {
+      "sha256": "f1689607973c7382b9f4d8630e8536fd079022fc93d72eece71437798df59aff",
+      "bytes": 24
+    },
+    "child-logs/attempt-1/test_dashboard_requests_reject0/dashboard-child.log": {
+      "sha256": "89ed7bd8c00b23ab84328bc587a7a92e70b29dc5fa2f8c8d26a3c3df782195e3",
+      "bytes": 504
+    },
+    "child-logs/attempt-1/test_retired_http_routes_expli0/dashboard-child.log": {
+      "sha256": "89ed7bd8c00b23ab84328bc587a7a92e70b29dc5fa2f8c8d26a3c3df782195e3",
+      "bytes": 504
+    },
+    "child-logs/final/test_current_dashboard_http_re0/dashboard-child.log": {
+      "sha256": "89ed7bd8c00b23ab84328bc587a7a92e70b29dc5fa2f8c8d26a3c3df782195e3",
+      "bytes": 504
+    },
+    "child-logs/final/test_dashboard_readiness_rejec0/dashboard-child.log": {
+      "sha256": "99d32b628f90ceafcd6b432a312b53959759e6726cd8d06d92b30b2be9143cd6",
+      "bytes": 28
+    },
+    "child-logs/final/test_dashboard_readiness_timeo0/dashboard-child.log": {
+      "sha256": "33c073e9c4f9b518e54781d371502c580b034ec94c6f5763d9bf61c89bdb2925",
+      "bytes": 24
+    },
+    "child-logs/final/test_dashboard_requests_reject0/dashboard-child.log": {
+      "sha256": "89ed7bd8c00b23ab84328bc587a7a92e70b29dc5fa2f8c8d26a3c3df782195e3",
+      "bytes": 504
+    },
+    "child-logs/final/test_retired_http_routes_expli0/dashboard-child.log": {
+      "sha256": "89ed7bd8c00b23ab84328bc587a7a92e70b29dc5fa2f8c8d26a3c3df782195e3",
+      "bytes": 504
+    },
+    "ci-dependency-review.json": {
+      "sha256": "6d4d26a0b5af2c6753816aba5c1fbad6cdaaef682c00ddb69f604c425c79829d",
+      "bytes": 2553
+    },
+    "original-attempt-1.json": {
+      "sha256": "a6eb255f47039e51b1b74b5070d76bb812903c8dd786b7b08563aea87d117a6b",
+      "bytes": 711
+    },
+    "original-bounded.stderr.txt": {
+      "sha256": "cf2b97c2fc8986c3291d1596de8e2c4b2ef10723b95fb5adfba8635c004978e0",
+      "bytes": 457
+    },
+    "original-false-pass-bounded.json": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "original-false-pass-final.json": {
+      "sha256": "ee3fd67dd3c360dcff156ccfbcd3624dae73fb23320dacab3f5e266db588cb96",
+      "bytes": 3306
+    },
+    "original-false-pass.json": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "original-final.stderr.txt": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "pytest-attempt-1.txt": {
+      "sha256": "b470bd4ea2f7d25c1ef1875d0e7b6a995c97c602218d3f898b425c7cb5a97bac",
+      "bytes": 616
+    },
+    "pytest-attempt-1.xml": {
+      "sha256": "926060d553863eb6945ffae10fa1e312b5e2ed6cc3b163d56b65aa58dcea09b7",
+      "bytes": 1555
+    },
+    "pytest-final.txt": {
+      "sha256": "9474230a398956c458517a34197a0c7a4e135fb5e602758312a30e3fea4d6066",
+      "bytes": 613
+    },
+    "pytest-final.xml": {
+      "sha256": "f47d7104bab24f23cd6de091f7ed1de60211a0b5c78943b3d41ab7ba859b09f6",
+      "bytes": 2916
+    },
+    "receipt.json": {
+      "sha256": "e1ad9c088470f484cbec68e68c66739cf963ae022125ab810222f10353e8ba9e",
+      "bytes": 10622
+    },
+    "reproduce-original-attempt-1.py.txt": {
+      "sha256": "a0f3d6ff76107e1669486504ecb305c6e24178476105844c31e7e5d554d6c483",
+      "bytes": 2705
+    },
+    "reproduce-original-attempt-2.py.txt": {
+      "sha256": "101bd3e2d09dec0a559acf38333eaed358019f00a08b8aa93585a1da9fd4e4cd",
+      "bytes": 2764
+    },
+    "reproduce_original.py": {
+      "sha256": "978e003e2f84111dd5a0cebd5b6db9e2981bac81a436f784a693b272cb831dc3",
+      "bytes": 2771
+    },
+    "test_http_microbench.before.py.txt": {
+      "sha256": "deae68e1ad44bd53eda658b7e46a97f3ad1a554aafbfacdbc5990d7b0a9a867d",
+      "bytes": 1538
+    }
+  },
+  "source_epoch": "HTTP test55f21cf07e1d0baf58e1e8a3502b73c9b2de136b4bb458b89cd6f6d6d505a284",
+  "note": "Manifest excludes itself. Empty original stdout files are intentionally preserved failed attempts."
+}

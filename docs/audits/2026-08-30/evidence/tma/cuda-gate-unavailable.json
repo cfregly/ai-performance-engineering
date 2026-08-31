@@ -1,0 +1,23 @@
+{
+  "started_at_utc": "2026-08-30T22:26:10Z",
+  "arch": "sm_100a",
+  "source_sha256": {
+    "tests/cuda/tma_2d_layout_validation.cu": "2516c597381ec412ede23c0ce2492e17c09c326ff48899b4f2a72efe7dc9482f",
+    "ch10/tma_multicast_baseline.cu": "b13b9a30fab9128a3756c37e1319e76405888f4ab66402f8c07ad8b4d5c34c7d",
+    "core/common/nvtx_utils.cuh": "50007375d81dc1349e2660e5183b4993105e792057446a7cd00945ce6d0e3bdd",
+    "core/common/nvtx_label_utils.cuh": "ca1fa71a62843dfd501b9243ad2977e937df5d39f2f9f3eaf9366af41d161580",
+    "core/common/headers/cuda_verify.cuh": "26b52219eb0751279a71b94e32a66c47d3f3db0f947e0184c1e9e5666bfcb354",
+    "ch10/tma_multicast_cluster.cu": "5f68f8b00bfaaa7dd1a9f89306749b024bad7ab7e03f23105b9bc2882c6e9dc4",
+    "core/common/headers/tma_helpers.cuh": "4c8a88560d1cc5e04ff1b99110453119fefc98aa17faaee462ce0133abc942ba",
+    "core/common/headers/tma_2d_layout.hpp": "645f624cc2cd7a7b1f18e6d0c734e1b48407394d478f18aee46f0dd8927c8834",
+    "core/common/headers/arch_detection.cuh": "c32cae59cab37e0d0ad70bdc8784a09385207ff1849f592d7c5fb0a12338da32",
+    "core/common/headers/cuda13_demos.cuh": "8d830db67de26e477ffca0d206b6b31a01ccadef9763718fe833a87bdcffc431",
+    "ch10/tma_2d_pipeline_blackwell.cu": "ce4f44059cd852c607b4a3e209fbe1b83988292f2a903f714c58d41dacca410c",
+    "ch07/optimized_tma_copy.cu": "6d96913749a4e0678853666e65ec618faca98ff8999be0bb7adcbaa06169ed7d",
+    "ch07/optimized_tma_bulk_tensor_2d.cu": "a08ada595900df14d7e1b221ecfdf726e9108ea461af3e48da38f20cb14b9c7d",
+    "ch07/async_prefetch_2d_demo.cu": "240fe11efe9b08b69451302d2f800f9866d143c117bb5268627044f4062fda42"
+  },
+  "status": "SKIPPED",
+  "checks": [],
+  "reason": "nvcc is unavailable; no CUDA compile or execution occurred"
+}

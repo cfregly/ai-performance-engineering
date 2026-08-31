@@ -1,0 +1,156 @@
+{
+  "discovery": "P05 evidence is package-local, outside the earlier scanner canonical evidence tree.",
+  "before_observation": {
+    "kind": "Transcription of read-only shell output observed in this agent turn before parent fix; not a fresh before-state rerun.",
+    "command": "git check-ignore -v code/labs/nanochat_fullstack/audit_wave1/before.log code/labs/nanochat_fullstack/audit_wave1/final-strict-tests.log",
+    "sample_output": [
+      "code/.gitignore:226:*.log\tcode/labs/nanochat_fullstack/audit_wave1/before.log",
+      "code/.gitignore:226:*.log\tcode/labs/nanochat_fullstack/audit_wave1/final-strict-tests.log"
+    ],
+    "receipt_log_count": 15,
+    "canonical_byte_match_observation": "12 logs had no byte-identical canonical artifact; two empty logs and lint log shared bytes with unrelated package artifacts, not explicit lineage-preserving archives."
+  },
+  "parent_resolution": {
+    "path": "code/labs/nanochat_fullstack/audit_wave1/.gitignore",
+    "sha256": "a9322a67d839d6b859c28584707450365099bc0942da8efa1d784096b43da841",
+    "contents": "# Retain the audit's original test and failure logs beside their receipt.\n!*.log\n",
+    "mechanism": "New directory-scoped !*.log keeps all original receipt paths; no original log or receipt rewritten."
+  },
+  "after_actual_scan": [
+    {
+      "path": "code/labs/nanochat_fullstack/audit_wave1/before.log",
+      "recorded_sha256": "37c7dca3319857b4c63f6b42d77eff2b17ce37f5f9c2caf14eb3b14efc4fac1d",
+      "current_sha256": "37c7dca3319857b4c63f6b42d77eff2b17ce37f5f9c2caf14eb3b14efc4fac1d",
+      "matches": true,
+      "current_git_ignore_rules": [
+        "code/labs/nanochat_fullstack/audit_wave1/.gitignore:2:!*.log"
+      ]
+    },
+    {
+      "path": "code/labs/nanochat_fullstack/audit_wave1/cache-pass.log",
+      "recorded_sha256": "3855c59a3bdf0b146910499506a96c85d5b260750c7649c7195d852ae259372f",
+      "current_sha256": "3855c59a3bdf0b146910499506a96c85d5b260750c7649c7195d852ae259372f",
+      "matches": true,
+      "current_git_ignore_rules": [
+        "code/labs/nanochat_fullstack/audit_wave1/.gitignore:2:!*.log"
+      ]
+    },
+    {
+      "path": "code/labs/nanochat_fullstack/audit_wave1/diffcheck.log",
+      "recorded_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "current_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "matches": true,
+      "current_git_ignore_rules": [
+        "code/labs/nanochat_fullstack/audit_wave1/.gitignore:2:!*.log"
+      ]
+    },
+    {
+      "path": "code/labs/nanochat_fullstack/audit_wave1/existing-cpu-module-replay.log",
+      "recorded_sha256": "8380b20f7201568512a3bafbb4037c05a0624e9883d591bc1f50214f70995c29",
+      "current_sha256": "8380b20f7201568512a3bafbb4037c05a0624e9883d591bc1f50214f70995c29",
+      "matches": true,
+      "current_git_ignore_rules": [
+        "code/labs/nanochat_fullstack/audit_wave1/.gitignore:2:!*.log"
+      ]
+    },
+    {
+      "path": "code/labs/nanochat_fullstack/audit_wave1/existing-cpu-replay.log",
+      "recorded_sha256": "5e45f87d02698c5f76c6b633cbac5ea6490f2dd2663c8c93c613f4f650470c9c",
+      "current_sha256": "5e45f87d02698c5f76c6b633cbac5ea6490f2dd2663c8c93c613f4f650470c9c",
+      "matches": true,
+      "current_git_ignore_rules": [
+        "code/labs/nanochat_fullstack/audit_wave1/.gitignore:2:!*.log"
+      ]
+    },
+    {
+      "path": "code/labs/nanochat_fullstack/audit_wave1/existing-cpu.log",
+      "recorded_sha256": "8380b20f7201568512a3bafbb4037c05a0624e9883d591bc1f50214f70995c29",
+      "current_sha256": "8380b20f7201568512a3bafbb4037c05a0624e9883d591bc1f50214f70995c29",
+      "matches": true,
+      "current_git_ignore_rules": [
+        "code/labs/nanochat_fullstack/audit_wave1/.gitignore:2:!*.log"
+      ]
+    },
+    {
+      "path": "code/labs/nanochat_fullstack/audit_wave1/expanded-pass.log",
+      "recorded_sha256": "184fa25badf0a2e1a57f3bfbc76ae0807f79d57a74ad7612c0c83210ce6603f7",
+      "current_sha256": "184fa25badf0a2e1a57f3bfbc76ae0807f79d57a74ad7612c0c83210ce6603f7",
+      "matches": true,
+      "current_git_ignore_rules": [
+        "code/labs/nanochat_fullstack/audit_wave1/.gitignore:2:!*.log"
+      ]
+    },
+    {
+      "path": "code/labs/nanochat_fullstack/audit_wave1/final-strict-tests.log",
+      "recorded_sha256": "cc91e3d6819a33917dd64a20c0a6a435acad84c2f422156bf07cfe15b3dfb723",
+      "current_sha256": "cc91e3d6819a33917dd64a20c0a6a435acad84c2f422156bf07cfe15b3dfb723",
+      "matches": true,
+      "current_git_ignore_rules": [
+        "code/labs/nanochat_fullstack/audit_wave1/.gitignore:2:!*.log"
+      ]
+    },
+    {
+      "path": "code/labs/nanochat_fullstack/audit_wave1/final-tests.log",
+      "recorded_sha256": "4e1df63fa12149358343735952473db89b1a733e509aff0f3e390dba9501ddc7",
+      "current_sha256": "4e1df63fa12149358343735952473db89b1a733e509aff0f3e390dba9501ddc7",
+      "matches": true,
+      "current_git_ignore_rules": [
+        "code/labs/nanochat_fullstack/audit_wave1/.gitignore:2:!*.log"
+      ]
+    },
+    {
+      "path": "code/labs/nanochat_fullstack/audit_wave1/first-pass.log",
+      "recorded_sha256": "c07ee46abe629ab83fd2b244de0952c0f45b2644a90994078ee851d06fd2127b",
+      "current_sha256": "c07ee46abe629ab83fd2b244de0952c0f45b2644a90994078ee851d06fd2127b",
+      "matches": true,
+      "current_git_ignore_rules": [
+        "code/labs/nanochat_fullstack/audit_wave1/.gitignore:2:!*.log"
+      ]
+    },
+    {
+      "path": "code/labs/nanochat_fullstack/audit_wave1/lint.log",
+      "recorded_sha256": "e8d5727639107d6a357c127e06e4850f9ed0b994cff77fcf4fc395185a44a1ab",
+      "current_sha256": "e8d5727639107d6a357c127e06e4850f9ed0b994cff77fcf4fc395185a44a1ab",
+      "matches": true,
+      "current_git_ignore_rules": [
+        "code/labs/nanochat_fullstack/audit_wave1/.gitignore:2:!*.log"
+      ]
+    },
+    {
+      "path": "code/labs/nanochat_fullstack/audit_wave1/pass.log",
+      "recorded_sha256": "ee95789e4199233d21574b2ee0aedc71814c3692a20c150e381443d0b5993364",
+      "current_sha256": "ee95789e4199233d21574b2ee0aedc71814c3692a20c150e381443d0b5993364",
+      "matches": true,
+      "current_git_ignore_rules": [
+        "code/labs/nanochat_fullstack/audit_wave1/.gitignore:2:!*.log"
+      ]
+    },
+    {
+      "path": "code/labs/nanochat_fullstack/audit_wave1/prerequisites-before.log",
+      "recorded_sha256": "e4795ae9f7d7707f3ddebba012cfe9df290a84d264ef905830eae2d2b9516e88",
+      "current_sha256": "e4795ae9f7d7707f3ddebba012cfe9df290a84d264ef905830eae2d2b9516e88",
+      "matches": true,
+      "current_git_ignore_rules": [
+        "code/labs/nanochat_fullstack/audit_wave1/.gitignore:2:!*.log"
+      ]
+    },
+    {
+      "path": "code/labs/nanochat_fullstack/audit_wave1/pycompile.log",
+      "recorded_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "current_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "matches": true,
+      "current_git_ignore_rules": [
+        "code/labs/nanochat_fullstack/audit_wave1/.gitignore:2:!*.log"
+      ]
+    },
+    {
+      "path": "code/labs/nanochat_fullstack/audit_wave1/standalone.log",
+      "recorded_sha256": "3dc7ba5662613382f0a02a4df68f2f0c2aa3defd2f21d7fbd0bf974480128007",
+      "current_sha256": "3dc7ba5662613382f0a02a4df68f2f0c2aa3defd2f21d7fbd0bf974480128007",
+      "matches": true,
+      "current_git_ignore_rules": [
+        "code/labs/nanochat_fullstack/audit_wave1/.gitignore:2:!*.log"
+      ]
+    }
+  ]
+}

@@ -83,6 +83,6 @@ python -m cli.aisp bench run --targets ch14 --profile minimal
 
 ## Notes
 - `inspect_compiled_code.py` dumps Triton/PTX/Graph captures for any target; edit the helper to introspect new workloads.
-- `requirements.txt` includes nightly Triton + PyTorch wheels to keep compiler features aligned with the CUDA 13 toolchain.
+- `requirements.txt` includes the shared `requirements_latest.txt` pins for stable PyTorch and Triton wheels aligned with the CUDA 13 toolchain.
 - For repo-native supporting examples that fill the training hot-path gaps without changing this chapter's primary compile narrative, see `labs/training_hotpath`.
 - `cublas_vs_cutlass` is a supplementary comparison pair. Chapter-native performance claims stay anchored on `model_compile_reduced_precision`, `regional_triton`, and `triton_persistent`.

@@ -1,0 +1,41 @@
+.....s.................................................................. [ 11%]
+........................................................................ [ 23%]
+........................................................................ [ 35%]
+........................................................................ [ 47%]
+........................................................................ [ 58%]
+........................................................................ [ 70%]
+........................................................................ [ 82%]
+.........................................s.............................. [ 94%]
+..........................s....Fatal Python error: Segmentation fault
+
+Thread 0x0000000177ecb000 (most recent call first):
+  <no Python frame>
+
+Current thread 0x00000001f1939d80 (most recent call first):
+  File "/opt/miniconda3/lib/python3.12/site-packages/_pytest/tmpdir.py", line 311 in pytest_runtest_makereport
+  File "/opt/miniconda3/lib/python3.12/site-packages/pluggy/_callers.py", line 152 in _multicall
+  File "/opt/miniconda3/lib/python3.12/site-packages/pluggy/_manager.py", line 120 in _hookexec
+  File "/opt/miniconda3/lib/python3.12/site-packages/pluggy/_hooks.py", line 512 in __call__
+  File "/opt/miniconda3/lib/python3.12/site-packages/_pytest/runner.py", line 248 in call_and_report
+  File "/opt/miniconda3/lib/python3.12/site-packages/_pytest/runner.py", line 136 in runtestprotocol
+  File "/opt/miniconda3/lib/python3.12/site-packages/_pytest/runner.py", line 117 in pytest_runtest_protocol
+  File "/opt/miniconda3/lib/python3.12/site-packages/pluggy/_callers.py", line 121 in _multicall
+  File "/opt/miniconda3/lib/python3.12/site-packages/pluggy/_manager.py", line 120 in _hookexec
+  File "/opt/miniconda3/lib/python3.12/site-packages/pluggy/_hooks.py", line 512 in __call__
+  File "/opt/miniconda3/lib/python3.12/site-packages/_pytest/main.py", line 367 in pytest_runtestloop
+  File "/opt/miniconda3/lib/python3.12/site-packages/pluggy/_callers.py", line 121 in _multicall
+  File "/opt/miniconda3/lib/python3.12/site-packages/pluggy/_manager.py", line 120 in _hookexec
+  File "/opt/miniconda3/lib/python3.12/site-packages/pluggy/_hooks.py", line 512 in __call__
+  File "/opt/miniconda3/lib/python3.12/site-packages/_pytest/main.py", line 343 in _main
+  File "/opt/miniconda3/lib/python3.12/site-packages/_pytest/main.py", line 289 in wrap_session
+  File "/opt/miniconda3/lib/python3.12/site-packages/_pytest/main.py", line 336 in pytest_cmdline_main
+  File "/opt/miniconda3/lib/python3.12/site-packages/pluggy/_callers.py", line 121 in _multicall
+  File "/opt/miniconda3/lib/python3.12/site-packages/pluggy/_manager.py", line 120 in _hookexec
+  File "/opt/miniconda3/lib/python3.12/site-packages/pluggy/_hooks.py", line 512 in __call__
+  File "/opt/miniconda3/lib/python3.12/site-packages/_pytest/config/__init__.py", line 175 in main
+  File "/opt/miniconda3/lib/python3.12/site-packages/_pytest/config/__init__.py", line 201 in console_main
+  File "/opt/miniconda3/lib/python3.12/site-packages/pytest/__main__.py", line 9 in <module>
+  File "<frozen runpy>", line 88 in _run_code
+  File "<frozen runpy>", line 198 in _run_module_as_main
+
+Extension modules: numpy.core._multiarray_umath, numpy.core._multiarray_tests, numpy.linalg._umath_linalg, numpy.fft._pocketfft_internal, numpy.random._common, numpy.random.bit_generator, numpy.random._bounded_integers, numpy.random._mt19937, numpy.random.mtrand, numpy.random._philox, numpy.random._pcg64, numpy.random._sfc64, numpy.random._generator, torch._C, torch._C._dynamo.autograd_compiler, torch._C._dynamo.eval_frame, torch._C._dynamo.guards, torch._C._dynamo.utils, torch._C._fft, torch._C._linalg, torch._C._nested, torch._C._nn, torch._C._sparse, torch._C._special, ujson, cython.cimports.libc.math, markupsafe._speedups, psutil._psutil_osx, psutil._psutil_posix, yaml._yaml, _brotli, zstandard.backend_c, simplejson._speedups, charset_normalizer.md (total: 34)

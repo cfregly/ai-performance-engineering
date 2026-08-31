@@ -1,0 +1,57 @@
+[
+  {
+    "document": "CONTRIBUTING.md",
+    "link": "docs/environment.md",
+    "exists": true
+  },
+  {
+    "document": "CONTRIBUTING.md",
+    "link": "docs/environment.md",
+    "exists": true
+  },
+  {
+    "document": "CONTRIBUTING.md",
+    "link": "docs/tooling-and-profiling.md",
+    "exists": true
+  },
+  {
+    "document": "CONTRIBUTING.md",
+    "link": "LICENSE",
+    "exists": true
+  },
+  {
+    "document": "docs/environment.md",
+    "link": "../code/setup.sh",
+    "exists": true
+  },
+  {
+    "document": "docs/environment.md",
+    "link": "../code/requirements_latest.txt",
+    "exists": true
+  },
+  {
+    "document": "docs/environment.md",
+    "link": "../code/core/harness/arch_config.py",
+    "exists": true
+  },
+  {
+    "document": "docs/environment.md",
+    "link": "../code/core/common/cuda_arch.mk",
+    "exists": true
+  },
+  {
+    "document": "docs/environment.md",
+    "link": "../code/docs/gb300-runbook.md",
+    "exists": true
+  },
+  {
+    "document": "docs/environment.md",
+    "link": "tooling-and-profiling.md",
+    "exists": true
+  },
+  {
+    "document": "docs/tooling-and-profiling.md",
+    "link": "environment.md",
+    "exists": true
+  }
+]

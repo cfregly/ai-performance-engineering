@@ -1,0 +1,149 @@
+{
+  "captured_at": "2026-08-30T22:35:11.231688+00:00",
+  "package": "P10 remaining exporter/profile/advisory contracts",
+  "git_head": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "git_branch": "codex/audit-remediation-20260830",
+  "lineage": "uncommitted scoped changes on recorded HEAD; no git mutations; exact source hashes below",
+  "findings": {
+    "W1-092": "closed: strict wire parser and real loopback HTTP verified on declared multi-GPU input fixtures, not live GPU collection",
+    "W1-106": "closed: actual Chrome trace produces HTML/JSON; unsupported memory/kernel placeholders exit nonzero",
+    "W1-113": "closed as explicitly non-standalone versioned integration guidance; GPU FP8 runtime test remains skipped"
+  },
+  "environment": {
+    "python_executable": "/opt/miniconda3/bin/python",
+    "python": "3.12.2",
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "torch": "2.8.0",
+    "pytest": "8.4.2",
+    "cuda_available": false,
+    "promtool": "promtool, version 3.12.0 (branch: non-git, revision: non-git)\n  build user:       reproducible@reproducible\n  build date:       20260528-15:31:32\n  go version:       go1.26.3\n  platform:         darwin/arm64\n  tags:             netgo,builtinassets",
+    "qualification": "CPU/control-plane, parser, loopback HTTP and actual CPU profiler; no pinned CUDA runtime claim"
+  },
+  "commands": [
+    {
+      "cwd": "code",
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider tests/test_audit_wave1_tooling_regressions.py tests/test_core_helpers.py::test_whatif_and_ncu_empty",
+      "exit_code": 0,
+      "outcome": "17 passed, 1 skipped in 28.86s",
+      "log": "final.log"
+    },
+    {
+      "cwd": "code",
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider tests/test_audit_wave1_api_regressions.py tests/test_audit_wave1_parser_regressions.py tests/test_audit_wave1_tooling_regressions.py tests/test_engine_fail_fast.py tests/test_perf_core_runtime_warnings.py tests/test_core_helpers.py::test_whatif_and_ncu_empty",
+      "exit_code": 0,
+      "outcome": "88 passed, 1 skipped in 63.43s",
+      "log": "combined.log"
+    },
+    {
+      "cwd": "code",
+      "command": "/opt/miniconda3/bin/python -m cli.aisp profile flame /tmp/audit-p10-tooling-dogfood/cpu_trace.json --output /tmp/audit-p10-tooling-dogfood/cpu_flame.html",
+      "exit_code": 0,
+      "outcome": "offline SVG/HTML generated from real CPU torch.profiler events",
+      "log": "html-command.log"
+    },
+    {
+      "cwd": "code",
+      "command": "/opt/miniconda3/bin/python -m cli.aisp profile flame /tmp/audit-p10-tooling-dogfood/cpu_trace.json --output /tmp/audit-p10-tooling-dogfood/cpu_flame.json",
+      "exit_code": 0,
+      "outcome": "JSON generated with observed audit_cpu_matmul scope, positive summed-event duration",
+      "log": "json-command.log"
+    },
+    {
+      "cwd": ".",
+      "command": "/opt/miniconda3/bin/python -m py_compile code/monitoring/prometheus_exporter.py code/cli/commands/profiling.py code/core/whatif.py code/tests/test_audit_wave1_tooling_regressions.py",
+      "exit_code": 0,
+      "outcome": "all four changed Python files compile",
+      "log": "pycompile.log"
+    },
+    {
+      "cwd": ".",
+      "command": "git diff --check -- code/monitoring/prometheus_exporter.py code/cli/commands/profiling.py code/core/whatif.py code/tests/test_audit_wave1_tooling_regressions.py docs/audits/2026-08-30/evidence/tooling",
+      "exit_code": 0,
+      "outcome": "no whitespace errors",
+      "log": "diffcheck.log"
+    }
+  ],
+  "wire_format_validation": {
+    "parser_command": "/opt/homebrew/bin/promtool check metrics --extended --lint=none",
+    "semantics": "wire parsing and cardinality analysis active; style/naming lint disabled for legacy metric names",
+    "fixture_gpu_counts": [
+      0,
+      1,
+      2,
+      8
+    ],
+    "fixture_gpu_families": [
+      "gpu_memory_allocated_gb",
+      "gpu_memory_reserved_gb",
+      "gpu_memory_total_gb",
+      "gpu_sm_count"
+    ],
+    "http": "HTTPServer bound only to127.0.0.1 on ephemeral port, actual /metrics request;32fixture samples with8labels; shutdown and close in finally",
+    "hardware_collection": "not executed or mocked as proof; pure serialization fixtures only"
+  },
+  "cpu_trace_recipe": "torch.randn(128,128); torch.profiler.profile(activities=[ProfilerActivity.CPU]); three record_function(\"audit_cpu_matmul\") scopes containing a@a and relu_; export_chrome_trace to cpu_trace.json",
+  "reproduction": {
+    "original_commit": "b57e4c6a9",
+    "log": "reproduction.log",
+    "prometheus": "strict parser exit1: second HELP line for metric gpu_memory_allocated_gb",
+    "fp8": "TypeError missing required positional device_type",
+    "flame": "red CLI regression ran successfully without creating requested output; see before.log"
+  },
+  "diagnostic_attempts": [
+    {
+      "log": "before.log",
+      "outcome": "15failed1skipped before fixes; original no-op CLI, missing formatter seam, invalid guidance metadata"
+    },
+    {
+      "log": "first.log",
+      "outcome": "5failed10passed1skipped; strict promtool call needed --extended alongside --lint=none; corrected test command, no parser bypass"
+    },
+    {
+      "command": "pytest ... tests/test_audit_wave1_tooling_regressionsions.py",
+      "outcome": "exit4, no tests ran due filename typo; corrected full combined command passed"
+    }
+  ],
+  "official_sources": [
+    {
+      "url": "https://prometheus.io/docs/instrumenting/exposition_formats/",
+      "supports": "single HELP/TYPE per metric family; TYPE precedes samples; text wire-format requirements"
+    },
+    {
+      "url": "https://docs.nvidia.com/deeplearning/transformer-engine-releases/release-2.18/user-guide/examples/fp8_primer.html",
+      "supports": "TE2.18 autocast(recipe=...) with TE modules, DelayedScaling and FP8 shape requirements"
+    },
+    {
+      "url": "https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/api/pytorch.html#deprecated-functions",
+      "supports": "fp8_autocast deprecated in favor of te.autocast; checked2026-08-30"
+    }
+  ],
+  "limitations": [
+    "FP8 actual CUDA/TE2.18 test skipped; example is explicitly integration_template/executable=false",
+    "no real multi-GPU telemetry collection was asserted",
+    "memory/kernels conversion remains explicitly unsupported with nonzero exit; no fake artifact",
+    "flame view aggregates complete-event durations by category, not elapsed wall time/call-stack reconstruction",
+    "CPU profiler artifact is functional evidence, not GPU performance evidence",
+    "no paid/external model calls or dependency installations"
+  ],
+  "source_sha256": {
+    "code/monitoring/prometheus_exporter.py": "fcf5d6cb387077ef37360c1607759b1100815390fd9d594ffdba496551c790fa",
+    "code/cli/commands/profiling.py": "b54529691814a251afda8fbde4ddde0bfbc848a7120824b527931e314ba8aad5",
+    "code/core/whatif.py": "34658567aad6437d406efee717a940852a8af0d40a43fdd952210d98933c1b3e",
+    "code/tests/test_audit_wave1_tooling_regressions.py": "f5943e937d2a22fad05a26cf4c5a3ec79050f92574099b42980da6a8e26d3160"
+  },
+  "evidence_sha256": {
+    "README.md": "2aefea8416a15ff24513269060a867c2abd621b9938b846cab4da9693a7e2dfb",
+    "before.log": "930c3820cd4e6f70bd632832e6eca578b061f461e62ea760386679da1f47dce5",
+    "combined.log": "c09708212c27ddce2fc4717fdafa94cc4813f915f27b432fc89811ee4d7c15a8",
+    "cpu_flame.html": "eee980aa23f2343408afa900069340972cc2fde5719a81ef5c0957ece4fafa19",
+    "cpu_flame.json": "ce57cbb39832106daeb7e8b2e0aaf94bf4b401ed99f6c645e34d24b526f955e3",
+    "cpu_trace.json": "0a05c9b12ba7258316c49507d63841b314a1cec7bda207b94611192dd12dfb3b",
+    "diffcheck.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "final.log": "d49bc95fa7ddd4c97d1d8d308835aea922c6c21532d4deb744e43ab271ddab7a",
+    "first.log": "5878816af4e33c61b717edf4c0c14c7f802507fb982a8e0db3215557c4015313",
+    "html-command.log": "cdb842795a247490d5810c938810791a4d3f1815401ca90fe0d2716336d2d1b5",
+    "json-command.log": "830e163114a638b44a0d3cdc791b224cce5190418aad1261ec1781328caa3dcb",
+    "pycompile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "reproduction.log": "1fb3be112a1b9bff4a9eae747357e8bfba1a02e874488ec6a66579204fdd2b21"
+  }
+}

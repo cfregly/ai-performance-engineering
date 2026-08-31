@@ -1,0 +1,12 @@
+{
+  "python": "3.12.2",
+  "executable": "/opt/miniconda3/bin/python",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "torch": "2.8.0",
+  "pytest": "8.4.2",
+  "pydantic": "2.12.5",
+  "cuda_available": false,
+  "nvcc": null,
+  "cxx": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.5.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin\n",
+  "calibration_output_exists": false
+}

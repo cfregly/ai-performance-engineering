@@ -63,7 +63,7 @@ python -m cli.aisp bench run --targets labs/custom_vs_cublas --profile minimal
 - Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.
 
 ## Validation Checklist
-- `python -m cli.aisp bench run --targets labs/custom_vs_cublas:tcgen05_matmul --profile minimal` should keep the custom path ahead of the baseline on validated hardware.
+- `python -m cli.aisp bench run --targets labs/custom_vs_cublas:tcgen05_matmul --profile minimal` must establish full-output correctness on the exact supported target before its timings can be compared. Historical expectations do not qualify the repaired source or imply a speedup.
 - The optimized path must stay verification-clean; a faster wrong kernel does not count.
 
 ## Notes

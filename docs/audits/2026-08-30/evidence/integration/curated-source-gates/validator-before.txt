@@ -1,0 +1,176 @@
+FFFFFFFF                                                                 [100%]
+=================================== FAILURES ===================================
+_________ test_default_root_cli_actually_imports_both_chapter_variants _________
+
+tmp_path = PosixPath('/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/curated-source-gates/validator-before-tmp/test_default_root_cli_actually0')
+
+    def test_default_root_cli_actually_imports_both_chapter_variants(tmp_path):
+        root, result = run_validator(tmp_path, {
+            "ch01/baseline_fixture.py": MARK_IMPORTED,
+            "ch01/optimized_fixture.py": MARK_IMPORTED,
+        }, "--verbose")
+>       assert result.returncode == 0, result.stdout + result.stderr
+E       AssertionError: ======================================================================
+E         Benchmark Import Validation
+E         ======================================================================
+E         Validating all chapters...
+E         
+E         
+E         ======================================================================
+E         Traceback (most recent call last):
+E           File "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/curated-source-gates/validator-before-tmp/test_default_root_cli_actually0/fixture-code/core/scripts/validate_imports.py", line 149, in <module>
+E             main()
+E           File "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/curated-source-gates/validator-before-tmp/test_default_root_cli_actually0/fixture-code/core/scripts/validate_imports.py", line 122, in main
+E             print(f"Results: {passed}/{total} passed ({100*passed/total:.1f}%)")
+E                                                        ~~~~~~~~~~^~~~~~
+E         ZeroDivisionError: division by zero
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/opt/miniconda3/bin/python', '/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/...otal:.1f}%)")\n                                               ~~~~~~~~~~^~~~~~\nZeroDivisionError: division by zero\n').returncode
+
+tests/test_validate_imports.py:46: AssertionError
+___ test_chapter_cli_supports_padded_and_legacy_paths_without_other_imports ____
+
+tmp_path = PosixPath('/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/curated-source-gates/validator-before-tmp/test_chapter_cli_supports_padd0')
+
+    def test_chapter_cli_supports_padded_and_legacy_paths_without_other_imports(tmp_path):
+        root, result = run_validator(tmp_path, {
+            "ch07/baseline_fixture.py": MARK_IMPORTED,
+            "ch7/optimized_fixture.py": MARK_IMPORTED,
+            "ch01/baseline_not_selected.py": "raise RuntimeError('must not import another chapter')\n",
+        }, "--chapter", "7")
+>       assert result.returncode == 0, result.stdout + result.stderr
+E       AssertionError: ======================================================================
+E         Benchmark Import Validation
+E         ======================================================================
+E         Validating chapter 7...
+E         
+E         
+E         ======================================================================
+E         Traceback (most recent call last):
+E           File "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/curated-source-gates/validator-before-tmp/test_chapter_cli_supports_padd0/fixture-code/core/scripts/validate_imports.py", line 149, in <module>
+E             main()
+E           File "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/curated-source-gates/validator-before-tmp/test_chapter_cli_supports_padd0/fixture-code/core/scripts/validate_imports.py", line 122, in main
+E             print(f"Results: {passed}/{total} passed ({100*passed/total:.1f}%)")
+E                                                        ~~~~~~~~~~^~~~~~
+E         ZeroDivisionError: division by zero
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/opt/miniconda3/bin/python', '/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/...otal:.1f}%)")\n                                               ~~~~~~~~~~^~~~~~\nZeroDivisionError: division by zero\n').returncode
+
+tests/test_validate_imports.py:58: AssertionError
+__ test_empty_inventory_is_explicit_failure_without_zero_division[arguments0] __
+
+tmp_path = PosixPath('/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/curated-source-gates/validator-before-tmp/test_empty_inventory_is_explic0')
+arguments = ()
+
+    @pytest.mark.parametrize("arguments", [(), ("--chapter", "19")])
+    def test_empty_inventory_is_explicit_failure_without_zero_division(tmp_path, arguments):
+        _, result = run_validator(tmp_path, {}, *arguments)
+        assert result.returncode == 1
+>       assert "No benchmark files found" in result.stdout
+E       assert 'No benchmark files found' in '======================================================================\nBenchmark Import Validation\n================...============\nValidating all chapters...\n\n\n======================================================================\n'
+E        +  where '======================================================================\nBenchmark Import Validation\n================...============\nValidating all chapters...\n\n\n======================================================================\n' = CompletedProcess(args=['/opt/miniconda3/bin/python', '/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/...otal:.1f}%)")\n                                               ~~~~~~~~~~^~~~~~\nZeroDivisionError: division by zero\n').stdout
+
+tests/test_validate_imports.py:67: AssertionError
+__ test_empty_inventory_is_explicit_failure_without_zero_division[arguments1] __
+
+tmp_path = PosixPath('/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/curated-source-gates/validator-before-tmp/test_empty_inventory_is_explic1')
+arguments = ('--chapter', '19')
+
+    @pytest.mark.parametrize("arguments", [(), ("--chapter", "19")])
+    def test_empty_inventory_is_explicit_failure_without_zero_division(tmp_path, arguments):
+        _, result = run_validator(tmp_path, {}, *arguments)
+        assert result.returncode == 1
+>       assert "No benchmark files found" in result.stdout
+E       assert 'No benchmark files found' in '======================================================================\nBenchmark Import Validation\n================...==============\nValidating chapter 19...\n\n\n======================================================================\n'
+E        +  where '======================================================================\nBenchmark Import Validation\n================...==============\nValidating chapter 19...\n\n\n======================================================================\n' = CompletedProcess(args=['/opt/miniconda3/bin/python', '/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/...otal:.1f}%)")\n                                               ~~~~~~~~~~^~~~~~\nZeroDivisionError: division by zero\n').stdout
+
+tests/test_validate_imports.py:67: AssertionError
+_ test_real_import_failures_are_reported_and_never_count_as_pass[import deliberately_absent_validation_dependency\n-ModuleNotFoundError] _
+
+tmp_path = PosixPath('/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/curated-source-gates/validator-before-tmp/test_real_import_failures_are_0')
+broken_source = 'import deliberately_absent_validation_dependency\n'
+diagnostic = 'ModuleNotFoundError'
+
+    @pytest.mark.parametrize("broken_source,diagnostic", [
+        ("import deliberately_absent_validation_dependency\n", "ModuleNotFoundError"),
+        ("raise RuntimeError('SKIPPED: actual CUDA capability unavailable')\n", "SKIPPED: actual CUDA capability unavailable"),
+        ("raise SystemExit(0)\n", "SystemExit: 0"),
+    ])
+    def test_real_import_failures_are_reported_and_never_count_as_pass(tmp_path, broken_source, diagnostic):
+        root, result = run_validator(tmp_path, {
+            "ch01/baseline_broken.py": broken_source,
+            "ch01/optimized_actual_import.py": MARK_IMPORTED,
+        })
+        assert result.returncode == 1, result.stdout + result.stderr
+>       assert "Results: 1/2 passed (50.0%)" in result.stdout
+E       assert 'Results: 1/2 passed (50.0%)' in '======================================================================\nBenchmark Import Validation\n================...============\nValidating all chapters...\n\n\n======================================================================\n'
+E        +  where '======================================================================\nBenchmark Import Validation\n================...============\nValidating all chapters...\n\n\n======================================================================\n' = CompletedProcess(args=['/opt/miniconda3/bin/python', '/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/...otal:.1f}%)")\n                                               ~~~~~~~~~~^~~~~~\nZeroDivisionError: division by zero\n').stdout
+
+tests/test_validate_imports.py:83: AssertionError
+_ test_real_import_failures_are_reported_and_never_count_as_pass[raise RuntimeError('SKIPPED: actual CUDA capability unavailable')\n-SKIPPED: actual CUDA capability unavailable] _
+
+tmp_path = PosixPath('/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/curated-source-gates/validator-before-tmp/test_real_import_failures_are_1')
+broken_source = "raise RuntimeError('SKIPPED: actual CUDA capability unavailable')\n"
+diagnostic = 'SKIPPED: actual CUDA capability unavailable'
+
+    @pytest.mark.parametrize("broken_source,diagnostic", [
+        ("import deliberately_absent_validation_dependency\n", "ModuleNotFoundError"),
+        ("raise RuntimeError('SKIPPED: actual CUDA capability unavailable')\n", "SKIPPED: actual CUDA capability unavailable"),
+        ("raise SystemExit(0)\n", "SystemExit: 0"),
+    ])
+    def test_real_import_failures_are_reported_and_never_count_as_pass(tmp_path, broken_source, diagnostic):
+        root, result = run_validator(tmp_path, {
+            "ch01/baseline_broken.py": broken_source,
+            "ch01/optimized_actual_import.py": MARK_IMPORTED,
+        })
+        assert result.returncode == 1, result.stdout + result.stderr
+>       assert "Results: 1/2 passed (50.0%)" in result.stdout
+E       assert 'Results: 1/2 passed (50.0%)' in '======================================================================\nBenchmark Import Validation\n================...============\nValidating all chapters...\n\n\n======================================================================\n'
+E        +  where '======================================================================\nBenchmark Import Validation\n================...============\nValidating all chapters...\n\n\n======================================================================\n' = CompletedProcess(args=['/opt/miniconda3/bin/python', '/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/...otal:.1f}%)")\n                                               ~~~~~~~~~~^~~~~~\nZeroDivisionError: division by zero\n').stdout
+
+tests/test_validate_imports.py:83: AssertionError
+_ test_real_import_failures_are_reported_and_never_count_as_pass[raise SystemExit(0)\n-SystemExit: 0] _
+
+tmp_path = PosixPath('/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/curated-source-gates/validator-before-tmp/test_real_import_failures_are_2')
+broken_source = 'raise SystemExit(0)\n', diagnostic = 'SystemExit: 0'
+
+    @pytest.mark.parametrize("broken_source,diagnostic", [
+        ("import deliberately_absent_validation_dependency\n", "ModuleNotFoundError"),
+        ("raise RuntimeError('SKIPPED: actual CUDA capability unavailable')\n", "SKIPPED: actual CUDA capability unavailable"),
+        ("raise SystemExit(0)\n", "SystemExit: 0"),
+    ])
+    def test_real_import_failures_are_reported_and_never_count_as_pass(tmp_path, broken_source, diagnostic):
+        root, result = run_validator(tmp_path, {
+            "ch01/baseline_broken.py": broken_source,
+            "ch01/optimized_actual_import.py": MARK_IMPORTED,
+        })
+        assert result.returncode == 1, result.stdout + result.stderr
+>       assert "Results: 1/2 passed (50.0%)" in result.stdout
+E       assert 'Results: 1/2 passed (50.0%)' in '======================================================================\nBenchmark Import Validation\n================...============\nValidating all chapters...\n\n\n======================================================================\n'
+E        +  where '======================================================================\nBenchmark Import Validation\n================...============\nValidating all chapters...\n\n\n======================================================================\n' = CompletedProcess(args=['/opt/miniconda3/bin/python', '/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/...otal:.1f}%)")\n                                               ~~~~~~~~~~^~~~~~\nZeroDivisionError: division by zero\n').stdout
+
+tests/test_validate_imports.py:83: AssertionError
+____________ test_zero_chapter_cannot_silently_select_all_chapters _____________
+
+tmp_path = PosixPath('/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/curated-source-gates/validator-before-tmp/test_zero_chapter_cannot_silen0')
+
+    def test_zero_chapter_cannot_silently_select_all_chapters(tmp_path):
+        root, result = run_validator(tmp_path, {"ch01/baseline_fixture.py": MARK_IMPORTED}, "--chapter", "0")
+>       assert result.returncode == 2
+E       assert 1 == 2
+E        +  where 1 = CompletedProcess(args=['/opt/miniconda3/bin/python', '/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/...otal:.1f}%)")\n                                               ~~~~~~~~~~^~~~~~\nZeroDivisionError: division by zero\n').returncode
+
+tests/test_validate_imports.py:91: AssertionError
+- generated xml file: /Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/curated-source-gates/validator-before.xml -
+=========================== short test summary info ============================
+FAILED tests/test_validate_imports.py::test_default_root_cli_actually_imports_both_chapter_variants
+FAILED tests/test_validate_imports.py::test_chapter_cli_supports_padded_and_legacy_paths_without_other_imports
+FAILED tests/test_validate_imports.py::test_empty_inventory_is_explicit_failure_without_zero_division[arguments0]
+FAILED tests/test_validate_imports.py::test_empty_inventory_is_explicit_failure_without_zero_division[arguments1]
+FAILED tests/test_validate_imports.py::test_real_import_failures_are_reported_and_never_count_as_pass[import deliberately_absent_validation_dependency\n-ModuleNotFoundError]
+FAILED tests/test_validate_imports.py::test_real_import_failures_are_reported_and_never_count_as_pass[raise RuntimeError('SKIPPED: actual CUDA capability unavailable')\n-SKIPPED: actual CUDA capability unavailable]
+FAILED tests/test_validate_imports.py::test_real_import_failures_are_reported_and_never_count_as_pass[raise SystemExit(0)\n-SystemExit: 0]
+FAILED tests/test_validate_imports.py::test_zero_chapter_cannot_silently_select_all_chapters
+8 failed in 0.39s

@@ -10,13 +10,13 @@ enum class ThresholdAsyncLaunchResult {
     kFailed,
 };
 
-#if CUDA_VERSION >= 12000
+#if CUDART_VERSION >= 12000
 __global__ void threshold_predicated_async_kernel(
     const float* __restrict__ inputs,
     float* __restrict__ output,
     float threshold,
     int count) {
-    extern __shared__ float shmem[];
+    extern __shared__ __align__(16) float shmem[];
 
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     constexpr int stages = 2;
@@ -130,7 +130,9 @@ __global__ void threshold_predicated_async_kernel(
 
         stage ^= 1;
         if (tiles_processed < tiles_for_block) {
-            const bool keep_inflight = (tiles_enqueued - tiles_processed) > 0;
+            // One pending group is the next tile itself: it must be complete.
+            // Only leave a group pending when a later tile is also enqueued.
+            const bool keep_inflight = (tiles_enqueued - tiles_processed) > 1;
             wait_for_stage(keep_inflight);
         }
     }
@@ -141,7 +143,7 @@ __global__ void threshold_predicated_async_kernel(
     (void)count;
 #endif
 }
-#endif  // CUDA_VERSION >= 12000
+#endif  // CUDART_VERSION >= 12000
 
 inline ThresholdAsyncLaunchResult launch_threshold_predicated_async(
     const float* inputs,
@@ -150,7 +152,7 @@ inline ThresholdAsyncLaunchResult launch_threshold_predicated_async(
     int count,
     cudaStream_t stream,
     cudaError_t* launch_error = nullptr) {
-#if CUDA_VERSION >= 12000
+#if CUDART_VERSION >= 12000
     const dim3 block(kThresholdOptimizedThreads);
     constexpr int values_per_thread = 4;
     constexpr int tiles_per_block = 4;

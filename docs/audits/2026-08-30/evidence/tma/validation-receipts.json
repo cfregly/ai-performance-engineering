@@ -1,0 +1,98 @@
+{
+  "recorded_at_utc": "2026-08-30T22:26:07.730971+00:00",
+  "git_head": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "git_branch": "codex/audit-remediation-20260830",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "python": "/opt/miniconda3/bin/python",
+  "python_version": "3.12.2",
+  "cxx": "/usr/bin/c++",
+  "nvcc": null,
+  "compute_sanitizer": null,
+  "source_sha256": {
+    "code/core/common/headers/tma_2d_layout.hpp": "645f624cc2cd7a7b1f18e6d0c734e1b48407394d478f18aee46f0dd8927c8834",
+    "code/core/common/headers/tma_helpers.cuh": "4c8a88560d1cc5e04ff1b99110453119fefc98aa17faaee462ce0133abc942ba",
+    "code/core/common/headers/cuda13_demos.cuh": "8d830db67de26e477ffca0d206b6b31a01ccadef9763718fe833a87bdcffc431",
+    "code/ch07/async_prefetch_2d_demo.cu": "240fe11efe9b08b69451302d2f800f9866d143c117bb5268627044f4062fda42",
+    "code/ch07/optimized_tma_bulk_tensor_2d.cu": "a08ada595900df14d7e1b221ecfdf726e9108ea461af3e48da38f20cb14b9c7d",
+    "code/ch07/optimized_tma_copy.cu": "6d96913749a4e0678853666e65ec618faca98ff8999be0bb7adcbaa06169ed7d",
+    "code/ch10/tma_2d_pipeline_blackwell.cu": "ce4f44059cd852c607b4a3e209fbe1b83988292f2a903f714c58d41dacca410c",
+    "code/ch10/tma_multicast_cluster.cu": "5f68f8b00bfaaa7dd1a9f89306749b024bad7ab7e03f23105b9bc2882c6e9dc4",
+    "code/ch10/tma_multicast_baseline.cu": "b13b9a30fab9128a3756c37e1319e76405888f4ab66402f8c07ad8b4d5c34c7d",
+    "code/ch07/Makefile": "bb44a06e10028ca2a4d089256542eba8efb084baa409f90220bf1584bda8fcba",
+    "code/ch10/Makefile": "d2275afcf9112c7b4a0f6df04ad7cf43e770fc88156033e357e5837d8d6f88fb",
+    "code/tests/test_tma_2d_layout.py": "760aa27c1e1b8ccb6c0c3b3b3492a8b17aab1457053e461e62fc406f7348b974",
+    "code/tests/cuda/tma_2d_layout_validation.cu": "2516c597381ec412ede23c0ce2492e17c09c326ff48899b4f2a72efe7dc9482f",
+    "code/tests/cuda/run_tma_2d_layout_validation.py": "7682c86fb69c8f7db2bcc0c50b7ded552c272bc5dc5c0ace113000f18eee36af"
+  },
+  "checks": [
+    {
+      "name": "host-after",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_tma_2d_layout.py",
+        "tests/test_ch10_makefile_contract.py"
+      ],
+      "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+      "exit_code": 0,
+      "log": "host-after.txt"
+    },
+    {
+      "name": "diff-check",
+      "command": [
+        "git",
+        "diff",
+        "--check",
+        "--",
+        "code/core/common/headers/tma_2d_layout.hpp",
+        "code/core/common/headers/tma_helpers.cuh",
+        "code/core/common/headers/cuda13_demos.cuh",
+        "code/ch07/async_prefetch_2d_demo.cu",
+        "code/ch07/optimized_tma_bulk_tensor_2d.cu",
+        "code/ch07/optimized_tma_copy.cu",
+        "code/ch10/tma_2d_pipeline_blackwell.cu",
+        "code/ch10/tma_multicast_cluster.cu",
+        "code/ch10/tma_multicast_baseline.cu",
+        "code/ch07/Makefile",
+        "code/ch10/Makefile",
+        "code/tests/test_tma_2d_layout.py",
+        "code/tests/cuda/tma_2d_layout_validation.cu",
+        "code/tests/cuda/run_tma_2d_layout_validation.py"
+      ],
+      "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering",
+      "exit_code": 0,
+      "log": "diff-check.txt"
+    },
+    {
+      "name": "cuda-gate-unavailable",
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "tests/cuda/run_tma_2d_layout_validation.py",
+        "--arch",
+        "sm_100a",
+        "--output-dir",
+        "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-tma-cuda-gate-c777nfdd/run",
+        "--compute-sanitizer"
+      ],
+      "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+      "exit_code": 3,
+      "log": "cuda-gate-unavailable.txt"
+    }
+  ],
+  "pytest_environment": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+  },
+  "cuda_gate_report": "cuda-gate-unavailable.json",
+  "acceptance": {
+    "host_descriptor_and_build_contract": "PASS",
+    "cuda_compile": "NOT_RUN",
+    "full_output_gpu": "NOT_RUN",
+    "compute_sanitizer": "NOT_RUN",
+    "performance": "NOT_RUN",
+    "reason": "This host has no nvcc, compute-sanitizer, or supported CUDA GPU."
+  }
+}

@@ -1,0 +1,390 @@
+........................................................................ [ 13%]
+......F.........................................................F....... [ 26%]
+.....................................F.................................. [ 39%]
+.........FF...........................F.................F..F..........FF [ 52%]
+
+=================================== FAILURES ===================================
+____________ test_custom_vs_cublas_batches_correctness_scale_reads _____________
+
+    def test_custom_vs_cublas_batches_correctness_scale_reads() -> None:
+        source = (REPO_ROOT / "labs" / "custom_vs_cublas" / "run_lab.py").read_text(
+            encoding="utf-8"
+        )
+        verify_section = source.split("def verify_correctness", maxsplit=1)[1].split(
+            "def main",
+            maxsplit=1,
+        )[0]
+    
+>       assert "ref_abs_max = ref_fp32.abs().max()" in verify_section
+E       assert 'ref_abs_max = ref_fp32.abs().max()' in '(A, B_T, verbose=True, stages=None):\n    """Return False if any selected backend is unavailable or has incorrect out...verbose:\n                print(f"  Stage {stage_num}: {name:<27} FAILED/UNAVAILABLE: {exc}")\n    return passed\n\n\n'
+
+tests/test_benchmark_hygiene_regressions.py:3021: AssertionError
+___________ test_nvfp4_group_gemm_reuses_verification_output_buffer ____________
+
+    def test_nvfp4_group_gemm_reuses_verification_output_buffer() -> None:
+        source = (
+            REPO_ROOT / "labs" / "nvfp4_group_gemm" / "nvfp4_group_gemm_common.py"
+        ).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def validate_result",
+            maxsplit=1,
+        )[0]
+    
+        assert "self._verify_output: Optional[torch.Tensor] = None" in source
+        assert "total_output_elements = sum(" in setup_section
+        assert "self._verify_output = torch.empty(" in setup_section
+        assert "dtype=torch.float16" in setup_section
+        assert "with torch.inference_mode():" in setup_section
+        assert "with torch.inference_mode(), torch.cuda.graph(graph):" in setup_section
+        assert "with torch.inference_mode():" in benchmark_section
+        assert "if self._verify_output is None:" in capture_section
+>       assert "for group_output in self._last_output:" in capture_section
+E       assert 'for group_output in self._last_output:' in '(self) -> None:\n        if not self.data_list or self._last_output is None:\n            raise RuntimeError("benchma...ut_tolerance=(1e-3, 1e-3),\n            precision_flags={"fp16": True, "fp8": True, "tf32": False},\n        )\n\n    '
+
+tests/test_benchmark_hygiene_regressions.py:5117: AssertionError
+_______________ test_lab_utility_timers_record_on_current_stream _______________
+
+    def test_lab_utility_timers_record_on_current_stream() -> None:
+        timing_splits = {
+            "labs/tcgen05_cluster_shapes/run_cluster_shape_sweep.py": (
+                "def _benchmark",
+                "def _run_variant",
+                "current_stream = torch.cuda.current_stream()",
+                "start.record(current_stream)",
+                "end.record(current_stream)",
+                "start.record()",
+                "end.record()",
+            ),
+            "labs/fullstack_cluster/run_lab_fullstack_cluster.py": (
+                "def _time_kernel",
+                "def run_benchmark",
+                "current_stream = torch.cuda.current_stream()",
+                "start_evt.record(current_stream)",
+                "end_evt.record(current_stream)",
+                "start_evt.record()",
+                "end_evt.record()",
+            ),
+            "labs/flexattention/flex_attention_cute.py": (
+                "count = max(int(args.iters), 1)",
+                "elapsed_s =",
+                "current_stream = torch.cuda.current_stream(device)",
+                "start.record(current_stream)",
+                "end.record(current_stream)",
+                "start.record()",
+                "end.record()",
+            ),
+        }
+    
+        for filename, records in timing_splits.items():
+            start_marker, end_marker, stream_capture, start_record, end_record, implicit_start, implicit_end = records
+            source = (REPO_ROOT / filename).read_text(encoding="utf-8")
+>           timing_section = source.split(start_marker, maxsplit=1)[1].split(
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                end_marker,
+                maxsplit=1,
+            )[0]
+E           IndexError: list index out of range
+
+tests/test_benchmark_hygiene_regressions.py:7612: IndexError
+_____ test_remaining_benchmark_wrappers_cache_verification_parameter_count _____
+
+    def test_remaining_benchmark_wrappers_cache_verification_parameter_count() -> None:
+        for relative, parameters_expr in (
+            ("ch16/awq_gptq_smoothquant_benchmarks.py", "self.reference_model.parameters()"),
+            ("ch18/nvfp4_trtllm_tool.py", "self.linear.parameters()"),
+            ("ch18/run_vllm_decoder.py", "self.model.parameters()"),
+            ("ch19/fp8_calibration_free_tool.py", "self._impl.layers.parameters()"),
+            ("labs/nanochat_fullstack/baseline_nanochat_inference.py", "self.model.parameters()"),
+            ("labs/nanochat_fullstack/optimized_nanochat_inference.py", "self.model.parameters()"),
+            ("labs/kv_cache_compression/baseline_kv_cache.py", "self.model.parameters()"),
+        ):
+            source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+            setup_section = source.split("def setup", maxsplit=1)[1].split(
+                "def benchmark_fn",
+                maxsplit=1,
+            )[0]
+            capture_section = source.split("def capture_verification_payload", maxsplit=1)[
+                1
+            ].split(
+                "def ",
+                maxsplit=1,
+            )[0]
+    
+            assert "self._payload_parameter_count = 0" in source
+            assert (
+                f"self._payload_parameter_count = sum(p.numel() for p in {parameters_expr})"
+                in setup_section
+            )
+            assert "parameter_count=self._payload_parameter_count" in capture_section
+            assert "sum(p.numel()" not in capture_section
+            if relative == "ch16/awq_gptq_smoothquant_benchmarks.py":
+                assert "self._verify_input_buffer: Optional[torch.Tensor] = None" in source
+                assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+                assert "self._verify_input_buffer = torch.empty_like(self.inputs, dtype=torch.float32)" in setup_section
+                assert "self._verify_output_buffer = torch.empty(" in setup_section
+                assert "self._verify_input_buffer.copy_(self.inputs)" in capture_section
+                assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+                assert 'inputs={"input": self._verify_input_buffer}' in capture_section
+                assert "output=self._verify_output_buffer" in capture_section
+                assert "self.inputs.detach().float().clone()" not in capture_section
+                assert "self.output.detach().float().clone()" not in capture_section
+            if "nanochat_fullstack" in relative:
+                assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+                assert "self._verify_output_buffer = torch.empty(" in setup_section
+                assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+                assert "output=self._verify_output_buffer" in capture_section
+                assert "self.output.detach().float().clone()" not in capture_section
+    
+        inherited_source = (
+            REPO_ROOT / "labs" / "kv_cache_compression" / "optimized_kv_cache_nvfp4.py"
+        ).read_text(encoding="utf-8")
+>       inherited_capture = inherited_source.split("def capture_verification_payload", maxsplit=1)[
+            1
+        ].split(
+            "def get_custom_metrics",
+            maxsplit=1,
+        )[0]
+E       IndexError: list index out of range
+
+tests/test_benchmark_hygiene_regressions.py:9310: IndexError
+__________ test_kv_cache_compression_reuses_capture_metadata_tensors ___________
+
+    def test_kv_cache_compression_reuses_capture_metadata_tensors() -> None:
+        baseline_source = (
+            REPO_ROOT / "labs" / "kv_cache_compression" / "baseline_kv_cache.py"
+        ).read_text(encoding="utf-8")
+        optimized_source = (
+            REPO_ROOT / "labs" / "kv_cache_compression" / "optimized_kv_cache_nvfp4.py"
+        ).read_text(encoding="utf-8")
+        setup_section = baseline_source.split("def _setup_with_recipe", maxsplit=1)[1].split(
+            "def _calibrate_fp8", maxsplit=1
+        )[0]
+        build_section = baseline_source.split("def _build_verification_output", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        baseline_capture = baseline_source.split("def capture_verification_payload", maxsplit=1)[
+            1
+        ].split("def finalize_iteration_metrics", maxsplit=1)[0]
+>       optimized_capture = optimized_source.split("def capture_verification_payload", maxsplit=1)[
+            1
+        ].split("def get_custom_metrics", maxsplit=1)[0]
+E       IndexError: list index out of range
+
+tests/test_benchmark_hygiene_regressions.py:9337: IndexError
+______________ test_dynamic_router_vllm_runner_caches_engine_ids _______________
+
+    def test_dynamic_router_vllm_runner_caches_engine_ids() -> None:
+        source = (REPO_ROOT / "labs" / "dynamic_router" / "vllm_runner.py").read_text(
+            encoding="utf-8"
+        )
+        wrapper_section = source.split("class _VllmWrapper", maxsplit=1)[1].split(
+            "class _VllmV1Wrapper",
+            maxsplit=1,
+        )[0]
+        v1_wrapper_section = source.split("class _VllmV1Wrapper", maxsplit=1)[1].split(
+            "@dataclass",
+            maxsplit=1,
+        )[0]
+        routing_section = source.split(
+            "def run_vllm_routing_with_topology",
+            maxsplit=1,
+        )[1].split("def run_vllm_routing", maxsplit=1)[0]
+    
+        assert "engine_ids = tuple(engines)" in routing_section
+        assert "gid = engine_ids[i % len(engine_ids)]" in routing_section
+        assert "completed += len(finished_ids)" in routing_section
+        assert "requests: Dict[str, _RequestRuntime]" not in routing_section
+        assert "requests[rid] = rt" not in routing_section
+        assert "completed = sum(1 for r in requests.values() if r.finished)" not in routing_section
+        assert "list(engines.keys())" not in routing_section
+        assert "ttft_total_ms = 0.0" in routing_section
+        assert "ttft_samples.append(sample)" in routing_section
+        assert "ttft_total_ms += sample" in routing_section
+        assert '"ttft_ms_mean": float(ttft_total_ms / len(ttft_samples))' in routing_section
+        assert "sum(ttft_samples)" not in routing_section
+        assert "ttft_samples.extend(sample for _, sample in ttft_new)" not in routing_section
+        assert "ttft_samples.extend([sample" not in routing_section
+        assert "output_token_count = sum(len(o.token_ids) for o in ro.outputs)" in wrapper_section
+>       assert "tokens_emitted += output_token_count" in wrapper_section
+E       assert 'tokens_emitted += output_token_count' in ':\n    """Minimal wrapper around LLMEngine for metrics and request tracking."""\n\n    def __init__(self, gpu_id: str...\n        }\n        if ttft_ema is not None:\n            metrics["ttft_ms"] = ttft_ema\n        return metrics\n\n\n'
+
+tests/test_benchmark_hygiene_regressions.py:10995: AssertionError
+__________ test_persistent_decode_baseline_reuses_decode_step_buffers __________
+
+    def test_persistent_decode_baseline_reuses_decode_step_buffers() -> None:
+        source = (REPO_ROOT / "labs" / "persistent_decode" / "baseline_persistent_decode.py").read_text(
+            encoding="utf-8"
+        )
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def _decode_step",
+            maxsplit=1,
+        )[0]
+        decode_step_section = source.split("def _decode_step", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+    
+        assert "self._product_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._dot_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._decode_step_views: tuple[" in source
+        assert "self._output_view: Optional[torch.Tensor] = None" in source
+        assert "self._product_buffer = torch.empty(" in setup_section
+        assert "self._dot_buffer = torch.empty(" in setup_section
+        assert "self._decode_step_views = tuple(" in setup_section
+        assert "self.inputs.q.unbind(1)" in setup_section
+        assert "self.inputs.out.unbind(1)" in setup_section
+>       assert "self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]" in setup_section
+E       AssertionError: assert 'self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]' in '(self) -> None:\n        self.inputs = build_inputs(self.device)\n        self.batch = int(self.inputs.q.shape[0])\n ...rict=True,\n            )\n        )\n        self._output_view = self.inputs.out\n        self._synchronize()\n\n    '
+
+tests/test_benchmark_hygiene_regressions.py:12052: AssertionError
+_______ test_persistent_decode_tma_baselines_precompute_host_loop_views ________
+
+    def test_persistent_decode_tma_baselines_precompute_host_loop_views() -> None:
+        targets = {
+            "baseline_tma_prefill_decode.py": (
+                "def _prefill_sequential",
+                "dst.copy_(src)",
+                "dst.add_(src)",
+            ),
+            "baseline_native_tma_prefill_decode.py": (
+                "def _prefill_native",
+                "self._tma_ext.tma_copy(src, dst)",
+                "assert self._tma_ext is not None",
+            ),
+        }
+    
+        for filename, (prefill_marker, first_prefill_assert, second_prefill_assert) in targets.items():
+            source = (
+                REPO_ROOT / "labs" / "persistent_decode" / filename
+            ).read_text(encoding="utf-8")
+            setup_section = source.split("def setup", maxsplit=1)[1].split(
+                prefill_marker,
+                maxsplit=1,
+            )[0]
+            prefill_section = source.split(prefill_marker, maxsplit=1)[1].split(
+                "def _decode_host_loop",
+                maxsplit=1,
+            )[0]
+            decode_section = source.split("def _decode_host_loop", maxsplit=1)[1].split(
+                "def benchmark_fn",
+                maxsplit=1,
+            )[0]
+            benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+                "def capture_verification_payload",
+                maxsplit=1,
+            )[0]
+            teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+                "def get_config",
+                maxsplit=1,
+            )[0]
+    
+            assert "self._product_buffer: Optional[torch.Tensor] = None" in source
+            assert "self._dot_buffer: Optional[torch.Tensor] = None" in source
+            assert "self._decode_step_views: tuple[" in source
+            assert "self._prefill_work: tuple[tuple[torch.Tensor, torch.Tensor], ...] = ()" in source
+            assert "self._output_view: Optional[torch.Tensor] = None" in source
+            assert "self._prefill_work = tuple(" in setup_section
+            assert "self.prefill_src.unbind(0)" in setup_section
+            assert "self.prefill_dst.unbind(0)" in setup_section
+            assert "self._product_buffer = torch.empty(" in setup_section
+            assert "self._dot_buffer = torch.empty(" in setup_section
+            assert "self._decode_step_views = tuple(" in setup_section
+            assert "self.inputs.q.unbind(1)" in setup_section
+            assert "self.inputs.out.unbind(1)" in setup_section
+            assert "strict=True" in setup_section
+            assert "self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]" in setup_section
+            assert "for src, dst in self._prefill_work:" in prefill_section
+>           assert first_prefill_assert in prefill_section
+E           AssertionError: assert 'self._tma_ext.tma_copy(src, dst)' in '(self) -> None:\n        assert self._async_copy_ext is not None\n        for src, dst in self._prefill_work:\n            self._async_copy_ext.async_copy(src, dst)\n\n    '
+
+tests/test_benchmark_hygiene_regressions.py:12199: AssertionError
+__________ test_nanochat_incremental_benchmark_uses_cuda_event_timing __________
+
+    def test_nanochat_incremental_benchmark_uses_cuda_event_timing() -> None:
+        source = (
+            REPO_ROOT / "labs" / "nanochat_fullstack" / "benchmark_incremental_optimizations.py"
+        ).read_text(encoding="utf-8")
+        helper_section = source.split("def _time_region_seconds", maxsplit=1)[1].split(
+            "def benchmark_inference",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_inference", maxsplit=1)[1].split(
+            "def run_incremental_benchmark",
+            maxsplit=1,
+        )[0]
+        timed_section = benchmark_section.split("# Benchmark prefill", maxsplit=1)[1].split(
+            "# Cleanup",
+            maxsplit=1,
+        )[0]
+    
+>       assert helper_section.count("torch.cuda.Event(enable_timing=True)") == 2
+E       assert 0 == 2
+E        +  where 0 = <built-in method count of str object at 0x355b38030>('torch.cuda.Event(enable_timing=True)')
+E        +    where <built-in method count of str object at 0x355b38030> = '(self, fn: Callable[[], None]) -> float:\n        if self.device.type == "cuda":\n            torch.cuda.synchronize(....type == "cuda":\n            torch.cuda.synchronize(self.device)\n        return time.perf_counter() - t0\n    \n    '.count
+
+tests/test_benchmark_hygiene_regressions.py:12955: AssertionError
+___________ test_nanochat_b200_flag_benchmark_uses_cuda_event_timing ___________
+
+    def test_nanochat_b200_flag_benchmark_uses_cuda_event_timing() -> None:
+        source = (
+            REPO_ROOT / "labs" / "nanochat_fullstack" / "scripts" / "bench_b200_flags.py"
+        ).read_text(encoding="utf-8")
+        helper_section = source.split("def _time_cuda_region_seconds", maxsplit=1)[1].split(
+            "def configure_mode",
+            maxsplit=1,
+        )[0]
+        run_once_section = source.split("def bench_once", maxsplit=1)[1].split(
+            "def run_benchmark",
+            maxsplit=1,
+        )[0]
+        run_benchmark_section = source.split("def run_benchmark", maxsplit=1)[1].split(
+            "def main",
+            maxsplit=1,
+        )[0]
+    
+>       assert helper_section.count("torch.cuda.Event(enable_timing=True)") == 2
+E       AssertionError: assert 0 == 2
+E        +  where 0 = <built-in method count of str object at 0x355b945a0>('torch.cuda.Event(enable_timing=True)')
+E        +    where <built-in method count of str object at 0x355b945a0> = '(fn: Callable[[], None]) -> float:\n    # End-to-end region latency includes host submission and all CUDA streams.\n ...n    start = time.perf_counter()\n    fn()\n    torch.cuda.synchronize()\n    return time.perf_counter() - start\n\n\n'.count
+
+tests/test_benchmark_hygiene_regressions.py:13003: AssertionError
+=============================== warnings summary ===============================
+tests/test_benchmark_hygiene_regressions.py::test_ch15_placement_sim_batches_session_rng_samples
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/ch15/placement_sim.py:35: RuntimeWarning: [ch15] placement_sim expects torch>=2.10 with CUDA 13 for Blackwell (B200/B300, GB200/GB300); falling back to compatibility mode.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_benchmark_hygiene_regressions.py::test_custom_vs_cublas_batches_correctness_scale_reads
+FAILED tests/test_benchmark_hygiene_regressions.py::test_nvfp4_group_gemm_reuses_verification_output_buffer
+FAILED tests/test_benchmark_hygiene_regressions.py::test_lab_utility_timers_record_on_current_stream
+FAILED tests/test_benchmark_hygiene_regressions.py::test_remaining_benchmark_wrappers_cache_verification_parameter_count
+FAILED tests/test_benchmark_hygiene_regressions.py::test_kv_cache_compression_reuses_capture_metadata_tensors
+FAILED tests/test_benchmark_hygiene_regressions.py::test_dynamic_router_vllm_runner_caches_engine_ids
+FAILED tests/test_benchmark_hygiene_regressions.py::test_persistent_decode_baseline_reuses_decode_step_buffers
+FAILED tests/test_benchmark_hygiene_regressions.py::test_persistent_decode_tma_baselines_precompute_host_loop_views
+FAILED tests/test_benchmark_hygiene_regressions.py::test_nanochat_incremental_benchmark_uses_cuda_event_timing
+FAILED tests/test_benchmark_hygiene_regressions.py::test_nanochat_b200_flag_benchmark_uses_cuda_event_timing
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 10 failures !!!!!!!!!!!!!!!!!!!!!!!!!!
+10 failed, 278 passed, 1 warning in 3.89s

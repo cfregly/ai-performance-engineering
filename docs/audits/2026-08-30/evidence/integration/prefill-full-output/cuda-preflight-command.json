@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "/opt/miniconda3/bin/python",
+    "tests/test_audit_wave1_prefill_full_output.py",
+    "--output-dir",
+    "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/prefill-full-output/cuda-preflight-hold"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "started_utc": "2026-08-30T23:57:02.684369+00:00",
+  "finished_utc": "2026-08-30T23:57:03.639437+00:00",
+  "exit_code": 3,
+  "stdout": "cuda-preflight-output.txt",
+  "report": "cuda-preflight-hold/report.json"
+}

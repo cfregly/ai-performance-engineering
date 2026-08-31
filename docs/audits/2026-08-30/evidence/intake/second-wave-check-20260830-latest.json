@@ -1,0 +1,15 @@
+{
+  "checked_at_utc": "2026-08-30T22:50:09.799712+00:00",
+  "url": "https://claude.ai/code/artifact/9a311b78-5dac-4ea7-909f-e52993ab8e0e",
+  "method": "browser refresh and rendered DOM snapshot",
+  "observed_revision": "b57e4c6a9",
+  "observed_findings": 128,
+  "severity_counts": {
+    "critical": 5,
+    "high": 37,
+    "medium": 58,
+    "low": 28
+  },
+  "second_wave": "not present at this link; unreviewed footer is not a second report",
+  "original_source_untouched": true
+}

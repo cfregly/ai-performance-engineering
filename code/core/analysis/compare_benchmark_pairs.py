@@ -14,8 +14,7 @@ from typing import List, Tuple
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 from core.discovery import discover_benchmarks, normalize_chapter_token
-from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkMode, BenchmarkConfig
-from labs.moe_parallelism.plan import PlanEvaluator
+from core.harness.benchmark_harness import BenchmarkConfig, BenchmarkHarness, BenchmarkMode
 
 
 def _load_pairs(chapter_slug: str) -> List[Tuple[Path, Path, str]]:
@@ -39,15 +38,8 @@ def _run(target: Path) -> Tuple[str, float, float]:
     module = importlib.util.module_from_spec(spec_obj)
     spec_obj.loader.exec_module(module)  # type: ignore[arg-type]
 
-    # Prefer analytic path if module exposes plan + evaluator inputs
-    if hasattr(module, "build_plan") and hasattr(module, "CLUSTER") and hasattr(module, "MODEL"):
-        plan = module.build_plan()
-        evaluator = PlanEvaluator(module.CLUSTER, module.MODEL)
-        report = evaluator.analyze(plan)
-        return name, report.estimated_step_ms, report.throughput_tokens_per_s
-
     if not hasattr(module, "get_benchmark"):
-        raise ImportError(f"Module {module_path} missing get_benchmark() or plan hooks")
+        raise ImportError(f"Module {module_path} missing get_benchmark()")
     benchmark = module.get_benchmark()
     # Minimal config: single iteration, no subprocess
     config = BenchmarkConfig(iterations=1, warmup=0)

@@ -1,277 +1,127 @@
 #!/usr/bin/env python3
-"""
-Test script to validate CTA clustering and persistent decode optimizations.
+"""Numerical flag checks, with separate explicit CUDA capability gates.
 
-Usage:
-    python test_new_optimizations.py
+Run from code: python -m labs.nanochat_fullstack.test_new_optimizations
+CPU hint parity is not evidence that a clustered CUDA kernel executed.
 """
-
-import sys
+from dataclasses import replace
+from unittest import SkipTest
 
 import torch
 
-from labs.nanochat_fullstack.nanochat.engine import Engine
-from labs.nanochat_fullstack.nanochat.gpt import GPT, GPTConfig
-from labs.nanochat_fullstack.nanochat.tokenizer import get_tokenizer
+import labs.nanochat_fullstack
+from nanochat.engine import Engine, KVCache
+from nanochat.gpt import GPT, GPTConfig
 
 
+def _model(config, device):
+    torch.manual_seed(718)
+    model = GPT(config).to(device).eval()
+    if device.type == "cuda":
+        model = model.to(dtype=torch.bfloat16)
+        # Rotary lookup tables intentionally remain bfloat16.
+    assert torch.count_nonzero(model.lm_head.weight) > 0
+    return model
+
+
+def _config(**overrides):
+    return GPTConfig(sequence_len=64, vocab_size=64, n_layer=2, n_head=2,
+                     n_kv_head=2, n_embd=32, use_flash_sdp=False,
+                     use_flash3=False, **overrides)
+
+
+def _assert_logits(actual, expected, shape, tolerance=2e-5):
+    assert actual.shape == expected.shape == shape
+    assert torch.isfinite(actual).all() and torch.isfinite(expected).all()
+    assert actual.abs().max() > 0, "zero-initialized logits cannot validate parity"
+    torch.testing.assert_close(actual, expected, atol=tolerance, rtol=tolerance)
+
+
+@torch.inference_mode()
 def test_cta_clustering():
-    """Test CTA clustering optimization."""
-    print("=" * 60)
-    print("Testing CTA Clustering Optimization")
-    print("=" * 60)
-    
-    # Test 1: CTA clustering disabled (default)
-    config_off = GPTConfig(
-        sequence_len=1024,
-        vocab_size=1000,
-        n_layer=2,
-        n_head=4,
-        n_kv_head=4,
-        n_embd=256,
-        use_cta_clustering=False,
-    )
-    
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    with torch.device("meta"):
-        model_off = GPT(config_off)
-    model_off.to_empty(device=device)
-    model_off.init_weights()
-    # Ensure consistent dtype (avoid bfloat16/float32 mismatch)
-    if device.type == "cuda":
-        model_off = model_off.to(dtype=torch.bfloat16)
-    model_off.eval()
-    
-    # Forward pass with clustering off
-    test_input = torch.randint(0, 1000, (2, 128), device=device)
-    with torch.inference_mode():
-        logits_off = model_off(test_input)
-    
-    print(f"✅ CTA clustering OFF: output shape = {logits_off.shape}")
-    
-    # Test 2: CTA clustering enabled
-    config_on = GPTConfig(
-        sequence_len=1024,
-        vocab_size=1000,
-        n_layer=2,
-        n_head=4,
-        n_kv_head=4,
-        n_embd=256,
-        use_cta_clustering=True,
-        cta_cluster_size=2,
-        cta_cluster_seq_threshold=64,  # Low threshold for testing
-    )
-    
-    with torch.device("meta"):
-        model_on = GPT(config_on)
-    model_on.to_empty(device=device)
-    model_on.init_weights()
-    # Ensure consistent dtype (avoid bfloat16/float32 mismatch)
-    if device.type == "cuda":
-        model_on = model_on.to(dtype=torch.bfloat16)
-    model_on.eval()
-    
-    # Forward pass with clustering on (should work for seq >= 64)
-    test_input_long = torch.randint(0, 1000, (2, 128), device=device)
-    with torch.inference_mode():
-        logits_on = model_on(test_input_long)
-    
-    print(f"✅ CTA clustering ON: output shape = {logits_on.shape}")
-    
-    # Test 3: Short sequence (below threshold) - should skip clustering
-    test_input_short = torch.randint(0, 1000, (2, 32), device=device)
-    with torch.inference_mode():
-        logits_short = model_on(test_input_short)
-    
-    print(f"✅ CTA clustering ON (below threshold): output shape = {logits_short.shape}")
-    print("✅ CTA Clustering tests passed!\n")
+    """The optional hint must preserve output on the ordinary SDPA path."""
+    device = torch.device("cpu")
+    off = _model(_config(), device)
+    on = _model(_config(use_cta_clustering=True, cta_cluster_seq_threshold=8), device)
+    on.load_state_dict(off.state_dict())
+    for length in (4, 16):
+        inputs = torch.randint(0, 64, (2, length), device=device)
+        _assert_logits(on(inputs), off(inputs), (2, length, 64))
+    print("PASS: identical-weight CTA hint parity on CPU SDPA; no clustered kernel claimed")
+
+
+def _require_cuda():
+    if not torch.cuda.is_available():
+        raise SkipTest("requires a real CUDA device; CPU does not qualify this optimization")
+    return torch.device("cuda")
+
+
+@torch.inference_mode()
+def test_cta_backend():
+    device = _require_cuda()
+    config = replace(_config(use_cta_clustering=True, cta_cluster_seq_threshold=8),
+                     use_flash3=True)
+    model = _model(config, device)
+    if any(not b.attn.use_flash3 or b.attn.flash3_fn is None or not b.attn._flash3_accepts_clusters
+           for b in model.transformer.h):
+        raise SkipTest("requires a real FA3 backend accepting num_sm_clusters")
+    baseline = _model(_config(), device)
+    baseline.load_state_dict(model.state_dict())
+    inputs = torch.randint(0, 64, (2, 16), device=device)
+    _assert_logits(model(inputs), baseline(inputs), (2, 16, 64), tolerance=2e-2)
+    print("PASS: cluster-capable FA3 numerical parity (performance unmeasured)")
+
+
+@torch.inference_mode()
+def _compare_decode(config):
+    device = _require_cuda()
+    model = _model(config, device)
+    engine = Engine(model, tokenizer=None, enable_batch_decode=False)
+    assert engine.enable_persistent_decode and engine._persistent_stream is not None
+    assert engine.reuse_ids_buffer
+    cached = engine._get_or_create_persistent_buffer("test", (2, 64), torch.float32, device)
+    assert engine._get_or_create_persistent_buffer("test", (2, 64), torch.float32, device) is cached
+    assert engine._get_or_create_persistent_buffer("test", (3, 64), torch.float32, device) is not cached
+    eager = KVCache(**engine._kv_cache_params(2, 16))
+    optimized = KVCache(**engine._kv_cache_params(2, 16))
+    inputs = torch.randint(0, 64, (2, 10), device=device)
+    model(inputs[:, :3], kv_cache=eager)
+    model(inputs[:, :3], kv_cache=optimized)
+    for position in range(3, 10):
+        step = inputs[:, position:position + 1]
+        expected = model(step, kv_cache=eager).clone()
+        actual = engine._execute_decode(step, optimized)
+        _assert_logits(actual, expected, (2, 1, 64), tolerance=2e-2)
+        assert engine.decode_execution_mode == "side_stream"
+        torch.testing.assert_close(optimized.kv_cache[..., :position + 1, :],
+                                   eager.kv_cache[..., :position + 1, :], atol=2e-2, rtol=2e-2)
+    print("PASS: repeated side-stream decode matches eager logits and KV entries")
 
 
 def test_persistent_decode():
-    """Test persistent decode optimization."""
-    print("=" * 60)
-    print("Testing Persistent Decode Optimization")
-    print("=" * 60)
-    
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    # Test 1: Persistent decode disabled (default)
-    config_off = GPTConfig(
-        sequence_len=512,
-        vocab_size=1000,
-        n_layer=2,
-        n_head=4,
-        n_kv_head=4,
-        n_embd=256,
-        enable_persistent_decode=False,
-    )
-    
-    with torch.device("meta"):
-        model_off = GPT(config_off)
-    model_off.to_empty(device=device)
-    model_off.init_weights()
-    # Ensure consistent dtype (avoid bfloat16/float32 mismatch)
-    if device.type == "cuda":
-        model_off = model_off.to(dtype=torch.bfloat16)
-    model_off.eval()
-    
-    # Create mock tokenizer for testing
-    class MockTokenizer:
-        def get_bos_token_id(self):
-            return 0
-        def encode_special(self, token):
-            special_tokens = {
-                "<|python_start|>": 1,
-                "<|python_end|>": 2,
-                "<|output_start|>": 3,
-                "<|output_end|>": 4,
-                "<|assistant_end|>": 5,
-            }
-            return special_tokens.get(token, 0)
-        def encode(self, text):
-            return [6, 7, 8]
-        def decode(self, tokens):
-            return "test"
-    
-    tokenizer = MockTokenizer()
-    
-    engine_off = Engine(model_off, tokenizer, enable_batch_decode=False)
-    assert engine_off.enable_persistent_decode == False
-    assert engine_off._persistent_stream is None
-    print("✅ Persistent decode OFF: no persistent stream created")
-    
-    # Test 2: Persistent decode enabled
-    config_on = GPTConfig(
-        sequence_len=512,
-        vocab_size=1000,
-        n_layer=2,
-        n_head=4,
-        n_kv_head=4,
-        n_embd=256,
-        enable_persistent_decode=True,
-    )
-    
-    with torch.device("meta"):
-        model_on = GPT(config_on)
-    model_on.to_empty(device=device)
-    model_on.init_weights()
-    # Ensure consistent dtype (avoid bfloat16/float32 mismatch)
-    if device.type == "cuda":
-        model_on = model_on.to(dtype=torch.bfloat16)
-    model_on.eval()
-    
-    engine_on = Engine(model_on, tokenizer, enable_batch_decode=False)
-    assert engine_on.enable_persistent_decode == True
-    assert engine_on.reuse_ids_buffer == True  # Should be auto-enabled
-    if torch.cuda.is_available():
-        assert engine_on._persistent_stream is not None
-        print("✅ Persistent decode ON: persistent stream created")
-        print(f"   Stream priority: {engine_on._persistent_stream.priority if hasattr(engine_on._persistent_stream, 'priority') else 'N/A'}")
-    else:
-        print("✅ Persistent decode ON: no CUDA available, stream is None")
-    
-    # Test 3: Buffer management
-    if engine_on.enable_persistent_decode:
-        test_buffer = engine_on._get_or_create_persistent_buffer(
-            "test", (2, 1000), torch.float32, device
-        )
-        assert test_buffer is not None
-        assert test_buffer.shape == (2, 1000)
-        
-        # Test buffer reuse
-        test_buffer2 = engine_on._get_or_create_persistent_buffer(
-            "test", (2, 1000), torch.float32, device
-        )
-        assert test_buffer is test_buffer2  # Same buffer should be reused
-        print("✅ Persistent decode buffer management: buffers reused correctly")
-        
-        # Test buffer reallocation on shape change
-        test_buffer3 = engine_on._get_or_create_persistent_buffer(
-            "test", (4, 1000), torch.float32, device
-        )
-        assert test_buffer is not test_buffer3  # Different buffer
-        assert test_buffer3.shape == (4, 1000)
-        print("✅ Persistent decode buffer management: buffers reallocated on shape change")
-    
-    print("✅ Persistent Decode tests passed!\n")
+    _compare_decode(_config(enable_persistent_decode=True))
 
 
 def test_integration():
-    """Test that both optimizations work together."""
-    print("=" * 60)
-    print("Testing Integration (Both Optimizations Enabled)")
-    print("=" * 60)
-    
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    config = GPTConfig(
-        sequence_len=512,
-        vocab_size=1000,
-        n_layer=2,
-        n_head=4,
-        n_kv_head=4,
-        n_embd=256,
-        use_cta_clustering=True,
-        cta_cluster_size=2,
-        cta_cluster_seq_threshold=64,
-        enable_persistent_decode=True,
-    )
-    
-    with torch.device("meta"):
-        model = GPT(config)
-    model.to_empty(device=device)
-    model.init_weights()
-    # Ensure consistent dtype (avoid bfloat16/float32 mismatch)
-    if device.type == "cuda":
-        model = model.to(dtype=torch.bfloat16)
-    model.eval()
-    
-    class MockTokenizer:
-        def get_bos_token_id(self):
-            return 0
-        def encode_special(self, token):
-            return 1
-        def encode(self, text):
-            return [2, 3, 4]
-        def decode(self, tokens):
-            return "test"
-    
-    tokenizer = MockTokenizer()
-    engine = Engine(model, tokenizer, enable_batch_decode=False)
-    
-    # Test forward pass
-    test_input = torch.randint(0, 1000, (2, 128), device=device)
-    with torch.inference_mode():
-        logits = model(test_input)
-    
-    print(f"✅ Both optimizations enabled: output shape = {logits.shape}")
-    print(f"   CTA clustering: enabled (threshold={config.cta_cluster_seq_threshold})")
-    print(f"   Persistent decode: enabled (stream={'created' if engine._persistent_stream else 'N/A'})")
-    print("✅ Integration test passed!\n")
+    # This tests the hint + actual side stream together, not resident kernels.
+    _compare_decode(_config(use_cta_clustering=True, cta_cluster_seq_threshold=8,
+                            enable_persistent_decode=True))
+
+
+def main():
+    passed = skipped = 0
+    for test in (test_cta_clustering, test_cta_backend, test_persistent_decode, test_integration):
+        try:
+            test()
+            passed += 1
+        except SkipTest as exc:
+            skipped += 1
+            print(f"SKIP {test.__name__}: {exc}")
+    # Assertions/errors are not swallowed: the process exits nonzero.
+    print(f"{passed} checks passed; {skipped} capability checks skipped")
+    if skipped:
+        print("CUDA qualification is incomplete; skipped checks are not passes")
 
 
 if __name__ == "__main__":
-    print("\n" + "=" * 60)
-    print("NanoChat Advanced Optimizations Test Suite")
-    print("=" * 60 + "\n")
-    
-    try:
-        test_cta_clustering()
-        test_persistent_decode()
-        test_integration()
-        
-        print("=" * 60)
-        print("✅ ALL TESTS PASSED!")
-        print("=" * 60)
-        print("\nBoth optimizations are working correctly:")
-        print("  • CTA Clustering: ✅ Implemented")
-        print("  • Persistent Decode: ✅ Implemented")
-        print("\nOptimizations are properly gated behind flags and")
-        print("maintain backward compatibility when disabled.")
-        print("=" * 60 + "\n")
-        
-    except Exception as e:
-        print(f"\n❌ TEST FAILED: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+    main()

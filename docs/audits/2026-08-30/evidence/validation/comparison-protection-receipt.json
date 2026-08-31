@@ -1,0 +1,112 @@
+{
+  "created_at_utc": "2026-08-30T22:15:45.264106+00:00",
+  "scope": [
+    "W1-021",
+    "W1-054",
+    "W1-040 partial",
+    "W1-041",
+    "discovered empty floating-output comparison crash"
+  ],
+  "base_commit": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "branch": "codex/audit-remediation-20260830",
+  "environment": {
+    "python": "/opt/miniconda3/bin/python",
+    "python_version": "3.12.2",
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "torch": "2.8.0",
+    "pytest": "8.4.2",
+    "cuda_available": false,
+    "qualification": "CPU source/behavior validation only; not pinned GPU stack or performance qualification"
+  },
+  "commands": [
+    {
+      "cwd": "code",
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_audit_wave1_comparison.py tests/test_benchmark_comparison.py -q -p no:cacheprovider",
+      "result": "45 passed in 3.72s",
+      "log": "comparison-after.txt"
+    },
+    {
+      "cwd": "code",
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_protection_effectiveness.py -q -p no:cacheprovider",
+      "result": "Before empty comparator fix:1 failed,36 passed,2 CUDA skipped in1.93s",
+      "log": "protections-empty-output-before.txt"
+    },
+    {
+      "cwd": "code",
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest tests/test_anti_cheat_protections.py tests/test_protection_effectiveness.py tests/test_audit_wave1_comparison.py tests/test_benchmark_comparison.py tests/test_verification.py -q -rs -p no:cacheprovider",
+      "result": "203 passed,64 skipped,11 warnings in6.34s",
+      "log": "protections-focused-after.txt"
+    },
+    {
+      "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering",
+      "command": "PYTHONPATH=/Users/admin/dev/ai-perf/ai-performance-engineering/code PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest /tmp/aisp-wave1-original-protections -q -p no:cacheprovider",
+      "result": "143 skipped in0.82s; original files copied byte-for-byte from git show b57e4c6a9",
+      "log": "protections-original-cpu-baseline.txt"
+    },
+    {
+      "cwd": "code",
+      "command": "/opt/miniconda3/bin/python -m ruff check core/benchmark/comparison.py core/benchmark/verify_runner.py tests/protection_test_utils.py tests/test_audit_wave1_comparison.py tests/test_anti_cheat_protections.py tests/test_protection_effectiveness.py --select E9,F63,F7,F82,B006,B023",
+      "result": "All checks passed"
+    },
+    {
+      "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering",
+      "command": "git diff --check -- code/core/benchmark/comparison.py code/core/benchmark/verify_runner.py code/tests/test_anti_cheat_protections.py code/tests/test_protection_effectiveness.py",
+      "result": "passed"
+    }
+  ],
+  "skip_classification": {
+    "cuda_gated_unexecuted": 60,
+    "missing_dataset_provenance_protection": 3,
+    "former_test_count_pseudo_coverage": 1
+  },
+  "protection_test_inventory": {
+    "code/tests/test_anti_cheat_protections.py": {
+      "original_test_nodes": 104,
+      "current_test_nodes": 104,
+      "removed_nodes": [],
+      "added_nodes": []
+    },
+    "code/tests/test_protection_effectiveness.py": {
+      "original_test_nodes": 39,
+      "current_test_nodes": 41,
+      "removed_nodes": [],
+      "added_nodes": [
+        "TestMissingEdgeCases.test_empty_tensor_does_not_bypass_remaining_outputs",
+        "TestMissingEdgeCases.test_empty_tensor_preserves_custom_comparator"
+      ]
+    }
+  },
+  "limitations": [
+    "W1-040 remains open:42 original CUDA smoke bodies are explicitly identified in protections-remaining-legacy-smoke.json; they are not evidence for their named detectors.",
+    "No implemented outlier classifier or omitted-sample/cherry-picking classifier was found. Tests verify only raw-sample reporting fidelity, and timing-config comparisons verify fairness rather than statistical power.",
+    "Three dataset-provenance/holdout assertions were tautologies; retained node IDs now explicitly skip as missing implementation. They are not passes or GPU skips.",
+    "The former test-count coverage assertion is an explicit skip: counting tests does not prove95 protections.",
+    "CUDA stream/adaptive/warmup integration was not executed. Real CUDA required; no device availability, timing, detector outcome, or benchmark success was mocked.",
+    "GPU-state/graph/timing fixtures exercise diagnostic payload logic only. Warmup spy delegates to actual flush. Injected OOM checks failure propagation onCPU and does not claim actualGPU OOM recovery.",
+    "All143 original testnode IDs were retained. Two extra empty-output testmethods and three dtype cases were added.",
+    "Comparison initial15 failures included14 observed behavior failures and1 new fixture omission; receipt does not count fixture omission as baseline defect.",
+    "Contract noncallable-method acceptance in DETECT is documented warning behavior, not a defect; GATE rejection is tested and contract.py was not edited.",
+    "Visible warnings disclose unsupported darwin benchmark-validity environment and the deliberate incorrect-work fixture source branches; these CPU runs are not accepted benchmark results."
+  ],
+  "sha256": {
+    "code/core/benchmark/comparison.py": "9f0e71fd6e36c25ac176f0f3862a05643a329a105be0f3ce8e48f75825c434f6",
+    "code/core/benchmark/verify_runner.py": "cb3062d9679c10a26ffe665d8627e2863ebb3324af2699dee395cf8358d95704",
+    "code/tests/test_audit_wave1_comparison.py": "a78cfa32498896b5648252b8ca4748f973016a30077faadfdbc1945819c6b936",
+    "code/tests/test_anti_cheat_protections.py": "3b1119e98b878f60cbc0703d4a69cc18c3c028dfb8193ddef8f98103922307db",
+    "code/tests/test_protection_effectiveness.py": "e7cb5f75b07f48e7945e79d3dc7bf96df092afabe8ac8b01e66c0be2c08a1fd5",
+    "code/tests/protection_test_utils.py": "6b8b8f630131671be837b9f0c2615bbee0da3c270fbfc06082bb998104253c30"
+  },
+  "log_sha256": {
+    "comparison-before.txt": "2b073638e1421e5d2b6bef15feab2e3ac7f0f2c0f8f672915570677656292c05",
+    "comparison-after.txt": "32097e164726347a4a834ae63115d44aa3f1e39ca6f8832535194b1542b18157",
+    "comparison-original-mechanisms.json": "ed1b75a5312fc694847b791882067d5ccadb1c90be264ab33d4075f2d00bd53d",
+    "harness-original-mechanisms-review.json": "fc3e8fb99154ac498845472d16481f19baa9426115d9b9b1978e8b516d28aca9",
+    "protections-original-cpu-baseline.txt": "9568aea5cc5cb621ec277ce84740cd495680ee583d8c68b25a8a3e24dfb15c51",
+    "protections-empty-output-before.txt": "61ebb464a9c1dc03af6ed64836d671dd3fe61db9c470f357b58693bae1a995d3",
+    "protections-focused-after.txt": "e8476df816e360f3ae7db8cc052ba7cefbd741bd754234e9d4788a31f2d2fa7f",
+    "protections-remaining-legacy-smoke.json": "10120a9981473d811c504eac86a858d6427697cda98a271b5826d68a195ae19b"
+  },
+  "validation_notes": [
+    "Final source after successful tests differs only by the descriptive label of one existing governor integration test and removal of8 blank-line trailing spaces. AST and git diff whitespace checks passed after these presentation-only edits."
+  ]
+}

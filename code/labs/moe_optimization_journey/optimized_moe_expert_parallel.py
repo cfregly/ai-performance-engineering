@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Optimized MoE Level 5: Expert Parallelism.
+"""Compatibility entrypoint for shared MoE level 5: Padded batched GEMMs.
 
-Optimization: Multi-stream expert execution for overlapped compute.
-Expected speedup: ~1.2x over Level 4
-"""
+Adds padded batched-matmul dispatch to the shared BF16 model; no distributed or multi-stream expert parallelism is enabled.
+The target name is retained; legacy FP8/streams/parallel labels are not
+evidence that those techniques execute. Shared-model precision is BF16.
+Fresh correctness and profiling evidence is required for a speedup claim."""
 from labs.moe_optimization_journey.level5_expert_parallel import Level5ExpertParallel
 
 

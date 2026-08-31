@@ -1,0 +1,442 @@
+ssssssssssssssssssssssssssssssssssssssss.........sssssssssssssssssssssss [  2%]
+ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss [  4%]
+sssssssssssssssssssssssssssssFFF.....FFFFF....FF
+=================================== FAILURES ===================================
+____________ TestTimingProtections.test_unsynced_streams_detection _____________
+
+self = <tests.test_anti_cheat_protections.TestTimingProtections object at 0x3230cf800>
+
+    @requires_cuda
+    def test_unsynced_streams_detection(self):
+        assert audit_cuda_work(True) == (True, [])
+        passed, reasons = audit_cuda_work(False)
+        assert not passed
+        assert any("STREAM SYNC WARNING" in reason for reason in reasons)
+    
+    @requires_cuda
+    def test_incomplete_async_ops_protection(self):
+        """Test that async ops are properly awaited.
+>   
+        Protection: Full device sync before timing end
+        Attack: Timer stops before async work finishes
+        """
+
+tests/test_anti_cheat_protections.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/miniconda3/lib/python3.12/site-packages/torch/cuda/__init__.py:1083: in synchronize
+    _lazy_init()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+>               raise AssertionError("Torch not compiled with CUDA enabled")
+E               AssertionError: Torch not compiled with CUDA enabled
+
+/opt/miniconda3/lib/python3.12/site-packages/torch/cuda/__init__.py:403: AssertionError
+__________ TestTimingProtections.test_incomplete_async_ops_protection __________
+
+self = <tests.test_anti_cheat_protections.TestTimingProtections object at 0x3230cf9b0>
+
+        # After sync, result should be materialized
+        assert c.is_cuda
+        assert not c.requires_grad  # Sanity check
+    
+    @requires_cuda
+    def test_event_timing_cross_validation(self):
+        """Test that CUDA event timing is cross-validated with wall clock.
+>   
+        Protection: Cross-validate with wall clock
+        Attack: CUDA events recorded incorrectly
+        """
+
+tests/test_anti_cheat_protections.py:155: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+>               raise AssertionError("Torch not compiled with CUDA enabled")
+E               AssertionError: Torch not compiled with CUDA enabled
+
+/opt/miniconda3/lib/python3.12/site-packages/torch/cuda/__init__.py:403: AssertionError
+___________ TestTimingProtections.test_event_timing_cross_validation ___________
+
+self = <tests.test_anti_cheat_protections.TestTimingProtections object at 0x3230cfb60>
+
+>   ???
+
+tests/test_anti_cheat_protections.py:175: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/miniconda3/lib/python3.12/site-packages/torch/cuda/streams.py:170: in __new__
+    return super().__new__(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+obj = <class 'torch.cuda.streams.Event'>, args = ()
+kwargs = {'blocking': False, 'enable_timing': True, 'external': False, 'interprocess': False}
+class_name = 'Event'
+
+    def err_fn(obj, *args, **kwargs):
+        if is_init:
+            class_name = obj.__class__.__name__
+        else:
+            class_name = obj.__name__
+>       raise RuntimeError(f"Tried to instantiate dummy base class {class_name}")
+E       RuntimeError: Tried to instantiate dummy base class Event
+
+/opt/miniconda3/lib/python3.12/site-packages/torch/_utils.py:996: RuntimeError
+___________ TestOutputProtections.test_stale_cache_fresh_input_check ___________
+
+self = <tests.test_anti_cheat_protections.TestOutputProtections object at 0x3231082c0>
+
+    if (
+        not hasattr(torch.backends, "cuda")
+        or not hasattr(torch.backends.cuda, "matmul")
+        or not hasattr(torch.backends.cuda.matmul, "allow_tf32")
+    ):
+        raise RuntimeError("Expected torch.backends.cuda.matmul.allow_tf32 to be available for precision policy test.")
+    
+    before = capture_precision_policy_state()
+    prev_tf32 = torch.backends.cuda.matmul.allow_tf32
+    torch.backends.cuda.matmul.allow_tf32 = not prev_tf32
+>   try:
+         
+
+tests/test_anti_cheat_protections.py:317: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+>               raise AssertionError("Torch not compiled with CUDA enabled")
+E               AssertionError: Torch not compiled with CUDA enabled
+
+/opt/miniconda3/lib/python3.12/site-packages/torch/cuda/__init__.py:403: AssertionError
+___________ TestOutputProtections.test_invalid_values_nan_detection ____________
+
+self = <tests.test_anti_cheat_protections.TestOutputProtections object at 0x323108470>
+
+    def test_sparsity_mismatch_detection(self):
+        """Test that sparsity mismatches are detected.
+    
+        Protection: Sparsity ratio check
+        Attack: Different sparsity patterns
+        """
+>       from core.benchmark.verification import InputSignature, PrecisionFlags
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_anti_cheat_protections.py:332: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+>               raise AssertionError("Torch not compiled with CUDA enabled")
+E               AssertionError: Torch not compiled with CUDA enabled
+
+/opt/miniconda3/lib/python3.12/site-packages/torch/cuda/__init__.py:403: AssertionError
+___________ TestOutputProtections.test_invalid_values_inf_detection ____________
+
+self = <tests.test_anti_cheat_protections.TestOutputProtections object at 0x323108620>
+
+        batch_size=1,
+        parameter_count=1024*1024,
+        precision_flags=PrecisionFlags(),
+        sparsity_ratio=0.0,  # Dense
+    )
+    
+>   optimized_sig = InputSignature(
+             ^^^^^^^^^^^^^^^^^^^^^^^
+        shapes={"weight": (1024, 1024)},
+        dtypes={"weight": "float32"},
+        batch_size=1,
+        parameter_count=1024*1024,
+        precision_flags=PrecisionFlags(),
+        sparsity_ratio=0.9,  # 90% sparse - less work!
+    )
+
+tests/test_anti_cheat_protections.py:343: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+>               raise AssertionError("Torch not compiled with CUDA enabled")
+E               AssertionError: Torch not compiled with CUDA enabled
+
+/opt/miniconda3/lib/python3.12/site-packages/torch/cuda/__init__.py:403: AssertionError
+___________ TestOutputProtections.test_denormalized_values_detection ___________
+
+self = <tests.test_anti_cheat_protections.TestOutputProtections object at 0x3231087d0>
+
+>   ???
+
+tests/test_anti_cheat_protections.py:355: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+>               raise AssertionError("Torch not compiled with CUDA enabled")
+E               AssertionError: Torch not compiled with CUDA enabled
+
+/opt/miniconda3/lib/python3.12/site-packages/torch/cuda/__init__.py:403: AssertionError
+__________ TestOutputProtections.test_uninitialized_memory_detection ___________
+
+self = <tests.test_anti_cheat_protections.TestOutputProtections object at 0x323108980>
+
+    class TestLocationProtections:
+        """Tests for work-location-related anti-cheat protections."""
+    
+        def test_cpu_spillover_detection(self):
+            """The real source detector identifies an explicit host transfer."""
+            from core.harness.validity_checks import check_benchmark_fn_antipatterns
+            class CleanWork:
+>               def benchmark_fn(self):
+                     ^^^^^^^^^^^^^^^^^^^
+
+tests/test_anti_cheat_protections.py:368: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+>               raise AssertionError("Torch not compiled with CUDA enabled")
+E               AssertionError: Torch not compiled with CUDA enabled
+
+/opt/miniconda3/lib/python3.12/site-packages/torch/cuda/__init__.py:403: AssertionError
+_____________ TestLocationProtections.test_cpu_spillover_detection _____________
+
+self = <tests.test_anti_cheat_protections.TestLocationProtections object at 0x3231092b0>
+
+    Attack: Cached allocations skew timing
+    """
+    from core.harness.validity_checks import reset_cuda_memory_pool
+    
+    before_reserved = torch.cuda.memory_reserved()
+    # Allocate some memory
+    x = torch.randn(10000, device="cuda")
+>   during_reserved = torch.cuda.memory_reserved()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_anti_cheat_protections.py:490: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+>               raise AssertionError("Torch not compiled with CUDA enabled")
+E               AssertionError: Torch not compiled with CUDA enabled
+
+/opt/miniconda3/lib/python3.12/site-packages/torch/cuda/__init__.py:403: AssertionError
+_________ TestLocationProtections.test_setup_precomputation_detection __________
+
+self = <tests.test_anti_cheat_protections.TestLocationProtections object at 0x323109460>
+
+    
+    
+    # =============================================================================
+    # CUDA PROTECTION TESTS (10 issues)
+    # =============================================================================
+    
+    class TestCUDAProtections:
+        """Tests for CUDA-specific anti-cheat protections."""
+    
+>       @requires_cuda
+                       
+
+tests/test_anti_cheat_protections.py:508: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+>               raise AssertionError("Torch not compiled with CUDA enabled")
+E               AssertionError: Torch not compiled with CUDA enabled
+
+/opt/miniconda3/lib/python3.12/site-packages/torch/cuda/__init__.py:403: AssertionError
+=============================== warnings summary ===============================
+../../../../../../opt/miniconda3/lib/python3.12/site-packages/reportlab/lib/rl_safe_eval.py:12
+  /opt/miniconda3/lib/python3.12/site-packages/reportlab/lib/rl_safe_eval.py:12: DeprecationWarning: ast.NameConstant is deprecated and will be removed in Python 3.14; use ast.Constant instead
+    haveNameConstant = hasattr(ast,'NameConstant')
+
+ch15/placement_sim.py:35
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/ch15/placement_sim.py:35: RuntimeWarning: [ch15] placement_sim expects torch>=2.10 with CUDA 13 for Blackwell (B200/B300, GB200/GB300); falling back to compatibility mode.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_anti_cheat_protections.py::TestTimingProtections::test_unsynced_streams_detection
+FAILED tests/test_anti_cheat_protections.py::TestTimingProtections::test_incomplete_async_ops_protection
+FAILED tests/test_anti_cheat_protections.py::TestTimingProtections::test_event_timing_cross_validation
+FAILED tests/test_anti_cheat_protections.py::TestOutputProtections::test_stale_cache_fresh_input_check
+FAILED tests/test_anti_cheat_protections.py::TestOutputProtections::test_invalid_values_nan_detection
+FAILED tests/test_anti_cheat_protections.py::TestOutputProtections::test_invalid_values_inf_detection
+FAILED tests/test_anti_cheat_protections.py::TestOutputProtections::test_denormalized_values_detection
+FAILED tests/test_anti_cheat_protections.py::TestOutputProtections::test_uninitialized_memory_detection
+FAILED tests/test_anti_cheat_protections.py::TestLocationProtections::test_cpu_spillover_detection
+FAILED tests/test_anti_cheat_protections.py::TestLocationProtections::test_setup_precomputation_detection
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 10 failures !!!!!!!!!!!!!!!!!!!!!!!!!!
+10 failed, 18 passed, 164 skipped, 2 warnings in 11.12s

@@ -1,0 +1,38 @@
+                                                                                
+ Usage: aisp [OPTIONS] COMMAND [ARGS]...                                        
+                                                                                
+ AI Systems Performance CLI - Unified 10-Domain API                             
+                                                                                
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --verbose      -v                        Verbose output                      │
+│ --json                                   Output as JSON when supported       │
+│ --dynamo-logs      --no-dynamo-logs      Enable TorchDynamo/TORCH_LOGS       │
+│                                          output (disabled by default for     │
+│                                          cleaner CLI)                        │
+│                                          [default: no-dynamo-logs]           │
+│ --help         -h                        Show this message and exit.         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ tui           Launch interactive benchmark analysis menu                     │
+│ dashboard     Launch web dashboard                                           │
+│ mcp           Start MCP server for AI chat integration                       │
+│ version       Show version information                                       │
+│ help          Show help (alias for --help)                                   │
+│ tools         Run non-benchmark tools and utilities                          │
+│ demos         Run demos and runnable examples (non-benchmark)                │
+│ bench         Run and profile benchmarks                                     │
+│ gpu           GPU: info, topology, power, bandwidth                          │
+│ system        System: software, deps, capabilities                           │
+│ profile       Profile: nsys, ncu, flame, HTA                                 │
+│ analyze       Analyze: bottlenecks, pareto, scaling                          │
+│ optimize      Optimize: recommend, ROI, techniques                           │
+│ distributed   Distributed: plan, NCCL, FSDP                                  │
+│ inference     Inference: vLLM, quantization                                  │
+│ benchmark     Benchmark: microbench diagnostics, speed tests                 │
+│ ai            AI: ask, explain, suggest                                      │
+│ export        Export: CSV, PDF, HTML                                         │
+│ cluster       Cluster: common eval presets + raw suite + canonical packaging │
+│               + field report validation                                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

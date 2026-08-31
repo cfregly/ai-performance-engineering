@@ -498,38 +498,25 @@ __global__ void tma_prefetch_kernel(const __grid_constant__ CUtensorMap A_desc,
 }
 
 inline bool cluster_launch_supported_impl() {
-  int device = at::cuda::current_device();
+#if CUDART_VERSION >= 12000
+  const int device = at::cuda::current_device();
   int value = 0;
-#ifdef cudaDevAttrClusterLaunch
-  if (cudaDeviceGetAttribute(&value, cudaDevAttrClusterLaunch, device) == cudaSuccess &&
-      value != 0) {
-    return true;
-  }
+  return cudaDeviceGetAttribute(&value, cudaDevAttrClusterLaunch, device) == cudaSuccess && value != 0;
+#else
+  return false;
 #endif
-  // Fallback: on Blackwell/Grace-Blackwell, cluster launch is expected; don't gate on attr.
-  int major = 0, minor = 0;
-  cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device);
-  cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device);
-  return major >= 9;
 }
 
 inline bool tma_supported_impl() {
-  int device = at::cuda::current_device();
-#ifdef cudaDevAttrTensorMemoryAccessSupported
-  int value = 0;
-  if (cudaDeviceGetAttribute(&value, cudaDevAttrTensorMemoryAccessSupported, device) ==
-      cudaSuccess) {
-    return value != 0;
-  }
-#endif
-  // Assume TMA present on Blackwell-class parts even if attribute probe fails.
-  int major = 0, minor = 0;
-  cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device);
-  cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device);
-  if (major >= 10) {
-    return true;
-  }
+#if CUDART_VERSION >= 12000
+  const int device = at::cuda::current_device();
+  int major = 0;
+  if (cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess) return false;
+  // Hopper introduced the SM90 tensor-map copy instructions used here.
+  return major >= 9;
+#else
   return false;
+#endif
 }
 
 void launch_baseline(torch::Tensor a, torch::Tensor b, torch::Tensor c) {
@@ -552,9 +539,9 @@ void launch_pipeline(torch::Tensor a, torch::Tensor b, torch::Tensor c) {
   const size_t shared_bytes =
       (PIPE_TILE_M * PIPE_TILE_K + PIPE_TILE_K * PIPE_TILE_N) * sizeof(half) +
       PIPE_TILE_M * PIPE_TILE_N * sizeof(float);
-  cudaFuncSetAttribute(
+  AT_CUDA_CHECK(cudaFuncSetAttribute(
       pipeline_prefetch_kernel<PIPE_TILE_M, PIPE_TILE_N, PIPE_TILE_K>,
-      cudaFuncAttributeMaxDynamicSharedMemorySize, shared_bytes);
+      cudaFuncAttributeMaxDynamicSharedMemorySize, shared_bytes));
   auto stream = at::cuda::getCurrentCUDAStream();
   pipeline_prefetch_kernel<PIPE_TILE_M, PIPE_TILE_N, PIPE_TILE_K>
       <<<grid, block, shared_bytes, stream>>>(
@@ -572,7 +559,7 @@ void launch_cluster(torch::Tensor a, torch::Tensor b, torch::Tensor c) {
 
   const int device = at::cuda::current_device();
   cudaDeviceProp prop{};
-  cudaGetDeviceProperties(&prop, device);
+  AT_CUDA_CHECK(cudaGetDeviceProperties(&prop, device));
   const int cluster_dim = prop.major >= 10 ? 8 : 4;
 
   const int tiles_x = (b.size(0) + PIPE_TILE_N - 1) / PIPE_TILE_N;
@@ -593,11 +580,11 @@ void launch_cluster(torch::Tensor a, torch::Tensor b, torch::Tensor c) {
   cfg.attrs = &cluster_attr;
   cfg.numAttrs = 1;
 
-  cudaFuncSetAttribute(cluster_kernel<PIPE_TILE_M, PIPE_TILE_N, PIPE_TILE_K>,
-                       cudaFuncAttributeNonPortableClusterSizeAllowed, 1);
-  cudaFuncSetAttribute(cluster_kernel<PIPE_TILE_M, PIPE_TILE_N, PIPE_TILE_K>,
+  AT_CUDA_CHECK(cudaFuncSetAttribute(cluster_kernel<PIPE_TILE_M, PIPE_TILE_N, PIPE_TILE_K>,
+                       cudaFuncAttributeNonPortableClusterSizeAllowed, 1));
+  AT_CUDA_CHECK(cudaFuncSetAttribute(cluster_kernel<PIPE_TILE_M, PIPE_TILE_N, PIPE_TILE_K>,
                        cudaFuncAttributeMaxDynamicSharedMemorySize,
-                       cfg.dynamicSmemBytes);
+                       cfg.dynamicSmemBytes));
 
   auto stream = at::cuda::getCurrentCUDAStream();
   cfg.stream = stream;
@@ -618,7 +605,7 @@ void launch_cluster(torch::Tensor a, torch::Tensor b, torch::Tensor c) {
 void launch_tma(torch::Tensor a, torch::Tensor b, torch::Tensor c) {
   if (!tma_supported_impl()) {
     TORCH_CHECK(false,
-                "Blackwell TMA unavailable on this device; "
+                "TMA requires Hopper or newer and a compatible CUDA runtime; "
                 "use optimized_blackwell_matmul_pseudo instead.");
   }
 
@@ -658,13 +645,6 @@ void launch_tma(torch::Tensor a, torch::Tensor b, torch::Tensor c) {
   dim3 block(TMA_THREADS);
   dim3 grid((b.size(0) + PIPE_TILE_N - 1) / PIPE_TILE_N,
             (a.size(0) + PIPE_TILE_M - 1) / PIPE_TILE_M);
-  const size_t static_shared =
-      2 * PIPE_TILE_M * PIPE_TILE_K * sizeof(half) +  // double-buffered A
-      2 * PIPE_TILE_K * PIPE_TILE_N * sizeof(half) +  // double-buffered B
-      PIPE_TILE_M * PIPE_TILE_N * sizeof(float);      // accumulation tile
-
-  cudaFuncSetAttribute(tma_prefetch_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
-                       static_shared);
   auto stream = at::cuda::getCurrentCUDAStream();
   tma_prefetch_kernel<<<grid, block, 0, stream>>>(
       A_desc, B_desc,
@@ -683,6 +663,9 @@ torch::Tensor run_kernel(torch::Tensor a,
   TORCH_CHECK(a.is_cuda() && b.is_cuda(), "tensors must live on CUDA");
   TORCH_CHECK(a.dtype() == torch::kFloat16 && b.dtype() == torch::kFloat16,
               "use float16 tensors");
+  TORCH_CHECK(a.device() == b.device(), "inputs must use the same CUDA device");
+  TORCH_CHECK(a.size(0) > 0 && b.size(0) > 0 && a.size(1) > 0, "matrix dimensions must be positive");
+  c10::cuda::CUDAGuard device_guard(a.device());
   auto c = torch::empty({a.size(0), b.size(0)}, a.options());
   launcher(a.contiguous(), b.contiguous(), c);
   return c;

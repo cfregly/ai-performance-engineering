@@ -1,49 +1,30 @@
-"""Optimized ZeRO-2: overlap reduce-scatter gradients with sharded optimizer states."""
+"""ZeRO-2 comparison: RS/AG gradient communication with sharded AdamW state.
+
+DDP restores full gradients after reduce-scatter/all-gather. The sharded optimizer
+runs explicitly after backward; this path does not overlap optimizer computation
+with DDP and does not keep gradients sharded between steps.
+"""
 
 from __future__ import annotations
 
-import argparse
 import inspect
-import sys
-import traceback
 from pathlib import Path
-from time import perf_counter
 
 import torch
 import torch.distributed as dist
-import torch.nn as nn
 from torch.distributed.optim import ZeroRedundancyOptimizer
-from torch.nn.parallel import DistributedDataParallel as DDP
 
-from core.benchmark.gpu_requirements import require_min_gpus
-from labs.train_distributed.training_utils.memory import print_memory_stats
-from labs.train_distributed.training_utils.torchrun_harness import TorchrunScriptBenchmark
-from labs.train_distributed.training_utils.utils import get
+from labs.train_distributed.training_utils.zero2_torchrun_benchmark import Zero2TorchrunBenchmark
 
 
 def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--steps", type=int, default=100)
-    parser.add_argument("--hidden-size", type=int, default=10_000)
-    parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--grad-accum", type=int, default=2)
-    parser.add_argument(
-        "--extra-grad-mb",
-        type=int,
-        default=0,
-        help="Extra gradient payload size (MB) to amplify communication.",
-    )
-    parser.add_argument("--learning-rate", type=float, default=1e-3)
-    parser.add_argument("--compile", action="store_true", help="Use torch.compile on the DDP module.")
-    return parser.parse_args()
+    from labs.train_distributed.zero2_common import parse_args as common_args
+    return common_args()
 
 
 def _build_model(hidden_size: int, device):
-    layers = []
-    for _ in range(6):
-        layers.extend([nn.Linear(hidden_size, hidden_size), nn.GELU()])
-    layers.append(nn.Linear(hidden_size, hidden_size))
-    return nn.Sequential(*layers).to(device)
+    from labs.train_distributed.zero2_common import build_model
+    return build_model(hidden_size, device)
 
 
 def _optimizer_cfg(params, lr):
@@ -59,6 +40,19 @@ def _optimizer_cfg(params, lr):
     except (TypeError, ValueError):
         pass
     return kwargs
+
+
+def _build_optimizer(params, lr):
+    """Construct the sharded optimizer used by the explicit training step."""
+    params = list(params)
+    return ZeroRedundancyOptimizer(
+        params,
+        # The custom communication hook does not run a ZeRO optimizer step.
+        # Enabling overlap here would turn every explicit step() into a no-op.
+        overlap_with_ddp=False,
+        parameters_as_bucket_view=True,
+        **_optimizer_cfg(params, lr),
+    )
 
 
 def _completed_future(tensor: torch.Tensor) -> torch.futures.Future[torch.Tensor]:
@@ -89,9 +83,22 @@ def _reduce_scatter_allgather_hook(
         padded[:numel].copy_(flat)
         flat = padded
 
-    input_2d = flat.view(world_size, shard_size)
     output = flat.new_empty(shard_size)
-    work = dist.reduce_scatter_tensor(output, input_2d, group=group, async_op=True)
+    # Use the concatenation form accepted by both Gloo and NCCL.  Passing the
+    # stack form ``[world_size, shard_size]`` aborts in ProcessGroupGloo because
+    # its first dimension must be ``output.size(0) * world_size``.
+    if dist.get_backend(group) == "gloo":
+        # Gloo's Work object does not implement get_future().  This branch is
+        # exercised only by the explicitly labeled CPU correctness profile;
+        # the performance benchmark remains on the asynchronous NCCL path.
+        dist.reduce_scatter_tensor(output, flat, group=group)
+        gathered = output.new_empty(shard_size * world_size)
+        dist.all_gather_into_tensor(gathered, output, group=group)
+        if padded is not None:
+            gathered = gathered[:numel]
+        buffer.copy_(gathered)
+        return _completed_future(buffer)
+    work = dist.reduce_scatter_tensor(output, flat, group=group, async_op=True)
 
     def _allgather(fut: torch.futures.Future) -> torch.Tensor:
         shard = fut.value()[0]
@@ -110,110 +117,15 @@ _reduce_scatter_allgather_hook.__annotations__["return"] = torch.futures.Future[
 
 
 def main():
-    require_min_gpus(2, script_name="optimized_zero2_multigpu.py")
-    args = parse_args()
-    try:
-        local_rank = get("lrank")
-        torch.cuda.set_device(local_rank)
-        dist.init_process_group("nccl", device_id=local_rank)
-        if get("ws") < 2:
-            print("Warning: Optimized ZeRO-2 running with world_size < 2; no sharding benefit will be observed.")
-        rank = get("rank")
-        device = torch.device(f"cuda:{local_rank}")
-
-        model = _build_model(args.hidden_size, device).to(torch.bfloat16)
-        extra_param = None
-        if args.extra_grad_mb > 0:
-            elem_bytes = torch.finfo(torch.bfloat16).bits // 8
-            numel = (args.extra_grad_mb * 1024 * 1024) // elem_bytes
-            extra_param = torch.nn.Parameter(torch.zeros(numel, device=device, dtype=torch.bfloat16))
-            model.register_parameter("extra_grad_payload", extra_param)
-        ddp_model = DDP(
-            model,
-            device_ids=[device],
-            static_graph=True,
-            gradient_as_bucket_view=True,
-            bucket_cap_mb=100,
-        )
-        if rank == 0:
-            print("Using custom reduce-scatter hook for ZeRO-2.")
-        ddp_model.register_comm_hook(state=dist.group.WORLD, hook=_reduce_scatter_allgather_hook)
-
-        if args.compile:
-            ddp_model = torch.compile(ddp_model, mode="reduce-overhead")
-
-        optimizer = ZeroRedundancyOptimizer(
-            ddp_model.parameters(),
-            overlap_with_ddp=True,
-            parameters_as_bucket_view=True,
-            **_optimizer_cfg(ddp_model.parameters(), args.learning_rate),
-        )
-
-        grad_clip = 1.0
-        x = torch.empty(args.batch_size, args.hidden_size, device=device)
-        y = torch.empty_like(x)
-
-        # Warmup
-        x.normal_()
-        y.normal_()
-        optimizer.zero_grad(set_to_none=True)
-        with torch.cuda.amp.autocast(dtype=torch.bfloat16):
-            warm_loss = nn.functional.mse_loss(ddp_model(x), y)
-        if extra_param is not None:
-            warm_loss = warm_loss + extra_param.sum() * 0.0
-        warm_loss.backward()
-        optimizer.step()
-
-        if rank == 0:
-            print_memory_stats("optimized-zero2 warmup", ddp_model, optimizer, rank, device)
-        dist.barrier()
-        torch.cuda.synchronize(device)
-
-        total_tokens = 0
-        start = perf_counter()
-        loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)
-
-        for step in range(args.steps):
-            optimizer.zero_grad(set_to_none=True)
-            for micro in range(args.grad_accum):
-                x.normal_()
-                y.normal_()
-                with torch.cuda.amp.autocast(dtype=torch.bfloat16):
-                    loss = nn.functional.mse_loss(ddp_model(x), y) / args.grad_accum
-                if extra_param is not None:
-                    loss = loss + extra_param.sum() * 0.0
-                loss.backward()
-                total_tokens += x.numel()
-
-            torch.nn.utils.clip_grad_norm_(ddp_model.parameters(), grad_clip)
-            optimizer.step()
-
-            if rank == 0 and step % 10 == 0:
-                elapsed = perf_counter() - start
-                toks_per_sec = total_tokens / elapsed if elapsed > 0 else 0.0
-                loss_value_buffer[0].copy_(loss.detach())
-                loss_value = float(loss_value_buffer.detach().cpu()[0])
-                print(
-                    f"[optimized-zero2] step {step}/{args.steps} "
-                    f"loss={loss_value:.4f} "
-                    f"tokens/s per rank={toks_per_sec:,.0f}"
-                )
-
-        torch.cuda.synchronize(device)
-        total_time = perf_counter() - start
-        if rank == 0:
-            toks_per_sec = total_tokens / total_time
-            print(f"[optimized-zero2] finished {args.steps} steps | {toks_per_sec:,.0f} toks/s per rank")
-
-        dist.destroy_process_group()
-    except Exception:
-        traceback.print_exc(file=sys.stderr)
-        raise
+    from labs.train_distributed.zero2_common import run_training
+    run_training(parse_args(), optimized=True, multi_gpu=True)
 
 
 def get_benchmark():
     """Expose torchrun-wrapped benchmark for the harness."""
-    return TorchrunScriptBenchmark(
+    return Zero2TorchrunBenchmark(
+        mode="optimized",
+        variant="multigpu",
         script_path=Path(__file__).parent / "zero2.py",
         base_args=[
             "--mode",

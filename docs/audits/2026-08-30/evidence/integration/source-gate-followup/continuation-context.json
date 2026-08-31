@@ -1,0 +1,27 @@
+{
+  "at": "2026-08-31T00:48:44.634540+00:00",
+  "previous_turn_classification": "progress",
+  "previous_receipt": "../pinned-linux-integration/receipt.json",
+  "previous_receipt_sha256": "26b180bc85d2b2d71355c757b0a53fb46443b8771b0ee3ad8fb7250e367dfecf",
+  "source321hashes_verified_unchanged_at_turn_start": true,
+  "snapshots": {
+    "AUDIT_REMEDIATION_PLAN.md": {
+      "sha256": "f79b8960df0460d866b4d3356d2dd149d961904e09ffa68ce4fe86690bb79355",
+      "snapshot": "plan.before.md"
+    },
+    "docs/audits/2026-08-30/STATUS.md": {
+      "sha256": "c3e66853b7a00f2f758da1f2d156e9fe19076690dfac60a25a2ff65abeaa75b4",
+      "snapshot": "status.before.md"
+    },
+    "docs/audits/2026-08-30/remediation-ledger.json": {
+      "sha256": "30c294ed297551a712bb0a0416f4240dec1a60b0c82fc56679a73f3356cf75cc",
+      "snapshot": "ledger.before.json"
+    }
+  },
+  "new_work": [
+    "Actual full90package dependency resolution including reviewed source-only distribution metadata.",
+    "Required curated source/validation gates not covered by prior changed-file fatal lint/fullCPU.",
+    "Bounded completion audit of actual ZeRO harness functionality versus temporary generic verification refusal."
+  ],
+  "blocked_threshold": "Not reached; previous turn completed source work/tests and this turn found new actionable source/graph defects."
+}

@@ -1,0 +1,22 @@
+......F...........................s                                      [100%]
+=================================== FAILURES ===================================
+________________________ test_gemv_real_child_protocol _________________________
+
+tmp_path = PosixPath('/private/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/pytest-of-admin/pytest-1580/test_gemv_real_child_protocol0')
+
+    def test_gemv_real_child_protocol(tmp_path):
+        from labs.nvfp4_gemv.local_eval import _run_official_eval
+        # A protocol fixture, not an official benchmark or a GPU success result.
+        (tmp_path / "eval.py").write_text(
+            "import os,sys\nassert sys.argv[1:] == ['leaderboard','benchmarks.txt']\n"
+            "assert os.environ['POPCORN_SEED'] == '123'\n"
+            "os.write(int(os.environ['POPCORN_FD']), b'audit.protocol=fixture_only\\n')\n"
+            "print('child interpreter ok')\n")
+>       result = _run_official_eval(tmp_path, popcorn_seed=123)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: _run_official_eval() got an unexpected keyword argument 'popcorn_seed'
+
+tests/test_audit_wave1_numerics_regressions.py:69: TypeError
+=========================== short test summary info ============================
+FAILED tests/test_audit_wave1_numerics_regressions.py::test_gemv_real_child_protocol
+1 failed, 33 passed, 1 skipped in 6.62s

@@ -31,6 +31,11 @@ from core.benchmark.metrics import detect_hardware_specs
 from core import profile_artifacts
 from core.compile_analysis import load_compile_analysis
 from core.discovery import get_bench_roots, discover_all_chapters
+from core.diagnostics.data_loading import (
+    DATA_LOADING_ANALYSIS_SCHEMA_VERSION,
+    DataLoadingAnalysisProvider,
+    ReadOnlyDataLoadingAnalysisProvider,
+)
 from core.harness.hardware_capabilities import detect_capabilities
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
@@ -198,10 +203,21 @@ def _build_synthetic_parallelism_topology(total_gpus: int, num_nodes: int):
 class PerformanceCoreBase:
     """Shared performance logic without HTTP concerns."""
 
-    def __init__(self, data_file: Optional[Path] = None, bench_root: Optional[Path] = None):
+    def __init__(
+        self,
+        data_file: Optional[Path] = None,
+        bench_root: Optional[Path] = None,
+        *,
+        data_loading_provider: Optional[DataLoadingAnalysisProvider] = None,
+    ):
         self.data_file = data_file
         self.bench_roots = get_bench_roots(repo_root=CODE_ROOT, bench_root=bench_root)
         self.bench_root = self.bench_roots[0]
+        self._data_loading_provider = (
+            data_loading_provider
+            if data_loading_provider is not None
+            else ReadOnlyDataLoadingAnalysisProvider()
+        )
         self._analyzer: Optional[PerformanceAnalyzer] = None
         self._make_analyzer()
 
@@ -1291,6 +1307,7 @@ class PerformanceCoreBase:
         return topology
 
     def get_nvlink_status(self) -> dict:
+        """Report active links and sum their reported GPU-endpoint rates."""
         nvlink = {
             "available": False,
             "links_per_gpu": {},
@@ -1302,30 +1319,56 @@ class PerformanceCoreBase:
                 ["nvidia-smi", "nvlink", "--status"], capture_output=True, text=True, timeout=10
             )
             if result.returncode == 0:
-                nvlink["available"] = True
                 nvlink["raw_output"] = result.stdout
                 current_gpu = None
-                link_count = 0
-                for line in result.stdout.split("\n"):
-                    if "GPU" in line and ":" in line:
-                        if current_gpu is not None:
-                            nvlink["links_per_gpu"][current_gpu] = link_count
-                        match = re.search(r"GPU (\\d+)", line)
-                        if match:
-                            current_gpu = int(match.group(1))
-                            link_count = 0
-                    elif "Link" in line and "GB/s" in line:
-                        link_count += 1
-                        bw_match = re.search(r"(\\d+)\\s*GB/s", line)
-                        if bw_match:
-                            nvlink["link_details"].append(
-                                {"gpu": current_gpu, "bandwidth_gbs": int(bw_match.group(1))}
-                            )
-                if current_gpu is not None:
-                    nvlink["links_per_gpu"][current_gpu] = link_count
-                nvlink["total_bandwidth_gbs"] = sum(
-                    l.get("bandwidth_gbs", 0) for l in nvlink["link_details"]
+                for line in result.stdout.splitlines():
+                    gpu_match = re.match(r"\s*GPU\s+(\d+)\s*:", line, flags=re.IGNORECASE)
+                    if gpu_match:
+                        current_gpu = int(gpu_match.group(1))
+                        nvlink["links_per_gpu"][current_gpu] = 0
+                        continue
+                    if re.match(r"\s*GPU\b", line, flags=re.IGNORECASE):
+                        current_gpu = None
+                        nvlink.setdefault("warnings", []).append(f"Unrecognized NVLink GPU header: {line.strip()}")
+                        continue
+
+                    link_match = re.match(r"\s*Link\s+(\d+)\s*:\s*(.*)", line, flags=re.IGNORECASE)
+                    if not link_match:
+                        continue
+                    if current_gpu is None:
+                        nvlink.setdefault("warnings", []).append("NVLink status has a link without a valid GPU header")
+                        continue
+
+                    link_id = int(link_match.group(1))
+                    status = link_match.group(2).strip()
+                    bw_match = re.match(r"(\d+(?:\.\d+)?)\s*GB/s\b", status, flags=re.IGNORECASE)
+                    if bw_match:
+                        bandwidth = float(bw_match.group(1))
+                        if bandwidth == 0:
+                            continue
+                    elif status.lower() == "active":
+                        bandwidth = None
+                        nvlink.setdefault("warnings", []).append(
+                            f"GPU {current_gpu} link {link_id} is active but its bandwidth was not reported"
+                        )
+                    elif status.lower().strip("<>") in {"inactive", "disabled", "not supported", "n/a"}:
+                        continue
+                    else:
+                        nvlink.setdefault("warnings", []).append(
+                            f"Unrecognized NVLink status for GPU {current_gpu} link {link_id}: {status}"
+                        )
+                        continue
+                    nvlink["links_per_gpu"][current_gpu] += 1
+                    nvlink["link_details"].append(
+                        {"gpu": current_gpu, "link": link_id, "bandwidth_gbs": bandwidth}
+                    )
+                nvlink["available"] = bool(nvlink["link_details"])
+                rates = [link["bandwidth_gbs"] for link in nvlink["link_details"]]
+                nvlink["total_bandwidth_gbs"] = (
+                    None if any(rate is None for rate in rates) else sum(rates)
                 )
+                if not nvlink["links_per_gpu"]:
+                    nvlink.setdefault("warnings", []).append("NVLink status contained no valid GPU headers")
             else:
                 stderr = result.stderr.strip()
                 if stderr:
@@ -1415,16 +1458,17 @@ class PerformanceCoreBase:
             result["cutlass"]["path"] = str(cutlass_path)
             try:
                 content = version_h.read_text()
-                major = minor = patch = 0
-                for line in content.splitlines():
-                    if "CUTLASS_VERSION_MAJOR" in line:
-                        major = int(re.findall(r"\\d+", line)[0])
-                    if "CUTLASS_VERSION_MINOR" in line:
-                        minor = int(re.findall(r"\\d+", line)[0])
-                    if "CUTLASS_VERSION_PATCH" in line:
-                        patch = int(re.findall(r"\\d+", line)[0])
-                result["cutlass"]["version"] = f"{major}.{minor}.{patch}"
-            except (IndexError, OSError, ValueError) as exc:
+                components = dict(re.findall(
+                    r"^\s*#\s*define\s+CUTLASS_VERSION_(MAJOR|MINOR|PATCH)\s+(\d+)\b",
+                    content,
+                    flags=re.MULTILINE,
+                ))
+                if set(components) != {"MAJOR", "MINOR", "PATCH"}:
+                    raise ValueError("missing or invalid CUTLASS version macro definitions")
+                result["cutlass"]["version"] = ".".join(
+                    str(int(components[part])) for part in ("MAJOR", "MINOR", "PATCH")
+                )
+            except (OSError, ValueError) as exc:
                 result["warnings"].append(
                     f"Failed to parse CUTLASS version from {version_h}: {exc}"
                 )
@@ -2517,36 +2561,62 @@ class PerformanceCoreBase:
         }
 
     def get_data_loading_analysis(self) -> dict:
-        """Provide dataloader recommendations; optimized for Grace-Blackwell if available."""
+        """Return read-only observations and configured DataLoader recommendations."""
         try:
-            from ch04.gb200_grace_numa_optimization import (
-                optimize_data_loading_for_grace,
-                detect_grace_cpu,
-                setup_grace_affinity,
-            )
-            import torch
-
-            gpu_id = torch.cuda.current_device() if torch.cuda.is_available() else 0
-            loader_kwargs = optimize_data_loading_for_grace(gpu_id=gpu_id, verbose=False)
-            cpu_info = detect_grace_cpu()
-            cpu_affinity, numa_node = setup_grace_affinity(
-                gpu_id, loader_kwargs["num_workers"], verbose=False
-            )
-
+            provider = getattr(self, "_data_loading_provider", None)
+            if provider is None:
+                provider = ReadOnlyDataLoadingAnalysisProvider()
+                self._data_loading_provider = provider
+            return provider.analyze().to_dict()
+        except Exception as exc:
+            failure_provenance = "data-loading provider failed"
             return {
-                "success": True,
-                "gpu_id": gpu_id,
-                "dataloader_kwargs": loader_kwargs,
-                "cpu": cpu_info,
-                "numa_node": numa_node,
-                "cpu_affinity": cpu_affinity,
+                "schema_version": DATA_LOADING_ANALYSIS_SCHEMA_VERSION,
+                "analysis_mode": "read_only",
+                "success": False,
+                "error": str(exc),
+                "gpu_id": None,
+                "dataloader_kwargs": None,
+                "cpu": {
+                    "is_grace": None,
+                    "cpu_arch": None,
+                    "cpu_count": None,
+                    "cpu_threads": None,
+                    "memory_gb": None,
+                    "numa_nodes": None,
+                    "gpus": None,
+                    "cpu_model": None,
+                    "grace_status": "unknown",
+                    "provenance": failure_provenance,
+                },
+                "affinity_applied": False,
+                "cpu_affinity": None,
+                "current_cpu_affinity": None,
+                "current_affinity_status": "unknown",
+                "current_affinity_provenance": failure_provenance,
+                "numa_node": None,
+                "gpu_numa_mapping": {
+                    "status": "unknown",
+                    "gpu_id": None,
+                    "numa_node": None,
+                    "pci_bus_id": None,
+                    "provenance": failure_provenance,
+                },
+                "recommendation_provenance": {
+                    "source": "unavailable_provider_error",
+                    "hardware_adaptive": False,
+                },
+                "observation_provenance": {
+                    "cpu": failure_provenance,
+                    "gpu": failure_provenance,
+                    "gpu_numa_mapping": failure_provenance,
+                    "current_cpu_affinity": failure_provenance,
+                },
                 "notes": [
-                    "Pinned memory and larger prefetch improve CPU→GPU transfer on GB200/GB300",
-                    "Persistent workers avoid process churn for long training runs",
+                    "The read-only data-loading provider failed; no settings or "
+                    "hardware observations were inferred"
                 ],
             }
-        except Exception as exc:
-            return {"success": False, "error": str(exc)}
 
     def _generate_comprehensive_recommendations(self) -> List[str]:
         """Compose a concise list of actionable tuning tips."""

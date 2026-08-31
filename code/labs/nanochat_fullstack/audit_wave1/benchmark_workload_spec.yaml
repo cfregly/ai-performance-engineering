@@ -1,0 +1,157 @@
+run_metadata:
+  benchmark_layer: component
+  benchmark_grade: realism
+  use_case: engineering_debug
+  owner: nanochat audit remediation
+  ticket_or_epic: W1-003/034/035/036/085/121
+  status: CPU validated; CUDA qualification HOLD
+comparison_axis:
+  variable_under_test: decode_execution_path
+  control: eager dynamic-prefix KV cache
+  candidate: device-position CUDA graph / joined side stream
+  constants_locked:
+  - weights
+  - token IDs
+  - batch shape
+  - prompt and decode lengths
+  - precision
+  - cache capacity
+  - warmup
+  - random seed
+  declared_difference: CUDA graphs use fixed-capacity masked SDPA; eager may use FA3
+    or SDPA. Record actual backend rather than attributing all delta solely to launch
+    overhead.
+workload:
+  type: inference
+  name: nanochat dense single-token decode
+  model:
+    name: GPT regression config:2 layers,2 query heads,1 KV head,dim16,vocab64
+    parameter_count_b: null
+    precision:
+    - fp32
+    - bf16
+    weights_source: torch seed718 constructor weights; nonzero output head asserted;
+      representative checkpoint requires immutable hash
+  input_distribution:
+    prompt_tokens:
+    - 1
+    - 3
+    - 5
+    completion_tokens: 6
+    cache_capacity_tokens: 16
+  batching_policy:
+    mode: static
+    max_batch_size: 3
+  concurrency_model:
+    mode: closed_loop
+    values:
+    - 1
+  serving_contract:
+    stack_under_test: nanochat Engine
+    protocol: in-process torch
+    deployment_model: single device
+    fairness_constraints:
+      identical_weights: true
+      identical_input_ids: true
+      identical_precision: true
+      identical_capacity: true
+  quality_constraints:
+    correctness_suite:
+    - tests/test_audit_wave1_nanochat_regressions.py
+    - labs/nanochat_fullstack/test_new_optimizations.py
+    fp32_atol_rtol: 0.0002
+    bf16_atol_rtol: 0.02
+    allowed_quality_exceptions: []
+  representative_performance_gate:
+    prompt_tokens:
+    - 256
+    - 512
+    completion_tokens: 64
+    batch_sizes:
+    - 1
+    - 4
+    model_checkpoint: pending immutable checkpoint hash
+execution:
+  image: local CPU environment; pinned CUDA image pending
+  runtime_versions:
+    driver: null
+    cuda: null
+    nccl: null
+    pytorch: 2.8.0 CPU verification only
+    runtime_or_server: in-process nanochat
+  hardware_tier:
+    gpu_model: null
+    gpu_count: 0
+    cpu_model: macOS host
+    ram_gb: null
+    network_fabric: null
+    storage_tier: local
+  topology:
+    gpu_to_gpu: null
+    gpu_to_nic_affinity: null
+    numa_layout: null
+    pcie_layout: null
+  scheduler_path:
+    platform: local CPU only
+    queue_or_scheduler: null
+    placement_policy: target GPU custody required before performance gate
+    control_plane_path: null
+measurement_policy:
+  trials: 10
+  warmup_trials: 2
+  report_statistics:
+  - median
+  - mean
+  - stddev
+  - p95
+  - p99
+  - cv_pct
+  outlier_policy:
+    method: tukey_iqr_and_mad
+    keep_raw_samples: true
+    auto_flag_only: true
+    discard_requires_written_reason: true
+  confidence_policy:
+    method: bootstrap_95_ci
+    min_effect_size_pct: 5.0
+  environment_controls:
+    gpu_clocks_locked: true
+    app_clocks_recorded: true
+    topology_recorded: true
+    background_load_recorded: true
+    status: 'required but not performed: no CUDA target'
+  trial_order: alternate matched A/B arms; retain every raw sample
+  timing_boundary: synchronized wall time including host submission/all CUDA streams;
+    capture setup separately, outside steady-state replay
+metrics:
+  primary: per-step logits and KV state parity
+  secondary:
+  - steady-state decode tok/s pending GPU
+  - capture setup ms pending GPU
+  - wall time distribution pending GPU
+diagnosis_policy:
+  bottleneck_classes:
+  - compute_bound
+  - memory_bound
+  - host_submission_bound
+  required_signals:
+  - Nsight stream dependency/replay timeline
+  - actual attention backend
+  - GPU counters
+  - raw A/B timings
+  - fixed-capacity KV bytes
+  distributed:
+    applicable: false
+artifacts:
+  artifact_root: code/labs/nanochat_fullstack/audit_wave1
+  raw_artifacts_immutable: true
+  require_manifest: true
+  require_profiler_artifacts: true
+  require_sha256: true
+  provenance_signing:
+    required: true
+    status: source hashes recorded; no signing or GPU artifact available
+  publication_packet:
+    include_methodology_writeup: true
+    include_comparison_report: true
+    include_audit_ledger: true

@@ -1,0 +1,34 @@
+{
+  "command": [
+    "/opt/miniconda3/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-rs",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_benchmark_hygiene_regressions.py"
+  ],
+  "cwd": "/Users/admin/dev/ai-perf/ai-performance-engineering/code",
+  "env": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+  },
+  "source_sha256_before": {
+    "code/tests/test_benchmark_hygiene_regressions.py": "307af3b7dcc99bebf21544c87a5ecb145d2a84872874d844fa4d7af1b9315f73",
+    "code/labs/persistent_decode/persistent_decode_common.py": "59b13fcbeac492772d47382efe5b04e3321fcbb3467098e46759755d7111d8ad",
+    "code/labs/persistent_decode/baseline_tma_prefill_decode.py": "24838f26dc2c50800ccda28e24d1c0e92d8c8bd7d7ee43301dc013a28c052f9b",
+    "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py": "ff54f675b862bd3c72330e839b6461e6d01a02ec76cc35a7ccfa5c5bfb9465e9",
+    "code/labs/persistent_decode/optimized_tma_prefill_decode.py": "5c01331ae35be8975c6e070af8bc0ddf3dd28ad5d4e02eb2efd62b1b63719497",
+    "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py": "7f3c16ab16961332e08fa5acef20c58483b268a3c268513a36f476ccaa25daa9"
+  },
+  "exit_code": 0,
+  "wall_seconds": 11.227260707993992,
+  "source_sha256_after": {
+    "code/tests/test_benchmark_hygiene_regressions.py": "307af3b7dcc99bebf21544c87a5ecb145d2a84872874d844fa4d7af1b9315f73",
+    "code/labs/persistent_decode/persistent_decode_common.py": "59b13fcbeac492772d47382efe5b04e3321fcbb3467098e46759755d7111d8ad",
+    "code/labs/persistent_decode/baseline_tma_prefill_decode.py": "24838f26dc2c50800ccda28e24d1c0e92d8c8bd7d7ee43301dc013a28c052f9b",
+    "code/labs/persistent_decode/baseline_native_tma_prefill_decode.py": "ff54f675b862bd3c72330e839b6461e6d01a02ec76cc35a7ccfa5c5bfb9465e9",
+    "code/labs/persistent_decode/optimized_tma_prefill_decode.py": "5c01331ae35be8975c6e070af8bc0ddf3dd28ad5d4e02eb2efd62b1b63719497",
+    "code/labs/persistent_decode/optimized_native_tma_prefill_decode.py": "7f3c16ab16961332e08fa5acef20c58483b268a3c268513a36f476ccaa25daa9"
+  }
+}

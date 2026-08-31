@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="8" tests="18" time="1.309" timestamp="2026-08-30T19:09:17.428468-04:00" hostname="Mac"><testcase classname="tests.test_fullstack_cluster_shared_benchmark_wrappers" name="test_fullstack_cluster_wrappers_attach_metadata_and_torchrun_script[labs/fullstack_cluster/baseline_moe_hybrid_ep.py]" time="0.000"><skipped type="pytest.skip" message="CUDA required for benchmark wrappers">/Users/admin/dev/ai-perf/ai-performance-engineering/code/tests/test_fullstack_cluster_shared_benchmark_wrappers.py:32: CUDA required for benchmark wrappers</skipped></testcase><testcase classname="tests.test_fullstack_cluster_shared_benchmark_wrappers" name="test_fullstack_cluster_wrappers_attach_metadata_and_torchrun_script[labs/fullstack_cluster/optimized_moe_hybrid_ep.py]" time="0.000"><skipped type="pytest.skip" message="CUDA required for benchmark wrappers">/Users/admin/dev/ai-perf/ai-performance-engineering/code/tests/test_fullstack_cluster_shared_benchmark_wrappers.py:32: CUDA required for benchmark wrappers</skipped></testcase><testcase classname="tests.test_fullstack_cluster_shared_benchmark_wrappers" name="test_fullstack_cluster_wrappers_attach_metadata_and_torchrun_script[labs/fullstack_cluster/baseline_moe_hybrid_ep_multigpu.py]" time="0.000"><skipped type="pytest.skip" message="CUDA required for benchmark wrappers">/Users/admin/dev/ai-perf/ai-performance-engineering/code/tests/test_fullstack_cluster_shared_benchmark_wrappers.py:32: CUDA required for benchmark wrappers</skipped></testcase><testcase classname="tests.test_fullstack_cluster_shared_benchmark_wrappers" name="test_fullstack_cluster_wrappers_attach_metadata_and_torchrun_script[labs/fullstack_cluster/optimized_moe_hybrid_ep_multigpu.py]" time="0.000"><skipped type="pytest.skip" message="CUDA required for benchmark wrappers">/Users/admin/dev/ai-perf/ai-performance-engineering/code/tests/test_fullstack_cluster_shared_benchmark_wrappers.py:32: CUDA required for benchmark wrappers</skipped></testcase><testcase classname="tests.test_fullstack_cluster_shared_benchmark_wrappers" name="test_fullstack_cluster_wrappers_expose_real_profile_torchrun_specs[labs/fullstack_cluster/baseline_moe_hybrid_ep.py]" time="0.000"><skipped type="pytest.skip" message="CUDA required for benchmark wrappers">/Users/admin/dev/ai-perf/ai-performance-engineering/code/tests/test_fullstack_cluster_shared_benchmark_wrappers.py:65: CUDA required for benchmark wrappers</skipped></testcase><testcase classname="tests.test_fullstack_cluster_shared_benchmark_wrappers" name="test_fullstack_cluster_wrappers_expose_real_profile_torchrun_specs[labs/fullstack_cluster/optimized_moe_hybrid_ep.py]" time="0.001"><skipped type="pytest.skip" message="CUDA required for benchmark wrappers">/Users/admin/dev/ai-perf/ai-performance-engineering/code/tests/test_fullstack_cluster_shared_benchmark_wrappers.py:65: CUDA required for benchmark wrappers</skipped></testcase><testcase classname="tests.test_fullstack_cluster_shared_benchmark_wrappers" name="test_moe_hybrid_ep_entrypoint_routes_optimized_flag_and_remainder" time="0.019" /><testcase classname="tests.test_fullstack_cluster_shared_benchmark_wrappers" name="test_moe_hybrid_ep_run_cli_discards_single_gpu_warmup_steps" time="0.001" /><testcase classname="tests.test_fullstack_cluster_shared_benchmark_wrappers" name="test_moe_hybrid_ep_run_cli_discards_multigpu_warmup_steps" time="0.000" /><testcase classname="tests.test_fullstack_cluster_shared_benchmark_wrappers" name="test_moe_hybrid_ep_report_aggregates_step_history_once" time="0.000" /><testcase classname="tests.test_fullstack_cluster_shared_benchmark_wrappers" name="test_moe_hybrid_ep_metric_reduction_batches_all_reduce_and_reuses_buffers" time="0.001" /><testcase classname="tests.test_fullstack_cluster_shared_benchmark_wrappers" name="test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductions" time="0.000"><failure message="assert '&quot;local_outputs&quot;' in '(self, tokens: torch.Tensor, expert_ids: torch.Tensor, weights: torch.Tensor, *, buffer_namespace: str = &quot;local&quot;) -&gt; ...        offset = next_offset\n        outputs.index_copy_(0, sort_idx, sorted_outputs)\n        return outputs\n\n    '">def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductions() -&gt; None:
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "labs"
+            / "fullstack_cluster"
+            / "moe_hybrid_ep_common.py"
+        ).read_text(encoding="utf-8")
+        forward_section = source.split("def forward_loss(", maxsplit=1)[1].split(
+            "class HybridEPTrainer",
+            maxsplit=1,
+        )[0]
+        run_step_section = source.split("def run_step", maxsplit=1)[1].split(
+            "def _reduce_metrics",
+            maxsplit=1,
+        )[0]
+        reduce_section = source.split("def _reduce_metrics", maxsplit=1)[1].split(
+            "def summarize_and_write_report",
+            maxsplit=1,
+        )[0]
+        router_section = source.split("class LoadBalancedRouter", maxsplit=1)[1].split(
+            "class ExpertMLP",
+            maxsplit=1,
+        )[0]
+        expert_forward = source.split("class ExpertMLP", maxsplit=1)[1].split(
+            "class DeepSeekHybridEPModule",
+            maxsplit=1,
+        )[0]
+        apply_local_section = source.split("def _apply_local_experts", maxsplit=1)[1].split(
+            "def _exchange_counts",
+            maxsplit=1,
+        )[0]
+        all_to_all_list_section = source.split("def _all_to_all_list", maxsplit=1)[1].split(
+            "def _all_to_all_single",
+            maxsplit=1,
+        )[0]
+        all_to_all_single_section = source.split("def _all_to_all_single", maxsplit=1)[1].split(
+            "def _roundtrip_routes",
+            maxsplit=1,
+        )[0]
+        roundtrip_section = source.split("def _roundtrip_routes", maxsplit=1)[1].split(
+            "def _route_tokens",
+            maxsplit=1,
+        )[0]
+        exchange_counts_section = source.split("def _exchange_counts", maxsplit=1)[1].split(
+            "def _split_list",
+            maxsplit=1,
+        )[0]
+        route_reduce_section = source.split("def _reduce_route_counts", maxsplit=1)[1].split(
+            "def _token_indices",
+            maxsplit=1,
+        )[0]
+        token_indices_section = source.split("def _token_indices", maxsplit=1)[1].split(
+            "def _apply_local_experts",
+            maxsplit=1,
+        )[0]
+        route_tokens_section = source.split("def _route_tokens", maxsplit=1)[1].split(
+            "def forward_loss",
+            maxsplit=1,
+        )[0]
+        local_count_section = source.split("def _local_expert_count_list", maxsplit=1)[1].split(
+            "def _route_type_count_list",
+            maxsplit=1,
+        )[0]
+        route_type_count_section = source.split("def _route_type_count_list", maxsplit=1)[1].split(
+            "def _route_counts_list",
+            maxsplit=1,
+        )[0]
+        route_counts_section = source.split("def _route_counts_list", maxsplit=1)[1].split(
+            "def _aux_metric_values",
+            maxsplit=1,
+        )[0]
+        aux_metric_section = source.split("def _aux_metric_values", maxsplit=1)[1].split(
+            "def _apply_local_experts",
+            maxsplit=1,
+        )[0]
+    
+        assert "def _event_pair" in source
+        assert "def _phase_events" in source
+        assert "self._buffer_cache: Dict[Tuple[str, torch.device, torch.dtype], torch.Tensor]" in source
+        assert "device: Optional[torch.device] = None" in source
+        assert "key = (name, target_device, dtype)" in source
+        assert "or cached.numel() &lt; numel" in source
+        assert "return cached[:numel].view(shape)" in source
+        assert 'self.register_buffer(\n            "_gini_index",' in router_section
+        assert "def _gini_index_for" in router_section
+        assert "torch.arange(1, n + 1" not in router_section
+        assert "log_route_probs = F.log_softmax(logits, dim=-1)" in router_section
+        assert "route_probs = log_route_probs.exp()" in router_section
+        assert "top_logits, top_indices = torch.topk(logits, self.top_k, dim=-1)" in router_section
+        assert "top_weights = F.softmax(top_logits, dim=-1)" in router_section
+        assert '"router_entropy": -(route_probs * log_route_probs).sum(dim=-1).mean()' in router_section
+        assert "route_probs = F.softmax(logits, dim=-1)" not in router_section
+        assert "torch.topk(route_probs" not in router_section
+        assert "top_weights = route_probs.gather(-1, top_indices)" not in router_section
+        assert "torch.log(route_probs.clamp_min" not in router_section
+        assert "F.silu(gate, inplace=True)" in expert_forward
+        assert "gate.mul_(up)" in expert_forward
+        assert "F.silu(self.gate_proj(x)) * self.up_proj(x)" not in expert_forward
+        assert "repeat_interleave(self.top_k)" not in token_indices_section
+        assert "torch.arange(num_tokens * self.top_k, device=device, dtype=torch.int64)" in token_indices_section
+        assert 'cached.div_(self.top_k, rounding_mode="floor")' in token_indices_section
+        assert "self._range_index_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}" in source
+        assert "def _range_indices(self, length: int, device: torch.device) -&gt; torch.Tensor" in source
+        assert "torch.arange(length, device=device, dtype=torch.int64)" in source
+        assert "expanded_tokens = hidden.index_select(0, token_indices)" in route_tokens_section
+        assert "hidden.repeat_interleave(self.top_k" not in route_tokens_section
+        assert "sort_idx = torch.argsort(expert_ids)" in apply_local_section
+&gt;       assert '"local_outputs"' in apply_local_section
+E       assert '"local_outputs"' in '(self, tokens: torch.Tensor, expert_ids: torch.Tensor, weights: torch.Tensor, *, buffer_namespace: str = "local") -&gt; ...        offset = next_offset\n        outputs.index_copy_(0, sort_idx, sorted_outputs)\n        return outputs\n\n    '
+
+tests/test_fullstack_cluster_shared_benchmark_wrappers.py:344: AssertionError</failure></testcase><testcase classname="tests.test_fullstack_cluster_shared_benchmark_wrappers" name="test_fullstack_router_uses_selected_logits_for_topk_weights" time="0.006" /><testcase classname="tests.test_fullstack_cluster_shared_benchmark_wrappers" name="test_moe_hybrid_ep_list_all_to_all_returns_preallocated_recv" time="0.001" /><testcase classname="tests.test_fullstack_cluster_shared_benchmark_wrappers" name="test_moe_hybrid_ep_buffer_reuses_larger_capacity_for_smaller_views" time="0.000" /><testcase classname="tests.test_fullstack_cluster_shared_benchmark_wrappers" name="test_moe_hybrid_ep_wrapper_reuses_latest_metrics_dict" time="0.000" /><testcase classname="tests.test_fullstack_cluster_shared_benchmark_wrappers" name="test_single_gpu_moe_hybrid_ep_uses_inprocess_step_runner" time="0.000"><skipped type="pytest.skip" message="CUDA required for benchmark wrappers">/Users/admin/dev/ai-perf/ai-performance-engineering/code/tests/test_fullstack_cluster_shared_benchmark_wrappers.py:630: CUDA required for benchmark wrappers</skipped></testcase><testcase classname="tests.test_fullstack_cluster_shared_benchmark_wrappers" name="test_load_benchmark_does_not_create_parent_cuda_compute_process" time="0.000"><skipped type="pytest.skip" message="CUDA required for benchmark wrappers">/Users/admin/dev/ai-perf/ai-performance-engineering/code/tests/test_fullstack_cluster_shared_benchmark_wrappers.py:646: CUDA required for benchmark wrappers</skipped></testcase></testsuite></testsuites>

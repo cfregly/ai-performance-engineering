@@ -1,0 +1,31 @@
+# Audit remediation status
+
+The goal remains active. All 128 original findings are triaged with source dispositions and evidence; the completed second-wave report is still required. Local changes are on `codex/audit-remediation-20260830` and remain uncommitted. No merge, deployment or GPU qualification is claimed.
+
+## Completed local work
+
+- **3,943 passed, 448 skipped, zero failures** in ordinary `code/tests` (451.10 seconds). No CLI file exclusions; all 4,391 first-attempt case identities retained. The three original failures and subsequent corrections remain recorded.
+- 320 changed/new source, documentation and test files stayed unchanged through the run; 211 Python files passed syntax/undefined-name checks.
+- Independent artifact review checked 663 files and 1,535 hash references without altered or missing recorded evidence. Later corrections, the current attention gate and final run have their own receipts. All 15 Nanochat logs are includable with unchanged bytes.
+- Original ledger status: 52 `source_fixed`, 76 `awaiting_runtime`, no untriaged or in-progress original items. These labels do not certify GPU execution. The separate refutation and 23 adjacent discoveries remain recorded.
+
+## Material limits
+
+The 61 generic distributed-training wrappers now reject harness execution and verification because the previous parent-side toy model did not verify child training. Factories/configuration and direct scripts remain available. Restoring a wrapper requires actual child-produced results, an independent reference and target verification.
+
+This was macOS/arm64, Python 3.12.2 and CPU PyTorch 2.8.0, without CUDA, nvcc or Triton. Explicit capability and unsupported-policy skips are not passing coverage. The existing quick benchmark-correctness selection was retained; this is not an all-target GPU sweep.
+
+Pinned Linux CI/provisioning, supported-target compilation, actual GPU/NCCL/stream/sanitizer checks, numerical-policy calibration/review and new performance evidence remain pending. Historical numbers are not requalified. `HANDOFF.md` still assigns the B200 GPUs to another task; no GPU probe or job was launched. The new 32-case attention gate's local preflight is HOLD with zero CUDA dispatch.
+
+The supplied audit artifact still contains only the original 128 findings. Its future-coverage footer is not a second-wave report. No missing report is treated as zero findings.
+
+## Reviewable artifacts
+
+- [Plan](../../../AUDIT_REMEDIATION_PLAN.md)
+- [Issue ledger](remediation-ledger.json)
+- [Final local receipt](evidence/integration/final-local/receipt.json)
+- [Exact source manifest](evidence/integration/final-local/final-source-manifest.json)
+- [Complete test output](evidence/integration/final-local/full-cpu-attempt-2.txt)
+- [Runtime acceptance handoff](evidence/integration/runtime-handoff.md)
+
+The patch file covers tracked changes only. New source files and the dated audit/evidence trees must also be included in any later review bundle or commit; nothing has been staged or published.

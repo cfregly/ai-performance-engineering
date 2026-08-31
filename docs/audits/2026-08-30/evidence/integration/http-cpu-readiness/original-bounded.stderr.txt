@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/http-cpu-readiness/reproduce_original.py", line 68, in <module>
+    main()
+  File "/Users/admin/dev/ai-perf/ai-performance-engineering/docs/audits/2026-08-30/evidence/integration/http-cpu-readiness/reproduce_original.py", line 53, in main
+    assert len(receipts) == 1 and receipts[0]["exit_code"] != 0
+AssertionError

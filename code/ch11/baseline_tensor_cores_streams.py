@@ -19,7 +19,6 @@ class BaselineTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchmar
 
     def __init__(self) -> None:
         super().__init__()
-        self.device = resolve_device()
         self.label = "baseline_tensor_cores_streams"
         self.num_segments = 24
         self.matrix_dim = 768
@@ -40,6 +39,7 @@ class BaselineTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.register_workload_metadata(bytes_per_iteration=bytes_transferred)
 
     def setup(self) -> None:
+        self.device = resolve_device()
         torch.manual_seed(42)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(42)

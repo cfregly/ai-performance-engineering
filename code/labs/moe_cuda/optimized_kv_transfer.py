@@ -19,19 +19,15 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.hidden_size = 1024  # Must match baseline for valid comparison
         self.chunk_size = 256
         self.num_chunks = 32
-        self.pipeline_depth = 2
         self.dtype = torch.float16
         self.input_chunks: Optional[torch.Tensor] = None
         self.weight: Optional[torch.Tensor] = None
         self.workspace: Optional[torch.Tensor] = None
         self.kv_dest: Optional[torch.Tensor] = None
-        self.compute_stream = torch.cuda.Stream()
-        self.copy_stream = torch.cuda.Stream()
+        self.compute_stream: Optional[torch.cuda.Stream] = None
+        self.copy_stream: Optional[torch.cuda.Stream] = None
         # Use per-chunk events to avoid unsafe reuse that can mis-order waits.
-        self.compute_done_events: List[torch.cuda.Event] = [
-            torch.cuda.Event(enable_timing=False, blocking=False)
-            for _ in range(self.num_chunks)
-        ]
+        self.compute_done_events: List[torch.cuda.Event] = []
         self._compute_chunk_specs: List[tuple[torch.Tensor, torch.Tensor, torch.cuda.Event]] = []
         self._copy_chunk_specs: List[tuple[torch.Tensor, torch.Tensor, torch.cuda.Event]] = []
         self._chunk_spec_counts: tuple[int, int] = (0, 0)
@@ -51,6 +47,12 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not torch.cuda.is_available():
             raise RuntimeError("labs.moe_cuda KV transfer requires CUDA")
 
+        self.compute_stream = torch.cuda.Stream(device=self.device)
+        self.copy_stream = torch.cuda.Stream(device=self.device)
+        self.compute_done_events = [
+            torch.cuda.Event(enable_timing=False, blocking=False)
+            for _ in range(self.num_chunks)
+        ]
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         config = getattr(self, "_config", None) or self.get_config()
@@ -85,12 +87,11 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._payload_meta = torch.tensor([self.hidden_size], dtype=torch.int64, device="cpu")
         
         # Warmup the streams so the steady-state path doesn't include one-time setup overhead.
+        self.compute_stream.wait_stream(torch.cuda.current_stream(self.device))
         with torch.cuda.stream(self.compute_stream):
-            first_input, first_workspace, _ = self._compute_chunk_specs[0]
-            torch.matmul(first_input, self.weight, out=first_workspace)
+            self._launch_compute(*self._compute_chunk_specs[0])
         with torch.cuda.stream(self.copy_stream):
-            first_workspace, first_dest, _ = self._copy_chunk_specs[0]
-            first_dest.copy_(first_workspace)
+            self._launch_copy(*self._copy_chunk_specs[0])
         self._synchronize()
 
     def _launch_compute(
@@ -100,6 +101,7 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         event: torch.cuda.Event,
     ) -> None:
         assert self.weight is not None
+        assert self.compute_stream is not None
         torch.matmul(chunk, self.weight, out=workspace_chunk)
         event.record(self.compute_stream)
 
@@ -109,6 +111,7 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         dest_chunk: torch.Tensor,
         event: torch.cuda.Event,
     ) -> None:
+        assert self.copy_stream is not None
         self.copy_stream.wait_event(event)
         dest_chunk.copy_(workspace_chunk)
 
@@ -118,6 +121,8 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self.weight is None
             or self.workspace is None
             or self.kv_dest is None
+            or self.compute_stream is None
+            or self.copy_stream is None
         ):
             raise RuntimeError("Buffers not initialized")
         if self._chunk_spec_counts != self._expected_chunk_spec_counts:
@@ -125,6 +130,11 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         with nvtx_range("moe_cuda_kv_overlap", enable=self._enable_nvtx):
             with torch.inference_mode():
+                # A workspace is reused across calls: finish the previous copy
+                # before any new matmul writes it. Also observe caller-stream
+                # input updates/allocation before side-stream computation.
+                self.compute_stream.wait_stream(self.copy_stream)
+                self.compute_stream.wait_stream(torch.cuda.current_stream(self.device))
                 # Reduce Python overhead by issuing all compute on one stream context
                 # and all dependent copies on a second stream context.
                 with torch.cuda.stream(self.compute_stream):
@@ -155,6 +165,11 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def teardown(self) -> None:
+        # The benchmark owns these buffers until all side-stream uses complete.
+        if self.compute_stream is not None:
+            self.compute_stream.synchronize()
+        if self.copy_stream is not None:
+            self.copy_stream.synchronize()
         self.input_chunks = None
         self.weight = None
         self.workspace = None
@@ -167,6 +182,9 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_view = None
         self._verify_output_buffer = None
         self._payload_meta = None
+        self.compute_done_events = []
+        self.compute_stream = None
+        self.copy_stream = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

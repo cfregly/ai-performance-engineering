@@ -1,0 +1,207 @@
+{
+  "package": "P03 remaining chapter CUDA findings",
+  "created_at_utc": "2026-08-30T23:02:25Z",
+  "original_findings": [
+    "W1-008",
+    "W1-009",
+    "W1-010",
+    "W1-011",
+    "W1-012",
+    "W1-013",
+    "W1-014",
+    "W1-015",
+    "W1-045",
+    "W1-046",
+    "W1-048",
+    "W1-049",
+    "W1-050",
+    "W1-051",
+    "W1-102",
+    "W1-103",
+    "W1-104",
+    "W1-105"
+  ],
+  "original_inventory_count": 128,
+  "source_status": "FIXED_AND_REVIEWED",
+  "host_source_checks": "PASS",
+  "cuda_compile_link_import": "HOLD",
+  "cuda_execution_and_sanitizers": "HOLD",
+  "performance_qualification": "NOT_ATTEMPTED",
+  "source_file_count": 22,
+  "source_sha256": {
+    "code/ch02/memory_transfer_pcie_demo.cu": "61a436e87024595f8b59c500b11e0e947c062fbff870909ae84b5664b4a5a1be",
+    "code/ch06/occupancy_api.cu": "33fd08d7e29eb7e55191322cb955df1b28ca03b8aeb2734f745c660a353a1d54",
+    "code/ch06/optimized_ilp_low_occupancy_vec4_impl.cuh": "5afd0c9c431568c766903f148e59072a6c1a6fd01ef92d72f4d739d7a57401d3",
+    "code/ch07/fp8_32byte_loads_demo.cu": "cbf49624b3668fd82e8249dbe17910f11bd1fc1b9a71df3599e9497c0f89f1c8",
+    "code/ch08/baseline_thresholdtma.cu": "e50cf230915fb7303ce1f089acdad899c7aef14f04650d19a57c73ca5221c955",
+    "code/ch08/threshold_async_kernel.cuh": "6c1a02868022ee2df39ac7bbc0eff6d148c0f8cbce6c95e7a59dcaec786cfde7",
+    "code/ch08/threshold_tma_kernel.cuh": "e54accbcc4664d9b4ef4fe8313aa5f93bb038b21dfcf16598e74b8f84f658c4a",
+    "code/ch10/grouped_tile_schedule.cuh": "e8f971c015e9f942ba812a1f1988a22379a8046a3c73976f00baeabffd56c992",
+    "code/ch10/tcgen05_warp_specialized.cu": "b29cb67f42ea334c4eb43f8392077579968adc4885a17c636d5bccfa30802863",
+    "code/ch10/optimized_dsmem_reduction_warp_specialized.cu": "c20eada00c5b9bc23ad0fc8d1cc6fcf339364944bd5dc2ce628ced190e4c814a",
+    "code/ch11/streams_ordered_demo.cu": "24891671d501bfb45f05eefadc67dad48a5ce88a054a9449274b7e49b506a5ac",
+    "code/ch11/streams_overlap_demo.cu": "4f120f69d529ef60a00dfc67a5be1cac72b24a3cb61f340c6d4f1ed7dc06a960",
+    "code/ch11/streams_warp_specialized_demo.cu": "47b73f9e368b2a4a56f40c78d15f4d3487f6303705be768d34a1385272eee9b0",
+    "code/ch12/baseline_cuda_graphs.cu": "97c94bd2c7402f579f1e76e6b34595cf0d6bb5fa4d7a12fb57d8122f80f0a337",
+    "code/ch12/optimized_cuda_graphs.cu": "fbb3c4121fb55b7595316f965fd4425412c8f35566ff909f967324476e3fdb1b",
+    "code/ch12/cuda_graphs_workload.cuh": "1e21d5b78f2396fb678ac04361b335874f3a866d8a13fff3c2ca918cbeb3db13",
+    "code/ch12/Makefile": "18e4bb9af5c424aa41d353be59d1dc13b55b6684f0d5754371f0158f4e2511f4",
+    "code/tests/test_chapter_cuda_contracts.py": "ed06580df21deaf7b0bd5c74eb9e039a7995ce5f4718066161cbba909d8d14c3",
+    "code/tests/cuda/chapter_cuda_validation.cu": "bb8eee8173fec1c9bf8f80a8a38d320f95c909947811c2331e56ea10b2a3fdd3",
+    "code/tests/cuda/run_chapter_cuda_validation.py": "b7f0a028b2aa5c9455e712214fbb01e5aa30d46948d8400aa6772e12d8750a7b",
+    "code/tests/cuda/run_ch10_warp_specialized_validation.py": "5fabd910031af07109d51538fe5ced15079f56bc21a9fbc3833243a7ceb33e95",
+    "code/tests/cuda/validation_process.py": "47019ab4daa7d09d73a9721c2ee68e1b1999b18d1022e25d17dd7089f26f277d"
+  },
+  "head": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "branch": "codex/audit-remediation-20260830",
+  "environment": {
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "machine": "arm64",
+    "python": "/opt/miniconda3/bin/python",
+    "nvcc": null,
+    "compute_sanitizer": null
+  },
+  "checks": [
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check",
+        "--",
+        "code/ch02/memory_transfer_pcie_demo.cu",
+        "code/ch06/occupancy_api.cu",
+        "code/ch06/optimized_ilp_low_occupancy_vec4_impl.cuh",
+        "code/ch07/fp8_32byte_loads_demo.cu",
+        "code/ch08/baseline_thresholdtma.cu",
+        "code/ch08/threshold_async_kernel.cuh",
+        "code/ch08/threshold_tma_kernel.cuh",
+        "code/ch10/optimized_dsmem_reduction_warp_specialized.cu",
+        "code/ch10/tcgen05_warp_specialized.cu",
+        "code/ch11/streams_ordered_demo.cu",
+        "code/ch11/streams_overlap_demo.cu",
+        "code/ch11/streams_warp_specialized_demo.cu",
+        "code/ch12/Makefile",
+        "code/ch12/baseline_cuda_graphs.cu",
+        "code/ch12/cuda_graphs_workload.cuh",
+        "code/ch12/optimized_cuda_graphs.cu"
+      ],
+      "exit_code": 0,
+      "result": "Tracked diff whitespace only",
+      "log": "scoped-diff-check.txt"
+    },
+    {
+      "command": [
+        "/opt/miniconda3/bin/python",
+        "-m",
+        "py_compile",
+        "code/tests/cuda/run_chapter_cuda_validation.py",
+        "code/tests/cuda/run_ch10_warp_specialized_validation.py",
+        "code/tests/cuda/validation_process.py"
+      ],
+      "exit_code": 0,
+      "result": "Python syntax only",
+      "log": "python-syntax.txt"
+    },
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider code/tests/test_chapter_cuda_contracts.py",
+      "exit_code": 1,
+      "result": "10 failed against original behavior",
+      "log": "before.txt"
+    },
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider code/tests/test_chapter_cuda_contracts.py",
+      "exit_code": 0,
+      "result": "13 passed before review follow-up",
+      "log": "after.txt"
+    },
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider code/tests/test_chapter_cuda_contracts.py code/tests/test_build_entrypoints.py code/tests/test_dual_arch_make_contract.py",
+      "exit_code": 0,
+      "result": "179 passed in 7.49s before review follow-up",
+      "log": "combined-host-tests.txt"
+    },
+    {
+      "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/miniconda3/bin/python -m pytest -q -p no:cacheprovider code/tests/test_chapter_cuda_contracts.py code/tests/test_build_entrypoints.py code/tests/test_dual_arch_make_contract.py",
+      "exit_code": 0,
+      "result": "180 passed in 10.26s after review follow-up",
+      "log": "post-review-host-tests.txt"
+    },
+    {
+      "command": "make -n -C code/ch12 ARCH=sm_100 PYTHON=/usr/bin/false baseline_cuda_graphs_sm100 optimized_cuda_graphs_sm100",
+      "exit_code": 0,
+      "result": "Source/target resolution only",
+      "log": "graph-make-dry-run.txt"
+    },
+    {
+      "command": "Initial whole-file whitespace assertion",
+      "exit_code": 1,
+      "result": "Inherited whitespace; no hash failure; no source modification",
+      "log": "receipt-validation-attempt-1.txt"
+    },
+    {
+      "command": "SHA256/newline validation of all22 owned sources, new-file whitespace and final preflight source hashes",
+      "exit_code": 0,
+      "result": "PASS"
+    }
+  ],
+  "gpu_preflights": [
+    {
+      "command": "/opt/miniconda3/bin/python code/tests/cuda/run_chapter_cuda_validation.py --arch sm_100a --output-dir docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-preflight",
+      "exit_code": 3,
+      "status": "HOLD",
+      "reason": "nvcc unavailable; no CUDA compile/execution",
+      "report": "chapter-gpu-preflight/report.json"
+    },
+    {
+      "command": "/opt/miniconda3/bin/python code/tests/cuda/run_chapter_cuda_validation.py --arch sm_100a --output-dir docs/audits/2026-08-30/evidence/chapter-cuda/chapter-gpu-final-preflight",
+      "exit_code": 3,
+      "status": "HOLD",
+      "reason": "nvcc unavailable; no CUDA compile/execution",
+      "report": "chapter-gpu-final-preflight/report.json"
+    },
+    {
+      "command": "/opt/miniconda3/bin/python code/tests/cuda/run_ch10_warp_specialized_validation.py --arch sm_100a --output-dir docs/audits/2026-08-30/evidence/chapter-cuda/tcgen05-gpu-preflight",
+      "exit_code": 3,
+      "status": "HOLD",
+      "reason": "nvcc unavailable; no CUDA compile/execution",
+      "report": "tcgen05-gpu-preflight/report.json"
+    },
+    {
+      "command": "/opt/miniconda3/bin/python code/tests/cuda/run_ch10_warp_specialized_validation.py --arch sm_100a --output-dir docs/audits/2026-08-30/evidence/chapter-cuda/tcgen05-gpu-final-preflight",
+      "exit_code": 3,
+      "status": "HOLD",
+      "reason": "nvcc unavailable; no CUDA compile/execution",
+      "report": "tcgen05-gpu-final-preflight/report.json"
+    }
+  ],
+  "prepared_gpu_checks": {
+    "chapter_full_outputs": 195,
+    "gemm_full_outputs": 7,
+    "gemm_invalid_shapes": 4,
+    "default_sanitizers": [
+      "memcheck",
+      "racecheck",
+      "synccheck"
+    ]
+  },
+  "review": "independent-source-review.txt",
+  "source_observations": "source-observations.json",
+  "artifact_sha256": {
+    "source-manifest.json": "4e9dabd403b535348c55bad245b7e590440912540f45e91cd54323b5411fe1f9",
+    "scoped-diff-check.txt": "5ad216f8080400df036996258494bb0d3b5a489affb3d8c0a2bcc5f2cf4c0c99",
+    "before.txt": "8e6719555e3e6369dc31b3cd893e5ad1b9fef1f50ce7c61d0f1f16d5d04594c6",
+    "source-observations.json": "e7ad5b88422d70b984330201a1ecfb450c0172c09eab1ddf1c00a78dffee72b5",
+    "after.txt": "06ab3eeb5bc74f26b5ef81ec793a283840c5b02fd5ba037d1d3836f3ffa1ff47",
+    "README.md": "db2aa13d936ba31c44f25281632409479d97b762b992fdea0e0936c7423a9f49",
+    "post-review-host-tests.txt": "05ecaddf009d3aaee4455b48e996f1b45cef0cf9839c9b80d9696aabaac651fc",
+    "python-syntax.txt": "5ad216f8080400df036996258494bb0d3b5a489affb3d8c0a2bcc5f2cf4c0c99",
+    "combined-host-tests.txt": "309f476f71f04e60be5e63cd80632ad7b7c7d43173d89bf0394a756ea93ec747",
+    "receipt-validation-attempt-1.txt": "580ffab457b32997ac1e47b0faeb5e36c1b1d460585ea9d4039629a04ca94490",
+    "graph-make-dry-run.txt": "c334965b569bcd11793074478908f6496ba9a774abdfc9a60fd1143e0c48cf65",
+    "independent-source-review.txt": "902cc3f6f00abf2b07b7adeab1b0f124afc2c9a25882e60de95551b14b489c2f",
+    "chapter-gpu-preflight/report.json": "e18b5041915978b88bc681ab9360ac4c9d99e16fce028d4754f95dedc499dede",
+    "tcgen05-gpu-preflight/report.json": "5fba5d26c81f189f4ae7fd41e5165b04dddebe9f9815a7d9519e39c7fa57f5d8",
+    "tcgen05-gpu-final-preflight/report.json": "a58a848b59debecb5b29b71d071f321dd116a54c4c22cf6dce35a1a9f8653597",
+    "chapter-gpu-final-preflight/report.json": "7318e85cd6759d699de724073a6c13b0fcf38c83df49c10820ae17097ff3e52b"
+  }
+}

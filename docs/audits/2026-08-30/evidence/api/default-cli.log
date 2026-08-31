@@ -1,0 +1,16 @@
+
+==================================================
+📊 BENCHMARK ANALYSIS MENU
+==================================================
+  1. Leaderboards (speed vs memory)
+  2. Pareto Frontier
+  3. What-If Solver
+  4. Optimization Stacking
+  5. Power Efficiency
+  6. Cost Analysis
+  7. Scaling Analysis
+  8. Trade-off Chart (ASCII)
+  q. Quit
+--------------------------------------------------
+Select option: 
+Exiting benchmark analysis menu.

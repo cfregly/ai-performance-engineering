@@ -1,0 +1,12 @@
+-- Configuring incomplete, errors occurred!
+CMake Error at /opt/homebrew/share/cmake/Modules/Internal/CMakeCUDAFindToolkit.cmake:104 (message):
+  Failed to find nvcc.
+
+  Compiler requires the CUDA toolkit.  Please set the CUDAToolkit_ROOT
+  variable.
+Call Stack (most recent call first):
+  /opt/homebrew/share/cmake/Modules/CMakeDetermineCUDACompiler.cmake:109 (cmake_cuda_find_toolkit)
+  CMakeLists.txt:7 (project)
+
+
+CMake Error: CMAKE_CXX_COMPILER not set, after EnableLanguage

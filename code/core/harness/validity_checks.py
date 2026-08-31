@@ -569,11 +569,21 @@ def clear_compile_cache() -> bool:
 
 
 def get_compile_state() -> Dict[str, Any]:
-    """Get current torch.compile state for consistency checking."""
+    """Report observed Dynamo compilation counters, not resident cache size.
+
+    Modern Dynamo records compiled graphs in ``stats.unique_graphs``; older
+    versions may expose ``compile.calls``. Counters are process cumulative and
+    need before/after comparison. Zero with ``compile_count_available=False``
+    means no supported counter was observed, not proof that nothing compiled.
+    The legacy cache_entries value remains for compatibility but is unavailable.
+    """
     state = {
         "dynamo_available": False,
         "compile_count": 0,
+        "compile_count_available": False,
+        "compile_count_source": None,
         "cache_entries": 0,
+        "cache_entries_available": False,
     }
     
     if torch is None:
@@ -584,7 +594,16 @@ def get_compile_state() -> Dict[str, Any]:
             state["dynamo_available"] = True
             if hasattr(torch._dynamo, 'utils') and hasattr(torch._dynamo.utils, 'counters'):
                 counters = torch._dynamo.utils.counters
-                state["compile_count"] = counters.get("compile", {}).get("calls", 0)
+                graph_count = counters.get("stats", {}).get("unique_graphs")
+                legacy_count = counters.get("compile", {}).get("calls")
+                if graph_count is not None:
+                    state["compile_count"] = int(graph_count)
+                    state["compile_count_source"] = "stats.unique_graphs"
+                    state["compile_count_available"] = True
+                elif legacy_count is not None:
+                    state["compile_count"] = int(legacy_count)
+                    state["compile_count_source"] = "compile.calls"
+                    state["compile_count_available"] = True
     except Exception as exc:
         _emit_validity_warning(
             "Failed to inspect torch.compile state; compile-cache consistency checks may be incomplete",

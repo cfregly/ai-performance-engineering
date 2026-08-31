@@ -1,0 +1,12 @@
+[
+  "/tmp/aisp-torchao-compat-zi7v6xmy/venv/bin/python",
+  "-m",
+  "pip",
+  "install",
+  "--only-binary=:all:",
+  "--no-cache-dir",
+  "--disable-pip-version-check",
+  "torch==2.9.1",
+  "torchao==0.15.0",
+  "numpy==2.1.2"
+]

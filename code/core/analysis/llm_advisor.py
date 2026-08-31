@@ -7,7 +7,7 @@ capabilities to generate intelligent, actionable optimization guidance.
 
 Supports:
 - OpenAI (GPT-4, GPT-4o)
-- Anthropic (Claude 3.5 Sonnet, Claude 3 Opus)
+- Anthropic (Claude Sonnet 4.6 by default; model overrides are supported)
 - Local models via Ollama
 - Fallback to rule-based recommendations when LLM unavailable
 """
@@ -19,6 +19,7 @@ from typing import Any, Optional
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from core.llm import DEFAULT_ANTHROPIC_MODEL
 from core.utils.dotenv import find_repo_root, load_repo_dotenv
 
 logger = logging.getLogger(__name__)
@@ -186,7 +187,7 @@ class LLMConfig:
         # Get model from environment or use defaults
         if not self.model:
             if self.provider == "anthropic":
-                self.model = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+                self.model = os.environ.get("ANTHROPIC_MODEL") or os.environ.get("PERF_LLM_MODEL") or DEFAULT_ANTHROPIC_MODEL
             elif self.provider == "openai":
                 self.model = os.environ.get("OPENAI_MODEL", "gpt-4o")
             elif self.provider == "ollama":

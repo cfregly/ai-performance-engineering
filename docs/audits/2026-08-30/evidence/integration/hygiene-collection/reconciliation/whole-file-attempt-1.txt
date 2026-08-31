@@ -1,0 +1,154 @@
+........................................................................ [ 13%]
+........................................................................ [ 26%]
+........................................................................ [ 39%]
+........................................................................ [ 52%]
+.F...................................................................... [ 65%]
+........................................................................ [ 78%]
+........................................................................ [ 91%]
+..............F....................F.............                        [100%]
+=================================== FAILURES ===================================
+_________ test_nanochat_attention_reuses_non_flash_sdpa_backend_order __________
+
+    def test_nanochat_attention_reuses_non_flash_sdpa_backend_order() -> None:
+        source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "gpt.py").read_text(
+            encoding="utf-8"
+        )
+        attention_section = source.split("class CausalSelfAttention", maxsplit=1)[1].split(
+            "class MLP", maxsplit=1
+        )[0]
+        forward_section = attention_section.split("def forward", maxsplit=1)[1].split(
+            "# Attention: queries attend to keys/values autoregressively.", maxsplit=1
+        )[1].split(
+            "# Re-assemble the heads side by side and project back to residual stream", maxsplit=1
+        )[0]
+    
+        assert "_NON_FLASH_SDP_BACKENDS = tuple(" in source
+        assert 'getattr(SDPBackend, "EFFICIENT_ATTENTION", None)' in source
+        assert 'getattr(SDPBackend, "MATH", None)' in source
+>       assert "sdpa_order = None if self.use_flash_sdp else _NON_FLASH_SDP_BACKENDS" in forward_section
+E       AssertionError: assert 'sdpa_order = None if self.use_flash_sdp else _NON_FLASH_SDP_BACKENDS' in ' A few cases to handle:\n        enable_gqa = self.n_head != self.n_kv_head # Group Query Attention (GQA): duplicate ...                   y = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, enable_gqa=enable_gqa)\n\n        '
+
+tests/test_benchmark_hygiene_regressions.py:13105: AssertionError
+_______ test_persistent_decode_verification_clone_stays_out_of_hot_path ________
+
+    def test_persistent_decode_verification_clone_stays_out_of_hot_path() -> None:
+        targets = [
+            REPO_ROOT / "labs" / "persistent_decode" / "baseline_persistent_decode.py",
+            REPO_ROOT / "labs" / "persistent_decode" / "optimized_persistent_decode_cuda.py",
+            REPO_ROOT / "labs" / "persistent_decode" / "optimized_persistent_decode_graphs.py",
+            REPO_ROOT / "labs" / "persistent_decode" / "optimized_persistent_decode_triton.py",
+            REPO_ROOT / "labs" / "persistent_decode" / "baseline_tma_prefill_decode.py",
+            REPO_ROOT / "labs" / "persistent_decode" / "baseline_native_tma_prefill_decode.py",
+            REPO_ROOT / "labs" / "persistent_decode" / "optimized_tma_prefill_decode.py",
+            REPO_ROOT / "labs" / "persistent_decode" / "optimized_native_tma_prefill_decode.py",
+        ]
+    
+        for path in targets:
+            text = path.read_text(encoding="utf-8")
+            benchmark_section = text.split("def capture_verification_payload", maxsplit=1)[0]
+            capture_section = text.split("def capture_verification_payload", maxsplit=1)[1].split(
+                "def teardown",
+                maxsplit=1,
+            )[0]
+            assert ".float().clone()" not in benchmark_section
+            assert ".detach().clone()" not in benchmark_section
+    
+            if path.name in {
+                "baseline_persistent_decode.py",
+                "baseline_tma_prefill_decode.py",
+                "baseline_native_tma_prefill_decode.py",
+                "optimized_persistent_decode_cuda.py",
+                "optimized_persistent_decode_graphs.py",
+                "optimized_persistent_decode_triton.py",
+                "optimized_tma_prefill_decode.py",
+                "optimized_native_tma_prefill_decode.py",
+            }:
+                setup_split = {
+                    "baseline_persistent_decode.py": "def _decode_step",
+                    "baseline_tma_prefill_decode.py": "def _prefill_sequential",
+                    "baseline_native_tma_prefill_decode.py": "def _prefill_native",
+                    "optimized_persistent_decode_graphs.py": "def _capture_graphs",
+                    "optimized_tma_prefill_decode.py": "def _decode_body",
+                    "optimized_native_tma_prefill_decode.py": "def _decode_body",
+                }.get(path.name, "def benchmark_fn")
+                setup_section = text.split("def setup", maxsplit=1)[1].split(
+                    setup_split,
+                    maxsplit=1,
+                )[0]
+    
+                assert "_verify_output_buffer" in text
+                assert "dtype=torch.float32" in setup_section
+                assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+                assert "output=self._verify_output_buffer" in capture_section
+                assert "self.output.float().clone()" not in capture_section
+                assert "self.output.to(dtype=torch.float32)" not in capture_section
+                if path.name.startswith("baseline"):
+                    hot_section = text.split(setup_split, maxsplit=1)[1].split(
+                        "def capture_verification_payload",
+                        maxsplit=1,
+                    )[0]
+                    assert ".detach()" not in hot_section
+    
+            if path.name in {
+                "optimized_persistent_decode_cuda.py",
+                "optimized_persistent_decode_graphs.py",
+                "optimized_persistent_decode_triton.py",
+                "optimized_tma_prefill_decode.py",
+                "optimized_native_tma_prefill_decode.py",
+            }:
+                setup_section = text.split("def setup", maxsplit=1)[1].split(
+                    "def _capture_graphs" if path.name == "optimized_persistent_decode_graphs.py" else "def benchmark_fn",
+                    maxsplit=1,
+                )[0]
+                hot_section = text.split("def benchmark_fn", maxsplit=1)[1].split(
+                    "def finalize_iteration_metrics"
+                    if path.name in {"optimized_persistent_decode_graphs.py", "optimized_tma_prefill_decode.py"}
+                    else "def capture_verification_payload",
+                    maxsplit=1,
+                )[0]
+                teardown_section = text.split("def teardown", maxsplit=1)[1].split(
+                    "def get_config",
+                    maxsplit=1,
+                )[0]
+    
+                assert "_output_view" in text
+>               assert "self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]" in setup_section
+E               assert 'self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]' in '(self) -> None:\n        """Initialize the persistent decode CUDA extension and inputs."""\n        if not torch.cuda...self.inputs.out\n        self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)\n\n    '
+
+tests/test_benchmark_hygiene_regressions.py:23991: AssertionError
+______________ test_run_benchmarks_reaps_current_run_descendants _______________
+
+    def test_run_benchmarks_reaps_current_run_descendants() -> None:
+        process = subprocess.Popen(
+            ["python", "-c", "import time; time.sleep(60)"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        try:
+            time.sleep(0.2)
+            assert process.poll() is None
+    
+            _reap_run_descendants("unit_test_descendant_cleanup", grace_seconds=0.2)
+    
+            deadline = time.time() + 5.0
+            while process.poll() is None and time.time() < deadline:
+                time.sleep(0.05)
+    
+>           assert process.poll() is not None
+E           AssertionError: assert None is not None
+E            +  where None = poll()
+E            +    where poll = <Popen: returncode: None args: ['python', '-c', 'import time; time.sleep(60)']>.poll
+
+tests/test_benchmark_hygiene_regressions.py:24988: AssertionError
+=============================== warnings summary ===============================
+tests/test_benchmark_hygiene_regressions.py::test_ch15_placement_sim_batches_session_rng_samples
+  /Users/admin/dev/ai-perf/ai-performance-engineering/code/ch15/placement_sim.py:35: RuntimeWarning: [ch15] placement_sim expects torch>=2.10 with CUDA 13 for Blackwell (B200/B300, GB200/GB300); falling back to compatibility mode.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_benchmark_hygiene_regressions.py::test_nanochat_attention_reuses_non_flash_sdpa_backend_order
+FAILED tests/test_benchmark_hygiene_regressions.py::test_persistent_decode_verification_clone_stays_out_of_hot_path
+FAILED tests/test_benchmark_hygiene_regressions.py::test_run_benchmarks_reaps_current_run_descendants
+3 failed, 550 passed, 1 warning in 13.84s
