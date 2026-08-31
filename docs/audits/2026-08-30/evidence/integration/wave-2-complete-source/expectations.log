@@ -1,0 +1,63 @@
+Validating 25 expectation file(s)...
+
+  ch06/expectations_4x_gb200.json
+    ✓ 11 entries, all valid
+  ch06/expectations_b200.json
+    ✓ 12 entries, all valid
+  ch07/expectations_4x_gb200.json
+    ✓ 14 entries, all valid
+  ch07/expectations_b200.json
+    ✓ 14 entries, all valid
+  ch08/expectations_2x_b200.json
+    ✓ 13 entries, all valid
+  ch08/expectations_4x_gb200.json
+    ✓ 11 entries, all valid
+  ch08/expectations_b200.json
+    ✓ 15 entries, all valid
+  ch09/expectations_2x_b200.json
+    ✓ 12 entries, all valid
+  ch09/expectations_4x_gb200.json
+    ✓ 14 entries, all valid
+  ch09/expectations_b200.json
+    ✓ 17 entries, all valid
+  ch10/expectations_2x_b200.json
+    ✓ 2 entries, all valid
+  ch10/expectations_4x_gb200.json
+    ✓ 28 entries, all valid
+  ch10/expectations_b200.json
+    ✓ 30 entries, all valid
+  ch13/expectations_2x_b200.json
+    ✓ 26 entries, all valid
+  ch13/expectations_4x_gb200.json
+    ✓ 19 entries, all valid
+  ch13/expectations_b200.json
+    ✓ 26 entries, all valid
+  ch15/expectations_2x_b200.json
+    ✓ 16 entries, all valid
+  ch15/expectations_4x_gb200.json
+    ✓ 17 entries, all valid
+  ch15/expectations_b200.json
+    ✓ 18 entries, all valid
+  ch20/expectations_4x_gb200.json
+    ✓ 6 entries, all valid
+  ch20/expectations_b200.json
+    ✓ 7 entries, all valid
+  labs/cudnn_sdpa_bench/expectations_4x_gb200.json
+    ✓ 1 entries, all valid
+  labs/cudnn_sdpa_bench/expectations_b200.json
+    ✓ 0 entries, all valid
+  labs/real_world_models/expectations_4x_gb200.json
+    ✓ 0 entries, all valid
+  labs/real_world_models/expectations_b200.json
+    ✓ 1 entries, all valid
+
+============================================================
+Summary:
+  Files scanned: 25
+  Files with issues: 0
+  Total entries: 330
+  Valid entries: 330
+  Total issues: 0
+============================================================
+
+✓ All expectation files are valid

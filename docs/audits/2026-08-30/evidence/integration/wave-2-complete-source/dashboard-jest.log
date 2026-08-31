@@ -1,0 +1,26 @@
+
+> ai-performance-dashboard@1.0.0 test
+> jest --runInBand src/lib/utils.test.ts
+
+ ⚠ Found lockfile missing swc dependencies, patching...
+ ⨯ Failed to patch lockfile, please try uninstalling and reinstalling next in this workspace
+TypeError: Cannot read properties of undefined (reading 'os')
+    at fetchPkgInfo (/Users/admin/dev/ai-perf/ai-performance-engineering/code/dashboard/web/node_modules/next/dist/lib/patch-incorrect-lockfile.js:73:25)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async Promise.all (index 0)
+    at async patchIncorrectLockfile (/Users/admin/dev/ai-perf/ai-performance-engineering/code/dashboard/web/node_modules/next/dist/lib/patch-incorrect-lockfile.js:162:26)
+    at async /Users/admin/dev/ai-perf/ai-performance-engineering/code/dashboard/web/node_modules/next/dist/build/jest/jest.js:137:17
+    at async readConfigFileAndSetRootDir (/Users/admin/dev/ai-perf/ai-performance-engineering/code/dashboard/web/node_modules/@jest/core/node_modules/jest-config/build/readConfigFileAndSetRootDir.js:129:20)
+    at async readInitialOptions (/Users/admin/dev/ai-perf/ai-performance-engineering/code/dashboard/web/node_modules/@jest/core/node_modules/jest-config/build/index.js:403:13)
+    at async readConfig (/Users/admin/dev/ai-perf/ai-performance-engineering/code/dashboard/web/node_modules/@jest/core/node_modules/jest-config/build/index.js:147:48)
+    at async readConfigs (/Users/admin/dev/ai-perf/ai-performance-engineering/code/dashboard/web/node_modules/@jest/core/node_modules/jest-config/build/index.js:424:26)
+    at async runCLI (/Users/admin/dev/ai-perf/ai-performance-engineering/code/dashboard/web/node_modules/@jest/core/build/cli/index.js:151:59)
+PASS src/lib/utils.test.ts
+  mebibytesToBytes
+    ✓ converts nvidia-smi MiB values with the binary multiplier (1 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       1 passed, 1 total
+Snapshots:   0 total
+Time:        0.256 s, estimated 1 s
+Ran all test suites matching /src\/lib\/utils.test.ts/i.

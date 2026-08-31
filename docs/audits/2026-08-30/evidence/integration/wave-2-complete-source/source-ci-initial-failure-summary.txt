@@ -1,0 +1,13 @@
+Run: https://github.com/cfregly/ai-performance-engineering/actions/runs/33389553268
+Source: 13c4e151fd00d641fbf2f9c81550339c78043839
+Conclusion: failure
+CPU suite: 4,341 passed, 461 skipped, 5 failed, 40 warnings in 828.58s
+
+Failed nodes:
+- tests/test_audit_wave1_router_telemetry.py::test_cumulative_output_payloads_count_each_token_once_and_ttft_once
+- tests/test_mcp_docs.py::test_mcp_tools_doc_is_current
+- tests/test_python_entrypoints.py::test_selected_public_lab_families_are_free_of_local_sys_path_bootstrap
+- tests/test_refresh_readmes.py::test_priority_readmes_match_generated_content
+- tests/test_wave2_medium_ch14_ch16_regressions.py::test_w2_060_dcgm_updates_nvlink_error_delta_for_every_gpu
+
+All five failures were repaired in 3316e0efe985040745ffd926c5f76a6bd4436aff and replayed with 32 focused passing tests before publication.

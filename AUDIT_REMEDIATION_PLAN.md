@@ -32,7 +32,7 @@ its success criteria concrete; it does not create a second goal or token budget.
 | Additional source record | One separately refuted pytest-timeout claim, outside the 128 |
 | Second wave | User-supplied full report captured at `cf48c8481`: 141 open findings (3 critical, 31 high, 62 medium, 45 low) across 110 files |
 | First-wave external re-review | 120 fixed, 5 need runtime, 2 partial, 1 obsolete; this read-only source verdict does not replace the 76 applicable local runtime acceptance gates |
-| Implementation status | First-wave candidate `f49aae73f629f4d90b60d1c6a5b890780e7ef758` is published on `main`; Wave 2 is parsed into eight packages; critical and CI source fixes are committed at `2f3fc665d`; no GPU qualification, deployment, or new speedup claim |
+| Implementation status | First-wave candidate `f49aae73f629f4d90b60d1c6a5b890780e7ef758`, both Wave 2 source batches, and the focused hosted-CI repair through `3316e0efe985040745ffd926c5f76a6bd4436aff` are published on `main`; all 141 Wave 2 rows are triaged as 89 source-fixed, 4 already fixed with evidence, and 48 awaiting runtime; no GPU qualification, deployment, or new speedup claim |
 
 ### Interim main landing checkpoint
 
@@ -348,12 +348,41 @@ Implementation proceeds through eight exclusive file-domain packages:
 | W2P07 | 9 | Core framework |
 | W2P08 | 4 | Scripts, documentation, and residuals |
 
-The first active batch fixes the three critical findings: pointer-sensitive CUDA
+The first active batch fixed the three critical findings: pointer-sensitive CUDA
 graph caching, correctly populated finite conditional graphs, and the CUTLASS
-column-major B stride. CI blockers found on the first-wave landing are handled in
-the same focused checkpoint. High findings follow in package order, then medium
-and low findings. Each batch uses the smallest sufficient focused tests; the full
-CPU pass is not repeatedly rerun.
+column-major B stride. The published follow-up at `13c4e151f` addresses the high,
+medium, and low source findings and incorporates three independent cross-reviews;
+`3316e0efe` closes the five bounded integration gaps exposed by hosted CPU CI.
+Every row now has a disposition: **89 `source_fixed`, 4
+`already_fixed_with_evidence`, and 48 `awaiting_runtime`**. Each batch uses the
+smallest sufficient focused tests; the full CPU pass is not repeatedly rerun.
+
+### Wave 2 complete source reconciliation
+
+- The frozen combined pass reports **185 passed and 1 CUDA-only skip**; the six
+  Ruff-normalized test files then report **53 passed** in a bounded replay.
+- The final hosted Benchmark Validation workflow reports **4,346 passed, 461
+  capability skips, and zero failures** in its required CPU job; its 736-test
+  core contract selection, dashboard, static analysis, shell, silent-fallback,
+  and 932-file benchmark-contract gates also pass.
+- The final hosted CUDA 13.0 compare workflow succeeds for all 14 configured
+  chapters across `sm_100`, `sm_103`, `sm_120`, and `sm_121`. This is compile/link
+  evidence from a runner without a GPU; it is not device or numerical acceptance.
+- The final epoch contains 123 unique changed Python paths: 122 passed the initial
+  compile/fatal-Ruff gate and four passed the CI follow-up gate, with three paths
+  overlapping. All 16 new Wave 2 tests pass full Ruff at the final source; 20 JSON
+  files parse, 330 expectation entries validate, and 44 changed benchmark
+  entrypoints lint with zero errors or warnings. Dashboard Jest and TypeScript
+  checks pass.
+- The exact final source epoch is `3316e0efe985040745ffd926c5f76a6bd4436aff`,
+  with a 174-path content manifest and the full disposition matrix in the
+  [complete-source receipt](docs/audits/2026-08-30/evidence/integration/wave-2-complete-source/receipt.json).
+- W2P08 is source-complete. W2P01 through W2P07 remain `awaiting_runtime` because
+  48 findings require one or more of target CUDA/compiler/numerical execution,
+  multi-GPU CUDA/NCCL, pinned vLLM, full-model B200, Grace/non-Grace hardware, or
+  live NVML evidence.
+- There are no untriaged Wave 2 rows. Source publication does not close those 48
+  runtime gates or the applicable first-wave runtime acceptance matrix.
 
 ## Known constraints and unsafe shortcuts
 
@@ -379,17 +408,19 @@ CPU pass is not repeatedly rerun.
   new cloud spend, or treating publication as runtime/performance acceptance.
   Existing repository acceptance controls continue to govern later actions.
 
-## Current targeted source-gate checkpoint
+## Historical targeted source-gate checkpoint
 
-This checkpoint supersedes older local counts for current source status while
-preserving those receipts as historical evidence.
+This first-wave checkpoint is preserved as historical evidence. The Wave 2
+complete-source reconciliation above supersedes its source counts.
 
-- After the independent Wave 2 re-review, the original inventory records **120
-  `source_fixed`, 5 `awaiting_runtime`, 2 `in_progress`, and 1
-  `already_fixed_with_evidence`**. The separate local acceptance contract still
-  marks 76 first-wave rows as requiring runtime evidence. Adjacent discoveries
-  cover LOCAL-001 through LOCAL-042: **30 `source_fixed` and 12
-  `awaiting_runtime`**.
+- At that checkpoint, the independent Wave 2 re-review classified the original
+  inventory as **120 `source_fixed`, 5 `awaiting_runtime`, 2 `in_progress`, and
+  1 `already_fixed_with_evidence`**. Both partial residuals were subsequently
+  repaired, so the current mutable ledger records **122 `source_fixed`, 5
+  `awaiting_runtime`, and 1 `already_fixed_with_evidence`**. The separate local
+  acceptance contract still marks 76 first-wave rows as requiring runtime
+  evidence. Adjacent discoveries now cover LOCAL-001 through LOCAL-052: **40
+  `source_fixed` and 12 `awaiting_runtime`**.
 - The final tensor-parallel repair passes **18 focused tests** plus **2 related
   hygiene tests**. It initializes invalid KV padding, applies cache-offset causal
   semantics, validates and honors heterogeneous/zero input lengths, grows cached
@@ -417,9 +448,10 @@ preserving those receipts as historical evidence.
   57 generic wrappers continue to refuse unsupported harness qualification.
   Actual two-GPU CUDA/NCCL remains pending.
 - Offline profiler/metadata, Grace-provider, extension, and chapter seams have
-  focused CPU and independent read-only acceptance. Real Nsight, CUDA/NVCC,
-  Grace hardware, supported Linux installation/CI, GPU correctness/performance,
-  and remediation of the received second-wave inventory remain open gates.
+  focused CPU and independent read-only acceptance. Real Nsight, remaining
+  finding-specific CUDA/NVCC target-runtime builds, Grace hardware, supported
+  Linux installation, GPU correctness/performance, and the 48 retained
+  second-wave runtime dispositions remain open gates.
 
 ## Final reconciliation
 
@@ -427,8 +459,10 @@ The goal is complete only when all of the following are true:
 
 - [x] Wave 1's 128 IDs and the separate refutation reconcile exactly to the capture.
 - [x] The completed second wave has been captured and reconciled to its actual count.
-- [ ] Every valid issue is fixed and verified; none is deferred, untriaged, in progress,
-      or waiting for required runtime evidence.
+- [x] Every Wave 2 issue has a reviewed source disposition; none is untriaged or
+      in progress at the source layer.
+- [ ] Every valid issue is fixed and verified; none is deferred or waiting for
+      required runtime evidence.
 - [ ] Every stale, duplicate or refuted disposition has current evidence and a reason;
       duplicates point to a verified canonical fix, not a dropped issue.
 - [ ] Relevant source, CPU, integration, compile/link and supported-hardware checks
@@ -471,7 +505,7 @@ requirements separately. Do not mark the goal complete because the plan is writt
 - Complete prefill/decode payloads, workload parity and stream/input refresh are source-repaired; the current attention gate binds 32 exact CUDA cases and 115 dependencies. Its actual CPU preflight is HOLD with zero CUDA dispatch.
 - The unrelated parent-side training verifier is withdrawn. All 61 generic wrappers explicitly refuse harness qualification until actual child results and an independent reference exist. Direct scripts remain available; hardware alone cannot restore wrapper qualification.
 - Historical fallback table rows now disclose missing/unverified source lineage. Original evidence and all Nanochat logs are preserved and includable.
-- The [local receipt](docs/audits/2026-08-30/evidence/integration/final-local/receipt.json), [current status](docs/audits/2026-08-30/STATUS.md) and [runtime handoff](docs/audits/2026-08-30/evidence/integration/runtime-handoff.md) separate completed local work from pending pinned Linux/build/GPU/numerical-policy gates. The received Wave 2 inventory remains in remediation. **The goal is not complete.**
+- The [local receipt](docs/audits/2026-08-30/evidence/integration/final-local/receipt.json), [current status](docs/audits/2026-08-30/STATUS.md), [Wave 2 complete-source receipt](docs/audits/2026-08-30/evidence/integration/wave-2-complete-source/receipt.json), and [runtime handoff](docs/audits/2026-08-30/evidence/integration/runtime-handoff.md) separate completed local work from pending pinned Linux/build/GPU/numerical-policy gates. Wave 2 source remediation is reconciled; its 48 runtime gates remain open. **The goal is not complete.**
 
 ### Dependency and HTTP follow-up checkpoint
 

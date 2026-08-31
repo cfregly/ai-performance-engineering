@@ -1,0 +1,738 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-08-31T13:26:27.222363+00:00",
+  "checkpoint": "wave_2_complete_source_reconciliation",
+  "goal_complete": false,
+  "source": {
+    "intake_revision": "cf48c8481df0de847abc1569fd3be3f33218f351",
+    "batch_base_revision": "8687f01d695f4e24339b02e96b617cb6e2450d1c",
+    "critical_batch_revision": "2f3fc665d1cb6af7a55631c87988ab9487af2275",
+    "source_batch_revision": "13c4e151fd00d641fbf2f9c81550339c78043839",
+    "ci_followup_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+    "final_source_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+    "branch": "main",
+    "remote": "origin/main",
+    "manifest": "source-manifest.json",
+    "manifest_path_count": 174
+  },
+  "ledger": {
+    "path": "../../../remediation-ledger.json",
+    "sha256": "8dd3f292e74383f17d812d9f43acbeb22a94ddf221303fd5168e84407c199487",
+    "final_reviewed_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff"
+  },
+  "inventory": {
+    "source_attachment_sha256": "a57bd321e8b6296b11f4983c1e55464c459ce85e3866f805b2bf2433fd5e1868",
+    "total": 141,
+    "severity_counts": {
+      "critical": 3,
+      "high": 31,
+      "medium": 62,
+      "low": 45
+    },
+    "status_counts": {
+      "awaiting_runtime": 48,
+      "source_fixed": 89,
+      "already_fixed_with_evidence": 4
+    },
+    "status_ids": {
+      "source_fixed": [
+        "W2-004",
+        "W2-005",
+        "W2-006",
+        "W2-007",
+        "W2-009",
+        "W2-011",
+        "W2-012",
+        "W2-013",
+        "W2-014",
+        "W2-016",
+        "W2-018",
+        "W2-019",
+        "W2-021",
+        "W2-023",
+        "W2-026",
+        "W2-027",
+        "W2-029",
+        "W2-030",
+        "W2-031",
+        "W2-032",
+        "W2-033",
+        "W2-034",
+        "W2-035",
+        "W2-036",
+        "W2-037",
+        "W2-038",
+        "W2-040",
+        "W2-041",
+        "W2-042",
+        "W2-044",
+        "W2-046",
+        "W2-048",
+        "W2-049",
+        "W2-051",
+        "W2-054",
+        "W2-055",
+        "W2-058",
+        "W2-059",
+        "W2-060",
+        "W2-061",
+        "W2-062",
+        "W2-063",
+        "W2-064",
+        "W2-065",
+        "W2-069",
+        "W2-070",
+        "W2-071",
+        "W2-074",
+        "W2-076",
+        "W2-077",
+        "W2-080",
+        "W2-081",
+        "W2-082",
+        "W2-084",
+        "W2-086",
+        "W2-087",
+        "W2-088",
+        "W2-092",
+        "W2-093",
+        "W2-094",
+        "W2-095",
+        "W2-097",
+        "W2-103",
+        "W2-104",
+        "W2-105",
+        "W2-106",
+        "W2-111",
+        "W2-112",
+        "W2-113",
+        "W2-114",
+        "W2-115",
+        "W2-116",
+        "W2-118",
+        "W2-121",
+        "W2-122",
+        "W2-124",
+        "W2-125",
+        "W2-126",
+        "W2-128",
+        "W2-130",
+        "W2-131",
+        "W2-133",
+        "W2-134",
+        "W2-135",
+        "W2-136",
+        "W2-138",
+        "W2-139",
+        "W2-140",
+        "W2-141"
+      ],
+      "already_fixed_with_evidence": [
+        "W2-107",
+        "W2-108",
+        "W2-109",
+        "W2-117"
+      ],
+      "awaiting_runtime": [
+        "W2-001",
+        "W2-002",
+        "W2-003",
+        "W2-008",
+        "W2-010",
+        "W2-015",
+        "W2-017",
+        "W2-020",
+        "W2-022",
+        "W2-024",
+        "W2-025",
+        "W2-028",
+        "W2-039",
+        "W2-043",
+        "W2-045",
+        "W2-047",
+        "W2-050",
+        "W2-052",
+        "W2-053",
+        "W2-056",
+        "W2-057",
+        "W2-066",
+        "W2-067",
+        "W2-068",
+        "W2-072",
+        "W2-073",
+        "W2-075",
+        "W2-078",
+        "W2-079",
+        "W2-083",
+        "W2-085",
+        "W2-089",
+        "W2-090",
+        "W2-091",
+        "W2-096",
+        "W2-098",
+        "W2-099",
+        "W2-100",
+        "W2-101",
+        "W2-102",
+        "W2-110",
+        "W2-119",
+        "W2-120",
+        "W2-123",
+        "W2-127",
+        "W2-129",
+        "W2-132",
+        "W2-137"
+      ]
+    },
+    "untriaged": 0,
+    "package_status_counts": {
+      "awaiting_runtime": 7,
+      "source_fixed": 1
+    },
+    "packages": [
+      {
+        "id": "W2P01",
+        "title": "Early chapters (ch01-ch05)",
+        "finding_count": 24,
+        "status": "awaiting_runtime",
+        "status_counts": {
+          "awaiting_runtime": 8,
+          "source_fixed": 16
+        },
+        "source_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+        "remaining_runtime_ids": [
+          "W2-008",
+          "W2-010",
+          "W2-039",
+          "W2-043",
+          "W2-045",
+          "W2-047",
+          "W2-098",
+          "W2-099"
+        ]
+      },
+      {
+        "id": "W2P02",
+        "title": "CUDA and systems chapters (ch06-ch11)",
+        "finding_count": 20,
+        "status": "awaiting_runtime",
+        "status_counts": {
+          "already_fixed_with_evidence": 3,
+          "awaiting_runtime": 7,
+          "source_fixed": 10
+        },
+        "source_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+        "remaining_runtime_ids": [
+          "W2-015",
+          "W2-050",
+          "W2-052",
+          "W2-053",
+          "W2-100",
+          "W2-101",
+          "W2-102"
+        ]
+      },
+      {
+        "id": "W2P03",
+        "title": "Graphs, compilation, and numerics (ch12-ch14)",
+        "finding_count": 8,
+        "status": "awaiting_runtime",
+        "status_counts": {
+          "awaiting_runtime": 4,
+          "source_fixed": 4
+        },
+        "source_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+        "remaining_runtime_ids": [
+          "W2-001",
+          "W2-002",
+          "W2-017",
+          "W2-110"
+        ]
+      },
+      {
+        "id": "W2P04",
+        "title": "Inference and capstone chapters (ch15-ch20)",
+        "finding_count": 32,
+        "status": "awaiting_runtime",
+        "status_counts": {
+          "awaiting_runtime": 12,
+          "source_fixed": 20
+        },
+        "source_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+        "remaining_runtime_ids": [
+          "W2-020",
+          "W2-022",
+          "W2-024",
+          "W2-025",
+          "W2-056",
+          "W2-057",
+          "W2-066",
+          "W2-067",
+          "W2-068",
+          "W2-072",
+          "W2-073",
+          "W2-075"
+        ]
+      },
+      {
+        "id": "W2P05",
+        "title": "Labs",
+        "finding_count": 32,
+        "status": "awaiting_runtime",
+        "status_counts": {
+          "awaiting_runtime": 12,
+          "source_fixed": 20
+        },
+        "source_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+        "remaining_runtime_ids": [
+          "W2-003",
+          "W2-028",
+          "W2-083",
+          "W2-085",
+          "W2-089",
+          "W2-090",
+          "W2-091",
+          "W2-123",
+          "W2-127",
+          "W2-129",
+          "W2-132",
+          "W2-137"
+        ]
+      },
+      {
+        "id": "W2P06",
+        "title": "MCP, dashboard, and monitoring",
+        "finding_count": 12,
+        "status": "awaiting_runtime",
+        "status_counts": {
+          "awaiting_runtime": 1,
+          "source_fixed": 11
+        },
+        "source_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+        "remaining_runtime_ids": [
+          "W2-096"
+        ]
+      },
+      {
+        "id": "W2P07",
+        "title": "Core framework",
+        "finding_count": 9,
+        "status": "awaiting_runtime",
+        "status_counts": {
+          "already_fixed_with_evidence": 1,
+          "awaiting_runtime": 4,
+          "source_fixed": 4
+        },
+        "source_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+        "remaining_runtime_ids": [
+          "W2-078",
+          "W2-079",
+          "W2-119",
+          "W2-120"
+        ]
+      },
+      {
+        "id": "W2P08",
+        "title": "Scripts, documentation, and residuals",
+        "finding_count": 4,
+        "status": "source_fixed",
+        "status_counts": {
+          "source_fixed": 4
+        },
+        "source_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+        "remaining_runtime_ids": []
+      }
+    ]
+  },
+  "runtime_gate_groups": {
+    "cuda_graph_cutlass_tma_triton_compiler": [
+      "W2-001",
+      "W2-002",
+      "W2-003",
+      "W2-015",
+      "W2-039",
+      "W2-050",
+      "W2-052",
+      "W2-053",
+      "W2-078",
+      "W2-079",
+      "W2-083",
+      "W2-091",
+      "W2-100",
+      "W2-101",
+      "W2-102",
+      "W2-110",
+      "W2-119",
+      "W2-137"
+    ],
+    "cuda_async_allocator_fp8_numerics": [
+      "W2-010",
+      "W2-020",
+      "W2-024",
+      "W2-025",
+      "W2-045",
+      "W2-073",
+      "W2-075",
+      "W2-129",
+      "W2-132"
+    ],
+    "nccl_distributed_multigpu": [
+      "W2-008",
+      "W2-022",
+      "W2-043",
+      "W2-047",
+      "W2-056",
+      "W2-057",
+      "W2-066",
+      "W2-067",
+      "W2-068",
+      "W2-099",
+      "W2-123"
+    ],
+    "transformer_engine_2x": [
+      "W2-017"
+    ],
+    "pinned_vllm_016": [
+      "W2-028",
+      "W2-072",
+      "W2-085",
+      "W2-127"
+    ],
+    "b200_bf16_full_model": [
+      "W2-089",
+      "W2-090"
+    ],
+    "live_nvml_prometheus": [
+      "W2-096"
+    ],
+    "grace_and_non_grace_hardware": [
+      "W2-098",
+      "W2-120"
+    ]
+  },
+  "verification": {
+    "combined_focused_pytest": {
+      "scope": "All Wave 2 regression files plus directly affected existing test nodes; no local full-suite rerun.",
+      "result": "185 passed, 1 CUDA-only skip in 8.12s",
+      "exit_code": 0,
+      "log": "focused-pytest.log"
+    },
+    "post_ruff_affected_tests": {
+      "scope": "Six test files changed only by import normalization and one mock-signature noqa.",
+      "result": "53 passed in 6.47s",
+      "exit_code": 0,
+      "log": "ruff-touched-tests.log"
+    },
+    "ci_followup_focused_replay": {
+      "scope": "The five defects exposed by the first hosted full CPU pass and their adjacent contracts.",
+      "result": "32 passed in 6.12s",
+      "exit_code": 0,
+      "pytest_log": "ci-followup-pytest.log",
+      "static_result": "py_compile and fatal Ruff passed for 4 selected Python files; workflow YAML parsed",
+      "static_log": "ci-followup-static.log",
+      "generator_result": "MCP documentation generator idempotent",
+      "generator_log": "ci-followup-generator-idempotence.log"
+    },
+    "static": {
+      "final_epoch_unique_python_paths": 123,
+      "initial_batch_python_compile_files": 122,
+      "ci_followup_python_compile_files": 4,
+      "json_parse_files": 20,
+      "initial_batch_fatal_ruff_files": 122,
+      "ci_followup_fatal_ruff_files": 4,
+      "new_wave2_test_files_full_ruff": 16,
+      "git_diff_check": "PASS",
+      "initial_log": "fatal-static.log",
+      "new_test_ruff_log": "new-tests-ruff.log",
+      "ci_followup_log": "ci-followup-static.log",
+      "final_touched_new_test_full_ruff": "PASS: code/tests/test_wave2_labs_regressions.py",
+      "final_touched_new_test_full_ruff_log": "ci-followup-final-full-ruff.log"
+    },
+    "expectations": {
+      "files": 25,
+      "entries": 330,
+      "issues": 0,
+      "exit_code": 0,
+      "log": "expectations.log"
+    },
+    "benchmark_linter": {
+      "changed_entrypoints": 44,
+      "errors": 0,
+      "warnings": 0,
+      "exit_code": 0,
+      "log": "benchmark-linter.log"
+    },
+    "dashboard": {
+      "jest": "1 passed",
+      "typescript_no_emit": "PASS",
+      "jest_log": "dashboard-jest.log",
+      "typescript_log": "dashboard-tsc.log",
+      "note": "Jest passed with the existing stale-lockfile patch warning. Local ESLint was blocked by installed ESLint 8 versus repository ESLint 9; hosted dashboard validation passed."
+    },
+    "full_cpu_suite": {
+      "local": "NOT_RERUN_PER_USER_DIRECTION",
+      "hosted_final_source": "4346 passed, 461 skipped, 40 warnings, 0 failed in 813.24s",
+      "run": 33391774956,
+      "summary": "source-ci-final-benchmark-summary.txt"
+    },
+    "dual_architecture_compare": {
+      "result": "SUCCESS",
+      "targets": [
+        "sm_100",
+        "sm_103",
+        "sm_120",
+        "sm_121"
+      ],
+      "chapters": [
+        "ch01",
+        "ch02",
+        "ch04",
+        "ch06",
+        "ch07",
+        "ch08",
+        "ch09",
+        "ch10",
+        "ch11",
+        "ch12",
+        "ch16",
+        "ch18",
+        "ch19",
+        "ch20"
+      ],
+      "container": "nvidia/cuda:13.0.0-devel-ubuntu22.04",
+      "cutlass": "v4.5.2",
+      "run": 33391774950,
+      "job": 99486864020,
+      "summary": "source-ci-final-dual-summary.txt",
+      "limit": "compile/link evidence only; hosted runner had no NVIDIA GPU and emitted non-fatal compiler warnings"
+    }
+  },
+  "independent_cross_review": {
+    "state": "PASS_SOURCE_DISPOSITIONS_WITH_RUNTIME_GATES_RETAINED",
+    "review_domains": [
+      "ch13-ch20",
+      "core/dashboard/monitoring/scripts",
+      "labs"
+    ],
+    "second_order_defects_fixed": 12,
+    "second_order_defects": [
+      "ch15 disaggregated decode output allocation and validation",
+      "ch15 expert top-2 capacity and overflow handling",
+      "ch17 pipeline verification completeness",
+      "graph mode rejects unsupported non-eager execution before capture",
+      "microbenchmark current-device binding",
+      "explicit Grace hardware identity",
+      "removed compute-capability-only Grace inference",
+      "atomic CPU sampling and evidence-gated InfiniBand recommendations",
+      "Grafana device-wide memory metrics",
+      "dynamic router empty and EOS-short completion rejection",
+      "custom-vs-cuBLAS autotune CUDA device context",
+      "CUTLASS profiler fresh-output-only acceptance"
+    ],
+    "ledger_integrity": {
+      "contiguous_unique_ids": true,
+      "severity_math_exact": true,
+      "package_coverage_exactly_once": true,
+      "status_math_exact": true,
+      "runtime_gate_partition_exactly_once": true,
+      "already_fixed_revision_lineage_explicit": true,
+      "log": "ledger-validation.log"
+    }
+  },
+  "hosted_ci": {
+    "source_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+    "state": "SUCCESS",
+    "initial_source_batch_diagnostic": {
+      "source_revision": "13c4e151fd00d641fbf2f9c81550339c78043839",
+      "benchmark_validation": {
+        "database_id": 33389553268,
+        "url": "https://github.com/cfregly/ai-performance-engineering/actions/runs/33389553268",
+        "conclusion": "failure",
+        "result": "4341 passed, 461 skipped, 5 failed, 40 warnings in 828.58s",
+        "failed_nodes": [
+          "tests/test_audit_wave1_router_telemetry.py::test_cumulative_output_payloads_count_each_token_once_and_ttft_once",
+          "tests/test_mcp_docs.py::test_mcp_tools_doc_is_current",
+          "tests/test_python_entrypoints.py::test_selected_public_lab_families_are_free_of_local_sys_path_bootstrap",
+          "tests/test_refresh_readmes.py::test_priority_readmes_match_generated_content",
+          "tests/test_wave2_medium_ch14_ch16_regressions.py::test_w2_060_dcgm_updates_nvlink_error_delta_for_every_gpu"
+        ],
+        "summary": "source-ci-initial-failure-summary.txt"
+      },
+      "dual_architecture_compare": {
+        "database_id": 33389553252,
+        "url": "https://github.com/cfregly/ai-performance-engineering/actions/runs/33389553252",
+        "conclusion": "cancelled by workflow concurrency after the final source follow-up was pushed; not a source failure"
+      }
+    },
+    "final_source_runs": [
+      {
+        "database_id": 33391774956,
+        "workflow": "Benchmark Validation",
+        "url": "https://github.com/cfregly/ai-performance-engineering/actions/runs/33391774956",
+        "conclusion": "success",
+        "jobs": [
+          {
+            "name": "dashboard",
+            "job_id": 99486842607,
+            "conclusion": "success"
+          },
+          {
+            "name": "static-analysis",
+            "job_id": 99486842865,
+            "conclusion": "success"
+          },
+          {
+            "name": "validate",
+            "job_id": 99486842896,
+            "conclusion": "success"
+          }
+        ],
+        "summary": "source-ci-final-benchmark-summary.txt"
+      },
+      {
+        "database_id": 33391774950,
+        "workflow": "Dual-Architecture Compare Builds",
+        "url": "https://github.com/cfregly/ai-performance-engineering/actions/runs/33391774950",
+        "conclusion": "success",
+        "jobs": [
+          {
+            "name": "compare-builds",
+            "job_id": 99486864020,
+            "conclusion": "success"
+          }
+        ],
+        "summary": "source-ci-final-dual-summary.txt"
+      }
+    ]
+  },
+  "external_contract_checks": [
+    {
+      "scope": "vLLM 0.16 top-level public exports",
+      "source": "https://github.com/vllm-project/vllm/blob/v0.16.0/vllm/__init__.py"
+    },
+    {
+      "scope": "vLLM 0.16 engine and request/output contracts",
+      "source": "https://github.com/vllm-project/vllm/blob/v0.16.0/vllm/v1/engine/llm_engine.py"
+    },
+    {
+      "scope": "vLLM 0.16 EngineArgs contract",
+      "source": "https://github.com/vllm-project/vllm/blob/v0.16.0/vllm/engine/arg_utils.py"
+    },
+    {
+      "scope": "vLLM 0.16 EngineCore step and post_step contract",
+      "source": "https://github.com/vllm-project/vllm/blob/v0.16.0/vllm/v1/engine/core.py"
+    },
+    {
+      "scope": "CUDA tensor-map box limits",
+      "source": "https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html"
+    },
+    {
+      "scope": "PyTorch device-global memory API",
+      "source": "https://docs.pytorch.org/docs/stable/generated/torch.cuda.mem_get_info.html"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "benchmark-linter.log",
+      "bytes": 301,
+      "sha256": "b2dabfb52971b771283ce5dbfb04474f610547bf67319506e4e9fd44f0335763"
+    },
+    {
+      "path": "ci-followup-final-full-ruff.log",
+      "bytes": 19,
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "path": "ci-followup-generator-idempotence.log",
+      "bytes": 159,
+      "sha256": "ca94aafe0a5de1985d7ac4831f5018d957d12f356ce691ccc0b67a7364ec304f"
+    },
+    {
+      "path": "ci-followup-pytest.log",
+      "bytes": 99,
+      "sha256": "07b257c533aa037a8d820c7c97fd551f628ef98464b1d32055206c16a1b67747"
+    },
+    {
+      "path": "ci-followup-static.log",
+      "bytes": 64,
+      "sha256": "f6c59fbf6a0e7bf8e5d740a8322ce4d80d10b539ae65b09b6248e22dbde802cb"
+    },
+    {
+      "path": "dashboard-jest.log",
+      "bytes": 2031,
+      "sha256": "9a8e4534760a549a5f28f23cfe8791800a4c9615c7f4e54f66dd439c9d4c4938"
+    },
+    {
+      "path": "dashboard-tsc.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "expectations.log",
+      "bytes": 1928,
+      "sha256": "5f64bf38ad1e7b0140a7c9eef5b8c5855f0563979a02622934b10f2fac714c1a"
+    },
+    {
+      "path": "fatal-static.log",
+      "bytes": 63,
+      "sha256": "819ef684aeffb2215bfe3ae9472152ca6d1c3d525c362c2628afc2ce378ebe73"
+    },
+    {
+      "path": "focused-pytest.log",
+      "bytes": 271,
+      "sha256": "316b2301cf0f3478465602c2bd2a00c8762a27f24d6770fe576a59c941e26e62"
+    },
+    {
+      "path": "ledger-validation.log",
+      "bytes": 1009,
+      "sha256": "8a6786aa78b0a304653a75cc85064e5def96b100a024accc2fe4c7ff5f8a0cbd"
+    },
+    {
+      "path": "new-tests-ruff.log",
+      "bytes": 19,
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "path": "ruff-touched-tests.log",
+      "bytes": 99,
+      "sha256": "fe5ddc5c2d88cb74a13230cc478c2512c01d889296b496e1d09b703b93611b4c"
+    },
+    {
+      "path": "runtime-gates.md",
+      "bytes": 12655,
+      "sha256": "ce9d15be295eac5cd5574b870ffdd6f900f8dc6440fd217ede203b83132cf724"
+    },
+    {
+      "path": "source-ci-final-benchmark-summary.txt",
+      "bytes": 504,
+      "sha256": "5e5cd6bfb5204c4dd043d30bcdd846d83688a0e9fee26835df0ce9103fc3fa7c"
+    },
+    {
+      "path": "source-ci-final-dual-summary.txt",
+      "bytes": 1072,
+      "sha256": "7b47f553034ea4a8be199458f4e164e9d17cccffbad5cc0b2b407996c079331d"
+    },
+    {
+      "path": "source-ci-initial-failure-summary.txt",
+      "bytes": 845,
+      "sha256": "7895cfc7e580a61cd0da6e104b10d95db289b404de4fc3ab9d0322ee0e4ab9d1"
+    },
+    {
+      "path": "source-manifest.json",
+      "bytes": 31165,
+      "sha256": "0f428a0e991f382d4e6f191f05ca14f749a980845968a27821c6628f1e4545bb"
+    },
+    {
+      "path": "source-manifest.txt",
+      "bytes": 7357,
+      "sha256": "70950c5c49ea910b3e6add58f70b28be3c4108b87ddd5b984b459baffde26b23"
+    }
+  ],
+  "claim_limits": [
+    "All 141 Wave 2 rows are triaged and have a source disposition; 48 remain open for required runtime evidence.",
+    "The local full CPU suite was not rerun. The required hosted final-source workflow passed 4346 tests with 461 skips and zero failures.",
+    "The four-target CUDA compare is compile/link evidence from a hosted runner without a GPU; it is not device, numerical, sanitizer, or performance acceptance.",
+    "No GPU, NCCL, pinned-vLLM runtime, Transformer Engine, Grace, live-NVML, full-model, or matched performance qualification is claimed by host/source checks.",
+    "No new speedup or expectation result is claimed.",
+    "The active remediation goal remains incomplete until required runtime gates close."
+  ]
+}

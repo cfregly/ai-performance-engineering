@@ -1,0 +1,15 @@
+Run: https://github.com/cfregly/ai-performance-engineering/actions/runs/33391774956
+Source: 3316e0efe985040745ffd926c5f76a6bd4436aff
+Conclusion: success
+
+Jobs:
+- dashboard: success
+- static-analysis: success
+- validate: success
+
+Validation details:
+- Core contract selection: 736 passed, 1 skipped, 1 warning in 67.52s
+- Full CPU suite: 4,346 passed, 461 skipped, 40 warnings in 813.24s
+- Shell entrypoints: success
+- Silent-fallback audit: success
+- Benchmark contracts: 932 files, 0 errors, 0 warnings

@@ -1,0 +1,23 @@
+Run: https://github.com/cfregly/ai-performance-engineering/actions/runs/33391774950
+Job: https://github.com/cfregly/ai-performance-engineering/actions/runs/33391774950/job/99486864020
+Source: 3316e0efe985040745ffd926c5f76a6bd4436aff
+Conclusion: success
+Elapsed job time: 33m1s
+
+Build environment:
+- Container: nvidia/cuda:13.0.0-devel-ubuntu22.04
+- CUTLASS: v4.5.2
+- Configured targets: sm_100, sm_103, sm_120, sm_121
+
+Validation details:
+- Exact architecture-target compiler probes passed for all four configured targets.
+- The compare runner completed `make compare` for 14 CUDA chapters: ch01, ch02,
+  ch04, ch06, ch07, ch08, ch09, ch10, ch11, ch12, ch16, ch18, ch19, and ch20.
+- The runner emitted its terminal success marker: "All dual-architecture builds
+  completed successfully."
+
+Limits:
+- The hosted runner had no NVIDIA GPU. This is compile/link evidence, not device
+  execution, numerical acceptance, or performance evidence.
+- The compiler emitted non-fatal warnings. The workflow does not enforce a
+  warning-free build, and this receipt does not claim one.

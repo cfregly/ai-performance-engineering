@@ -1,0 +1,11 @@
+PASS ids: 141 contiguous unique Wave 2 rows
+PASS severity: critical=3 high=31 medium=62 low=45
+PASS status: source_fixed=89 already_fixed_with_evidence=4 awaiting_runtime=48 untriaged=0
+PASS row fields: triage, owner, reproduction, design, files, revision, verification, evidence, review, disposition
+PASS packages: 8 packages, exact one-time coverage, 7 awaiting_runtime, 1 source_fixed, final revision bound
+PASS runtime gates: 48 IDs assigned exactly once across 8 finding-specific groups
+PASS source manifest: 174 exact paths, bytes, and SHA-256 values at final revision
+PASS intake source: attachment and captured source SHA-256 match
+PASS already-fixed lineage: evidence, fix, focused-regression, and final-review revisions are explicit and generator-stable
+PASS static reconciliation: 123 unique Python paths, 122 initial plus 4 follow-up with 3 overlaps, 16 final-source Wave 2 tests full-Ruff clean
+PASS hosted CI: Benchmark Validation 33391774956 and Dual-Architecture Compare 33391774950 succeeded
