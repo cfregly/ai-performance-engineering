@@ -92,9 +92,10 @@ def _pytorch_source_script() -> str:
     return (
         "set -e\n"
         'REQUIREMENTS_FILE="$1"\n'
+        'VLLM_PIN_FILE="$2"\n'
         'VLLM_PIP_SPEC=""\n'
         'FLASHINFER_EXPECTED_VERSION=""\n'
-        'FLASH_ATTN_ARCH="${2:-x86_64}"\n'
+        'FLASH_ATTN_ARCH="${3:-x86_64}"\n'
         f"PYTORCH_TORCH_VERSION={defaults}\n"
         f"# Single-source serving stack pins{pins}\n"
     )
@@ -116,6 +117,8 @@ def _resolve_pytorch_sources(
         "PYTORCH_TORCHAO_VERSION",
         "PYTORCH_TRITON_INDEX",
         "PYTORCH_TRITON_VERSION",
+        "VLLM_EXTRA_INDEX_URL",
+        "VLLM_PIP_SPEC",
     )
     script = _pytorch_source_script()
     for name in source_vars:
@@ -125,7 +128,14 @@ def _resolve_pytorch_sources(
     if find_links_override is not None:
         env["PYTORCH_TORCH_FIND_LINKS"] = find_links_override
     result = subprocess.run(
-        ["/bin/bash", "-s", "--", str(requirements), architecture],
+        [
+            "/bin/bash",
+            "-s",
+            "--",
+            str(requirements),
+            str(CODE_ROOT / "vllm_no_deps.pin"),
+            architecture,
+        ],
         input=script,
         check=True,
         capture_output=True,
@@ -158,7 +168,9 @@ def test_pinned_stable_stack_uses_compatible_published_stable_sources() -> None:
 def test_nightly_requirements_select_nightly_sources(tmp_path: Path) -> None:
     requirements = tmp_path / "requirements.txt"
     requirements.write_text(
-        "torch==2.10.0.dev20251213+cu130\ntriton==3.6.0+git8fedd49b\n"
+        "torch==2.10.0.dev20251213+cu130\n"
+        "torchaudio==2.10.0.dev20251213+cu130\n"
+        "triton==3.6.0+git8fedd49b\n"
         "torchao==0.17.0.dev20260301+cu130\n",
         encoding="utf-8",
     )
@@ -201,7 +213,14 @@ def test_aarch64_missing_torchao_cuda_wheel_fails_with_source_build_guidance() -
     assert preflight in setup
     assert setup.index(preflight) < setup.index('TEMP_REQUIREMENTS="')
     result = subprocess.run(
-        ["/bin/bash", "-s", "--", str(CODE_ROOT / "requirements_latest.txt"), "aarch64"],
+        [
+            "/bin/bash",
+            "-s",
+            "--",
+            str(CODE_ROOT / "requirements_latest.txt"),
+            str(CODE_ROOT / "vllm_no_deps.pin"),
+            "aarch64",
+        ],
         input=_pytorch_source_script() + f"\n{preflight}\n",
         capture_output=True,
         check=False,
@@ -274,6 +293,67 @@ def test_requirements_quickstart_exposes_the_cu130_index() -> None:
         if not line.lstrip().startswith("#")
     }
     assert "--extra-index-url https://download.pytorch.org/whl/cu130" in active_lines
+
+
+def test_vllm_uses_separate_cuda13_pin_and_versioned_binary_index() -> None:
+    requirements = (CODE_ROOT / "requirements_latest.txt").read_text(encoding="utf-8")
+    vllm_pin = (CODE_ROOT / "vllm_no_deps.pin").read_text(encoding="utf-8")
+    setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+    sources = _resolve_pytorch_sources(CODE_ROOT / "requirements_latest.txt")
+
+    assert not re.search(r"^vllm==", requirements, re.MULTILINE)
+    assert re.findall(r"^vllm==[^\s#]+", vllm_pin, re.MULTILINE) == [
+        "vllm==0.16.0+cu130"
+    ]
+    assert sources["VLLM_PIP_SPEC"] == "vllm==0.16.0+cu130"
+    assert sources["VLLM_EXTRA_INDEX_URL"] == (
+        "https://wheels.vllm.ai/0.16.0/cu130"
+    )
+
+    install = setup.split("Installing vLLM from cu13 wheels", 1)[1].split(
+        "VLLM_PREBUILT_INSTALLED=1", 1
+    )[0]
+    assert "--no-deps" in install
+    assert '--index-url "${VLLM_EXTRA_INDEX_URL}"' in install
+    assert '--extra-index-url "${VLLM_EXTRA_INDEX_URL}"' not in install
+    assert '"${VLLM_PIP_SPEC}"' in install
+
+
+def test_setup_vllm_runtime_dependency_pins_match_base_requirements() -> None:
+    requirements = (CODE_ROOT / "requirements_latest.txt").read_text(encoding="utf-8")
+    setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+    active_versions = {
+        match.group("name").lower().replace("_", "-"): match.group("version")
+        for match in re.finditer(
+            r"^(?P<name>[A-Za-z0-9_.-]+)(?:\[[^]]+\])?=="
+            r"(?P<version>[^\s#]+)",
+            requirements,
+            re.MULTILINE,
+        )
+    }
+    runtime_block = setup.split("VLLM_RUNTIME_DEPS=(", 1)[1].split("\n)", 1)[0]
+    runtime_pins = re.findall(
+        r'^\s*"(?P<name>[A-Za-z0-9_.-]+)(?:\[[^]]+\])?=='
+        r'(?P<version>[^"\s]+)"',
+        runtime_block,
+        re.MULTILINE,
+    )
+
+    assert runtime_pins
+    for raw_name, version in runtime_pins:
+        name = raw_name.lower().replace("_", "-")
+        assert active_versions.get(name) == version, raw_name
+    assert {"anthropic", "openai", "mcp"} <= {
+        name.lower().replace("_", "-") for name, _ in runtime_pins
+    }
+
+
+def test_setup_fallback_cli_pins_match_base_requirements() -> None:
+    setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+
+    assert set(re.findall(r"\btyper==([^\s\\]+)", setup)) == {"0.15.4"}
+    assert set(re.findall(r"\brich==([^\s\\]+)", setup)) == {"13.7.1"}
+    assert "typer-slim" not in setup
 
 
 def _report_cudnn(

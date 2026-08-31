@@ -154,6 +154,9 @@ Use the benchmark harness for quick comparisons or drive the Typer CLI when you 
 cd ai-performance-engineering/code
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements_latest.txt
+# Optional ABI-bound CUDA 13 serving wheel; setup.sh performs this exact phase.
+pip install --no-deps --index-url https://wheels.vllm.ai/0.16.0/cu130 \
+  'vllm==0.16.0+cu130'
 python -m cli.aisp bench list-targets --chapter ch01
 python -m cli.aisp bench run --targets ch01 --profile minimal
 python -m cli.aisp bench run-tier1 --single-gpu --profile minimal

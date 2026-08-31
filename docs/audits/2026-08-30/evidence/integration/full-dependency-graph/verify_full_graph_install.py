@@ -457,6 +457,39 @@ if result != {
     }
 
 
+def file_ownership_collisions(
+    distributions: dict[str, importlib.metadata.Distribution],
+    expected_names: set[str],
+) -> list[dict[str, object]]:
+    owners: dict[str, list[dict[str, object]]] = {}
+    for name in sorted(expected_names & set(distributions)):
+        distribution = distributions[name]
+        for package_path in distribution.files or ():
+            installed_path = str(Path(distribution.locate_file(package_path)).resolve())
+            owners.setdefault(installed_path, []).append(
+                {
+                    "distribution": name,
+                    "recorded_hash": (
+                        str(package_path.hash) if package_path.hash is not None else None
+                    ),
+                    "recorded_size": package_path.size,
+                    "record_path": str(package_path),
+                }
+            )
+    collisions = []
+    for installed_path, records in sorted(owners.items()):
+        distribution_names = sorted({str(item["distribution"]) for item in records})
+        if len(distribution_names) > 1:
+            collisions.append(
+                {
+                    "distributions": distribution_names,
+                    "installed_path": installed_path,
+                    "records": records,
+                }
+            )
+    return collisions
+
+
 def installed(args: argparse.Namespace) -> int:
     lock_path = Path(args.lock).resolve()
     report_paths = [Path(path).resolve() for path in args.pip_report]
@@ -480,6 +513,25 @@ def installed(args: argparse.Namespace) -> int:
     if missing or unexpected:
         errors.append(
             f"installed distribution mismatch: missing={missing}, unexpected={unexpected}"
+        )
+    ambiguous_pairs = [
+        pair
+        for pair in (
+            ("cupy-cuda12x", "cupy-cuda13x"),
+            ("typer", "typer-slim"),
+        )
+        if set(pair).issubset(installed_names)
+    ]
+    if ambiguous_pairs:
+        errors.append(
+            "mutually overlapping distributions are installed together: "
+            + ", ".join("/".join(pair) for pair in ambiguous_pairs)
+        )
+    collisions = file_ownership_collisions(distributions, expected_names)
+    write_json(output_dir / "file-ownership-collisions.json", collisions)
+    if collisions:
+        errors.append(
+            f"{len(collisions)} installed files have multiple distribution owners"
         )
 
     versions: dict[str, str] = {}
@@ -597,6 +649,8 @@ def installed(args: argparse.Namespace) -> int:
             item["label"] for item in diagnostics if item["result"] != "PASS"
         ],
         "errors": errors,
+        "file_ownership_collision_count": len(collisions),
+        "mutually_overlapping_distribution_pairs": ambiguous_pairs,
         "expected_distribution_count": len(expected_names),
         "installed_distribution_count": len(expected_names & installed_names),
         "missing_distributions": missing,

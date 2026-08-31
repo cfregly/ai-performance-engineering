@@ -2309,11 +2309,12 @@ contains the hang; it never wedged the inventory).
 
 Found 2026-06-09 (ch16 `flashinfer_block_sparse` failed `No module named 'flashinfer'`).
 The pod runs the NGC base image, which is NOT the repo's pinned env: a set of
-`requirements_latest.txt` deps are absent (verified by import, not just name match):
+repository environment dependencies are absent (verified by import, not just name match):
 `flashinfer-python`, `vllm`, `transformers`, `accelerate`, `sentencepiece`,
 `compressed-tensors`, `xgrammar`, `openai`, `anthropic`, `kvikio-cu13`, plus vllm's
-transitive deps and the dev/viz tools (jupyter/ruff/mypy/seaborn/...). The repo is
-correct (requirements lists them); the NGC image just predates a full install.
+transitive deps and the dev/viz tools (jupyter/ruff/mypy/seaborn/...). The base
+requirements and separate `vllm_no_deps.pin` install phase pin them; the NGC image
+just predates a full install.
 
 Impact is small + specific (the CUDA/Triton chapter targets do not need these, which
 is why ch01-17 ran clean):
@@ -2334,19 +2335,22 @@ is why ch01-17 ran clean):
   is additionally routed through `get_optimal_compile_mode` (fix 8 above).
 - vllm: needed only by `labs/dynamic_router` (4 targets) and `labs/trtllm_phi_3_5_moe`
   (which also needs external model/engine assets, so it skips regardless). NOT installed
-  on the pod: `vllm==0.16.0` pins torch/triton strictly, so installing it mid-run would
-  downgrade   the validated torch 2.12 / triton 3.7 and risk the whole inventory. Run the
-  4 dynamic_router targets on the repo's pinned env (`pip install -r
-  requirements_latest.txt` on torch 2.9.1+cu130 / triton 3.5.0), which also resolves
-  the Triton-3.7 max-autotune quirk. Documented, not worked around mid-loop.
+  on the pod: the `vllm==0.16.0+cu130` wheel metadata pins torch/triton strictly,
+  so installing it mid-run would downgrade the validated torch 2.12 / triton 3.7
+  and risk the whole inventory. Run the 4 dynamic_router targets on the repo's
+  pinned env: first `pip install -r requirements_latest.txt`, then `pip install
+  --no-deps --index-url https://wheels.vllm.ai/0.16.0/cu130
+  'vllm==0.16.0+cu130'`, on torch 2.9.1+cu130 / triton 3.5.1. This also avoids the
+  Triton-3.7 max-autotune quirk. Documented, not worked around mid-loop.
   CONFIRMED in the live loop: both dynamic_router vllm targets report `status=skipped`
   (graceful), NOT failed_error, so the missing-vllm gap does not dirty the results.
   (flashinfer_block_sparse erroring rather than skipping was the inconsistent case;
   fixed by installing flashinfer.)
 
-Proper one-shot fix for a from-scratch GB300 run: build the image from
-`requirements_latest.txt` (the pinned toolchain) rather than layering on the NGC base;
-then only the GB300-arch source fixes in this doc are needed.
+Proper one-shot fix for a from-scratch GB300 run: build the image from the base
+`requirements_latest.txt` toolchain plus the separate `vllm_no_deps.pin` install
+phase rather than layering on the NGC base; then only the GB300-arch source fixes
+in this doc are needed.
 
 ## sm_100a hardcode in lab loaders (the Phase-0 fix was incomplete)
 
@@ -2572,9 +2576,10 @@ Two verified facts that correct the naive "just build the pinned env" recommenda
 The validated, working GB300 env is the NGC base (torch 2.12, triton 3.7) PLUS the
 source fixes in this doc: items 1-8 (sm_103a kernels), the `max-autotune -> default`
 guard (sm_103 + triton >= 3.6, which covers the NGC pod), the proton tcgen05
-skip-guard, and the additive dep installs (transformers, flashinfer). The
-`requirements_latest.txt` dep set (transformers, flashinfer, vllm, ...) closes the
-env-gap skips. Do NOT expect a "pinned-env build" (torch 2.9.1 + triton 3.5.0) to
+skip-guard, and the additive dep installs (transformers, flashinfer). The base
+`requirements_latest.txt` dependency set plus the separate `vllm_no_deps.pin`
+install phase closes the env-gap skips. Do NOT expect a "pinned-env build"
+(torch 2.9.1 + triton 3.5.1) to
 be a cleaner GB300 base: fact 2 (2.9.1 won't import) and fact 3 (3.5.0 still aborts
 max-autotune with 2.12) refute that. A clean native sm_103 max-autotune path awaits
 an upstream torch/triton that emits a selectable `tcgen05` lowering for sm_103.

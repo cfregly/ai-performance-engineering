@@ -1,0 +1,7 @@
+# Exact no-deps CUDA 13 wheel selected from the versioned vLLM release index.
+--index-url https://wheels.vllm.ai/0.16.0/cu130
+--only-binary :all:
+
+vllm @ https://wheels.vllm.ai/89a77b10846fd96273cce78d86d2556ea582d26e/vllm-0.16.0%2Bcu130-cp38-abi3-manylinux_2_35_x86_64.whl \
+    --hash=sha256:bda6ff19ead743fb30c6271cdeb7daf62d5bd5f7a53cb6c2e7d987d53ea3d49f
+    # from https://wheels.vllm.ai/0.16.0/cu130

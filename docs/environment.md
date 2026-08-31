@@ -3,8 +3,10 @@
 Run the commands below from the repository's `code/` directory unless a block
 explicitly changes into it. The environment sources are
 [setup.sh](../code/setup.sh) and
-[requirements_latest.txt](../code/requirements_latest.txt); the dependency file
-is not a fully resolved lockfile.
+[requirements_latest.txt](../code/requirements_latest.txt), plus the separately
+installed ABI-bound vLLM pin in
+[vllm_no_deps.pin](../code/vllm_no_deps.pin); the dependency files are not fully
+resolved lockfiles.
 
 ## Hardware and architecture
 
@@ -58,6 +60,11 @@ alone is not GPU qualification.
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements_latest.txt
+# Optional serving wheel. Keep --no-deps: ray[cgraph] otherwise pulls CUDA 12
+# CuPy beside the CUDA 13 CuPy distribution required by kvikio-cu13.
+python -m pip install --no-deps \
+  --index-url https://wheels.vllm.ai/0.16.0/cu130 \
+  'vllm==0.16.0+cu130'
 ```
 
 Record the actual environment before building or benchmarking:

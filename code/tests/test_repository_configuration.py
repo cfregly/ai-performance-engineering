@@ -498,6 +498,56 @@ def test_cpu_ci_uses_exact_coverage_pins() -> None:
         assert pin in workflow
 
 
+def test_cuda13_base_requirements_exclude_conflicting_vllm_dependencies() -> None:
+    requirements = (CODE_ROOT / "requirements_latest.txt").read_text(encoding="utf-8")
+    active_lines = {
+        line.split("#", 1)[0].strip()
+        for line in requirements.splitlines()
+        if line.split("#", 1)[0].strip()
+    }
+    vllm_pin_lines = {
+        line.split("#", 1)[0].strip()
+        for line in (CODE_ROOT / "vllm_no_deps.pin").read_text(
+            encoding="utf-8"
+        ).splitlines()
+        if line.split("#", 1)[0].strip()
+    }
+
+    assert "vllm==0.16.0+cu130" not in active_lines
+    assert not any(line.startswith("vllm==") for line in active_lines)
+    assert not any(line.startswith("cupy-cuda12x==") for line in active_lines)
+    assert not any(line.startswith("typer-slim") for line in active_lines)
+    assert "cupy-cuda13x==14.2.0" in active_lines
+    assert "fastapi[standard-no-fastapi-cloud-cli]==0.121.3" in active_lines
+    assert vllm_pin_lines == {"vllm==0.16.0+cu130"}
+
+
+def test_tier1_installs_the_cuda13_vllm_pin_as_a_separate_no_deps_phase() -> None:
+    tier1_job = _load_workflow("tier1-nightly.yml")["jobs"]["tier1"]
+    setup_python = next(
+        step for step in tier1_job["steps"] if step["name"] == "Set up Python"
+    )
+    install = next(
+        step["run"]
+        for step in tier1_job["steps"]
+        if step["name"] == "Install Python dependencies"
+    )
+
+    assert setup_python["with"]["cache-dependency-path"].splitlines() == [
+        "code/requirements_latest.txt",
+        "code/vllm_no_deps.pin",
+    ]
+    assert "-r requirements_latest.txt" in install
+    assert 'vllm_spec="$(grep -E \'^vllm==\' vllm_no_deps.pin)"' in install
+    assert 'test -n "${vllm_spec}"' in install
+    assert "--no-deps" in install
+    assert "--index-url https://wheels.vllm.ai/0.16.0/cu130" in install
+    assert "--extra-index-url https://wheels.vllm.ai" not in install
+    assert '"${vllm_spec}"' in install
+    assert install.index("-r requirements_latest.txt") < install.index("vllm_spec=")
+    assert install.index("vllm_spec=") < install.index("--no-deps")
+
+
 
 def test_cpu_ci_installs_direct_collection_dependencies() -> None:
     workflow = _load_workflow("benchmark-validation.yml")

@@ -1,0 +1,1463 @@
+{
+  "divergent_count": 99,
+  "identical_count": 81,
+  "platform": "manylinux_2_28_x86_64",
+  "policy": "Install the exact base wheel first and exact cu13 wheel last. The environment is immutable/rebuild-only. Every shared installed payload must match the cu13 RECORD.",
+  "python": "CPython 3.12",
+  "shared_path_count": 180,
+  "shared_paths": [
+    {
+      "base_record_hash": "sha256=yptENxrdoy9u5uO_CQvswbh_HEpWAvHbU15ha_P99Ps",
+      "base_size": 34,
+      "cu13_record_hash": "sha256=yptENxrdoy9u5uO_CQvswbh_HEpWAvHbU15ha_P99Ps",
+      "cu13_size": 34,
+      "path": "nvidia_cutlass_dsl.pth",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=rIWXuvD7B14HaeBgkoeRZ8tYRh5t7busygQKEswWfMM",
+      "base_size": 6524,
+      "cu13_record_hash": "sha256=rIWXuvD7B14HaeBgkoeRZ8tYRh5t7busygQKEswWfMM",
+      "cu13_size": 6524,
+      "path": "nvidia_cutlass_dsl/include/CuteDSLRuntime.h",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=JPtpT9zsevGHcdnetJqcROWpskOJjPsktdQFyqV2Jog",
+      "base_size": 15718,
+      "cu13_record_hash": "sha256=fkS8dacbL_40g1AmIfP6bMiS1D1jcawYvnKCdWQwbxo",
+      "cu13_size": 15758,
+      "path": "nvidia_cutlass_dsl/lib/libcuda_dialect_runtime_static.a",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=e1B2P3KwWNNIiFtAubLpnRtxgbffUexlyQ_Qc4fs6_Q",
+      "base_size": 37288696,
+      "cu13_record_hash": "sha256=3rMta2hXunU_Qh3QBNQY1oglygI90rUalcjxBqF_sKE",
+      "cu13_size": 39855488,
+      "path": "nvidia_cutlass_dsl/lib/libcute_dsl_runtime.so",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=f6CaumQORQ16cPEatXB1Z3E9Js1bRpEB09mlNk3C7Bs",
+      "base_size": 2097,
+      "cu13_record_hash": "sha256=bTuS0o-zHIHvtofrzsjslG3l5Q5AtSQWEtjQ9F5vGjo",
+      "cu13_size": 2786,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/__init__.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=C6d8Mn8dAALGxTbyuD6FIfb0v-p5lXE9IdfU0EfY3x0",
+      "base_size": 6170,
+      "cu13_record_hash": "sha256=uupPUpYuFlABfL3jRLb3HUt5BTSTUe8cBPuXVYSwiwE",
+      "cu13_size": 6719,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/_mlir_libs/__init__.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=2IJ0XqxNLlg0aU1Zi3YEikRlqKN6j9XZmuAuYVnw_oQ",
+      "base_size": 144102056,
+      "cu13_record_hash": "sha256=c7dgYh41kQMF57349MLA2SjBBSeiQ_jxGnYEbtuk9tg",
+      "cu13_size": 151793928,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/_mlir_libs/_cutlass_ir.cpython-312-x86_64-linux-gnu.so",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=E0PTtZqroU6ygV4QTa9XMF3EJAf9olG8I1FCZy-BCII",
+      "base_size": 557,
+      "cu13_record_hash": "sha256=E0PTtZqroU6ygV4QTa9XMF3EJAf9olG8I1FCZy-BCII",
+      "cu13_size": 557,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/_mlir_libs/_cutlass_ir/_mlir/__init__.pyi",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=hMdbFqFBq1I2i0alWToJT_4ont9qEQBqQZwvaqZsytQ",
+      "base_size": 87438,
+      "cu13_record_hash": "sha256=LzFsgydOVXQOKIIaR_OQIy7l6rs_76L-prqAp-x3mcE",
+      "cu13_size": 87992,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/_mlir_libs/_cutlass_ir/_mlir/ir.pyi",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=qistsBpKxtT_snviF2kPyPH_CyJ3TXaJGGotufuL6ik",
+      "base_size": 1133,
+      "cu13_record_hash": "sha256=qistsBpKxtT_snviF2kPyPH_CyJ3TXaJGGotufuL6ik",
+      "cu13_size": 1133,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/_mlir_libs/_cutlass_ir/_mlir/passmanager.pyi",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=MvEguIjbFRU1icXhHdg248326qZJeBuOYcOuvyFgnKM",
+      "base_size": 747,
+      "cu13_record_hash": "sha256=MvEguIjbFRU1icXhHdg248326qZJeBuOYcOuvyFgnKM",
+      "cu13_size": 747,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/_mlir_libs/_cutlass_ir/_mlirExecutionEngine.pyi",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=sXkaILNLvy_gUOkrSzR_YjyKTckhWz6EEGDymIGFSM4",
+      "base_size": 8005,
+      "cu13_record_hash": "sha256=zcC--hTL1IeWR9HaIPKXsCzP0lD9umGFNi06aqD_63A",
+      "cu13_size": 7963,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_arith_enum_gen.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=I-sJEdbAnuxELtdLZGGOzKj3HsnYNHMVQhXVhgHkliE",
+      "base_size": 61189,
+      "cu13_record_hash": "sha256=SFy63sc11ZeQQsr97GrglOL7zCAWeSztO7l_cHXXskA",
+      "cu13_size": 68039,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_arith_ops_gen.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=Oa0rYpUz7g4wa7-FrJvIhMx5Y9mf0VLJ7EY-j-HowWo",
+      "base_size": 4228,
+      "cu13_record_hash": "sha256=MmjhGYcjOaaEA33L1xD25uRWM3DpfixJ6hJch9thrwg",
+      "cu13_size": 4323,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_builtin_ops_gen.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=n7ePrPprq1fx0hMBOjR2CT4JvqRD2KLXmw2JF8H6FCg",
+      "base_size": 8071,
+      "cu13_record_hash": "sha256=0qsBt6CFCiqOeCTgkubRuq6cG_wifIBl0ErhHxL7FMY",
+      "cu13_size": 9163,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_cf_ops_gen.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=5IyasH9aGMGJy9F66rJ26QaGvj9jvQxlJQF4uOOsTAo",
+      "base_size": 33913,
+      "cu13_record_hash": "sha256=2sifEKW3rtDd-fiQKgUrZYWPmD2v6ZvDzfhrWx52RlU",
+      "cu13_size": 35084,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_cuda_enum_gen.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=2M9xVGWG1NbgVR9tvvmgWr_xdmCfxeUfjKlPd8JB3TI",
+      "base_size": 94060,
+      "cu13_record_hash": "sha256=bHKEtzYhVKY2m9mh0oukbv0hztx--yAyNaXStWEXi0k",
+      "cu13_size": 99104,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_cuda_ops_gen.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=4rAQB8jVFlZVo9jBxmqt_nUDMFfkC6nYYm0PFYzB5rc",
+      "base_size": 3594,
+      "cu13_record_hash": "sha256=C-BzlaIUIwOPK7olMNc1lmIrar0iI0XGcqHzLHChPVA",
+      "cu13_size": 3739,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_cute_enum_gen.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=2DlnbKE1KuOKfnMm42ZsDMhNTwR4CskqR2zFyRSyGN0",
+      "base_size": 41900,
+      "cu13_record_hash": "sha256=QvjU6kWEgd5e49JatEvlleK_iPVJdLt6K467mbveez8",
+      "cu13_size": 44748,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_cute_nvgpu_enum_gen.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=SGi2T8AQsau032b5MNkfl4vG5vpwQYS74-VbP3aZDgc",
+      "base_size": 150353,
+      "cu13_record_hash": "sha256=r8r2TEs3kl6PqSYdvEw18u07tldILDw7aCyO6V8KkFU",
+      "cu13_size": 103547,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_cute_nvgpu_ops_gen.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=KsNto8300AMIJdzFxeeBCDkf2WLJu6RCk0i2BjsS8-U",
+      "base_size": 143287,
+      "cu13_record_hash": "sha256=INZh0OawW6nWM39TcUh6sodD00O4Pqm_KOz-PD7skDs",
+      "cu13_size": 148779,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_cute_ops_gen.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=DU_lfdcaXh7lno8DAl1R-AlKuAWr1J57BWcSR9ZQuCw",
+      "base_size": 11141,
+      "cu13_record_hash": "sha256=AOSfmSyRHSOj-AIE8OpLTJtjskF7yJYR34GHECHgenw",
+      "cu13_size": 14692,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_func_ops_gen.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=Cbsw4OioBnp65DdGKlXY_i_cKRNTWbK06yHoot6VMko",
+      "base_size": 11698,
+      "cu13_record_hash": "sha256=Cbsw4OioBnp65DdGKlXY_i_cKRNTWbK06yHoot6VMko",
+      "cu13_size": 11698,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_gpu_enum_gen.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=xgYhLwowENRHyW6Z7vX37L3ME7McLXoL95y4TEUjMmc",
+      "base_size": 148023,
+      "cu13_record_hash": "sha256=wZgxFEMBZsC59HL8L2Qs1-eDJzvYOZqsgpfel4k7SuM",
+      "cu13_size": 152033,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_gpu_ops_gen.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=V7g8LgotI8SIhvMgcNIthwbYfllbYfN55sl1jnS0no4",
+      "base_size": 26842,
+      "cu13_record_hash": "sha256=MgnC4ipvuiZXvqcQVGmINxsnDqXTVwDRiSnsaLQQTx8",
+      "cu13_size": 29979,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_llvm_enum_gen.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=7PKSam07mpEpkSVtGsXKaEuBsZ2BFCbf3ut_4ZnNq0A",
+      "base_size": 467353,
+      "cu13_record_hash": "sha256=AP9L5IKWKftrPK3-yi9mN0gfwdi781-fGB5uRm3PJfg",
+      "cu13_size": 521246,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_llvm_ops_gen.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=rIlVm9KXeor17Y1ZJUhiyeVO019Qp7NfSDdHPAWgQes",
+      "base_size": 55971,
+      "cu13_record_hash": "sha256=Qp3bDQcgBKDT1qZ9w5ZvNT0QYU2C512-lLdTVQndB6w",
+      "cu13_size": 65179,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_math_ops_gen.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=kcXQsGiCci-SkMxaGzu11bOc48ZYw_J_03EpHg-_SvQ",
+      "base_size": 6409,
+      "cu13_record_hash": "sha256=kcXQsGiCci-SkMxaGzu11bOc48ZYw_J_03EpHg-_SvQ",
+      "cu13_size": 6409,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_nvgpu_enum_gen.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=spfdWqxDV2lvfW9cE7KYZ0DKBlp0Tlr9gJZU3UPQgKM",
+      "base_size": 47471,
+      "cu13_record_hash": "sha256=TJmxkXNq4es_sjBKCr9AtWE_PKDNbKamSzNV6mRzvwk",
+      "cu13_size": 49828,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_nvgpu_ops_gen.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=SCjaMK04sug2eVGbnb0X_tuXFXRTzOeS3EdCyk4KKsw",
+      "base_size": 51520,
+      "cu13_record_hash": "sha256=nul3PSAuSyIPkBWkThzOj9JcNmVsGHRrk-BTZJ06un4",
+      "cu13_size": 59175,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_nvvm_enum_gen.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=zGDRHW9R0g5W5VwQSF6EiaQgZdkyS6co4mIIAMnh5Rk",
+      "base_size": 348034,
+      "cu13_record_hash": "sha256=kMVlynW9UAXvXemngnexIoXXQ-RRbq9aoYPetXQCFDA",
+      "cu13_size": 395380,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_nvvm_ops_gen.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=O2EqyS6Gx4aljdHN87yduWSAXGtM6hOzOKLPA75kKME",
+      "base_size": 9300,
+      "cu13_record_hash": "sha256=DmaBFBX4pMS-4pFHU27_pDIeVjTb8NIVhfQ2ajTE_JI",
+      "cu13_size": 9350,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_ods_common.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=P3S-d3jASm4RsXhLwSYK744SMbJoxOWONOaYidzWrCs",
+      "base_size": 19065,
+      "cu13_record_hash": "sha256=MWRdW04nUl5jTtlUquuf701_wvzO0Uf8hui1Bwv9yMY",
+      "cu13_size": 19735,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_scf_ops_gen.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=IdZk0Fn8RrXfTec1cJx-v3NpkP4w6l-TGdzn4dFOoFY",
+      "base_size": 3505,
+      "cu13_record_hash": "sha256=IdZk0Fn8RrXfTec1cJx-v3NpkP4w6l-TGdzn4dFOoFY",
+      "cu13_size": 3505,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_vector_enum_gen.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=ANb57dvXB6Vu1ZCNmb8GZUfyXIKN664ot9VfXsro3rU",
+      "base_size": 71797,
+      "cu13_record_hash": "sha256=0euonQmOpCeZ_h3At8cT-Uh-OBrSF1L2YKbJBHUrKL0",
+      "cu13_size": 74273,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/_vector_ops_gen.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=aA8bqGxTNWLSH9o4a7daAUXZpUjCkG_Btx2i2s8Fzr0",
+      "base_size": 3578,
+      "cu13_record_hash": "sha256=aA8bqGxTNWLSH9o4a7daAUXZpUjCkG_Btx2i2s8Fzr0",
+      "cu13_size": 3578,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/arith.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=cmQ7-OSfyqt9GHH3r4GvQn4_qIEeSVDQn7jUdQyv6II",
+      "base_size": 1277,
+      "cu13_record_hash": "sha256=cmQ7-OSfyqt9GHH3r4GvQn4_qIEeSVDQn7jUdQyv6II",
+      "cu13_size": 1277,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/builtin.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=Q_h-maXzzVS1bCK-YGnPIhn-E9WPCFnE34LnfUOGLaY",
+      "base_size": 228,
+      "cu13_record_hash": "sha256=Q_h-maXzzVS1bCK-YGnPIhn-E9WPCFnE34LnfUOGLaY",
+      "cu13_size": 228,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/cf.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=bLFfjw62WpqS2qCfm1DCT20EpwlNKwfrfL2CK2ySJiU",
+      "base_size": 7137,
+      "cu13_record_hash": "sha256=bLFfjw62WpqS2qCfm1DCT20EpwlNKwfrfL2CK2ySJiU",
+      "cu13_size": 7137,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/cuda.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=hvqDbGNvzbuG4mZlo6OrxcCq-SzGepgHgunpUg7BfTI",
+      "base_size": 645,
+      "cu13_record_hash": "sha256=hvqDbGNvzbuG4mZlo6OrxcCq-SzGepgHgunpUg7BfTI",
+      "cu13_size": 645,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/cute.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=2KJFf64rji8HmnFl_D2J2KNyb_jW57W3V35IpHAM7aU",
+      "base_size": 657,
+      "cu13_record_hash": "sha256=2KJFf64rji8HmnFl_D2J2KNyb_jW57W3V35IpHAM7aU",
+      "cu13_size": 657,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/cute_nvgpu.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=Y_m16pFcu8tjU143ddb9mmLbB4hnbXqy3mhliFwt6CQ",
+      "base_size": 12211,
+      "cu13_record_hash": "sha256=Y_m16pFcu8tjU143ddb9mmLbB4hnbXqy3mhliFwt6CQ",
+      "cu13_size": 12211,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/func.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=AW_ldu7aXx6OhfASUOjB5NfGM9qP4sFJF7tTVaSp6VE",
+      "base_size": 317,
+      "cu13_record_hash": "sha256=AW_ldu7aXx6OhfASUOjB5NfGM9qP4sFJF7tTVaSp6VE",
+      "cu13_size": 317,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/gpu/__init__.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=4Nog9ocoC_dL8Tl0sGMLo8e7w2SkFdJWtSty6XE74KM",
+      "base_size": 261,
+      "cu13_record_hash": "sha256=4Nog9ocoC_dL8Tl0sGMLo8e7w2SkFdJWtSty6XE74KM",
+      "cu13_size": 261,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/gpu/passes/__init__.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=tn1oENF7itBzBjg2D55O8l24A2MfneT2BaOVMFPpg30",
+      "base_size": 594,
+      "cu13_record_hash": "sha256=tn1oENF7itBzBjg2D55O8l24A2MfneT2BaOVMFPpg30",
+      "cu13_size": 594,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/llvm.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=ovaZyvx7B9eIzRqw_Vb1W9GHKPsGCLbH0Nb3dCXWHC0",
+      "base_size": 230,
+      "cu13_record_hash": "sha256=ovaZyvx7B9eIzRqw_Vb1W9GHKPsGCLbH0Nb3dCXWHC0",
+      "cu13_size": 230,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/math.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=o4TX_ffeDjA1RrmlwF4wT6chWdMk_7uWnysEMJG2JVg",
+      "base_size": 320,
+      "cu13_record_hash": "sha256=o4TX_ffeDjA1RrmlwF4wT6chWdMk_7uWnysEMJG2JVg",
+      "cu13_size": 320,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/nvgpu.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=TcOvv1FsPZFLgp_3avg95azwIYQ8O9dDsZCQssPg7dk",
+      "base_size": 260,
+      "cu13_record_hash": "sha256=TcOvv1FsPZFLgp_3avg95azwIYQ8O9dDsZCQssPg7dk",
+      "cu13_size": 260,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/nvvm.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=1rrWF4Ic0WPcuwU8H6mSRmK8M4jRZjcw-5tfFJCei_g",
+      "base_size": 4181,
+      "cu13_record_hash": "sha256=1rrWF4Ic0WPcuwU8H6mSRmK8M4jRZjcw-5tfFJCei_g",
+      "cu13_size": 4181,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/scf.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=ZOkYEYnRSTze6zwj6vYrtTYl0u_6KmbexURjiBx-SmE",
+      "base_size": 264,
+      "cu13_record_hash": "sha256=ZOkYEYnRSTze6zwj6vYrtTYl0u_6KmbexURjiBx-SmE",
+      "cu13_size": 264,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/dialects/vector.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=_i4-cgYH4SIvr1FEe_-37WE800aLRsz5X3E66NT_AZs",
+      "base_size": 1692,
+      "cu13_record_hash": "sha256=_i4-cgYH4SIvr1FEe_-37WE800aLRsz5X3E66NT_AZs",
+      "cu13_size": 1692,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/execution_engine.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=mTJTeMNqWeIVKzwdmxsXMCT9ouW-nWnbuA5Wxw-J7bA",
+      "base_size": 3168,
+      "cu13_record_hash": "sha256=mTJTeMNqWeIVKzwdmxsXMCT9ouW-nWnbuA5Wxw-J7bA",
+      "cu13_size": 3168,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/extras/meta.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=JLWNKuQEih6kHWCu6Nj3SHRp4qg3J51CfKE62e3DZcc",
+      "base_size": 4578,
+      "cu13_record_hash": "sha256=84aQo0JTRpN40HUtbAxyxtGRlp-Aa792PeDIuQEo6oA",
+      "cu13_size": 4634,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/extras/types.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=7hNf4LgZ01Sgx2dm7nzbslRoz5LKXurKGZ5Z0CI47K0",
+      "base_size": 8741,
+      "cu13_record_hash": "sha256=7hNf4LgZ01Sgx2dm7nzbslRoz5LKXurKGZ5Z0CI47K0",
+      "cu13_size": 8741,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/ir.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=iu20xsax1VCRyyrIHqQ0FWVmYFybrylQhefUjablZsk",
+      "base_size": 257,
+      "cu13_record_hash": "sha256=iu20xsax1VCRyyrIHqQ0FWVmYFybrylQhefUjablZsk",
+      "cu13_size": 257,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/passmanager.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=rJyMnSm9qf6RWE6r2oDIVVAWkjTghonnqbJ9r286XXY",
+      "base_size": 253,
+      "cu13_record_hash": "sha256=rJyMnSm9qf6RWE6r2oDIVVAWkjTghonnqbJ9r286XXY",
+      "cu13_size": 253,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/rewrite.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=v9pfMHXx94-oU1ENmDW3MPTDFf4YbtSxzhaYxrHF98M",
+      "base_size": 27,
+      "cu13_record_hash": "sha256=v9pfMHXx94-oU1ENmDW3MPTDFf4YbtSxzhaYxrHF98M",
+      "cu13_size": 27,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/runtime/__init__.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=8ZtVDvi5WAtP0zNOXbKoCfZ3ihZ0HWd7cYlTQhZXbi0",
+      "base_size": 5836,
+      "cu13_record_hash": "sha256=8ZtVDvi5WAtP0zNOXbKoCfZ3ihZ0HWd7cYlTQhZXbi0",
+      "cu13_size": 5836,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/_mlir/runtime/np_to_memref.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=bfPm3CJOzj-Vi5Tk1SRlzBaOwEIqivlRtdp4MG0iGy8",
+      "base_size": 924,
+      "cu13_record_hash": "sha256=bfPm3CJOzj-Vi5Tk1SRlzBaOwEIqivlRtdp4MG0iGy8",
+      "cu13_size": 924,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/__init__.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=hyeV1PvLq0iMyqYp0NydeQKrhnTdSAMoAcf23RMw4Kc",
+      "base_size": 897,
+      "cu13_record_hash": "sha256=hyeV1PvLq0iMyqYp0NydeQKrhnTdSAMoAcf23RMw4Kc",
+      "cu13_size": 897,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/_mlir_helpers/__init__.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=bUKaYp-J4_JDN-7RWUrOCZfBShACvVyRU7qxRzF95MU",
+      "base_size": 55379,
+      "cu13_record_hash": "sha256=FKEHQRqABx5LsLctk45tixIvHF8nBIzuggQWFW9poQA",
+      "cu13_size": 53487,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/_mlir_helpers/arith.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=KG0GsUFkbPtelaVCRBBLnhP__jX2UzWJ-TAsMDAokfk",
+      "base_size": 3883,
+      "cu13_record_hash": "sha256=KG0GsUFkbPtelaVCRBBLnhP__jX2UzWJ-TAsMDAokfk",
+      "cu13_size": 3883,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/_mlir_helpers/dialect_proxy.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=s7nF0Jp_Rv_FI_EIXUdItqIwy_l3__YrJ5fgl_vuMn8",
+      "base_size": 2269,
+      "cu13_record_hash": "sha256=s7nF0Jp_Rv_FI_EIXUdItqIwy_l3__YrJ5fgl_vuMn8",
+      "cu13_size": 2269,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/_mlir_helpers/gpu.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=r1ZPddBjnVrY5tLwfwH07j8a1BsKmWTPzso2YYDQEA8",
+      "base_size": 2636,
+      "cu13_record_hash": "sha256=r1ZPddBjnVrY5tLwfwH07j8a1BsKmWTPzso2YYDQEA8",
+      "cu13_size": 2636,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/_mlir_helpers/lru_cache_ir.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=HV5eGD-ndyrfMc9bsmg99Dv2Dx2oslhgfjyb15qyWWk",
+      "base_size": 6019,
+      "cu13_record_hash": "sha256=HV5eGD-ndyrfMc9bsmg99Dv2Dx2oslhgfjyb15qyWWk",
+      "cu13_size": 6019,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/_mlir_helpers/op.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=KOBzUf6lkJuu3ddAME_JR2cNW_xeLRiaMc3KTgCnJ9Y",
+      "base_size": 6342,
+      "cu13_record_hash": "sha256=RFQO3CkjkG0vhlq59QNNvxcfvhg43wW6loV9o5r-Xcw",
+      "cu13_size": 6253,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/arch.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=t1qijK-FejPMZk03sycWCB1No-2SmGMwc3Zeh7TQsVQ",
+      "base_size": 25718,
+      "cu13_record_hash": "sha256=t1qijK-FejPMZk03sycWCB1No-2SmGMwc3Zeh7TQsVQ",
+      "cu13_size": 25718,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/ast_helpers.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=yiTl1k4S_VDHwu_ZxGw8gXtLOUsQ0QY3wmyej_lMDXE",
+      "base_size": 112367,
+      "cu13_record_hash": "sha256=yiTl1k4S_VDHwu_ZxGw8gXtLOUsQ0QY3wmyej_lMDXE",
+      "cu13_size": 112367,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/ast_preprocessor.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=Mf3ACJCmKSX8Wcoz4idxsIr5o4sXTkY0wRpIRRgGMj8",
+      "base_size": 17424,
+      "cu13_record_hash": "sha256=Mf3ACJCmKSX8Wcoz4idxsIr5o4sXTkY0wRpIRRgGMj8",
+      "cu13_size": 17424,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/cache_helpers.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=eQbjID3n1xGwU6WF_rYaz0fizhz5_Ic4mpASfOGVLQw",
+      "base_size": 29286,
+      "cu13_record_hash": "sha256=eQbjID3n1xGwU6WF_rYaz0fizhz5_Ic4mpASfOGVLQw",
+      "cu13_size": 29286,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/common.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=8pc50co5oMS0MWPJS8E_7mwLio9VJ113QWAftodNRT4",
+      "base_size": 22131,
+      "cu13_record_hash": "sha256=8pc50co5oMS0MWPJS8E_7mwLio9VJ113QWAftodNRT4",
+      "cu13_size": 22131,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/compiler.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=ikbKAdDiuWC1vje04LagGGzc1YJdewLw5uE2VOgy3lo",
+      "base_size": 99647,
+      "cu13_record_hash": "sha256=I47487Yg_EflKRbcHDBBsK2QHHYTpeRppYGClH4XShM",
+      "cu13_size": 99848,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/dsl.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=dndOOohX0vaR20FkAb1_8S9xR9lEFyvNJX4jh8crtEs",
+      "base_size": 20090,
+      "cu13_record_hash": "sha256=tgsODZjY1kB4VXFs-4pwskO_mkBH1VYU5W7mIw3F_8s",
+      "cu13_size": 19923,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/env_manager.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=aneIivaadKPsSV8L_pP63q7uNWfOaAiEUziPmxix5bw",
+      "base_size": 1083,
+      "cu13_record_hash": "sha256=aneIivaadKPsSV8L_pP63q7uNWfOaAiEUziPmxix5bw",
+      "cu13_size": 1083,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/export/__init__.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=ziqZJkaPmGonMCqeaIdF83Choq_y1gAlqY4t8g3Wd8E",
+      "base_size": 14953,
+      "cu13_record_hash": "sha256=ziqZJkaPmGonMCqeaIdF83Choq_y1gAlqY4t8g3Wd8E",
+      "cu13_size": 14953,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/export/c_header_generator.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=Wqn9QUHExMp68wRUyQaMmf-vcwmOwAxqkmYRXl_8w2Y",
+      "base_size": 11126,
+      "cu13_record_hash": "sha256=Wqn9QUHExMp68wRUyQaMmf-vcwmOwAxqkmYRXl_8w2Y",
+      "cu13_size": 11126,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/export/export.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=hSRPde5L5pVhaHi6fX8oMh1Axc2N7sbwA0dSnIWPym8",
+      "base_size": 6618,
+      "cu13_record_hash": "sha256=hSRPde5L5pVhaHi6fX8oMh1Axc2N7sbwA0dSnIWPym8",
+      "cu13_size": 6618,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/export/external_binary_module.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=-rgl-HJUXMMru6EIBrQu17acCwBwQmsgynielBOKXBk",
+      "base_size": 25457,
+      "cu13_record_hash": "sha256=-rgl-HJUXMMru6EIBrQu17acCwBwQmsgynielBOKXBk",
+      "cu13_size": 25457,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/ffi.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=OiaaoTgGz0ryV8LJklTi5XYGhwsdxdG1_Ts8GHIktA0",
+      "base_size": 46998,
+      "cu13_record_hash": "sha256=OiaaoTgGz0ryV8LJklTi5XYGhwsdxdG1_Ts8GHIktA0",
+      "cu13_size": 46998,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/jit_executor.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=11gWmffLgcTsUUmXYU-2lJvkiopkToZkw75-O5Wu2vc",
+      "base_size": 22632,
+      "cu13_record_hash": "sha256=11gWmffLgcTsUUmXYU-2lJvkiopkToZkw75-O5Wu2vc",
+      "cu13_size": 22632,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/leaf_utils.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=N1QRfJvBrDSmeEn55HTPCNOdIS31OmOYGvoE__VRC0g",
+      "base_size": 17484,
+      "cu13_record_hash": "sha256=N1QRfJvBrDSmeEn55HTPCNOdIS31OmOYGvoE__VRC0g",
+      "cu13_size": 17484,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/native_struct.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU",
+      "base_size": 0,
+      "cu13_record_hash": "sha256=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU",
+      "cu13_size": 0,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/py.typed",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=Py56wM3oUHsdjunqYXXrpaNrxlEz05vLIv5ahGn2Y3s",
+      "base_size": 769,
+      "cu13_record_hash": "sha256=Py56wM3oUHsdjunqYXXrpaNrxlEz05vLIv5ahGn2Y3s",
+      "cu13_size": 769,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/runtime/__init__.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=icF0aLLtyVtTrlwa3zrMAhshZOqldNv0j5uuBVogIiw",
+      "base_size": 30818,
+      "cu13_record_hash": "sha256=icF0aLLtyVtTrlwa3zrMAhshZOqldNv0j5uuBVogIiw",
+      "cu13_size": 30818,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/runtime/cuda.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=vhwNmxBbeHHzWf6MAUP-A-vlcEu7yBu5cUTHKqKqT14",
+      "base_size": 2345,
+      "cu13_record_hash": "sha256=vhwNmxBbeHHzWf6MAUP-A-vlcEu7yBu5cUTHKqKqT14",
+      "cu13_size": 2345,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/runtime/dlpack_types.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=3m-pcpp-x4IAPFEDL0e8BmA_FGVQUBKIiqv-KRP5jj4",
+      "base_size": 10310,
+      "cu13_record_hash": "sha256=_HsoN6tDMMw4NxcHfv6ZTRa7Utu_ZgmhrOrLqvdWD24",
+      "cu13_size": 10059,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/runtime/jit_arg_adapters.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=Wl0e_yN-zZGrhUN8tMFG05U5ZkvLh8EyIg0eo-H-134",
+      "base_size": 1337,
+      "cu13_record_hash": "sha256=Wl0e_yN-zZGrhUN8tMFG05U5ZkvLh8EyIg0eo-H-134",
+      "cu13_size": 1337,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/runtime/stream_adapter.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=Zim224emcoWTyaHfM3UPeCf534JH4eruJkqZa_j3oPY",
+      "base_size": 1003,
+      "cu13_record_hash": "sha256=Zim224emcoWTyaHfM3UPeCf534JH4eruJkqZa_j3oPY",
+      "cu13_size": 1003,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/tvm_ffi_builder/__init__.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=Q7eoXrliXnv2ndWxySJhhAyVV0EQOJ33S2FrEYIq9Ys",
+      "base_size": 10986,
+      "cu13_record_hash": "sha256=Q7eoXrliXnv2ndWxySJhhAyVV0EQOJ33S2FrEYIq9Ys",
+      "cu13_size": 10986,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/tvm_ffi_builder/call_provider.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=QGakN_NKrAIadirIzRdSv33LbfEPbXinWVi9Jb_rG8M",
+      "base_size": 18535,
+      "cu13_record_hash": "sha256=QGakN_NKrAIadirIzRdSv33LbfEPbXinWVi9Jb_rG8M",
+      "cu13_size": 18535,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/tvm_ffi_builder/mlir_builder.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=2jmXZEzJDyhhiV3uKsgjoAH9lskurIxpgYkjNLay8h0",
+      "base_size": 14757,
+      "cu13_record_hash": "sha256=2jmXZEzJDyhhiV3uKsgjoAH9lskurIxpgYkjNLay8h0",
+      "cu13_size": 14757,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/tvm_ffi_builder/spec.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=9x5nBXZhvSIzL9qWwZjHWfpNKrTreYBvM_TbKL5B7lY",
+      "base_size": 79750,
+      "cu13_record_hash": "sha256=9x5nBXZhvSIzL9qWwZjHWfpNKrTreYBvM_TbKL5B7lY",
+      "cu13_size": 79750,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/tvm_ffi_builder/tvm_ffi_builder.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=EnuOlxWlF2PMl2drGq1F9ai59pVbc7qBi7z2mLdF-h4",
+      "base_size": 78378,
+      "cu13_record_hash": "sha256=BC6xT0Gs2kxIEL8VdGCRL0qrWDO1aApyDQssXT2Oc3g",
+      "cu13_size": 78351,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/typing.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=mKEybXjDfGXcxPo24rkf9lzCpWS4lSu8dhwawOlMvo0",
+      "base_size": 659,
+      "cu13_record_hash": "sha256=mKEybXjDfGXcxPo24rkf9lzCpWS4lSu8dhwawOlMvo0",
+      "cu13_size": 659,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/utils/__init__.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=1p4dnnH7Vf56yRMiJfv0UE-tb8AEkS32ZXOaRjZEDdA",
+      "base_size": 3231,
+      "cu13_record_hash": "sha256=1p4dnnH7Vf56yRMiJfv0UE-tb8AEkS32ZXOaRjZEDdA",
+      "cu13_size": 3231,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/utils/logger.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=Jmst5ys47sCwxGmmjfpk87d2PulzrRRGd9-pDPb5yfg",
+      "base_size": 2433,
+      "cu13_record_hash": "sha256=Jmst5ys47sCwxGmmjfpk87d2PulzrRRGd9-pDPb5yfg",
+      "cu13_size": 2433,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/utils/numpy.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=ITCEKn_Lc1JwQ2G3tVUBMVoUTK-DM4xEY8ICj19ORmI",
+      "base_size": 6573,
+      "cu13_record_hash": "sha256=ITCEKn_Lc1JwQ2G3tVUBMVoUTK-DM4xEY8ICj19ORmI",
+      "cu13_size": 6573,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/utils/stacktrace.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=2huYqyvVYYYeQ6LTQOcu8lQCOahqSwKj6eaGiVeEsSM",
+      "base_size": 1988,
+      "cu13_record_hash": "sha256=2huYqyvVYYYeQ6LTQOcu8lQCOahqSwKj6eaGiVeEsSM",
+      "cu13_size": 1988,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/utils/timer.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=oONuJj7TWrb9U-pEOsrvoqHJSxhlsqRndnLcnmxfxTQ",
+      "base_size": 31039,
+      "cu13_record_hash": "sha256=kTVE7BqhwtF7xnty4to5jzsSzMWthcjHmWy7Tky9lqc",
+      "cu13_size": 31055,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/utils/tree_utils.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=Or1RG7DluPG5OyU1qtxJ1UN-oBL7JVFANvyPTvjTeIY",
+      "base_size": 897,
+      "cu13_record_hash": "sha256=Or1RG7DluPG5OyU1qtxJ1UN-oBL7JVFANvyPTvjTeIY",
+      "cu13_size": 897,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/version_info.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=EsU-HCdvHysnf2jrrIiSPjTPITnmY1bRguhe-Hpubrc",
+      "base_size": 8683,
+      "cu13_record_hash": "sha256=AMKLvkHQIc8CW4mdu8vEhv3hiOcw7wg95iFm6e_cEeg",
+      "cu13_size": 8859,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/__init__.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=Ontw-NRcTprxCShN8uqehAYQqQzouHqybG3shHvZ7tc",
+      "base_size": 16618,
+      "cu13_record_hash": "sha256=Ontw-NRcTprxCShN8uqehAYQqQzouHqybG3shHvZ7tc",
+      "cu13_size": 16618,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/_tvm_ffi_args_spec_converter.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=dLAoo33zrs2mTP9ATTqIBu-YGzivOx_ZZuDcdNz-WDM",
+      "base_size": 24590,
+      "cu13_record_hash": "sha256=aj7NDFjzpXMOoOGxoiUnUc8Xs455LTTlPqndmolt9Ps",
+      "cu13_size": 24317,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/algorithm.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=ErmbANGMndlCbB9puVWZ9CxSjWztYV22fUr4ni_NgNE",
+      "base_size": 3330,
+      "cu13_record_hash": "sha256=3LRZJl3Uy3WkoE5nbPYjf3qjDs6jvQ875jqf50K5pBw",
+      "cu13_size": 4109,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/arch/__init__.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=3_jHEHVMMw4gde0vd3mTQdn3dn102yP6rzaf8BO7n-s",
+      "base_size": 4144,
+      "cu13_record_hash": "sha256=CoMWDWwGB3MHCRbxV7T1Tp2YaaLpagmNU5hK4TSueWg",
+      "cu13_size": 4353,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/arch/clc.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=iZ4FTJjfof-OQYQdkbHIskis-On42zkpqePj58Uv8yY",
+      "base_size": 2923,
+      "cu13_record_hash": "sha256=L0sZx91hdnwgAIcoeCQ1YpXb6iT5WpNrPZBqEIIYn8Q",
+      "cu13_size": 5365,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/arch/elect.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=__hxipKFRXdIfBMyBKviywAmkW3-YLuv7VJK_du_mcc",
+      "base_size": 10023,
+      "cu13_record_hash": "sha256=pa2jjWQKHQIDnryudybKUYswVDsxg2GyIAzIuOoQUAQ",
+      "cu13_size": 13328,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/arch/mbar.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=QgmFNo5GGRvabRGTZLKZCWHONkLybBzeQbq22jPKA84",
+      "base_size": 11856,
+      "cu13_record_hash": "sha256=rPyjSP3m7Z1ifintB515H2QTLYGecvsj6L05sFgGm3Q",
+      "cu13_size": 11502,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/arch/numeric_conversion.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=yZe6rELSwaUUnHAOXePVhWTxnp5lMTGZixeyKHAAyr4",
+      "base_size": 89929,
+      "cu13_record_hash": "sha256=khODdWZWAl60i1FB9btFOwbG2rqyxLLJVvCXBN5y-ak",
+      "cu13_size": 159616,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/arch/nvvm_wrappers.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=UfV7ex7lXsuFyspNb9P5quc9BQxA6fg90ELaLdaTXJU",
+      "base_size": 5309,
+      "cu13_record_hash": "sha256=jWieAgFE8MXmZ343YL3KEWgY4Dh7Y_wMnnCD7MBuWOA",
+      "cu13_size": 4929,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/arch/smem.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=OoLZhUAVikCrmG3kC_Com-nlrcj6gFqphvGqc64yWzE",
+      "base_size": 7245,
+      "cu13_record_hash": "sha256=VUd5GxnuMbAKjZxu6kIZbpRBInb8l6NaX38mPo4HKds",
+      "cu13_size": 7450,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/arch/tmem.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=NmDl5noki83AKZheABcl6Q7-JV9e5uB2NdZrB7dJ_f8",
+      "base_size": 49901,
+      "cu13_record_hash": "sha256=Fu3jdDIRCcqPo-VpKSwAWrDw_7XAAKUO68NHmlL_lWM",
+      "cu13_size": 49482,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/atom.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=22gbJmwJiws-tNFnPVfcxSQYLRW3wxSojBNhWdHI1h8",
+      "base_size": 193897,
+      "cu13_record_hash": "sha256=t7pmwMbYuC-iABsSolxVdaf9YUTBkCRj1NMXJU6kHZc",
+      "cu13_size": 209126,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/core.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=PbDgbmQmjRWpXlNnkg9-lGqUpkOEq4eXdr9rBd5wlDk",
+      "base_size": 637,
+      "cu13_record_hash": "sha256=pQqFiez8SGmxljQgpwgtJZKE95T-LyxHCszeOwcCX28",
+      "cu13_size": 841,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/experimental/__init__.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=Rv6ZKP5zUP7Gqqks9rAerYhKSVoPlZsLTe9nXMfkQ5Y",
+      "base_size": 2003,
+      "cu13_record_hash": "sha256=Rv6ZKP5zUP7Gqqks9rAerYhKSVoPlZsLTe9nXMfkQ5Y",
+      "cu13_size": 2003,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/export/__init__.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=wLnc1arPl4W0w7FHT1hBMA1wP0VNzsllrCmE7OHK63s",
+      "base_size": 5194,
+      "cu13_record_hash": "sha256=wLnc1arPl4W0w7FHT1hBMA1wP0VNzsllrCmE7OHK63s",
+      "cu13_size": 5194,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/export/aot_config.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=_WMEF291Za27QIrIhjxbc7AAGQe65jAoaZKQkl-X7GU",
+      "base_size": 10757,
+      "cu13_record_hash": "sha256=_WMEF291Za27QIrIhjxbc7AAGQe65jAoaZKQkl-X7GU",
+      "cu13_size": 10757,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/export/c_header_generator.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=3iSr9eDYVIXx4ASWSwooHaWP_ZBUoyAzle2L0OIYzjw",
+      "base_size": 2189,
+      "cu13_record_hash": "sha256=3iSr9eDYVIXx4ASWSwooHaWP_ZBUoyAzle2L0OIYzjw",
+      "cu13_size": 2189,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/export/export.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=W37vHUaKSkVo-xGnoZm59g2zkLws7x-iC4pIHw-1ID4",
+      "base_size": 849,
+      "cu13_record_hash": "sha256=W37vHUaKSkVo-xGnoZm59g2zkLws7x-iC4pIHw-1ID4",
+      "cu13_size": 849,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/export/load.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=x7j5pZhq-Ijoa8xA-yd8Gv_zbMqOva3XNL7Jo9PoKxI",
+      "base_size": 2025,
+      "cu13_record_hash": "sha256=VZ_3VH6-m7cXkngTyW8Vxty2V8c5uhO9HMFxB2pVI14",
+      "cu13_size": 2024,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/ffi.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=qlfzdsLF0YttqCBbRlLljG9O3_ABu1_y-hedPgsFU2Y",
+      "base_size": 22203,
+      "cu13_record_hash": "sha256=keAsHM9Q1fD0KOIC-g6odmTG1rGC9LLBbwdZaT3HLfY",
+      "cu13_size": 21983,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/math.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=ZihieBuXItFe8sw1BU6jFm88gwMneYeetmqlFT9c-io",
+      "base_size": 917,
+      "cu13_record_hash": "sha256=ZihieBuXItFe8sw1BU6jFm88gwMneYeetmqlFT9c-io",
+      "cu13_size": 917,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/nvgpu/__init__.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=LFjbzw4C7NC4cyZq6b2TsIG4TYPDZfNGFGzfS-4Fcqs",
+      "base_size": 22334,
+      "cu13_record_hash": "sha256=gsH1_Li5mItk4gOzoz_4ImW4mKQaTML2hSDa7fqXH20",
+      "cu13_size": 24156,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/nvgpu/common.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=KbG7V6VYALKhpnygdp-8xx0m4PiUtvuhGdnF9UGSVWU",
+      "base_size": 1201,
+      "cu13_record_hash": "sha256=nkJBNhdiZoYZCKW7Ufh4sTR4lAZP1YINadRWz8HDMVE",
+      "cu13_size": 1340,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/nvgpu/cpasync/__init__.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=nU99A6cMKRgISi3eGo7wyG_xHuvDBFZF-zofdzfdVr4",
+      "base_size": 41538,
+      "cu13_record_hash": "sha256=7kwJuFXNlqVjveXRO5KxAWtmOfnWBGyP3H5nsZpAVpU",
+      "cu13_size": 58469,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/nvgpu/cpasync/copy.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=0eoGj2P9L85WF9-dPK1SQQD3-tKMAVK3ddKbvfX47ho",
+      "base_size": 17327,
+      "cu13_record_hash": "sha256=q-c0USe6fkR3Db3apLAx7IFphc4VuXGe5W8-CX5SpCg",
+      "cu13_size": 27688,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/nvgpu/cpasync/helpers.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=Te9PBAygdR85_D-mcrTKucQDQqfv-abhL_hNHevUxsc",
+      "base_size": 13170,
+      "cu13_record_hash": "sha256=DThLHrWgVTq53eg4iXqicOSGrVj7GqU9_uGVYrZKFvQ",
+      "cu13_size": 20723,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/nvgpu/helpers.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=MtljosIrC4Lr1D7irnOIw9TZL7DndhI3jeDtHBIoW1Y",
+      "base_size": 2061,
+      "cu13_record_hash": "sha256=AHLK_TZ9S1ASyJ_9DCK_qjEaiDFcTVRSUbLFt704ASg",
+      "cu13_size": 2116,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/nvgpu/tcgen05/__init__.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=eR0lKWO0C-StwNnl7E5gTsf4WL3M_sYFs7S0w7RMfYU",
+      "base_size": 33025,
+      "cu13_record_hash": "sha256=e4ExuO_bGMHsSKBdTxsTr2_ez4d6XCAxY-KVDsVyhsE",
+      "cu13_size": 36236,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/nvgpu/tcgen05/copy.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=fiw2B5pOl8WIbhz5bV9cxJOh2R3R5rNl76A2oVmKlV0",
+      "base_size": 13079,
+      "cu13_record_hash": "sha256=vDOIoqswvPAXY4fuo7pGrbABfWS-YLNenpPFI-3mMdE",
+      "cu13_size": 13897,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/nvgpu/tcgen05/helpers.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=3VmiWuW6X6zW9qc_09q3A5ppY9eLhrt_-GVL6UWi1Cg",
+      "base_size": 56480,
+      "cu13_record_hash": "sha256=aC0zSToH9ar1YpVrdjdkewtnif95YzVWUtWoEDvC-Cs",
+      "cu13_size": 61717,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/nvgpu/tcgen05/mma.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=exVykTIGrAx84Xz559T_FJI4CQysOq2APWrNU9IrLuw",
+      "base_size": 869,
+      "cu13_record_hash": "sha256=jQc4NO4wi6GyTvH0DSIaReeLB0ufzu_qqn8dBbCXAkk",
+      "cu13_size": 955,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/nvgpu/warp/__init__.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=FlZx_TyBjxGNaAUvRMHQhcAmcxAEny1Lt9pUVUO4Ls0",
+      "base_size": 11215,
+      "cu13_record_hash": "sha256=4dg8QbjUMAihOB1Puf3ibUnkYouhOeDsc5_cMWpM_zg",
+      "cu13_size": 11689,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/nvgpu/warp/copy.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=P-vSbCxA_0EUnALqIFyD_MHgx9q01L27v2EEvrd1YXk",
+      "base_size": 15051,
+      "cu13_record_hash": "sha256=zM9IhkuulVSs33CP1mp7L-cplIyjdoIF3z4lHI3HH9I",
+      "cu13_size": 21445,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/nvgpu/warp/mma.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=oLiFgOSxud_Wlb7CLQGlB549IVOfnowwNBszYqLwbRY",
+      "base_size": 1398,
+      "cu13_record_hash": "sha256=Mif3ruJTM0xfr2bTCCnq_F4Ww0zc9vh0qW15xFGZHQU",
+      "cu13_size": 1453,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/nvgpu/warpgroup/__init__.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=1AGVj6ok-jEXGyYMuGyJgt4lqoIl33QaklaL2RIwjhw",
+      "base_size": 4172,
+      "cu13_record_hash": "sha256=1AGVj6ok-jEXGyYMuGyJgt4lqoIl33QaklaL2RIwjhw",
+      "cu13_size": 4172,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/nvgpu/warpgroup/helpers.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=4-TpUw7qLRYOVtbaexaUG-nzUl5N22sSkM5mIbQGtXI",
+      "base_size": 20578,
+      "cu13_record_hash": "sha256=UBB0-2M8YAfryAE4wQxMdHXrhOqTUZwor_ipS-fYzmE",
+      "cu13_size": 21362,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/nvgpu/warpgroup/mma.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU",
+      "base_size": 0,
+      "cu13_record_hash": "sha256=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU",
+      "cu13_size": 0,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/py.typed",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=2CnUd2PA12COq-2YFnWX3j-yh30-h34IQMp2wTQVfQc",
+      "base_size": 38043,
+      "cu13_record_hash": "sha256=iC1HOIWlq1uCxthDYsGaRISM2OO3KJV5vEjv9quf3nw",
+      "cu13_size": 36738,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/runtime.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=lgUT575_nmJKjYc8KZF4LJf0RClbxCVUjx7MNZvgUqY",
+      "base_size": 90692,
+      "cu13_record_hash": "sha256=1mr03ssQv9ANXctyhtbYZeDk85lG4F8Ae1LNkJARP3Y",
+      "cu13_size": 115451,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/tensor.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=AhwMSe930FB51q9kQwpvksg587bbQjmrK-Oj0Ugz3hA",
+      "base_size": 66990,
+      "cu13_record_hash": "sha256=z3WDKfelMV_teqA7ngM8NvlXRlKpazdH2wBPxDOQnJg",
+      "cu13_size": 67679,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/testing.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=fVSmtbu-XkJCMvjrGzEOjiWuzSHENCAy2oHBx0ymGks",
+      "base_size": 17663,
+      "cu13_record_hash": "sha256=FlrVLvCw9zEPoeounSokP4Q4Nq_BJpuwYgD1Wmfk0II",
+      "cu13_size": 17967,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/tuple.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=GiTxrM4PpG6LkcK02TKLhjWOuuLOj89TXDsnGSkSDWs",
+      "base_size": 20702,
+      "cu13_record_hash": "sha256=g8Os0vK7LAE9x2w4J-9UWo8Hux6B_yiAZownBCP0Xsk",
+      "cu13_size": 20781,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cute/typing.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=Sl_EpKf6e0PA2XCE2auhZaUex3g-9li6YYVihP7OxRE",
+      "base_size": 1837,
+      "cu13_record_hash": "sha256=Sl_EpKf6e0PA2XCE2auhZaUex3g-9li6YYVihP7OxRE",
+      "cu13_size": 1837,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cutlass_dsl/__init__.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=_01QOduyc9BnMHN6foeRkGnjE8bIRSn5QxS-2wB8Y0U",
+      "base_size": 11280,
+      "cu13_record_hash": "sha256=_01QOduyc9BnMHN6foeRkGnjE8bIRSn5QxS-2wB8Y0U",
+      "cu13_size": 11280,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cutlass_dsl/cuda_jit_executor.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=8NgQuC89goNfxv7bJXE7ts4uSOWP7vH9sYmZ3StNC_Y",
+      "base_size": 1616,
+      "cu13_record_hash": "sha256=8NgQuC89goNfxv7bJXE7ts4uSOWP7vH9sYmZ3StNC_Y",
+      "cu13_size": 1616,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cutlass_dsl/cuda_stream_adapter.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=Uzeg3MHcZMtmi_c1N8QcOMPlfY85Ng-9DSBzXO_h0kE",
+      "base_size": 95369,
+      "cu13_record_hash": "sha256=eRgJg4Z4RUF_rSKPC48H4lwsc5aXZjnzYKpqjspfKJs",
+      "cu13_size": 102579,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cutlass_dsl/cutlass.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=-vSysT3J8kHCvcuRLJoS1ekYQTVXL6pBHSbbj9MaLL8",
+      "base_size": 29002,
+      "cu13_record_hash": "sha256=UuVUFPbZJgfI6V5AgxZiAOVpDSnSJ2-locPZYsIIP9I",
+      "cu13_size": 29439,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cutlass_dsl/cutlass_ast_decorators.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=4e_Oe9hDWEFfYRSa544zv4fS6-rqRFZEZUp_pL0MTY8",
+      "base_size": 26138,
+      "cu13_record_hash": "sha256=spPUWm9GoAheZewxU-fnnw0S3FO5LvFppGrrgzFalX8",
+      "cu13_size": 26389,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/cutlass_dsl/tvm_ffi_provider.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=riZoW5_dh6p1E3FatMB_NNHVsiqPwxLUtVD7NZPKcw0",
+      "base_size": 1325,
+      "cu13_record_hash": "sha256=riZoW5_dh6p1E3FatMB_NNHVsiqPwxLUtVD7NZPKcw0",
+      "cu13_size": 1325,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/impl_utils.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=GzO-SwHSv2WZhUlpJooIj-heHdeXPUmp3XWYKJ2aD7E",
+      "base_size": 3028,
+      "cu13_record_hash": "sha256=ecuXRMSVyY1VL_VmyKdCkbwns0AAJ2HNAi-anhTcA8k",
+      "cu13_size": 3020,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/jax/__init__.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=--GjXvusAOfcaP3Snupj_GXQqj2BPdZreh9Tb_dl3Vo",
+      "base_size": 8790,
+      "cu13_record_hash": "sha256=ShP4xTO9FhHtk_vjadGLIMfuJcAjc9VIdNVjaCaHYmg",
+      "cu13_size": 8424,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/jax/compile.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=5PXa7ETrZvrN5lxmvJvsalWolr4q3CUL8sc0UZY_CqA",
+      "base_size": 6651,
+      "cu13_record_hash": "sha256=vcVPmPC6V3FsBuksSBa07fcs4fF9GpcPAb_4-Ng8KG4",
+      "cu13_size": 6463,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/jax/ffi.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=NF7QcjcfTUD55ExKHUVXoIomLlVNVEH7tRuZ4NsuB8o",
+      "base_size": 13581,
+      "cu13_record_hash": "sha256=jWrrgJUBD7meopXpHOpCzZmaoCLUQ9vSLLV-BZYhIxM",
+      "cu13_size": 13184,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/jax/primitive.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=sf989JcJ36l1dCKEnuym5O833h_vrYLm8ni_LLi6Qzg",
+      "base_size": 8518,
+      "cu13_record_hash": "sha256=W6hRSkBS6Llm_O-jErcaP-pFoWGd9Mi7m4AjQlAs11w",
+      "cu13_size": 7761,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/jax/testing.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=2O-HUbeJ3ymnhbVEVRLbijZp-NdG5lhyT1YVxhxy6VU",
+      "base_size": 25972,
+      "cu13_record_hash": "sha256=Njn5Vkfd6hoMXnKJMK8hrCmg2ryOZ-TcDdCx7GlGp_8",
+      "cu13_size": 24830,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/jax/types.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=Xn9g3bTg7nIXpWXN-QKZOIybD80jbeH8Z_x5hNfUJl8",
+      "base_size": 1933,
+      "cu13_record_hash": "sha256=Xn9g3bTg7nIXpWXN-QKZOIybD80jbeH8Z_x5hNfUJl8",
+      "cu13_size": 1933,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/pipeline/__init__.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=rkf3qHUaB5MDhyFFX4fCVU60wlnFMPG1K8g6xiPjnKQ",
+      "base_size": 31485,
+      "cu13_record_hash": "sha256=c8SsLt5j5GC8MOAYdLqREVxNT97whavnTLz6nbbkFBA",
+      "cu13_size": 31017,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/pipeline/helpers.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=yn4kNCniGlM1E6bShy-VVW07tu4Sr7JkY7Hm86sHDZ4",
+      "base_size": 39585,
+      "cu13_record_hash": "sha256=K_VJYBJlR6KlhY58XOfy-KgLE5qt6u1PjUnk1_n5bzQ",
+      "cu13_size": 38916,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/pipeline/sm100.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=rizfkWkwVgxlxAo72fPxehia-049IoXMvUzETK70gx0",
+      "base_size": 55426,
+      "cu13_record_hash": "sha256=iOmQrrRD4H876ALU1oiCVcj_z1QtVbSmCqPJRq_zcpI",
+      "cu13_size": 49337,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/pipeline/sm90.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=R78TdBpHe78LQaLqd2TIirX7MSnpgZEo2Wp0drr3pBM",
+      "base_size": 11770,
+      "cu13_record_hash": "sha256=k8g2qwE-CowAvWalBwcu7hUzMlpR__Km6M_wDFatHkY",
+      "cu13_size": 11781,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/torch.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=AdPHE0_Cb94gIKkM4dPYw3q5HqO6fXYM7aFuc7vSM7U",
+      "base_size": 4620,
+      "cu13_record_hash": "sha256=rpjqBf-si9NoBxabDMutImaJBLj3-VRYqQ8xeGvw0bM",
+      "cu13_size": 5200,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/utils/__init__.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=ya-DAm38_03VhAU5Fmrni0LqxOXDrVsnkC4X6BFdNwU",
+      "base_size": 50614,
+      "cu13_record_hash": "sha256=7GSm5fyDwE1qa8avJhQ7GlaE05mISNKqA467mfTATks",
+      "cu13_size": 76213,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/utils/blackwell_helpers.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=4JQIDtdB-_Di3w7-CBptsmmTz1-FAmVH8Lma5ecmNRA",
+      "base_size": 8755,
+      "cu13_record_hash": "sha256=LxVCESYmU6ri6FvYFbz0q0ZyeF1txLukAT4DMP_gidk",
+      "cu13_size": 8738,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/utils/block.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=Y0q-o9-Zoxnuc3x2uPzSsxrcAFl6M6LWlDsQJtSryBY",
+      "base_size": 15534,
+      "cu13_record_hash": "sha256=vQ7d1iwrgj3V3hsttJWFXC1f8PP30hkbt_zP2LKHNqA",
+      "cu13_size": 20600,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/utils/blockscaled_layout.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=3zflzzq0s0VP_tB7upiTxsrkl0ICjDwWatTqppzXvpU",
+      "base_size": 18106,
+      "cu13_record_hash": "sha256=GXVcD8_WdPJTrJikf4rOTmwrz-KZH3HDe1Z6LA5s9T4",
+      "cu13_size": 17575,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/utils/distributed.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=fPUhvdn_yTcOd3AdZJSAULxo88pvi3arKG_v06bMtrQ",
+      "base_size": 20124,
+      "cu13_record_hash": "sha256=JrG2Gk_nqkm-72ZDDQqp-xFCr8UzdVzZPvn6FbTFV-8",
+      "cu13_size": 20123,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/utils/dynamic_persistent_tile_scheduler.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=Zq4EqEUPSxO6b8vWR3aFD8GxVr1N-sBailbH-sUQj2Q",
+      "base_size": 574,
+      "cu13_record_hash": "sha256=cThddWeIo8BPcB7GDAlSQOtiAPewNkydSJG_CK4TtWA",
+      "cu13_size": 582,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/utils/gemm/__init__.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=eE3S5tKEvomo5ZvoHiRLNDnKL3XNxwJtYnnCfybc_ug",
+      "base_size": 32299,
+      "cu13_record_hash": "sha256=TePRyckPvQOVLzytNVciDDhpcFygnMxWC-tEdUz4-fE",
+      "cu13_size": 18843,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/utils/gemm/sm100.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=2zCUdAfUkyVwuCIzxk15E4iPkkS1PWeGqtWozBna3yA",
+      "base_size": 41778,
+      "cu13_record_hash": "sha256=1FSvYppykLvsmVudgiEwvlSFAhqP7-eQHw1H7uHO7PU",
+      "cu13_size": 44278,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/utils/grouped_gemm_persistent_tile_scheduler.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=Q252q5-pP-gn5l4NbBBIYzpOqNF_v6Hwue-KhQf55yQ",
+      "base_size": 8505,
+      "cu13_record_hash": "sha256=WkWuVdIJIJXrnQKot41OuDEoW6KBXTE513woI6fPuGQ",
+      "cu13_size": 8504,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/utils/hardware_info.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=inH121zAwcNvrnAG1xLKwrAZFYCxfKgQQJDZLEbl5pc",
+      "base_size": 15110,
+      "cu13_record_hash": "sha256=9YDsQ6J6bai23UYnpgU5It6a4Oo3VuxLERgqXl_N6qg",
+      "cu13_size": 15199,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/utils/hopper_helpers.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=AS9XnnCrGq_WhXvFWPplKNh2Z4HA272eGoHASSXSmKw",
+      "base_size": 2257,
+      "cu13_record_hash": "sha256=AS9XnnCrGq_WhXvFWPplKNh2Z4HA272eGoHASSXSmKw",
+      "cu13_size": 2257,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/utils/layout.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=pAd2idzZeBtXmu1zskwYpoBjPGpWLD1H3PQFgvrLeao",
+      "base_size": 37822,
+      "cu13_record_hash": "sha256=LGqos1nTLsqq7lmumKMmNFbiXCCEsshrZ__AF6JzFV0",
+      "cu13_size": 37945,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/utils/mixed_input_helpers.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=07rAsh8VmlhPwUEg3uQoHJBnKxKnlUsNNLemoosddBM",
+      "base_size": 5221,
+      "cu13_record_hash": "sha256=07rAsh8VmlhPwUEg3uQoHJBnKxKnlUsNNLemoosddBM",
+      "cu13_size": 5221,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/utils/print_latex.py",
+      "relation": "identical"
+    },
+    {
+      "base_record_hash": "sha256=a1QZ3TsWv-o6qpabpxkRuYdhNQopqoubq0d1gUC_sgM",
+      "base_size": 13634,
+      "cu13_record_hash": "sha256=1sKeIDlozW4EB3dQCSs8shO6WTruGkkGVzgUzRRYqH8",
+      "cu13_size": 13773,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/utils/smem_allocator.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=RkVxwE_tJfKDBj1JwzTwdf-3hHlXG1ApUV6CqKFyf1g",
+      "base_size": 31426,
+      "cu13_record_hash": "sha256=td7lqVeAKnPE_xlOuezEWBmbHuWmI50JMQIVHvBMkfE",
+      "cu13_size": 31199,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/utils/static_persistent_tile_scheduler.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=bIiFgyfaDWzKVc8BltC0ZLnJKua3vTEbdYEGDd8w3gk",
+      "base_size": 2604,
+      "cu13_record_hash": "sha256=EZFueeBsjFDLCbv7IhQoUfTnLoDriHmzI9borHT7D1E",
+      "cu13_size": 2719,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/utils/tensor_helpers.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=h4vORc2hkBSBXY1p5EUWFNAYtuIbUfOQPIiezw6m8R4",
+      "base_size": 6693,
+      "cu13_record_hash": "sha256=sj92D-y3wDeMZfMoTrupkxcQ18SeDAEJw2hnx06eBNI",
+      "cu13_size": 7482,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/utils/tensormap_manager.py",
+      "relation": "divergent"
+    },
+    {
+      "base_record_hash": "sha256=xperINCPGT0Y4KIrDQkV9HR3739KVJzruiOLXjt8tRs",
+      "base_size": 26277,
+      "cu13_record_hash": "sha256=IajBIYKEmeexsII18loQoj8PWqWHzlxCZnOLqvW1IB8",
+      "cu13_size": 26259,
+      "path": "nvidia_cutlass_dsl/python_packages/cutlass/utils/tmem_allocator.py",
+      "relation": "divergent"
+    }
+  ],
+  "version": "4.5.2",
+  "wheels": {
+    "nvidia-cutlass-dsl-libs-base": {
+      "sha256": "15ef6a59193667e663934ef4873f8ccad37455e9b7c3c419c3072113b8aedf61",
+      "size_bytes": 74513226,
+      "url": "https://files.pythonhosted.org/packages/97/68/c1247ab848f26c4ab56e562eea0e3f31fc14c9aaf0d883afaa92d8f05592/nvidia_cutlass_dsl_libs_base-4.5.2-cp312-cp312-manylinux_2_28_x86_64.whl"
+    },
+    "nvidia-cutlass-dsl-libs-cu13": {
+      "sha256": "80f0cd402e0f1d1571e5aed33bfa17dbc9cb90cc5b1352f0f806b4788558e80e",
+      "size_bytes": 78759198,
+      "url": "https://files.pythonhosted.org/packages/03/60/443e559139da15ab544761ac14f4206dffb981af48cc9856cd5b5b7cf0e7/nvidia_cutlass_dsl_libs_cu13-4.5.2-cp312-cp312-manylinux_2_28_x86_64.whl"
+    }
+  }
+}

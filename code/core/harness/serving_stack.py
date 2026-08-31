@@ -1,7 +1,8 @@
 """Shared serving stack pin resolution for benchmark hosts.
 
 Single source of truth:
-- Require exact pins from requirements_latest.txt.
+- Require the base exact pins from requirements_latest.txt.
+- Require the ABI-bound vLLM CUDA 13 pin from vllm_no_deps.pin.
 - Fail fast if pins are missing or unreadable.
 """
 
@@ -18,9 +19,10 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_REQUIREMENTS = _REPO_ROOT / "requirements_latest.txt"
+_DEFAULT_VLLM_PIN = _REPO_ROOT / "vllm_no_deps.pin"
 
 _DEFAULT_TORCH = "2.9.1+cu130"
-_DEFAULT_VLLM = "0.16.0"
+_DEFAULT_VLLM = "0.16.0+cu130"
 _DEFAULT_FLASHINFER = "0.6.3"
 
 _NVIDIA_WHEEL_LIB_SUBDIRS: Tuple[Tuple[str, ...], ...] = (
@@ -228,8 +230,12 @@ def configure_serving_stack_cache_env(cache_root: Optional[Path] = None) -> Dict
     return configured
 
 
-def get_serving_stack_pins(requirements_path: Optional[Path] = None) -> ServingStackPins:
+def get_serving_stack_pins(
+    requirements_path: Optional[Path] = None,
+    vllm_pin_path: Optional[Path] = None,
+) -> ServingStackPins:
     req_path = (requirements_path or _DEFAULT_REQUIREMENTS).resolve()
+    vllm_path = (vllm_pin_path or _DEFAULT_VLLM_PIN).resolve()
     if not req_path.exists():
         raise RuntimeError(
             "FAIL FAST: Serving stack requirements file is missing. "
@@ -237,13 +243,20 @@ def get_serving_stack_pins(requirements_path: Optional[Path] = None) -> ServingS
         )
 
     torch_version = _read_pinned_version("torch", req_path)
-    vllm_version = _read_pinned_version("vllm", req_path)
+    if not vllm_path.exists():
+        raise RuntimeError(
+            "FAIL FAST: ABI-bound vLLM pin manifest is missing. "
+            f"Expected: {vllm_path}"
+        )
+
+    vllm_version = _read_pinned_version("vllm", vllm_path)
     flashinfer_version = _read_pinned_version("flashinfer-python", req_path)
     if not torch_version or not vllm_version or not flashinfer_version:
         raise RuntimeError(
             "FAIL FAST: Serving stack pin(s) missing in requirements file. "
             f"Expected torch=={_DEFAULT_TORCH}, vllm=={_DEFAULT_VLLM}, "
-            f"flashinfer-python=={_DEFAULT_FLASHINFER} in {req_path}"
+            f"flashinfer-python=={_DEFAULT_FLASHINFER} in {req_path}, and "
+            f"vllm=={_DEFAULT_VLLM} in {vllm_path}"
         )
 
     return ServingStackPins(

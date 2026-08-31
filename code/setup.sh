@@ -262,8 +262,9 @@ VLLM_SRC_DIR="${VLLM_SRC_DIR:-${THIRD_PARTY_DIR}/vllm-src}"
 VLLM_WHEEL_DIR="${THIRD_PARTY_DIR}/wheels"
 VLLM_WHEEL_INFO_PATH="${VLLM_WHEEL_INFO_PATH:-${VLLM_WHEEL_DIR}/vllm-build-info.json}"
 VLLM_WHEEL_ARCH="$(uname -m)"
-VLLM_EXTRA_INDEX_URL="${VLLM_EXTRA_INDEX_URL:-https://wheels.vllm.ai/cu130}"
-VLLM_PIP_SPEC="${VLLM_PIP_SPEC:-vllm==0.16.0}"
+VLLM_PIN_FILE="${VLLM_PIN_FILE:-${PROJECT_ROOT}/vllm_no_deps.pin}"
+VLLM_EXTRA_INDEX_URL=""
+VLLM_PIP_SPEC=""
 FLASHINFER_EXPECTED_VERSION="${FLASHINFER_EXPECTED_VERSION:-0.6.3}"
 TORCHTITAN_TOMLI_VERSION="${TORCHTITAN_TOMLI_VERSION:-2.4.0}"
 TORCHTITAN_TYRO_VERSION="${TORCHTITAN_TYRO_VERSION:-1.0.10}"
@@ -272,6 +273,14 @@ TORCHTITAN_RUNTIME_DEPS=(
     "tyro==${TORCHTITAN_TYRO_VERSION}"
 )
 VLLM_RUNTIME_DEPS=(
+    "cachetools==7.1.7"
+    "prometheus-fastapi-instrumentator==7.1.0"
+    "tiktoken==0.14.0"
+    "mistral-common[image]==1.11.7"
+    "opencv-python-headless==5.0.0.93"
+    "numba==0.61.2"
+    "lark==1.2.2"
+    "setuptools==80.10.2"
     "cbor2==5.8.0"
     "msgspec==0.20.0"
     "gguf==0.18.0"
@@ -288,11 +297,11 @@ VLLM_RUNTIME_DEPS=(
     "depyf==0.20.0"
     "watchfiles==1.1.1"
     "blake3==1.0.8"
-    "anthropic==0.84.0"
-    "openai==2.24.0"
+    "anthropic==0.112.0"
+    "openai==2.44.0"
     "openai-harmony==0.0.8"
     "model-hosting-container-standards==0.1.13"
-    "mcp==1.26.0"
+    "mcp==1.28.0"
     "grpcio-reflection==1.78.0"
 )
 if [ "${VLLM_WHEEL_ARCH}" = "arm64" ]; then
@@ -365,6 +374,7 @@ CUTLASS_NVCC_ARCHS_VALUE="${CUTLASS_NVCC_ARCHS_VALUE_DEFAULT}"
 # Keep fallback defaults aligned with the requirements' supported stable stack.
 PYTORCH_TORCH_VERSION="2.9.1+cu130"
 PYTORCH_TORCHAUDIO_VERSION="2.9.1+cu130"
+PYTORCH_TORCHVISION_VERSION="0.24.1+cu130"
 # torchao 0.15.0 is the upstream ABI-compatible release for torch 2.9.1.
 PYTORCH_TORCHAO_VERSION="0.15.0+cu130"
 PYTORCH_TRITON_VERSION="3.5.1"
@@ -1815,8 +1825,7 @@ pip_install --no-cache-dir --upgrade --ignore-installed \
     pydantic-core==2.41.5 \
     hypothesis==6.138.0 \
     typing-extensions==4.15.0 \
-    typer==0.12.0 \
-    typer-slim[standard]==0.12.0
+    typer==0.15.4
 
 # Build or reuse PyTorch wheel (SM100/103/121)
 echo ""
@@ -1835,18 +1844,43 @@ pip_uninstall -y torchvision >/dev/null 2>&1 || true
 # Use the updated requirements file with pinned versions
 REQUIREMENTS_FILE="$PROJECT_ROOT/requirements_latest.txt"
 
-# Single-source serving stack pins from requirements_latest.txt.
+# Single-source serving stack pins from requirements_latest.txt and the
+# separately installed ABI-bound vLLM pin manifest.
 # This keeps setup-time ABI checks aligned with runtime benchmark checks.
+if [ ! -f "$VLLM_PIN_FILE" ]; then
+    echo "ERROR: ABI-bound vLLM pin manifest is missing: $VLLM_PIN_FILE"
+    exit 1
+fi
+VLLM_PIN_COUNT="$(grep -Evc '^[[:space:]]*(#|$)' "$VLLM_PIN_FILE" || true)"
+VLLM_PIP_SPEC="$(grep -Ev '^[[:space:]]*(#|$)' "$VLLM_PIN_FILE" | head -n 1 || true)"
+if [ "$VLLM_PIN_COUNT" -ne 1 ] || [[ "$VLLM_PIP_SPEC" != vllm==* ]]; then
+    echo "ERROR: $VLLM_PIN_FILE must contain exactly one active vllm== pin"
+    exit 1
+fi
+REQ_VLLM_VERSION="${VLLM_PIP_SPEC#vllm==}"
+VLLM_RELEASE_VERSION="${REQ_VLLM_VERSION%%+*}"
+if [ -z "$VLLM_RELEASE_VERSION" ] || [ "$REQ_VLLM_VERSION" = "$VLLM_RELEASE_VERSION" ]; then
+    echo "ERROR: vLLM pin must include the CUDA local version suffix: $VLLM_PIP_SPEC"
+    exit 1
+fi
+VLLM_EXTRA_INDEX_URL="https://wheels.vllm.ai/${VLLM_RELEASE_VERSION}/cu130"
+
 if [ -f "$REQUIREMENTS_FILE" ]; then
     REQ_TORCH_VERSION="$(grep -E '^torch==' "$REQUIREMENTS_FILE" | head -n 1 | cut -d= -f3 || true)"
+    REQ_TORCHAUDIO_VERSION="$(grep -E '^torchaudio==' "$REQUIREMENTS_FILE" | head -n 1 | cut -d= -f3 || true)"
+    REQ_TORCHVISION_VERSION="$(grep -E '^torchvision==' "$REQUIREMENTS_FILE" | head -n 1 | cut -d= -f3 || true)"
     REQ_TORCHAO_VERSION="$(grep -E '^torchao==' "$REQUIREMENTS_FILE" | head -n 1 | cut -d= -f3 || true)"
     REQ_TRITON_VERSION="$(grep -E '^triton==' "$REQUIREMENTS_FILE" | head -n 1 | cut -d= -f3 || true)"
-    REQ_VLLM_VERSION="$(grep -E '^vllm==' "$REQUIREMENTS_FILE" | head -n 1 | cut -d= -f3 || true)"
     REQ_FLASHINFER_VERSION="$(grep -E '^flashinfer-python==' "$REQUIREMENTS_FILE" | head -n 1 | cut -d= -f3 || true)"
 
     if [ -n "${REQ_TORCH_VERSION}" ]; then
         PYTORCH_TORCH_VERSION="${REQ_TORCH_VERSION}"
-        PYTORCH_TORCHAUDIO_VERSION="${REQ_TORCH_VERSION}"
+    fi
+    if [ -n "${REQ_TORCHAUDIO_VERSION}" ]; then
+        PYTORCH_TORCHAUDIO_VERSION="${REQ_TORCHAUDIO_VERSION}"
+    fi
+    if [ -n "${REQ_TORCHVISION_VERSION}" ]; then
+        PYTORCH_TORCHVISION_VERSION="${REQ_TORCHVISION_VERSION}"
     fi
     if [ -n "${REQ_TORCHAO_VERSION}" ]; then
         PYTORCH_TORCHAO_VERSION="${REQ_TORCHAO_VERSION}"
@@ -1855,14 +1889,11 @@ if [ -f "$REQUIREMENTS_FILE" ]; then
     if [ -n "${REQ_TRITON_VERSION}" ]; then
         PYTORCH_TRITON_VERSION="${REQ_TRITON_VERSION}"
     fi
-    if [ -n "${REQ_VLLM_VERSION}" ]; then
-        VLLM_PIP_SPEC="vllm==${REQ_VLLM_VERSION}"
-    fi
     if [ -n "${REQ_FLASHINFER_VERSION}" ]; then
         FLASHINFER_EXPECTED_VERSION="${REQ_FLASHINFER_VERSION}"
     fi
 
-    echo "Serving stack pins (from requirements_latest.txt):"
+    echo "Serving stack pins (from requirements_latest.txt and vllm_no_deps.pin):"
     echo "  torch==${PYTORCH_TORCH_VERSION}"
     echo "  torchao==${PYTORCH_TORCHAO_VERSION}"
     echo "  triton==${PYTORCH_TRITON_VERSION}"
@@ -1911,9 +1942,9 @@ fi
 # post-CUDA step (prevents CPU torch overrides and vLLM ABI drift).
 TEMP_REQUIREMENTS="/tmp/requirements_no_torch_deps.txt"
 if [ -f "$REQUIREMENTS_FILE" ]; then
-    REQUIREMENTS_EXCLUDE_REGEX='^(accelerate==|torchtitan==|torch==|torchao==|vllm==)'
+    REQUIREMENTS_EXCLUDE_REGEX='^(accelerate==|torchtitan==|torch==|torchao==|torchaudio==|torchvision==|vllm==)'
     if [ "${SKIP_FLASHINFER}" -eq 1 ]; then
-        REQUIREMENTS_EXCLUDE_REGEX='^(accelerate==|torchtitan==|torch==|torchao==|vllm==|flashinfer-python==)'
+        REQUIREMENTS_EXCLUDE_REGEX='^(accelerate==|torchtitan==|torch==|torchao==|torchaudio==|torchvision==|vllm==|flashinfer-python==)'
     fi
     grep -Ev "${REQUIREMENTS_EXCLUDE_REGEX}" "$REQUIREMENTS_FILE" > "$TEMP_REQUIREMENTS" || true
     echo "Created temporary requirements file excluding torch/torchao/vLLM/accelerate/torchtitan"
@@ -1933,7 +1964,7 @@ if [ -f "$TEMP_REQUIREMENTS" ]; then
             numpy==2.1.2 pandas==2.3.2 scikit-learn==1.7.2 pillow==11.3.0 \
             matplotlib==3.10.6 seaborn==0.13.2 tensorboard==2.20.0 wandb==0.22.0 plotly==6.3.0 bokeh==3.8.0 dash==3.2.0 \
             click==8.1.7 \
-            jupyter==1.1.1 ipykernel==6.30.1 black==25.9.0 ruff==0.8.4 flake8==7.3.0 mypy==1.18.2 pytest==8.3.4 typer==0.12.0 rich==13.7.0 \
+            jupyter==1.1.1 ipykernel==6.30.1 black==25.9.0 ruff==0.8.4 flake8==7.3.0 mypy==1.18.2 pytest==8.3.4 typer==0.15.4 rich==13.7.1 \
             transformers==4.56.0 datasets==2.21.0 sentencepiece==0.2.0 tokenizers==0.22.2 \
             onnx==1.19.0 \
             py-spy==0.4.1 memory-profiler==0.61.0 line-profiler==5.0.0 pyinstrument==5.1.1 snakeviz==2.2.2 \
@@ -1951,7 +1982,7 @@ else
         numpy==2.1.2 pandas==2.3.2 scikit-learn==1.7.2 pillow==11.3.0 \
         matplotlib==3.10.6 seaborn==0.13.2 tensorboard==2.20.0 wandb==0.22.0 plotly==6.3.0 bokeh==3.8.0 dash==3.2.0 \
         click==8.1.7 \
-        jupyter==1.1.1 ipykernel==6.30.1 black==25.9.0 ruff==0.8.4 flake8==7.3.0 mypy==1.18.2 pytest==8.3.4 typer==0.12.0 rich==13.7.0 \
+        jupyter==1.1.1 ipykernel==6.30.1 black==25.9.0 ruff==0.8.4 flake8==7.3.0 mypy==1.18.2 pytest==8.3.4 typer==0.15.4 rich==13.7.1 \
         transformers==4.56.0 datasets==2.21.0 sentencepiece==0.2.0 tokenizers==0.22.2 \
         onnx==1.19.0 \
         py-spy==0.4.1 memory-profiler==0.61.0 line-profiler==5.0.0 pyinstrument==5.1.1 snakeviz==2.2.2 \
@@ -1988,16 +2019,14 @@ if ! pip_install --no-cache-dir --upgrade --ignore-installed \
     exit 1
 fi
 
-# NOTE: torchvision is intentionally skipped for now; nightly cu130 wheels have been failing.
-# If/when needed, re-enable this block and validate that cu130 wheels exist.
-# if ! pip_install --no-cache-dir --upgrade --ignore-installed \
-#     --index-url "${PYTORCH_CU130_INDEX}" \
-#     --extra-index-url "https://pypi.org/simple" \
-#     --only-binary=":all:" \
-#     "torchvision==${PYTORCH_TORCHVISION_VERSION}"; then
-#     echo "ERROR: torchvision install failed from nightly cu130 index"
-#     exit 1
-# fi
+if ! pip_install --no-cache-dir --upgrade --ignore-installed \
+    --index-url "${PYTORCH_CU130_INDEX}" \
+    --extra-index-url "https://pypi.org/simple" \
+    --only-binary=":all:" \
+    "torchvision==${PYTORCH_TORCHVISION_VERSION}"; then
+    echo "ERROR: torchvision ${PYTORCH_TORCHVISION_VERSION} install failed from ${PYTORCH_CU130_INDEX}"
+    exit 1
+fi
 
 if ! pip_install --no-cache-dir --upgrade --ignore-installed \
     --index-url "${PYTORCH_TORCHAUDIO_INDEX}" \
@@ -2213,24 +2242,11 @@ else
     echo "  ✓ Triton version: ${TRITON_VERSION}"
 fi
 
-# Install torchvision from cu130 binaries (no source builds)
-# NOTE: torchvision is intentionally skipped for now; nightly cu130 wheels have been failing.
-# echo ""
-# echo "Installing torchvision (cu13 wheel, no-build)..."
-# pip_install --no-input --no-deps \
-#     --index-url "${PYTORCH_CU130_INDEX}" \
-#     --extra-index-url "https://pypi.org/simple" \
-#     --only-binary=":all:" \
-#     torchvision || {
-#     echo "Warning: torchvision cu13 install failed. Continuing without it."
-# }
-
-# Verify PyTorch CUDA wasn't overridden by torchvision installation
-# NOTE: torchvision is intentionally skipped for now; keep this check disabled until re-enabled.
-# if ! verify_and_restore_pytorch_cuda "torchvision installation"; then
-#     echo "ERROR: PyTorch CUDA missing after torchvision!"
-#     exit 1
-# fi
+# Verify the matched torchvision wheel did not replace the pinned CUDA torch.
+if ! verify_and_restore_pytorch_cuda "torchvision installation"; then
+    echo "ERROR: PyTorch CUDA missing after torchvision!"
+    exit 1
+fi
 
 echo ""
 echo "Refreshing CUTLASS source tree (${CUTLASS_REF}) for local CUDA builds..."
@@ -2824,7 +2840,7 @@ VLLM_WHEEL_HAS_PARTS=0
 echo "Installing vLLM from cu13 wheels (binary only, no deps)..."
 pip_uninstall -y vllm >/dev/null 2>&1 || true
 if ! pip_install --no-cache-dir --upgrade --ignore-installed --prefer-binary --only-binary=:all: --no-deps \
-    ${VLLM_EXTRA_INDEX_URL:+--extra-index-url "${VLLM_EXTRA_INDEX_URL}"} \
+    --index-url "${VLLM_EXTRA_INDEX_URL}" \
     "${VLLM_PIP_SPEC}"; then
     echo "ERROR: Failed to install prebuilt ${VLLM_PIP_SPEC} wheel from index ${VLLM_EXTRA_INDEX_URL:-PyPI}."
     exit 1

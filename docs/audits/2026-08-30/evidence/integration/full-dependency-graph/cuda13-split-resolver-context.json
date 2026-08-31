@@ -1,0 +1,12 @@
+{
+  "python": "/opt/miniconda3/bin/python",
+  "task_root": "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-cuda13-split-resolver-aoioxr4n",
+  "venv_argv": [
+    "/opt/miniconda3/bin/python",
+    "-m",
+    "venv",
+    "/var/folders/tn/kptc2mn55wlclhrzlvg316tw0000gn/T/aisp-cuda13-split-resolver-aoioxr4n/venv"
+  ],
+  "venv_exit_code": 0,
+  "uv": "/Users/admin/.local/bin/uv"
+}
