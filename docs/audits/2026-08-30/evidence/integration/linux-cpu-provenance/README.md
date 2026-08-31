@@ -16,8 +16,11 @@ The uploaded artifact is
 `audit-linux-cpu-provenance-33401585682-1`, ID `9761526418`, with verified
 archive digest
 `sha256:69fc36ebab042fcd1753ff22f6627cb35e8a564bb8c6d67e82e4f33b453c3bf9`.
-Its complete retained contents are in [`run-33401585682`](run-33401585682), and
-the structured summary is [`receipt.json`](receipt.json).
+Its complete retained contents are in
+[`vendor/run-33401585682`](vendor/run-33401585682), and the structured summary
+is [`receipt.json`](receipt.json). The `vendor/` segment marks this immutable
+external artifact as audit evidence so dependency discovery does not treat its
+checksum records as live project manifests.
 
 This closes only the reviewed W1-005 Linux CPU provenance sub-gate. The current
 Benchmark Validation environment separately installs CMake 3.31.10 and

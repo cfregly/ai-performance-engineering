@@ -23,7 +23,7 @@
     "expires_at": "2026-11-29T14:15:38Z",
     "id": 9761526418,
     "name": "audit-linux-cpu-provenance-33401585682-1",
-    "retained_copy": "evidence/integration/linux-cpu-provenance/run-33401585682",
+    "retained_copy": "evidence/integration/linux-cpu-provenance/vendor/run-33401585682",
     "retained_file_count": 24,
     "retained_files": [
       "direct-requirements-sha256.txt",
@@ -54,6 +54,7 @@
     "upstream_manifest_sha256": "38855bc06f961b220a5615c44e04610cc68c779596d3d2e37762fd91f7e4a87c"
   },
   "boundaries": [
+    "The unchanged retained artifact is nested under vendor/ only so dependency discovery does not treat archival checksum files as live project manifests.",
     "The current benchmark-validation environment also installs cmake 3.31.10 and prometheus-client 0.21.0; those packages are outside this reviewed lock.",
     "The 90-direct-specification/327-package Linux-CUDA dependency graph remains metadata-only.",
     "No CUDA toolkit, driver, CUDA wheel stack, native CUDA extension, GPU, numerical, profiler, sanitizer, or performance acceptance ran.",
