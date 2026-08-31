@@ -783,7 +783,7 @@
         "note": "Fixes are uncommitted; exact per-file source epochs reside in receipts. No runtime success inferred."
       },
       "reproducer": "evidence/integration/receipt.json",
-      "accepted_fix_design": "Workflow full-directory gates added and local broad diagnosis complete; full fresh Linux CPU CI and attested GPU run still pending. Details and source hashes are in the attached package receipts. The current 90-spec dependency graph and CPU workflow source parity are metadata-reviewed; final focused source gates are bound separately without a fresh full CPU rerun. Actual clean pinned Linux CI and attested GPU workflow execution remain pending.",
+      "accepted_fix_design": "Workflow full-directory gates added and behavior-focused CPU protections wired into active root CI. Hosted Benchmark Validation run 33391774956 passes at 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 with CPython 3.12.14 installed the explicit CPU dependencies, ran the complete tests/ directory, and retained JUnit for 4,346 passed, 461 explicit skips, zero failures and zero errors. This closes the Linux CPU full-directory CI sub-gate. P02 still requires an explicit supported-GPU runner to execute the CUDA protection and verification cases; CPU skips do not qualify those paths. The heterogeneous skip set also retains 62 known missing-protection, protection-summary, or absent-route scope skips, none of which is converted to passing coverage.",
       "acceptance_contract": "AUDIT_REMEDIATION_PLAN.md work package P02; specialize to a behavior-level check during reproduction",
       "planning_caution": "A broader CI allowlist alone does not fix tautological tests. Map discovery, execution environment and exclusion reasons; protections must reject deliberate violations.",
       "changed_files": [
@@ -795,13 +795,13 @@
       ],
       "fix_revision": null,
       "verification": {
-        "source_and_cpu": "Full-directory workflow source, the 90-spec/327-package Linux-target metadata graph, and the 56-package CPU exact-source union are reconciled. Final TP repairs have focused/static acceptance only; the fresh full CPU suite was not rerun at user direction.",
-        "integration": "Fresh full CPU suite not rerun after final TP fixes at user direction; focused and related tests/static gates passed.",
-        "build": "Pinned Linux installation and actual GitHub Actions execution pending; no local CUDA compiler or GPU workflow execution.",
+        "source_and_cpu": "Hosted Benchmark Validation run 33391774956 passes at 3316e0efe985040745ffd926c5f76a6bd4436aff. The active root workflow installed requests 2.34.2 and tokenizers 0.22.2 on Ubuntu 24.04 / CPython 3.12.14 x64, ran the complete tests/ directory, and retained JUnit for 4,346 passed, 461 explicit skips, zero failures and zero errors. This closes the CPU full-directory CI wiring/execution sub-gate.",
+        "integration": "PASS_HOSTED_LINUX_CPU_FULL_DIRECTORY_CI: run 33391774956, validate job 99486842896, 4,807 collected; 4,346 passed, 461 skipped, 0 failed, 0 errors. No new suite rerun was performed during reconciliation.",
+        "build": "GitHub-hosted Ubuntu 24.04 / CPython 3.12.14 executed the CPU dependency installation and full tests/ tree. CUDA compilation and supported-GPU workflow execution remain pending.",
         "gpu_correctness": "GPU unavailable; skip/result branches not GPU qualification",
         "performance": "not_applicable",
         "documentation": "Current source, skip reasons and runtime handoff recorded.",
-        "dependency_metadata": "90 direct specifications resolve to 327 unique Linux-target packages under one reviewed GPUtil source exception; CPU exact-source union 56 and first-PyPI closure 49. Actual Linux installation, workflow execution, CUDA imports/builds and GPU runtime remain HOLD."
+        "dependency_metadata": "The hosted CPU CI installed the explicit active workflow dependencies, including requests 2.34.2 and tokenizers 0.22.2. Hash-bound 20-pin/56-distribution provenance is separately closed by run 33401585682; the complete Linux/CUDA dependency graph remains pending."
       },
       "attempts": [
         {
@@ -844,6 +844,15 @@
           "phase": "targeted_source_gate_followup",
           "result": "PASS_FOCUSED_SOURCE_GATES__FULL_CPU_NOT_RERUN__LINUX_CUDA_GPU_AND_WAVE2_PENDING",
           "receipt": "evidence/integration/source-gate-followup/receipt.json"
+        },
+        {
+          "phase": "hosted_linux_full_directory_cpu_ci",
+          "result": "PASS_4346_PASSED_461_EXPLICIT_SKIPS_0_FAILED_0_ERRORS__REQUESTS_2_34_2_TOKENIZERS_0_22_2_INSTALLED",
+          "receipt": "evidence/integration/hosted-cpu-closure/receipt.json",
+          "run_id": 33391774956,
+          "job_id": 99486842896,
+          "source_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+          "scope": "Closes W1-006 Linux CPU full-directory CI wiring/execution sub-gate only; supported-GPU protection cases remain pending."
         }
       ],
       "evidence": [
@@ -855,13 +864,17 @@
         "evidence/integration/pinned-linux-readiness/receipt.json",
         "evidence/integration/http-cpu-readiness/receipt.json",
         "evidence/integration/full-dependency-review/receipt.json",
-        "evidence/integration/source-gate-followup/receipt.json"
+        "evidence/integration/source-gate-followup/receipt.json",
+        "evidence/integration/hosted-cpu-closure/receipt.json"
       ],
-      "disposition_reason": "Full-directory CI source and local collection/integration repaired; actual pinned Linux CI and attested GPU workflow remain unexecuted. 90 direct specifications resolve to 327 unique Linux-target packages under one reviewed GPUtil source exception; CPU exact-source union 56 and first-PyPI closure 49. Actual Linux installation, workflow execution, CUDA imports/builds and GPU runtime remain HOLD.",
+      "disposition_reason": "Full-directory CI source and Linux CPU execution are verified by hosted run 33391774956: explicit active dependencies installed, complete tests/ directory executed, and JUnit retained for 4,346 passed, 461 explicit skips, zero failures and zero errors. The overall row remains source_fixed: P02 still requires an explicit supported-GPU runner for CUDA protection and verification cases, and separately tracked missing-production-protection and retired-route scope skips remain skips rather than passing coverage.",
       "independent_review": {
         "reviewer": "repo_plan_context",
         "state": "bounded_source_and_metadata_review_pass; runtime_pending",
-        "evidence": "evidence/integration/pinned-linux-review/review.json"
+        "evidence": "evidence/integration/pinned-linux-review/review.json",
+        "runtime_reviewer": "runtime_executable_subset",
+        "runtime_state": "cpu_ci_subgate_pass; supported_gpu_runtime_pending",
+        "runtime_evidence": "evidence/integration/hosted-cpu-closure/receipt.json"
       },
       "reproduction_scope": "The linked record specifies original-source/host controls and prepared runtime reproducers. A pointer is not evidence that an unavailable CUDA reproducer ran.",
       "pre_external_verdict_status": "awaiting_runtime",
@@ -876,7 +889,7 @@
       "runtime_acceptance": {
         "required_by_local_acceptance_plan": true,
         "state": "pending",
-        "note": "The external source verdict does not replace applicable build, GPU, distributed, sanitizer, or performance gates."
+        "note": "The Linux CPU full-directory CI sub-gate passes in run 33391774956. Overall runtime acceptance remains pending for explicit supported-GPU execution of CUDA protection and verification cases; separately tracked missing-production-protection and retired-route scope skips are not converted to passes."
       }
     },
     {
@@ -11379,7 +11392,7 @@
     }
   ],
   "wave_2_coverage_warning": "Still unreviewed after this pass: (1) chapter Python ch01-ch05, ch09, ch13-ch20 (~500 files: ch04/ch15/ch17 NCCL/NVSHMEM/disagg multigpu benchmarks, ch13/ch14 compile+FP8 pairs, ch16 quantization/serving/capacity_planner/dcgm_prometheus_exporter, ch18 flexattention/vllm files, ch19/ch20 capstones - only spot-checked); (2) chapter CUDA in ch02-ch05, ch09 (large CUTLASS/cuBLASLt fp4/fp8 set), ch12 graphs/dynamic-parallelism, ch16 nvtx_profiling.cu, ch19 optimized_fp4_hardware_kernel.cu; (3) labs: block_scaling, cutlass_profiler_kernel_selector, moe_decode_blackwell_matrix, nccl_nixl_nvshmem, nvfp4_dual_gemm (large candidate/sweep corpus), python_concurrency (7 tutorial MDs + scripts), real_world_models, recsys_sequence_ranking, tcgen05_cluster_shapes, training_hotpath, trtllm_phi_3_5_moe, uma_memory, vllm-deepseek-tuning, kv_optimization, dynamic_router (beyond vllm_runner), flashinfer_attention baseline, cudnn_sdpa_bench expectations; (4) infra: dashboard/api/server.py + dashboard/web (Next.js app), mcp/mcp_server.py (~10k lines, dozens of inline tool implementations), mcp/tool_generator.py, monitoring/cluster_monitor.py + diagnostics + grafana template, cluster/ (fabric, analysis, scripts, field reports), tools/ (compare_nsight, linting, nccl-tests), code/scripts/, hack/, templates/, examples/, configs/, eval_datasets/, book/ chapter text; (5) repo-level: meetups/, plans/, resources/, HANDOFF.md, code/BOOK-ERRATA.md, code/FULL_SWEEP.md, expectations_*.json baselines, third_party/vendor/upstream pins, and core/common CUDA headers (tma_helpers.cuh, cuda_verify.cuh, nvtx_utils.cuh) that every chapter includes. Areas I deep-read and found clean this pass (single-reviewer, not re-verified): software_pipelining, memory_bandwidth_patterns, top_k_kernel, speculative_decode, parameterized_cuda_graphs, occupancy_tuning, blackwell_gemm_optimizations kernels, ch01 GEMM trio, ch13 bandwidth extension, ch19 kv_prefetch pair.\n\nSuggested next pass: Prioritize next: mcp/mcp_server.py inline benchmark tools (bandwidth/TFLOPS math), ch04/ch15/ch17 multigpu Python (confirmed bug classes: wrong-stream events, comm-only measurement), ch09 CUTLASS fp4/fp8 .cu set, and the expectations_*.json baselines that gate CI.",
-  "updated_at": "2026-08-31T14:25:34.601944+00:00",
+  "updated_at": "2026-08-31T15:01:17Z",
   "working_branch": "main @ 3316e0efe985040745ffd926c5f76a6bd4436aff",
   "adjacent_discoveries": [
     {
@@ -11636,13 +11649,36 @@
       "id": "LOCAL-025",
       "title": "Clean full CPU CI omitted requests and Nanochat tokenizers collection dependencies",
       "owner": "audit_wave1_plan_a",
-      "status": "awaiting_runtime",
-      "scope": "Explicit requests2.34.2 and existing tokenizers0.22.2 added; genuine import-chain review and missing-dependency negative retained. Final CPU20pins resolve58 packages with exact CPU Torch/PyPI sources. Actual clean Linux collection/execution remains required.",
+      "status": "verified",
+      "scope": "Verified by existing hosted Benchmark Validation run 33391774956 at 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 / CPython 3.12.14 x64 explicitly installed requests 2.34.2 and tokenizers 0.22.2, collected the complete tests/ directory, and retained JUnit for 4,346 passed, 461 explicit skips, zero failures and zero errors. This satisfies the row's clean Linux installation, collection and execution contract; no suite was rerun during reconciliation.",
       "evidence": [
         "evidence/integration/pinned-linux-readiness/receipt.json",
         "evidence/integration/http-cpu-readiness/ci-dependency-review.json",
-        "evidence/integration/pinned-linux-integration/receipt.json"
-      ]
+        "evidence/integration/pinned-linux-integration/receipt.json",
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ],
+      "verification": {
+        "state": "verified",
+        "verified_at": "2026-08-31T15:01:17Z",
+        "source_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+        "run_id": 33391774956,
+        "job_id": 99486842896,
+        "environment": "GitHub-hosted Ubuntu 24.04 / CPython 3.12.14 x64",
+        "dependencies": {
+          "requests": "2.34.2",
+          "tokenizers": "0.22.2"
+        },
+        "result": {
+          "collected": 4807,
+          "passed": 4346,
+          "skipped": 461,
+          "failures": 0,
+          "errors": 0
+        },
+        "receipt": "evidence/integration/hosted-cpu-closure/receipt.json",
+        "boundary": "Linux CPU collection/execution only; no CUDA, GPU or performance claim."
+      },
+      "disposition_reason": "The only residual requirement was actual clean Linux collection/execution with requests and Nanochat tokenizers installed. Retained hosted run 33391774956 satisfies it exactly, so this adjacent discovery is verified."
     },
     {
       "id": "LOCAL-026",
@@ -19525,5 +19561,38 @@
       "runtime_qualification": "PENDING",
       "goal_complete": false
     }
-  ]
+  ],
+  "hosted_cpu_closure_checkpoint": {
+    "checkpoint_type": "RETAINED_HOSTED_CPU_CONTRACT_RECONCILIATION",
+    "status": "LOCAL_025_VERIFIED__W1_006_CPU_CI_SUBGATE_PASS__GPU_GATES_PENDING",
+    "at": "2026-08-31T15:01:17Z",
+    "reconciliation_base_revision": "0dd6cdee18e85cb8abd97f59c4e27f81002cc5fe",
+    "source_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+    "run_id": 33391774956,
+    "job_id": 99486842896,
+    "receipt": "evidence/integration/hosted-cpu-closure/receipt.json",
+    "verified_rows": [
+      "LOCAL-025"
+    ],
+    "advanced_subgates": [
+      "W1-006 Linux CPU full-directory CI wiring/execution"
+    ],
+    "adjacent_discovery_status_counts": {
+      "awaiting_runtime": 11,
+      "source_fixed": 40,
+      "verified": 1
+    },
+    "wave_1_status_counts": {
+      "already_fixed_with_evidence": 1,
+      "awaiting_runtime": 5,
+      "source_fixed": 122
+    },
+    "wave_2_status_counts": {
+      "already_fixed_with_evidence": 4,
+      "awaiting_runtime": 48,
+      "source_fixed": 89
+    },
+    "runtime_boundary": "W1-006 GPU runner sub-gate, all finding-specific GPU/hardware gates, and complete Linux/CUDA installation remain pending.",
+    "goal_complete": false
+  }
 }

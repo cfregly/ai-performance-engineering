@@ -1,0 +1,68 @@
+--- gh validate job log lines 10-19 ---
+10: validate	Set up job	2026-08-31T12:26:40.1835204Z ##[group]Operating System
+11: validate	Set up job	2026-08-31T12:26:40.1836238Z Ubuntu
+12: validate	Set up job	2026-08-31T12:26:40.1836873Z 24.04.4
+13: validate	Set up job	2026-08-31T12:26:40.1837473Z LTS
+14: validate	Set up job	2026-08-31T12:26:40.1838556Z ##[endgroup]
+15: validate	Set up job	2026-08-31T12:26:40.1839344Z ##[group]Runner Image
+16: validate	Set up job	2026-08-31T12:26:40.1839974Z Image: ubuntu-24.04
+17: validate	Set up job	2026-08-31T12:26:40.1840671Z Version: 20260823.283.1
+18: validate	Set up job	2026-08-31T12:26:40.1841824Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260823.283/images/ubuntu/Ubuntu2404-Readme.md
+19: validate	Set up job	2026-08-31T12:26:40.1843609Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260823.283
+--- gh validate job log lines 244-268 ---
+244: validate	Install CPU test dependencies	﻿2026-08-31T12:27:39.6351487Z ##[group]Run python -m pip install --upgrade pip
+245: validate	Install CPU test dependencies	2026-08-31T12:27:39.6352003Z ^[[36;1mpython -m pip install --upgrade pip^[[0m
+246: validate	Install CPU test dependencies	2026-08-31T12:27:39.6352335Z ^[[36;1mpython -m pip install \^[[0m
+247: validate	Install CPU test dependencies	2026-08-31T12:27:39.6352601Z ^[[36;1m  pytest==8.3.4 \^[[0m
+248: validate	Install CPU test dependencies	2026-08-31T12:27:39.6352865Z ^[[36;1m  pytest-cov==7.1.0 \^[[0m
+249: validate	Install CPU test dependencies	2026-08-31T12:27:39.6353120Z ^[[36;1m  coverage[toml]==7.15.2 \^[[0m
+250: validate	Install CPU test dependencies	2026-08-31T12:27:39.6353384Z ^[[36;1m  cmake==3.31.10 \^[[0m
+251: validate	Install CPU test dependencies	2026-08-31T12:27:39.6353619Z ^[[36;1m  pyyaml==6.0.2 \^[[0m
+252: validate	Install CPU test dependencies	2026-08-31T12:27:39.6353879Z ^[[36;1m  pydantic==2.12.4 \^[[0m
+253: validate	Install CPU test dependencies	2026-08-31T12:27:39.6354111Z ^[[36;1m  typer==0.15.4 \^[[0m
+254: validate	Install CPU test dependencies	2026-08-31T12:27:39.6354335Z ^[[36;1m  click==8.1.7 \^[[0m
+255: validate	Install CPU test dependencies	2026-08-31T12:27:39.6354556Z ^[[36;1m  rich==13.7.1 \^[[0m
+256: validate	Install CPU test dependencies	2026-08-31T12:27:39.6354777Z ^[[36;1m  psutil==7.1.0 \^[[0m
+257: validate	Install CPU test dependencies	2026-08-31T12:27:39.6354997Z ^[[36;1m  numpy==2.1.2 \^[[0m
+258: validate	Install CPU test dependencies	2026-08-31T12:27:39.6355216Z ^[[36;1m  fastapi==0.121.3 \^[[0m
+259: validate	Install CPU test dependencies	2026-08-31T12:27:39.6355444Z ^[[36;1m  uvicorn==0.38.0 \^[[0m
+260: validate	Install CPU test dependencies	2026-08-31T12:27:39.6355695Z ^[[36;1m  httpx==0.28.1 \^[[0m
+261: validate	Install CPU test dependencies	2026-08-31T12:27:39.6355956Z ^[[36;1m  requests==2.34.2 \^[[0m
+262: validate	Install CPU test dependencies	2026-08-31T12:27:39.6356204Z ^[[36;1m  prometheus-client==0.21.0 \^[[0m
+263: validate	Install CPU test dependencies	2026-08-31T12:27:39.6356477Z ^[[36;1m  tokenizers==0.22.2 \^[[0m
+264: validate	Install CPU test dependencies	2026-08-31T12:27:39.6356729Z ^[[36;1m  hypothesis==6.148.2 \^[[0m
+265: validate	Install CPU test dependencies	2026-08-31T12:27:39.6356977Z ^[[36;1m  anthropic==0.112.0 \^[[0m
+266: validate	Install CPU test dependencies	2026-08-31T12:27:39.6357211Z ^[[36;1m  openai==2.44.0 \^[[0m
+267: validate	Install CPU test dependencies	2026-08-31T12:27:39.6357436Z ^[[36;1m  triton==3.5.1^[[0m
+268: validate	Install CPU test dependencies	2026-08-31T12:27:39.6358200Z ^[[36;1mpython -m pip install torch==2.9.1 --index-url https://download.pytorch.org/whl/cpu^[[0m
+--- gh validate job log lines 271-276 ---
+271: validate	Install CPU test dependencies	2026-08-31T12:27:39.6404081Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.14/x64
+272: validate	Install CPU test dependencies	2026-08-31T12:27:39.6404554Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.14/x64/lib/pkgconfig
+273: validate	Install CPU test dependencies	2026-08-31T12:27:39.6405013Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.14/x64
+274: validate	Install CPU test dependencies	2026-08-31T12:27:39.6405406Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.14/x64
+275: validate	Install CPU test dependencies	2026-08-31T12:27:39.6405802Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.14/x64
+276: validate	Install CPU test dependencies	2026-08-31T12:27:39.6406187Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.14/x64/lib
+--- gh validate job log lines 307-312 ---
+307: validate	Install CPU test dependencies	2026-08-31T12:27:42.7806963Z Collecting requests==2.34.2
+308: validate	Install CPU test dependencies	2026-08-31T12:27:42.7819985Z   Using cached requests-2.34.2-py3-none-any.whl.metadata (4.8 kB)
+309: validate	Install CPU test dependencies	2026-08-31T12:27:42.8032329Z Collecting prometheus-client==0.21.0
+310: validate	Install CPU test dependencies	2026-08-31T12:27:42.8495506Z   Downloading prometheus_client-0.21.0-py3-none-any.whl.metadata (1.8 kB)
+311: validate	Install CPU test dependencies	2026-08-31T12:27:42.9814533Z Collecting tokenizers==0.22.2
+312: validate	Install CPU test dependencies	2026-08-31T12:27:42.9829650Z   Using cached tokenizers-0.22.2-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (7.3 kB)
+--- gh validate job log lines 421-423 ---
+421: validate	Install CPU test dependencies	2026-08-31T12:27:45.1716583Z Using cached requests-2.34.2-py3-none-any.whl (73 kB)
+422: validate	Install CPU test dependencies	2026-08-31T12:27:45.1756363Z Downloading prometheus_client-0.21.0-py3-none-any.whl (54 kB)
+423: validate	Install CPU test dependencies	2026-08-31T12:27:45.1882488Z Using cached tokenizers-0.22.2-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (3.3 MB)
+--- gh validate job log lines 458-460 ---
+458: validate	Install CPU test dependencies	2026-08-31T12:27:46.0285278Z Installing collected packages: sortedcontainers, urllib3, typing-extensions, triton, tqdm, sniffio, shellingham, pyyaml, pygments, psutil, prometheus-client, pluggy, packaging, numpy, mdurl, jiter, iniconfig, idna, hypothesis, hf-xet, h11, fsspec, filelock, docstring-parser, distro, coverage, cmake, click, charset_normalizer, certifi, annotated-types, annotated-doc, uvicorn, typing-inspection, requests, pytest, pydantic-core, markdown-it-py, httpcore, anyio, starlette, rich, pytest-cov, pydantic, httpx, typer, openai, fastapi, anthropic, huggingface-hub, tokenizers
+459: validate	Install CPU test dependencies	2026-08-31T12:27:56.6482360Z
+460: validate	Install CPU test dependencies	2026-08-31T12:27:56.6528339Z Successfully installed annotated-doc-0.0.5 annotated-types-0.8.0 anthropic-0.112.0 anyio-4.14.2 certifi-2026.7.22 charset_normalizer-3.5.1 click-8.1.7 cmake-3.31.10 coverage-7.15.2 distro-1.9.0 docstring-parser-0.18.0 fastapi-0.121.3 filelock-3.32.4 fsspec-2026.7.0 h11-0.16.0 hf-xet-1.6.0 httpcore-1.0.9 httpx-0.28.1 huggingface-hub-1.13.0 hypothesis-6.148.2 idna-3.19 iniconfig-2.3.0 jiter-0.16.0 markdown-it-py-4.2.0 mdurl-0.1.2 numpy-2.1.2 openai-2.44.0 packaging-26.3 pluggy-1.6.0 prometheus-client-0.21.0 psutil-7.1.0 pydantic-2.12.4 pydantic-core-2.41.5 pygments-2.21.0 pytest-8.3.4 pytest-cov-7.1.0 pyyaml-6.0.2 requests-2.34.2 rich-13.7.1 shellingham-1.5.4 sniffio-1.3.1 sortedcontainers-2.4.0 starlette-0.50.0 tokenizers-0.22.2 tqdm-4.70.0 triton-3.5.1 typer-0.15.4 typing-extensions-4.16.0 typing-inspection-0.4.4 urllib3-2.7.0 uvicorn-0.38.0
+--- gh validate job log lines 548-549 ---
+548: validate	Run full CPU test suite	﻿2026-08-31T12:29:27.5889772Z ##[group]Run python -m pytest tests -q -ra -o timeout=120 --junitxml=artifacts/pytest-cpu.xml
+549: validate	Run full CPU test suite	2026-08-31T12:29:27.5890471Z ^[[36;1mpython -m pytest tests -q -ra -o timeout=120 --junitxml=artifacts/pytest-cpu.xml^[[0m
+--- gh validate job log lines 1073-1077 ---
+1073: validate	Run full CPU test suite	2026-08-31T12:43:02.6385089Z 4346 passed, 461 skipped, 40 warnings in 813.24s (0:13:33)
+1074: validate	Upload CPU test evidence	﻿2026-08-31T12:43:04.4964713Z ##[group]Run actions/upload-artifact@v7
+1075: validate	Upload CPU test evidence	2026-08-31T12:43:04.4965034Z with:
+1076: validate	Upload CPU test evidence	2026-08-31T12:43:04.4965246Z   name: pytest-cpu-33391774956-1
+1077: validate	Upload CPU test evidence	2026-08-31T12:43:04.4965522Z   path: code/artifacts/pytest-cpu.xml

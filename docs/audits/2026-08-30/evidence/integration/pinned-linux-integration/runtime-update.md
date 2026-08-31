@@ -9,7 +9,16 @@ profiler capture, numerical acceptance, or performance.
 
 1. **Retain the completed CPU provenance cell and finish target installation
    provenance.** Final-source Benchmark Validation run `33391774956` completed
-   on hosted Linux with **4,346 passed, 461 capability skips, and zero failures**.
+   on hosted Linux with **4,346 passed, 461 explicit skips, and zero failures**.
+   Its retained [hosted CPU closure receipt](../hosted-cpu-closure/receipt.json)
+   confirms that the job explicitly installed `requests==2.34.2` and
+   `tokenizers==0.22.2`, collected the complete `tests/` tree, and uploaded the
+   reconciled JUnit artifact. This verifies LOCAL-025 and closes W1-006's Linux
+   CPU full-directory CI sub-gate without a rerun. W1-006 remains pending for
+   explicit supported-GPU execution of its CUDA protection cases. The 461 skips
+   are heterogeneous and include 62 known missing-protection,
+   protection-summary, or absent-route scope skips; none is converted to passing
+   protection coverage.
    The later focused [Linux CPU provenance receipt](../linux-cpu-provenance/README.md)
    records a clean CPython 3.12 x86_64 installation of the reviewed 20-direct-pin,
    56-distribution lock at `cf801679b`: every selected origin and SHA-256 is

@@ -23,10 +23,14 @@ qualification, performance acceptance, or completion.
   `already_fixed_with_evidence`, zero `untriaged`**. Package W2P08 is
   source-complete; W2P01 through W2P07 retain one or more finding-specific
   runtime gates.
-- Adjacent discoveries: **52 total**. LOCAL-043 through LOCAL-047 record the
+- Adjacent discoveries: **52 total: 40 `source_fixed`, 11 `awaiting_runtime`,
+  and 1 `verified`**. LOCAL-043 through LOCAL-047 record the
   earlier post-landing CI repairs. LOCAL-048 through LOCAL-052 record the final
   router-fixture, generated-MCP-doc, occupancy-entrypoint, README-generator, and
   CPU-CI Prometheus dependency gaps; all five are source-fixed at `3316e0efe`.
+  LOCAL-025 is the verified row: retained hosted run `33391774956` installed
+  `requests==2.34.2` and `tokenizers==0.22.2`, then collected and executed the
+  complete test tree on clean Linux.
 - Frozen combined verification: **185 passed, 1 CUDA-only skip in 8.12s**. After
   Ruff normalized six test files, their bounded replay passed **53 tests in
   6.47s**. The five hosted-CI failures then pass a 32-test focused replay. The
@@ -40,8 +44,13 @@ qualification, performance acceptance, or completion.
   or warnings; dashboard Jest and TypeScript checks pass.
 - Per the user-directed policy in `code/AGENTS.md`, the full CPU suite was not
   rerun locally. The required hosted workflow ran it once on the final source:
-  **4,346 passed, 461 capability skips, zero failures**. Focused local results
-  are not presented as that full-suite pass.
+  **4,346 passed, 461 explicit skips, zero failures**. Focused local results
+  are not presented as that full-suite pass. Reconciliation of the retained
+  artifact now closes LOCAL-025 and W1-006's Linux CPU full-directory CI
+  sub-gate without another run. W1-006 remains pending for supported-GPU
+  execution of its CUDA protection cases. The heterogeneous skip set includes
+  62 known missing-protection, protection-summary, or absent-route scope skips;
+  none is counted as passing protection coverage.
 - Hosted Benchmark Validation run `33391774956` and Dual-Architecture Compare run
   `33391774950` both succeed at the final published source revision. The latter
   compiles all 14 configured chapters for `sm_100`, `sm_103`, `sm_120`, and
@@ -118,6 +127,7 @@ zero findings.
 - [ZeRO supplement](evidence/integration/zero2-child-protocol/supplement-receipt.json)
 - [Dependency review](evidence/integration/full-dependency-review/receipt.json)
 - [Hosted Linux CPU provenance](evidence/integration/linux-cpu-provenance/README.md)
+- [Retained hosted CPU closure](evidence/integration/hosted-cpu-closure/README.md)
 - [Remaining runtime acceptance](evidence/integration/pinned-linux-integration/runtime-update.md)
 - [Historical pre-delivery artifact check](evidence/intake/second-wave-check-20260831T031140Z.json)
 - [Interim landing receipt](evidence/integration/landing/receipt.json)

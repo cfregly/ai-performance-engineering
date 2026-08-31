@@ -32,7 +32,7 @@ its success criteria concrete; it does not create a second goal or token budget.
 | Additional source record | One separately refuted pytest-timeout claim, outside the 128 |
 | Second wave | User-supplied full report captured at `cf48c8481`: 141 open findings (3 critical, 31 high, 62 medium, 45 low) across 110 files |
 | First-wave external re-review | 120 fixed, 5 need runtime, 2 partial, 1 obsolete; this read-only source verdict does not replace the 76 applicable local runtime acceptance gates |
-| Implementation status | First-wave candidate `f49aae73f629f4d90b60d1c6a5b890780e7ef758`, both Wave 2 source batches, and the focused hosted-CI repair through `3316e0efe985040745ffd926c5f76a6bd4436aff` are published on `main`; all 141 Wave 2 rows are triaged as 89 source-fixed, 4 already fixed with evidence, and 48 awaiting runtime. Focused hosted Linux CPU provenance passes at `cf801679b0df897e0b558d668ee42d5ac789d633` for the reviewed 20-direct-pin/56-distribution cell; the full target Linux/CUDA graph, GPU qualification, deployment, and any new speedup claim remain open. |
+| Implementation status | First-wave candidate `f49aae73f629f4d90b60d1c6a5b890780e7ef758`, both Wave 2 source batches, and the focused hosted-CI repair through `3316e0efe985040745ffd926c5f76a6bd4436aff` are published on `main`; all 141 Wave 2 rows are triaged as 89 source-fixed, 4 already fixed with evidence, and 48 awaiting runtime. Existing hosted run `33391774956` now verifies LOCAL-025 and closes W1-006's Linux CPU full-directory CI sub-gate without a rerun. Focused hosted Linux CPU provenance passes at `cf801679b0df897e0b558d668ee42d5ac789d633` for the reviewed 20-direct-pin/56-distribution cell; the full target Linux/CUDA graph, W1-006's supported-GPU sub-gate, GPU qualification, deployment, and any new speedup claim remain open. |
 
 ### Interim main landing checkpoint
 
@@ -357,12 +357,23 @@ Every row now has a disposition: **89 `source_fixed`, 4
 `already_fixed_with_evidence`, and 48 `awaiting_runtime`**. Each batch uses the
 smallest sufficient focused tests; the full CPU pass is not repeatedly rerun.
 
+The retained final-source hosted CPU run has also been reconciled against the
+remaining first-wave and adjacent contracts. Run `33391774956` explicitly
+installed `requests==2.34.2` and `tokenizers==0.22.2` on GitHub-hosted Ubuntu,
+ran the complete `tests/` tree, and retained JUnit for **4,346 passed, 461
+explicit skips, zero failures, and zero errors**. That existing evidence fully
+verifies LOCAL-025 and closes W1-006's Linux CPU full-directory CI sub-gate; it
+does not execute W1-006's supported-GPU protection cases. No suite was rerun for
+this reconciliation. The heterogeneous skip set also retains 62 known
+missing-protection, protection-summary, or absent-route scope skips; none is
+converted to passing coverage. [Receipt](docs/audits/2026-08-30/evidence/integration/hosted-cpu-closure/receipt.json).
+
 ### Wave 2 complete source reconciliation
 
 - The frozen combined pass reports **185 passed and 1 CUDA-only skip**; the six
   Ruff-normalized test files then report **53 passed** in a bounded replay.
 - The final hosted Benchmark Validation workflow reports **4,346 passed, 461
-  capability skips, and zero failures** in its required CPU job; its 736-test
+  explicit skips, and zero failures** in its required CPU job; its 736-test
   core contract selection, dashboard, static analysis, shell, silent-fallback,
   and 932-file benchmark-contract gates also pass.
 - The final hosted CUDA 13.0 compare workflow succeeds for all 14 configured
@@ -420,7 +431,8 @@ complete-source reconciliation above supersedes its source counts.
   `awaiting_runtime`, and 1 `already_fixed_with_evidence`**. The separate local
   acceptance contract still marks 76 first-wave rows as requiring runtime
   evidence. Adjacent discoveries now cover LOCAL-001 through LOCAL-052: **40
-  `source_fixed` and 12 `awaiting_runtime`**.
+  `source_fixed`, 11 `awaiting_runtime`, and 1 `verified`**. The verified row is
+  LOCAL-025; W1-006 remains source-fixed pending its supported-GPU sub-gate.
 - The final tensor-parallel repair passes **18 focused tests** plus **2 related
   hygiene tests**. It initializes invalid KV padding, applies cache-offset causal
   semantics, validates and honors heterogeneous/zero input lengths, grows cached

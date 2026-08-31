@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-08-31T15:01:17Z",
+  "disposition": "pass_existing_hosted_cpu_contract_reconciliation",
+  "reconciliation_base_revision": "0dd6cdee18e85cb8abd97f59c4e27f81002cc5fe",
+  "source_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+  "workflow": {
+    "name": "Benchmark Validation",
+    "run_id": 33391774956,
+    "job_id": 99486842896,
+    "run_url": "https://github.com/cfregly/ai-performance-engineering/actions/runs/33391774956",
+    "event": "push",
+    "conclusion": "success",
+    "started_at": "2026-08-31T12:26:35Z",
+    "completed_at": "2026-08-31T12:43:32Z"
+  },
+  "environment": {
+    "runner": "GitHub-hosted",
+    "os": "Ubuntu 24.04.4 LTS",
+    "runner_image": "ubuntu-24.04",
+    "runner_image_version": "20260823.283.1",
+    "python": "CPython 3.12.14 x64",
+    "python_location": "/opt/hostedtoolcache/Python/3.12.14/x64",
+    "gpu": false
+  },
+  "dependency_contract": {
+    "requests": "2.34.2",
+    "tokenizers": "0.22.2",
+    "installation": "success",
+    "evidence": "validate-log-extract.txt"
+  },
+  "test_contract": {
+    "command": "python -m pytest tests -q -ra -o timeout=120 --junitxml=artifacts/pytest-cpu.xml",
+    "tests": 4807,
+    "passed": 4346,
+    "skipped": 461,
+    "failures": 0,
+    "errors": 0,
+    "nanochat_tests": 49,
+    "nanochat_passed": 41,
+    "nanochat_skipped": 8,
+    "skip_disposition_summary": {
+      "missing_production_protection": 57,
+      "missing_protection": 3,
+      "protection_coverage_summary": 1,
+      "absent_legacy_dashboard_route": 1,
+      "other_explicit_skips": 399
+    },
+    "junit_artifact_uploaded": true
+  },
+  "artifact": {
+    "id": 9758250886,
+    "name": "pytest-cpu-33391774956-1",
+    "compressed_size_bytes": 96586,
+    "digest": "sha256:7a73b4ed76ffb9b8d1f75e1456ba740c6dbabf346fc8ac85ae7a86e5b9effc0f",
+    "digest_verified_after_download": true,
+    "expires_at": "2026-11-29T12:26:35Z",
+    "retained_archive": "vendor/run-33391774956/pytest-cpu-33391774956-1.zip",
+    "retained_junit": "vendor/run-33391774956/pytest-cpu.xml",
+    "retained_junit_sha256": "28e9a877d0e90d45712c7020db54b7ef6390f871308539ad5867434c4acbceba"
+  },
+  "closure": {
+    "verified_rows": [
+      "LOCAL-025"
+    ],
+    "advanced_subgates": [
+      {
+        "finding_id": "W1-006",
+        "closed": "GitHub-hosted Linux CPU full-directory CI wiring and execution",
+        "remaining": "Supported GPU runner execution of CUDA protection and verification cases; separately tracked missing-production-protection and retired-route scope skips are not converted to passes",
+        "overall_runtime_acceptance": "pending"
+      }
+    ]
+  },
+  "independent_review": {
+    "reviewer": "runtime_executable_subset",
+    "state": "pass",
+    "conclusion": "LOCAL-025 is fully closed by the retained run; W1-006 CPU/CI subgate passes and its GPU subgate remains pending.",
+    "package_reviewer": "hosted_cpu_package_review",
+    "package_state": "pass_after_skip_label_correction",
+    "package_conclusion": "Run metadata, workflow source, log extract, artifact, hashes, JUnit counts, links and historical checkpoint boundaries reconcile. The 461 heterogeneous skips must not be uniformly labeled capability skips."
+  },
+  "boundaries": [
+    "This reconciliation reuses an already completed hosted run; no test suite was rerun.",
+    "The run is Linux CPU evidence only and does not execute or qualify CUDA, GPU, NCCL, profiler, sanitizer, or performance paths.",
+    "W1-006 remains runtime-pending for its explicit supported-GPU runner subgate.",
+    "The 461 skips are heterogeneous and include separately tracked missing-production-protection and absent-route scope; they are not uniformly capability skips or passing coverage.",
+    "Hash-bound package provenance and complete supported Linux/CUDA installation are separate W1-005 and dependency-graph contracts."
+  ],
+  "evidence_files": {
+    "run.json": "33326b2c63c1337a5f96295a7133e5fbab23cfe1abc46c37ec63d71492d81eca",
+    "artifacts.json": "3cf3890e6d6fb9f7b5374e475f87bc2a197d67b32871c79843738b6622619390",
+    "validate-log-extract.txt": "a610a253fefd8902331a7067457cf2bdaa149427733928f3cfd4652fe62c471e",
+    "junit-summary.json": "5a720aefcef36a18da0b954aecf1f42c345d10e8a8238181148d0ff25487596a",
+    "vendor/run-33391774956/workflow-source.yml": "22e7c90e300476ad97e27a62a3317ab6b3b87281f3d7559977b4f16cd73d8075",
+    "vendor/run-33391774956/pytest-cpu-33391774956-1.zip": "7a73b4ed76ffb9b8d1f75e1456ba740c6dbabf346fc8ac85ae7a86e5b9effc0f",
+    "vendor/run-33391774956/pytest-cpu.xml": "28e9a877d0e90d45712c7020db54b7ef6390f871308539ad5867434c4acbceba"
+  }
+}

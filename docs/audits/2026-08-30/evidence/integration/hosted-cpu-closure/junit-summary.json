@@ -1,0 +1,321 @@
+{
+  "schema_version": 1,
+  "source": "vendor/run-33391774956/pytest-cpu.xml",
+  "suite": {
+    "tests": 4807,
+    "skipped": 461,
+    "failures": 0,
+    "errors": 0,
+    "passed": 4346,
+    "time_seconds": 813.108,
+    "timestamp": "2026-08-31T12:29:29.366032+00:00",
+    "hostname": "runnervmgx7h7"
+  },
+  "nanochat_subset": {
+    "tests": 49,
+    "passed": 41,
+    "skipped": 8,
+    "failures": 0,
+    "errors": 0
+  },
+  "dependency_named_subset": {
+    "tests": 7,
+    "passed": 7,
+    "skipped": 0,
+    "failures": 0,
+    "errors": 0
+  },
+  "skip_disposition_summary": {
+    "total": 461,
+    "missing_production_protection": 57,
+    "missing_protection": 3,
+    "protection_coverage_summary": 1,
+    "absent_legacy_dashboard_route": 1,
+    "other_explicit_skips": 399,
+    "note": "Skip reasons are heterogeneous; the total is not uniformly capability-based and skips are not passing protection coverage."
+  },
+  "nanochat_testcases": [
+    {
+      "state": "passed",
+      "classname": "tests.test_audit_wave1_nanochat_regressions",
+      "name": "test_device_position_cache_matches_eager_and_full_sequence_each_step[1-1]"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_audit_wave1_nanochat_regressions",
+      "name": "test_device_position_cache_matches_eager_and_full_sequence_each_step[2-3]"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_audit_wave1_nanochat_regressions",
+      "name": "test_device_position_cache_matches_eager_and_full_sequence_each_step[3-5]"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_audit_wave1_nanochat_regressions",
+      "name": "test_graph_cache_reset_clears_mode_and_invalidates_capture_generation"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_audit_wave1_nanochat_regressions",
+      "name": "test_prefill_copies_valid_prefix_from_rounded_storage"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_audit_wave1_nanochat_regressions",
+      "name": "test_requested_cuda_graph_does_not_silently_run_eager_on_cpu"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_audit_wave1_nanochat_regressions",
+      "name": "test_requested_side_stream_does_not_silently_run_eager_on_cpu"
+    },
+    {
+      "state": "skipped",
+      "classname": "tests.test_audit_wave1_nanochat_regressions",
+      "name": "test_real_cuda_replay_matches_eager_per_step_and_recaptures_new_cache[dtype0-1-1]"
+    },
+    {
+      "state": "skipped",
+      "classname": "tests.test_audit_wave1_nanochat_regressions",
+      "name": "test_real_cuda_replay_matches_eager_per_step_and_recaptures_new_cache[dtype0-2-3]"
+    },
+    {
+      "state": "skipped",
+      "classname": "tests.test_audit_wave1_nanochat_regressions",
+      "name": "test_real_cuda_replay_matches_eager_per_step_and_recaptures_new_cache[dtype0-3-5]"
+    },
+    {
+      "state": "skipped",
+      "classname": "tests.test_audit_wave1_nanochat_regressions",
+      "name": "test_real_cuda_replay_matches_eager_per_step_and_recaptures_new_cache[dtype1-1-1]"
+    },
+    {
+      "state": "skipped",
+      "classname": "tests.test_audit_wave1_nanochat_regressions",
+      "name": "test_real_cuda_replay_matches_eager_per_step_and_recaptures_new_cache[dtype1-2-3]"
+    },
+    {
+      "state": "skipped",
+      "classname": "tests.test_audit_wave1_nanochat_regressions",
+      "name": "test_real_cuda_replay_matches_eager_per_step_and_recaptures_new_cache[dtype1-3-5]"
+    },
+    {
+      "state": "skipped",
+      "classname": "tests.test_audit_wave1_nanochat_regressions",
+      "name": "test_real_side_stream_decode_and_host_sampling_match_eager"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_audit_wave1_nanochat_regressions",
+      "name": "test_graph_rejects_masks_and_capacity_exhaustion_before_capture"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_audit_wave1_nanochat_regressions",
+      "name": "test_real_cpu_benchmark_uses_engine_and_reports_execution"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_audit_wave1_nanochat_regressions",
+      "name": "test_cpu_benchmark_rejects_unavailable_cuda_rows[enable_persistent_decode]"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_audit_wave1_nanochat_regressions",
+      "name": "test_cpu_benchmark_rejects_unavailable_cuda_rows[use_cuda_graphs]"
+    },
+    {
+      "state": "skipped",
+      "classname": "tests.test_audit_wave1_nanochat_regressions",
+      "name": "test_cuda_wall_timer_includes_unjoined_side_stream_work"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_checkpoint_manager_uses_max_for_single_item_selection"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_kv_cache_growth_avoids_cat_with_uninitialized_tail"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_incremental_benchmark_uses_cuda_event_timing"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_b200_flag_benchmark_uses_cuda_event_timing"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_gpt_generate_preallocates_token_buffer"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_attention_reuses_non_flash_sdpa_backend_order"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_optimized_inference_reuses_decode_step_views"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_baseline_inference_reuses_decode_step_views"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_prefix_causal_mask_avoids_zero_fill_and_tril_allocations"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_padded_kv_rotary_bounds_avoid_device_scalar_read"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_loss_eval_batches_reduced_totals"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_loss_eval_branchless_ignore_index_semantics"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_dist_muon_reuses_padding_buffers"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_dist_adamw_reuses_update_buffers"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_clustered_attention_fallback_uses_native_sdpa_gqa"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_core_eval_batches_option_loss_reads"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_core_eval_forward_model_scores_next_tokens_only"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_core_eval_reuses_prompt_templates"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_report_counts_packaged_source_without_line_lists"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_base_train_defers_grad_norm_sync_until_logging"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_chat_sft_batches_training_log_syncs"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_mid_train_reuses_last_step_reduce_scalar"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_tok_train_batches_token_byte_stat_syncs"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_chat_eval_batches_count_reductions"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_chat_eval_batches_categorical_predictions"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_chat_rl_batches_eval_and_rollout_syncs"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_tokenizer_prepends_without_front_inserts"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_spellingbee_formats_words_without_temporary_lists"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_dataset_download_counts_streamed_pool_results"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_benchmark_hygiene_regressions",
+      "name": "test_nanochat_calculator_uses_lazy_character_guards"
+    }
+  ],
+  "dependency_named_testcases": [
+    {
+      "state": "passed",
+      "classname": "tests.test_audit_wave1_blackwell_validation",
+      "name": "test_missing_declared_triton_dependency_fails_on_supported_path"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_audit_wave1_peak_metrics",
+      "name": "test_peak_import_does_not_require_execution_dependency_on_cpu"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_optimization_opportunities",
+      "name": "test_novelty_validation_plan_builds_dependency_ordered_jobs"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_optimization_opportunities",
+      "name": "test_generated_shell_reruns_invalid_done_and_blocks_dependency"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_perf_core_runtime_warnings",
+      "name": "test_get_dependency_health_surfaces_parse_and_symlink_warnings"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_validate_imports",
+      "name": "test_real_import_failures_are_reported_and_never_count_as_pass[import deliberately_absent_validation_dependency\\n-ModuleNotFoundError]"
+    },
+    {
+      "state": "passed",
+      "classname": "tests.test_wave2_low_late_regressions",
+      "name": "test_w2_136_flash_attention_anti_dependency_matches_ring_depth"
+    }
+  ]
+}
