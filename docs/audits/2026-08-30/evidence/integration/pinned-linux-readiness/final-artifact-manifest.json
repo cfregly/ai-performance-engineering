@@ -353,12 +353,12 @@
       "bytes": 5307
     },
     {
-      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-public-requirements-attempt-1/stderr.txt",
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-public-requirements-attempt-1/stderr.log",
       "sha256": "bbc543ded015f702433a80fd2137a0e857c4a3d701bba72b916e1a5df681c25d",
       "bytes": 191120
     },
     {
-      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-public-requirements-attempt-1/stdout.txt",
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-public-requirements-attempt-1/stdout.log",
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "bytes": 0
     },
@@ -373,12 +373,12 @@
       "bytes": 5246
     },
     {
-      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-requirements-attempt-1/stderr.txt",
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-requirements-attempt-1/stderr.log",
       "sha256": "571e48060d5998dbc3bcaf411fe7cdcd1a82b14b149bda58239381af0d4def43",
       "bytes": 130
     },
     {
-      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-requirements-attempt-1/stdout.txt",
+      "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-readiness/linux-full-requirements-attempt-1/stdout.log",
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "bytes": 0
     },

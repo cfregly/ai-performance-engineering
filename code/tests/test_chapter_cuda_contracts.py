@@ -93,6 +93,13 @@ def test_stream_timing_joins_all_workers():
         assert "cudaEventRecord(start, timing_stream)" in text
 
 
+def test_stream_ordered_enhanced_demo_uses_reentrant_helper():
+    enhanced_demo = source("ch11/streams_ordered_demo.cu").split("int main_enhanced()", 1)[1]
+    compact = "".join(enhanced_demo.split())
+    assert "main();" not in compact
+    assert "if(run_stream_ordered_demo(N,kPipelines)!=0)return1;" in compact
+
+
 def test_ilp_reference_checks_all_eight_lanes_and_every_output():
     text = source("ch06/optimized_ilp_low_occupancy_vec4_impl.cuh")
     assert "i < N && i < 1000" not in text

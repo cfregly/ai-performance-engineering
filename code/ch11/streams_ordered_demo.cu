@@ -406,7 +406,7 @@ int main_enhanced() {
     
     // Run original example
     printf("\n=== Original Example ===\n");
-    main();
+    if (run_stream_ordered_demo(N, kPipelines) != 0) return 1;
     
     // Benchmark allocation methods
     benchmark_allocation_methods(100, 1024 * 1024);  // 100 x 1MB

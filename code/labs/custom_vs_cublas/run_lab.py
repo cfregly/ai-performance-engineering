@@ -164,7 +164,9 @@ def stage7_4stage_deep(A, B_T):
 def stage8_no_wait(A, B_T):
     """Stage 8: Overlapped MMA with an empty barrier wait before every shared-memory stage reuse.
 
-    The legacy no_wait name does not permit overwriting data still read by MMA."""
+    The legacy no_wait name does not permit overwriting data still read by MMA.
+    This describes the synchronization pattern only; any speedup requires a
+    verified measurement against the selected baseline on the target workload."""
     from labs.custom_vs_cublas.tcgen05_loader import matmul_tcgen05_no_wait
     return matmul_tcgen05_no_wait(A, B_T)
 

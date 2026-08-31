@@ -239,13 +239,13 @@ def test_pack_topk_routes_reuses_start_offsets_without_cat() -> None:
     torch.testing.assert_close(packed.combine_index[:, 0].cpu(), packed.token_indices.cpu())
 
 
-def test_grouped_ffn_cuda_does_not_clear_discarded_padding_rows() -> None:
+def test_grouped_ffn_cuda_clears_poisoned_reusable_padding_rows() -> None:
     source = inspect.getsource(moe_common.grouped_ffn_cuda)
     assert "padded_tokens = torch.empty(" in source
     assert "or not padded_tokens.is_contiguous()" in source
     assert "or padded_tokens.numel() < padded_numel" in source
     assert "padded_tokens = padded_tokens.view(-1)[:padded_numel].view(flat_slots, hidden_dim)" in source
-    assert "padded_tokens.zero_()" not in source
+    assert "padded_tokens.zero_()" in source
     assert "torch.zeros(flat_slots" not in source
 
     torch.manual_seed(0)
@@ -293,6 +293,29 @@ def test_grouped_ffn_cuda_does_not_clear_discarded_padding_rows() -> None:
     torch.testing.assert_close(actual, expected)
     assert not torch.isnan(actual_oversized).any()
     torch.testing.assert_close(actual_oversized, expected)
+
+    active_slots = 3 * packed.max_count
+    padding_mask = torch.ones(active_slots, dtype=torch.bool)
+    padding_mask[packed.padded_indices.cpu()] = False
+    for reusable_buffer in (padded, oversized_padded):
+        active_view = reusable_buffer.view(-1)[: active_slots * x.shape[1]].view(
+            active_slots, x.shape[1]
+        )
+        torch.testing.assert_close(
+            active_view[padding_mask], torch.zeros_like(active_view[padding_mask])
+        )
+
+        reusable_buffer.fill_(float("nan"))
+        repeated = moe_common.grouped_ffn_cuda(
+            packed.packed_tokens,
+            packed,
+            gate_proj,
+            up_proj,
+            down_proj,
+            padded_tokens_buffer=reusable_buffer,
+        )
+        assert not torch.isnan(repeated).any()
+        torch.testing.assert_close(repeated, expected)
 
 
 def test_moe_cuda_ptx_swiglu_paths_use_grad_safe_inplace_helper() -> None:

@@ -7,6 +7,7 @@ profiling workflow tests.
 
 from __future__ import annotations
 
+import inspect
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -14,7 +15,7 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
-from cli.aisp import app
+from cli.aisp import app, profile_app
 
 
 class DummyNsightAutomation:
@@ -70,11 +71,19 @@ def test_cli_profile_ncu_help() -> None:
     result = runner.invoke(app, ["profile", "ncu", "--help"])
 
     assert result.exit_code == 0, result.stdout
-    help_text = result.stdout.lower()
-    assert "--launch-skip" in help_text
-    assert "--launch-count" in help_text
-    assert "--metric-set" in help_text
-    assert "--replay-mode" in help_text
+    profile_commands = {command.name: command for command in profile_app.registered_commands}
+    signature = inspect.signature(profile_commands["ncu"].callback)
+    option_declarations = {
+        declaration
+        for parameter in signature.parameters.values()
+        for declaration in (getattr(parameter.default, "param_decls", None) or ())
+    }
+    assert {
+        "--launch-skip",
+        "--launch-count",
+        "--metric-set",
+        "--replay-mode",
+    } <= option_declarations
 
 
 def test_cli_profile_ncu_minimal_metric_set(fake_binary: Path, tmp_path: Path) -> None:

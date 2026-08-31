@@ -188,7 +188,7 @@ Always colocate multi-GPU jobs within an NVLink Switch domain if possible. Keepi
 
 ## Leverage unprecedented bandwidth
 
-NVLink 5 provides up to 900 GB/s per GPU per direction (1.8 TB/s bidirectional). NVIDIA lists approximately 130 TB/s NVLink bandwidth for a GB200 NVL72 rack: this is the aggregate bidirectional endpoint total (72 × 1.8 = 129.6 TB/s), not a measured bisection rate or an individual pair's bandwidth. Collective algorithm traffic, contention and protocol overhead still determine application latency. Measure the actual collective and message sizes before inferring synchronization cost. [NVIDIA GB200 NVL72 specifications](https://www.nvidia.com/en-us/data-center/gb200-nvl72/)
+NVLink 5 provides up to 900 GB/s per GPU per direction (1.8 TB/s bidirectional). NVIDIA specifies approximately 130 TB/s of aggregate NVLink bandwidth for the GB200 NVL72 system. This is NVIDIA's rack-wide aggregate figure; the cited specification does not identify it as bisection bandwidth, so do not use it as a bisection rate or as bandwidth available to one GPU pair. Collective algorithm traffic, contention, and protocol overhead still determine application latency. Measure the actual collective and message sizes before inferring synchronization cost. [NVIDIA NVLink specifications](https://www.nvidia.com/en-us/data-center/nvlink/)
 
 ## Embrace modern collective algorithms
 

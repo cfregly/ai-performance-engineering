@@ -24,10 +24,19 @@ def test_arithmetic_intensity_uses_actual_dimensions_and_storage(m,n,k,out_bytes
 
 def test_cluster_and_overlap_labels_do_not_claim_unimplemented_features():
     module = load_lab()
+    loader_source = (CODE / "labs/custom_vs_cublas/tcgen05_loader.py").read_text()
     assert "does not multicast" in module.stage6_cluster.__doc__
     assert "does not multicast" in module.stage11_cluster.__doc__
     assert "empty barrier" in module.stage8_no_wait.__doc__
-    assert "MMA hardware handles dependencies internally" not in module.stage8_no_wait.__doc__
+    assert "any speedup requires a" in module.stage8_no_wait.__doc__
+    for unsupported_claim in (
+        "MMA hardware handles dependencies internally",
+        "+43% performance improvement",
+        "KEY BREAKTHROUGH",
+    ):
+        assert unsupported_claim not in loader_source
+    assert "producer waits on the empty barrier" in loader_source
+    assert "Any performance difference must be measured" in loader_source
 
 
 @pytest.mark.parametrize("name", ["test_tma.cu", "test_all_features.cu"])
@@ -53,6 +62,16 @@ def test_fused_epilogue_fetches_bias_using_output_partition():
     assert "make_stride(Int<0>{}, Int<1>{})" in source
     assert "partition_D(tCgBias)" in source
     assert "static_cast<float>(tDrBias(i))" in source
+
+
+def test_cutlass_gemm_column_major_b_stride_uses_tensor_shape_order():
+    source = (
+        CODE / "labs/custom_vs_cublas/cutlass_gemm/cutlass_gemm.cu"
+    ).read_text()
+    # CUTLASS takes the logical B tensor shape as (N,K,L); StrideB carries the
+    # ColumnMajor layout. Swapping N and K only works accidentally when N == K.
+    assert "make_cute_packed_stride(StrideB{}, {n, k, 1})" in source
+    assert "make_cute_packed_stride(StrideB{}, {k, n, 1})" not in source
 
 
 def test_retired_nonexistent_multicast_api_is_an_explicit_failure_stub():

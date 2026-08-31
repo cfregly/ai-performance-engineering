@@ -16,6 +16,7 @@ struct GraphCache {
     int device = -1;
     int64_t num_elements = -1;
     int iterations = -1;
+    float* data_ptr = nullptr;
 
     void reset() {
         if (exec != nullptr) {
@@ -28,6 +29,8 @@ struct GraphCache {
         }
         device = -1;
         num_elements = -1;
+        iterations = -1;
+        data_ptr = nullptr;
     }
 };
 
@@ -95,11 +98,13 @@ void graph_replay(torch::Tensor data, int iterations) {
     int n = data.size(0);
     int threads_per_block = 256;
     int num_blocks = (n + threads_per_block - 1) / threads_per_block;
+    float* const data_ptr = data.data_ptr<float>();
 
     bool needs_capture = (g_graph_cache.exec == nullptr) ||
                          (g_graph_cache.device != device_id) ||
                          (g_graph_cache.num_elements != n) ||
-                         (g_graph_cache.iterations != iterations);
+                         (g_graph_cache.iterations != iterations) ||
+                         (g_graph_cache.data_ptr != data_ptr);
 
     if (needs_capture) {
         // Reset any previous cached graph/stream
@@ -111,9 +116,9 @@ void graph_replay(torch::Tensor data, int iterations) {
         try {
             CHECK_CUDA(cudaStreamBeginCapture(g_graph_cache.stream, cudaStreamCaptureModeGlobal));
             for (int i = 0; i < iterations; ++i) {
-                kernel_a_kernel<<<num_blocks, threads_per_block, 0, g_graph_cache.stream>>>(data.data_ptr<float>(), n);
-                kernel_b_kernel<<<num_blocks, threads_per_block, 0, g_graph_cache.stream>>>(data.data_ptr<float>(), n);
-                kernel_c_kernel<<<num_blocks, threads_per_block, 0, g_graph_cache.stream>>>(data.data_ptr<float>(), n);
+                kernel_a_kernel<<<num_blocks, threads_per_block, 0, g_graph_cache.stream>>>(data_ptr, n);
+                kernel_b_kernel<<<num_blocks, threads_per_block, 0, g_graph_cache.stream>>>(data_ptr, n);
+                kernel_c_kernel<<<num_blocks, threads_per_block, 0, g_graph_cache.stream>>>(data_ptr, n);
             }
             CHECK_CUDA(cudaGetLastError());
             CHECK_CUDA(cudaStreamEndCapture(g_graph_cache.stream, &graph));
@@ -130,6 +135,7 @@ void graph_replay(torch::Tensor data, int iterations) {
             g_graph_cache.device = device_id;
             g_graph_cache.num_elements = n;
             g_graph_cache.iterations = iterations;
+            g_graph_cache.data_ptr = data_ptr;
         } catch (...) {
             if (graph != nullptr) {
                 cudaGraphDestroy(graph);

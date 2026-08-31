@@ -145,21 +145,22 @@ int main() {
     CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     
     // ========================================
-    // Build graph with conditional nodes
-    // Using CUDA Graph API (not stream capture)
+    // Build one graph with a device-set IF node:
+    //   1. Evaluate the predicate and set the conditional handle.
+    //   2. Run the expensive body when non-zero, otherwise run the cheap body.
     // ========================================
     
     cudaGraph_t graph;
     CUDA_CHECK(cudaGraphCreate(&graph, 0));
     
-    // Create conditional handle for IF/ELSE branching
+    // Create the conditional handle owned by this graph.
     cudaGraphConditionalHandle cond_handle;
-    cudaGraphConditionalHandleCreate(
+    CUDA_CHECK(cudaGraphConditionalHandleCreate(
         &cond_handle,
         graph,
-        1,  // default value (1 = expensive path initially)
+        1,  // Default to the expensive path before the predicate runs.
         cudaGraphCondAssignDefault
-    );
+    ));
     
     // Node 1: Set condition (evaluates data, sets handle)
     cudaGraphNode_t set_cond_node;
@@ -181,27 +182,25 @@ int main() {
     
     CUDA_CHECK(cudaGraphAddKernelNode(&set_cond_node, graph, nullptr, 0, &set_cond_params));
     
-    // Node 2: Conditional node (IF condition_value != 0)
-    // CUDA 13.0 API: cudaConditionalNodeParams has handle, type, size, phGraph_out
+    // Node 2: IF node. cudaGraphAddNode creates and returns its body graph in
+    // phGraph_out; that CUDA-owned graph must be populated after this call.
     cudaGraphNode_t cond_node;
     cudaGraphNodeParams cond_node_params = {};
     cond_node_params.type = cudaGraphNodeTypeConditional;
     cond_node_params.conditional.handle = cond_handle;
     cond_node_params.conditional.type = cudaGraphCondTypeIf;
-    cond_node_params.conditional.size = 1;
-    // phGraph_out will be populated by cudaGraphAddNode
-    
+    cond_node_params.conditional.size = 2;
     cudaGraphNode_t deps_cond[] = {set_cond_node};
-    // CUDA 13.0 API: cudaGraphAddNode(pNode, graph, deps, dependencyData, numDeps, nodeParams)
+#if CUDART_VERSION >= 13000
     CUDA_CHECK(cudaGraphAddNode(&cond_node, graph, deps_cond, nullptr, 1, &cond_node_params));
-    
-    // Note: cond_node_params.conditional.phGraph_out contains body graphs
-    // but we rebuild the graph below with a simpler approach
-    
-    // Build IF branch body (expensive kernel)
-    cudaGraph_t if_body;
-    CUDA_CHECK(cudaGraphCreate(&if_body, 0));
-    
+#else
+    CUDA_CHECK(cudaGraphAddNode(&cond_node, graph, deps_cond, 1, &cond_node_params));
+#endif
+
+    cudaGraph_t if_body = cond_node_params.conditional.phGraph_out[0];
+    cudaGraph_t else_body = cond_node_params.conditional.phGraph_out[1];
+
+    // Populate the IF body with the expensive path.
     cudaGraphNode_t expensive_node;
     cudaKernelNodeParams expensive_params = {};
     void* expensive_args[3];
@@ -218,72 +217,24 @@ int main() {
     expensive_params.extra = nullptr;
     
     CUDA_CHECK(cudaGraphAddKernelNode(&expensive_node, if_body, nullptr, 0, &expensive_params));
-    
-    // Since IF-type only executes body when condition != 0,
-    // we need a different approach for IF/ELSE
-    // Use WHILE type with iteration count based on condition
-    
-    // Cleanup initial graph - rebuild with simpler approach
-    CUDA_CHECK(cudaGraphDestroy(graph));
-    CUDA_CHECK(cudaGraphDestroy(if_body));
-    
-    // ========================================
-    // Simpler approach: Use condition to skip expensive work
-    // Graph structure:
-    //   1. Evaluate condition -> sets handle
-    //   2. Conditional WHILE (runs 0 or 1 times based on handle)
-    //      Body: expensive kernel
-    //   3. Always run: cheap kernel (or inverse conditional)
-    // ========================================
-    
-    CUDA_CHECK(cudaGraphCreate(&graph, 0));
-    
-    // Create conditional handle
-    CUDA_CHECK(cudaGraphConditionalHandleCreate(
-        &cond_handle,
-        graph,
-        1,  // Default: run expensive path
-        cudaGraphCondAssignDefault
-    ));
-    
-    // Node 1: Evaluate and set condition
-    CUDA_CHECK(cudaGraphAddKernelNode(&set_cond_node, graph, nullptr, 0, &set_cond_params));
-    
-    // Node 2: Conditional WHILE (body runs if handle != 0)
-    cudaGraph_t while_body;
-    CUDA_CHECK(cudaGraphCreate(&while_body, 0));
-    
-    // Add expensive kernel to while body
-    CUDA_CHECK(cudaGraphAddKernelNode(&expensive_node, while_body, nullptr, 0, &expensive_params));
-    
-    // Add kernel to set handle to 0 after one iteration (makes it a conditional IF)
-    // Note: Using simple approach where expensive kernel clears handle, or
-    // WHILE with initial value 1 runs once if we don't loop
-    
-    // For IF semantics: set handle to 0 after body executes
-    // This requires another kernel in the body
-    
-    // Actually, for simple IF/ELSE, we can use two WHILE nodes:
-    // WHILE1 (handle): expensive_kernel; handle = 0
-    // WHILE2 (1 - handle): cheap_kernel; (1-handle) = 0
-    
-    // For this demo, let's just show the conditional execution concept
-    // with a single conditional path
-    
-    cudaGraphNode_t while_node;
-    cudaGraphNodeParams while_params = {};
-    while_params.type = cudaGraphNodeTypeConditional;
-    while_params.conditional.handle = cond_handle;
-    while_params.conditional.type = cudaGraphCondTypeWhile;
-    while_params.conditional.size = 1;
-    
-    // Get body graph array
-    cudaGraph_t* body_graph_ptr = &while_body;
-    while_params.conditional.phGraph_out = body_graph_ptr;
-    
-    cudaGraphNode_t while_deps[] = {set_cond_node};
-    // CUDA 13.0 API
-    CUDA_CHECK(cudaGraphAddNode(&while_node, graph, while_deps, nullptr, 1, &while_params));
+
+    // Populate the ELSE body with the same cheap path as the baseline graph.
+    cudaGraphNode_t cheap_node;
+    cudaKernelNodeParams cheap_params = {};
+    void* cheap_args[3];
+    float scale_cheap = 1.001f;
+    cheap_args[0] = &d_data;
+    cheap_args[1] = &n_val;
+    cheap_args[2] = &scale_cheap;
+
+    cheap_params.func = (void*)cheap_kernel;
+    cheap_params.gridDim = grid;
+    cheap_params.blockDim = block;
+    cheap_params.sharedMemBytes = 0;
+    cheap_params.kernelParams = cheap_args;
+    cheap_params.extra = nullptr;
+
+    CUDA_CHECK(cudaGraphAddKernelNode(&cheap_node, else_body, nullptr, 0, &cheap_params));
     
     // Instantiate graph
     cudaGraphExec_t graph_exec;
@@ -344,7 +295,6 @@ int main() {
     
     // Cleanup
     CUDA_CHECK(cudaGraphExecDestroy(graph_exec));
-    CUDA_CHECK(cudaGraphDestroy(while_body));
     CUDA_CHECK(cudaGraphDestroy(graph));
     CUDA_CHECK(cudaEventDestroy(start));
     CUDA_CHECK(cudaEventDestroy(stop));
@@ -376,5 +326,3 @@ int main() {
 }
 
 #endif  // CUDA_VERSION
-
-

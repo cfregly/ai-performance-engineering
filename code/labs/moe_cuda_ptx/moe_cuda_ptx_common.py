@@ -564,6 +564,7 @@ def grouped_ffn_cuda(
     ):
         padded_tokens = torch.empty(padded_numel, device=device, dtype=packed_tokens.dtype)
     padded_tokens = padded_tokens.view(-1)[:padded_numel].view(flat_slots, hidden_dim)
+    padded_tokens.zero_()
     padded_tokens.index_copy_(0, packed.padded_indices, packed_tokens)
     padded_tokens = padded_tokens.view(num_experts, packed.max_count, hidden_dim)
 

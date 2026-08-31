@@ -119,10 +119,10 @@ torch::Tensor cutlass_gemm(torch::Tensor a, torch::Tensor b, float alpha = 1.0f,
     int k = static_cast<int>(K);
     
     // For RowMajor A (M,K): stride is K
-    // For ColumnMajor B interpreted as (K,N): shape is {K, N} for stride computation
+    // B is stored as an (N,K) tensor. StrideB already encodes ColumnMajor access.
     // For RowMajor C (M,N): stride is N
     StrideA stride_A = cutlass::make_cute_packed_stride(StrideA{}, {m, k, 1});
-    StrideB stride_B = cutlass::make_cute_packed_stride(StrideB{}, {k, n, 1});  // (K,N) for ColumnMajor
+    StrideB stride_B = cutlass::make_cute_packed_stride(StrideB{}, {n, k, 1});
     StrideC stride_C = cutlass::make_cute_packed_stride(StrideC{}, {m, n, 1});
     StrideD stride_D = cutlass::make_cute_packed_stride(StrideD{}, {m, n, 1});
 
@@ -174,4 +174,3 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("cutlass_gemm", &cutlass_gemm, "CUTLASS Blackwell FP16 GEMM (C = A @ B^T)",
           py::arg("a"), py::arg("b"), py::arg("alpha") = 1.0f, py::arg("beta") = 0.0f);
 }
-

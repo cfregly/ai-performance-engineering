@@ -199,36 +199,38 @@ def matmul_tcgen05_warp_spec(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
 
 # =============================================================================
-# Stage 8: No-Wait Pattern (KEY BREAKTHROUGH!)
+# Stage 8: Synchronized Stage-Reuse Overlap
 # =============================================================================
 
 @lru_cache(maxsize=1)
 def load_tcgen05_no_wait_module():
-    """JIT-compile the no-wait pattern kernel."""
+    """JIT-compile the synchronized stage-reuse overlap kernel."""
     return _load_kernel(_LAB_DIR / "tcgen05_no_wait.cu", "lab_tcgen05_no_wait")
 
 
 def matmul_tcgen05_no_wait(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    """Execute no-wait tcgen05 GEMM: C = A @ B^T
-    
-    KEY OPTIMIZATION: Don't wait for MMA barrier after each k-tile!
-    +43% performance improvement.
+    """Execute the synchronized stage-reuse tcgen05 GEMM: C = A @ B^T.
+
+    The legacy ``no_wait`` backend overlaps producer and consumer work, but
+    its producer waits on the empty barrier before reusing shared memory.
+    Any performance difference must be measured against the selected baseline
+    on the target workload.
     """
     return load_tcgen05_no_wait_module().matmul_tcgen05_no_wait(a, b)
 
 
 # =============================================================================
-# Stage 9: No-Wait + Swizzle
+# Stage 9: Synchronized Stage-Reuse + Swizzle
 # =============================================================================
 
 @lru_cache(maxsize=1)
 def load_tcgen05_no_wait_swizzle_module():
-    """JIT-compile the no-wait swizzled kernel."""
+    """JIT-compile the synchronized stage-reuse swizzled kernel."""
     return _load_kernel(_LAB_DIR / "tcgen05_no_wait_swizzle.cu", "lab_tcgen05_no_wait_swizzle")
 
 
 def matmul_tcgen05_no_wait_swizzle(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    """Execute no-wait + swizzled tcgen05 GEMM: C = A @ B^T"""
+    """Execute synchronized stage reuse plus swizzling: C = A @ B^T."""
     return load_tcgen05_no_wait_swizzle_module().matmul_tcgen05_no_wait_swizzle(a, b)
 
 

@@ -176,7 +176,7 @@
   },
   "checkpoint_artifacts": {
     "path": "docs/audits/2026-08-30/evidence/integration/pinned-linux-integration/checkpoint-artifact-manifest.json",
-    "sha256": "82fff631ec369da8fe666763337403e63500cf610a22b4dc19417a9cceaeb9d1",
+    "sha256": "a9137d8fb1e33e05d519b00ea69ad52c9384ce4253beb35cb25af5d553d2cf6d",
     "files": 179
   },
   "not_performed": [
