@@ -1,0 +1,256 @@
+{
+  "boundary": "Reviewed 20-direct-pin/56-distribution hash-bound x86_64 Linux CPU cell only. It excludes the separate cmake and prometheus-client packages used by current benchmark-validation CI, and claims no CUDA, GPU, native-extension, numerical, profiler, or performance acceptance.",
+  "cpu_tensor_result": [
+    [
+      11.0
+    ]
+  ],
+  "direct_distribution_count": 20,
+  "direct_distributions": [
+    "anthropic",
+    "click",
+    "coverage",
+    "fastapi",
+    "httpx",
+    "hypothesis",
+    "numpy",
+    "openai",
+    "psutil",
+    "pydantic",
+    "pytest",
+    "pytest-cov",
+    "pyyaml",
+    "requests",
+    "rich",
+    "tokenizers",
+    "torch",
+    "triton",
+    "typer",
+    "uvicorn"
+  ],
+  "expected_distribution_count": 56,
+  "imported": {
+    "anthropic": {
+      "module": "anthropic",
+      "module_file": "/home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/anthropic/__init__.py",
+      "version": "0.112.0"
+    },
+    "click": {
+      "module": "click",
+      "module_file": "/home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/click/__init__.py",
+      "version": "8.1.7"
+    },
+    "coverage": {
+      "module": "coverage",
+      "module_file": "/home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/coverage/__init__.py",
+      "version": "7.15.2"
+    },
+    "fastapi": {
+      "module": "fastapi",
+      "module_file": "/home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/fastapi/__init__.py",
+      "version": "0.121.3"
+    },
+    "httpx": {
+      "module": "httpx",
+      "module_file": "/home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/httpx/__init__.py",
+      "version": "0.28.1"
+    },
+    "hypothesis": {
+      "module": "hypothesis",
+      "module_file": "/home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/hypothesis/__init__.py",
+      "version": "6.148.2"
+    },
+    "numpy": {
+      "module": "numpy",
+      "module_file": "/home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/numpy/__init__.py",
+      "version": "2.1.2"
+    },
+    "openai": {
+      "module": "openai",
+      "module_file": "/home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/openai/__init__.py",
+      "version": "2.44.0"
+    },
+    "psutil": {
+      "module": "psutil",
+      "module_file": "/home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/psutil/__init__.py",
+      "version": "7.1.0"
+    },
+    "pydantic": {
+      "module": "pydantic",
+      "module_file": "/home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/pydantic/__init__.py",
+      "version": "2.12.4"
+    },
+    "pytest": {
+      "module": "pytest",
+      "module_file": "/home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/pytest/__init__.py",
+      "version": "8.3.4"
+    },
+    "pytest-cov": {
+      "module": "pytest_cov",
+      "module_file": "/home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/pytest_cov/__init__.py",
+      "version": "7.1.0"
+    },
+    "pyyaml": {
+      "module": "yaml",
+      "module_file": "/home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/yaml/__init__.py",
+      "version": "6.0.2"
+    },
+    "requests": {
+      "module": "requests",
+      "module_file": "/home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/requests/__init__.py",
+      "version": "2.34.2"
+    },
+    "rich": {
+      "module": "rich",
+      "module_file": "/home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/rich/__init__.py",
+      "version": "13.7.1"
+    },
+    "tokenizers": {
+      "module": "tokenizers",
+      "module_file": "/home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/tokenizers/__init__.py",
+      "version": "0.22.2"
+    },
+    "torch": {
+      "module": "torch",
+      "module_file": "/home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/torch/__init__.py",
+      "version": "2.9.1+cpu"
+    },
+    "triton": {
+      "module": "triton",
+      "module_file": "/home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/triton/__init__.py",
+      "version": "3.5.1"
+    },
+    "typer": {
+      "module": "typer",
+      "module_file": "/home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/typer/__init__.py",
+      "version": "0.15.4"
+    },
+    "uvicorn": {
+      "module": "uvicorn",
+      "module_file": "/home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/uvicorn/__init__.py",
+      "version": "0.38.0"
+    }
+  },
+  "installed_distribution_count_excluding_pip": 56,
+  "pip_check": "pass",
+  "pip_report_requested_count": 56,
+  "pip_report_requested_distributions": [
+    "annotated-doc",
+    "annotated-types",
+    "anthropic",
+    "anyio",
+    "certifi",
+    "charset-normalizer",
+    "click",
+    "coverage",
+    "distro",
+    "docstring-parser",
+    "fastapi",
+    "filelock",
+    "fsspec",
+    "h11",
+    "hf-xet",
+    "httpcore",
+    "httpx",
+    "huggingface-hub",
+    "hypothesis",
+    "idna",
+    "iniconfig",
+    "jinja2",
+    "jiter",
+    "markdown-it-py",
+    "markupsafe",
+    "mdurl",
+    "mpmath",
+    "networkx",
+    "numpy",
+    "openai",
+    "packaging",
+    "pluggy",
+    "psutil",
+    "pydantic",
+    "pydantic-core",
+    "pygments",
+    "pytest",
+    "pytest-cov",
+    "pyyaml",
+    "requests",
+    "rich",
+    "setuptools",
+    "shellingham",
+    "sniffio",
+    "sortedcontainers",
+    "starlette",
+    "sympy",
+    "tokenizers",
+    "torch",
+    "tqdm",
+    "triton",
+    "typer",
+    "typing-extensions",
+    "typing-inspection",
+    "urllib3",
+    "uvicorn"
+  ],
+  "torch_cpu_build": "2.9.1+cpu",
+  "torch_cuda_available": false,
+  "torch_cuda_version": null,
+  "versions": {
+    "annotated-doc": "0.0.5",
+    "annotated-types": "0.8.0",
+    "anthropic": "0.112.0",
+    "anyio": "4.14.2",
+    "certifi": "2026.7.22",
+    "charset-normalizer": "3.5.1",
+    "click": "8.1.7",
+    "coverage": "7.15.2",
+    "distro": "1.9.0",
+    "docstring-parser": "0.18.0",
+    "fastapi": "0.121.3",
+    "filelock": "3.32.4",
+    "fsspec": "2026.7.0",
+    "h11": "0.16.0",
+    "hf-xet": "1.6.0",
+    "httpcore": "1.0.9",
+    "httpx": "0.28.1",
+    "huggingface-hub": "1.13.0",
+    "hypothesis": "6.148.2",
+    "idna": "3.19",
+    "iniconfig": "2.3.0",
+    "jinja2": "3.1.6",
+    "jiter": "0.16.0",
+    "markdown-it-py": "4.2.0",
+    "markupsafe": "3.0.3",
+    "mdurl": "0.1.2",
+    "mpmath": "1.3.0",
+    "networkx": "3.6.1",
+    "numpy": "2.1.2",
+    "openai": "2.44.0",
+    "packaging": "26.3",
+    "pluggy": "1.6.0",
+    "psutil": "7.1.0",
+    "pydantic": "2.12.4",
+    "pydantic-core": "2.41.5",
+    "pygments": "2.21.0",
+    "pytest": "8.3.4",
+    "pytest-cov": "7.1.0",
+    "pyyaml": "6.0.2",
+    "requests": "2.34.2",
+    "rich": "13.7.1",
+    "setuptools": "84.0.0",
+    "shellingham": "1.5.4",
+    "sniffio": "1.3.1",
+    "sortedcontainers": "2.4.0",
+    "starlette": "0.50.0",
+    "sympy": "1.14.0",
+    "tokenizers": "0.22.2",
+    "torch": "2.9.1+cpu",
+    "tqdm": "4.70.0",
+    "triton": "3.5.1",
+    "typer": "0.15.4",
+    "typing-extensions": "4.16.0",
+    "typing-inspection": "0.4.4",
+    "urllib3": "2.7.0",
+    "uvicorn": "0.38.0"
+  }
+}

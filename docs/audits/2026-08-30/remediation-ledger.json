@@ -675,7 +675,7 @@
         "revision": "b57e4c6a9e261c09ac09208705d040c81b03d35e"
       },
       "reproducer": "evidence/bootstrap/validation-receipts.json",
-      "accepted_fix_design": "Stable sources and actual cuDNN summary repaired. Retired torchao prerequisite replaced with supported torch2.9.1 pairing. Full Linux/CUDA installation remains HOLD; ARM is explicitly unsupported by current binary-only path. Details and source hashes are in the attached package receipts. Follow-up aligns Triton3.5.1 with the official pinned Torch wheel dependency; scoped resolver proof does not certify the entire staged install. Current source-derived Linux-target metadata covers all 90 direct specifications and resolves 327 unique packages under the single reviewed GPUtil source-distribution exception. The CPU exact-source union contains 56 packages and the first-PyPI closure contains 49. This is metadata resolution, not Linux installation, CI execution, CUDA import/build or GPU qualification.",
+      "accepted_fix_design": "Stable sources and actual cuDNN summary repaired. Retired torchao prerequisite replaced with supported torch2.9.1 pairing. Full Linux/CUDA installation remains HOLD; ARM is explicitly unsupported by current binary-only path. Details and source hashes are in the attached package receipts. Follow-up aligns Triton3.5.1 with the official pinned Torch wheel dependency; scoped resolver proof does not certify the entire staged install. Current source-derived Linux-target metadata covers all 90 direct specifications and resolves 327 unique packages under the single reviewed GPUtil source-distribution exception. The CPU exact-source union contains 56 packages and the first-PyPI closure contains 49. This is metadata resolution, not Linux installation, CI execution, CUDA import/build or GPU qualification. Hosted Audit Linux CPU Provenance run 33401585682 passes at cf801679b0df897e0b558d668ee42d5ac789d633: a clean CPython 3.12 x86_64 Linux environment installed the reviewed 20-direct-pin/56-distribution CPU lock with pip --isolated --require-hashes, retained every selected origin and SHA-256, passed pip check, imported all 20 direct packages from the fresh environment, and completed a Torch 2.9.1+cpu tensor operation. This closes that bounded CPU provenance sub-cell only; CMake and prometheus-client from Benchmark Validation, the full 90-specification/327-package target graph, CUDA imports/native builds, GPU execution, and performance remain pending.",
       "acceptance_contract": "AUDIT_REMEDIATION_PLAN.md work package P01; specialize to a behavior-level check during reproduction",
       "planning_caution": "Validate in a clean isolated environment; do not rerun destructive bootstrap operations on a working host.",
       "changed_files": [
@@ -686,13 +686,13 @@
       ],
       "fix_revision": null,
       "verification": {
-        "source_and_cpu": "90 direct specifications resolve to 327 unique Linux-target packages under one reviewed GPUtil source exception; CPU exact-source union 56 and first-PyPI closure 49. Actual Linux installation, workflow execution, CUDA imports/builds and GPU runtime remain HOLD.",
-        "integration": "Fresh full CPU suite not rerun after final TP fixes at user direction; focused and related tests/static gates passed.",
-        "build": "Full 90-spec Linux-target metadata graph passes under the reviewed GPUtil source exception; actual pinned Linux install/import/build remains unexecuted.",
+        "source_and_cpu": "Hosted Audit Linux CPU Provenance run 33401585682 passes at cf801679b0df897e0b558d668ee42d5ac789d633: a clean CPython 3.12 x86_64 Linux environment installed the reviewed 20-direct-pin/56-distribution CPU lock with pip --isolated --require-hashes, retained every selected origin and SHA-256, passed pip check, imported all 20 direct packages from the fresh environment, and completed a Torch 2.9.1+cpu tensor operation. This closes that bounded CPU provenance sub-cell only; CMake and prometheus-client from Benchmark Validation, the full 90-specification/327-package target graph, CUDA imports/native builds, GPU execution, and performance remain pending.",
+        "integration": "Focused hosted Linux CPU provenance passes in run 33401585682 without rerunning the repository test suite; final-source broad CPU CI remains run 33391774956. GPU and full target installation gates remain separate.",
+        "build": "The reviewed 20-direct-pin/56-distribution CPU lock installs successfully on CPython 3.12 x86_64 Linux with exact artifact origins/hashes, pip check, and isolated imports. The full Linux/CUDA graph and native extension builds remain HOLD.",
         "gpu_correctness": "HOLD: actual pinned CUDA imports, builds and supported-GPU acceptance pending",
         "performance": "no_performance_claim",
         "documentation": "docs/environment.md now mirrors Triton3.5.1; installation and runtime limits retained.",
-        "dependency_metadata": "90 direct specifications resolve to 327 unique Linux-target packages under one reviewed GPUtil source exception; CPU exact-source union 56 and first-PyPI closure 49. Actual Linux installation, workflow execution, CUDA imports/builds and GPU runtime remain HOLD."
+        "dependency_metadata": "The reviewed 20-pin CPU exact-source cell is now installed and verified on hosted CPython 3.12 x86_64 Linux in run 33401585682. The broader 90-direct-specification graph still resolves to 327 packages under one reviewed GPUtil source exception but remains metadata-only pending target Linux/CUDA installation."
       },
       "attempts": [
         {
@@ -709,6 +709,13 @@
           "phase": "targeted_source_gate_followup",
           "result": "PASS_FOCUSED_SOURCE_GATES__FULL_CPU_NOT_RERUN__LINUX_CUDA_GPU_AND_WAVE2_PENDING",
           "receipt": "evidence/integration/source-gate-followup/receipt.json"
+        },
+        {
+          "phase": "hosted_linux_cpu_provenance",
+          "result": "PASS_BOUNDED_20_DIRECT_56_DISTRIBUTION_LINUX_CPU_INSTALL_ORIGINS_HASHES_PIP_CHECK_ISOLATED_IMPORTS",
+          "receipt": "evidence/integration/linux-cpu-provenance/receipt.json",
+          "run_id": 33401585682,
+          "source_revision": "cf801679b0df897e0b558d668ee42d5ac789d633"
         }
       ],
       "evidence": [
@@ -718,9 +725,10 @@
         "evidence/integration/pinned-linux-integration/receipt.json",
         "evidence/integration/pinned-linux-readiness/receipt.json",
         "evidence/integration/full-dependency-review/receipt.json",
-        "evidence/integration/source-gate-followup/receipt.json"
+        "evidence/integration/source-gate-followup/receipt.json",
+        "evidence/integration/linux-cpu-provenance/receipt.json"
       ],
-      "disposition_reason": "Stable sources and actual cuDNN summary repaired. Retired torchao prerequisite replaced with supported torch2.9.1 pairing. Full Linux/CUDA installation remains HOLD; ARM is explicitly unsupported by current binary-only path. 90 direct specifications resolve to 327 unique Linux-target packages under one reviewed GPUtil source exception; CPU exact-source union 56 and first-PyPI closure 49. Actual Linux installation, workflow execution, CUDA imports/builds and GPU runtime remain HOLD.",
+      "disposition_reason": "Stable sources and actual cuDNN summary repaired. Retired torchao prerequisite replaced with supported torch2.9.1 pairing. Full Linux/CUDA installation remains HOLD; ARM is explicitly unsupported by current binary-only path. 90 direct specifications resolve to 327 unique Linux-target packages under one reviewed GPUtil source exception; CPU exact-source union 56 and first-PyPI closure 49. Actual Linux installation, workflow execution, CUDA imports/builds and GPU runtime remain HOLD. Hosted Audit Linux CPU Provenance run 33401585682 passes at cf801679b0df897e0b558d668ee42d5ac789d633: a clean CPython 3.12 x86_64 Linux environment installed the reviewed 20-direct-pin/56-distribution CPU lock with pip --isolated --require-hashes, retained every selected origin and SHA-256, passed pip check, imported all 20 direct packages from the fresh environment, and completed a Torch 2.9.1+cpu tensor operation. This closes that bounded CPU provenance sub-cell only; CMake and prometheus-client from Benchmark Validation, the full 90-specification/327-package target graph, CUDA imports/native builds, GPU execution, and performance remain pending.",
       "independent_review": {
         "reviewer": "repo_plan_context",
         "state": "bounded_source_and_metadata_review_pass; runtime_pending",
@@ -739,7 +747,7 @@
       "runtime_acceptance": {
         "required_by_local_acceptance_plan": true,
         "state": "pending",
-        "note": "The external source verdict does not replace applicable build, GPU, distributed, sanitizer, or performance gates."
+        "note": "The reviewed Linux CPU provenance sub-cell passes in run 33401585682. The overall W1-005 runtime contract remains pending for the complete supported Linux/CUDA installation, CUDA imports/native builds, and GPU acceptance."
       }
     },
     {
@@ -11371,7 +11379,7 @@
     }
   ],
   "wave_2_coverage_warning": "Still unreviewed after this pass: (1) chapter Python ch01-ch05, ch09, ch13-ch20 (~500 files: ch04/ch15/ch17 NCCL/NVSHMEM/disagg multigpu benchmarks, ch13/ch14 compile+FP8 pairs, ch16 quantization/serving/capacity_planner/dcgm_prometheus_exporter, ch18 flexattention/vllm files, ch19/ch20 capstones - only spot-checked); (2) chapter CUDA in ch02-ch05, ch09 (large CUTLASS/cuBLASLt fp4/fp8 set), ch12 graphs/dynamic-parallelism, ch16 nvtx_profiling.cu, ch19 optimized_fp4_hardware_kernel.cu; (3) labs: block_scaling, cutlass_profiler_kernel_selector, moe_decode_blackwell_matrix, nccl_nixl_nvshmem, nvfp4_dual_gemm (large candidate/sweep corpus), python_concurrency (7 tutorial MDs + scripts), real_world_models, recsys_sequence_ranking, tcgen05_cluster_shapes, training_hotpath, trtllm_phi_3_5_moe, uma_memory, vllm-deepseek-tuning, kv_optimization, dynamic_router (beyond vllm_runner), flashinfer_attention baseline, cudnn_sdpa_bench expectations; (4) infra: dashboard/api/server.py + dashboard/web (Next.js app), mcp/mcp_server.py (~10k lines, dozens of inline tool implementations), mcp/tool_generator.py, monitoring/cluster_monitor.py + diagnostics + grafana template, cluster/ (fabric, analysis, scripts, field reports), tools/ (compare_nsight, linting, nccl-tests), code/scripts/, hack/, templates/, examples/, configs/, eval_datasets/, book/ chapter text; (5) repo-level: meetups/, plans/, resources/, HANDOFF.md, code/BOOK-ERRATA.md, code/FULL_SWEEP.md, expectations_*.json baselines, third_party/vendor/upstream pins, and core/common CUDA headers (tma_helpers.cuh, cuda_verify.cuh, nvtx_utils.cuh) that every chapter includes. Areas I deep-read and found clean this pass (single-reviewer, not re-verified): software_pipelining, memory_bandwidth_patterns, top_k_kernel, speculative_decode, parameterized_cuda_graphs, occupancy_tuning, blackwell_gemm_optimizations kernels, ch01 GEMM trio, ch13 bandwidth extension, ch19 kv_prefetch pair.\n\nSuggested next pass: Prioritize next: mcp/mcp_server.py inline benchmark tools (bandwidth/TFLOPS math), ch04/ch15/ch17 multigpu Python (confirmed bug classes: wrong-stream events, comm-only measurement), ch09 CUTLASS fp4/fp8 .cu set, and the expectations_*.json baselines that gate CI.",
-  "updated_at": "2026-08-31T13:24:57.189017+00:00",
+  "updated_at": "2026-08-31T14:25:34.601944+00:00",
   "working_branch": "main @ 3316e0efe985040745ffd926c5f76a6bd4436aff",
   "adjacent_discoveries": [
     {

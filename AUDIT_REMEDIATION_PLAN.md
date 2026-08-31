@@ -32,7 +32,7 @@ its success criteria concrete; it does not create a second goal or token budget.
 | Additional source record | One separately refuted pytest-timeout claim, outside the 128 |
 | Second wave | User-supplied full report captured at `cf48c8481`: 141 open findings (3 critical, 31 high, 62 medium, 45 low) across 110 files |
 | First-wave external re-review | 120 fixed, 5 need runtime, 2 partial, 1 obsolete; this read-only source verdict does not replace the 76 applicable local runtime acceptance gates |
-| Implementation status | First-wave candidate `f49aae73f629f4d90b60d1c6a5b890780e7ef758`, both Wave 2 source batches, and the focused hosted-CI repair through `3316e0efe985040745ffd926c5f76a6bd4436aff` are published on `main`; all 141 Wave 2 rows are triaged as 89 source-fixed, 4 already fixed with evidence, and 48 awaiting runtime; no GPU qualification, deployment, or new speedup claim |
+| Implementation status | First-wave candidate `f49aae73f629f4d90b60d1c6a5b890780e7ef758`, both Wave 2 source batches, and the focused hosted-CI repair through `3316e0efe985040745ffd926c5f76a6bd4436aff` are published on `main`; all 141 Wave 2 rows are triaged as 89 source-fixed, 4 already fixed with evidence, and 48 awaiting runtime. Focused hosted Linux CPU provenance passes at `cf801679b0df897e0b558d668ee42d5ac789d633` for the reviewed 20-direct-pin/56-distribution cell; the full target Linux/CUDA graph, GPU qualification, deployment, and any new speedup claim remain open. |
 
 ### Interim main landing checkpoint
 

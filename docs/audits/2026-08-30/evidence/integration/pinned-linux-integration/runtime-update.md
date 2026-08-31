@@ -7,14 +7,20 @@ in the [Wave 2 complete-source receipt](../wave-2-complete-source/receipt.json).
 Those workflows do not certify the target Linux installation, GPU correctness,
 profiler capture, numerical acceptance, or performance.
 
-1. **Finish pinned Linux installation provenance.** Final-source Benchmark
-   Validation run `33391774956` completed on hosted Linux with **4,346 passed,
-   461 capability skips, and zero failures**, and uploaded JUnit evidence. The
-   workflow did not record every Python/wheel origin and hash or run the complete
-   `pip check` acceptance described here. Reproduce the exact package/index cell
-   on the supported target, preserving origins, hashes, resolved versions, and
-   `pip check`. Current metadata shows 20 matching direct workflow pins, a
-   56-package exact-source union, and a 49-package first-PyPI closure.
+1. **Retain the completed CPU provenance cell and finish target installation
+   provenance.** Final-source Benchmark Validation run `33391774956` completed
+   on hosted Linux with **4,346 passed, 461 capability skips, and zero failures**.
+   The later focused [Linux CPU provenance receipt](../linux-cpu-provenance/README.md)
+   records a clean CPython 3.12 x86_64 installation of the reviewed 20-direct-pin,
+   56-distribution lock at `cf801679b`: every selected origin and SHA-256 is
+   retained, `pip check` passes, all 20 direct imports resolve inside the isolated
+   environment, and Torch `2.9.1+cpu` completes a CPU tensor operation. That
+   closes this bounded CPU provenance sub-cell. It intentionally excludes the
+   separate CMake and Prometheus packages used by Benchmark Validation and does
+   not certify the complete 90-specification/327-package target graph, CUDA
+   imports, native extensions, or GPU execution. Reproduce those remaining cells
+   on the supported target with origins, hashes, resolved versions, and
+   `pip check` preserved.
 2. **Exercise the reviewed Linux/CUDA dependency graph.** All 90 current direct
    specifications resolve to 327 unique CPython 3.12 x86_64-manylinux packages
    under one reviewed GPUtil 1.4.0 source-distribution metadata exception.

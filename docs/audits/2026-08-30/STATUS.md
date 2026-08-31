@@ -48,6 +48,12 @@ qualification, performance acceptance, or completion.
   `sm_121` in CUDA 13.0; its runner has no GPU. The MoE zero-fill cost and every
   other performance-sensitive runtime gate remain intentionally unmeasured until
   the required hardware is available.
+- Focused Linux CPU Provenance run `33401585682` succeeds at `cf801679b` without
+  rerunning the test suite. On hosted CPython 3.12 x86_64 Linux it installs the
+  reviewed 20-direct-pin, 56-distribution lock with required hashes, retains all
+  selected origin URLs and SHA-256 values, passes `pip check`, imports all 20
+  direct packages under isolated mode, and executes a Torch `2.9.1+cpu` tensor
+  operation. This closes that bounded W1-005 CPU provenance sub-cell only.
 
 ## Other completed source work
 
@@ -64,9 +70,10 @@ qualification, performance acceptance, or completion.
   verification.
 - All **90 direct dependency specifications** resolve to a **327-package**
   CPython 3.12 x86_64-manylinux metadata graph under one reviewed GPUtil source
-  distribution exception. The CPU workflow has 20 matching pins, a 56-package
-  exact-source union, and a 49-package first-PyPI closure. This is metadata
-  resolution, not Linux installation or CUDA qualification.
+  distribution exception. The reviewed 20-pin CPU cell now has a successful
+  56-package exact-source installation and `pip check`; its 49-package first-PyPI
+  closure remains recorded. The broader 90-specification graph is still metadata
+  resolution and has no CUDA qualification.
 - Broad import validation on Darwin CPU remains an expected **594/600**. The six
   failures require Triton, cuda-python, or FlashInfer from the pinned target
   runtime. The import validator preserves their exception classes and complete
@@ -110,6 +117,7 @@ zero findings.
 - [Semantic seam receipt](evidence/integration/semantic-seam-closure/receipt.json)
 - [ZeRO supplement](evidence/integration/zero2-child-protocol/supplement-receipt.json)
 - [Dependency review](evidence/integration/full-dependency-review/receipt.json)
+- [Hosted Linux CPU provenance](evidence/integration/linux-cpu-provenance/README.md)
 - [Remaining runtime acceptance](evidence/integration/pinned-linux-integration/runtime-update.md)
 - [Historical pre-delivery artifact check](evidence/intake/second-wave-check-20260831T031140Z.json)
 - [Interim landing receipt](evidence/integration/landing/receipt.json)

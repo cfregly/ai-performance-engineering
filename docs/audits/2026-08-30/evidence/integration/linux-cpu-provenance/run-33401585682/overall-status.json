@@ -1,0 +1,9 @@
+{
+  "boundary": "Reviewed x86_64 Linux CPU dependency provenance only; no CUDA, GPU, native-extension, numerical, profiler, or performance acceptance.",
+  "github_run_attempt": "1",
+  "github_run_id": "33401585682",
+  "github_sha": "cf801679b0df897e0b558d668ee42d5ac789d633",
+  "preupload_job_status": "success",
+  "status": "pass",
+  "validation_status": "pass"
+}

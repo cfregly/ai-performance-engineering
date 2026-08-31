@@ -1,0 +1,16 @@
+{
+  "github_repository": "cfregly/ai-performance-engineering",
+  "github_run_attempt": "1",
+  "github_run_id": "33401585682",
+  "github_sha": "cf801679b0df897e0b558d668ee42d5ac789d633",
+  "libc": [
+    "glibc",
+    "2.39"
+  ],
+  "machine": "x86_64",
+  "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+  "python_executable": "/opt/hostedtoolcache/Python/3.12.14/x64/bin/python",
+  "python_version": "3.12.14 (main, Aug 13 2026, 02:47:42) [GCC 13.3.0]",
+  "runner_arch": "X64",
+  "runner_os": "Linux"
+}

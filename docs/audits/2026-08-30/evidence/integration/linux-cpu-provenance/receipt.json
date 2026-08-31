@@ -1,0 +1,101 @@
+{
+  "acceptance": {
+    "cpu_tensor_result": [
+      [
+        11.0
+      ]
+    ],
+    "installed_distribution_count_excluding_pip": 56,
+    "isolated_direct_import_count": 20,
+    "overall_status": "pass",
+    "pip_check": "pass",
+    "selected_artifact_count": 56,
+    "selected_origin_counts": {
+      "download-r2.pytorch.org": 1,
+      "files.pythonhosted.org": 55
+    },
+    "selected_sha256_present_for_every_artifact": true
+  },
+  "artifact": {
+    "compressed_size_bytes": 478371,
+    "digest": "sha256:69fc36ebab042fcd1753ff22f6627cb35e8a564bb8c6d67e82e4f33b453c3bf9",
+    "digest_verified_after_download": true,
+    "expires_at": "2026-11-29T14:15:38Z",
+    "id": 9761526418,
+    "name": "audit-linux-cpu-provenance-33401585682-1",
+    "retained_copy": "evidence/integration/linux-cpu-provenance/run-33401585682",
+    "retained_file_count": 24,
+    "retained_files": [
+      "direct-requirements-sha256.txt",
+      "git-status.txt",
+      "glibc-version.txt",
+      "lock-sha256.txt",
+      "os-release.txt",
+      "overall-status.json",
+      "pip-check.txt",
+      "pip-debug.txt",
+      "pip-freeze.txt",
+      "pip-inspect.json",
+      "pip-install-report.json",
+      "pip-install.log",
+      "pip-list.json",
+      "pip-version.txt",
+      "python-version.txt",
+      "requirements.in",
+      "resolved-requirements.txt",
+      "run-context.json",
+      "selected-artifacts.json",
+      "sha256-manifest.txt",
+      "source-revision.txt",
+      "uname.txt",
+      "validation.json",
+      "validation.log"
+    ],
+    "upstream_manifest_sha256": "38855bc06f961b220a5615c44e04610cc68c779596d3d2e37762fd91f7e4a87c"
+  },
+  "boundaries": [
+    "The current benchmark-validation environment also installs cmake 3.31.10 and prometheus-client 0.21.0; those packages are outside this reviewed lock.",
+    "The 90-direct-specification/327-package Linux-CUDA dependency graph remains metadata-only.",
+    "No CUDA toolkit, driver, CUDA wheel stack, native CUDA extension, GPU, numerical, profiler, sanitizer, or performance acceptance ran.",
+    "W1-005 runtime acceptance remains pending for its supported Linux/CUDA installation and import/build contract.",
+    "The five Wave 1 mutable-ledger awaiting_runtime rows, all 76 Wave 1 local runtime-acceptance rows, and all 48 Wave 2 runtime rows remain pending their required hardware cells."
+  ],
+  "closed_subgate": "W1-005 reviewed 20-direct-pin/56-distribution CPython 3.12 x86_64 Linux CPU install, origin/hash, pip consistency, isolated import, and CPU Torch operation cell",
+  "created_at": "2026-08-31T14:18:26Z",
+  "diagnostic_predecessor": {
+    "acceptance_credit": false,
+    "conclusion": "cancelled",
+    "note": "Canceled before validation after independent review identified import-isolation and origin-allowlist hardening; its artifact remains diagnostic only.",
+    "run_id": 33401209446
+  },
+  "disposition": "pass_bounded_linux_cpu_provenance",
+  "environment": {
+    "machine": "x86_64",
+    "python": "CPython 3.12",
+    "runner_arch": "X64",
+    "runner_os": "Linux",
+    "torch": "2.9.1+cpu",
+    "torch_cuda_available": false,
+    "torch_cuda_version": null
+  },
+  "inputs": {
+    "direct_distribution_count": 20,
+    "direct_requirements_sha256": "484ea82e4d82c89286f819a95fe0fe982c3e443ade7a339ecf0d2de247c49adc",
+    "locked_distribution_count": 56,
+    "resolved_lock_sha256": "c004b33d0d396f8f677d87f4695e303212e81b2757a23199f369952870f9fa83"
+  },
+  "schema_version": 1,
+  "source_revision": "cf801679b0df897e0b558d668ee42d5ac789d633",
+  "workflow": {
+    "completed_at": "2026-08-31T14:18:26Z",
+    "conclusion": "success",
+    "created_at": "2026-08-31T14:15:36Z",
+    "event": "workflow_dispatch",
+    "job_conclusion": "success",
+    "job_id": 99518925108,
+    "job_name": "Verify hash-bound CPU dependency provenance",
+    "path": ".github/workflows/audit-linux-provenance.yml",
+    "run_id": 33401585682,
+    "run_url": "https://github.com/cfregly/ai-performance-engineering/actions/runs/33401585682"
+  }
+}

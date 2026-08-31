@@ -1,0 +1,1 @@
+pip 25.0.1 from /home/runner/work/_temp/audit-linux-cpu-provenance-venv/lib/python3.12/site-packages/pip (python 3.12)
