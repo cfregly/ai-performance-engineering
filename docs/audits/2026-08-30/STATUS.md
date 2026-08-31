@@ -2,9 +2,10 @@
 
 The goal remains active. All 128 original first-wave findings have dispositions,
 but 76 still require supported runtime evidence. The completed second-wave report
-has not been supplied. Changes remain uncommitted on
-`codex/audit-remediation-20260830`; no merge, deployment, GPU qualification, or
-performance result is claimed.
+has not been supplied. The authorized interim source candidate is commit
+`f49aae73f629f4d90b60d1c6a5b890780e7ef758`, published on `main` with this
+checkpoint metadata. This landing does not claim deployment, GPU qualification,
+performance acceptance, or completion of the remediation goal.
 
 ## Current source checkpoint
 
@@ -13,6 +14,11 @@ performance result is claimed.
 - Adjacent discoveries: **42 total — 30 `source_fixed`, 12
   `awaiting_runtime`**. LOCAL-038 through LOCAL-042 cover the tensor-parallel
   attention defects exposed by the preserved broad diagnostic.
+- Every original and adjacent entry therefore has a current source disposition,
+  but the ledger is not closed: all 11 packages remain `in_progress`, 68 original
+  entries still contain `requirements_pending_triage` verification fields, 55
+  original entries lack an independent review record, and zero original entries
+  have final verified closure at the landed revision.
 - Final tensor-parallel source acceptance: **18 focused tests passed** and **2
   related hygiene tests passed**. Directed coverage includes poisoned padded KV
   state, cache-offset causality, heterogeneous and zero input lengths, exact
@@ -27,9 +33,11 @@ performance result is claimed.
   earlier run is retained only as diagnostic evidence: **4,181 passed, 450
   skipped, 1 failed**. That failure led to the final fixes and is not a current
   integration result.
-- The focused checkpoint binds **392 changed, new, or deleted source paths** to
-  HEAD `b57e4c6a9e261c09ac09208705d040c81b03d35e` and tracked-diff SHA-256
+- The focused checkpoint captured **392 changed, new, or deleted source paths**
+  against base HEAD `b57e4c6a9e261c09ac09208705d040c81b03d35e` and tracked-diff SHA-256
   `2ec6c0ac1a634b54742171b221c2d81152a8e1573597f625a66575fed3fef719`.
+  Commit `f49aae73f629f4d90b60d1c6a5b890780e7ef758` records that exact source and
+  evidence candidate.
 
 ## Other completed source work
 
@@ -84,5 +92,7 @@ Missing Wave 2 input is not treated as zero findings.
 - [Dependency review](evidence/integration/full-dependency-review/receipt.json)
 - [Remaining runtime acceptance](evidence/integration/pinned-linux-integration/runtime-update.md)
 - [Latest Wave 2 artifact and task check](evidence/intake/second-wave-check-20260831T031140Z.json)
+- [Interim landing receipt](evidence/integration/landing/receipt.json)
 
-Nothing has been staged, committed, published, merged, or deployed.
+The source candidate and this checkpoint are committed and published on `main`.
+No deployment, runtime qualification, or performance acceptance is claimed.

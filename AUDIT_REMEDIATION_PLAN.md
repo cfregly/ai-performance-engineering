@@ -30,7 +30,24 @@ its success criteria concrete; it does not create a second goal or token budget.
 | Reviewer confidence | External audit claims; its verification labels are preserved, not treated as our runtime evidence |
 | Additional source record | One separately refuted pytest-timeout claim, outside the 128 |
 | Second wave | Awaiting completed report or updated-artifact notification; count unknown |
-| Implementation status | In progress on `codex/audit-remediation-20260830`; all 128 original findings have dispositions; current focused source gates pass through LOCAL-042; 76 original and 12 adjacent findings remain runtime-held; wave 2 is unreceived; no GPU qualification or new speedup claim |
+| Implementation status | Interim source candidate `f49aae73f629f4d90b60d1c6a5b890780e7ef758` is published on `main`; all 128 original findings have dispositions; current focused source gates pass through LOCAL-042; 76 original and 12 adjacent findings remain runtime-held; wave 2 is unreceived; no GPU qualification, deployment, or new speedup claim |
+
+### Interim main landing checkpoint
+
+The user authorized landing the current source/evidence candidate before B200
+custody returns and before Wave 2 is delivered. Commit
+`f49aae73f629f4d90b60d1c6a5b890780e7ef758` records the first-wave source and
+evidence checkpoint; the following metadata commit binds that revision and
+preserves the remaining work. This is a publication checkpoint, not goal closure.
+
+Every known original and adjacent ledger entry has a source disposition: the
+original inventory is **52 `source_fixed` and 76 `awaiting_runtime`**, and the 42
+adjacent discoveries are **30 `source_fixed` and 12 `awaiting_runtime`**. Closure
+is incomplete: all 11 packages remain `in_progress`, 68 original verification
+records still contain `requirements_pending_triage`, 55 original entries lack an
+independent review record, and no original entry is marked verified at the landed
+revision. Per-item `fix_revision` values remain unset until their required closure
+evidence exists. Wave 2 and the supported runtime matrix remain required scope.
 
 ### Earlier implementation checkpoint
 
@@ -339,11 +356,10 @@ messages to the other session.
 - Keep the audit's refuted timeout claim as a refutation. The built-in timeout
   implementation must be checked if relevant, not replaced by installing a plugin
   merely because the original allegation mentioned an absent dependency.
-- Scope is local remediation and verification. No merge, deployment, protected
-  history promotion, external communication, or new cloud spend is included in this
-  planning action. Existing authorization and repository acceptance controls still
-  govern those actions; prepare reviewable work before asking for an action that
-  actually requires approval.
+- Scope is remediation, verification, and the user-authorized interim publication
+  to `main`. That authorization does not include deployment, external communication,
+  new cloud spend, or treating publication as runtime/performance acceptance.
+  Existing repository acceptance controls continue to govern later actions.
 
 ## Current targeted source-gate checkpoint
 
@@ -367,8 +383,9 @@ preserving those receipts as historical evidence.
   failed** run is retained only as the diagnostic that exposed those defects.
   `code/AGENTS.md` now requires the smallest sufficient focused verification
   loop and prohibits presenting focused checks as a full-suite pass.
-- The focused receipt binds 392 changed/new/deleted source paths and the tracked
-  diff at HEAD `b57e4c6a9e261c09ac09208705d040c81b03d35e`.
+- The focused receipt captured 392 changed/new/deleted source paths and the tracked
+  diff against base HEAD `b57e4c6a9e261c09ac09208705d040c81b03d35e`;
+  source candidate `f49aae73f629f4d90b60d1c6a5b890780e7ef758` records that exact checkpoint.
   [Receipt](docs/audits/2026-08-30/evidence/integration/source-gate-followup/receipt.json)
   and [manifest](docs/audits/2026-08-30/evidence/integration/source-gate-followup/source-targeted-final.json).
 - The complete dependency metadata result is 90 direct specifications to 327

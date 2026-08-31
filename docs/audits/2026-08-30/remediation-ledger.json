@@ -9552,7 +9552,7 @@
     }
   ],
   "wave_2_coverage_warning": "Still unreviewed after this pass: (1) chapter Python ch01-ch05, ch09, ch13-ch20 (~500 files: ch04/ch15/ch17 NCCL/NVSHMEM/disagg multigpu benchmarks, ch13/ch14 compile+FP8 pairs, ch16 quantization/serving/capacity_planner/dcgm_prometheus_exporter, ch18 flexattention/vllm files, ch19/ch20 capstones - only spot-checked); (2) chapter CUDA in ch02-ch05, ch09 (large CUTLASS/cuBLASLt fp4/fp8 set), ch12 graphs/dynamic-parallelism, ch16 nvtx_profiling.cu, ch19 optimized_fp4_hardware_kernel.cu; (3) labs: block_scaling, cutlass_profiler_kernel_selector, moe_decode_blackwell_matrix, nccl_nixl_nvshmem, nvfp4_dual_gemm (large candidate/sweep corpus), python_concurrency (7 tutorial MDs + scripts), real_world_models, recsys_sequence_ranking, tcgen05_cluster_shapes, training_hotpath, trtllm_phi_3_5_moe, uma_memory, vllm-deepseek-tuning, kv_optimization, dynamic_router (beyond vllm_runner), flashinfer_attention baseline, cudnn_sdpa_bench expectations; (4) infra: dashboard/api/server.py + dashboard/web (Next.js app), mcp/mcp_server.py (~10k lines, dozens of inline tool implementations), mcp/tool_generator.py, monitoring/cluster_monitor.py + diagnostics + grafana template, cluster/ (fabric, analysis, scripts, field reports), tools/ (compare_nsight, linting, nccl-tests), code/scripts/, hack/, templates/, examples/, configs/, eval_datasets/, book/ chapter text; (5) repo-level: meetups/, plans/, resources/, HANDOFF.md, code/BOOK-ERRATA.md, code/FULL_SWEEP.md, expectations_*.json baselines, third_party/vendor/upstream pins, and core/common CUDA headers (tma_helpers.cuh, cuda_verify.cuh, nvtx_utils.cuh) that every chapter includes. Areas I deep-read and found clean this pass (single-reviewer, not re-verified): software_pipelining, memory_bandwidth_patterns, top_k_kernel, speculative_decode, parameterized_cuda_graphs, occupancy_tuning, blackwell_gemm_optimizations kernels, ch01 GEMM trio, ch13 bandwidth extension, ch19 kv_prefetch pair.\n\nSuggested next pass: Prioritize next: mcp/mcp_server.py inline benchmark tools (bandwidth/TFLOPS math), ch04/ch15/ch17 multigpu Python (confirmed bug classes: wrong-stream events, comm-only measurement), ch09 CUTLASS fp4/fp8 .cu set, and the expectations_*.json baselines that gate CI.",
-  "updated_at": "2026-08-31T03:03:00.266693+00:00",
+  "updated_at": "2026-08-31T03:30:26.701470+00:00",
   "working_branch": "codex/audit-remediation-20260830",
   "adjacent_discoveries": [
     {
@@ -10164,5 +10164,36 @@
       "wave_2": "awaiting_report",
       "goal_complete": false
     }
-  ]
+  ],
+  "landing_checkpoint": {
+    "checkpoint_type": "AUTHORIZED_INTERIM_MAIN_LANDING",
+    "status": "SOURCE_CANDIDATE_LANDED__RUNTIME_AND_WAVE2_PENDING",
+    "at": "2026-08-31T03:30:26.701470+00:00",
+    "source_candidate_revision": "f49aae73f629f4d90b60d1c6a5b890780e7ef758",
+    "base_revision": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+    "source_branch": "codex/audit-remediation-20260830",
+    "target_branch": "main",
+    "receipt": "evidence/integration/landing/receipt.json",
+    "original_status_counts": {
+      "source_fixed": 52,
+      "awaiting_runtime": 76,
+      "verified": 0
+    },
+    "adjacent_status_counts": {
+      "source_fixed": 30,
+      "awaiting_runtime": 12
+    },
+    "package_status_counts": {
+      "in_progress": 11
+    },
+    "requirements_pending_triage_entries": 68,
+    "independent_review_missing_entries": 55,
+    "per_item_fix_revision": "UNSET_PENDING_REQUIRED_CLOSURE_EVIDENCE",
+    "post_fix_full_cpu": "NOT_RERUN_AT_USER_DIRECTION",
+    "focused_source_gates": "PASS",
+    "runtime_qualification": "PENDING",
+    "wave_2": "awaiting_report",
+    "deployment": "NOT_PERFORMED",
+    "goal_complete": false
+  }
 }

@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-31T03:30:26.701470+00:00",
+  "checkpoint_type": "AUTHORIZED_INTERIM_MAIN_LANDING",
+  "status": "SOURCE_CANDIDATE_LANDED__RUNTIME_AND_WAVE2_PENDING",
+  "source_candidate_revision": "f49aae73f629f4d90b60d1c6a5b890780e7ef758",
+  "base_revision": "b57e4c6a9e261c09ac09208705d040c81b03d35e",
+  "source_branch": "codex/audit-remediation-20260830",
+  "target_branch": "main",
+  "authorization": {
+    "publish_current_checkpoint": true,
+    "defer_runtime_and_wave2_verification": true,
+    "deployment_authorized_or_performed": false
+  },
+  "source_commit_scope": {
+    "files_changed": 1643,
+    "insertions": 491695,
+    "deletions": 11646,
+    "symlinks": 0,
+    "largest_blob_mb": 1.45,
+    "intentional_small_evidence_binaries": 15
+  },
+  "ledger_snapshot": {
+    "original_total": 128,
+    "original_status_counts": {
+      "source_fixed": 52,
+      "awaiting_runtime": 76,
+      "verified": 0
+    },
+    "adjacent_total": 42,
+    "adjacent_status_counts": {
+      "source_fixed": 30,
+      "awaiting_runtime": 12
+    },
+    "packages_in_progress": 11,
+    "requirements_pending_triage_entries": 68,
+    "independent_review_missing_entries": 55,
+    "null_per_item_fix_revisions": 128,
+    "wave_2": "awaiting_report",
+    "goal_complete": false
+  },
+  "verification": {
+    "focused_source_gate_receipt": "../source-gate-followup/receipt.json",
+    "focused_source_gate_receipt_sha256": "438e8a44ea06adac23b19fbf2376c136365e6301a2d98724ebdda5cc260601ad",
+    "focused_source_gate_status": "PASS_FOCUSED_SOURCE_GATES__FULL_CPU_NOT_RERUN__LINUX_CUDA_GPU_AND_WAVE2_PENDING",
+    "source_manifest_sha256": "d8b278022540a426e582ea3f65bcdb0ab93639dec477223ce247a07ee6031e9c",
+    "tracked_diff_sha256": "2ec6c0ac1a634b54742171b221c2d81152a8e1573597f625a66575fed3fef719",
+    "post_final_fix_full_cpu": "NOT_RERUN_AT_USER_DIRECTION",
+    "preserved_diagnostic_full_cpu": {
+      "passed": 4181,
+      "skipped": 450,
+      "failed": 1,
+      "interpretation": "Historical diagnostic that triggered final focused repairs; not a post-fix integration result."
+    },
+    "staged_source_whitespace_check": "PASS",
+    "credential_review": {
+      "gstack_redact": "NO_FINDINGS",
+      "targeted_patterns": "CLEAN",
+      "detect_secrets": "HIGH_ENTROPY_HASHES_AND_TWO_BENIGN_LOCAL_OR_TEST_PLACEHOLDERS_ONLY",
+      "actual_credentials_found": 0
+    }
+  },
+  "excluded_generated_paths": [
+    {
+      "path": ".playwright-mcp/",
+      "reason": "Generated browser loading snapshot; not source or acceptance evidence."
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/curated-source-gates/validator-after-tmp/",
+      "reason": "Generated nonportable absolute-symlink validation tree."
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/curated-source-gates/validator-before-tmp/",
+      "reason": "Generated nonportable absolute-symlink validation tree."
+    },
+    {
+      "path": "docs/audits/2026-08-30/evidence/integration/curated-source-gates/validator-module-after-tmp/",
+      "reason": "Generated nonportable absolute-symlink validation tree."
+    }
+  ],
+  "remaining_gates": [
+    "Completed Wave 2 intake and reconciliation.",
+    "Pinned supported Linux installation and CI.",
+    "Target CUDA builds, imports, correctness, sanitizer, and profiler runs.",
+    "Required multi-GPU NCCL matrices and architecture-specific coverage.",
+    "Reviewed numerical policies and matched performance evidence.",
+    "Independent review and per-item final-revision closure."
+  ],
+  "claim_limits": [
+    "Publication on main is not deployment.",
+    "Focused source gates are not a full-suite pass.",
+    "Capability skips are not GPU coverage.",
+    "B200 custody alone cannot satisfy every architecture and environment gate.",
+    "The remediation goal remains open."
+  ]
+}
