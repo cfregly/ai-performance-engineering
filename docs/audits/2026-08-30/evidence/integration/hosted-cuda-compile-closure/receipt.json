@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-08-31T15:49:36Z",
+  "disposition": "pass_existing_hosted_cuda13_compile_reconciliation__device_runtime_pending",
+  "reconciliation_base_revision": "4bcbd16325eb5d51cff90e84f8a1cb4e6c735189",
+  "source_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+  "workflow": {
+    "name": "Dual-Architecture Compare Builds",
+    "run_id": 33391774950,
+    "job_id": 99486864020,
+    "run_url": "https://github.com/cfregly/ai-performance-engineering/actions/runs/33391774950",
+    "job_url": "https://github.com/cfregly/ai-performance-engineering/actions/runs/33391774950/job/99486864020",
+    "event": "push",
+    "conclusion": "success",
+    "started_at": "2026-08-31T12:26:35Z",
+    "completed_at": "2026-08-31T12:59:44Z"
+  },
+  "environment": {
+    "runner": "GitHub-hosted",
+    "runner_label": "ubuntu-latest",
+    "container": "nvidia/cuda:13.0.0-devel-ubuntu22.04",
+    "cutlass": "v4.5.2",
+    "architectures": [
+      "sm_100",
+      "sm_103",
+      "sm_120",
+      "sm_121"
+    ],
+    "gpu": false,
+    "driver": false
+  },
+  "compile_contract": {
+    "run_completed_successfully": true,
+    "success_log_line": 6207,
+    "pending_wave1_direct_tu_four_target_ids": [
+      "W1-001",
+      "W1-008",
+      "W1-011",
+      "W1-012",
+      "W1-013",
+      "W1-014",
+      "W1-015",
+      "W1-016",
+      "W1-045",
+      "W1-048",
+      "W1-049",
+      "W1-050",
+      "W1-051",
+      "W1-103"
+    ],
+    "pending_wave1_header_bounded_consumer_ids": [
+      "W1-009",
+      "W1-046",
+      "W1-104"
+    ],
+    "verified_wave1_configuration_support_ids": [
+      "W1-007",
+      "W1-052",
+      "W1-057",
+      "W1-111"
+    ],
+    "wave2_exact_source_four_target_ids": [
+      "W2-002",
+      "W2-015",
+      "W2-039",
+      "W2-050",
+      "W2-052",
+      "W2-100",
+      "W2-101",
+      "W2-102",
+      "W2-119"
+    ],
+    "wave2_partial_header_ids": [
+      "W2-078"
+    ],
+    "source_records": 21,
+    "device_execution": "not_run"
+  },
+  "exclusions": {
+    "wave1_no_credit": [
+      "W1-010"
+    ],
+    "wave2_no_compile_credit": [
+      "W2-001",
+      "W2-003",
+      "W2-053",
+      "W2-079",
+      "W2-083",
+      "W2-091",
+      "W2-110",
+      "W2-137"
+    ],
+    "unbuilt_consumers": {
+      "W1-009": [
+        "code/ch08/threshold_kernels.cu",
+        "code/tests/cuda/chapter_cuda_validation.cu"
+      ],
+      "W1-046": [
+        "code/tests/cuda/chapter_cuda_validation.cu"
+      ],
+      "W1-104": [
+        "code/ch08/threshold_kernels.cu",
+        "code/tests/cuda/chapter_cuda_validation.cu"
+      ],
+      "W2-078": [
+        "sm_90/H100 consumer compile"
+      ]
+    }
+  },
+  "retained_log": {
+    "gzip_path": "vendor/run-33391774950/job-99486864020.log.gz",
+    "gzip_sha256": "3d4a7c0cd519483455cad3b657f6d0abb62f77c4278d15141d9025a014641502",
+    "raw_sha256": "02050456e295c7fe2b8b5dc87e9eeb2fb930e0a87f3ccb458a69197f8f463eae",
+    "raw_size_bytes": 988703,
+    "raw_line_count": 6247,
+    "exact_extract": "targeted-log-extract.txt"
+  },
+  "independent_review": {
+    "state": "pass_after_precision_corrections",
+    "evidence": "independent-review.json",
+    "conclusion": "Exact direct-source, bounded header-consumer, and explicit no-credit classifications reconcile to the retained full log; no device claim is made."
+  },
+  "boundaries": [
+    "This reconciliation reuses an already completed hosted run; no build or test suite was rerun.",
+    "The job had a CUDA 13 compiler toolchain but no GPU or driver, so it supplies compile/link evidence only.",
+    "Header-through-consumer evidence is limited to the consumers named in compile-targets.json; unbuilt consumers remain pending.",
+    "Compile/link does not qualify full outputs, numerical accuracy, stream ordering, sanitizers, profilers, device support, or performance.",
+    "The source revision remains byte-current for every mapped source and consumer; later commits before reconciliation changed CI, documentation, and evidence only."
+  ],
+  "evidence_files": {
+    "README.md": "bab616f41dc6456785b475c47ef5d162f54f5e203fa72a1818f112140333b9a4",
+    "compile-targets.json": "ba2d72491c70eeae11503734c4316836636297220bb7cd1f45d26cc6d972f6b4",
+    "independent-review.json": "5aeb137f4739f5ff4a0d8ae45dbf1d631de18aed05645910eb2e8e9973ce11c2",
+    "job.json": "66caa3c813b68527acc1118750b635b1b1c26b22247aa260484c01297ff5991b",
+    "run.json": "84c70d794546a450cf3fb378c2bf0e3804dcd1a9b45208031f17c122d64267b8",
+    "targeted-log-extract.txt": "31770819c081fc922c4d5a0219c503e06132e005bdef5d82a887511ce04babf9",
+    "vendor/run-33391774950/job-99486864020.log.gz": "3d4a7c0cd519483455cad3b657f6d0abb62f77c4278d15141d9025a014641502",
+    "vendor/run-33391774950/run_compare_builds.sh": "8140d1b7a90b92db59ce7b449484c7182756cbafc17b63a70191676ffc2ca40d",
+    "vendor/run-33391774950/workflow-source.yml": "4f7cb9f972c0422b2e420bf44e90f850e1ff6a585a83adcdd9e39fdf3ff3b470"
+  }
+}

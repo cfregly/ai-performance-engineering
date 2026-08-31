@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "reviewed_at": "2026-08-31T15:49:36Z",
+  "state": "pass_after_precision_corrections",
+  "reviews": [
+    {
+      "scope": "wave_1_compile_mapping",
+      "conclusion": "Seventeen pending Wave 1 rows have bounded four-target compiler evidence. Fourteen are direct translation-unit mappings. W1-009, W1-046, and W1-104 are header-through-consumer evidence and retain unbuilt-consumer gates. No row receives device closure.",
+      "corrections": [
+        "W1-045 is bound to ch06 occupancy_api_sm* commands, not the unrelated ch08 occupancy_api_example_sm* commands.",
+        "chapter_cuda_validation.cu was not built, and threshold_kernels.cu was not built or imported.",
+        "W1-010 receives no credit because tcgen05_warp_specialized.cu is excluded from the chapter all target."
+      ]
+    },
+    {
+      "scope": "wave_2_compile_mapping",
+      "conclusion": "Nine exact Wave 2 sources compile and link for all four configured targets. W2-078 is partial header-through-consumer evidence with sm90/H100 still pending. No device, numerical, sanitizer, or performance credit is supportable.",
+      "explicit_exclusions": [
+        "W2-001",
+        "W2-003",
+        "W2-053",
+        "W2-079",
+        "W2-083",
+        "W2-091",
+        "W2-110",
+        "W2-137"
+      ]
+    }
+  ]
+}

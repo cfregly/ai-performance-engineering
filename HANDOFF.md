@@ -1,6 +1,6 @@
 # B200 autoresearch handoff
 
-Updated: 2026-08-17
+Updated: 2026-08-31
 
 ## Goal
 
@@ -29,6 +29,21 @@ Run with `--no-auto-resume`. This prevents a stopped sweep from restarting while
 GPU ownership was yielded on 2026-08-16. Another task owns both B200 GPUs. Do not launch, resume, profile, or isolate a GPU target until that task finishes and GPU ownership is returned.
 
 The paused run ID is `20260816_autoresearch_b200_full_13de588b7`. Its orchestrator is not live. No benchmark or profiler child from this run remains. Keep this package as historical evidence. Do not resume it after installing the next checkpoint. The new resume contract requires the stored clean commit and execution provenance to match the current checkout, so a resumed run cannot combine measurements from two source revisions.
+
+### Audit remediation pickup (2026-08-31)
+
+B200 custody is unavailable for the active two-wave audit remediation goal. No GPU, SSH, runner, profiler, sanitizer, or device probe was used during the latest reconciliation. A later session may continue only after explicit custody returns and after re-reading this ownership section.
+
+The final code source epoch is `3316e0efe985040745ffd926c5f76a6bd4436aff`; subsequent mainline commits through reconciliation base `4bcbd16325eb5d51cff90e84f8a1cb4e6c735189` change CI, documentation, and retained evidence only. Current audit state:
+
+- all 128 Wave 1 and 141 Wave 2 rows have source dispositions;
+- the 76-row Wave 1 local runtime matrix is 7 verified and 69 pending;
+- all 48 Wave 2 runtime rows have exact final-source hosted CPU regressions, but all 48 remain `awaiting_runtime`;
+- retained CUDA 13 run `33391774950` supplies bounded four-target compiler evidence for 17 pending Wave 1 rows and 9 Wave 2 rows, plus a partial `W2-078` header result;
+- retained hosted CPU run `33391774956` records 4,346 passed, 461 explicit skips, and zero failures/errors; and
+- the full 90-specification/327-package Linux/CUDA dependency install, target numerical/device gates, CUDA/NCCL, sanitizers, profilers, Grace/NVML cells, and performance remain pending where the ledger specifies them.
+
+Use [the runtime handoff](docs/audits/2026-08-30/evidence/integration/runtime-handoff.md), [current status](docs/audits/2026-08-30/STATUS.md), and [ledger](docs/audits/2026-08-30/remediation-ledger.json) as the pickup records. Do not restart the old 486-target sweep to satisfy these findings. Run the smallest affected target matrix. Do not rerun the full CPU suite merely to reproduce retained evidence; only a later source or dependency change that invalidates it should require a new broad pass.
 
 ### Latest non-B200 checkpoint
 
@@ -159,6 +174,8 @@ The validated hardware contract is two NVIDIA B200 GPUs with CUDA 13, PyTorch wi
 
 ## Preflight after checkout
 
+For the unchanged `3316e0efe` code epoch, verify the retained receipts and run the finding-specific focused selectors from the runtime handoff. Do not repeat the full CPU pass solely as ritual preflight. If a later code or dependency change invalidates the retained hosted run, use this broader preflight once for the new epoch:
+
 ```bash
 git status --short
 git submodule status --recursive
@@ -169,7 +186,7 @@ CUDA_VISIBLE_DEVICES= COVERAGE_FILE=/tmp/aiperf-coverage \
   --cov=core --cov-report=term-missing
 ```
 
-Do not continue to GPU timing if collection fails. Fix collection and rerun the CPU-hidden suite first.
+Do not continue to GPU timing if the applicable focused or invalidation-triggered broad collection fails. Fix collection, then rerun only the affected verification unless the broad epoch itself was invalidated.
 
 ## Strict sweep command
 

@@ -1,0 +1,1362 @@
+{
+  "schema_version": 1,
+  "source_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+  "run_id": 33391774956,
+  "job_id": 99486842896,
+  "junit_source": "../hosted-cpu-closure/vendor/run-33391774956/pytest-cpu.xml",
+  "junit_sha256": "28e9a877d0e90d45712c7020db54b7ef6390f871308539ad5867434c4acbceba",
+  "finding_test_evidence": [
+    {
+      "finding_id": "W1-007",
+      "test_count": 86,
+      "passed": 86,
+      "tests": [
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch01-b200]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch01-b300]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch01-gb300]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch01-gb10]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch02-b200]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch02-b300]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch02-gb300]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch02-gb10]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch03-b200]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch03-b300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch03-gb300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch03-gb10]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch04-b200]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch04-b300]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch04-gb300]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch04-gb10]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch05-b200]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch05-b300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch05-gb300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch05-gb10]",
+          "time_seconds": 0.005,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch06-b200]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch06-b300]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch06-gb300]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch06-gb10]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch07-b200]",
+          "time_seconds": 0.014,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch07-b300]",
+          "time_seconds": 0.014,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch07-gb300]",
+          "time_seconds": 0.014,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch07-gb10]",
+          "time_seconds": 0.014,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch08-b200]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch08-b300]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch08-gb300]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch08-gb10]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch09-b200]",
+          "time_seconds": 0.017,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch09-b300]",
+          "time_seconds": 0.017,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch09-gb300]",
+          "time_seconds": 0.016,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch09-gb10]",
+          "time_seconds": 0.017,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch10-b200]",
+          "time_seconds": 0.016,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch10-b300]",
+          "time_seconds": 0.017,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch10-gb300]",
+          "time_seconds": 0.016,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch10-gb10]",
+          "time_seconds": 0.016,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch11-b200]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch11-b300]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch11-gb300]",
+          "time_seconds": 0.01,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch11-gb10]",
+          "time_seconds": 0.01,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch12-b200]",
+          "time_seconds": 0.013,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch12-b300]",
+          "time_seconds": 0.013,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch12-gb300]",
+          "time_seconds": 0.013,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch12-gb10]",
+          "time_seconds": 0.013,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch13-b200]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch13-b300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch13-gb300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch13-gb10]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch14-b200]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch14-b300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch14-gb300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch14-gb10]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch15-b200]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch15-b300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch15-gb300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch15-gb10]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch16-b200]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch16-b300]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch16-gb300]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch16-gb10]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch17-b200]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch17-b300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch17-gb300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch17-gb10]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch18-b200]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch18-b300]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch18-gb300]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch18-gb10]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch19-b200]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch19-b300]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch19-gb300]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch19-gb10]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch20-b200]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch20-b300]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch20-gb300]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch20-gb10]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[labs/nvfp4_gemm-b200]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[labs/ozaki_scheme-b200]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_alias_overrides_a_conflicting_parent_architecture",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_alias_rejects_goals_that_can_race_its_clean[goals0]",
+          "time_seconds": 0.003,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_alias_rejects_goals_that_can_race_its_clean[goals1]",
+          "time_seconds": 0.003,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_unspecified_real_build_still_requires_architecture_detection",
+          "time_seconds": 0.005,
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "finding_id": "W1-052",
+      "test_count": 14,
+      "passed": 14,
+      "tests": [
+        {
+          "classname": "tests.test_dual_arch_make_contract",
+          "name": "test_compare_stops_after_a_nonfinal_architecture_failure[ch01]",
+          "time_seconds": 0.01,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_dual_arch_make_contract",
+          "name": "test_compare_stops_after_a_nonfinal_architecture_failure[ch02]",
+          "time_seconds": 0.01,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_dual_arch_make_contract",
+          "name": "test_compare_stops_after_a_nonfinal_architecture_failure[ch04]",
+          "time_seconds": 0.014,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_dual_arch_make_contract",
+          "name": "test_compare_stops_after_a_nonfinal_architecture_failure[ch06]",
+          "time_seconds": 0.012,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_dual_arch_make_contract",
+          "name": "test_compare_stops_after_a_nonfinal_architecture_failure[ch07]",
+          "time_seconds": 0.012,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_dual_arch_make_contract",
+          "name": "test_compare_stops_after_a_nonfinal_architecture_failure[ch08]",
+          "time_seconds": 0.012,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_dual_arch_make_contract",
+          "name": "test_compare_stops_after_a_nonfinal_architecture_failure[ch09]",
+          "time_seconds": 0.012,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_dual_arch_make_contract",
+          "name": "test_compare_stops_after_a_nonfinal_architecture_failure[ch10]",
+          "time_seconds": 0.01,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_dual_arch_make_contract",
+          "name": "test_compare_stops_after_a_nonfinal_architecture_failure[ch11]",
+          "time_seconds": 0.012,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_dual_arch_make_contract",
+          "name": "test_compare_stops_after_a_nonfinal_architecture_failure[ch12]",
+          "time_seconds": 0.01,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_dual_arch_make_contract",
+          "name": "test_compare_stops_after_a_nonfinal_architecture_failure[ch16]",
+          "time_seconds": 0.01,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_dual_arch_make_contract",
+          "name": "test_compare_stops_after_a_nonfinal_architecture_failure[ch18]",
+          "time_seconds": 0.01,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_dual_arch_make_contract",
+          "name": "test_compare_stops_after_a_nonfinal_architecture_failure[ch19]",
+          "time_seconds": 0.01,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_dual_arch_make_contract",
+          "name": "test_compare_stops_after_a_nonfinal_architecture_failure[ch20]",
+          "time_seconds": 0.01,
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "finding_id": "W1-055",
+      "test_count": 11,
+      "passed": 11,
+      "tests": [
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_reported_architecture_metadata_keeps_the_actual_compute_capability[10-0-B200/GB200]",
+          "time_seconds": 0.002,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_reported_architecture_metadata_keeps_the_actual_compute_capability[10-3-B300/GB300]",
+          "time_seconds": 0.002,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_reported_architecture_metadata_keeps_the_actual_compute_capability[12-0-RTX]",
+          "time_seconds": 0.002,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_reported_architecture_metadata_keeps_the_actual_compute_capability[12-1-GB10]",
+          "time_seconds": 0.002,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_audit_wave1_peak_metrics",
+          "name": "test_architecture_metadata_preserves_exact_capability[cc0-blackwell-sm_100-True]",
+          "time_seconds": 0.0,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_audit_wave1_peak_metrics",
+          "name": "test_architecture_metadata_preserves_exact_capability[cc1-blackwell_ultra-sm_103-True]",
+          "time_seconds": 0.0,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_audit_wave1_peak_metrics",
+          "name": "test_architecture_metadata_preserves_exact_capability[cc2-blackwell_consumer-sm_120-False]",
+          "time_seconds": 0.0,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_audit_wave1_peak_metrics",
+          "name": "test_architecture_metadata_preserves_exact_capability[cc3-grace_blackwell-sm_121-False]",
+          "time_seconds": 0.0,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_audit_wave1_peak_metrics",
+          "name": "test_architecture_metadata_preserves_exact_capability[cc4-other-sm_110-False]",
+          "time_seconds": 0.0,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_audit_wave1_peak_metrics",
+          "name": "test_architecture_metadata_preserves_exact_capability[cc5-other-sm_122-False]",
+          "time_seconds": 0.0,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_audit_wave1_peak_metrics",
+          "name": "test_architecture_metadata_preserves_exact_capability[cc6-other-sm_130-False]",
+          "time_seconds": 0.0,
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "finding_id": "W1-057",
+      "test_count": 90,
+      "passed": 90,
+      "tests": [
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch01-b200]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch01-b300]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch01-gb300]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch01-gb10]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch02-b200]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch02-b300]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch02-gb300]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch02-gb10]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch03-b200]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch03-b300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch03-gb300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch03-gb10]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch04-b200]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch04-b300]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch04-gb300]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch04-gb10]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch05-b200]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch05-b300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch05-gb300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch05-gb10]",
+          "time_seconds": 0.005,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch06-b200]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch06-b300]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch06-gb300]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch06-gb10]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch07-b200]",
+          "time_seconds": 0.014,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch07-b300]",
+          "time_seconds": 0.014,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch07-gb300]",
+          "time_seconds": 0.014,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch07-gb10]",
+          "time_seconds": 0.014,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch08-b200]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch08-b300]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch08-gb300]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch08-gb10]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch09-b200]",
+          "time_seconds": 0.017,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch09-b300]",
+          "time_seconds": 0.017,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch09-gb300]",
+          "time_seconds": 0.016,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch09-gb10]",
+          "time_seconds": 0.017,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch10-b200]",
+          "time_seconds": 0.016,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch10-b300]",
+          "time_seconds": 0.017,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch10-gb300]",
+          "time_seconds": 0.016,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch10-gb10]",
+          "time_seconds": 0.016,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch11-b200]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch11-b300]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch11-gb300]",
+          "time_seconds": 0.01,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch11-gb10]",
+          "time_seconds": 0.01,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch12-b200]",
+          "time_seconds": 0.013,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch12-b300]",
+          "time_seconds": 0.013,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch12-gb300]",
+          "time_seconds": 0.013,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch12-gb10]",
+          "time_seconds": 0.013,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch13-b200]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch13-b300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch13-gb300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch13-gb10]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch14-b200]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch14-b300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch14-gb300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch14-gb10]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch15-b200]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch15-b300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch15-gb300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch15-gb10]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch16-b200]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch16-b300]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch16-gb300]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch16-gb10]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch17-b200]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch17-b300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch17-gb300]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch17-gb10]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch18-b200]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch18-b300]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch18-gb300]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch18-gb10]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch19-b200]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch19-b300]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch19-gb300]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch19-gb10]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch20-b200]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch20-b300]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch20-gb300]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[ch20-gb10]",
+          "time_seconds": 0.008,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[labs/nvfp4_gemm-b200]",
+          "time_seconds": 0.009,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_hardware_alias_selects_architecture_without_a_visible_gpu[labs/ozaki_scheme-b200]",
+          "time_seconds": 0.006,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_reported_architecture_metadata_keeps_the_actual_compute_capability[10-0-B200/GB200]",
+          "time_seconds": 0.002,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_reported_architecture_metadata_keeps_the_actual_compute_capability[10-3-B300/GB300]",
+          "time_seconds": 0.002,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_reported_architecture_metadata_keeps_the_actual_compute_capability[12-0-RTX]",
+          "time_seconds": 0.002,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_reported_architecture_metadata_keeps_the_actual_compute_capability[12-1-GB10]",
+          "time_seconds": 0.002,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_run_benchmarks_cuda_wrapper_regression",
+          "name": "test_cuda_binary_arch_detection_uses_exact_supported_capabilities[capability0-sm_100]",
+          "time_seconds": 0.0,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_run_benchmarks_cuda_wrapper_regression",
+          "name": "test_cuda_binary_arch_detection_uses_exact_supported_capabilities[capability1-sm_103]",
+          "time_seconds": 0.0,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_run_benchmarks_cuda_wrapper_regression",
+          "name": "test_cuda_binary_arch_detection_uses_exact_supported_capabilities[capability2-sm_120]",
+          "time_seconds": 0.0,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_run_benchmarks_cuda_wrapper_regression",
+          "name": "test_cuda_binary_arch_detection_uses_exact_supported_capabilities[capability3-sm_121]",
+          "time_seconds": 0.0,
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "finding_id": "W1-067",
+      "test_count": 7,
+      "passed": 7,
+      "tests": [
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_custom_cublas_make_uses_the_requested_architecture[sm_100]",
+          "time_seconds": 0.003,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_custom_cublas_make_uses_the_requested_architecture[sm_103]",
+          "time_seconds": 0.003,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_custom_cublas_make_uses_the_requested_architecture[sm_120]",
+          "time_seconds": 0.003,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_custom_cublas_make_uses_the_requested_architecture[sm_121]",
+          "time_seconds": 0.003,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_custom_cublas_rejects_unsupported_make_targets[sm_120a]",
+          "time_seconds": 0.003,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_custom_cublas_rejects_unsupported_make_targets[sm_122]",
+          "time_seconds": 0.003,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_custom_cublas_rejects_unsupported_make_targets[native]",
+          "time_seconds": 0.003,
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "finding_id": "W1-111",
+      "test_count": 4,
+      "passed": 4,
+      "tests": [
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_tma_build_helper_dry_run_uses_existing_suffixed_targets[sm_100]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_tma_build_helper_dry_run_uses_existing_suffixed_targets[sm_103]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_tma_build_helper_dry_run_uses_existing_suffixed_targets[sm_120]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_tma_build_helper_dry_run_uses_existing_suffixed_targets[sm_121]",
+          "time_seconds": 0.011,
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "finding_id": "W1-112",
+      "test_count": 1,
+      "passed": 1,
+      "tests": [
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_warp_ci_wrapper_reaches_real_help_from_outside_code",
+          "time_seconds": 1.432,
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "finding_id": "W1-115",
+      "test_count": 2,
+      "passed": 2,
+      "tests": [
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_cmake_reads_abi_from_the_actual_selected_torch",
+          "time_seconds": 1.621,
+          "outcome": "passed"
+        },
+        {
+          "classname": "tests.test_build_entrypoints",
+          "name": "test_cmake_rejects_failed_torch_metadata_query",
+          "time_seconds": 0.147,
+          "outcome": "passed"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    "Tests are selected from the retained JUnit; the suite was not rerun for this reconciliation.",
+    "A test can support more than one architecture identity or routing finding and is therefore retained under each applicable finding.",
+    "W1-115 receives a selected-Python ABI query subgate only; pinned cu130 extension build/import remains pending.",
+    "CUDA compile evidence, where applicable, is recorded separately in ../hosted-cuda-compile-closure/receipt.json."
+  ]
+}

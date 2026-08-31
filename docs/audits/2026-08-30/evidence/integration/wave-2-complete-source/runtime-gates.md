@@ -1,28 +1,28 @@
 # Wave 2 remaining runtime gates
 
-This is the finding-specific runtime remainder after source revision `3316e0efe985040745ffd926c5f76a6bd4436aff`. All 48 rows have source repairs and focused host/source evidence; none is counted as runtime-verified. The final hosted compare workflow compiled 14 CUDA chapters for `sm_100`, `sm_103`, `sm_120`, and `sm_121`, but it had no GPU and did not run the device or numerical checks below. B200 custody is still unavailable to this task, and several gates also require Grace, pinned vLLM/Transformer Engine, NVML, or supported compiler/runtime combinations.
+This is the finding-specific runtime remainder after source revision `3316e0efe985040745ffd926c5f76a6bd4436aff`. All 48 rows have source repairs and exact passing final-source hosted CPU regression evidence; none is counted as whole-row runtime-verified. Retained CUDA 13 run `33391774950` compiles and links nine exact Wave 2 sources for `sm_100`, `sm_103`, `sm_120`, and `sm_121`; `W2-078` has a narrower header-through-consumer result with `sm_90`/H100 still uncompiled. The job had no GPU and did not run device or numerical checks. B200 custody is unavailable to this task, and several gates also require Grace, pinned vLLM/Transformer Engine, NVML, or supported compiler/runtime combinations. Exact JUnit and compiler mappings are in the [retained non-GPU audit](../hosted-non-gpu-runtime-closure/wave2-runtime-audit.json) and [compile receipt](../hosted-cuda-compile-closure/receipt.json).
 
 ## CUDA graph, CUTLASS, TMA, Triton, and compiler execution (18)
 
 | ID | Severity | Location | Remaining acceptance |
 | --- | --- | --- | --- |
 | W2-001 | critical | `code/ch12/cuda_extensions/cuda_graphs_kernels.cu:99` | Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases. |
-| W2-002 | critical | `code/ch12/optimized_graph_conditional_runtime.cu:282` | Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases. |
+| W2-002 | critical | `code/ch12/optimized_graph_conditional_runtime.cu:282` | CUDA 13 compile/link passes for sm100, sm103, sm120, and sm121. Run the conditional graph on a supported target; prove termination/body execution and compare full outputs for applicable non-square and tail cases. |
 | W2-003 | critical | `code/labs/custom_vs_cublas/cutlass_gemm/cutlass_gemm.cu:125` | Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases. |
-| W2-015 | high | `code/ch09/baseline_cublas_gemm_fp4_perchannel.cu:196` | Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases. |
-| W2-039 | medium | `code/ch02/memory_transfer_nvlink_demo.cu:296` | Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases. |
-| W2-050 | medium | `code/ch09/baseline_cublas_gemm_fp4_perchannel.cu:58` | Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases. |
-| W2-052 | medium | `code/ch09/optimized_cutlass_gemm_fp4_all_concepts.cu:151` | Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases. |
+| W2-015 | high | `code/ch09/baseline_cublas_gemm_fp4_perchannel.cu:196` | CUDA 13 compile/link passes for sm100, sm103, sm120, and sm121. Run target-device non-square/tail numerical comparisons and verify the required swizzled scale-factor layout semantics. |
+| W2-039 | medium | `code/ch02/memory_transfer_nvlink_demo.cu:296` | CUDA 13 compile/link passes for sm100, sm103, sm120, and sm121. Run on the target and distinguish the no-hint and prefetch strategies with measured transfer behavior. |
+| W2-050 | medium | `code/ch09/baseline_cublas_gemm_fp4_perchannel.cu:58` | CUDA 13 compile/link passes for sm100, sm103, sm120, and sm121. Run target-device non-square/tail output comparisons and verify column-major per-channel output scale offsets. |
+| W2-052 | medium | `code/ch09/optimized_cutlass_gemm_fp4_all_concepts.cu:151` | CUDA 13 compile/link passes for sm100, sm103, sm120, and sm121. Run target-device cluster/TMA behavior and full-output numerical comparisons. |
 | W2-053 | medium | `code/ch09/tcgen05_basic.cu:179` | Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases. |
-| W2-078 | medium | `code/core/common/headers/arch_detection.cuh:71` | Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases. |
+| W2-078 | medium | `code/core/common/headers/arch_detection.cuh:71` | Partial compiler evidence: the repaired header compiles through three ch07 TMA consumers for sm100, sm103, sm120, and sm121. Compile an sm90/H100 consumer and run device-specific capability checks; no device execution has occurred. |
 | W2-079 | medium | `code/core/scripts/utilities/probe_hardware_capabilities.py:250` | Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases. |
 | W2-083 | medium | `code/labs/cutlass_profiler_kernel_selector/run_triton_matmul.py:75` | Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases. |
 | W2-091 | medium | `code/labs/software_pipelining/software_pipelining_kernels.cu:50` | Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases. |
-| W2-100 | low | `code/ch07/async_prefetch_2d_demo.cu:134` | Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases. |
-| W2-101 | low | `code/ch07/optimized_tma_bulk_tensor_2d.cu:154` | Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases. |
-| W2-102 | low | `code/ch07/optimized_tma_copy.cu:450` | Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases. |
+| W2-100 | low | `code/ch07/async_prefetch_2d_demo.cu:134` | CUDA 13 compile/link passes for sm100, sm103, sm120, and sm121. Run target-device full-output comparisons for selected shapes and tails. |
+| W2-101 | low | `code/ch07/optimized_tma_bulk_tensor_2d.cu:154` | CUDA 13 compile/link passes for sm100, sm103, sm120, and sm121. Run target-device full-output comparisons for selected shapes and tails. |
+| W2-102 | low | `code/ch07/optimized_tma_copy.cu:450` | CUDA 13 compile/link passes for sm100, sm103, sm120, and sm121. Run target-device full-output comparisons for selected shapes and tails. |
 | W2-110 | low | `code/ch12/cuda_extensions/cuda_graphs_kernels.cu:9` | Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases. |
-| W2-119 | low | `code/core/common/headers/cuda13_demos.cuh:225` | Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases. |
+| W2-119 | low | `code/core/common/headers/cuda13_demos.cuh:225` | CUDA 13 compile/link passes for sm100, sm103, sm120, and sm121, and ptxas instantiates all six repaired TMA template shapes. Run target-device limit behavior and full-output comparisons for those selected box shapes. |
 | W2-137 | low | `code/labs/top_k_kernel/top_k_kernel_common.py:744` | Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases. |
 
 ## CUDA asynchronous ordering, allocator lifetime, and FP8 numerics (9)
@@ -93,6 +93,10 @@ This is the finding-specific runtime remainder after source revision `3316e0efe9
 ## Reconciliation
 
 - Runtime-gated rows: **48**
+- Whole runtime rows verified by retained CPU/compiler evidence: **0**
+- Rows with exact final-source hosted CPU regression subgate: **48**
+- Rows with exact four-target CUDA 13 compile/link subgate: **9**
+- Rows with partial configured-target header compile subgate: **1** (`W2-078`)
 - Source-fixed rows: **89**
 - Already fixed with current evidence: **4**
 - Untriaged rows: **0**

@@ -2,9 +2,10 @@
 
 This adds to [the earlier runtime handoff](../runtime-handoff.md). Source and
 metadata receipts retain their own identities. Final-source hosted CPU/static/
-dashboard validation and a four-target CUDA compiler matrix now pass, as recorded
-in the [Wave 2 complete-source receipt](../wave-2-complete-source/receipt.json).
-Those workflows do not certify the target Linux installation, GPU correctness,
+dashboard validation and a four-target CUDA compiler matrix now pass. The exact
+row mapping is retained in the [non-GPU reconciliation](../hosted-non-gpu-runtime-closure/receipt.json)
+and [CUDA 13 compile receipt](../hosted-cuda-compile-closure/receipt.json). Those
+workflows do not certify the full target Linux installation, GPU correctness,
 profiler capture, numerical acceptance, or performance.
 
 1. **Retain the completed CPU provenance cell and finish target installation
@@ -30,6 +31,13 @@ profiler capture, numerical acceptance, or performance.
    imports, native extensions, or GPU execution. Reproduce those remaining cells
    on the supported target with origins, hashes, resolved versions, and
    `pip check` preserved.
+   The same retained JUnit now verifies seven exact Wave 1 host/configuration
+   findings: W1-007, W1-052, W1-055, W1-057, W1-067, W1-111, and W1-112.
+   Their mechanisms are Make routing, failure propagation, architecture identity,
+   or wrapper paths; no device result is intrinsic. The 76-row local matrix is
+   therefore **7 verified and 69 pending**. All 48 Wave 2 runtime rows also have an
+   exact final-source hosted CPU/source-regression subgate, but zero whole Wave 2
+   rows close from CPU evidence.
 2. **Exercise the reviewed Linux/CUDA dependency graph.** All 90 current direct
    specifications resolve to 327 unique CPython 3.12 x86_64-manylinux packages
    under one reviewed GPUtil 1.4.0 source-distribution metadata exception.
@@ -39,17 +47,21 @@ profiler capture, numerical acceptance, or performance.
    cuda-python in one, and FlashInfer in one — load from the pinned target
    environment. Metadata resolution alone cannot close this gate.
 3. **Run the current CUDA/NCCL correctness matrix after GPU custody returns.**
-   The four ZeRO factories now pass source and CPU/Gloo child-result verification;
-   they still require actual two-GPU CUDA/NCCL execution, completed
+   The four ZeRO factories now pass source, matched CPU/Gloo update parity, and
+   fresh CPU/Gloo child-result verification under all four factory paths. They
+   still require actual two-GPU CUDA/NCCL execution, completed
    reduce-scatter/all-gather observations, CUDA RNG checks, and cleanup evidence.
    The other 57 generic wrappers remain deliberately unsupported by the harness.
    Do not count their refusals or CPU/Gloo results as GPU coverage.
 4. **Execute the finding-specific hardware gates from the ledger.** The current
    [Wave 2 matrix](../wave-2-complete-source/runtime-gates.md) contains 48 exact
-   rows. These include
-   CUDA compile/device-link and extension imports, chapter validation runners,
-   full-output numerical checks and reviewed policies, stream/sanitizer checks,
-   exact B200 Nsight Systems/Nsight Compute captures, and Grace/NUMA observations.
+   rows. Retained run `33391774950` already supplies bounded four-target compiler
+   evidence for nine exact Wave 2 sources; `W2-078` has only a configured-target
+   header result and still lacks `sm_90`/H100. It also supplies bounded compiler
+   evidence for 17 pending Wave 1 rows. The remaining contracts include unbuilt
+   consumers and extensions, chapter validation runners, full-output numerical
+   checks and reviewed policies, stream/sanitizer checks, exact B200 Nsight
+   Systems/Nsight Compute captures, and Grace/NUMA observations.
    Preserve model, workload, engine/build, device, acceptance cell, source, and
    outcome lineage. Do not attach historical performance numbers to the new
    source revision.

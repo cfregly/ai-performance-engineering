@@ -1,0 +1,77 @@
+name: Dual-Architecture Compare Builds
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "code/ch*/**"
+      - "code/core/**"
+      - "code/Makefile"
+      - ".gitmodules"
+      - ".github/workflows/dual-arch-compare.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "code/ch*/**"
+      - "code/core/**"
+      - "code/Makefile"
+      - ".gitmodules"
+      - ".github/workflows/dual-arch-compare.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dual-arch-compare-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: code
+
+jobs:
+  compare-builds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    container:
+      image: nvidia/cuda:13.0.0-devel-ubuntu22.04
+    env:
+      # CUDA 13.0 supports these repository targets. Hosted runners do not have
+      # a GPU, so compare builds must not invoke runtime architecture detection.
+      ARCH_LIST: "sm_100 sm_103 sm_120 sm_121"
+      AUTO_ARCH_DETECTION: "0"
+      COMPARE_BUILD_JOBS: "2"
+
+    steps:
+      - name: Install checkout prerequisites
+        working-directory: /
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            ca-certificates \
+            git \
+            make \
+            python3
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Materialize the validated CUTLASS source
+        run: bash core/scripts/install_cutlass.sh v4.5.2
+
+      - name: Verify configured CUDA architecture targets
+        shell: bash
+        run: |
+          # The compiler's code-list command omits feature-specific a and f targets.
+          # Compile the exact flags emitted by the shared Make configuration.
+          for architecture in ${ARCH_LIST}; do
+            make --no-print-directory \
+              -C ch01 \
+              ARCH="${architecture}" \
+              verify-cuda-arch-target
+          done
+
+      - name: Run dual-architecture compare builds
+        run: bash core/scripts/ci/run_compare_builds.sh

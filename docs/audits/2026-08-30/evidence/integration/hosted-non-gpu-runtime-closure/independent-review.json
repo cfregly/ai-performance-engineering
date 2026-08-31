@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "reviewed_at": "2026-08-31T15:49:36Z",
+  "state": "pass_exact_contract_reconciliation",
+  "conclusions": {
+    "wave_1": "Seven exact host/configuration findings are fully verified. The other 69 locally required Wave 1 runtime contracts remain pending.",
+    "wave_2": "All 48 runtime rows have exact final-source hosted CPU regression evidence, but none has the required target-hardware acceptance cell; all remain awaiting_runtime.",
+    "adjacent": "LOCAL-006, LOCAL-024, and LOCAL-027 advance only the bounded subgates named in the receipt; no adjacent awaiting_runtime row fully closes."
+  },
+  "wave_1_verified_ids": [
+    "W1-007",
+    "W1-052",
+    "W1-055",
+    "W1-057",
+    "W1-067",
+    "W1-111",
+    "W1-112"
+  ],
+  "precision_limits": [
+    "A passing hosted CPU/source regression does not qualify CUDA, NCCL, sanitizer, profiler, device, numerical, or performance behavior.",
+    "The 461 JUnit skips are heterogeneous and are not uniformly capability skips or passing protection coverage.",
+    "W1-067 closes the exact dead Make ARCH-knob mechanism; it does not qualify the lab binary on a device.",
+    "W1-055 and W1-057 close static identity and build-routing defects; live device discovery and kernel qualification are separate contracts.",
+    "No retained pre-final-source receipt is used to close a final-source hardware gate."
+  ]
+}

@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-08-31T15:49:36Z",
+  "disposition": "pass_exact_retained_hosted_non_gpu_runtime_reconciliation__hardware_gates_pending",
+  "reconciliation_base_revision": "4bcbd16325eb5d51cff90e84f8a1cb4e6c735189",
+  "source_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+  "hosted_cpu": {
+    "run_id": 33391774956,
+    "job_id": 99486842896,
+    "run_url": "https://github.com/cfregly/ai-performance-engineering/actions/runs/33391774956",
+    "environment": "GitHub-hosted Ubuntu 24.04 / CPython 3.12.14 x64",
+    "tests": 4807,
+    "passed": 4346,
+    "skipped": 461,
+    "failures": 0,
+    "errors": 0,
+    "junit_sha256": "28e9a877d0e90d45712c7020db54b7ef6390f871308539ad5867434c4acbceba",
+    "rerun_for_reconciliation": false
+  },
+  "wave_1": {
+    "verified_exact_ids": [
+      "W1-007",
+      "W1-052",
+      "W1-055",
+      "W1-057",
+      "W1-067",
+      "W1-111",
+      "W1-112"
+    ],
+    "verified_exact_count": 7,
+    "locally_required_runtime_contracts": 76,
+    "runtime_acceptance_counts": {
+      "not_required_by_current_ledger": 52,
+      "pending": 69,
+      "verified": 7
+    },
+    "status_counts": {
+      "already_fixed_with_evidence": 1,
+      "awaiting_runtime": 5,
+      "source_fixed": 115,
+      "verified": 7
+    },
+    "junit_row_references": 215,
+    "junit_unique_tests": 129,
+    "bounded_only": {
+      "W1-115": "Selected-Python Torch ABI query passes; pinned cu130 extension configure/build/link/import remains pending."
+    }
+  },
+  "wave_2": {
+    "rows_reconciled": 48,
+    "whole_rows_verified": 0,
+    "status_counts": {
+      "already_fixed_with_evidence": 4,
+      "awaiting_runtime": 48,
+      "source_fixed": 89
+    },
+    "hosted_cpu_row_test_references": 61,
+    "hosted_cpu_unique_tests": 56,
+    "exact_compile_link_ids": [
+      "W2-002",
+      "W2-015",
+      "W2-039",
+      "W2-050",
+      "W2-052",
+      "W2-100",
+      "W2-101",
+      "W2-102",
+      "W2-119"
+    ],
+    "partial_header_compile_ids": [
+      "W2-078"
+    ],
+    "remaining": "All 48 rows still require their recorded target-hardware acceptance cells."
+  },
+  "adjacent": {
+    "status_counts": {
+      "awaiting_runtime": 11,
+      "source_fixed": 40,
+      "verified": 1
+    },
+    "bounded_subgates": {
+      "LOCAL-006": "Four fresh CPU/Gloo ZeRO child-result protocol paths pass; CUDA/NCCL/default-scale/compile/memory/performance remain.",
+      "LOCAL-024": "Bounded Torch 2.9.1+cpu and Triton 3.5.1 Linux co-install/import passes; CUDA staged install/native/hardware remain.",
+      "LOCAL-027": "Bounded 20-pin/56-distribution Linux CPU install and final-source hosted CPU CI pass; full 90/327 Linux/CUDA graph, GPUtil runtime, native, and GPU work remain."
+    }
+  },
+  "independent_review": {
+    "state": "pass_exact_contract_reconciliation",
+    "evidence": "independent-review.json"
+  },
+  "boundaries": [
+    "No full suite or build was rerun for this reconciliation; retained completed runs were inspected.",
+    "Seven Wave 1 rows close only because device execution is not intrinsic to their exact configuration, routing, label, or wrapper-path defects.",
+    "The 461 hosted CPU skips are heterogeneous and are not converted to passing capability or protection coverage.",
+    "All 48 Wave 2 runtime rows remain awaiting_runtime despite their final-source CPU regression subgates.",
+    "B200 custody was unavailable; no GPU was probed or launched.",
+    "No numerical, CUDA/NCCL device, sanitizer, profiler, hardware, deployment, or performance gate is inferred."
+  ],
+  "evidence_files": {
+    "README.md": "8f862259fdc2d92d8121ea08d0a08b93bb5816d75fbfdc94f72e2a27c92bf948",
+    "focused-validation.json": "1bb7393dfdaf1d4f2d1eea481b31937a5fb36f0806a7d7bc3e57a31c7924f584",
+    "independent-review.json": "742f5d22690e2029d1cf2cf09722d4e8e7bf38bc759f5ce2d21587ab10595174",
+    "w1-junit-subset.json": "2c7a24b9ad512b4f7643f5be6ab46015b720006de13ca041ef375b1a486262a7",
+    "wave2-runtime-audit.json": "5bc484a7a9962c6f46a601a8bc6d9602507790d33e9eeb68c1f597e554199e69"
+  },
+  "focused_validation": {
+    "state": "pass",
+    "evidence": "focused-validation.json",
+    "validated_at": "2026-08-31T16:14:14Z"
+  }
+}

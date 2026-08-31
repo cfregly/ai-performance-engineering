@@ -1,0 +1,1187 @@
+{
+  "schema_version": 1,
+  "source_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+  "run_id": 33391774950,
+  "job_id": 99486864020,
+  "container": "nvidia/cuda:13.0.0-devel-ubuntu22.04",
+  "cutlass": "v4.5.2",
+  "architectures": [
+    "sm_100",
+    "sm_103",
+    "sm_120",
+    "sm_121"
+  ],
+  "records": [
+    {
+      "finding_ids": [
+        "W1-001"
+      ],
+      "source_path": "code/ch10/tma_multicast_cluster.cu",
+      "binary_base": "tma_multicast_cluster",
+      "remaining": "Full-output device validation, sanitizer coverage, and performance remain pending.",
+      "compile_subgate": "pass_normal_and_verify_cuda_13_compile_link",
+      "device_execution": "not_run",
+      "source_sha256": "5f68f8b00bfaaa7dd1a9f89306749b024bad7ab7e03f23105b9bc2882c6e9dc4",
+      "source_current_source_matches": true,
+      "observations": [
+        {
+          "architecture": "sm_100",
+          "binary_suffix": "sm100",
+          "source_log_line": 4125,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:53:33.1534844Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -DTMA_MULTICAST_TARGET=100 -std=c++17 -rdc=true -I.. -lcuda -o tma_multicast_cluster_sm100 tma_multicast_cluster.cu"
+        },
+        {
+          "architecture": "sm_103",
+          "binary_suffix": "sm103",
+          "source_log_line": 4549,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:54:34.5171245Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -DTMA_MULTICAST_TARGET=103 -std=c++17 -rdc=true -I.. -lcuda -o tma_multicast_cluster_sm103 tma_multicast_cluster.cu"
+        },
+        {
+          "architecture": "sm_120",
+          "binary_suffix": "sm120",
+          "source_log_line": 4973,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:55:35.7614057Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -DTMA_MULTICAST_TARGET=0 -std=c++17 -rdc=true -I.. -lcuda -o tma_multicast_cluster_sm120 tma_multicast_cluster.cu"
+        },
+        {
+          "architecture": "sm_121",
+          "binary_suffix": "sm121",
+          "source_log_line": 5397,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:56:36.2307412Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -DTMA_MULTICAST_TARGET=0 -std=c++17 -rdc=true -I.. -lcuda -o tma_multicast_cluster_sm121 tma_multicast_cluster.cu"
+        }
+      ],
+      "additional_binary_observations": {
+        "tma_multicast_cluster_verify": [
+          {
+            "architecture": "sm_100",
+            "binary_suffix": "sm100",
+            "source_log_line": 4139,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:53:39.4552071Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -DTMA_MULTICAST_TARGET=100 -std=c++17 -rdc=true -DVERIFY=1 -I.. -lcuda -o tma_multicast_cluster_verify_sm100 tma_multicast_cluster.cu"
+          },
+          {
+            "architecture": "sm_103",
+            "binary_suffix": "sm103",
+            "source_log_line": 4563,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:54:40.8161944Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -DTMA_MULTICAST_TARGET=103 -std=c++17 -rdc=true -DVERIFY=1 -I.. -lcuda -o tma_multicast_cluster_verify_sm103 tma_multicast_cluster.cu"
+          },
+          {
+            "architecture": "sm_120",
+            "binary_suffix": "sm120",
+            "source_log_line": 4987,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:55:41.6143907Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -DTMA_MULTICAST_TARGET=0 -std=c++17 -rdc=true -DVERIFY=1 -I.. -lcuda -o tma_multicast_cluster_verify_sm120 tma_multicast_cluster.cu"
+          },
+          {
+            "architecture": "sm_121",
+            "binary_suffix": "sm121",
+            "source_log_line": 5411,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:56:42.1287166Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -DTMA_MULTICAST_TARGET=0 -std=c++17 -rdc=true -DVERIFY=1 -I.. -lcuda -o tma_multicast_cluster_verify_sm121 tma_multicast_cluster.cu"
+          }
+        ]
+      }
+    },
+    {
+      "finding_ids": [
+        "W1-008"
+      ],
+      "source_path": "code/ch08/baseline_thresholdtma.cu",
+      "binary_base": "baseline_thresholdtma",
+      "remaining": "Run the production entrypoint on a compatible GPU; compare full outputs, prove event timing spans device work, run memcheck/racecheck/synccheck, and collect target timing before any performance claim.",
+      "compile_subgate": "pass_existing_hosted_cuda_13_compile_link_direct_tu_sm100_sm103_sm120_sm121",
+      "device_execution": "not_run",
+      "source_sha256": "e50cf230915fb7303ce1f089acdad899c7aef14f04650d19a57c73ca5221c955",
+      "source_current_source_matches": true,
+      "observations": [
+        {
+          "architecture": "sm_100",
+          "binary_suffix": "sm100",
+          "source_log_line": 2524,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:32:01.7426187Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo --threads=0 -Xptxas=-warn-spills  -I../core/common/headers  -o baseline_thresholdtma_sm100 baseline_thresholdtma.cu -lcuda "
+        },
+        {
+          "architecture": "sm_103",
+          "binary_suffix": "sm103",
+          "source_log_line": 2573,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:32:14.0191769Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo --threads=0 -Xptxas=-warn-spills  -I../core/common/headers  -o baseline_thresholdtma_sm103 baseline_thresholdtma.cu -lcuda "
+        },
+        {
+          "architecture": "sm_120",
+          "binary_suffix": "sm120",
+          "source_log_line": 2622,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:32:26.3316764Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo --threads=0 -Xptxas=-warn-spills  -I../core/common/headers  -o baseline_thresholdtma_sm120 baseline_thresholdtma.cu -lcuda "
+        },
+        {
+          "architecture": "sm_121",
+          "binary_suffix": "sm121",
+          "source_log_line": 2671,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:32:38.4849194Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo --threads=0 -Xptxas=-warn-spills  -I../core/common/headers  -o baseline_thresholdtma_sm121 baseline_thresholdtma.cu -lcuda "
+        }
+      ]
+    },
+    {
+      "finding_ids": [
+        "W1-009"
+      ],
+      "source_path": "code/ch08/threshold_async_kernel.cuh",
+      "compile_subgate": "pass_bounded_header_through_one_production_consumer_sm100_sm103_sm120_sm121__other_consumers_pending",
+      "device_execution": "not_run",
+      "remaining": "The production optimized_threshold consumer compiles. threshold_kernels.cu and chapter_cuda_validation.cu remain unbuilt; compile/import those consumers, then execute one-through-multiple-tile and ragged-tail full-output cases under racecheck and synccheck.",
+      "compile_driver_paths": [
+        "code/ch08/optimized_threshold.cu"
+      ],
+      "source_sha256": "6c1a02868022ee2df39ac7bbc0eff6d148c0f8cbce6c95e7a59dcaec786cfde7",
+      "source_current_source_matches": true,
+      "compile_driver_sha256": {
+        "code/ch08/optimized_threshold.cu": "26068930c7583a1221649ab618f1aaff0102ca4bb7abea61be21b15946a3d6e2"
+      },
+      "compile_driver_current_source_matches": {
+        "code/ch08/optimized_threshold.cu": true
+      },
+      "observations_by_driver": {
+        "code/ch08/optimized_threshold.cu": [
+          {
+            "architecture": "sm_100",
+            "binary_suffix": "sm100",
+            "source_log_line": 2536,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:32:06.6053166Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo --threads=0 -Xptxas=-warn-spills  -I../core/common/headers  -o optimized_threshold_sm100 optimized_threshold.cu -lcuda "
+          },
+          {
+            "architecture": "sm_103",
+            "binary_suffix": "sm103",
+            "source_log_line": 2585,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:32:18.9571355Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo --threads=0 -Xptxas=-warn-spills  -I../core/common/headers  -o optimized_threshold_sm103 optimized_threshold.cu -lcuda "
+          },
+          {
+            "architecture": "sm_120",
+            "binary_suffix": "sm120",
+            "source_log_line": 2634,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:32:31.3191729Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo --threads=0 -Xptxas=-warn-spills  -I../core/common/headers  -o optimized_threshold_sm120 optimized_threshold.cu -lcuda "
+          },
+          {
+            "architecture": "sm_121",
+            "binary_suffix": "sm121",
+            "source_log_line": 2683,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:32:43.4344963Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo --threads=0 -Xptxas=-warn-spills  -I../core/common/headers  -o optimized_threshold_sm121 optimized_threshold.cu -lcuda "
+          }
+        ]
+      }
+    },
+    {
+      "finding_ids": [
+        "W1-011",
+        "W1-012",
+        "W1-048"
+      ],
+      "source_path": "code/ch11/streams_ordered_demo.cu",
+      "binary_base": "streams_ordered_demo",
+      "remaining": "Run the prepared size/chunk matrix with full-output checks; verify H2D/compute/D2H dependencies, all-chunk coverage, fan-out/join timing, and sanitizer results.",
+      "compile_subgate": "pass_existing_hosted_cuda_13_compile_link_direct_tu_sm100_sm103_sm120_sm121",
+      "device_execution": "not_run",
+      "source_sha256": "4fe453aba6d77b83fcce0eacb5b2a10badf10f603ab8aa98f3f62ce64609f63e",
+      "source_current_source_matches": true,
+      "observations": [
+        {
+          "architecture": "sm_100",
+          "binary_suffix": "sm100",
+          "source_log_line": 5465,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:56:54.4236853Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC  --allow-unsupported-compiler  -o streams_ordered_demo_sm100 streams_ordered_demo.cu "
+        },
+        {
+          "architecture": "sm_103",
+          "binary_suffix": "sm103",
+          "source_log_line": 5492,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:57:10.7706686Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC  --allow-unsupported-compiler  -o streams_ordered_demo_sm103 streams_ordered_demo.cu "
+        },
+        {
+          "architecture": "sm_120",
+          "binary_suffix": "sm120",
+          "source_log_line": 5519,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:57:27.0243427Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC  --allow-unsupported-compiler  -o streams_ordered_demo_sm120 streams_ordered_demo.cu "
+        },
+        {
+          "architecture": "sm_121",
+          "binary_suffix": "sm121",
+          "source_log_line": 5546,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:57:43.3539721Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC  --allow-unsupported-compiler  -o streams_ordered_demo_sm121 streams_ordered_demo.cu "
+        }
+      ]
+    },
+    {
+      "finding_ids": [
+        "W1-013",
+        "W1-049",
+        "W1-050",
+        "W1-051"
+      ],
+      "source_path": "code/ch11/streams_overlap_demo.cu",
+      "binary_base": "streams_overlap_demo",
+      "remaining": "Run equal-work production comparisons across the prepared sizes; check every output, grid coverage, distinct stream overlap and D2H ordering, then sanitize and remeasure.",
+      "compile_subgate": "pass_existing_hosted_cuda_13_compile_link_direct_tu_sm100_sm103_sm120_sm121",
+      "device_execution": "not_run",
+      "source_sha256": "4f120f69d529ef60a00dfc67a5be1cac72b24a3cb61f340c6d4f1ed7dc06a960",
+      "source_current_source_matches": true,
+      "observations": [
+        {
+          "architecture": "sm_100",
+          "binary_suffix": "sm100",
+          "source_log_line": 5466,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:56:56.4225756Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC  --allow-unsupported-compiler  -o streams_overlap_demo_sm100 streams_overlap_demo.cu "
+        },
+        {
+          "architecture": "sm_103",
+          "binary_suffix": "sm103",
+          "source_log_line": 5493,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:57:12.7819082Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC  --allow-unsupported-compiler  -o streams_overlap_demo_sm103 streams_overlap_demo.cu "
+        },
+        {
+          "architecture": "sm_120",
+          "binary_suffix": "sm120",
+          "source_log_line": 5520,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:57:29.0433063Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC  --allow-unsupported-compiler  -o streams_overlap_demo_sm120 streams_overlap_demo.cu "
+        },
+        {
+          "architecture": "sm_121",
+          "binary_suffix": "sm121",
+          "source_log_line": 5547,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:57:45.3701881Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC  --allow-unsupported-compiler  -o streams_overlap_demo_sm121 streams_overlap_demo.cu "
+        }
+      ]
+    },
+    {
+      "finding_ids": [
+        "W1-014"
+      ],
+      "source_path": "code/ch11/streams_warp_specialized_demo.cu",
+      "binary_base": "streams_warp_specialized_demo",
+      "remaining": "Run one, three, and eleven streams over ragged batches; verify outputs, failure propagation, fan-out/join timing, and sanitizers.",
+      "compile_subgate": "pass_existing_hosted_cuda_13_compile_link_direct_tu_sm100_sm103_sm120_sm121",
+      "device_execution": "not_run",
+      "source_sha256": "47b73f9e368b2a4a56f40c78d15f4d3487f6303705be768d34a1385272eee9b0",
+      "source_current_source_matches": true,
+      "observations": [
+        {
+          "architecture": "sm_100",
+          "binary_suffix": "sm100",
+          "source_log_line": 5467,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:56:56.7065607Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC  --allow-unsupported-compiler  -o streams_warp_specialized_demo_sm100 streams_warp_specialized_demo.cu "
+        },
+        {
+          "architecture": "sm_103",
+          "binary_suffix": "sm103",
+          "source_log_line": 5494,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:57:12.9597712Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC  --allow-unsupported-compiler  -o streams_warp_specialized_demo_sm103 streams_warp_specialized_demo.cu "
+        },
+        {
+          "architecture": "sm_120",
+          "binary_suffix": "sm120",
+          "source_log_line": 5521,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:57:29.4404469Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC  --allow-unsupported-compiler  -o streams_warp_specialized_demo_sm120 streams_warp_specialized_demo.cu "
+        },
+        {
+          "architecture": "sm_121",
+          "binary_suffix": "sm121",
+          "source_log_line": 5548,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:57:45.5604377Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC  --allow-unsupported-compiler  -o streams_warp_specialized_demo_sm121 streams_warp_specialized_demo.cu "
+        }
+      ]
+    },
+    {
+      "finding_ids": [
+        "W1-015"
+      ],
+      "source_path": "code/ch12/optimized_cuda_graphs.cu",
+      "binary_base": "optimized_cuda_graphs",
+      "remaining": "Run both real graph entrypoints; compare full outputs for identical workloads, verify reset and work-stream timing, run sanitizers, and collect target timing.",
+      "compile_subgate": "pass_existing_hosted_cuda_13_compile_link_direct_tu_sm100_sm103_sm120_sm121",
+      "device_execution": "not_run",
+      "source_sha256": "fbb3c4121fb55b7595316f965fd4425412c8f35566ff909f967324476e3fdb1b",
+      "source_current_source_matches": true,
+      "observations": [
+        {
+          "architecture": "sm_100",
+          "binary_suffix": "sm100",
+          "source_log_line": 5619,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:57:59.7827294Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC   --allow-unsupported-compiler -o optimized_cuda_graphs_sm100 optimized_cuda_graphs.cu -lcuda  "
+        },
+        {
+          "architecture": "sm_103",
+          "binary_suffix": "sm103",
+          "source_log_line": 5742,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:58:16.5890728Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC   --allow-unsupported-compiler -o optimized_cuda_graphs_sm103 optimized_cuda_graphs.cu -lcuda  "
+        },
+        {
+          "architecture": "sm_120",
+          "binary_suffix": "sm120",
+          "source_log_line": 5865,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:58:33.5001095Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC   --allow-unsupported-compiler -o optimized_cuda_graphs_sm120 optimized_cuda_graphs.cu -lcuda  "
+        },
+        {
+          "architecture": "sm_121",
+          "binary_suffix": "sm121",
+          "source_log_line": 5988,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:58:50.4355890Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC   --allow-unsupported-compiler -o optimized_cuda_graphs_sm121 optimized_cuda_graphs.cu -lcuda  "
+        }
+      ]
+    },
+    {
+      "finding_ids": [
+        "W1-016"
+      ],
+      "source_path": "code/ch18/flashmla_kernel.cu",
+      "binary_base": "flashmla_kernel",
+      "remaining": "Run the CUDA source against an independent FP64 attention reference for the specified dimensions and lengths, including empty and large-score cases, then sanitize.",
+      "compile_subgate": "pass_existing_hosted_cuda_13_compile_link_direct_tu_sm100_sm103_sm120_sm121",
+      "device_execution": "not_run",
+      "source_sha256": "948b108f65c3cd7026afedffc159a78479ac65c33a2edc7fc4783dd48173f811",
+      "source_current_source_matches": true,
+      "observations": [
+        {
+          "architecture": "sm_100",
+          "binary_suffix": "sm100",
+          "source_log_line": 6111,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:59:04.5613398Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo  -o flashmla_kernel_sm100 flashmla_kernel.cu -lcuda "
+        },
+        {
+          "architecture": "sm_103",
+          "binary_suffix": "sm103",
+          "source_log_line": 6117,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:59:05.9868068Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo  -o flashmla_kernel_sm103 flashmla_kernel.cu -lcuda "
+        },
+        {
+          "architecture": "sm_120",
+          "binary_suffix": "sm120",
+          "source_log_line": 6123,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:59:07.4027320Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo  -o flashmla_kernel_sm120 flashmla_kernel.cu -lcuda "
+        },
+        {
+          "architecture": "sm_121",
+          "binary_suffix": "sm121",
+          "source_log_line": 6129,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:59:08.8288737Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo  -o flashmla_kernel_sm121 flashmla_kernel.cu -lcuda "
+        }
+      ]
+    },
+    {
+      "finding_ids": [
+        "W1-045"
+      ],
+      "source_path": "code/ch06/occupancy_api.cu",
+      "binary_base": "occupancy_api",
+      "remaining": "Run the actual ch06 occupancy API over ragged sizes; confirm queried dynamic shared memory equals launch bytes and partial blocks complete under synccheck/racecheck.",
+      "compile_subgate": "pass_existing_hosted_cuda_13_compile_link_direct_tu_sm100_sm103_sm120_sm121",
+      "device_execution": "not_run",
+      "source_sha256": "33fd08d7e29eb7e55191322cb955df1b28ca03b8aeb2734f745c660a353a1d54",
+      "source_current_source_matches": true,
+      "observations": [
+        {
+          "architecture": "sm_100",
+          "binary_suffix": "sm100",
+          "source_log_line": 1103,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:29:36.6071107Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -o occupancy_api_sm100 occupancy_api.cu -lcuda  "
+        },
+        {
+          "architecture": "sm_103",
+          "binary_suffix": "sm103",
+          "source_log_line": 1455,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:29:50.0501056Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -o occupancy_api_sm103 occupancy_api.cu -lcuda  "
+        },
+        {
+          "architecture": "sm_120",
+          "binary_suffix": "sm120",
+          "source_log_line": 1807,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:30:03.5170551Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -o occupancy_api_sm120 occupancy_api.cu -lcuda  "
+        },
+        {
+          "architecture": "sm_121",
+          "binary_suffix": "sm121",
+          "source_log_line": 2160,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:30:16.9939529Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -o occupancy_api_sm121 occupancy_api.cu -lcuda  "
+        }
+      ]
+    },
+    {
+      "finding_ids": [
+        "W1-046"
+      ],
+      "source_path": "code/ch06/optimized_ilp_low_occupancy_vec4_impl.cuh",
+      "compile_subgate": "pass_bounded_header_through_all_production_consumers_sm100_sm103_sm120_sm121__validation_consumer_pending",
+      "device_execution": "not_run",
+      "remaining": "All three production consumers compile. chapter_cuda_validation.cu remains unbuilt; compile and execute it and the production paths over partial vectors/grid-stride reuse with full eight-coefficient output checks, nonfinite rejection, successful exit, and sanitizers.",
+      "compile_driver_paths": [
+        "code/ch06/ilp_demo.cu",
+        "code/ch06/ilp_extreme_low_occupancy_vec4_demo.cu",
+        "code/ch06/ilp_low_occupancy_vec4_demo.cu"
+      ],
+      "source_sha256": "5afd0c9c431568c766903f148e59072a6c1a6fd01ef92d72f4d739d7a57401d3",
+      "source_current_source_matches": true,
+      "compile_driver_sha256": {
+        "code/ch06/ilp_demo.cu": "408a7e849bd9e10555bd9c88259f7f4c4a68e10c417bd758695861654dbe7b69",
+        "code/ch06/ilp_extreme_low_occupancy_vec4_demo.cu": "81d876447173a31b24a3ae9610c7e1f65f71a1717b62fb1ec803e6555cd6e66d",
+        "code/ch06/ilp_low_occupancy_vec4_demo.cu": "9e3293cca203e3f11b363756f5c0dbb1f775ae8c7c37567300bcb5c04827fd01"
+      },
+      "compile_driver_current_source_matches": {
+        "code/ch06/ilp_demo.cu": true,
+        "code/ch06/ilp_extreme_low_occupancy_vec4_demo.cu": true,
+        "code/ch06/ilp_low_occupancy_vec4_demo.cu": true
+      },
+      "observations_by_driver": {
+        "code/ch06/ilp_demo.cu": [
+          {
+            "architecture": "sm_100",
+            "binary_suffix": "sm100",
+            "source_log_line": 910,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:29:31.1438391Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -o ilp_demo_sm100 ilp_demo.cu -lcuda  "
+          },
+          {
+            "architecture": "sm_103",
+            "binary_suffix": "sm103",
+            "source_log_line": 1262,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:29:44.4843690Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -o ilp_demo_sm103 ilp_demo.cu -lcuda  "
+          },
+          {
+            "architecture": "sm_120",
+            "binary_suffix": "sm120",
+            "source_log_line": 1614,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:29:57.9742493Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -o ilp_demo_sm120 ilp_demo.cu -lcuda  "
+          },
+          {
+            "architecture": "sm_121",
+            "binary_suffix": "sm121",
+            "source_log_line": 1967,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:30:11.4537627Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -o ilp_demo_sm121 ilp_demo.cu -lcuda  "
+          }
+        ],
+        "code/ch06/ilp_extreme_low_occupancy_vec4_demo.cu": [
+          {
+            "architecture": "sm_100",
+            "binary_suffix": "sm100",
+            "source_log_line": 959,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:29:32.8038296Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -o ilp_extreme_low_occupancy_vec4_demo_sm100 ilp_extreme_low_occupancy_vec4_demo.cu -lcuda  "
+          },
+          {
+            "architecture": "sm_103",
+            "binary_suffix": "sm103",
+            "source_log_line": 1311,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:29:46.2497152Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -o ilp_extreme_low_occupancy_vec4_demo_sm103 ilp_extreme_low_occupancy_vec4_demo.cu -lcuda  "
+          },
+          {
+            "architecture": "sm_120",
+            "binary_suffix": "sm120",
+            "source_log_line": 1663,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:29:59.6877001Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -o ilp_extreme_low_occupancy_vec4_demo_sm120 ilp_extreme_low_occupancy_vec4_demo.cu -lcuda  "
+          },
+          {
+            "architecture": "sm_121",
+            "binary_suffix": "sm121",
+            "source_log_line": 2016,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:30:13.1413801Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -o ilp_extreme_low_occupancy_vec4_demo_sm121 ilp_extreme_low_occupancy_vec4_demo.cu -lcuda  "
+          }
+        ],
+        "code/ch06/ilp_low_occupancy_vec4_demo.cu": [
+          {
+            "architecture": "sm_100",
+            "binary_suffix": "sm100",
+            "source_log_line": 1049,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:29:34.4679422Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -o ilp_low_occupancy_vec4_demo_sm100 ilp_low_occupancy_vec4_demo.cu -lcuda  "
+          },
+          {
+            "architecture": "sm_103",
+            "binary_suffix": "sm103",
+            "source_log_line": 1401,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:29:47.9335213Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -o ilp_low_occupancy_vec4_demo_sm103 ilp_low_occupancy_vec4_demo.cu -lcuda  "
+          },
+          {
+            "architecture": "sm_120",
+            "binary_suffix": "sm120",
+            "source_log_line": 1753,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:30:01.4004602Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -o ilp_low_occupancy_vec4_demo_sm120 ilp_low_occupancy_vec4_demo.cu -lcuda  "
+          },
+          {
+            "architecture": "sm_121",
+            "binary_suffix": "sm121",
+            "source_log_line": 2106,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:30:14.8267719Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -o ilp_low_occupancy_vec4_demo_sm121 ilp_low_occupancy_vec4_demo.cu -lcuda  "
+          }
+        ]
+      }
+    },
+    {
+      "finding_ids": [
+        "W1-103"
+      ],
+      "source_path": "code/ch07/fp8_32byte_loads_demo.cu",
+      "binary_base": "fp8_32byte_loads_demo",
+      "remaining": "Run full-output FP8 cases and exact device initialization readback; prove the CUDA E4M3 constructor byte represents 1.0 and run memcheck.",
+      "compile_subgate": "pass_existing_hosted_cuda_13_compile_link_direct_tu_sm100_sm103_sm120_sm121",
+      "device_execution": "not_run",
+      "source_sha256": "cbf49624b3668fd82e8249dbe17910f11bd1fc1b9a71df3599e9497c0f89f1c8",
+      "source_current_source_matches": true,
+      "observations": [
+        {
+          "architecture": "sm_100",
+          "binary_suffix": "sm100",
+          "source_log_line": 2289,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:30:31.9894656Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC   -o fp8_32byte_loads_demo_sm100 fp8_32byte_loads_demo.cu -lcuda "
+        },
+        {
+          "architecture": "sm_103",
+          "binary_suffix": "sm103",
+          "source_log_line": 2350,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:30:56.4098574Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC   -o fp8_32byte_loads_demo_sm103 fp8_32byte_loads_demo.cu -lcuda "
+        },
+        {
+          "architecture": "sm_120",
+          "binary_suffix": "sm120",
+          "source_log_line": 2411,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:31:20.7026855Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC   -o fp8_32byte_loads_demo_sm120 fp8_32byte_loads_demo.cu -lcuda "
+        },
+        {
+          "architecture": "sm_121",
+          "binary_suffix": "sm121",
+          "source_log_line": 2472,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:31:45.3269769Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC   -o fp8_32byte_loads_demo_sm121 fp8_32byte_loads_demo.cu -lcuda "
+        }
+      ]
+    },
+    {
+      "finding_ids": [
+        "W1-104"
+      ],
+      "source_path": "code/ch08/threshold_tma_kernel.cuh",
+      "compile_subgate": "pass_bounded_header_through_one_production_consumer_sm100_sm103_sm120_sm121__other_consumers_pending",
+      "device_execution": "not_run",
+      "remaining": "The production optimized_thresholdtma consumer compiles. threshold_kernels.cu and chapter_cuda_validation.cu remain unbuilt; compile/import those consumers and run production specializations, ragged counts, unaligned views, and sanitizers.",
+      "compile_driver_paths": [
+        "code/ch08/optimized_thresholdtma.cu"
+      ],
+      "source_sha256": "e54accbcc4664d9b4ef4fe8313aa5f93bb038b21dfcf16598e74b8f84f658c4a",
+      "source_current_source_matches": true,
+      "compile_driver_sha256": {
+        "code/ch08/optimized_thresholdtma.cu": "def4369c250e16a163d39268a032cbf85b3f3b9c65a63fc5642e219782e259ec"
+      },
+      "compile_driver_current_source_matches": {
+        "code/ch08/optimized_thresholdtma.cu": true
+      },
+      "observations_by_driver": {
+        "code/ch08/optimized_thresholdtma.cu": [
+          {
+            "architecture": "sm_100",
+            "binary_suffix": "sm100",
+            "source_log_line": 2538,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:32:07.9762877Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo --threads=0 -Xptxas=-warn-spills  -I../core/common/headers  -o optimized_thresholdtma_sm100 optimized_thresholdtma.cu -lcuda "
+          },
+          {
+            "architecture": "sm_103",
+            "binary_suffix": "sm103",
+            "source_log_line": 2587,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:32:20.2420446Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo --threads=0 -Xptxas=-warn-spills  -I../core/common/headers  -o optimized_thresholdtma_sm103 optimized_thresholdtma.cu -lcuda "
+          },
+          {
+            "architecture": "sm_120",
+            "binary_suffix": "sm120",
+            "source_log_line": 2636,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:32:32.4230805Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo --threads=0 -Xptxas=-warn-spills  -I../core/common/headers  -o optimized_thresholdtma_sm120 optimized_thresholdtma.cu -lcuda "
+          },
+          {
+            "architecture": "sm_121",
+            "binary_suffix": "sm121",
+            "source_log_line": 2685,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:32:44.7812990Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo --threads=0 -Xptxas=-warn-spills  -I../core/common/headers  -o optimized_thresholdtma_sm121 optimized_thresholdtma.cu -lcuda "
+          }
+        ]
+      }
+    },
+    {
+      "finding_ids": [
+        "W2-002"
+      ],
+      "source_path": "code/ch12/optimized_graph_conditional_runtime.cu",
+      "binary_base": "optimized_graph_conditional_runtime",
+      "remaining": "Target-device conditional-graph termination, body execution, and output comparison.",
+      "compile_subgate": "pass_existing_hosted_cuda_13_compile_link",
+      "device_execution": "not_run",
+      "source_sha256": "56cd1c6782d145584e0bbbf918d0e2902405b5d4bf61174cf6867bf57360c778",
+      "source_current_source_matches": true,
+      "observations": [
+        {
+          "architecture": "sm_100",
+          "binary_suffix": "sm100",
+          "source_log_line": 5673,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:58:04.7046614Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC   --allow-unsupported-compiler -o optimized_graph_conditional_runtime_sm100 optimized_graph_conditional_runtime.cu -lcuda"
+        },
+        {
+          "architecture": "sm_103",
+          "binary_suffix": "sm103",
+          "source_log_line": 5796,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:58:21.5258799Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC   --allow-unsupported-compiler -o optimized_graph_conditional_runtime_sm103 optimized_graph_conditional_runtime.cu -lcuda"
+        },
+        {
+          "architecture": "sm_120",
+          "binary_suffix": "sm120",
+          "source_log_line": 5919,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:58:38.4817273Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC   --allow-unsupported-compiler -o optimized_graph_conditional_runtime_sm120 optimized_graph_conditional_runtime.cu -lcuda"
+        },
+        {
+          "architecture": "sm_121",
+          "binary_suffix": "sm121",
+          "source_log_line": 6042,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:58:55.4175423Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC   --allow-unsupported-compiler -o optimized_graph_conditional_runtime_sm121 optimized_graph_conditional_runtime.cu -lcuda"
+        }
+      ]
+    },
+    {
+      "finding_ids": [
+        "W2-015",
+        "W2-050"
+      ],
+      "source_path": "code/ch09/baseline_cublas_gemm_fp4_perchannel.cu",
+      "binary_base": "baseline_cublas_gemm_fp4_perchannel",
+      "remaining": "Target-device non-square/tail numerical comparison and scale-layout semantics.",
+      "compile_subgate": "pass_existing_hosted_cuda_13_compile_link",
+      "device_execution": "not_run",
+      "source_sha256": "3c134929a7f34d806937ec714a7973aac100ca21576da5b6d6d535cf5ded587a",
+      "source_current_source_matches": true,
+      "observations": [
+        {
+          "architecture": "sm_100",
+          "binary_suffix": "sm100",
+          "source_log_line": 2714,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:32:49.1603162Z Building baseline_cublas_gemm_fp4_perchannel_sm100..."
+        },
+        {
+          "architecture": "sm_103",
+          "binary_suffix": "sm103",
+          "source_log_line": 2971,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:37:51.7317629Z Building baseline_cublas_gemm_fp4_perchannel_sm103..."
+        },
+        {
+          "architecture": "sm_120",
+          "binary_suffix": "sm120",
+          "source_log_line": 3228,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:42:51.3823540Z Building baseline_cublas_gemm_fp4_perchannel_sm120..."
+        },
+        {
+          "architecture": "sm_121",
+          "binary_suffix": "sm121",
+          "source_log_line": 3485,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:47:45.5961257Z Building baseline_cublas_gemm_fp4_perchannel_sm121..."
+        }
+      ]
+    },
+    {
+      "finding_ids": [
+        "W2-039"
+      ],
+      "source_path": "code/ch02/memory_transfer_nvlink_demo.cu",
+      "binary_base": "memory_transfer_nvlink_demo",
+      "remaining": "Target-device distinction between no-hint and prefetch strategies, with transfer behavior measured.",
+      "compile_subgate": "pass_existing_hosted_cuda_13_compile_link",
+      "device_execution": "not_run",
+      "source_sha256": "59d03634139591ebef8197c892040e2a24062b834978de7534ffeb4bc490621b",
+      "source_current_source_matches": true,
+      "observations": [
+        {
+          "architecture": "sm_100",
+          "binary_suffix": "sm100",
+          "source_log_line": 717,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:28:50.9352838Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas -O3  -o memory_transfer_nvlink_demo_sm100 memory_transfer_nvlink_demo.cu"
+        },
+        {
+          "architecture": "sm_103",
+          "binary_suffix": "sm103",
+          "source_log_line": 729,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:28:55.5623013Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas -O3  -o memory_transfer_nvlink_demo_sm103 memory_transfer_nvlink_demo.cu"
+        },
+        {
+          "architecture": "sm_120",
+          "binary_suffix": "sm120",
+          "source_log_line": 741,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:29:00.2411011Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas -O3  -o memory_transfer_nvlink_demo_sm120 memory_transfer_nvlink_demo.cu"
+        },
+        {
+          "architecture": "sm_121",
+          "binary_suffix": "sm121",
+          "source_log_line": 753,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:29:04.9067982Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas -O3  -o memory_transfer_nvlink_demo_sm121 memory_transfer_nvlink_demo.cu"
+        }
+      ]
+    },
+    {
+      "finding_ids": [
+        "W2-052"
+      ],
+      "source_path": "code/ch09/optimized_cutlass_gemm_fp4_all_concepts.cu",
+      "binary_base": "optimized_cutlass_gemm_fp4_all_concepts",
+      "remaining": "Target-device cluster/TMA behavior and full-output numerical comparison.",
+      "compile_subgate": "pass_existing_hosted_cuda_13_compile_link",
+      "device_execution": "not_run",
+      "source_sha256": "4157bbaade2cd3c3827eeac5da5821860d8c2f024e76d5f5364a4c9697b0b671",
+      "source_current_source_matches": true,
+      "observations": [
+        {
+          "architecture": "sm_100",
+          "binary_suffix": "sm100",
+          "source_log_line": 2888,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:36:13.6969141Z Building optimized_cutlass_gemm_fp4_all_concepts_sm100..."
+        },
+        {
+          "architecture": "sm_103",
+          "binary_suffix": "sm103",
+          "source_log_line": 3145,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:41:14.1172334Z Building optimized_cutlass_gemm_fp4_all_concepts_sm103..."
+        },
+        {
+          "architecture": "sm_120",
+          "binary_suffix": "sm120",
+          "source_log_line": 3402,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:46:09.4306474Z Building optimized_cutlass_gemm_fp4_all_concepts_sm120..."
+        },
+        {
+          "architecture": "sm_121",
+          "binary_suffix": "sm121",
+          "source_log_line": 3659,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:51:06.0927699Z Building optimized_cutlass_gemm_fp4_all_concepts_sm121..."
+        }
+      ]
+    },
+    {
+      "finding_ids": [
+        "W2-100"
+      ],
+      "source_path": "code/ch07/async_prefetch_2d_demo.cu",
+      "binary_base": "async_prefetch_2d_demo",
+      "remaining": "Target-device full-output comparison for selected shapes and tails.",
+      "compile_subgate": "pass_existing_hosted_cuda_13_compile_link",
+      "device_execution": "not_run",
+      "source_sha256": "2c2e3394093ae9be86c940e8ecf3c5ea789cac60825e3ac1a8cd603ee75df0d9",
+      "source_current_source_matches": true,
+      "observations": [
+        {
+          "architecture": "sm_100",
+          "binary_suffix": "sm100",
+          "source_log_line": 2261,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:30:21.7525086Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC   -o async_prefetch_2d_demo_sm100 async_prefetch_2d_demo.cu -lcuda"
+        },
+        {
+          "architecture": "sm_103",
+          "binary_suffix": "sm103",
+          "source_log_line": 2322,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:30:46.1603323Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC   -o async_prefetch_2d_demo_sm103 async_prefetch_2d_demo.cu -lcuda"
+        },
+        {
+          "architecture": "sm_120",
+          "binary_suffix": "sm120",
+          "source_log_line": 2383,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:31:10.5196739Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC   -o async_prefetch_2d_demo_sm120 async_prefetch_2d_demo.cu -lcuda"
+        },
+        {
+          "architecture": "sm_121",
+          "binary_suffix": "sm121",
+          "source_log_line": 2444,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:31:35.0039521Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC   -o async_prefetch_2d_demo_sm121 async_prefetch_2d_demo.cu -lcuda"
+        }
+      ]
+    },
+    {
+      "finding_ids": [
+        "W2-101"
+      ],
+      "source_path": "code/ch07/optimized_tma_bulk_tensor_2d.cu",
+      "binary_base": "optimized_tma_bulk_tensor_2d",
+      "remaining": "Target-device full-output comparison for selected shapes and tails.",
+      "compile_subgate": "pass_existing_hosted_cuda_13_compile_link",
+      "device_execution": "not_run",
+      "source_sha256": "d554a1dbb4c97ca5d6f53a94a2191034d620fed09a59c5e6c277b9d1bcb5a5cb",
+      "source_current_source_matches": true,
+      "observations": [
+        {
+          "architecture": "sm_100",
+          "binary_suffix": "sm100",
+          "source_log_line": 2309,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:30:40.1456245Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC   -o optimized_tma_bulk_tensor_2d_sm100 optimized_tma_bulk_tensor_2d.cu -lcuda"
+        },
+        {
+          "architecture": "sm_103",
+          "binary_suffix": "sm103",
+          "source_log_line": 2370,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:31:04.5048508Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC   -o optimized_tma_bulk_tensor_2d_sm103 optimized_tma_bulk_tensor_2d.cu -lcuda"
+        },
+        {
+          "architecture": "sm_120",
+          "binary_suffix": "sm120",
+          "source_log_line": 2431,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:31:28.9009913Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC   -o optimized_tma_bulk_tensor_2d_sm120 optimized_tma_bulk_tensor_2d.cu -lcuda"
+        },
+        {
+          "architecture": "sm_121",
+          "binary_suffix": "sm121",
+          "source_log_line": 2492,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:31:54.0502186Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC   -o optimized_tma_bulk_tensor_2d_sm121 optimized_tma_bulk_tensor_2d.cu -lcuda"
+        }
+      ]
+    },
+    {
+      "finding_ids": [
+        "W2-102"
+      ],
+      "source_path": "code/ch07/optimized_tma_copy.cu",
+      "binary_base": "optimized_tma_copy",
+      "remaining": "Target-device full-output comparison for selected shapes and tails.",
+      "compile_subgate": "pass_existing_hosted_cuda_13_compile_link",
+      "device_execution": "not_run",
+      "source_sha256": "f5f1a803f55f06b256ce1aa0e71ae4570c574637b05df0d7737b0cac4823ec7e",
+      "source_current_source_matches": true,
+      "observations": [
+        {
+          "architecture": "sm_100",
+          "binary_suffix": "sm100",
+          "source_log_line": 2311,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:30:41.3353741Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC   -o optimized_tma_copy_sm100 optimized_tma_copy.cu -lcuda"
+        },
+        {
+          "architecture": "sm_103",
+          "binary_suffix": "sm103",
+          "source_log_line": 2372,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:31:05.6788320Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC   -o optimized_tma_copy_sm103 optimized_tma_copy.cu -lcuda"
+        },
+        {
+          "architecture": "sm_120",
+          "binary_suffix": "sm120",
+          "source_log_line": 2433,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:31:30.1260299Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC   -o optimized_tma_copy_sm120 optimized_tma_copy.cu -lcuda"
+        },
+        {
+          "architecture": "sm_121",
+          "binary_suffix": "sm121",
+          "source_log_line": 2494,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:31:55.2045226Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC   -o optimized_tma_copy_sm121 optimized_tma_copy.cu -lcuda"
+        }
+      ]
+    },
+    {
+      "finding_ids": [
+        "W2-119"
+      ],
+      "source_path": "code/core/common/headers/cuda13_demos.cuh",
+      "binary_base": "cuda13_demo_runner",
+      "remaining": "Target-device TMA limit behavior and full-output comparison for selected box shapes.",
+      "compile_subgate": "pass_six_tma_template_shapes_compile_link",
+      "device_execution": "not_run",
+      "source_sha256": "b692a87d58b2393f14b3c9e5f7c62c74ee88dcc9399b4c4adf9b5cae1d6b435e",
+      "source_current_source_matches": true,
+      "observations": [
+        {
+          "architecture": "sm_100",
+          "binary_suffix": "sm100",
+          "source_log_line": 908,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:29:30.9675318Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -o cuda13_demo_runner_sm100 cuda13_demo_runner.cu -lcuda"
+        },
+        {
+          "architecture": "sm_103",
+          "binary_suffix": "sm103",
+          "source_log_line": 1260,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:29:44.2916659Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -o cuda13_demo_runner_sm103 cuda13_demo_runner.cu -lcuda"
+        },
+        {
+          "architecture": "sm_120",
+          "binary_suffix": "sm120",
+          "source_log_line": 1612,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:29:57.7771598Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -o cuda13_demo_runner_sm120 cuda13_demo_runner.cu -lcuda"
+        },
+        {
+          "architecture": "sm_121",
+          "binary_suffix": "sm121",
+          "source_log_line": 1965,
+          "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:30:11.2992090Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -o cuda13_demo_runner_sm121 cuda13_demo_runner.cu -lcuda"
+        }
+      ],
+      "compile_driver_paths": [
+        "code/ch06/cuda13_demo_runner.cu"
+      ],
+      "compile_driver_sha256": {
+        "code/ch06/cuda13_demo_runner.cu": "e5c639c7c3581040a5bf48dc53bb59a5814ba77d1225addbf10dc5ab5fc3314e"
+      },
+      "compile_driver_current_source_matches": {
+        "code/ch06/cuda13_demo_runner.cu": true
+      }
+    },
+    {
+      "finding_ids": [
+        "W2-078"
+      ],
+      "source_path": "code/core/common/headers/arch_detection.cuh",
+      "compile_subgate": "pass_configured_blackwell_targets_only__sm90_h100_compile_pending",
+      "device_execution": "not_run",
+      "remaining": "Compile a consumer for sm_90/H100 and run device-specific capability checks; the retained run only covers sm_100, sm_103, sm_120, and sm_121.",
+      "compile_driver_paths": [
+        "code/ch07/async_prefetch_2d_demo.cu",
+        "code/ch07/optimized_tma_bulk_tensor_2d.cu",
+        "code/ch07/optimized_tma_copy.cu"
+      ],
+      "source_sha256": "b4456fca093e3de497bff2cc6cb481c9d0b8c23fd3fe7fb17d5ebe9f16641fa0",
+      "source_current_source_matches": true,
+      "compile_driver_sha256": {
+        "code/ch07/async_prefetch_2d_demo.cu": "2c2e3394093ae9be86c940e8ecf3c5ea789cac60825e3ac1a8cd603ee75df0d9",
+        "code/ch07/optimized_tma_bulk_tensor_2d.cu": "d554a1dbb4c97ca5d6f53a94a2191034d620fed09a59c5e6c277b9d1bcb5a5cb",
+        "code/ch07/optimized_tma_copy.cu": "f5f1a803f55f06b256ce1aa0e71ae4570c574637b05df0d7737b0cac4823ec7e"
+      },
+      "compile_driver_current_source_matches": {
+        "code/ch07/async_prefetch_2d_demo.cu": true,
+        "code/ch07/optimized_tma_bulk_tensor_2d.cu": true,
+        "code/ch07/optimized_tma_copy.cu": true
+      },
+      "observations_by_driver": {
+        "code/ch07/async_prefetch_2d_demo.cu": [
+          {
+            "architecture": "sm_100",
+            "binary_suffix": "sm100",
+            "source_log_line": 2261,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:30:21.7525086Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC   -o async_prefetch_2d_demo_sm100 async_prefetch_2d_demo.cu -lcuda"
+          },
+          {
+            "architecture": "sm_103",
+            "binary_suffix": "sm103",
+            "source_log_line": 2322,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:30:46.1603323Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC   -o async_prefetch_2d_demo_sm103 async_prefetch_2d_demo.cu -lcuda"
+          },
+          {
+            "architecture": "sm_120",
+            "binary_suffix": "sm120",
+            "source_log_line": 2383,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:31:10.5196739Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC   -o async_prefetch_2d_demo_sm120 async_prefetch_2d_demo.cu -lcuda"
+          },
+          {
+            "architecture": "sm_121",
+            "binary_suffix": "sm121",
+            "source_log_line": 2444,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:31:35.0039521Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC   -o async_prefetch_2d_demo_sm121 async_prefetch_2d_demo.cu -lcuda"
+          }
+        ],
+        "code/ch07/optimized_tma_bulk_tensor_2d.cu": [
+          {
+            "architecture": "sm_100",
+            "binary_suffix": "sm100",
+            "source_log_line": 2309,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:30:40.1456245Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC   -o optimized_tma_bulk_tensor_2d_sm100 optimized_tma_bulk_tensor_2d.cu -lcuda"
+          },
+          {
+            "architecture": "sm_103",
+            "binary_suffix": "sm103",
+            "source_log_line": 2370,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:31:04.5048508Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC   -o optimized_tma_bulk_tensor_2d_sm103 optimized_tma_bulk_tensor_2d.cu -lcuda"
+          },
+          {
+            "architecture": "sm_120",
+            "binary_suffix": "sm120",
+            "source_log_line": 2431,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:31:28.9009913Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC   -o optimized_tma_bulk_tensor_2d_sm120 optimized_tma_bulk_tensor_2d.cu -lcuda"
+          },
+          {
+            "architecture": "sm_121",
+            "binary_suffix": "sm121",
+            "source_log_line": 2492,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:31:54.0502186Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC   -o optimized_tma_bulk_tensor_2d_sm121 optimized_tma_bulk_tensor_2d.cu -lcuda"
+          }
+        ],
+        "code/ch07/optimized_tma_copy.cu": [
+          {
+            "architecture": "sm_100",
+            "binary_suffix": "sm100",
+            "source_log_line": 2311,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:30:41.3353741Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC   -o optimized_tma_copy_sm100 optimized_tma_copy.cu -lcuda"
+          },
+          {
+            "architecture": "sm_103",
+            "binary_suffix": "sm103",
+            "source_log_line": 2372,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:31:05.6788320Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC   -o optimized_tma_copy_sm103 optimized_tma_copy.cu -lcuda"
+          },
+          {
+            "architecture": "sm_120",
+            "binary_suffix": "sm120",
+            "source_log_line": 2433,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:31:30.1260299Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC   -o optimized_tma_copy_sm120 optimized_tma_copy.cu -lcuda"
+          },
+          {
+            "architecture": "sm_121",
+            "binary_suffix": "sm121",
+            "source_log_line": 2494,
+            "command_record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:31:55.2045226Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC   -o optimized_tma_copy_sm121 optimized_tma_copy.cu -lcuda"
+          }
+        ]
+      }
+    }
+  ],
+  "summary": {
+    "pending_wave1_findings_with_direct_tu_four_target_compile_link": [
+      "W1-001",
+      "W1-008",
+      "W1-011",
+      "W1-012",
+      "W1-013",
+      "W1-014",
+      "W1-015",
+      "W1-016",
+      "W1-045",
+      "W1-048",
+      "W1-049",
+      "W1-050",
+      "W1-051",
+      "W1-103"
+    ],
+    "pending_wave1_header_findings_with_bounded_consumer_compile": [
+      "W1-009",
+      "W1-046",
+      "W1-104"
+    ],
+    "verified_wave1_configuration_findings_supported_by_compile_job": [
+      "W1-007",
+      "W1-052",
+      "W1-057",
+      "W1-111"
+    ],
+    "wave2_findings_with_exact_source_four_target_compile_link": [
+      "W2-002",
+      "W2-015",
+      "W2-039",
+      "W2-050",
+      "W2-052",
+      "W2-100",
+      "W2-101",
+      "W2-102",
+      "W2-119"
+    ],
+    "wave2_findings_with_partial_configured_target_header_compile": [
+      "W2-078"
+    ],
+    "pending_wave1_compile_evidence_finding_count": 17,
+    "wave2_exact_compile_link_finding_count": 9,
+    "wave2_partial_compile_finding_count": 1,
+    "source_record_count": 21,
+    "device_execution": "not_run"
+  },
+  "supporting_verified_configuration_contracts": [
+    {
+      "finding_ids": [
+        "W1-007"
+      ],
+      "support": "The shared CUDA target probes and successful compare job use the requested sm100/sm103/sm120/sm121 flags after Make selection.",
+      "observations": [
+        {
+          "source_log_line": 645,
+          "record": "compare-builds\tVerify configured CUDA architecture targets\t\ufeff2026-08-31T12:28:31.7333469Z ##[group]Run # The compiler's code-list command omits feature-specific a and f targets."
+        },
+        {
+          "source_log_line": 648,
+          "record": "compare-builds\tVerify configured CUDA architecture targets\t2026-08-31T12:28:31.7335070Z ^[[36;1mfor architecture in ${ARCH_LIST}; do^[[0m"
+        },
+        {
+          "source_log_line": 649,
+          "record": "compare-builds\tVerify configured CUDA architecture targets\t2026-08-31T12:28:31.7335381Z ^[[36;1m  make --no-print-directory \\^[[0m"
+        },
+        {
+          "source_log_line": 650,
+          "record": "compare-builds\tVerify configured CUDA architecture targets\t2026-08-31T12:28:31.7335667Z ^[[36;1m    -C ch01 \\^[[0m"
+        },
+        {
+          "source_log_line": 651,
+          "record": "compare-builds\tVerify configured CUDA architecture targets\t2026-08-31T12:28:31.7335907Z ^[[36;1m    ARCH=\"${architecture}\" \\^[[0m"
+        },
+        {
+          "source_log_line": 652,
+          "record": "compare-builds\tVerify configured CUDA architecture targets\t2026-08-31T12:28:31.7336200Z ^[[36;1m    verify-cuda-arch-target^[[0m"
+        },
+        {
+          "source_log_line": 653,
+          "record": "compare-builds\tVerify configured CUDA architecture targets\t2026-08-31T12:28:31.7336457Z ^[[36;1mdone^[[0m"
+        },
+        {
+          "source_log_line": 656,
+          "record": "compare-builds\tVerify configured CUDA architecture targets\t2026-08-31T12:28:31.7338672Z   ARCH_LIST: sm_100 sm_103 sm_120 sm_121"
+        },
+        {
+          "source_log_line": 6207,
+          "record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:59:40.5089657Z All dual-architecture builds completed successfully."
+        }
+      ]
+    },
+    {
+      "finding_ids": [
+        "W1-052"
+      ],
+      "support": "The retained job proves the successful four-target compare path; the failure-propagation negative path is retained in hosted JUnit.",
+      "observations": [
+        {
+          "source_log_line": 664,
+          "record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:28:34.6863574Z   ARCH_LIST: sm_100 sm_103 sm_120 sm_121"
+        },
+        {
+          "source_log_line": 6207,
+          "record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:59:40.5089657Z All dual-architecture builds completed successfully."
+        }
+      ]
+    },
+    {
+      "finding_ids": [
+        "W1-057"
+      ],
+      "support": "The same source job emits distinct sm100 and sm120 gencode paths, so repaired build metadata no longer routes GB200 to sm120.",
+      "observations": [
+        {
+          "source_log_line": 717,
+          "record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:28:50.9352838Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas -O3  -o memory_transfer_nvlink_demo_sm100 memory_transfer_nvlink_demo.cu "
+        },
+        {
+          "source_log_line": 741,
+          "record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:29:00.2411011Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas -O3  -o memory_transfer_nvlink_demo_sm120 memory_transfer_nvlink_demo.cu "
+        },
+        {
+          "source_log_line": 6207,
+          "record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:59:40.5089657Z All dual-architecture builds completed successfully."
+        }
+      ]
+    },
+    {
+      "finding_ids": [
+        "W1-111"
+      ],
+      "support": "Both exact helper-selected underlying targets compile and link for all four configured architectures.",
+      "observations_by_target": {
+        "code/ch07/async_prefetch_2d_demo.cu": [
+          {
+            "source_log_line": 2261,
+            "record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:30:21.7525086Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC   -o async_prefetch_2d_demo_sm100 async_prefetch_2d_demo.cu -lcuda "
+          },
+          {
+            "source_log_line": 2322,
+            "record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:30:46.1603323Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC   -o async_prefetch_2d_demo_sm103 async_prefetch_2d_demo.cu -lcuda "
+          },
+          {
+            "source_log_line": 2383,
+            "record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:31:10.5196739Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC   -o async_prefetch_2d_demo_sm120 async_prefetch_2d_demo.cu -lcuda "
+          },
+          {
+            "source_log_line": 2444,
+            "record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:31:35.0039521Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC   -o async_prefetch_2d_demo_sm121 async_prefetch_2d_demo.cu -lcuda "
+          }
+        ],
+        "code/ch10/tma_2d_pipeline_blackwell.cu": [
+          {
+            "source_log_line": 4066,
+            "record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:53:26.8858937Z nvcc -O3 -std=c++17 -gencode arch=compute_100a,code=[sm_100a,compute_100a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -std=c++17 -I.. -lcuda -o tma_2d_pipeline_blackwell_sm100 tma_2d_pipeline_blackwell.cu "
+          },
+          {
+            "source_log_line": 4490,
+            "record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:54:28.2755677Z nvcc -O3 -std=c++17 -gencode arch=compute_103a,code=[sm_103a,compute_103a] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -std=c++17 -I.. -lcuda -o tma_2d_pipeline_blackwell_sm103 tma_2d_pipeline_blackwell.cu "
+          },
+          {
+            "source_log_line": 4914,
+            "record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:55:29.5597543Z nvcc -O3 -std=c++17 -gencode arch=compute_120,code=[sm_120,compute_120] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -std=c++17 -I.. -lcuda -o tma_2d_pipeline_blackwell_sm120 tma_2d_pipeline_blackwell.cu "
+          },
+          {
+            "source_log_line": 5338,
+            "record": "compare-builds\tRun dual-architecture compare builds\t2026-08-31T12:56:30.0425377Z nvcc -O3 -std=c++17 -gencode arch=compute_121,code=[sm_121,compute_121] --expt-relaxed-constexpr -Xcompiler -fPIC  -lineinfo -Xptxas=-v  -std=c++17 -I.. -lcuda -o tma_2d_pipeline_blackwell_sm121 tma_2d_pipeline_blackwell.cu "
+          }
+        ]
+      }
+    }
+  ]
+}

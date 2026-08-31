@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "validated_at": "2026-08-31T16:14:14Z",
+  "result": "pass",
+  "checks": {
+    "json_parse": "remediation ledger and all new receipt/map JSON files parse",
+    "receipt_evidence_hash_sets": 2,
+    "compile_observations_bound_to_full_log": 104,
+    "compile_full_log_raw_sha256": "02050456e295c7fe2b8b5dc87e9eeb2fb930e0a87f3ccb458a69197f8f463eae",
+    "compile_source_bindings": "all mapped sources and consumers byte-match source revision 3316e0efe985040745ffd926c5f76a6bd4436aff and the current checkout",
+    "wave_1_status_counts": {
+      "source_fixed": 115,
+      "awaiting_runtime": 5,
+      "verified": 7,
+      "already_fixed_with_evidence": 1
+    },
+    "wave_1_required_runtime_states": {
+      "verified": 7,
+      "pending": 69
+    },
+    "wave_2_runtime_rows_checked": 48,
+    "wave_2_row_test_references_checked": 61,
+    "markdown_files_with_local_links_checked": 8,
+    "git_diff_check": "pass",
+    "credential_pattern_scan": "no matches in new or changed reconciliation text"
+  },
+  "boundaries": [
+    "This focused validation checks the reconciliation artifacts and their retained provenance; it does not rerun the repository test suite or CUDA build.",
+    "No B200, CUDA device, NCCL, sanitizer, profiler, numerical, or performance gate was executed."
+  ]
+}

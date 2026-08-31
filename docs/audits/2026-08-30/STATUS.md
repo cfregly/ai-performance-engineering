@@ -14,11 +14,13 @@ qualification, performance acceptance, or completion.
   `origin/main`, following the remaining-finding batch at `13c4e151f` and the
   critical/CI batch at `2f3fc665d`.
 - Wave 1 external re-review: **120 fixed, 5 need runtime, 2 partial, 1 obsolete**.
-  The two partial residuals are now repaired locally, so the mutable ledger reads
-  **122 `source_fixed`, 5 `awaiting_runtime`, 1
-  `already_fixed_with_evidence`**. The source-only external verdict does not
-  replace the **76** applicable runtime gates retained by the local acceptance
-  plan.
+  That source-only verdict remains preserved separately. The current mutable
+  ledger reads **115 `source_fixed`, 5 `awaiting_runtime`, 7 `verified`, and 1
+  `already_fixed_with_evidence`**. Of the **76** rows retained by the local
+  acceptance plan, exact contract reconciliation now verifies 7 host/configuration
+  findings and leaves 69 pending. The live ledger has zero
+  `requirements_pending_triage` placeholders; historical checkpoints retain their
+  original counts.
 - Wave 2 ledger: **89 `source_fixed`, 48 `awaiting_runtime`, 4
   `already_fixed_with_evidence`, zero `untriaged`**. Package W2P08 is
   source-complete; W2P01 through W2P07 retain one or more finding-specific
@@ -51,12 +53,24 @@ qualification, performance acceptance, or completion.
   execution of its CUDA protection cases. The heterogeneous skip set includes
   62 known missing-protection, protection-summary, or absent-route scope skips;
   none is counted as passing protection coverage.
+- Exact retained-test reconciliation verifies seven Wave 1 configuration and
+  routing findings: `W1-007`, `W1-052`, `W1-055`, `W1-057`, `W1-067`, `W1-111`,
+  and `W1-112`. Their reported defects are architecture selection, Make failure
+  propagation, identity labels, or wrapper paths; device execution is not intrinsic
+  to those exact mechanisms. The remaining 69 locally required Wave 1 runtime
+  contracts keep their hardware or dependency gates.
+- All 48 Wave 2 runtime rows now point to exact passing tests in the final-source
+  hosted JUnit: 61 row-to-test references across 56 unique nodes. This closes a
+  bounded hosted-Linux CPU/source-regression subgate for each row, but zero whole
+  Wave 2 runtime rows; all 48 remain `awaiting_runtime`.
 - Hosted Benchmark Validation run `33391774956` and Dual-Architecture Compare run
   `33391774950` both succeed at the final published source revision. The latter
   compiles all 14 configured chapters for `sm_100`, `sm_103`, `sm_120`, and
-  `sm_121` in CUDA 13.0; its runner has no GPU. The MoE zero-fill cost and every
-  other performance-sensitive runtime gate remain intentionally unmeasured until
-  the required hardware is available.
+  `sm_121` in CUDA 13.0. It supplies bounded compiler evidence for 17 pending Wave
+  1 rows and exact-source compiler evidence for 9 Wave 2 rows; `W2-078` has a
+  narrower header-through-consumer result with `sm_90`/H100 still pending. The
+  runner has no GPU, so every applicable output, ordering, sanitizer, numerical,
+  profiler, hardware, and performance gate remains unqualified.
 - Focused Linux CPU Provenance run `33401585682` succeeds at `cf801679b` without
   rerunning the test suite. On hosted CPython 3.12 x86_64 Linux it installs the
   reviewed 20-direct-pin, 56-distribution lock with required hashes, retains all
@@ -128,6 +142,8 @@ zero findings.
 - [Dependency review](evidence/integration/full-dependency-review/receipt.json)
 - [Hosted Linux CPU provenance](evidence/integration/linux-cpu-provenance/README.md)
 - [Retained hosted CPU closure](evidence/integration/hosted-cpu-closure/README.md)
+- [Retained CUDA 13 compile reconciliation](evidence/integration/hosted-cuda-compile-closure/README.md)
+- [Retained non-GPU runtime reconciliation](evidence/integration/hosted-non-gpu-runtime-closure/README.md)
 - [Remaining runtime acceptance](evidence/integration/pinned-linux-integration/runtime-update.md)
 - [Historical pre-delivery artifact check](evidence/intake/second-wave-check-20260831T031140Z.json)
 - [Interim landing receipt](evidence/integration/landing/receipt.json)

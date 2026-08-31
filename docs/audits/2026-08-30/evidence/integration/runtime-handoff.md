@@ -1,6 +1,6 @@
 # Runtime acceptance handoff — audit waves 1 and 2
 
-Prepared 2026-08-30 by read-only inspection of the current plan, package receipts and CLI/test source. **No acceptance command below was executed while preparing this handoff.** This is an operational checklist, not a completed goal, hardware lease, installation approval, CI dispatch or permission to promote results.
+Prepared 2026-08-30 and updated 2026-08-31 from the current plan, ledger, and retained hosted receipts. **No B200 command below was executed while preparing or updating this handoff.** This is an operational checklist, not a completed goal, hardware lease, installation approval, CI dispatch, or permission to promote results.
 
 ## Authority, environment and evidence requirements
 
@@ -10,7 +10,17 @@ Prepared 2026-08-30 by read-only inspection of the current plan, package receipt
 - Every command uses the selected target environment's `python`. **Unless stated otherwise, run from `code/`.** `/absolute/new/...`, `/absolute/pinned/...` and `/absolute/reviewed/...` are paths the runtime owner must choose, not existing artifacts. Select only allocated devices through the launch environment; do not copy somebody else's device IDs. Every output/build directory or JSON destination must be fresh.
 - Preserve exact source/submodule hashes, compiler/driver/tool versions, ABI, GPU identities/capabilities, device visibility, topology, clocks, policy file/hash/reviewer, workload/seeds/dtypes/layouts, complete stdout/stderr, JUnit/full tensors, timeouts and failures. Hash final artifacts. Keep skipped/unsupported/failed checks explicit; a pytest exit code of zero with required cases skipped is not acceptance. Never weaken a failing numerical bound merely to obtain a pass.
 - Use the runners' process deadlines where implemented. The tcgen05 pipeline verifier and external multihost worker additionally need an owner-specified job deadline and cleanup of only that job's children. A listed bounded workload is not necessarily a self-containing scheduler job.
-- The [plan](../../../../../AUDIT_REMEDIATION_PLAN.md) and [ledger](../../remediation-ledger.json) retain all 128 original findings. **Wave 2 is required and still missing. Pinned Linux CI is still unexecuted by this audit.** Neither this handoff nor eventual GPU success for wave 1 closes those requirements.
+- The [plan](../../../../../AUDIT_REMEDIATION_PLAN.md) and [ledger](../../remediation-ledger.json) retain all 128 original findings and all 141 delivered Wave 2 rows. Wave 2 source reconciliation is complete; 48 rows remain `awaiting_runtime`. Final-source hosted Linux CPU CI has executed once and is retained, so do not rerun that full pass merely for this handoff. The full target Linux/CUDA dependency graph and applicable GPU cells remain pending.
+
+## Current retained-evidence checkpoint
+
+- Source revision `3316e0efe985040745ffd926c5f76a6bd4436aff` is the final code epoch; later published commits through the current reconciliation change CI, documentation, and evidence only.
+- Hosted CPU run `33391774956` records 4,346 passed, 461 explicit skips, and zero failures/errors on Ubuntu 24.04. It verifies seven exact Wave 1 host/configuration contracts and a bounded CPU regression subgate for all 48 Wave 2 runtime rows. The 76-row Wave 1 local matrix is **7 verified and 69 pending**.
+- Hosted CUDA 13 compile run `33391774950` supplies bounded four-target compiler evidence for 17 pending Wave 1 rows and nine Wave 2 rows. `W2-078` has only a partial header-through-consumer result. The job had no GPU.
+- Focused Linux CPU provenance run `33401585682` verifies the bounded 20-pin/56-distribution CPU lock. It does not install or qualify the full 90-specification/327-package Linux/CUDA graph.
+- B200 custody is unavailable. The next session must re-read `HANDOFF.md` and obtain an explicit custody return before any probe, launch, profiler, sanitizer, or runner action.
+
+See the [non-GPU reconciliation](hosted-non-gpu-runtime-closure/receipt.json), [compile receipt](hosted-cuda-compile-closure/receipt.json), and [remaining matrix](pinned-linux-integration/runtime-update.md).
 
 ## P01 — bootstrap and build architecture
 
@@ -23,7 +33,7 @@ bash core/scripts/build_tma_demos.sh --arch sm_100
 PYTHON=/absolute/pinned/bin/python BUILD_DIR=/absolute/new/cutlass-sm100 CMAKE_CUDA_ARCHITECTURES=100a bash labs/custom_vs_cublas/cutlass_gemm/build.sh
 ```
 
-Use `sm_103` / `103a` on an independently allocated SM103 target, with a separate build/output. The CUTLASS module needs CMake 3.31.8+ and CUDA 13+. Inspect verbose compile/device-link and emitted device images, then import `cutlass_blackwell_gemm` from that build directory in the same Python/torch ABI environment; compilation alone is not import or GEMM acceptance. The build script prints its actual import recipe. Chapter/lab architecture aliases and compare loops additionally need the relevant real builds; the recorded 218 host checks were dry-run/orchestration evidence.
+Use `sm_103` / `103a` on an independently allocated SM103 target, with a separate build/output. The CUTLASS module needs CMake 3.31.8+ and CUDA 13+. Inspect verbose compile/device-link and emitted device images, then import `cutlass_blackwell_gemm` from that build directory in the same Python/torch ABI environment; compilation alone is not import or GEMM acceptance. The build script prints its actual import recipe. The retained CUDA 13 compare job now proves real four-target chapter builds and exact alias/compare configuration behavior. It did not build every lab/extension consumer, import `cutlass_blackwell_gemm`, or run a device; retain those explicit remainders from the compile receipt.
 
 On **exact SM121/GB10**, the existing diagnostic is:
 
@@ -37,14 +47,14 @@ Unsupported instructions/toolchain return an explicit non-pass. This diagnostic 
 
 ## P02 — harness, protections and CI
 
-**Ready pytest entrypoints; real CI and target checks pending.** Active workflow source contains these commands (from `code/`):
+**Hosted Linux CPU CI is retained; supported-GPU checks remain pending.** Active workflow source contains these commands (from `code/`):
 
 ```bash
 python -m pytest tests -q -ra -o timeout=120 --junitxml=artifacts/pytest-cpu.xml
 python -m pytest tests -q -ra -o timeout=600 --junitxml=artifacts/pytest-gpu.xml
 ```
 
-The first belongs in the pinned Linux CPU workflow environment (including torch 2.9.1 CPU, not the current local interpreter). The second belongs on the attested Tier-1 B200 runner, with the existing exact-device/MIG/environment checks and `TIER1_EXPECTED_GPU_NAME` contract intact. Use a fresh run/worktree so the workflow artifact names cannot overwrite previous attempts. This is not an instruction to dispatch either workflow now.
+The first command already completed in hosted run `33391774956`; its JUnit is retained. Do not rerun it unless a later source/dependency change invalidates that evidence. The second belongs on the attested Tier-1 B200 runner, with the existing exact-device/MIG/environment checks and `TIER1_EXPECTED_GPU_NAME` contract intact. Use a fresh run/worktree so artifact names cannot overwrite previous attempts. This is not an instruction to dispatch the GPU workflow before custody returns.
 
 For the actual clock-lock integration, the existing selector is:
 
@@ -252,7 +262,7 @@ Source/CPU, real CLI, parser, local HTTP/Prometheus and flame-artifact checks ha
 python -m pytest -q -rs -p no:cacheprovider tests/test_audit_wave1_tooling_regressions.py::test_fp8_template_executes_real_transformer_engine_linear
 ```
 
-It requires TE2.18.x and Hopper-or-newer CUDA; a dependency/version skip leaves it pending. Its coarse numerical smoke budget does not approve arbitrary production FP8 accuracy. Complete the pinned Linux integration suite as well. See [API](../api/README.md) and [tooling](../tooling/README.md) receipts.
+It requires TE2.18.x and Hopper-or-newer CUDA; a dependency/version skip leaves it pending. Its coarse numerical smoke budget does not approve arbitrary production FP8 accuracy. Complete only the remaining target Linux/CUDA dependency and native-runtime cells; the retained final-source hosted CPU suite does not need a redundant rerun. See [API](../api/README.md) and [tooling](../tooling/README.md) receipts.
 
 ## P11 — documentation and profiler workflows
 
@@ -269,10 +279,10 @@ First check the installed NVIDIA tool's supported options/metrics in the authori
 ## Final acceptance sequence
 
 1. Obtain explicit target custody/provisioning authority; reconcile a fresh source epoch and all reviewed manifests without rewriting old receipts.
-2. Complete pinned Linux CI, installation/ABI/build gates and target-specific numerical/policy review; preserve all attempts.
+2. Preserve the completed hosted CPU evidence; complete the still-missing full Linux/CUDA installation, ABI/native build/import gates, and target-specific numerical/policy review.
 3. Run the applicable exact standalone/test gates above, rejecting missing/skipped required cases, then sanitizer and profiler attribution where still outstanding.
 4. Only afterward assess comparable work and repeated performance/memory behavior, with clocks/topology/source and raw outputs retained. Retired implementations, generic training protocol gaps and unsupported cases remain explicit.
-5. Receive/capture/reconcile wave 2 and all original/adjacent issue dispositions. An independent final review, evidence completeness and remaining goal requirements still govern completion.
+5. Reconcile new hardware receipts against all 128 Wave 1, 141 Wave 2, and 52 adjacent rows. Wave 2 is already captured; an independent final review, evidence completeness, and the remaining goal requirements still govern completion.
 
 This handoff itself executes none of these steps and transfers no operational authority.
 

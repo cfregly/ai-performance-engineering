@@ -32,7 +32,7 @@ its success criteria concrete; it does not create a second goal or token budget.
 | Additional source record | One separately refuted pytest-timeout claim, outside the 128 |
 | Second wave | User-supplied full report captured at `cf48c8481`: 141 open findings (3 critical, 31 high, 62 medium, 45 low) across 110 files |
 | First-wave external re-review | 120 fixed, 5 need runtime, 2 partial, 1 obsolete; this read-only source verdict does not replace the 76 applicable local runtime acceptance gates |
-| Implementation status | First-wave candidate `f49aae73f629f4d90b60d1c6a5b890780e7ef758`, both Wave 2 source batches, and the focused hosted-CI repair through `3316e0efe985040745ffd926c5f76a6bd4436aff` are published on `main`; all 141 Wave 2 rows are triaged as 89 source-fixed, 4 already fixed with evidence, and 48 awaiting runtime. Existing hosted run `33391774956` now verifies LOCAL-025 and closes W1-006's Linux CPU full-directory CI sub-gate without a rerun. Focused hosted Linux CPU provenance passes at `cf801679b0df897e0b558d668ee42d5ac789d633` for the reviewed 20-direct-pin/56-distribution cell; the full target Linux/CUDA graph, W1-006's supported-GPU sub-gate, GPU qualification, deployment, and any new speedup claim remain open. |
+| Implementation status | First-wave candidate `f49aae73f629f4d90b60d1c6a5b890780e7ef758`, both Wave 2 source batches, and the focused hosted-CI repair through `3316e0efe985040745ffd926c5f76a6bd4436aff` are published on `main`. Exact retained-evidence reconciliation changes the Wave 1 mutable ledger to 115 source-fixed, 5 awaiting runtime, 7 verified, and 1 already fixed with evidence; its 76-row local runtime matrix is 7 verified and 69 pending. All 141 Wave 2 rows remain 89 source-fixed, 4 already fixed with evidence, and 48 awaiting runtime. Hosted run `33391774956` verifies LOCAL-025, W1-006's Linux CPU full-directory CI sub-gate, the seven exact host/configuration rows, and a bounded CPU regression subgate for every Wave 2 runtime row without a rerun. Run `33391774950` supplies bounded four-target CUDA 13 compiler evidence but no device execution. Focused hosted Linux CPU provenance passes for the reviewed 20-direct-pin/56-distribution cell; the full target Linux/CUDA graph, GPU qualification, deployment, and any new speedup claim remain open. |
 
 ### Interim main landing checkpoint
 
@@ -325,9 +325,9 @@ The report's 141 rows merge Wave 2, the closure critic, the tail pass, and two
 explicit Wave 1 residuals. Stable IDs `W2-001` through `W2-141` preserve source
 order and wording; overlaps may share a fix but remain separate historical rows.
 The two partial Wave 1 records, W1-069 and W1-098, are reopened. The five
-needs-runtime records remain runtime-held. The source-only external review does
-not erase the 76 runtime acceptance requirements already recorded by the local
-plan.
+needs-runtime records remain runtime-held. The source-only external review does not erase the 76 runtime acceptance
+requirements recorded by the local plan. Current retained-evidence reconciliation
+verifies seven exact host/configuration contracts and leaves 69 pending.
 
 The public artifact URL continued to serve its older 128-finding Wave 1 frame at
 intake. The user's complete attachment is therefore the authoritative Wave 2
@@ -368,6 +368,18 @@ this reconciliation. The heterogeneous skip set also retains 62 known
 missing-protection, protection-summary, or absent-route scope skips; none is
 converted to passing coverage. [Receipt](docs/audits/2026-08-30/evidence/integration/hosted-cpu-closure/receipt.json).
 
+A row-by-row retained-evidence audit now verifies seven exact Wave 1 host/configuration
+contracts (`W1-007`, `W1-052`, `W1-055`, `W1-057`, `W1-067`, `W1-111`, and
+`W1-112`), leaving **69 of the 76** local runtime contracts pending. All live
+`requirements_pending_triage` placeholders are replaced by explicit pending or
+not-required dispositions; historical checkpoints remain unchanged. It also binds
+all 48 Wave 2 runtime rows to exact passing final-source hosted CPU regressions,
+while keeping all 48 whole rows `awaiting_runtime`. The CUDA 13 compare log supplies
+bounded four-target compiler evidence for 17 pending Wave 1 rows and 9 Wave 2 rows;
+`W2-078` has only a partial header-through-consumer result. The job had no GPU.
+[Non-GPU receipt](docs/audits/2026-08-30/evidence/integration/hosted-non-gpu-runtime-closure/receipt.json)
+and [compile receipt](docs/audits/2026-08-30/evidence/integration/hosted-cuda-compile-closure/receipt.json).
+
 ### Wave 2 complete source reconciliation
 
 - The frozen combined pass reports **185 passed and 1 CUDA-only skip**; the six
@@ -377,8 +389,11 @@ converted to passing coverage. [Receipt](docs/audits/2026-08-30/evidence/integra
   core contract selection, dashboard, static analysis, shell, silent-fallback,
   and 932-file benchmark-contract gates also pass.
 - The final hosted CUDA 13.0 compare workflow succeeds for all 14 configured
-  chapters across `sm_100`, `sm_103`, `sm_120`, and `sm_121`. This is compile/link
-  evidence from a runner without a GPU; it is not device or numerical acceptance.
+  chapters across `sm_100`, `sm_103`, `sm_120`, and `sm_121`. Exact log mapping
+  gives bounded compiler evidence to 17 pending Wave 1 rows and exact-source
+  compile/link evidence to 9 Wave 2 rows; `W2-078` receives a partial configured-
+  target header result. The runner had no GPU, so this is not device, numerical,
+  sanitizer, profiler, or performance acceptance.
 - The final epoch contains 123 unique changed Python paths: 122 passed the initial
   compile/fatal-Ruff gate and four passed the CI follow-up gate, with three paths
   overlapping. All 16 new Wave 2 tests pass full Ruff at the final source; 20 JSON
@@ -427,10 +442,11 @@ complete-source reconciliation above supersedes its source counts.
 - At that checkpoint, the independent Wave 2 re-review classified the original
   inventory as **120 `source_fixed`, 5 `awaiting_runtime`, 2 `in_progress`, and
   1 `already_fixed_with_evidence`**. Both partial residuals were subsequently
-  repaired, so the current mutable ledger records **122 `source_fixed`, 5
-  `awaiting_runtime`, and 1 `already_fixed_with_evidence`**. The separate local
-  acceptance contract still marks 76 first-wave rows as requiring runtime
-  evidence. Adjacent discoveries now cover LOCAL-001 through LOCAL-052: **40
+  repaired, and the later retained-evidence reconciliation changes the current
+  mutable ledger to **115 `source_fixed`, 5 `awaiting_runtime`, 7 `verified`, and
+  1 `already_fixed_with_evidence`**. The separate local acceptance matrix contains
+  76 first-wave rows: 7 exact host/configuration contracts are verified and 69
+  remain pending. Adjacent discoveries now cover LOCAL-001 through LOCAL-052: **40
   `source_fixed`, 11 `awaiting_runtime`, and 1 `verified`**. The verified row is
   LOCAL-025; W1-006 remains source-fixed pending its supported-GPU sub-gate.
 - The final tensor-parallel repair passes **18 focused tests** plus **2 related
@@ -517,7 +533,7 @@ requirements separately. Do not mark the goal complete because the plan is writt
 - Complete prefill/decode payloads, workload parity and stream/input refresh are source-repaired; the current attention gate binds 32 exact CUDA cases and 115 dependencies. Its actual CPU preflight is HOLD with zero CUDA dispatch.
 - The unrelated parent-side training verifier is withdrawn. All 61 generic wrappers explicitly refuse harness qualification until actual child results and an independent reference exist. Direct scripts remain available; hardware alone cannot restore wrapper qualification.
 - Historical fallback table rows now disclose missing/unverified source lineage. Original evidence and all Nanochat logs are preserved and includable.
-- The [local receipt](docs/audits/2026-08-30/evidence/integration/final-local/receipt.json), [current status](docs/audits/2026-08-30/STATUS.md), [Wave 2 complete-source receipt](docs/audits/2026-08-30/evidence/integration/wave-2-complete-source/receipt.json), and [runtime handoff](docs/audits/2026-08-30/evidence/integration/runtime-handoff.md) separate completed local work from pending pinned Linux/build/GPU/numerical-policy gates. Wave 2 source remediation is reconciled; its 48 runtime gates remain open. **The goal is not complete.**
+- The [local receipt](docs/audits/2026-08-30/evidence/integration/final-local/receipt.json), [current status](docs/audits/2026-08-30/STATUS.md), [Wave 2 complete-source receipt](docs/audits/2026-08-30/evidence/integration/wave-2-complete-source/receipt.json), and [runtime handoff](docs/audits/2026-08-30/evidence/integration/runtime-handoff.md) separate completed local work from pending pinned Linux/build/GPU/numerical-policy gates. Wave 2 source remediation is reconciled; its 48 runtime rows remain open, and 69 of 76 locally required Wave 1 runtime contracts remain pending. **The goal is not complete.**
 
 ### Dependency and HTTP follow-up checkpoint
 

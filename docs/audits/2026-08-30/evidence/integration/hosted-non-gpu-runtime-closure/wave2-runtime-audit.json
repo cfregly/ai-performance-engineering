@@ -1,0 +1,823 @@
+{
+  "schema_version": 1,
+  "audit_disposition": {
+    "whole_rows_verified": [],
+    "status_counts_after_reconciliation": {
+      "awaiting_runtime": 48
+    },
+    "note": "No retained run supplies the required target-hardware acceptance cell."
+  },
+  "hosted_cpu": {
+    "run_id": 33391774956,
+    "job_id": 99486842896,
+    "source_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+    "junit_sha256": "28e9a877d0e90d45712c7020db54b7ef6390f871308539ad5867434c4acbceba",
+    "rows_with_exact_passed_regression": 48
+  },
+  "cuda13_compile": {
+    "run_id": 33391774950,
+    "job_id": 99486864020,
+    "source_revision": "3316e0efe985040745ffd926c5f76a6bd4436aff",
+    "full_log_sha256": "02050456e295c7fe2b8b5dc87e9eeb2fb930e0a87f3ccb458a69197f8f463eae",
+    "exact_source_compile_rows": [
+      "W2-002",
+      "W2-015",
+      "W2-039",
+      "W2-050",
+      "W2-052",
+      "W2-100",
+      "W2-101",
+      "W2-102",
+      "W2-119"
+    ],
+    "partial_header_compile_rows": [
+      "W2-078"
+    ]
+  },
+  "linux_cpu_provenance": {
+    "run_id": 33401585682,
+    "wave2_credit": "none",
+    "reason": "No repository tests, CUDA toolkit/driver/GPU/native extension build, or finding-specific execution."
+  },
+  "stale_changed_files_test_pointers": {
+    "W2-015": [
+      "code/tests/test_wave2_ch07_ch09_ch13_regressions.py"
+    ],
+    "W2-017": [
+      "code/tests/test_wave2_ch07_ch09_ch13_regressions.py",
+      "code/tests/test_wave2_medium_ch06_ch09_ch13_regressions.py"
+    ],
+    "W2-028": [
+      "code/tests/test_dynamic_router_vllm_016_contract.py"
+    ],
+    "W2-075": [
+      "code/tests/test_wave2_medium_core_regressions.py"
+    ],
+    "W2-085": [
+      "code/tests/test_dynamic_router_vllm_016_contract.py"
+    ],
+    "W2-091": [
+      "code/tests/test_wave2_medium_core_regressions.py"
+    ],
+    "W2-096": [
+      "code/tests/test_wave2_medium_core_regressions.py"
+    ],
+    "W2-127": [
+      "code/tests/test_wave2_medium_core_regressions.py"
+    ],
+    "W2-129": [
+      "code/tests/test_wave2_medium_core_regressions.py"
+    ],
+    "W2-132": [
+      "code/tests/test_wave2_labs_regressions.py"
+    ],
+    "W2-137": [
+      "code/tests/test_top_k_kernel_runtime.py"
+    ]
+  },
+  "rows": {
+    "W2-001": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_graph_cutlass_tma_triton_compiler",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_ch12_cuda_graph_regressions.py::test_cuda_graph_cache_keys_capture_on_the_tensor_data_pointer"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: cuda graph cutlass tma triton compiler",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-002": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_graph_cutlass_tma_triton_compiler",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_ch12_cuda_graph_regressions.py::test_conditional_graph_populates_cuda_owned_if_else_bodies_after_node_creation"
+      ],
+      "cuda13_compile_subgate": "pass_cuda13_compile_link_sm100_sm103_sm120_sm121",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PASS (bounded): run 33391774950/job 99486864020 compiled and linked the exact repaired source with CUDA 13.0 for sm100, sm103, sm120, and sm121. No GPU/driver was present; target-device execution, full-output/numerical checks, sanitizer, and performance remain pending.",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json",
+        "evidence/integration/hosted-cuda-compile-closure/receipt.json"
+      ]
+    },
+    "W2-003": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_graph_cutlass_tma_triton_compiler",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_blackwell_feature_sources.py::test_cutlass_gemm_column_major_b_stride_uses_tensor_shape_order"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: cuda graph cutlass tma triton compiler",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-008": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "nccl_distributed_multigpu",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_early_high_regressions.py::test_multinode_attention_uses_complete_heads_for_sdpa",
+        "code/tests/test_wave2_early_high_regressions.py::test_tensor_parallel_size_must_preserve_whole_attention_heads"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: nccl distributed multigpu",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; torchrun/NCCL on the required topology must verify cross-rank correctness, ordering, timing, and device/cache identity as applicable.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-010": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_async_allocator_fp8_numerics",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_early_high_regressions.py::test_pinned_host_slot_waits_for_dma_before_cpu_overwrite"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: cuda async allocator fp8 numerics",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; real asynchronous stream/allocator ordering and target-device numerical validation remain required.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-015": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_graph_cutlass_tma_triton_compiler",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_ch07_ch09_ch13_regressions.py::test_nvfp4_vec16_scale_layout_is_a_bijection",
+        "code/tests/test_wave2_ch07_ch09_ch13_regressions.py::test_nvfp4_perchannel_sources_use_swizzled_scale_layout"
+      ],
+      "cuda13_compile_subgate": "pass_cuda13_compile_link_sm100_sm103_sm120_sm121",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PASS (bounded): run 33391774950/job 99486864020 compiled and linked the exact repaired source with CUDA 13.0 for sm100, sm103, sm120, and sm121. No GPU/driver was present; target-device execution, full-output/numerical checks, sanitizer, and performance remain pending.",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json",
+        "evidence/integration/hosted-cuda-compile-closure/receipt.json"
+      ]
+    },
+    "W2-017": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "transformer_engine_2x",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_ch07_ch09_ch13_regressions.py::test_te_delayed_scaling_recipe_uses_transformer_engine_2x_signature",
+        "code/tests/test_wave2_medium_ch06_ch09_ch13_regressions.py::test_transformer_engine_eager_benchmark_runs_one_fp8_training_step"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: transformer engine 2x",
+      "remaining_acceptance_boundary": "Source/API repair passes host contracts; pinned Transformer Engine 2.x setup and FP8 execution remain required.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-020": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_async_allocator_fp8_numerics",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_late_high_regressions.py::test_w2_020_fp8_kv_cache_preserves_scale_history"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: cuda async allocator fp8 numerics",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; real asynchronous stream/allocator ordering and target-device numerical validation remain required.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-022": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "nccl_distributed_multigpu",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_late_high_regressions.py::test_w2_022_aggregate_counts_replicated_tensor_parallel_work_once",
+        "code/tests/test_wave2_late_high_regressions.py::test_w2_022_aggregate_rejects_divergent_rank_counters"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: nccl distributed multigpu",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; torchrun/NCCL on the required topology must verify cross-rank correctness, ordering, timing, and device/cache identity as applicable.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-024": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_async_allocator_fp8_numerics",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_late_high_regressions.py::test_w2_024_compiled_fp8_path_dispatches_scaled_mm",
+        "code/tests/test_wave2_late_high_regressions.py::test_w2_024_native_fp8_entrypoint_fails_closed_without_cuda"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: cuda async allocator fp8 numerics",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; real asynchronous stream/allocator ordering and target-device numerical validation remain required.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-025": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_async_allocator_fp8_numerics",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_late_high_regressions.py::test_w2_025_double_buffer_reuse_waits_for_compute"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: cuda async allocator fp8 numerics",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; real asynchronous stream/allocator ordering and target-device numerical validation remain required.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-028": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "pinned_vllm_016",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_dynamic_router_vllm_016_contract.py::test_wrapper_uses_vllm_016_engine_and_request_signatures",
+        "code/tests/test_dynamic_router_vllm_016_contract.py::test_pinned_api_mismatch_fails_explicitly_without_fallback",
+        "code/tests/test_dynamic_router_vllm_016_contract.py::test_all_four_benchmark_call_paths_use_current_vllm_api[dynamic-baseline]",
+        "code/tests/test_dynamic_router_vllm_016_contract.py::test_all_four_benchmark_call_paths_use_current_vllm_api[dynamic-optimized]",
+        "code/tests/test_dynamic_router_vllm_016_contract.py::test_all_four_benchmark_call_paths_use_current_vllm_api[dual_pool-shared]",
+        "code/tests/test_dynamic_router_vllm_016_contract.py::test_all_four_benchmark_call_paths_use_current_vllm_api[dual_pool-dual]",
+        "code/tests/test_dynamic_router_vllm_016_contract.py::test_v1_direct_loop_completes_required_engine_post_step"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: pinned vllm 016",
+      "remaining_acceptance_boundary": "Pinned vLLM 0.16 source contracts were checked; real engine/request/token-parity execution on the target GPU remains required.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-039": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_graph_cutlass_tma_triton_compiler",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_ch02_ch03_medium_regressions.py::test_w2_039_no_hint_path_faults_pages_instead_of_prefetching"
+      ],
+      "cuda13_compile_subgate": "pass_cuda13_compile_link_sm100_sm103_sm120_sm121",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PASS (bounded): run 33391774950/job 99486864020 compiled and linked the exact repaired source with CUDA 13.0 for sm100, sm103, sm120, and sm121. No GPU/driver was present; target-device execution, full-output/numerical checks, sanitizer, and performance remain pending.",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json",
+        "evidence/integration/hosted-cuda-compile-closure/receipt.json"
+      ]
+    },
+    "W2-043": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "nccl_distributed_multigpu",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_ch04_regressions.py::test_ddp_reductions_are_aggregated_once_for_every_replica"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: nccl distributed multigpu",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; torchrun/NCCL on the required topology must verify cross-rank correctness, ordering, timing, and device/cache identity as applicable.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-045": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_async_allocator_fp8_numerics",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_ch04_regressions.py::test_multinode_step_throughput_waits_for_cuda_event_completion"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: cuda async allocator fp8 numerics",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; real asynchronous stream/allocator ordering and target-device numerical validation remain required.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-047": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "nccl_distributed_multigpu",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_ch04_regressions.py::test_nvls_environment_is_set_or_validated_before_communicator_creation"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: nccl distributed multigpu",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; torchrun/NCCL on the required topology must verify cross-rank correctness, ordering, timing, and device/cache identity as applicable.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-050": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_graph_cutlass_tma_triton_compiler",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_medium_ch06_ch09_ch13_regressions.py::test_cublaslt_per_channel_scaling_uses_column_major_output_offsets"
+      ],
+      "cuda13_compile_subgate": "pass_cuda13_compile_link_sm100_sm103_sm120_sm121",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PASS (bounded): run 33391774950/job 99486864020 compiled and linked the exact repaired source with CUDA 13.0 for sm100, sm103, sm120, and sm121. No GPU/driver was present; target-device execution, full-output/numerical checks, sanitizer, and performance remain pending.",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json",
+        "evidence/integration/hosted-cuda-compile-closure/receipt.json"
+      ]
+    },
+    "W2-052": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_graph_cutlass_tma_triton_compiler",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_medium_ch06_ch09_ch13_regressions.py::test_all_concepts_cutlass_kernel_uses_claimed_four_cta_cluster"
+      ],
+      "cuda13_compile_subgate": "pass_cuda13_compile_link_sm100_sm103_sm120_sm121",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PASS (bounded): run 33391774950/job 99486864020 compiled and linked the exact repaired source with CUDA 13.0 for sm100, sm103, sm120, and sm121. No GPU/driver was present; target-device execution, full-output/numerical checks, sanitizer, and performance remain pending.",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json",
+        "evidence/integration/hosted-cuda-compile-closure/receipt.json"
+      ]
+    },
+    "W2-053": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_graph_cutlass_tma_triton_compiler",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_medium_ch06_ch09_ch13_regressions.py::test_tcgen05_bias_silu_partitions_bias_by_global_output_column"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: cuda graph cutlass tma triton compiler",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-056": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "nccl_distributed_multigpu",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_medium_ch15_regressions.py::test_disaggregated_decode_consumes_and_verifies_transferred_context"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: nccl distributed multigpu",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; torchrun/NCCL on the required topology must verify cross-rank correctness, ordering, timing, and device/cache identity as applicable.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-057": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "nccl_distributed_multigpu",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_medium_ch15_regressions.py::test_distributed_expert_parallelism_accumulates_weighted_top2_routes"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: nccl distributed multigpu",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; torchrun/NCCL on the required topology must verify cross-rank correctness, ordering, timing, and device/cache identity as applicable.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-066": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "nccl_distributed_multigpu",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_medium_ch17_ch19_regressions.py::test_w2_066_pipeline_streams_are_bound_to_each_stage_device"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: nccl distributed multigpu",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; torchrun/NCCL on the required topology must verify cross-rank correctness, ordering, timing, and device/cache identity as applicable.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-067": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "nccl_distributed_multigpu",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_medium_ch17_ch19_regressions.py::test_w2_067_stage_metrics_finalize_cuda_event_durations"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: nccl distributed multigpu",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; torchrun/NCCL on the required topology must verify cross-rank correctness, ordering, timing, and device/cache identity as applicable.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-068": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "nccl_distributed_multigpu",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_medium_ch17_ch19_regressions.py::test_w2_068_disaggregated_streams_overlap_independent_requests"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: nccl distributed multigpu",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; torchrun/NCCL on the required topology must verify cross-rank correctness, ordering, timing, and device/cache identity as applicable.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-072": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "pinned_vllm_016",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_medium_ch17_ch19_regressions.py::test_w2_072_bucketed_loop_uses_vllm_016_params_keyword"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: pinned vllm 016",
+      "remaining_acceptance_boundary": "Pinned vLLM 0.16 source contracts were checked; real engine/request/token-parity execution on the target GPU remains required.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-073": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_async_allocator_fp8_numerics",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_medium_ch17_ch19_regressions.py::test_w2_073_d2h_copies_complete_before_cpu_dequantization"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: cuda async allocator fp8 numerics",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; real asynchronous stream/allocator ordering and target-device numerical validation remain required.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-075": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_async_allocator_fp8_numerics",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_medium_core_regressions.py::test_w2_075_pipeline_records_cross_stream_tensor_consumers"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: cuda async allocator fp8 numerics",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; real asynchronous stream/allocator ordering and target-device numerical validation remain required.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-078": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_graph_cutlass_tma_triton_compiler",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_medium_core_regressions.py::test_w2_078_w2_079_tma_box_limits_follow_driver_contract"
+      ],
+      "cuda13_compile_subgate": "partial_header_dependency_compile_sm100_sm103_sm120_sm121",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PARTIAL: run 33391774950 compiled arch_detection.cuh through the three ch07 TMA translation units for sm100, sm103, sm120, and sm121. W2-078 also names H100; sm90/H100 compile was not run, and no device execution occurred.",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json",
+        "evidence/integration/hosted-cuda-compile-closure/receipt.json"
+      ]
+    },
+    "W2-079": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_graph_cutlass_tma_triton_compiler",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_medium_core_regressions.py::test_w2_078_w2_079_tma_box_limits_follow_driver_contract"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: cuda graph cutlass tma triton compiler",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-083": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_graph_cutlass_tma_triton_compiler",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_labs_regressions.py::test_triton_matmul_masks_the_tail_of_the_k_dimension"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: cuda graph cutlass tma triton compiler",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-085": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "pinned_vllm_016",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_dynamic_router_vllm_016_contract.py::test_wrapper_uses_vllm_016_engine_and_request_signatures"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: pinned vllm 016",
+      "remaining_acceptance_boundary": "Pinned vLLM 0.16 source contracts were checked; real engine/request/token-parity execution on the target GPU remains required.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-089": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "b200_bf16_full_model",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_labs_regressions.py::test_llama_bf16_verification_rejects_zero_and_grossly_wrong_outputs",
+        "code/tests/test_wave2_labs_regressions.py::test_llama_baseline_preserves_bf16_math_and_builds_the_declared_depth"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: b200 bf16 full model",
+      "remaining_acceptance_boundary": "Source/workload repair passes host contracts; declared Llama depth, BF16/output, memory behavior, and full-model execution on B200-class hardware remain required.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-090": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "b200_bf16_full_model",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_labs_regressions.py::test_llama_baseline_preserves_bf16_math_and_builds_the_declared_depth"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: b200 bf16 full model",
+      "remaining_acceptance_boundary": "Source/workload repair passes host contracts; declared Llama depth, BF16/output, memory behavior, and full-model execution on B200-class hardware remain required.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-091": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_graph_cutlass_tma_triton_compiler",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_medium_core_regressions.py::test_w2_091_software_pipeline_pair_controls_copy_and_compute_width"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: cuda graph cutlass tma triton compiler",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-096": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "live_nvml_prometheus",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_medium_core_regressions.py::test_w2_096_exporter_uses_device_wide_memory_for_utilization"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: live nvml prometheus",
+      "remaining_acceptance_boundary": "Exporter source and focused tests pass; a live device-wide NVML/Prometheus telemetry scrape remains required.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-098": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "grace_and_non_grace_hardware",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_low_early_regressions.py::test_w2_098_generic_neoverse_cpu_is_not_classified_as_grace",
+        "code/tests/test_wave2_low_early_regressions.py::test_w2_098_explicit_nvidia_grace_cpu_is_classified_as_grace"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: grace and non grace hardware",
+      "remaining_acceptance_boundary": "Detection source contracts pass; actual Grace identity/coherency and a non-Grace negative probe remain required.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-099": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "nccl_distributed_multigpu",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_low_early_regressions.py::test_w2_099_nccl_allows_one_local_gpu_in_a_multi_node_job"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: nccl distributed multigpu",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; torchrun/NCCL on the required topology must verify cross-rank correctness, ordering, timing, and device/cache identity as applicable.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-100": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_graph_cutlass_tma_triton_compiler",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_low_early_regressions.py::test_w2_100_through_w2_102_tma_copies_compare_nonuniform_full_outputs"
+      ],
+      "cuda13_compile_subgate": "pass_cuda13_compile_link_sm100_sm103_sm120_sm121",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PASS (bounded): run 33391774950/job 99486864020 compiled and linked the exact repaired source with CUDA 13.0 for sm100, sm103, sm120, and sm121. No GPU/driver was present; target-device execution, full-output/numerical checks, sanitizer, and performance remain pending.",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json",
+        "evidence/integration/hosted-cuda-compile-closure/receipt.json"
+      ]
+    },
+    "W2-101": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_graph_cutlass_tma_triton_compiler",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_low_early_regressions.py::test_w2_100_through_w2_102_tma_copies_compare_nonuniform_full_outputs"
+      ],
+      "cuda13_compile_subgate": "pass_cuda13_compile_link_sm100_sm103_sm120_sm121",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PASS (bounded): run 33391774950/job 99486864020 compiled and linked the exact repaired source with CUDA 13.0 for sm100, sm103, sm120, and sm121. No GPU/driver was present; target-device execution, full-output/numerical checks, sanitizer, and performance remain pending.",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json",
+        "evidence/integration/hosted-cuda-compile-closure/receipt.json"
+      ]
+    },
+    "W2-102": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_graph_cutlass_tma_triton_compiler",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_low_early_regressions.py::test_w2_100_through_w2_102_tma_copies_compare_nonuniform_full_outputs"
+      ],
+      "cuda13_compile_subgate": "pass_cuda13_compile_link_sm100_sm103_sm120_sm121",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PASS (bounded): run 33391774950/job 99486864020 compiled and linked the exact repaired source with CUDA 13.0 for sm100, sm103, sm120, and sm121. No GPU/driver was present; target-device execution, full-output/numerical checks, sanitizer, and performance remain pending.",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json",
+        "evidence/integration/hosted-cuda-compile-closure/receipt.json"
+      ]
+    },
+    "W2-110": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_graph_cutlass_tma_triton_compiler",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_low_early_regressions.py::test_w2_110_cuda_graph_autofree_flag_is_not_macro_shadowed"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: cuda graph cutlass tma triton compiler",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-119": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_graph_cutlass_tma_triton_compiler",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_low_111_123_regressions.py::test_w2_119_tma_dispatch_handles_every_selected_tile_shape"
+      ],
+      "cuda13_compile_subgate": "pass_cuda13_compile_link_sm100_sm103_sm120_sm121",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PASS (bounded): run 33391774950/job 99486864020 compiled and linked the exact repaired source with CUDA 13.0 for sm100, sm103, sm120, and sm121. No GPU/driver was present; target-device execution, full-output/numerical checks, sanitizer, and performance remain pending.",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json",
+        "evidence/integration/hosted-cuda-compile-closure/receipt.json"
+      ]
+    },
+    "W2-120": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "grace_and_non_grace_hardware",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_low_111_123_regressions.py::test_w2_120_grace_coherence_requires_a_grace_host"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: grace and non grace hardware",
+      "remaining_acceptance_boundary": "Detection source contracts pass; actual Grace identity/coherency and a non-Grace negative probe remain required.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-123": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "nccl_distributed_multigpu",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_low_111_123_regressions.py::test_w2_123_autotune_fingerprints_and_tunes_the_input_device"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: nccl distributed multigpu",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; torchrun/NCCL on the required topology must verify cross-rank correctness, ordering, timing, and device/cache identity as applicable.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-127": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "pinned_vllm_016",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_medium_core_regressions.py::test_w2_127_router_verification_uses_generated_token_ids"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: pinned vllm 016",
+      "remaining_acceptance_boundary": "Pinned vLLM 0.16 source contracts were checked; real engine/request/token-parity execution on the target GPU remains required.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-129": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_async_allocator_fp8_numerics",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_medium_core_regressions.py::test_w2_129_fp8_kv_tolerance_matches_e4m3_error_scale"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: cuda async allocator fp8 numerics",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; real asynchronous stream/allocator ordering and target-device numerical validation remain required.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-132": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_async_allocator_fp8_numerics",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_wave2_labs_regressions.py::test_occupancy_validation_rejects_zero_and_grossly_wrong_outputs"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: cuda async allocator fp8 numerics",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; real asynchronous stream/allocator ordering and target-device numerical validation remain required.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    },
+    "W2-137": {
+      "status": "awaiting_runtime",
+      "runtime_gate_group": "cuda_graph_cutlass_tma_triton_compiler",
+      "hosted_cpu_subgate": "passed_run_33391774956",
+      "hosted_cpu_nodeids": [
+        "code/tests/test_top_k_kernel_runtime.py::test_cuda_top_k_forward_scores_reduced_query_tiles"
+      ],
+      "cuda13_compile_subgate": "not_satisfied_by_run_33391774950",
+      "suggested_verification_source_and_cpu": "Run 33391774956 at final source 3316e0efe985040745ffd926c5f76a6bd4436aff: GitHub-hosted Ubuntu 24.04 CPython 3.12 full CPU suite passed 4346, skipped 461, 0 failures/errors; the retained JUnit records the listed finding-specific node(s) as passed. This closes only the final-source hosted-Linux CPU/source-regression subgate; no CUDA/GPU/NCCL/runtime/performance credit.",
+      "suggested_verification_build": "PENDING: cuda graph cutlass tma triton compiler",
+      "remaining_acceptance_boundary": "Source repair and host contracts pass; compile on a supported toolkit/driver and compare target-device outputs, including the applicable non-square and tail cases.",
+      "append_evidence": [
+        "evidence/integration/hosted-cpu-closure/receipt.json"
+      ]
+    }
+  }
+}
