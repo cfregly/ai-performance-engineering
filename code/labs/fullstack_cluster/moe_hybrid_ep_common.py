@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
+import math
 import os
-
-from core.common.device_utils import resolve_local_rank
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -20,7 +20,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from core.benchmark.metrics import compute_moe_metrics
+from core.benchmark.verification import get_tolerance_for_dtype
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.common.device_utils import resolve_local_rank
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -28,8 +30,27 @@ from core.harness.benchmark_harness import (
     TorchrunLaunchSpec,
 )
 from core.optimization.moe_inference import resolve_dtype
+from core.profiling.nvtx_helper import nvtx_range
+from labs.fullstack_cluster.moe_hybrid_ep_result import (
+    MOE_HYBRID_EP_RESULT_CALLBACK,
+    MOE_HYBRID_EP_RESULT_LABEL_ENV,
+    MoEHybridEPChildResultMixin,
+    MoEHybridEPResultContract,
+    moe_hybrid_ep_child_result_requested,
+    write_moe_hybrid_ep_child_result,
+)
 
 MOE_HYBRID_EP_ENTRYPOINT_MODULE = "labs.fullstack_cluster.moe_hybrid_ep_entrypoint"
+BASELINE_MOE_HYBRID_EP_NVTX_RANGE = "compute_kernel:moe_hybrid_ep_baseline_step"
+OPTIMIZED_MOE_HYBRID_EP_NVTX_RANGE = "compute_kernel:moe_hybrid_ep_optimized_step"
+
+
+def _profile_range(*, optimized: bool) -> str:
+    return (
+        OPTIMIZED_MOE_HYBRID_EP_NVTX_RANGE
+        if optimized
+        else BASELINE_MOE_HYBRID_EP_NVTX_RANGE
+    )
 
 
 def _parse_bool_env(name: str, default: bool) -> bool:
@@ -93,6 +114,9 @@ class PhaseEvents:
 class StepArtifacts:
     metrics: Dict[str, float]
     loss: float
+    output: Optional[torch.Tensor] = None
+    route_assignments: Optional[torch.Tensor] = None
+    rank_time_per_iter_ms: Optional[float] = None
 
 
 _AVERAGED_REDUCED_METRIC_KEYS = frozenset(
@@ -188,6 +212,12 @@ def shutdown_topology(topology: TopologyInfo) -> None:
 
 def add_shared_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--iters", type=int, default=6, help="Measured optimizer steps.")
+    parser.add_argument(
+        "--warmup-steps",
+        type=int,
+        default=None,
+        help="Warmup optimizer steps. Default follows the launch world size.",
+    )
     parser.add_argument("--tokens-per-rank", type=int, default=128, help="Synthetic token count per rank.")
     parser.add_argument("--hidden-size", type=int, default=1024, help="Hidden dimension.")
     parser.add_argument("--num-experts", type=int, default=0, help="Global expert count. Default derives from local_experts * world_size.")
@@ -351,6 +381,8 @@ class DeepSeekHybridEPModule(nn.Module):
         # Allocate only when CUDA overlap is actually executed. CPU collective
         # correctness tests exercise the same route helpers with real Gloo.
         self._comm_stream = None
+        self._latest_forward_output: Optional[torch.Tensor] = None
+        self._latest_route_assignments: Optional[torch.Tensor] = None
 
     @property
     def cuda_device(self) -> torch.device:
@@ -1016,6 +1048,10 @@ class DeepSeekHybridEPModule(nn.Module):
             remote_count = 0.0
 
         outputs = self.output_proj(hidden + combined)
+        # Keep the real final tensor and assignments alive past the optimizer step.
+        # The worker copies these after the measured NVTX range has closed.
+        self._latest_forward_output = outputs.detach()
+        self._latest_route_assignments = top_indices.detach()
         loss = F.mse_loss(outputs, targets) + aux["balance_loss"] * float(aux_loss_scale)
         torch.cuda.synchronize()
         routing_ms = float(routing_start.elapsed_time(routing_end))
@@ -1186,17 +1222,28 @@ class HybridEPTrainer:
         total_end.record(current_stream)
         torch.cuda.synchronize()
 
+        rank_time_per_iter_ms = float(total_start.elapsed_time(total_end))
         metrics.update(
             {
                 "moe.step.backward_ms": float(total_after_forward.elapsed_time(total_after_backward)),
                 "moe.step.grad_sync_ms": float(total_after_backward.elapsed_time(total_after_sync)),
                 "moe.step.optimizer_ms": float(total_after_sync.elapsed_time(total_end)),
-                "moe.step.total_ms": float(total_start.elapsed_time(total_end)),
+                "moe.step.total_ms": rank_time_per_iter_ms,
             }
         )
         metrics = self._reduce_metrics(metrics)
         self._loss_host_buffer.copy_(loss.detach(), non_blocking=False)
-        return StepArtifacts(metrics=metrics, loss=float(self._loss_host_buffer))
+        output = self.model._latest_forward_output
+        route_assignments = self.model._latest_route_assignments
+        if output is None or route_assignments is None:
+            raise RuntimeError("Hybrid-EP step did not retain its full forward result")
+        return StepArtifacts(
+            metrics=metrics,
+            loss=float(self._loss_host_buffer),
+            output=output,
+            route_assignments=route_assignments,
+            rank_time_per_iter_ms=rank_time_per_iter_ms,
+        )
 
     def _reduce_metrics(self, metrics: Dict[str, float]) -> Dict[str, float]:
         if self.topology.world_size <= 1:
@@ -1291,7 +1338,30 @@ def summarize_and_write_report(
             f"remote token pct: {mean_metrics.get('moe.remote_token_pct', 0.0):.2f}",
             flush=True,
         )
+        rank_time_total = 0.0
+        for step in step_history:
+            rank_time_total += float(
+                step.rank_time_per_iter_ms
+                if step.rank_time_per_iter_ms is not None
+                else step.metrics.get("moe.step.total_ms", 0.0)
+            )
+        time_per_iter_ms = rank_time_total / len(step_history) if step_history else 0.0
+        if not math.isfinite(time_per_iter_ms) or time_per_iter_ms <= 0:
+            raise RuntimeError("Hybrid-EP measured mean time must be finite and positive")
+        print(f"rank0 time_per_iter_ms: {time_per_iter_ms:.9f}", flush=True)
     return mean_metrics
+
+
+def _mean_rank_time_per_iter_ms(step_history: Sequence[StepArtifacts]) -> float:
+    if not step_history:
+        raise RuntimeError("Hybrid-EP timing requires at least one measured step")
+    values = [step.rank_time_per_iter_ms for step in step_history]
+    if any(value is None for value in values):
+        raise RuntimeError("Hybrid-EP measured steps are missing rank-local CUDA timing")
+    mean = sum(float(value) for value in values if value is not None) / len(values)
+    if not math.isfinite(mean) or mean <= 0:
+        raise RuntimeError("Hybrid-EP rank-local measured mean must be finite and positive")
+    return mean
 
 
 def build_parser(*, optimized: bool) -> argparse.ArgumentParser:
@@ -1307,42 +1377,208 @@ def build_parser(*, optimized: bool) -> argparse.ArgumentParser:
     return parser
 
 
+def _make_result_contract(
+    *,
+    args: argparse.Namespace,
+    world_size: int,
+    warmup_steps: int,
+    optimized: bool,
+    label: str,
+) -> MoEHybridEPResultContract:
+    num_experts = int(args.num_experts or (args.local_experts * world_size))
+    return MoEHybridEPResultContract(
+        label=label,
+        variant="optimized" if optimized else "baseline",
+        world_size=int(world_size),
+        iterations=int(args.iters),
+        warmup_steps=int(warmup_steps),
+        tokens_per_rank=int(args.tokens_per_rank),
+        hidden_size=int(args.hidden_size),
+        num_experts=num_experts,
+        local_experts=int(args.local_experts),
+        top_k=int(args.top_k),
+        route_mode=str(args.route_mode),
+        dtype=str(resolve_dtype(args.dtype)),
+        learning_rate=float(args.learning_rate),
+        aux_loss_scale=float(args.aux_loss_scale),
+        tf32=bool(torch.backends.cuda.matmul.allow_tf32),
+        profile_range=_profile_range(optimized=optimized),
+    )
+
+
+def _snapshot_reference_inputs(
+    trainer: HybridEPTrainer,
+) -> tuple[dict[str, torch.Tensor], torch.Tensor, torch.Tensor]:
+    """Copy the exact pre-warmup state and data outside the measured range."""
+    state = {
+        name: tensor.detach().to(device="cpu").clone()
+        for name, tensor in trainer.model.state_dict().items()
+    }
+    inputs = trainer.inputs.detach().to(device="cpu").clone()
+    targets = trainer.targets.detach().to(device="cpu").clone()
+    return state, inputs, targets
+
+
+def _run_canonical_reference(
+    *,
+    args: argparse.Namespace,
+    topology: TopologyInfo,
+    initial_state: dict[str, torch.Tensor],
+    inputs: torch.Tensor,
+    targets: torch.Tensor,
+    warmup_steps: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Replay the same initialized work through the canonical baseline path."""
+    reference_args = copy.copy(args)
+    reference_args.overlap_mode = "disabled"
+    reference = HybridEPTrainer(reference_args, topology, optimized=False)
+    reference.model.load_state_dict(initial_state, strict=True)
+    with torch.no_grad():
+        reference.inputs.copy_(inputs)
+        reference.targets.copy_(targets)
+    for _ in range(warmup_steps):
+        reference.run_step()
+    final_reference: Optional[StepArtifacts] = None
+    for _ in range(args.iters):
+        final_reference = reference.run_step()
+    if (
+        final_reference is None
+        or final_reference.output is None
+        or final_reference.route_assignments is None
+    ):
+        raise RuntimeError("Canonical hybrid-EP replay did not produce a full final output")
+    reference_output = final_reference.output.detach().to(device="cpu").contiguous()
+    reference_assignments = (
+        final_reference.route_assignments.detach().to(device="cpu").contiguous()
+    )
+    final_reference.output = None
+    final_reference.route_assignments = None
+    del reference
+    torch.cuda.empty_cache()
+    return reference_output, reference_assignments
+
+
 def run_cli(*, optimized: bool, argv: Optional[Sequence[str]] = None) -> Dict[str, float]:
     parser = build_parser(optimized=optimized)
     args = parser.parse_args(list(argv) if argv is not None else None)
+    if args.iters <= 0:
+        raise ValueError("--iters must be >= 1")
     topology = init_topology()
     try:
         if not args.skip_preflight:
             _run_preflight(topology.rank)
         trainer = HybridEPTrainer(args, topology, optimized=optimized)
-        warmup_steps = _steady_state_warmup_steps(topology)
+        warmup_steps = (
+            _steady_state_warmup_steps(topology)
+            if args.warmup_steps is None
+            else int(args.warmup_steps)
+        )
+        if warmup_steps < 0:
+            raise ValueError("--warmup-steps must be >= 0")
+        result_requested = moe_hybrid_ep_child_result_requested()
+        initial_state: Optional[dict[str, torch.Tensor]] = None
+        verification_inputs: Optional[torch.Tensor] = None
+        verification_targets: Optional[torch.Tensor] = None
+        contract: Optional[MoEHybridEPResultContract] = None
+        if result_requested:
+            label = os.environ.get(MOE_HYBRID_EP_RESULT_LABEL_ENV)
+            if not label:
+                raise RuntimeError("Hybrid-EP callback launch is missing its result label")
+            contract = _make_result_contract(
+                args=args,
+                world_size=topology.world_size,
+                warmup_steps=warmup_steps,
+                optimized=optimized,
+                label=label,
+            )
+            contract.validate()
+            initial_state, verification_inputs, verification_targets = (
+                _snapshot_reference_inputs(trainer)
+            )
         if args.torch_profile_output:
             activities = [torch.profiler.ProfilerActivity.CPU]
             if torch.cuda.is_available():
                 activities.append(torch.profiler.ProfilerActivity.CUDA)
             for _ in range(warmup_steps):
                 trainer.run_step()
-            with torch.profiler.profile(activities=activities) as prof:
-                trainer.run_step()
+            with (
+                torch.profiler.profile(activities=activities) as prof,
+                nvtx_range(_profile_range(optimized=optimized), enable=True),
+            ):
+                profiled_step = trainer.run_step()
             if topology.rank == 0:
                 trace_path = Path(args.torch_profile_output)
                 trace_path.parent.mkdir(parents=True, exist_ok=True)
                 prof.export_chrome_trace(str(trace_path))
+                profile_time_ms = float(
+                    profiled_step.rank_time_per_iter_ms
+                    if profiled_step.rank_time_per_iter_ms is not None
+                    else profiled_step.metrics["moe.step.total_ms"]
+                )
+                print(f"rank0 time_per_iter_ms: {profile_time_ms:.9f}", flush=True)
             return {}
         for _ in range(warmup_steps):
             trainer.run_step()
-        step_history = [trainer.run_step() for _ in range(args.iters)]
-        return summarize_and_write_report(
+        with nvtx_range(_profile_range(optimized=optimized), enable=True):
+            step_history = [trainer.run_step() for _ in range(args.iters)]
+        mean_metrics = summarize_and_write_report(
             args=args,
             topology=topology,
             step_history=step_history,
             optimized=optimized,
         )
+        if not result_requested:
+            return mean_metrics
+
+        final_step = step_history[-1]
+        if final_step.output is None or final_step.route_assignments is None:
+            raise RuntimeError("Measured hybrid-EP step did not retain its full final output")
+        verify_output = final_step.output.detach().to(device="cpu").contiguous()
+        route_assignments = (
+            final_step.route_assignments.detach().to(device="cpu").contiguous()
+        )
+        for step in step_history:
+            step.output = None
+            step.route_assignments = None
+        parameter_count = sum(parameter.numel() for parameter in trainer.model.parameters())
+        del trainer
+        torch.cuda.empty_cache()
+        assert initial_state is not None
+        assert verification_inputs is not None
+        assert verification_targets is not None
+        assert contract is not None
+        reference_output, reference_assignments = _run_canonical_reference(
+            args=args,
+            topology=topology,
+            initial_state=initial_state,
+            inputs=verification_inputs,
+            targets=verification_targets,
+            warmup_steps=warmup_steps,
+        )
+        initial_state.clear()
+        write_moe_hybrid_ep_child_result(
+            contract=contract,
+            rank=topology.rank,
+            parameter_count=parameter_count,
+            inputs=verification_inputs,
+            targets=verification_targets,
+            route_assignments=route_assignments,
+            verify_output=verify_output,
+            reference_route_assignments=reference_assignments,
+            reference_output=reference_output,
+            custom_metrics=mean_metrics,
+            time_per_iter_ms=_mean_rank_time_per_iter_ms(step_history),
+        )
+        return mean_metrics
     finally:
         shutdown_topology(topology)
 
 
-class MoEHybridEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class MoEHybridEPBenchmark(
+    MoEHybridEPChildResultMixin,
+    VerificationPayloadMixin,
+    BaseBenchmark,
+):
     def __init__(
         self,
         *,
@@ -1371,21 +1607,27 @@ class MoEHybridEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._single_gpu_args: Optional[argparse.Namespace] = None
         self._single_gpu_topology: Optional[TopologyInfo] = None
         self._single_gpu_trainer: Optional[HybridEPTrainer] = None
+        self._single_gpu_latest_output: Optional[torch.Tensor] = None
+        self._single_gpu_latest_probe: Optional[torch.Tensor] = None
         self._latest_metrics: Dict[str, float] = {}
         self._has_latest_metrics = False
 
     def benchmark_fn(self) -> None:
         if self._single_gpu_trainer is None:
-            self._verify_output.zero_()
-            self._has_latest_metrics = False
-            return
+            raise RuntimeError(
+                "Hybrid-EP in-process execution requires setup(); torchrun verification "
+                "is populated only by its fresh child-result callback"
+            )
         artifacts = self._single_gpu_trainer.run_step()
         latest_metrics = self._latest_metrics
         latest_metrics.clear()
         latest_metrics.update(artifacts.metrics)
         latest_metrics["moe_hybrid_ep.workload_size"] = float(self.workload_size)
         self._has_latest_metrics = True
-        self._verify_output.fill_(artifacts.loss)
+        if artifacts.output is None:
+            raise RuntimeError("Hybrid-EP in-process step did not retain its full output")
+        self._single_gpu_latest_output = artifacts.output
+        self._single_gpu_latest_probe = self._single_gpu_trainer.inputs
 
     def setup(self) -> None:
         self._latest_metrics.clear()
@@ -1408,6 +1650,8 @@ class MoEHybridEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._single_gpu_args = None
         self._single_gpu_topology = None
         self._single_gpu_trainer = None
+        self._single_gpu_latest_output = None
+        self._single_gpu_latest_probe = None
         self._latest_metrics.clear()
         self._has_latest_metrics = False
         self._metrics_sidecar_path.unlink(missing_ok=True)
@@ -1439,9 +1683,14 @@ class MoEHybridEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             multi_gpu_required=self.multigpu,
             measurement_timeout_seconds=1800,
             timing_method="wall_clock",
+            nsys_nvtx_include=[_profile_range(optimized=self.optimized)],
         )
 
     def get_custom_metrics(self) -> Optional[Dict[str, float]]:
+        if self._moe_hybrid_ep_result_metrics is not None:
+            metrics = dict(self._moe_hybrid_ep_result_metrics)
+            metrics["moe_hybrid_ep.workload_size"] = float(self.workload_size)
+            return metrics
         if self._has_latest_metrics:
             return dict(self._latest_metrics)
         if not self._metrics_sidecar_path.exists():
@@ -1463,23 +1712,46 @@ class MoEHybridEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         }
 
     def get_torchrun_spec(self, config: BenchmarkConfig | None = None) -> TorchrunLaunchSpec:
-        self._prepare_verification_payload()
-        self._metrics_sidecar_path.unlink(missing_ok=True)
+        effective_config = config if config is not None else self.get_config()
+        nproc_per_node = int(effective_config.nproc_per_node or 1)
+        nnodes_value = effective_config.nnodes or 1
+        try:
+            nnodes = int(nnodes_value)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                "Hybrid-EP verification requires a fixed integer nnodes rank quorum"
+            ) from exc
+        world_size = nproc_per_node * nnodes
+        parser = build_parser(optimized=self.optimized)
+        args = parser.parse_args([])
+        args.iters = int(effective_config.iterations)
+        args.warmup_steps = int(effective_config.warmup)
+        contract = _make_result_contract(
+            args=args,
+            world_size=world_size,
+            warmup_steps=int(effective_config.warmup),
+            optimized=self.optimized,
+            label=self.name,
+        )
+        transport_env = self.prepare_moe_hybrid_ep_child_result(contract)
+        self._metrics_sidecar_path = Path(transport_env["AISP_MOE_HYBRID_EP_METRICS_PATH"])
         script_args = ["--skip-preflight"]
         if self.optimized:
             script_args = ["--optimized", *script_args]
         return TorchrunLaunchSpec(
             module_name=MOE_HYBRID_EP_ENTRYPOINT_MODULE,
             script_args=script_args,
-            env={
-                "AISP_MOE_HYBRID_EP_METRICS_PATH": str(self._metrics_sidecar_path),
-            },
+            env=transport_env,
             parse_rank0_only=True,
             multi_gpu_required=self.multigpu,
             name=self.name,
             config_arg_map={
                 "iterations": "--iters",
+                "warmup": "--warmup-steps",
             },
+            result_callback=MOE_HYBRID_EP_RESULT_CALLBACK,
+            timing_source="rank0_time_per_iter_ms",
+            timing_iterations_per_sample=int(effective_config.iterations),
         )
 
     def get_profile_torchrun_spec(
@@ -1503,21 +1775,37 @@ class MoEHybridEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             multi_gpu_required=spec.multi_gpu_required,
             name=spec.name,
             config_arg_map=dict(spec.config_arg_map),
+            result_callback=spec.result_callback,
+            timing_source=spec.timing_source,
+            timing_iterations_per_sample=spec.timing_iterations_per_sample,
         )
 
     def capture_verification_payload(self) -> None:
+        if self._moe_hybrid_ep_result_bundle is not None:
+            return
+        if self._single_gpu_latest_output is not None:
+            self._verify_output = (
+                self._single_gpu_latest_output.detach().to(device="cpu").contiguous()
+            )
+        if self._single_gpu_latest_probe is not None:
+            self._verify_probe = (
+                self._single_gpu_latest_probe.detach().to(device="cpu").contiguous()
+            )
+        self._single_gpu_latest_output = None
+        self._single_gpu_latest_probe = None
+        tolerance = get_tolerance_for_dtype(self._verify_output.dtype)
         self._set_verification_payload(
             inputs={"probe": self._verify_probe},
             output=self._verify_output,
             batch_size=1,
             parameter_count=int(self.parameter_count),
             precision_flags={
-                "fp16": False,
-                "bf16": False,
+                "fp16": self._verify_output.dtype == torch.float16,
+                "bf16": self._verify_output.dtype == torch.bfloat16,
                 "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
             },
-            output_tolerance=(0.1, 1.0),
+            output_tolerance=(tolerance.rtol, tolerance.atol),
             signature_overrides={
                 "world_size": max(torch.cuda.device_count(), 1),
                 "collective_type": "hybrid_ep_optimizer_step",
@@ -1525,10 +1813,7 @@ class MoEHybridEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def _prepare_verification_payload(self) -> None:
-        if hasattr(self, "_subprocess_verify_output"):
-            return
-        self.benchmark_fn()
-        self.capture_verification_payload()
-        self._subprocess_verify_output = self.get_verify_output()
-        self._subprocess_output_tolerance = self.get_output_tolerance()
-        self._subprocess_input_signature = self.get_input_signature()
+        raise RuntimeError(
+            "Hybrid-EP verification cannot be prepared before launch; a fresh full-rank "
+            "child-result quorum is required"
+        )
