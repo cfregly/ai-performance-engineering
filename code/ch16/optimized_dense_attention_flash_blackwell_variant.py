@@ -166,7 +166,7 @@ class DenseAttentionFlashBlackwellVariantBenchmark(VerificationPayloadMixin, Bas
             dropout_p=0.0,
         )
         
-        self._attn_merge_buffer.copy_(output.transpose(1, 2))
+        self._attn_merge_buffer.view(B, S, self.num_heads, self.head_dim).copy_(output.transpose(1, 2))
         return torch.matmul(self._attn_merge_buffer, self._out_proj_weight_t, out=self._output_buffer)
     
     def benchmark_fn(self) -> None:

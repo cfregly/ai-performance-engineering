@@ -149,7 +149,7 @@ class OptimizedRegionalCompileBenchmark(VerificationPayloadMixin, BaseBenchmark)
             )
         self._verify_output_buffer = torch.empty(
             self.batch_size,
-            min(128, max(self.sequence_schedule)),
+            max(self.sequence_schedule),
             self.hidden,
             device=self.device,
             dtype=torch.float32,
@@ -181,9 +181,9 @@ class OptimizedRegionalCompileBenchmark(VerificationPayloadMixin, BaseBenchmark)
             self.output = self.model(x)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
-        if self._verify_x is None:
-            self._verify_x = x
-            self._verify_output = self.output
+        # Match the output to the latest bucket, including after warmup.
+        self._verify_x = x
+        self._verify_output = self.output
 
     def capture_verification_payload(self) -> None:
         if self._verify_x is None or self._verify_output is None or self._verify_output_buffer is None:
@@ -191,11 +191,10 @@ class OptimizedRegionalCompileBenchmark(VerificationPayloadMixin, BaseBenchmark)
         x = self._verify_x
         verify_output = self._verify_output_buffer[
             : self._verify_output.shape[0],
-            : min(self._verify_output.shape[1], self._verify_output_buffer.shape[1]),
+            : self._verify_output.shape[1],
             :,
         ]
-        output_slice = self._verify_output[:, : verify_output.shape[1], :]
-        verify_output.copy_(output_slice)
+        verify_output.copy_(self._verify_output)
         self._set_verification_payload(
             inputs={"input": x},
             output=verify_output,
@@ -222,6 +221,7 @@ class OptimizedRegionalCompileBenchmark(VerificationPayloadMixin, BaseBenchmark)
         # NOTE: warmup=10 is REQUIRED to ensure torch.compile JIT overhead is NOT
         # included in measurements. The first few calls trigger compilation.
         return BenchmarkConfig(
+            adaptive_iterations=False,
             iterations=8,
             warmup=10,  # Required for torch.compile - excludes JIT overhead from timing
             enable_memory_tracking=False,

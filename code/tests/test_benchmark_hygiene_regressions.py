@@ -5914,7 +5914,7 @@ def test_ch16_optimized_dense_attention_flash_reuses_projection_buffers() -> Non
         assert "self._qkv_weight_t = self.qkv_proj.weight.t()" in setup_section
         assert "self._out_proj_weight_t = self.out_proj.weight.t()" in setup_section
         assert "qkv = torch.matmul(self.inputs, self._qkv_weight_t, out=self._qkv_buffer)" in forward_section
-        assert "self._attn_merge_buffer.copy_(output.transpose(1, 2))" in forward_section
+        assert "self._attn_merge_buffer.view(B, S, self.num_heads, self.head_dim).copy_(output.transpose(1, 2))" in forward_section
         assert "return torch.matmul(self._attn_merge_buffer, self._out_proj_weight_t, out=self._output_buffer)" in forward_section
         assert "output.transpose(1, 2).contiguous().view" not in forward_section
         assert "self.qkv_proj.weight.t()" not in forward_section
@@ -19187,7 +19187,10 @@ def test_ch13_token_kv_cache_attention_skips_contiguous_for_single_token_decode(
         assert "def prepare_inference(self) -> None:" in source
         assert "self._qkv_weight_t = self.qkv.weight.t()" in source
         assert "def _qkv_buffer_for(self, x: torch.Tensor) -> torch.Tensor:" in source
-        assert "torch.matmul(x_2d, self._qkv_weight_t, out=qkv_2d)" in source
+        if filename == "optimized_kv_cache_naive_pool.py":
+            assert "torch.addmm(self.qkv.bias, x_2d, self._qkv_weight_t, out=qkv_2d)" in source
+        else:
+            assert "torch.matmul(x_2d, self._qkv_weight_t, out=qkv_2d)" in source
         assert "qkv = self._project_qkv(x)" in forward_section
         assert "qkv = self.qkv(x)" not in forward_section
 
@@ -22295,11 +22298,11 @@ def test_ch13_regional_compile_moves_verification_materialization_out_of_hot_loo
         assert "self._verify_output = self.output" in benchmark_section
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
         assert "self._verify_output_buffer = torch.empty(" in source
-        assert "min(128, max(self.sequence_schedule))" in source
+        assert "min(128, max(self.sequence_schedule))" not in source
+        assert "if self._verify_x is None:" not in benchmark_section
         assert "verify_output = self._verify_output_buffer[" in capture_section
-        assert "min(self._verify_output.shape[1], self._verify_output_buffer.shape[1])" in capture_section
-        assert "output_slice = self._verify_output[:, : verify_output.shape[1], :]" in capture_section
-        assert "verify_output.copy_(output_slice)" in capture_section
+        assert ": self._verify_output.shape[1]" in capture_section
+        assert "verify_output.copy_(self._verify_output)" in capture_section
         assert "output=verify_output" in capture_section
         assert "output=self._verify_output.float().clone()" not in capture_section
 

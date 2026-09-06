@@ -73,6 +73,7 @@ class BaselineMemoryProfilingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.model is None or self.inputs is None or self.targets is None or self.criterion is None:
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("baseline_memory_profiling"):
+            self.model.zero_grad(set_to_none=True)
             outputs = self.model(self.inputs)
             loss = self.criterion(outputs, self.targets)
             loss.backward()

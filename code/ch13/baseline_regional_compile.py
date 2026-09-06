@@ -124,7 +124,7 @@ class BaselineFullGraphCompileBenchmark(VerificationPayloadMixin, BaseBenchmark)
             )
         self._verify_output_buffer = torch.empty(
             self.batch_size,
-            min(128, max(self.sequence_schedule)),
+            max(self.sequence_schedule),
             self.hidden,
             device=self.device,
             dtype=torch.float32,
@@ -156,9 +156,10 @@ class BaselineFullGraphCompileBenchmark(VerificationPayloadMixin, BaseBenchmark)
             self.output = self.compiled_model(x)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
-        if self._verify_x is None:
-            self._verify_x = x
-            self._verify_output = self.output
+        # Compiled graph storage can be reused on subsequent iterations. Keep
+        # the input and output from the latest timed invocation together.
+        self._verify_x = x
+        self._verify_output = self.output
 
     def capture_verification_payload(self) -> None:
         if self._verify_x is None or self._verify_output is None or self._verify_output_buffer is None:
@@ -166,11 +167,10 @@ class BaselineFullGraphCompileBenchmark(VerificationPayloadMixin, BaseBenchmark)
         x = self._verify_x
         verify_output = self._verify_output_buffer[
             : self._verify_output.shape[0],
-            : min(self._verify_output.shape[1], self._verify_output_buffer.shape[1]),
+            : self._verify_output.shape[1],
             :,
         ]
-        output_slice = self._verify_output[:, : verify_output.shape[1], :]
-        verify_output.copy_(output_slice)
+        verify_output.copy_(self._verify_output)
         self._set_verification_payload(
             inputs={"input": x},
             output=verify_output,
@@ -196,6 +196,7 @@ class BaselineFullGraphCompileBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(
+            adaptive_iterations=False,
             iterations=8,
             warmup=10,
             enable_memory_tracking=False,

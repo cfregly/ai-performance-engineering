@@ -1103,6 +1103,13 @@ def _resolve_min_speedup_for_success(result_entry: Dict[str, Any]) -> float:
     return configured
 
 
+def _resolve_optimization_goal(
+    benchmark_goal: Optional[str], expectation_goal: Optional[str]
+) -> str:
+    """Use the executable's declared goal ahead of historical result metadata."""
+    return str(benchmark_goal or expectation_goal or "speed").strip().lower()
+
+
 def _update_best_measured_speedup(result_entry: Dict[str, Any]) -> Optional[float]:
     """Keep regressions visible instead of treating the baseline as a candidate."""
     measured = [
@@ -6839,8 +6846,9 @@ def _test_chapter_impl(
                 try:
                     if optimized_benchmark is not None:
                         opt_goal = optimized_benchmark.get_optimization_goal()
-                        if not expectation_goal:
-                            result_entry['optimization_goal'] = opt_goal
+                        result_entry['optimization_goal'] = _resolve_optimization_goal(
+                            opt_goal, expectation_goal
+                        )
                         min_speedup = optimized_benchmark.get_min_speedup_for_success()
                         min_speedup_f = _coerce_finite_float(min_speedup)
                         if (
