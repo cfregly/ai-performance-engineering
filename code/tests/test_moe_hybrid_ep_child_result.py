@@ -57,6 +57,22 @@ def _small_contract(*, label: str = "baseline_moe_hybrid_ep") -> MoEHybridEPResu
     )
 
 
+def test_single_rank_signature_declares_local_work_without_a_collective() -> None:
+    contract = replace(_small_contract(), world_size=1, num_experts=2)
+    contract.validate()
+    signature = _input_signature(contract)
+    assert signature.validate(strict=True) == []
+    assert signature.world_size == 1
+    assert signature.ranks == [0]
+    assert signature.shapes["output"] == (contract.tokens_per_rank, contract.hidden_size)
+    assert signature.collective_type is None
+    assert signature.collective_algorithm is None
+    distributed = _input_signature(_small_contract())
+    assert distributed.validate(strict=True) == []
+    assert distributed.collective_type == "all_to_all"
+    assert distributed.collective_algorithm == "bidirectional_expert_route_exchange"
+
+
 def _write_rank_in_real_subprocess(
     *,
     transport: dict[str, str],

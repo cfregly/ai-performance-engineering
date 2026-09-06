@@ -24362,15 +24362,16 @@ def test_ch15_optimized_monolithic_uses_token_equivalent_decode_steps() -> None:
     assert "torch.relu_(layer(x))" in common_source
     assert "torch.relu(layer(x))" not in common_source
     assert "with torch.inference_mode():" in optimized_source
-    assert "for token_idx in range(num_tokens):" in optimized_source
-    assert "buffer[:, token_idx : token_idx + 1, :] = current" in optimized_source
-    assert "self._decode_buffer = torch.empty(" in optimized_setup
+    assert "for token_idx in range(token_count):" in common_source
+    assert "output_buffer[:, token_idx : token_idx + 1, :] = current" in common_source
+    assert "return self.model.decode_autoregressive(kv_cache, num_tokens=self.num_tokens)" in optimized_source
+    assert "self._decode_buffer" not in optimized_source
     assert "(self.batch_size, self.num_tokens, self.model.hidden_dim)" in optimized_setup
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in optimized_source
-    assert "self._verify_output_buffer = torch.empty_like(self._decode_buffer, dtype=torch.float32)" in optimized_setup
-    assert "self._compiled_inference = torch.compile(_full_inference, mode=\"reduce-overhead\")" in optimized_setup
-    assert "_ = self._compiled_inference(self.prompt, self._decode_buffer)" in optimized_setup
-    assert "self.output = self._compiled_inference(self.prompt, self._decode_buffer)" in optimized_benchmark
+    assert "self._verify_output_buffer = torch.empty(" in optimized_setup
+    assert "self._compiled_inference = torch.compile(self._full_inference, mode=\"reduce-overhead\")" in optimized_setup
+    assert "_ = self._compiled_inference(self.prompt)" in optimized_setup
+    assert "self.output = self._compiled_inference(self.prompt)" in optimized_benchmark
     assert "kv_cache.new_empty" not in optimized_setup
     assert "self.model.prefill(self.prompt)" not in optimized_benchmark
     assert "self.output = self.model.decode(kv_cache, num_tokens=self.num_tokens)" not in optimized_source
