@@ -407,6 +407,50 @@ results. No two-GPU workload overlaps this phase. The remaining distributed
 training manifest contains 61 explicit variant commands with source hashes;
 those direct runs and final-source full-suite validation are still pending.
 
+### Direct B200 wave 9 and first breadth results
+
+The two single-GPU queues stopped cleanly after 55 terminal targets: 45
+succeeded, seven skipped, and three failed. Their results and original source
+identity are retained. One skip requires Grace hardware. Six others exposed
+GPU-routing metadata problems. The failures were pinned-prefetch training
+correctness and two launch-bounds pairs whose measured ratios were only about
+1.003, below their existing performance contract.
+
+Wave 9 on `b587cdde9` completed all ten stages with confirmed process drain.
+Focused tests passed, including actual CUDA prefetch training across repeated
+setup/teardown cycles. The NVSHMEM training pair passed full child-output and
+reference checks on two B200s: 6.203 ms baseline and 0.913 ms optimized. This
+single aggregate remains diagnostic timing, not a qualified speedup claim.
+
+The pipeline, training-pattern, broadcast, and ring workers exposed global
+rank-specific RNG reseeding after real execution. Commit `d38dfdf15` replaces
+those input generators with local generators so rank-distinct data does not
+change the harness seed. Measured and reference sequences remain identical.
+The affected CPU selection passed 77 tests; fresh GPU checks are pending.
+
+Pinned-prefetch setup previously retained its batch cursor; that restart bug
+was fixed and its real CUDA regression passed. Full default execution still
+failed because adaptive timing can give the faster stateful training arm more
+optimizer updates. Commit `dcee02a05` fixes both arms to the configured update
+counts, preserving the ordinary 20 measured iterations and ten warmups.
+Focused CPU checks passed; the full B200 pair is being rerun.
+
+Both MoE hybrid variants still rejected optimized final route assignments.
+FP32 optimizer state, routing, and accumulation delayed divergence but did not
+resolve it. A fresh six-step, two-rank diagnostic on `b587cdde9` found identical
+initial routes and output differences of 0.00390625, followed by four and three
+route mismatches on the final step. Exact route and complete-output checks
+remain intact. This repair is still open.
+
+Commit `1a8958ac1` tests a 512-thread, three-block launch bound for the
+register-heavy kernels. Baseline geometry, input size, arithmetic, and repeat
+counts remain unchanged. It is an optimization hypothesis until real
+correctness, interleaved timing, and counter evidence establish the result.
+
+Wave 10 runs the repaired training/NVSHMEM pairs and both launch-bounds pairs
+directly with profile mode `none`. The stopped breadth sweep will resume using
+its retained terminal results after the focused batch drains.
+
 - Run the complete GPU test suite on the final merged revision.
 - Complete all four sweep stages and reconcile the 486-target inventory,
   including unsupported and failed cases rather than silently dropping them.
