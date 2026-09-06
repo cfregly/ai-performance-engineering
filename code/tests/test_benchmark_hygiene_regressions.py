@@ -11154,10 +11154,15 @@ def test_dynamic_router_percentiles_reuse_sorted_samples(tmp_path: Path) -> None
 
 def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
     from labs.dynamic_router.eval_stack import (
-        _percentiles as eval_stack_percentiles,
+        CheapEvalStack,
+        EvalConfig,
+        VLLMRequiredError,
         _rank_top_experts,
         _summarize_moe,
         _summarize_quality_rows,
+    )
+    from labs.dynamic_router.eval_stack import (
+        _percentiles as eval_stack_percentiles,
     )
 
     source = (REPO_ROOT / "labs" / "dynamic_router" / "eval_stack.py").read_text(encoding="utf-8")
@@ -11273,7 +11278,14 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
         "p95": 3.8499999999999996,
     }
     assert percentile_samples == [1.0, 2.0, 3.0, 4.0]
-    assert "return []" in llm_quality_section
+    stack_without_engine = CheapEvalStack(EvalConfig(use_vllm=False))
+    with pytest.raises(
+        VLLMRequiredError,
+        match="vLLM quality generation requires an initialized engine",
+    ):
+        stack_without_engine._run_quality_with_llm()
+    assert "raise VLLMRequiredError" in llm_quality_section
+    assert "return []" not in llm_quality_section
     assert "return rows" in llm_quality_section
     assert "per_task_acc" not in llm_quality_section
     assert "return [], {}" not in llm_quality_section
