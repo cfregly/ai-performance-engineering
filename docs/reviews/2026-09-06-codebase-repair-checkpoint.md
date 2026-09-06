@@ -499,6 +499,85 @@ preserve its original source identities, and force repaired early training
 and one-rank metadata targets to rerun. Distributed work will run after this
 phase drains. Neither examples nor these queues require Slurm.
 
+### Direct B200 wave 11 and breadth checkpoint
+
+Wave 11 executed on source `433815990`. All nine supervised stages terminated
+with confirmed descendant drain, and the focused XML records 37 passed tests
+with no failures, errors, or skips. These runs used the portable validity
+profile and profile mode `none`; their timings are diagnostic observations.
+
+| Target | Observed result | Interpretation |
+| --- | --- | --- |
+| MoE six-step diagnostic | 12 rank-steps; zero route mismatches, output delta, gradient delta, and parameter delta | The corrected mixed-precision paths remained exact across both ranks and every step. |
+| MoE hybrid EP | Complete input and output verification passed; ratio 0.933636 | Correctness passed, but the unchanged 1.05 performance threshold failed. |
+| MoE hybrid EP multi-GPU | Complete input and output verification passed; ratio 1.023102 | Correctness passed, but the unchanged 1.05 performance threshold failed. |
+| TMA copy default target | Complete execution and verification passed | This is the current runtime result for the repaired 2D host oracle. |
+| Symmetric-memory ring demo | Seven changing-input, full-output checks passed on both ranks; the real default benchmark function also completed | This closes the observed send-before-receive deadlock for this direct two-rank path. |
+| Disaggregated communication | Complete input and output verification passed; ratio 0.933842 | Correctness passed, but the unchanged 1.05 performance threshold failed. |
+| Both NVSHMEM pipeline aliases | Each baseline passed; each optimized launch exceeded its timeout at about 302 seconds | Neither optimized pipeline run is a runtime pass. |
+
+The first and resumed breadth shards recorded 85 unique terminal targets: 77
+passed, six skipped, and two failed. Wave 11 separately reran the previously
+failed TMA target successfully; that retest updates its latest evidence but is
+not counted as an additional unique breadth target.
+
+Three subsequent source repairs await wave-12 execution. Commit `dfb5be2d3`
+eagerly initializes each NVSHMEM pipeline NCCL sideband in deterministic setup
+order before asymmetric point-to-point traffic. Commit `e72c0e3af` gives the
+communicator lifecycle examples a real one-rank store and direct execution path.
+Commit `086f53f07` uses reusable `addmm` outputs for the reduction MLP bias.
+Their source and focused CPU checks do not establish B200 runtime results.
+
+The prepared distributed-training manifest still contains 61 commands that
+have not run because required dependencies are missing. Manifest validation and
+supervisor controls are preparation evidence only. Wave-11 timings, breadth
+results, and later source repairs do not support public performance claims.
+
+### Direct B200 waves 12–13 and training retry
+
+Wave 12 executed on `e72c0e3af`. All eight supervised stages drained their
+descendants, and the focused XML records 23 passes with no failures, errors, or
+skips. The reinitialization pair passed complete verification at 430.622 ms
+baseline and 0.031231 ms optimized, a 13,788.29 ratio dominated by local
+one-rank process-group setup overhead. It is not distributed performance
+evidence. The CPU-reduction and NCCL-labeled reduction targets passed complete
+verification at ratios of 4.019 and 4.029. The one-rank disaggregated target
+also passed complete verification at 1.104.
+
+The `disaggregated_multigpu` stage exited zero only because it was launched with
+one visible GPU and reported `SKIPPED: Distributed benchmark requires multiple
+GPUs (found 1 GPU)`. It remains pending a proper two-GPU run. Both NVSHMEM
+pipeline aliases again passed their baselines and timed out in optimized
+execution; wave 12 did not validate the eager-NCCL-sideband repair.
+
+Wave 13 executed on `feee566fa`. All five stages drained, and the focused XML
+records 39 passes with no failures, errors, or skips. Commit `0561c5e76` moves
+pipeline ownership tokens to CPU/Gloo while retaining symmetric-memory payload
+movement and its completion fences. Both pipeline aliases then passed fresh,
+complete child-output verification: `nvshmem_pipeline_parallel` at 3.184846 and
+`nvshmem_pipeline_parallel_multigpu` at 3.090132. These are single diagnostic
+ratios from the portable, unprofiled run.
+
+Both MoE hybrid targets also passed their complete child-output checks on the
+`feee566fa` source. Their ratios, 0.958897 and 0.989798, remained below the
+unchanged 1.05 threshold, so both benchmark results correctly remain
+performance failures despite their correctness passes.
+
+The isolated training environment preserves Torch 2.9.1+cu130 and Transformers
+4.56.0, with Datasets 5.0.1 and Accelerate 1.14.0 added. The TinyLlama snapshot
+and GLUE/MRPC splits are materialized in its shared cache. Four actual Linux
+controls passed for the private-environment launcher, symlink, shared-cache, and
+owned-descendant supervision path. All 61 rows are prepared. The initial
+launcher failed before entering the workload because its remote manifest was
+missing; that failure is retained. The manifest has since been copied and all
+95 bound source hashes reverified, and a retry is in progress. The training
+sweep remains incomplete, and no workload execution result is claimed.
+
+Source through `feee566fa` is pushed. At this checkpoint, pull request 18 has
+two passing and two still-running CI checks. That transient CI state and all
+wave-12/wave-13 timings are operational evidence, not public or canonical
+performance claims.
+
 - Run the complete GPU test suite on the final merged revision.
 - Complete all four sweep stages and reconcile the 486-target inventory,
   including unsupported and failed cases rather than silently dropping them.
