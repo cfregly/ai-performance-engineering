@@ -36,7 +36,7 @@ def test_symmetric_ring_cuda_branch_uses_two_device_fences() -> None:
         for call in barrier_calls
     ] == [(0, 5000), (1, 5000), (0, 5000), (1, 5000)]
     assert source.count("next_buf[buf_idx].copy_(flat, non_blocking=True)") == 4
-    assert source.count("recv_tensor.copy_(local[buf_idx], non_blocking=True)") == 4
+    assert source.count("recv_tensor.copy_(local[buf_idx], non_blocking=True)") == 2
     assert source.count("dist.barrier()") == 4
     assert "torch.cuda.current_stream().synchronize()" not in source
     assert source.count("torch.cuda.synchronize(device)") == 2
@@ -71,7 +71,6 @@ def test_symmetric_ring_captured_iteration_preserves_publish_consume_order() -> 
     assert operations == [
         "next_buf[buf_idx].copy_",
         "handle.barrier",
-        "recv_tensor.copy_",
         "handle.barrier",
     ]
 

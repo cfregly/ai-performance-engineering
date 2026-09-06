@@ -383,7 +383,7 @@ def test_cuda_ring_records_full_iteration_topology_and_replays_once(
     monkeypatch.setattr(
         symmetric_memory_example.torch,
         "empty_like",
-        lambda _value: ControlTensor("receive"),
+        lambda _value: pytest.fail("CUDA ring must use its symmetric receive slot"),
     )
     monkeypatch.setattr(
         symmetric_memory_example,
@@ -396,20 +396,23 @@ def test_cuda_ring_records_full_iteration_topology_and_replays_once(
         lambda *_args, **_kwargs: NvtxRange(),
     )
 
-    elapsed = symmetric_memory_example.benchmark_symmetric_ring(
+    measured = symmetric_memory_example.benchmark_symmetric_ring(
         input_tensor,
         iterations=4,
+        return_output=True,
         backend="CUDA",
     )
 
     # These fakes record Python dispatch only. Replay is intentionally opaque:
     # this CPU control does not simulate execution of captured CUDA operations.
+    assert isinstance(measured, tuple)
+    elapsed, output = measured
     assert elapsed == 20.0
+    assert output.name == "local-1-snapshot"
     assert calls.count(("graph_replay",)) == 1
     assert [call[1] for call in calls if call[0] == "barrier"] == [0, 1] * 9
     assert len([call for call in calls if call[:2] == ("copy", "peer-0")]) == 5
     assert len([call for call in calls if call[:2] == ("copy", "peer-1")]) == 4
-    assert len([call for call in calls if call[:2] == ("copy", "receive")]) == 9
     capture_exit = next(
         index for index, call in enumerate(calls) if call[0] == "graph_capture_exit"
     )
@@ -422,16 +425,15 @@ def test_cuda_ring_records_full_iteration_topology_and_replays_once(
     assert captured_dispatches == [
         ("copy", "peer-0"),
         ("barrier", 0),
-        ("copy", "receive"),
         ("barrier", 1),
         ("copy", "peer-1"),
         ("barrier", 0),
-        ("copy", "receive"),
         ("barrier", 1),
     ] * 2
     assert not any(call[:2] == ("copy", "input") for call in calls)
     start = calls.index(("event_record", 0))
     replay = calls.index(("graph_replay",))
     end = calls.index(("event_record", 1))
-    assert capture_exit < start < replay < end
+    output_clone = calls.index(("clone", "local-1"))
+    assert capture_exit < start < replay < end < output_clone
     assert "symmetric_ring_cuda_graph_capture_wall_ms" in capsys.readouterr().out

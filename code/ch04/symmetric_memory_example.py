@@ -354,7 +354,6 @@ def benchmark_symmetric_ring(
     local = handle.buffer
     next_rank = (rank + 1) % world_size
     next_buf = handle.get_buffer(next_rank)
-    recv_tensor = torch.empty_like(flat)
 
     if requested_backend == SYMMETRIC_RING_TRANSPORT_BACKEND:
         for idx in range(5):
@@ -363,9 +362,9 @@ def benchmark_symmetric_ring(
             # CUDA symmetric-memory barriers execute on this same current stream.
             # The first distinct channel publishes every peer write.
             handle.barrier(channel=0, timeout_ms=5000)
-            # The previous rank writes directly into this rank's symmetric slot.
-            recv_tensor.copy_(local[buf_idx], non_blocking=True)
-            # The second channel keeps each slot alive until every rank consumes it.
+            # The previous rank already wrote into this rank's symmetric slot.
+            # The second channel keeps that zero-copy receive slot alive until
+            # every rank has consumed the published generation.
             handle.barrier(channel=1, timeout_ms=5000)
 
         # Finish warmup before recording the complete steady-state iteration
@@ -378,7 +377,6 @@ def benchmark_symmetric_ring(
                 buf_idx = idx % 2
                 next_buf[buf_idx].copy_(flat, non_blocking=True)
                 handle.barrier(channel=0, timeout_ms=5000)
-                recv_tensor.copy_(local[buf_idx], non_blocking=True)
                 handle.barrier(channel=1, timeout_ms=5000)
         capture_wall_ms = (time.perf_counter() - capture_started) * 1000.0
         print(
@@ -389,6 +387,7 @@ def benchmark_symmetric_ring(
     else:
         # The NVSHMEM handle's barrier is a no-op in Torch 2.9.1. Retain the
         # historical NCCL fences for callers that use this function's default.
+        recv_tensor = torch.empty_like(flat)
         for idx in range(5):
             buf_idx = idx % 2
             next_buf[buf_idx].copy_(flat, non_blocking=True)
@@ -413,6 +412,9 @@ def benchmark_symmetric_ring(
         torch.cuda.synchronize(device)
     time_ms = start.elapsed_time(end) / iterations
     if return_output:
+        if requested_backend == SYMMETRIC_RING_TRANSPORT_BACKEND:
+            final_buf_idx = (iterations - 1) % 2
+            return time_ms, local[final_buf_idx].detach().clone()
         return time_ms, recv_tensor.detach().clone()
     return time_ms
 
