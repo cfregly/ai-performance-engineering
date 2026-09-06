@@ -245,6 +245,14 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
         "class HybridEPTrainer",
         maxsplit=1,
     )[0]
+    intra_node_section = forward_section.split(
+        "elif self.optimized and self.topology.intra_node_only:",
+        maxsplit=1,
+    )[1].split("elif self.optimized:", maxsplit=1)[0]
+    multi_node_section = forward_section.split(
+        "elif self.optimized:",
+        maxsplit=1,
+    )[1].split("else:", maxsplit=1)[0]
     run_step_section = source.split("def run_step", maxsplit=1)[1].split(
         "def _reduce_metrics",
         maxsplit=1,
@@ -427,11 +435,15 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert '"combined_outputs"' in forward_section
     assert "combined.zero_()" in forward_section
     assert "combined = torch.zeros_like(hidden)" not in forward_section
-    assert '"remote_node_mask"' in forward_section
-    assert "remote_node_mask.zero_()" in forward_section
-    assert "torch.zeros_like(same_rank_mask)" not in forward_section
+    assert "remote_node_mask.zero_()" not in intra_node_section
+    assert "torch.zeros_like(same_rank_mask)" not in intra_node_section
     assert "route_counts_global = route_counts" in forward_section
     assert "route_type_counts = self._route_type_count_list(" in forward_section
+    assert "route_type_counts = self._route_type_count_list(" not in intra_node_section
+    assert "route_type_counts = self._route_type_count_list(" in multi_node_section
+    assert "route_send_counts = self._destination_count_list(" in intra_node_section
+    assert "_partition_intra_node_send_counts(" in intra_node_section
+    assert "materialized_send_counts=dispatch_send_counts" in intra_node_section
     assert "same_rank_count_int, same_node_count_int, remote_count_int" in forward_section
     assert "def _route_type_count_list(" in source
     assert "self._route_type_count_list_buffer = [0] * 3" in source

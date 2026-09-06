@@ -8,6 +8,7 @@ import torch
 from labs.fullstack_cluster.moe_hybrid_ep_common import (
     DeepSeekHybridEPModule,
     TopologyInfo,
+    _partition_intra_node_send_counts,
 )
 
 
@@ -31,6 +32,29 @@ def _module(rank: int) -> DeepSeekHybridEPModule:
         route_mode="uniform",
         optimized=True,
     ).float()
+
+
+@pytest.mark.parametrize(
+    "route_counts,group_rank,total_routes,expected",
+    [
+        ([5], 0, 5, ([0], 5, 0)),
+        ([5, 0], 0, 5, ([0, 0], 5, 0)),
+        ([0, 5], 0, 5, ([0, 5], 0, 5)),
+        ([2, 3], 0, 5, ([0, 3], 2, 3)),
+        ([2, 3], 1, 5, ([2, 0], 3, 2)),
+    ],
+)
+def test_intra_node_counts_reuse_full_route_partition(
+    route_counts: list[int],
+    group_rank: int,
+    total_routes: int,
+    expected: tuple[list[int], int, int],
+) -> None:
+    assert _partition_intra_node_send_counts(
+        route_counts,
+        group_rank=group_rank,
+        total_routes=total_routes,
+    ) == expected
 
 
 @pytest.mark.parametrize("rank", [0, 1])

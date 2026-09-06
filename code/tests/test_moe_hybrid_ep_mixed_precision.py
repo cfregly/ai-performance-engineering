@@ -20,6 +20,7 @@ from labs.fullstack_cluster.moe_hybrid_ep_common import (
     LoadBalancedRouter,
     TopologyInfo,
     _build_fp32_adamw,
+    _partition_intra_node_send_counts,
 )
 
 
@@ -340,6 +341,16 @@ def _gloo_joint_batch_worker(
         destinations = torch.tensor([1, 0, 1, 0, 1, 0], dtype=torch.int64)
         local_expert_ids = torch.tensor([1, 0, 0, 1, 1, 0], dtype=torch.int64)
         token_indices = torch.arange(6, dtype=torch.int64)
+        route_send_counts = optimized._destination_count_list(destinations, 2)
+        dispatch_send_counts, same_rank_count, same_node_count = (
+            _partition_intra_node_send_counts(
+                route_send_counts,
+                group_rank=rank,
+                total_routes=token_indices.numel(),
+            )
+        )
+        assert same_rank_count == 3
+        assert same_node_count == 3
 
         with torch.autocast(device_type="cpu", dtype=torch.bfloat16):
             baseline_outputs, baseline_events = baseline._roundtrip_routes(
@@ -368,6 +379,7 @@ def _gloo_joint_batch_worker(
                 reuse=True,
                 event_label="optimized_test",
                 local_bypass_mask=destinations == rank,
+                materialized_send_counts=dispatch_send_counts,
             )
         assert baseline_events is None and optimized_events is None
         torch.testing.assert_close(optimized_outputs, baseline_outputs, rtol=0, atol=0)

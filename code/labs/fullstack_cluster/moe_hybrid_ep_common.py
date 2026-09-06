@@ -86,6 +86,28 @@ class TopologyInfo:
         return list(range(start, stop))
 
 
+def _partition_intra_node_send_counts(
+    route_send_counts: Sequence[int],
+    *,
+    group_rank: int,
+    total_routes: int,
+) -> Tuple[List[int], int, int]:
+    """Split already-materialized route counts into bypass and dispatch counts."""
+
+    counts = [int(count) for count in route_send_counts]
+    if not counts or group_rank < 0 or group_rank >= len(counts):
+        raise ValueError("group_rank must identify an intra-node route-count entry")
+    if total_routes < 0 or any(count < 0 for count in counts):
+        raise ValueError("intra-node route counts must be non-negative")
+    if sum(counts) != total_routes:
+        raise ValueError("intra-node route counts must cover every local route")
+    same_rank_count = counts[group_rank]
+    dispatch_counts = list(counts)
+    dispatch_counts[group_rank] = 0
+    same_node_count = total_routes - same_rank_count
+    return dispatch_counts, same_rank_count, same_node_count
+
+
 @dataclass
 class PhaseEvents:
     start: torch.cuda.Event
@@ -859,6 +881,7 @@ class DeepSeekHybridEPModule(nn.Module):
         reuse: bool,
         event_label: str,
         local_bypass_mask: Optional[torch.Tensor] = None,
+        materialized_send_counts: Optional[Sequence[int]] = None,
     ) -> Tuple[torch.Tensor, Optional[PhaseEvents]]:
         # Zero sends do not imply zero receives. Every group member must enter
         # the count exchange and both directions of all-to-all, including empty ranks.
@@ -882,6 +905,10 @@ class DeepSeekHybridEPModule(nn.Module):
             sorted_local_ids = local_expert_ids.index_select(0, dispatch_positions)
             inverse_sort: Optional[torch.Tensor] = None
         else:
+            if materialized_send_counts is not None:
+                raise ValueError(
+                    "materialized send counts require the local route bypass path"
+                )
             local_positions = None
             dispatch_positions = None
             sort_idx = torch.argsort(dest_ranks)
@@ -893,7 +920,24 @@ class DeepSeekHybridEPModule(nn.Module):
             sorted_local_ids = local_expert_ids.index_select(0, sort_idx)
             send_counts = self._destination_count_list(dest_ranks, group_size)
         if local_bypass_mask is not None:
-            send_counts = self._destination_count_list(dispatch_dest_ranks, group_size)
+            if materialized_send_counts is None:
+                send_counts = self._destination_count_list(
+                    dispatch_dest_ranks,
+                    group_size,
+                )
+            else:
+                send_counts = [int(count) for count in materialized_send_counts]
+                if (
+                    len(send_counts) != group_size
+                    or group_rank < 0
+                    or group_rank >= group_size
+                    or any(count < 0 for count in send_counts)
+                    or sum(send_counts) != dispatch_dest_ranks.numel()
+                    or send_counts[group_rank] != 0
+                ):
+                    raise ValueError(
+                        "materialized send counts do not match bypassed route dispatch"
+                    )
         recv_counts = self._exchange_counts(send_counts, group=group, group_size=group_size, group_rank=group_rank, device=tokens.device)
 
         events = self._phase_events(event_label) if tokens.is_cuda else None
@@ -1080,24 +1124,20 @@ class DeepSeekHybridEPModule(nn.Module):
             # local/remote overlap.  Within one node, all non-local routes use
             # the local process group and local routes bypass communication.
             assert owner_nodes is None
-            same_node_mask = ~same_rank_mask
-            remote_node_mask = self._buffer(
-                "remote_node_mask",
-                tuple(same_rank_mask.shape),
-                same_rank_mask.dtype,
-                reuse=True,
-                device=same_rank_mask.device,
-            )
-            remote_node_mask.zero_()
-            route_type_counts = self._route_type_count_list(
-                same_rank_mask,
-                same_node_mask,
-                remote_node_mask,
-            )
-            same_rank_count_int, same_node_count_int, remote_count_int = (
-                int(count) for count in route_type_counts
-            )
             local_group_ranks = owner_ranks % self.topology.local_world_size
+            route_send_counts = self._destination_count_list(
+                local_group_ranks,
+                self.topology.local_world_size,
+            )
+            (
+                dispatch_send_counts,
+                same_rank_count_int,
+                same_node_count_int,
+            ) = _partition_intra_node_send_counts(
+                route_send_counts,
+                group_rank=self.topology.local_rank,
+                total_routes=token_indices.numel(),
+            )
             joint_outputs, same_node_events = self._roundtrip_routes(
                 tokens=expanded_tokens,
                 weights=expanded_weights,
@@ -1111,11 +1151,12 @@ class DeepSeekHybridEPModule(nn.Module):
                 reuse=True,
                 event_label="same_node_joint",
                 local_bypass_mask=same_rank_mask,
+                materialized_send_counts=dispatch_send_counts,
             )
             combined.index_add_(0, token_indices, joint_outputs)
             same_rank_count = float(same_rank_count_int)
             same_node_count = float(same_node_count_int)
-            remote_count = float(remote_count_int)
+            remote_count = 0.0
         elif self.optimized:
             same_rank_mask = owner_ranks == self.topology.rank
             assert owner_nodes is not None
