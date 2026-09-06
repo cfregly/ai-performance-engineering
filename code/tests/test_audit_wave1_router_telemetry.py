@@ -29,6 +29,19 @@ def runtime(name, *, expected_new_tokens=8):
     )
 
 
+def test_idle_engine_is_not_asked_to_block_for_output():
+    class IdleEngine:
+        def get_num_unfinished_requests(self):
+            return 0
+
+        def step(self):
+            raise AssertionError("Idle vLLM step blocks waiting for output")
+
+    wrapper = _VllmWrapper.__new__(_VllmWrapper)
+    wrapper.engine = IdleEngine()
+    assert wrapper.step() == ([], [], 0)
+
+
 def test_cumulative_output_payloads_count_each_token_once_and_ttft_once():
     wrapper = _VllmWrapper.__new__(_VllmWrapper)
     wrapper._inflight = {

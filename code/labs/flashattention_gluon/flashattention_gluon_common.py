@@ -15,6 +15,9 @@ import triton
 import triton.language as tl
 
 
+TRITON_ATTENTION_PROVIDER = "triton_tiled_attention"
+
+
 @dataclass
 class FlashAttentionInputs:
     q: torch.Tensor
@@ -125,7 +128,10 @@ def _gluon_flash_attention_fwd_kernel(
         
         # Load V block and accumulate
         v = tl.load(v_ptrs + start_n * stride_vn, mask=mask_n[:, None] & (offs_k[None, :] < HEAD_DIM), other=0.0)
-        acc = tl.dot(p.to(v.dtype), v, acc, input_precision="ieee")
+        # Keep the softmax probabilities in FP32: rounding them to the input
+        # dtype before P @ V loses small contributions and amplifies cancellation.
+        # Use TF32x3 for the FP32 dot product on NVIDIA tensor cores.
+        acc = tl.dot(p, v.to(tl.float32), acc, input_precision="tf32x3")
         
         # Update running max and sum
         m_i = m_new
@@ -216,4 +222,4 @@ def resolve_gluon_flash_attention() -> FlashAttentionKernel:
     """Resolve ordinary Triton tiled attention (legacy Gluon entrypoint name)."""
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required for Triton tiled attention")
-    return FlashAttentionKernel(fn=gluon_flash_attention, provider="triton_tiled_attention")
+    return FlashAttentionKernel(fn=gluon_flash_attention, provider=TRITON_ATTENTION_PROVIDER)

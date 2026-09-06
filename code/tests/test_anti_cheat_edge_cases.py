@@ -552,8 +552,18 @@ class TestEnvironmentEdgeCases:
         pytest.skip('Missing production protection: no expected-versus-observed compute-capability comparison is performed by validate_environment')
 
     def test_frequency_boost_detection(self):
-        'Requirement remains open; this retained test ID is not passing coverage.'
-        pytest.skip('Missing production protection: GPU state consistency detects clock drops, not clock boosts or absolute clock locking')
+        'Exercise clock-change diagnostics without claiming a live GPU clock lock.'
+        from core.harness.validity_checks import GPUState, check_gpu_state_consistency
+
+        before = GPUState(0, "diagnostic fixture", clock_mhz=1000)
+        assert check_gpu_state_consistency(before, replace(before)) == (True, [])
+        consistent, reasons = check_gpu_state_consistency(
+            before,
+            replace(before, clock_mhz=1200),
+        )
+        assert not consistent
+        assert any("clock increased 20.0%" in reason for reason in reasons)
+        assert any("pre-warmup snapshot may normally boost" in reason for reason in reasons)
 
     def test_priority_elevation_process_nice(self):
         'Requirement remains open; this retained test ID is not passing coverage.'
@@ -572,9 +582,19 @@ class TestEnvironmentEdgeCases:
     def test_thermal_throttling_temperature_check(self):
         assert_gpu_state_controls(temperature_c=51)
 
-    def test_power_limit_variation(self):
-        'Requirement remains open; this retained test ID is not passing coverage.'
-        pytest.skip('Missing production protection: GPUState has no power-limit field and check_gpu_state_consistency does not compare power limits')
+    @pytest.mark.parametrize("changed_limit_w", [650.0, 750.0])
+    def test_power_limit_variation(self, changed_limit_w):
+        'Exercise observed power-limit diagnostics without changing GPU configuration.'
+        from core.harness.validity_checks import GPUState, check_gpu_state_consistency
+
+        before = GPUState(0, "diagnostic fixture", power_limit_w=700.0)
+        assert check_gpu_state_consistency(before, replace(before)) == (True, [])
+        consistent, reasons = check_gpu_state_consistency(
+            before,
+            replace(before, power_limit_w=changed_limit_w),
+        )
+        assert not consistent
+        assert any("GPU power limit changed" in reason for reason in reasons)
 
     def test_driver_version_recorded(self):
         'Compare actual driver provenance with NVML, separately from the CUDA runtime version.'

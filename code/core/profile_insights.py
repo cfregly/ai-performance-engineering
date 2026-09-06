@@ -21,11 +21,23 @@ import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from core.profiling.ncu_summary import (
+    _is_ncu_range_record,
+    _ncu_nvtx_range_metadata,
+    _range_metrics_from_model,
+)
 
 _BASELINE_ROLE_TOKENS = {"baseline", "base", "before", "reference", "ref"}
 _OPTIMIZED_ROLE_TOKENS = {"optimized", "opt", "after", "tuned", "candidate"}
 _ROLE_TOKENS = _BASELINE_ROLE_TOKENS | _OPTIMIZED_ROLE_TOKENS
 _PAIR_MANIFEST_FILENAME = "pair_manifest.json"
+_NCU_COMPARISON_METRICS = (
+    "gpu__time_duration.avg",
+    "sm__throughput.avg.pct_of_peak_sustained_elapsed",
+    "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed",
+    "lts__throughput.avg.pct_of_peak_sustained_elapsed",
+    "sm__warps_active.avg.pct_of_peak_sustained_active",
+)
 _DEFAULT_KERNEL_ALIAS_GROUPS: Dict[str, set[str]] = {
     # Alias families for structurally similar kernels that use different codegen
     # stacks (for example, CUTLASS vs vendor kernels).
@@ -689,6 +701,206 @@ def compare_nsys_files(
         return {"error": str(exc)}
 
 
+def _ncu_time_to_ms(value: float, unit: str) -> float:
+    normalized = (unit or "").strip().lower()
+    if normalized.endswith("ns"):
+        return value / 1e6
+    if normalized.endswith("us"):
+        return value / 1e3
+    if normalized.endswith("ms"):
+        return value
+    if normalized.endswith("s"):
+        return value * 1e3
+    return value
+
+
+def _read_ncu_csv_measurement(path: Path) -> Dict[str, Any]:
+    with open(path, newline="") as f:
+        rows = list(csv.DictReader(f))
+
+    range_rows = [row for row in rows if _is_ncu_range_record(row)]
+    numeric_rows = [row for row in rows if str(row.get("ID") or "").strip().isdigit()]
+    if range_rows:
+        non_range_rows = [row for row in numeric_rows if not _is_ncu_range_record(row)]
+        if non_range_rows:
+            raise ValueError("NCU CSV mixes range and kernel result rows")
+        result_ids = {str(row.get("ID") or "").strip() for row in range_rows}
+        ranges = {_ncu_nvtx_range_metadata(row)[0] for row in range_rows}
+        ranges.discard(None)
+        if len(result_ids) != 1 or len(ranges) != 1:
+            raise ValueError("NCU range CSV must describe exactly one selected NVTX range")
+
+        metrics: Dict[str, float] = {}
+        metric_units: Dict[str, str] = {}
+        has_tall_metrics = any((row.get("Metric Name") or "").strip() for row in range_rows)
+        if has_tall_metrics:
+            for row in range_rows:
+                name = (row.get("Metric Name") or "").strip()
+                if name not in _NCU_COMPARISON_METRICS:
+                    continue
+                value = _safe_float((row.get("Metric Value") or "").strip().rstrip("%"))
+                if value is None:
+                    continue
+                unit = (row.get("Metric Unit") or "").strip()
+                if name.startswith("gpu__time_duration"):
+                    value = _ncu_time_to_ms(value, unit)
+                if name in metrics and metrics[name] != value:
+                    raise ValueError(f"NCU range CSV disagrees on metric {name!r}")
+                metrics[name] = value
+                metric_units[name] = unit
+            source_format = "ncu_details_csv"
+        else:
+            units_row = next(
+                (
+                    row
+                    for row in rows
+                    if not str(row.get("ID") or "").strip()
+                    and not str(row.get("Kernel Name") or "").strip()
+                ),
+                {},
+            )
+            row = range_rows[0]
+            for name in _NCU_COMPARISON_METRICS:
+                value = _safe_float((row.get(name) or "").strip().rstrip("%"))
+                if value is None:
+                    continue
+                unit = (units_row.get(name) or "").strip()
+                if name.startswith("gpu__time_duration"):
+                    value = _ncu_time_to_ms(value, unit)
+                metrics[name] = value
+                metric_units[name] = unit
+            source_format = "ncu_raw_csv"
+
+        if not metrics:
+            raise ValueError("NCU range CSV contains no supported numeric metrics")
+        range_row = range_rows[0]
+        nvtx_range, nvtx_range_raw = _ncu_nvtx_range_metadata(range_row)
+        provenance = {
+            "schema_version": "1.0",
+            "report_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "replay_mode": None,
+            "result_scope": "range",
+            "result_id": int(next(iter(result_ids))),
+            "result_count": 1,
+            "nvtx_range": nvtx_range,
+            "nvtx_range_raw": nvtx_range_raw,
+            "coverage_policy": "range_row_only_unverified",
+            "requested_metrics": None,
+            "observed_metrics": sorted(metrics),
+            "metric_units": metric_units,
+            "session_capture": None,
+            "source_format": source_format,
+        }
+        return {
+            "result_scope": "range",
+            "metrics": metrics,
+            "range_time_ms": metrics.get("gpu__time_duration.avg"),
+            "provenance": provenance,
+        }
+
+    metrics: Dict[str, Any] = {}
+    for row in rows:
+        name = row.get("Metric Name", row.get("Name", ""))
+        value = row.get("Metric Value", row.get("Avg", row.get("Value", "")))
+        if name:
+            metrics[name] = value
+    return {"result_scope": "kernel", "metrics": metrics}
+
+
+def _ncu_range_comparison(
+    baseline: Dict[str, Any],
+    optimized: Dict[str, Any],
+) -> Dict[str, Any]:
+    baseline_provenance = baseline["provenance"]
+    optimized_provenance = optimized["provenance"]
+    baseline_range = baseline_provenance.get("nvtx_range")
+    optimized_range = optimized_provenance.get("nvtx_range")
+    if baseline_range != optimized_range:
+        raise ValueError(
+            "NCU range pair selects different NVTX ranges: "
+            f"{baseline_range!r} != {optimized_range!r}"
+        )
+    baseline_coverage = baseline_provenance.get("coverage_policy")
+    optimized_coverage = optimized_provenance.get("coverage_policy")
+    if baseline_coverage != optimized_coverage:
+        raise ValueError(
+            "NCU range pair uses different coverage policies: "
+            f"{baseline_coverage!r} != {optimized_coverage!r}"
+        )
+
+    metric_rows: List[Dict[str, Any]] = []
+    all_metrics = set(baseline["metrics"]) | set(optimized["metrics"])
+    for name in sorted(all_metrics):
+        baseline_value = baseline["metrics"].get(name)
+        optimized_value = optimized["metrics"].get(name)
+        is_range_time = name == "gpu__time_duration.avg"
+        delta = None
+        ratio = None
+        if (
+            not is_range_time
+            and isinstance(baseline_value, (int, float))
+            and isinstance(optimized_value, (int, float))
+        ):
+            delta = optimized_value - baseline_value
+            ratio = optimized_value / baseline_value if baseline_value != 0 else None
+        metric_rows.append(
+            {
+                "name": name,
+                "baseline": baseline_value,
+                "optimized": optimized_value,
+                "delta": delta,
+                "ratio": ratio,
+                "comparison_scope": "range",
+                "speedup_eligible": False if is_range_time else None,
+            }
+        )
+
+    return {
+        "nvtx_range": baseline_range,
+        "coverage_policy": baseline_coverage,
+        "baseline_range_time_ms": baseline.get("range_time_ms"),
+        "optimized_range_time_ms": optimized.get("range_time_ms"),
+        "canonical_speedup_eligible": False,
+        "timing_semantics": "profiler selected-range duration; descriptive only",
+        "metrics": metric_rows,
+    }
+
+
+def _inspect_ncu_range_measurement(path: Path, rows: List[Dict[str, str]]) -> Dict[str, Any]:
+    numeric_rows = [row for row in rows if str(row.get("ID") or "").strip().isdigit()]
+    range_rows = [row for row in numeric_rows if _is_ncu_range_record(row)]
+    non_range_rows = [row for row in numeric_rows if not _is_ncu_range_record(row)]
+    if non_range_rows:
+        raise ValueError("NCU report mixes range and kernel result rows")
+    result_ids = {str(row.get("ID") or "").strip() for row in range_rows}
+    ranges = {_ncu_nvtx_range_metadata(row)[0] for row in range_rows}
+    ranges.discard(None)
+    if len(result_ids) != 1 or len(ranges) != 1:
+        raise ValueError("NCU range report must describe exactly one selected NVTX range")
+
+    from core.profiling.metrics_extractor import inspect_ncu_app_range_report
+
+    expected_range = next(iter(ranges))
+    metrics, provenance = inspect_ncu_app_range_report(
+        path,
+        expected_nvtx_range=expected_range,
+        requested_metrics=_NCU_COMPARISON_METRICS,
+        timeout=45,
+    )
+    if (
+        provenance.get("result_scope") != "range"
+        or getattr(metrics, "kernel_time_ms", None) is not None
+        or getattr(metrics, "range_time_ms", None) is None
+    ):
+        raise ValueError("NCU range inspector returned inconsistent scope or timing semantics")
+    return {
+        "result_scope": "range",
+        "metrics": _range_metrics_from_model(metrics),
+        "range_time_ms": float(metrics.range_time_ms),
+        "provenance": provenance,
+    }
+
+
 def compare_ncu_files(
     profiles_dir: Path,
     pair_key: Optional[str] = None,
@@ -737,21 +949,45 @@ def compare_ncu_files(
         selected_pair_key = pair_key or selected_key
 
         try:
-            def read_ncu_csv(path: Path) -> Dict[str, Any]:
-                metrics: Dict[str, Any] = {}
-                with open(path, newline="") as f:
-                    reader = csv.DictReader(f)
-                    for row in reader:
-                        name = row.get("Metric Name", row.get("Name", ""))
-                        value = row.get("Metric Value", row.get("Avg", row.get("Value", "")))
-                        if name:
-                            metrics[name] = value
-                return metrics
+            baseline_measurement = _read_ncu_csv_measurement(baseline_csv_path)
+            optimized_measurement = _read_ncu_csv_measurement(optimized_csv_path)
+            baseline_scope = baseline_measurement["result_scope"]
+            optimized_scope = optimized_measurement["result_scope"]
+            if baseline_scope != optimized_scope:
+                return {
+                    "error": (
+                        "NCU baseline/optimized result scopes differ: "
+                        f"{baseline_scope!r} != {optimized_scope!r}"
+                    ),
+                    "baseline_file": baseline_csv_path.name,
+                    "optimized_file": optimized_csv_path.name,
+                    "pair_health": pair_health,
+                }
 
-            baseline_metrics = read_ncu_csv(baseline_csv_path)
-            optimized_metrics = read_ncu_csv(optimized_csv_path)
+            if baseline_scope == "range":
+                range_comparison = _ncu_range_comparison(
+                    baseline_measurement, optimized_measurement
+                )
+                return {
+                    "success": True,
+                    "result_scope": "range",
+                    "baseline_file": baseline_csv_path.name,
+                    "optimized_file": optimized_csv_path.name,
+                    "baseline_path": str(baseline_csv_path),
+                    "optimized_path": str(optimized_csv_path),
+                    "staged_pair_dir": str(baseline_csv_path.parent),
+                    "pair_key": pair_key or selected_pair_key,
+                    "pair_health": pair_health,
+                    "baseline_provenance": baseline_measurement["provenance"],
+                    "optimized_provenance": optimized_measurement["provenance"],
+                    "range_comparison": range_comparison,
+                }
+
+            baseline_metrics = baseline_measurement["metrics"]
+            optimized_metrics = optimized_measurement["metrics"]
 
             comparison = {
+                "result_scope": "kernel",
                 "baseline_file": baseline_csv_path.name,
                 "optimized_file": optimized_csv_path.name,
                 "baseline_path": str(baseline_csv_path),
@@ -833,14 +1069,8 @@ def compare_ncu_files(
             return value * 1e3
         return value
 
-    def _load_metrics(ncu_path: Path) -> Dict[str, Dict[str, float]]:
-        metrics = [
-            "gpu__time_duration.avg",
-            "sm__throughput.avg.pct_of_peak_sustained_elapsed",
-            "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed",
-            "lts__throughput.avg.pct_of_peak_sustained_elapsed",
-            "sm__warps_active.avg.pct_of_peak_sustained_active",
-        ]
+    def _load_metrics(ncu_path: Path) -> Dict[str, Any]:
+        metrics = list(_NCU_COMPARISON_METRICS)
         metric_aliases = {
             # Newer/older NCU "details" metric naming variants.
             "Duration": "gpu__time_duration.avg",
@@ -860,8 +1090,10 @@ def compare_ncu_files(
             timeout=45,
         )
         if details.returncode == 0 and details.stdout.strip():
-            reader = csv.DictReader(io.StringIO(details.stdout))
-            for row in reader:
+            rows = list(csv.DictReader(io.StringIO(details.stdout)))
+            if any(_is_ncu_range_record(row) for row in rows):
+                return _inspect_ncu_range_measurement(ncu_path, rows)
+            for row in rows:
                 kernel = (row.get("Kernel Name") or "").strip() or "kernel"
                 metric = (row.get("Metric Name") or "").strip()
                 value_raw = (row.get("Metric Value") or "").strip()
@@ -878,7 +1110,7 @@ def compare_ncu_files(
                     value = _time_to_ms(value, unit)
                 per_kernel.setdefault(kernel, {})[normalized_metric] = value
             if per_kernel:
-                return per_kernel
+                return {"result_scope": "kernel", "per_kernel": per_kernel}
 
         # Some NCU captures do not populate the "details" page. Fallback to "raw".
         raw = subprocess.run(
@@ -888,9 +1120,11 @@ def compare_ncu_files(
             timeout=45,
         )
         if raw.returncode != 0 or not raw.stdout.strip():
-            return {}
-        reader = csv.DictReader(io.StringIO(raw.stdout))
-        for row in reader:
+            return {"result_scope": "kernel", "per_kernel": {}}
+        rows = list(csv.DictReader(io.StringIO(raw.stdout)))
+        if any(_is_ncu_range_record(row) for row in rows):
+            return _inspect_ncu_range_measurement(ncu_path, rows)
+        for row in rows:
             kernel = (row.get("Kernel Name") or "").strip()
             if not kernel:
                 continue
@@ -902,7 +1136,7 @@ def compare_ncu_files(
                 if value is None:
                     continue
                 per_kernel.setdefault(kernel, {})[metric] = value
-        return per_kernel
+        return {"result_scope": "kernel", "per_kernel": per_kernel}
 
     pair, selected_pair_key, error = _select_profile_pair(
         baseline_ncu,
@@ -924,10 +1158,52 @@ def compare_ncu_files(
     )
 
     try:
-        baseline_per_kernel = _load_metrics(baseline_path)
-        optimized_per_kernel = _load_metrics(optimized_path)
+        baseline_measurement = _load_metrics(baseline_path)
+        optimized_measurement = _load_metrics(optimized_path)
     except Exception as exc:  # pragma: no cover - tool availability varies
         return {"error": f"NCU extraction failed: {exc}"}
+
+    baseline_scope = baseline_measurement["result_scope"]
+    optimized_scope = optimized_measurement["result_scope"]
+    if baseline_scope != optimized_scope:
+        return {
+            "error": (
+                "NCU baseline/optimized result scopes differ: "
+                f"{baseline_scope!r} != {optimized_scope!r}"
+            ),
+            "baseline_file": baseline_path.name,
+            "optimized_file": optimized_path.name,
+            "pair_health": pair_health,
+        }
+    if baseline_scope == "range":
+        try:
+            range_comparison = _ncu_range_comparison(
+                baseline_measurement, optimized_measurement
+            )
+        except ValueError as exc:
+            return {
+                "error": str(exc),
+                "baseline_file": baseline_path.name,
+                "optimized_file": optimized_path.name,
+                "pair_health": pair_health,
+            }
+        return {
+            "success": True,
+            "result_scope": "range",
+            "baseline_file": baseline_path.name,
+            "optimized_file": optimized_path.name,
+            "baseline_path": str(baseline_path),
+            "optimized_path": str(optimized_path),
+            "staged_pair_dir": str(baseline_path.parent),
+            "pair_key": pair_key or selected_pair_key,
+            "pair_health": pair_health,
+            "baseline_provenance": baseline_measurement["provenance"],
+            "optimized_provenance": optimized_measurement["provenance"],
+            "range_comparison": range_comparison,
+        }
+
+    baseline_per_kernel = baseline_measurement["per_kernel"]
+    optimized_per_kernel = optimized_measurement["per_kernel"]
 
     if not baseline_per_kernel and not optimized_per_kernel:
         return {
@@ -976,6 +1252,7 @@ def compare_ncu_files(
     unmatched_count = sum(1 for pair in paired_kernels if pair.get("match_type") == "unmatched")
 
     comparison = {
+        "result_scope": "kernel",
         "baseline_file": baseline_path.name,
         "optimized_file": optimized_path.name,
         "baseline_path": str(baseline_path),
@@ -1431,6 +1708,22 @@ def _top_kernel_summary(kernel_stats: Dict[str, Any]) -> Optional[Dict[str, Any]
 
 
 def _summarize_ncu_side_by_side(ncu_comparison: Dict[str, Any]) -> Dict[str, Any]:
+    if ncu_comparison.get("result_scope") == "range":
+        comparison = ncu_comparison.get("range_comparison") or {}
+        return {
+            "result_scope": "range",
+            "kernel": None,
+            "metrics": list(comparison.get("metrics") or []),
+            "range_summary": {
+                "nvtx_range": comparison.get("nvtx_range"),
+                "coverage_policy": comparison.get("coverage_policy"),
+                "baseline_range_time_ms": comparison.get("baseline_range_time_ms"),
+                "optimized_range_time_ms": comparison.get("optimized_range_time_ms"),
+                "canonical_speedup_eligible": False,
+                "timing_semantics": comparison.get("timing_semantics"),
+            },
+        }
+
     if "metrics" in ncu_comparison:
         metrics: List[Dict[str, Any]] = []
         for row in ncu_comparison.get("metrics", []):
@@ -1653,6 +1946,14 @@ def generate_side_by_side_report(
                 )
             )
 
+    range_summary = ncu_summary.get("range_summary")
+    if isinstance(range_summary, dict):
+        nvtx_range = range_summary.get("nvtx_range") or "<unknown>"
+        narrative_parts.append(
+            f"NCU metrics cover the full selected NVTX range {nvtx_range!r}; "
+            "the profiler range duration is descriptive and is not a benchmark speedup."
+        )
+
     ncu_metrics = ncu_summary.get("metrics", [])
     metric_deltas: List[Tuple[str, float, Optional[float]]] = []
     for metric in ncu_metrics:
@@ -1700,10 +2001,7 @@ def generate_side_by_side_report(
             "api_rows": api_rows,
             "kernel_summary": kernel_summary,
         },
-        "ncu": {
-            "kernel": ncu_summary.get("kernel"),
-            "metrics": ncu_summary.get("metrics", []),
-        },
+        "ncu": ncu_summary,
     }
 
     report_payload = {
@@ -2375,7 +2673,12 @@ def generate_recommendations_from_profiles(result: Dict[str, Any]) -> List[str]:
                 )
 
     ncu = result.get("ncu_comparison", {})
-    if ncu and isinstance(ncu, dict) and "metrics" in ncu:
+    if (
+        ncu
+        and isinstance(ncu, dict)
+        and ncu.get("result_scope") != "range"
+        and "metrics" in ncu
+    ):
         for metric in ncu.get("metrics", []):
             name = metric.get("name", "").lower()
             if "occupancy" in name:
@@ -2388,7 +2691,12 @@ def generate_recommendations_from_profiles(result: Dict[str, Any]) -> List[str]:
                 except (ValueError, TypeError):
                     pass
 
-    if not recommendations:
+    if not recommendations and isinstance(ncu, dict) and ncu.get("result_scope") == "range":
+        recommendations.append(
+            "NCU metrics cover the selected range; collect a kernel-scoped report "
+            "before making per-kernel tuning recommendations"
+        )
+    elif not recommendations:
         recommendations.append("Profile both baseline and optimized to get detailed recommendations")
 
     return recommendations

@@ -13,6 +13,12 @@ import pytest
 import torch
 import torch.nn.functional as F
 
+from core.benchmark.numerical_accuracy import (
+    ScaleInvariantAccuracyLimits,
+    assert_low_precision_attention_accuracy,
+    low_precision_attention_limits,
+)
+
 CODE = Path(__file__).resolve().parents[1]
 CUDA = pytest.mark.skipif(not torch.cuda.is_available(), reason="Actual CUDA runtime required; host checks are not GPU qualification")
 
@@ -38,6 +44,53 @@ def test_math_backend_executes_real_cpu_attention():
         result = F.scaled_dot_product_attention(q, -q, q.flip(-2))
     expected = torch.softmax(q @ (-q).transpose(-1, -2) / 2, dim=-1) @ q.flip(-2)
     torch.testing.assert_close(result, expected)
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("fault", ["correct", "zero", "half_scale", "last_element", "nan", "alias", "short"])
+def test_attention_accuracy_gate_checks_complete_scale_invariant_output(dtype, fault):
+    rounded = (torch.arange(1, 1 + 2 * 3 * 4 * 8, dtype=torch.float32) / 128).reshape(2, 3, 4, 8).to(dtype)
+    expected = rounded.double()
+    actual = rounded.clone()
+    if fault == "zero":
+        actual.zero_()
+    elif fault == "half_scale":
+        actual.mul_(0.5)
+    elif fault == "last_element":
+        actual[-1, -1, -1, -1] += 0.25
+    elif fault == "nan":
+        actual[-1, -1, -1, -1] = float("nan")
+    elif fault == "alias":
+        expected = actual
+    elif fault == "short":
+        actual = actual[..., :-1]
+
+    limits = low_precision_attention_limits(dtype)
+    assert limits.relative_l2 == torch.finfo(dtype).eps
+    assert limits.normalized_max_abs == torch.finfo(dtype).eps
+    if fault == "correct":
+        assert assert_low_precision_attention_accuracy(actual, expected) == {
+            "relative_l2": 0.0,
+            "normalized_max_abs": 0.0,
+        }
+    else:
+        with pytest.raises(AssertionError):
+            assert_low_precision_attention_accuracy(actual, expected)
+
+
+@pytest.mark.parametrize("bad", [False, True, -1e-9, float("nan"), float("inf"), "0", None])
+def test_scale_invariant_limits_reject_malformed_values(bad):
+    with pytest.raises(ValueError):
+        ScaleInvariantAccuracyLimits(bad, 0)
+    with pytest.raises(ValueError):
+        ScaleInvariantAccuracyLimits(0, bad)
+
+    limits = ScaleInvariantAccuracyLimits(0.25, 0.25)
+    for metric in ("relative_l2", "normalized_max_abs"):
+        errors = {"relative_l2": 0.0, "normalized_max_abs": 0.0}
+        errors[metric] = bad
+        with pytest.raises(ValueError):
+            limits.check(errors, label="adverse-control")
 
 
 @pytest.mark.parametrize("mode", ["dense", "causal", "alibi", "softcap", "windowed", "alibi_windowed"])
@@ -172,7 +225,10 @@ def test_real_triton_attention_tail_and_causal(seq, dim, causal):
     k = -torch.rand_like(q) - .5  # Real scores negative; zero-padded phantom keys would dominate.
     v = torch.randn_like(q)
     with torch.nn.attention.sdpa_kernel([torch.nn.attention.SDPBackend.MATH]):
-        expected = F.scaled_dot_product_attention(q, k, v, is_causal=causal)
+        # Keep the reference independent of import-time TF32 configuration.
+        expected = F.scaled_dot_product_attention(
+            q.double(), k.double(), v.double(), is_causal=causal
+        ).to(q.dtype)
     actual = gluon_flash_attention(q, k, v, causal=causal)
     torch.testing.assert_close(actual, expected)
     with pytest.raises(NotImplementedError): gluon_flash_attention(q, k, v, dropout_p=.1)
@@ -186,8 +242,12 @@ def test_real_cute_layout_and_attention():
     result = forward(*to_cute_layout(q, k, v))
     actual = result[0] if isinstance(result, (tuple, list)) else result
     with torch.nn.attention.sdpa_kernel([torch.nn.attention.SDPBackend.MATH]):
-        expected = F.scaled_dot_product_attention(q, k, v).transpose(1, 2)
-    torch.testing.assert_close(actual, expected)
+        # Independent reference: ambient FP32/TF32 policy must not define the
+        # expected result of a different fused attention implementation.
+        expected = F.scaled_dot_product_attention(
+            q.double(), k.double(), v.double()
+        ).transpose(1, 2)
+    assert_low_precision_attention_accuracy(actual, expected)
 
 
 @CUDA
@@ -289,7 +349,10 @@ def test_host_prefetch_failed_join_preserves_worker_owned_storage():
 
 @CUDA
 def test_real_cudnn_pin_profiles_actual_model_dispatch(tmp_path):
-    from labs.cudnn_sdpa_bench.baseline_flash_sdp import SDPAAttentionModule
+    from labs.cudnn_sdpa_bench.baseline_flash_sdp import (
+        FlashSDPLabBenchmark,
+        SDPAAttentionModule,
+    )
     model = SDPAAttentionModule(hidden_dim=512, num_heads=8, backend="cudnn").cuda().half().eval()
     inputs = torch.randn(8, 256, 512, device="cuda", dtype=torch.float16)
     with torch.inference_mode():
@@ -302,9 +365,29 @@ def test_real_cudnn_pin_profiles_actual_model_dispatch(tmp_path):
         keys = {event.key for event in prof.key_averages()}
         assert "aten::_scaled_dot_product_cudnn_attention" in keys, sorted(keys)
         assert "aten::_scaled_dot_product_flash_attention" not in keys
-        model.backend = "math"
-        expected = model(inputs)
-        torch.testing.assert_close(actual, expected)
+        # Compare the dispatched attention against an independent FP64 oracle
+        # using the same projected FP16 inputs. Harness import enables TF32,
+        # so selecting MATH alone does not make its FP32 matmuls a strict oracle.
+        q, k, v = model.qkv(inputs).view(8, 256, 3, 8, 64).unbind(dim=2)
+        with torch.nn.attention.sdpa_kernel([torch.nn.attention.SDPBackend.MATH]):
+            expected = F.scaled_dot_product_attention(
+                q.transpose(1, 2).double(), k.transpose(1, 2).double(),
+                v.transpose(1, 2).double(),
+            ).transpose(1, 2).reshape_as(actual)
+        assert_low_precision_attention_accuracy(actual, expected)
+
+        # Exercise the benchmark's production capture path with the exact
+        # dispatched output, then prove a corrupted full output cannot pass.
+        benchmark = FlashSDPLabBenchmark(backend="cudnn")
+        benchmark.model = model
+        benchmark.inputs = inputs
+        benchmark.output = actual
+        benchmark._payload_parameter_count = sum(p.numel() for p in model.parameters())
+        benchmark.capture_verification_payload()
+        benchmark.output = actual.clone()
+        benchmark.output[..., -1].add_(1)
+        with pytest.raises(AssertionError, match="attention accuracy failed"):
+            benchmark.capture_verification_payload()
 
 
 @CUDA
@@ -348,8 +431,18 @@ def test_real_paged_prefetch_repeated_page_content(host_worker):
             torch.testing.assert_close(bench._payload_k, expected_kv[0])
             torch.testing.assert_close(bench._payload_v, expected_kv[1])
             with torch.nn.attention.sdpa_kernel([torch.nn.attention.SDPBackend.MATH]):
-                expected = F.scaled_dot_product_attention(bench.q, expected_kv[0], expected_kv[1])
-            torch.testing.assert_close(bench.output, expected[:, :, :1, :bench._verify_head_dim])
+                # Preserve reference precision even when harness defaults have
+                # globally enabled TF32 for performance measurements.
+                expected = F.scaled_dot_product_attention(
+                    bench.q.double(), expected_kv[0].double(), expected_kv[1].double(),
+                )
+            assert_low_precision_attention_accuracy(
+                bench.output, expected[:, :, :1, :bench._verify_head_dim]
+            )
+            bench.capture_verification_payload()
+        bench.output[..., -1].add_(1)
+        with pytest.raises(AssertionError, match="attention accuracy failed"):
+            bench.capture_verification_payload()
     finally:
         bench.teardown()
 

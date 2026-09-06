@@ -2894,6 +2894,8 @@ def test_run_benchmark_e2e_sweep_resume_marks_superseded_running_attempt_aborted
         "detect_execution_environment",
         lambda: SimpleNamespace(kind="bare_metal", virtualized=False, dmi_product_name="test-box"),
     )
+    # Exercise only the in-process resume transition, independent of host GPUs or supervision.
+    monkeypatch.setattr(e2e_sweep, "_visible_gpu_count", lambda **kwargs: 0)
     monkeypatch.setattr(
         e2e_sweep, "_benchmark_queue_lock", lambda *args, **kwargs: contextlib.nullcontext()
     )
@@ -2920,6 +2922,7 @@ def test_run_benchmark_e2e_sweep_resume_marks_superseded_running_attempt_aborted
                     run_full_sweep=False,
                     run_cluster=False,
                     run_fabric=False,
+                    auto_resume=False,
                 ),
                 "stages": [
                     {
@@ -2969,6 +2972,7 @@ def test_run_benchmark_e2e_sweep_resume_marks_superseded_running_attempt_aborted
         run_full_sweep=False,
         run_cluster=False,
         run_fabric=False,
+        auto_resume=False,
     )
 
     tier1_stage = next(stage for stage in result["stages"] if stage["name"] == "tier1")

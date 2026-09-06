@@ -794,6 +794,61 @@ class TestVerifyRunner:
         assert result.passed is True
         assert result.signature_hash is not None
 
+    def test_default_world_size_does_not_reject_extra_visible_capacity(
+        self,
+        temp_dirs,
+        monkeypatch,
+    ):
+        """Available GPUs do not imply that a one-process benchmark uses every GPU."""
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1")
+        runner = VerifyRunner(
+            cache_dir=temp_dirs["cache"],
+            quarantine_manager=QuarantineManager(temp_dirs["quarantine"]),
+        )
+
+        result = runner.verify_baseline(MockBenchmark("baseline"))
+
+        assert result.passed is True
+
+    def test_explicit_world_size_still_requires_exact_visibility(
+        self,
+        temp_dirs,
+        monkeypatch,
+    ):
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1")
+        runner = VerifyRunner(
+            cache_dir=temp_dirs["cache"],
+            quarantine_manager=QuarantineManager(temp_dirs["quarantine"]),
+        )
+        baseline = MockBenchmark("baseline")
+        baseline.required_world_size = 1
+
+        result = runner.verify_baseline(baseline)
+
+        assert result.passed is False
+        assert result.reason == (
+            "World size mismatch: requires exactly 1 visible GPU(s), found 2."
+        )
+
+    def test_multi_gpu_requirement_still_rejects_one_visible_device(
+        self,
+        temp_dirs,
+        monkeypatch,
+    ):
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        runner = VerifyRunner(
+            cache_dir=temp_dirs["cache"],
+            quarantine_manager=QuarantineManager(temp_dirs["quarantine"]),
+        )
+        baseline = MockBenchmark("baseline")
+        baseline.multi_gpu_required = True
+
+        result = runner.verify_baseline(baseline)
+
+        assert result.passed is False
+        assert result.reason == "SKIPPED: requires >=2 GPUs"
+
     def test_signature_validation_ignores_payload_output(self, temp_dirs):
         """Benchmarks using VerificationPayloadMixin include 'output' in signature; input validation must ignore it."""
         from core.benchmark.verification_mixin import VerificationPayloadMixin

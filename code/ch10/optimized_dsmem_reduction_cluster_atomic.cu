@@ -297,8 +297,7 @@ int main() {
     printf("  Sum: %.0f (expected: %d) - %s\n", total, N,
            (abs(total - N) < 1000) ? "PASS" : "FAIL");
 
-    const float verify_checksum = total;
-    VERIFY_PRINT_CHECKSUM(verify_checksum);
+    VERIFY_PRINT_CHECKSUM(total);
     
     // Cleanup
     CUDA_CHECK(cudaEventDestroy(start));

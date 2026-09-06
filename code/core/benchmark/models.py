@@ -206,6 +206,10 @@ class NcuMetrics(BaseModel):
     """Extracted metrics from ncu profiling."""
     
     kernel_time_ms: Optional[float] = Field(None, description="Kernel execution time in milliseconds")
+    range_time_ms: Optional[float] = Field(
+        None,
+        description="NCU aggregate application-range duration in milliseconds",
+    )
     sm_throughput_pct: Optional[float] = Field(None, description="SM compute throughput as % of peak")
     dram_throughput_pct: Optional[float] = Field(None, description="DRAM throughput as % of peak")
     l2_throughput_pct: Optional[float] = Field(None, description="L2 cache throughput as % of peak")
@@ -219,6 +223,8 @@ class NcuMetrics(BaseModel):
         result = {}
         if self.kernel_time_ms is not None:
             result["ncu_kernel_time_ms"] = self.kernel_time_ms
+        if self.range_time_ms is not None:
+            result["ncu_range_time_ms"] = self.range_time_ms
         if self.sm_throughput_pct is not None:
             result["ncu_sm_throughput_pct"] = self.sm_throughput_pct
         if self.dram_throughput_pct is not None:

@@ -308,7 +308,7 @@ METRICS_ENV_KEY = "AISP_CACHE_AWARE_DISAGG_METRICS_PATH"
 
 
 @pytest.mark.skipif(torch.cuda.device_count() < 2, reason="2+ GPUs required for cache-aware multi-GPU lab")
-def test_cache_aware_disagg_multigpu_optimized_path_improves_transfer_locality() -> None:
+def test_cache_aware_disagg_multigpu_locality_matches_available_decode_workers() -> None:
     prefill_ranks = 1 if torch.cuda.device_count() == 2 else 2
     cfg = CacheAwareDisaggMultiGPUConfig(
         hidden_size=64,
@@ -357,5 +357,13 @@ def test_cache_aware_disagg_multigpu_optimized_path_improves_transfer_locality()
     assert baseline_output is not None
     assert optimized_output is not None
     assert torch.allclose(baseline_output, optimized_output, atol=0.0, rtol=0.0)
-    assert optimized_metrics["cache_aware.kv_transfer_mb"] < baseline_metrics["cache_aware.kv_transfer_mb"]
-    assert optimized_metrics["cache_aware.worker_switches_per_request"] < baseline_metrics["cache_aware.worker_switches_per_request"]
+    decode_ranks = torch.cuda.device_count() - prefill_ranks
+    if decode_ranks == 1:
+        # Both policies select the sole decode worker. There is no handoff to
+        # eliminate, so a 1P1D or 2P1D run must not manufacture a locality win.
+        assert optimized_metrics["cache_aware.kv_transfer_mb"] == baseline_metrics["cache_aware.kv_transfer_mb"]
+        assert optimized_metrics["cache_aware.worker_switches_per_request"] == 0
+        assert baseline_metrics["cache_aware.worker_switches_per_request"] == 0
+    else:
+        assert optimized_metrics["cache_aware.kv_transfer_mb"] < baseline_metrics["cache_aware.kv_transfer_mb"]
+        assert optimized_metrics["cache_aware.worker_switches_per_request"] < baseline_metrics["cache_aware.worker_switches_per_request"]

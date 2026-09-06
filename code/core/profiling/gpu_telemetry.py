@@ -7,9 +7,10 @@ required and any NVML errors propagate as exceptions.
 from __future__ import annotations
 
 import os
+import uuid
 from datetime import datetime, timezone
 import time
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import torch
 
@@ -41,28 +42,67 @@ def _ensure_nvml_initialized() -> None:
 
 
 def _resolve_physical_gpu_index(logical_index: int) -> int:
-    """Map a logical CUDA device index to the physical GPU index.
+    """Map a logical CUDA device index through numeric visibility tokens.
 
     When CUDA_VISIBLE_DEVICES is set, PyTorch reports logical indices starting
-    at zero. NVML continues to use physical indices, so we map the first visible
-    logical index to the corresponding physical GPU if possible.
+    at zero. UUID and MIG tokens require identity-based NVML lookup and are
+    intentionally rejected here instead of silently selecting the wrong GPU.
     """
     visible = os.environ.get("CUDA_VISIBLE_DEVICES")
     if not visible:
         return logical_index
-    candidates: list[int] = []
-    for token in visible.split(","):
-        token = token.strip()
-        if not token:
-            continue
-        try:
-            candidates.append(int(token))
-        except ValueError:
-            # Could be MIG identifiers – fall back to logical index mapping.
-            return logical_index
-    if logical_index < len(candidates):
-        return candidates[logical_index]
-    return logical_index
+    tokens = [token.strip() for token in visible.split(",") if token.strip()]
+    if not tokens:
+        return logical_index
+    if logical_index < 0 or logical_index >= len(tokens):
+        raise RuntimeError(
+            f"CUDA_VISIBLE_DEVICES={visible!r} does not include logical index {logical_index}"
+        )
+    token = tokens[logical_index]
+    try:
+        physical_index = int(token)
+    except ValueError as exc:
+        raise RuntimeError(
+            "Cannot resolve a nonnumeric CUDA_VISIBLE_DEVICES entry without "
+            f"the CUDA device UUID: {token!r}"
+        ) from exc
+    if physical_index < 0:
+        raise RuntimeError(f"Invalid physical GPU index in CUDA_VISIBLE_DEVICES: {token!r}")
+    return physical_index
+
+
+def normalize_gpu_uuid(value: object) -> Optional[str]:
+    """Give bare CUDA and GPU-prefixed NVML UUIDs the same identity.
+
+    PyTorch can stringify a full-device UUID without NVML's ``GPU-`` prefix.
+    Preserve MIG and other opaque identity formats for exact NVML lookup.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    normalized = str(value).strip()
+    if not normalized:
+        return None
+    candidate = normalized[4:] if normalized.startswith("GPU-") else normalized
+    try:
+        return f"GPU-{uuid.UUID(candidate)}"
+    except ValueError:
+        return normalized
+
+
+def resolve_nvml_device_handle(
+    nvml_module: Any,
+    logical_index: int,
+    *,
+    cuda_device_uuid: object = None,
+) -> Any:
+    """Resolve the NVML handle for a logical CUDA device by exact identity."""
+    normalized_uuid = normalize_gpu_uuid(cuda_device_uuid)
+    if normalized_uuid is not None:
+        return nvml_module.nvmlDeviceGetHandleByUUID(normalized_uuid)
+    physical_index = _resolve_physical_gpu_index(logical_index)
+    return nvml_module.nvmlDeviceGetHandleByIndex(physical_index)
 
 
 def _coerce_metric_value(value: object) -> Optional[float | str]:
@@ -147,10 +187,14 @@ def query_gpu_telemetry(
 
 def _query_via_nvml(logical_index: int) -> Dict[str, Optional[float]]:
     _ensure_nvml_initialized()
-    physical_index = _resolve_physical_gpu_index(logical_index)
     if pynvml is None:
         raise RuntimeError("Internal error: pynvml unavailable after initialization.")
-    handle = pynvml.nvmlDeviceGetHandleByIndex(physical_index)  # type: ignore[attr-defined]
+    properties = torch.cuda.get_device_properties(logical_index)
+    handle = resolve_nvml_device_handle(
+        pynvml,
+        logical_index,
+        cuda_device_uuid=getattr(properties, "uuid", None),
+    )
 
     temp_gpu = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)  # type: ignore[attr-defined]
     temp_mem: Optional[float] = None

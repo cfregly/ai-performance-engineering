@@ -32,19 +32,11 @@ BLOCK_SCALING_SOURCE_URL = (
     "cutlass-tutorial-hardware-supported-block-scaling-with-nvidia-blackwell-gpus/"
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-# sm_100 (B200) example shipped by the pinned cutlass submodule (v4.1.0).
-# Its deprecated cute.make_fragment calls need a compatibility alias when the
-# example runs against the pinned nvidia-cutlass-dsl 4.5.2 runtime.
+# sm_100 (B200) example from the CUTLASS release matching the pinned DSL runtime.
+# The v4.1.0 submodule example uses APIs removed from nvidia-cutlass-dsl 4.5.2;
+# see vendor/README.md for the immutable upstream revision and checksum.
 SM100_EXAMPLE_PATH = (
-    REPO_ROOT
-    / "third_party"
-    / "cutlass"
-    / "examples"
-    / "python"
-    / "CuTeDSL"
-    / "blackwell"
-    / "dense_blockscaled_gemm_persistent.py"
+    Path(__file__).resolve().parent / "vendor" / "sm100_dense_blockscaled_gemm_persistent.py"
 )
 # sm_103 (GB300 / Blackwell Ultra) example vendored from cutlass main (BSD-3).
 # The pinned v4.1.0 submodule predates sm_103 and its DSL-4.1 example uses APIs
@@ -112,6 +104,7 @@ class BlockScalingProblem:
     sfb_tensor: Any
     c_tensor: Any
     current_stream: Any
+    tensor_backings: tuple[Any, ...]
     compiled_gemm: Optional[Any] = None
     c_ref_device: Optional[torch.Tensor] = None
     prescaled_a: Optional[torch.Tensor] = None
@@ -290,28 +283,10 @@ def _is_blackwell_ultra() -> bool:
 
 
 def _resolve_cutlass_example_path() -> Path:
-    """Pick the arch-matched blockscaled example: the vendored sm_103 example on
-    Blackwell Ultra, else the sm_100 submodule example."""
+    """Pick the vendored blockscaled example matching the active architecture."""
     if _is_blackwell_ultra() and SM103_EXAMPLE_PATH.exists():
         return SM103_EXAMPLE_PATH
     return CUTLASS_EXAMPLE_PATH
-
-
-def _ensure_cute_fragment_compatibility(module: ModuleType) -> None:
-    """Bridge the CUTLASS 4.1 example to the pinned CuTe 4.5 API."""
-    cute_module = getattr(module, "cute", None)
-    if cute_module is None:
-        raise RuntimeError("The CUTLASS block scaling example did not expose cutlass.cute")
-    if hasattr(cute_module, "make_fragment"):
-        return
-
-    make_rmem_tensor = getattr(cute_module, "make_rmem_tensor", None)
-    if make_rmem_tensor is None:
-        raise RuntimeError(
-            "The CUTLASS CuTe runtime exposes neither make_fragment nor "
-            "make_rmem_tensor; nvidia-cutlass-dsl==4.5.2 is required"
-        )
-    cute_module.make_fragment = make_rmem_tensor
 
 
 def load_cutlass_example_module() -> ModuleType:
@@ -327,7 +302,6 @@ def load_cutlass_example_module() -> ModuleType:
         raise ImportError(f"Unable to create import spec for {example_path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    _ensure_cute_fragment_compatibility(module)
     # The sm_103 example imports cutlass.torch locally inside run(); the lab's
     # build_problem accesses it as module.cutlass_torch (the sm_100 example
     # exposed it at module level), so expose it here when absent.
@@ -335,7 +309,65 @@ def load_cutlass_example_module() -> ModuleType:
         import cutlass.torch as _cutlass_torch
 
         module.cutlass_torch = _cutlass_torch
+    if not hasattr(module, "from_dlpack"):
+        from cutlass.cute.runtime import from_dlpack as _from_dlpack
+
+        module.from_dlpack = _from_dlpack
     return module
+
+
+def _uses_sm100_pointer_abi(module: ModuleType) -> bool:
+    """Return whether the release-matched sm_100 example uses its pointer ABI."""
+    return hasattr(module, "Sm100BlockScaledPersistentDenseGemmKernel") and hasattr(
+        module, "scaled_mm"
+    )
+
+
+def _pointer_argument(value: Any) -> Any:
+    """Return a CuTe tensor's pointer while accepting an already-built pointer."""
+    return getattr(value, "iterator", value)
+
+
+def _compile_sm100_pointer_kernel(
+    module: ModuleType,
+    gemm: Any,
+    config: BlockScalingConfig,
+    max_active_clusters: int,
+    current_stream: Any,
+) -> Any:
+    """Compile CUTLASS 4.5's pointer ABI behind the lab's stable tensor-call API."""
+    pointer_gemm = module.scaled_mm(
+        gemm,
+        module.cutlass.Float4E2M1FN,
+        module.cutlass.BFloat16,
+        module.cutlass.Float8E8M0FNU,
+        "k",
+        "k",
+        "n",
+        max_active_clusters,
+        current_stream,
+        options="--opt-level 2",
+    )
+
+    def invoke(
+        a_tensor: Any,
+        b_tensor: Any,
+        sfa_tensor: Any,
+        sfb_tensor: Any,
+        c_tensor: Any,
+        stream: Any,
+    ) -> None:
+        pointer_gemm(
+            _pointer_argument(a_tensor),
+            _pointer_argument(b_tensor),
+            _pointer_argument(sfa_tensor),
+            _pointer_argument(sfb_tensor),
+            _pointer_argument(c_tensor),
+            config.mnkl,
+            stream,
+        )
+
+    return invoke
 
 
 def _select_blockscaled_kernel(module: ModuleType) -> tuple[Any, bool]:
@@ -394,19 +426,53 @@ def _create_scale_factor_tensor(
         init_type=module.cutlass_torch.TensorInitType.RANDOM,
         init_config=module.cutlass_torch.RandomInitConfig(min_val=1, max_val=3),
     )
-    compact_f32_cpu = module.cutlass_torch.create_and_permute_torch_tensor(
-        mma_shape,
-        torch.float32,
-        permute_order=(3, 4, 1, 5, 2, 0),
-        init_type=module.cutlass_torch.TensorInitType.RANDOM,
-        init_config=module.cutlass_torch.RandomInitConfig(min_val=0, max_val=1),
-    )
+    if _uses_sm100_pointer_abi(module):
+        # CUTLASS 4.5 reorders scale factors through typed pointers and returns
+        # the device buffer consumed by the compiled pointer ABI.
+        typed_ref_cpu = ref_f32_cpu.to(dtype=module.cutlass_torch.dtype(dtype))
+        compact_torch = module.create_and_reorder_scale_factor_tensor(
+            l,
+            mn,
+            k,
+            sf_vec_size,
+            dtype,
+            typed_ref_cpu,
+        )
+        compact_tensor = module.make_ptr(
+            dtype,
+            compact_torch.data_ptr(),
+            module.cute.AddressSpace.gmem,
+            assumed_align=32,
+        )
+        # The software oracle must use the values after scale-factor
+        # quantization, exactly as the hardware pointer does.
+        ref_f32_cpu = typed_ref_cpu.to(dtype=torch.float32)
+    else:
+        compact_f32_cpu = module.cutlass_torch.create_and_permute_torch_tensor(
+            mma_shape,
+            torch.float32,
+            permute_order=(3, 4, 1, 5, 2, 0),
+            init_type=module.cutlass_torch.TensorInitType.RANDOM,
+            init_config=module.cutlass_torch.RandomInitConfig(min_val=0, max_val=1),
+        )
 
-    module.cvt_sf_MKL_to_M32x4xrm_K4xrk_L(
-        module.from_dlpack(ref_f32_cpu),
-        module.from_dlpack(compact_f32_cpu),
-    )
-    compact_f32 = compact_f32_cpu.cuda()
+        module.cvt_sf_MKL_to_M32x4xrm_K4xrk_L(
+            module.from_dlpack(ref_f32_cpu),
+            module.from_dlpack(compact_f32_cpu),
+        )
+        compact_f32 = compact_f32_cpu.cuda()
+        compact_tensor, compact_torch = module.cutlass_torch.cute_tensor_like(
+            compact_f32_cpu,
+            dtype,
+            is_dynamic_layout=True,
+            assumed_align=16,
+        )
+        compact_tensor = module.cutlass_torch.convert_cute_tensor(
+            compact_f32,
+            compact_tensor,
+            dtype,
+            is_dynamic_layout=True,
+        )
 
     expanded_ref = (
         ref_f32_cpu.permute(2, 0, 1)
@@ -416,18 +482,6 @@ def _create_scale_factor_tensor(
         .permute(1, 2, 0)
     )[:, :k, :]
 
-    compact_tensor, compact_torch = module.cutlass_torch.cute_tensor_like(
-        compact_f32_cpu,
-        dtype,
-        is_dynamic_layout=True,
-        assumed_align=16,
-    )
-    compact_tensor = module.cutlass_torch.convert_cute_tensor(
-        compact_f32,
-        compact_tensor,
-        dtype,
-        is_dynamic_layout=True,
-    )
     return expanded_ref, compact_tensor, compact_torch
 
 
@@ -542,23 +596,37 @@ def build_problem(
 
     kernel_cls, needs_tma_store = _select_blockscaled_kernel(module)
     if compile_hardware:
-        can_impl_args = [
-            module.cutlass.Float4E2M1FN,
-            module.cutlass.Float8E8M0FNU,
-            config.sf_vec_size,
-            module.cutlass.BFloat16,
-            config.mma_tiler_mn,
-            config.cluster_shape_mn,
-            config.m,
-            config.n,
-            config.k,
-            config.l,
-            "k",
-            "k",
-            "n",
-        ]
-        if needs_tma_store:
-            can_impl_args.append(True)
+        if _uses_sm100_pointer_abi(module):
+            can_impl_args = [
+                config.mnkl,
+                module.cutlass.Float4E2M1FN,
+                module.cutlass.Float8E8M0FNU,
+                module.cutlass.BFloat16,
+                "k",
+                "k",
+                "n",
+                config.sf_vec_size,
+                config.mma_tiler_mn,
+                config.cluster_shape_mn,
+            ]
+        else:
+            can_impl_args = [
+                module.cutlass.Float4E2M1FN,
+                module.cutlass.Float8E8M0FNU,
+                config.sf_vec_size,
+                module.cutlass.BFloat16,
+                config.mma_tiler_mn,
+                config.cluster_shape_mn,
+                config.m,
+                config.n,
+                config.k,
+                config.l,
+                "k",
+                "k",
+                "n",
+            ]
+            if needs_tma_store:
+                can_impl_args.append(True)
         if not kernel_cls.can_implement(*can_impl_args):
             raise TypeError(
                 "Unsupported block scaling configuration: "
@@ -570,19 +638,19 @@ def build_problem(
     b_ref = module.cutlass_torch.matrix(config.l, config.n, config.k, False, module.cutlass.Float32)
     c_ref = module.cutlass_torch.matrix(config.l, config.m, config.n, False, module.cutlass.Float32)
 
-    a_tensor, _ = module.cutlass_torch.cute_tensor_like(
+    a_tensor, a_backing = module.cutlass_torch.cute_tensor_like(
         a_ref,
         module.cutlass.Float4E2M1FN,
         is_dynamic_layout=True,
         assumed_align=16,
     )
-    b_tensor, _ = module.cutlass_torch.cute_tensor_like(
+    b_tensor, b_backing = module.cutlass_torch.cute_tensor_like(
         b_ref,
         module.cutlass.Float4E2M1FN,
         is_dynamic_layout=True,
         assumed_align=16,
     )
-    c_tensor, _ = module.cutlass_torch.cute_tensor_like(
+    c_tensor, c_backing = module.cutlass_torch.cute_tensor_like(
         c_ref,
         module.cutlass.BFloat16,
         is_dynamic_layout=True,
@@ -592,7 +660,7 @@ def build_problem(
     _mark_compact_tensor(b_tensor, leading_dim=1, stride_order=(2, 0, 1), divisibility=2)
     _mark_compact_tensor(c_tensor, leading_dim=1, stride_order=(2, 0, 1), divisibility=1)
 
-    sfa_ref, sfa_tensor, _ = _create_scale_factor_tensor(
+    sfa_ref, sfa_tensor, sfa_backing = _create_scale_factor_tensor(
         module,
         config.l,
         config.m,
@@ -600,7 +668,7 @@ def build_problem(
         config.sf_vec_size,
         module.cutlass.Float8E8M0FNU,
     )
-    sfb_ref, sfb_tensor, _ = _create_scale_factor_tensor(
+    sfb_ref, sfb_tensor, sfb_backing = _create_scale_factor_tensor(
         module,
         config.l,
         config.n,
@@ -628,16 +696,25 @@ def build_problem(
         max_active_clusters = module.cutlass.utils.HardwareInfo().get_max_active_clusters(
             config.cluster_shape_mn[0] * config.cluster_shape_mn[1]
         )
-        compiled_gemm = module.cute.compile(
-            gemm,
-            a_tensor,
-            b_tensor,
-            sfa_tensor,
-            sfb_tensor,
-            c_tensor,
-            max_active_clusters,
-            current_stream,
-        )
+        if _uses_sm100_pointer_abi(module):
+            compiled_gemm = _compile_sm100_pointer_kernel(
+                module,
+                gemm,
+                config,
+                max_active_clusters,
+                current_stream,
+            )
+        else:
+            compiled_gemm = module.cute.compile(
+                gemm,
+                a_tensor,
+                b_tensor,
+                sfa_tensor,
+                sfb_tensor,
+                c_tensor,
+                max_active_clusters,
+                current_stream,
+            )
 
     return BlockScalingProblem(
         config=config,
@@ -657,5 +734,6 @@ def build_problem(
         sfb_tensor=sfb_tensor,
         c_tensor=c_tensor,
         current_stream=current_stream,
+        tensor_backings=(a_backing, b_backing, sfa_backing, sfb_backing, c_backing),
         compiled_gemm=compiled_gemm,
     )

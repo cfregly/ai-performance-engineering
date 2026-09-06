@@ -301,7 +301,13 @@ def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
                 LaunchVia,
             )
 
+            import torch  # local import after benchmark module load
+
             config = BenchmarkConfig(**config_dict)
+            if device_str is not None:
+                # The parent transports the device separately from config_dict.
+                # Preserve explicit CPU timing even on a CUDA-capable host.
+                config.device = torch.device(device_str)
             config.use_subprocess = False
             config.execution_mode = ExecutionMode.THREAD
             config.launch_via = LaunchVia.PYTHON

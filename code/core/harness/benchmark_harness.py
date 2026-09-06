@@ -144,6 +144,34 @@ except ImportError:
     LOGGER_AVAILABLE = False
 
 
+_NCU_FIRST_CLASS_METRIC_PREFIXES = (
+    "ncu_kernel_time_ms",
+    "ncu_range_time_ms",
+    "ncu_sm_throughput_pct",
+    "ncu_dram_throughput_pct",
+    "ncu_l2_throughput_pct",
+    "ncu_occupancy_pct",
+)
+
+
+def _ncu_metrics_from_flat(ncu_metrics: Dict[str, Any]) -> NcuMetrics:
+    """Restore structured NCU metrics without leaking them into raw counters."""
+    return NcuMetrics(
+        kernel_time_ms=ncu_metrics.get("ncu_kernel_time_ms"),
+        range_time_ms=ncu_metrics.get("ncu_range_time_ms"),
+        sm_throughput_pct=ncu_metrics.get("ncu_sm_throughput_pct"),
+        dram_throughput_pct=ncu_metrics.get("ncu_dram_throughput_pct"),
+        l2_throughput_pct=ncu_metrics.get("ncu_l2_throughput_pct"),
+        occupancy_pct=ncu_metrics.get("ncu_occupancy_pct"),
+        raw_metrics={
+            key.replace("ncu_", ""): value
+            for key, value in ncu_metrics.items()
+            if not key.startswith(_NCU_FIRST_CLASS_METRIC_PREFIXES)
+        },
+        schemaVersion="1.0",
+    )
+
+
 def _cleanup_process_group(pgid: Optional[int], *, grace_seconds: float = 2.0) -> None:
     """Terminate any descendants left behind by a subprocess benchmark worker.
 
@@ -174,6 +202,34 @@ def _cleanup_process_group(pgid: Optional[int], *, grace_seconds: float = 2.0) -
         return
     import logging
     logger = logging.getLogger(__name__)
+
+
+def _terminate_process_group(
+    process: subprocess.Popen,
+    pgid: Optional[int],
+    *,
+    grace_seconds: float = 2.0,
+) -> None:
+    """Terminate a timed-out worker group and reap its direct child.
+
+    Reaping only the worker is insufficient: the worker can exit on SIGTERM while
+    a compiler, launcher, or benchmark descendant ignores it. Always inspect and
+    terminate the entire dedicated process group before collecting the worker.
+    """
+    _cleanup_process_group(pgid, grace_seconds=grace_seconds)
+    try:
+        process.wait(timeout=max(float(grace_seconds), 0.1))
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
+        try:
+            process.wait(timeout=max(float(grace_seconds), 0.1))
+        except subprocess.TimeoutExpired:
+            _emit_harness_warning(
+                f"Timed-out benchmark worker {getattr(process, 'pid', 'unknown')} could not be reaped"
+            )
 
 
 def _benchmark_child_preexec() -> None:
@@ -994,6 +1050,21 @@ class BenchmarkConfig:
             )
         self.validity_profile = validity_profile
         self.allow_virtualization = validity_profile == "portable"
+
+        if self.adaptive_iterations:
+            if (
+                isinstance(self.max_adaptive_iterations, bool)
+                or not isinstance(self.max_adaptive_iterations, int)
+                or self.max_adaptive_iterations < 1
+            ):
+                raise ValueError("max_adaptive_iterations must be a positive integer")
+            if (
+                isinstance(self.min_total_duration_ms, bool)
+                or not isinstance(self.min_total_duration_ms, (int, float))
+                or not math.isfinite(self.min_total_duration_ms)
+                or self.min_total_duration_ms <= 0
+            ):
+                raise ValueError("min_total_duration_ms must be finite and positive")
         
         # CRITICAL: Validate and enforce minimum warmup iterations
         # This ensures JIT/compile overhead is NEVER included in measurements.
@@ -2068,7 +2139,7 @@ class BaseBenchmark:
         
         Convenience method for benchmarks to ensure operations complete.
         """
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() and self.device.type == "cuda":
             torch.cuda.synchronize(self.device)
 
 
@@ -2614,14 +2685,11 @@ class BenchmarkHarness:
                 preexec_fn=_benchmark_child_preexec,
                 env=env,
             )
+            child_pgid = process.pid  # _benchmark_child_preexec() starts a fresh session.
             try:
                 stdout, stderr = process.communicate(timeout=timeout_limit)
             except subprocess.TimeoutExpired:
-                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-                try:
-                    process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                _terminate_process_group(process, child_pgid, grace_seconds=2.0)
                 elapsed = time.perf_counter() - start
                 return self._create_timeout_result(
                     stage="measurement",
@@ -3406,14 +3474,6 @@ class BenchmarkHarness:
             "device": str(self.device) if self.device else None,
             "initial_state": initial_state or None,
         }
-        try:
-            fd, verify_output_path = tempfile.mkstemp(prefix="aisp_verify_output_", suffix=".pt")
-            os.close(fd)
-        except Exception as e:
-            raise RuntimeError(f"Failed to allocate verify_output file for subprocess: {e}") from e
-        input_data["verify_output_path"] = verify_output_path
-        input_data["verify_output_max_bytes"] = _VERIFY_OUTPUT_MAX_BYTES
-        
         # Spawn subprocess using isolated runner
         # Use measurement_timeout_seconds (or fallback to timeout_seconds for backward compatibility).
         # Fail fast if no timeout is configured to avoid indefinite hangs.
@@ -3428,6 +3488,14 @@ class BenchmarkHarness:
         if not isinstance(measurement_timeout, (int, float)) or measurement_timeout <= 0:
             raise ValueError(f"Invalid measurement timeout: {measurement_timeout!r}")
         measurement_timeout = float(measurement_timeout)
+
+        try:
+            fd, verify_output_path = tempfile.mkstemp(prefix="aisp_verify_output_", suffix=".pt")
+            os.close(fd)
+        except Exception as e:
+            raise RuntimeError(f"Failed to allocate verify_output file for subprocess: {e}") from e
+        input_data["verify_output_path"] = verify_output_path
+        input_data["verify_output_max_bytes"] = _VERIFY_OUTPUT_MAX_BYTES
         start_time = time.time()
         
         try:
@@ -3440,6 +3508,8 @@ class BenchmarkHarness:
             env.setdefault("AISP_BENCHMARK_OWNER_PID", owner_pid)
             if getattr(config, "single_gpu", False):
                 env["CUDA_VISIBLE_DEVICES"] = self._select_single_gpu_visible()
+                if self.device.type == "cuda":
+                    input_data["device"] = "cuda:0"
             process = subprocess.Popen(
                 [
                     sys.executable,
@@ -3457,7 +3527,7 @@ class BenchmarkHarness:
                 env=env,
                 preexec_fn=_benchmark_child_preexec,
             )
-            child_pgid = os.getpgid(process.pid)
+            child_pgid = process.pid  # _benchmark_child_preexec() starts a fresh session.
             if LOGGER_AVAILABLE:
                 logger.info(
                     "SUBPROCESS DISPATCH: coordinator_pid=%s worker_pid=%s owner_run_id=%s owner_pid=%s",
@@ -3688,19 +3758,7 @@ class BenchmarkHarness:
             logger.error("   Action: Terminating subprocess to free GPU resources")
             logger.error("=" * 80)
             
-            try:
-                # Kill the process group (only the child, not parent)
-                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-                # Wait a bit for graceful termination
-                try:
-                    process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    # Force kill if still running
-                    os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-                    process.wait()
-            except (ProcessLookupError, OSError):
-                # Process already terminated
-                pass
+            _terminate_process_group(process, child_pgid, grace_seconds=2.0)
             
             timeout_error_msg = (
                 f"TIMEOUT: Benchmark measurement stage exceeded timeout of {measurement_timeout} seconds "
@@ -3729,6 +3787,14 @@ class BenchmarkHarness:
                 logger.error(f"Error: {error_msg}")
             times_ms = cast(List[float], [])
             child_timing = None
+        finally:
+            try:
+                Path(verify_output_path).unlink(missing_ok=True)
+            except OSError as exc:
+                _emit_harness_warning(
+                    f"Failed to remove subprocess verify-output file {verify_output_path}",
+                    exc=exc,
+                )
         
         # Don't raise if we already returned a timeout result
         if not times_ms and child_timing is None and 'timeout_result' not in locals():
@@ -3861,17 +3927,7 @@ class BenchmarkHarness:
             )
         
         if ncu_metrics:
-            ncu_metrics_obj = NcuMetrics(
-                kernel_time_ms=ncu_metrics.get('ncu_kernel_time_ms'),
-                sm_throughput_pct=ncu_metrics.get('ncu_sm_throughput_pct'),
-                dram_throughput_pct=ncu_metrics.get('ncu_dram_throughput_pct'),
-                l2_throughput_pct=ncu_metrics.get('ncu_l2_throughput_pct'),
-                occupancy_pct=ncu_metrics.get('ncu_occupancy_pct'),
-                raw_metrics={k.replace('ncu_', ''): v for k, v in ncu_metrics.items() 
-                            if not k.startswith(('ncu_kernel_time_ms', 'ncu_sm_throughput_pct', 
-                                                'ncu_dram_throughput_pct', 'ncu_l2_throughput_pct', 'ncu_occupancy_pct'))},
-                schemaVersion="1.0",
-            )
+            ncu_metrics_obj = _ncu_metrics_from_flat(ncu_metrics)
         
         if proton_metrics:
             occ_field = proton_metrics.get('proton_occupancy_limited_kernels_list', proton_metrics.get('proton_occupancy_limited_kernels', ""))
@@ -4637,17 +4693,7 @@ class BenchmarkHarness:
             )
         
         if ncu_metrics:
-            ncu_metrics_obj = NcuMetrics(
-                kernel_time_ms=ncu_metrics.get('ncu_kernel_time_ms'),
-                sm_throughput_pct=ncu_metrics.get('ncu_sm_throughput_pct'),
-                dram_throughput_pct=ncu_metrics.get('ncu_dram_throughput_pct'),
-                l2_throughput_pct=ncu_metrics.get('ncu_l2_throughput_pct'),
-                occupancy_pct=ncu_metrics.get('ncu_occupancy_pct'),
-                raw_metrics={k.replace('ncu_', ''): v for k, v in ncu_metrics.items() 
-                            if not k.startswith(('ncu_kernel_time_ms', 'ncu_sm_throughput_pct', 
-                                                'ncu_dram_throughput_pct', 'ncu_l2_throughput_pct', 'ncu_occupancy_pct'))},
-                schemaVersion="1.0",
-            )
+            ncu_metrics_obj = _ncu_metrics_from_flat(ncu_metrics)
         
         if proton_metrics:
             occ_field = proton_metrics.get('proton_occupancy_limited_kernels_list', proton_metrics.get('proton_occupancy_limited_kernels', ""))
@@ -5020,6 +5066,8 @@ class BenchmarkHarness:
             min_total_duration_ms = getattr(config, 'min_total_duration_ms', 100.0)
             max_adaptive_iterations = getattr(config, 'max_adaptive_iterations', 10000)
             target_iterations = config.iterations  # Fixed iterations (or initial if adaptive)
+            if use_adaptive and max_adaptive_iterations < target_iterations:
+                raise ValueError("max_adaptive_iterations must be >= iterations for adaptive CUDA timing")
             total_duration_ms = 0.0
             iteration_count = 0
             
@@ -5235,28 +5283,14 @@ class BenchmarkHarness:
                         _capture_cuda_graph()
                     
                     if use_adaptive:
-                        # Adaptive iterations mode (Triton best practice)
-                        # Run initial batch to estimate per-iteration time
-                        initial_batch_size = min(5, target_iterations)  # At least 5 or requested iterations
-                        
-                        for _ in range(initial_batch_size):
+                        # Stop on observed device time, not an extrapolation from
+                        # the first (often much slower) launch. Respect both the
+                        # requested sample minimum and the explicit safety cap.
+                        while iteration_count < max_adaptive_iterations and (
+                            iteration_count < target_iterations
+                            or total_duration_ms < min_total_duration_ms
+                        ):
                             _run_single_iteration()
-                        
-                        # If we haven't reached target duration, calculate needed iterations
-                        if total_duration_ms < min_total_duration_ms:
-                            avg_time = total_duration_ms / initial_batch_size if initial_batch_size > 0 else 1.0
-                            remaining_duration = min_total_duration_ms - total_duration_ms
-                            additional_iterations = int(remaining_duration / avg_time) + 1
-                            
-                            # Cap at max_adaptive_iterations
-                            additional_iterations = min(additional_iterations, max_adaptive_iterations - initial_batch_size)
-                            
-                            # Run additional iterations
-                            for _ in range(max(0, additional_iterations)):
-                                _run_single_iteration()
-                                # Check if we've exceeded target duration
-                                if total_duration_ms >= min_total_duration_ms:
-                                    break
                     else:
                         # Fixed iterations mode (original behavior)
                         for _ in range(config.iterations):
@@ -5801,15 +5835,23 @@ class BenchmarkHarness:
         if not times_ms:
             raise ValueError("No timing data collected")
         
-        # CRITICAL: Filter out None values and ensure all values are numeric
-        # This prevents "'<' not supported between instances of 'NoneType' and 'list'" errors
+        # Every observation is evidence. Reject a corrupt sample instead of
+        # silently dropping it and reporting statistics for a different run.
         valid_times_ms: List[float] = []
-        for t in times_ms:
-            if t is not None and isinstance(t, (int, float)):
-                valid_times_ms.append(float(t))
-            elif isinstance(t, list):
-                # If we somehow got a list, extract numeric values from it
-                valid_times_ms.extend([float(x) for x in t if x is not None and isinstance(x, (int, float))])
+        for index, item in enumerate(times_ms):
+            samples = item if isinstance(item, list) else [item]
+            for nested_index, sample in enumerate(samples):
+                location = f"{index}[{nested_index}]" if isinstance(item, list) else str(index)
+                if isinstance(sample, bool) or not isinstance(sample, (int, float)):
+                    raise ValueError(
+                        f"Invalid timing sample at index {location}: expected a numeric value"
+                    )
+                value = float(sample)
+                if not math.isfinite(value) or value < 0:
+                    raise ValueError(
+                        f"Invalid timing sample at index {location}: timing values must be finite and nonnegative"
+                    )
+                valid_times_ms.append(value)
         
         if not valid_times_ms:
             raise ValueError(f"No valid timing data collected. Original times_ms had {len(times_ms)} entries, but none were valid numbers.")

@@ -129,6 +129,9 @@ def test_bench_commands_writes_manifest(
         warmup=5,
         single_gpu=True,
         artifacts_dir=str(artifacts_dir),
+        # These two fixtures execute identical work. A truthful no-speedup
+        # verdict must not prevent checking the manifest-persistence contract.
+        exit_on_failure=False,
     )
 
     manifest_files = list(artifacts_dir.rglob("manifest.json"))

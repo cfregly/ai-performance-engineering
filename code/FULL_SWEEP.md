@@ -15,6 +15,8 @@ python -m cli.aisp bench run-e2e \
   --validity-profile strict
 ```
 
+Slurm is optional for this command: it runs directly on the current host. An external scheduler may instead place the full sweep inside one allocation; it does not need a separate allocation for each target.
+
 - Monitor the run continuously with the repo-native status surface:
 
 ```bash

@@ -99,7 +99,9 @@ OUT_JSON="${OUT_STRUCT_DIR}/${RUN_ID}_${LABEL}_cluster_perf_fp4_smoke.json"
 LOCK_META="${OUT_STRUCT_DIR}/${RUN_ID}_${LABEL}_cluster_perf_fp4_smoke_clock_lock.json"
 PREFLIGHT_STACK_META="${OUT_STRUCT_DIR}/${RUN_ID}_${LABEL}_cluster_perf_fp4_smoke_preflight_stack.json"
 PREFLIGHT_CLOCK_META="${OUT_STRUCT_DIR}/${RUN_ID}_${LABEL}_cluster_perf_fp4_smoke_preflight_clock_lock.json"
-OUT_JSON_IN_CONTAINER="/workspace/${OUT_JSON#${ROOT_DIR}/}"
+CONTAINER_STRUCTURED_DIR="/cluster-results/structured"
+OUT_STRUCT_DIR_MOUNT_SOURCE="$(cd "${OUT_STRUCT_DIR}" && pwd -P)"
+OUT_JSON_IN_CONTAINER="${CONTAINER_STRUCTURED_DIR}/$(basename "${OUT_JSON}")"
 MATH_ALLOW_TF32="$(cluster_perf_profile_math_allow_tf32 "$ROOT_DIR" "$STACK_PROFILE")"
 MATH_FP32_MATMUL_PRECISION="$(cluster_perf_profile_math_precision "$ROOT_DIR" "$STACK_PROFILE")"
 HOST_CUDA_HOME=""
@@ -120,6 +122,19 @@ resolve_host_cuda_home() {
     exit 2
   fi
   printf '%s\n' "$resolved"
+}
+
+run_clocked_with_tee() {
+  local lock_meta="$1"
+  local out_log="$2"
+  shift 2
+
+  # Positional parameters are intentionally expanded by the child shell.
+  # shellcheck disable=SC2016
+  "${ROOT_DIR}/scripts/run_with_gpu_clocks.sh" \
+    --lock-meta-out "$lock_meta" \
+    -- bash -o pipefail -c 'out_log="$1"; shift; "$@" 2>&1 | tee "$out_log"' \
+    bash "$out_log" "$@"
 }
 
 echo "== Cluster Perf FP4 Smoke =="
@@ -173,17 +188,45 @@ fi
 
 if [[ "$RUNTIME" == "host" ]]; then
   echo "HOST_CUDA_HOME=${HOST_CUDA_HOME}"
-  "${ROOT_DIR}/scripts/run_with_gpu_clocks.sh" \
-    --lock-meta-out "$LOCK_META" \
-    -- bash -lc "set -euo pipefail; CUDA_HOME=\"${HOST_CUDA_HOME}\" CUDACXX=\"${HOST_CUDA_HOME}/bin/nvcc\" CLUSTER_PERF_ALLOW_TF32=\"${MATH_ALLOW_TF32}\" CLUSTER_PERF_FLOAT32_MATMUL_PRECISION=\"${MATH_FP32_MATMUL_PRECISION}\" \"${ROOT_DIR}/env/venv/bin/python\" -u \"${ROOT_DIR}/analysis/smoke_deepgemm_fp8_fp4.py\" --m \"${M}\" --n \"${N}\" --k \"${K}\" --warmup \"${WARMUP}\" --iters \"${ITERS}\" --out-json \"${OUT_JSON}\" 2>&1 | tee \"${OUT_LOG}\""
+  host_cmd=(
+    env
+    "CUDA_HOME=${HOST_CUDA_HOME}"
+    "CUDACXX=${HOST_CUDA_HOME}/bin/nvcc"
+    "CLUSTER_PERF_ALLOW_TF32=${MATH_ALLOW_TF32}"
+    "CLUSTER_PERF_FLOAT32_MATMUL_PRECISION=${MATH_FP32_MATMUL_PRECISION}"
+    "${ROOT_DIR}/env/venv/bin/python" -u
+    "${ROOT_DIR}/analysis/smoke_deepgemm_fp8_fp4.py"
+    --m "${M}"
+    --n "${N}"
+    --k "${K}"
+    --warmup "${WARMUP}"
+    --iters "${ITERS}"
+    --out-json "${OUT_JSON}"
+  )
+  run_clocked_with_tee "$LOCK_META" "$OUT_LOG" "${host_cmd[@]}"
 else
   if ! command -v docker >/dev/null 2>&1; then
     echo "ERROR: docker not found for --runtime container." >&2
     exit 2
   fi
-  "${ROOT_DIR}/scripts/run_with_gpu_clocks.sh" \
-    --lock-meta-out "$LOCK_META" \
-    -- bash -lc "set -euo pipefail; docker run --rm --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 -e CLUSTER_PERF_ALLOW_TF32=\"${MATH_ALLOW_TF32}\" -e CLUSTER_PERF_FLOAT32_MATMUL_PRECISION=\"${MATH_FP32_MATMUL_PRECISION}\" -v \"${ROOT_DIR}:/workspace\" -w /workspace \"${IMAGE}\" python -u analysis/smoke_deepgemm_fp8_fp4.py --m \"${M}\" --n \"${N}\" --k \"${K}\" --warmup \"${WARMUP}\" --iters \"${ITERS}\" --out-json \"${OUT_JSON_IN_CONTAINER}\" 2>&1 | tee \"${OUT_LOG}\""
+  container_cmd=(
+    docker run --rm --gpus all --ipc=host
+    --ulimit memlock=-1
+    --ulimit stack=67108864
+    -e "CLUSTER_PERF_ALLOW_TF32=${MATH_ALLOW_TF32}"
+    -e "CLUSTER_PERF_FLOAT32_MATMUL_PRECISION=${MATH_FP32_MATMUL_PRECISION}"
+    --volume "${ROOT_DIR}:/workspace"
+    --volume "${OUT_STRUCT_DIR_MOUNT_SOURCE}:${CONTAINER_STRUCTURED_DIR}"
+    --workdir /workspace
+    "${IMAGE}" python -u analysis/smoke_deepgemm_fp8_fp4.py
+    --m "${M}"
+    --n "${N}"
+    --k "${K}"
+    --warmup "${WARMUP}"
+    --iters "${ITERS}"
+    --out-json "${OUT_JSON_IN_CONTAINER}"
+  )
+  run_clocked_with_tee "$LOCK_META" "$OUT_LOG" "${container_cmd[@]}"
 fi
 
 echo

@@ -5820,9 +5820,12 @@ def test_dense_attention_baselines_cache_key_transpose_and_scale() -> None:
 
     assert "self._k_t = self.inputs.k.transpose(-1, -2)" in gluon_setup
     assert "self._scale = self.head_dim ** -0.5" in gluon_setup
-    assert "scores = torch.matmul(q, self._k_t)" in gluon_benchmark
+    assert "scores = torch.matmul(q.float(), self._k_t.float())" in gluon_benchmark
     assert "scores.mul_(self._scale)" in gluon_benchmark
-    assert "self.output = result" in gluon_benchmark
+    assert "probs = torch.softmax(scores, dim=-1)" in gluon_benchmark
+    assert "result = torch.matmul(probs, v.float())" in gluon_benchmark
+    assert "self.output = result.to(dtype=q.dtype)" in gluon_benchmark
+    assert "scores = torch.matmul(q, self._k_t)" not in gluon_benchmark
     assert "result.detach()" not in gluon_benchmark
     assert "k.transpose(-1, -2)" not in gluon_benchmark
     assert " * scale" not in gluon_benchmark
@@ -15768,6 +15771,27 @@ def test_ch16_inference_serving_symmetric_probe_uses_shared_scalar_readback() ->
     assert "view.norm().item()" not in probe_section
 
 
+def test_ch16_prefill_graph_does_not_nest_inductor_cuda_graph_replay() -> None:
+    source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    flex_compile_section = source.split(
+        "def _call_flex_attention_scaled",
+        maxsplit=1,
+    )[1].split(
+        "# ============================================================================",
+        maxsplit=1,
+    )[0]
+    prefill_graph_section = source.split("def _setup_prefill_graph", maxsplit=1)[1].split(
+        "def _run_prefill_graph",
+        maxsplit=1,
+    )[0]
+
+    assert 'mode="default"' in flex_compile_section
+    assert 'mode="reduce-overhead"' not in flex_compile_section
+    assert "with torch.inference_mode(), torch.cuda.graph(self._prefill_graph):" in prefill_graph_section
+
+
 def test_ch16_tensor_parallel_attention_reuses_layout_projection_buffers() -> None:
     source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
         encoding="utf-8"
@@ -15995,6 +16019,10 @@ def test_ch16_inference_serving_loop_uses_monotonic_elapsed_clock() -> None:
     source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
         encoding="utf-8"
     )
+    control_section = source.split("def _serve_loop_should_continue", maxsplit=1)[1].split(
+        "def serve_loop",
+        maxsplit=1,
+    )[0]
     serve_loop_section = source.split("def serve_loop", maxsplit=1)[1].split(
         "# ============================================================================",
         maxsplit=1,
@@ -16004,7 +16032,13 @@ def test_ch16_inference_serving_loop_uses_monotonic_elapsed_clock() -> None:
     ].split("# Log stats periodically", maxsplit=1)[0]
 
     assert "loop_start = time.perf_counter()" in serve_loop_section
-    assert "while time.perf_counter() - loop_start < duration_seconds:" in serve_loop_section
+    assert "if self.world_size == 1 or not dist.is_initialized():" in control_section
+    assert "time.perf_counter() - loop_start < duration_seconds" in control_section
+    assert "self._serve_loop_control.fill_(should_continue)" in control_section
+    assert "dist.broadcast(self._serve_loop_control, src=0)" in control_section
+    assert "return bool(self._serve_loop_control.item())" in control_section
+    assert "while self._serve_loop_should_continue(loop_start, duration_seconds):" in serve_loop_section
+    assert "while time.perf_counter() - loop_start < duration_seconds:" not in serve_loop_section
     assert 'stats["total_tokens_generated"] / (time.perf_counter() - loop_start)' in serve_loop_section
     assert "elapsed = time.perf_counter() - loop_start" in serve_loop_section
     assert "start_time = time.time()" not in serve_loop_section

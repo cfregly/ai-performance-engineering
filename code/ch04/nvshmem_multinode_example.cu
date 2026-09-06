@@ -8,8 +8,8 @@
  * HDR/NDR (inter-node).
  *
  * Highlights:
- * 1. Intra-node reductions via NVSHMEM teams (per-node collective)
- * 2. Cross-node aggregation using host-side NVSHMEM atomics
+ * 1. Node-local grouping via NVSHMEM teams
+ * 2. Hierarchical aggregation using host-side NVSHMEM gets
  * 3. Broadcast of global results back to all GPUs
  *
  * Build (with NVSHMEM):
@@ -25,6 +25,7 @@
  */
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -47,6 +48,30 @@
     } while (0)
 
 #ifdef USE_NVSHMEM
+
+static void initialize_nvshmem_device() {
+    nvshmem_init();
+    const int world_pe = nvshmem_my_pe();
+    const int local_pe = nvshmem_team_my_pe(NVSHMEMX_TEAM_NODE);
+    if (local_pe < 0) {
+        fprintf(stderr, "PE %d has no rank in NVSHMEMX_TEAM_NODE\n", world_pe);
+        nvshmem_global_exit(EXIT_FAILURE);
+    }
+
+    // Team creation does not trigger NVSHMEM's deferred device-initialization
+    // path. Select the CUDA device by the node-local PE and force completion
+    // with a documented lazy-init collective before splitting teams.
+    CUDA_CHECK(cudaSetDevice(local_pe));
+    nvshmem_barrier_all();
+    const int status = nvshmemx_init_status();
+    if (status != NVSHMEM_STATUS_IS_INITIALIZED &&
+        status != NVSHMEM_STATUS_LIMITED_MPG &&
+        status != NVSHMEM_STATUS_FULL_MPG) {
+        fprintf(stderr, "PE %d NVSHMEM device initialization failed: status %d\n",
+                world_pe, status);
+        nvshmem_global_exit(EXIT_FAILURE);
+    }
+}
 
 struct NodeContext {
     int world_rank;
@@ -78,71 +103,67 @@ NodeContext build_node_context(int argc, char **argv) {
     ctx.node_id = ctx.world_rank / ctx.gpus_per_node;
     ctx.local_rank = ctx.world_rank % ctx.gpus_per_node;
     ctx.num_nodes = (ctx.world_size + ctx.gpus_per_node - 1) / ctx.gpus_per_node;
+    ctx.node_team = NVSHMEM_TEAM_INVALID;
     ctx.node_team_valid = false;
 
-    if (ctx.gpus_per_node > 1 && ctx.world_size >= ctx.gpus_per_node) {
-        int start = ctx.node_id * ctx.gpus_per_node;
-        int stride = 1;
-        int size = std::min(ctx.gpus_per_node, ctx.world_size - start);
-        if (size > 0) {
-            nvshmem_team_config_t config;
-            std::memset(&config, 0, sizeof(config));
-            if (nvshmem_team_split_strided(
-                    NVSHMEM_TEAM_WORLD, start, stride, size, &config, &ctx.node_team) == 0) {
-                ctx.node_team_valid = true;
-            }
+    // Team creation is collective over the parent team. Every PE therefore
+    // creates the node subsets in the same order and retains only its team.
+    for (int node = 0; node < ctx.num_nodes; ++node) {
+        const int start = node * ctx.gpus_per_node;
+        const int size = std::min(ctx.gpus_per_node, ctx.world_size - start);
+        nvshmem_team_config_t config;
+        std::memset(&config, 0, sizeof(config));
+        nvshmem_team_t candidate = NVSHMEM_TEAM_INVALID;
+        int status = nvshmem_team_split_strided(
+            NVSHMEM_TEAM_WORLD, start, 1, size, &config, 0L, &candidate);
+        if (status != 0) {
+            fprintf(stderr, "PE %d failed to create node team %d: %d\n",
+                    ctx.world_rank, node, status);
+            nvshmem_global_exit(EXIT_FAILURE);
         }
+        if (node == ctx.node_id) {
+            ctx.node_team = candidate;
+            ctx.node_team_valid = candidate != NVSHMEM_TEAM_INVALID;
+        }
+    }
+    if (!ctx.node_team_valid) {
+        fprintf(stderr, "PE %d was not assigned to a node team\n", ctx.world_rank);
+        nvshmem_global_exit(EXIT_FAILURE);
     }
     return ctx;
 }
 
 float hierarchical_reduce(NodeContext &ctx, float local_value, float *scratch) {
+    CUDA_CHECK(cudaMemcpy(scratch, &local_value, sizeof(float),
+                          cudaMemcpyHostToDevice));
     nvshmem_barrier_all();
 
     int node_leader_rank = ctx.node_id * ctx.gpus_per_node;
-    if (ctx.local_rank == 0) {
-        scratch[0] = local_value;
-    } else {
-        nvshmem_float_p(scratch, local_value, node_leader_rank);
-    }
-
-    nvshmem_barrier_all();
-
     float node_sum = 0.0f;
     if (ctx.local_rank == 0) {
-        node_sum = scratch[0];
         int node_members = std::min(ctx.gpus_per_node, ctx.world_size - node_leader_rank);
-        for (int i = 1; i < node_members; ++i) {
+        for (int i = 0; i < node_members; ++i) {
             NVTX_RANGE("iteration");
             float val = nvshmem_float_g(scratch, node_leader_rank + i);
             node_sum += val;
         }
-        scratch[0] = node_sum;
+        CUDA_CHECK(cudaMemcpy(scratch, &node_sum, sizeof(float),
+                              cudaMemcpyHostToDevice));
     }
 
     nvshmem_barrier_all();
 
     int global_leader = 0;
-    if (ctx.local_rank == 0 && ctx.world_rank != global_leader) {
-        nvshmem_float_atomic_add(scratch, node_sum, global_leader);
-    }
-
-    nvshmem_barrier_all();
-
     float global_sum = 0.0f;
     if (ctx.world_rank == global_leader) {
-        global_sum = scratch[0];
-        int total_nodes = ctx.num_nodes;
-        for (int node = 1; node < total_nodes; ++node) {
+        for (int node = 0; node < ctx.num_nodes; ++node) {
             NVTX_RANGE("iteration");
             int leader = node * ctx.gpus_per_node;
-            if (leader >= ctx.world_size) {
-                leader = ctx.world_size - 1;
-            }
             float val = nvshmem_float_g(scratch, leader);
             global_sum += val;
         }
-        scratch[0] = global_sum;
+        CUDA_CHECK(cudaMemcpy(scratch, &global_sum, sizeof(float),
+                              cudaMemcpyHostToDevice));
     }
 
     nvshmem_barrier_all();
@@ -151,7 +172,7 @@ float hierarchical_reduce(NodeContext &ctx, float local_value, float *scratch) {
     return result;
 }
 
-void run_multinode_demo(int argc, char **argv) {
+bool run_multinode_demo(int argc, char **argv) {
     NodeContext ctx = build_node_context(argc, argv);
 
     if (ctx.world_rank == 0) {
@@ -162,42 +183,56 @@ void run_multinode_demo(int argc, char **argv) {
     }
 
     float *scratch = static_cast<float *>(nvshmem_malloc(sizeof(float)));
+    if (scratch == nullptr) {
+        fprintf(stderr, "PE %d failed to allocate symmetric reduction storage\n",
+                ctx.world_rank);
+        nvshmem_global_exit(EXIT_FAILURE);
+    }
     float local_value = (ctx.world_rank + 1) * 1.0f;
-    scratch[0] = local_value;
-
     float global_sum = hierarchical_reduce(ctx, local_value, scratch);
 
+    float expected = (ctx.world_size * (ctx.world_size + 1)) / 2.0f;
+    bool correct = std::isfinite(global_sum) && fabs(global_sum - expected) < 0.01f;
     if (ctx.world_rank == 0) {
-        float expected = (ctx.world_size * (ctx.world_size + 1)) / 2.0f;
-        printf("Global sum via hierarchical NVSHMEM: %.1f (expected %.1f)\n", global_sum, expected);
+        printf("Global sum via hierarchical NVSHMEM: %.1f (expected %.1f, %s)\n",
+               global_sum, expected, correct ? "PASS" : "FAIL");
     }
 
     nvshmem_barrier_all();
-    if (ctx.local_rank == 0) {
+    if (ctx.world_rank == 0) {
         float avg = global_sum / ctx.world_size;
         for (int peer = 0; peer < ctx.world_size; ++peer) {
             NVTX_RANGE("iteration");
             nvshmem_float_p(scratch, avg, peer);
         }
+        nvshmem_quiet();
     }
 
     nvshmem_barrier_all();
-    float avg_value = scratch[0];
+    float avg_value = nvshmem_float_g(scratch, ctx.world_rank);
+    float expected_avg = expected / ctx.world_size;
+    correct = correct && std::isfinite(avg_value) &&
+              fabs(avg_value - expected_avg) < 0.01f;
     printf("PE %02d (node %d, local %d) average=%.2f\n",
            ctx.world_rank, ctx.node_id, ctx.local_rank, avg_value);
 
+    nvshmem_barrier_all();
+    nvshmem_team_destroy(ctx.node_team);
+    nvshmem_barrier_all();
     nvshmem_free(scratch);
+    return correct;
 }
 
 #else  // USE_NVSHMEM
 
-void run_multinode_demo(int, char **) {
+bool run_multinode_demo(int, char **) {
     printf("NVSHMEM not available - conceptual multi-node example:\n");
     printf("1. Split NVSHMEM_TEAM_WORLD into node-level teams (4 GPUs each)\n");
-    printf("2. Perform per-node reductions using NVSHMEM team collectives\n");
-    printf("3. Aggregate node leaders via NVSHMEM atomics or NCCL\n");
+    printf("2. Aggregate each node using host-side NVSHMEM gets\n");
+    printf("3. Aggregate the node leaders at the global leader\n");
     printf("4. Broadcast final result back to all PEs\n");
     printf("Compile with -DUSE_NVSHMEM and NVSHMEM libraries for execution.\n");
+    return true;
 }
 
 #endif  // USE_NVSHMEM
@@ -205,15 +240,14 @@ void run_multinode_demo(int, char **) {
 int main(int argc, char **argv) {
     NVTX_RANGE("main");
 #ifdef USE_NVSHMEM
-    nvshmem_init();
-    CUDA_CHECK(cudaSetDevice(nvshmem_my_pe() % std::max(1, parse_int_flag("--gpus-per-node", argc, argv, 4))));
+    initialize_nvshmem_device();
 #endif
 
-    run_multinode_demo(argc, argv);
+    bool correct = run_multinode_demo(argc, argv);
 
 #ifdef USE_NVSHMEM
     nvshmem_barrier_all();
     nvshmem_finalize();
 #endif
-    return 0;
+    return correct ? EXIT_SUCCESS : EXIT_FAILURE;
 }

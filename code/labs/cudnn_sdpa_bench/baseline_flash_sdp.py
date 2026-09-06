@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
+from core.benchmark.numerical_accuracy import assert_low_precision_attention_accuracy
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
@@ -154,6 +155,19 @@ class FlashSDPLabBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() did not produce output")
 
     def capture_verification_payload(self) -> None:
+        if self.model is None or self.inputs is None or self.output is None:
+            raise RuntimeError("benchmark_fn() must run before verification capture")
+        with torch.inference_mode(), _sdpa_context("math"):
+            q, k, v = self.model.qkv(self.inputs).view(
+                self.batch, self.seq_len, 3, self.model.num_heads,
+                self.hidden // self.model.num_heads,
+            ).unbind(dim=2)
+            reference = F.scaled_dot_product_attention(
+                q.transpose(1, 2).double(),
+                k.transpose(1, 2).double(),
+                v.transpose(1, 2).double(),
+            ).transpose(1, 2).reshape_as(self.output)
+        assert_low_precision_attention_accuracy(self.output, reference)
         self._set_verification_payload(
             inputs={"input": self.inputs.detach()},
             output=self.output,

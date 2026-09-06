@@ -18,6 +18,7 @@ from pathlib import Path
 import json
 import shutil
 import argparse
+import csv
 import shlex
 import re
 from typing import Dict, List, Any, Optional, Set, Tuple, Iterator, Sequence
@@ -25,6 +26,8 @@ from datetime import datetime
 from collections import defaultdict
 import statistics
 import math
+import hashlib
+import stat as stat_module
 import difflib
 from dataclasses import dataclass, fields, replace
 import threading
@@ -44,6 +47,7 @@ _configure_arch_optimizations()
 from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
 
 from core.env import apply_env_defaults, dump_environment_and_capabilities
+from core.env import restore_cuda_visible_devices_after_call
 
 apply_env_defaults()
 
@@ -52,6 +56,7 @@ import subprocess
 import time
 import tempfile
 import signal
+from urllib.parse import quote
 from core.harness.hardware_capabilities import detect_capabilities
 from core.utils.chapter_compare_template import (
     discover_benchmarks,
@@ -82,9 +87,11 @@ from core.benchmark.run_manifest import reset_gpu_state, get_git_info
 from core.profiling.gpu_telemetry import format_gpu_telemetry, query_gpu_telemetry
 from core.harness.serving_stack import get_serving_stack_pins
 from core.profiling.profiler_config import (
+    MINIMAL_METRICS,
     build_profiler_config_from_benchmark,
     resolve_ncu_metrics,
 )
+from core.profiling.metrics_extractor import inspect_ncu_app_range_report
 from core.profiling.profiler_wrapper import (
     render_ncu_python_profile_wrapper,
     render_nsys_python_profile_wrapper,
@@ -121,6 +128,7 @@ try:
         EnforcementPhase,
         get_enforcement_phase,
         QuarantineReason,
+        ToleranceSpec,
         VerifyResult,
         coerce_input_signature,
         get_signature_equivalence_spec,
@@ -132,6 +140,7 @@ except ImportError:
     VERIFICATION_AVAILABLE = False
     VerifyRunner = None  # type: ignore
     VerifyConfig = None  # type: ignore
+    ToleranceSpec = None  # type: ignore
     QuarantineManager = None  # type: ignore
 
 # Import logger
@@ -151,6 +160,7 @@ TORCH_PROFILER_AVAILABLE = hasattr(torch, 'profiler') and hasattr(torch.profiler
 
 # Generous timeout so deep NCU profiling can finish (pulled from benchmark defaults)
 NCU_TIMEOUT_SECONDS = get_defaults().ncu_timeout_seconds
+_NSYS_KERNEL_VALIDATION_TIMEOUT_SECONDS = 180
 _NCU_DRIVER_RESOURCE_RETRY_ATTEMPTS = 2
 _NCU_DRIVER_RESOURCE_RETRY_DELAY_SECONDS = 5.0
 _NCU_DRIVER_RESOURCE_UNAVAILABLE_MARKERS = (
@@ -787,6 +797,21 @@ def _format_rel_link(target: Path, base_dir: Path) -> str:
             return os.path.relpath(str(target.resolve()), str(base_dir.resolve()))
         except Exception:
             return str(target)
+
+
+def _format_report_artifact_link(
+    target: Path | str,
+    *,
+    report_root: Path,
+    report_dir: Path,
+) -> str:
+    """Return a portable Markdown destination for a report artifact path."""
+    target_path = Path(target).expanduser()
+    if not target_path.is_absolute():
+        target_path = report_root / target_path
+    relative_or_absolute = _format_rel_link(target_path, report_dir)
+    normalized = relative_or_absolute.replace(os.sep, "/")
+    return quote(normalized, safe="/:")
 
 
 def _safe_read_text(path: Path) -> Optional[str]:
@@ -2468,6 +2493,155 @@ def _is_missing_nsys_artifact_error(last_error: Optional[str]) -> bool:
     return "no report artifact was produced" in normalized
 
 
+def _count_nsys_cuda_kernel_rows(stats_csv: str) -> int:
+    """Count populated kernel-summary rows in ``nsys stats`` CSV output."""
+    rows = list(csv.reader(str(stats_csv or "").splitlines()))
+    header_index: Optional[int] = None
+    instances_index: Optional[int] = None
+    name_index: Optional[int] = None
+    for index, row in enumerate(rows):
+        normalized = [cell.strip() for cell in row]
+        if "Instances" in normalized and "Name" in normalized:
+            header_index = index
+            instances_index = normalized.index("Instances")
+            name_index = normalized.index("Name")
+            break
+    if header_index is None or instances_index is None or name_index is None:
+        return 0
+
+    kernel_rows = 0
+    required_columns = max(instances_index, name_index)
+    for row in rows[header_index + 1 :]:
+        if len(row) <= required_columns:
+            continue
+        try:
+            instances = int(row[instances_index].strip().replace(",", ""))
+        except ValueError:
+            continue
+        if instances > 0 and row[name_index].strip():
+            kernel_rows += 1
+    return kernel_rows
+
+
+def _count_nsys_nvtx_label_rows(stats_csv: str, expected_label: str) -> int:
+    """Count exact NVTX summary rows for the harness-owned workload range."""
+    try:
+        rows = list(csv.reader(str(stats_csv or "").splitlines()))
+    except csv.Error:
+        return 0
+    header_index: Optional[int] = None
+    range_index: Optional[int] = None
+    for index, row in enumerate(rows):
+        normalized = [str(value).strip() for value in row]
+        if "Range" in normalized:
+            header_index = index
+            range_index = normalized.index("Range")
+            break
+    if header_index is None or range_index is None:
+        return 0
+
+    expected = str(expected_label).strip().lstrip(":")
+    matches = 0
+    for row in rows[header_index + 1 :]:
+        if len(row) <= range_index:
+            continue
+        observed = str(row[range_index]).strip().lstrip(":")
+        if observed == expected:
+            matches += 1
+    return matches
+
+
+def _validate_nsys_cuda_kernel_report(
+    report_path: Path,
+    *,
+    expected_nvtx_label: Optional[str] = None,
+    timeout_seconds: float = _NSYS_KERNEL_VALIDATION_TIMEOUT_SECONDS,
+) -> Tuple[bool, Optional[str]]:
+    """Reject success-shaped Nsys reports without profiled workload activity."""
+    report_path = Path(report_path)
+    if not report_path.is_file() or report_path.stat().st_size <= 0:
+        return False, f"Nsight Systems report is missing or empty: {report_path}"
+    validation_sqlite = report_path.with_name(
+        f"{report_path.stem}__validation_{os.getpid()}_{time.time_ns()}.sqlite"
+    )
+    try:
+        kernel_result = subprocess.run(
+            [
+                "nsys",
+                "stats",
+                "--force-export=true",
+                "--sqlite",
+                str(validation_sqlite),
+                "--report",
+                "cuda_gpu_kern_sum",
+                "--format",
+                "csv",
+                str(report_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=max(float(timeout_seconds), 1.0),
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"Nsight Systems kernel-data validation failed for {report_path}: {exc}"
+
+    if kernel_result.returncode != 0:
+        detail = _normalize_failure_detail(
+            kernel_result.stderr or kernel_result.stdout
+        ) or "no diagnostic output"
+        return False, (
+            f"Nsight Systems kernel-data validation exited with code {kernel_result.returncode} "
+            f"for {report_path}: {detail}"
+        )
+    kernel_rows = _count_nsys_cuda_kernel_rows(kernel_result.stdout)
+    if kernel_rows <= 0:
+        detail = _normalize_failure_detail(kernel_result.stdout or kernel_result.stderr)
+        suffix = f" Detail: {detail}" if detail else ""
+        return False, (
+            f"Nsight Systems report contains no CUDA kernel data for the profiled "
+            f"workload: {report_path}.{suffix}"
+        )
+
+    if expected_nvtx_label:
+        try:
+            nvtx_result = subprocess.run(
+                [
+                    "nsys",
+                    "stats",
+                    "--sqlite",
+                    str(validation_sqlite),
+                    "--report",
+                    "nvtx_sum",
+                    "--format",
+                    "csv",
+                    str(report_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=max(float(timeout_seconds), 1.0),
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return False, f"Nsight Systems NVTX validation failed for {report_path}: {exc}"
+        if nvtx_result.returncode != 0:
+            detail = _normalize_failure_detail(
+                nvtx_result.stderr or nvtx_result.stdout
+            ) or "no diagnostic output"
+            return False, (
+                f"Nsight Systems NVTX validation exited with code {nvtx_result.returncode} "
+                f"for {report_path}: {detail}"
+            )
+        if _count_nsys_nvtx_label_rows(nvtx_result.stdout, expected_nvtx_label) <= 0:
+            detail = _normalize_failure_detail(nvtx_result.stdout or nvtx_result.stderr)
+            suffix = f" Detail: {detail}" if detail else ""
+            return False, (
+                f"Nsight Systems report does not contain the expected profiled workload "
+                f"NVTX range {expected_nvtx_label!r}: {report_path}.{suffix}"
+            )
+    return True, None
+
+
 def _retry_nsys_in_clean_helper(
     *,
     output_dir: Path,
@@ -2479,6 +2653,8 @@ def _retry_nsys_in_clean_helper(
     timeout: Optional[float],
     wait_mode: str,
     env: Dict[str, str],
+    capture_range_cuda_profiler_api: bool = False,
+    cuda_graph_trace: Optional[str] = None,
 ) -> Optional[Path]:
     _set_profile_failure_detail("nsys", None)
     owner_run_id = str(os.environ.get("AISP_BENCHMARK_OWNER_RUN_ID", "")).strip()
@@ -2492,6 +2668,8 @@ def _retry_nsys_in_clean_helper(
         "full_timeline": bool(full_timeline),
         "timeout_seconds": float(timeout) if timeout and timeout > 0 else None,
         "wait_mode": wait_mode,
+        "capture_range_cuda_profiler_api": bool(capture_range_cuda_profiler_api),
+        "cuda_graph_trace": cuda_graph_trace,
         "extra_env": env,
         "sanitize_python_startup": True,
     }
@@ -2762,8 +2940,8 @@ def _harden_profile_env(
         "yes",
         "on",
     }
-    # Default to user-site enabled so profiling subprocesses resolve the same
-    # pinned serving stack as timing runs (torch/vllm/msgspec/etc.).
+    # Default to the selected interpreter's native user-site policy so profiling
+    # subprocesses resolve the same pinned stack as timing runs.
     include_user_site = True
     include_user_site_raw = str(env.get("AISP_PROFILE_INCLUDE_USER_SITE", "")).strip().lower()
     if include_user_site_raw:
@@ -2773,22 +2951,22 @@ def _harden_profile_env(
     pythonpath_entries = [str(startup_stub_dir), str(repo_root)]
     if chapter_dir is not None:
         pythonpath_entries.append(str(chapter_dir))
+    # Let the selected interpreter add its own user/global site roots during
+    # normal site initialization, after the standard library. Putting the
+    # parent interpreter's site roots on PYTHONPATH moves third-party modules
+    # ahead of the standard library and can also mix packages across runtimes.
+    # Caller-supplied PYTHONPATH entries remain explicit and are retained below.
     user_site: Optional[str] = None
-    try:
-        import site
-        user_site = site.getusersitepackages()
-        # Match default interpreter import precedence used by benchmark timing paths:
-        # user-site packages precede dist-packages unless explicitly disabled.
-        if include_user_site and user_site:
-            pythonpath_entries.append(user_site)
-        for site_path in site.getsitepackages():
-            if site_path:
-                pythonpath_entries.append(site_path)
-    except Exception as exc:
-        _emit_run_benchmark_warning(
-            "Failed to discover Python site-packages while hardening profiler environment",
-            exc=exc,
-        )
+    if not include_user_site:
+        try:
+            import site
+
+            user_site = site.getusersitepackages()
+        except Exception as exc:
+            _emit_run_benchmark_warning(
+                "Failed to discover Python site-packages while hardening profiler environment",
+                exc=exc,
+            )
     existing = env.get("PYTHONPATH")
     if existing:
         for entry in existing.split(os.pathsep):
@@ -2963,6 +3141,7 @@ def profile_python_benchmark(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     benchmark_name = output_stem or benchmark_path.stem
+    capture_token = f"{os.getpid()}_{time.time_ns()}"
     
     bench_config = config
     if bench_config is None and hasattr(benchmark, "get_config"):
@@ -2988,6 +3167,7 @@ def profile_python_benchmark(
         torchrun_profile_spec = None
         target_command: List[str]
         env: Dict[str, str]
+        uses_cuda_profiler_api = False
         use_torchrun = bool(_is_torchrun_launch(bench_config))
         with ExitStack() as stack:
             if use_torchrun:
@@ -3019,6 +3199,7 @@ def profile_python_benchmark(
                 target_command, env = cuda_binary_direct
                 use_torchrun = False
             else:
+                uses_cuda_profiler_api = True
                 wrapper_source = render_nsys_python_profile_wrapper(
                     benchmark_path=benchmark_path,
                     nvtx_includes=nvtx_includes,
@@ -3044,16 +3225,27 @@ def profile_python_benchmark(
             timeout = timing_view.timeout_for("nsys") if timing_view else None
             timeout = timeout or 120
             automation = NsightAutomation(output_dir)
+            capture_attempt = 0
+
+            def _next_nsys_output_name() -> str:
+                nonlocal capture_attempt
+                capture_attempt += 1
+                base_name = f"{benchmark_name}__{variant}"
+                if not uses_cuda_profiler_api:
+                    return base_name
+                return f"{base_name}__nsys_{capture_token}_attempt{capture_attempt}"
 
             def _run_nsys_capture() -> Optional[Path]:
                 report = automation.profile_nsys(
                     command=target_command,
-                    output_name=f"{benchmark_name}__{variant}",
+                    output_name=_next_nsys_output_name(),
                     trace_cuda=True,
                     trace_nvtx=True,
                     trace_osrt=True,
                     full_timeline=full_timeline,
                     trace_forks=trace_forks,
+                    capture_range_cuda_profiler_api=uses_cuda_profiler_api,
+                    cuda_graph_trace="node" if uses_cuda_profiler_api else None,
                     preset=profile_preset,
                     timeout_seconds=float(timeout) if timeout and timeout > 0 else None,
                     wait_mode=wait_mode,
@@ -3090,7 +3282,7 @@ def profile_python_benchmark(
                         )
                     nsys_report = _retry_nsys_in_clean_helper(
                         output_dir=output_dir,
-                        output_name=f"{benchmark_name}__{variant}",
+                        output_name=_next_nsys_output_name(),
                         target_command=target_command,
                         trace_forks=trace_forks,
                         profile_preset=profile_preset,
@@ -3098,8 +3290,23 @@ def profile_python_benchmark(
                         timeout=float(timeout) if timeout and timeout > 0 else None,
                         wait_mode=wait_mode,
                         env=env,
+                        capture_range_cuda_profiler_api=uses_cuda_profiler_api,
+                        cuda_graph_trace="node" if uses_cuda_profiler_api else None,
                     )
             if nsys_report and Path(nsys_report).exists():
+                if uses_cuda_profiler_api:
+                    valid_report, validation_error = _validate_nsys_cuda_kernel_report(
+                        Path(nsys_report),
+                        expected_nvtx_label="compute_kernel:profile",
+                    )
+                    if not valid_report:
+                        detail = validation_error or (
+                            f"Nsight Systems report contains no CUDA kernel data: {nsys_report}"
+                        )
+                        _set_profile_failure_detail("nsys", detail)
+                        if LOGGER_AVAILABLE:
+                            logger.warning("  %s", detail)
+                        return None
                 _set_profile_failure_detail("nsys", None)
                 return Path(nsys_report)
             _set_profile_failure_detail("nsys", getattr(automation, "last_error", None))
@@ -3852,6 +4059,250 @@ def _reap_benchmark_process_leftovers(
     )
 
 
+_NCU_APP_RANGE_LIMITING_OPTIONS = (
+    "--filter-mode",
+    "--launch-count",
+    "--launch-skip",
+    "--launch-skip-before-match",
+    "--kernel-id",
+    "--kernel-name",
+    "--nvtx-exclude",
+    "--pm-sampling-interval",
+    "--range-filter",
+    "--sampling-interval",
+    "--sampling-max-passes",
+)
+_NCU_APP_RANGE_METRIC_TO_HARNESS = {
+    "ncu_range_time_ms": "range_time_ms",
+    "ncu_sm_throughput_pct": "sm_throughput_percent",
+    "ncu_dram_throughput_pct": "dram_throughput_percent",
+    "ncu_l2_throughput_pct": "l2_throughput_percent",
+    "ncu_occupancy_pct": "occupancy",
+}
+
+
+def _ncu_command_option_values(command: Sequence[str], option: str) -> List[str]:
+    """Return explicit values for one NCU option in argv order."""
+    values: List[str] = []
+    for index, raw_arg in enumerate(command):
+        arg = str(raw_arg)
+        if arg == option:
+            if index + 1 >= len(command) or str(command[index + 1]).startswith("--"):
+                values.append("")
+            else:
+                values.append(str(command[index + 1]))
+        elif arg.startswith(f"{option}="):
+            values.append(arg.split("=", 1)[1])
+    return values
+
+
+def _validate_ncu_app_range_command(command: Sequence[str]) -> Tuple[str, List[str]]:
+    """Validate the bounded full-range command accepted by the range inspector."""
+    replay_modes = _ncu_command_option_values(command, "--replay-mode")
+    if replay_modes != ["app-range"]:
+        raise ValueError(
+            "NCU app-range capture requires exactly one '--replay-mode app-range'."
+        )
+    if "--nvtx" not in command:
+        raise ValueError("NCU app-range capture requires NVTX filtering.")
+    nvtx_options = _ncu_command_option_values(command, "--nvtx")
+    if any(value.strip().lower() in {"0", "false", "no", "off"} for value in nvtx_options):
+        raise ValueError("NCU app-range capture cannot disable NVTX filtering.")
+    nvtx_ranges = _ncu_command_option_values(command, "--nvtx-include")
+    if len(nvtx_ranges) != 1 or not nvtx_ranges[0].strip():
+        raise ValueError("NCU app-range capture requires exactly one NVTX include range.")
+    target_processes = _ncu_command_option_values(command, "--target-processes")
+    if target_processes != ["all"]:
+        raise ValueError("NCU app-range capture requires '--target-processes all'.")
+    metric_values = _ncu_command_option_values(command, "--metrics")
+    requested_metrics = (
+        [metric.strip() for metric in metric_values[0].split(",") if metric.strip()]
+        if len(metric_values) == 1
+        else []
+    )
+    if requested_metrics != list(MINIMAL_METRICS):
+        raise ValueError(
+            "NCU app-range capture requires the ordered five-metric minimal set."
+        )
+    limiting = [
+        str(arg)
+        for arg in command
+        if any(
+            str(arg) == option or str(arg).startswith(f"{option}=")
+            for option in _NCU_APP_RANGE_LIMITING_OPTIONS
+        )
+    ]
+    if limiting:
+        raise ValueError(
+            "NCU app-range capture cannot use range-limiting options: "
+            + ", ".join(limiting)
+        )
+    profile_from_start = _ncu_command_option_values(command, "--profile-from-start")
+    if len(profile_from_start) > 1 or any(
+        value.strip().lower() not in {"1", "true", "yes", "on"}
+        for value in profile_from_start
+    ):
+        raise ValueError("NCU app-range capture must profile from range start.")
+    return nvtx_ranges[0], requested_metrics
+
+
+def _sha256_regular_artifact(path: Path, *, chunk_size: int = 1024 * 1024) -> str:
+    """Hash an immutable regular artifact without a source-file size limit."""
+    artifact_path = Path(path)
+    if chunk_size <= 0:
+        raise ValueError("Artifact hash chunk_size must be positive.")
+    try:
+        path_stat = os.lstat(artifact_path)
+    except OSError as exc:
+        raise ValueError(f"Cannot inspect NCU app-range report: {artifact_path}") from exc
+    if stat_module.S_ISLNK(path_stat.st_mode):
+        raise ValueError(f"NCU app-range report must not be a symlink: {artifact_path}")
+    if not stat_module.S_ISREG(path_stat.st_mode):
+        raise ValueError(f"NCU app-range report is not a regular file: {artifact_path}")
+
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(artifact_path, flags)
+    except OSError as exc:
+        raise ValueError(f"Cannot open NCU app-range report: {artifact_path}") from exc
+
+    identity_fields = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    )
+
+    def identity(value: os.stat_result) -> Tuple[int, ...]:
+        return tuple(int(getattr(value, field)) for field in identity_fields)
+
+    try:
+        opened_stat = os.fstat(descriptor)
+        if not stat_module.S_ISREG(opened_stat.st_mode):
+            raise ValueError(f"NCU app-range report is not a regular file: {artifact_path}")
+        if identity(opened_stat) != identity(path_stat):
+            raise ValueError(f"NCU app-range report changed before hashing: {artifact_path}")
+        digest = hashlib.sha256()
+        while True:
+            chunk = os.read(descriptor, chunk_size)
+            if not chunk:
+                break
+            digest.update(chunk)
+        final_descriptor_stat = os.fstat(descriptor)
+    except OSError as exc:
+        raise ValueError(f"Cannot hash NCU app-range report: {artifact_path}") from exc
+    finally:
+        os.close(descriptor)
+
+    try:
+        final_path_stat = os.lstat(artifact_path)
+    except OSError as exc:
+        raise ValueError(f"Cannot re-inspect NCU app-range report: {artifact_path}") from exc
+    if (
+        stat_module.S_ISLNK(final_path_stat.st_mode)
+        or identity(final_descriptor_stat) != identity(opened_stat)
+        or identity(final_path_stat) != identity(opened_stat)
+    ):
+        raise ValueError(f"NCU app-range report changed while hashing: {artifact_path}")
+    return digest.hexdigest()
+
+
+def _materialize_ncu_app_range_capture(
+    report_path: Path,
+    metrics_obj: Any,
+    provenance: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Write a report-hash-bound sidecar and return app-range capture metadata."""
+    if not isinstance(provenance, dict):
+        raise ValueError("NCU app-range provenance must be a dictionary.")
+    to_dict = getattr(metrics_obj, "to_dict", None)
+    if not callable(to_dict):
+        raise ValueError("NCU app-range metrics must provide to_dict().")
+    metrics = to_dict()
+    if not isinstance(metrics, dict):
+        raise ValueError("NCU app-range metrics to_dict() must return a dictionary.")
+    range_time_ms = metrics.get("ncu_range_time_ms")
+    if (
+        isinstance(range_time_ms, bool)
+        or not isinstance(range_time_ms, (int, float))
+        or not math.isfinite(float(range_time_ms))
+        or float(range_time_ms) <= 0.0
+    ):
+        raise ValueError("NCU app-range metrics require a positive finite ncu_range_time_ms.")
+    if "ncu_kernel_time_ms" in metrics:
+        raise ValueError("NCU app-range metrics cannot contain ncu_kernel_time_ms.")
+    if provenance.get("replay_mode") != "app-range":
+        raise ValueError("NCU app-range provenance replay_mode must be app-range.")
+    if provenance.get("result_scope") != "range":
+        raise ValueError("NCU app-range provenance result_scope must be range.")
+    if provenance.get("coverage_policy") != "full_selected_nvtx_range":
+        raise ValueError(
+            "NCU app-range provenance coverage_policy must be full_selected_nvtx_range."
+        )
+
+    report_digest = _sha256_regular_artifact(report_path)
+    if provenance.get("report_sha256") != report_digest:
+        raise ValueError("NCU app-range provenance report_sha256 does not match the report.")
+
+    sidecar_path = report_path.with_name(f"{report_path.stem}.capture.json")
+    sidecar_payload = copy.deepcopy(provenance)
+    sidecar_payload["report_path"] = report_path.name
+    sidecar_payload["metrics"] = dict(metrics)
+    temporary_path = sidecar_path.with_name(
+        f".{sidecar_path.name}.{os.getpid()}.{time.time_ns()}.tmp"
+    )
+    try:
+        temporary_path.write_text(
+            json.dumps(sidecar_payload, indent=2, sort_keys=True, default=_json_default) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary_path, sidecar_path)
+    finally:
+        try:
+            temporary_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    capture = copy.deepcopy(sidecar_payload)
+    capture["report_path"] = str(report_path)
+    capture["sidecar_path"] = str(sidecar_path)
+    return capture
+
+
+def _ncu_metrics_for_result(
+    report_path: Path,
+    capture: Dict[str, Any],
+) -> Dict[str, float]:
+    """Use range metrics when present; retain the legacy kernel extractor otherwise."""
+    if not capture:
+        return extract_from_ncu_report(report_path)
+    serialized = capture.get("metrics")
+    if not isinstance(serialized, dict):
+        raise ValueError("NCU app-range capture metadata is missing numeric metrics.")
+    metrics: Dict[str, float] = {}
+    for source_key, result_key in _NCU_APP_RANGE_METRIC_TO_HARNESS.items():
+        value = serialized.get(source_key)
+        if value is not None:
+            metrics[result_key] = float(value)
+    if "range_time_ms" not in metrics or "kernel_time_ms" in metrics:
+        raise ValueError("NCU app-range result metrics require range_time_ms only.")
+    return metrics
+
+
+def _portable_ncu_capture(capture: Dict[str, Any], repo_root: Path) -> Dict[str, Any]:
+    """Make capture artifact paths follow the result JSON's path convention."""
+    portable = copy.deepcopy(capture)
+    for field_name in ("report_path", "sidecar_path"):
+        value = portable.get(field_name)
+        if value:
+            portable[field_name] = _repo_relative_path(value, repo_root)
+    return portable
+
+
 def profile_python_benchmark_ncu(
     benchmark: Any,  # Benchmark instance
     benchmark_path: Path,
@@ -3860,6 +4311,7 @@ def profile_python_benchmark_ncu(
     config: Optional[BenchmarkConfig],
     variant: str = "baseline",
     output_stem: Optional[str] = None,
+    capture_out: Optional[Dict[str, Any]] = None,
 ) -> Optional[Path]:
     """Profile a Python benchmark using ncu (NVIDIA Compute Profiler).
     
@@ -3870,10 +4322,14 @@ def profile_python_benchmark_ncu(
         output_dir: Directory to save ncu-rep file
         config: BenchmarkConfig used for profiling settings
         variant: 'baseline' or 'optimized' for naming
+        capture_out: Optional dictionary populated with validated app-range
+            metrics, provenance, report hash, and sidecar path
         
     Returns:
         Path to generated ncu-rep file, or None if failed
     """
+    if capture_out is not None:
+        capture_out.clear()
     if not check_ncu_available():
         return None
     _set_profile_failure_detail("ncu", None)
@@ -3883,8 +4339,15 @@ def profile_python_benchmark_ncu(
 
     # Create output filename based on benchmark name
     benchmark_name = output_stem or benchmark_path.stem
-    ncu_output = output_dir / f"{benchmark_name}__{variant}.ncu-rep"
-    log_base = output_dir / f"{benchmark_name}__{variant}__ncu"
+    capture_token = f"{os.getpid()}_{time.time_ns()}"
+
+    def _attempt_output(attempt: int) -> Path:
+        return output_dir / (
+            f"{benchmark_name}__{variant}__ncu_{capture_token}_attempt{attempt}.ncu-rep"
+        )
+
+    ncu_output = _attempt_output(1)
+    log_base = output_dir / f"{benchmark_name}__{variant}__ncu_{capture_token}"
     
     if config is None:
         config = BenchmarkConfig()
@@ -3896,25 +4359,21 @@ def profile_python_benchmark_ncu(
     profiler_config = build_profiler_config_from_benchmark(config)
     configured_nvtx_includes = profiling_view.nsys_nvtx_include or profiler_config.nvtx_includes
     nvtx_includes = list(configured_nvtx_includes or [])
-    # Keep the emitted wrapper NVTX range aligned with configured include filters;
-    # otherwise NCU can connect/disconnect without capturing any kernels.
+    # The harness-owned outer range is a stable start/end selection contract.
+    # Benchmark-specific filters may describe inner ranges or push/pop syntax and
+    # must not replace the wrapper range that covers the complete measured call.
     profile_nvtx_label = "compute_kernel:profile"
-    if nvtx_includes:
-        first_include = str(nvtx_includes[0]).strip()
-        if first_include:
-            profile_nvtx_label = first_include.rstrip("/")
     try:
         from core.benchmark.cuda_binary_benchmark import CudaBinaryBenchmark
         is_cuda_binary = isinstance(benchmark, CudaBinaryBenchmark)
     except Exception:
         is_cuda_binary = False
 
-    # Keep NCU NVTX includes opt-in only. A default include filter can miss
-    # kernels for workloads where work is launched outside the wrapper NVTX
-    # context (for example CUDA Graph replay or subprocess-driven execution).
-    ncu_nvtx_includes = nvtx_includes or None
-    if bool(getattr(benchmark, "disable_ncu_nvtx_filter", False)):
-        ncu_nvtx_includes = None
+    # The generated Python wrapper owns an explicit start/end NVTX range around
+    # the measured benchmark_fn() call. Use it as the default NCU selection so
+    # setup, clock-ramp, and warmup kernels cannot become workload evidence.
+    wrapper_ncu_nvtx_includes = [profile_nvtx_label]
+    ncu_filter_disabled = bool(getattr(benchmark, "disable_ncu_nvtx_filter", False))
     # chapter_dir points to e.g. <repo>/ch10 or <repo>/labs/<lab>; use global
     # repository root for package imports like `labs.*` and `core.*`.
     repo_root = Path(__file__).resolve().parents[2]
@@ -3971,6 +4430,16 @@ def profile_python_benchmark_ncu(
                 )
                 use_torchrun = _command_uses_external_torchrun(target_command)
             else:
+                if ncu_filter_disabled:
+                    detail = (
+                        f"NCU profiling for {benchmark_name} ({variant}) cannot disable the "
+                        "measured NVTX-range filter; subprocess workloads need an explicit "
+                        "workload range or kernel-selection contract."
+                    )
+                    _set_profile_failure_detail("ncu", detail)
+                    if LOGGER_AVAILABLE:
+                        logger.warning("  %s", detail)
+                    return None
                 wrapper_source = render_ncu_python_profile_wrapper(
                     benchmark_path=benchmark_path,
                     configured_nvtx_includes=configured_nvtx_includes,
@@ -3997,11 +4466,20 @@ def profile_python_benchmark_ncu(
                 )
 
             if has_target_launch_spec:
+                if not nvtx_includes:
+                    detail = (
+                        f"NCU profiling for {benchmark_name} ({variant}) uses a direct target "
+                        "launch and requires an explicit nsys_nvtx_include workload range."
+                    )
+                    _set_profile_failure_detail("ncu", detail)
+                    if LOGGER_AVAILABLE:
+                        logger.warning("  %s", detail)
+                    return None
                 ncu_command = profiler_config.get_ncu_command_for_target(
                     str(ncu_output.with_suffix("")),
                     target_command,
                     metrics=metrics_override,
-                    nvtx_includes=ncu_nvtx_includes,
+                    nvtx_includes=nvtx_includes,
                 )
             else:
                 if wrapper_path is None:
@@ -4011,23 +4489,36 @@ def profile_python_benchmark_ncu(
                     str(wrapper_path),
                     python_executable=sys.executable,
                     metrics=metrics_override,
-                    nvtx_includes=ncu_nvtx_includes,
+                    nvtx_includes=wrapper_ncu_nvtx_includes,
                 )
             ncu_env_overrides = getattr(benchmark, "ncu_env_overrides", None)
             if ncu_env_overrides:
                 env.update({str(key): str(value) for key, value in ncu_env_overrides.items()})
             ncu_command.insert(1, "--force-overwrite")
+            replay_modes = _ncu_command_option_values(ncu_command, "--replay-mode")
+            app_range_contract: Optional[Tuple[str, List[str]]] = None
+            if "app-range" in replay_modes:
+                try:
+                    app_range_contract = _validate_ncu_app_range_command(ncu_command)
+                except ValueError as exc:
+                    detail = str(exc)
+                    _set_profile_failure_detail("ncu", detail)
+                    if LOGGER_AVAILABLE:
+                        logger.warning("  %s", detail)
+                    return None
 
             # ncu profiling timeout: align with BenchmarkConfig.ncu_timeout_seconds
             # ncu is slower than nsys and needs more time for metric collection
             ncu_timeout_seconds = timing_view.timeout_for("ncu") or NCU_TIMEOUT_SECONDS
             for attempt in range(1, _NCU_DRIVER_RESOURCE_RETRY_ATTEMPTS + 1):
+                ncu_output = _attempt_output(attempt)
+                ncu_command[ncu_command.index("-o") + 1] = str(ncu_output.with_suffix(""))
                 run_result = _run_profile_subprocess(
                     command=ncu_command,
                     cwd=chapter_dir,
                     env=env,
                     timeout_seconds=float(ncu_timeout_seconds),
-                    log_base=log_base,
+                    log_base=log_base.with_name(f"{log_base.name}_attempt{attempt}"),
                     terminate_reason=f"{benchmark_name}_{variant}",
                     capture_output=True,
                     timeout_collect_error_message=(
@@ -4044,20 +4535,13 @@ def profile_python_benchmark_ncu(
                     )
                     return None
 
-                # Check if file exists (ncu may create file even with non-zero exit code)
+                # Only this attempt's unique artifact is eligible. A same-name
+                # report from a prior run must never turn a zero-capture command
+                # into accepted evidence.
                 if not run_result.timed_out:
-                    if ncu_output.exists():
-                        _set_profile_failure_detail("ncu", None)
-                        return ncu_output
-                    alt_path = output_dir / f"{benchmark_name}__{variant}.ncu-rep"
-                    if alt_path.exists():
-                        _set_profile_failure_detail("ncu", None)
-                        return alt_path
-                    for ncu_file in output_dir.glob(f"{benchmark_name}__{variant}*.ncu-rep"):
-                        _set_profile_failure_detail("ncu", None)
-                        return ncu_file
+                    returncode = run_result.process.returncode
                     if (
-                        run_result.process.returncode not in (0, None)
+                        returncode not in (0, None)
                         and attempt < _NCU_DRIVER_RESOURCE_RETRY_ATTEMPTS
                         and _is_retryable_ncu_driver_resource_error(
                             stdout_log=run_result.stdout_log,
@@ -4066,11 +4550,61 @@ def profile_python_benchmark_ncu(
                     ):
                         time.sleep(_NCU_DRIVER_RESOURCE_RETRY_DELAY_SECONDS)
                         continue
-                    if run_result.process.returncode not in (0, None):
-                        _append_profile_warning(
-                            run_result.stderr_log,
-                            f"NCU profiling exited with code {run_result.process.returncode} for {benchmark_name} ({variant}) without producing a report.",
+                    if returncode != 0:
+                        if returncode is None:
+                            detail = (
+                                f"NCU profiling for {benchmark_name} ({variant}) did not report "
+                                "a completed process exit status; any report was rejected."
+                            )
+                        else:
+                            detail = (
+                                f"NCU profiling exited with code {returncode} for "
+                                f"{benchmark_name} ({variant}); any partial report was rejected."
+                            )
+                        _append_profile_warning(run_result.stderr_log, detail)
+                        _set_profile_failure_detail("ncu", detail)
+                        return None
+                    if not ncu_output.is_file():
+                        detail = (
+                            f"NCU profiling for {benchmark_name} ({variant}) completed without "
+                            "a fresh report for this capture attempt."
                         )
+                        _append_profile_warning(run_result.stderr_log, detail)
+                        _set_profile_failure_detail("ncu", detail)
+                        return None
+                    if app_range_contract is not None:
+                        expected_nvtx_range, requested_metrics = app_range_contract
+                        try:
+                            range_metrics, range_provenance = inspect_ncu_app_range_report(
+                                ncu_output,
+                                expected_nvtx_range=expected_nvtx_range,
+                                requested_metrics=requested_metrics,
+                                timeout=300,
+                            )
+                            capture = _materialize_ncu_app_range_capture(
+                                ncu_output,
+                                range_metrics,
+                                range_provenance,
+                            )
+                        except (ValueError, OSError, WorkerProtocolError) as exc:
+                            detail = str(exc)
+                            _append_profile_warning(run_result.stderr_log, detail)
+                            _set_profile_failure_detail("ncu", detail)
+                            return None
+                        if capture_out is not None:
+                            capture_out.update(capture)
+                        _set_profile_failure_detail("ncu", None)
+                        return ncu_output
+                    if extract_from_ncu_report(ncu_output):
+                        _set_profile_failure_detail("ncu", None)
+                        return ncu_output
+                    detail = (
+                        f"NCU report for {benchmark_name} ({variant}) contains no importable "
+                        "kernel metrics from the selected workload NVTX range."
+                    )
+                    _append_profile_warning(run_result.stderr_log, detail)
+                    _set_profile_failure_detail("ncu", detail)
+                    return None
                 else:
                     _append_profile_warning(
                         run_result.stderr_log,
@@ -4100,7 +4634,7 @@ def _apply_preferred_ncu_profile_overrides(config: BenchmarkConfig, benchmark: A
     replacements: Dict[str, Any] = {}
 
     preferred_replay = getattr(benchmark, "preferred_ncu_replay_mode", None)
-    if preferred_replay:
+    if preferred_replay and not bool(getattr(config, "ncu_replay_mode_override", False)):
         replacements["ncu_replay_mode"] = str(preferred_replay)
         replacements["ncu_replay_mode_override"] = True
 
@@ -4143,10 +4677,32 @@ def profile_cuda_executable_ncu(
 
     # Create output filename based on executable name
     exec_name = output_stem or executable.stem
-    ncu_output = output_dir / f"{exec_name}__{variant}.ncu-rep"
-    log_base = output_dir / f"{exec_name}__{variant}__ncu"
+    capture_token = f"{os.getpid()}_{time.time_ns()}"
+
+    def _attempt_output(attempt: int) -> Path:
+        return output_dir / (
+            f"{exec_name}__{variant}__ncu_{capture_token}_attempt{attempt}.ncu-rep"
+        )
+
+    ncu_output = _attempt_output(1)
+    log_base = output_dir / f"{exec_name}__{variant}__ncu_{capture_token}"
     
     profiler_config = build_profiler_config_from_benchmark(config)
+    native_nvtx_includes = [
+        str(value).strip()
+        for value in (profiler_config.nvtx_includes or [])
+        if str(value).strip()
+    ]
+    if not native_nvtx_includes:
+        detail = (
+            f"NCU profiling for executable {exec_name} ({variant}) requires an explicit "
+            "BenchmarkConfig.nsys_nvtx_include workload range; unscoped first-launch "
+            "captures are not accepted."
+        )
+        _set_profile_failure_detail("ncu", detail)
+        if LOGGER_AVAILABLE:
+            logger.warning("  %s", detail)
+        return None
     chapter_num = None
     chapter_name = chapter_dir.name
     if chapter_name.startswith("ch") and chapter_name[2:].isdigit():
@@ -4167,7 +4723,7 @@ def profile_cuda_executable_ncu(
         str(ncu_output.with_suffix("")),
         [str(executable)],
         metrics=metrics_override,
-        nvtx_includes=profiler_config.nvtx_includes,
+        nvtx_includes=native_nvtx_includes,
     )
     ncu_command.insert(1, "--force-overwrite")
     
@@ -4185,12 +4741,14 @@ def profile_cuda_executable_ncu(
         # ncu is slower than nsys and needs more time for metric collection
         ncu_timeout_seconds = config.get_effective_timeout("ncu") or NCU_TIMEOUT_SECONDS
         for attempt in range(1, _NCU_DRIVER_RESOURCE_RETRY_ATTEMPTS + 1):
+            ncu_output = _attempt_output(attempt)
+            ncu_command[ncu_command.index("-o") + 1] = str(ncu_output.with_suffix(""))
             run_result = _run_profile_subprocess(
                 command=ncu_command,
                 cwd=chapter_dir,
                 env=env,
                 timeout_seconds=float(ncu_timeout_seconds),
-                log_base=log_base,
+                log_base=log_base.with_name(f"{log_base.name}_attempt{attempt}"),
                 terminate_reason=f"{exec_name}__{variant}",
                 capture_output=True,
                 timeout_collect_error_message=(
@@ -4207,20 +4765,12 @@ def profile_cuda_executable_ncu(
                 )
                 return None
 
-            # Check if file exists (ncu may create file even with non-zero exit code)
+            # Accept only this attempt's workload-filtered report after a
+            # confirmed successful NCU process exit and offline import.
             if not run_result.timed_out:
-                if ncu_output.exists():
-                    _set_profile_failure_detail("ncu", None)
-                    return ncu_output
-                alt_path = output_dir / f"{exec_name}__{variant}.ncu-rep"
-                if alt_path.exists():
-                    _set_profile_failure_detail("ncu", None)
-                    return alt_path
-                for ncu_file in output_dir.glob(f"{exec_name}__{variant}*.ncu-rep"):
-                    _set_profile_failure_detail("ncu", None)
-                    return ncu_file
+                returncode = run_result.process.returncode
                 if (
-                    run_result.process.returncode not in (0, None)
+                    returncode not in (0, None)
                     and attempt < _NCU_DRIVER_RESOURCE_RETRY_ATTEMPTS
                     and _is_retryable_ncu_driver_resource_error(
                         stdout_log=run_result.stdout_log,
@@ -4229,11 +4779,38 @@ def profile_cuda_executable_ncu(
                 ):
                     time.sleep(_NCU_DRIVER_RESOURCE_RETRY_DELAY_SECONDS)
                     continue
-                if run_result.process.returncode not in (0, None):
-                    _append_profile_warning(
-                        run_result.stderr_log,
-                        f"NCU profiling exited with code {run_result.process.returncode} for executable {exec_name} ({variant}) without producing a report.",
+                if returncode != 0:
+                    if returncode is None:
+                        detail = (
+                            f"NCU profiling for executable {exec_name} ({variant}) did not "
+                            "report a completed process exit status; any report was rejected."
+                        )
+                    else:
+                        detail = (
+                            f"NCU profiling exited with code {returncode} for executable "
+                            f"{exec_name} ({variant}); any partial report was rejected."
+                        )
+                    _append_profile_warning(run_result.stderr_log, detail)
+                    _set_profile_failure_detail("ncu", detail)
+                    return None
+                if not ncu_output.is_file():
+                    detail = (
+                        f"NCU profiling for executable {exec_name} ({variant}) completed "
+                        "without a fresh report for this capture attempt."
                     )
+                    _append_profile_warning(run_result.stderr_log, detail)
+                    _set_profile_failure_detail("ncu", detail)
+                    return None
+                if extract_from_ncu_report(ncu_output):
+                    _set_profile_failure_detail("ncu", None)
+                    return ncu_output
+                detail = (
+                    f"NCU report for executable {exec_name} ({variant}) contains no "
+                    "importable kernel metrics from the selected workload NVTX range."
+                )
+                _append_profile_warning(run_result.stderr_log, detail)
+                _set_profile_failure_detail("ncu", detail)
+                return None
             else:
                 _append_profile_warning(
                     run_result.stderr_log,
@@ -4692,6 +5269,42 @@ def _allow_mixed_provenance_for_expectation_writes(
     """
 
     return bool(allow_mixed_provenance or update_expectations)
+
+
+def _update_expectation_entry_after_profiler_gate(
+    expectations_store: Any,
+    example_key: str,
+    entry: ExpectationEntry,
+    *,
+    profiler_failures: Sequence[str],
+) -> Tuple[Optional[Any], Dict[str, Any]]:
+    """Do not validate or mutate expectations from an invalid profiled result."""
+    if profiler_failures:
+        failures = [str(failure) for failure in profiler_failures]
+        return None, {
+            "status": "skipped",
+            "message": (
+                "Expectation validation and update skipped because required profiler "
+                f"captures failed: {', '.join(failures)}."
+            ),
+            "entry": None,
+            "validation_issues": [],
+            "required_profiler_failures": failures,
+            "persisted": False,
+        }
+
+    update_result = expectations_store.update_entry(example_key, entry)
+    try:
+        payload = update_result.to_dict()
+    except Exception:
+        payload = {
+            "status": update_result.status,
+            "message": update_result.message,
+            "validation_issues": [
+                issue.to_dict() for issue in update_result.validation_issues
+            ],
+        }
+    return update_result, payload
 
 
 def _test_chapter_impl(
@@ -5890,6 +6503,7 @@ def _test_chapter_impl(
                             profiler="ncu",
                             timeout_seconds=baseline_config.get_effective_timeout("ncu"),
                         )
+                        ncu_capture: Dict[str, Any] = {}
                         ncu_path = profile_python_benchmark_ncu(
                             baseline_benchmark,
                             baseline_path,
@@ -5898,6 +6512,7 @@ def _test_chapter_impl(
                             baseline_config,
                             variant="baseline",
                             output_stem=example_profile_stem,
+                            capture_out=ncu_capture,
                         )
                         ncu_error = _get_profile_failure_detail("ncu")
                         if ncu_path:
@@ -5906,7 +6521,14 @@ def _test_chapter_impl(
                             _set_profiler_status(baseline_profiler_statuses, "ncu", "succeeded")
                             baseline_profile_paths["ncu"] = ncu_path
                             # Extract metrics
-                            ncu_metrics = extract_from_ncu_report(ncu_path)
+                            ncu_metrics = _ncu_metrics_for_result(ncu_path, ncu_capture)
+                            ncu_capture_metadata = (
+                                _portable_ncu_capture(ncu_capture, repo_root)
+                                if ncu_capture
+                                else None
+                            )
+                            if ncu_capture_metadata:
+                                result_entry["baseline_ncu_capture"] = ncu_capture_metadata
                             if ncu_metrics:
                                 baseline_metrics['ncu'] = ncu_metrics
                             emit_event(
@@ -5921,6 +6543,11 @@ def _test_chapter_impl(
                                 status="succeeded",
                                 output_path=str(ncu_path),
                                 metrics=ncu_metrics,
+                                **(
+                                    {"capture": ncu_capture_metadata}
+                                    if ncu_capture_metadata
+                                    else {}
+                                ),
                             )
                         else:
                             profiler_results.append("ncu✗")
@@ -6792,6 +7419,7 @@ def _test_chapter_impl(
                                 technique=technique,
                                 timeout_seconds=optimized_config.get_effective_timeout("ncu"),
                             )
+                            ncu_capture: Dict[str, Any] = {}
                             ncu_path = profile_python_benchmark_ncu(
                                 optimized_benchmark,
                                 optimized_path,
@@ -6800,6 +7428,7 @@ def _test_chapter_impl(
                                 optimized_config,
                                 variant="optimized",
                                 output_stem=example_profile_stem,
+                                capture_out=ncu_capture,
                             )
                             ncu_error = _get_profile_failure_detail("ncu")
                             if ncu_path:
@@ -6807,7 +7436,14 @@ def _test_chapter_impl(
                                 profiler_results.append("ncu✓")
                                 _set_profiler_status(optimized_profiler_statuses, "ncu", "succeeded")
                                 # Extract metrics
-                                ncu_metrics = extract_from_ncu_report(ncu_path)
+                                ncu_metrics = _ncu_metrics_for_result(ncu_path, ncu_capture)
+                                ncu_capture_metadata = (
+                                    _portable_ncu_capture(ncu_capture, repo_root)
+                                    if ncu_capture
+                                    else None
+                                )
+                                if ncu_capture_metadata:
+                                    opt_result["optimized_ncu_capture"] = ncu_capture_metadata
                                 if ncu_metrics:
                                     optimized_metrics['ncu'] = ncu_metrics
                                 emit_event(
@@ -6823,6 +7459,11 @@ def _test_chapter_impl(
                                     status="succeeded",
                                     output_path=str(ncu_path),
                                     metrics=ncu_metrics,
+                                    **(
+                                        {"capture": ncu_capture_metadata}
+                                        if ncu_capture_metadata
+                                        else {}
+                                    ),
                                 )
                             else:
                                 profiler_results.append("ncu✗")
@@ -7296,6 +7937,7 @@ def _test_chapter_impl(
                                     technique=best_key,
                                     timeout_seconds=optimized_config.get_effective_timeout("ncu") if optimized_config else None,
                                 )
+                                ncu_capture: Dict[str, Any] = {}
                                 ncu_path = profile_python_benchmark_ncu(
                                     optimized_benchmark,
                                     optimized_path,
@@ -7304,13 +7946,21 @@ def _test_chapter_impl(
                                     optimized_config,
                                     variant="optimized",
                                     output_stem=example_profile_stem,
+                                    capture_out=ncu_capture,
                                 )
                                 ncu_error = _get_profile_failure_detail("ncu")
                                 if ncu_path:
                                     best_opt["optimized_ncu_rep"] = _repo_relative_path(ncu_path, repo_root)
                                     profiler_results.append("ncu✓")
                                     _set_profiler_status(optimized_profiler_statuses, "ncu", "succeeded")
-                                    ncu_metrics = extract_from_ncu_report(ncu_path)
+                                    ncu_metrics = _ncu_metrics_for_result(ncu_path, ncu_capture)
+                                    ncu_capture_metadata = (
+                                        _portable_ncu_capture(ncu_capture, repo_root)
+                                        if ncu_capture
+                                        else None
+                                    )
+                                    if ncu_capture_metadata:
+                                        best_opt["optimized_ncu_capture"] = ncu_capture_metadata
                                     if ncu_metrics:
                                         optimized_metrics["ncu"] = ncu_metrics
                                     emit_event(
@@ -7326,6 +7976,11 @@ def _test_chapter_impl(
                                         status="succeeded",
                                         output_path=str(ncu_path),
                                         metrics=ncu_metrics,
+                                        **(
+                                            {"capture": ncu_capture_metadata}
+                                            if ncu_capture_metadata
+                                            else {}
+                                        ),
                                     )
                                 else:
                                     profiler_results.append("ncu✗")
@@ -7519,6 +8174,16 @@ def _test_chapter_impl(
                     if verify_output and isinstance(best_opt.get("verification"), dict):
                         result_entry["verification"] = best_opt.get("verification")
 
+                profiler_failures = _collect_required_profiler_failures(
+                    result_entry,
+                    best_opt,
+                    profiling_requested=bool(enable_profiling and profiling_output_dir),
+                )
+                profiler_failure_details = _collect_required_profiler_failure_details(
+                    result_entry,
+                    best_opt,
+                    profiling_requested=bool(enable_profiling and profiling_output_dir),
+                )
                 if best_opt:
                     emit_progress(
                         "expectations",
@@ -7567,35 +8232,36 @@ def _test_chapter_impl(
                                 accept_regressions=accept_regressions or update_expectations,
                                 allow_mixed_provenance=allow_mixed_provenance_for_writes,
                             )
-                        update_result = active_expectations_store.update_entry(example_key, entry)
-                        try:
-                            result_entry["expectation"] = update_result.to_dict()
-                        except Exception:
-                            result_entry["expectation"] = {
-                                "status": update_result.status,
-                                "message": update_result.message,
-                                "validation_issues": [issue.to_dict() for issue in update_result.validation_issues],
-                            }
-                        if expectation_writes_enabled:
-                            logger.info("    Expectations: %s", update_result.message)
-                        else:
-                            result_entry["expectation"]["persisted"] = False
-                            result_entry["expectation"]["message"] = (
-                                f"{update_result.message} (preview only; rerun with "
-                                "--update-expectations/--accept-regressions/--allow-mixed-provenance "
-                                "to write the file.)"
+                        update_result, expectation_payload = (
+                            _update_expectation_entry_after_profiler_gate(
+                                active_expectations_store,
+                                example_key,
+                                entry,
+                                profiler_failures=profiler_failures,
                             )
-                            logger.info("    Expectations (preview): %s", update_result.message)
-                        log_expectation_delta(
-                            logger,
-                            example_key=example_key,
-                            goal=optimization_goal,
-                            old_entry=old_entry,
-                            new_entry=entry,
-                            update_result=update_result,
-                            event_logger=event_logger,
-                            chapter=chapter_name,
                         )
+                        result_entry["expectation"] = expectation_payload
+                        if update_result is not None:
+                            if expectation_writes_enabled:
+                                logger.info("    Expectations: %s", update_result.message)
+                            else:
+                                result_entry["expectation"]["persisted"] = False
+                                result_entry["expectation"]["message"] = (
+                                    f"{update_result.message} (preview only; rerun with "
+                                    "--update-expectations/--accept-regressions/--allow-mixed-provenance "
+                                    "to write the file.)"
+                                )
+                                logger.info("    Expectations (preview): %s", update_result.message)
+                            log_expectation_delta(
+                                logger,
+                                example_key=example_key,
+                                goal=optimization_goal,
+                                old_entry=old_entry,
+                                new_entry=entry,
+                                update_result=update_result,
+                                event_logger=event_logger,
+                                chapter=chapter_name,
+                            )
                     else:
                         result_entry["expectation"] = {
                             "status": "skipped",
@@ -7611,16 +8277,6 @@ def _test_chapter_impl(
                     update_result
                     and update_result.status == "rejected"
                     and any(issue.issue_type == "regression" for issue in update_result.validation_issues)
-                )
-                profiler_failures = _collect_required_profiler_failures(
-                    result_entry,
-                    best_opt,
-                    profiling_requested=bool(enable_profiling and profiling_output_dir),
-                )
-                profiler_failure_details = _collect_required_profiler_failure_details(
-                    result_entry,
-                    best_opt,
-                    profiling_requested=bool(enable_profiling and profiling_output_dir),
                 )
                 if profiler_failures:
                     result_entry["status"] = "failed_profiler"
@@ -9007,6 +9663,16 @@ def _test_chapter_impl(
                                 )
                         except Exception:
                             logger.warning("    WARNING: Best-only profiling failed", exc_info=True)
+                profiler_failures = _collect_required_profiler_failures(
+                    result_entry,
+                    best_opt,
+                    profiling_requested=bool(enable_profiling and profiling_output_dir),
+                )
+                profiler_failure_details = _collect_required_profiler_failure_details(
+                    result_entry,
+                    best_opt,
+                    profiling_requested=bool(enable_profiling and profiling_output_dir),
+                )
                 if best_opt:
                     emit_event(
                         event_logger,
@@ -9068,35 +9734,36 @@ def _test_chapter_impl(
                                 accept_regressions=accept_regressions or update_expectations,
                                 allow_mixed_provenance=allow_mixed_provenance_for_writes,
                             )
-                        update_result = active_expectations_store.update_entry(example_key, entry)
-                        try:
-                            result_entry["expectation"] = update_result.to_dict()
-                        except Exception:
-                            result_entry["expectation"] = {
-                                "status": update_result.status,
-                                "message": update_result.message,
-                                "validation_issues": [issue.to_dict() for issue in update_result.validation_issues],
-                            }
-                        if expectation_writes_enabled:
-                            logger.info("    Expectations: %s", update_result.message)
-                        else:
-                            result_entry["expectation"]["persisted"] = False
-                            result_entry["expectation"]["message"] = (
-                                f"{update_result.message} (preview only; rerun with "
-                                "--update-expectations/--accept-regressions/--allow-mixed-provenance "
-                                "to write the file.)"
+                        update_result, expectation_payload = (
+                            _update_expectation_entry_after_profiler_gate(
+                                active_expectations_store,
+                                example_key,
+                                entry,
+                                profiler_failures=profiler_failures,
                             )
-                            logger.info("    Expectations (preview): %s", update_result.message)
-                        log_expectation_delta(
-                            logger,
-                            example_key=example_key,
-                            goal=optimization_goal,
-                            old_entry=old_entry,
-                            new_entry=entry,
-                            update_result=update_result,
-                            event_logger=event_logger,
-                            chapter=chapter_name,
                         )
+                        result_entry["expectation"] = expectation_payload
+                        if update_result is not None:
+                            if expectation_writes_enabled:
+                                logger.info("    Expectations: %s", update_result.message)
+                            else:
+                                result_entry["expectation"]["persisted"] = False
+                                result_entry["expectation"]["message"] = (
+                                    f"{update_result.message} (preview only; rerun with "
+                                    "--update-expectations/--accept-regressions/--allow-mixed-provenance "
+                                    "to write the file.)"
+                                )
+                                logger.info("    Expectations (preview): %s", update_result.message)
+                            log_expectation_delta(
+                                logger,
+                                example_key=example_key,
+                                goal=optimization_goal,
+                                old_entry=old_entry,
+                                new_entry=entry,
+                                update_result=update_result,
+                                event_logger=event_logger,
+                                chapter=chapter_name,
+                            )
                     else:
                         result_entry["expectation"] = {
                             "status": "skipped",
@@ -9112,16 +9779,6 @@ def _test_chapter_impl(
                     update_result
                     and update_result.status == "rejected"
                     and any(issue.issue_type == "regression" for issue in update_result.validation_issues)
-                )
-                profiler_failures = _collect_required_profiler_failures(
-                    result_entry,
-                    best_opt,
-                    profiling_requested=bool(enable_profiling and profiling_output_dir),
-                )
-                profiler_failure_details = _collect_required_profiler_failure_details(
-                    result_entry,
-                    best_opt,
-                    profiling_requested=bool(enable_profiling and profiling_output_dir),
                 )
                 if profiler_failures:
                     result_entry["status"] = "failed_profiler"
@@ -11011,6 +11668,9 @@ def _verify_patched_benchmark_in_worker(
                     result['equivalent'] = False
                     result['quarantine_reason'] = 'missing_verify_output'
                     return result
+
+                tolerance_spec = ToleranceSpec(rtol=rtol, atol=atol)
+                rtol, atol = tolerance_spec.rtol, tolerance_spec.atol
                 
                 result['details']['dtype'] = str(dtype) if dtype is not None else 'unknown'
                 result['details']['rtol'] = rtol
@@ -11326,6 +11986,7 @@ Focus on being educational - help the user understand not just WHAT changed, but
         return None
 
 
+@restore_cuda_visible_devices_after_call
 def test_chapter(
     chapter_dir: Path,
     enable_profiling: bool = False,
@@ -11592,11 +12253,26 @@ def generate_markdown_report(
                     f.write(f" ({bench['baseline_time_ms']:.2f} ms)")
                 profiler_links = []
                 if bench.get('baseline_nsys_rep'):
-                    profiler_links.append(f"[nsys](./{bench['baseline_nsys_rep']})")
+                    link = _format_report_artifact_link(
+                        bench['baseline_nsys_rep'],
+                        report_root=report_root,
+                        report_dir=report_dir,
+                    )
+                    profiler_links.append(f"[nsys]({link})")
                 if bench.get('baseline_ncu_rep'):
-                    profiler_links.append(f"[ncu](./{bench['baseline_ncu_rep']})")
+                    link = _format_report_artifact_link(
+                        bench['baseline_ncu_rep'],
+                        report_root=report_root,
+                        report_dir=report_dir,
+                    )
+                    profiler_links.append(f"[ncu]({link})")
                 if bench.get('baseline_torch_trace'):
-                    profiler_links.append(f"[torch](./{bench['baseline_torch_trace']})")
+                    link = _format_report_artifact_link(
+                        bench['baseline_torch_trace'],
+                        report_root=report_root,
+                        report_dir=report_dir,
+                    )
+                    profiler_links.append(f"[torch]({link})")
                 if profiler_links:
                     f.write(f" | {' | '.join(profiler_links)}")
                 f.write("\n")
@@ -11618,11 +12294,26 @@ def generate_markdown_report(
                             f.write(f"- `{opt['file']}`: {opt['time_ms']:.2f} ms ({opt['speedup']:.2f}x speedup)")
                             profiler_links = []
                             if opt.get('optimized_nsys_rep'):
-                                profiler_links.append(f"[nsys](./{opt['optimized_nsys_rep']})")
+                                link = _format_report_artifact_link(
+                                    opt['optimized_nsys_rep'],
+                                    report_root=report_root,
+                                    report_dir=report_dir,
+                                )
+                                profiler_links.append(f"[nsys]({link})")
                             if opt.get('optimized_ncu_rep'):
-                                profiler_links.append(f"[ncu](./{opt['optimized_ncu_rep']})")
+                                link = _format_report_artifact_link(
+                                    opt['optimized_ncu_rep'],
+                                    report_root=report_root,
+                                    report_dir=report_dir,
+                                )
+                                profiler_links.append(f"[ncu]({link})")
                             if opt.get('optimized_torch_trace'):
-                                profiler_links.append(f"[torch](./{opt['optimized_torch_trace']})")
+                                link = _format_report_artifact_link(
+                                    opt['optimized_torch_trace'],
+                                    report_root=report_root,
+                                    report_dir=report_dir,
+                                )
+                                profiler_links.append(f"[torch]({link})")
                             if profiler_links:
                                 f.write(f" | {' | '.join(profiler_links)}")
                             f.write("\n")

@@ -13,6 +13,7 @@ from typing import Callable, Optional, Sequence
 import torch
 import torch.nn.functional as F
 
+from core.benchmark.numerical_accuracy import ScaleInvariantAccuracyLimits
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.common.device_utils import require_cuda_device
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
@@ -93,38 +94,121 @@ class MoELabState:
 
 
 @dataclass(frozen=True)
-class LayerAccuracyLimits:
-    """Reviewed, scale-invariant limits; no workload threshold is guessed here."""
-    relative_l2: float
-    normalized_max_abs: float
-
-    def __post_init__(self) -> None:
-        for name in ("relative_l2", "normalized_max_abs"):
-            value = getattr(self, name)
-            if not math.isfinite(value) or not 0 <= value < 1:
-                raise ValueError(f"{name} must be finite and in [0, 1)")
+class LayerAccuracyLimits(ScaleInvariantAccuracyLimits):
+    """MoE spelling of the shared scale-invariant limits."""
 
     def check(self, errors: dict[str, float]) -> None:
-        if set(errors) != {"relative_l2", "normalized_max_abs"}:
-            raise ValueError("Both full-output error measurements are required")
-        if any(not math.isfinite(value) or value > getattr(self, name)
-               for name, value in errors.items()):
-            raise AssertionError(f"MoE layer output exceeds configured accuracy policy: {errors}")
+        try:
+            super().check(errors, label="MoE layer output")
+        except AssertionError as exc:
+            raise AssertionError(
+                f"MoE layer output exceeds configured accuracy policy: {errors}"
+            ) from exc
 
 
-def load_layer_accuracy_limits() -> LayerAccuracyLimits:
-    path = os.environ.get("AISP_MOE_PTX_LAYER_ACCURACY_POLICY")
-    if not path:
-        raise RuntimeError(
-            "MoE layer forward accuracy is uncalibrated: "
-            "AISP_MOE_PTX_LAYER_ACCURACY_POLICY must name a reviewed policy. "
-            "The former absolute tolerance accepts an all-zero output; "
-            "a configured policy alone is not measured GPU accuracy evidence."
-        )
-    policy = json.loads(Path(path).read_text())
-    if policy.get("schema_version") != 1:
-        raise ValueError("MoE layer accuracy policy requires schema_version=1")
-    return LayerAccuracyLimits(**policy["moe_layer_forward"])
+_DOMAIN_INTEGER_FIELDS = (
+    "num_tokens",
+    "num_experts",
+    "top_k",
+    "hidden_dim",
+    "expert_ffn_dim",
+)
+_DOMAIN_ENTRY_FIELDS = {
+    *_DOMAIN_INTEGER_FIELDS,
+    "capacity_factor",
+    "mode",
+    "dtypes",
+    "histograms",
+}
+
+
+def _validated_layer_accuracy_domain(policy: dict) -> list[dict]:
+    entries = policy.get("validated_workloads")
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("MoE layer accuracy policy requires validated_workloads")
+
+    validated = []
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != _DOMAIN_ENTRY_FIELDS:
+            raise ValueError("Each validated MoE workload must contain the exact domain fields")
+        for name in _DOMAIN_INTEGER_FIELDS:
+            if type(entry[name]) is not int or entry[name] <= 0:
+                raise ValueError(f"Validated MoE workload {name} must be a positive integer")
+        capacity = entry["capacity_factor"]
+        if (
+            isinstance(capacity, bool)
+            or not isinstance(capacity, (int, float))
+            or not math.isfinite(capacity)
+            or capacity < 1
+        ):
+            raise ValueError("Validated MoE workload capacity_factor must be finite and >= 1")
+        if entry["mode"] != "forward":
+            raise ValueError("Validated MoE workload mode must be forward")
+        for name, allowed in (
+            ("dtypes", {"fp16", "bf16"}),
+            ("histograms", {"balanced", "skewed"}),
+        ):
+            values = entry[name]
+            if (
+                not isinstance(values, list)
+                or not values
+                or any(not isinstance(value, str) for value in values)
+                or len(values) != len(set(values))
+                or not set(values) <= allowed
+            ):
+                raise ValueError(f"Validated MoE workload {name} is invalid")
+        validated.append(entry)
+    return validated
+
+
+def _workload_is_in_accuracy_domain(
+    workload: MoECudaPtxWorkload,
+    entries: list[dict],
+    *,
+    dtype_name: str,
+) -> bool:
+    for entry in entries:
+        if (
+            all(getattr(workload, name) == entry[name] for name in _DOMAIN_INTEGER_FIELDS)
+            and workload.capacity_factor == entry["capacity_factor"]
+            and workload.mode == entry["mode"]
+            and dtype_name in entry["dtypes"]
+            and workload.histogram in entry["histograms"]
+        ):
+            return True
+    return False
+
+
+def load_layer_accuracy_limits(
+    dtype: torch.dtype,
+    *,
+    workload: Optional[MoECudaPtxWorkload] = None,
+) -> LayerAccuracyLimits:
+    """Load the reviewed per-dtype policy, with an explicit override for audits."""
+
+    configured_path = os.environ.get("AISP_MOE_PTX_LAYER_ACCURACY_POLICY")
+    path = Path(configured_path) if configured_path else Path(__file__).with_name(
+        "layer_accuracy_policy.json"
+    )
+    policy = json.loads(path.read_text())
+    if policy.get("schema_version") != 3:
+        raise ValueError("MoE layer accuracy policy requires schema_version=3")
+    domain = _validated_layer_accuracy_domain(policy)
+    if dtype == torch.float16:
+        dtype_name = "fp16"
+    elif dtype == torch.bfloat16:
+        dtype_name = "bf16"
+    else:
+        raise ValueError(f"MoE layer accuracy policy does not cover {dtype}")
+    if workload is not None:
+        if workload.dtype != dtype:
+            raise ValueError("MoE workload dtype differs from requested accuracy policy dtype")
+        if not _workload_is_in_accuracy_domain(workload, domain, dtype_name=dtype_name):
+            raise RuntimeError(
+                "MoE layer workload is outside the reviewed numerical accuracy domain; "
+                "collect and review independent-reference calibration before extending the policy"
+            )
+    return LayerAccuracyLimits(**policy["moe_layer_forward"][dtype_name])
 
 
 def snapshot_layer_inputs(state: MoELabState) -> dict[str, torch.Tensor]:
@@ -639,17 +723,16 @@ def run_layer_cuda(
     state: MoELabState,
     workload: MoECudaPtxWorkload,
     *,
-    packed: Optional[PackedRoutes] = None,
     combined_buffer: Optional[torch.Tensor] = None,
     padded_tokens_buffer: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    route_counts_cpu = getattr(state, "route_counts_cpu", None) or None
-    packed = packed or pack_topk_routes(
+    # The layer contract includes route packing on every invocation, just as
+    # the baseline includes route selection and activation gathers.
+    packed = pack_topk_routes(
         state.x,
         state.expert_indices,
         state.expert_weights,
         num_experts=workload.num_experts,
-        counts_cpu=route_counts_cpu,
     )
     # Keep the standalone quantization surface on `moe_quant` until the layer path
     # has a real low-precision kernel that benefits from quantized activations.
@@ -938,7 +1021,11 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.workload.validate()
         self._force_target_mode()
         layer_forward = self.target == "moe_layer" and self.workload.mode == "forward"
-        self._layer_accuracy_limits = load_layer_accuracy_limits() if layer_forward else None
+        self._layer_accuracy_limits = (
+            load_layer_accuracy_limits(self.workload.dtype, workload=self.workload)
+            if layer_forward
+            else None
+        )
         self.state = build_state(self.workload, self.device)
         if layer_forward:
             self._layer_reference_inputs = snapshot_layer_inputs(self.state)
@@ -947,9 +1034,7 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._populate_metrics(route_counts_cpu)
 
         self.packed = None
-        prepack_routes = self.target != "moe_layer" or (
-            self.backend == "cuda" and self.workload.mode == "forward"
-        )
+        prepack_routes = self.target != "moe_layer"
         if prepack_routes:
             self.packed = pack_topk_routes(
                 self.state.x,
@@ -970,7 +1055,10 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._bwd_up_proj = None
         self._bwd_down_proj = None
         self._packed_loss_grad = None
-        self._combined_buffer = torch.empty_like(self.state.x)
+        self._combined_buffer = (
+            torch.empty_like(self.state.x)
+            if layer_forward else None
+        )
         self._grouped_output_buffer = None
         self._padded_tokens_buffer = None
         verify_rows = min(32, max(self.workload.num_tokens, self.workload.routed_tokens))
@@ -1020,14 +1108,15 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
             : min(32, self.state.expert_indices.shape[0])
         ].detach().cpu()
 
-        if self.packed is not None:
-            self._grouped_output_buffer = torch.empty(
-                self.packed.packed_tokens.shape[0],
-                self.workload.hidden_dim,
-                device=self.device,
-                dtype=self.workload.dtype,
-            )
-            if self.packed.max_count > 0:
+        if self.packed is not None and self.target.startswith("moe_grouped_gemm"):
+            if self.backend == "baseline" and self.target == "moe_grouped_gemm_fwd":
+                self._grouped_output_buffer = torch.empty(
+                    self.packed.packed_tokens.shape[0],
+                    self.workload.hidden_dim,
+                    device=self.device,
+                    dtype=self.workload.dtype,
+                )
+            if self.backend == "cuda" and self.packed.max_count > 0 and self.packed.uniform_count == 0:
                 flat_slots = self.workload.num_experts * self.packed.max_count
                 self._padded_tokens_buffer = torch.empty(
                     flat_slots,
@@ -1089,7 +1178,6 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     _ = run_layer_cuda(
                         self.state,
                         self.workload,
-                        packed=self.packed,
                         combined_buffer=self._combined_buffer,
                         padded_tokens_buffer=self._padded_tokens_buffer,
                     )
@@ -1271,7 +1359,6 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.outputs = run_layer_cuda(
                 self.state,
                 self.workload,
-                packed=self.packed,
                 combined_buffer=self._combined_buffer,
                 padded_tokens_buffer=self._padded_tokens_buffer,
             )

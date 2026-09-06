@@ -702,7 +702,7 @@ if typer and profile_app is not None:
         replay_mode: str = typer.Option(
             "application",
             "--replay-mode",
-            help="NCU replay mode: application (all launches) or kernel (one instance per kernel)",
+            help="NCU replay mode: application, kernel, or app-range (one full NVTX start/stop range; --metric-set minimal; no launch/kernel limits)",
             show_default=True,
         ),
         launch_skip: Optional[int] = typer.Option(None, "--launch-skip", help="Kernel launches to skip before profiling"),
@@ -1430,7 +1430,11 @@ if typer and inference_app is not None:
         gpu_memory_gb: float = typer.Option(80.0, "--gpu-memory-gb", help="VRAM per GPU (GB)"),
         goal: str = typer.Option("throughput", "--goal", help="Optimization goal (throughput/latency/memory)"),
         max_seq_length: int = typer.Option(8192, "--max-seq-length", help="Max sequence length"),
-        run: bool = typer.Option(False, "--run", help="Execute the launch command"),
+        run: bool = typer.Option(
+            False,
+            "--run",
+            help="Execute a supported single-command launch",
+        ),
     ) -> None:
         from cli.commands import inference
         _run(

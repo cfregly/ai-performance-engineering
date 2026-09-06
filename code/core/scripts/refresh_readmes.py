@@ -1808,7 +1808,7 @@ ENTRIES["ch08"] = chapter_entry(
         ("`baseline_occupancy_tuning.py`, `optimized_occupancy_tuning.py`, `occupancy_tuning_tool.py`, `occupancy_api_example.cu`, `occupancy_tuning.cu`", "Occupancy studies that tune CTA shapes, register caps, and API-computed limits (plus a sweep tool for quick preset exploration)."),
         ("`baseline_loop_unrolling.cu`, `baseline_loop_unrolling.py`, `optimized_loop_unrolling.cu`, `optimized_loop_unrolling.py`, `loop_unrolling_kernels.cu`", "Loop-unrolling case studies that expose more independent work per thread while tracking register pressure."),
         ("`baseline_ai_optimization.py`, `optimized_ai_optimization.py`, `ai_optimization_kernels.cu`, `independent_ops.cu`", "AI-kernel scheduling samples that stage independent ops to highlight occupancy and issue-efficiency tradeoffs."),
-        ("`baseline_thresholdtma.py`, `optimized_thresholdtma.py`, `threshold_tma_benchmark_base.py`", "Bridge comparison pair into the later TMA chapters: same threshold workload shape, but a TMA-backed path marked as a comparison pair in structured metrics."),
+        ("`baseline_thresholdtma.py`, `optimized_thresholdtma.py`, `threshold_tma_benchmark_base.py`", "Legacy-named bridge comparison pair on the same threshold workload: the optimized path uses Blackwell-gated, per-thread async-copy staging in shared memory, not descriptor-based bulk TMA, and remains marked as a comparison pair in structured metrics."),
         ("`baseline_tiling.py`, `optimized_tiling.py`, `baseline_tiling_tcgen05.py`, `optimized_tiling_tcgen05.py`, `tiling_kernels.cu`, `tiling_extension_tcgen05.py`", "Bridge comparison pairs into Chapter 9: arithmetic-intensity and tensor-core tiling workloads kept as real baseline/optimized pairs but marked non-native for Chapter 8. `optimized_tiling.py` uses the strict `matmul_tiled_fast` path so runtime issues fail fast instead of silently falling back."),
         ("`baseline_tcgen05_custom_vs_cublas.py`, `optimized_tcgen05_custom_vs_cublas.py`, `tcgen05_custom_vs_cublas_benchmark_base.py`", "Supplementary custom-tcgen05-versus-cuBLAS bridge comparison benchmark that points ahead to Chapter 9 tensor-core scheduling without acting as a canonical Chapter 8 speed claim."),
         ("`baseline_nvfp4_mlp.py`, `optimized_nvfp4_mlp.py`", "Precision bridge comparison pair: BF16 versus NVFP4 MLP path kept here as a real pair, but explicitly marked as a Chapter 9-style comparison."),
@@ -4716,7 +4716,13 @@ ENTRIES["labs/custom_vs_cublas"] = lab_entry(
 ENTRIES["labs/flashattention_gluon"] = lab_entry(
     slug="labs/flashattention_gluon",
     title='Lab - Tiled Triton Attention (legacy Gluon target)',
-    summary='Benchmarks ordinary tiled Triton attention with online softmax against an eager attention reference. Historical Gluon target/module names remain compatible; no Gluon DSL, warp specialization, or TMA implementation is claimed.',
+    summary=(
+        'Benchmarks ordinary tiled Triton attention with online softmax against an eager attention reference. Historical Gluon target/module names remain compatible; no Gluon DSL, warp specialization, or TMA implementation is claimed.\n\n'
+        'The September 5, 2026 correctness update retains FP32 intermediates in both\n'
+        'paths and rounds the output once to the input dtype. Historical timings below\n'
+        'predate this precision change and are not current performance evidence. The causal/tail tests\n'
+        'and FP16/BF16/FP32 precision tests use the existing PyTorch closeness defaults.'
+    ),
     lead_sections=[
         MarkdownSection(
             'Problem',

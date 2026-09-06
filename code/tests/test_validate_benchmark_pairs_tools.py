@@ -177,7 +177,7 @@ def test_ch04_torchrun_multigpu_pairs_skip_cleanly_on_single_gpu_hosts() -> None
             assert result.error is None
 
 
-def test_ch04_no_overlap_pair_skips_cleanly_on_single_gpu_hosts() -> None:
+def test_ch04_no_overlap_pair_requires_distributed_launch_context() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     result = validate_pair(
         "ch04",
@@ -190,9 +190,9 @@ def test_ch04_no_overlap_pair_skips_cleanly_on_single_gpu_hosts() -> None:
         assert result.skipped is True
         assert result.error is not None and "SKIPPED" in result.error
     else:
-        assert result.skipped is False
-        assert result.error is None
-        assert result.valid is True
+        assert result.skipped is True
+        assert result.error is not None
+        assert "torchrun/distributed launch context" in result.error
 
 
 def test_ch04_no_overlap_torchrun_specs_use_public_target_names() -> None:

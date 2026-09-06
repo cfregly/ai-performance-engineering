@@ -133,6 +133,8 @@ class GPUState:
     memory_used_mb: Optional[float] = None
     memory_total_mb: Optional[float] = None
     throttle_reason: Optional[str] = None
+    power_limit_w: Optional[float] = None
+    device_uuid: Optional[str] = None
 
 
 def capture_gpu_state(device_index: int = 0) -> GPUState:
@@ -158,9 +160,25 @@ def capture_gpu_state(device_index: int = 0) -> GPUState:
         ) from exc
 
     # Collect detailed state via NVML (fail-fast on any NVML error).
+    from core.profiling.gpu_telemetry import (
+        normalize_gpu_uuid,
+        resolve_nvml_device_handle,
+    )
+
     pynvml.nvmlInit()
     try:
-        handle = pynvml.nvmlDeviceGetHandleByIndex(device_index)
+        cuda_device_uuid = normalize_gpu_uuid(getattr(props, "uuid", None))
+        handle = resolve_nvml_device_handle(
+            pynvml,
+            device_index,
+            cuda_device_uuid=cuda_device_uuid,
+        )
+        state.device_uuid = normalize_gpu_uuid(pynvml.nvmlDeviceGetUUID(handle))
+        if cuda_device_uuid is not None and state.device_uuid != cuda_device_uuid:
+            raise RuntimeError(
+                "NVML device identity does not match the requested logical CUDA device: "
+                f"cuda={cuda_device_uuid!r}, nvml={state.device_uuid!r}"
+            )
 
         state.temperature_c = float(
             pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
@@ -172,6 +190,9 @@ def capture_gpu_state(device_index: int = 0) -> GPUState:
         )
 
         state.power_draw_w = float(pynvml.nvmlDeviceGetPowerUsage(handle) / 1000.0)
+        state.power_limit_w = float(
+            pynvml.nvmlDeviceGetPowerManagementLimit(handle) / 1000.0
+        )
 
         throttle = pynvml.nvmlDeviceGetCurrentClocksThrottleReasons(handle)
         if throttle != 0:
@@ -202,7 +223,11 @@ def capture_gpu_state(device_index: int = 0) -> GPUState:
 def check_gpu_state_consistency(before: GPUState, after: GPUState, 
                                   temp_threshold: float = 10.0,
                                   clock_threshold_pct: float = 10.0) -> Tuple[bool, List[str]]:
-    """Check if GPU state changed significantly during benchmark.
+    """Classify significant changes between two GPU diagnostic snapshots.
+
+    BenchmarkHarness currently emits returned reasons as ``RuntimeWarning`` and
+    does not reject the benchmark. Its before snapshot precedes warmup, so an
+    upward current-clock change can represent normal boost behavior.
     
     Returns:
         Tuple of (is_consistent, list_of_warnings)
@@ -218,13 +243,31 @@ def check_gpu_state_consistency(before: GPUState, after: GPUState,
                 f"({before.temperature_c}°C → {after.temperature_c}°C)"
             )
     
-    # Clock speed drop
+    # Clock speed change
     if before.clock_mhz is not None and after.clock_mhz is not None:
-        clock_drop_pct = (before.clock_mhz - after.clock_mhz) / before.clock_mhz * 100
-        if clock_drop_pct > clock_threshold_pct:
+        if before.clock_mhz > 0:
+            clock_change_pct = (
+                (after.clock_mhz - before.clock_mhz) / before.clock_mhz * 100
+            )
+            if abs(clock_change_pct) > clock_threshold_pct:
+                if clock_change_pct < 0:
+                    warnings_list.append(
+                        f"GPU clock dropped {abs(clock_change_pct):.1f}% during benchmark "
+                        f"({before.clock_mhz}MHz → {after.clock_mhz}MHz) - possible thermal throttling"
+                    )
+                else:
+                    warnings_list.append(
+                        f"GPU clock increased {clock_change_pct:.1f}% during benchmark "
+                        f"({before.clock_mhz}MHz → {after.clock_mhz}MHz) - "
+                        "current-clock diagnostic; the pre-warmup snapshot may normally boost"
+                    )
+
+    # Configured power-limit change
+    if before.power_limit_w is not None and after.power_limit_w is not None:
+        if before.power_limit_w != after.power_limit_w:
             warnings_list.append(
-                f"GPU clock dropped {clock_drop_pct:.1f}% during benchmark "
-                f"({before.clock_mhz}MHz → {after.clock_mhz}MHz) - possible thermal throttling"
+                f"GPU power limit changed during benchmark "
+                f"({before.power_limit_w:.1f}W → {after.power_limit_w:.1f}W)"
             )
     
     # Throttling detected

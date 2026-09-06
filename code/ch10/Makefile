@@ -4,6 +4,7 @@
 include ../core/common/cuda_arch.mk
 
 NVCC_FLAGS = $(CUDA_NVCC_ARCH_FLAGS) -lineinfo -Xptxas=-v $(CUDA_NVTX_CFLAGS)
+CXX20_NVCC_FLAGS = $(filter-out -std=%,$(NVCC_FLAGS)) -std=c++20
 SUFFIX = $(TARGET_SUFFIX)
 INCLUDES = -I..
 COMMON_HEADERS = ../core/common/headers/arch_detection.cuh ../core/common/headers/tma_helpers.cuh ../core/common/headers/tma_2d_layout.hpp
@@ -127,16 +128,16 @@ optimized_dsmem_reduction_warp_specialized_verify$(SUFFIX): optimized_dsmem_redu
 
 # Special rules for files needing C++20 or -lcuda
 baseline_flash_attn_tma_micro_pipeline$(SUFFIX): baseline_flash_attn_tma_micro_pipeline.cu $(CUDA_NVTX_DEPS)
-	$(NVCC) $(NVCC_FLAGS) -std=c++20 $(INCLUDES) -o $@ $< $(CUDA_NVTX_LDFLAGS)
+	$(NVCC) $(CXX20_NVCC_FLAGS) $(INCLUDES) -o $@ $< $(CUDA_NVTX_LDFLAGS)
 
 baseline_flash_attn_tma_micro_pipeline_verify$(SUFFIX): baseline_flash_attn_tma_micro_pipeline.cu $(CUDA_NVTX_DEPS)
-	$(NVCC) $(NVCC_FLAGS) -std=c++20 -DVERIFY=1 $(INCLUDES) -o $@ $< $(CUDA_NVTX_LDFLAGS)
+	$(NVCC) $(CXX20_NVCC_FLAGS) -DVERIFY=1 $(INCLUDES) -o $@ $< $(CUDA_NVTX_LDFLAGS)
 
 optimized_flash_attn_tma_micro_pipeline$(SUFFIX): optimized_flash_attn_tma_micro_pipeline.cu $(CUDA_NVTX_DEPS)
-	$(NVCC) $(NVCC_FLAGS) -std=c++20 $(INCLUDES) -lcuda -o $@ $< $(CUDA_NVTX_LDFLAGS)
+	$(NVCC) $(CXX20_NVCC_FLAGS) $(INCLUDES) -lcuda -o $@ $< $(CUDA_NVTX_LDFLAGS)
 
 optimized_flash_attn_tma_micro_pipeline_verify$(SUFFIX): optimized_flash_attn_tma_micro_pipeline.cu $(CUDA_NVTX_DEPS)
-	$(NVCC) $(NVCC_FLAGS) -std=c++20 -DVERIFY=1 $(INCLUDES) -lcuda -o $@ $< $(CUDA_NVTX_LDFLAGS)
+	$(NVCC) $(CXX20_NVCC_FLAGS) -DVERIFY=1 $(INCLUDES) -lcuda -o $@ $< $(CUDA_NVTX_LDFLAGS)
 
 tma_2d_pipeline_blackwell$(SUFFIX): tma_2d_pipeline_blackwell.cu $(COMMON_HEADERS) $(CUDA_NVTX_DEPS)
 	$(NVCC) $(NVCC_FLAGS) -std=c++17 $(INCLUDES) -lcuda -o $@ $< $(CUDA_NVTX_LDFLAGS)

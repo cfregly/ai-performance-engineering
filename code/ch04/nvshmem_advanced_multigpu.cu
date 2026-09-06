@@ -2,12 +2,12 @@
  * NVSHMEM Advanced Patterns for Multi-GPU Blackwell B200 Nodes
  * ======================================================
  * 
- * Production-quality NVSHMEM patterns for high-performance multi-GPU computing.
+ * Educational NVSHMEM patterns for multi-GPU communication.
  * 
  * Advanced Examples:
  * 1. Ring AllReduce (NCCL-style algorithm)
  * 2. Double-buffered Ring AllReduce (overlapped communication)
- * 3. Recursive Halving-Doubling (bandwidth-optimal)
+ * 3. Recursive Doubling AllReduce (power-of-two PE counts)
  * 4. Pipelined Broadcast (multi-stage)
  * 5. Custom Reduce-Scatter + AllGather
  * 6. Performance Comparison Framework
@@ -67,7 +67,7 @@ inline void nvshmem_float_put_nbi(float*, float*, int, int) {}
   } while (0)
 
 // ============================================================================
-// Pattern 1: Ring AllReduce (Production-Quality)
+// Pattern 1: Ring AllReduce
 // ============================================================================
 
 /**
@@ -83,70 +83,110 @@ inline void nvshmem_float_put_nbi(float*, float*, int, int) {}
 
 #ifdef USE_NVSHMEM
 
-__global__ void ring_reduce_scatter_kernel(float *data, float *recv_buf, 
-                                           int chunk_size, int my_pe, int n_pes) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int right_pe = (my_pe + 1) % n_pes;
-    int left_pe = (my_pe - 1 + n_pes) % n_pes;
-    
-    for (int step = 0; step < n_pes - 1; step++) {
-        int send_chunk = (my_pe - step + n_pes) % n_pes;
-        int recv_chunk = (my_pe - step - 1 + n_pes) % n_pes;
-        
-        // Send current chunk to right neighbor
-        if (idx < chunk_size) {
-            int send_offset = send_chunk * chunk_size + idx;
-            nvshmem_float_put(&recv_buf[idx], &data[send_offset], 1, right_pe);
-        }
-        __syncthreads();
-        nvshmemx_barrier_all_on_stream(0);
-        
-        // Reduce received chunk
-        if (idx < chunk_size) {
-            int recv_offset = recv_chunk * chunk_size + idx;
-            data[recv_offset] += recv_buf[idx];
-        }
-        __syncthreads();
+static void initialize_nvshmem_device() {
+    nvshmem_init();
+    const int world_pe = nvshmem_my_pe();
+    const int local_pe = nvshmem_team_my_pe(NVSHMEMX_TEAM_NODE);
+    if (local_pe < 0) {
+        fprintf(stderr, "PE %d has no rank in NVSHMEMX_TEAM_NODE\n", world_pe);
+        nvshmem_global_exit(EXIT_FAILURE);
+    }
+
+    // Device initialization is deferred when nvshmem_init() runs before a
+    // CUDA device is selected. Map by the node-local PE and complete the
+    // documented lazy-init path before touching the symmetric heap.
+    CUDA_CHECK(cudaSetDevice(local_pe));
+    nvshmem_barrier_all();
+    const int status = nvshmemx_init_status();
+    if (status != NVSHMEM_STATUS_IS_INITIALIZED &&
+        status != NVSHMEM_STATUS_LIMITED_MPG &&
+        status != NVSHMEM_STATUS_FULL_MPG) {
+        fprintf(stderr, "PE %d NVSHMEM device initialization failed: status %d\n",
+                world_pe, status);
+        nvshmem_global_exit(EXIT_FAILURE);
     }
 }
 
-__global__ void ring_allgather_kernel(float *data, float *recv_buf,
-                                      int chunk_size, int my_pe, int n_pes) {
+__global__ void ring_send_kernel(const float *data, float *recv_buf,
+                                 int chunk_size, int send_chunk, int right_pe) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int right_pe = (my_pe + 1) % n_pes;
-    
-    for (int step = 0; step < n_pes - 1; step++) {
-        int send_chunk = (my_pe + 1 - step + n_pes) % n_pes;
-        int recv_chunk = (my_pe - step + n_pes) % n_pes;
-        
-        // Send reduced chunk to right neighbor
-        if (idx < chunk_size) {
-            int send_offset = send_chunk * chunk_size + idx;
-            nvshmem_float_put(&recv_buf[idx], &data[send_offset], 1, right_pe);
-        }
-        __syncthreads();
-        nvshmemx_barrier_all_on_stream(0);
-        
-        // Copy received chunk
-        if (idx < chunk_size) {
-            int recv_offset = recv_chunk * chunk_size + idx;
-            data[recv_offset] = recv_buf[idx];
-        }
-        __syncthreads();
+    if (idx < chunk_size) {
+        int send_offset = send_chunk * chunk_size + idx;
+        nvshmem_float_put(&recv_buf[idx], &data[send_offset], 1, right_pe);
     }
 }
 
-void benchmark_ring_allreduce(int my_pe, int n_pes) {
+__global__ void ring_reduce_kernel(float *data, const float *recv_buf,
+                                   int chunk_size, int recv_chunk) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < chunk_size) {
+        int recv_offset = recv_chunk * chunk_size + idx;
+        data[recv_offset] += recv_buf[idx];
+    }
+}
+
+__global__ void ring_copy_kernel(float *data, const float *recv_buf,
+                                 int chunk_size, int recv_chunk) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < chunk_size) {
+        int recv_offset = recv_chunk * chunk_size + idx;
+        data[recv_offset] = recv_buf[idx];
+    }
+}
+
+void run_ring_reduce_scatter(float *data, float *recv_buf, int chunk_size,
+                             int my_pe, int n_pes, cudaStream_t stream) {
+    const int threads = 256;
+    const int blocks = (chunk_size + threads - 1) / threads;
+    const int right_pe = (my_pe + 1) % n_pes;
+    for (int step = 0; step < n_pes - 1; step++) {
+        const int send_chunk = (my_pe - step + n_pes) % n_pes;
+        const int recv_chunk = (my_pe - step - 1 + n_pes) % n_pes;
+        ring_send_kernel<<<blocks, threads, 0, stream>>>(
+            data, recv_buf, chunk_size, send_chunk, right_pe);
+        CUDA_CHECK(cudaGetLastError());
+        // This host collective is stream-ordered after every PE's send kernel.
+        nvshmemx_barrier_all_on_stream(stream);
+        ring_reduce_kernel<<<blocks, threads, 0, stream>>>(
+            data, recv_buf, chunk_size, recv_chunk);
+        CUDA_CHECK(cudaGetLastError());
+    }
+}
+
+void run_ring_allgather(float *data, float *recv_buf, int chunk_size,
+                        int my_pe, int n_pes, cudaStream_t stream) {
+    const int threads = 256;
+    const int blocks = (chunk_size + threads - 1) / threads;
+    const int right_pe = (my_pe + 1) % n_pes;
+    for (int step = 0; step < n_pes - 1; step++) {
+        const int send_chunk = (my_pe + 1 - step + n_pes) % n_pes;
+        const int recv_chunk = (my_pe - step + n_pes) % n_pes;
+        ring_send_kernel<<<blocks, threads, 0, stream>>>(
+            data, recv_buf, chunk_size, send_chunk, right_pe);
+        CUDA_CHECK(cudaGetLastError());
+        nvshmemx_barrier_all_on_stream(stream);
+        ring_copy_kernel<<<blocks, threads, 0, stream>>>(
+            data, recv_buf, chunk_size, recv_chunk);
+        CUDA_CHECK(cudaGetLastError());
+    }
+}
+
+bool benchmark_ring_allreduce(int my_pe, int n_pes) {
     if (my_pe == 0) {
         printf("\n=== Pattern 1: Ring AllReduce ===\n");
         printf("Algorithm: NCCL-style ring for small messages\n");
     }
     
-    const int N = 8 * 1024 * 1024 / sizeof(float);  // 8 MB
-    const int chunk_size = N / n_pes;
+    const int target_elements = 8 * 1024 * 1024 / sizeof(float);
+    const int chunk_size = (target_elements + n_pes - 1) / n_pes;
+    const int N = chunk_size * n_pes;
     
     float *d_data = (float *)nvshmem_malloc(N * sizeof(float));
     float *d_recv = (float *)nvshmem_malloc(chunk_size * sizeof(float));
+    if (d_data == nullptr || d_recv == nullptr) {
+        fprintf(stderr, "PE %d failed to allocate ring AllReduce storage\n", my_pe);
+        nvshmem_global_exit(EXIT_FAILURE);
+    }
     
     // Initialize with PE ID
     float *h_data = (float *)malloc(N * sizeof(float));
@@ -158,22 +198,24 @@ void benchmark_ring_allreduce(int my_pe, int n_pes) {
     
     nvshmem_barrier_all();
     
-    // Warmup
-    int threads = 256;
-    int blocks = (chunk_size + threads - 1) / threads;
-    ring_reduce_scatter_kernel<<<blocks, threads>>>(d_data, d_recv, chunk_size, my_pe, n_pes);
-    ring_allgather_kernel<<<blocks, threads>>>(d_data, d_recv, chunk_size, my_pe, n_pes);
-    CUDA_CHECK(cudaDeviceSynchronize());
+    cudaStream_t stream;
+    CUDA_CHECK(cudaStreamCreate(&stream));
+
+    // Warmup, then restore the original input before the measured pass.
+    run_ring_reduce_scatter(d_data, d_recv, chunk_size, my_pe, n_pes, stream);
+    run_ring_allgather(d_data, d_recv, chunk_size, my_pe, n_pes, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    CUDA_CHECK(cudaMemcpyAsync(d_data, h_data, N * sizeof(float),
+                               cudaMemcpyHostToDevice, stream));
+    CUDA_CHECK(cudaStreamSynchronize(stream));
     nvshmem_barrier_all();
     
     // Benchmark
     auto start = std::chrono::high_resolution_clock::now();
     
-    ring_reduce_scatter_kernel<<<blocks, threads>>>(d_data, d_recv, chunk_size, my_pe, n_pes);
-    CUDA_CHECK(cudaDeviceSynchronize());
-    
-    ring_allgather_kernel<<<blocks, threads>>>(d_data, d_recv, chunk_size, my_pe, n_pes);
-    CUDA_CHECK(cudaDeviceSynchronize());
+    run_ring_reduce_scatter(d_data, d_recv, chunk_size, my_pe, n_pes, stream);
+    run_ring_allgather(d_data, d_recv, chunk_size, my_pe, n_pes, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
     
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
@@ -181,7 +223,13 @@ void benchmark_ring_allreduce(int my_pe, int n_pes) {
     // Verify
     CUDA_CHECK(cudaMemcpy(h_data, d_data, N * sizeof(float), cudaMemcpyDeviceToHost));
     float expected = (float)(n_pes * (n_pes + 1)) / 2.0f;
-    bool correct = fabs(h_data[0] - expected) < 0.01f;
+    size_t bad_values = 0;
+    for (int i = 0; i < N; ++i) {
+        if (!std::isfinite(h_data[i]) || fabs(h_data[i] - expected) >= 0.01f) {
+            ++bad_values;
+        }
+    }
+    bool correct = bad_values == 0;
     
     if (my_pe == 0) {
         NVTX_RANGE("verify");
@@ -189,91 +237,78 @@ void benchmark_ring_allreduce(int my_pe, int n_pes) {
         printf("  Data size: %.2f MB\n", N * sizeof(float) / (1024.0 * 1024.0));
         printf("  Bandwidth: %.2f GB/s\n", 
                (2.0 * N * sizeof(float) * (n_pes - 1) / n_pes) / (duration.count() / 1e6) / 1e9);
-        printf("  Correctness: %s (expected %.1f, got %.1f)\n",
-               correct ? "PASS" : "FAIL", expected, h_data[0]);
     }
-    
+    printf("  PE %d correctness: %s (%zu mismatches, expected %.1f, got %.1f)\n",
+           my_pe, correct ? "PASS" : "FAIL", bad_values, expected, h_data[0]);
+
+    CUDA_CHECK(cudaStreamDestroy(stream));
     nvshmem_free(d_data);
     nvshmem_free(d_recv);
     free(h_data);
+    return correct;
 }
 
 #else
-void benchmark_ring_allreduce(int my_pe, int n_pes) {
+bool benchmark_ring_allreduce(int my_pe, int n_pes) {
     if (my_pe == 0) {
         printf("\n=== Pattern 1: Ring AllReduce ===\n");
         printf("[Educational Mode - compile with -DUSE_NVSHMEM]\n");
         printf("Steps: %d (reduce-scatter) + %d (allgather) = %d\n", 
                n_pes-1, n_pes-1, 2*(n_pes-1));
     }
+    return true;
 }
 #endif
 
 // ============================================================================
-// Pattern 2: Double-Buffered Ring AllReduce
+// Pattern 2: Double-Buffered Ring Reduce-Scatter
 // ============================================================================
 
 /**
- * Advanced optimization: overlap communication with computation
- * 
- * Key technique: While sending chunk[i], reduce chunk[i-1]
- * Uses: nvshmem_put_nbi() for non-blocking communication
- * Speedup: 10-20% over basic ring
+ * Alternates two symmetric receive buffers across ring steps. The host enqueues
+ * a stream-ordered barrier between each send and reduction, which is required
+ * when a chunk spans multiple CUDA blocks.
  */
 
 #ifdef USE_NVSHMEM
 
-__global__ void double_buffered_reduce_scatter(float *data, float *buf0, float *buf1,
-                                               int chunk_size, int my_pe, int n_pes) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int right_pe = (my_pe + 1) % n_pes;
-    
+void run_double_buffered_reduce_scatter(float *data, float *buf0, float *buf1,
+                                        int chunk_size, int my_pe, int n_pes,
+                                        cudaStream_t stream) {
+    const int threads = 256;
+    const int blocks = (chunk_size + threads - 1) / threads;
+    const int right_pe = (my_pe + 1) % n_pes;
     for (int step = 0; step < n_pes - 1; step++) {
-        int send_chunk = (my_pe - step + n_pes) % n_pes;
-        int recv_chunk = (my_pe - step - 1 + n_pes) % n_pes;
-        
-        float *send_buf = (step % 2 == 0) ? buf0 : buf1;
-        float *recv_buf = (step % 2 == 0) ? buf1 : buf0;
-        
-        // Copy to send buffer and initiate non-blocking send
-        if (idx < chunk_size) {
-            int offset = send_chunk * chunk_size + idx;
-            send_buf[idx] = data[offset];
-            nvshmem_float_put_nbi(&recv_buf[idx], &send_buf[idx], 1, right_pe);
-        }
-        
-        // While send is in flight, reduce previous chunk (overlap!)
-        if (step > 0 && idx < chunk_size) {
-            int prev_chunk = (my_pe - step + 1 + n_pes) % n_pes;
-            float *prev_buf = (step % 2 == 0) ? buf1 : buf0;
-            data[prev_chunk * chunk_size + idx] += prev_buf[idx];
-        }
-        
-        nvshmem_quiet();  // Wait for send completion
-        __syncthreads();
-        nvshmemx_barrier_all_on_stream(0);
-    }
-    
-    // Handle last chunk
-    if (idx < chunk_size) {
-        int last_chunk = (my_pe - n_pes + 2 + n_pes) % n_pes;
-        float *last_buf = ((n_pes - 1) % 2 == 0) ? buf1 : buf0;
-        data[last_chunk * chunk_size + idx] += last_buf[idx];
+        const int send_chunk = (my_pe - step + n_pes) % n_pes;
+        const int recv_chunk = (my_pe - step - 1 + n_pes) % n_pes;
+        float *recv_buf = (step % 2 == 0) ? buf0 : buf1;
+        ring_send_kernel<<<blocks, threads, 0, stream>>>(
+            data, recv_buf, chunk_size, send_chunk, right_pe);
+        CUDA_CHECK(cudaGetLastError());
+        nvshmemx_barrier_all_on_stream(stream);
+        ring_reduce_kernel<<<blocks, threads, 0, stream>>>(
+            data, recv_buf, chunk_size, recv_chunk);
+        CUDA_CHECK(cudaGetLastError());
     }
 }
 
-void benchmark_double_buffered_allreduce(int my_pe, int n_pes) {
+bool benchmark_double_buffered_reduce_scatter(int my_pe, int n_pes) {
     if (my_pe == 0) {
-        printf("\n=== Pattern 2: Double-Buffered Ring AllReduce ===\n");
-        printf("Optimization: Overlap send(i) with reduce(i-1)\n");
+        printf("\n=== Pattern 2: Double-Buffered Ring Reduce-Scatter ===\n");
+        printf("Technique: Alternate symmetric receive buffers across ring steps\n");
     }
     
-    const int N = 8 * 1024 * 1024 / sizeof(float);
-    const int chunk_size = N / n_pes;
+    const int target_elements = 8 * 1024 * 1024 / sizeof(float);
+    const int chunk_size = (target_elements + n_pes - 1) / n_pes;
+    const int N = chunk_size * n_pes;
     
     float *d_data = (float *)nvshmem_malloc(N * sizeof(float));
     float *d_buf0 = (float *)nvshmem_malloc(chunk_size * sizeof(float));
     float *d_buf1 = (float *)nvshmem_malloc(chunk_size * sizeof(float));
+    if (d_data == nullptr || d_buf0 == nullptr || d_buf1 == nullptr) {
+        fprintf(stderr, "PE %d failed to allocate double-buffered ring storage\n", my_pe);
+        nvshmem_global_exit(EXIT_FAILURE);
+    }
     
     float *h_data = (float *)malloc(N * sizeof(float));
     for (int i = 0; i < N; i++) {
@@ -286,77 +321,79 @@ void benchmark_double_buffered_allreduce(int my_pe, int n_pes) {
     
     auto start = std::chrono::high_resolution_clock::now();
     
-    int threads = 256;
-    int blocks = (chunk_size + threads - 1) / threads;
-    double_buffered_reduce_scatter<<<blocks, threads>>>(d_data, d_buf0, d_buf1,
-                                                         chunk_size, my_pe, n_pes);
-    CUDA_CHECK(cudaDeviceSynchronize());
+    cudaStream_t stream;
+    CUDA_CHECK(cudaStreamCreate(&stream));
+    run_double_buffered_reduce_scatter(
+        d_data, d_buf0, d_buf1, chunk_size, my_pe, n_pes, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
     
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
     
-    if (my_pe == 0) {
-        NVTX_RANGE("reduce");
-        printf("  Time: %ld μs (reduce-scatter phase only)\n", duration.count());
-        printf("  Expected speedup: 10-20%% vs basic ring\n");
-        printf("  Technique: Non-blocking puts + overlap\n");
+    const int owned_chunk = (my_pe + 1) % n_pes;
+    CUDA_CHECK(cudaMemcpy(h_data, d_data + owned_chunk * chunk_size,
+                          chunk_size * sizeof(float), cudaMemcpyDeviceToHost));
+    const float expected = (float)(n_pes * (n_pes + 1)) / 2.0f;
+    size_t bad_values = 0;
+    for (int i = 0; i < chunk_size; ++i) {
+        if (!std::isfinite(h_data[i]) || fabs(h_data[i] - expected) >= 0.01f) {
+            ++bad_values;
+        }
     }
-    
+    const bool correct = bad_values == 0;
+    printf("  PE %d reduce-scatter: %ld μs, correctness %s (%zu mismatches)\n",
+           my_pe, duration.count(), correct ? "PASS" : "FAIL", bad_values);
+
+    CUDA_CHECK(cudaStreamDestroy(stream));
     nvshmem_free(d_data);
     nvshmem_free(d_buf0);
     nvshmem_free(d_buf1);
     free(h_data);
+    return correct;
 }
 
 #else
-void benchmark_double_buffered_allreduce(int my_pe, int n_pes) {
+bool benchmark_double_buffered_reduce_scatter(int my_pe, int n_pes) {
     if (my_pe == 0) {
-        printf("\n=== Pattern 2: Double-Buffered Ring AllReduce ===\n");
+        printf("\n=== Pattern 2: Double-Buffered Ring Reduce-Scatter ===\n");
         printf("[Educational Mode]\n");
         printf("Uses ping-pong buffers for overlap\n");
     }
+    return true;
 }
 #endif
 
 // ============================================================================
-// Pattern 3: Recursive Halving-Doubling
+// Pattern 3: Recursive Doubling AllReduce
 // ============================================================================
 
 /**
- * Bandwidth-optimal algorithm for large messages
- * 
- * Steps: 2*log₂(n) vs 2*(n-1) for ring
- * Best for: Messages >1MB where bandwidth dominates latency
- * Used by: MPI, NCCL (large messages), Gloo
+ * Full-buffer pairwise exchanges over log2(n) steps. After each step, every PE
+ * holds a reduction covering twice as many PEs. Requires a power-of-two count.
  */
 
 #ifdef USE_NVSHMEM
 
-__global__ void recursive_exchange_kernel(float *data, float *recv_buf, int size,
-                                          int my_pe, int step, bool is_reduce) {
+__global__ void recursive_exchange_send_kernel(const float *data, float *recv_buf,
+                                               int size, int partner) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int partner = my_pe ^ (1 << step);  // XOR to find partner
-    
     if (idx < size) {
-        // Send to partner
         nvshmem_float_put(&recv_buf[idx], &data[idx], 1, partner);
-    }
-    __syncthreads();
-    nvshmemx_barrier_all_on_stream(0);
-    
-    if (idx < size) {
-        if (is_reduce) {
-            data[idx] += recv_buf[idx];  // Reduce phase
-        } else {
-            data[idx] = recv_buf[idx];   // Gather phase
-        }
     }
 }
 
-void benchmark_recursive_halving_doubling(int my_pe, int n_pes) {
+__global__ void recursive_exchange_reduce_kernel(float *data,
+                                                 const float *recv_buf,
+                                                 int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        data[idx] += recv_buf[idx];
+    }
+}
+
+bool benchmark_recursive_halving_doubling(int my_pe, int n_pes) {
     if (my_pe == 0) {
-        printf("\n=== Pattern 3: Recursive Halving-Doubling ===\n");
-        printf("Bandwidth-optimal for large messages\n");
+        printf("\n=== Pattern 3: Recursive Doubling AllReduce ===\n");
     }
     
     // Check power of 2
@@ -364,12 +401,16 @@ void benchmark_recursive_halving_doubling(int my_pe, int n_pes) {
         if (my_pe == 0) {
             printf("  Requires power-of-2 PEs (got %d)\n", n_pes);
         }
-        return;
+        return false;
     }
     
     const int N = 32 * 1024 * 1024 / sizeof(float);  // 32 MB
     float *d_data = (float *)nvshmem_malloc(N * sizeof(float));
     float *d_recv = (float *)nvshmem_malloc(N * sizeof(float));
+    if (d_data == nullptr || d_recv == nullptr) {
+        fprintf(stderr, "PE %d failed to allocate recursive-doubling storage\n", my_pe);
+        nvshmem_global_exit(EXIT_FAILURE);
+    }
     
     float *h_data = (float *)malloc(N * sizeof(float));
     for (int i = 0; i < N; i++) {
@@ -387,46 +428,66 @@ void benchmark_recursive_halving_doubling(int my_pe, int n_pes) {
     int threads = 256;
     int blocks = (N + threads - 1) / threads;
     
-    // Recursive halving (reduce)
+    cudaStream_t stream;
+    CUDA_CHECK(cudaStreamCreate(&stream));
+
+    // Recursive doubling: after each exchange, each PE has the sum for a
+    // group twice as large as in the previous step.
     for (int step = 0; step < log_n; step++) {
         NVTX_RANGE("compute_kernel:recursive_exchange_kernel");
-        recursive_exchange_kernel<<<blocks, threads>>>(d_data, d_recv, N, my_pe, step, true);
-        CUDA_CHECK(cudaDeviceSynchronize());
+        const int partner = my_pe ^ (1 << step);
+        recursive_exchange_send_kernel<<<blocks, threads, 0, stream>>>(
+            d_data, d_recv, N, partner);
+        CUDA_CHECK(cudaGetLastError());
+        nvshmemx_barrier_all_on_stream(stream);
+        recursive_exchange_reduce_kernel<<<blocks, threads, 0, stream>>>(
+            d_data, d_recv, N);
+        CUDA_CHECK(cudaGetLastError());
     }
-    
-    // Recursive doubling (gather)
-    for (int step = log_n - 1; step >= 0; step--) {
-        NVTX_RANGE("compute_kernel:recursive_exchange_kernel");
-        recursive_exchange_kernel<<<blocks, threads>>>(d_data, d_recv, N, my_pe, step, false);
-        CUDA_CHECK(cudaDeviceSynchronize());
-    }
+    CUDA_CHECK(cudaStreamSynchronize(stream));
     
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-    
+
+    CUDA_CHECK(cudaMemcpy(h_data, d_data, N * sizeof(float), cudaMemcpyDeviceToHost));
+    const float expected = (float)(n_pes * (n_pes + 1)) / 2.0f;
+    size_t bad_values = 0;
+    for (int i = 0; i < N; ++i) {
+        if (!std::isfinite(h_data[i]) || fabs(h_data[i] - expected) >= 0.01f) {
+            ++bad_values;
+        }
+    }
+    const bool correct = bad_values == 0;
+
     if (my_pe == 0) {
         NVTX_RANGE("batch");
         printf("  Time: %ld μs\n", duration.count());
-        printf("  Steps: %d (vs %d for ring)\n", 2 * log_n, 2 * (n_pes - 1));
+        printf("  Exchange steps: %d (vs %d phases for ring)\n",
+               log_n, 2 * (n_pes - 1));
         printf("  Data size: %.2f MB\n", N * sizeof(float) / (1024.0 * 1024.0));
-        printf("  Bandwidth: %.2f GB/s\n",
-               (2.0 * N * sizeof(float)) / (duration.count() / 1e6) / 1e9);
-        printf("  Best for: Large messages where bandwidth >> latency\n");
+        printf("  Exchange traffic per PE: %.2f MB\n",
+               log_n * N * sizeof(float) / (1024.0 * 1024.0));
     }
-    
+    printf("  PE %d correctness: %s (%zu mismatches)\n",
+           my_pe, correct ? "PASS" : "FAIL", bad_values);
+
+    CUDA_CHECK(cudaStreamDestroy(stream));
     nvshmem_free(d_data);
     nvshmem_free(d_recv);
     free(h_data);
+    return correct;
 }
 
 #else
-void benchmark_recursive_halving_doubling(int my_pe, int n_pes) {
+bool benchmark_recursive_halving_doubling(int my_pe, int n_pes) {
     if (my_pe == 0) {
-        printf("\n=== Pattern 3: Recursive Halving-Doubling ===\n");
+        printf("\n=== Pattern 3: Recursive Doubling AllReduce ===\n");
         printf("[Educational Mode]\n");
         int log_n = (int)(log2(std::max(1, n_pes)) + 0.5);
-        printf("Steps: %d vs %d for ring\n", 2 * log_n, 2 * (n_pes - 1));
+        printf("Exchange steps: %d vs %d phases for ring\n",
+               log_n, 2 * (n_pes - 1));
     }
+    return true;
 }
 #endif
 
@@ -438,11 +499,11 @@ int main() {
     NVTX_RANGE("main");
     printf("╔════════════════════════════════════════════════════════════╗\n");
     printf("║  NVSHMEM Advanced Patterns for Multi-GPU Blackwell B200   ║\n");
-    printf("║  Production-Quality Communication Algorithms               ║\n");
+    printf("║  Stream-Ordered Communication Algorithms                    ║\n");
     printf("╚════════════════════════════════════════════════════════════╝\n\n");
     
     #ifdef USE_NVSHMEM
-    nvshmem_init();
+    initialize_nvshmem_device();
     
     int my_pe = nvshmem_my_pe();
     int n_pes = nvshmem_n_pes();
@@ -456,13 +517,14 @@ int main() {
     }
     
     // Run advanced patterns
-    benchmark_ring_allreduce(my_pe, n_pes);
+    bool all_correct = true;
+    all_correct = benchmark_ring_allreduce(my_pe, n_pes) && all_correct;
     nvshmem_barrier_all();
     
-    benchmark_double_buffered_allreduce(my_pe, n_pes);
+    all_correct = benchmark_double_buffered_reduce_scatter(my_pe, n_pes) && all_correct;
     nvshmem_barrier_all();
     
-    benchmark_recursive_halving_doubling(my_pe, n_pes);
+    all_correct = benchmark_recursive_halving_doubling(my_pe, n_pes) && all_correct;
     nvshmem_barrier_all();
     
     if (my_pe == 0) {
@@ -470,13 +532,10 @@ int main() {
         printf("║  Performance Summary                                       ║\n");
         printf("╚════════════════════════════════════════════════════════════╝\n");
         printf("\nAlgorithm Selection Guide:\n");
-        printf("  • Ring AllReduce:      Best for <1MB messages\n");
-        printf("  • Double-Buffered:     10-20%% faster than ring\n");
-        printf("  • Recursive H/D:       Best for >1MB messages\n");
-        printf("\nMulti-GPU B200 Expected Performance:\n");
-        printf("  • Latency: <1 μs (4KB message)\n");
-        printf("  • Bandwidth: 800-900 GB/s per GPU pair\n");
-        printf("  • AllReduce (8MB): ~100 μs with ring\n");
+        printf("  • Ring AllReduce:      Reduce-scatter plus allgather\n");
+        printf("  • Double-Buffered:     Alternates symmetric receive storage\n");
+        printf("  • Recursive doubling:  Power-of-two PE counts\n");
+        printf("\nUse the measured times above on the target system for comparison.\n");
         printf("\nProduction Usage:\n");
         printf("  • PyTorch DDP: Uses ring for gradients\n");
         printf("  • Megatron-LM: Uses recursive for model parallel\n");
@@ -485,6 +544,9 @@ int main() {
     }
     
     nvshmem_finalize();
+    if (!all_correct) {
+        return EXIT_FAILURE;
+    }
     
     #else
     printf("[Educational Mode]\n");
@@ -498,7 +560,7 @@ int main() {
     printf("  4. Run: nvshmemrun -np 4 ./nvshmem_advanced\n\n");
     
     benchmark_ring_allreduce(0, 4);
-    benchmark_double_buffered_allreduce(0, 4);
+    benchmark_double_buffered_reduce_scatter(0, 4);
     benchmark_recursive_halving_doubling(0, 4);
     #endif
     

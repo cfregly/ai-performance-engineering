@@ -44,6 +44,10 @@ def main() -> int:
         force_lineinfo=True,
         extra_env=dict(payload.get("extra_env") or {}),
         sanitize_python_startup=bool(payload.get("sanitize_python_startup", True)),
+        capture_range_cuda_profiler_api=bool(
+            payload.get("capture_range_cuda_profiler_api", False)
+        ),
+        cuda_graph_trace=payload.get("cuda_graph_trace"),
     )
     result = {
         "report": str(report) if report else None,

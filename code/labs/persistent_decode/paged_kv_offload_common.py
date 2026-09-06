@@ -30,6 +30,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+from core.benchmark.numerical_accuracy import assert_low_precision_attention_accuracy
 from core.benchmark.verification import PrecisionFlags, simple_signature
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.arch_config import prefer_sdpa_backends
@@ -641,8 +642,21 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         k = self._payload_k
         q = self._payload_q
         v = self._payload_v
-        if self.output is None or self._verify_output_buffer is None:
+        if (
+            self.output is None
+            or self._verify_output_buffer is None
+            or q is None
+            or k is None
+            or v is None
+        ):
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        with torch.inference_mode(), torch.nn.attention.sdpa_kernel(
+            [torch.nn.attention.SDPBackend.MATH]
+        ):
+            reference = F.scaled_dot_product_attention(
+                q.double(), k.double(), v.double()
+            )[:, :, :1, : self._verify_head_dim]
+        assert_low_precision_attention_accuracy(self.output, reference)
         self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"q": q.detach(), "k": k.detach(), "v": v.detach()},

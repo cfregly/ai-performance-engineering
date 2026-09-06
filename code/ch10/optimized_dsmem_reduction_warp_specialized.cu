@@ -318,8 +318,7 @@ int main() {
     printf("  - 4-CTA cluster\n");
     printf("  - One DSMEM atomic per CTA, one final output writer per cluster\n");
 
-    const float verify_checksum = total;
-    VERIFY_PRINT_CHECKSUM(verify_checksum);
+    VERIFY_PRINT_CHECKSUM(total);
     
     // Cleanup
     CUDA_CHECK(cudaEventDestroy(start));

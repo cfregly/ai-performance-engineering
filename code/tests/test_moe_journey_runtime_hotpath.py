@@ -420,6 +420,14 @@ def test_moe_journey_timing_events_and_verification_clone_stay_out_of_hot_path(
 
     setattr(bench, model_attr, fake_forward)
     setattr(bench, input_attr, input_ids)
+    # setup() owns this reusable verification transport buffer. This focused
+    # hot-path fixture replaces setup's model/input work, so provide the same
+    # buffer contract without weakening capture_verification_payload().
+    bench._verify_output_buffer = torch.empty(
+        (config.batch_size, 1, min(8, config.vocab_size)),
+        device=input_ids.device,
+        dtype=torch.float32,
+    )
     if isinstance(bench, Level6FullStack):
         bench.model = fake_forward
         bench.input_ids = input_ids

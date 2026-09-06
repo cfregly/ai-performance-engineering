@@ -14,11 +14,11 @@ import copy
 import hashlib
 import json
 import os
-from pathlib import Path
 import sys
 import time
 import traceback
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 import torch
@@ -129,25 +129,34 @@ def _reference_update(model, optimizer, generators, device, rank, payload):
 
 
 def _optimizer_state(model, optimizer, *, optimized):
-    local = optimizer.optim if optimized else optimizer
+    from labs.train_distributed.optimized_zero2_multigpu import _local_optimizers
+
+    local_optimizers = _local_optimizers(optimizer) if optimized else (optimizer,)
     names = {id(parameter): name for name, parameter in model.named_parameters()}
     result = {}
-    for parameter, state in local.state.items():
-        result[names[id(parameter)]] = {
-            key: value.detach().cpu().clone() if isinstance(value, torch.Tensor) else value
-            for key, value in state.items()
-        }
+    for local_optimizer in local_optimizers:
+        for parameter, state in local_optimizer.state.items():
+            name = names[id(parameter)]
+            assert name not in result, f"duplicate local optimizer ownership for {name}"
+            result[name] = {
+                key: value.detach().cpu().clone() if isinstance(value, torch.Tensor) else value
+                for key, value in state.items()
+            }
     return result
 
 
-def _check_optimizer_configuration(optimizer, *, optimized):
-    local = optimizer.optim if optimized else optimizer
-    assert isinstance(local, torch.optim.AdamW)
-    for group in local.param_groups:
-        assert group["lr"] == .01
-        assert group["betas"] == (.9, .95)
-        assert group["weight_decay"] == .05
-        assert group["fused"] is True
+def _check_optimizer_configuration(optimizer, *, optimized, expected_local_optimizers=1):
+    from labs.train_distributed.optimized_zero2_multigpu import _local_optimizers
+
+    local_optimizers = _local_optimizers(optimizer) if optimized else (optimizer,)
+    assert len(local_optimizers) == expected_local_optimizers
+    for local_optimizer in local_optimizers:
+        assert isinstance(local_optimizer, torch.optim.AdamW)
+        for group in local_optimizer.param_groups:
+            assert group["lr"] == .01
+            assert group["betas"] == (.9, .95)
+            assert group["weight_decay"] == .05
+            assert group["fused"] is True
 
 
 def _assert_optimizer_state(actual, expected, update):
@@ -162,13 +171,19 @@ def _assert_optimizer_state(actual, expected, update):
 
 
 def _check_replicas_and_ownership(model, optimizer, *, optimized, device):
+    from labs.train_distributed.optimized_zero2_multigpu import _local_optimizers
+
     for parameter in model.parameters():
         for tensor in (parameter.detach(), parameter.grad):
             replicas = [torch.empty_like(tensor) for _ in range(WORLD)]
             dist.all_gather(replicas, tensor.contiguous())
             torch.testing.assert_close(replicas[0], replicas[1], rtol=0, atol=0)
-    local = optimizer.optim if optimized else optimizer
-    ownership = torch.tensor([int(p in local.state) for p in model.parameters()],
+    local_optimizers = _local_optimizers(optimizer) if optimized else (optimizer,)
+    local_states = tuple(local_optimizer.state for local_optimizer in local_optimizers)
+    local_owners = [sum(int(parameter in state) for state in local_states)
+                    for parameter in model.parameters()]
+    assert all(owner_count <= 1 for owner_count in local_owners)
+    ownership = torch.tensor(local_owners,
                              device=device, dtype=torch.int32)
     local_count = int(ownership.sum())
     if optimized:
@@ -182,7 +197,9 @@ def _check_replicas_and_ownership(model, optimizer, *, optimized, device):
 
 def _worker(rank: int, rendezvous: str, output_dir: str) -> None:
     from labs.train_distributed.zero2_common import (
-        build_model, build_training_components, training_step,
+        build_model,
+        build_training_components,
+        training_step,
     )
 
     output = Path(output_dir)
@@ -217,7 +234,11 @@ def _worker(rank: int, rendezvous: str, output_dir: str) -> None:
                     model, .01, optimized=optimized, device_ids=[rank])
                 dense = torch.optim.AdamW(reference.parameters(), lr=.01, betas=(.9, .95),
                                           weight_decay=.05, fused=True)
-                _check_optimizer_configuration(optimizer, optimized=optimized)
+                _check_optimizer_configuration(
+                    optimizer,
+                    optimized=optimized,
+                    expected_local_optimizers=2 if optimized and payload else 1,
+                )
                 actual_rng = torch.Generator(device=device).manual_seed(SEED + rank)
                 reference_rngs = [torch.Generator(device=device).manual_seed(SEED + other)
                                   for other in range(WORLD)]

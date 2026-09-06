@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import shlex
+import signal
 import subprocess
 import sys
 import time
@@ -33,6 +34,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 PYTHON = sys.executable
 DEFAULT_TIMEOUT = 900  # seconds
 
+_NCU_RANGE_DURATION_METRIC_KEYS = frozenset({"range_time_ms", "ncu_range_time_ms"})
+
 CUDA_BIN_DIRS = [
     "/usr/local/cuda-13.0/bin",
     "/usr/local/cuda-13/bin",
@@ -50,6 +53,11 @@ def log_progress(*parts: str) -> None:
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     message = " ".join(part for part in parts if part)
     print(f"[{timestamp}] {message}", flush=True)
+
+
+def _is_ncu_range_duration_metric(metric_key: str) -> bool:
+    """Identify descriptive NCU selected-range duration metrics."""
+    return metric_key.strip().lower() in _NCU_RANGE_DURATION_METRIC_KEYS
 
 
 def _read_json_object(path: Path, *, label: str) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
@@ -390,6 +398,72 @@ def session_directory(root: Path) -> Path:
     return directory
 
 
+def _cleanup_process_session(
+    process: subprocess.Popen,
+    *,
+    grace_seconds: float = 2.0,
+) -> Tuple[bool, List[str]]:
+    """Bound cleanup to the launched session without replacing an active error."""
+    grace_seconds = max(float(grace_seconds), 0.1)
+    errors: List[str] = []
+    group_cleanup_ok = True
+
+    def _record(action: str, exc: BaseException) -> None:
+        errors.append(f"{action} failed for process {process.pid}: {type(exc).__name__}: {exc}")
+
+    if os.name == "posix":
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        except Exception as exc:
+            group_cleanup_ok = False
+            _record("SIGTERM process-group cleanup", exc)
+    elif process.poll() is None:
+        try:
+            process.terminate()
+        except Exception as exc:
+            _record("direct-process termination", exc)
+
+    if not group_cleanup_ok and process.poll() is None:
+        try:
+            process.terminate()
+        except Exception as exc:
+            _record("direct-process termination fallback", exc)
+
+    try:
+        process.wait(timeout=grace_seconds)
+    except subprocess.TimeoutExpired:
+        pass
+    except Exception as exc:
+        _record("bounded process wait after SIGTERM", exc)
+
+    if os.name == "posix":
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        except Exception as exc:
+            group_cleanup_ok = False
+            _record("SIGKILL process-group cleanup", exc)
+
+    if process.poll() is None:
+        try:
+            process.kill()
+        except Exception as exc:
+            _record("direct-process kill fallback", exc)
+
+    try:
+        process.wait(timeout=grace_seconds)
+    except subprocess.TimeoutExpired as exc:
+        _record("final bounded process wait", exc)
+    except Exception as exc:
+        _record("final process reap", exc)
+
+    cleanup_ok = not errors and group_cleanup_ok and process.poll() is not None
+    return cleanup_ok, errors
+
+
 def run_command(
     command: List[str],
     *,
@@ -407,7 +481,8 @@ def run_command(
         print(f"[dry-run] {format_command(command)}")
         return 0, 0.0
 
-    start = time.time()
+    start = time.monotonic()
+    exit_code: Optional[int] = None
     with stdout_path.open("w") as stdout_file, stderr_path.open("w") as stderr_file:
         process = subprocess.Popen(
             command,
@@ -415,14 +490,26 @@ def run_command(
             env=env,
             stdout=stdout_file,
             stderr=stderr_file,
+            start_new_session=True,
         )
         try:
             exit_code = process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
             exit_code = -1
-    duration = time.time() - start
+        finally:
+            # Profiler launchers can exit before their target processes. Clean up
+            # only this invocation's session, including on cancellation/success.
+            cleanup_ok, cleanup_errors = _cleanup_process_session(process)
+            for cleanup_error in cleanup_errors:
+                try:
+                    print(f"[profile-harness] {cleanup_error}", file=stderr_file, flush=True)
+                except OSError:
+                    pass
+            if not cleanup_ok and exit_code == 0:
+                exit_code = -1
+    duration = time.monotonic() - start
+    if exit_code is None:
+        raise RuntimeError("Profiler process exited without a return code")
     return exit_code, duration
 
 
@@ -480,11 +567,6 @@ def _find_command(cmd: str) -> Optional[str]:
         if candidate.exists() and os.access(candidate, os.X_OK):
             return str(candidate)
     return None
-
-
-def _terminate_lingering_nsys() -> None:
-    """Best-effort cleanup for stray Nsight Systems agents before NCU runs."""
-    subprocess.run(["pkill", "-f", "nsys"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def check_preconditions(example: Example, profiler: str) -> Optional[str]:
@@ -665,7 +747,6 @@ def run_ncu(
     out_dir = profiler_output_dir(session_dir, "ncu", example)
     out_dir.mkdir(parents=True, exist_ok=True)
     out_base = out_dir / f"ncu_{example.name}"
-    _terminate_lingering_nsys()
     target_command = example_run_command(example, REPO_ROOT)
     command = [
         "ncu",
@@ -1025,6 +1106,13 @@ def generate_baseline_optimized_comparison(results: List[RunResult], session_dir
             optimized_val_str = optimized_metrics.get(metric_key, "N/A")
             
             if baseline_val_str == "N/A" and optimized_val_str == "N/A":
+                continue
+
+            if _is_ncu_range_duration_metric(metric_key):
+                markdown_lines.append(
+                    f"| {metric_key} | {baseline_val_str} | {optimized_val_str} | "
+                    "Descriptive only (NCU selected-range duration) |"
+                )
                 continue
             
             # Try to parse numeric values

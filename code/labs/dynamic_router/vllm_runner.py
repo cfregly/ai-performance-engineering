@@ -293,6 +293,10 @@ class _VllmWrapper:
           - ttft_samples_ms: list of (req_id, ttft_ms) for first tokens observed
           - tokens_emitted: total tokens emitted this step
         """
+        # vLLM's multiprocessing engine waits for an output in step(). An idle
+        # replica has nothing to emit and would stall the entire routing loop.
+        if self.engine.get_num_unfinished_requests() == 0:
+            return [], [], 0
         outputs = self.engine.step()
         # A pre-step caller timestamp omits the engine work that emits the first
         # token. Retain the argument for compatibility, but observe after step.

@@ -3,6 +3,7 @@ import os
 import json
 import subprocess
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -10,6 +11,11 @@ import os.path
 
 import pytest
 
+from core.benchmark.expectations import (
+    ExpectationEntry,
+    ExpectationsStore,
+    RunProvenance,
+)
 from core.harness.benchmark_harness import BenchmarkConfig, LaunchVia, TorchrunLaunchSpec
 from core.harness import run_benchmarks
 from core.harness.run_benchmarks import (
@@ -23,6 +29,87 @@ from core.harness.run_benchmarks import (
     _run_profile_subprocess,
     _temporary_python_profile_launch,
 )
+from core.profiling.nsight_automation import NsightAutomation
+from core.profiling.profiler_wrapper import (
+    render_ncu_python_profile_wrapper,
+    render_nsys_python_profile_wrapper,
+)
+
+
+def _load_nsys_wrapper_test_seam(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    fail_profile_call: bool = False,
+    start_status: int = 0,
+    stop_status: int = 0,
+):
+    benchmark_path = tmp_path / "profile_fixture.py"
+    benchmark_path.write_text(
+        """
+EVENTS = []
+FAIL_PROFILE_CALL = False
+
+class _Benchmark:
+    profile_require_teardown = False
+
+    def setup(self):
+        EVENTS.append("setup")
+
+    def benchmark_fn(self):
+        EVENTS.append("benchmark")
+        if FAIL_PROFILE_CALL and EVENTS.count("benchmark") == 2:
+            raise ValueError("primary profile failure")
+
+    def teardown(self):
+        EVENTS.append("teardown")
+
+def get_benchmark():
+    return _Benchmark()
+""",
+        encoding="utf-8",
+    )
+    wrapper = render_nsys_python_profile_wrapper(
+        benchmark_path=benchmark_path,
+        nvtx_includes=["compute_kernel:profile"],
+        target_label=None,
+        target_override_argv=None,
+        validity_profile="strict",
+        lock_gpu_clocks_flag=False,
+        gpu_sm_clock_mhz=None,
+        gpu_mem_clock_mhz=None,
+    )
+    scope = {"__name__": "rendered_nsys_wrapper_test"}
+    exec(compile(wrapper, str(tmp_path / "rendered_nsys_wrapper.py"), "exec"), scope)
+    events = scope["_BENCHMARK_MODULE"].EVENTS
+    scope["_BENCHMARK_MODULE"].FAIL_PROFILE_CALL = fail_profile_call
+
+    class _Cudart:
+        def cudaProfilerStart(self):
+            events.append("profiler_start")
+            return start_status
+
+        def cudaProfilerStop(self):
+            events.append("profiler_stop")
+            return stop_status
+
+    @contextmanager
+    def _nvtx_range(*_args, **_kwargs):
+        events.append("nvtx_enter")
+        try:
+            yield
+        finally:
+            events.append("nvtx_exit")
+
+    import torch
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda *_args, **_kwargs: events.append("synchronize"))
+    monkeypatch.setattr(torch.cuda, "cudart", lambda: _Cudart(), raising=False)
+    monkeypatch.setattr(os, "_exit", lambda code: events.append(f"exit:{code}"))
+    scope["ramp_gpu_clocks"] = lambda **_kwargs: None
+    scope["nvtx_range"] = _nvtx_range
+    return scope, events
 
 
 def test_collect_required_profiler_failures_captures_baseline_and_optimized_failures() -> None:
@@ -106,6 +193,72 @@ def test_format_required_profiler_failure_includes_detail_text() -> None:
         "Required profilers did not succeed: optimized:nsys:failed. "
         "Details: optimized:nsys: no report artifact produced"
     )
+
+
+def test_required_profiler_failure_does_not_mutate_expectation_store(tmp_path: Path) -> None:
+    store = ExpectationsStore(tmp_path, "test_hw", accept_regressions=True)
+    entry = ExpectationEntry(
+        example="kv_standard",
+        type="python",
+        optimization_goal="memory",
+        baseline_time_ms=17.33,
+        best_optimized_time_ms=36.56,
+        baseline_memory_mb=100.0,
+        best_optimized_memory_mb=50.0,
+        provenance=RunProvenance(
+            git_commit="candidate",
+            hardware_key="test_hw",
+            profile_name="minimal",
+            timestamp="2026-09-06T00:00:00+00:00",
+            iterations=256,
+            warmup_iterations=10,
+        ),
+    )
+
+    update_result, payload = run_benchmarks._update_expectation_entry_after_profiler_gate(
+        store,
+        "kv_standard_python",
+        entry,
+        profiler_failures=["optimized:ncu:failed"],
+    )
+
+    assert update_result is None
+    assert payload["status"] == "skipped"
+    assert payload["persisted"] is False
+    assert payload["required_profiler_failures"] == ["optimized:ncu:failed"]
+    assert store.get_entry("kv_standard_python") is None
+    store.save()
+    assert not store.path.exists()
+
+
+def test_profiler_success_preserves_expectation_update_path(tmp_path: Path) -> None:
+    store = ExpectationsStore(tmp_path, "test_hw", accept_regressions=True)
+    entry = ExpectationEntry(
+        example="kv_standard",
+        type="python",
+        optimization_goal="speed",
+        baseline_time_ms=2.0,
+        best_optimized_time_ms=1.0,
+        provenance=RunProvenance(
+            git_commit="candidate",
+            hardware_key="test_hw",
+            profile_name="minimal",
+            timestamp="2026-09-06T00:00:00+00:00",
+            iterations=20,
+            warmup_iterations=5,
+        ),
+    )
+
+    update_result, payload = run_benchmarks._update_expectation_entry_after_profiler_gate(
+        store,
+        "kv_standard_python",
+        entry,
+        profiler_failures=[],
+    )
+
+    assert update_result is not None
+    assert payload["status"] in {"updated", "improved", "unchanged"}
+    assert store.get_entry("kv_standard_python") is not None
 
 
 def test_attach_failure_metadata_promotes_child_failure_to_parent() -> None:
@@ -336,6 +489,300 @@ def test_build_torchrun_profile_command_keeps_launcher_for_multi_process(tmp_pat
     assert "core.harness.torchrun_wrapper" in command
 
 
+def test_nsys_wrapper_flushes_profile_range_before_success_exit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scope, events = _load_nsys_wrapper_test_seam(tmp_path, monkeypatch)
+
+    scope["_run_profile"]()
+
+    assert events == [
+        "setup",
+        "benchmark",
+        "synchronize",
+        "profiler_start",
+        "nvtx_enter",
+        "benchmark",
+        "nvtx_exit",
+        "synchronize",
+        "profiler_stop",
+        "exit:0",
+    ]
+
+
+def test_nsys_wrapper_stops_capture_without_masking_primary_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    scope, events = _load_nsys_wrapper_test_seam(
+        tmp_path,
+        monkeypatch,
+        fail_profile_call=True,
+        stop_status=9,
+    )
+
+    with pytest.raises(ValueError, match="primary profile failure"):
+        scope["_run_profile"]()
+
+    assert "profiler_stop" in events
+    assert "exit:0" not in events
+    assert "cudaProfilerStop() failed with status 9" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("start_status, stop_status, expected", [(7, 0, "Start"), (0, 8, "Stop")])
+def test_nsys_wrapper_fails_for_cuda_profiler_api_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    start_status: int,
+    stop_status: int,
+    expected: str,
+) -> None:
+    scope, events = _load_nsys_wrapper_test_seam(
+        tmp_path,
+        monkeypatch,
+        start_status=start_status,
+        stop_status=stop_status,
+    )
+
+    with pytest.raises(RuntimeError, match=rf"cudaProfiler{expected}\(\) failed"):
+        scope["_run_profile"]()
+
+    assert "exit:0" not in events
+
+
+def test_nsys_capture_command_uses_cuda_profiler_api_range_only_when_requested(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commands: list[list[str]] = []
+
+    class _Process:
+        returncode = 0
+
+        def __init__(self, command, **_kwargs):
+            command = list(command)
+            commands.append(command)
+            output = Path(command[command.index("--output") + 1])
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text("report", encoding="utf-8")
+
+        def communicate(self, timeout=None):
+            return "", ""
+
+    monkeypatch.setattr(NsightAutomation, "_check_command", lambda *_args: True)
+    monkeypatch.setattr("core.profiling.nsight_automation.subprocess.Popen", _Process)
+    automation = NsightAutomation(tmp_path)
+
+    assert automation.profile_nsys(
+        command=[sys.executable, "workload.py"],
+        output_name="ranged",
+        capture_range_cuda_profiler_api=True,
+        cuda_graph_trace="node",
+    ) is not None
+    assert "--capture-range=cudaProfilerApi" in commands[-1]
+    assert "--capture-range-end=stop" in commands[-1]
+    assert "--cuda-graph-trace=node" in commands[-1]
+
+    assert automation.profile_nsys(
+        command=[sys.executable, "workload.py"],
+        output_name="unranged",
+    ) is not None
+    assert "--capture-range=cudaProfilerApi" not in commands[-1]
+    assert "--capture-range-end=stop" not in commands[-1]
+    assert "--cuda-graph-trace=node" not in commands[-1]
+
+
+@pytest.mark.parametrize(
+    "preset, first_error",
+    [
+        ("light", "Error in sitecustomize: incompatible startup module"),
+        ("full", "unsupported full timeline category"),
+    ],
+)
+def test_nsys_capture_retries_preserve_api_and_graph_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    preset: str,
+    first_error: str,
+) -> None:
+    commands: list[list[str]] = []
+
+    class _Process:
+        def __init__(self, command, **_kwargs):
+            command = list(command)
+            commands.append(command)
+            self.returncode = 7 if len(commands) == 1 else 0
+            if self.returncode == 0:
+                output = Path(command[command.index("--output") + 1])
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_text("report", encoding="utf-8")
+
+        def communicate(self, timeout=None):
+            return "", first_error if self.returncode else ""
+
+    monkeypatch.setattr(NsightAutomation, "_check_command", lambda *_args: True)
+    monkeypatch.setattr("core.profiling.nsight_automation.subprocess.Popen", _Process)
+    automation = NsightAutomation(tmp_path)
+    monkeypatch.setattr(
+        automation,
+        "_wait_for_output_artifact",
+        lambda output_path, **_kwargs: output_path.exists(),
+    )
+
+    report = automation.profile_nsys(
+        command=[sys.executable, "workload.py"],
+        output_name=f"retry_{preset}",
+        preset=preset,
+        capture_range_cuda_profiler_api=True,
+        cuda_graph_trace="node",
+    )
+
+    assert report is not None
+    assert len(commands) == 2
+    for command in commands:
+        assert "--capture-range=cudaProfilerApi" in command
+        assert "--capture-range-end=stop" in command
+        assert "--cuda-graph-trace=node" in command
+
+
+def test_nsys_kernel_report_validation_rejects_success_shaped_empty_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report = tmp_path / "capture.nsys-rep"
+    report.write_text("report", encoding="utf-8")
+    empty = subprocess.CompletedProcess(
+        args=[],
+        returncode=0,
+        stdout=(
+            "Processing [capture.sqlite] with [cuda_gpu_kern_sum.py]...\n"
+            "SKIPPED: capture.sqlite does not contain CUDA kernel data.\n"
+        ),
+        stderr="",
+    )
+    monkeypatch.setattr(run_benchmarks.subprocess, "run", lambda *_args, **_kwargs: empty)
+
+    valid, detail = run_benchmarks._validate_nsys_cuda_kernel_report(report)
+
+    assert valid is False
+    assert detail is not None and "contains no CUDA kernel data" in detail
+
+
+def test_nsys_kernel_report_validation_accepts_real_kernel_summary_shape(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report = tmp_path / "capture.nsys-rep"
+    report.write_text("report", encoding="utf-8")
+    captured = subprocess.CompletedProcess(
+        args=[],
+        returncode=0,
+        stdout=(
+            "Processing [capture.sqlite] with [cuda_gpu_kern_sum.py]...\n"
+            "Time (%),Total Time (ns),Instances,Avg (ns),Med (ns),Min (ns),Max (ns),StdDev (ns),Name\n"
+            "100.0,35872,1,35872.0,35872.0,35872,35872,0.0,real_cuda_kernel\n"
+        ),
+        stderr="",
+    )
+    nvtx = subprocess.CompletedProcess(
+        args=[],
+        returncode=0,
+        stdout=(
+            "Processing [capture.sqlite] with [nvtx_sum.py]...\n"
+            "Time (%),Total Time (ns),Instances,Avg (ns),Med (ns),Min (ns),Max (ns),StdDev (ns),Style,Range\n"
+            "100.0,35872,1,35872.0,35872.0,35872,35872,0.0,PushPop,:compute_kernel:profile\n"
+        ),
+        stderr="",
+    )
+    calls = []
+
+    def _fake_stats(args, **_kwargs):
+        calls.append(list(args))
+        return captured if len(calls) == 1 else nvtx
+
+    stale_sqlite = report.with_suffix(".sqlite")
+    stale_sqlite.write_text("historical", encoding="utf-8")
+    monkeypatch.setattr(run_benchmarks.subprocess, "run", _fake_stats)
+
+    valid, detail = run_benchmarks._validate_nsys_cuda_kernel_report(
+        report,
+        expected_nvtx_label="compute_kernel:profile",
+    )
+
+    assert valid is True
+    assert detail is None
+    assert len(calls) == 2
+    validation_sqlite = Path(calls[0][calls[0].index("--sqlite") + 1])
+    assert validation_sqlite != stale_sqlite
+    assert calls[1][calls[1].index("--sqlite") + 1] == str(validation_sqlite)
+    assert "--force-export=true" in calls[0]
+    assert "--force-export=true" not in calls[1]
+    assert stale_sqlite.read_text(encoding="utf-8") == "historical"
+
+
+def test_nsys_kernel_report_validation_rejects_wrong_profile_nvtx_range(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report = tmp_path / "capture.nsys-rep"
+    report.write_text("report", encoding="utf-8")
+    kernel = subprocess.CompletedProcess(
+        args=[],
+        returncode=0,
+        stdout=(
+            "Time (%),Total Time (ns),Instances,Avg (ns),Name\n"
+            "100.0,35872,1,35872.0,real_cuda_kernel\n"
+        ),
+        stderr="",
+    )
+    wrong_nvtx = subprocess.CompletedProcess(
+        args=[],
+        returncode=0,
+        stdout=(
+            "Time (%),Total Time (ns),Instances,Style,Range\n"
+            "100.0,35872,1,PushPop,:setup_only\n"
+        ),
+        stderr="",
+    )
+    responses = iter((kernel, wrong_nvtx))
+    monkeypatch.setattr(
+        run_benchmarks.subprocess,
+        "run",
+        lambda *_args, **_kwargs: next(responses),
+    )
+
+    valid, detail = run_benchmarks._validate_nsys_cuda_kernel_report(
+        report,
+        expected_nvtx_label="compute_kernel:profile",
+    )
+
+    assert valid is False
+    assert detail is not None and "expected profiled workload NVTX range" in detail
+
+
+def test_ncu_wrapper_remains_independent_of_cuda_profiler_api(tmp_path: Path) -> None:
+    wrapper = render_ncu_python_profile_wrapper(
+        benchmark_path=tmp_path / "benchmark.py",
+        configured_nvtx_includes=None,
+        target_label=None,
+        target_override_argv=None,
+        profile_type="minimal",
+        ncu_metric_set="minimal",
+        pm_sampling_interval=None,
+        ncu_replay_mode="application",
+        validity_profile="strict",
+        lock_gpu_clocks_flag=False,
+        gpu_sm_clock_mhz=None,
+        gpu_mem_clock_mhz=None,
+        profile_nvtx_label="compute_kernel:profile",
+    )
+
+    assert "cudaProfilerStart" not in wrapper
+    assert "cudaProfilerStop" not in wrapper
+
+
 def test_profile_python_benchmark_retries_direct_wrapper_once(tmp_path: Path) -> None:
     bench_path = tmp_path / "demo.py"
     bench_path.write_text("print('ok')\n", encoding="utf-8")
@@ -351,10 +798,12 @@ def test_profile_python_benchmark_retries_direct_wrapper_once(tmp_path: Path) ->
     class _Automation:
         def __init__(self, _output_dir):
             self.calls = 0
+            self.kwargs = []
             self.last_error = None
 
-        def profile_nsys(self, **_kwargs):
+        def profile_nsys(self, **kwargs):
             self.calls += 1
+            self.kwargs.append(kwargs)
             if self.calls == 1:
                 self.last_error = (
                     "Nsight Systems exited successfully but no report artifact was produced "
@@ -371,6 +820,7 @@ def test_profile_python_benchmark_retries_direct_wrapper_once(tmp_path: Path) ->
     with (
         patch.object(run_benchmarks, "check_nsys_available", return_value=True),
         patch("core.profiling.nsight_automation.NsightAutomation", return_value=automation),
+        patch.object(run_benchmarks, "_validate_nsys_cuda_kernel_report", return_value=(True, None)),
         patch.object(run_benchmarks.time, "sleep", return_value=None),
     ):
         report = profile_python_benchmark(
@@ -385,21 +835,24 @@ def test_profile_python_benchmark_retries_direct_wrapper_once(tmp_path: Path) ->
 
     assert report == report_path
     assert automation.calls == 2
+    assert all(call["capture_range_cuda_profiler_api"] is False for call in automation.kwargs)
+    assert all(call["cuda_graph_trace"] is None for call in automation.kwargs)
 
 
 def test_profile_python_benchmark_retries_direct_python_wrapper_once(tmp_path: Path) -> None:
     bench_path = tmp_path / "demo.py"
     bench_path.write_text("print('ok')\n", encoding="utf-8")
     output_dir = tmp_path / "profiles"
-    report_path = output_dir / "demo__baseline.nsys-rep"
-
     class _Automation:
         def __init__(self, _output_dir):
             self.calls = 0
+            self.kwargs = []
             self.last_error = None
 
-        def profile_nsys(self, **_kwargs):
+        def profile_nsys(self, **kwargs):
             self.calls += 1
+            self.kwargs.append(kwargs)
+            report_path = output_dir / f"{kwargs['output_name']}.nsys-rep"
             if self.calls == 1:
                 self.last_error = (
                     "Nsight Systems exited successfully but no report artifact was produced "
@@ -416,6 +869,7 @@ def test_profile_python_benchmark_retries_direct_python_wrapper_once(tmp_path: P
     with (
         patch.object(run_benchmarks, "check_nsys_available", return_value=True),
         patch("core.profiling.nsight_automation.NsightAutomation", return_value=automation),
+        patch.object(run_benchmarks, "_validate_nsys_cuda_kernel_report", return_value=(True, None)),
         patch.object(run_benchmarks.time, "sleep", return_value=None),
     ):
         report = profile_python_benchmark(
@@ -428,8 +882,168 @@ def test_profile_python_benchmark_retries_direct_python_wrapper_once(tmp_path: P
             output_stem="demo",
         )
 
-    assert report == report_path
+    assert report is not None
+    assert report.name.endswith("_attempt2.nsys-rep")
     assert automation.calls == 2
+    assert all(call["capture_range_cuda_profiler_api"] is True for call in automation.kwargs)
+    assert all(call["cuda_graph_trace"] == "node" for call in automation.kwargs)
+    assert automation.kwargs[0]["output_name"] != automation.kwargs[1]["output_name"]
+    assert not (output_dir / "demo__baseline.nsys-rep").exists()
+
+
+def test_profile_python_benchmark_rejects_empty_wrapper_capture(tmp_path: Path) -> None:
+    bench_path = tmp_path / "demo.py"
+    bench_path.write_text("print('ok')\n", encoding="utf-8")
+    output_dir = tmp_path / "profiles"
+    class _Automation:
+        last_error = None
+
+        def profile_nsys(self, **kwargs):
+            assert kwargs["capture_range_cuda_profiler_api"] is True
+            assert kwargs["cuda_graph_trace"] == "node"
+            report_path = output_dir / f"{kwargs['output_name']}.nsys-rep"
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            report_path.write_text("report", encoding="utf-8")
+            return report_path
+
+    with (
+        patch.object(run_benchmarks, "check_nsys_available", return_value=True),
+        patch("core.profiling.nsight_automation.NsightAutomation", return_value=_Automation()),
+        patch.object(
+            run_benchmarks,
+            "_validate_nsys_cuda_kernel_report",
+            return_value=(False, "Nsight Systems report contains no CUDA kernel data"),
+        ),
+    ):
+        report = profile_python_benchmark(
+            SimpleNamespace(),
+            bench_path,
+            bench_path.parent,
+            output_dir,
+            config=BenchmarkConfig(),
+            variant="baseline",
+            output_stem="demo",
+        )
+
+    assert report is None
+    assert run_benchmarks._get_profile_failure_detail("nsys") == (
+        "Nsight Systems report contains no CUDA kernel data"
+    )
+
+
+def test_profile_python_benchmark_clean_helper_preserves_api_capture_contract(
+    tmp_path: Path,
+) -> None:
+    bench_path = tmp_path / "demo.py"
+    bench_path.write_text("print('ok')\n", encoding="utf-8")
+    output_dir = tmp_path / "profiles"
+
+    class _Automation:
+        def __init__(self):
+            self.calls = 0
+            self.last_error = None
+
+        def profile_nsys(self, **kwargs):
+            self.calls += 1
+            self.last_error = (
+                "Nsight Systems exited successfully but no report artifact was produced "
+                f"at {output_dir / (kwargs['output_name'] + '.nsys-rep')}"
+            )
+            return None
+
+    def _fake_helper_run(args, **_kwargs):
+        payload_path = Path(args[args.index("--payload") + 1])
+        result_path = Path(args[args.index("--result") + 1])
+        payload = json.loads(payload_path.read_text(encoding="utf-8"))
+        assert payload["capture_range_cuda_profiler_api"] is True
+        assert payload["cuda_graph_trace"] == "node"
+        report_path = output_dir / f"{payload['output_name']}.nsys-rep"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text("report", encoding="utf-8")
+        result_path.write_text(
+            json.dumps({"report": str(report_path), "last_error": None}),
+            encoding="utf-8",
+        )
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    automation = _Automation()
+    with (
+        patch.object(run_benchmarks, "check_nsys_available", return_value=True),
+        patch("core.profiling.nsight_automation.NsightAutomation", return_value=automation),
+        patch.object(run_benchmarks, "_validate_nsys_cuda_kernel_report", return_value=(True, None)),
+        patch.object(run_benchmarks.subprocess, "run", side_effect=_fake_helper_run),
+        patch.object(run_benchmarks.time, "sleep", return_value=None),
+    ):
+        report = profile_python_benchmark(
+            SimpleNamespace(),
+            bench_path,
+            bench_path.parent,
+            output_dir,
+            config=BenchmarkConfig(),
+            variant="baseline",
+            output_stem="demo",
+        )
+
+    assert report is not None
+    assert report.name.endswith("_attempt3.nsys-rep")
+    assert automation.calls == 2
+
+
+def test_nsys_capture_helper_forwards_api_and_graph_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.profiling import nsys_capture_helper
+
+    payload_path = tmp_path / "payload.json"
+    result_path = tmp_path / "result.json"
+    output_dir = tmp_path / "profiles"
+    payload_path.write_text(
+        json.dumps(
+            {
+                "output_dir": str(output_dir),
+                "output_name": "helper_capture",
+                "command": [sys.executable, "workload.py"],
+                "capture_range_cuda_profiler_api": True,
+                "cuda_graph_trace": "node",
+            }
+        ),
+        encoding="utf-8",
+    )
+    captured = {}
+
+    class _Automation:
+        last_error = None
+
+        def __init__(self, actual_output_dir):
+            assert actual_output_dir == output_dir
+
+        def profile_nsys(self, **kwargs):
+            captured.update(kwargs)
+            report = output_dir / "helper_capture.nsys-rep"
+            report.parent.mkdir(parents=True, exist_ok=True)
+            report.write_text("report", encoding="utf-8")
+            return report
+
+    monkeypatch.setattr(nsys_capture_helper, "NsightAutomation", _Automation)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "nsys_capture_helper",
+            "--payload",
+            str(payload_path),
+            "--result",
+            str(result_path),
+        ],
+    )
+
+    assert nsys_capture_helper.main() == 0
+    assert captured["capture_range_cuda_profiler_api"] is True
+    assert captured["cuda_graph_trace"] == "node"
+    assert json.loads(result_path.read_text(encoding="utf-8"))["report"].endswith(
+        "helper_capture.nsys-rep"
+    )
 
 
 def test_profile_python_benchmark_falls_back_to_clean_helper_retry(tmp_path: Path) -> None:
@@ -473,6 +1087,7 @@ def test_profile_python_benchmark_falls_back_to_clean_helper_retry(tmp_path: Pat
     with (
         patch.object(run_benchmarks, "check_nsys_available", return_value=True),
         patch("core.profiling.nsight_automation.NsightAutomation", return_value=automation),
+        patch.object(run_benchmarks, "_validate_nsys_cuda_kernel_report", return_value=(True, None)),
         patch.object(run_benchmarks.subprocess, "run", side_effect=_fake_helper_run),
         patch.object(run_benchmarks.time, "sleep", return_value=None),
     ):
@@ -602,16 +1217,27 @@ def test_profile_cuda_executable_ncu_uses_shared_subprocess_runner(tmp_path: Pat
     executable.chmod(0o755)
 
     class _ProfilerConfig:
-        nvtx_includes: list[str] = []
+        nvtx_includes = ["compute_kernel:fixture"]
 
         @staticmethod
         def get_ncu_command_for_target(
-            _output_prefix: str,
-            _target: list[str],
+            output_prefix: str,
+            target: list[str],
             metrics: list[str] | None = None,
             nvtx_includes: list[str] | None = None,
         ) -> list[str]:
-            return ["ncu", "--set", "basic", str(executable)]
+            assert nvtx_includes == ["compute_kernel:fixture"]
+            return [
+                "ncu",
+                "--set",
+                "basic",
+                "--nvtx",
+                "--nvtx-include",
+                nvtx_includes[0],
+                "-o",
+                output_prefix,
+                *target,
+            ]
 
     fake_result = SimpleNamespace(
         process=SimpleNamespace(returncode=0),
@@ -635,7 +1261,10 @@ def test_profile_cuda_executable_ncu_uses_shared_subprocess_runner(tmp_path: Pat
 
     assert result is None
     run_mock.assert_called_once()
-    assert run_mock.call_args.kwargs["command"] == ["ncu", "--force-overwrite", "--set", "basic", str(executable)]
+    command = run_mock.call_args.kwargs["command"]
+    assert command[:4] == ["ncu", "--force-overwrite", "--set", "basic"]
+    assert command[command.index("--nvtx-include") + 1] == "compute_kernel:fixture"
+    assert command[-1] == str(executable)
     assert run_mock.call_args.kwargs["capture_output"] is True
 
 

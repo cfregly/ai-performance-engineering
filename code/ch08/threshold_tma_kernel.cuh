@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cooperative_groups.h>
 #include <cuda/pipeline>
 #include <limits>
 #include <cstdint>
@@ -9,8 +8,6 @@
 #include "threshold_common.cuh"
 
 namespace ch08 {
-
-namespace cg = cooperative_groups;
 
 #if CUDART_VERSION >= 12000
 template <int ValuesPerThread>
@@ -24,42 +21,45 @@ __global__ void threshold_tma_pipeline_kernel(
     constexpr int values_per_thread = ValuesPerThread;
     const int tile_span = blockDim.x * values_per_thread;
     const int stride = gridDim.x * tile_span;
-    int tile_start = blockIdx.x * tile_span;
-    if (tile_start >= count) {
+    const int thread_start =
+        blockIdx.x * tile_span + threadIdx.x * values_per_thread;
+    if (thread_start >= count) {
         return;
     }
 
     extern __shared__ __align__(16) float shmem[];
     auto stage_ptr = [&](int stage) {
-        return shmem + stage * tile_span;
+        return shmem + stage * tile_span + threadIdx.x * values_per_thread;
     };
 
-    cg::thread_block block = cg::this_thread_block();
-    __shared__ cuda::pipeline_shared_state<cuda::thread_scope_block, stages> pipeline_state;
-    auto pipe = cuda::make_pipeline(block, &pipeline_state);
+    // Each thread copies and consumes only its own slice. A thread-scoped
+    // pipeline keeps every stage's commit/wait/release lifetime under that
+    // thread's ownership and avoids a block barrier for unrelated slices.
+    auto pipe = cuda::make_pipeline();
 
     auto enqueue_tile = [&](int stage, int offset) -> bool {
         if (offset >= count) {
             return false;
         }
         pipe.producer_acquire();
-        const size_t elems = min(tile_span, count - offset);
+        const size_t elems = min(values_per_thread, count - offset);
         const size_t copy_bytes = static_cast<size_t>(elems) * sizeof(float);
         if (copy_bytes % 16 == 0 &&
-            reinterpret_cast<uintptr_t>(inputs + offset) % 16 == 0) {
-            cuda::memcpy_async(block, stage_ptr(stage), inputs + offset,
+            reinterpret_cast<uintptr_t>(inputs + offset) % 16 == 0 &&
+            reinterpret_cast<uintptr_t>(stage_ptr(stage)) % 16 == 0) {
+            cuda::memcpy_async(stage_ptr(stage), inputs + offset,
                                cuda::aligned_size_t<16>(copy_bytes), pipe);
         } else {
             // Ragged counts or offset input views cannot promise 16-byte alignment.
-            cuda::memcpy_async(block, stage_ptr(stage), inputs + offset, copy_bytes, pipe);
+            cuda::memcpy_async(stage_ptr(stage), inputs + offset, copy_bytes, pipe);
         }
         pipe.producer_commit();
         return true;
     };
 
     bool stage_ready[stages] = {false, false};
-    int stage_offsets[stages] = {tile_start, tile_start + stride};
-    int next_tile = tile_start;
+    int stage_offsets[stages] = {thread_start, thread_start + stride};
+    int next_tile = thread_start;
     for (int s = 0; s < stages; ++s) {
         stage_ready[s] = enqueue_tile(s, stage_offsets[s]);
         if (stage_ready[s]) {
@@ -75,25 +75,21 @@ __global__ void threshold_tma_pipeline_kernel(
         }
 
         pipe.consumer_wait();
-        block.sync();
 
-        const int valid_elems = min(tile_span, count - current_tile);
-        const int base_idx = threadIdx.x * values_per_thread;
-        float* tile_ptr = stage_ptr(current_stage) + base_idx;
+        const int valid_elems = min(values_per_thread, count - current_tile);
+        float* tile_ptr = stage_ptr(current_stage);
 
         float values[values_per_thread];
         #pragma unroll
         for (int i = 0; i < values_per_thread; ++i) {
-            const int elem = base_idx + i;
-            values[i] = elem < valid_elems ? tile_ptr[i] : 0.0f;
+            values[i] = i < valid_elems ? tile_ptr[i] : 0.0f;
         }
 
-        block.sync();
         pipe.consumer_release();
 
         #pragma unroll
         for (int i = 0; i < values_per_thread; ++i) {
-            const int out_idx = current_tile + base_idx + i;
+            const int out_idx = current_tile + i;
             if (out_idx < count) {
                 output[out_idx] = transform_with_scale(values[i], threshold);
             }

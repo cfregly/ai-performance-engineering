@@ -418,7 +418,10 @@ def assert_cuda_timing_cross_validation():
     config = BenchmarkConfig(
         device=torch.device("cuda"), iterations=3, warmup=5,
         use_subprocess=False, enable_profiling=False, full_device_sync=True,
-        force_synchronize=False,
+        force_synchronize=False, adaptive_iterations=False,
+        # Exercise the clock cross-check independently of the stream-registration
+        # guard, which has its own real-stream coverage.
+        audit_stream_sync=False,
     )
     harness = BenchmarkHarness(config=config)
 

@@ -243,8 +243,7 @@ int main() {
     printf("\nNote: Two-pass reduction requires global memory round-trip.\n");
     printf("Compare with optimized_dsmem_reduction for single-pass cluster reduction.\n");
 
-    const float verify_checksum = total;
-    VERIFY_PRINT_CHECKSUM(verify_checksum);
+    VERIFY_PRINT_CHECKSUM(total);
     
     // Cleanup
     CUDA_CHECK(cudaEventDestroy(start));

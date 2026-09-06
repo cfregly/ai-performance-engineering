@@ -385,6 +385,40 @@ NCU_SET_BY_METRIC = {
     "tensor_core": "full",
 }
 
+NCU_REPLAY_MODES = ("kernel", "application", "app-range")
+
+
+def validate_ncu_replay_mode(mode: str) -> str:
+    """Validate the replay modes supported by repository report consumers."""
+    normalized = str(mode).strip().lower()
+    if normalized not in NCU_REPLAY_MODES:
+        raise ValueError(
+            f"Invalid Nsight Compute replay mode '{mode}'. "
+            f"Choose from {', '.join(NCU_REPLAY_MODES)}."
+        )
+    return normalized
+
+
+def validate_ncu_app_range_capture(
+    *,
+    nvtx_includes: Sequence[str],
+    metrics: Sequence[str],
+    kernel_filter: Optional[str] = None,
+    launch_skip: Optional[int] = None,
+    launch_count: Optional[int] = None,
+    sampling_interval: Optional[int] = None,
+    profile_from_start: Optional[str] = None,
+) -> None:
+    """Keep app-range captures within the validated full-range metric contract."""
+    if len(nvtx_includes) != 1 or not nvtx_includes[0].strip():
+        raise ValueError("app-range requires exactly one explicit NVTX start/stop range.")
+    if len(metrics) != len(MINIMAL_METRICS) or set(metrics) != set(MINIMAL_METRICS):
+        raise ValueError("app-range requires the five minimal Nsight Compute metrics.")
+    if kernel_filter or launch_skip is not None or launch_count is not None or sampling_interval is not None:
+        raise ValueError("app-range requires the complete NVTX range without kernel, launch, or sampling limits.")
+    if profile_from_start is not None and str(profile_from_start).strip().lower() != "on":
+        raise ValueError("app-range requires profiling from the start of the selected NVTX range.")
+
 
 @dataclass
 class ProfilerConfig:
@@ -401,7 +435,7 @@ class ProfilerConfig:
     nsys_cudabacktrace: bool = True
     nsys_stats: bool = True
     nsys_backtrace: str = "none"
-    ncu_replay_mode: str = "kernel"  # "kernel" or "application"
+    ncu_replay_mode: str = "kernel"  # See NCU_REPLAY_MODES.
     honor_replay_mode_in_minimal: bool = False
     pm_sampling_interval: Optional[int] = None
     
@@ -553,25 +587,39 @@ class ProfilerConfig:
             "--metrics", ",".join(metrics),
         ]
 
+        nvtx_filters = list(dict.fromkeys(nvtx_includes or self.nvtx_includes or []))
         minimal_capture = preset == "minimal" or metric_set_norm == "minimal"
+        # NVSHMEM's existing benchmark-local range replay is not a public CLI
+        # choice. Preserve its command path while validating public modes.
+        requested_replay_mode = str(self.ncu_replay_mode).strip().lower()
+        if requested_replay_mode != "range":
+            requested_replay_mode = validate_ncu_replay_mode(requested_replay_mode)
+        if requested_replay_mode == "app-range":
+            validate_ncu_app_range_capture(
+                nvtx_includes=nvtx_filters,
+                metrics=metrics,
+                sampling_interval=self.pm_sampling_interval,
+            )
         if minimal_capture:
-            replay_mode = self.ncu_replay_mode if self.honor_replay_mode_in_minimal else "kernel"
+            replay_mode = (
+                requested_replay_mode
+                if self.honor_replay_mode_in_minimal or requested_replay_mode == "app-range"
+                else "kernel"
+            )
             cmd.extend([
                 "--replay-mode", replay_mode,
             ])
             if self.pm_sampling_interval:
                 cmd.extend(["--pm-sampling-interval", str(self.pm_sampling_interval)])
-            cmd.extend([
-                "--target-processes", "all",
-                # Minimal NCU captures should not spend minutes collecting thousands
-                # of kernel instances, even when the overall profile preset is
-                # deep_dive for richer NSYS/Torch traces.
-                "--launch-count", "1",
-            ])
+            cmd.extend(["--target-processes", "all"])
+            if not nvtx_filters:
+                # Unscoped callers retain the bounded legacy behavior. A filtered
+                # benchmark invocation must keep every kernel in the measured range;
+                # limiting it to one launch silently drops multi-kernel workloads.
+                cmd.extend(["--launch-count", "1"])
         else:
-            cmd.extend(["--replay-mode", self.ncu_replay_mode])
+            cmd.extend(["--replay-mode", requested_replay_mode])
 
-        nvtx_filters = list(dict.fromkeys(nvtx_includes or self.nvtx_includes or []))
         if nvtx_filters:
             cmd.append("--nvtx")
         for tag in nvtx_filters:

@@ -161,6 +161,20 @@ class RobustMCPClient:
             
             self._log_debug(f"Completed request: ID={msg_id}, pending={len(self._pending_requests)}")
             return True
+
+    def _fail_pending_requests(self, message: str) -> None:
+        """Fail every waiter when the stdio transport can no longer respond."""
+        with self._request_lock:
+            pending = list(self._pending_requests.values())
+            self._pending_requests.clear()
+        for request in pending:
+            if not request.future.done():
+                request.future.set_result(
+                    MCPResponse(
+                        msg_id=request.msg_id,
+                        error={"code": -32000, "message": message},
+                    )
+                )
     
     def _cleanup_stale_requests(self):
         """Remove requests that have timed out."""
@@ -212,6 +226,10 @@ class RobustMCPClient:
         except Exception as e:
             if self._running:
                 logger.error(f"Error reading from server: {e}")
+        finally:
+            if self._running:
+                self._running = False
+                self._fail_pending_requests("MCP server transport closed")
 
     def _stderr_loop(self):
         """Continuously drain server stderr so its pipe cannot backpressure stdout."""
@@ -304,8 +322,17 @@ class RobustMCPClient:
         self._cleanup_thread = threading.Thread(target=self._cleanup_loop, daemon=True)
         self._cleanup_thread.start()
         
-        # Initialize connection
-        self.initialize()
+        # Do not leave a half-started process or background threads behind when
+        # the peer rejects initialization or the transport fails.
+        try:
+            response = self.initialize()
+            if response.error:
+                raise RuntimeError("MCP initialization failed")
+        except Exception as exc:
+            self.stop()
+            if isinstance(exc, RuntimeError) and str(exc) == "MCP initialization failed":
+                raise
+            raise RuntimeError("MCP initialization failed") from exc
         
         logger.info("MCP client started")
     

@@ -35,6 +35,9 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
 
     signature_equivalence_group = "labs_kv_standard_precision"
     signature_equivalence_ignore_fields = ("precision_flags",)
+    # Profile the entire append range per metric pass. Per-kernel replay either
+    # checkpoints the large mutable cache or repeatedly restarts the full workload.
+    preferred_ncu_replay_mode = "app-range"
 
     def __init__(
         self,
@@ -162,17 +165,10 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._require_preallocated_scale_buffer = True
         self._k_quantized_layer_view = self._k_quantized_step.unsqueeze(1)
         self._v_quantized_layer_view = self._v_quantized_step.unsqueeze(1)
-        self._output_view = self.kv_cache[:1, :1, :, :, :1, : min(8, self.head_dim)]
-        self._verify_output_buffer = torch.empty(
-            1,
-            1,
-            2,
-            self.num_heads,
-            1,
-            min(8, self.head_dim),
-            device=self.device,
-            dtype=torch.float32,
-        )
+        self._output_view = self._written_cache_view()
+        # Full dequantization is deferred until post-timing verification so it
+        # does not change either the timed path or reported cache memory.
+        self._verify_output_buffer = None
         self._batch_size_tensor = torch.empty(1, dtype=torch.int64, device="cpu")
         self._batch_size_tensor[0] = self.batch_size
         self._seq_lengths_payload = torch.empty_like(self.seq_lengths)
@@ -220,10 +216,15 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         return max_val / (absmax + 1e-12)
 
     def _quantize_step_into(self, x: torch.Tensor, scale: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
+        # A zero-dimensional FP32 scale follows scalar promotion and leaves the
+        # BF16 input multiplication in BF16, which can double-round at the FP8
+        # midpoint. Retaining one dimension requests the normal FP32 promotion
+        # without allocating storage or replacing the preallocated FP8 output.
+        scale_for_promotion = scale.reshape(1)
         if self.use_fp8:
-            torch.mul(x, scale, out=out)
+            torch.mul(x, scale_for_promotion, out=out)
             return out
-        return (x * scale).to(self.cache_dtype)
+        return (x * scale_for_promotion).to(self.cache_dtype)
     
     def append_kv(
         self,
@@ -309,6 +310,12 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Host sequence length slots not initialized")
         for batch_idx in range(self.batch_size):
             self._seq_lengths_host[batch_idx] = value
+
+    def _written_cache_view(self) -> torch.Tensor:
+        """Return exactly the cache region populated by ``benchmark_fn``."""
+        return self.kv_cache[
+            :, self._active_layer_slice, :, :, : self.num_decode_steps, :
+        ]
     
     def benchmark_fn(self) -> None:
         """Benchmark compressed KV cache."""
@@ -338,16 +345,33 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
     def _build_verification_output(self) -> torch.Tensor:
         if self.output is None:
             raise RuntimeError("benchmark_fn() must run before verification capture")
-        if self._verify_output_buffer is None:
-            raise RuntimeError("setup() must initialize verification output buffer")
+        if (
+            self._verify_output_buffer is None
+            or self._verify_output_buffer.shape != self.output.shape
+            or self._verify_output_buffer.device != self.output.device
+        ):
+            self._verify_output_buffer = torch.empty_like(self.output, dtype=torch.float32)
 
-        # Dequantize the first token of layer 0 so we compare against the BF16 baseline.
-        kq0 = self.output[0, 0, 0, :, 0, :]
-        vq0 = self.output[0, 0, 1, :, 0, :]
-        k_scale0 = self.k_scales[0, 0]
-        v_scale0 = self.v_scales[0, 0]
-        torch.div(kq0.float(), k_scale0, out=self._verify_output_buffer[0, 0, 0, :, 0, :])
-        torch.div(vq0.float(), v_scale0, out=self._verify_output_buffer[0, 0, 1, :, 0, :])
+        # Convert once, then dequantize every written batch/layer/token element in
+        # place. The unwritten max-sequence and inactive-layer capacity is excluded.
+        self._verify_output_buffer.copy_(self.output)
+        scale_shape = (1, self.active_layers, 1, self.num_decode_steps, 1)
+        k_scales = self.k_scales[
+            self._active_layer_slice, : self.num_decode_steps
+        ].view(scale_shape)
+        v_scales = self.v_scales[
+            self._active_layer_slice, : self.num_decode_steps
+        ].view(scale_shape)
+        torch.div(
+            self._verify_output_buffer[:, :, 0],
+            k_scales,
+            out=self._verify_output_buffer[:, :, 0],
+        )
+        torch.div(
+            self._verify_output_buffer[:, :, 1],
+            v_scales,
+            out=self._verify_output_buffer[:, :, 1],
+        )
         return self._verify_output_buffer
 
     def capture_verification_payload(self) -> None:
@@ -403,6 +427,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
             iterations=10,
             warmup=5,
             enable_memory_tracking=True,
+            ncu_replay_mode="app-range",
         )
 
     def teardown(self):

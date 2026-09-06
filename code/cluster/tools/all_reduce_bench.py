@@ -163,10 +163,18 @@ def timed_allreduce(tensor, size, start_event, end_event, algbw_buffer):
     algbw_buffer /= n
 
 
+def _artifact_run_id():
+    slurm_job_id = (os.environ.get("SLURM_JOB_ID") or "").strip()
+    if slurm_job_id:
+        return slurm_job_id
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    return f"standalone-{timestamp}-pid{os.getpid()}"
+
+
 def run(local_rank):
 
     start_time = time.time()
-    jobid = os.environ.get("SLURM_JOB_ID")
+    jobid = _artifact_run_id()
     hostname = socket.gethostname()
     is_global_rank_0 = dist.get_rank() == 0
     ranks = dist.get_world_size()

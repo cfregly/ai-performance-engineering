@@ -1,4 +1,4 @@
-"""Optimized threshold benchmark using CUDA pipeline/TMA staging."""
+"""Optimized legacy thresholdtma benchmark using per-thread async-copy staging."""
 
 from __future__ import annotations
 

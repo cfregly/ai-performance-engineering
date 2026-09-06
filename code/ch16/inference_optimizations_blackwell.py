@@ -700,7 +700,16 @@ class OptimizedDecoderLayer(nn.Module):
                 )
         
         # Reshape and project
-        if torch.is_grad_enabled() and hidden_states.requires_grad:
+        # Compilers own intermediate storage. Persisting symbolic-sized workspace
+        # views on the module prevents dynamic-shape tracing on the pinned stack.
+        if torch.compiler.is_compiling() or (
+            torch.is_grad_enabled()
+            and (
+                attn_output.requires_grad
+                or self.o_proj.weight.requires_grad
+                or (self.o_proj.bias is not None and self.o_proj.bias.requires_grad)
+            )
+        ):
             attn_output = attn_output.transpose(1, 2).contiguous()
             attn_output = attn_output.view(batch_size, seq_len, self.d_model)
             return self.o_proj(attn_output)

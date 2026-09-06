@@ -22,6 +22,7 @@ from torch.nn.parallel import DistributedDataParallel
 def _train_worker(rank: int, rendezvous: str, backend: str, output_dir: str) -> None:
     from labs.train_distributed.optimized_zero2_multigpu import (
         _build_optimizer,
+        _local_optimizers,
         _reduce_scatter_allgather_hook,
     )
     from labs.train_distributed.training_utils.memory import get_optimizer_memory
@@ -39,6 +40,10 @@ def _train_worker(rank: int, rendezvous: str, backend: str, output_dir: str) -> 
         model = torch.nn.Sequential(
             torch.nn.Linear(4, 5), torch.nn.Tanh(), torch.nn.Linear(5, 3)
         ).to(device)
+        model.register_parameter(
+            "extra_grad_payload",
+            torch.nn.Parameter(torch.zeros(7, device=device, dtype=torch.bfloat16)),
+        )
         reference = copy.deepcopy(model)
         ddp = DistributedDataParallel(
             model, device_ids=[rank] if backend == "nccl" else None,
@@ -63,6 +68,8 @@ def _train_worker(rank: int, rendezvous: str, backend: str, output_dir: str) -> 
                 rows = slice(rank * 2, (rank + 1) * 2)
                 loss = torch.nn.functional.mse_loss(ddp(all_x[rows]), all_y[rows]) / 2
                 reference_loss = torch.nn.functional.mse_loss(reference(all_x), all_y) / 2
+                loss = loss + model.extra_grad_payload.sum() * 0.0
+                reference_loss = reference_loss + reference.extra_grad_payload.sum() * 0.0
                 loss.backward()
                 reference_loss.backward()
             torch.nn.utils.clip_grad_norm_(ddp.parameters(), 1.0)
@@ -78,12 +85,21 @@ def _train_worker(rank: int, rendezvous: str, backend: str, output_dir: str) -> 
                 dist.all_gather(replicas, actual.detach())
                 torch.testing.assert_close(replicas[0], replicas[1], rtol=0, atol=0)
             assert get_optimizer_memory(optimizer) > 0, "Local optimizer state was not reported"
-        local_optimizer = optimizer.optim
-        state_count = len(local_optimizer.state)
+        local_optimizers = _local_optimizers(optimizer)
+        assert len(local_optimizers) == 2
+        local_state_count = sum(len(local_optimizer.state) for local_optimizer in local_optimizers)
+        local_states = {
+            parameter: state
+            for local_optimizer in local_optimizers
+            for parameter, state in local_optimizer.state.items()
+        }
+        state_count = len(local_states)
+        assert state_count == local_state_count, "A parameter had more than one local owner"
         assert 0 < state_count < len(list(model.parameters()))
-        for state in local_optimizer.state.values():
+        for parameter, state in local_states.items():
             assert int(state["step"]) == 3
-            assert state["exp_avg"].abs().sum() > 0
+            if parameter is not model.extra_grad_payload:
+                assert state["exp_avg"].abs().sum() > 0
         Path(output_dir, f"{backend}-rank-{rank}.json").write_text(json.dumps({
             "backend": backend, "device": str(device), "rank": rank,
             "world_size": 2, "parameter_l1_deltas": deltas,
@@ -113,7 +129,7 @@ def _run_distributed(tmp_path: Path, backend: str) -> None:
             process.join(timeout=5)
     receipts = [json.loads((tmp_path / f"{backend}-rank-{rank}.json").read_text()) for rank in range(2)]
     assert all(len(receipt["parameter_l1_deltas"]) == 3 for receipt in receipts)
-    assert sum(receipt["local_optimizer_state_entries"] for receipt in receipts) == 4
+    assert sum(receipt["local_optimizer_state_entries"] for receipt in receipts) == 5
 
 
 @pytest.mark.skipif(not dist.is_available() or not dist.is_gloo_available(), reason="Gloo unavailable")

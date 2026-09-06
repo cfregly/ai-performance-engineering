@@ -33,7 +33,12 @@ from core.benchmark.timing_parser import parse_kernel_time_ms
 from core.benchmark.tma_checks import require_tma_instructions
 from core.benchmark.verification import simple_signature
 from core.benchmark.verification_mixin import VerificationPayloadMixin
-from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.benchmark_harness import (
+    BaseBenchmark,
+    BenchmarkConfig,
+    _benchmark_child_preexec,
+    _terminate_process_group,
+)
 from core.harness.cuda_capabilities import pipeline_runtime_allowed
 
 
@@ -72,22 +77,35 @@ def _run_subprocess_capture(
     if owner_pid:
         env.setdefault("AISP_BENCHMARK_OWNER_PID", owner_pid)
     with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
-        completed = subprocess.run(
+        process = subprocess.Popen(
             list(args),
             cwd=cwd,
-            check=False,
             stdout=stdout_file,
             stderr=stderr_file,
-            timeout=timeout,
             env=env,
+            preexec_fn=_benchmark_child_preexec,
         )
+        try:
+            returncode = process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            _terminate_process_group(process, process.pid, grace_seconds=2.0)
+            stdout_file.seek(0)
+            stderr_file.seek(0)
+            stdout = stdout_file.read().decode("utf-8", errors="replace")
+            stderr = stderr_file.read().decode("utf-8", errors="replace")
+            raise subprocess.TimeoutExpired(
+                list(args),
+                timeout,
+                output=stdout,
+                stderr=stderr,
+            ) from exc
         stdout_file.seek(0)
         stderr_file.seek(0)
         stdout = stdout_file.read().decode("utf-8", errors="replace")
         stderr = stderr_file.read().decode("utf-8", errors="replace")
         return subprocess.CompletedProcess(
-            args=completed.args,
-            returncode=completed.returncode,
+            args=list(args),
+            returncode=returncode,
             stdout=stdout,
             stderr=stderr,
         )

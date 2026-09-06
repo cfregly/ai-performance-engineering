@@ -16,7 +16,6 @@ int main() {
     NVTX_RANGE("main");
     const int rows = 4096;
     const int cols = 2048;
-    const size_t row_bytes = static_cast<size_t>(rows) * cols * sizeof(float);
     const size_t col_bytes = static_cast<size_t>(cols) * rows * sizeof(float);
 
     std::vector<float> host_matrix(rows * cols);
