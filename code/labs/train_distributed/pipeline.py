@@ -215,6 +215,21 @@ def _build_toy_model(input_dim: int, hidden_dim: int, depth: int) -> nn.Sequenti
     return nn.Sequential(*layers)
 
 
+def _make_stage_boundary_autograd_safe(
+    stage_id: int, layers: list[nn.Module]
+) -> None:
+    """Keep a transported leaf activation valid for the first stage operation."""
+    if stage_id == 0 or not layers:
+        return
+    first = layers[0]
+    if isinstance(first, nn.ReLU) and first.inplace:
+        # Every transported activation is detached and made into a fresh autograd
+        # leaf so its gradient can be sent to the preceding stage. PyTorch forbids
+        # mutating that leaf in place. ReLU's out-of-place form has identical math
+        # and avoids adding an identity copy/kernel at every boundary invocation.
+        first.inplace = False
+
+
 class PipelineExperiment:
     """Creates the toy pipeline and executes the requested schedule."""
 
@@ -255,7 +270,11 @@ class PipelineExperiment:
         start = 0
         for stage_id in range(self.config.n_stages):
             end = min(start + per_stage, n_layers)
-            sub = nn.Sequential(*self.model[start:end]).to(self.devices[stage_id], dtype=self.config.dtype)
+            layers = list(self.model[start:end])
+            _make_stage_boundary_autograd_safe(stage_id, layers)
+            sub = nn.Sequential(*layers).to(
+                self.devices[stage_id], dtype=self.config.dtype
+            )
             sub.train()
             stages.append(sub)
             start = end
