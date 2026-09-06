@@ -7,7 +7,6 @@ Collects modern decoder techniques-FlexAttention, FlexDecoding, speculative and 
 Chapter 18 is the "does decoder complexity actually buy you anything?" checkpoint. It puts flexible masking, speculative decoding, tensor-core kernels, and serving integration on the same chapter surface so you can see which tricks reduce latency and which ones only add engineering cost.
 
 ## NVFP4 TensorRT-LLM tool
-
 Run the integration tool from `code/` with a real, single-rank TensorRT-LLM
 NVFP4 engine:
 

@@ -2912,6 +2912,26 @@ ENTRIES["ch18"] = chapter_entry(
             ),
         ),
         MarkdownSection(
+            "NVFP4 TensorRT-LLM tool",
+            dedent(
+                """\
+                Run the integration tool from `code/` with a real, single-rank TensorRT-LLM
+                NVFP4 engine:
+
+                ```bash
+                TRT_LLM_ENGINE=/absolute/path/to/nvfp4-engine python -m cli.aisp tools nvfp4-trtllm
+                ```
+
+                The engine directory must contain `config.json` and a nonempty `rank0.engine`.
+                The supported TensorRT-LLM 1.1.0 configuration declares `NVFP4` or
+                `W4A8_NVFP4_FP8` quantization and `mapping.world_size=1`. CUDA on Blackwell
+                or newer and the TensorRT-LLM runtime are required. Missing prerequisites
+                produce an explicit `SKIPPED` diagnostic and a nonzero exit; the tool does
+                not substitute FP16 framework execution. Validate a supplied engine with
+                `AISP_TEST_NVFP4_TRTLLM_ENGINE=/absolute/path/to/nvfp4-engine python -m pytest -q tests/test_nvfp4_trtllm_tool.py`."""
+            ),
+        ),
+        MarkdownSection(
             "Baseline Path",
             dedent(
                 """\
