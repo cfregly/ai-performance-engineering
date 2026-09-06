@@ -707,10 +707,15 @@ class DeepSeekHybridEPModule(nn.Module):
         )
         output_parts = self._split_list(joint_outputs, joint_counts)
         local_outputs = output_parts[group_rank]
-        output_parts[group_rank] = joint_outputs.new_empty(
-            (0, *joint_outputs.shape[1:])
-        )
-        return torch.cat(output_parts, dim=0), local_outputs
+        nonlocal_output_parts = output_parts[:group_rank] + output_parts[group_rank + 1 :]
+        if len(nonlocal_output_parts) == 1:
+            # A two-rank launch has exactly one nonlocal source partition.  Its
+            # narrow is already contiguous and in the order required by the
+            # reverse all-to-all, so concatenating it only adds a device copy.
+            remote_outputs = nonlocal_output_parts[0]
+        else:
+            remote_outputs = torch.cat(nonlocal_output_parts, dim=0)
+        return remote_outputs, local_outputs
 
     def _record_roundtrip_sent_bytes(
         self,
