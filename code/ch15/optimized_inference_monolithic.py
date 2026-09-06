@@ -3,8 +3,8 @@
 Pairs with: baseline_inference_monolithic.py
 
 This variant keeps the same prefill+autoregressive decode workload as the
-baseline, but routes the full request through a compiled graph and avoids the
-baseline's repeated list growth inside the hot path.
+baseline, but routes the full request through a compiled graph whose output
+storage is owned by the compiled function.
 """
 
 from __future__ import annotations
@@ -27,7 +27,6 @@ class OptimizedInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchm
         self.prompt: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._compiled_inference = None
-        self._decode_buffer: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
 
@@ -45,45 +44,41 @@ class OptimizedInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchm
         self.model = SimpleLLM(vocab_size=10000, hidden_dim=512, num_layers=8).to(self.device).to(torch.bfloat16).eval()
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self.prompt = (torch.arange(self.prefill_seq, device=self.device, dtype=torch.int64) % 10000).unsqueeze(0)
-        self._decode_buffer = torch.empty(
+        self._verify_output_buffer = torch.empty(
             (self.batch_size, self.num_tokens, self.model.hidden_dim),
             device=self.device,
-            dtype=torch.bfloat16,
+            dtype=torch.float32,
         )
-        self._verify_output_buffer = torch.empty_like(self._decode_buffer, dtype=torch.float32)
         self.output = None
         # The batch=1 request is launch-overhead bound: prefill is one narrow prompt pass,
         # then decode runs num_tokens x num_layers tiny Linears. Compile the whole request
         # with reduce-overhead so inductor cudagraphs the launch train into one replay.
-        num_tokens = self.num_tokens
-        model = self.model
-
-        def _full_inference(prompt: torch.Tensor, buffer: torch.Tensor) -> torch.Tensor:
-            kv_cache = model.prefill(prompt)
-            current = kv_cache
-            for token_idx in range(num_tokens):
-                current = model.decode_step(current)
-                buffer[:, token_idx : token_idx + 1, :] = current
-            return buffer
-
-        self._compiled_inference = torch.compile(_full_inference, mode="reduce-overhead")
+        # An externally supplied output buffer is a mutated graph input, which
+        # causes Inductor to skip CUDA graph capture. Allocate it inside the
+        # compiled request so its storage belongs to the captured graph.
+        self._compiled_inference = torch.compile(self._full_inference, mode="reduce-overhead")
         with torch.inference_mode():
             for _ in range(5):
-                _ = self._compiled_inference(self.prompt, self._decode_buffer)
+                _ = self._compiled_inference(self.prompt)
         torch.cuda.synchronize(self.device)
+
+    def _full_inference(self, prompt: torch.Tensor) -> torch.Tensor:
+        if self.model is None:
+            raise RuntimeError("Model not initialized")
+        kv_cache = self.model.prefill(prompt)
+        return self.model.decode_autoregressive(kv_cache, num_tokens=self.num_tokens)
 
     def benchmark_fn(self) -> None:
         if (
             self.model is None
             or self.prompt is None
             or self._compiled_inference is None
-            or self._decode_buffer is None
         ):
             raise RuntimeError("Model or prompt not initialized")
 
         with self._nvtx_range("inference_monolithic_optimized"):
             with torch.inference_mode():
-                self.output = self._compiled_inference(self.prompt, self._decode_buffer)
+                self.output = self._compiled_inference(self.prompt)
 
     def capture_verification_payload(self) -> None:
         if (
@@ -113,7 +108,6 @@ class OptimizedInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchm
         self.prompt = None
         self.output = None
         self._compiled_inference = None
-        self._decode_buffer = None
         self._verify_output_buffer = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

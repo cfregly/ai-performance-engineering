@@ -950,6 +950,62 @@ reused requests and untouched cache tails, pass; the focused/hygiene lane
 passed 561 tests with one skip. These candidates still require B200 timing
 and profiler evidence.
 
+### Waves 25/26: cache measurements and full-output controls
+
+All six Wave 25 stages on `0058fc6e6` drained. Ten focused GPU tests passed;
+the pooled KV and RoPE examples passed their normal speed gates at `1.0739`
+and `1.1539`. Two more Chapter 14 warm-cache harness runs passed. Its earlier
+native crash remains unreproduced, with no compiler workaround introduced.
+The dense Blackwell variant's CLI entry was explicitly informational and
+executed no benchmark; Wave 26 exercised its real factory and tensor path.
+
+Wave 26 retained eight observations per arm in four ABBA blocks for each
+target, with five warmups. Each pooled-cache observation ran the complete
+request workload; RoPE and dense-attention observations each contained 50
+complete invocations. All observations are retained. CUDA-event medians were:
+
+| Comparison | Baseline | Optimized | Ratio | Four block ratios |
+| --- | ---: | ---: | ---: | --- |
+| Pooled KV cache | 495.5062 ms | 451.4488 ms | 1.09759 | 1.09878, 1.09752, 1.09507, 1.09775 |
+| RoPE direct cache writes | 1.967337 ms | 1.705141 ms | 1.15377 | 1.15341, 1.15383, 1.15379, 1.15373 |
+| Dense Flash Attention variant | 7.661654 ms | 0.575625 ms | 13.31015 | 13.32500, 13.30270, 13.33621, 13.29302 |
+
+Verification ran before timing, after timing, and after profiling. The KV
+control captured every actual layer output across every token and request:
+5,505,024 values matched bitwise. All 2,097,152 written RoPE cache values also
+matched bitwise. Dense attention compared all 16,777,216 output values, with
+maximum difference `0.00048828125` under the unchanged tolerance.
+
+CPU operator profiles corroborate the mechanisms. Per full KV invocation,
+concatenations fell from 21,504 to zero and `as_strided` calls from 225,792
+to 161,280, while both arms executed 10,752 Flash Attention operations.
+RoPE retained all 64 matrix multiplications and removed the baseline's 64
+cache copies. The dense variant used one Flash Attention operation in place
+of explicit attention. These profiles establish operator counts, not kernel
+timings. The runs used unlocked clocks on a virtualized host and remain
+diagnostic evidence rather than canonical performance results.
+
+The remaining breadth sweep resumed automatically on the same immutable
+revision. The subsequent decode-compile failure was a speed miss (`0.9451`),
+with output verification passing.
+
+### Current follow-up repairs
+
+The monolithic inference stderr identifies why its compiled path was barely
+faster: Inductor skipped CUDA graphs because the function mutated an input
+buffer. The compiled request now creates its output internally through the
+same full prefill and autoregressive decode implementation. A real CPU graph
+capture control checks every output and unchanged prompts; B200 capture and
+speed verification are still pending.
+
+Memory summaries also clamped negative savings to zero. Aggregation now
+retains the best measured candidate's actual signed savings, excluding
+unverified candidates and nonfinite values. Reprocessing the retained
+memory-study result exposes its approximately `-0.3481%` savings instead of
+zero. The original result is preserved, and acceptance policies are unchanged.
+The focused and hygiene controls for these follow-ups passed 560 tests with
+one skip.
+
 - Run the complete GPU test suite on the final merged revision.
 - Complete all four sweep stages and reconcile the 486-target inventory,
   including unsupported and failed cases rather than silently dropping them.
