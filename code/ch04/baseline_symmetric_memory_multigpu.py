@@ -8,7 +8,10 @@ from ch04.nvshmem_child_result import (
     NVSHMEM_CHILD_RESULT_CALLBACK,
     NVSHMEMChildResultMixin,
 )
-from ch04.symmetric_memory_example import TRADITIONAL_RING_NVTX_RANGE
+from ch04.symmetric_memory_example import (
+    TRADITIONAL_RING_NVTX_RANGE,
+    TRADITIONAL_RING_TRANSPORT_BACKEND,
+)
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -16,7 +19,6 @@ from core.harness.benchmark_harness import (
     LaunchVia,
     TorchrunLaunchSpec,
 )
-from core.optimization.symmetric_memory_patch import symmetric_memory_available
 
 
 class SymmetricMemoryMultiGPU(
@@ -35,8 +37,6 @@ class SymmetricMemoryMultiGPU(
     def setup(self) -> None:
         if torch.cuda.device_count() < 2:
             raise RuntimeError("SKIPPED: symmetric_memory requires >=2 GPUs")
-        if not symmetric_memory_available():
-            raise RuntimeError("SKIPPED: symmetric_memory requires SymmetricMemory support")
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         self._benchmark_ready = True
@@ -71,7 +71,9 @@ class SymmetricMemoryMultiGPU(
     ) -> TorchrunLaunchSpec:
         effective_config = config or self.get_config()
         if int(effective_config.nnodes or 1) != 1:
-            raise RuntimeError("NVSHMEM child-result transport requires nnodes == 1")
+            raise RuntimeError(
+                "Symmetric-memory ring child-result transport requires nnodes == 1"
+            )
         world_size = int(
             effective_config.nproc_per_node or max(2, torch.cuda.device_count())
         )
@@ -84,6 +86,9 @@ class SymmetricMemoryMultiGPU(
                 "benchmark_mode": "traditional",
                 "tensor_bytes": 2097152,
                 "iterations": 400,
+                "process_group_backend": TRADITIONAL_RING_TRANSPORT_BACKEND,
+                "requested_transport_backend": TRADITIONAL_RING_TRANSPORT_BACKEND,
+                "observed_transport_backend": TRADITIONAL_RING_TRANSPORT_BACKEND,
             },
         )
         return TorchrunLaunchSpec(

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Optional, Union, TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 try:
     import torch
@@ -27,20 +27,50 @@ else:
     _ProcessGroup = object
 
 ProcessGroup = _ProcessGroup
+SymmetricMemoryBackend = Literal["NVSHMEM", "CUDA"]
+_SUPPORTED_BACKENDS = frozenset({"NVSHMEM", "CUDA"})
 
 
-def symmetric_memory_available() -> bool:
-    """Return True when NVSHMEM-backed symmetric memory is available."""
-    if os.environ.get("AISP_DISABLE_SYMMETRIC_MEMORY", "").lower() in {"1", "true", "yes"}:
+def _normalize_backend(backend: str) -> SymmetricMemoryBackend:
+    normalized = backend.upper()
+    if normalized not in _SUPPORTED_BACKENDS:
+        raise ValueError(
+            "SymmetricMemory backend must be explicitly set to NVSHMEM or CUDA"
+        )
+    return cast(SymmetricMemoryBackend, normalized)
+
+
+def symmetric_memory_backend_supported(backend: str = "NVSHMEM") -> bool:
+    """Return whether the runtime exposes the requested backend's required API.
+
+    This is a non-mutating capability check. The handle constructor still selects
+    and verifies the requested backend in the worker before allocating memory.
+    """
+    requested_backend = _normalize_backend(backend)
+    if os.environ.get("AISP_DISABLE_SYMMETRIC_MEMORY", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }:
         return False
     if torch is None or dist is None or _symm_mem is None:
         return False
     if not torch.cuda.is_available():
         return False
+    required = ("empty", "rendezvous", "set_backend", "get_backend")
+    if not all(callable(getattr(_symm_mem, name, None)) for name in required):
+        return False
+    if requested_backend == "CUDA":
+        return True
     try:
         return bool(_symm_mem.is_nvshmem_available())
     except Exception:
         return False
+
+
+def symmetric_memory_available() -> bool:
+    """Return True when NVSHMEM-backed symmetric memory is available."""
+    return symmetric_memory_backend_supported("NVSHMEM")
 
 
 class SymmetricMemoryHandle:
@@ -58,7 +88,13 @@ class SymmetricMemoryHandle:
         "backend",
     )
 
-    def __init__(self, tensor: torch.Tensor, group: Union[str, ProcessGroup, None] = None) -> None:
+    def __init__(
+        self,
+        tensor: torch.Tensor,
+        group: str | ProcessGroup | None = None,
+        *,
+        backend: SymmetricMemoryBackend = "NVSHMEM",
+    ) -> None:
         if torch is None or dist is None or _symm_mem is None:
             raise RuntimeError("torch.distributed._symmetric_memory is not available")
         if not tensor.is_cuda:
@@ -72,20 +108,29 @@ class SymmetricMemoryHandle:
                 )
             group = dist.group.WORLD
 
-        if not symmetric_memory_available():
-            raise RuntimeError("NVSHMEM symmetric memory is not available on this system")
+        requested_backend = _normalize_backend(backend)
+        if not symmetric_memory_backend_supported(requested_backend):
+            raise RuntimeError(
+                f"{requested_backend} symmetric memory is not available on this system"
+            )
 
-        backend = None
         try:
-            backend = _symm_mem.get_backend(tensor.device)
-        except Exception:
-            backend = None
-        if backend != "NVSHMEM":
-            try:
-                _symm_mem.set_backend("NVSHMEM")
-                backend = _symm_mem.get_backend(tensor.device)
-            except Exception as exc:
-                raise RuntimeError("NVSHMEM backend is not available for symmetric memory") from exc
+            # Backend choice is process-global and cannot be changed after the
+            # first symmetric allocation. Avoid invoking the global setter when
+            # a previous handle already selected the requested backend.
+            observed_backend = _symm_mem.get_backend(tensor.device)
+            if observed_backend != requested_backend:
+                _symm_mem.set_backend(requested_backend)
+                observed_backend = _symm_mem.get_backend(tensor.device)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to select {requested_backend} symmetric-memory backend"
+            ) from exc
+        if observed_backend != requested_backend:
+            raise RuntimeError(
+                "Symmetric-memory backend identity mismatch: "
+                f"requested {requested_backend}, observed {observed_backend!r}"
+            )
 
         try:
             if hasattr(_symm_mem, "is_symm_mem_enabled_for_group") and hasattr(
@@ -114,11 +159,15 @@ class SymmetricMemoryHandle:
             self._symm_tensor.copy_(tensor)
 
         self._handle = _symm_mem.rendezvous(self._symm_tensor, group)
+        if requested_backend == "CUDA" and not callable(
+            getattr(self._handle, "barrier", None)
+        ):
+            raise RuntimeError("CUDA symmetric-memory handle has no device barrier")
         self.buffer = cast(
             torch.Tensor,
             self._handle.get_buffer(self._rank, self._shape, self._dtype),
         )
-        self.backend = backend if backend is not None else "symmetric_memory"
+        self.backend = observed_backend
 
     @property
     def rank(self) -> int:
@@ -141,20 +190,24 @@ class SymmetricMemoryHandle:
 
 def create_symmetric_memory_handle(
     tensor: torch.Tensor,
-    group: Union[str, ProcessGroup, None] = None,
+    group: str | ProcessGroup | None = None,
+    *,
+    backend: SymmetricMemoryBackend = "NVSHMEM",
 ) -> SymmetricMemoryHandle:
     """Create a symmetric memory handle or raise if unavailable."""
-    return SymmetricMemoryHandle(tensor, group=group)
+    return SymmetricMemoryHandle(tensor, group=group, backend=backend)
 
 
 def maybe_create_symmetric_memory_handle(
     tensor: torch.Tensor,
-    group: Union[str, ProcessGroup, None] = None,
-) -> Optional[SymmetricMemoryHandle]:
+    group: str | ProcessGroup | None = None,
+    *,
+    backend: SymmetricMemoryBackend = "NVSHMEM",
+) -> SymmetricMemoryHandle | None:
     """Return a symmetric memory handle when available; otherwise None."""
-    if not symmetric_memory_available():
+    if not symmetric_memory_backend_supported(backend):
         return None
     try:
-        return SymmetricMemoryHandle(tensor, group=group)
+        return SymmetricMemoryHandle(tensor, group=group, backend=backend)
     except Exception:
         return None

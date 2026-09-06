@@ -1,4 +1,4 @@
-"""Optimized symmetric-memory ring benchmark with Blackwell NCCL tuning."""
+"""Optimized CUDA-backend symmetric-memory ring with an NCCL control plane."""
 
 from __future__ import annotations
 
@@ -14,7 +14,11 @@ from ch04.nvshmem_child_result import (
     NVSHMEM_CHILD_RESULT_CALLBACK,
     NVSHMEMChildResultMixin,
 )
-from ch04.symmetric_memory_example import SYMMETRIC_RING_NVTX_RANGE
+from ch04.symmetric_memory_example import (
+    SYMMETRIC_RING_NVTX_RANGE,
+    SYMMETRIC_RING_TRANSPORT_BACKEND,
+    TRADITIONAL_RING_TRANSPORT_BACKEND,
+)
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -22,7 +26,7 @@ from core.harness.benchmark_harness import (
     LaunchVia,
     TorchrunLaunchSpec,
 )
-from core.optimization.symmetric_memory_patch import symmetric_memory_available
+from core.optimization.symmetric_memory_patch import symmetric_memory_backend_supported
 
 
 def _configure_blackwell_nccl() -> dict[str, str]:
@@ -57,8 +61,10 @@ class OptimizedSymmetricMemoryMultiGPU(
     def setup(self) -> None:
         if torch.cuda.device_count() < 2:
             raise RuntimeError("SKIPPED: symmetric_memory requires >=2 GPUs")
-        if not symmetric_memory_available():
-            raise RuntimeError("SKIPPED: symmetric_memory requires SymmetricMemory support")
+        if not symmetric_memory_backend_supported(SYMMETRIC_RING_TRANSPORT_BACKEND):
+            raise RuntimeError(
+                "SKIPPED: symmetric_memory requires the CUDA symmetric-memory backend API"
+            )
         _configure_blackwell_nccl()
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
@@ -94,7 +100,9 @@ class OptimizedSymmetricMemoryMultiGPU(
     ) -> TorchrunLaunchSpec:
         effective_config = config or self.get_config()
         if int(effective_config.nnodes or 1) != 1:
-            raise RuntimeError("NVSHMEM child-result transport requires nnodes == 1")
+            raise RuntimeError(
+                "Symmetric-memory ring child-result transport requires nnodes == 1"
+            )
         world_size = int(
             effective_config.nproc_per_node or max(2, torch.cuda.device_count())
         )
@@ -107,6 +115,9 @@ class OptimizedSymmetricMemoryMultiGPU(
                 "benchmark_mode": "symmetric",
                 "tensor_bytes": 2097152,
                 "iterations": 400,
+                "process_group_backend": TRADITIONAL_RING_TRANSPORT_BACKEND,
+                "requested_transport_backend": SYMMETRIC_RING_TRANSPORT_BACKEND,
+                "observed_transport_backend": SYMMETRIC_RING_TRANSPORT_BACKEND,
             },
         )
         return TorchrunLaunchSpec(

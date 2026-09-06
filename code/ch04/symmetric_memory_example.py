@@ -21,14 +21,16 @@ from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_
 from ch04.nvshmem_child_result import NVSHMEMWorkloadResult
 from core.common.device_utils import resolve_local_rank
 from core.optimization.symmetric_memory_patch import (
+    SymmetricMemoryBackend,
     create_symmetric_memory_handle,
     maybe_create_symmetric_memory_handle,
-    symmetric_memory_available,
 )
 from core.profiling.nvtx_helper import nvtx_range, standardize_nvtx_label
 
 TRADITIONAL_RING_NVTX_RANGE = "transfer_sync:symmetric_memory_traditional_ring"
 SYMMETRIC_RING_NVTX_RANGE = "transfer_sync:symmetric_memory_direct_ring"
+TRADITIONAL_RING_TRANSPORT_BACKEND = "NCCL"
+SYMMETRIC_RING_TRANSPORT_BACKEND = "CUDA"
 
 
 def _make_rank_generator(
@@ -41,11 +43,24 @@ def _make_rank_generator(
     return torch.Generator(device=device).manual_seed(base_seed + rank)
 
 
+def _require_single_node_nccl_world(world_size: int) -> str:
+    """Validate the process-group scope used by both ring transports."""
+    local_world_size = int(os.environ.get("LOCAL_WORLD_SIZE", 0))
+    if local_world_size != world_size or int(os.environ.get("GROUP_RANK", 0)) != 0:
+        raise RuntimeError(
+            "SKIPPED: symmetric-memory ring requires one WORLD group on one node"
+        )
+    process_group_backend = str(dist.get_backend(dist.group.WORLD)).upper()
+    if process_group_backend != TRADITIONAL_RING_TRANSPORT_BACKEND:
+        raise RuntimeError(
+            "SKIPPED: symmetric-memory ring requires an NCCL process group"
+        )
+    return process_group_backend
+
+
 def setup_distributed():
     """Initialize distributed environment for multi-GPU operation."""
     setup_single_gpu_env("symmetric_memory_example", min_world_size=2)
-    if not symmetric_memory_available():
-        raise RuntimeError("SKIPPED: symmetric_memory_example requires SymmetricMemory support")
     if dist.is_initialized():
         torch.cuda.set_device(resolve_local_rank())
         return dist.get_rank(), dist.get_world_size()
@@ -314,14 +329,25 @@ def benchmark_symmetric_ring(
     iterations: int = 100,
     *,
     return_output: bool = False,
+    backend: SymmetricMemoryBackend = "NVSHMEM",
 ) -> float | tuple[float, torch.Tensor]:
-    """Benchmark ring traffic using symmetric memory buffers."""
+    """Benchmark ring traffic through one explicit symmetric-memory backend."""
     rank = dist.get_rank()
     world_size = dist.get_world_size()
     device = torch.device("cuda", torch.cuda.current_device())
+    requested_backend = backend.upper()
     flat = tensor.flatten()
     local = torch.stack([flat, flat.clone()])
-    handle = create_symmetric_memory_handle(local, group=dist.group.WORLD)
+    handle = create_symmetric_memory_handle(
+        local,
+        group=dist.group.WORLD,
+        backend=backend,
+    )
+    if handle.backend != requested_backend:
+        raise RuntimeError(
+            "Symmetric ring backend identity mismatch: "
+            f"requested {requested_backend}, observed {handle.backend!r}"
+        )
     # The constructor copies the seed tensor into a separate symmetric allocation.
     # Peer writes target that allocation, so receives must read its local view.
     local = handle.buffer
@@ -329,30 +355,45 @@ def benchmark_symmetric_ring(
     next_buf = handle.get_buffer(next_rank)
     recv_tensor = torch.empty_like(flat)
 
-    for idx in range(5):
-        buf_idx = idx % 2
-        next_buf[buf_idx].copy_(flat, non_blocking=True)
-        # NCCL barrier orders its communication stream after work already
-        # queued on the current stream and blocks until the collective ends.
-        # It therefore publishes the peer write without a separate host-side
-        # stream synchronization.
-        dist.barrier()
-        # The previous rank writes directly into this rank's symmetric slot.
-        recv_tensor.copy_(local[buf_idx], non_blocking=True)
-        # Keep this second barrier so every rank consumes the slot before a
-        # peer can reuse it on a later iteration.
-        dist.barrier()
-
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-    start.record()
-    with nvtx_range(SYMMETRIC_RING_NVTX_RANGE, enable=True):
-        for idx in range(iterations):
+    if requested_backend == SYMMETRIC_RING_TRANSPORT_BACKEND:
+        for idx in range(5):
+            buf_idx = idx % 2
+            next_buf[buf_idx].copy_(flat, non_blocking=True)
+            # CUDA symmetric-memory barriers execute on this same current stream.
+            # The first distinct channel publishes every peer write.
+            handle.barrier(channel=0, timeout_ms=5000)
+            # The previous rank writes directly into this rank's symmetric slot.
+            recv_tensor.copy_(local[buf_idx], non_blocking=True)
+            # The second channel keeps each slot alive until every rank consumes it.
+            handle.barrier(channel=1, timeout_ms=5000)
+    else:
+        # The NVSHMEM handle's barrier is a no-op in Torch 2.9.1. Retain the
+        # historical NCCL fences for callers that use this function's default.
+        for idx in range(5):
             buf_idx = idx % 2
             next_buf[buf_idx].copy_(flat, non_blocking=True)
             dist.barrier()
             recv_tensor.copy_(local[buf_idx], non_blocking=True)
             dist.barrier()
+
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
+    start.record()
+    with nvtx_range(SYMMETRIC_RING_NVTX_RANGE, enable=True):
+        if requested_backend == SYMMETRIC_RING_TRANSPORT_BACKEND:
+            for idx in range(iterations):
+                buf_idx = idx % 2
+                next_buf[buf_idx].copy_(flat, non_blocking=True)
+                handle.barrier(channel=0, timeout_ms=5000)
+                recv_tensor.copy_(local[buf_idx], non_blocking=True)
+                handle.barrier(channel=1, timeout_ms=5000)
+        else:
+            for idx in range(iterations):
+                buf_idx = idx % 2
+                next_buf[buf_idx].copy_(flat, non_blocking=True)
+                dist.barrier()
+                recv_tensor.copy_(local[buf_idx], non_blocking=True)
+                dist.barrier()
         end.record()
         torch.cuda.synchronize(device)
     time_ms = start.elapsed_time(end) / iterations
@@ -576,6 +617,7 @@ def main() -> NVSHMEMWorkloadResult | None:
                 print("Benchmark mode requires at least 2 GPUs.")
             dist.destroy_process_group()
             return
+        process_group_backend = _require_single_node_nccl_world(world_size)
         input_generator = _make_rank_generator(device, rank=rank)
         numel = max(1, args.tensor_bytes // 4)
         tensor = torch.randn(
@@ -592,13 +634,16 @@ def main() -> NVSHMEMWorkloadResult | None:
                 return_output=True,
             )
             label = "traditional_ring"
+            transport_backend = TRADITIONAL_RING_TRANSPORT_BACKEND
         else:
             measured = benchmark_symmetric_ring(
                 tensor,
                 iterations=args.iterations,
                 return_output=True,
+                backend=SYMMETRIC_RING_TRANSPORT_BACKEND,
             )
             label = "symmetric_ring"
+            transport_backend = SYMMETRIC_RING_TRANSPORT_BACKEND
         if not isinstance(measured, tuple):
             raise RuntimeError("Symmetric-memory ring measurement output is missing")
         time_ms, verify_output = measured
@@ -618,6 +663,9 @@ def main() -> NVSHMEMWorkloadResult | None:
                 "benchmark_mode": args.benchmark_mode,
                 "tensor_bytes": args.tensor_bytes,
                 "iterations": args.iterations,
+                "process_group_backend": process_group_backend,
+                "requested_transport_backend": transport_backend,
+                "observed_transport_backend": transport_backend,
             },
             verify_inputs={"source_tensor": original_tensor},
             verify_output=verify_output,
