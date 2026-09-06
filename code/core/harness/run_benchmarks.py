@@ -2768,21 +2768,14 @@ def _build_torchrun_profile_command(
     if use_direct_wrapper:
         torchrun_cmd = [sys.executable]
     else:
-        torchrun_path = shutil.which("torchrun")
-        if torchrun_path:
-            torchrun_cmd = [
-                torchrun_path,
-                "--nproc_per_node",
-                str(nproc_per_node),
-            ]
-        else:
-            torchrun_cmd = [
-                sys.executable,
-                "-m",
-                "torch.distributed.run",
-                "--nproc_per_node",
-                str(nproc_per_node),
-            ]
+        # Profile with the same Python/PyTorch environment used for timing.
+        torchrun_cmd = [
+            sys.executable,
+            "-m",
+            "torch.distributed.run",
+            "--nproc_per_node",
+            str(nproc_per_node),
+        ]
         if getattr(config, "nnodes", None):
             torchrun_cmd.extend(["--nnodes", str(config.nnodes)])
 

@@ -517,6 +517,76 @@ else:
     app = None
 
 
+def _isolated_benchmark_failure_result(
+    *,
+    chapter_id: str,
+    only_examples: Optional[List[str]],
+    status: str,
+    error: str,
+    preflight_issues: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Build a normal result entry for a continuation-mode unit failure."""
+    benchmark_failures = [
+        {
+            "example": example,
+            "status": "failed_error",
+            "error": error,
+        }
+        for example in (only_examples or [])
+    ]
+    failure_count = max(1, len(benchmark_failures))
+    result: Dict[str, Any] = {
+        "chapter": chapter_id,
+        "status": status,
+        "reason": error,
+        "error": error,
+        "benchmarks": benchmark_failures,
+        "manifests": [],
+        "summary": {
+            "total_benchmarks": len(benchmark_failures),
+            "successful": 0,
+            "failed": failure_count,
+            "failed_error": failure_count,
+            "failed_verification": 0,
+            "failed_regression": 0,
+            "failed_no_speedup": 0,
+            "failed_generic": 0,
+            "failed_other": 0,
+            "skipped_hardware": 0,
+            "skipped_distributed": 0,
+            "total_skipped": 0,
+            "total_speedups": 0,
+            "average_speedup": 0.0,
+            "max_speedup": 0.0,
+            "min_speedup": 0.0,
+            "informational": 0,
+        },
+    }
+    if preflight_issues:
+        result["preflight_failed"] = True
+        result["preflight_issues"] = list(preflight_issues)
+    return result
+
+
+def _run_test_chapter_with_failure_boundary(
+    *,
+    isolate_failures: bool,
+    **kwargs: Any,
+) -> Tuple[Optional[Dict[str, Any]], Optional[Exception]]:
+    """Invoke one chapter unit, returning ordinary failures only when requested."""
+    try:
+        result = test_chapter(**kwargs)
+        if not isinstance(result, dict):
+            raise TypeError(
+                f"test_chapter() returned {type(result).__name__}; expected a result mapping"
+            )
+        return result, None
+    except Exception as exc:
+        if not isolate_failures:
+            raise
+        return None, exc
+
+
 @restore_cuda_visible_devices_after_call
 def _execute_benchmarks(
     targets: Optional[List[str]] = None,
@@ -722,18 +792,66 @@ def _execute_benchmarks(
     explicit_targets = bool(targets) and not all(
         str(target).strip().lower() == "all" for target in targets
     )
-    preflight_issues = _preflight_target_coverage_and_assets(
-        chapter_dirs,
-        chapter_filters,
-        only_cuda=bool(only_cuda),
-        only_python=bool(only_python),
-        target_extra_args=parsed_extra_args,
-        enforce_external_assets=(
-            len(chapter_dirs) == 1
-            if enforce_external_assets is None
-            else bool(enforce_external_assets)
-        ),
+    preflight_enforces_external_assets = (
+        len(chapter_dirs) == 1
+        if enforce_external_assets is None
+        else bool(enforce_external_assets)
     )
+    execution_units: List[Tuple[Path, Optional[List[str]]]] = []
+    for chapter_dir in chapter_dirs:
+        chapter_id = chapter_slug(
+            chapter_dir,
+            active_bench_root,
+            bench_root=active_bench_root,
+        )
+        example_filters = chapter_filters.get(chapter_id)
+        if not exit_on_failure and example_filters:
+            execution_units.extend((chapter_dir, [example]) for example in sorted(example_filters))
+        else:
+            execution_units.append(
+                (chapter_dir, sorted(example_filters) if example_filters else None)
+            )
+
+    isolated_preflight_issues: Dict[Tuple[Path, Optional[str]], List[str]] = {}
+    if exit_on_failure:
+        preflight_issues = _preflight_target_coverage_and_assets(
+            chapter_dirs,
+            chapter_filters,
+            only_cuda=bool(only_cuda),
+            only_python=bool(only_python),
+            target_extra_args=parsed_extra_args,
+            enforce_external_assets=preflight_enforces_external_assets,
+        )
+    else:
+        for chapter_dir, only_examples in execution_units:
+            chapter_id = chapter_slug(
+                chapter_dir,
+                active_bench_root,
+                bench_root=active_bench_root,
+            )
+            unit_filters = {chapter_id: set(only_examples)} if only_examples else {}
+            unit_issues = _preflight_target_coverage_and_assets(
+                [chapter_dir],
+                unit_filters,
+                only_cuda=bool(only_cuda),
+                only_python=bool(only_python),
+                target_extra_args=parsed_extra_args,
+                enforce_external_assets=preflight_enforces_external_assets,
+            )
+            if unit_issues:
+                unit_key = (
+                    chapter_dir.resolve(),
+                    only_examples[0] if only_examples and len(only_examples) == 1 else None,
+                )
+                isolated_preflight_issues[unit_key] = list(unit_issues)
+
+        preflight_issues = []
+        if len(isolated_preflight_issues) == len(execution_units):
+            for unit_issues in isolated_preflight_issues.values():
+                for issue in unit_issues:
+                    if issue not in preflight_issues:
+                        preflight_issues.append(issue)
+
     if preflight_issues:
         for issue in preflight_issues:
             logger.error("PREFLIGHT FAILED: %s", issue)
@@ -1124,11 +1242,54 @@ def _execute_benchmarks(
 
         all_results = []
         output_json = artifact_manager.get_result_path("benchmark_test_results.json")
-        for chapter_dir in chapter_dirs:
+
+        def _record_result(result: Dict[str, Any]) -> None:
+            all_results.append(result)
+            if output_format in ["json", "both"]:
+                with open(output_json, "w") as f:
+                    json.dump(
+                        {
+                            "run_id": artifact_manager.run_id,
+                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                            "results": all_results,
+                        },
+                        f,
+                        indent=2,
+                    )
+                logger.info(f"JSON results checkpoint saved to: {output_json}")
+
+        for chapter_dir, only_examples in execution_units:
             chapter_id = chapter_slug(chapter_dir, active_bench_root, bench_root=active_bench_root)
-            example_filters = chapter_filters.get(chapter_id)
-            only_examples = sorted(example_filters) if example_filters else None
-            result = test_chapter(
+            unit_key = (
+                chapter_dir.resolve(),
+                only_examples[0] if only_examples and len(only_examples) == 1 else None,
+            )
+            unit_preflight_issues = isolated_preflight_issues.get(unit_key, [])
+            if unit_preflight_issues:
+                error = "Benchmark preflight failed: " + " | ".join(unit_preflight_issues)
+                result = _isolated_benchmark_failure_result(
+                    chapter_id=chapter_id,
+                    only_examples=only_examples,
+                    status="failed_preflight",
+                    error=error,
+                    preflight_issues=unit_preflight_issues,
+                )
+                for issue in unit_preflight_issues:
+                    logger.error("PREFLIGHT FAILED [%s]: %s", chapter_id, issue)
+                emit_event(
+                    event_logger,
+                    logger,
+                    "benchmark_unit_failed",
+                    chapter=chapter_id,
+                    examples=only_examples or [],
+                    failure_kind="preflight",
+                    issues=unit_preflight_issues,
+                )
+                _record_result(result)
+                continue
+
+            result, unit_exception = _run_test_chapter_with_failure_boundary(
+                isolate_failures=not exit_on_failure,
                 chapter_dir=chapter_dir,
                 enable_profiling=enable_profiling,
                 profile_type=profile_type if enable_profiling else "none",
@@ -1181,19 +1342,34 @@ def _execute_benchmarks(
                 fail_on_no_benchmarks=explicit_targets,
                 event_logger=event_logger,
             )
-            all_results.append(result)
-            if output_format in ["json", "both"]:
-                with open(output_json, "w") as f:
-                    json.dump(
-                        {
-                            "run_id": artifact_manager.run_id,
-                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                            "results": all_results,
-                        },
-                        f,
-                        indent=2,
-                    )
-                logger.info(f"JSON results checkpoint saved to: {output_json}")
+            if unit_exception is not None:
+                exc = unit_exception
+                error = f"{type(exc).__name__}: {exc}"
+                logger.error(
+                    "Benchmark unit failed [%s, examples=%s]: %s",
+                    chapter_id,
+                    only_examples or ["<all>"],
+                    error,
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
+                result = _isolated_benchmark_failure_result(
+                    chapter_id=chapter_id,
+                    only_examples=only_examples,
+                    status="failed_error",
+                    error=error,
+                )
+                emit_event(
+                    event_logger,
+                    logger,
+                    "benchmark_unit_failed",
+                    chapter=chapter_id,
+                    examples=only_examples or [],
+                    failure_kind="exception",
+                    error=error,
+                )
+            if result is None:
+                raise RuntimeError("Benchmark unit returned neither a result nor an exception")
+            _record_result(result)
 
         progress_recorder.emit(
             ProgressEvent(
@@ -1267,13 +1443,19 @@ def _execute_benchmarks(
             total_skipped=total_skipped,
             output_json=str(output_json),
             output_markdown=str(output_md) if output_format in ["markdown", "both"] else None,
+            preflight_failed=bool(isolated_preflight_issues),
+            preflight_issues=[
+                issue
+                for issues in isolated_preflight_issues.values()
+                for issue in issues
+            ],
         )
         heartbeat_stop.set()
         heartbeat_thread.join(timeout=5.0)
         event_logger.close()
         if total_failed > 0 and exit_on_failure:
             sys.exit(1)
-        return {
+        execution_result = {
             "run_id": artifact_manager.run_id,
             "artifact_root": str(artifact_manager.run_dir),
             "output_json": str(output_json),
@@ -1285,6 +1467,14 @@ def _execute_benchmarks(
             "total_skipped": total_skipped,
             "results": all_results,
         }
+        if isolated_preflight_issues:
+            execution_result["preflight_failed"] = True
+            execution_result["preflight_issues"] = [
+                issue
+                for issues in isolated_preflight_issues.values()
+                for issue in issues
+            ]
+        return execution_result
     finally:
         restore_suite_timeout()
 

@@ -483,6 +483,7 @@ def test_build_torchrun_profile_command_keeps_launcher_for_multi_process(tmp_pat
 
     command, _env = _build_torchrun_profile_command(config, spec=spec)
 
+    assert command[:3] == [sys.executable, "-m", "torch.distributed.run"]
     assert "--nproc_per_node" in command
     assert "2" in command
     assert "-m" in command

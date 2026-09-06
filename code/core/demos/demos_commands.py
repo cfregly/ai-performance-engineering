@@ -8,7 +8,6 @@ separated from:
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -270,10 +269,6 @@ def _run_demo(
             argv=demo_args or [],
         )
     elif resolved_launch == LaunchVia.TORCHRUN.value:
-        torchrun_path = shutil.which("torchrun")
-        if torchrun_path is None:
-            raise FileNotFoundError("torchrun not found in PATH; install PyTorch with distributed support.")
-
         if nproc_per_node is None:
             raise ValueError(
                 f"Demo '{demo}' requires torchrun; pass --nproc-per-node <N> (e.g., --nproc-per-node 2)."
@@ -284,7 +279,6 @@ def _run_demo(
         if nnodes is not None and int(nnodes) <= 0:
             raise ValueError(f"--nnodes must be >= 1, got {nnodes}")
         cmd = build_torchrun_entry_command(
-            torchrun_path,
             module_name=spec.module_name,
             script_path=None if spec.module_name else spec.script_path,
             argv=demo_args or [],

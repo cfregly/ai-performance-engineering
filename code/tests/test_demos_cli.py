@@ -134,7 +134,6 @@ def test_module_backed_torchrun_demo_launches_via_module(monkeypatch):
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(demos_commands.subprocess, "run", fake_run)
-    monkeypatch.setattr(demos_commands.shutil, "which", lambda name: "/usr/bin/torchrun" if name == "torchrun" else None)
 
     exit_code = demos_commands._run_demo(
         "ch15-tensor-parallel",
@@ -143,12 +142,14 @@ def test_module_backed_torchrun_demo_launches_via_module(monkeypatch):
     )
 
     assert exit_code == 0
-    assert recorded["cmd"][:5] == [
-        "/usr/bin/torchrun",
+    assert recorded["cmd"][:7] == [
+        sys.executable,
+        "-m",
+        "torch.distributed.run",
         "--nproc_per_node",
         "2",
         "-m",
         "ch15.tensor_parallel_demo",
     ]
-    assert recorded["cmd"][5:] == ["--batch", "1"]
+    assert recorded["cmd"][7:] == ["--batch", "1"]
     assert str(demos_commands.REPO_ROOT) in recorded["env"]["PYTHONPATH"].split(os.pathsep)
