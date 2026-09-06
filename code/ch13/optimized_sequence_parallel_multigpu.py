@@ -9,11 +9,6 @@ from typing import Optional
 
 import torch
 
-from core.benchmark.gpu_requirements import require_min_gpus
-from core.benchmark.verification import PrecisionFlags
-from core.benchmark.verification_mixin import VerificationPayloadMixin
-from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, LaunchVia, TorchrunLaunchSpec
-
 from ch13.sequence_parallel_benchmark_common import (
     SequenceParallelConfig,
     align_seq_len,
@@ -21,6 +16,18 @@ from ch13.sequence_parallel_benchmark_common import (
     dtype_from_name,
     run_sequence_parallel,
 )
+from core.benchmark.gpu_requirements import require_min_gpus
+from core.benchmark.verification import PrecisionFlags
+from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.harness import benchmark_worker
+from core.harness.benchmark_harness import (
+    BaseBenchmark,
+    BenchmarkConfig,
+    LaunchVia,
+    TorchrunLaunchSpec,
+)
+
+PROFILE_NVTX_RANGE = "compute_kernel:sequence_parallel_sharded"
 
 
 def _parse_args() -> argparse.Namespace:
@@ -47,13 +54,20 @@ def main() -> None:
         num_layers=args.num_layers,
         dtype=dtype_from_name(args.dtype),
     )
-    run_sequence_parallel(config=config, iters=args.iters, warmup=args.warmup, sequence_parallel=True)
+    run_sequence_parallel(
+        config=config,
+        iters=args.iters,
+        warmup=args.warmup,
+        sequence_parallel=True,
+        profile_nvtx_range=PROFILE_NVTX_RANGE,
+    )
 
 
 class OptimizedSequenceParallelMultigpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Harness entry that launches the TP+SP hybrid path via torchrun."""
 
     multi_gpu_required = True
+    preferred_ncu_replay_mode = "app-range"
     story_metadata = {
         "pair_role": "canonical",
         "chapter_alignment": "native",
@@ -158,13 +172,22 @@ class OptimizedSequenceParallelMultigpuBenchmark(VerificationPayloadMixin, BaseB
             warmup=5,
             multi_gpu_required=True,
             measurement_timeout_seconds=900,
+            nsys_nvtx_include=[PROFILE_NVTX_RANGE],
+            ncu_replay_mode="app-range",
+            ncu_replay_mode_override=True,
         )
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
         self._prepare_verification_payload()
         return TorchrunLaunchSpec(
-            script_path=Path(__file__).resolve(),
-            script_args=[],
+            script_path=Path(benchmark_worker.__file__).resolve(),
+            script_args=[
+                "--module",
+                "ch13.optimized_sequence_parallel_multigpu",
+                "--callable",
+                "main",
+                "--",
+            ],
             multi_gpu_required=True,
             name="optimized_sequence_parallel_multigpu",
             config_arg_map={"iterations": "--iters", "warmup": "--warmup"},

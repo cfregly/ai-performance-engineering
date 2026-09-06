@@ -10,12 +10,19 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
+from ch13.expert_parallel_common import ExpertParallelConfig, dtype_from_name, run_expert_parallel
 from core.benchmark.gpu_requirements import require_min_gpus
 from core.benchmark.verification import PrecisionFlags
 from core.benchmark.verification_mixin import VerificationPayloadMixin
-from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, LaunchVia, TorchrunLaunchSpec
+from core.harness import benchmark_worker
+from core.harness.benchmark_harness import (
+    BaseBenchmark,
+    BenchmarkConfig,
+    LaunchVia,
+    TorchrunLaunchSpec,
+)
 
-from ch13.expert_parallel_common import ExpertParallelConfig, dtype_from_name, run_expert_parallel
+PROFILE_NVTX_RANGE = "compute_kernel:expert_parallel_single_all_to_all"
 
 
 def _parse_args() -> argparse.Namespace:
@@ -38,13 +45,20 @@ def main() -> None:
         hidden_size=args.hidden_size,
         dtype=dtype_from_name(args.dtype),
     )
-    run_expert_parallel(config=config, iters=args.iters, warmup=args.warmup, impl="single")
+    run_expert_parallel(
+        config=config,
+        iters=args.iters,
+        warmup=args.warmup,
+        impl="single",
+        profile_nvtx_range=PROFILE_NVTX_RANGE,
+    )
 
 
 class OptimizedExpertParallelMultigpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Harness entry that launches this module via torchrun."""
 
     multi_gpu_required = True
+    preferred_ncu_replay_mode = "app-range"
     story_metadata = {
         "pair_role": "canonical",
         "chapter_alignment": "native",
@@ -135,13 +149,22 @@ class OptimizedExpertParallelMultigpuBenchmark(VerificationPayloadMixin, BaseBen
             warmup=5,
             multi_gpu_required=True,
             measurement_timeout_seconds=900,
+            nsys_nvtx_include=[PROFILE_NVTX_RANGE],
+            ncu_replay_mode="app-range",
+            ncu_replay_mode_override=True,
         )
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
         self._prepare_verification_payload()
         return TorchrunLaunchSpec(
-            script_path=Path(__file__).resolve(),
-            script_args=[],
+            script_path=Path(benchmark_worker.__file__).resolve(),
+            script_args=[
+                "--module",
+                "ch13.optimized_expert_parallel_multigpu",
+                "--callable",
+                "main",
+                "--",
+            ],
             multi_gpu_required=True,
             name="optimized_expert_parallel_multigpu",
             config_arg_map={

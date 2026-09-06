@@ -7,7 +7,6 @@ rank barriers.
 
 from __future__ import annotations
 
-from pathlib import Path
 
 import argparse
 import os
@@ -29,9 +28,12 @@ from core.harness.benchmark_harness import (
     LaunchVia,
     TorchrunLaunchSpec,
 )
+from core.profiling.nvtx_helper import nvtx_range
 from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+PROFILE_NVTX_RANGE = "compute_kernel:tensor_parallel_allgather_with_barriers"
 
 _DEFAULT_BATCH = 16
 _DEFAULT_SEQ = 16384
@@ -151,11 +153,12 @@ def _run_worker(
             _step()
         torch.cuda.synchronize(device)
 
-        start = time.perf_counter()
-        for _ in range(max(iters, 1)):
-            _step()
-        torch.cuda.synchronize(device)
-    elapsed = time.perf_counter() - start
+        with nvtx_range(PROFILE_NVTX_RANGE, enable=True):
+            start = time.perf_counter()
+            for _ in range(max(iters, 1)):
+                _step()
+            torch.cuda.synchronize(device)
+            elapsed = time.perf_counter() - start
 
     tokens_per_iter = batch * seq_length
     tokens_per_s = tokens_per_iter * (max(iters, 1) / max(elapsed, 1e-9))
@@ -192,6 +195,8 @@ def main() -> None:
 
 
 class BaselineTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
+    preferred_ncu_replay_mode = "app-range"
+
     """Harness entry that launches this module via torchrun."""
     multi_gpu_required = True
     preferred_ncu_replay_mode = "kernel"  # Application replay is unstable for torchrun collectives.
@@ -321,13 +326,16 @@ class BaselineTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             warmup=10,
             multi_gpu_required=True,
             measurement_timeout_seconds=900,
+            nsys_nvtx_include=[PROFILE_NVTX_RANGE],
+            ncu_replay_mode="app-range",
+            ncu_replay_mode_override=True,
         )
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
         self._prepare_verification_payload()
         return TorchrunLaunchSpec(
-            script_path=Path(__file__).resolve(),
-            script_args=[],
+            module_name="core.harness.benchmark_worker",
+            script_args=["--module", "ch04.baseline_tensor_parallel_multigpu", "--callable", "main", "--"],
             multi_gpu_required=True,
             name="baseline_tensor_parallel_multigpu",
             config_arg_map={

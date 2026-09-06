@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 
 from ch15.baseline_disaggregated_inference_multigpu import (  # noqa: E402
+    OPTIMIZED_PROFILE_NVTX_RANGE,
     DisaggConfig,
     _DisaggregatedInferenceMultiGPUBenchmark,
     _run_torchrun_worker,
@@ -23,6 +24,7 @@ class OptimizedDisaggregatedInferenceMultiGPUBenchmark(_DisaggregatedInferenceMu
     """Pipelined prefill/decode overlap across multi-GPU ranks."""
 
     multi_gpu_required = True
+    profile_nvtx_range = OPTIMIZED_PROFILE_NVTX_RANGE
     story_metadata = {
         "pair_role": "canonical",
         "chapter_alignment": "native",
@@ -35,7 +37,12 @@ class OptimizedDisaggregatedInferenceMultiGPUBenchmark(_DisaggregatedInferenceMu
     }
 
     def __init__(self) -> None:
-        super().__init__(overlap=True, label="optimized_disaggregated_inference_multigpu")
+        super().__init__(
+            overlap=True,
+            label="optimized_disaggregated_inference_multigpu",
+            profile_nvtx_range=OPTIMIZED_PROFILE_NVTX_RANGE,
+            worker_module="ch15.optimized_disaggregated_inference_multigpu",
+        )
 
 
 def get_benchmark() -> BaseBenchmark:
@@ -57,4 +64,5 @@ def main() -> None:
         label="optimized_disaggregated_inference_multigpu",
         iters=int(args.iters),
         warmup=int(args.warmup),
+        profile_nvtx_range=OPTIMIZED_PROFILE_NVTX_RANGE,
     )

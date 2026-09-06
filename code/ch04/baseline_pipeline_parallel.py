@@ -6,7 +6,6 @@ Sequential micro-batches (all forward, then all backward). Launched via torchrun
 
 from __future__ import annotations
 
-from pathlib import Path
 
 import argparse
 import os
@@ -29,9 +28,12 @@ from core.harness.benchmark_harness import (
     LaunchVia,
     TorchrunLaunchSpec,
 )
+from core.profiling.nvtx_helper import nvtx_range
 from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+PROFILE_NVTX_RANGE = "compute_kernel:pipeline_parallel_gpipe"
 
 _DEFAULT_BATCH = 32
 _DEFAULT_SEQ = 2048
@@ -240,11 +242,12 @@ def _run_worker(
             _run_iteration()
         torch.cuda.synchronize(device)
 
-        start = time.perf_counter()
-        for _ in range(max(iters, 1)):
-            _run_iteration()
-        torch.cuda.synchronize(device)
-    elapsed = time.perf_counter() - start
+        with nvtx_range(PROFILE_NVTX_RANGE, enable=True):
+            start = time.perf_counter()
+            for _ in range(max(iters, 1)):
+                _run_iteration()
+            torch.cuda.synchronize(device)
+            elapsed = time.perf_counter() - start
 
     if rank == 0:
         print(f"rank0 time_per_iter_ms: {(elapsed / max(iters,1)) * 1000.0:.3f}")
@@ -290,6 +293,8 @@ def main() -> None:
 
 
 class BaselinePipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
+    preferred_ncu_replay_mode = "app-range"
+
     """Harness entry that launches this module via torchrun."""
     multi_gpu_required = True
 
@@ -394,13 +399,16 @@ class BaselinePipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark)
             warmup=5,
             multi_gpu_required=True,
             measurement_timeout_seconds=900,
+            nsys_nvtx_include=[PROFILE_NVTX_RANGE],
+            ncu_replay_mode="app-range",
+            ncu_replay_mode_override=True,
         )
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
         self._prepare_verification_payload()
         return TorchrunLaunchSpec(
-            script_path=Path(__file__).resolve(),
-            script_args=[],
+            module_name="core.harness.benchmark_worker",
+            script_args=["--module", "ch04.baseline_pipeline_parallel", "--callable", "main", "--"],
             multi_gpu_required=True,
             name="baseline_pipeline_parallel",
             config_arg_map={
