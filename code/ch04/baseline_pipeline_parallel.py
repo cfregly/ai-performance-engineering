@@ -113,6 +113,16 @@ def _run_stage(stage_layers: nn.ModuleList, x: torch.Tensor) -> torch.Tensor:
     return x
 
 
+def _run_rank_stage(
+    stages: nn.ModuleList,
+    rank: int,
+    x: torch.Tensor,
+) -> torch.Tensor:
+    if rank < 0 or rank >= len(stages):
+        raise IndexError(f"pipeline rank {rank} is outside {len(stages)} stages")
+    return _run_stage(stages[rank], x)
+
+
 def _run_virtual_pipeline_baseline(
     inputs: torch.Tensor,
     fwd_stages: nn.ModuleList,
@@ -196,12 +206,10 @@ def _run_worker(
         )
 
     def _forward(micro_batch: torch.Tensor) -> torch.Tensor:
-        x = micro_batch
-        return _run_stage(fwd_layers[0], x)
+        return _run_rank_stage(fwd_layers, rank, micro_batch)
 
     def _backward(grad_in: torch.Tensor) -> torch.Tensor:
-        x = grad_in
-        return _run_stage(bwd_layers[0], x)
+        return _run_rank_stage(bwd_layers, rank, grad_in)
 
     def _run_iteration() -> None:
         activations: deque[torch.Tensor] = deque()
@@ -250,7 +258,8 @@ def _run_worker(
             elapsed = time.perf_counter() - start
 
     if rank == 0:
-        print(f"rank0 time_per_iter_ms: {(elapsed / max(iters,1)) * 1000.0:.3f}")
+        time_per_iter_ms = (elapsed / max(iters, 1)) * 1000.0
+        print(f"rank0 time_per_iter_ms: {time_per_iter_ms:.9f}", flush=True)
 
     dist.barrier()
     dist.destroy_process_group()
@@ -406,6 +415,7 @@ class BaselinePipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
         self._prepare_verification_payload()
+        effective_config = config or self.get_config()
         return TorchrunLaunchSpec(
             module_name="core.harness.benchmark_worker",
             script_args=["--module", "ch04.baseline_pipeline_parallel", "--callable", "main", "--"],
@@ -415,6 +425,8 @@ class BaselinePipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 "iterations": "--iters",
                 "warmup": "--warmup",
             },
+            timing_source="rank0_time_per_iter_ms",
+            timing_iterations_per_sample=int(effective_config.iterations),
         )
 
 

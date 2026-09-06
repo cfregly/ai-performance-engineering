@@ -1,14 +1,22 @@
-"""Optimized gradient fusion benchmark (fused all-reduce)."""
+"""Optimized gradient fusion benchmark (one fused gradient average)."""
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional
 
 import torch
 
-from ch04.gradient_fusion_multigpu import OPTIMIZED_PROFILE_NVTX_RANGE
+from ch04.gradient_fusion_multigpu import (
+    OPTIMIZED_PROFILE_NVTX_RANGE,
+    PAIR_NUM_TENSORS,
+    PAIR_TENSOR_KB,
+    PAIR_TIMED_ITERATIONS,
+)
+from ch04.gradient_fusion_result import (
+    GRADIENT_FUSION_RESULT_CALLBACK,
+    GradientFusionChildResultMixin,
+)
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -18,48 +26,30 @@ from core.harness.benchmark_harness import (
 )
 
 
-class OptimizedGradientFusionMultiGPU(VerificationPayloadMixin, BaseBenchmark):
+class OptimizedGradientFusionMultiGPU(
+    GradientFusionChildResultMixin,
+    VerificationPayloadMixin,
+    BaseBenchmark,
+):
     multi_gpu_required = True
+    preferred_ncu_replay_mode = "app-range"
 
     def __init__(self) -> None:
         super().__init__()
         self.register_workload_metadata(requests_per_iteration=1.0)
-        self._verify_input: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         if torch.cuda.device_count() < 2:
             raise RuntimeError("SKIPPED: gradient_fusion requires >=2 GPUs")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
-        self._verify_input = torch.randn(64, 64, device=self.device, dtype=torch.float32)
 
     def benchmark_fn(self) -> None:
-        if self._verify_input is None:
-            raise RuntimeError("setup() must run before benchmark_fn()")
+        raise RuntimeError(
+            "Gradient fusion executes only through its torchrun worker; "
+            "use get_torchrun_spec()"
+        )
 
     def capture_verification_payload(self) -> None:
-        if self._verify_input is None:
-            torch.manual_seed(42)
-            torch.cuda.manual_seed_all(42)
-            self._verify_input = torch.randn(64, 64, device=self.device, dtype=torch.float32)
-        output = self._verify_input + 1.0
-        self._set_verification_payload(
-            inputs={"probe": self._verify_input},
-            output=output,
-            batch_size=int(self._verify_input.shape[0]),
-            parameter_count=0,
-            precision_flags={
-                "fp16": False,
-                "bf16": False,
-                "fp8": False,
-                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
-            },
-            output_tolerance=(0.1, 1.0),
-            signature_overrides={
-                "world_size": torch.cuda.device_count(),
-                "collective_type": "all_reduce",
-            },
-        )
+        self.require_gradient_fusion_child_result()
 
     def get_config(self) -> BenchmarkConfig:
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
@@ -68,6 +58,8 @@ class OptimizedGradientFusionMultiGPU(VerificationPayloadMixin, BaseBenchmark):
                 warmup=5,
                 measurement_timeout_seconds=300,
                 nsys_nvtx_include=[OPTIMIZED_PROFILE_NVTX_RANGE],
+                ncu_replay_mode="app-range",
+                ncu_replay_mode_override=True,
             )
         return BenchmarkConfig(
             launch_via=LaunchVia.TORCHRUN,
@@ -77,18 +69,28 @@ class OptimizedGradientFusionMultiGPU(VerificationPayloadMixin, BaseBenchmark):
             multi_gpu_required=True,
             measurement_timeout_seconds=300,
             nsys_nvtx_include=[OPTIMIZED_PROFILE_NVTX_RANGE],
+            ncu_replay_mode="app-range",
+            ncu_replay_mode_override=True,
         )
 
     def _prepare_verification_payload(self) -> None:
-        if hasattr(self, "_subprocess_verify_output"):
-            return
-        self.capture_verification_payload()
-        self._subprocess_verify_output = self.get_verify_output()
-        self._subprocess_output_tolerance = self.get_output_tolerance()
-        self._subprocess_input_signature = self.get_input_signature()
+        self.require_gradient_fusion_child_result()
 
-    def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
-        self._prepare_verification_payload()
+    def get_torchrun_spec(self, config: BenchmarkConfig | None = None) -> TorchrunLaunchSpec:
+        effective_config = config or self.get_config()
+        nnodes = int(effective_config.nnodes or 1)
+        if nnodes != 1:
+            raise RuntimeError("Gradient-fusion child-result transport requires nnodes == 1")
+        nproc_per_node = int(
+            effective_config.nproc_per_node or torch.cuda.device_count()
+        )
+        env = self.prepare_gradient_fusion_child_result(
+            variant="optimized",
+            world_size=nproc_per_node,
+            num_tensors=PAIR_NUM_TENSORS,
+            tensor_kb=PAIR_TENSOR_KB,
+            iterations=PAIR_TIMED_ITERATIONS,
+        )
         script_path = Path(__file__).resolve().with_name("gradient_fusion_multigpu.py")
         return TorchrunLaunchSpec(
             script_path=script_path,
@@ -96,14 +98,18 @@ class OptimizedGradientFusionMultiGPU(VerificationPayloadMixin, BaseBenchmark):
                 "--mode",
                 "optimized",
                 "--num-tensors",
-                "2048",
+                str(PAIR_NUM_TENSORS),
                 "--tensor-kb",
-                "4",
+                str(PAIR_TENSOR_KB),
                 "--iterations",
-                "50",
+                str(PAIR_TIMED_ITERATIONS),
             ],
+            env=env,
             multi_gpu_required=True,
             name="optimized_gradient_fusion_multigpu",
+            result_callback=GRADIENT_FUSION_RESULT_CALLBACK,
+            timing_source="rank0_time_per_iter_ms",
+            timing_iterations_per_sample=PAIR_TIMED_ITERATIONS,
         )
 
 

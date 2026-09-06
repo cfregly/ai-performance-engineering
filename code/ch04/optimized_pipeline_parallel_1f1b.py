@@ -114,6 +114,16 @@ def _run_stage_inplace(stage_layers: nn.ModuleList, x: torch.Tensor) -> torch.Te
     return x
 
 
+def _run_rank_stage_inplace(
+    stages: nn.ModuleList,
+    rank: int,
+    x: torch.Tensor,
+) -> torch.Tensor:
+    if rank < 0 or rank >= len(stages):
+        raise IndexError(f"pipeline rank {rank} is outside {len(stages)} stages")
+    return _run_stage_inplace(stages[rank], x)
+
+
 def _run_worker(
     iters: int,
     warmup: int,
@@ -163,12 +173,10 @@ def _run_worker(
         )
 
     def _forward(micro_batch: torch.Tensor) -> torch.Tensor:
-        x = micro_batch
-        return _run_stage_inplace(fwd_layers[0], x)
+        return _run_rank_stage_inplace(fwd_layers, rank, micro_batch)
 
     def _backward(grad_in: torch.Tensor) -> torch.Tensor:
-        x = grad_in
-        return _run_stage_inplace(bwd_layers[0], x)
+        return _run_rank_stage_inplace(bwd_layers, rank, grad_in)
 
     warmup_steps = min(world_size, num_micro_batches)
     activation_slots: list[Optional[torch.Tensor]] = [None] * warmup_steps
@@ -261,7 +269,8 @@ def _run_worker(
             elapsed = time.perf_counter() - start
 
     if rank == 0:
-        print(f"rank0 time_per_iter_ms: {(elapsed / max(iters,1)) * 1000.0:.3f}")
+        time_per_iter_ms = (elapsed / max(iters, 1)) * 1000.0
+        print(f"rank0 time_per_iter_ms: {time_per_iter_ms:.9f}", flush=True)
 
     dist.barrier()
     dist.destroy_process_group()
@@ -357,15 +366,15 @@ class OptimizedPipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark
             or self._bwd_layers is None
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
+        if len(self._fwd_layers) != self._world_size or len(self._bwd_layers) != self._world_size:
+            raise RuntimeError("pipeline stage count does not match world size")
         x = self._micro_batch
+        stage_layers = iter(self._fwd_layers)
         for _ in self._world_size_range:
-            for layer in self._fwd_layers:
-                x = layer(x)
-                x.relu_()
+            x = _run_stage_inplace(next(stage_layers), x)
+        stage_layers = reversed(self._bwd_layers)
         for _ in self._world_size_range:
-            for layer in self._bwd_layers:
-                x = layer(x)
-                x.relu_()
+            x = _run_stage_inplace(next(stage_layers), x)
         self._output = x
 
     def capture_verification_payload(self) -> None:
@@ -431,6 +440,7 @@ class OptimizedPipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
         self._prepare_verification_payload()
+        effective_config = config or self.get_config()
         return TorchrunLaunchSpec(
             module_name="core.harness.benchmark_worker",
             script_args=["--module", "ch04.optimized_pipeline_parallel_1f1b", "--callable", "main", "--"],
@@ -440,6 +450,8 @@ class OptimizedPipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark
                 "iterations": "--iters",
                 "warmup": "--warmup",
             },
+            timing_source="rank0_time_per_iter_ms",
+            timing_iterations_per_sample=int(effective_config.iterations),
         )
 
 
