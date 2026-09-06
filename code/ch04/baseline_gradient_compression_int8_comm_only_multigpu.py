@@ -17,7 +17,8 @@ def get_benchmark() -> BaseBenchmark:
         output_tolerance=(1e-1, 5e-1),
         tensor_size_mb=1024,
         multi_gpu=True,
+        comm_only=True,
+        variant="baseline",
+        pair_compression="int8",
     )
     return attach_benchmark_metadata(bench, __file__)
-
-

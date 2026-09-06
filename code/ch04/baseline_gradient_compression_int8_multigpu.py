@@ -19,7 +19,8 @@ def get_benchmark() -> BaseBenchmark:
         multi_gpu=True,
         use_prealloc_buffers=False,
         bucket_mb=8,
+        variant="baseline",
+        pair_compression="int8",
     )
     return attach_benchmark_metadata(bench, __file__)
-
 
