@@ -13,7 +13,7 @@ from typing import Any, cast
 
 import torch
 
-from core.benchmark.verification import InputSignature
+from core.benchmark.verification import InputSignature, coerce_input_signature
 
 SYMMETRIC_MEMORY_PERF_BASELINE_NVTX_RANGE = (
     "transfer_sync:symmetric_memory_perf_nccl_p2p"
@@ -171,7 +171,7 @@ class SymmetricMemoryPerfChildResultMixin:
         signature: InputSignature | None = None
         for rank, payload in enumerate(payloads):
             path = result_dir / f"rank-{rank}.pt"
-            rank_signature = InputSignature.from_dict(payload["input_signature"])
+            rank_signature = coerce_input_signature(payload["input_signature"])
             signature_errors = rank_signature.validate(strict=True)
             if signature_errors:
                 raise RuntimeError(
@@ -190,8 +190,8 @@ class SymmetricMemoryPerfChildResultMixin:
             }:
                 raise RuntimeError(f"Child-result signature shape mismatch at rank {rank}")
             if rank_signature.dtypes != {
-                "tensor": str(verify_input.dtype),
-                "output": str(verify_output.dtype),
+                "tensor": str(verify_input.dtype).removeprefix("torch."),
+                "output": str(verify_output.dtype).removeprefix("torch."),
             }:
                 raise RuntimeError(f"Child-result signature dtype mismatch at rank {rank}")
             if signature is None:

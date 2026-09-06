@@ -420,10 +420,12 @@ def test_symmetric_memory_perf_worker_genuinely_skips_without_cuda(
     assert "SKIPPED:" in completed.stdout
 
 
-@pytest.mark.parametrize("invalid_rank", (0, 1))
-def test_symmetric_memory_perf_callback_rejects_any_rank_output_mismatch(
+@pytest.mark.parametrize("dtype_name", ("torch.float32", "float32", "float16"))
+@pytest.mark.parametrize("invalid_rank", (None, 0, 1))
+def test_symmetric_memory_perf_callback_checks_actual_output_and_canonical_dtype(
     tmp_path: Path,
-    invalid_rank: int,
+    invalid_rank: int | None,
+    dtype_name: str,
 ) -> None:
     module = importlib.import_module("ch04.baseline_symmetric_memory_perf_multigpu")
     benchmark = module.get_benchmark()
@@ -445,7 +447,7 @@ def test_symmetric_memory_perf_callback_rejects_any_rank_output_mismatch(
     ]
     signature = InputSignature(
         shapes={"tensor": (2, 2), "output": (2, 2)},
-        dtypes={"tensor": "torch.float32", "output": "torch.float32"},
+        dtypes={"tensor": dtype_name, "output": dtype_name},
         batch_size=2,
         parameter_count=0,
         precision_flags=PrecisionFlags(),
@@ -472,10 +474,23 @@ def test_symmetric_memory_perf_callback_rejects_any_rank_output_mismatch(
             result_dir / f"rank-{rank}.pt",
         )
 
-    with pytest.raises(
-        RuntimeError,
-        match=rf"does not match its measured sender input at rank {invalid_rank}",
-    ):
+    if dtype_name != "float16" and invalid_rank is None:
+        benchmark.consume_symmetric_memory_perf_child_results(
+            launch_wall_ns=launch_wall_ns,
+            finish_wall_ns=finish_wall_ns,
+            returncode=0,
+        )
+        torch.testing.assert_close(benchmark._subprocess_verify_output, input_tensors[1])
+        assert benchmark._subprocess_input_signature.dtypes == {
+            "tensor": "float32", "output": "float32"
+        }
+        return
+    expected_error = (
+        "signature dtype mismatch"
+        if dtype_name == "float16"
+        else rf"does not match its measured sender input at rank {invalid_rank}"
+    )
+    with pytest.raises(RuntimeError, match=expected_error):
         benchmark.consume_symmetric_memory_perf_child_results(
             launch_wall_ns=launch_wall_ns,
             finish_wall_ns=finish_wall_ns,
