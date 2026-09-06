@@ -584,7 +584,7 @@ def _run_torchrun_worker(
         tokens_per_s = tokens_per_iter * (max(iters, 1) / max(elapsed, 1e-9))
         time_per_iter_ms = (elapsed / max(iters, 1)) * 1000.0
         print(f"rank0 {label} tokens/s: {tokens_per_s:.2f} tokens/s")
-        print(f"rank0 {label} time_per_iter_ms: {time_per_iter_ms:.3f}")
+        print(f"rank0 time_per_iter_ms: {time_per_iter_ms:.9f}")
 
     dist.destroy_process_group()
 
@@ -907,6 +907,8 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
         self._prepare_verification_payload()
         master_port = os.environ.get("MASTER_PORT", "29515")
         return TorchrunLaunchSpec(
+            timing_source="rank0_time_per_iter_ms",
+            timing_iterations_per_sample=max(int((config or self.get_config()).iterations), 1),
             script_path=Path(benchmark_worker.__file__).resolve(),
             script_args=["--module", self.worker_module, "--callable", "main", "--"],
             env={

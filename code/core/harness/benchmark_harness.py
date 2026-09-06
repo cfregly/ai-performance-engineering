@@ -33,7 +33,20 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, TYPE_CHECKING, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+    cast,
+)
 
 import numpy as np
 import torch
@@ -1642,6 +1655,27 @@ class TorchrunLaunchSpec:
     # Opt-in post-exit transport hook.  Generic torchrun benchmarks leave this
     # unset; the four ZeRO adapters use it to validate fresh per-rank results.
     result_callback: Optional[str] = None
+    timing_source: Literal["process_wall", "rank0_time_per_iter_ms"] = "process_wall"
+    timing_iterations_per_sample: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        if self.timing_source == "process_wall":
+            if self.timing_iterations_per_sample is not None:
+                raise ValueError(
+                    "Torchrun process_wall timing cannot declare "
+                    "timing_iterations_per_sample"
+                )
+            return
+        if self.timing_source != "rank0_time_per_iter_ms":
+            raise ValueError(
+                f"Unsupported torchrun timing_source: {self.timing_source!r}"
+            )
+        count = self.timing_iterations_per_sample
+        if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+            raise ValueError(
+                "Torchrun rank0_time_per_iter_ms timing requires a positive "
+                "timing_iterations_per_sample"
+            )
 
 
 # BenchmarkResult is provided by benchmark_models.py
@@ -2493,6 +2527,35 @@ class BenchmarkHarness:
                 continue
         return best
 
+    @staticmethod
+    def _extract_rank0_time_per_iter_ms(lines: Sequence[str]) -> float:
+        """Read one explicitly declared rank-0 worker iteration mean."""
+        pattern = re.compile(r"^\s*rank0 time_per_iter_ms:\s*(\S+)\s*$")
+        encoded_values = [
+            match.group(1)
+            for line in lines
+            if (match := pattern.fullmatch(line)) is not None
+        ]
+        if len(encoded_values) != 1:
+            raise RuntimeError(
+                "Torchrun timing_source='rank0_time_per_iter_ms' requires exactly "
+                "one 'rank0 time_per_iter_ms: VALUE' line on a clean exit; "
+                f"found {len(encoded_values)}"
+            )
+        try:
+            value = float(encoded_values[0])
+        except ValueError as exc:
+            raise RuntimeError(
+                "Torchrun rank0 time_per_iter_ms must be numeric, got "
+                f"{encoded_values[0]!r}"
+            ) from exc
+        if not math.isfinite(value) or value <= 0:
+            raise RuntimeError(
+                "Torchrun rank0 time_per_iter_ms must be finite and positive, got "
+                f"{encoded_values[0]!r}"
+            )
+        return value
+
     def _benchmark_with_torchrun(self, benchmark: BaseBenchmark, config: BenchmarkConfig) -> PydanticBenchmarkResult:
         """Launch benchmark via torchrun for multi-GPU targets."""
         import inspect
@@ -2694,6 +2757,7 @@ class BenchmarkHarness:
         stdout = ""
         stderr = ""
         elapsed = 0.0
+        reported_time_per_iter_ms: Optional[float] = None
         timeout_limit = config.get_effective_timeout("measurement")
         if timeout_limit is None:
             raise ValueError(
@@ -2773,18 +2837,23 @@ class BenchmarkHarness:
                     tail = stderr_lines[-8:]
                     if tail:
                         errors.append("stderr_tail: " + " | ".join(tail))
-            elif result_callback is not None:
-                result_callback(
-                    spec=spec,
-                    config=config,
-                    launch_wall_ns=launch_wall_ns,
-                    launch_monotonic_ns=launch_monotonic_ns,
-                    finish_wall_ns=finish_wall_ns,
-                    finish_monotonic_ns=finish_monotonic_ns,
-                    returncode=int(process.returncode),
-                    stdout=stdout,
-                    stderr=stderr,
-                )
+            else:
+                if spec.timing_source == "rank0_time_per_iter_ms":
+                    reported_time_per_iter_ms = self._extract_rank0_time_per_iter_ms(
+                        stdout.splitlines()
+                    )
+                if result_callback is not None:
+                    result_callback(
+                        spec=spec,
+                        config=config,
+                        launch_wall_ns=launch_wall_ns,
+                        launch_monotonic_ns=launch_monotonic_ns,
+                        finish_wall_ns=finish_wall_ns,
+                        finish_monotonic_ns=finish_monotonic_ns,
+                        returncode=int(process.returncode),
+                        stdout=stdout,
+                        stderr=stderr,
+                    )
         except FileNotFoundError:
             raise RuntimeError("SKIPPED: torchrun not found in PATH.")
 
@@ -2792,16 +2861,36 @@ class BenchmarkHarness:
         filtered_lines = _filter_logs(stdout_lines, dedupe=spec.parse_rank0_only)
         tokens_per_s = self._extract_tokens_per_s(filtered_lines)
 
-        # This parent observed one process interval, not each training step.
-        # Keep it as one sample; the amortized value is a separately labeled
-        # derived metric and includes launcher/setup/warmup work.
         iterations = getattr(config, "iterations", None) or 1
-        times_ms = _ObservedTimings(
-            [elapsed * 1000.0], sample_scope="process_wall", iterations_per_sample=1,
-        )
+        process_wall_ms = elapsed * 1000.0
+        reported_iteration_mean = reported_time_per_iter_ms is not None
+        if reported_time_per_iter_ms is not None:
+            times_ms = _ObservedTimings(
+                [reported_time_per_iter_ms],
+                sample_scope="rank0_iteration_mean",
+                iterations_per_sample=int(spec.timing_iterations_per_sample),
+            )
+        else:
+            # This parent observed one process interval, not each training step.
+            times_ms = _ObservedTimings(
+                [process_wall_ms],
+                sample_scope="process_wall",
+                iterations_per_sample=1,
+            )
         result = self._compute_stats(times_ms, config)
+        if reported_iteration_mean:
+            # The worker emitted one aggregate mean. Do not invent percentiles
+            # or a distribution from the iterations represented by that mean.
+            result.timing.p50_ms = None
+            result.timing.p90_ms = None
+            result.timing.p95_ms = None
+            result.timing.p99_ms = None
+            result.timing.percentiles = {}
+        result.custom_metrics["torchrun.process_wall_ms"] = process_wall_ms
         result.custom_metrics["torchrun.requested_iterations"] = float(iterations)
-        result.custom_metrics["torchrun.amortized_ms_per_requested_iteration"] = elapsed * 1000.0 / iterations
+        result.custom_metrics["torchrun.amortized_ms_per_requested_iteration"] = (
+            process_wall_ms / iterations
+        )
 
         if tokens_per_s is not None:
             result.throughput = ThroughputStats(

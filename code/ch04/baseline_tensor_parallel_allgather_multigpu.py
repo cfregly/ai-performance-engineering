@@ -330,6 +330,8 @@ class BaselineTensorParallelAllGatherBenchmark(VerificationPayloadMixin, BaseBen
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
         self._prepare_verification_payload()
         return TorchrunLaunchSpec(
+            timing_source="rank0_time_per_iter_ms",
+            timing_iterations_per_sample=max(int((config or self.get_config()).iterations), 1),
             module_name="core.harness.benchmark_worker",
             script_args=["--module", "ch04.baseline_tensor_parallel_allgather_multigpu", "--callable", "main", "--"],
             multi_gpu_required=True,

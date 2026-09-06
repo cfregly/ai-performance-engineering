@@ -297,6 +297,8 @@ class OptimizedSymmetricMemoryPerfBenchmark(
             world_size=nproc_per_node,
         )
         return TorchrunLaunchSpec(
+            timing_source="rank0_time_per_iter_ms",
+            timing_iterations_per_sample=int(effective_config.iterations),
             script_path=Path(__file__).resolve().with_name(
                 "symmetric_memory_perf_worker.py"
             ),

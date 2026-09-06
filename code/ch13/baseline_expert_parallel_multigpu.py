@@ -157,6 +157,8 @@ class BaselineExpertParallelMultigpuBenchmark(VerificationPayloadMixin, BaseBenc
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
         self._prepare_verification_payload()
         return TorchrunLaunchSpec(
+            timing_source="rank0_time_per_iter_ms",
+            timing_iterations_per_sample=max(int((config or self.get_config()).iterations), 1),
             script_path=Path(benchmark_worker.__file__).resolve(),
             script_args=[
                 "--module",
