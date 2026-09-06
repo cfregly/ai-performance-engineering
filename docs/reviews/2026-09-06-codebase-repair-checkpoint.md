@@ -837,6 +837,43 @@ expected workload ranges. The harness now uses that path; 38 profiler-contract
 tests pass with one skip. Original failed receipts remain intact, and the
 remaining DDP optimized capture is still required.
 
+Wave 22 on `48ab6ff1a` passed all 87 focused B200 tests, including the four
+previous full-suite failures. Both training-patterns targets passed complete
+two-rank verification, with initial ratios of 1.512702 and 1.413125. Every
+stage drained. Wave 23 then passed all 16 interleaved timing observations and
+both Nsys captures. The rank-maximum median fell from 23.785251 to 15.793236 ms
+per step (1.506040 ratio); the four block ratios were 1.506725, 1.369103,
+1.526312 and 1.508860. The slower optimized observation remains in the data.
+
+The actual 100-step Nsys ranges contain 257,000 baseline kernel launches per
+rank and 157,000 optimized launches. The optimized path uses 1,600 batched-copy
+kernels for the complete gradient packing/unpacking workload, with 200 NCCL
+barrier kernels; the baseline performs 51,200 NCCL per-parameter reductions.
+These are unlocked diagnostic measurements on the same two-B200 host, with
+full-output checks across every timing and profiler invocation.
+
+The corrected validator also passed all three retained Wave 21 reports.
+Fresh baseline and optimized DDP captures on `48ab6ff1a` passed full worker
+verification and workload-range checks. Their profiled timings are separate
+from the previously retained ABBA measurements; no DDP speed win is claimed.
+The breadth continuation then resumed automatically from the original ledger
+plus the actual Wave 22 outcomes.
+
+The next breadth segment reached Chapter 15 and exposed further failures.
+In the memory-profiling pair, stale expectation metadata labeled the study as
+a speed goal despite the executable declaring a memory goal. The harness now
+gives the executable's declaration priority. The baseline also accumulated
+gradients while the optimized variant cleared them; both now clear gradients
+before the same backward pass. Full gradient comparisons pass across repeated
+CPU iterations. Previous memory savings do not establish a fair checkpointing
+benefit under the corrected gradient lifecycle.
+
+The pooled KV-cache candidate fuses its QKV matrix multiply and bias addition
+into `addmm`, reusing the same output buffer and preserving the bias-free path.
+Complete projection-output and storage-reuse controls pass. These Chapter 13
+repairs passed 28 focused CPU tests and the 553-test hygiene lane (one skip);
+their actual B200 reruns are pending while the existing sweep continues.
+
 The cache-aware disaggregation performance miss also has a precise topology
 limit: one prefill rank plus one decode rank produces identical baseline and
 optimized locality routes. At least two decode ranks are necessary to test

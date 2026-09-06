@@ -19187,7 +19187,10 @@ def test_ch13_token_kv_cache_attention_skips_contiguous_for_single_token_decode(
         assert "def prepare_inference(self) -> None:" in source
         assert "self._qkv_weight_t = self.qkv.weight.t()" in source
         assert "def _qkv_buffer_for(self, x: torch.Tensor) -> torch.Tensor:" in source
-        assert "torch.matmul(x_2d, self._qkv_weight_t, out=qkv_2d)" in source
+        if filename == "optimized_kv_cache_naive_pool.py":
+            assert "torch.addmm(self.qkv.bias, x_2d, self._qkv_weight_t, out=qkv_2d)" in source
+        else:
+            assert "torch.matmul(x_2d, self._qkv_weight_t, out=qkv_2d)" in source
         assert "qkv = self._project_qkv(x)" in forward_section
         assert "qkv = self.qkv(x)" not in forward_section
 

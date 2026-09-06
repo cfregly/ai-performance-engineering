@@ -133,9 +133,10 @@ class SimpleAttentionLayer(nn.Module):
             self.prepare_inference()
         x_2d = x.reshape(x.size(0) * x.size(1), self.hidden_dim)
         qkv_2d = self._qkv_buffer_for(x)
-        qkv = torch.matmul(x_2d, self._qkv_weight_t, out=qkv_2d)
         if self.qkv.bias is not None:
-            qkv.add_(self.qkv.bias)
+            qkv = torch.addmm(self.qkv.bias, x_2d, self._qkv_weight_t, out=qkv_2d)
+        else:
+            qkv = torch.mm(x_2d, self._qkv_weight_t, out=qkv_2d)
         return qkv.view(x.size(0), x.size(1), self.hidden_dim * 3)
     
     def forward(self, x: torch.Tensor, kv_cache: OptimizedKVCache, request_id: str, layer_idx: int, cache_pos: int) -> torch.Tensor:
