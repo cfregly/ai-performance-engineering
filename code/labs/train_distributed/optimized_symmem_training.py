@@ -1,4 +1,4 @@
-"""Optimized symmetric memory training demo (symmetric memory enabled)."""
+"""Strict symmetric-memory parameter transport for optimizer training."""
 
 from __future__ import annotations
 
@@ -13,7 +13,8 @@ def get_benchmark():
         base_args=[
             "--demo",
             "optimizer",
-            "--allow-single-gpu",
+            "--transport",
+            "symmetric-memory",
             "--steps",
             "120",
             "--batch-size",
@@ -26,9 +27,11 @@ def get_benchmark():
             "256",
             "--sync-interval",
             "1",
+            "--seed",
+            "42",
         ],
         target_label="labs/train_distributed:symmem_training",
-        multi_gpu_required=False,
-        default_nproc_per_node=1,
+        multi_gpu_required=True,
+        default_nproc_per_node=2,
         name="optimized_symmem_training",
     )

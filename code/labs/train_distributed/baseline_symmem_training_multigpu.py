@@ -1,4 +1,4 @@
-"""Baseline symmetric memory training demo (fallback path, symmetric disabled)."""
+"""NCCL parameter-broadcast baseline for symmetric-memory training."""
 
 from __future__ import annotations
 
@@ -13,7 +13,8 @@ def get_benchmark():
         base_args=[
             "--demo",
             "optimizer",
-            "--disable-symmetric",
+            "--transport",
+            "nccl-broadcast",
             "--steps",
             "80",
             "--batch-size",
@@ -26,8 +27,11 @@ def get_benchmark():
             "256",
             "--sync-interval",
             "1",
+            "--seed",
+            "42",
         ],
         target_label="labs/train_distributed:symmem_training_multigpu",
         multi_gpu_required=True,
+        default_nproc_per_node=2,
         name="baseline_symmem_training_multigpu",
     )

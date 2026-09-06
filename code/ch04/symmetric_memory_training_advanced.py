@@ -39,8 +39,9 @@ Usage:
     # ZeRO-style sharding
     torchrun --nproc_per_node=<num_gpus> symmetric_memory_training_advanced.py --demo zero
 
-All patterns now fail fast with `SKIPPED:` when the required multi-GPU launch
-or symmetric-memory support is unavailable.
+All patterns require a real multi-GPU launch. Symmetric-memory transports fail
+fast with `SKIPPED:` when that backend is unavailable; the optimizer's explicit
+NCCL baseline does not depend on it.
 
 Educational Notes:
 ------------------
@@ -64,8 +65,6 @@ When NOT to Use:
 
 import os
 
-from core.common.device_utils import resolve_local_rank
-
 from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
 
 
@@ -73,13 +72,14 @@ import argparse
 import datetime
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Literal, Optional, Tuple
 
 import torch
 import torch.distributed as dist
 
 from core.optimization.symmetric_memory_patch import (
     SymmetricMemoryHandle,
+    create_symmetric_memory_handle,
     maybe_create_symmetric_memory_handle,
     symmetric_memory_available as _symmetric_memory_available,
 )
@@ -100,20 +100,17 @@ def symmetric_memory_available() -> bool:
     return _symmetric_memory_available()
 
 
-def init_distributed(allow_single_gpu: bool = False) -> Tuple[int, int, int]:
-    """Initialize distributed process group."""
-    if allow_single_gpu:
-        raise RuntimeError("SKIPPED: symmetric_memory_training_advanced requires >=2 GPUs")
+def init_distributed(*, require_symmetric_memory: bool = True) -> Tuple[int, int, int]:
+    """Initialize the required two-rank NCCL group and optional symmetric backend."""
     require_min_gpus(2, script_name="symmetric_memory_training_advanced.py")
-    setup_single_gpu_env("symmetric_memory_training_advanced", min_world_size=2)
-    if not symmetric_memory_available():
+    rank, world_size, local_rank = setup_single_gpu_env(
+        "symmetric_memory_training_advanced",
+        min_world_size=2,
+    )
+    if require_symmetric_memory and not symmetric_memory_available():
         raise RuntimeError("SKIPPED: symmetric_memory_training_advanced requires SymmetricMemory support")
-    
-    if not dist.is_initialized():
-        rank = int(os.environ.get("RANK", 0))
-        world_size = int(os.environ.get("WORLD_SIZE", torch.cuda.device_count()))
-        local_rank = resolve_local_rank()
 
+    if not dist.is_initialized():
         torch.cuda.set_device(local_rank)
         dist.init_process_group(
             backend="nccl",
@@ -123,7 +120,9 @@ def init_distributed(allow_single_gpu: bool = False) -> Tuple[int, int, int]:
             timeout=datetime.timedelta(seconds=60),
             device_id=local_rank,
         )
-        
+
+    if dist.get_world_size() < 2:
+        raise RuntimeError("SKIPPED: symmetric_memory_training_advanced requires >=2 ranks")
     return dist.get_rank(), dist.get_world_size(), torch.cuda.current_device()
 
 
@@ -337,7 +336,7 @@ class AsyncGradientServer:
         return result
 
 
-def demo_async_gradient_server(*, allow_single_gpu: bool = False) -> None:
+def demo_async_gradient_server() -> None:
     """
     Demonstrate async gradient aggregation server.
     
@@ -346,7 +345,7 @@ def demo_async_gradient_server(*, allow_single_gpu: bool = False) -> None:
     - When using multiple gradient accumulation steps
     - Pipeline parallel training with frequent synchronization
     """
-    rank, world_size, device = init_distributed(allow_single_gpu=allow_single_gpu)
+    rank, world_size, device = init_distributed(require_symmetric_memory=True)
     
     # Create a simple model
     model = nn.Sequential(
@@ -535,7 +534,7 @@ class LockFreeGradientAccumulator:
             return temp / self.world_size
 
 
-def demo_lockfree_accumulation(*, allow_single_gpu: bool = False) -> None:
+def demo_lockfree_accumulation() -> None:
     """
     Demonstrate lock-free gradient accumulation.
     
@@ -544,7 +543,7 @@ def demo_lockfree_accumulation(*, allow_single_gpu: bool = False) -> None:
     - Asynchronous training (different ranks progress at different rates)
     - Want to minimize synchronization overhead
     """
-    rank, world_size, device = init_distributed(allow_single_gpu=allow_single_gpu)
+    rank, world_size, device = init_distributed(require_symmetric_memory=True)
     
     # Create model
     model = nn.Linear(8192, 8192, device=device)
@@ -589,76 +588,78 @@ def demo_lockfree_accumulation(*, allow_single_gpu: bool = False) -> None:
 # ============================================================================
 
 
-class SymmetricMemoryOptimizer:
-    """
-    Custom optimizer that performs updates via symmetric memory.
-    
-    Traditional: optimizer.step() broadcasts updated parameters via NCCL
-    Symmetric: each rank directly reads parameters from owner rank via symmetric memory
-    
-    Benefits:
-    - Eliminate broadcast overhead (~10-50μs per broadcast)
-    - Enable fine-grained parameter updates (per-layer, per-attention-head)
-    - Support custom update patterns (e.g., mixture-of-experts routing)
-    
-    Performance: 2-3x faster optimizer step for models with many small parameter groups
-    """
+class _MomentumOptimizer:
+    """Shared SGD-with-momentum update used by both transport variants."""
 
     def __init__(self, parameters: List[nn.Parameter], lr: float, world_size: int):
+        if not parameters:
+            raise ValueError("optimizer requires at least one parameter")
+        if world_size < 2:
+            raise ValueError("optimizer transport requires at least two ranks")
         self.parameters = parameters
         self.lr = lr
         self.world_size = world_size
         self.device = parameters[0].device
-        
-        # Create symmetric memory buffers for parameters
-        self.param_buffers: List[Optional[SymmetricMemoryHandle]] = []
-        self.momentum_buffers: List[torch.Tensor] = []
-        
-        for param in parameters:
-            # Make parameters symmetric
-            handle = maybe_create_symmetric_memory_handle(param.data)
-            self.param_buffers.append(handle)
-            
-            # Initialize momentum
-            self.momentum_buffers.append(torch.zeros_like(param.data))
+        self.momentum_buffers = [torch.zeros_like(param.data) for param in parameters]
 
     def step(self, rank: int) -> None:
-        """
-        Perform optimizer step using symmetric memory.
-        
-        Each rank updates its own parameters, then other ranks read directly.
-        """
-        # Update parameters locally (SGD with momentum)
-        for idx, (param, momentum) in enumerate(zip(self.parameters, self.momentum_buffers)):
+        """Apply the identical local mathematical update on every rank."""
+        if rank < 0 or rank >= self.world_size:
+            raise ValueError(f"rank {rank} is outside world_size={self.world_size}")
+        for param, momentum in zip(self.parameters, self.momentum_buffers):
             if param.grad is None:
                 continue
-            
-            # momentum = 0.9 * momentum + grad
             momentum.mul_(0.9).add_(param.grad)
-            
-            # param = param - lr * momentum
             param.data.add_(momentum, alpha=-self.lr)
-            
-            # If symmetric memory is available, the update is immediately visible to other ranks
-            # No broadcast needed!
-
-    def synchronize_parameters(self, rank: int) -> None:
-        """
-        Synchronize parameters across ranks after local optimizer updates.
-        
-        With symmetric memory, this is a no-op since parameters are already shared.
-        Without symmetric memory, we need explicit broadcast.
-        """
-        if not symmetric_memory_available():
-            for param in self.parameters:
-                dist.broadcast(param.data, src=0)
-        # else: parameters are already synchronized via symmetric memory!
 
     def zero_grad(self) -> None:
-        """Clear gradients."""
         for param in self.parameters:
             if param.grad is not None:
                 param.grad.zero_()
+
+
+class NCCLBroadcastOptimizer(_MomentumOptimizer):
+    """Baseline optimizer that synchronizes rank-0 parameters with NCCL."""
+
+    transport = "nccl-broadcast"
+
+    def synchronize_parameters(self, rank: int) -> None:
+        del rank
+        for param in self.parameters:
+            dist.broadcast(param.data, src=0)
+
+
+class SymmetricMemoryOptimizer(_MomentumOptimizer):
+    """Optimizer that publishes rank-local updates through strict symmetric buffers."""
+
+    transport = "symmetric-memory"
+
+    def __init__(self, parameters: List[nn.Parameter], lr: float, world_size: int):
+        super().__init__(parameters, lr, world_size)
+        # The strict constructor propagates setup/runtime failures. This path must
+        # never fall back to a collective while labeled as symmetric memory.
+        self.param_buffers = [
+            create_symmetric_memory_handle(param.data) for param in self.parameters
+        ]
+
+    def synchronize_parameters(self, rank: int) -> None:
+        if rank < 0 or rank >= self.world_size:
+            raise ValueError(f"rank {rank} is outside world_size={self.world_size}")
+
+        # Publish every rank's updated parameters. A single symmetric-memory
+        # barrier orders all preceding copies before peers read rank 0.
+        for param, handle in zip(self.parameters, self.param_buffers, strict=True):
+            handle.buffer.copy_(param.data)
+        synchronization_handle = self.param_buffers[0]
+        synchronization_handle.barrier(channel=0)
+
+        if rank != 0:
+            for param, handle in zip(self.parameters, self.param_buffers, strict=True):
+                param.data.copy_(handle.get_buffer(0))
+
+        # Do not let rank 0 overwrite published buffers for the next step until
+        # every peer's remote reads have completed.
+        synchronization_handle.barrier(channel=1)
 
 
 def demo_custom_optimizer(
@@ -669,7 +670,8 @@ def demo_custom_optimizer(
     output_dim: int,
     sync_interval: int,
     num_layers: int,
-    allow_single_gpu: bool = False,
+    transport: Literal["nccl-broadcast", "symmetric-memory"],
+    seed: int,
 ) -> None:
     """
     Demonstrate custom optimizer with symmetric memory.
@@ -679,8 +681,17 @@ def demo_custom_optimizer(
     - Want to eliminate broadcast overhead
     - Implementing custom update patterns (MoE, sparse updates, etc.)
     """
-    rank, world_size, device = init_distributed(allow_single_gpu=allow_single_gpu)
-    
+    if transport not in {"nccl-broadcast", "symmetric-memory"}:
+        raise ValueError(f"unsupported optimizer transport: {transport}")
+    rank, world_size, device = init_distributed(
+        require_symmetric_memory=transport == "symmetric-memory"
+    )
+
+    # Both arms and every rank start with the same model and input stream. The
+    # optimizer update is shared; only parameter synchronization differs.
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
     # Create model with multiple small parameter groups to amplify broadcast overhead.
     depth = max(1, int(num_layers))
     layers = []
@@ -690,8 +701,12 @@ def demo_custom_optimizer(
     layers.append(nn.Linear(hidden_dim, output_dim))
     model = nn.Sequential(*layers).to(device)
     
-    # Initialize custom optimizer
-    optimizer = SymmetricMemoryOptimizer(list(model.parameters()), lr=0.01, world_size=world_size)
+    optimizer_type = (
+        NCCLBroadcastOptimizer
+        if transport == "nccl-broadcast"
+        else SymmetricMemoryOptimizer
+    )
+    optimizer = optimizer_type(list(model.parameters()), lr=0.01, world_size=world_size)
     
     # Training loop
     sync_every = max(1, int(sync_interval))
@@ -702,17 +717,15 @@ def demo_custom_optimizer(
         loss = outputs.sum()
         loss.backward()
         
-        # Optimizer step (uses symmetric memory)
+        # Both transports use _MomentumOptimizer.step().
         optimizer.step(rank)
         optimizer.zero_grad()
-        
-        # Synchronize (no-op with symmetric memory)
+
         if step % sync_every == 0 or step == steps - 1:
             optimizer.synchronize_parameters(rank)
-    
+
     if rank == 0:
-        print(f"[optimizer] Completed {steps} steps with symmetric memory optimizer")
-        print(f"[optimizer] No broadcasts needed: {symmetric_memory_available()}")
+        print(f"[optimizer] Completed {steps} steps with transport={transport}")
 
 
 # ============================================================================
@@ -794,7 +807,7 @@ class ZeROStyleSymmetricMemoryTrainer:
         return loss
 
 
-def demo_zero_style_sharding(*, allow_single_gpu: bool = False) -> None:
+def demo_zero_style_sharding() -> None:
     """
     Demonstrate ZeRO-style optimizer state sharding with symmetric memory.
     
@@ -803,7 +816,7 @@ def demo_zero_style_sharding(*, allow_single_gpu: bool = False) -> None:
     - When memory is constrained
     - Want benefits of FSDP + symmetric memory for optimizer states
     """
-    rank, world_size, device = init_distributed(allow_single_gpu=allow_single_gpu)
+    rank, world_size, device = init_distributed(require_symmetric_memory=True)
     
     # Create model
     model = nn.Sequential(
@@ -850,14 +863,10 @@ def main() -> None:
         help="Which advanced pattern to demonstrate",
     )
     parser.add_argument(
-        "--disable-symmetric",
-        action="store_true",
-        help="Force-disable symmetric memory to validate strict capability gating.",
-    )
-    parser.add_argument(
-        "--allow-single-gpu",
-        action="store_true",
-        help="Request the removed single-GPU mode; the script now exits with `SKIPPED:`.",
+        "--transport",
+        choices=["nccl-broadcast", "symmetric-memory"],
+        default="symmetric-memory",
+        help="Optimizer parameter synchronization transport.",
     )
     parser.add_argument("--steps", type=int, default=20, help="Training steps per demo.")
     parser.add_argument("--batch-size", type=int, default=64, help="Batch size for optimizer demo.")
@@ -875,34 +884,38 @@ def main() -> None:
         default=1,
         help="Synchronization interval (optimizer demo only).",
     )
+    parser.add_argument("--seed", type=int, default=42, help="Model and input RNG seed.")
     args = parser.parse_args()
-    
-    if args.disable_symmetric:
-        os.environ["SYMMETRIC_MEMORY_DISABLED"] = "1"
-    
-    init_distributed(allow_single_gpu=args.allow_single_gpu)
-    
-    if args.demo == "async_grad":
-        demo_async_gradient_server(allow_single_gpu=args.allow_single_gpu)
-    elif args.demo == "lockfree":
-        demo_lockfree_accumulation(allow_single_gpu=args.allow_single_gpu)
-    elif args.demo == "optimizer":
-        demo_custom_optimizer(
-            steps=args.steps,
-            batch_size=args.batch_size,
-            hidden_dim=args.hidden_dim,
-            output_dim=args.output_dim,
-            sync_interval=args.sync_interval,
-            num_layers=args.optimizer_layers,
-            allow_single_gpu=args.allow_single_gpu,
-        )
-    elif args.demo == "zero":
-        demo_zero_style_sharding(allow_single_gpu=args.allow_single_gpu)
-    
-    dist.barrier()
-    if dist.get_rank() == 0:
-        print(f"\nDemo complete: {args.demo}")
-        print(f"Symmetric memory available: {symmetric_memory_available()}")
+
+    if args.demo != "optimizer" and args.transport != "symmetric-memory":
+        parser.error("--transport=nccl-broadcast is only valid with --demo=optimizer")
+
+    try:
+        if args.demo == "async_grad":
+            demo_async_gradient_server()
+        elif args.demo == "lockfree":
+            demo_lockfree_accumulation()
+        elif args.demo == "optimizer":
+            demo_custom_optimizer(
+                steps=args.steps,
+                batch_size=args.batch_size,
+                hidden_dim=args.hidden_dim,
+                output_dim=args.output_dim,
+                sync_interval=args.sync_interval,
+                num_layers=args.optimizer_layers,
+                transport=args.transport,
+                seed=args.seed,
+            )
+        elif args.demo == "zero":
+            demo_zero_style_sharding()
+
+        dist.barrier()
+        if dist.get_rank() == 0:
+            print(f"\nDemo complete: {args.demo}")
+            print(f"Symmetric memory available: {symmetric_memory_available()}")
+    finally:
+        if dist.is_initialized():
+            dist.destroy_process_group()
 
 
 if __name__ == "__main__":
