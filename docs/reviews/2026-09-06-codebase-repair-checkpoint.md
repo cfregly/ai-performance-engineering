@@ -1223,3 +1223,29 @@ process-global precision configuration unchanged. This follows the
 and its [mode profile API](https://github.com/pytorch/pytorch/blob/v2.9.1/torch/_inductor/__init__.py#L317-L352).
 The combined focused CPU checks pass (`31 passed, 2 CUDA-only skipped`);
 the full B200 comparison and measured performance are still pending.
+
+### Wave 31: numerical progress and real factory execution
+
+All seven stages on `cc58ab1fb` drained; all 33 focused GPU tests passed.
+Preserving eager precision casts reduced the full eager-SDPA versus compiled
+SDPA violation count from 354,852 to 44,458, but did not pass the unchanged
+tolerance. Materialized attention versus compiled SDPA still had 121,388
+violations. The normal Llama benchmark therefore remains a verification
+failure; no performance win is claimed. Further diagnostics will test
+residual accumulation precision in both arms with the complete workload.
+
+The standalone Level 6 MoE factory executed its real default model twice,
+changing all 512 input IDs between calls. Every one of 16,384,000 logits was
+copied exactly into the payload and compared to an independent equivalent
+expert implementation loaded with the same weights. Both full comparisons
+passed (`max_diff=0.015625`). The separate Level 4 factory exposed an Inductor
+failure while lowering pinned host-memory allocation inside forward. Its
+reusable routing metadata is now allocated before compilation; a fresh full
+factory rerun is required to validate the fix.
+
+Both native-crash probes reached `logging.Formatter.formatTime` after the
+optimized timing phase. Matching Python debug symbols locate the fault in
+CPython's specialized attribute load; Python frames and native traces are
+retained. This identifies the crash site, not the source of the memory
+corruption. The installed runtime has not been changed, and the native
+failure remains open.

@@ -449,6 +449,13 @@ class Level4Triton(VerificationPayloadMixin, BaseBenchmark):
         
         self.model = TritonMoEModel(self.config).to(self.device).to(torch.bfloat16)
         self.model.eval()
+
+        # Pinned host allocation is a setup operation: Inductor cannot lower
+        # pin_memory=True inside the compiled forward. Materialize the reusable
+        # routing metadata on the model's actual device before tracing it.
+        for module in self.model.modules():
+            if isinstance(module, GroupedMoEExperts):
+                module._expert_metadata_buffers(module.w1.device)
         
         # Compile with max-autotune for best Triton kernels
         print("  Compiling with max-autotune...")
