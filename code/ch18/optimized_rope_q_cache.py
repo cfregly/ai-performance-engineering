@@ -1,4 +1,4 @@
-"""Optimized RoPE + Q projection + KV cache update (vectorized)."""
+"""Optimized RoPE + Q projection, writing rotations directly into the KV cache."""
 
 from __future__ import annotations
 
@@ -8,11 +8,11 @@ import torch
 
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.benchmark.verification_mixin import VerificationPayloadMixin
-from ch18.rope_q_cache_common import RopeQCacheConfig, apply_rope_inplace, build_rope_tables
+from ch18.rope_q_cache_common import RopeQCacheConfig, apply_rope_out, build_rope_tables
 
 
 class OptimizedRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Optimized: vectorized RoPE + single cache write per step."""
+    """Optimized: vectorized RoPE writes directly to the cache at each step."""
 
     def __init__(self, cfg: Optional[RopeQCacheConfig] = None) -> None:
         super().__init__()
@@ -22,7 +22,6 @@ class OptimizedRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.cos: Optional[torch.Tensor] = None
         self.sin: Optional[torch.Tensor] = None
         self.cache: Optional[torch.Tensor] = None
-        self.rope_scratch: Optional[torch.Tensor] = None
         self.q_buffer: Optional[torch.Tensor] = None
         self.q_heads: Optional[torch.Tensor] = None
         self._input_step_views: list[torch.Tensor] = []
@@ -78,13 +77,6 @@ class OptimizedRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=self.cfg.dtype,
         )
-        self.rope_scratch = torch.empty(
-            self.cfg.batch_size,
-            self.cfg.heads,
-            self.cfg.head_dim // 2,
-            device=self.device,
-            dtype=self.cfg.dtype,
-        )
         self.q_buffer = torch.empty(
             self.cfg.batch_size,
             self.cfg.hidden_size,
@@ -116,7 +108,7 @@ class OptimizedRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._cos_step_count = len(self._cos_step_views)
         self._sin_step_count = len(self._sin_step_views)
         self._step_group_count = len(self._step_groups)
-        self._output_view = self._cache_step_views[self.cfg.steps - 1]
+        self._output_view = self.cache[:, :, : self.cfg.steps, :]
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -126,7 +118,6 @@ class OptimizedRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self.cos is None
             or self.sin is None
             or self.cache is None
-            or self.rope_scratch is None
             or self.q_buffer is None
             or self.q_heads is None
             or self._output_view is None
@@ -140,8 +131,7 @@ class OptimizedRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with torch.inference_mode():
             for x, cache_step, cos_t, sin_t in self._step_groups:
                 torch.mm(x, self.q_weight, out=self.q_buffer)
-                q = apply_rope_inplace(self.q_heads, cos_t, sin_t, self.rope_scratch)
-                cache_step.copy_(q)
+                apply_rope_out(self.q_heads, cos_t, sin_t, cache_step)
             self.output = self._output_view
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
@@ -150,7 +140,7 @@ class OptimizedRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.inputs is None or self.output is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         self._set_verification_payload(
-            inputs={"inputs": self.inputs[:1].detach()},
+            inputs={"inputs": self.inputs.detach()},
             output=self.output.detach(),
             batch_size=self.cfg.batch_size,
             parameter_count=0,
@@ -169,7 +159,6 @@ class OptimizedRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.cos = None
         self.sin = None
         self.cache = None
-        self.rope_scratch = None
         self.q_buffer = None
         self.q_heads = None
         self._input_step_views = []
