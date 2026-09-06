@@ -652,6 +652,60 @@ does not claim dedicated prefill/decode GPU groups. A fresh two-B200 run of
 this revision remains pending while the broader sweep runs on frozen
 `582ec8c86`.
 
+### Direct B200 wave 15 and measured cost-tool inputs
+
+The next breadth segment added 24 successful single-GPU executions on
+`582ec8c86`, through the Chapter 10 distributed shared-memory examples. Both
+shards stopped after complete stages and their supervisors confirmed drainage.
+The parent coordinator then hit an event-field logging collision; its aborted
+state is preserved. A focused control now exercises the real event writer with
+two stopped child queues and verifies the repaired, distinct lifecycle and
+child-terminal fields. No benchmark result was lost or relabeled.
+
+Wave 15 ran 12 stages on `41a609f12` and drained every process tree. All 22
+focused tests passed. The repaired two-rank disaggregated target passed full
+prefill/decode output verification with 0.198413 ms baseline timing and an
+observed 1.106246 ratio. The unchanged default NVSHMEM pipeline also passed
+full verification at a 3.184358 ratio after the shared helper gained explicit
+CUDA-backend selection.
+
+The CUDA ring passed 135 changing, full bitwise generations per rank on
+nondefault streams. Its device barrier waited 500.836 ms for an intentionally
+delayed peer, distinguishing it from the NVSHMEM no-op. Four ABBA blocks with
+40 samples per arm retained max-rank medians of 0.020847 ms for NCCL and
+0.026115 ms for CUDA symmetric memory, a 0.798267 ratio. Both ordinary ring
+aliases also passed complete correctness but missed the unchanged speed gate
+at 0.833322 and 0.813429. Nsight Systems shows exactly 800 device barrier
+kernels and 800 asynchronous copies per rank in each 400-iteration optimized
+range, with no NCCL kernel there. The roughly 12.2 ms profiled range contains
+4.0–4.4 ms of barrier kernel time, motivating a CUDA graph dispatch experiment.
+These unlocked, virtualized-host measurements remain diagnostic.
+
+The four FP16/INT8 compression targets that had previously skipped under
+one-GPU routing were run with two ranks. All four exposed missing child
+verification payloads; their apparent 6.5-second baseline timings were process
+startup, not worker iteration measurements. Their worker/result transport is
+under repair. The separate `ch04:no_overlap` pair had the same class of defect;
+commit `3526a0b13` adds full training outputs, an independent functional SGD
+reference and worker timing. Five focused tests passed, including actual
+two-rank Gloo; its B200 rerun remains pending.
+
+The cost calculator now has an actual successful invocation on source
+`41a609f12`. A separate two-B200 vLLM run completed all 16 prompts and returned
+768 token IDs over a 0.541600-second generation interval. NVML samples bracket
+that same interval; their integrated board-power estimate is 534.244 W and
+289.347 J. The calculator consumed those measured inputs and exited zero, and
+all descendants drained. Its $0.16/kWh electricity and 1.5 PUE values are the
+tool's explicitly labeled example assumptions. This short integration check
+does not establish serving throughput or production cost. Artifacts are
+retained in the dated `wave15`, `cost-tool`, and `continuation-through-ch10`
+bundles.
+
+The current instance exposes neither an InfiniBand device nor `nvshmemrun`.
+The IBGDA examples therefore retain their explicit runtime/hardware gate;
+Grace/GB10-specific examples still require the named hardware, and NVFP4
+TensorRT-LLM execution still requires a compatible engine asset.
+
 - Run the complete GPU test suite on the final merged revision.
 - Complete all four sweep stages and reconcile the 486-target inventory,
   including unsupported and failed cases rather than silently dropping them.
