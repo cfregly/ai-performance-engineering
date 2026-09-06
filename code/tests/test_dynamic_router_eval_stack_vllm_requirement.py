@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -47,7 +50,13 @@ def test_vllm_initialization_failure_is_non_synthetic_and_explicit(
 
     class FailingLLM:
         def __init__(self, **_: object) -> None:
-            print("engine setup started")
+            print("engine setup started", flush=True)
+            os.write(sys.stdout.fileno(), b"native setup diagnostic\n")
+            subprocess.run(
+                [sys.executable, "-c", "print('child setup diagnostic', flush=True)"],
+                stdout=sys.stdout,
+                check=True,
+            )
             raise RuntimeError("engine initialization exploded")
 
     monkeypatch.setattr(eval_stack, "LLM", FailingLLM)
@@ -63,6 +72,8 @@ def test_vllm_initialization_failure_is_non_synthetic_and_explicit(
     assert diagnostic["event"] == "vllm_llm_init_error"
     assert diagnostic["lines"] == [
         "engine setup started",
+        "native setup diagnostic",
+        "child setup diagnostic",
         "llm_init_error: engine initialization exploded",
     ]
 

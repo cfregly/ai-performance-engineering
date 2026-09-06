@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import argparse
 import heapq
-import io
 import json
 import math
 import random
 import sys
+import tempfile
 import time
 from contextlib import redirect_stdout
 from dataclasses import dataclass
@@ -880,27 +880,33 @@ class CheapEvalStack:
             )
 
         tp = self.cfg.tensor_parallel_size or torch.cuda.device_count()
-        buf = io.StringIO()
-        with redirect_stdout(buf):
+        # vLLM workers and native libraries use stdout.fileno(). A StringIO
+        # capture breaks their initialization, including forked worker startup.
+        with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as buf:
             try:
-                self._llm = LLM(
-                    model=str(model_path),
-                    tensor_parallel_size=tp,
-                    trust_remote_code=True,
-                    gpu_memory_utilization=0.8,
-                    enforce_eager=True,
-                )
+                with redirect_stdout(buf):
+                    self._llm = LLM(
+                        model=str(model_path),
+                        tensor_parallel_size=tp,
+                        trust_remote_code=True,
+                        gpu_memory_utilization=0.8,
+                        enforce_eager=True,
+                    )
                 self._llm_available = True
             except Exception as exc:
                 self._llm_available = False
-                captured_err = buf.getvalue().strip()
+                buf.flush()
+                buf.seek(0)
+                captured_err = buf.read().strip()
                 lines = [ln for ln in captured_err.splitlines() if ln]
                 lines.append(f"llm_init_error: {exc}")
                 print(json.dumps({"event": "vllm_llm_init_error", "lines": lines}), file=sys.stderr)
                 raise VLLMRequiredError(
                     f"vLLM initialization failed for {model_path}: {exc}"
                 ) from exc
-        captured = buf.getvalue().strip()
+            buf.flush()
+            buf.seek(0)
+            captured = buf.read().strip()
         if captured:
             lines = [ln for ln in captured.splitlines() if ln]
             print(json.dumps({"event": "vllm_llm_init_stdout", "lines": lines}), file=sys.stderr)
