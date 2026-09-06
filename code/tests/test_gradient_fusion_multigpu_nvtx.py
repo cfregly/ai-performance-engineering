@@ -63,9 +63,16 @@ def test_direct_torchrun_profile_declares_its_real_nvtx_range(
     ncu_spec = benchmark.get_profile_torchrun_spec(profiler="ncu", config=config)
     assert ncu_spec is not None
     assert ncu_spec.script_args[-2:] == ["--profile-rank", "0"]
-    assert ncu_spec.timing_iterations_per_sample == PAIR_TIMED_ITERATIONS
-    assert benchmark.get_profile_torchrun_spec(profiler="nsys", config=config) is None
-    assert benchmark.get_profile_torchrun_spec(profiler="torch", config=config) is None
+    assert ncu_spec.timing_iterations_per_sample == 1
+    nsys_spec = benchmark.get_profile_torchrun_spec(profiler="nsys", config=config)
+    assert nsys_spec.timing_iterations_per_sample == 1
+    torch_spec = benchmark.get_profile_torchrun_spec(
+        profiler="torch", config=config, output_path=Path("/tmp/gradient-trace.json")
+    )
+    assert torch_spec.timing_iterations_per_sample == 1
+    assert torch_spec.env["AISP_TORCH_PROFILE_OUTPUT"] == "/tmp/gradient-trace.json"
+    ordinary_spec = benchmark.get_torchrun_spec(config)
+    assert ordinary_spec.timing_iterations_per_sample == PAIR_TIMED_ITERATIONS
 
 
 def test_real_target_limits_nvtx_range_to_timed_collectives() -> None:

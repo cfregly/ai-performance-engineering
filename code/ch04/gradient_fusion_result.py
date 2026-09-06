@@ -73,10 +73,18 @@ class GradientFusionChildResultMixin:
         config: BenchmarkConfig | None = None,
         output_path: Path | None = None,
     ) -> TorchrunLaunchSpec | None:
-        if profiler != "ncu":
+        if profiler not in {"ncu", "nsys", "torch"}:
             return None
-        spec = self.get_torchrun_spec(config)
-        return replace(spec, script_args=[*(spec.script_args or []), "--profile-rank", "0"])
+        # A capture needs one representative iteration, while ordinary timing
+        # retains fifty. Both variants keep the full 2,048-tensor workload.
+        spec = self.get_torchrun_spec(config, measured_iterations=1)
+        if profiler == "ncu":
+            return replace(spec, script_args=[*(spec.script_args or []), "--profile-rank", "0"])
+        if profiler == "torch":
+            if output_path is None:
+                raise ValueError("Torch profiling requires an output path")
+            return replace(spec, env={**(spec.env or {}), "AISP_TORCH_PROFILE_OUTPUT": str(output_path)})
+        return spec
 
     _gradient_fusion_result_context: dict[str, Any] | None = None
     _gradient_fusion_result_bundle: dict[str, Any] | None = None

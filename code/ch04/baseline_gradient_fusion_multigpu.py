@@ -76,7 +76,12 @@ class BaselineGradientFusionMultiGPU(
     def _prepare_verification_payload(self) -> None:
         self.require_gradient_fusion_child_result()
 
-    def get_torchrun_spec(self, config: BenchmarkConfig | None = None) -> TorchrunLaunchSpec:
+    def get_torchrun_spec(
+        self, config: BenchmarkConfig | None = None,
+        *, measured_iterations: int = PAIR_TIMED_ITERATIONS,
+    ) -> TorchrunLaunchSpec:
+        if isinstance(measured_iterations, bool) or not isinstance(measured_iterations, int) or measured_iterations <= 0:
+            raise ValueError("measured_iterations must be a positive integer")
         effective_config = config or self.get_config()
         nnodes = int(effective_config.nnodes or 1)
         if nnodes != 1:
@@ -89,7 +94,7 @@ class BaselineGradientFusionMultiGPU(
             world_size=nproc_per_node,
             num_tensors=PAIR_NUM_TENSORS,
             tensor_kb=PAIR_TENSOR_KB,
-            iterations=PAIR_TIMED_ITERATIONS,
+            iterations=measured_iterations,
         )
         script_path = Path(__file__).resolve().with_name("gradient_fusion_multigpu.py")
         return TorchrunLaunchSpec(
@@ -102,14 +107,14 @@ class BaselineGradientFusionMultiGPU(
                 "--tensor-kb",
                 str(PAIR_TENSOR_KB),
                 "--iterations",
-                str(PAIR_TIMED_ITERATIONS),
+                str(measured_iterations),
             ],
             env=env,
             multi_gpu_required=True,
             name="baseline_gradient_fusion_multigpu",
             result_callback=GRADIENT_FUSION_RESULT_CALLBACK,
             timing_source="rank0_time_per_iter_ms",
-            timing_iterations_per_sample=PAIR_TIMED_ITERATIONS,
+            timing_iterations_per_sample=measured_iterations,
         )
 
 
