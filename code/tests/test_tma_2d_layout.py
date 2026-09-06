@@ -88,6 +88,48 @@ def test_driver_metadata_preserves_row_major_axes_and_padded_pitch(
     assert len(addresses) == width * height
 
 
+def test_partial_tile_store_preserves_padding_and_guards(tmp_path: Path) -> None:
+    """Execute the production store helper with cooperative logical threads."""
+    compiler = shutil.which("c++")
+    if compiler is None:
+        pytest.skip("a C++ compiler is required for the real store helper")
+    source = tmp_path / "tail.cpp"
+    binary = tmp_path / "tail"
+    source.write_text(
+        '#include "core/common/headers/tma_2d_layout.hpp"\n'
+        "#include <vector>\n"
+        "int main() {\n"
+        "  constexpr int height=129, width=385, ld=400, guard=17;\n"
+        "  for (int threads : {1, 32, 128, 256}) {\n"
+        "    std::vector<float> storage(guard + height*ld + guard, -12345.0f);\n"
+        "    float* output = storage.data() + guard;\n"
+        "    for (int y=0; y<height; y+=128) for (int x=0; x<width; x+=64) {\n"
+        "      float tile[128][64];\n"
+        "      int rows = height-y<128 ? height-y : 128;\n"
+        "      int cols = width-x<64 ? width-x : 64;\n"
+        "      for (int r=0; r<128; ++r) for (int c=0; c<64; ++c)\n"
+        "        tile[r][c] = float((y+r)*width+x+c);\n"
+        "      for (int tid=0; tid<threads; ++tid)\n"
+        "        cuda_tma::store_partial_2d_tile(tile, output, ld, y, x, rows, cols, tid, threads);\n"
+        "    }\n"
+        "    for (int y=0; y<height; ++y) for (int x=0; x<ld; ++x) {\n"
+        "      float expected = x<width ? float(y*width+x) : -12345.0f;\n"
+        "      if (output[y*ld+x] != expected) return 1;\n"
+        "    }\n"
+        "    for (int i=0; i<guard; ++i)\n"
+        "      if (storage[i] != -12345.0f || storage[guard+height*ld+i] != -12345.0f) return 2;\n"
+        "  }\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    subprocess.run(
+        [compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror", "-I", str(CODE_ROOT),
+         str(source), "-o", str(binary)],
+        check=True, capture_output=True, text=True,
+    )
+    subprocess.run([str(binary)], check=True, capture_output=True, text=True)
+
+
 def test_cuda_encoder_uses_the_production_host_metadata() -> None:
     source = (CODE_ROOT / "core/common/headers/tma_helpers.cuh").read_text(encoding="utf-8")
     encoder = source.split("inline bool make_2d_tensor_map(", 1)[1].split(

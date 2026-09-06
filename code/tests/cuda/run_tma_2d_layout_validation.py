@@ -98,7 +98,7 @@ def main() -> int:
         # The shorthand -arch=sm_100a also emits generic compute_100 PTX,
         # which cannot compile the architecture-specific multicast caller.
         compute_arch = args.arch.replace("sm_", "compute_", 1)
-        command = [nvcc, "-O2", "-std=c++17", "-rdc=true",
+        command = [nvcc, "-O2", "-std=c++17", "-rdc=true", "--expt-relaxed-constexpr",
                    f"-gencode=arch={compute_arch},code={args.arch}",
                    f"-DTMA_MULTICAST_TARGET={feature_target}", f"-DTMA_VALIDATION_CASE={case_id}",
                    str(source), "-lcuda", "-o", str(binary)]

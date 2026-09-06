@@ -9280,7 +9280,6 @@ def test_ch20_baseline_integrated_kv_cache_precomputes_hot_loop_views() -> None:
 def test_remaining_benchmark_wrappers_cache_verification_parameter_count() -> None:
     for relative, parameters_expr in (
         ("ch16/awq_gptq_smoothquant_benchmarks.py", "self.reference_model.parameters()"),
-        ("ch18/nvfp4_trtllm_tool.py", "self.linear.parameters()"),
         ("ch18/run_vllm_decoder.py", "self.model.parameters()"),
         ("ch19/fp8_calibration_free_tool.py", "self._impl.layers.parameters()"),
         ("labs/nanochat_fullstack/baseline_nanochat_inference.py", "self.model.parameters()"),

@@ -138,7 +138,7 @@ static __global__ void tma_copy_kernel(
     cuda_device::fence_proxy_async_shared_cta();
     __syncthreads();
 
-    if (threadIdx.x == 0 && threadIdx.y == 0) {
+    if (in_bounds && threadIdx.x == 0 && threadIdx.y == 0) {
         cuda_device::cp_async_bulk_tensor_2d_shared_to_global(
             &out_desc,
             tile_x,

@@ -182,8 +182,10 @@ template <int TILE_M, int TILE_N>
 __global__ void descriptor_tma_2d_copy_kernel(
     const __grid_constant__ CUtensorMap in_desc,
     const __grid_constant__ CUtensorMap out_desc,
+    float* output,
     int M,
-    int N) {
+    int N,
+    int output_ld) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
     constexpr std::size_t kTileBytes = static_cast<std::size_t>(TILE_M) * TILE_N * sizeof(float);
     __shared__ alignas(128) float tile[TILE_M][TILE_N];
@@ -259,14 +261,21 @@ __global__ void descriptor_tma_2d_copy_kernel(
     cde::fence_proxy_async_shared_cta();
     __syncthreads();
 
-    if (threadIdx.x == 0 && threadIdx.y == 0) {
-        cde::cp_async_bulk_tensor_2d_shared_to_global(&out_desc, tile_n, tile_m, &output_tile);
-        cde::cp_async_bulk_commit_group();
-        cde::cp_async_bulk_wait_group_read<0>();
+    if (tile_rows == TILE_M && tile_cols == TILE_N) {
+        if (threadIdx.x == 0 && threadIdx.y == 0) {
+            cde::cp_async_bulk_tensor_2d_shared_to_global(&out_desc, tile_n, tile_m, &output_tile);
+            cde::cp_async_bulk_commit_group();
+            cde::cp_async_bulk_wait_group_read<0>();
+        }
+    } else {
+        cuda_tma::store_partial_2d_tile(
+            output_tile, output, output_ld, tile_m, tile_n, tile_rows, tile_cols, tid, threads);
     }
 #else
     (void)in_desc;
     (void)out_desc;
+    (void)output;
+    (void)output_ld;
     (void)M;
     (void)N;
 #endif
@@ -474,7 +483,7 @@ bool benchmark_tma_2d(cudaDeviceProp& prop) {
         CUDA_CHECK(cudaFree(d_mat_dst));
         return false;
     }
-    descriptor_tma_2d_copy_kernel<kTile2D_M, kTile2D_N><<<grid2d, block2d>>>(in_desc, out_desc, M, N);
+    descriptor_tma_2d_copy_kernel<kTile2D_M, kTile2D_N><<<grid2d, block2d>>>(in_desc, out_desc, d_mat_dst, M, N, N);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
     
@@ -488,7 +497,7 @@ bool benchmark_tma_2d(cudaDeviceProp& prop) {
     for (int iter = 0; iter < kIterations2D; ++iter) {
         {
             NVTX_RANGE("compute_kernel:descriptor_tma_2d_copy_kernel");
-            descriptor_tma_2d_copy_kernel<kTile2D_M, kTile2D_N><<<grid2d, block2d>>>(in_desc, out_desc, M, N);
+            descriptor_tma_2d_copy_kernel<kTile2D_M, kTile2D_N><<<grid2d, block2d>>>(in_desc, out_desc, d_mat_dst, M, N, N);
         }
     }
     CUDA_CHECK(cudaGetLastError());

@@ -50,8 +50,10 @@ static_assert(((TILE_N * sizeof(float)) % 16) == 0,
 template <int TILE_M_VALUE, int TILE_N_VALUE>
 __global__ void tma_bulk_copy_kernel(const __grid_constant__ CUtensorMap in_desc,
                                      const __grid_constant__ CUtensorMap out_desc,
+                                     float* output,
                                      int width,
-                                     int height) {
+                                     int height,
+                                     int output_ld) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
     const int tile_row = blockIdx.y * TILE_M_VALUE;
     const int tile_col = blockIdx.x * TILE_N_VALUE;
@@ -90,15 +92,25 @@ __global__ void tma_bulk_copy_kernel(const __grid_constant__ CUtensorMap in_desc
     }
     __syncthreads();
 
-    if (threadIdx.x == 0 && threadIdx.y == 0) {
-        cde::cp_async_bulk_tensor_2d_shared_to_global(
-            &out_desc, tile_col, tile_row, tile);
-        cde::cp_async_bulk_commit_group();
-        cde::cp_async_bulk_wait_group_read<0>();
+    const int rows = min(TILE_M_VALUE, height - tile_row);
+    const int cols = min(TILE_N_VALUE, width - tile_col);
+    if (rows == TILE_M_VALUE && cols == TILE_N_VALUE) {
+        if (threadIdx.x == 0 && threadIdx.y == 0) {
+            cde::cp_async_bulk_tensor_2d_shared_to_global(
+                &out_desc, tile_col, tile_row, tile);
+            cde::cp_async_bulk_commit_group();
+            cde::cp_async_bulk_wait_group_read<0>();
+        }
+    } else {
+        cuda_tma::store_partial_2d_tile(
+            tile, output, output_ld, tile_row, tile_col, rows, cols,
+            threadIdx.y * blockDim.x + threadIdx.x, blockDim.x * blockDim.y);
     }
 #else
     (void)in_desc;
     (void)out_desc;
+    (void)output;
+    (void)output_ld;
     (void)width;
     (void)height;
 #endif
@@ -187,7 +199,7 @@ int main() {
     }
 
     // Warmup
-    tma_bulk_copy_kernel<TILE_M, TILE_N><<<grid, block_tma>>>(in_desc, out_desc, width, height);
+    tma_bulk_copy_kernel<TILE_M, TILE_N><<<grid, block_tma>>>(in_desc, out_desc, d_dst, width, height, ld);
     check_cuda(cudaGetLastError(), "warmup launch");
     check_cuda(cudaDeviceSynchronize(), "warmup sync");
 
@@ -199,7 +211,7 @@ int main() {
     for (int iter = 0; iter < ITERATIONS; ++iter) {
         NVTX_RANGE("compute_kernel");
         tma_bulk_copy_kernel<TILE_M, TILE_N><<<grid, block_tma>>>(
-            in_desc, out_desc, width, height);
+            in_desc, out_desc, d_dst, width, height, ld);
         check_cuda(cudaGetLastError(), "iteration launch");
     }
     check_cuda(cudaEventRecord(stop), "event record stop");

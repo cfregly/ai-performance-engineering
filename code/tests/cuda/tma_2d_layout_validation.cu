@@ -140,10 +140,10 @@ bool verify_copy_case(int height, int width, int ld) {
     tma_copy_2d_kernel<128, 64><<<grid, dim3(16, 8)>>>(
         in_desc, out_desc, dst, height, width, ld);
 #elif TMA_VALIDATION_CASE == 1
-    tma_bulk_copy_kernel<128, 64><<<grid, dim3(32)>>>(in_desc, out_desc, width, height);
+    tma_bulk_copy_kernel<128, 64><<<grid, dim3(32)>>>(in_desc, out_desc, dst, width, height, ld);
 #elif TMA_VALIDATION_CASE == 2
     descriptor_tma_2d_copy_kernel<kTile2D_M, kTile2D_N><<<grid, dim3(16, 16)>>>(
-        in_desc, out_desc, height, width);
+        in_desc, out_desc, dst, height, width, ld);
 #elif TMA_VALIDATION_CASE == 3
     const dim3 pipeline_grid((width + BoxCols - 1) / BoxCols, (height + TILE_M - 1) / TILE_M);
     tma_2d_pipeline_kernel<BoxCols, BoxRows, Stages><<<pipeline_grid, dim3(32, 4)>>>(
