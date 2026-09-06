@@ -71,6 +71,9 @@ class TEFP8MLP(nn.Module):
 class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
     """Eager FP8 path using Transformer Engine."""
 
+    signature_equivalence_group = "ch13_precisionfp8_te_precision"
+    signature_equivalence_ignore_fields = ("precision_flags",)
+
     def __init__(self):
         super().__init__()
         self.model: Optional[nn.Module] = None
@@ -224,9 +227,6 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
             reduced_precision_time_ms=getattr(self, "_last_elapsed_ms", None),
             precision_type="fp8",
         )
-
-    def get_output_for_verification(self) -> Optional[torch.Tensor]:
-        return self._verify_input
 
     def validate_result(self) -> Optional[str]:
         if self.model is None:

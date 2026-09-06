@@ -888,6 +888,36 @@ The IBGDA examples therefore retain their explicit runtime/hardware gate;
 Grace/GB10-specific examples still require the named hardware, and NVFP4
 TensorRT-LLM execution still requires a compatible engine asset.
 
+### Chapter 13/16 follow-up and main merge
+
+PR #18 merged as `dcd2c55d594dcacf6974b1a179c1eec69bf24153` after all
+four exact-head CI checks passed. Its tree matches the tested `48ab6ff1a`
+tree. The CPU suite passed 5,136 tests with 503 skips; the core contract lane
+passed 751 tests with one skip. Dual-architecture validation also passed.
+Runtime receipts retain their actual source commits.
+
+The continued B200 sweep exposed additional correctness defects. Both
+Chapter 13 regional-compilation arms retained the first warmup output and
+truncated verification to 128 tokens. They now capture the latest input and
+complete output and use a fixed iteration count so their rotating sequence
+buckets match. The Transformer Engine FP16/FP8 pair now explicitly declares
+precision-signature equivalence while retaining its actual precision flags
+and numerical tolerances. Obsolete accessors that returned the input as an
+output have been removed; the actual payload remains the model output.
+
+Both dense Flash Attention variants now view their preallocated merge buffer
+as `[batch, sequence, heads, head_dim]` when copying the transposed attention
+heads. Previously that four-dimensional tensor was copied into a
+three-dimensional buffer and failed at runtime. Full CPU attention-output
+comparisons and storage-reuse checks cover both variants. The focused and
+hygiene run passed 561 tests with one skip. GPU reruns of these new repairs
+are pending; the original failures remain preserved.
+
+The Chapter 14 regional Triton example also produced a native crash during
+isolated-process cleanup. Its complete stderr is retained. Cold-cache
+vanilla and repository-path reproductions are required before attributing
+that failure to the toolchain or changing a compiler mode.
+
 - Run the complete GPU test suite on the final merged revision.
 - Complete all four sweep stages and reconcile the 486-target inventory,
   including unsupported and failed cases rather than silently dropping them.

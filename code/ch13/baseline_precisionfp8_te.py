@@ -60,6 +60,9 @@ class TEFP16MLP(nn.Module):
 class BaselineTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
     """Baseline Transformer Engine run in float16 precision."""
 
+    signature_equivalence_group = "ch13_precisionfp8_te_precision"
+    signature_equivalence_ignore_fields = ("precision_flags",)
+
     def __init__(self):
         super().__init__()
         self.model: Optional[nn.Module] = None
@@ -176,10 +179,6 @@ class BaselineTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
             reduced_precision_time_ms=None,
             precision_type="fp8",
         )
-
-    def get_output_for_verification(self) -> Optional[torch.Tensor]:
-        # Use the latest inputs as representative output; optimized path returns a static input snapshot.
-        return self.inputs
 
     def validate_result(self) -> Optional[str]:
         if self.model is None:
