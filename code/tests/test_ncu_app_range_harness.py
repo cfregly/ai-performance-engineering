@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,6 +16,11 @@ import pytest
 
 from core.harness import run_benchmarks
 from core.harness.benchmark_harness import BenchmarkConfig
+from core.harness.llm_patch_worker import (
+    MAX_SOURCE_BYTES,
+    WorkerProtocolError,
+    sha256_file,
+)
 from core.profiling.profiler_config import MINIMAL_METRICS
 
 
@@ -121,6 +127,45 @@ def test_app_range_sidecar_rejects_report_hash_mismatch(tmp_path: Path) -> None:
         )
 
     assert not report.with_name("capture.capture.json").exists()
+
+
+def test_app_range_sidecar_streams_reports_larger_than_source_worker_cap(
+    tmp_path: Path,
+) -> None:
+    report = tmp_path / "large-capture.ncu-rep"
+    with report.open("wb") as handle:
+        handle.seek(MAX_SOURCE_BYTES)
+        handle.write(b"large report sentinel")
+    provenance = _provenance(report)
+
+    with pytest.raises(WorkerProtocolError, match="Source exceeds"):
+        sha256_file(report)
+
+    capture = run_benchmarks._materialize_ncu_app_range_capture(
+        report,
+        _RangeMetrics(),
+        provenance,
+    )
+
+    stored = json.loads(Path(capture["sidecar_path"]).read_text(encoding="utf-8"))
+    assert stored["report_sha256"] == provenance["report_sha256"]
+    assert report.stat().st_size > MAX_SOURCE_BYTES
+
+
+def test_app_range_sidecar_rejects_symlink_and_non_regular_report(tmp_path: Path) -> None:
+    report = tmp_path / "capture.ncu-rep"
+    report.write_bytes(b"fixture NCU report")
+    report_link = tmp_path / "capture-link.ncu-rep"
+    os.symlink(report, report_link)
+
+    with pytest.raises(ValueError, match="must not be a symlink"):
+        run_benchmarks._materialize_ncu_app_range_capture(
+            report_link,
+            _RangeMetrics(),
+            _provenance(report_link),
+        )
+    with pytest.raises(ValueError, match="not a regular file"):
+        run_benchmarks._sha256_regular_artifact(tmp_path)
 
 
 def test_app_range_command_requires_full_single_range_capture() -> None:

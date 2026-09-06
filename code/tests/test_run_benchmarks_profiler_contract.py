@@ -11,6 +11,11 @@ import os.path
 
 import pytest
 
+from core.benchmark.expectations import (
+    ExpectationEntry,
+    ExpectationsStore,
+    RunProvenance,
+)
 from core.harness.benchmark_harness import BenchmarkConfig, LaunchVia, TorchrunLaunchSpec
 from core.harness import run_benchmarks
 from core.harness.run_benchmarks import (
@@ -188,6 +193,72 @@ def test_format_required_profiler_failure_includes_detail_text() -> None:
         "Required profilers did not succeed: optimized:nsys:failed. "
         "Details: optimized:nsys: no report artifact produced"
     )
+
+
+def test_required_profiler_failure_does_not_mutate_expectation_store(tmp_path: Path) -> None:
+    store = ExpectationsStore(tmp_path, "test_hw", accept_regressions=True)
+    entry = ExpectationEntry(
+        example="kv_standard",
+        type="python",
+        optimization_goal="memory",
+        baseline_time_ms=17.33,
+        best_optimized_time_ms=36.56,
+        baseline_memory_mb=100.0,
+        best_optimized_memory_mb=50.0,
+        provenance=RunProvenance(
+            git_commit="candidate",
+            hardware_key="test_hw",
+            profile_name="minimal",
+            timestamp="2026-09-06T00:00:00+00:00",
+            iterations=256,
+            warmup_iterations=10,
+        ),
+    )
+
+    update_result, payload = run_benchmarks._update_expectation_entry_after_profiler_gate(
+        store,
+        "kv_standard_python",
+        entry,
+        profiler_failures=["optimized:ncu:failed"],
+    )
+
+    assert update_result is None
+    assert payload["status"] == "skipped"
+    assert payload["persisted"] is False
+    assert payload["required_profiler_failures"] == ["optimized:ncu:failed"]
+    assert store.get_entry("kv_standard_python") is None
+    store.save()
+    assert not store.path.exists()
+
+
+def test_profiler_success_preserves_expectation_update_path(tmp_path: Path) -> None:
+    store = ExpectationsStore(tmp_path, "test_hw", accept_regressions=True)
+    entry = ExpectationEntry(
+        example="kv_standard",
+        type="python",
+        optimization_goal="speed",
+        baseline_time_ms=2.0,
+        best_optimized_time_ms=1.0,
+        provenance=RunProvenance(
+            git_commit="candidate",
+            hardware_key="test_hw",
+            profile_name="minimal",
+            timestamp="2026-09-06T00:00:00+00:00",
+            iterations=20,
+            warmup_iterations=5,
+        ),
+    )
+
+    update_result, payload = run_benchmarks._update_expectation_entry_after_profiler_gate(
+        store,
+        "kv_standard_python",
+        entry,
+        profiler_failures=[],
+    )
+
+    assert update_result is not None
+    assert payload["status"] in {"updated", "improved", "unchanged"}
+    assert store.get_entry("kv_standard_python") is not None
 
 
 def test_attach_failure_metadata_promotes_child_failure_to_parent() -> None:

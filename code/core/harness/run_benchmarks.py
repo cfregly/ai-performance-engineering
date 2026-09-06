@@ -26,6 +26,8 @@ from datetime import datetime
 from collections import defaultdict
 import statistics
 import math
+import hashlib
+import stat as stat_module
 import difflib
 from dataclasses import dataclass, fields, replace
 import threading
@@ -4144,6 +4146,71 @@ def _validate_ncu_app_range_command(command: Sequence[str]) -> Tuple[str, List[s
     return nvtx_ranges[0], requested_metrics
 
 
+def _sha256_regular_artifact(path: Path, *, chunk_size: int = 1024 * 1024) -> str:
+    """Hash an immutable regular artifact without a source-file size limit."""
+    artifact_path = Path(path)
+    if chunk_size <= 0:
+        raise ValueError("Artifact hash chunk_size must be positive.")
+    try:
+        path_stat = os.lstat(artifact_path)
+    except OSError as exc:
+        raise ValueError(f"Cannot inspect NCU app-range report: {artifact_path}") from exc
+    if stat_module.S_ISLNK(path_stat.st_mode):
+        raise ValueError(f"NCU app-range report must not be a symlink: {artifact_path}")
+    if not stat_module.S_ISREG(path_stat.st_mode):
+        raise ValueError(f"NCU app-range report is not a regular file: {artifact_path}")
+
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(artifact_path, flags)
+    except OSError as exc:
+        raise ValueError(f"Cannot open NCU app-range report: {artifact_path}") from exc
+
+    identity_fields = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    )
+
+    def identity(value: os.stat_result) -> Tuple[int, ...]:
+        return tuple(int(getattr(value, field)) for field in identity_fields)
+
+    try:
+        opened_stat = os.fstat(descriptor)
+        if not stat_module.S_ISREG(opened_stat.st_mode):
+            raise ValueError(f"NCU app-range report is not a regular file: {artifact_path}")
+        if identity(opened_stat) != identity(path_stat):
+            raise ValueError(f"NCU app-range report changed before hashing: {artifact_path}")
+        digest = hashlib.sha256()
+        while True:
+            chunk = os.read(descriptor, chunk_size)
+            if not chunk:
+                break
+            digest.update(chunk)
+        final_descriptor_stat = os.fstat(descriptor)
+    except OSError as exc:
+        raise ValueError(f"Cannot hash NCU app-range report: {artifact_path}") from exc
+    finally:
+        os.close(descriptor)
+
+    try:
+        final_path_stat = os.lstat(artifact_path)
+    except OSError as exc:
+        raise ValueError(f"Cannot re-inspect NCU app-range report: {artifact_path}") from exc
+    if (
+        stat_module.S_ISLNK(final_path_stat.st_mode)
+        or identity(final_descriptor_stat) != identity(opened_stat)
+        or identity(final_path_stat) != identity(opened_stat)
+    ):
+        raise ValueError(f"NCU app-range report changed while hashing: {artifact_path}")
+    return digest.hexdigest()
+
+
 def _materialize_ncu_app_range_capture(
     report_path: Path,
     metrics_obj: Any,
@@ -4177,7 +4244,7 @@ def _materialize_ncu_app_range_capture(
             "NCU app-range provenance coverage_policy must be full_selected_nvtx_range."
         )
 
-    report_digest = sha256_file(report_path)
+    report_digest = _sha256_regular_artifact(report_path)
     if provenance.get("report_sha256") != report_digest:
         raise ValueError("NCU app-range provenance report_sha256 does not match the report.")
 
@@ -5202,6 +5269,42 @@ def _allow_mixed_provenance_for_expectation_writes(
     """
 
     return bool(allow_mixed_provenance or update_expectations)
+
+
+def _update_expectation_entry_after_profiler_gate(
+    expectations_store: Any,
+    example_key: str,
+    entry: ExpectationEntry,
+    *,
+    profiler_failures: Sequence[str],
+) -> Tuple[Optional[Any], Dict[str, Any]]:
+    """Do not validate or mutate expectations from an invalid profiled result."""
+    if profiler_failures:
+        failures = [str(failure) for failure in profiler_failures]
+        return None, {
+            "status": "skipped",
+            "message": (
+                "Expectation validation and update skipped because required profiler "
+                f"captures failed: {', '.join(failures)}."
+            ),
+            "entry": None,
+            "validation_issues": [],
+            "required_profiler_failures": failures,
+            "persisted": False,
+        }
+
+    update_result = expectations_store.update_entry(example_key, entry)
+    try:
+        payload = update_result.to_dict()
+    except Exception:
+        payload = {
+            "status": update_result.status,
+            "message": update_result.message,
+            "validation_issues": [
+                issue.to_dict() for issue in update_result.validation_issues
+            ],
+        }
+    return update_result, payload
 
 
 def _test_chapter_impl(
@@ -8071,6 +8174,16 @@ def _test_chapter_impl(
                     if verify_output and isinstance(best_opt.get("verification"), dict):
                         result_entry["verification"] = best_opt.get("verification")
 
+                profiler_failures = _collect_required_profiler_failures(
+                    result_entry,
+                    best_opt,
+                    profiling_requested=bool(enable_profiling and profiling_output_dir),
+                )
+                profiler_failure_details = _collect_required_profiler_failure_details(
+                    result_entry,
+                    best_opt,
+                    profiling_requested=bool(enable_profiling and profiling_output_dir),
+                )
                 if best_opt:
                     emit_progress(
                         "expectations",
@@ -8119,35 +8232,36 @@ def _test_chapter_impl(
                                 accept_regressions=accept_regressions or update_expectations,
                                 allow_mixed_provenance=allow_mixed_provenance_for_writes,
                             )
-                        update_result = active_expectations_store.update_entry(example_key, entry)
-                        try:
-                            result_entry["expectation"] = update_result.to_dict()
-                        except Exception:
-                            result_entry["expectation"] = {
-                                "status": update_result.status,
-                                "message": update_result.message,
-                                "validation_issues": [issue.to_dict() for issue in update_result.validation_issues],
-                            }
-                        if expectation_writes_enabled:
-                            logger.info("    Expectations: %s", update_result.message)
-                        else:
-                            result_entry["expectation"]["persisted"] = False
-                            result_entry["expectation"]["message"] = (
-                                f"{update_result.message} (preview only; rerun with "
-                                "--update-expectations/--accept-regressions/--allow-mixed-provenance "
-                                "to write the file.)"
+                        update_result, expectation_payload = (
+                            _update_expectation_entry_after_profiler_gate(
+                                active_expectations_store,
+                                example_key,
+                                entry,
+                                profiler_failures=profiler_failures,
                             )
-                            logger.info("    Expectations (preview): %s", update_result.message)
-                        log_expectation_delta(
-                            logger,
-                            example_key=example_key,
-                            goal=optimization_goal,
-                            old_entry=old_entry,
-                            new_entry=entry,
-                            update_result=update_result,
-                            event_logger=event_logger,
-                            chapter=chapter_name,
                         )
+                        result_entry["expectation"] = expectation_payload
+                        if update_result is not None:
+                            if expectation_writes_enabled:
+                                logger.info("    Expectations: %s", update_result.message)
+                            else:
+                                result_entry["expectation"]["persisted"] = False
+                                result_entry["expectation"]["message"] = (
+                                    f"{update_result.message} (preview only; rerun with "
+                                    "--update-expectations/--accept-regressions/--allow-mixed-provenance "
+                                    "to write the file.)"
+                                )
+                                logger.info("    Expectations (preview): %s", update_result.message)
+                            log_expectation_delta(
+                                logger,
+                                example_key=example_key,
+                                goal=optimization_goal,
+                                old_entry=old_entry,
+                                new_entry=entry,
+                                update_result=update_result,
+                                event_logger=event_logger,
+                                chapter=chapter_name,
+                            )
                     else:
                         result_entry["expectation"] = {
                             "status": "skipped",
@@ -8163,16 +8277,6 @@ def _test_chapter_impl(
                     update_result
                     and update_result.status == "rejected"
                     and any(issue.issue_type == "regression" for issue in update_result.validation_issues)
-                )
-                profiler_failures = _collect_required_profiler_failures(
-                    result_entry,
-                    best_opt,
-                    profiling_requested=bool(enable_profiling and profiling_output_dir),
-                )
-                profiler_failure_details = _collect_required_profiler_failure_details(
-                    result_entry,
-                    best_opt,
-                    profiling_requested=bool(enable_profiling and profiling_output_dir),
                 )
                 if profiler_failures:
                     result_entry["status"] = "failed_profiler"
@@ -9559,6 +9663,16 @@ def _test_chapter_impl(
                                 )
                         except Exception:
                             logger.warning("    WARNING: Best-only profiling failed", exc_info=True)
+                profiler_failures = _collect_required_profiler_failures(
+                    result_entry,
+                    best_opt,
+                    profiling_requested=bool(enable_profiling and profiling_output_dir),
+                )
+                profiler_failure_details = _collect_required_profiler_failure_details(
+                    result_entry,
+                    best_opt,
+                    profiling_requested=bool(enable_profiling and profiling_output_dir),
+                )
                 if best_opt:
                     emit_event(
                         event_logger,
@@ -9620,35 +9734,36 @@ def _test_chapter_impl(
                                 accept_regressions=accept_regressions or update_expectations,
                                 allow_mixed_provenance=allow_mixed_provenance_for_writes,
                             )
-                        update_result = active_expectations_store.update_entry(example_key, entry)
-                        try:
-                            result_entry["expectation"] = update_result.to_dict()
-                        except Exception:
-                            result_entry["expectation"] = {
-                                "status": update_result.status,
-                                "message": update_result.message,
-                                "validation_issues": [issue.to_dict() for issue in update_result.validation_issues],
-                            }
-                        if expectation_writes_enabled:
-                            logger.info("    Expectations: %s", update_result.message)
-                        else:
-                            result_entry["expectation"]["persisted"] = False
-                            result_entry["expectation"]["message"] = (
-                                f"{update_result.message} (preview only; rerun with "
-                                "--update-expectations/--accept-regressions/--allow-mixed-provenance "
-                                "to write the file.)"
+                        update_result, expectation_payload = (
+                            _update_expectation_entry_after_profiler_gate(
+                                active_expectations_store,
+                                example_key,
+                                entry,
+                                profiler_failures=profiler_failures,
                             )
-                            logger.info("    Expectations (preview): %s", update_result.message)
-                        log_expectation_delta(
-                            logger,
-                            example_key=example_key,
-                            goal=optimization_goal,
-                            old_entry=old_entry,
-                            new_entry=entry,
-                            update_result=update_result,
-                            event_logger=event_logger,
-                            chapter=chapter_name,
                         )
+                        result_entry["expectation"] = expectation_payload
+                        if update_result is not None:
+                            if expectation_writes_enabled:
+                                logger.info("    Expectations: %s", update_result.message)
+                            else:
+                                result_entry["expectation"]["persisted"] = False
+                                result_entry["expectation"]["message"] = (
+                                    f"{update_result.message} (preview only; rerun with "
+                                    "--update-expectations/--accept-regressions/--allow-mixed-provenance "
+                                    "to write the file.)"
+                                )
+                                logger.info("    Expectations (preview): %s", update_result.message)
+                            log_expectation_delta(
+                                logger,
+                                example_key=example_key,
+                                goal=optimization_goal,
+                                old_entry=old_entry,
+                                new_entry=entry,
+                                update_result=update_result,
+                                event_logger=event_logger,
+                                chapter=chapter_name,
+                            )
                     else:
                         result_entry["expectation"] = {
                             "status": "skipped",
@@ -9664,16 +9779,6 @@ def _test_chapter_impl(
                     update_result
                     and update_result.status == "rejected"
                     and any(issue.issue_type == "regression" for issue in update_result.validation_issues)
-                )
-                profiler_failures = _collect_required_profiler_failures(
-                    result_entry,
-                    best_opt,
-                    profiling_requested=bool(enable_profiling and profiling_output_dir),
-                )
-                profiler_failure_details = _collect_required_profiler_failure_details(
-                    result_entry,
-                    best_opt,
-                    profiling_requested=bool(enable_profiling and profiling_output_dir),
                 )
                 if profiler_failures:
                     result_entry["status"] = "failed_profiler"

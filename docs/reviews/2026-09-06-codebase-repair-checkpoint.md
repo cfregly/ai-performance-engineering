@@ -39,10 +39,15 @@ Every completed stage's owned processes drained.
 
 The original KV output check failed. A reduced real-class B200 diagnostic
 reproduced 31,600 tolerance violations with identical inputs; explicit FP32
-multiplication removed all violations without changing tolerance. The committed
-correction still requires its full default-workload GPU replay. The reported
-memory saving and single-pair timings are not accepted performance wins while
-their required validation remains incomplete.
+multiplication removed all violations without changing tolerance. The correction then passed all 13 append-path tests and full default-workload
+input/output verification on the B200. That replay still ended as a profiler
+failure: sidecar materialization incorrectly applied a 16 MiB source-file
+limit to the valid 41,843,422-byte optimized NCU capture. The repair separates
+streamed artifact hashing from source-worker limits and prevents failed
+required captures from updating saved expectations. Retained-report
+reprocessing and the complete merged-revision replay remain separate gates.
+The reported memory saving and single-pair timings are not accepted
+performance wins while required validation remains incomplete.
 
 ## Remaining work
 
