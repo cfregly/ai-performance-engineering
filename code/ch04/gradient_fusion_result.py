@@ -7,12 +7,16 @@ import shutil
 import tempfile
 import time
 import uuid
+from dataclasses import replace
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import torch
 
 from core.benchmark.verification import InputSignature, PrecisionFlags
+
+if TYPE_CHECKING:
+    from core.harness.benchmark_harness import BenchmarkConfig, TorchrunLaunchSpec
 
 GRADIENT_FUSION_RESULT_CALLBACK = "consume_gradient_fusion_child_results"
 GRADIENT_FUSION_RESULT_DIR_ENV = "AISP_GRADIENT_FUSION_RESULT_DIR"
@@ -61,6 +65,18 @@ def _gradient_fusion_signature(
 
 class GradientFusionChildResultMixin:
     """Validate measured rank outputs before exposing them to pair verification."""
+
+    def get_profile_torchrun_spec(
+        self,
+        *,
+        profiler: str,
+        config: BenchmarkConfig | None = None,
+        output_path: Path | None = None,
+    ) -> TorchrunLaunchSpec | None:
+        if profiler != "ncu":
+            return None
+        spec = self.get_torchrun_spec(config)
+        return replace(spec, script_args=[*(spec.script_args or []), "--profile-rank", "0"])
 
     _gradient_fusion_result_context: dict[str, Any] | None = None
     _gradient_fusion_result_bundle: dict[str, Any] | None = None

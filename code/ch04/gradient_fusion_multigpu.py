@@ -107,6 +107,7 @@ def run_benchmark(
     num_tensors: int,
     tensor_kb: int,
     iterations: int,
+    profile_rank: int | None = None,
 ) -> None:
     if mode not in {"baseline", "optimized"}:
         raise ValueError(f"Unsupported gradient-fusion mode: {mode!r}")
@@ -116,6 +117,8 @@ def run_benchmark(
     rank, world_size, device = init_distributed()
     if world_size < 2:
         raise RuntimeError("gradient_fusion_multigpu requires >=2 GPUs")
+    if profile_rank is not None and not 0 <= profile_rank < world_size:
+        raise ValueError("profile_rank must identify a participating rank")
 
     dtype = torch.float16
     numel = max(1, (tensor_kb * 1024) // FLOAT16_BYTES)
@@ -159,7 +162,9 @@ def run_benchmark(
         if mode == "baseline"
         else OPTIMIZED_PROFILE_NVTX_RANGE
     )
-    with nvtx_range(profile_range, enable=True):
+    # Select one rank for NCU while every rank still executes every collective.
+    # Profiling concurrent NCCL ranges from both processes can serialize peers.
+    with nvtx_range(profile_range, enable=profile_rank is None or rank == profile_rank):
         _run_collectives(
             mode,
             tensors,
@@ -211,6 +216,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-tensors", type=int, default=128, help="Number of small tensors.")
     parser.add_argument("--tensor-kb", type=int, default=64, help="Size per tensor (KB).")
     parser.add_argument("--iterations", type=int, default=50, help="Iterations to time.")
+    parser.add_argument(
+        "--profile-rank", type=int, default=None,
+        help="Emit the measured NVTX range only on this rank; all ranks execute.",
+    )
     args = parser.parse_args()
     if args.num_tensors <= 0:
         parser.error("--num-tensors must be positive")
@@ -228,6 +237,7 @@ def main() -> None:
         num_tensors=args.num_tensors,
         tensor_kb=args.tensor_kb,
         iterations=args.iterations,
+        profile_rank=args.profile_rank,
     )
 
 

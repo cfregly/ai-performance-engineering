@@ -58,6 +58,15 @@ def test_direct_torchrun_profile_declares_its_real_nvtx_range(
     assert command[include_index + 1] == expected_range
     assert command[command.index("--replay-mode") + 1] == "app-range"
 
+    benchmark = benchmark_type()
+    config = BenchmarkConfig(nproc_per_node=2)
+    ncu_spec = benchmark.get_profile_torchrun_spec(profiler="ncu", config=config)
+    assert ncu_spec is not None
+    assert ncu_spec.script_args[-2:] == ["--profile-rank", "0"]
+    assert ncu_spec.timing_iterations_per_sample == PAIR_TIMED_ITERATIONS
+    assert benchmark.get_profile_torchrun_spec(profiler="nsys", config=config) is None
+    assert benchmark.get_profile_torchrun_spec(profiler="torch", config=config) is None
+
 
 def test_real_target_limits_nvtx_range_to_timed_collectives() -> None:
     source = (
@@ -68,7 +77,7 @@ def test_real_target_limits_nvtx_range_to_timed_collectives() -> None:
         "_run_collectives(mode, tensors, fused, iterations=5, reduce_op=average_op)"
     )
     start_event = run_body.index("start.record()")
-    range_start = run_body.index("with nvtx_range(profile_range, enable=True):")
+    range_start = run_body.index("with nvtx_range(profile_range, enable=profile_rank is None or rank == profile_rank):")
     timed_call = run_body.index("iterations=iterations", range_start)
     end_event = run_body.index("end.record()")
     result_write = run_body.index("write_gradient_fusion_child_result(")
