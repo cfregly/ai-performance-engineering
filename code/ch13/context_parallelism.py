@@ -47,11 +47,10 @@ def _init_distributed() -> DistributedContext:
             f"LOCAL_RANK={local_rank} is invalid for cuda.device_count()={torch.cuda.device_count()}"
         )
 
-    if not dist.is_initialized():
-        dist.init_process_group(backend="nccl")
-
     device = torch.device("cuda", local_rank)
     torch.cuda.set_device(device)
+    if not dist.is_initialized():
+        dist.init_process_group(backend="nccl", device_id=device)
 
     return DistributedContext(
         rank=dist.get_rank(),
@@ -155,8 +154,11 @@ class RingAttention(nn.Module):
         seq_shard: int,
         causal: bool,
     ) -> torch.Tensor:
-        k_current = k_local
-        v_current = v_local
+        # The projected K/V views are transposed and therefore non-contiguous.
+        # Retain these materialized tensors until every asynchronous send that
+        # references them has completed.
+        k_current = k_local.contiguous()
+        v_current = v_local.contiguous()
         attn_num: Optional[torch.Tensor] = None
         global_max: Optional[torch.Tensor] = None
         global_sum: Optional[torch.Tensor] = None
@@ -170,7 +172,15 @@ class RingAttention(nn.Module):
                 scores.masked_fill_(mask, float("-inf"))
 
             local_max = scores.amax(dim=-1, keepdim=True)
-            exp_scores = torch.exp(scores - local_max)
+            # A future causal block can be fully masked. Subtracting its -inf
+            # maximum from -inf scores produces NaNs, although this block must
+            # contribute exactly zero to the streaming softmax.
+            safe_local_max = torch.where(
+                torch.isneginf(local_max),
+                torch.zeros_like(local_max),
+                local_max,
+            )
+            exp_scores = torch.exp(scores - safe_local_max)
             local_sum = exp_scores.sum(dim=-1, keepdim=True)
             local_num = torch.matmul(exp_scores, v_current)
 
@@ -180,8 +190,13 @@ class RingAttention(nn.Module):
                 attn_num = local_num
             else:
                 new_max = torch.maximum(global_max, local_max)
-                scale_prev = torch.exp(global_max - new_max)
-                scale_local = torch.exp(local_max - new_max)
+                safe_new_max = torch.where(
+                    torch.isneginf(new_max),
+                    torch.zeros_like(new_max),
+                    new_max,
+                )
+                scale_prev = torch.exp(global_max - safe_new_max)
+                scale_local = torch.exp(local_max - safe_new_max)
                 attn_num = attn_num * scale_prev + local_num * scale_local  # type: ignore[assignment]
                 global_sum = global_sum * scale_prev + local_sum * scale_local
                 global_max = new_max
@@ -192,15 +207,15 @@ class RingAttention(nn.Module):
 
                 k_recv, v_recv = self._recv_buffers_for(k_current, v_current, step & 1)
 
-                send_k = dist.isend(k_current.contiguous(), next_rank, group=self.process_group)
-                recv_k = dist.irecv(k_recv, prev_rank, group=self.process_group)
-                send_v = dist.isend(v_current.contiguous(), next_rank, group=self.process_group)
-                recv_v = dist.irecv(v_recv, prev_rank, group=self.process_group)
-
-                send_k.wait()
-                recv_k.wait()
-                send_v.wait()
-                recv_v.wait()
+                ops = [
+                    dist.P2POp(dist.isend, k_current, next_rank, group=self.process_group),
+                    dist.P2POp(dist.irecv, k_recv, prev_rank, group=self.process_group),
+                    dist.P2POp(dist.isend, v_current, next_rank, group=self.process_group),
+                    dist.P2POp(dist.irecv, v_recv, prev_rank, group=self.process_group),
+                ]
+                requests = dist.batch_isend_irecv(ops)
+                for request in requests:
+                    request.wait()
 
                 k_current = k_recv
                 v_current = v_recv

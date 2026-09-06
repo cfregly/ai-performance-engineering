@@ -121,6 +121,11 @@ class DecodeConfig:
     label: str = "decode_optimization"
 
 
+def _uses_transformer_engine_modules(cfg: DecodeConfig) -> bool:
+    """Return whether this configuration constructs TE modules in the compiled path."""
+    return bool(cfg.use_fp8 or cfg.use_fp4 or cfg.use_te_mlp)
+
+
 class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Lightweight decode loop benchmark for testing serving optimizations."""
 
@@ -163,6 +168,8 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._fp4_enabled: bool = False
         self._graph_error: Optional[str] = None
         self._compile_error: Optional[str] = None
+        self._compile_fullgraph: Optional[bool] = None
+        self._compile_te_partitioned: bool = False
         self._tf32_enabled: bool = False
         self.sdpa_ctx_factory = (
             prefer_sdpa_backends if prefer_sdpa_backends is not None else nullcontext
@@ -374,6 +381,15 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         metrics["use_torch_compile"] = float(
             self.cfg.use_torch_compile and not self._compile_error
         )
+        metrics["torch_compile_fullgraph"] = float(
+            self.cfg.use_torch_compile and self._compile_fullgraph is True
+        )
+        metrics["torch_compile_transformer_engine_partitioned"] = float(
+            self.cfg.use_torch_compile and self._compile_te_partitioned
+        )
+        metrics["transformer_engine_modules"] = float(
+            _uses_transformer_engine_modules(self.cfg)
+        )
         metrics["reuse_device_prompt"] = float(self.cfg.reuse_device_prompt)
         metrics["reuse_prefill_state"] = float(self.cfg.reuse_prefill_state)
         metrics["prefill_computes_per_iteration"] = (
@@ -414,9 +430,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # then move to device. This ensures parameter init uses CPU RNG.
         self.embedding = nn.Embedding(vs, hs, dtype=self.dtype).to(self.device)
 
-        use_te_modules = bool(
-            TE_AVAILABLE and (self.cfg.use_fp8 or self.cfg.use_fp4 or self.cfg.use_te_mlp)
-        )
+        use_te_modules = bool(TE_AVAILABLE and _uses_transformer_engine_modules(self.cfg))
         te_init_context = nullcontext()
         if use_te_modules and (self._fp8_enabled or self._fp4_enabled):
             if quantized_model_init is None or self.fp8_recipe is None:
@@ -657,8 +671,21 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # When using explicit CUDA graphs, don't use reduce-overhead mode (which uses internal graphs)
         # as this causes "Cannot prepare for replay during capturing stage" errors
         compile_mode = "default" if self.cfg.use_cuda_graphs else "reduce-overhead"
-        self.prefill_fn = torch.compile(self._run_prefill_math, mode=compile_mode, fullgraph=False)
-        self.decode_fn = torch.compile(self._run_decode_step_math, mode=compile_mode, fullgraph=True)
+        # Transformer Engine 2.9 marks module forwards with torch.compiler.disable.
+        # Permit Dynamo to partition at those explicit TE boundaries while keeping
+        # native PyTorch configurations strict and fully captured.
+        self._compile_te_partitioned = _uses_transformer_engine_modules(self.cfg)
+        self._compile_fullgraph = not self._compile_te_partitioned
+        self.prefill_fn = torch.compile(
+            self._run_prefill_math,
+            mode=compile_mode,
+            fullgraph=self._compile_fullgraph,
+        )
+        self.decode_fn = torch.compile(
+            self._run_decode_step_math,
+            mode=compile_mode,
+            fullgraph=self._compile_fullgraph,
+        )
         self._compile_error = None
 
     def _capture_decode_graph(self) -> None:
@@ -673,7 +700,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         # NO FALLBACK - CUDA graph capture must succeed
         # Warm up to populate kernels/caches prior to capture.
-        with torch.inference_mode(), self.sdpa_ctx_factory():
+        with self._get_fp8_context(), torch.inference_mode(), self.sdpa_ctx_factory():
             with torch.cuda.stream(self.graph_stream):
                 if not self.cfg.graph_full_iteration:
                     _prime_decode_state()
@@ -712,7 +739,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def _prefill(self, tokens: torch.Tensor) -> torch.Tensor:
         """Public prefill wrapper for direct calls outside the benchmark loop."""
-        with torch.inference_mode(), self.sdpa_ctx_factory():
+        with self._get_fp8_context(), torch.inference_mode(), self.sdpa_ctx_factory():
             return self._run_prefill_math(tokens)
 
     def _decode_step(
@@ -726,7 +753,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._decode_next_token is None
         ):
             raise RuntimeError("Decode buffers must be initialized before _decode_step()")
-        with torch.inference_mode(), self.sdpa_ctx_factory():
+        with self._get_fp8_context(), torch.inference_mode(), self.sdpa_ctx_factory():
             return self._run_decode_step_math(tokens, state)
 
     def _run_decode_step_math(

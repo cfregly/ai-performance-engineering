@@ -98,6 +98,17 @@ def test_cuda_encoder_uses_the_production_host_metadata() -> None:
         assert f"layout.{field}" in encoder
 
 
+def test_async_prefetch_2d_bounds_partial_output_tiles() -> None:
+    source = (CODE_ROOT / "ch07/async_prefetch_2d_demo.cu").read_text(encoding="utf-8")
+    kernel = source.split("__global__ void tma_copy_2d_kernel", 1)[1].split("#endif", 1)[0]
+
+    assert "rows == TILE_M && cols == TILE_N" in kernel
+    assert "cp_async_bulk_tensor_2d_shared_to_global" in kernel
+    assert "index < rows * cols" in kernel
+    assert "static_cast<std::size_t>(tile_m + local_row) * output_ld" in kernel
+    assert "output[output_index] = tile[local_row][local_col]" in kernel
+
+
 def test_cuda_gate_records_unavailable_compiler_without_claiming_a_pass(tmp_path: Path) -> None:
     output = tmp_path / "receipt"
     env = os.environ.copy()

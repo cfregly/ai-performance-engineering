@@ -137,7 +137,8 @@ bool verify_copy_case(int height, int width, int ld) {
 
     const dim3 grid((width + BoxCols - 1) / BoxCols, (height + BoxRows - 1) / BoxRows);
 #if TMA_VALIDATION_CASE == 0
-    tma_copy_2d_kernel<128, 64><<<grid, dim3(16, 8)>>>(in_desc, out_desc, height, width);
+    tma_copy_2d_kernel<128, 64><<<grid, dim3(16, 8)>>>(
+        in_desc, out_desc, dst, height, width, ld);
 #elif TMA_VALIDATION_CASE == 1
     tma_bulk_copy_kernel<128, 64><<<grid, dim3(32)>>>(in_desc, out_desc, width, height);
 #elif TMA_VALIDATION_CASE == 2
