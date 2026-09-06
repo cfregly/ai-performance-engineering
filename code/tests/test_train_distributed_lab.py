@@ -76,14 +76,20 @@ def test_train_distributed_mlp_builders_use_inplace_relu() -> None:
         "optimized_zero1.py",
         "baseline_zero1_multigpu.py",
         "optimized_zero1_multigpu.py",
-        "baseline_zero3.py",
-        "baseline_zero3_multigpu.py",
         "pipeline.py",
     ):
         source = (LAB_DIR / relative).read_text(encoding="utf-8")
 
         assert "nn.ReLU(inplace=True)" in source
         assert "nn.ReLU()" not in source
+
+
+def test_zero3_builders_use_hook_safe_out_of_place_relu() -> None:
+    for relative in ("baseline_zero3.py", "baseline_zero3_multigpu.py"):
+        source = (LAB_DIR / relative).read_text(encoding="utf-8")
+
+        assert "nn.ReLU(inplace=False)" in source
+        assert "nn.ReLU(inplace=True)" not in source
 
 
 def test_zero2_gradient_sharder_reuses_reduce_buffers() -> None:
