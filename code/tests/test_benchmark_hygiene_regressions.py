@@ -4633,8 +4633,9 @@ def test_ch04_distributed_benchmarks_cache_nvtx_and_parameter_counts() -> None:
         if relative == "ch04/ddp_no_overlap.py":
             assert "self._model_parameters: tuple[nn.Parameter, ...] = ()" in source
             assert "self._model_parameters = tuple(self.model.parameters())" in setup_section
-            assert "self.optimizer = optim.SGD(self._model_parameters, lr=0.01)" in setup_section
-            assert "for param in self._model_parameters:" in benchmark_section
+            assert "self.optimizer = optim.SGD(self._model_parameters, lr=LEARNING_RATE)" in setup_section
+            assert "_run_no_overlap_step(" in benchmark_section
+            assert "self._model_parameters," in benchmark_section
             assert "for param in self.model.parameters():" not in benchmark_section
             assert "self._model_parameters = ()" in teardown_section
         assert "get_config()" not in benchmark_section
@@ -23886,7 +23887,8 @@ def test_ch10_tcgen05_baseline_epilogue_adds_bias_in_place() -> None:
     assert "C.copy_(self.module.matmul_tcgen05(self.A, self.B))" in benchmark_section
     assert "C.add_(self.bias)" in benchmark_section
     assert "F.silu(C, inplace=True)" in benchmark_section
-    assert "self.output.copy_(C)" in benchmark_section
+    assert "self._output_buffer.copy_(C)" in benchmark_section
+    assert "self.output = self._output_buffer" in benchmark_section
     assert ".float()" not in benchmark_section
     assert "C = C + self.bias" not in benchmark_section
     assert "self.output = F.silu(C).to(dtype=torch.float16)" not in benchmark_section
