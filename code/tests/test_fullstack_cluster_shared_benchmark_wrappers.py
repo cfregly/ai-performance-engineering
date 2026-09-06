@@ -405,8 +405,11 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "current_stream = torch.cuda.current_stream()" in forward_section
     assert "routing_start.record(current_stream)" in forward_section
     assert "routing_end.record(current_stream)" in forward_section
-    assert "self._comm_stream.wait_stream(current_stream)" in forward_section
-    assert "current_stream.wait_stream(self._comm_stream)" in forward_section
+    assert 'and overlap_mode == "local_remote"' in forward_section
+    assert "hierarchical local/remote overlap is not yet supported" in forward_section
+    assert "local_bypass_mask=same_rank_mask" in forward_section
+    assert 'event_label="same_node_joint"' in forward_section
+    assert "self._comm_stream" not in forward_section
     assert "torch.cuda.current_stream().wait_stream" not in forward_section
     assert ".record(torch.cuda.current_stream())" not in forward_section
     assert run_step_section.count("torch.cuda.current_stream()") == 1

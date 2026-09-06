@@ -387,9 +387,6 @@ class DeepSeekHybridEPModule(nn.Module):
         self._aux_metric_buffer: Optional[torch.Tensor] = None
         self._aux_metric_host_buffer: Optional[torch.Tensor] = None
         self._aux_metric_list_buffer = [0.0] * 4
-        # Allocate only when CUDA overlap is actually executed. CPU collective
-        # correctness tests exercise the same route helpers with real Gloo.
-        self._comm_stream = None
         self._latest_forward_output: Optional[torch.Tensor] = None
         self._latest_route_assignments: Optional[torch.Tensor] = None
         self._dispatch_payload_sent_bytes = 0
@@ -627,6 +624,9 @@ class DeepSeekHybridEPModule(nn.Module):
             reuse=self.optimized and not differentiable,
             device=tokens.device,
         )
+        # The joint-batch path below presents this method with the same tensor
+        # shape and incoming order as the baseline, so its deterministic tie
+        # handling is identical for both variants.
         sort_idx = torch.argsort(expert_ids)
         sorted_tokens = tokens.index_select(0, sort_idx)
         sorted_weights = weights.index_select(0, sort_idx)
@@ -652,6 +652,65 @@ class DeepSeekHybridEPModule(nn.Module):
             offset = next_offset
         outputs.index_copy_(0, sort_idx, sorted_outputs)
         return outputs
+
+    def _apply_joint_experts_with_local_routes(
+        self,
+        *,
+        recv_tokens: torch.Tensor,
+        recv_weights: torch.Tensor,
+        recv_local_expert_ids: torch.Tensor,
+        recv_counts: Sequence[int],
+        local_tokens: torch.Tensor,
+        local_weights: torch.Tensor,
+        local_expert_ids: torch.Tensor,
+        group_rank: int,
+        buffer_namespace: str,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Insert bypassed local routes into source order and run one expert batch.
+
+        A list all-to-all baseline receives one source-ordered tensor and invokes
+        each expert once.  The optimized path avoids sending routes whose owner
+        is the current rank, but those rows must be restored at the current
+        source-rank position before expert compute.  Keeping one joint batch is
+        both the same mathematical workload and the same BF16 GEMM shape as the
+        baseline.  The returned tensors preserve the communicated receive order
+        and the original local-route order respectively.
+        """
+        if len(recv_counts) <= group_rank or group_rank < 0:
+            raise ValueError("group_rank must identify an entry in recv_counts")
+        if int(recv_counts[group_rank]) != 0:
+            raise ValueError("local-bypass exchange unexpectedly received self routes")
+        if sum(int(count) for count in recv_counts) != recv_tokens.size(0):
+            raise ValueError("recv_counts do not cover the received route tensor")
+        if recv_weights.size(0) != recv_tokens.size(0) or recv_local_expert_ids.size(0) != recv_tokens.size(0):
+            raise ValueError("received route tensors must have matching leading dimensions")
+        if local_weights.size(0) != local_tokens.size(0) or local_expert_ids.size(0) != local_tokens.size(0):
+            raise ValueError("local route tensors must have matching leading dimensions")
+
+        recv_token_parts = self._split_list(recv_tokens, recv_counts)
+        recv_weight_parts = self._split_list(recv_weights, recv_counts)
+        recv_expert_parts = self._split_list(recv_local_expert_ids, recv_counts)
+        joint_counts = [int(count) for count in recv_counts]
+        joint_counts[group_rank] = int(local_tokens.size(0))
+        recv_token_parts[group_rank] = local_tokens
+        recv_weight_parts[group_rank] = local_weights
+        recv_expert_parts[group_rank] = local_expert_ids
+
+        joint_tokens = torch.cat(recv_token_parts, dim=0)
+        joint_weights = torch.cat(recv_weight_parts, dim=0)
+        joint_expert_ids = torch.cat(recv_expert_parts, dim=0)
+        joint_outputs = self._apply_local_experts(
+            joint_tokens,
+            joint_expert_ids,
+            joint_weights,
+            buffer_namespace=f"{buffer_namespace}.joint",
+        )
+        output_parts = self._split_list(joint_outputs, joint_counts)
+        local_outputs = output_parts[group_rank]
+        output_parts[group_rank] = joint_outputs.new_empty(
+            (0, *joint_outputs.shape[1:])
+        )
+        return torch.cat(output_parts, dim=0), local_outputs
 
     def _record_roundtrip_sent_bytes(
         self,
@@ -794,17 +853,42 @@ class DeepSeekHybridEPModule(nn.Module):
         use_single: bool,
         reuse: bool,
         event_label: str,
+        local_bypass_mask: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[PhaseEvents]]:
         # Zero sends do not imply zero receives. Every group member must enter
         # the count exchange and both directions of all-to-all, including empty ranks.
-        sort_idx = torch.argsort(dest_ranks)
-        inverse_sort = torch.empty_like(sort_idx)
-        inverse_sort[sort_idx] = self._range_indices(sort_idx.numel(), sort_idx.device)
-        sorted_tokens = tokens.index_select(0, sort_idx)
-        sorted_weights = weights.index_select(0, sort_idx)
-        sorted_token_indices = token_indices.index_select(0, sort_idx)
-        sorted_local_ids = local_expert_ids.index_select(0, sort_idx)
-        send_counts = self._destination_count_list(dest_ranks, group_size)
+        if local_bypass_mask is not None:
+            if local_bypass_mask.dtype != torch.bool or local_bypass_mask.shape != dest_ranks.shape:
+                raise ValueError("local_bypass_mask must be boolean and match route shape")
+            if not use_single or group_size <= 1:
+                raise ValueError("local route bypass requires multi-rank all_to_all_single")
+            # Sort the complete route vector before removing local routes.  The
+            # baseline performs this exact sort, so both the communicated and
+            # bypassed rows retain its tie order without making the baseline use
+            # a slower stable sort.
+            full_sort_idx = torch.argsort(dest_ranks)
+            sorted_local_mask = local_bypass_mask.index_select(0, full_sort_idx)
+            local_positions = full_sort_idx[sorted_local_mask]
+            dispatch_positions = full_sort_idx[~sorted_local_mask]
+            sorted_tokens = tokens.index_select(0, dispatch_positions)
+            sorted_weights = weights.index_select(0, dispatch_positions)
+            dispatch_dest_ranks = dest_ranks.index_select(0, dispatch_positions)
+            sorted_token_indices = token_indices.index_select(0, dispatch_positions)
+            sorted_local_ids = local_expert_ids.index_select(0, dispatch_positions)
+            inverse_sort: Optional[torch.Tensor] = None
+        else:
+            local_positions = None
+            dispatch_positions = None
+            sort_idx = torch.argsort(dest_ranks)
+            inverse_sort = torch.empty_like(sort_idx)
+            inverse_sort[sort_idx] = self._range_indices(sort_idx.numel(), sort_idx.device)
+            sorted_tokens = tokens.index_select(0, sort_idx)
+            sorted_weights = weights.index_select(0, sort_idx)
+            sorted_token_indices = token_indices.index_select(0, sort_idx)
+            sorted_local_ids = local_expert_ids.index_select(0, sort_idx)
+            send_counts = self._destination_count_list(dest_ranks, group_size)
+        if local_bypass_mask is not None:
+            send_counts = self._destination_count_list(dispatch_dest_ranks, group_size)
         recv_counts = self._exchange_counts(send_counts, group=group, group_size=group_size, group_rank=group_rank, device=tokens.device)
 
         events = self._phase_events(event_label) if tokens.is_cuda else None
@@ -814,7 +898,7 @@ class DeepSeekHybridEPModule(nn.Module):
 
         meta = self._buffer(
             f"{event_label}.route_meta",
-            (sort_idx.numel(), 2),
+            (sorted_token_indices.numel(), 2),
             sorted_token_indices.dtype,
             reuse=reuse,
             device=sorted_token_indices.device,
@@ -837,12 +921,27 @@ class DeepSeekHybridEPModule(nn.Module):
         if events is not None:
             events.mid.record(current_stream)
 
-        expert_outputs = self._apply_local_experts(
-            recv_tokens,
-            recv_meta[:, 1].to(torch.int64),
-            recv_weights,
-            buffer_namespace=event_label,
-        )
+        local_outputs: Optional[torch.Tensor] = None
+        if local_bypass_mask is None:
+            expert_outputs = self._apply_local_experts(
+                recv_tokens,
+                recv_meta[:, 1].to(torch.int64),
+                recv_weights,
+                buffer_namespace=event_label,
+            )
+        else:
+            assert local_positions is not None
+            expert_outputs, local_outputs = self._apply_joint_experts_with_local_routes(
+                recv_tokens=recv_tokens,
+                recv_weights=recv_weights,
+                recv_local_expert_ids=recv_meta[:, 1].to(torch.int64),
+                recv_counts=recv_counts,
+                local_tokens=tokens.index_select(0, local_positions),
+                local_weights=weights.index_select(0, local_positions),
+                local_expert_ids=local_expert_ids.index_select(0, local_positions),
+                group_rank=group_rank,
+                buffer_namespace=event_label,
+            )
         self._record_roundtrip_sent_bytes(
             group_size=group_size,
             dispatch_payload=payload,
@@ -859,7 +958,24 @@ class DeepSeekHybridEPModule(nn.Module):
         if events is not None:
             events.end.record(current_stream)
 
-        return returned.index_select(0, inverse_sort), events
+        if local_bypass_mask is None:
+            assert inverse_sort is not None
+            returned = returned.index_select(0, inverse_sort)
+            return returned, events
+
+        assert local_outputs is not None
+        assert local_positions is not None
+        assert dispatch_positions is not None
+        outputs = self._buffer(
+            f"{event_label}.route_outputs",
+            (tokens.size(0), *returned.shape[1:]),
+            torch.promote_types(tokens.dtype, weights.dtype),
+            reuse=reuse and not torch.is_grad_enabled(),
+            device=tokens.device,
+        )
+        outputs.index_copy_(0, local_positions, local_outputs)
+        outputs.index_copy_(0, dispatch_positions, returned)
+        return outputs, events
 
     def _route_tokens(
         self,
@@ -894,6 +1010,15 @@ class DeepSeekHybridEPModule(nn.Module):
         overlap_mode: str,
         aux_loss_scale: float,
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
+        if (
+            self.optimized
+            and self.topology.hybrid_enabled
+            and overlap_mode == "local_remote"
+        ):
+            raise RuntimeError(
+                "optimized multi-node hybrid EP requires a source-ordered joint "
+                "expert batch; hierarchical local/remote overlap is not yet supported"
+            )
         hidden = self.input_proj(inputs)
         routing_start, routing_end = self._event_pair("routing")
         current_stream = torch.cuda.current_stream()
@@ -930,9 +1055,6 @@ class DeepSeekHybridEPModule(nn.Module):
         same_rank_events: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
         same_node_events: Optional[PhaseEvents] = None
         remote_events: Optional[PhaseEvents] = None
-        local_branch_events: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
-        remote_branch_events: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
-        overlap_window_events: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
 
         if self.optimized and self.topology.world_size == 1:
             same_rank_start, same_rank_end = self._event_pair("same_rank_single")
@@ -946,23 +1068,22 @@ class DeepSeekHybridEPModule(nn.Module):
             same_rank_end.record(current_stream)
             same_rank_events = (same_rank_start, same_rank_end)
             same_rank_count = float(token_indices.numel())
-        elif self.optimized:
+        elif self.optimized and self.topology.intra_node_only:
             same_rank_mask = owner_ranks == self.topology.rank
-            if owner_nodes is None:
-                same_node_mask = ~same_rank_mask
-                remote_node_mask = self._buffer(
-                    "remote_node_mask",
-                    tuple(same_rank_mask.shape),
-                    same_rank_mask.dtype,
-                    reuse=True,
-                    device=same_rank_mask.device,
-                )
-                remote_node_mask.zero_()
-            else:
-                same_node_mask = (owner_nodes == self.topology.node_rank) & ~same_rank_mask
-                remote_node_mask = owner_nodes != self.topology.node_rank
-
-            remote_outputs: Optional[torch.Tensor] = None
+            # Multi-node optimized execution is rejected above until it can
+            # retain a single source-ordered expert batch without fabricating
+            # local/remote overlap.  Within one node, all non-local routes use
+            # the local process group and local routes bypass communication.
+            assert owner_nodes is None
+            same_node_mask = ~same_rank_mask
+            remote_node_mask = self._buffer(
+                "remote_node_mask",
+                tuple(same_rank_mask.shape),
+                same_rank_mask.dtype,
+                reuse=True,
+                device=same_rank_mask.device,
+            )
+            remote_node_mask.zero_()
             route_type_counts = self._route_type_count_list(
                 same_rank_mask,
                 same_node_mask,
@@ -971,41 +1092,39 @@ class DeepSeekHybridEPModule(nn.Module):
             same_rank_count_int, same_node_count_int, remote_count_int = (
                 int(count) for count in route_type_counts
             )
-            remote_collective_required = self.topology.hybrid_enabled and self.topology.world_size > 1
-            overlap_active = remote_collective_required and overlap_mode == "local_remote"
-            if overlap_active:
-                local_branch_start, local_branch_end = self._event_pair("local_branch")
-                remote_branch_start, remote_branch_end = self._event_pair("remote_branch")
-                overlap_window_start, overlap_window_end = self._event_pair("overlap_window")
-                local_branch_events = (local_branch_start, local_branch_end)
-                remote_branch_events = (remote_branch_start, remote_branch_end)
-                overlap_window_events = (overlap_window_start, overlap_window_end)
-                overlap_window_start.record(current_stream)
-            if overlap_active:
-                if self._comm_stream is None:
-                    self._comm_stream = torch.cuda.Stream(device=hidden.device)
-                self._comm_stream.wait_stream(current_stream)
-                for tensor in (expanded_tokens, expanded_weights, owner_ranks, token_indices, local_expert_ids, remote_node_mask):
-                    tensor.record_stream(self._comm_stream)
-                with torch.cuda.stream(self._comm_stream):
-                    remote_branch_start.record(self._comm_stream)
-                    remote_outputs, remote_events = self._roundtrip_routes(
-                        tokens=expanded_tokens[remote_node_mask],
-                        weights=expanded_weights[remote_node_mask],
-                        dest_ranks=owner_ranks[remote_node_mask],
-                        token_indices=token_indices[remote_node_mask],
-                        local_expert_ids=local_expert_ids[remote_node_mask],
-                        group=None,
-                        group_size=self.topology.world_size,
-                        group_rank=self.topology.rank,
-                        use_single=True,
-                        reuse=True,
-                        event_label="remote",
-                    )
-                    remote_branch_end.record(self._comm_stream)
+            local_group_ranks = owner_ranks % self.topology.local_world_size
+            joint_outputs, same_node_events = self._roundtrip_routes(
+                tokens=expanded_tokens,
+                weights=expanded_weights,
+                dest_ranks=local_group_ranks,
+                token_indices=token_indices,
+                local_expert_ids=local_expert_ids,
+                group=self.topology.local_group,
+                group_size=self.topology.local_world_size,
+                group_rank=self.topology.local_rank,
+                use_single=True,
+                reuse=True,
+                event_label="same_node_joint",
+                local_bypass_mask=same_rank_mask,
+            )
+            combined.index_add_(0, token_indices, joint_outputs)
+            same_rank_count = float(same_rank_count_int)
+            same_node_count = float(same_node_count_int)
+            remote_count = float(remote_count_int)
+        elif self.optimized:
+            same_rank_mask = owner_ranks == self.topology.rank
+            assert owner_nodes is not None
+            same_node_mask = (owner_nodes == self.topology.node_rank) & ~same_rank_mask
+            remote_node_mask = owner_nodes != self.topology.node_rank
 
-            if overlap_active and local_branch_events is not None:
-                local_branch_events[0].record(current_stream)
+            route_type_counts = self._route_type_count_list(
+                same_rank_mask,
+                same_node_mask,
+                remote_node_mask,
+            )
+            same_rank_count_int, same_node_count_int, remote_count_int = (
+                int(count) for count in route_type_counts
+            )
             if same_rank_count_int > 0:
                 same_rank_start, same_rank_end = self._event_pair("same_rank")
                 same_rank_start.record(current_stream)
@@ -1018,11 +1137,9 @@ class DeepSeekHybridEPModule(nn.Module):
                 same_rank_end.record(current_stream)
                 same_rank_events = (same_rank_start, same_rank_end)
             if self.topology.local_group is not None:
-                if overlap_active:
-                    # Finish world-communicator work before entering another NCCL
-                    # process group. Same-rank expert compute above still overlaps.
-                    current_stream.wait_stream(self._comm_stream)
-                local_group_ranks = owner_ranks[same_node_mask] % self.topology.local_world_size
+                local_group_ranks = (
+                    owner_ranks[same_node_mask] % self.topology.local_world_size
+                )
                 same_node_outputs, same_node_events = self._roundtrip_routes(
                     tokens=expanded_tokens[same_node_mask],
                     weights=expanded_weights[same_node_mask],
@@ -1037,37 +1154,20 @@ class DeepSeekHybridEPModule(nn.Module):
                     event_label="same_node",
                 )
                 combined.index_add_(0, token_indices[same_node_mask], same_node_outputs)
-            else:
-                same_node_events = None
-            if overlap_active and local_branch_events is not None:
-                local_branch_events[1].record(current_stream)
-
-            if remote_outputs is None and remote_collective_required:
-                if remote_branch_events is not None:
-                    remote_branch_events[0].record(current_stream)
-                remote_outputs, remote_events = self._roundtrip_routes(
-                    tokens=expanded_tokens[remote_node_mask],
-                    weights=expanded_weights[remote_node_mask],
-                    dest_ranks=owner_ranks[remote_node_mask],
-                    token_indices=token_indices[remote_node_mask],
-                    local_expert_ids=local_expert_ids[remote_node_mask],
-                    group=None,
-                    group_size=self.topology.world_size,
-                    group_rank=self.topology.rank,
-                    use_single=True,
-                    reuse=True,
-                    event_label="remote",
-                )
-                if remote_branch_events is not None:
-                    remote_branch_events[1].record(current_stream)
-
-            if remote_outputs is not None:
-                if self._comm_stream is not None and overlap_mode == "local_remote":
-                    current_stream.wait_stream(self._comm_stream)
-                    remote_outputs.record_stream(current_stream)
-                combined.index_add_(0, token_indices[remote_node_mask], remote_outputs)
-            if overlap_active and overlap_window_events is not None:
-                overlap_window_events[1].record(current_stream)
+            remote_outputs, remote_events = self._roundtrip_routes(
+                tokens=expanded_tokens[remote_node_mask],
+                weights=expanded_weights[remote_node_mask],
+                dest_ranks=owner_ranks[remote_node_mask],
+                token_indices=token_indices[remote_node_mask],
+                local_expert_ids=local_expert_ids[remote_node_mask],
+                group=None,
+                group_size=self.topology.world_size,
+                group_rank=self.topology.rank,
+                use_single=True,
+                reuse=True,
+                event_label="remote",
+            )
+            combined.index_add_(0, token_indices[remote_node_mask], remote_outputs)
             same_rank_count = float(same_rank_count_int)
             same_node_count = float(same_node_count_int)
             remote_count = float(remote_count_int)
@@ -1111,16 +1211,6 @@ class DeepSeekHybridEPModule(nn.Module):
                 same_node_metrics = same_node_events.to_metrics()
             if remote_events is not None:
                 remote_metrics = remote_events.to_metrics()
-            if (
-                local_branch_events is not None
-                and remote_branch_events is not None
-                and overlap_window_events is not None
-            ):
-                local_branch_ms = float(local_branch_events[0].elapsed_time(local_branch_events[1]))
-                remote_branch_ms = float(remote_branch_events[0].elapsed_time(remote_branch_events[1]))
-                overlap_window_ms = float(overlap_window_events[0].elapsed_time(overlap_window_events[1]))
-                overlap_saved_ms = max(0.0, (local_branch_ms + remote_branch_ms) - overlap_window_ms)
-                overlap_pct = 100.0 * overlap_saved_ms / max(local_branch_ms + remote_branch_ms, 1e-6)
 
         route_counts_global = route_counts
         if self.topology.world_size > 1 and dist.is_initialized():
