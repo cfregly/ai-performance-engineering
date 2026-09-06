@@ -828,6 +828,15 @@ Profiler policy explicitly permits interrupting or terminating owned NCU/NSYS
 processes without asking, for direct runs and scheduler jobs. Interrupted
 captures retain their artifacts and incomplete status.
 
+Wave 21 completed MoE's 16 full-result timing observations and captured both
+arms. Its optimized capture and the DDP baseline capture exposed an Nsys
+validator bug: the second statistics query reopened the original report and
+could reject the just-exported database as older than that report. Reading the
+fresh database directly succeeds on both retained captures and finds the
+expected workload ranges. The harness now uses that path; 38 profiler-contract
+tests pass with one skip. Original failed receipts remain intact, and the
+remaining DDP optimized capture is still required.
+
 The cache-aware disaggregation performance miss also has a precise topology
 limit: one prefill rank plus one decode rank produces identical baseline and
 optimized locality routes. At least two decode ranks are necessary to test

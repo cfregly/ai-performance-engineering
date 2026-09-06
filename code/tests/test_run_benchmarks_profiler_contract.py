@@ -717,7 +717,9 @@ def test_nsys_kernel_report_validation_accepts_real_kernel_summary_shape(
     assert len(calls) == 2
     validation_sqlite = Path(calls[0][calls[0].index("--sqlite") + 1])
     assert validation_sqlite != stale_sqlite
-    assert calls[1][calls[1].index("--sqlite") + 1] == str(validation_sqlite)
+    assert calls[1][-1] == str(validation_sqlite)
+    assert str(report) not in calls[1]
+    assert "--sqlite" not in calls[1]
     assert "--force-export=true" in calls[0]
     assert "--force-export=true" not in calls[1]
     assert stale_sqlite.read_text(encoding="utf-8") == "historical"

@@ -2623,13 +2623,13 @@ def _validate_nsys_cuda_kernel_report(
                 [
                     "nsys",
                     "stats",
-                    "--sqlite",
-                    str(validation_sqlite),
                     "--report",
                     "nvtx_sum",
                     "--format",
                     "csv",
-                    str(report_path),
+                    # Read the freshly exported database directly. Reopening
+                    # the report can reject it after export updates its mtime.
+                    str(validation_sqlite),
                 ],
                 capture_output=True,
                 text=True,
