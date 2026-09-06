@@ -88,11 +88,23 @@ class ReusableReductionMlp(nn.Module):
         fc1_out: torch.Tensor,
         fc2_out: torch.Tensor,
     ) -> torch.Tensor:
-        torch.matmul(x, self._fc1_weight_t, out=fc1_out)
         if self.fc1.bias is not None:
-            fc1_out.add_(self.fc1.bias)
+            torch.addmm(
+                self.fc1.bias,
+                x.reshape(-1, x.shape[-1]),
+                self._fc1_weight_t,
+                out=fc1_out.reshape(-1, fc1_out.shape[-1]),
+            )
+        else:
+            torch.matmul(x, self._fc1_weight_t, out=fc1_out)
         self.relu(fc1_out)
-        torch.matmul(fc1_out, self._fc2_weight_t, out=fc2_out)
         if self.fc2.bias is not None:
-            fc2_out.add_(self.fc2.bias)
+            torch.addmm(
+                self.fc2.bias,
+                fc1_out.reshape(-1, fc1_out.shape[-1]),
+                self._fc2_weight_t,
+                out=fc2_out.reshape(-1, fc2_out.shape[-1]),
+            )
+        else:
+            torch.matmul(fc1_out, self._fc2_weight_t, out=fc2_out)
         return fc2_out
