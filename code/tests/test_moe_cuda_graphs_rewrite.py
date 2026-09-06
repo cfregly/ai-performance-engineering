@@ -134,6 +134,25 @@ def test_graphable_bmm_fused_path_matches_dynamic_bmm_path() -> None:
     torch.testing.assert_close(graphable_again, dynamic)
 
 
+def test_graphable_bmm_fused_path_is_aot_compile_safe() -> None:
+    experts = _make_experts(use_cuda_graphs=True).eval()
+    experts.opts.use_compile = True
+    x = torch.randn(4, 4)
+    expert_indices = torch.tensor([[0], [1], [0], [1]], dtype=torch.long)
+    expert_weights = torch.ones(4, 1)
+
+    with torch.inference_mode():
+        expected = experts._forward_bmm_fused_graphable(x, expert_indices, expert_weights)
+        compiled = torch.compile(
+            experts._forward_bmm_fused_graphable,
+            backend="aot_eager",
+            fullgraph=True,
+        )
+        actual = compiled(x, expert_indices, expert_weights)
+
+    torch.testing.assert_close(actual, expected)
+
+
 def test_moe_benchmark_metrics_surface_model_cuda_graph_state() -> None:
     bench = MoEJourneyBenchmark()
     bench.opts = MoEOptimizations(use_bmm_fused=True, use_cuda_graphs=True)

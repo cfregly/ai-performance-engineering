@@ -1029,3 +1029,62 @@ Reproducible entrypoints are documented in [the sweep playbook](../../code/FULL_
 Focused KV checks run with `python -m pytest tests/test_kv_optimization_append_paths.py`
 from `code/`. Hardware and dependency requirements still apply independently of
 whether an external scheduler is used.
+
+### Completed breadth and Wave 27 repairs
+
+The direct sweep on `0058fc6e6` finished with an outcome for every one of the
+486 benchmark identities. The final ledger contains 441 zero exits, 44 exits
+with code 1, and one native crash with code 139. Zero exits include explicit
+unsupported and informational cases; they are not 441 demonstrated runtime
+passes. The coordinator's larger failure count includes repeated attempts.
+The final GPU suite completed with **5,569 passed, 78 skipped, and two failed**
+out of 5,649 tests. All owned process groups drained and the results were
+preserved before advancing source.
+
+The two test failures identified a pooled-cache view restriction and README
+generation that depended on ignored local artifacts. Cached token views now
+use independent indexing instead of multi-output `unbind` views, preserving
+writable buffers in ordinary grad-enabled module calls. Ten focused CPU tests
+passed. Generator-owned READMEs now use checked-in historical rows; explicitly
+requested artifact rendering remains separate. Twelve generator tests passed,
+including a real temporary checkout with malformed ignored history.
+
+Additional repairs from the completed sweep are awaiting B200 reruns:
+
+- Sequence parallelism now identifies the `all_reduce` required by both arms
+  in its input contract. The baseline's redundant `all_gather` remains timed.
+  A real CPU path checks exact outputs and complete signature equality.
+- Two training metric examples now prepare reusable scratch storage in setup
+  and publish outputs only from `benchmark_fn`. The extension runs during
+  benchmark warmup; setup no longer publishes a precomputed reduction.
+- The MoE compiled path requests contiguous layout during the existing
+  one-hot mask dtype conversion. This repairs AOT functionalization of an
+  `out=` operation into a flat workspace, without changing expert routing,
+  workload dimensions, or the compilation mode. The failure reproduced with
+  both default Inductor and `aot_eager`; focused compiled/eager controls pass.
+- The independent NVFP4 grouped-GEMM reference now reuses its per-device E2M1
+  decode table. Recreating that constant from host data inside CUDA graph
+  capture caused five grouped targets to fail. All FP64 reference math and
+  full-output checks remain intact; a changing-input GPU graph regression
+  is included for the next run.
+
+Wave 27 on `66e284968` completed eleven owned stages. Monolithic inference
+passed full-output comparison (`max_diff=0.000244140625`) and measured
+`2.172626x` in one harness run. Repeated measurements and profiler validation
+remain pending, so this is a noncanonical observation. The memory report now
+correctly exposes `-0.348071%` savings for a candidate that uses more memory.
+The hybrid expert-parallel pair passed two-rank child verification but was
+slower (`0.958572x`). Its single-rank path progressed beyond the signature
+error and failed output comparison (`max_diff=0.765625`); investigation continues.
+
+Six full-workload KV calibration runs collected actual cache errors for
+seeds 42, 43, and 44, using batch 8, hidden size 16,384, prefill length 4,096,
+and 128 decode steps. FP8 relative L2 error was approximately `0.0410`;
+NVFP4 was approximately `0.1461`. These receipts are explicitly
+`measurement_only_not_accepted`, with no acceptance thresholds. Measured
+errors alone do not establish an independently accepted accuracy policy.
+
+Evidence is retained in the complete sweep's `ledgers/through-breadth.jsonl`,
+`failure-triage.json`, and `final-gpu-tests/full-gpu.xml`, plus Wave 27's
+per-stage termination receipts, benchmark results, and calibration JSON.
+CI and final merges remain deferred while code repair continues.

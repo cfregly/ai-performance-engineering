@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
-
+import importlib.util
 import json
+import sys
+from pathlib import Path
 
 from core.scripts.refresh_readmes import (
     ENTRIES,
@@ -11,7 +12,6 @@ from core.scripts.refresh_readmes import (
     _render_current_representative_deltas_body,
     main,
 )
-
 
 PRIORITY_EVIDENCE_DOCS = (
     "ch01",
@@ -222,6 +222,29 @@ def test_priority_readmes_match_generated_content() -> None:
         expected = _format_markdown(ENTRIES[slug]).rstrip() + "\n"
         actual = _output_path(slug).read_text(encoding="utf-8")
         assert actual == expected, f"{slug} is out of sync with core/scripts/refresh_readmes.py"
+
+
+def test_generator_owned_readme_does_not_read_ignored_history_at_import(tmp_path: Path) -> None:
+    generator_path = tmp_path / "core" / "scripts" / "refresh_readmes.py"
+    generator_path.parent.mkdir(parents=True)
+    generator_path.write_bytes((REPO_ROOT / "core" / "scripts" / "refresh_readmes.py").read_bytes())
+    index_path = tmp_path / "artifacts" / "history" / "tier1" / "index.json"
+    index_path.parent.mkdir(parents=True)
+    index_path.write_text("{not-json", encoding="utf-8")
+
+    module_name = "temp_refresh_readmes_with_ignored_history"
+    spec = importlib.util.spec_from_file_location(module_name, generator_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(module_name, None)
+
+    markdown = module._format_markdown(module.ENTRIES["README.md"])
+    assert "latest tier-1 history artifacts were unavailable or malformed" not in markdown
+    assert str(index_path) not in markdown
 
 
 def test_playbook_and_matrix_lab_docs_render_honest_nonpair_sections() -> None:

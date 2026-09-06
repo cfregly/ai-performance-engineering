@@ -29,7 +29,7 @@ That command now writes a stable history package under `artifacts/history/tier1/
 See [`docs/tier1_benchmark_suite.md`](docs/tier1_benchmark_suite.md) for the current target list, artifact contract, and interpretation guidance.
 
 ## Historical Representative Deltas
-These hardcoded historical rows are retained in the README generator. The cited original artifact is unavailable in this checkout. Their lineage and measurements remain unverified. This audit changed correctness, workload and verification contracts; neither the table nor its aggregate speedups qualify the repaired revision. Repeat the applicable full-output and exact-target timing gates before making new performance claims.
+These hardcoded historical rows are retained in the README generator. The cited original artifact is not part of the checked-in generator source. Their lineage and measurements remain unverified. This audit changed correctness, workload and verification contracts; neither the table nor its aggregate speedups qualify the repaired revision. Repeat the applicable full-output and exact-target timing gates before making new performance claims.
 
 Source artifact: `artifacts/history/tier1/20260329_e2e_truthful_canonical_main_4a8c827a__tier1/summary.json`
 

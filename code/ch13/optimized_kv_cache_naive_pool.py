@@ -65,7 +65,13 @@ class OptimizedKVCache:
                 )
                 v = torch.empty_like(k)
                 cache_entry.append((k, v))
-                token_views.append(list(zip(k.unbind(2), v.unbind(2), strict=True)))
+                # Independent views remain writable when an ordinary module
+                # call records gradients. unbind() returns multiple views and
+                # autograd forbids copying a grad-tracked projection into them.
+                token_views.append([
+                    (k[:, :, pos, :], v[:, :, pos, :])
+                    for pos in range(self.max_seq_len)
+                ])
                 prefix_views.append([
                     (k[:, :, :end, :], v[:, :, :end, :])
                     for end in range(self.max_seq_len + 1)

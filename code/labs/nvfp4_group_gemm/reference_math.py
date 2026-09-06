@@ -7,7 +7,15 @@ it is an accuracy/performance reference, not the former conservative tcgen05 rou
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 import torch
+
+
+@lru_cache(maxsize=None)
+def _e2m1_magnitudes(device: torch.device) -> torch.Tensor:
+    """Prepare the immutable decode table before CUDA graph capture."""
+    return torch.tensor((0, .5, 1, 1.5, 2, 3, 4, 6), dtype=torch.float64, device=device)
 
 
 def dequantize_fp4(packed: torch.Tensor, scales: torch.Tensor, k: int) -> torch.Tensor:
@@ -20,7 +28,9 @@ def dequantize_fp4(packed: torch.Tensor, scales: torch.Tensor, k: int) -> torch.
     low, high = raw & 15, raw >> 4
     codes = torch.stack((low, high), dim=2).reshape(packed.shape[0], k, packed.shape[2])
     # E2M1 magnitudes are exactly representable in binary; sign is nibble bit 3.
-    magnitudes = torch.tensor((0, .5, 1, 1.5, 2, 3, 4, 6), dtype=torch.float64, device=raw.device)
+    # Oracle preparation and eager warmup initialize this per-device constant.
+    # Recreating it from host data here issues a capture-unsafe host-to-device copy.
+    magnitudes = _e2m1_magnitudes(raw.device)
     values = magnitudes[(codes & 7).long()] * torch.where((codes & 8) != 0, -1.0, 1.0)
     scale_values = scales.to(device=raw.device, dtype=torch.float64).repeat_interleave(16, dim=1)[:, :k]
     return values * scale_values

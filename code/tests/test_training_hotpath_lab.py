@@ -343,9 +343,9 @@ def test_metric_reduction_fused_optimized_path_reuses_output_buffer_source() -> 
     assert "metric_reduction_fused_out" in kernel_source
     assert "torch::Tensor reusable_out" in kernel_source
     assert "auto out = reuse_output ? reusable_out : torch::empty" in kernel_source
-    assert "self.output = torch.empty(self.workload.responders * 3" in common_source
-    assert "metric_reduction_fused_out(self.preds, self.targets, self.output)" in common_source
-    assert "scalar_metric_reduction(self.preds, self.targets, self.output)" in common_source
+    assert "self._output_buffer = torch.empty(self.workload.responders * 3" in common_source
+    assert "metric_reduction_fused_out(self.preds, self.targets, self._output_buffer)" in common_source
+    assert "scalar_metric_reduction(self.preds, self.targets, self._output_buffer)" in common_source
     assert "scalar_metric_reduction(self.preds, self.targets)" not in common_source
 
 
@@ -357,7 +357,6 @@ def test_segment_abs_mean_optimized_path_reuses_output_buffer_source() -> None:
     assert "torch::Tensor segment_abs_mean_dispatch" in kernel_source
     assert "auto out = reuse_output ? reusable_out.zero_() : torch::zeros" in kernel_source
     assert "torch.empty(self.workload.num_segments" in common_source
-    assert "segment_abs_mean_out(self.flat, self.offsets, self.output)" in common_source
     assert "self.output = self._extension.segment_abs_mean(self.flat, self.offsets)" not in common_source
 
 
@@ -370,12 +369,18 @@ def test_metric_reduction_vectorized_optimized_reuses_output_buffer() -> None:
     bench.apply_target_overrides(["--batch-size", "2", "--max-num-tokens", "16", "--responders", "16"])
     bench.setup()
     try:
-        assert bench.output is not None
-        data_ptr = bench.output.data_ptr()
+        assert bench.output is None
+        assert bench._output_buffer is not None
+        data_ptr = bench._output_buffer.data_ptr()
+        with pytest.raises(RuntimeError, match=r"benchmark_fn\(\) must run"):
+            bench.capture_verification_payload()
 
+        bench.preds.mul_(2)
         bench.benchmark_fn()
         assert bench.output is not None
         assert bench.output.data_ptr() == data_ptr
+        expected = vectorized_metric_reduction(bench.preds, bench.targets)
+        torch.testing.assert_close(bench.output, expected, rtol=1e-4, atol=1e-4)
 
         bench.benchmark_fn()
         assert bench.output is not None
@@ -393,12 +398,20 @@ def test_metric_reduction_cuda_optimized_reuses_output_buffer() -> None:
     bench.apply_target_overrides(["--num-segments", "4", "--min-segment-length", "64", "--max-segment-length", "128"])
     bench.setup()
     try:
-        assert bench.output is not None
-        data_ptr = bench.output.data_ptr()
+        assert bench.output is None
+        assert bench._output_buffer is not None
+        data_ptr = bench._output_buffer.data_ptr()
+        with pytest.raises(RuntimeError, match=r"benchmark_fn\(\) must run"):
+            bench.capture_verification_payload()
 
+        bench.flat.mul_(2)
         bench.benchmark_fn()
         assert bench.output is not None
         assert bench.output.data_ptr() == data_ptr
+        expected = baseline_segment_abs_mean(
+            bench.flat, bench.segment_ids, bench.segment_lengths, torch.empty_like(bench.output)
+        )
+        torch.testing.assert_close(bench.output, expected, rtol=1e-5, atol=1e-5)
 
         bench.benchmark_fn()
         assert bench.output is not None

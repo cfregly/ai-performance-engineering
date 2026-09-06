@@ -251,15 +251,25 @@ def _latest_tier1_summary(repo_root: Optional[Path] = None) -> Tuple[Optional[Di
     return summary, summary_path, warnings
 
 
-def _render_current_representative_deltas_body(repo_root: Optional[Path] = None) -> str:
+def _render_current_representative_deltas_body(history_source_root: Optional[Path] = None) -> str:
+    """Render checked-in rows unless a history source is explicitly requested.
+
+    Tier-1 history is ignored by git, so consulting the default checkout while
+    constructing ``ENTRIES`` would make generator-owned README content depend on
+    local artifacts. Callers that want to inspect history must provide its root.
+    """
+
     def _fallback_body(warnings: Optional[Sequence[str]] = None) -> str:
         rows = _fallback_tier1_representative_rows()
-        source_path = root / rows[0][3]
-        source_status = (
-            "The cited original artifact is unavailable in this checkout."
-            if not source_path.is_file()
-            else "The cited artifact exists but is not loaded or verified by this fallback."
-        )
+        if history_source_root is None:
+            source_status = "The cited original artifact is not part of the checked-in generator source."
+        else:
+            source_path = root / rows[0][3]
+            source_status = (
+                "The cited original artifact is unavailable in this history source."
+                if not source_path.is_file()
+                else "The cited artifact exists in this history source but is not loaded or verified by this fallback."
+            )
         lines = [
             "These hardcoded historical rows are retained in the README generator. " + source_status + " Their lineage and measurements remain unverified. This audit changed correctness, workload and verification contracts; neither the table nor its aggregate speedups qualify the repaired revision. Repeat the applicable full-output and exact-target timing gates before making new performance claims.",
             "",
@@ -285,7 +295,9 @@ def _render_current_representative_deltas_body(repo_root: Optional[Path] = None)
             )
         return "\n".join(lines)
 
-    root = Path(repo_root or REPO_ROOT)
+    root = Path(history_source_root or REPO_ROOT)
+    if history_source_root is None:
+        return _fallback_body()
     summary, summary_path, warnings = _latest_tier1_summary(root)
     if summary is None or summary_path is None:
         return _fallback_body(warnings)

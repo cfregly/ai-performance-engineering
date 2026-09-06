@@ -716,7 +716,7 @@ class MoEExperts(nn.Module):
         )
 
         expert_mask = F.one_hot(flat_idx, num_classes=self.num_experts).transpose(0, 1)
-        expert_mask = expert_mask.to(dtype=x.dtype)
+        expert_mask = expert_mask.to(dtype=x.dtype, memory_format=torch.contiguous_format)
         expert_mask_column = expert_mask.unsqueeze(-1)
         expanded_x_broadcast = expanded_x.unsqueeze(0)
         if torch.is_grad_enabled() and expanded_x.requires_grad:
