@@ -31,6 +31,7 @@ import torch
 import torch.distributed as dist
 
 from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
+from ch04.nvshmem_child_result import NVSHMEMWorkloadResult
 from ch04.nvshmem_profile_ranges import selected_nvtx_range
 from core.common.device_utils import resolve_local_rank
 from core.optimization.symmetric_memory_patch import (
@@ -77,6 +78,9 @@ class BenchmarkResult:
     bytes: int
     latency_us: float
     bandwidth_gbps: float
+    verify_input: Optional[torch.Tensor] = None
+    verify_output: Optional[torch.Tensor] = None
+    reference_output: Optional[torch.Tensor] = None
 
 
 def _format_bytes(num_bytes: int) -> str:
@@ -96,6 +100,7 @@ def _measure_nccl_broadcast(bytes_per_rank: int, iterations: int) -> BenchmarkRe
     numel = max(1, numel)
 
     tensor = torch.randn(numel, device=device, dtype=dtype)
+    original_tensor = tensor.detach().clone()
     compute = torch.randn_like(tensor)
     overlap_compute = os.environ.get("AISP_BROADCAST_OVERLAP", "").lower() in {"1", "true", "yes"}
     compute_passes = max(1, int(os.environ.get("AISP_BROADCAST_COMPUTE_PASSES", "1")))
@@ -129,14 +134,23 @@ def _measure_nccl_broadcast(bytes_per_rank: int, iterations: int) -> BenchmarkRe
                 dist.broadcast(tensor, src=0)
                 for _ in range(compute_passes):
                     compute.mul_(1.0001)
-    end.record(current_stream)
-    torch.cuda.synchronize(device)
+        end.record(current_stream)
+        torch.cuda.synchronize(device)
 
     elapsed_ms = start.elapsed_time(end)
     latency_us = (elapsed_ms * 1000.0) / iterations
     total_bytes = bytes_per_rank * max(dist.get_world_size() - 1, 1)
     bandwidth_gbps = (total_bytes / (elapsed_ms / iterations / 1000.0)) / 1e9
-    return BenchmarkResult(bytes=bytes_per_rank, latency_us=latency_us, bandwidth_gbps=bandwidth_gbps)
+    reference = original_tensor.detach().clone()
+    dist.broadcast(reference, src=0)
+    return BenchmarkResult(
+        bytes=bytes_per_rank,
+        latency_us=latency_us,
+        bandwidth_gbps=bandwidth_gbps,
+        verify_input=original_tensor,
+        verify_output=tensor.detach().clone(),
+        reference_output=reference,
+    )
 
 
 def _measure_symmetric_broadcast(bytes_per_rank: int, iterations: int) -> Optional[BenchmarkResult]:
@@ -154,6 +168,7 @@ def _measure_symmetric_broadcast(bytes_per_rank: int, iterations: int) -> Option
     if sym_handle is None:
         return None
     buffer = sym_handle.buffer
+    original_tensor = buffer.detach().clone()
 
     rank = dist.get_rank()
     remote_buffers = []
@@ -201,15 +216,24 @@ def _measure_symmetric_broadcast(bytes_per_rank: int, iterations: int) -> Option
                 torch.cuda.synchronize(device)
                 for _ in range(compute_passes):
                     compute.mul_(1.0001)
-    end.record(current_stream)
-    torch.cuda.synchronize(device)
-    dist.barrier()
+        end.record(current_stream)
+        torch.cuda.synchronize(device)
+        dist.barrier()
 
     elapsed_ms = start.elapsed_time(end)
     latency_us = (elapsed_ms * 1000.0) / iterations
     total_bytes = bytes_per_rank * max(dist.get_world_size() - 1, 1)
     bandwidth_gbps = (total_bytes / (elapsed_ms / iterations / 1000.0)) / 1e9
-    return BenchmarkResult(bytes=bytes_per_rank, latency_us=latency_us, bandwidth_gbps=bandwidth_gbps)
+    reference = original_tensor.detach().clone()
+    dist.broadcast(reference, src=0)
+    return BenchmarkResult(
+        bytes=bytes_per_rank,
+        latency_us=latency_us,
+        bandwidth_gbps=bandwidth_gbps,
+        verify_input=original_tensor,
+        verify_output=buffer.detach().clone(),
+        reference_output=reference,
+    )
 
 
 def sweep_sizes(min_bytes: int, max_bytes: int, steps: int) -> List[int]:
@@ -244,7 +268,7 @@ def benchmark(args: argparse.Namespace) -> Dict[str, List[BenchmarkResult]]:
     return results
 
 
-def main(destroy_process_group: bool = True) -> None:
+def main(destroy_process_group: bool = True) -> Optional[NVSHMEMWorkloadResult]:
     parser = argparse.ArgumentParser(description="Compare NVSHMEM vs NCCL broadcast latency/bandwidth")
     parser.add_argument("--min-bytes", type=int, default=1024, help="Smallest message size per rank")
     parser.add_argument("--max-bytes", type=int, default=64 * 1024 * 1024, help="Largest message size per rank")
@@ -259,6 +283,8 @@ def main(destroy_process_group: bool = True) -> None:
     args = parser.parse_args()
 
     rank = init_distributed()
+    torch.manual_seed(42 + rank)
+    torch.cuda.manual_seed_all(42 + rank)
     results = benchmark(args)
 
     if rank == 0:
@@ -279,8 +305,43 @@ def main(destroy_process_group: bool = True) -> None:
             )
 
     dist.barrier()
+    worker_result = None
+    selected_results = results.get(args.mode, [])
+    if args.mode in {"nccl", "nvshmem"} and len(selected_results) == 1:
+        measurement = selected_results[0]
+        if any(
+            tensor is None
+            for tensor in (
+                measurement.verify_input,
+                measurement.verify_output,
+                measurement.reference_output,
+            )
+        ):
+            raise RuntimeError("NVSHMEM collective measurement output is missing")
+        worker_result = NVSHMEMWorkloadResult(
+            workload="collective",
+            rank=rank,
+            world_size=dist.get_world_size(),
+            iterations=args.iterations,
+            time_per_iter_ms=measurement.latency_us / 1000.0,
+            configuration={
+                "min_bytes": args.min_bytes,
+                "max_bytes": args.max_bytes,
+                "steps": args.steps,
+                "iterations": args.iterations,
+                "mode": args.mode,
+            },
+            verify_inputs={"source_tensor": measurement.verify_input},
+            verify_output=measurement.verify_output,
+            reference_output=measurement.reference_output,
+            batch_size=1,
+            parameter_count=0,
+            collective_type="broadcast",
+            output_tolerance=(1e-3, 1e-5),
+        )
     if destroy_process_group:
         dist.destroy_process_group()
+    return worker_result
 
 
 if __name__ == "__main__":

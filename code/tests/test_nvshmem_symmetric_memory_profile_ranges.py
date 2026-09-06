@@ -121,11 +121,25 @@ def test_nvshmem_wrapper_passes_its_declared_range_to_the_worker(
     expected_range: str,
 ) -> None:
     benchmark = importlib.import_module(module_name).get_benchmark()
-    spec = benchmark.get_torchrun_spec(benchmark.get_config())
-
-    assert spec.script_path is not None
-    assert spec.script_path.name == "nvshmem_worker.py"
-    assert spec.env[PROFILE_NVTX_RANGE_ENV] == expected_range
+    config = benchmark.get_config()
+    config.nproc_per_node = 2
+    config.nnodes = 1
+    spec = benchmark.get_torchrun_spec(config)
+    try:
+        assert spec.script_path is None
+        assert spec.module_name == "core.harness.benchmark_worker"
+        assert spec.script_args[:5] == [
+            "--module",
+            "ch04.nvshmem_worker",
+            "--callable",
+            "main",
+            "--",
+        ]
+        assert spec.env[PROFILE_NVTX_RANGE_ENV] == expected_range
+    finally:
+        for name, value in spec.env.items():
+            if name.endswith("_RESULT_DIR"):
+                shutil.rmtree(value, ignore_errors=True)
 
 
 @pytest.mark.parametrize(

@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-from __future__ import annotations
-
 """
 Pipeline Parallelism with NVSHMEM for multi-GPU B200
 ==============================================
@@ -62,13 +60,27 @@ When NOT to Use:
 - When using tensor parallelism is sufficient
 """
 
+from __future__ import annotations
+
+import argparse
+import datetime
 import os
+import time
+from collections import deque
+from dataclasses import dataclass, field
+from typing import Deque, Literal  # noqa: UP035
 
+import torch
+import torch.distributed as dist
+import torch.nn as nn
+
+from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
+from ch04.nvshmem_pipeline_result import NVSHMEMPipelineWorkloadResult
+from ch04.nvshmem_profile_ranges import selected_nvtx_range
+from core.benchmark.gpu_requirements import require_min_gpus, warn_optimal_gpu_count
 from core.common.device_utils import resolve_local_rank
-
 from core.optimization.symmetric_memory_patch import (
     SymmetricMemoryHandle,
-    maybe_create_symmetric_memory_handle,
     symmetric_memory_available,
 )
 
@@ -76,45 +88,60 @@ from core.optimization.symmetric_memory_patch import (
 def symmem_pipeline_disabled() -> bool:
     return os.environ.get("AISP_DISABLE_SYMMEM_PIPELINE", "").lower() in {"1", "true", "yes"}
 
-def symmem_pipeline_async_enabled() -> bool:
-    return os.environ.get("AISP_SYMMEM_PIPELINE_ASYNC", "").lower() in {"1", "true", "yes"}
-
-from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
-from ch04.nvshmem_profile_ranges import selected_nvtx_range
-
-from core.benchmark.gpu_requirements import require_min_gpus, warn_optimal_gpu_count
-
-
-import argparse
-import datetime
-import time
-from collections import deque
-from dataclasses import dataclass, field
-from typing import Deque, List, Optional, Tuple
-
-import torch
-import torch.distributed as dist
-import torch.nn as nn
-
-
 # ============================================================================
 # Utilities
 # ============================================================================
 
 
-def init_distributed() -> Tuple[int, int, int]:
-    """Initialize distributed process group."""
+PipelineTransport = Literal["nccl", "nvshmem"]
+_SIGNAL_READY_CHANNEL = 0
+_SIGNAL_CONSUMED_CHANNEL = 1
+_SIGNAL_TIMEOUT_MS = 60_000
+
+
+def _validate_transport(transport: str) -> PipelineTransport:
+    if transport not in {"nccl", "nvshmem"}:
+        raise ValueError(f"Unsupported pipeline transport: {transport!r}")
+    return transport
+
+
+def _default_transport() -> PipelineTransport:
+    return "nccl" if symmem_pipeline_disabled() else "nvshmem"
+
+
+def _require_global_nvshmem(device: torch.device) -> None:
+    """Fail every rank before allocation if any rank lacks NVSHMEM support."""
+    local_ready = int(symmetric_memory_available() and not symmem_pipeline_disabled())
+    ready = torch.tensor(local_ready, dtype=torch.int32, device=device)
+    dist.all_reduce(ready, op=dist.ReduceOp.MIN)
+    if int(ready.item()) != 1:
+        raise RuntimeError(
+            "SKIPPED: NVSHMEM pipeline transport is unavailable on at least one rank"
+        )
+
+
+def _require_transport_consensus(transport: PipelineTransport, device: torch.device) -> None:
+    """Reject divergent per-rank transport selection before either protocol starts."""
+    transport_code = int(transport == "nvshmem")
+    minimum = torch.tensor(transport_code, dtype=torch.int32, device=device)
+    maximum = minimum.clone()
+    dist.all_reduce(minimum, op=dist.ReduceOp.MIN)
+    dist.all_reduce(maximum, op=dist.ReduceOp.MAX)
+    if int(minimum.item()) != int(maximum.item()):
+        raise RuntimeError("Pipeline ranks selected different point-to-point transports")
+
+
+def init_distributed(
+    transport: PipelineTransport | str = "nvshmem",
+) -> tuple[int, int, torch.device]:
+    """Initialize NCCL and validate the requested launch-wide transport."""
+    transport = _validate_transport(transport)
     gpu_count = torch.cuda.device_count()
     # Require at least 2 GPUs for pipeline parallel schedule
     if gpu_count < 2:
         require_min_gpus(2, script_name="nvshmem_pipeline_parallel_multigpu.py")
 
     setup_single_gpu_env("nvshmem_pipeline_parallel_multigpu", min_world_size=2)
-    if symmem_pipeline_disabled():
-        raise RuntimeError("SKIPPED: nvshmem_pipeline_parallel_multigpu requires symmetric-memory pipeline support")
-    if not symmetric_memory_available():
-        raise RuntimeError("SKIPPED: nvshmem_pipeline_parallel_multigpu requires NVSHMEM or SymmetricMemory support")
-
     rank = int(os.environ.get("RANK", 0))
     world_size = int(os.environ.get("WORLD_SIZE", max(1, gpu_count)))
     local_rank = resolve_local_rank()
@@ -134,11 +161,17 @@ def init_distributed() -> Tuple[int, int, int]:
             timeout=datetime.timedelta(seconds=60),
             device_id=local_rank,
         )
+    if dist.get_world_size() < 2:
+        raise RuntimeError("SKIPPED: pipeline parallelism requires world_size >= 2")
+    device = torch.device("cuda", torch.cuda.current_device())
+    _require_transport_consensus(transport, device)
+    if transport == "nvshmem":
+        _require_global_nvshmem(device)
     warn_optimal_gpu_count(4, script_name="nvshmem_pipeline_parallel_multigpu.py")
-    return dist.get_rank(), dist.get_world_size(), torch.cuda.current_device()
+    return dist.get_rank(), dist.get_world_size(), device
 
 
-def _resolve_microbatch_size(batch_size: int, num_microbatches: int, microbatch_size: Optional[int]) -> int:
+def _resolve_microbatch_size(batch_size: int, num_microbatches: int, microbatch_size: int | None) -> int:
     if microbatch_size is not None:
         return int(microbatch_size)
     if num_microbatches <= 0:
@@ -149,122 +182,140 @@ def _resolve_microbatch_size(batch_size: int, num_microbatches: int, microbatch_
 
 
 # ============================================================================
-# Activation Buffer with Symmetric Memory
+# Launch-wide point-to-point transfer buffer
 # ============================================================================
 
 
 @dataclass
-class ActivationBuffer:
-    """
-    Symmetric memory buffer for activation tensor handoff between pipeline stages.
-    
-    Double-buffered to allow overlap of computation and communication.
-    """
-    
-    shape: Tuple[int, ...]
+class PipelineTransferBuffer:
+    """Double-buffered NCCL or NVSHMEM channel shared by both endpoints."""
+
+    shape: tuple[int, ...]
     dtype: torch.dtype
     device: torch.device
     world_size: int
-    num_buffers: int = 2  # Double buffering
-    
-    handles: List[Optional[SymmetricMemoryHandle]] = field(default_factory=list, init=False)
-    buffers: List[torch.Tensor] = field(default_factory=list, init=False)
-    current_idx: int = field(default=0, init=False)
-    _pending_sends: List[Optional[dist.Work]] = field(default_factory=list, init=False)
-    
+    transport: PipelineTransport
+    num_buffers: int = 2
+    signal_timeout_ms: int = _SIGNAL_TIMEOUT_MS
+
+    handles: list[SymmetricMemoryHandle | None] = field(default_factory=list, init=False)
+    buffers: list[torch.Tensor] = field(default_factory=list, init=False)
+    _nccl_send_buffers: list[torch.Tensor] = field(default_factory=list, init=False)
+    _pending_sends: list[dist.Work | None] = field(default_factory=list, init=False)
+    _send_targets: list[int | None] = field(default_factory=list, init=False)
+    _send_idx: int = field(default=0, init=False)
+    _recv_idx: int = field(default=0, init=False)
+
     def __post_init__(self) -> None:
-        """Initialize double-buffered symmetric memory."""
+        self.transport = _validate_transport(self.transport)
+        if self.num_buffers < 2:
+            raise ValueError("Pipeline transfer requires at least two buffers")
+        if self.world_size < 2:
+            raise ValueError("Pipeline transfer requires world_size >= 2")
         if isinstance(self.device, int):
             self.device = torch.device("cuda", self.device)
         elif not isinstance(self.device, torch.device):
             self.device = torch.device(self.device)
         self._pending_sends = [None for _ in range(self.num_buffers)]
+        self._send_targets = [None for _ in range(self.num_buffers)]
         for _ in range(self.num_buffers):
             local_buffer = torch.zeros(self.shape, dtype=self.dtype, device=self.device)
-            
-            handle = None
-            if not symmem_pipeline_disabled():
-                handle = maybe_create_symmetric_memory_handle(local_buffer)
-            if handle is not None:
+            if self.transport == "nvshmem":
+                # Every rank constructs each handle in the same order. Failure is
+                # fatal: a local NCCL fallback would split the peer protocol.
+                handle = SymmetricMemoryHandle(local_buffer)
+                if handle.world_size != self.world_size:
+                    raise RuntimeError("NVSHMEM handle world size differs from pipeline launch")
                 self.handles.append(handle)
                 self.buffers.append(handle.buffer)
             else:
                 self.handles.append(None)
                 self.buffers.append(local_buffer)
-    
-    def get_current_buffer(self) -> torch.Tensor:
-        """Get current buffer for writing."""
-        return self.buffers[self.current_idx]
+                self._nccl_send_buffers.append(torch.empty_like(local_buffer))
 
-    def _wait_pending_send(self) -> None:
-        work = self._pending_sends[self.current_idx]
+    def _wait_before_send_slot_reuse(self, slot: int) -> None:
+        work = self._pending_sends[slot]
         if work is not None:
             work.wait()
-            self._pending_sends[self.current_idx] = None
-    
-    def swap_buffers(self) -> None:
-        """Swap to next buffer (for double buffering)."""
-        self.current_idx = (self.current_idx + 1) % self.num_buffers
-    
-    def write_to_remote(self, data: torch.Tensor, target_rank: int) -> None:
-        """
-        Write activation data to remote rank's buffer.
+            self._pending_sends[slot] = None
+        target = self._send_targets[slot]
+        if self.transport == "nvshmem" and target is not None:
+            handle = self.handles[slot]
+            if handle is None:
+                raise RuntimeError("NVSHMEM send slot has no symmetric handle")
+            handle.wait_signal(
+                target,
+                channel=_SIGNAL_CONSUMED_CHANNEL,
+                timeout_ms=self.signal_timeout_ms,
+            )
+        self._send_targets[slot] = None
 
-        Uses symmetric memory for zero-copy DMA transfer over NVLink.
-        """
-        self._wait_pending_send()
-        current_buffer = self.get_current_buffer()
-        current_buffer.copy_(data, non_blocking=True)
-        
-        handle = self.handles[self.current_idx]
-        if not symmem_pipeline_disabled() and symmetric_memory_available() and handle is not None:
-            try:
-                remote_buffer = handle.get_buffer(target_rank)
-                remote_buffer.copy_(current_buffer, non_blocking=True)
-            except Exception:
-                # Fallback to NCCL P2P
-                if symmem_pipeline_async_enabled():
-                    self._pending_sends[self.current_idx] = dist.isend(current_buffer, dst=target_rank)
-                else:
-                    dist.send(current_buffer, dst=target_rank)
+    def send(self, data: torch.Tensor, target_rank: int) -> None:
+        """Send one tensor without allowing protocol-local fallback."""
+        if target_rank not in range(self.world_size):
+            raise ValueError(f"Pipeline send target rank is invalid: {target_rank}")
+        slot = self._send_idx
+        self._wait_before_send_slot_reuse(slot)
+        if self.transport == "nccl":
+            # A middle stage receives from its predecessor while an earlier
+            # send to its successor may still be in flight. Keep send storage
+            # distinct from the independently advancing receive slots.
+            send_buffer = self._nccl_send_buffers[slot]
+            send_buffer.copy_(data, non_blocking=True)
+            self._pending_sends[slot] = dist.isend(send_buffer, dst=target_rank)
         else:
-            # Fallback to NCCL P2P
-            if symmem_pipeline_async_enabled():
-                self._pending_sends[self.current_idx] = dist.isend(current_buffer, dst=target_rank)
-            else:
-                dist.send(current_buffer, dst=target_rank)
-    
-    def read_from_remote(self, source_rank: int) -> torch.Tensor:
-        """
-        Read activation data from remote rank's buffer.
-        
-        Uses symmetric memory for direct GPU access.
-        """
-        current_buffer = self.get_current_buffer()
-        handle = self.handles[self.current_idx]
-        
-        if not symmem_pipeline_disabled() and symmetric_memory_available() and handle is not None:
-            try:
-                remote_buffer = handle.get_buffer(source_rank)
-                current_buffer.copy_(remote_buffer, non_blocking=True)
-            except Exception:
-                # Fallback to NCCL P2P
-                dist.recv(current_buffer, src=source_rank)
+            handle = self.handles[slot]
+            if handle is None:
+                raise RuntimeError("NVSHMEM send slot has no symmetric handle")
+            handle.get_buffer(target_rank).copy_(data, non_blocking=True)
+            handle.put_signal(
+                target_rank,
+                channel=_SIGNAL_READY_CHANNEL,
+                timeout_ms=self.signal_timeout_ms,
+            )
+        self._send_targets[slot] = target_rank
+        self._send_idx = (slot + 1) % self.num_buffers
+
+    def receive(self, source_rank: int) -> torch.Tensor:
+        """Receive into shared storage, clone it, then acknowledge safe reuse."""
+        if source_rank not in range(self.world_size):
+            raise ValueError(f"Pipeline receive source rank is invalid: {source_rank}")
+        slot = self._recv_idx
+        local_buffer = self.buffers[slot]
+        if self.transport == "nccl":
+            dist.recv(local_buffer, src=source_rank)
+            activation = local_buffer.clone()
         else:
-            # Fallback to NCCL P2P
-            dist.recv(current_buffer, src=source_rank)
-        
-        return current_buffer
+            handle = self.handles[slot]
+            if handle is None:
+                raise RuntimeError("NVSHMEM receive slot has no symmetric handle")
+            handle.wait_signal(
+                source_rank,
+                channel=_SIGNAL_READY_CHANNEL,
+                timeout_ms=self.signal_timeout_ms,
+            )
+            activation = handle.buffer.clone()
+            handle.put_signal(
+                source_rank,
+                channel=_SIGNAL_CONSUMED_CHANNEL,
+                timeout_ms=self.signal_timeout_ms,
+            )
+        self._recv_idx = (slot + 1) % self.num_buffers
+        return activation
 
     def close(self) -> None:
-        """Release symmetric memory handles and buffers."""
-        for work in self._pending_sends:
-            if work is not None:
-                work.wait()
+        """Wait for each sent slot to be consumed before releasing storage."""
+        self.finish()
         if self.device.type == "cuda":
             torch.cuda.synchronize(self.device)
         self.buffers.clear()
+        self._nccl_send_buffers.clear()
         self.handles.clear()
+
+    def finish(self) -> None:
+        """Complete every outstanding send or consumed-slot handshake."""
+        for slot in range(self.num_buffers):
+            self._wait_before_send_slot_reuse(slot)
 
 
 # ============================================================================
@@ -275,11 +326,11 @@ class ActivationBuffer:
 class PipelineStageModule(nn.Module):
     """
     Single pipeline stage (e.g., one transformer layer).
-    
+
     Educational: In production, this would be a full transformer layer
     or a group of layers. For demonstration, we use a simple MLP.
     """
-    
+
     def __init__(self, hidden_dim: int, mlp_ratio: int = 4):
         super().__init__()
         self.ln1 = nn.LayerNorm(hidden_dim)
@@ -287,7 +338,7 @@ class PipelineStageModule(nn.Module):
         self.act = nn.GELU()
         self.fc2 = nn.Linear(hidden_dim * mlp_ratio, hidden_dim)
         self.ln2 = nn.LayerNorm(hidden_dim)
-    
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Simple residual MLP
         residual = x
@@ -307,17 +358,17 @@ class PipelineStageModule(nn.Module):
 class NVSHMEMPipelineEngine:
     """
     1F1B pipeline schedule with NVSHMEM for activation handoff.
-    
+
     1F1B Schedule:
     - Warmup: Forward passes for first few microbatches
     - Steady state: Alternate forward and backward passes
     - Cooldown: Backward passes for remaining microbatches
-    
+
     Benefits:
     - Lower memory footprint than GPipe (doesn't accumulate all activations)
     - Better GPU utilization than naive pipeline
     - NVSHMEM reduces microbatch handoff latency by 10x
-    
+
     Performance: ~1.8x throughput vs sequential, < 10% bubble time
 
     Interleaved 1F1B:
@@ -326,7 +377,7 @@ class NVSHMEMPipelineEngine:
       NVSHMEM buffers. That reduces tail latency at the cost of extra pipeline
       depth; tune num_microbatches accordingly (aim for M ≳ 4–8× virtual stages).
     """
-    
+
     def __init__(
         self,
         stage: nn.Module,
@@ -334,9 +385,10 @@ class NVSHMEMPipelineEngine:
         num_stages: int,
         microbatch_size: int,
         num_microbatches: int,
-        activation_shape: Tuple[int, ...],
+        activation_shape: tuple[int, ...],
         device: torch.device,
         world_size: int,
+        transport: PipelineTransport = "nvshmem",
     ):
         self.stage = stage
         self.stage_id = stage_id
@@ -345,61 +397,58 @@ class NVSHMEMPipelineEngine:
         self.num_microbatches = num_microbatches
         self.device = device
         self.world_size = world_size
-        
-        # Create activation buffers for input/output
-        self.input_buffer = ActivationBuffer(
+
+        # All ranks construct these direction-specific allocations in the same
+        # order. A producer and its consumer therefore rendezvous the same
+        # allocation instead of unrelated local send/receive objects.
+        self.forward_transfer = PipelineTransferBuffer(
             shape=activation_shape,
             dtype=torch.float16,
             device=device,
             world_size=world_size,
+            transport=transport,
         )
-        
-        self.output_buffer = ActivationBuffer(
+        self.backward_transfer = PipelineTransferBuffer(
             shape=activation_shape,
             dtype=torch.float16,
             device=device,
             world_size=world_size,
+            transport=transport,
         )
 
-        self.grad_recv_buffer = ActivationBuffer(
-            shape=activation_shape,
-            dtype=torch.float16,
-            device=device,
-            world_size=world_size,
-        )
-
-        self.grad_send_buffer = ActivationBuffer(
-            shape=activation_shape,
-            dtype=torch.float16,
-            device=device,
-            world_size=world_size,
-        )
-        
         # Track activations for backward pass
-        self.saved_activations: Deque[torch.Tensor] = deque()
+        self.saved_activations: Deque[torch.Tensor] = deque()  # noqa: UP006
+        self.final_outputs: list[torch.Tensor] = []
         self._loss_buffer = torch.empty(num_microbatches, dtype=torch.float64, device=device)
-        try:
-            self._loss_host_buffer = torch.empty(
-                num_microbatches,
-                dtype=torch.float64,
-                device="cpu",
-                pin_memory=True,
-            )
-        except RuntimeError:
+        if device.type == "cuda":
+            try:
+                self._loss_host_buffer = torch.empty(
+                    num_microbatches,
+                    dtype=torch.float64,
+                    device="cpu",
+                    pin_memory=True,
+                )
+            except RuntimeError:
+                self._loss_host_buffer = torch.empty(
+                    num_microbatches,
+                    dtype=torch.float64,
+                    device="cpu",
+                )
+        else:
             self._loss_host_buffer = torch.empty(num_microbatches, dtype=torch.float64, device="cpu")
-    
+
     def forward_microbatch(
         self,
         microbatch_id: int,
-        input_data: Optional[torch.Tensor] = None,
-    ) -> Optional[torch.Tensor]:
+        input_data: torch.Tensor | None = None,
+    ) -> torch.Tensor | None:
         """
         Execute forward pass for one microbatch.
-        
+
         Args:
             microbatch_id: ID of the current microbatch
             input_data: Input tensor (only for first stage)
-        
+
         Returns:
             Output tensor (only for last stage)
         """
@@ -412,41 +461,40 @@ class NVSHMEMPipelineEngine:
         else:
             # Receive from previous stage via symmetric memory
             prev_rank = self.stage_id - 1
-            activation = self.input_buffer.read_from_remote(prev_rank)
-            self.input_buffer.swap_buffers()
-        
+            activation = self.forward_transfer.receive(prev_rank)
+
         # Forward through local stage
         with torch.set_grad_enabled(True):
             activation.requires_grad_(True)
             output = self.stage(activation)
-        
+
         # Save activation for backward pass
         self.saved_activations.append(activation)
-        
+
         # Send to next stage
         if self.stage_id < self.num_stages - 1:
             next_rank = self.stage_id + 1
-            self.output_buffer.write_to_remote(output.detach(), next_rank)
-            self.output_buffer.swap_buffers()
+            self.forward_transfer.send(output.detach(), next_rank)
             return None
         else:
             # Last stage: return output for loss computation
+            self.final_outputs.append(output.detach())
             return output
-    
-    def backward_microbatch(self, microbatch_id: int, loss: Optional[torch.Tensor] = None) -> None:
+
+    def backward_microbatch(self, microbatch_id: int, loss: torch.Tensor | None = None) -> None:
         """
         Execute backward pass for one microbatch.
-        
+
         Args:
             microbatch_id: ID of the microbatch
             loss: Loss tensor (only for last stage)
         """
         if not self.saved_activations:
             return
-        
+
         # Pop saved activation
         activation = self.saved_activations.popleft()
-        
+
         if self.stage_id == self.num_stages - 1:
             # Last stage: compute loss and backward
             if loss is None:
@@ -455,36 +503,34 @@ class NVSHMEMPipelineEngine:
         else:
             # Receive gradient from next stage
             next_rank = self.stage_id + 1
-            grad_output = self.grad_recv_buffer.read_from_remote(next_rank)
-            self.grad_recv_buffer.swap_buffers()
-            
+            grad_output = self.backward_transfer.receive(next_rank)
+
             # Backward through local stage
             output = self.stage(activation)
             output.backward(grad_output)
-        
+
         # Send gradient to previous stage
         if self.stage_id > 0 and activation.grad is not None:
             prev_rank = self.stage_id - 1
-            self.grad_send_buffer.write_to_remote(activation.grad, prev_rank)
-            self.grad_send_buffer.swap_buffers()
-    
+            self.backward_transfer.send(activation.grad, prev_rank)
+
     def run_1f1b_schedule(
         self,
-        input_batches: Optional[List[torch.Tensor]] = None,
-    ) -> List[float]:
+        input_batches: list[torch.Tensor] | None = None,
+    ) -> list[float]:
         """
         Execute 1F1B pipeline schedule.
-        
+
         Schedule:
         1. Warmup: Forward num_stages-1 microbatches
         2. Steady state: Alternate 1 forward + 1 backward
         3. Cooldown: Backward remaining microbatches
-        
+
         Returns:
             List of losses (only for last stage)
         """
         loss_count = 0
-        
+
         # Warmup: Forward passes
         num_warmup = min(self.num_stages - self.stage_id - 1, self.num_microbatches)
         for mb_id in range(num_warmup):
@@ -494,7 +540,7 @@ class NVSHMEMPipelineEngine:
                 loss = output.sum()
                 self._loss_buffer[loss_count].copy_(loss.detach())
                 loss_count += 1
-        
+
         # Steady state: 1F1B
         num_steady = self.num_microbatches - num_warmup
         for i in range(num_steady):
@@ -506,15 +552,15 @@ class NVSHMEMPipelineEngine:
                 loss = output.sum()
                 self._loss_buffer[loss_count].copy_(loss.detach())
                 loss_count += 1
-            
+
             # Backward
             self.backward_microbatch(i, loss if output is not None else None)
-        
+
         # Cooldown: Backward passes
         for i in range(num_warmup):
             mb_id = num_steady + i
             self.backward_microbatch(mb_id, None)
-        
+
         if loss_count == 0:
             return []
         host_losses = self._loss_host_buffer[:loss_count]
@@ -523,11 +569,15 @@ class NVSHMEMPipelineEngine:
 
     def close(self) -> None:
         """Release pipeline buffers to avoid teardown hangs."""
-        self.input_buffer.close()
-        self.output_buffer.close()
-        self.grad_recv_buffer.close()
-        self.grad_send_buffer.close()
+        self.forward_transfer.close()
+        self.backward_transfer.close()
         self.saved_activations.clear()
+        self.final_outputs.clear()
+
+    def finish_transfers(self) -> None:
+        """Complete both communication directions before the timed range closes."""
+        self.forward_transfer.finish()
+        self.backward_transfer.finish()
 
 
 # ============================================================================
@@ -538,38 +588,39 @@ class NVSHMEMPipelineEngine:
 class InterleavedPipeline:
     """
     Interleaved pipeline schedule for reduced bubble time.
-    
+
     Key Idea:
     - Each GPU hosts multiple virtual pipeline stages
     - Stages are interleaved across GPUs
     - Reduces bubble time to O(1/v) where v = virtual stages per GPU
-    
+
     Example with 4 GPUs, 8 stages:
     GPU 0: stages [0, 4]
     GPU 1: stages [1, 5]
     GPU 2: stages [2, 6]
     GPU 3: stages [3, 7]
-    
+
     Performance: Bubble time < 5% (vs ~10% for 1F1B)
     """
-    
+
     def __init__(
         self,
-        stages: List[nn.Module],
-        stage_ids: List[int],
+        stages: list[nn.Module],
+        stage_ids: list[int],
         num_total_stages: int,
         microbatch_size: int,
         num_microbatches: int,
-        activation_shape: Tuple[int, ...],
+        activation_shape: tuple[int, ...],
         device: torch.device,
         world_size: int,
+        transport: PipelineTransport = "nvshmem",
     ):
         self.stages = stages
         self.stage_ids = stage_ids
         self.num_total_stages = num_total_stages
         self.num_virtual_stages = len(stages)
         self.device = device
-        
+
         # Create pipeline engines for each virtual stage
         self.engines = [
             NVSHMEMPipelineEngine(
@@ -581,31 +632,32 @@ class InterleavedPipeline:
                 activation_shape=activation_shape,
                 device=device,
                 world_size=world_size,
+                transport=transport,
             )
-            for stage, stage_id in zip(stages, stage_ids)
+            for stage, stage_id in zip(stages, stage_ids, strict=False)
         ]
-    
+
     def run_interleaved_schedule(
         self,
-        input_batches: Optional[List[torch.Tensor]] = None,
-    ) -> List[float]:
+        input_batches: list[torch.Tensor] | None = None,
+    ) -> list[float]:
         """
         Execute interleaved pipeline schedule.
-        
+
         Benefits over 1F1B:
         - Lower bubble time (< 5% vs ~10%)
         - Better load balancing
         - More opportunities for overlap
-        
+
         Tradeoff: Higher memory usage (multiple stages per GPU)
         """
         all_losses = []
-        
+
         # Execute each virtual stage's 1F1B schedule
         for engine in self.engines:
             losses = engine.run_1f1b_schedule(input_batches)
             all_losses.extend(losses)
-        
+
         return all_losses
 
     def close(self) -> None:
@@ -618,6 +670,61 @@ class InterleavedPipeline:
 # ============================================================================
 
 
+def _gather_pipeline_verification(
+    *,
+    rank: int,
+    world_size: int,
+    stage: PipelineStageModule,
+    engine: NVSHMEMPipelineEngine,
+    input_batches: list[torch.Tensor] | None,
+    hidden_dim: int,
+    microbatch_size: int,
+    seq_len: int,
+    num_microbatches: int,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, int]:
+    """Build the serial full-pipeline oracle outside the measured range."""
+    local_parameters = torch.nn.utils.parameters_to_vector(
+        [parameter.detach() for parameter in stage.parameters()]
+    )
+    stage_parameters = [torch.empty_like(local_parameters) for _ in range(world_size)]
+    dist.all_gather(stage_parameters, local_parameters)
+
+    full_input_shape = (num_microbatches, microbatch_size, seq_len, hidden_dim)
+    if rank == 0:
+        if input_batches is None or len(input_batches) != num_microbatches:
+            raise RuntimeError("Pipeline rank 0 did not preserve every measured input")
+        pipeline_inputs = torch.stack([tensor.detach() for tensor in input_batches])
+    else:
+        pipeline_inputs = torch.empty(
+            full_input_shape,
+            dtype=torch.float16,
+            device=device,
+        )
+    dist.broadcast(pipeline_inputs, src=0)
+
+    if rank == world_size - 1:
+        if len(engine.final_outputs) != num_microbatches:
+            raise RuntimeError("Pipeline last rank did not preserve every measured output")
+        actual_output = torch.stack(engine.final_outputs)
+    else:
+        actual_output = torch.empty_like(pipeline_inputs)
+    dist.broadcast(actual_output, src=world_size - 1)
+
+    with torch.no_grad():
+        reference_output = pipeline_inputs.clone()
+        for parameters in stage_parameters:
+            reference_stage = PipelineStageModule(hidden_dim).to(
+                device=device,
+                dtype=torch.float16,
+            )
+            torch.nn.utils.vector_to_parameters(parameters, reference_stage.parameters())
+            reference_output = reference_stage(reference_output)
+
+    parameter_count = int(local_parameters.numel()) * world_size
+    return pipeline_inputs, actual_output, reference_output, parameter_count
+
+
 def demo_1f1b_pipeline(
     *,
     hidden_dim: int,
@@ -625,23 +732,27 @@ def demo_1f1b_pipeline(
     seq_len: int,
     num_microbatches: int,
     microbatch_size: int,
-) -> None:
+    transport: PipelineTransport = "nvshmem",
+) -> NVSHMEMPipelineWorkloadResult:
     """
     Demonstrate 1F1B pipeline schedule with NVSHMEM.
-    
+
     Educational: 1F1B is the default choice for pipeline parallelism:
     - Good balance of memory and compute efficiency
     - Widely used in practice (Megatron-LM, DeepSpeed)
     - NVSHMEM provides 10x faster microbatch handoff
     """
-    rank, world_size, device = init_distributed()
-    
+    transport = _validate_transport(transport)
+    rank, world_size, device = init_distributed(transport)
+    torch.manual_seed(42 + rank)
+    torch.cuda.manual_seed_all(42 + rank)
+
     # Configuration
     pipeline_dtype = torch.float16
-    
+
     # Create pipeline stage for this rank
     stage = PipelineStageModule(hidden_dim).to(device=device, dtype=pipeline_dtype)
-    
+
     # Create pipeline engine
     activation_shape = (microbatch_size, seq_len, hidden_dim)
     engine = NVSHMEMPipelineEngine(
@@ -653,8 +764,9 @@ def demo_1f1b_pipeline(
         activation_shape=activation_shape,
         device=device,
         world_size=world_size,
+        transport=transport,
     )
-    
+
     # Generate input (only for first stage)
     input_batches = None
     if rank == 0:
@@ -662,21 +774,61 @@ def demo_1f1b_pipeline(
             torch.randn(microbatch_size, seq_len, hidden_dim, device=device, dtype=pipeline_dtype)
             for _ in range(num_microbatches)
         ]
-    
-    # Run 1F1B schedule
+
+    # Run one complete 1F1B step. Verification collectives and the serial
+    # reference are deliberately outside this measured application range.
+    torch.cuda.synchronize(device)
     start_time = time.perf_counter()
     with selected_nvtx_range():
         losses = engine.run_1f1b_schedule(input_batches)
-    torch.cuda.synchronize()
+        engine.finish_transfers()
+    torch.cuda.synchronize(device)
     elapsed = time.perf_counter() - start_time
-    
+
+    pipeline_inputs, actual_output, reference_output, parameter_count = (
+        _gather_pipeline_verification(
+            rank=rank,
+            world_size=world_size,
+            stage=stage,
+            engine=engine,
+            input_batches=input_batches,
+            hidden_dim=hidden_dim,
+            microbatch_size=microbatch_size,
+            seq_len=seq_len,
+            num_microbatches=num_microbatches,
+            device=device,
+        )
+    )
+
     if rank == 0:
         print(f"[1f1b] Completed {num_microbatches} microbatches in {elapsed:.2f}s")
         if losses:
             print(f"[1f1b] Average loss: {sum(losses)/len(losses):.4f}")
-        print(f"[1f1b] Symmetric memory: {symmetric_memory_available() and not symmem_pipeline_disabled()}")
+        print(f"[1f1b] Transport: {transport}")
 
     engine.close()
+    return NVSHMEMPipelineWorkloadResult(
+        rank=rank,
+        world_size=world_size,
+        iterations=1,
+        time_per_iter_ms=elapsed * 1000.0,
+        transport=transport,
+        configuration={
+            "schedule": "1f1b",
+            "batch_size": batch_size,
+            "num_microbatches": num_microbatches,
+            "microbatch_size": microbatch_size,
+            "seq_len": seq_len,
+            "hidden_dim": hidden_dim,
+            "transport": transport,
+        },
+        verify_inputs={"pipeline_inputs": pipeline_inputs},
+        verify_output=actual_output,
+        reference_output=reference_output,
+        batch_size=batch_size,
+        parameter_count=parameter_count,
+        output_tolerance=(1e-3, 1e-3),
+    )
 
 
 def demo_interleaved_pipeline(
@@ -687,20 +839,22 @@ def demo_interleaved_pipeline(
     num_microbatches: int,
     microbatch_size: int,
     virtual_stages_per_rank: int,
+    transport: PipelineTransport = "nvshmem",
 ) -> None:
     """
     Demonstrate interleaved pipeline with virtual stages.
-    
+
     Educational: Interleaved pipeline reduces bubble time further:
     - Each GPU hosts 2+ pipeline stages
     - Better overlap of forward/backward passes
     - Higher memory usage but better efficiency
     """
-    rank, world_size, device = init_distributed()
-    
+    transport = _validate_transport(transport)
+    rank, world_size, device = init_distributed(transport)
+
     # Configuration
     pipeline_dtype = torch.float16
-    
+
     # Create virtual pipeline stages for this rank
     num_total_stages = world_size * virtual_stages_per_rank
     stage_ids = [rank + i * world_size for i in range(virtual_stages_per_rank)]
@@ -708,7 +862,7 @@ def demo_interleaved_pipeline(
         PipelineStageModule(hidden_dim).to(device=device, dtype=pipeline_dtype)
         for _ in range(virtual_stages_per_rank)
     ]
-    
+
     # Create interleaved pipeline
     activation_shape = (microbatch_size, seq_len, hidden_dim)
     pipeline = InterleavedPipeline(
@@ -720,8 +874,9 @@ def demo_interleaved_pipeline(
         activation_shape=activation_shape,
         device=device,
         world_size=world_size,
+        transport=transport,
     )
-    
+
     # Generate input (only for first stage)
     input_batches = None
     if rank == 0:
@@ -729,18 +884,18 @@ def demo_interleaved_pipeline(
             torch.randn(microbatch_size, seq_len, hidden_dim, device=device, dtype=pipeline_dtype)
             for _ in range(num_microbatches)
         ]
-    
+
     # Run interleaved schedule
     start_time = time.perf_counter()
     with selected_nvtx_range():
         pipeline.run_interleaved_schedule(input_batches)
     torch.cuda.synchronize()
     elapsed = time.perf_counter() - start_time
-    
+
     if rank == 0:
         print(f"[interleaved] Completed {num_microbatches} microbatches in {elapsed:.2f}s")
         print(f"[interleaved] Virtual stages per rank: {virtual_stages_per_rank}")
-        print(f"[interleaved] Symmetric memory: {symmetric_memory_available() and not symmem_pipeline_disabled()}")
+        print(f"[interleaved] Transport: {transport}")
 
     pipeline.close()
 
@@ -750,7 +905,7 @@ def demo_interleaved_pipeline(
 # ============================================================================
 
 
-def main() -> None:
+def main() -> NVSHMEMPipelineWorkloadResult | None:
     parser = argparse.ArgumentParser(description="NVSHMEM pipeline parallelism")
     parser.add_argument(
         "--schedule",
@@ -769,20 +924,26 @@ def main() -> None:
         default=2,
         help="Virtual stages per rank for interleaved schedule.",
     )
+    parser.add_argument(
+        "--transport",
+        choices=("nccl", "nvshmem"),
+        default=_default_transport(),
+        help="Launch-wide point-to-point transport.",
+    )
     args = parser.parse_args()
     microbatch_size = _resolve_microbatch_size(
         args.batch_size, args.num_microbatches, args.microbatch_size
     )
-    
-    init_distributed()
-    
+
+    result = None
     if args.schedule == "1f1b":
-        demo_1f1b_pipeline(
+        result = demo_1f1b_pipeline(
             hidden_dim=args.hidden_dim,
             batch_size=args.batch_size,
             seq_len=args.seq_len,
             num_microbatches=args.num_microbatches,
             microbatch_size=microbatch_size,
+            transport=args.transport,
         )
     elif args.schedule == "interleaved":
         demo_interleaved_pipeline(
@@ -792,6 +953,7 @@ def main() -> None:
             num_microbatches=args.num_microbatches,
             microbatch_size=microbatch_size,
             virtual_stages_per_rank=args.virtual_stages,
+            transport=args.transport,
         )
     elif args.schedule == "all":
         demo_1f1b_pipeline(
@@ -800,6 +962,7 @@ def main() -> None:
             seq_len=args.seq_len,
             num_microbatches=args.num_microbatches,
             microbatch_size=microbatch_size,
+            transport=args.transport,
         )
         dist.barrier()
         if dist.get_rank() == 0:
@@ -811,11 +974,13 @@ def main() -> None:
             num_microbatches=args.num_microbatches,
             microbatch_size=microbatch_size,
             virtual_stages_per_rank=args.virtual_stages,
+            transport=args.transport,
         )
-    
+
     rank = dist.get_rank() if dist.is_initialized() else 0
     if rank == 0:
         print("\nPipeline parallelism demonstration complete")
+    return result
 
 
 if __name__ == "__main__":

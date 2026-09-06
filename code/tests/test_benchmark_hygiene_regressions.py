@@ -2453,7 +2453,7 @@ def test_ch04_nvshmem_training_example_defers_reduced_norm_sync() -> None:
     assert "reduced_norm = float(bucket.tensor.norm())" in bucket_demo
 
 
-def test_ch04_nvshmem_wrappers_cache_benchmark_argv() -> None:
+def test_ch04_nvshmem_wrappers_pass_args_only_to_explicit_child() -> None:
     wrapper_cases = {
         "ch04/baseline_nvshmem_pipeline_parallel_multigpu.py": "--schedule",
         "ch04/optimized_nvshmem_pipeline_parallel_multigpu.py": "--schedule",
@@ -2465,43 +2465,28 @@ def test_ch04_nvshmem_wrappers_cache_benchmark_argv() -> None:
 
     for relative_path, argv_flag in wrapper_cases.items():
         source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
-        setup_section = source.split("def setup", maxsplit=1)[1].split(
-            "def benchmark_fn",
-            maxsplit=1,
-        )[0]
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def teardown",
             maxsplit=1,
         )[0]
-        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
-            "def capture_verification_payload",
-            maxsplit=1,
-        )[0]
 
-        assert "self._benchmark_argv: list[str] = []" in source
-        assert "self._benchmark_argv = [" in setup_section
-        assert argv_flag in setup_section
-        assert "setup() must initialize benchmark argv before benchmark_fn()" in benchmark_section
-        assert "original_argv = sys.argv[:]" not in benchmark_section
-        assert "sys.argv = [" not in benchmark_section
-        assert "self._benchmark_argv = []" in teardown_section
-        assert "self._original_argv: Optional[list[str]] = None" in source
-        assert "self._original_argv = sys.argv" in setup_section
-        assert "sys.argv = self._benchmark_argv" in setup_section
-        assert "original_argv = sys.argv" not in benchmark_section
-        assert "sys.argv = self._benchmark_argv" not in benchmark_section
-        assert "sys.argv = self._original_argv" in teardown_section
+        assert 'module_name="core.harness.benchmark_worker"' in source
+        assert '"ch04.nvshmem_worker"' in source
+        assert '"--callable"' in source
+        assert '"main"' in source
+        assert '"--"' in source
+        assert argv_flag in source
+        assert "sys.argv" not in source
+        assert "os.environ" not in benchmark_section
 
 
-def test_ch04_nvshmem_wrappers_cache_env_outside_hot_path() -> None:
+def test_ch04_nvshmem_wrappers_pass_env_only_to_explicit_child() -> None:
     wrapper_cases = {
         "ch04/baseline_nvshmem_pipeline_parallel_multigpu.py": (
             "AISP_DISABLE_SYMMEM_PIPELINE",
-            "AISP_SYMMEM_PIPELINE_ASYNC",
         ),
         "ch04/optimized_nvshmem_pipeline_parallel_multigpu.py": (
             "AISP_DISABLE_SYMMEM_PIPELINE",
-            "AISP_SYMMEM_PIPELINE_ASYNC",
         ),
         "ch04/baseline_nvshmem_training_example_multigpu.py": (
             "AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS",
@@ -2529,39 +2514,16 @@ def test_ch04_nvshmem_wrappers_cache_env_outside_hot_path() -> None:
 
     for relative_path, env_keys in wrapper_cases.items():
         source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
-        setup_section = source.split("def setup", maxsplit=1)[1].split(
-            "def benchmark_fn",
-            maxsplit=1,
-        )[0]
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def teardown",
             maxsplit=1,
         )[0]
-        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
-            "def capture_verification_payload",
-            maxsplit=1,
-        )[0]
+        spec_section = source.split("def get_torchrun_spec", maxsplit=1)[1]
 
-        assert "self._original_env: dict[str, Optional[str]] = {}" in source
-        assert "self._original_env = {" in setup_section
-        assert "for key, value in self._original_env.items():" in teardown_section
-        assert "os.environ.pop(key, None)" in teardown_section
-        assert "os.environ[key] = value" in teardown_section
-        assert "self._original_env = {}" in teardown_section
+        assert "self._original_env" not in source
         assert "os.environ" not in benchmark_section
         for env_key in env_keys:
-            assert re.search(
-                rf'"{env_key}"\s*:\s*os\.environ\.get\(\s*"{env_key}"\s*\)',
-                setup_section,
-            )
-            assert f'os.environ["{env_key}"] =' in setup_section
-
-        if relative_path.endswith("nvshmem_vs_nccl_benchmark_multigpu.py"):
-            assert "self._benchmark_args: Optional[argparse.Namespace] = None" in source
-            assert "self._benchmark_args = argparse.Namespace(" in setup_section
-            assert "benchmark(self._benchmark_args)" in benchmark_section
-            assert "argparse.Namespace(" not in benchmark_section
-            assert "self._benchmark_args = None" in teardown_section
+            assert f'"{env_key}"' in spec_section
 
 
 def test_ch09_fusion_gelu_reuses_scalar_constant() -> None:
@@ -20675,7 +20637,8 @@ def test_ch04_multigpu_symmetric_memory_reuses_verification_buffer() -> None:
         assert "self._verify_numel = 0" in source
         assert "self._verify_input, self._verify_numel = build_square_verification_probe(" in setup_section
         assert "self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)" in setup_section
-        assert "view_as(self._verify_input).detach()" in capture_section
+        assert "probe = self._verify_input" in capture_section
+        assert "view_as(probe).detach()" in capture_section
         assert "self._verify_output_buffer.copy_(output_source)" in capture_section
         assert "output=self._verify_output_buffer" in capture_section
         assert "Verification buffers not initialized" in capture_section

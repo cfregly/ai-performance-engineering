@@ -28,19 +28,9 @@ from __future__ import annotations
 import argparse
 import datetime
 import os
-
+import time
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
-
-from core.optimization.symmetric_memory_patch import (
-    SymmetricMemoryHandle,
-    maybe_create_symmetric_memory_handle,
-    symmetric_memory_available,
-)
-
-from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
-from ch04.nvshmem_profile_ranges import selected_nvtx_range
-
 
 import torch
 import torch.distributed as dist
@@ -48,11 +38,21 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributed.fsdp import (
     FullyShardedDataParallel as FSDP,
+)
+from torch.distributed.fsdp import (
     MixedPrecision,
     ShardingStrategy,
     StateDictType,
 )
 
+from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
+from ch04.nvshmem_child_result import NVSHMEMWorkloadResult
+from ch04.nvshmem_profile_ranges import selected_nvtx_range
+from core.optimization.symmetric_memory_patch import (
+    SymmetricMemoryHandle,
+    maybe_create_symmetric_memory_handle,
+    symmetric_memory_available,
+)
 
 # ============================================================================
 # Helpers
@@ -333,7 +333,10 @@ class PipelineStage(nn.Module):
         return self.net(x)
 
 
-def demo_pipeline_parallel(microbatch: torch.Tensor, steps: int = 1) -> None:
+def demo_pipeline_parallel(
+    microbatch: torch.Tensor,
+    steps: int = 1,
+) -> NVSHMEMWorkloadResult:
     """
     Pipeline two stages using symmetric memory buffers for microbatch handoff.
 
@@ -344,9 +347,18 @@ def demo_pipeline_parallel(microbatch: torch.Tensor, steps: int = 1) -> None:
     rank, world_size, device = init_process_group()
     assert world_size >= 2, "Pipeline demo requires at least 2 ranks"
 
+    torch.manual_seed(42)
+    torch.cuda.manual_seed_all(42)
     dim = microbatch.shape[-1]
     stage0 = PipelineStage(dim, dim * 4).to(device)
     stage1 = PipelineStage(dim, dim * 4).to(device)
+    with torch.no_grad():
+        for parameter in (*stage0.parameters(), *stage1.parameters()):
+            dist.broadcast(parameter, src=0)
+    original_microbatch = microbatch.to(device).detach().clone()
+    model_parameters = torch.cat(
+        [parameter.detach().flatten() for parameter in (*stage0.parameters(), *stage1.parameters())]
+    )
 
     if not nvshmem_available():
         raise RuntimeError("SKIPPED: nvshmem_training_example requires NVSHMEM or SymmetricMemory support")
@@ -361,6 +373,10 @@ def demo_pipeline_parallel(microbatch: torch.Tensor, steps: int = 1) -> None:
         )
 
     partner_offset = world_size // 2
+    torch.cuda.synchronize(device)
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
+    start.record()
     with selected_nvtx_range():
         for _ in range(steps):
             if not reuse_buffers:
@@ -387,14 +403,54 @@ def demo_pipeline_parallel(microbatch: torch.Tensor, steps: int = 1) -> None:
                 remote = bucket.handle.get_buffer(rank)
                 microbatch = remote.view_as(microbatch)
                 microbatch = stage1(microbatch)
+                # Complete the read before the producer can reuse this
+                # symmetric slot in the next step.
+                torch.cuda.synchronize(device)
             if not reuse_buffers and bucket is not None:
                 bucket.close()
+        torch.cuda.synchronize(device)
+    end.record()
+    end.synchronize()
+    elapsed_ms = float(start.elapsed_time(end))
 
     dist.barrier()
+    final_output = microbatch.detach().clone()
     if bucket is not None:
         bucket.close()
     if rank == 0:
         print("[pipeline] completed forward pass with symmetric-memory handoff")
+
+    with torch.no_grad():
+        reference = original_microbatch
+        for _ in range(steps):
+            reference = stage0(reference)
+        if rank >= partner_offset:
+            reference = stage1(reference)
+        reference = reference.detach()
+    return NVSHMEMWorkloadResult(
+        workload="training-example",
+        rank=rank,
+        world_size=world_size,
+        iterations=steps,
+        time_per_iter_ms=elapsed_ms / steps,
+        configuration={
+            "demo": "pipeline",
+            "batch_size": int(original_microbatch.shape[0]),
+            "seq_len": int(original_microbatch.shape[1]),
+            "dim": int(original_microbatch.shape[2]),
+            "steps": int(steps),
+        },
+        verify_inputs={
+            "microbatch": original_microbatch,
+            "model_parameters": model_parameters,
+        },
+        verify_output=final_output,
+        reference_output=reference,
+        batch_size=int(original_microbatch.shape[0]),
+        parameter_count=int(model_parameters.numel()),
+        collective_type="pipeline_handoff",
+        output_tolerance=(1e-5, 1e-6),
+    )
 
 
 # ============================================================================
@@ -409,7 +465,7 @@ def _build_sample_batch(batch_size: int = 8, seq_len: int = 512, dim: int = 2048
     return torch.randn(batch_size, seq_len, dim, device=device, generator=generator)
 
 
-def main() -> None:
+def main() -> NVSHMEMWorkloadResult | None:
     parser = argparse.ArgumentParser(description="NVSHMEM training patterns")
     parser.add_argument(
         "--demo",
@@ -433,16 +489,18 @@ def main() -> None:
     batch = _build_sample_batch(batch_size=args.batch_size, seq_len=args.seq_len, dim=args.dim)
     model = TransformerBlock(d_model=args.dim)
 
+    result = None
     if args.demo == "gradient":
         demo_map[args.demo](batch, model, steps=args.steps)
     elif args.demo == "hybrid":
         demo_map[args.demo](batch, steps=args.steps)
     else:
-        demo_map[args.demo](batch, steps=args.steps)
+        result = demo_pipeline_parallel(batch, steps=args.steps)
 
     dist.barrier()
     if dist.get_rank() == 0:
         print(f"NVSHMEM available: {nvshmem_available()}")
+    return result
 
 
 if __name__ == "__main__":

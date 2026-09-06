@@ -11,23 +11,20 @@ Requirements:
 Expected Runtime: ~5-10 seconds on 2 GPUs
 """
 import argparse
-
 import os
 
-from core.common.device_utils import resolve_local_rank
+import torch
+import torch.cuda.nvtx as nvtx
+import torch.distributed as dist
 
+from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
+from ch04.nvshmem_child_result import NVSHMEMWorkloadResult
+from core.common.device_utils import resolve_local_rank
 from core.optimization.symmetric_memory_patch import (
     create_symmetric_memory_handle,
     maybe_create_symmetric_memory_handle,
     symmetric_memory_available,
 )
-
-from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
-
-
-import torch
-import torch.distributed as dist
-import torch.cuda.nvtx as nvtx
 from core.profiling.nvtx_helper import nvtx_range, standardize_nvtx_label
 
 TRADITIONAL_RING_NVTX_RANGE = "transfer_sync:symmetric_memory_traditional_ring"
@@ -240,7 +237,12 @@ def benchmark_symmetric_memory(tensor: torch.Tensor, iterations: int = 100):
     return start.elapsed_time(end) / iterations
 
 
-def benchmark_traditional_ring(tensor: torch.Tensor, iterations: int = 100) -> float:
+def benchmark_traditional_ring(
+    tensor: torch.Tensor,
+    iterations: int = 100,
+    *,
+    return_output: bool = False,
+) -> float | tuple[float, torch.Tensor]:
     """Benchmark ring send/recv using NCCL P2P ops across all ranks."""
     rank = dist.get_rank()
     world_size = dist.get_world_size()
@@ -272,13 +274,21 @@ def benchmark_traditional_ring(tensor: torch.Tensor, iterations: int = 100) -> f
             reqs = dist.batch_isend_irecv(ops)
             for req in reqs:
                 req.wait()
-    end.record()
-    torch.cuda.synchronize(device)
+        end.record()
+        torch.cuda.synchronize(device)
     dist.barrier()
-    return start.elapsed_time(end) / iterations
+    time_ms = start.elapsed_time(end) / iterations
+    if return_output:
+        return time_ms, recv_tensor.detach().clone()
+    return time_ms
 
 
-def benchmark_symmetric_ring(tensor: torch.Tensor, iterations: int = 100) -> float:
+def benchmark_symmetric_ring(
+    tensor: torch.Tensor,
+    iterations: int = 100,
+    *,
+    return_output: bool = False,
+) -> float | tuple[float, torch.Tensor]:
     """Benchmark ring traffic using symmetric memory buffers."""
     rank = dist.get_rank()
     world_size = dist.get_world_size()
@@ -286,19 +296,22 @@ def benchmark_symmetric_ring(tensor: torch.Tensor, iterations: int = 100) -> flo
     flat = tensor.flatten()
     local = torch.stack([flat, flat.clone()])
     handle = create_symmetric_memory_handle(local, group=dist.group.WORLD)
+    # The constructor copies the seed tensor into a separate symmetric allocation.
+    # Peer writes target that allocation, so receives must read its local view.
+    local = handle.buffer
     next_rank = (rank + 1) % world_size
-    prev_rank = (rank - 1) % world_size
     next_buf = handle.get_buffer(next_rank)
-    prev_buf = handle.get_buffer(prev_rank)
     recv_tensor = torch.empty_like(flat)
 
     for idx in range(5):
         buf_idx = idx % 2
-        next_buf[buf_idx].copy_(local[buf_idx], non_blocking=True)
+        next_buf[buf_idx].copy_(flat, non_blocking=True)
         torch.cuda.current_stream().synchronize()
         dist.barrier()
-        recv_tensor.copy_(prev_buf[buf_idx], non_blocking=True)
+        # The previous rank writes directly into this rank's symmetric slot.
+        recv_tensor.copy_(local[buf_idx], non_blocking=True)
         torch.cuda.current_stream().synchronize()
+        dist.barrier()
 
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
@@ -306,14 +319,18 @@ def benchmark_symmetric_ring(tensor: torch.Tensor, iterations: int = 100) -> flo
     with nvtx_range(SYMMETRIC_RING_NVTX_RANGE, enable=True):
         for idx in range(iterations):
             buf_idx = idx % 2
-            next_buf[buf_idx].copy_(local[buf_idx], non_blocking=True)
+            next_buf[buf_idx].copy_(flat, non_blocking=True)
             torch.cuda.current_stream().synchronize()
             dist.barrier()
-            recv_tensor.copy_(prev_buf[buf_idx], non_blocking=True)
+            recv_tensor.copy_(local[buf_idx], non_blocking=True)
             torch.cuda.current_stream().synchronize()
-    end.record()
-    torch.cuda.synchronize(device)
-    return start.elapsed_time(end) / iterations
+            dist.barrier()
+        end.record()
+        torch.cuda.synchronize(device)
+    time_ms = start.elapsed_time(end) / iterations
+    if return_output:
+        return time_ms, recv_tensor.detach().clone()
+    return time_ms
 
 
 def benchmark_multigpu_symmetric_memory(
@@ -510,7 +527,7 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main():
+def main() -> NVSHMEMWorkloadResult | None:
     """Compare traditional P2P vs symmetric memory performance."""
     args = _parse_args()
     # Setup
@@ -523,19 +540,55 @@ def main():
                 print("Benchmark mode requires at least 2 GPUs.")
             dist.destroy_process_group()
             return
+        torch.manual_seed(42 + rank)
+        torch.cuda.manual_seed_all(42 + rank)
         numel = max(1, args.tensor_bytes // 4)
-        tensor = torch.randn(numel, device=device, dtype=torch.float32)
+        tensor = torch.randn(numel, device=device, dtype=torch.float32).add_(rank)
+        original_tensor = tensor.detach().clone()
         if args.benchmark_mode == "traditional":
-            time_ms = benchmark_traditional_ring(tensor, iterations=args.iterations)
+            measured = benchmark_traditional_ring(
+                tensor,
+                iterations=args.iterations,
+                return_output=True,
+            )
             label = "traditional_ring"
         else:
-            time_ms = benchmark_symmetric_ring(tensor, iterations=args.iterations)
+            measured = benchmark_symmetric_ring(
+                tensor,
+                iterations=args.iterations,
+                return_output=True,
+            )
             label = "symmetric_ring"
+        if not isinstance(measured, tuple):
+            raise RuntimeError("Symmetric-memory ring measurement output is missing")
+        time_ms, verify_output = measured
+        rank_inputs = [torch.empty_like(original_tensor) for _ in range(world_size)]
+        dist.all_gather(rank_inputs, original_tensor)
+        reference_output = rank_inputs[(rank - 1) % world_size]
         if rank == 0:
             size_kb = args.tensor_bytes / 1024
             print(f"{label}: size={size_kb:.2f} KB time={time_ms:.4f} ms/iter")
+        result = NVSHMEMWorkloadResult(
+            workload="symmetric-ring",
+            rank=rank,
+            world_size=world_size,
+            iterations=args.iterations,
+            time_per_iter_ms=time_ms,
+            configuration={
+                "benchmark_mode": args.benchmark_mode,
+                "tensor_bytes": args.tensor_bytes,
+                "iterations": args.iterations,
+            },
+            verify_inputs={"source_tensor": original_tensor},
+            verify_output=verify_output,
+            reference_output=reference_output,
+            batch_size=1,
+            parameter_count=0,
+            collective_type="ring_transfer",
+            output_tolerance=(1e-5, 1e-6),
+        )
         dist.destroy_process_group()
-        return
+        return result
 
     if world_size < 2:
         if rank == 0:

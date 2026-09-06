@@ -651,7 +651,10 @@ def test_ch04_torchrun_wrappers_delegate_to_dedicated_workers() -> None:
             .split("def get_custom_metrics", 1)[0]
         )
         assert "config_arg_map" not in spec_section
-        assert '.with_name("nvshmem_worker.py")' in spec_section
+        assert 'module_name="core.harness.benchmark_worker"' in spec_section
+        assert '"ch04.nvshmem_worker"' in spec_section
+        assert '"--callable"' in spec_section
+        assert '"--"' in spec_section
 
     assert '.with_name("ddp_worker.py")' in _read("ch04/ddp_no_overlap.py")
     assert '.with_name("ddp_worker.py")' in _read("ch04/ddp_overlap.py")

@@ -68,19 +68,9 @@ When to Stick with NCCL:
 - Standard data parallel with large batches (NCCL AllReduce is highly optimized)
 """
 
-import os
-
-from core.optimization.symmetric_memory_patch import (
-    SymmetricMemoryHandle,
-    maybe_create_symmetric_memory_handle,
-    symmetric_memory_available,
-)
-
-from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
-
-
 import argparse
 import datetime
+import os
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -91,13 +81,21 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributed.fsdp import (
     FullyShardedDataParallel as FSDP,
+)
+from torch.distributed.fsdp import (
     MixedPrecision,
     ShardingStrategy,
     StateDictType,
 )
 
+from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
+from ch04.nvshmem_child_result import NVSHMEMWorkloadResult
 from ch04.nvshmem_profile_ranges import selected_nvtx_range
-
+from core.optimization.symmetric_memory_patch import (
+    SymmetricMemoryHandle,
+    maybe_create_symmetric_memory_handle,
+    symmetric_memory_available,
+)
 
 # ============================================================================
 # Utilities
@@ -166,6 +164,7 @@ class GradientBucket:
     world_size: int
     handle: Optional[SymmetricMemoryHandle] = None
     tensor: Optional[torch.Tensor] = None
+    reduction: Optional[torch.Tensor] = None
 
     def __post_init__(self) -> None:
         """Initialize symmetric memory buffer for gradient storage."""
@@ -176,71 +175,33 @@ class GradientBucket:
             self.tensor = handle.buffer
         else:
             self.tensor = local
+        self.reduction = torch.empty_like(local)
 
     def allreduce_ring(self, rank: int) -> torch.Tensor:
         """
-        Ring AllReduce using one-sided puts/gets.
+        AllReduce using direct reads from every rank's symmetric buffer.
 
-        Algorithm:
-        1. Each rank owns chunk[rank] of the buffer
-        2. Reduce-scatter phase: accumulate chunk data in ring pattern
-        3. AllGather phase: broadcast accumulated chunks
-
-        Educational: This is a simplified implementation. Production code
-        would use more sophisticated algorithms (e.g., hierarchical ring).
+        Each rank publishes its complete gradient in its local symmetric
+        allocation, reads the peer allocations into a private scratch tensor,
+        and only overwrites the published tensor after every reader is done.
+        For the two-GPU workload this is the direct one-sided equivalent of a
+        ring exchange without an intermediate host or NCCL collective.
         """
-        if self.tensor is None:
+        if self.tensor is None or self.reduction is None:
             raise RuntimeError("GradientBucket tensor not initialized")
 
         if nvshmem_available() and self.handle is not None:
-            # Use symmetric memory for direct GPU-GPU access
-            chunk_size = (self.numel + self.world_size - 1) // self.world_size
-
-            # Reduce-scatter phase
-            for step in range(self.world_size - 1):
-                send_rank = (rank - step) % self.world_size
-                recv_rank = (rank - step - 1) % self.world_size
-                
-                send_chunk_start = send_rank * chunk_size
-                send_chunk_end = min(send_chunk_start + chunk_size, self.numel)
-                
-                # Send chunk to next rank
-                next_rank = (rank + 1) % self.world_size
-                remote_buf = self.handle.get_buffer(next_rank)
-                remote_buf[send_chunk_start:send_chunk_end].copy_(
-                    self.tensor[send_chunk_start:send_chunk_end],
-                    non_blocking=True
-                )
-                
-                dist.barrier()
-                
-                # Accumulate received chunk
-                if recv_rank >= 0:
-                    recv_chunk_start = recv_rank * chunk_size
-                    recv_chunk_end = min(recv_chunk_start + chunk_size, self.numel)
-                    prev_rank = (rank - 1 + self.world_size) % self.world_size
-                    remote_buf = self.handle.get_buffer(prev_rank)
-                    self.tensor[recv_chunk_start:recv_chunk_end].add_(
-                        remote_buf[recv_chunk_start:recv_chunk_end]
-                    )
-
-            # AllGather phase
-            for step in range(self.world_size - 1):
-                send_rank = (rank + 1 - step) % self.world_size
-                send_chunk_start = send_rank * chunk_size
-                send_chunk_end = min(send_chunk_start + chunk_size, self.numel)
-                
-                next_rank = (rank + 1) % self.world_size
-                remote_buf = self.handle.get_buffer(next_rank)
-                remote_buf[send_chunk_start:send_chunk_end].copy_(
-                    self.tensor[send_chunk_start:send_chunk_end],
-                    non_blocking=True
-                )
-                
-                dist.barrier()
-            
-            # Average
-            self.tensor.div_(self.world_size)
+            if rank not in range(self.world_size):
+                raise RuntimeError("GradientBucket rank is outside its symmetric group")
+            torch.cuda.current_stream().synchronize()
+            dist.barrier()
+            self.reduction.zero_()
+            for peer in range(self.world_size):
+                peer_buffer = self.tensor if peer == rank else self.handle.get_buffer(peer)
+                self.reduction.add_(peer_buffer)
+            torch.cuda.current_stream().synchronize()
+            dist.barrier()
+            self.tensor.copy_(self.reduction).div_(self.world_size)
         else:
             raise RuntimeError("SKIPPED: nvshmem_training_patterns requires NVSHMEM or SymmetricMemory support")
         
@@ -297,7 +258,7 @@ class NVSHMEMGradientSync:
                 offset += numel
 
 
-def demo_gradient_sync(benchmark: bool = False) -> None:
+def demo_gradient_sync(benchmark: bool = False) -> NVSHMEMWorkloadResult:
     """
     Demonstrate custom gradient synchronization with NVSHMEM.
 
@@ -307,7 +268,9 @@ def demo_gradient_sync(benchmark: bool = False) -> None:
     - Custom training loops with fine-grained control
     """
     rank, world_size, device = init_process_group()
-    
+
+    torch.manual_seed(42)
+    torch.cuda.manual_seed_all(42)
     # Use many tiny layers to amplify per-parameter sync latency in the baseline path.
     hidden_dim = 64
     num_layers = 256
@@ -316,6 +279,18 @@ def demo_gradient_sync(benchmark: bool = False) -> None:
         layers.append(nn.Linear(hidden_dim, hidden_dim))
         layers.append(nn.GELU())
     model = nn.Sequential(*layers).to(device)
+    # Data-parallel gradient averaging is only meaningful when every rank starts
+    # from the same parameters.  Fresh torchrun workers otherwise receive
+    # unrelated process-local RNG seeds.
+    with torch.no_grad():
+        for parameter in model.parameters():
+            dist.broadcast(parameter, src=0)
+    initial_state = {
+        name: tensor.detach().clone() for name, tensor in model.state_dict().items()
+    }
+    initial_parameters = torch.cat(
+        [parameter.detach().flatten() for parameter in model.parameters()]
+    )
 
     use_naive = os.environ.get("AISP_GRAD_SYNC_NAIVE", "").lower() in {"1", "true", "yes"}
     sync = None if use_naive else NVSHMEMGradientSync(list(model.parameters()), world_size)
@@ -324,10 +299,12 @@ def demo_gradient_sync(benchmark: bool = False) -> None:
     # Training loop
     num_steps = 10 if not benchmark else 100
     batch_size = 1
-    
+    torch.cuda.manual_seed(17 + rank)
+    measured_rng_state = torch.cuda.get_rng_state(device)
+    torch.cuda.synchronize(device)
     start_time = time.perf_counter()
     with selected_nvtx_range():
-        for step in range(num_steps):
+        for _ in range(num_steps):
             inputs = torch.randn(batch_size, hidden_dim, device=device)
             outputs = model(inputs)
             loss = outputs.sum()
@@ -344,13 +321,70 @@ def demo_gradient_sync(benchmark: bool = False) -> None:
 
             optimizer.step()
             optimizer.zero_grad()
-    
+        torch.cuda.synchronize(device)
     elapsed = time.perf_counter() - start_time
+    actual_parameters = torch.cat(
+        [parameter.detach().flatten() for parameter in model.parameters()]
+    )
+
+    post_measurement_rng_state = torch.cuda.get_rng_state(device)
+    torch.cuda.set_rng_state(measured_rng_state, device)
+    measured_inputs = [
+        torch.randn(batch_size, hidden_dim, device=device) for _ in range(num_steps)
+    ]
+    torch.cuda.set_rng_state(post_measurement_rng_state, device)
+    local_input_sequence = torch.stack(measured_inputs)
+    rank_input_sequences = [torch.empty_like(local_input_sequence) for _ in range(world_size)]
+    dist.all_gather(rank_input_sequences, local_input_sequence)
+
+    reference_layers = []
+    for _ in range(num_layers):
+        reference_layers.append(nn.Linear(hidden_dim, hidden_dim))
+        reference_layers.append(nn.GELU())
+    reference_model = nn.Sequential(*reference_layers).to(device)
+    reference_model.load_state_dict(initial_state)
+    reference_optimizer = torch.optim.SGD(reference_model.parameters(), lr=0.01)
+    for step in range(num_steps):
+        for rank_inputs in rank_input_sequences:
+            reference_outputs = reference_model(rank_inputs[step])
+            reference_outputs.sum().backward()
+        for parameter in reference_model.parameters():
+            if parameter.grad is not None:
+                parameter.grad.div_(world_size)
+        reference_optimizer.step()
+        reference_optimizer.zero_grad()
+    reference_parameters = torch.cat(
+        [parameter.detach().flatten() for parameter in reference_model.parameters()]
+    )
     
     if rank == 0:
         print(f"[gradient_sync] Completed {num_steps} steps in {elapsed:.2f}s")
         print(f"[gradient_sync] Avg step time: {elapsed/num_steps*1000:.2f}ms")
         print(f"[gradient_sync] NVSHMEM available: {nvshmem_available()}")
+    return NVSHMEMWorkloadResult(
+        workload="training-patterns",
+        rank=rank,
+        world_size=world_size,
+        iterations=num_steps,
+        time_per_iter_ms=(elapsed * 1000.0) / num_steps,
+        configuration={
+            "pattern": "gradient",
+            "benchmark": bool(benchmark),
+            "steps": num_steps,
+            "hidden_dim": hidden_dim,
+            "num_layers": num_layers,
+        },
+        verify_inputs={
+            "initial_parameters": initial_parameters,
+            "training_inputs": local_input_sequence,
+        },
+        verify_output=actual_parameters,
+        reference_output=reference_parameters,
+        batch_size=batch_size,
+        parameter_count=int(initial_parameters.numel()),
+        collective_type="gradient_allreduce",
+        output_tolerance=(1e-5, 1e-6),
+    )
 
 
 # ============================================================================
@@ -761,7 +795,7 @@ def demo_tensor_parallel_activations(benchmark: bool = False) -> None:
 # ============================================================================
 
 
-def main() -> None:
+def main() -> NVSHMEMWorkloadResult | None:
     parser = argparse.ArgumentParser(description="NVSHMEM training patterns")
     parser.add_argument(
         "--pattern",
@@ -785,6 +819,7 @@ def main() -> None:
         "tensor_parallel": demo_tensor_parallel_activations,
     }
     
+    result = None
     if args.pattern == "all":
         for name, func in patterns.items():
             if dist.get_rank() == 0:
@@ -793,6 +828,8 @@ def main() -> None:
                 print(f"{'='*60}\n")
             func(args.benchmark)
             dist.barrier()
+    elif args.pattern == "gradient":
+        result = demo_gradient_sync(args.benchmark)
     else:
         patterns[args.pattern](args.benchmark)
     
@@ -800,6 +837,7 @@ def main() -> None:
     if dist.get_rank() == 0:
         print(f"\nCompleted NVSHMEM training pattern demonstration")
         print(f"Symmetric memory available: {nvshmem_available()}")
+    return result
 
 
 if __name__ == "__main__":
