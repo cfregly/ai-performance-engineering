@@ -7,20 +7,29 @@ import os
 import time
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 
-from core.benchmark.verification import PrecisionFlags
+from ch17.prefill_decode_disagg_multigpu_result import (
+    PREFILL_DECODE_LAUNCH_WALL_NS_ENV,
+    PREFILL_DECODE_RESULT_CALLBACK,
+    PrefillDecodeChildResultMixin,
+    make_prefill_decode_result_contract,
+    write_prefill_decode_child_result,
+)
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.harness import benchmark_worker
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     LaunchVia,
     TorchrunLaunchSpec,
 )
+from core.profiling.nvtx_helper import nvtx_range
 
 
 class HandoffMode(str, Enum):
@@ -209,6 +218,8 @@ def _emit_split_advice(prefill_ranks: int, decode_ranks: int) -> None:
 def _init_distributed() -> Tuple[int, int, torch.device]:
     if not dist.is_available():
         raise RuntimeError("torch.distributed is required for disaggregated prefill/decode")
+    if not torch.cuda.is_available():
+        raise RuntimeError("SKIPPED: CUDA required for disaggregated prefill/decode")
     if "RANK" not in os.environ or "WORLD_SIZE" not in os.environ:
         raise RuntimeError("Run with torchrun (missing RANK/WORLD_SIZE env vars).")
     if "LOCAL_RANK" not in os.environ:
@@ -257,6 +268,48 @@ def _run_decode(
     return outputs
 
 
+def _build_prefill_reference_output(
+    cfg: PrefillDecodeConfig,
+    model: TinyPrefillDecode,
+    prompts: torch.Tensor,
+    handoff_mode: HandoffMode,
+) -> torch.Tensor:
+    """Recompute the fixed-input oracle outside the timed region."""
+    references: List[torch.Tensor] = []
+    if prompts.shape != (
+        cfg.requests_per_rank,
+        cfg.batch_size,
+        cfg.context_window,
+        cfg.hidden_size,
+    ):
+        raise RuntimeError("Prefill reference prompts do not match the measured workload")
+    if handoff_mode == HandoffMode.SERIAL:
+        group_slices = [(request_index, 1) for request_index in range(cfg.requests_per_rank)]
+    elif handoff_mode == HandoffMode.BATCHED:
+        group_slices = [(0, cfg.requests_per_rank)]
+    else:
+        group_size = max(1, min(cfg.transfer_group, cfg.requests_per_rank))
+        group_slices = [
+            (start, min(group_size, cfg.requests_per_rank - start))
+            for start in range(0, cfg.requests_per_rank, group_size)
+        ]
+    with torch.inference_mode():
+        for start, group_len in group_slices:
+            group_prompts = prompts[start:start + group_len].reshape(
+                group_len * cfg.batch_size,
+                cfg.context_window,
+                cfg.hidden_size,
+            )
+            kv_group, seed_group = model.prefill(group_prompts)
+            decoded = model.decode(seed_group, kv_group, cfg.decode_tokens)
+            references.append(
+                decoded.view(group_len, cfg.batch_size, cfg.hidden_size)
+            )
+    if sum(reference.shape[0] for reference in references) != cfg.requests_per_rank:
+        raise RuntimeError("Prefill reference does not cover every measured request")
+    return torch.cat(references, dim=0)
+
+
 def _run_torchrun_worker(
     cfg: PrefillDecodeConfig,
     *,
@@ -266,6 +319,10 @@ def _run_torchrun_worker(
     warmup: int,
     prefill_ranks: Optional[int],
 ) -> None:
+    if isinstance(iters, bool) or iters <= 0:
+        raise ValueError("--iters must be a positive integer")
+    if isinstance(warmup, bool) or warmup < 0:
+        raise ValueError("--warmup must be a non-negative integer")
     rank, world_size, device = _init_distributed()
     if world_size < 2:
         raise RuntimeError(f"SKIPPED: Requires >= 2 GPUs (found {world_size} GPU)")
@@ -358,9 +415,6 @@ def _run_torchrun_worker(
     def _wait_handles(handles: List[dist.Work]) -> None:
         for req in handles:
             req.wait()
-
-    torch.manual_seed(42)
-    torch.cuda.manual_seed_all(42)
 
     model = TinyPrefillDecode(cfg.hidden_size, cfg.num_layers, device, cfg.dtype).eval()
 
@@ -530,7 +584,7 @@ def _run_torchrun_worker(
                     serial_prefill_kv_chunks,
                     serial_prefill_seed_chunks,
                 )
-                for kv_cache, seed in zip(kv_chunks, seed_chunks):
+                for kv_cache, seed in zip(kv_chunks, seed_chunks, strict=True):
                     _send_blocking(kv_cache, seed, peer_rank, pair_groups[rank])
                     if cfg.sync_per_request:
                         torch.cuda.synchronize(device)
@@ -622,33 +676,88 @@ def _run_torchrun_worker(
     torch.cuda.synchronize(device)
 
     with torch.inference_mode():
-        for _ in range(max(warmup, 0)):
+        for _ in range(warmup):
             run_iteration()
         torch.cuda.synchronize(device)
         _barrier()
 
         start = time.perf_counter()
-        for _ in range(max(iters, 1)):
-            run_iteration()
-        torch.cuda.synchronize(device)
-    _barrier()
+        last_decode_outputs: List[torch.Tensor] = []
+        profile_range = f"compute_kernel:{label}"
+        with nvtx_range(profile_range, enable=True):
+            for _ in range(iters):
+                last_decode_outputs = run_iteration()
+            torch.cuda.synchronize(device)
+            _barrier()
     elapsed = time.perf_counter() - start
+
+    if os.environ.get(PREFILL_DECODE_LAUNCH_WALL_NS_ENV):
+        contract = make_prefill_decode_result_contract(
+            label=label,
+            handoff_mode=handoff_mode.value,
+            world_size=world_size,
+            prefill_ranks=prefill_ranks,
+            hidden_size=cfg.hidden_size,
+            num_layers=cfg.num_layers,
+            batch_size=cfg.batch_size,
+            requests_per_rank=cfg.requests_per_rank,
+            context_window=cfg.context_window,
+            decode_tokens=cfg.decode_tokens,
+            transfer_group=cfg.transfer_group,
+            sync_per_request=cfg.sync_per_request,
+            barrier_per_request=cfg.barrier_per_request,
+            dtype=cfg.dtype,
+            iterations=iters,
+            warmup=warmup,
+        )
+        reference_output: Optional[torch.Tensor] = None
+        timed_output: Optional[torch.Tensor] = None
+        if is_prefill:
+            if prompts is None:
+                raise RuntimeError("Prefill prompts are unavailable for verification")
+            reference_output = _build_prefill_reference_output(
+                cfg,
+                model,
+                prompts,
+                handoff_mode,
+            )
+        elif last_decode_outputs:
+            timed_output = torch.stack(last_decode_outputs, dim=0)
+        else:
+            timed_output = torch.empty(
+                (0, cfg.batch_size, cfg.hidden_size),
+                device=device,
+                dtype=cfg.dtype,
+            )
+        write_prefill_decode_child_result(
+            contract=contract,
+            rank=rank,
+            reference_output=reference_output,
+            timed_output=timed_output,
+            verification_prompt=(prompts[0] if rank == 0 and prompts is not None else None),
+        )
+        _barrier()
 
     if rank == 0:
         total_requests = cfg.requests_per_rank * prefill_ranks * cfg.batch_size
         tokens_per_iter = total_requests * cfg.tokens_per_request
-        tokens_per_s = tokens_per_iter * (max(iters, 1) / max(elapsed, 1e-9))
-        time_per_iter_ms = (elapsed / max(iters, 1)) * 1000.0
+        tokens_per_s = tokens_per_iter * (iters / max(elapsed, 1e-9))
+        time_per_iter_ms = (elapsed / iters) * 1000.0
+        print(f"rank0 time_per_iter_ms: {time_per_iter_ms:.9f}", flush=True)
         print(f"rank0 {label} tokens/s: {tokens_per_s:.2f} tokens/s")
-        print(f"rank0 {label} time_per_iter_ms: {time_per_iter_ms:.3f}")
 
     dist.destroy_process_group()
 
 
-class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class _PrefillDecodeMultiGPUBenchmark(
+    PrefillDecodeChildResultMixin,
+    VerificationPayloadMixin,
+    BaseBenchmark,
+):
     """Shared multi-GPU disaggregated prefill/decode harness."""
 
     multi_gpu_required = True
+    preferred_ncu_replay_mode = "app-range"
 
     def __init__(
         self,
@@ -668,6 +777,7 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.handoff_mode = handoff_mode
         self.overlap = handoff_mode == HandoffMode.OVERLAP
         self.label = label
+        self.profile_nvtx_range = f"compute_kernel:{label}"
         self._pairs: List[_LocalPair] = []
         self._output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
@@ -903,53 +1013,10 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output = None
 
     def capture_verification_payload(self) -> None:
-        if self._verify_prompt is None or (self._output is None and not self._pending_outputs):
-            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        if self._output is None:
-            if self._output_buffer is None:
-                raise RuntimeError("Output buffer not initialized")
-            for output_idx, output in enumerate(self._pending_outputs):
-                self._output_buffer[output_idx].copy_(output, non_blocking=False)
-            self._output = self._output_buffer
-        tf32_enabled = torch.cuda.is_available() and bool(torch.backends.cuda.matmul.allow_tf32)
-        if not self._metadata_inputs:
-            raise RuntimeError("setup() must initialize verification metadata tensors")
-        self._set_verification_payload(
-            inputs={
-                "prompt": self._verify_prompt,
-                "decode_tokens": self._metadata_inputs["decode_tokens"],
-                "hidden_size": self._metadata_inputs["hidden_size"],
-                "num_layers": self._metadata_inputs["num_layers"],
-            },
-            output=self._output,
-            batch_size=int(self._output.shape[0]),
-            parameter_count=int(self._param_count),
-            precision_flags=PrecisionFlags(bf16=True, tf32=tf32_enabled),
-            output_tolerance=(0.0, 0.0),
-            signature_overrides={
-                "world_size": self.world_size,
-                "pipeline_stages": 2,
-                "pipeline_stage_boundaries": [
-                    (0, self.prefill_ranks - 1),
-                    (self.prefill_ranks, self.prefill_ranks + self.decode_ranks - 1),
-                ],
-                "per_rank_batch_size": self.cfg.requests_per_rank,
-                "collective_type": "send_recv",
-            },
-        )
+        self.require_prefill_decode_child_result()
 
     def _prepare_verification_payload(self) -> None:
-        if hasattr(self, "_subprocess_verify_output"):
-            return
-        self.setup()
-        try:
-            self.benchmark_fn()
-            self.capture_verification_payload()
-            self._subprocess_verify_output = self.get_verify_output()
-            self._subprocess_output_tolerance = self.get_output_tolerance()
-            self._subprocess_input_signature = self.get_input_signature()
-        finally:
-            self.teardown()
+        self.require_prefill_decode_child_result()
 
     def teardown(self) -> None:
         self._pairs = []
@@ -963,8 +1030,8 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.empty_cache()
 
     def validate_result(self) -> Optional[str]:
-        if self._output is None and not self._pending_outputs:
-            return "No output captured"
+        if self._prefill_decode_result_bundle is None:
+            return "Fresh full-rank prefill/decode worker output is missing"
         return None
 
     def get_config(self) -> BenchmarkConfig:
@@ -975,25 +1042,71 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
             warmup=5,
             multi_gpu_required=True,
             measurement_timeout_seconds=900,
+            nsys_nvtx_include=[self.profile_nvtx_range],
+            ncu_replay_mode="app-range",
+            ncu_replay_mode_override=True,
         )
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
-        self._prepare_verification_payload()
+        effective_config = config or self.get_config()
+        nnodes = int(effective_config.nnodes or 1)
+        if nnodes != 1:
+            raise RuntimeError("Prefill/decode child-result transport requires nnodes == 1")
+        nproc_per_node = int(effective_config.nproc_per_node or self.world_size)
+        if nproc_per_node != self.world_size:
+            raise RuntimeError(
+                "Prefill/decode child-result world size must match nproc_per_node"
+            )
+        iterations = int(effective_config.iterations or 0)
+        warmup = int(effective_config.warmup or 0)
+        contract = make_prefill_decode_result_contract(
+            label=self.label,
+            handoff_mode=self.handoff_mode.value,
+            world_size=nproc_per_node,
+            prefill_ranks=self.prefill_ranks,
+            hidden_size=self.cfg.hidden_size,
+            num_layers=self.cfg.num_layers,
+            batch_size=self.cfg.batch_size,
+            requests_per_rank=self.cfg.requests_per_rank,
+            context_window=self.cfg.context_window,
+            decode_tokens=self.cfg.decode_tokens,
+            transfer_group=self.cfg.transfer_group,
+            sync_per_request=self.cfg.sync_per_request,
+            barrier_per_request=self.cfg.barrier_per_request,
+            dtype=self.cfg.dtype,
+            iterations=iterations,
+            warmup=warmup,
+        )
         module = inspect.getmodule(self.__class__)
         module_name = getattr(module, "__name__", None) if module else None
+        if not module_name:
+            raise RuntimeError("Prefill/decode benchmark module identity is unavailable")
         master_port = os.environ.get("MASTER_PORT", "29517")
-        script_args = ["--prefill-ranks", str(self.prefill_ranks)]
+        child_result_env = self.prepare_prefill_decode_child_result(contract)
+        script_args = [
+            "--module",
+            module_name,
+            "--callable",
+            "main",
+            "--",
+            "--prefill-ranks",
+            str(self.prefill_ranks),
+        ]
         return TorchrunLaunchSpec(
-            module_name=module_name,
+            script_path=Path(benchmark_worker.__file__).resolve(),
             script_args=script_args,
             env={
                 "NCCL_DEBUG": "WARN",
                 "OMP_NUM_THREADS": "1",
                 "MASTER_PORT": master_port,
+                **child_result_env,
             },
             parse_rank0_only=True,
             multi_gpu_required=True,
             name=self.label,
+            result_callback=PREFILL_DECODE_RESULT_CALLBACK,
+            timing_source="rank0_time_per_iter_ms",
+            timing_iterations_per_sample=iterations,
             config_arg_map={
                 "iterations": "--iters",
                 "warmup": "--warmup",

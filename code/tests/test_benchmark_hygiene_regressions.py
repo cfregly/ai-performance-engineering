@@ -14549,7 +14549,7 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert "kv_chunks.append(" not in run_iteration_section
     assert "seed_chunks.append(" not in run_iteration_section
     assert "with torch.inference_mode():" in run_iteration_section
-    assert "with torch.inference_mode():\n        for _ in range(max(warmup, 0)):" in worker_section
+    assert "with torch.inference_mode():\n        for _ in range(warmup):" in worker_section
     assert "torch.no_grad()" not in worker_section
     assert "recv_kv_chunks: dict[int, List[torch.Tensor]] = {}" in worker_section
     assert "recv_seed_chunks: dict[int, List[torch.Tensor]] = {}" in worker_section
@@ -14613,11 +14613,10 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert ".to(pair.decode_device)" not in benchmark_section
     assert "outputs.append(" not in benchmark_section
     assert "outputs.extend(" not in benchmark_section
-    assert "if self._output_buffer is None:" in capture_section
-    assert "for output_idx, output in enumerate(self._pending_outputs):" in capture_section
-    assert "self._output_buffer[output_idx].copy_(output, non_blocking=False)" in capture_section
-    assert "self._output = self._output_buffer" in capture_section
-    assert '"decode_tokens": self._metadata_inputs["decode_tokens"]' in capture_section
+    assert "self.require_prefill_decode_child_result()" in capture_section
+    assert "self._set_verification_payload(" not in capture_section
+    assert "self._output_buffer" not in capture_section
+    assert "self._pending_outputs" not in capture_section
     assert "torch.stack(" not in capture_section
     assert "[out.detach().cpu() for out in self._pending_outputs]" not in capture_section
     assert "torch.zeros(" not in capture_section
