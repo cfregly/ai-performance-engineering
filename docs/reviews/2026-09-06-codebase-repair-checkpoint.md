@@ -1189,3 +1189,37 @@ A real small CPU MoE forward now proves that corruption in the final token's
 final logit is detected. Existing CUDA synchronization semantics are retained
 through the device-aware harness helper. The focused checks pass; fresh B200
 full-output validation remains required.
+
+### Wave 30: complete MoE logits and further execution defects
+
+All 18 stages on `e2271386a` drained. Fifteen of the sixteen MoE journey
+identities passed their actual configured full-output comparisons and speed
+gates. The shared default path now checks all 16,384,000 logits; pad/quant
+retains its complete configured output as well. The compiled paths expose a
+maximum difference of `0.17578125`, while most other paths measured
+`0.0078125`; pad/quant measured `0.119140625`. These pass the existing
+`rtol=0.1, atol=1.0` contract, which was not changed. They are not proof of
+bitwise equivalence or an independently calibrated accuracy policy.
+
+The fused entry exited with a native segmentation fault after timing. The
+Triton entry completed this time, so the retained crash is not specific to
+the Triton-named candidate. The next diagnostic adds matching Python debug
+symbols and Python frames, without modifying the installed interpreter.
+
+Two focused GPU fixtures still allocated the former cropped verification
+buffer. Their expected buffer now matches the complete test output and the
+assertions cover the final token and logit. The two-GPU memory-transfer
+attempt used torchrun for a binary that manages both devices itself; timing
+completed but the parent had no verification payload. Its next run will use
+the ordinary Python launcher. Reviewing that path also found a checksum-only
+comparison and a baseline check of staging memory instead of the destination;
+complete destination validation is being repaired before rerunning it.
+
+The next Llama candidate preserves eager BF16 rounding boundaries using
+per-compilation `emulate_precision_casts` options. It copies PyTorch's complete
+max-autotune profile, retaining autotuning and CUDA graphs, and leaves the
+process-global precision configuration unchanged. This follows the
+[PyTorch 2.9.1 precision option](https://github.com/pytorch/pytorch/blob/v2.9.1/torch/_inductor/config.py#L736-L743)
+and its [mode profile API](https://github.com/pytorch/pytorch/blob/v2.9.1/torch/_inductor/__init__.py#L317-L352).
+The combined focused CPU checks pass (`31 passed, 2 CUDA-only skipped`);
+the full B200 comparison and measured performance are still pending.

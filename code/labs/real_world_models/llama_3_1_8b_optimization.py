@@ -32,6 +32,39 @@ LLAMA_BF16_OUTPUT_TOLERANCE = (0.02, 0.02)
 # different arithmetic path when the full stack is compiled.
 LLAMA_RMS_NORM_EPS = 1e-5
 
+# Inductor normally elides BF16 downcast/upcast pairs between fused pointwise
+# operations. Preserve the eager rounding boundaries so compiling the full
+# decoder stack does not silently change the SiLU/gate and residual numerics.
+LLAMA_EMULATE_EAGER_PRECISION_CASTS = True
+
+
+def _max_autotune_compile_options() -> dict[str, Any]:
+    """Return max-autotune options with eager BF16 rounding scoped to one compile."""
+    inductor = getattr(torch, "_inductor", None)
+    list_mode_options = getattr(inductor, "list_mode_options", None)
+    if list_mode_options is None:
+        raise RuntimeError(
+            "SKIPPED: this PyTorch build cannot expand the max-autotune "
+            "torch.compile options."
+        )
+
+    try:
+        mode_options = list_mode_options("max-autotune")
+    except Exception as exc:  # pragma: no cover - depends on the PyTorch build
+        raise RuntimeError(
+            "SKIPPED: this PyTorch build cannot expand the max-autotune "
+            "torch.compile options."
+        ) from exc
+    if not isinstance(mode_options, dict) or mode_options.get("max_autotune") is not True:
+        raise RuntimeError(
+            "SKIPPED: this PyTorch build does not expose a max-autotune "
+            "torch.compile option profile."
+        )
+
+    options = dict(mode_options)
+    options["emulate_precision_casts"] = LLAMA_EMULATE_EAGER_PRECISION_CASTS
+    return options
+
 
 class Llama31_8B_Optimization:
     """Llama 3.1 8B optimization benchmark."""
@@ -62,13 +95,14 @@ class Llama31_8B_Optimization:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.output: Optional[torch.Tensor] = None
         self.model: Optional[nn.Module] = None
+        self.compile_options: dict[str, Any] | None = None
         
         logger.info("Llama 3.1 8B Optimization")
         logger.info("  Compile: %s", use_compile)
         logger.info("  FP8: %s", use_fp8)
         logger.info("  Fast attention (SDPA): %s", use_flex_attention)
         logger.info("  Prefer SDPA backends: %s", prefer_sdpa)
-    
+
     def _create_attention_layer(self):
         """Create attention layer (simplified for benchmark)."""
         use_fast_attention = bool(self.use_flex_attention)
@@ -198,9 +232,14 @@ class Llama31_8B_Optimization:
         # sm_103a de-suffix in core/benchmark/triton_compat.py, fixed 2026-06-11;
         # max-autotune re-verified clean on GB300 / Triton 3.7.)
         if self.use_compile:
+            # torch.compile rejects mode and options together. Expand PyTorch's
+            # max-autotune profile and add the numerical policy to this compile
+            # only, avoiding process-global Inductor configuration changes.
+            self.compile_options = _max_autotune_compile_options()
             self.model = compile_model(
                 self.model,
-                mode="max-autotune",
+                mode=None,
+                options=dict(self.compile_options),
                 fullgraph=False,
                 dynamic=False,
             )
@@ -229,6 +268,7 @@ class Llama31_8B_Optimization:
         self.model = None
         self.layers = None
         self.input = None
+        self.compile_options = None
         torch.cuda.empty_cache()
 
     # Harness adapter

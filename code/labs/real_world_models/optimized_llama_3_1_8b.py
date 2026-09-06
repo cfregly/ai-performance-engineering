@@ -39,6 +39,7 @@ class OptimizedLlama31_8B(VerificationPayloadMixin, BaseBenchmark):
             "llama.use_compile": 1.0,
             "llama.use_flex_attention": 1.0,
             "llama.use_fp8": 1.0 if self.use_fp8 else 0.0,
+            "llama.emulate_precision_casts": 1.0,
         }
         self.register_workload_metadata(requests_per_iteration=float(batch_size))
 

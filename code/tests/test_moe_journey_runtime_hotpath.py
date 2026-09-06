@@ -424,7 +424,7 @@ def test_moe_journey_timing_events_and_verification_clone_stay_out_of_hot_path(
     # hot-path fixture replaces setup's model/input work, so provide the same
     # buffer contract without weakening capture_verification_payload().
     bench._verify_output_buffer = torch.empty(
-        (config.batch_size, 1, min(8, config.vocab_size)),
+        (config.batch_size, config.seq_len, config.vocab_size),
         device=input_ids.device,
         dtype=torch.float32,
     )
@@ -454,6 +454,8 @@ def test_moe_journey_timing_events_and_verification_clone_stay_out_of_hot_path(
     payload = bench._verification_payload
     assert payload.output.dtype == torch.float32
     assert payload.output.data_ptr() != bench.output.data_ptr()
+    torch.testing.assert_close(payload.output, logits.float(), rtol=0, atol=0)
+    assert payload.output[0, -1, -1].item() == logits[0, -1, -1].item()
 
     bench.benchmark_fn()
     torch.cuda.synchronize()
