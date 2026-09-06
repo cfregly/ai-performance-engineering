@@ -1,4 +1,4 @@
-"""Shared helpers for single-GPU symmetric-memory perf benchmarks."""
+"""Shared helpers for the distributed symmetric-memory performance pair."""
 
 from __future__ import annotations
 
@@ -29,6 +29,11 @@ SYMMETRIC_MEMORY_PERF_RESULT_TOKEN_ENV = "AISP_SYMMETRIC_MEMORY_PERF_RESULT_TOKE
 SYMMETRIC_MEMORY_PERF_VARIANT_ENV = "AISP_SYMMETRIC_MEMORY_PERF_VARIANT"
 SYMMETRIC_MEMORY_PERF_LAUNCH_WALL_NS_ENV = "AISP_TORCHRUN_RESULT_LAUNCH_WALL_NS"
 SYMMETRIC_MEMORY_PERF_RESULT_SCHEMA = "aisp.symmetric-memory-perf.child-result.v1"
+
+
+def make_rank_distinct_input(numel: int, device: torch.device, rank: int) -> torch.Tensor:
+    """Keep peer transfers distinguishable even with identical per-rank seeds."""
+    return torch.randn(numel, device=device, dtype=torch.float32).add_(float(rank))
 
 
 def build_square_verification_probe(

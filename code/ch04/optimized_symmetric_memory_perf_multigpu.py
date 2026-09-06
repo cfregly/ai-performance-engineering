@@ -19,6 +19,7 @@ from ch04.symmetric_memory_perf_common import (
     SYMMETRIC_MEMORY_PERF_OPTIMIZED_NVTX_RANGE,
     SYMMETRIC_MEMORY_PERF_RESULT_CALLBACK,
     SymmetricMemoryPerfChildResultMixin,
+    make_rank_distinct_input,
 )
 from core.benchmark.cuda_event_timing import max_elapsed_ms
 from core.benchmark.metrics import compute_memory_transfer_metrics
@@ -122,7 +123,7 @@ class OptimizedSymmetricMemoryPerfBenchmark(
         device = torch.device("cuda", device_id)
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
-        self.local_tensor = torch.randn(self.numel, device=device, dtype=torch.float32)
+        self.local_tensor = make_rank_distinct_input(self.numel, device, self.rank)
 
         # Create symmetric memory handle for direct peer access.
         self.handle = create_symmetric_memory_handle(self.local_tensor)

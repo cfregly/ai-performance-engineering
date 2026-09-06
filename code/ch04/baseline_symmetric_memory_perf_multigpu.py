@@ -19,6 +19,7 @@ from ch04.symmetric_memory_perf_common import (
     SYMMETRIC_MEMORY_PERF_BASELINE_NVTX_RANGE,
     SYMMETRIC_MEMORY_PERF_RESULT_CALLBACK,
     SymmetricMemoryPerfChildResultMixin,
+    make_rank_distinct_input,
 )
 from core.benchmark.cuda_event_timing import elapsed_ms
 from core.benchmark.metrics import compute_memory_transfer_metrics
@@ -89,7 +90,7 @@ class BaselineSymmetricMemoryPerfBenchmark(
         device = torch.device("cuda", device_id)
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
-        self.tensor = torch.randn(self.numel, device=device, dtype=torch.float32)
+        self.tensor = make_rank_distinct_input(self.numel, device, self.rank)
         self.recv_tensor = torch.empty_like(self.tensor)
         self._verify_input, self._verify_numel = build_square_verification_probe(self.tensor)
         self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
