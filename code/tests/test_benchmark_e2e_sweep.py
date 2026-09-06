@@ -6,6 +6,7 @@ import hashlib
 import json
 import signal
 import subprocess
+import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -2300,6 +2301,22 @@ def test_run_benchmark_e2e_sweep_heartbeats_summary_during_stage_progress(
     )
     monkeypatch.setattr(e2e_sweep, "_STAGE_PROGRESS_POLL_SECONDS", 0.01)
     monkeypatch.setattr(e2e_sweep, "_STATE_HEARTBEAT_SECONDS", 0.01)
+    heartbeat_written = threading.Event()
+    watch_heartbeat = threading.Event()
+    summary_path = e2e_sweep.e2e_run_dir("e2e_cluster_heartbeat", tmp_path) / "summary.json"
+    real_write_json = e2e_sweep._write_json
+
+    def _observe_summary_write(path, payload):
+        result = real_write_json(path, payload)
+        if (
+            watch_heartbeat.is_set()
+            and Path(path) == summary_path
+            and threading.current_thread().name.startswith("e2e-progress-")
+        ):
+            heartbeat_written.set()
+        return result
+
+    monkeypatch.setattr(e2e_sweep, "_write_json", _observe_summary_write)
 
     def _fake_cluster_eval(**kwargs):
         child_progress_path = cluster_run_dir / "progress" / "run_progress.json"
@@ -2316,13 +2333,11 @@ def test_run_benchmark_e2e_sweep_heartbeats_summary_during_stage_progress(
                 percent_complete=20.0,
             )
         )
-        run_dir = e2e_sweep.e2e_run_dir("e2e_cluster_heartbeat", tmp_path)
-        summary_path = run_dir / "summary.json"
-        before = summary_path.stat().st_mtime_ns
-        time.sleep(0.05)
-        after = summary_path.stat().st_mtime_ns
-        observed["before"] = before
-        observed["after"] = after
+        # Wait for the real background write, rather than assuming the mirror
+        # thread is scheduled within 50 ms or that filesystem mtimes advance.
+        watch_heartbeat.set()
+        observed["heartbeat_written"] = heartbeat_written.wait(timeout=2.0)
+        observed["summary"] = json.loads(summary_path.read_text())
         return {
             "success": True,
             "run_id": kwargs["run_id"],
@@ -2344,7 +2359,8 @@ def test_run_benchmark_e2e_sweep_heartbeats_summary_during_stage_progress(
 
     assert result["success"] is True
     assert result["overall_status"] == "succeeded"
-    assert observed["after"] > observed["before"]
+    assert observed["heartbeat_written"] is True
+    assert isinstance(observed["summary"], dict)
 
 
 def test_run_benchmark_e2e_sweep_mirrors_fabric_stage_progress(tmp_path: Path, monkeypatch) -> None:
