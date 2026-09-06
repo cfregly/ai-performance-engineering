@@ -1,15 +1,19 @@
-"""Benchmark wrapper for NVSHMEM pipeline parallel; skips on <2 GPUs."""
+"""NCCL P2P baseline for the NVSHMEM pipeline comparison; skips on <2 GPUs."""
 
 from __future__ import annotations
 
 import os
-import sys
-from pathlib import Path
-from typing import Optional
 
 import torch
-import torch.distributed as dist
 
+from ch04.nvshmem_pipeline_result import (
+    NVSHMEM_PIPELINE_RESULT_CALLBACK,
+    NVSHMEMPipelineChildResultMixin,
+)
+from ch04.nvshmem_profile_ranges import (
+    PIPELINE_BASELINE_NVTX_RANGE,
+    PROFILE_NVTX_RANGE_ENV,
+)
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -17,102 +21,47 @@ from core.harness.benchmark_harness import (
     LaunchVia,
     TorchrunLaunchSpec,
 )
-from core.optimization.symmetric_memory_patch import symmetric_memory_available
 
 
-class NVSHMEMPipelineParallelMultiGPU(VerificationPayloadMixin, BaseBenchmark):
+class NVSHMEMPipelineParallelMultiGPU(
+    NVSHMEMPipelineChildResultMixin,
+    VerificationPayloadMixin,
+    BaseBenchmark,
+):
     multi_gpu_required = True
-    preferred_ncu_replay_mode = "kernel"
+    preferred_ncu_replay_mode = "app-range"
     allowed_benchmark_fn_antipatterns = ("host_transfer", "random_input_regeneration", "sync")
 
     def __init__(self) -> None:
         super().__init__()
         self.register_workload_metadata(requests_per_iteration=1.0)
-        self._benchmark_argv: list[str] = []
-        self._original_argv: Optional[list[str]] = None
-        self._original_env: dict[str, Optional[str]] = {}
-        self._verify_input: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         if torch.cuda.device_count() < 2:
             raise RuntimeError("SKIPPED: nvshmem_pipeline_parallel_multigpu requires >=2 GPUs")
-        if not symmetric_memory_available():
-            raise RuntimeError(
-                "SKIPPED: nvshmem_pipeline_parallel_multigpu requires NVSHMEM or SymmetricMemory support"
-            )
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
-        self._benchmark_argv = [
-            sys.argv[0],
-            "--schedule",
-            "1f1b",
-            "--batch-size",
-            "64",
-            "--num-microbatches",
-            "4",
-            "--seq-len",
-            "16",
-            "--hidden-dim",
-            "32",
-        ]
-        self._original_argv = sys.argv
-        self._original_env = {
-            "AISP_DISABLE_SYMMEM_PIPELINE": os.environ.get("AISP_DISABLE_SYMMEM_PIPELINE"),
-            "AISP_SYMMEM_PIPELINE_ASYNC": os.environ.get("AISP_SYMMEM_PIPELINE_ASYNC"),
-        }
-        os.environ["AISP_DISABLE_SYMMEM_PIPELINE"] = "0"
-        os.environ["AISP_SYMMEM_PIPELINE_ASYNC"] = "0"
-        sys.argv = self._benchmark_argv
-        self._verify_input = torch.randn(64, 64, device=self.device, dtype=torch.float32)
 
     def benchmark_fn(self) -> None:
-        if not self._benchmark_argv:
-            raise RuntimeError("setup() must initialize benchmark argv before benchmark_fn()")
+        raise RuntimeError(
+            "NVSHMEM pipeline executes only through its torchrun worker; "
+            "use get_torchrun_spec()"
+        )
 
     def teardown(self) -> None:
-        if dist.is_initialized():
-            dist.destroy_process_group()
-        if self._original_argv is not None:
-            sys.argv = self._original_argv
-            self._original_argv = None
-        for key, value in self._original_env.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
-        self._original_env = {}
-        self._benchmark_argv = []
         torch.cuda.empty_cache()
 
     def capture_verification_payload(self) -> None:
-        if self._verify_input is None:
-            torch.manual_seed(42)
-            torch.cuda.manual_seed_all(42)
-            self._verify_input = torch.randn(64, 64, device=self.device, dtype=torch.float32)
-        output = self._verify_input + 1.0
-        self._set_verification_payload(
-            inputs={"probe": self._verify_input},
-            output=output,
-            batch_size=int(self._verify_input.shape[0]),
-            parameter_count=0,
-            precision_flags={
-                "fp16": False,
-                "bf16": False,
-                "fp8": False,
-                "tf32": torch.backends.cuda.matmul.allow_tf32
-                if torch.cuda.is_available()
-                else False,
-            },
-            output_tolerance=(0.1, 1.0),
-            signature_overrides={
-                "world_size": torch.cuda.device_count(),
-                "collective_type": "nvshmem",
-            },
-        )
+        self.require_nvshmem_pipeline_child_result()
 
     def get_config(self) -> BenchmarkConfig:
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
-            return BenchmarkConfig(iterations=1, warmup=5, measurement_timeout_seconds=300)
+            return BenchmarkConfig(
+                iterations=1,
+                warmup=5,
+                measurement_timeout_seconds=300,
+                nsys_nvtx_include=[PIPELINE_BASELINE_NVTX_RANGE],
+                ncu_replay_mode="app-range",
+                ncu_replay_mode_override=True,
+            )
         return BenchmarkConfig(
             launch_via=LaunchVia.TORCHRUN,
             nproc_per_node=torch.cuda.device_count(),
@@ -120,12 +69,32 @@ class NVSHMEMPipelineParallelMultiGPU(VerificationPayloadMixin, BaseBenchmark):
             warmup=5,
             multi_gpu_required=True,
             measurement_timeout_seconds=300,
+            nsys_nvtx_include=[PIPELINE_BASELINE_NVTX_RANGE],
+            ncu_replay_mode="app-range",
+            ncu_replay_mode_override=True,
         )
 
-    def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
+    def get_torchrun_spec(self, config: BenchmarkConfig | None = None) -> TorchrunLaunchSpec:
+        effective_config = config or self.get_config()
+        if int(effective_config.nnodes or 1) != 1:
+            raise RuntimeError("Pipeline child-result transport requires nnodes == 1")
+        nproc_per_node = int(
+            effective_config.nproc_per_node or max(2, torch.cuda.device_count())
+        )
+        env = self.prepare_nvshmem_pipeline_child_result(
+            variant="baseline",
+            world_size=nproc_per_node,
+            iterations=1,
+            configuration=self._pipeline_configuration(transport="nccl"),
+        )
         return TorchrunLaunchSpec(
-            script_path=Path(__file__).resolve().with_name("nvshmem_worker.py"),
+            module_name="core.harness.benchmark_worker",
             script_args=[
+                "--module",
+                "ch04.nvshmem_worker",
+                "--callable",
+                "main",
+                "--",
                 "--workload",
                 "pipeline",
                 "--variant",
@@ -133,11 +102,15 @@ class NVSHMEMPipelineParallelMultiGPU(VerificationPayloadMixin, BaseBenchmark):
                 *self._pipeline_args(),
             ],
             env={
-                "AISP_DISABLE_SYMMEM_PIPELINE": "0",
-                "AISP_SYMMEM_PIPELINE_ASYNC": "0",
+                **env,
+                "AISP_DISABLE_SYMMEM_PIPELINE": "1",
+                PROFILE_NVTX_RANGE_ENV: PIPELINE_BASELINE_NVTX_RANGE,
             },
             multi_gpu_required=True,
             name="baseline_nvshmem_pipeline_parallel_multigpu",
+            result_callback=NVSHMEM_PIPELINE_RESULT_CALLBACK,
+            timing_source="rank0_time_per_iter_ms",
+            timing_iterations_per_sample=1,
         )
 
     @staticmethod
@@ -153,9 +126,23 @@ class NVSHMEMPipelineParallelMultiGPU(VerificationPayloadMixin, BaseBenchmark):
             "16",
             "--hidden-dim",
             "32",
+            "--transport",
+            "nccl",
         ]
 
-    def get_custom_metrics(self) -> Optional[dict]:
+    @staticmethod
+    def _pipeline_configuration(*, transport: str) -> dict[str, int | str]:
+        return {
+            "schedule": "1f1b",
+            "batch_size": 64,
+            "num_microbatches": 4,
+            "microbatch_size": 16,
+            "seq_len": 16,
+            "hidden_dim": 32,
+            "transport": transport,
+        }
+
+    def get_custom_metrics(self) -> dict | None:
         """Return domain-specific metrics using standardized helper."""
         from core.benchmark.metrics import compute_memory_transfer_metrics
 

@@ -1,9 +1,8 @@
 """Cheap eval stack that pairs user-visible quality with MoE/router telemetry.
 
-This is intentionally lightweight so you can drop it into the dynamic router lab
-and replace the mock generators with real engine hooks when you have vLLM or
-TensorRT-LLM running. This is a lab tool (not a comparable benchmark target)
-that emits a consistent artifact layout:
+This lab tool requires vLLM for its default quality path. ``--no-vllm`` selects
+the explicit synthetic mode, while ``--metrics-dir`` replays captured metrics.
+It is not a comparable benchmark target and emits a consistent artifact layout:
 
 /artifacts/dynamic_router/cheap_eval/<run_id>/
   quality.jsonl       # per-item exact-match results
@@ -18,11 +17,11 @@ from __future__ import annotations
 
 import argparse
 import heapq
-import io
 import json
 import math
 import random
 import sys
+import tempfile
 import time
 from contextlib import redirect_stdout
 from dataclasses import dataclass
@@ -31,13 +30,20 @@ from statistics import mean, pstdev
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import torch
+
 from labs.common.model_fetcher import ensure_gpt_oss_20b
 
-try:  # Optional import here; runtime will error if vLLM is actually needed and missing.
+_VLLM_IMPORT_ERROR: Exception | None = None
+try:  # Import remains optional for explicit synthetic and metrics-replay modes.
     from vllm import LLM, SamplingParams  # type: ignore
-except Exception:  # pragma: no cover - optional
+except Exception as exc:  # pragma: no cover - depends on the runtime installation
     LLM = None  # type: ignore
     SamplingParams = None  # type: ignore
+    _VLLM_IMPORT_ERROR = exc
+
+
+class VLLMRequiredError(RuntimeError):
+    """Raised when the requested real vLLM path cannot be initialized."""
 
 
 # ---------------------------------------------------------------------------
@@ -320,7 +326,8 @@ class CheapEvalStack:
         self._llm: Optional["LLM"] = None
         self._llm_available: bool = False
         if cfg.metrics_dir is None:  # When replaying real metrics we don't need to spin up an LLM.
-            self._init_llm_if_possible()
+            if cfg.use_vllm:
+                self._init_required_llm()
 
     def _load_real_metrics(self) -> Optional[LoadedMetrics]:
         """Load telemetry emitted by a real engine run."""
@@ -355,7 +362,7 @@ class CheapEvalStack:
             throughput_summary=throughput_summary or None,
         )
 
-    def run(self) -> Dict[str, float]:
+    def run(self) -> Dict[str, object]:
         run_id = f"full_{int(time.time())}"
         run_dir = self.cfg.run_root / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -363,6 +370,8 @@ class CheapEvalStack:
         optimized = True
 
         loaded = self._load_real_metrics()
+        component_sources: Dict[str, str] = {}
+        synthetic_components: List[str] = []
         if loaded:
             quality_rows = loaded.quality_rows
             latency_rows = loaded.latency_rows
@@ -370,30 +379,74 @@ class CheapEvalStack:
             moe_traffic_rows = loaded.moe_traffic_rows
 
             if not quality_rows and self.cfg.allow_missing_metrics:
-                quality_rows, quality_summary = self._run_quality(optimized)
+                quality_rows, quality_summary = self._run_synthetic_quality(optimized)
+                component_sources["quality"] = "synthetic_allow_missing_metrics"
+                synthetic_components.append("quality")
             else:
                 quality_summary = _summarize_quality_rows(quality_rows)
+                component_sources["quality"] = "metrics_replay"
 
             if not latency_rows and self.cfg.allow_missing_metrics:
                 latency_rows = self._simulate_latency(optimized)
+                component_sources["latency"] = "synthetic_allow_missing_metrics"
+                synthetic_components.append("latency")
+            else:
+                component_sources["latency"] = "metrics_replay"
 
             if not moe_router_rows and not moe_traffic_rows and self.cfg.allow_missing_metrics:
                 moe_router_rows, moe_traffic_rows, moe_summary = self._simulate_moe(optimized)
+                component_sources["moe_router"] = "synthetic_allow_missing_metrics"
+                synthetic_components.append("moe_router")
             else:
                 moe_summary = _summarize_moe(
                     moe_router_rows,
                     moe_traffic_rows,
                     experts=self.cfg.experts,
                 )
+                component_sources["moe_router"] = "metrics_replay"
 
-            throughput_summary = loaded.throughput_summary or self._compute_throughput(
-                latency_rows, moe_summary["token_drop_rate"]
+            if loaded.throughput_summary:
+                throughput_summary = loaded.throughput_summary
+                component_sources["throughput"] = "metrics_replay"
+            else:
+                throughput_summary = self._compute_throughput(
+                    latency_rows, moe_summary["token_drop_rate"]
+                )
+                component_sources["throughput"] = "derived_from_loaded_components"
+            execution_mode = (
+                "metrics_replay_with_synthetic_fallback"
+                if synthetic_components
+                else "metrics_replay"
             )
+            if not synthetic_components:
+                evidence_mode = "replayed_metrics"
+            elif (
+                set(synthetic_components) == {"quality", "latency", "moe_router"}
+                and loaded.throughput_summary is None
+            ):
+                evidence_mode = "synthetic"
+            else:
+                evidence_mode = "mixed"
         else:
             quality_rows, quality_summary = self._run_quality(optimized)
             latency_rows = self._simulate_latency(optimized)
             moe_router_rows, moe_traffic_rows, moe_summary = self._simulate_moe(optimized)
             throughput_summary = self._compute_throughput(latency_rows, moe_summary["token_drop_rate"])
+            if self.cfg.use_vllm:
+                component_sources["quality"] = "vllm"
+                execution_mode = "vllm_quality_with_synthetic_telemetry"
+                evidence_mode = "mixed"
+            else:
+                component_sources["quality"] = "synthetic_no_vllm"
+                synthetic_components.append("quality")
+                execution_mode = "synthetic_no_vllm"
+                evidence_mode = "synthetic"
+            component_sources.update(
+                latency="synthetic_model",
+                moe_router="synthetic_model",
+                throughput="derived_from_synthetic_latency",
+            )
+            synthetic_components.extend(["latency", "moe_router"])
 
         scorecard = self._build_scorecard(
             quality_summary=quality_summary,
@@ -412,6 +465,10 @@ class CheapEvalStack:
         (run_dir / "scorecard.json").write_text(json.dumps(scorecard, indent=2))
         sys_meta = {
             "mode": "full",
+            "execution_mode": execution_mode,
+            "evidence_mode": evidence_mode,
+            "component_sources": component_sources,
+            "synthetic_components": synthetic_components,
             "seed": self.cfg.seed,
             "experts": self.cfg.experts,
             "top_k": self.cfg.top_k,
@@ -420,7 +477,10 @@ class CheapEvalStack:
             "ttft_slo_ms": self.cfg.ttft_slo_ms,
             "run_dir": str(run_dir),
             "model_path": self.cfg.model_path,
+            "requested_vllm": self.cfg.use_vllm,
             "used_vllm": bool(self._llm_available and self.cfg.use_vllm),
+            "metrics_dir": str(self.cfg.metrics_dir) if self.cfg.metrics_dir else None,
+            "allow_missing_metrics": self.cfg.allow_missing_metrics,
         }
         (run_dir / "sys_meta.json").write_text(json.dumps(sys_meta, indent=2))
 
@@ -430,6 +490,12 @@ class CheapEvalStack:
 
         summary = {
             "run_dir": str(run_dir),
+            "execution_mode": execution_mode,
+            "evidence_mode": evidence_mode,
+            "component_sources": component_sources,
+            "synthetic_components": synthetic_components,
+            "used_vllm": bool(self._llm_available and self.cfg.use_vllm),
+            "sys_meta_path": str(run_dir / "sys_meta.json"),
             "accuracy_overall": quality_summary["avg_accuracy"],
             "accuracy_mmlu": quality_summary["per_task"].get("mmlu-mini", 0.0),
             "accuracy_math": quality_summary["per_task"].get("gsm8k-lite", 0.0),
@@ -451,32 +517,41 @@ class CheapEvalStack:
 
     # ------------------------------------------------------------------ Quality
     def _run_quality(self, optimized: bool) -> Tuple[List[Dict], Dict]:
+        if self.cfg.use_vllm:
+            if not self._llm_available or self._llm is None:
+                raise VLLMRequiredError(
+                    "vLLM execution was requested, but no initialized vLLM engine is available. "
+                    "Pass --no-vllm only when explicitly synthetic quality output is intended."
+                )
+            rows = self._run_quality_with_llm()
+        else:
+            rows, _ = self._run_synthetic_quality(optimized)
+
+        return rows, _summarize_quality_rows(rows)
+
+    def _run_synthetic_quality(self, optimized: bool) -> Tuple[List[Dict], Dict]:
+        """Generate quality rows only for an explicitly selected synthetic path."""
         rows: List[Dict] = []
         base_acc = 0.62 if not optimized else 0.74
         consistency_bonus = 0.0 if not optimized else 0.03
-
-        if self._llm_available and self.cfg.use_vllm:
-            rows = self._run_quality_with_llm()
-        else:
-            # Synthetic fallback when vLLM is unavailable in the current environment.
-            for task, qas in QUALITY_TASKS.items():
-                for _, expected in qas:
-                    correct = self._rng.random() < (base_acc + consistency_bonus)
-                    rows.append(
-                        {
-                            "task": task,
-                            "prompt": "synthetic",
-                            "expected": expected,
-                            "prediction": expected if correct else f"{expected}_wrong",
-                            "correct": correct,
-                        }
-                    )
-
+        for task, qas in QUALITY_TASKS.items():
+            for _, expected in qas:
+                correct = self._rng.random() < (base_acc + consistency_bonus)
+                rows.append(
+                    {
+                        "task": task,
+                        "prompt": "synthetic",
+                        "expected": expected,
+                        "prediction": expected if correct else f"{expected}_wrong",
+                        "correct": correct,
+                        "source": "synthetic",
+                    }
+                )
         return rows, _summarize_quality_rows(rows)
 
     def _run_quality_with_llm(self) -> List[Dict]:
         if self._llm is None:
-            return []
+            raise VLLMRequiredError("vLLM quality generation requires an initialized engine")
 
         prompts: List[Tuple[str, str, str]] = []  # (task, prompt, expected)
         for task, qas in QUALITY_TASKS.items():
@@ -775,50 +850,66 @@ class CheapEvalStack:
 
     # ---------------------------------------------------------------- Private helpers
 
-    def _init_llm_if_possible(self) -> None:
-        """Attempt to bring up vLLM for real model scoring; fall back silently on failure."""
-        if not self.cfg.use_vllm:
-            return
+    def _init_required_llm(self) -> None:
+        """Initialize the requested vLLM path or fail with an actionable error."""
         if LLM is None or SamplingParams is None:
-            return
+            detail = f": {_VLLM_IMPORT_ERROR}" if _VLLM_IMPORT_ERROR is not None else ""
+            raise VLLMRequiredError(
+                "vLLM execution was requested, but vLLM could not be imported"
+                f"{detail}. Pass --no-vllm only when explicitly synthetic output is intended."
+            ) from _VLLM_IMPORT_ERROR
         if not torch.cuda.is_available():
-            return
+            raise VLLMRequiredError(
+                "vLLM execution was requested, but CUDA is unavailable. "
+                "Pass --no-vllm only when explicitly synthetic output is intended."
+            )
 
-        model_path = ensure_gpt_oss_20b(Path(self.cfg.model_path))
         if torch.cuda.device_count() <= 0:
-            return
+            raise VLLMRequiredError(
+                "vLLM execution was requested, but CUDA reports zero visible devices."
+            )
+        try:
+            model_path = ensure_gpt_oss_20b(Path(self.cfg.model_path))
+        except Exception as exc:
+            raise VLLMRequiredError(
+                f"vLLM model preparation failed for {self.cfg.model_path!r}: {exc}"
+            ) from exc
         if not (model_path / "config.json").exists():
-            return
+            raise VLLMRequiredError(
+                f"vLLM model path {model_path} is missing required config.json"
+            )
 
         tp = self.cfg.tensor_parallel_size or torch.cuda.device_count()
-        buf = io.StringIO()
-        with redirect_stdout(buf):
+        # vLLM workers and native libraries use stdout.fileno(). A StringIO
+        # capture breaks their initialization, including forked worker startup.
+        with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as buf:
             try:
-                self._llm = LLM(
-                    model=str(model_path),
-                    tensor_parallel_size=tp,
-                    trust_remote_code=True,
-                    gpu_memory_utilization=0.8,
-                    enforce_eager=True,
-                )
+                with redirect_stdout(buf):
+                    self._llm = LLM(
+                        model=str(model_path),
+                        tensor_parallel_size=tp,
+                        trust_remote_code=True,
+                        gpu_memory_utilization=0.8,
+                        enforce_eager=True,
+                    )
                 self._llm_available = True
             except Exception as exc:
                 self._llm_available = False
-                captured_err = buf.getvalue().strip()
+                buf.flush()
+                buf.seek(0)
+                captured_err = buf.read().strip()
                 lines = [ln for ln in captured_err.splitlines() if ln]
                 lines.append(f"llm_init_error: {exc}")
-                try:
-                    print(json.dumps({"event": "vllm_llm_init_error", "lines": lines}), file=sys.stderr)
-                except Exception:
-                    print("\n".join(lines), file=sys.stderr)
-                return
-        captured = buf.getvalue().strip()
+                print(json.dumps({"event": "vllm_llm_init_error", "lines": lines}), file=sys.stderr)
+                raise VLLMRequiredError(
+                    f"vLLM initialization failed for {model_path}: {exc}"
+                ) from exc
+            buf.flush()
+            buf.seek(0)
+            captured = buf.read().strip()
         if captured:
-            try:
-                lines = [ln for ln in captured.splitlines() if ln]
-                print(json.dumps({"event": "vllm_llm_init_stdout", "lines": lines}), file=sys.stderr)
-            except Exception:
-                print(captured, file=sys.stderr)
+            lines = [ln for ln in captured.splitlines() if ln]
+            print(json.dumps({"event": "vllm_llm_init_stdout", "lines": lines}), file=sys.stderr)
 
     @staticmethod
     def _normalize_text(text: str) -> str:
@@ -830,7 +921,7 @@ class CheapEvalStack:
         return " ".join("".join(cleaned).split())
 
 
-def run_eval_stack(cfg: EvalConfig | None = None) -> Dict[str, float]:
+def run_eval_stack(cfg: EvalConfig | None = None) -> Dict[str, object]:
     """Convenience entrypoint used by tools."""
     cfg = cfg or EvalConfig()
     runner = CheapEvalStack(cfg)

@@ -2453,7 +2453,7 @@ def test_ch04_nvshmem_training_example_defers_reduced_norm_sync() -> None:
     assert "reduced_norm = float(bucket.tensor.norm())" in bucket_demo
 
 
-def test_ch04_nvshmem_wrappers_cache_benchmark_argv() -> None:
+def test_ch04_nvshmem_wrappers_pass_args_only_to_explicit_child() -> None:
     wrapper_cases = {
         "ch04/baseline_nvshmem_pipeline_parallel_multigpu.py": "--schedule",
         "ch04/optimized_nvshmem_pipeline_parallel_multigpu.py": "--schedule",
@@ -2465,43 +2465,28 @@ def test_ch04_nvshmem_wrappers_cache_benchmark_argv() -> None:
 
     for relative_path, argv_flag in wrapper_cases.items():
         source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
-        setup_section = source.split("def setup", maxsplit=1)[1].split(
-            "def benchmark_fn",
-            maxsplit=1,
-        )[0]
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def teardown",
             maxsplit=1,
         )[0]
-        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
-            "def capture_verification_payload",
-            maxsplit=1,
-        )[0]
 
-        assert "self._benchmark_argv: list[str] = []" in source
-        assert "self._benchmark_argv = [" in setup_section
-        assert argv_flag in setup_section
-        assert "setup() must initialize benchmark argv before benchmark_fn()" in benchmark_section
-        assert "original_argv = sys.argv[:]" not in benchmark_section
-        assert "sys.argv = [" not in benchmark_section
-        assert "self._benchmark_argv = []" in teardown_section
-        assert "self._original_argv: Optional[list[str]] = None" in source
-        assert "self._original_argv = sys.argv" in setup_section
-        assert "sys.argv = self._benchmark_argv" in setup_section
-        assert "original_argv = sys.argv" not in benchmark_section
-        assert "sys.argv = self._benchmark_argv" not in benchmark_section
-        assert "sys.argv = self._original_argv" in teardown_section
+        assert 'module_name="core.harness.benchmark_worker"' in source
+        assert '"ch04.nvshmem_worker"' in source
+        assert '"--callable"' in source
+        assert '"main"' in source
+        assert '"--"' in source
+        assert argv_flag in source
+        assert "sys.argv" not in source
+        assert "os.environ" not in benchmark_section
 
 
-def test_ch04_nvshmem_wrappers_cache_env_outside_hot_path() -> None:
+def test_ch04_nvshmem_wrappers_pass_env_only_to_explicit_child() -> None:
     wrapper_cases = {
         "ch04/baseline_nvshmem_pipeline_parallel_multigpu.py": (
             "AISP_DISABLE_SYMMEM_PIPELINE",
-            "AISP_SYMMEM_PIPELINE_ASYNC",
         ),
         "ch04/optimized_nvshmem_pipeline_parallel_multigpu.py": (
             "AISP_DISABLE_SYMMEM_PIPELINE",
-            "AISP_SYMMEM_PIPELINE_ASYNC",
         ),
         "ch04/baseline_nvshmem_training_example_multigpu.py": (
             "AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS",
@@ -2529,39 +2514,16 @@ def test_ch04_nvshmem_wrappers_cache_env_outside_hot_path() -> None:
 
     for relative_path, env_keys in wrapper_cases.items():
         source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
-        setup_section = source.split("def setup", maxsplit=1)[1].split(
-            "def benchmark_fn",
-            maxsplit=1,
-        )[0]
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def teardown",
             maxsplit=1,
         )[0]
-        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
-            "def capture_verification_payload",
-            maxsplit=1,
-        )[0]
+        spec_section = source.split("def get_torchrun_spec", maxsplit=1)[1]
 
-        assert "self._original_env: dict[str, Optional[str]] = {}" in source
-        assert "self._original_env = {" in setup_section
-        assert "for key, value in self._original_env.items():" in teardown_section
-        assert "os.environ.pop(key, None)" in teardown_section
-        assert "os.environ[key] = value" in teardown_section
-        assert "self._original_env = {}" in teardown_section
+        assert "self._original_env" not in source
         assert "os.environ" not in benchmark_section
         for env_key in env_keys:
-            assert re.search(
-                rf'"{env_key}"\s*:\s*os\.environ\.get\(\s*"{env_key}"\s*\)',
-                setup_section,
-            )
-            assert f'os.environ["{env_key}"] =' in setup_section
-
-        if relative_path.endswith("nvshmem_vs_nccl_benchmark_multigpu.py"):
-            assert "self._benchmark_args: Optional[argparse.Namespace] = None" in source
-            assert "self._benchmark_args = argparse.Namespace(" in setup_section
-            assert "benchmark(self._benchmark_args)" in benchmark_section
-            assert "argparse.Namespace(" not in benchmark_section
-            assert "self._benchmark_args = None" in teardown_section
+            assert f'"{env_key}"' in spec_section
 
 
 def test_ch09_fusion_gelu_reuses_scalar_constant() -> None:
@@ -4671,8 +4633,9 @@ def test_ch04_distributed_benchmarks_cache_nvtx_and_parameter_counts() -> None:
         if relative == "ch04/ddp_no_overlap.py":
             assert "self._model_parameters: tuple[nn.Parameter, ...] = ()" in source
             assert "self._model_parameters = tuple(self.model.parameters())" in setup_section
-            assert "self.optimizer = optim.SGD(self._model_parameters, lr=0.01)" in setup_section
-            assert "for param in self._model_parameters:" in benchmark_section
+            assert "self.optimizer = optim.SGD(self._model_parameters, lr=LEARNING_RATE)" in setup_section
+            assert "_run_no_overlap_step(" in benchmark_section
+            assert "self._model_parameters," in benchmark_section
             assert "for param in self.model.parameters():" not in benchmark_section
             assert "self._model_parameters = ()" in teardown_section
         assert "get_config()" not in benchmark_section
@@ -9280,7 +9243,6 @@ def test_ch20_baseline_integrated_kv_cache_precomputes_hot_loop_views() -> None:
 def test_remaining_benchmark_wrappers_cache_verification_parameter_count() -> None:
     for relative, parameters_expr in (
         ("ch16/awq_gptq_smoothquant_benchmarks.py", "self.reference_model.parameters()"),
-        ("ch18/nvfp4_trtllm_tool.py", "self.linear.parameters()"),
         ("ch18/run_vllm_decoder.py", "self.model.parameters()"),
         ("ch19/fp8_calibration_free_tool.py", "self._impl.layers.parameters()"),
         ("labs/nanochat_fullstack/baseline_nanochat_inference.py", "self.model.parameters()"),
@@ -11193,10 +11155,15 @@ def test_dynamic_router_percentiles_reuse_sorted_samples(tmp_path: Path) -> None
 
 def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
     from labs.dynamic_router.eval_stack import (
-        _percentiles as eval_stack_percentiles,
+        CheapEvalStack,
+        EvalConfig,
+        VLLMRequiredError,
         _rank_top_experts,
         _summarize_moe,
         _summarize_quality_rows,
+    )
+    from labs.dynamic_router.eval_stack import (
+        _percentiles as eval_stack_percentiles,
     )
 
     source = (REPO_ROOT / "labs" / "dynamic_router" / "eval_stack.py").read_text(encoding="utf-8")
@@ -11312,7 +11279,14 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
         "p95": 3.8499999999999996,
     }
     assert percentile_samples == [1.0, 2.0, 3.0, 4.0]
-    assert "return []" in llm_quality_section
+    stack_without_engine = CheapEvalStack(EvalConfig(use_vllm=False))
+    with pytest.raises(
+        VLLMRequiredError,
+        match="vLLM quality generation requires an initialized engine",
+    ):
+        stack_without_engine._run_quality_with_llm()
+    assert "raise VLLMRequiredError" in llm_quality_section
+    assert "return []" not in llm_quality_section
     assert "return rows" in llm_quality_section
     assert "per_task_acc" not in llm_quality_section
     assert "return [], {}" not in llm_quality_section
@@ -14550,7 +14524,7 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert "kv_chunks.append(" not in run_iteration_section
     assert "seed_chunks.append(" not in run_iteration_section
     assert "with torch.inference_mode():" in run_iteration_section
-    assert "with torch.inference_mode():\n        for _ in range(max(warmup, 0)):" in worker_section
+    assert "with torch.inference_mode():\n        for _ in range(warmup):" in worker_section
     assert "torch.no_grad()" not in worker_section
     assert "recv_kv_chunks: dict[int, List[torch.Tensor]] = {}" in worker_section
     assert "recv_seed_chunks: dict[int, List[torch.Tensor]] = {}" in worker_section
@@ -14614,11 +14588,10 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert ".to(pair.decode_device)" not in benchmark_section
     assert "outputs.append(" not in benchmark_section
     assert "outputs.extend(" not in benchmark_section
-    assert "if self._output_buffer is None:" in capture_section
-    assert "for output_idx, output in enumerate(self._pending_outputs):" in capture_section
-    assert "self._output_buffer[output_idx].copy_(output, non_blocking=False)" in capture_section
-    assert "self._output = self._output_buffer" in capture_section
-    assert '"decode_tokens": self._metadata_inputs["decode_tokens"]' in capture_section
+    assert "self.require_prefill_decode_child_result()" in capture_section
+    assert "self._set_verification_payload(" not in capture_section
+    assert "self._output_buffer" not in capture_section
+    assert "self._pending_outputs" not in capture_section
     assert "torch.stack(" not in capture_section
     assert "[out.detach().cpu() for out in self._pending_outputs]" not in capture_section
     assert "torch.zeros(" not in capture_section
@@ -20677,7 +20650,8 @@ def test_ch04_multigpu_symmetric_memory_reuses_verification_buffer() -> None:
         assert "self._verify_numel = 0" in source
         assert "self._verify_input, self._verify_numel = build_square_verification_probe(" in setup_section
         assert "self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)" in setup_section
-        assert "view_as(self._verify_input).detach()" in capture_section
+        assert "probe = self._verify_input" in capture_section
+        assert "view_as(probe).detach()" in capture_section
         assert "self._verify_output_buffer.copy_(output_source)" in capture_section
         assert "output=self._verify_output_buffer" in capture_section
         assert "Verification buffers not initialized" in capture_section
@@ -23276,13 +23250,16 @@ def test_ch10_optimized_tcgen05_vs_cublas_reuses_output_buffer() -> None:
         maxsplit=1,
     )[0]
 
-    assert "self.output = torch.empty(self.size, self.size, device=self.device, dtype=self.dtype)" in setup_section
+    assert "self._output_buffer = torch.empty(" in setup_section
+    assert "self.output =" not in setup_section
     assert "self._B_t = self.B.transpose(0, 1)" in setup_section
-    assert "torch.mm(self.A, self._B_t, out=self.output)" in benchmark_section
+    assert "torch.mm(self.A, self._B_t, out=self._output_buffer)" in benchmark_section
+    assert "self.output = self._output_buffer" in benchmark_section
     assert "self.B.transpose(0, 1)" not in benchmark_section
     assert "torch.matmul(self.A, self.B.transpose(0, 1))" not in benchmark_section
     assert "self._B_t = None" in teardown_section
     assert "self.output = None" in teardown_section
+    assert "self._output_buffer = None" in teardown_section
 
 
 def test_ch10_matmul_wrappers_sample_verification_outputs() -> None:
@@ -23910,7 +23887,8 @@ def test_ch10_tcgen05_baseline_epilogue_adds_bias_in_place() -> None:
     assert "C.copy_(self.module.matmul_tcgen05(self.A, self.B))" in benchmark_section
     assert "C.add_(self.bias)" in benchmark_section
     assert "F.silu(C, inplace=True)" in benchmark_section
-    assert "self.output.copy_(C)" in benchmark_section
+    assert "self._output_buffer.copy_(C)" in benchmark_section
+    assert "self.output = self._output_buffer" in benchmark_section
     assert ".float()" not in benchmark_section
     assert "C = C + self.bias" not in benchmark_section
     assert "self.output = F.silu(C).to(dtype=torch.float16)" not in benchmark_section

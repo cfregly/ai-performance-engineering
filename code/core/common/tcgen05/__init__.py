@@ -8,8 +8,8 @@ import os
 import shutil
 import sys
 import tempfile
-from collections.abc import Sequence
-from contextlib import suppress
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager, suppress
 from functools import lru_cache
 from pathlib import Path
 
@@ -22,6 +22,11 @@ from core.benchmark.tcgen05_requirements import (
     ensure_tcgen05_supported,
 )
 from core.harness.hardware_capabilities import detect_capabilities
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - tcgen05 extension builds target Linux
+    fcntl = None  # type: ignore[assignment]
 
 try:  # Ensure TORCH_CUDA_ARCH_LIST stays clamped for GB-series hosts.
     import arch_config  # noqa: F401
@@ -446,6 +451,31 @@ def _get_extension_build_dir(name: str) -> Path:
     return _REPO_ROOT / ".torch_extensions" / name
 
 
+@contextmanager
+def _extension_build_lock(name: str) -> Iterator[None]:
+    """Serialize mutation of one extension cache across benchmark processes.
+
+    PyTorch's JIT lock lives inside ``build_directory``. Our fingerprint and
+    stale-build handling may remove that directory, so the outer lock must live
+    beside it and remain valid while the cache is invalidated or rebuilt.
+    """
+    if fcntl is None:
+        raise RuntimeError(
+            "tcgen05 extension builds require POSIX advisory file locking so "
+            "concurrent benchmark processes cannot corrupt the shared build cache"
+        )
+
+    build_dir = _get_extension_build_dir(name)
+    lock_path = build_dir.parent / f".{name}.build.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+b") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
 def _clean_stale_build(name: str) -> None:
     """Remove stale build artifacts if .so is missing but build.ninja exists."""
     build_dir = _get_extension_build_dir(name)
@@ -458,60 +488,61 @@ def _clean_stale_build(name: str) -> None:
 
 
 def _load_extension(name: str, sources: Sequence[Path]):
+    # Reject unsupported hardware/toolchains before creating a cache or lock file.
     cuda_flags = _tcgen05_cuda_flags()
+    with _extension_build_lock(name):
+        # Check if cached build matches current inputs; invalidate if not.
+        # This prevents stale cache issues when include paths or flags change.
+        current_fingerprint = _check_and_invalidate_cache(name, sources, cuda_flags)
 
-    # Check if cached build matches current inputs; invalidate if not
-    # This prevents stale cache issues when include paths or flags change
-    current_fingerprint = _check_and_invalidate_cache(name, sources, cuda_flags)
+        # Clean up stale build artifacts (incomplete builds).
+        _clean_stale_build(name)
 
-    # Clean up stale build artifacts (incomplete builds)
-    _clean_stale_build(name)
+        build_dir = _get_extension_build_dir(name)
+        build_dir.mkdir(parents=True, exist_ok=True)
 
-    build_dir = _get_extension_build_dir(name)
-    build_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            module = load(
+                name=name,
+                sources=[str(src) for src in sources],
+                extra_cuda_cflags=cuda_flags,
+                extra_cflags=["-std=c++20"],
+                extra_ldflags=["-lcuda"],
+                verbose=False,
+                build_directory=str(build_dir),
+            )
+        except Exception as e:
+            # On failure, retry with verbose=True to capture build errors.
+            error_msg = str(e)
+            if "cannot open shared object file" in error_msg or "No such file" in error_msg:
+                # Clean up and retry with verbose output.
+                _clean_stale_build(name)
+                build_dir.mkdir(parents=True, exist_ok=True)
+                try:
+                    module = load(
+                        name=name,
+                        sources=[str(src) for src in sources],
+                        extra_cuda_cflags=cuda_flags,
+                        extra_cflags=["-std=c++20"],
+                        extra_ldflags=["-lcuda"],
+                        verbose=True,  # Show build errors on retry
+                        build_directory=str(build_dir),
+                    )
+                except Exception as retry_e:
+                    raise RuntimeError(
+                        f"Failed to build tcgen05 extension '{name}'. "
+                        f"Build errors (see above). Original error: {retry_e}"
+                    ) from retry_e
+            else:
+                raise
 
-    try:
-        module = load(
-            name=name,
-            sources=[str(src) for src in sources],
-            extra_cuda_cflags=cuda_flags,
-            extra_cflags=["-std=c++20"],
-            extra_ldflags=["-lcuda"],
-            verbose=False,
-            build_directory=str(build_dir),
+        _write_build_fingerprint(
+            name,
+            sources,
+            cuda_flags,
+            current_fingerprint,
         )
-    except Exception as e:
-        # On failure, retry with verbose=True to capture build errors
-        error_msg = str(e)
-        if "cannot open shared object file" in error_msg or "No such file" in error_msg:
-            # Clean up and retry with verbose output
-            _clean_stale_build(name)
-            build_dir.mkdir(parents=True, exist_ok=True)
-            try:
-                module = load(
-                    name=name,
-                    sources=[str(src) for src in sources],
-                    extra_cuda_cflags=cuda_flags,
-                    extra_cflags=["-std=c++20"],
-                    extra_ldflags=["-lcuda"],
-                    verbose=True,  # Show build errors on retry
-                    build_directory=str(build_dir),
-                )
-            except Exception as retry_e:
-                raise RuntimeError(
-                    f"Failed to build tcgen05 extension '{name}'. "
-                    f"Build errors (see above). Original error: {retry_e}"
-                ) from retry_e
-        else:
-            raise
-
-    _write_build_fingerprint(
-        name,
-        sources,
-        cuda_flags,
-        current_fingerprint,
-    )
-    return module
+        return module
 
 
 @lru_cache(None)

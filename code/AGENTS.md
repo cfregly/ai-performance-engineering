@@ -18,7 +18,7 @@ The authority was originally moved without rewriting its text. Resolve relative 
 - Do not run destructive Git operations, including `git restore`, `git checkout`, `git reset --hard`, or `git revert`, unless the user explicitly requests the exact operation. Never restore a file to a prior revision on your own.
 - Do not delete tracked, untracked, or modified files without explicit user direction. Preserve unexpected local state, report it, and avoid overwriting another owner's work. A file already being edited may be changed only as needed for the task while retaining its existing changes.
 - Prefer materialized benchmark and profiler artifacts. Do not introduce symlink-dependent profile pairing; copy a symlinked input to a real, clearly named baseline or candidate artifact before comparison.
-- Agents may terminate profilers when necessary within the authorized task without further confirmation. Confirm run ownership, preserve artifacts, log the reason and job/process identifiers, and mark interrupted validation incomplete; follow [Queueing & Monitoring](docs/agent-instructions-authority.md#queueing--monitoring-critical).
+- Agents may interrupt or terminate this task's `ncu`/`nsys` profilers whenever necessary, without asking for permission. This includes direct runs and scheduler jobs. Confirm run ownership, preserve artifacts, log the reason and job/process identifiers, and mark interrupted validation incomplete; follow [Queueing & Monitoring](docs/agent-instructions-authority.md#queueing--monitoring-critical).
 - The Amazon book URL in `README.md` is an allowlisted automated-link-check failure caused by bot protection.
 
 ### Correctness, verification, and performance claims

@@ -9,20 +9,19 @@ The optimized pair overlaps prefill and decode via pipelined transfers.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import argparse
-import inspect
 import os
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.distributed as dist
 
-from core.benchmark.verification_mixin import VerificationPayloadMixin  # noqa: E402
 from core.benchmark.verification import PrecisionFlags  # noqa: E402
+from core.benchmark.verification_mixin import VerificationPayloadMixin  # noqa: E402
+from core.harness import benchmark_worker
 from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
@@ -35,6 +34,11 @@ from core.optimization.moe_inference import (  # noqa: E402
     allocate_kv_cache,
     env_override_int,
 )
+from core.profiling.nvtx_helper import nvtx_range
+
+BASELINE_PROFILE_NVTX_RANGE = "compute_kernel:disaggregated_inference_serialized_pipeline"
+OPTIMIZED_PROFILE_NVTX_RANGE = "compute_kernel:disaggregated_inference_overlapped_pipeline"
+
 
 @dataclass(frozen=True)
 class DisaggConfig:
@@ -308,6 +312,7 @@ def _run_torchrun_worker(
     label: str,
     iters: int,
     warmup: int,
+    profile_nvtx_range: str,
 ) -> None:
     cfg = _apply_profile_overrides(cfg)
     rank, world_size, device = _init_distributed()
@@ -565,12 +570,13 @@ def _run_torchrun_worker(
     torch.cuda.synchronize(device)
     _barrier()
 
-    start = time.perf_counter()
-    for _ in range(max(iters, 1)):
-        run_iteration()
-    torch.cuda.synchronize(device)
-    _barrier()
-    elapsed = time.perf_counter() - start
+    with nvtx_range(profile_nvtx_range, enable=True):
+        start = time.perf_counter()
+        for _ in range(max(iters, 1)):
+            run_iteration()
+        torch.cuda.synchronize(device)
+        _barrier()
+        elapsed = time.perf_counter() - start
 
     if rank == 0:
         total_requests = cfg.requests_per_rank * num_pairs * cfg.batch_size
@@ -578,7 +584,7 @@ def _run_torchrun_worker(
         tokens_per_s = tokens_per_iter * (max(iters, 1) / max(elapsed, 1e-9))
         time_per_iter_ms = (elapsed / max(iters, 1)) * 1000.0
         print(f"rank0 {label} tokens/s: {tokens_per_s:.2f} tokens/s")
-        print(f"rank0 {label} time_per_iter_ms: {time_per_iter_ms:.3f}")
+        print(f"rank0 time_per_iter_ms: {time_per_iter_ms:.9f}")
 
     dist.destroy_process_group()
 
@@ -587,6 +593,7 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
     """Shared multi-GPU disaggregated inference harness."""
 
     multi_gpu_required = True
+    preferred_ncu_replay_mode = "app-range"
     ncu_env_overrides = {
         "AISP_NCU_PROFILE_REQUESTS": "4",
         "AISP_NCU_PROFILE_CONTEXT": "256",
@@ -594,7 +601,14 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
         "AISP_NCU_PROFILE_BATCH": "1",
     }
 
-    def __init__(self, *, overlap: bool, label: str) -> None:
+    def __init__(
+        self,
+        *,
+        overlap: bool,
+        label: str,
+        profile_nvtx_range: str,
+        worker_module: str,
+    ) -> None:
         super().__init__()
         self.cfg = _apply_profile_overrides(DisaggConfig())
         self.world_size = _resolve_world_size()
@@ -603,6 +617,8 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
         self.num_pairs = self.world_size // 2
         self.overlap = bool(overlap)
         self.label = label
+        self.profile_nvtx_range = profile_nvtx_range
+        self.worker_module = worker_module
         self._pairs: List[_LocalPair] = []
         self._output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
@@ -881,19 +897,20 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
             warmup=5,
             multi_gpu_required=True,
             measurement_timeout_seconds=900,
-            # NCU application replay can hang on this workload; default to kernel replay.
-            ncu_replay_mode="kernel",
+            # Capture the complete selected range without replaying stateful collectives per kernel.
+            ncu_replay_mode="app-range",
             ncu_replay_mode_override=True,
+            nsys_nvtx_include=[self.profile_nvtx_range],
         )
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
         self._prepare_verification_payload()
         master_port = os.environ.get("MASTER_PORT", "29515")
-        module = inspect.getmodule(self.__class__)
-        script_path = Path(module.__file__).resolve() if module and module.__file__ else Path(__file__).resolve()
         return TorchrunLaunchSpec(
-            script_path=script_path,
-            script_args=[],
+            timing_source="rank0_time_per_iter_ms",
+            timing_iterations_per_sample=max(int((config or self.get_config()).iterations), 1),
+            script_path=Path(benchmark_worker.__file__).resolve(),
+            script_args=["--module", self.worker_module, "--callable", "main", "--"],
             env={
                 "OMP_NUM_THREADS": "1",
                 "MASTER_PORT": master_port,
@@ -913,6 +930,7 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
 class BaselineDisaggregatedInferenceMultiGPUBenchmark(_DisaggregatedInferenceMultiGPUBenchmark):
     """Serialized prefill then decode across multi-GPU ranks."""
 
+    profile_nvtx_range = BASELINE_PROFILE_NVTX_RANGE
     story_metadata = {
         "pair_role": "canonical",
         "chapter_alignment": "native",
@@ -925,7 +943,12 @@ class BaselineDisaggregatedInferenceMultiGPUBenchmark(_DisaggregatedInferenceMul
     }
 
     def __init__(self) -> None:
-        super().__init__(overlap=False, label="baseline_disaggregated_inference_multigpu")
+        super().__init__(
+            overlap=False,
+            label="baseline_disaggregated_inference_multigpu",
+            profile_nvtx_range=BASELINE_PROFILE_NVTX_RANGE,
+            worker_module="ch15.baseline_disaggregated_inference_multigpu",
+        )
 
 
 def get_benchmark() -> BaseBenchmark:
@@ -947,4 +970,5 @@ def main() -> None:
         label="baseline_disaggregated_inference_multigpu",
         iters=int(args.iters),
         warmup=int(args.warmup),
+        profile_nvtx_range=BASELINE_PROFILE_NVTX_RANGE,
     )

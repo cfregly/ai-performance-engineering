@@ -175,7 +175,9 @@ class BaselineNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
+        # Keep stateful training on the same update count in both arms.
         return BenchmarkConfig(
+            adaptive_iterations=False,
             iterations=8,
             warmup=5,
             enable_memory_tracking=False,

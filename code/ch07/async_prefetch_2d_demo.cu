@@ -33,8 +33,10 @@ namespace cde = cuda::device::experimental;
 template <int TILE_M, int TILE_N>
 __global__ void tma_copy_2d_kernel(const __grid_constant__ CUtensorMap in_desc,
                                    const __grid_constant__ CUtensorMap out_desc,
+                                   float* output,
                                    int M,
-                                   int N) {
+                                   int N,
+                                   int output_ld) {
     constexpr std::size_t BYTES_PER_TILE =
         static_cast<std::size_t>(TILE_M) * TILE_N * sizeof(float);
     __shared__ alignas(128) float tile[TILE_M][TILE_N];
@@ -79,14 +81,29 @@ __global__ void tma_copy_2d_kernel(const __grid_constant__ CUtensorMap in_desc,
     cde::fence_proxy_async_shared_cta();
     __syncthreads();
 
-    if (threadIdx.x == 0 && threadIdx.y == 0) {
-        cde::cp_async_bulk_tensor_2d_shared_to_global(
-            &out_desc,
-            tile_n,  // contiguous column offset (dimension 0)
-            tile_m,  // row offset (dimension 1)
-            &tile);
-        cde::cp_async_bulk_commit_group();
-        cde::cp_async_bulk_wait_group_read<0>();
+    if (rows == TILE_M && cols == TILE_N) {
+        if (threadIdx.x == 0 && threadIdx.y == 0) {
+            cde::cp_async_bulk_tensor_2d_shared_to_global(
+                &out_desc,
+                tile_n,  // contiguous column offset (dimension 0)
+                tile_m,  // row offset (dimension 1)
+                &tile);
+            cde::cp_async_bulk_commit_group();
+            cde::cp_async_bulk_wait_group_read<0>();
+        }
+    } else {
+        // A TMA store may write a complete transaction granule past the logical
+        // tensor width. Keep partial tiles on bounded ordinary stores so padded
+        // row tails and allocation guards remain untouched.
+        const int thread = threadIdx.y * blockDim.x + threadIdx.x;
+        const int thread_count = blockDim.x * blockDim.y;
+        for (int index = thread; index < rows * cols; index += thread_count) {
+            const int local_row = index / cols;
+            const int local_col = index % cols;
+            const std::size_t output_index =
+                static_cast<std::size_t>(tile_m + local_row) * output_ld + tile_n + local_col;
+            output[output_index] = tile[local_row][local_col];
+        }
     }
 }
 #endif
@@ -148,7 +165,7 @@ int main() {
     dim3 block(16, 8, 1);  // 128 threads
     dim3 grid((N + TILE_N - 1) / TILE_N, (M + TILE_M - 1) / TILE_M, 1);
 
-    tma_copy_2d_kernel<TILE_M, TILE_N><<<grid, block>>>(in_desc, out_desc, M, N);
+    tma_copy_2d_kernel<TILE_M, TILE_N><<<grid, block>>>(in_desc, out_desc, d_out, M, N, N);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
 
@@ -160,7 +177,8 @@ int main() {
     CUDA_CHECK(cudaEventRecord(start));
     for (int i = 0; i < kIters; ++i) {
         NVTX_RANGE("compute_kernel");
-        tma_copy_2d_kernel<TILE_M, TILE_N><<<grid, block>>>(in_desc, out_desc, M, N);
+        tma_copy_2d_kernel<TILE_M, TILE_N><<<grid, block>>>(
+            in_desc, out_desc, d_out, M, N, N);
     }
     CUDA_CHECK(cudaEventRecord(stop));
     CUDA_CHECK(cudaEventSynchronize(stop));

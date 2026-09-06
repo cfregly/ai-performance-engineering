@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import os
+import shutil
 import signal
 import subprocess
 import sys
 import time
 from pathlib import Path
 
-import torch
 import pytest
+import torch
 
 from core.benchmark.verification import InputSignature
 from core.benchmark.verification_mixin import VerificationPayloadMixin
@@ -68,6 +69,23 @@ def test_get_input_signature_safe_executes_payload_path() -> None:
     sig, err = get_input_signature_safe(bench)
     assert err is None
     assert isinstance(sig, InputSignature)
+
+
+def test_signature_capture_requires_distributed_worker_payload() -> None:
+    from core.harness.benchmark_harness import BenchmarkConfig, LaunchVia
+
+    class DistributedPayload(_DummyPayloadBenchmark):
+        def get_config(self):
+            return BenchmarkConfig(launch_via=LaunchVia.TORCHRUN, nproc_per_node=2)
+
+        def benchmark_fn(self):
+            raise AssertionError("standalone validation must not run a parent proxy")
+
+    signature, error = get_input_signature_safe(DistributedPayload())
+    assert signature is None
+    assert error is not None and "SKIPPED:" in error
+    assert "requires a torchrun worker result" in error
+    assert "aisp bench run" in error
 
 
 def test_discover_benchmark_pairs_matches_optimized_variants(tmp_path: Path) -> None:
@@ -220,74 +238,68 @@ def test_ch04_additional_torchrun_specs_build_without_side_effects() -> None:
         (
             "ch04.baseline_nvshmem_training_example_multigpu",
             "NVSHMEMTrainingExampleMultiGPU",
-            "ch04/nvshmem_worker.py",
-            {},
         ),
         (
             "ch04.optimized_nvshmem_training_example_multigpu",
             "OptimizedNVSHMEMTrainingExampleMultiGPU",
-            "ch04/nvshmem_worker.py",
-            {},
         ),
         (
             "ch04.baseline_nvshmem_training_patterns_multigpu",
             "NVSHMEMTrainingPatternsMultiGPU",
-            "ch04/nvshmem_worker.py",
-            {},
         ),
         (
             "ch04.optimized_nvshmem_training_patterns_multigpu",
             "OptimizedNVSHMEMTrainingPatternsMultiGPU",
-            "ch04/nvshmem_worker.py",
-            {},
         ),
         (
             "ch04.baseline_nvshmem_pipeline_parallel_multigpu",
             "NVSHMEMPipelineParallelMultiGPU",
-            "ch04/nvshmem_worker.py",
-            {},
         ),
         (
             "ch04.optimized_nvshmem_pipeline_parallel_multigpu",
             "OptimizedNVSHMEMPipelineParallelMultiGPU",
-            "ch04/nvshmem_worker.py",
-            {},
         ),
         (
             "ch04.baseline_nvshmem_vs_nccl_benchmark_multigpu",
             "NVSHMEMVsNCCLBenchmarkMultiGPU",
-            "ch04/nvshmem_worker.py",
-            {},
         ),
         (
             "ch04.optimized_nvshmem_vs_nccl_benchmark_multigpu",
             "OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU",
-            "ch04/nvshmem_worker.py",
-            {},
         ),
         (
             "ch04.baseline_symmetric_memory_multigpu",
             "SymmetricMemoryMultiGPU",
-            "ch04/symmetric_memory_example.py",
-            {},
         ),
         (
             "ch04.optimized_symmetric_memory_multigpu",
             "OptimizedSymmetricMemoryMultiGPU",
-            "ch04/symmetric_memory_example.py",
-            {},
         ),
     ]
 
-    repo_root = Path(__file__).resolve().parents[1]
-    for module_name, class_name, script_relpath, expected_config_arg_map in cases:
+    for module_name, class_name in cases:
         module = __import__(module_name, fromlist=[class_name])
         bench_cls = getattr(module, class_name)
         bench = bench_cls()
-        spec = bench.get_torchrun_spec()
-        assert spec.script_path is not None
-        assert Path(spec.script_path).resolve() == (repo_root / script_relpath).resolve()
-        assert spec.config_arg_map == expected_config_arg_map
+        config = bench.get_config()
+        config.nproc_per_node = 2
+        config.nnodes = 1
+        spec = bench.get_torchrun_spec(config)
+        try:
+            assert spec.script_path is None
+            assert spec.module_name == "core.harness.benchmark_worker"
+            assert spec.script_args[:5] == [
+                "--module",
+                "ch04.nvshmem_worker",
+                "--callable",
+                "main",
+                "--",
+            ]
+            assert spec.config_arg_map == {}
+        finally:
+            for name, value in spec.env.items():
+                if name.endswith("_RESULT_DIR"):
+                    shutil.rmtree(value, ignore_errors=True)
 
 
 def test_ch04_nvshmem_torchrun_specs_preserve_variant_contracts() -> None:
@@ -316,42 +328,75 @@ def test_ch04_nvshmem_torchrun_specs_preserve_variant_contracts() -> None:
         OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU,
     )
 
-    baseline_pipeline = NVSHMEMPipelineParallelMultiGPU().get_torchrun_spec()
-    optimized_pipeline = OptimizedNVSHMEMPipelineParallelMultiGPU().get_torchrun_spec()
-    assert baseline_pipeline.script_args[:4] == [
-        "--workload",
-        "pipeline",
-        "--variant",
-        "baseline",
+    benchmarks = [
+        NVSHMEMPipelineParallelMultiGPU(),
+        OptimizedNVSHMEMPipelineParallelMultiGPU(),
+        NVSHMEMTrainingExampleMultiGPU(),
+        OptimizedNVSHMEMTrainingExampleMultiGPU(),
+        NVSHMEMTrainingPatternsMultiGPU(),
+        OptimizedNVSHMEMTrainingPatternsMultiGPU(),
+        NVSHMEMVsNCCLBenchmarkMultiGPU(),
+        OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU(),
     ]
-    assert optimized_pipeline.script_args[:4] == [
-        "--workload",
-        "pipeline",
-        "--variant",
-        "optimized",
-    ]
-    assert baseline_pipeline.script_args[4:] == optimized_pipeline.script_args[4:]
-    assert baseline_pipeline.env["AISP_SYMMEM_PIPELINE_ASYNC"] == "0"
-    assert optimized_pipeline.env["AISP_SYMMEM_PIPELINE_ASYNC"] == "1"
+    specs = []
+    for benchmark in benchmarks:
+        config = benchmark.get_config()
+        config.nproc_per_node = 2
+        config.nnodes = 1
+        specs.append(benchmark.get_torchrun_spec(config))
 
-    baseline_training = NVSHMEMTrainingExampleMultiGPU().get_torchrun_spec()
-    optimized_training = OptimizedNVSHMEMTrainingExampleMultiGPU().get_torchrun_spec()
-    assert baseline_training.script_args[4:] == optimized_training.script_args[4:]
-    assert baseline_training.env["AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS"] == "0"
-    assert optimized_training.env["AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS"] == "1"
+    try:
+        (
+            baseline_pipeline,
+            optimized_pipeline,
+            baseline_training,
+            optimized_training,
+            baseline_patterns,
+            optimized_patterns,
+            baseline_collective,
+            optimized_collective,
+        ) = specs
+        adapter_prefix = [
+            "--module",
+            "ch04.nvshmem_worker",
+            "--callable",
+            "main",
+            "--",
+        ]
+        assert all(spec.script_args[:5] == adapter_prefix for spec in specs)
+        assert baseline_pipeline.script_args[5:9] == [
+            "--workload",
+            "pipeline",
+            "--variant",
+            "baseline",
+        ]
+        assert optimized_pipeline.script_args[5:9] == [
+            "--workload",
+            "pipeline",
+            "--variant",
+            "optimized",
+        ]
+        assert baseline_pipeline.script_args[9:-2] == optimized_pipeline.script_args[9:-2]
+        assert baseline_pipeline.script_args[-2:] == ["--transport", "nccl"]
+        assert optimized_pipeline.script_args[-2:] == ["--transport", "nvshmem"]
 
-    baseline_patterns = NVSHMEMTrainingPatternsMultiGPU().get_torchrun_spec()
-    optimized_patterns = OptimizedNVSHMEMTrainingPatternsMultiGPU().get_torchrun_spec()
-    assert baseline_patterns.script_args[4:] == optimized_patterns.script_args[4:]
-    assert baseline_patterns.env["AISP_GRAD_SYNC_NAIVE"] == "1"
-    assert optimized_patterns.env["AISP_GRAD_SYNC_NAIVE"] == "0"
+        assert baseline_training.script_args[9:] == optimized_training.script_args[9:]
+        assert baseline_training.env["AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS"] == "0"
+        assert optimized_training.env["AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS"] == "1"
 
-    baseline_collective = NVSHMEMVsNCCLBenchmarkMultiGPU().get_torchrun_spec()
-    optimized_collective = OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU().get_torchrun_spec()
-    assert baseline_collective.script_args[-1] == "nccl"
-    assert optimized_collective.script_args[-1] == "nvshmem"
-    assert baseline_collective.env["AISP_BROADCAST_OVERLAP"] == "0"
-    assert optimized_collective.env["AISP_BROADCAST_OVERLAP"] == "1"
+        assert baseline_patterns.script_args[9:] == optimized_patterns.script_args[9:]
+        assert baseline_patterns.env["AISP_GRAD_SYNC_NAIVE"] == "1"
+        assert optimized_patterns.env["AISP_GRAD_SYNC_NAIVE"] == "0"
+
+        assert baseline_collective.script_args[-1] == "nccl"
+        assert optimized_collective.script_args[-1] == "nvshmem"
+        assert baseline_collective.env["AISP_BROADCAST_OVERLAP"] == "0"
+        assert optimized_collective.env["AISP_BROADCAST_OVERLAP"] == "1"
+    finally:
+        for spec in specs:
+            for name, value in spec.env.items():
+                if name.endswith("_RESULT_DIR"):
+                    shutil.rmtree(value, ignore_errors=True)
 
 
 def test_ch04_ddp_worker_emits_explicit_skips_without_torchrun_env() -> None:
@@ -451,7 +496,10 @@ def test_ch04_nvshmem_pairs_skip_cleanly_on_single_gpu_or_missing_symmem() -> No
             assert result.error is not None and "SKIPPED" in result.error
         elif result.skipped:
             assert result.error is not None and "SKIPPED" in result.error
-            pytest.skip(result.error)
+            assert (
+                "requires NVSHMEM or SymmetricMemory support" in result.error
+                or "requires a torchrun worker result" in result.error
+            )
         else:
             assert result.valid, result.to_dict()
             assert result.baseline_has_signature and result.optimized_has_signature

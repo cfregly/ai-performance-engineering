@@ -50,6 +50,10 @@ class BaselinePinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmark
         )
 
     def setup(self) -> None:
+        self.batch_idx = 0
+        self.host_batches = []
+        self.targets = []
+        self.output = None
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         log_allocator_guidance("ch03/baseline_pinned_prefetch_mlp", optimized=False)
@@ -113,13 +117,19 @@ class BaselinePinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.host_batches = []
         self.targets = []
         self._batch_count = 0
+        self.batch_idx = 0
         self.output = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
         low_mem = is_smoke_mode()
         # Minimum warmup=5 even in smoke mode to exclude JIT overhead
-        return BenchmarkConfig(iterations=5 if low_mem else 20, warmup=5 if low_mem else 10)
+        # Stateful training must take the same optimizer updates in both arms.
+        return BenchmarkConfig(
+            iterations=5 if low_mem else 20,
+            warmup=5 if low_mem else 10,
+            adaptive_iterations=False,
+        )
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""

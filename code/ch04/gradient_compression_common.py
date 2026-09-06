@@ -2,18 +2,36 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 import torch
 
+from ch04.gradient_compression_multigpu_result import (
+    RESULT_CALLBACK,
+    GradientCompressionChildResultMixin,
+    make_result_contract,
+)
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.benchmark.wrapper_utils import attach_benchmark_metadata
-from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
+from core.harness import benchmark_worker
+from core.harness.benchmark_harness import (
+    BaseBenchmark,
+    BenchmarkConfig,
+    LaunchVia,
+    TorchrunLaunchSpec,
+    WorkloadMetadata,
+)
 
 __all__ = ["GradientCompressionBenchmark", "attach_benchmark_metadata"]
 
 
-class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class GradientCompressionBenchmark(
+    GradientCompressionChildResultMixin,
+    VerificationPayloadMixin,
+    BaseBenchmark,
+):
     """Gradient all-reduce benchmark with optional compression."""
 
     def __init__(
@@ -28,6 +46,8 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         comm_only: bool = False,
         use_prealloc_buffers: bool = True,
         bucket_mb: Optional[int] = None,
+        variant: str | None = None,
+        pair_compression: str | None = None,
     ) -> None:
         super().__init__()
         self.multi_gpu_required = bool(multi_gpu)
@@ -41,6 +61,8 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.comm_only = bool(comm_only)
         self.use_prealloc_buffers = bool(use_prealloc_buffers)
         self.bucket_mb = int(bucket_mb) if bucket_mb else 0
+        self.variant = variant
+        self.pair_compression = pair_compression or compression
         self.world_size = 0
         self.devices: List[torch.device] = []
         self.inputs: List[torch.Tensor] = []
@@ -327,6 +349,9 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         target.masked_fill_(target == 0, 1.0)
 
     def capture_verification_payload(self) -> None:
+        if self.multi_gpu:
+            self.require_gradient_compression_child_result()
+            return
         if self._verify_input is None or self.output is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
         precision_flags = {
@@ -385,19 +410,149 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._int8_scales = []
         self._int8_output_fp32 = None
         self._bucket_slices = []
+        self._gradient_compression_result_bundle = None
+        for attribute in (
+            "_subprocess_verify_inputs",
+            "_subprocess_verify_output",
+            "_subprocess_input_signature",
+            "_subprocess_output_tolerance",
+        ):
+            if hasattr(self, attribute):
+                delattr(self, attribute)
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
+        if self.multi_gpu:
+            self._require_multigpu_variant()
+            return BenchmarkConfig(
+                launch_via=LaunchVia.TORCHRUN,
+                nproc_per_node=2,
+                required_world_size=2,
+                iterations=10,
+                warmup=5,
+                adaptive_iterations=False,
+                multi_gpu_required=True,
+                measurement_timeout_seconds=900,
+                nsys_nvtx_include=[self._multigpu_profile_range()],
+                ncu_replay_mode="app-range",
+                ncu_replay_mode_override=True,
+            )
         return BenchmarkConfig(
             iterations=10,
             warmup=5,
             multi_gpu_required=self.multi_gpu,
         )
 
+    def _require_multigpu_variant(self) -> None:
+        if self.variant not in {"baseline", "optimized"}:
+            raise RuntimeError(
+                "Multi-GPU gradient compression requires an explicit baseline/optimized variant"
+            )
+        if self.pair_compression not in {"fp16", "int8"}:
+            raise RuntimeError(
+                "Multi-GPU gradient compression requires an explicit FP16/INT8 pair"
+            )
+        expected_compression = (
+            "none" if self.comm_only and self.variant == "baseline" else self.pair_compression
+        )
+        if self.compression != expected_compression:
+            raise RuntimeError(
+                "Multi-GPU gradient-compression factory has inconsistent pair/variant compression"
+            )
+
+    def _multigpu_profile_range(self) -> str:
+        self._require_multigpu_variant()
+        suffix = "_comm_only" if self.comm_only else ""
+        return (
+            f"{self.variant}_gradient_compression_"
+            f"{self.pair_compression}{suffix}_multigpu"
+        )
+
+    def _prepare_verification_payload(self) -> None:
+        if self.multi_gpu:
+            self.require_gradient_compression_child_result()
+            return
+        self.capture_verification_payload()
+
+    def get_torchrun_spec(
+        self, config: BenchmarkConfig | None = None
+    ) -> TorchrunLaunchSpec:
+        if not self.multi_gpu:
+            raise RuntimeError("Single-GPU gradient compression has no torchrun worker")
+        self._require_multigpu_variant()
+        effective = config or self.get_config()
+        if int(effective.nnodes or 1) != 1:
+            raise RuntimeError(
+                "Gradient-compression child-result transport requires nnodes == 1"
+            )
+        world_size = int(effective.nproc_per_node or 2)
+        if world_size != 2:
+            raise RuntimeError(
+                "Gradient-compression child-result transport requires exactly two ranks"
+            )
+        iterations = int(effective.iterations or 0)
+        warmup = int(effective.warmup or 0)
+        contract = make_result_contract(
+            variant=str(self.variant),
+            pair_compression=self.pair_compression,
+            comm_only=self.comm_only,
+            world_size=world_size,
+            tensor_size_mb=self.tensor_size_mb,
+            bucket_mb=self.bucket_mb,
+            iterations=iterations,
+            warmup=warmup,
+            seed=42,
+            output_tolerance=self.output_tolerance,
+        )
+        result_env = self.prepare_gradient_compression_child_result(contract)
+        worker_args = [
+            "--module",
+            "ch04.gradient_compression_multigpu_worker",
+            "--callable",
+            "main",
+            "--",
+            "--variant",
+            contract.variant,
+            "--pair-compression",
+            contract.pair_compression,
+            "--tensor-size-mb",
+            str(contract.tensor_size_mb),
+            "--bucket-mb",
+            str(contract.bucket_mb),
+            "--seed",
+            str(contract.seed),
+            "--output-rtol",
+            str(contract.output_rtol),
+            "--output-atol",
+            str(contract.output_atol),
+        ]
+        if contract.comm_only:
+            worker_args.append("--comm-only")
+        return TorchrunLaunchSpec(
+            script_path=Path(benchmark_worker.__file__).resolve(),
+            script_args=worker_args,
+            env={
+                "NCCL_DEBUG": "WARN",
+                "OMP_NUM_THREADS": "1",
+                "MASTER_PORT": os.environ.get("MASTER_PORT", "29524"),
+                **result_env,
+            },
+            multi_gpu_required=True,
+            name=self._multigpu_profile_range(),
+            result_callback=RESULT_CALLBACK,
+            timing_source="rank0_time_per_iter_ms",
+            timing_iterations_per_sample=iterations,
+            config_arg_map={"iterations": "--iterations", "warmup": "--warmup"},
+        )
+
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
 
     def validate_result(self) -> Optional[str]:
+        if self.multi_gpu:
+            if self._gradient_compression_result_bundle is None:
+                return "Fresh full-rank gradient-compression worker output is missing"
+            return None
         if not self.inputs:
             return "Inputs not initialized"
         return None

@@ -4,8 +4,12 @@ from __future__ import annotations
 
 from core.benchmark.wrapper_utils import attach_benchmark_metadata
 from core.harness.benchmark_harness import BaseBenchmark
+from labs.cache_aware_disagg_inference.cache_aware_disagg_multigpu_common import (
+    CACHE_AWARE_BASELINE_NVTX_RANGE,
+    CacheAwareDisaggMultiGPUBenchmark,
+)
 
-from labs.cache_aware_disagg_inference.cache_aware_disagg_multigpu_common import CacheAwareDisaggMultiGPUBenchmark
+PROFILE_NVTX_RANGE = CACHE_AWARE_BASELINE_NVTX_RANGE
 
 
 def get_benchmark() -> BaseBenchmark:

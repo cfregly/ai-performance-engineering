@@ -6,6 +6,8 @@ that their input signatures match, ensuring fair performance comparisons.
 For VerificationPayloadMixin-backed benchmarks, it will execute setup() and a
 single benchmark_fn() as needed to populate the verification payload before
 extracting a validated InputSignature.
+Payloads that require a distributed worker callback are explicitly skipped by
+this standalone signature tool; validate those pairs through ``aisp bench run``.
 
 Usage:
     # Validate all pairs
@@ -224,6 +226,19 @@ def _run_signature_capture_path(benchmark: Any) -> None:
         return
     except Exception:
         pass
+
+    # A torchrun wrapper's benchmark_fn does not execute its distributed worker
+    # or consume the full-rank result callback. Do not substitute parent-side
+    # setup state for that missing signature.
+    get_config = getattr(benchmark, "get_config", None)
+    if callable(get_config):
+        config = get_config()
+        launch_via = getattr(config, "launch_via", None)
+        if getattr(launch_via, "value", launch_via) == "torchrun":
+            raise RuntimeError(
+                "SKIPPED: signature capture requires a torchrun worker result; "
+                "validate this pair with aisp bench run"
+            )
 
     benchmark.benchmark_fn()
     benchmark.capture_verification_payload()

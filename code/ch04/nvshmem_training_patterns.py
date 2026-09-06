@@ -68,19 +68,9 @@ When to Stick with NCCL:
 - Standard data parallel with large batches (NCCL AllReduce is highly optimized)
 """
 
-import os
-
-from core.optimization.symmetric_memory_patch import (
-    SymmetricMemoryHandle,
-    maybe_create_symmetric_memory_handle,
-    symmetric_memory_available,
-)
-
-from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
-
-
 import argparse
 import datetime
+import os
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -91,11 +81,21 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributed.fsdp import (
     FullyShardedDataParallel as FSDP,
+)
+from torch.distributed.fsdp import (
     MixedPrecision,
     ShardingStrategy,
     StateDictType,
 )
 
+from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
+from ch04.nvshmem_child_result import NVSHMEMWorkloadResult
+from ch04.nvshmem_profile_ranges import selected_nvtx_range
+from core.optimization.symmetric_memory_patch import (
+    SymmetricMemoryHandle,
+    maybe_create_symmetric_memory_handle,
+    symmetric_memory_available,
+)
 
 # ============================================================================
 # Utilities
@@ -109,6 +109,16 @@ def nvshmem_available() -> bool:
 
 def pipeline_sync_enabled() -> bool:
     return os.environ.get("AISP_PIPELINE_SYNC", "").lower() not in {"0", "false", "no"}
+
+
+def _make_rank_generator(
+    device: torch.device | str,
+    *,
+    rank: int,
+    base_seed: int,
+) -> torch.Generator:
+    """Build a rank-local input generator without changing harness RNG seeds."""
+    return torch.Generator(device=device).manual_seed(base_seed + rank)
 
 
 def init_process_group() -> Tuple[int, int, int]:
@@ -155,7 +165,8 @@ class GradientBucket:
     - Direct GPU-GPU access over NVLink 5.0
     - Manual ring algorithm for educational purposes
 
-    Performance: 10-15x faster for gradients < 100KB
+    Performance depends on payload size, topology, and synchronization overhead;
+    compare with NCCL on the target hardware before claiming a speedup.
     """
 
     numel: int
@@ -164,6 +175,7 @@ class GradientBucket:
     world_size: int
     handle: Optional[SymmetricMemoryHandle] = None
     tensor: Optional[torch.Tensor] = None
+    reduction: Optional[torch.Tensor] = None
 
     def __post_init__(self) -> None:
         """Initialize symmetric memory buffer for gradient storage."""
@@ -174,71 +186,33 @@ class GradientBucket:
             self.tensor = handle.buffer
         else:
             self.tensor = local
+        self.reduction = torch.empty_like(local)
 
     def allreduce_ring(self, rank: int) -> torch.Tensor:
         """
-        Ring AllReduce using one-sided puts/gets.
+        AllReduce using direct reads from every rank's symmetric buffer.
 
-        Algorithm:
-        1. Each rank owns chunk[rank] of the buffer
-        2. Reduce-scatter phase: accumulate chunk data in ring pattern
-        3. AllGather phase: broadcast accumulated chunks
-
-        Educational: This is a simplified implementation. Production code
-        would use more sophisticated algorithms (e.g., hierarchical ring).
+        Each rank publishes its complete gradient in its local symmetric
+        allocation, reads the peer allocations into a private scratch tensor,
+        and only overwrites the published tensor after every reader is done.
+        For the two-GPU workload this is the direct one-sided equivalent of a
+        ring exchange without an intermediate host or NCCL collective.
         """
-        if self.tensor is None:
+        if self.tensor is None or self.reduction is None:
             raise RuntimeError("GradientBucket tensor not initialized")
 
         if nvshmem_available() and self.handle is not None:
-            # Use symmetric memory for direct GPU-GPU access
-            chunk_size = (self.numel + self.world_size - 1) // self.world_size
-            
-            # Reduce-scatter phase
-            for step in range(self.world_size - 1):
-                send_rank = (rank - step) % self.world_size
-                recv_rank = (rank - step - 1) % self.world_size
-                
-                send_chunk_start = send_rank * chunk_size
-                send_chunk_end = min(send_chunk_start + chunk_size, self.numel)
-                
-                # Send chunk to next rank
-                next_rank = (rank + 1) % self.world_size
-                remote_buf = self.handle.get_buffer(next_rank)
-                remote_buf[send_chunk_start:send_chunk_end].copy_(
-                    self.tensor[send_chunk_start:send_chunk_end],
-                    non_blocking=True
-                )
-                
-                dist.barrier()
-                
-                # Accumulate received chunk
-                if recv_rank >= 0:
-                    recv_chunk_start = recv_rank * chunk_size
-                    recv_chunk_end = min(recv_chunk_start + chunk_size, self.numel)
-                    prev_rank = (rank - 1 + self.world_size) % self.world_size
-                    remote_buf = self.handle.get_buffer(prev_rank)
-                    self.tensor[recv_chunk_start:recv_chunk_end].add_(
-                        remote_buf[recv_chunk_start:recv_chunk_end]
-                    )
-            
-            # AllGather phase
-            for step in range(self.world_size - 1):
-                send_rank = (rank + 1 - step) % self.world_size
-                send_chunk_start = send_rank * chunk_size
-                send_chunk_end = min(send_chunk_start + chunk_size, self.numel)
-                
-                next_rank = (rank + 1) % self.world_size
-                remote_buf = self.handle.get_buffer(next_rank)
-                remote_buf[send_chunk_start:send_chunk_end].copy_(
-                    self.tensor[send_chunk_start:send_chunk_end],
-                    non_blocking=True
-                )
-                
-                dist.barrier()
-            
-            # Average
-            self.tensor.div_(self.world_size)
+            if rank not in range(self.world_size):
+                raise RuntimeError("GradientBucket rank is outside its symmetric group")
+            torch.cuda.current_stream().synchronize()
+            dist.barrier()
+            self.reduction.zero_()
+            for peer in range(self.world_size):
+                peer_buffer = self.tensor if peer == rank else self.handle.get_buffer(peer)
+                self.reduction.add_(peer_buffer)
+            torch.cuda.current_stream().synchronize()
+            dist.barrier()
+            self.tensor.copy_(self.reduction).div_(self.world_size)
         else:
             raise RuntimeError("SKIPPED: nvshmem_training_patterns requires NVSHMEM or SymmetricMemory support")
         
@@ -249,10 +223,8 @@ class NVSHMEMGradientSync:
     """
     Custom gradient synchronization using NVSHMEM buckets.
 
-    Benefits vs NCCL:
-    - 10-15x lower latency for small gradients
-    - Fine-grained control over synchronization
-    - Can overlap computation with communication
+    Packs gradients into a shared bucket and explicitly synchronizes peer reads.
+    The caller waits for the reduction before applying optimizer updates.
 
     Usage:
         sync = NVSHMEMGradientSync(model.parameters(), world_size)
@@ -273,29 +245,53 @@ class NVSHMEMGradientSync:
             world_size=world_size,
         )
 
-    def synchronize_gradients(self, rank: int) -> None:
-        """Collect gradients from all parameters and synchronize."""
-        # Flatten all gradients into bucket
+    def _pack_gradients(self) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
+        """Copy active gradients into their contiguous bucket views in one batch."""
+        bucket_tensor = self.bucket.tensor
+        if bucket_tensor is None:
+            raise RuntimeError("GradientBucket tensor not initialized")
+
+        gradients: list[torch.Tensor] = []
+        bucket_views: list[torch.Tensor] = []
         offset = 0
         for param in self.parameters:
-            if param.grad is not None:
-                numel = param.grad.numel()
-                self.bucket.tensor[offset:offset+numel].copy_(param.grad.flatten())
-                offset += numel
+            gradient = param.grad
+            if gradient is None:
+                continue
+            numel = gradient.numel()
+            gradients.append(gradient)
+            bucket_views.append(
+                bucket_tensor[offset : offset + numel].view_as(gradient)
+            )
+            offset += numel
+
+        if gradients:
+            torch._foreach_copy_(bucket_views, gradients)
+        return gradients, bucket_views
+
+    @staticmethod
+    def _unpack_gradients(
+        gradients: list[torch.Tensor],
+        bucket_views: list[torch.Tensor],
+    ) -> None:
+        """Copy averaged bucket views back to the active gradients in one batch."""
+        if gradients:
+            torch._foreach_copy_(gradients, bucket_views)
+
+    def synchronize_gradients(self, rank: int) -> None:
+        """Collect gradients from all parameters and synchronize."""
+        # Preserve the existing active-gradient packing order while batching the
+        # device copies into one foreach call.
+        gradients, bucket_views = self._pack_gradients()
         
         # Synchronize using ring AllReduce
         self.bucket.allreduce_ring(rank)
         
-        # Copy averaged gradients back
-        offset = 0
-        for param in self.parameters:
-            if param.grad is not None:
-                numel = param.grad.numel()
-                param.grad.copy_(self.bucket.tensor[offset:offset+numel].view_as(param.grad))
-                offset += numel
+        # Copy the averaged values back with the matching batched device copy.
+        self._unpack_gradients(gradients, bucket_views)
 
 
-def demo_gradient_sync(benchmark: bool = False) -> None:
+def demo_gradient_sync(benchmark: bool = False) -> NVSHMEMWorkloadResult:
     """
     Demonstrate custom gradient synchronization with NVSHMEM.
 
@@ -305,7 +301,7 @@ def demo_gradient_sync(benchmark: bool = False) -> None:
     - Custom training loops with fine-grained control
     """
     rank, world_size, device = init_process_group()
-    
+
     # Use many tiny layers to amplify per-parameter sync latency in the baseline path.
     hidden_dim = 64
     num_layers = 256
@@ -314,6 +310,18 @@ def demo_gradient_sync(benchmark: bool = False) -> None:
         layers.append(nn.Linear(hidden_dim, hidden_dim))
         layers.append(nn.GELU())
     model = nn.Sequential(*layers).to(device)
+    # Data-parallel gradient averaging is only meaningful when every rank starts
+    # from the same parameters.  Fresh torchrun workers otherwise receive
+    # unrelated process-local RNG seeds.
+    with torch.no_grad():
+        for parameter in model.parameters():
+            dist.broadcast(parameter, src=0)
+    initial_state = {
+        name: tensor.detach().clone() for name, tensor in model.state_dict().items()
+    }
+    initial_parameters = torch.cat(
+        [parameter.detach().flatten() for parameter in model.parameters()]
+    )
 
     use_naive = os.environ.get("AISP_GRAD_SYNC_NAIVE", "").lower() in {"1", "true", "yes"}
     sync = None if use_naive else NVSHMEMGradientSync(list(model.parameters()), world_size)
@@ -322,32 +330,109 @@ def demo_gradient_sync(benchmark: bool = False) -> None:
     # Training loop
     num_steps = 10 if not benchmark else 100
     batch_size = 1
-    
+    generator_device = torch.device("cuda", device)
+    input_generator = _make_rank_generator(
+        generator_device,
+        rank=rank,
+        base_seed=17,
+    )
+    reference_input_generator = _make_rank_generator(
+        generator_device,
+        rank=rank,
+        base_seed=17,
+    )
+    torch.cuda.synchronize(device)
     start_time = time.perf_counter()
-    for step in range(num_steps):
-        inputs = torch.randn(batch_size, hidden_dim, device=device)
-        outputs = model(inputs)
-        loss = outputs.sum()
-        loss.backward()
-        
-        # Custom gradient sync with NVSHMEM (or naive per-parameter fallback).
-        if use_naive:
-            for param in model.parameters():
-                if param.grad is not None:
-                    dist.all_reduce(param.grad, op=dist.ReduceOp.SUM)
-                    param.grad.div_(world_size)
-        else:
-            sync.synchronize_gradients(rank)
-        
-        optimizer.step()
-        optimizer.zero_grad()
-    
+    with selected_nvtx_range():
+        for _ in range(num_steps):
+            inputs = torch.randn(
+                batch_size,
+                hidden_dim,
+                device=device,
+                generator=input_generator,
+            )
+            outputs = model(inputs)
+            loss = outputs.sum()
+            loss.backward()
+
+            # Custom gradient sync with NVSHMEM (or naive per-parameter fallback).
+            if use_naive:
+                for param in model.parameters():
+                    if param.grad is not None:
+                        dist.all_reduce(param.grad, op=dist.ReduceOp.SUM)
+                        param.grad.div_(world_size)
+            else:
+                sync.synchronize_gradients(rank)
+
+            optimizer.step()
+            optimizer.zero_grad()
+        torch.cuda.synchronize(device)
     elapsed = time.perf_counter() - start_time
+    actual_parameters = torch.cat(
+        [parameter.detach().flatten() for parameter in model.parameters()]
+    )
+
+    measured_inputs = [
+        torch.randn(
+            batch_size,
+            hidden_dim,
+            device=device,
+            generator=reference_input_generator,
+        )
+        for _ in range(num_steps)
+    ]
+    local_input_sequence = torch.stack(measured_inputs)
+    rank_input_sequences = [torch.empty_like(local_input_sequence) for _ in range(world_size)]
+    dist.all_gather(rank_input_sequences, local_input_sequence)
+
+    reference_layers = []
+    for _ in range(num_layers):
+        reference_layers.append(nn.Linear(hidden_dim, hidden_dim))
+        reference_layers.append(nn.GELU())
+    reference_model = nn.Sequential(*reference_layers).to(device)
+    reference_model.load_state_dict(initial_state)
+    reference_optimizer = torch.optim.SGD(reference_model.parameters(), lr=0.01)
+    for step in range(num_steps):
+        for rank_inputs in rank_input_sequences:
+            reference_outputs = reference_model(rank_inputs[step])
+            reference_outputs.sum().backward()
+        for parameter in reference_model.parameters():
+            if parameter.grad is not None:
+                parameter.grad.div_(world_size)
+        reference_optimizer.step()
+        reference_optimizer.zero_grad()
+    reference_parameters = torch.cat(
+        [parameter.detach().flatten() for parameter in reference_model.parameters()]
+    )
     
     if rank == 0:
         print(f"[gradient_sync] Completed {num_steps} steps in {elapsed:.2f}s")
         print(f"[gradient_sync] Avg step time: {elapsed/num_steps*1000:.2f}ms")
         print(f"[gradient_sync] NVSHMEM available: {nvshmem_available()}")
+    return NVSHMEMWorkloadResult(
+        workload="training-patterns",
+        rank=rank,
+        world_size=world_size,
+        iterations=num_steps,
+        time_per_iter_ms=(elapsed * 1000.0) / num_steps,
+        configuration={
+            "pattern": "gradient",
+            "benchmark": bool(benchmark),
+            "steps": num_steps,
+            "hidden_dim": hidden_dim,
+            "num_layers": num_layers,
+        },
+        verify_inputs={
+            "initial_parameters": initial_parameters,
+            "training_inputs": local_input_sequence,
+        },
+        verify_output=actual_parameters,
+        reference_output=reference_parameters,
+        batch_size=batch_size,
+        parameter_count=int(initial_parameters.numel()),
+        collective_type="gradient_allreduce",
+        output_tolerance=(1e-5, 1e-6),
+    )
 
 
 # ============================================================================
@@ -758,7 +843,7 @@ def demo_tensor_parallel_activations(benchmark: bool = False) -> None:
 # ============================================================================
 
 
-def main() -> None:
+def main() -> NVSHMEMWorkloadResult | None:
     parser = argparse.ArgumentParser(description="NVSHMEM training patterns")
     parser.add_argument(
         "--pattern",
@@ -782,6 +867,7 @@ def main() -> None:
         "tensor_parallel": demo_tensor_parallel_activations,
     }
     
+    result = None
     if args.pattern == "all":
         for name, func in patterns.items():
             if dist.get_rank() == 0:
@@ -790,6 +876,8 @@ def main() -> None:
                 print(f"{'='*60}\n")
             func(args.benchmark)
             dist.barrier()
+    elif args.pattern == "gradient":
+        result = demo_gradient_sync(args.benchmark)
     else:
         patterns[args.pattern](args.benchmark)
     
@@ -797,6 +885,7 @@ def main() -> None:
     if dist.get_rank() == 0:
         print(f"\nCompleted NVSHMEM training pattern demonstration")
         print(f"Symmetric memory available: {nvshmem_available()}")
+    return result
 
 
 if __name__ == "__main__":

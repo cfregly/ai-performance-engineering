@@ -367,14 +367,29 @@ class Top2MoE(nn.Module):
             dtype=route_weights.dtype,
         )
 
-        dist.all_to_all_single(recv_buf, send_buf, out_split_sizes=recv_splits, in_split_sizes=send_splits)
-        dist.all_to_all_single(recv_ids, send_ids, out_split_sizes=recv_splits, in_split_sizes=send_splits)
-        dist.all_to_all_single(recv_pos, send_pos, out_split_sizes=recv_splits, in_split_sizes=send_splits)
+        dist.all_to_all_single(
+            recv_buf,
+            send_buf,
+            output_split_sizes=recv_splits,
+            input_split_sizes=send_splits,
+        )
+        dist.all_to_all_single(
+            recv_ids,
+            send_ids,
+            output_split_sizes=recv_splits,
+            input_split_sizes=send_splits,
+        )
+        dist.all_to_all_single(
+            recv_pos,
+            send_pos,
+            output_split_sizes=recv_splits,
+            input_split_sizes=send_splits,
+        )
         dist.all_to_all_single(
             recv_weights,
             send_weights,
-            out_split_sizes=recv_splits,
-            in_split_sizes=send_splits,
+            output_split_sizes=recv_splits,
+            input_split_sizes=send_splits,
         )
 
         local_out = self._distributed_workspace(
@@ -412,10 +427,16 @@ class Top2MoE(nn.Module):
         )
 
         dist.all_to_all_single(
-            recv_back_buf, local_out, out_split_sizes=recv_back_splits, in_split_sizes=send_back_splits
+            recv_back_buf,
+            local_out,
+            output_split_sizes=recv_back_splits,
+            input_split_sizes=send_back_splits,
         )
         dist.all_to_all_single(
-            recv_back_pos, recv_pos, out_split_sizes=recv_back_splits, in_split_sizes=send_back_splits
+            recv_back_pos,
+            recv_pos,
+            output_split_sizes=recv_back_splits,
+            input_split_sizes=send_back_splits,
         )
 
         out = self._distributed_workspace(

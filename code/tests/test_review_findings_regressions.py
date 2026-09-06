@@ -651,7 +651,10 @@ def test_ch04_torchrun_wrappers_delegate_to_dedicated_workers() -> None:
             .split("def get_custom_metrics", 1)[0]
         )
         assert "config_arg_map" not in spec_section
-        assert '.with_name("nvshmem_worker.py")' in spec_section
+        assert 'module_name="core.harness.benchmark_worker"' in spec_section
+        assert '"ch04.nvshmem_worker"' in spec_section
+        assert '"--callable"' in spec_section
+        assert '"--"' in spec_section
 
     assert '.with_name("ddp_worker.py")' in _read("ch04/ddp_no_overlap.py")
     assert '.with_name("ddp_worker.py")' in _read("ch04/ddp_overlap.py")
@@ -771,13 +774,54 @@ def test_ch04_no_overlap_and_nvshmem_surfaces_do_not_advertise_single_gpu_fallba
 
 
 def test_ch04_nvshmem_vs_nccl_wrapper_keeps_collective_metadata_aligned_to_mode() -> None:
-    baseline_source = _read("ch04/baseline_nvshmem_vs_nccl_benchmark_multigpu.py")
-    optimized_source = _read("ch04/optimized_nvshmem_vs_nccl_benchmark_multigpu.py")
+    import importlib
+    import shutil
 
-    assert 'mode="nccl"' in baseline_source
-    assert '"collective_type": "nccl"' in baseline_source
-    assert 'mode="nvshmem"' in optimized_source
-    assert '"collective_type": "nvshmem"' in optimized_source
+    from core.harness.benchmark_harness import BenchmarkConfig, TorchrunLaunchSpec
+
+    cases = (
+        ("ch04.baseline_nvshmem_vs_nccl_benchmark_multigpu", "baseline", "nccl"),
+        ("ch04.optimized_nvshmem_vs_nccl_benchmark_multigpu", "optimized", "nvshmem"),
+    )
+    expected_base_configuration = {
+        "min_bytes": 1048576,
+        "max_bytes": 1048576,
+        "steps": 1,
+        "iterations": 500,
+    }
+    for module_name, expected_variant, expected_mode in cases:
+        benchmark = importlib.import_module(module_name).get_benchmark()
+        spec = benchmark.get_torchrun_spec(
+            BenchmarkConfig(nproc_per_node=2, nnodes=1, iterations=1, warmup=5)
+        )
+        result_dirs = [
+            Path(value)
+            for name, value in spec.env.items()
+            if name.endswith("_RESULT_DIR")
+        ]
+        try:
+            assert isinstance(spec, TorchrunLaunchSpec)
+            assert spec.module_name == "core.harness.benchmark_worker"
+            delimiter = spec.script_args.index("--")
+            worker_args = spec.script_args[delimiter + 1 :]
+            assert worker_args[worker_args.index("--workload") + 1] == "collective"
+            assert worker_args[worker_args.index("--variant") + 1] == expected_variant
+            assert worker_args[worker_args.index("--mode") + 1] == expected_mode
+
+            context = benchmark._nvshmem_child_result_context
+            assert context is not None
+            assert context["configuration"] == {
+                **expected_base_configuration,
+                "mode": expected_mode,
+            }
+        finally:
+            for result_dir in result_dirs:
+                shutil.rmtree(result_dir, ignore_errors=True)
+
+    worker_source = _read("ch04/nvshmem_vs_nccl_benchmark.py")
+    assert 'collective_type="broadcast"' in worker_source
+    assert 'collective_type="nccl"' not in worker_source
+    assert 'collective_type="nvshmem"' not in worker_source
 
 
 def test_ch05_gds_probe_and_ch07_tma_copy_never_advertise_fallback_paths() -> None:

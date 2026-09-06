@@ -38,20 +38,26 @@ def test_ch18_nvfp4_trtllm_tool_no_longer_uses_placeholder_outputs_or_eager_fall
     )[0]
 
     assert "torch.tensor([float(len(outputs))]" not in source
-    assert "FAIL FAST: TRT-LLM generate returned an unsupported output payload" in source
-    assert "FAIL FAST: Transformer Engine FP8 path failed in nvfp4_trtllm_tool" in source
+    assert "from transformer_engine" not in source
+    assert "nn.Linear" not in source
+    assert "fp8_autocast" not in source
+    assert "from_engine" not in source
+    assert "torch.cuda.graph" not in source
+    assert "torch.cuda.CUDAGraph" not in source
+    assert "ModelRunner" in setup_section
+    assert "self._trt_runner = ModelRunner.from_dir(" in setup_section
+    assert "_inspect_nvfp4_engine_assets(self._configured_engine_dir())" in setup_section
+    assert "FAIL FAST: TensorRT-LLM failed to load the validated NVFP4 engine" in setup_section
     assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
-    assert "self._empty_iteration_result = {}" in source
-    assert "self._fp8_autocast = None" in source
-    assert "self._fp8_autocast = fp8_autocast" in setup_section
-    assert "with self._fp8_autocast():" in benchmark_section
-    assert "from transformer_engine.pytorch import fp8_autocast" not in benchmark_section
-    assert 'if self._trt_runner is not None and self.inputs is not None:' in benchmark_section
-    assert 'hasattr(self, "_trt_runner")' not in benchmark_section
+    assert "self._empty_iteration_result: dict[str, float] = {}" in source
+    assert 'outputs = self._trt_runner.generate(' in benchmark_section
+    assert "max_new_tokens=self.max_new_tokens" in benchmark_section
+    assert "end_id=0" in benchmark_section
+    assert "pad_id=0" in benchmark_section
+    assert "return_dict=True" in benchmark_section
+    assert "self.output = self._require_output_ids(outputs)" in benchmark_section
+    assert "FAIL FAST: TensorRT-LLM NVFP4 generate failed" in benchmark_section
     assert "get_nvtx_enabled(" not in benchmark_section
     assert "self.get_config()" not in benchmark_section
-    assert "torch.as_tensor(" not in benchmark_section
-    assert 'first = outputs.get("output_ids")' in benchmark_section
-    assert 'raise TypeError(f"expected Tensor output, got {type(first).__name__}")' in benchmark_section
-    assert benchmark_section.count("return self._empty_iteration_result") == 2
+    assert benchmark_section.count("return self._empty_iteration_result") == 1
     assert "return {}" not in benchmark_section

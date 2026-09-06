@@ -20,6 +20,7 @@ from labs.train_distributed.training_utils.utils import (
     build_text_model_flash,
     build_tokenizer,
     get_dataset,
+    make_causal_lm_labels,
 )
 from labs.train_distributed.training_utils.torchrun_harness import TorchrunScriptBenchmark
 
@@ -121,7 +122,9 @@ def main():
         )
         with torch.cuda.amp.autocast(dtype=torch.bfloat16), sync_ctx:
             batch = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
-            batch["labels"] = batch["input_ids"].clone()
+            batch["labels"] = make_causal_lm_labels(
+                batch["input_ids"], batch["attention_mask"]
+            )
             outputs = ddp_model(**batch)
             loss = outputs.loss / args.grad_accum
         loss.backward()

@@ -7,7 +7,6 @@ Launched via torchrun.
 
 from __future__ import annotations
 
-from pathlib import Path
 
 import argparse
 import os
@@ -29,9 +28,12 @@ from core.harness.benchmark_harness import (
     LaunchVia,
     TorchrunLaunchSpec,
 )
+from core.profiling.nvtx_helper import nvtx_range
 from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+PROFILE_NVTX_RANGE = "compute_kernel:pipeline_parallel_1f1b"
 
 _DEFAULT_BATCH = 32
 _DEFAULT_SEQ = 2048
@@ -112,6 +114,16 @@ def _run_stage_inplace(stage_layers: nn.ModuleList, x: torch.Tensor) -> torch.Te
     return x
 
 
+def _run_rank_stage_inplace(
+    stages: nn.ModuleList,
+    rank: int,
+    x: torch.Tensor,
+) -> torch.Tensor:
+    if rank < 0 or rank >= len(stages):
+        raise IndexError(f"pipeline rank {rank} is outside {len(stages)} stages")
+    return _run_stage_inplace(stages[rank], x)
+
+
 def _run_worker(
     iters: int,
     warmup: int,
@@ -161,12 +173,10 @@ def _run_worker(
         )
 
     def _forward(micro_batch: torch.Tensor) -> torch.Tensor:
-        x = micro_batch
-        return _run_stage_inplace(fwd_layers[0], x)
+        return _run_rank_stage_inplace(fwd_layers, rank, micro_batch)
 
     def _backward(grad_in: torch.Tensor) -> torch.Tensor:
-        x = grad_in
-        return _run_stage_inplace(bwd_layers[0], x)
+        return _run_rank_stage_inplace(bwd_layers, rank, grad_in)
 
     warmup_steps = min(world_size, num_micro_batches)
     activation_slots: list[Optional[torch.Tensor]] = [None] * warmup_steps
@@ -251,14 +261,16 @@ def _run_worker(
             _run_iteration()
         torch.cuda.synchronize(device)
 
-        start = time.perf_counter()
-        for _ in range(max(iters, 1)):
-            _run_iteration()
-        torch.cuda.synchronize(device)
-    elapsed = time.perf_counter() - start
+        with nvtx_range(PROFILE_NVTX_RANGE, enable=True):
+            start = time.perf_counter()
+            for _ in range(max(iters, 1)):
+                _run_iteration()
+            torch.cuda.synchronize(device)
+            elapsed = time.perf_counter() - start
 
     if rank == 0:
-        print(f"rank0 time_per_iter_ms: {(elapsed / max(iters,1)) * 1000.0:.3f}")
+        time_per_iter_ms = (elapsed / max(iters, 1)) * 1000.0
+        print(f"rank0 time_per_iter_ms: {time_per_iter_ms:.9f}", flush=True)
 
     dist.barrier()
     dist.destroy_process_group()
@@ -301,6 +313,8 @@ def main() -> None:
 
 
 class OptimizedPipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
+    preferred_ncu_replay_mode = "app-range"
+
     """Harness entry that launches this module via torchrun."""
     multi_gpu_required = True
 
@@ -352,15 +366,15 @@ class OptimizedPipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark
             or self._bwd_layers is None
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
+        if len(self._fwd_layers) != self._world_size or len(self._bwd_layers) != self._world_size:
+            raise RuntimeError("pipeline stage count does not match world size")
         x = self._micro_batch
+        stage_layers = iter(self._fwd_layers)
         for _ in self._world_size_range:
-            for layer in self._fwd_layers:
-                x = layer(x)
-                x.relu_()
+            x = _run_stage_inplace(next(stage_layers), x)
+        stage_layers = reversed(self._bwd_layers)
         for _ in self._world_size_range:
-            for layer in self._bwd_layers:
-                x = layer(x)
-                x.relu_()
+            x = _run_stage_inplace(next(stage_layers), x)
         self._output = x
 
     def capture_verification_payload(self) -> None:
@@ -419,19 +433,25 @@ class OptimizedPipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark
             warmup=5,
             multi_gpu_required=True,
             measurement_timeout_seconds=900,
+            nsys_nvtx_include=[PROFILE_NVTX_RANGE],
+            ncu_replay_mode="app-range",
+            ncu_replay_mode_override=True,
         )
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
         self._prepare_verification_payload()
+        effective_config = config or self.get_config()
         return TorchrunLaunchSpec(
-            script_path=Path(__file__).resolve(),
-            script_args=[],
+            module_name="core.harness.benchmark_worker",
+            script_args=["--module", "ch04.optimized_pipeline_parallel_1f1b", "--callable", "main", "--"],
             multi_gpu_required=True,
             name="optimized_pipeline_parallel_1f1b",
             config_arg_map={
                 "iterations": "--iters",
                 "warmup": "--warmup",
             },
+            timing_source="rank0_time_per_iter_ms",
+            timing_iterations_per_sample=int(effective_config.iterations),
         )
 
 

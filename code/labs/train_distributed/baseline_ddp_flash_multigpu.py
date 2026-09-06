@@ -33,6 +33,7 @@ def main():
         build_text_model,
         build_tokenizer,
         get_dataset,
+        make_causal_lm_labels,
     )
 
     args = parse_args()
@@ -92,7 +93,9 @@ def main():
 
         batch = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
 
-        batch["labels"] = batch["input_ids"].clone()
+        batch["labels"] = make_causal_lm_labels(
+            batch["input_ids"], batch["attention_mask"]
+        )
         outputs = ddp_model(**batch)
         loss = outputs.loss
         loss.backward()

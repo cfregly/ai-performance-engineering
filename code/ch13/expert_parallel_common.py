@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
-
-from core.common.device_utils import resolve_local_rank
 import time
+from dataclasses import dataclass
 from typing import List, Tuple
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+
+from core.common.device_utils import resolve_local_rank
+from core.profiling.nvtx_helper import nvtx_range
 
 
 @dataclass(frozen=True)
@@ -98,6 +99,7 @@ def run_expert_parallel(
     iters: int,
     warmup: int,
     impl: str,
+    profile_nvtx_range: str,
 ) -> None:
     rank, world_size, local_rank = init_distributed()
     if world_size < 2:
@@ -153,11 +155,12 @@ def run_expert_parallel(
         _step()
     torch.cuda.synchronize(device)
 
-    start = time.perf_counter()
-    for _ in range(max(iters, 1)):
-        _step()
-    torch.cuda.synchronize(device)
-    elapsed = time.perf_counter() - start
+    with nvtx_range(profile_nvtx_range, enable=True):
+        start = time.perf_counter()
+        for _ in range(max(iters, 1)):
+            _step()
+        torch.cuda.synchronize(device)
+        elapsed = time.perf_counter() - start
 
     if rank == 0:
         tokens_global = tokens_per_rank * world_size

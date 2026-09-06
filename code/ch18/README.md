@@ -6,6 +6,22 @@ Collects modern decoder techniques-FlexAttention, FlexDecoding, speculative and 
 ## Problem
 Chapter 18 is the "does decoder complexity actually buy you anything?" checkpoint. It puts flexible masking, speculative decoding, tensor-core kernels, and serving integration on the same chapter surface so you can see which tricks reduce latency and which ones only add engineering cost.
 
+## NVFP4 TensorRT-LLM tool
+Run the integration tool from `code/` with a real, single-rank TensorRT-LLM
+NVFP4 engine:
+
+```bash
+TRT_LLM_ENGINE=/absolute/path/to/nvfp4-engine python -m cli.aisp tools nvfp4-trtllm
+```
+
+The engine directory must contain `config.json` and a nonempty `rank0.engine`.
+The supported TensorRT-LLM 1.1.0 configuration declares `NVFP4` or
+`W4A8_NVFP4_FP8` quantization and `mapping.world_size=1`. CUDA on Blackwell
+or newer and the TensorRT-LLM runtime are required. Missing prerequisites
+produce an explicit `SKIPPED` diagnostic and a nonzero exit; the tool does
+not substitute FP16 framework execution. Validate a supplied engine with
+`AISP_TEST_NVFP4_TRTLLM_ENGINE=/absolute/path/to/nvfp4-engine python -m pytest -q tests/test_nvfp4_trtllm_tool.py`.
+
 ## Baseline Path
 - straightforward FlexAttention / decode execution
 - conservative serving integration without aggressive caching or graph replay

@@ -869,7 +869,14 @@ def _list_foreign_cuda_compute_processes(
     foreign: List[Dict[str, Any]] = []
     try:
         pynvml.nvmlInit()
-        handle = pynvml.nvmlDeviceGetHandleByIndex(int(device_index))
+        from core.profiling.gpu_telemetry import resolve_nvml_device_handle
+
+        properties = torch.cuda.get_device_properties(device_index)
+        handle = resolve_nvml_device_handle(
+            pynvml,
+            device_index,
+            cuda_device_uuid=getattr(properties, "uuid", None),
+        )
         for proc in _query_processes(handle):
             pid = int(getattr(proc, "pid", -1))
             if pid <= 0 or pid == int(current_pid):

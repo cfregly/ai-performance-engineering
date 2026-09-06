@@ -1,28 +1,35 @@
-"""baseline_reinit_comm.py - Reinitializing NCCL every iteration (single GPU)."""
+"""Recreate a one-rank NCCL communicator for every benchmark iteration.
+
+The default standalone case measures local communicator lifecycle overhead. It
+does not measure network communication performance. A real torchrun context is
+still honored when the benchmark is launched under one.
+"""
 
 from __future__ import annotations
 
-import os
-
-from core.common.device_utils import resolve_local_rank
+from typing import Optional
 
 import torch
 import torch.distributed as dist
 
-from typing import Optional
-
-from ch04.distributed_helper import setup_single_gpu_env
+from ch04.reinit_comm_common import (
+    ReinitCommLaunchContext,
+    initialize_reinit_process_group,
+    resolve_reinit_comm_launch,
+)
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     WorkloadMetadata,
 )
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 
 
 class BaselineReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Reinitializing NCCL every iteration - poor pattern."""
-    
+    """Reinitialize the default one-rank NCCL communicator every iteration."""
+
+    multi_gpu_required = False
+
     def __init__(self):
         super().__init__()
         self.rank = 0
@@ -31,18 +38,20 @@ class BaselineReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input_tensor = None
         self.tensor = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._launch_context: ReinitCommLaunchContext | None = None
+        self._standalone_store: dist.Store | None = None
         self.initialized = False
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
             bytes_per_iteration=4.0,  # single float all-reduce
         )
-    
+
     def setup(self) -> None:
-        """Setup: Configure distributed environment."""
-        setup_single_gpu_env()
-        self.rank = int(os.environ.get("RANK", "0"))
-        self.world_size = int(os.environ.get("WORLD_SIZE", "1"))
-        self.local_rank = resolve_local_rank()
+        """Configure a standalone rank or preserve a real torchrun context."""
+        self._launch_context = resolve_reinit_comm_launch("baseline_reinit_comm")
+        self.rank = self._launch_context.rank
+        self.world_size = self._launch_context.world_size
+        self.local_rank = self._launch_context.local_rank
         self.device = torch.device(f"cuda:{self.local_rank}")
         torch.cuda.set_device(self.local_rank)
         torch.manual_seed(42)
@@ -57,25 +66,26 @@ class BaselineReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=self._workload.requests_per_iteration,
             bytes_per_iteration=self._workload.bytes_per_iteration,
         )
-    
+
     def benchmark_fn(self) -> None:
         """Benchmark: Reinitialize NCCL every iteration."""
         if self.tensor is None or self.input_tensor is None:
             raise RuntimeError("Tensor not initialized")
+        if self._launch_context is None:
+            raise RuntimeError("Communicator launch context not initialized")
         with self._nvtx_range("reinit_comm"):
             # Anti-pattern: reinitialize NCCL every iteration
             if dist.is_initialized():
                 dist.destroy_process_group()
+            self._standalone_store = None
 
             torch.cuda.set_device(self.local_rank)
-            dist.init_process_group(
+            self._standalone_store = initialize_reinit_process_group(
+                self._launch_context,
                 backend="nccl",
-                init_method="env://",
-                world_size=self.world_size,
-                rank=self.rank,
-                device_id=self.local_rank,
+                device_id=self.device,
             )
-            
+
             # Perform all-reduce
             self.tensor.copy_(self.input_tensor)
             dist.all_reduce(self.tensor)
@@ -102,16 +112,18 @@ class BaselineReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
             output_tolerance=(1e-6, 1e-6),
         )
 
-    
+
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
         if dist.is_initialized():
             dist.destroy_process_group()
+        self._standalone_store = None
+        self._launch_context = None
         self.input_tensor = None
         self.tensor = None
         self._verify_output_buffer = None
         super().teardown()
-    
+
     def get_config(self) -> BenchmarkConfig:
         """Return benchmark configuration."""
         return BenchmarkConfig(
@@ -120,7 +132,7 @@ class BaselineReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
             enable_memory_tracking=False,
             enable_profiling=False,
         )
-    
+
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
         from core.benchmark.metrics import compute_memory_transfer_metrics

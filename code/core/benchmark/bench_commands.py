@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import ast
 import json
-import threading
 import shlex
 import signal
 import subprocess
 import sys
+import threading
 import time
 import warnings
+from contextlib import suppress
+from dataclasses import dataclass, replace
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -113,8 +117,6 @@ from core.benchmark.artifact_manager import (
     build_run_id,
     validate_run_id,
 )
-from dataclasses import replace
-
 from core.benchmark.defaults import BenchmarkDefaults, get_defaults, set_defaults
 from core.benchmark.run_manifest import get_git_info, get_gpu_state
 from core.harness.validity_profile import (
@@ -130,6 +132,7 @@ from core.discovery import (
     discover_all_chapters,
     resolve_target_chapters,
     discover_benchmarks,
+    is_cuda_binary_benchmark_file,
 )
 
 apply_env_defaults()
@@ -409,47 +412,233 @@ def _expectation_example_key(example_name: str, bench_type: str) -> str:
     return f"{example_name}_{bench_type_norm}"
 
 
-def _file_uses_torchrun(path: Path) -> bool:
-    content = path.read_text(encoding="utf-8")
-    markers = ("TorchrunLaunchSpec", "get_torchrun_spec", "LaunchVia.TORCHRUN")
-    return any(marker in content for marker in markers)
+@dataclass(frozen=True)
+class _StaticBenchmarkRouting:
+    """Side-effect-free launch requirements for one discovered target."""
+
+    minimum_gpu_count: int = 1
+    requires_torchrun: bool = False
+
+
+def _attribute_chain(node: ast.AST) -> Tuple[str, ...]:
+    parts: List[str] = []
+    current = node
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if isinstance(current, ast.Name):
+        parts.append(current.id)
+    return tuple(reversed(parts))
+
+
+def _literal_positive_int(node: ast.AST) -> Optional[int]:
+    try:
+        value = ast.literal_eval(node)
+    except (ValueError, TypeError):
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return value
+
+
+def _merge_static_routing(
+    *routes: Optional[_StaticBenchmarkRouting],
+) -> _StaticBenchmarkRouting:
+    concrete = [route for route in routes if route is not None]
+    return _StaticBenchmarkRouting(
+        minimum_gpu_count=max(
+            (route.minimum_gpu_count for route in concrete),
+            default=1,
+        ),
+        requires_torchrun=any(route.requires_torchrun for route in concrete),
+    )
+
+
+def _routing_declared_in(nodes: List[ast.AST]) -> _StaticBenchmarkRouting:
+    """Extract only literal GPU and launcher metadata from selected AST nodes."""
+
+    gpu_counts: List[int] = []
+    declares_multi = False
+    requires_torchrun = False
+    for root in nodes:
+        for node in ast.walk(root):
+            if isinstance(node, (ast.Assign, ast.AnnAssign)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                value = node.value
+                if value is None:
+                    continue
+                for target in targets:
+                    if not isinstance(target, ast.Name):
+                        continue
+                    if target.id == "multi_gpu_required":
+                        try:
+                            declares_multi = declares_multi or ast.literal_eval(value) is True
+                        except (ValueError, TypeError):
+                            pass
+                    elif target.id == "required_world_size":
+                        count = _literal_positive_int(value)
+                        if count is not None:
+                            gpu_counts.append(count)
+            if not isinstance(node, ast.Call):
+                continue
+            call_parts = _attribute_chain(node.func)
+            call_name = call_parts[-1] if call_parts else ""
+            if call_name == "require_min_gpus" and node.args:
+                count = _literal_positive_int(node.args[0])
+                if count is not None:
+                    gpu_counts.append(count)
+            if call_name == "TorchrunLaunchSpec":
+                requires_torchrun = True
+            for keyword in node.keywords:
+                if keyword.arg in {"multi_gpu", "multi_gpu_required", "multigpu"}:
+                    try:
+                        declares_multi = declares_multi or ast.literal_eval(keyword.value) is True
+                    except (ValueError, TypeError):
+                        pass
+                elif keyword.arg in {
+                    "required_world_size",
+                    "nproc_per_node",
+                    "default_nproc_per_node",
+                }:
+                    count = _literal_positive_int(keyword.value)
+                    if count is not None:
+                        gpu_counts.append(count)
+                elif keyword.arg == "launch_via":
+                    value_parts = _attribute_chain(keyword.value)
+                    if value_parts and value_parts[-1].lower() == "torchrun":
+                        requires_torchrun = True
+                    else:
+                        try:
+                            literal = ast.literal_eval(keyword.value)
+                        except (ValueError, TypeError):
+                            continue
+                        if isinstance(literal, str) and literal.strip().lower() == "torchrun":
+                            requires_torchrun = True
+
+    if declares_multi:
+        gpu_counts.append(2)
+    return _StaticBenchmarkRouting(
+        minimum_gpu_count=max(gpu_counts, default=1),
+        requires_torchrun=requires_torchrun,
+    )
+
+
+def _local_class_declares_distributed_execution(nodes: list[ast.AST]) -> bool:
+    """Detect strong distributed execution calls in locally defined benchmark classes."""
+    explicit_single_gpu = False
+    distributed_execution = False
+    for root in nodes:
+        for node in ast.walk(root):
+            if isinstance(node, ast.Assign | ast.AnnAssign):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                value = node.value
+                for target in targets:
+                    if not isinstance(target, ast.Name) or target.id != "multi_gpu_required":
+                        continue
+                    with suppress(ValueError, TypeError):
+                        explicit_single_gpu = explicit_single_gpu or ast.literal_eval(value) is False
+            if not isinstance(node, ast.Call):
+                continue
+            call_parts = _attribute_chain(node.func)
+            if not call_parts:
+                continue
+            if (
+                call_parts[-1] == "init_process_group"
+                and len(call_parts) >= 2
+                and call_parts[-2] in {"dist", "distributed"}
+            ) or call_parts[-1] == "DistributedDataParallel":
+                distributed_execution = True
+    return distributed_execution and not explicit_single_gpu
+
+
+@lru_cache(maxsize=None)
+def _class_static_routing(
+    module_path_text: str,
+    class_name: str,
+) -> _StaticBenchmarkRouting:
+    from core.benchmark.contract import _load_module_context, _resolve_base_expr
+
+    module = _load_module_context(module_path_text)
+    if module is None:
+        return _StaticBenchmarkRouting()
+    class_node = module.classes.get(class_name)
+    if class_node is None:
+        return _StaticBenchmarkRouting()
+    routes = [_routing_declared_in([class_node])]
+    for base in class_node.bases:
+        ref = _resolve_base_expr(module, base)
+        if ref is None or (
+            ref.module_path == module.module_path and ref.class_name == class_name
+        ):
+            continue
+        routes.append(_class_static_routing(str(ref.module_path), ref.class_name))
+    return _merge_static_routing(*routes)
+
+
+def _static_benchmark_routing(path: Path) -> _StaticBenchmarkRouting:
+    """Read launch metadata without importing the benchmark workload module."""
+
+    from core.benchmark.contract import _load_module_context, _returned_benchmark_class_refs
+
+    module = _load_module_context(str(path.resolve()))
+    if module is None:
+        raise RuntimeError(f"Failed to parse benchmark metadata from {path}")
+    factory_nodes = [
+        node
+        for node in module.tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "get_benchmark"
+    ]
+    returned_refs = _returned_benchmark_class_refs(module)
+    routes = [_routing_declared_in(factory_nodes)]
+    routes.extend(
+        _class_static_routing(str(ref.module_path), ref.class_name) for ref in returned_refs
+    )
+    local_class_nodes = [
+        module.classes[ref.class_name]
+        for ref in returned_refs
+        if ref.module_path == module.module_path and ref.class_name in module.classes
+    ]
+    if _local_class_declares_distributed_execution(local_class_nodes):
+        routes.append(_StaticBenchmarkRouting(minimum_gpu_count=2))
+    return _merge_static_routing(*routes)
+
+
+def _collect_benchmark_routing(chapter_dir: Path) -> Dict[str, _StaticBenchmarkRouting]:
+    """Collect target routing from declared, side-effect-free metadata."""
+
+    routing: Dict[str, _StaticBenchmarkRouting] = {}
+    pairs = discover_benchmarks(chapter_dir, validate=False, warn_missing=False)
+    for baseline_path, optimized_paths, example_name in pairs:
+        bench_type = "cuda" if is_cuda_binary_benchmark_file(baseline_path) else "python"
+        example_key = _expectation_example_key(example_name, bench_type)
+        target_routing = _merge_static_routing(
+            *(
+                _static_benchmark_routing(path)
+                for path in (baseline_path, *optimized_paths)
+            )
+        )
+        routing[example_key] = _merge_static_routing(
+            routing.get(example_key),
+            target_routing,
+        )
+    return routing
+
+
+def _collect_gpu_requirements(chapter_dir: Path) -> Dict[str, int]:
+    """Collect target GPU requirements from declared, side-effect-free metadata."""
+
+    return {
+        example_key: metadata.minimum_gpu_count
+        for example_key, metadata in _collect_benchmark_routing(chapter_dir).items()
+    }
 
 
 def _collect_multi_gpu_examples(chapter_dir: Path) -> Dict[str, bool]:
-    multi_gpu: Dict[str, bool] = {}
-    pairs = discover_benchmarks(chapter_dir, validate=False, warn_missing=False)
-
-    try:
-        from core.harness.run_benchmarks import cuda_binary_requires_multi_gpu
-        from core.discovery import is_cuda_binary_benchmark_file
-    except Exception as exc:
-        raise RuntimeError(f"Failed to import benchmark helpers: {exc}") from exc
-
-    for baseline_path, optimized_paths, example_name in pairs:
-        is_cuda_wrapper = is_cuda_binary_benchmark_file(baseline_path)
-        if is_cuda_wrapper:
-            uses_multi_gpu = cuda_binary_requires_multi_gpu(baseline_path)
-            for opt_path in optimized_paths:
-                uses_multi_gpu = uses_multi_gpu or cuda_binary_requires_multi_gpu(opt_path)
-            example_key = _expectation_example_key(example_name, "cuda")
-        else:
-            try:
-                uses_torchrun = _file_uses_torchrun(baseline_path)
-            except Exception as exc:
-                raise RuntimeError(f"Failed to read {baseline_path}: {exc}") from exc
-            for opt_path in optimized_paths:
-                try:
-                    uses_torchrun = uses_torchrun or _file_uses_torchrun(opt_path)
-                except Exception as exc:
-                    raise RuntimeError(f"Failed to read {opt_path}: {exc}") from exc
-            uses_multi_gpu = uses_torchrun
-            example_key = _expectation_example_key(example_name, "python")
-
-        if example_key in multi_gpu:
-            multi_gpu[example_key] = multi_gpu[example_key] or uses_multi_gpu
-        else:
-            multi_gpu[example_key] = uses_multi_gpu
-    return multi_gpu
+    return {
+        example_key: required_gpus >= 2
+        for example_key, required_gpus in _collect_gpu_requirements(chapter_dir).items()
+    }
 
 
 def _collect_expectations(
@@ -846,7 +1035,13 @@ def _execute_benchmarks(
                 isolated_preflight_issues[unit_key] = list(unit_issues)
 
         preflight_issues = []
-        if len(isolated_preflight_issues) == len(execution_units):
+        if len(isolated_preflight_issues) == len(execution_units) and all(
+            not only_examples for _, only_examples in execution_units
+        ):
+            # A whole chapter/lab request has no canonical example identity to
+            # attach to a terminal target outcome. Preserve the legacy aggregate
+            # failure for that form. Explicit targets stay isolated even when
+            # every target fails preflight, so each requested target is recorded.
             for unit_issues in isolated_preflight_issues.values():
                 for issue in unit_issues:
                     if issue not in preflight_issues:

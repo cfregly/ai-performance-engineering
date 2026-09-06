@@ -238,6 +238,20 @@ def make_collate_fn(tokenizer, max_length: int | None = None):
     return collate
 
 
+def make_causal_lm_labels(
+    input_ids: torch.Tensor,
+    attention_mask: torch.Tensor,
+) -> torch.Tensor:
+    """Clone token ids as causal-LM targets while excluding padded positions."""
+    if input_ids.shape != attention_mask.shape:
+        raise ValueError(
+            "input_ids and attention_mask must have identical shapes for causal-LM labels"
+        )
+    labels = input_ids.clone()
+    labels.masked_fill_(attention_mask == 0, -100)
+    return labels
+
+
 def build_dataloader(
     dataset,
     tokenizer,

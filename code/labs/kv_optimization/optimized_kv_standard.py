@@ -7,6 +7,7 @@ Optimized KV cache with:
 - Optional NVFP4 for extreme compression (4× savings)
 """
 
+import time
 from typing import Any, Dict, Optional, Tuple
 
 import torch
@@ -23,6 +24,8 @@ from core.utils.logger import get_logger
 from labs.kv_optimization.verification import FP8_KV_OUTPUT_TOLERANCE
 
 logger = get_logger(__name__)
+
+_CUDA_GRAPH_CAPTURE_PRERUNS = 3
 
 
 def _allocate_scale_buffer(x: torch.Tensor, numel: int) -> torch.Tensor:
@@ -50,6 +53,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         use_fp4: bool = False,
         active_layers: int = 16,
         num_decode_steps: int = 256,
+        use_cuda_graph: bool = False,
     ):
         super().__init__()
         self.batch_size = batch_size
@@ -63,12 +67,16 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
             raise ValueError("num_decode_steps must be <= max_seq_length")
         self.use_fp8 = use_fp8
         self.use_fp4 = use_fp4
+        self.use_cuda_graph = bool(use_cuda_graph)
+        if self.use_cuda_graph and (self.use_fp4 or not self.use_fp8):
+            raise ValueError("CUDA graph execution is currently supported only for the FP8 KV path")
         self.active_layers = active_layers
         self.num_decode_steps = num_decode_steps
         self._last_metrics: Dict[str, Any] = {}
         self.output: Optional[torch.Tensor] = None
         self._timing_pair: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._pending_timing_pair: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
+        self._cuda_graph: Optional[Any] = None
         self._generated_k_steps: Optional[torch.Tensor] = None
         self._generated_v_steps: Optional[torch.Tensor] = None
         self._generated_step_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
@@ -182,6 +190,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
             torch.cuda.Event(enable_timing=True),
             torch.cuda.Event(enable_timing=True),
         )
+        self._configure_cuda_graph()
 
     def _get_timing_pair(self) -> Tuple[torch.cuda.Event, torch.cuda.Event]:
         if self._timing_pair is None:
@@ -190,6 +199,69 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
                 torch.cuda.Event(enable_timing=True),
             )
         return self._timing_pair
+
+    def _run_cuda_graph_body(self) -> None:
+        """Run the fixed-address decode body used during graph construction."""
+        if self._generated_step_position_count != self.num_decode_steps:
+            raise RuntimeError("setup() must precompute every decode-step view before graph capture")
+        with torch.inference_mode():
+            for pos, new_k, new_v in self._generated_step_position_pairs:
+                self.append_active_layers(new_k, new_v, pos=pos)
+
+    def _configure_cuda_graph(self) -> None:
+        """Capture the FP8 decode body during setup without an eager fallback."""
+        graph_metrics = {
+            "cuda_graph_enabled": 0.0,
+            "cuda_graph_capture_preruns": 0.0,
+            "cuda_graph_capture_prerun_wall_ms": 0.0,
+            "cuda_graph_construction_wall_ms": 0.0,
+            "cuda_graph_incremental_allocated_bytes": 0.0,
+            "cuda_graph_incremental_reserved_bytes": 0.0,
+        }
+        self._last_metrics.update(graph_metrics)
+        if not self.use_cuda_graph:
+            return
+        if not hasattr(torch.cuda, "CUDAGraph"):
+            raise RuntimeError("CUDA graph execution requested but torch.cuda.CUDAGraph is unavailable")
+
+        current_stream = torch.cuda.current_stream(self.device)
+        capture_stream = torch.cuda.Stream(device=self.device)
+        capture_stream.wait_stream(current_stream)
+        torch.cuda.synchronize(self.device)
+        allocated_before = torch.cuda.memory_allocated(self.device)
+        reserved_before = torch.cuda.memory_reserved(self.device)
+
+        prerun_start = time.perf_counter_ns()
+        with torch.cuda.stream(capture_stream):
+            for _ in range(_CUDA_GRAPH_CAPTURE_PRERUNS):
+                self._run_cuda_graph_body()
+        capture_stream.synchronize()
+        prerun_wall_ms = (time.perf_counter_ns() - prerun_start) / 1.0e6
+
+        capture_start = time.perf_counter_ns()
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph, stream=capture_stream):
+            self._run_cuda_graph_body()
+        capture_stream.synchronize()
+        current_stream.wait_stream(capture_stream)
+        torch.cuda.synchronize(self.device)
+        construction_wall_ms = (time.perf_counter_ns() - capture_start) / 1.0e6
+
+        self._cuda_graph = graph
+        self._last_metrics.update(
+            {
+                "cuda_graph_enabled": 1.0,
+                "cuda_graph_capture_preruns": float(_CUDA_GRAPH_CAPTURE_PRERUNS),
+                "cuda_graph_capture_prerun_wall_ms": prerun_wall_ms,
+                "cuda_graph_construction_wall_ms": construction_wall_ms,
+                "cuda_graph_incremental_allocated_bytes": float(
+                    torch.cuda.memory_allocated(self.device) - allocated_before
+                ),
+                "cuda_graph_incremental_reserved_bytes": float(
+                    torch.cuda.memory_reserved(self.device) - reserved_before
+                ),
+            }
+        )
     
     def _compute_scale(self, x: torch.Tensor) -> torch.Tensor:
         """Compute dynamic scaling factor."""
@@ -332,8 +404,13 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         start_event.record(current_stream)
 
         with torch.inference_mode():
-            for pos, new_k, new_v in self._generated_step_position_pairs:
-                self.append_active_layers(new_k, new_v, pos=pos)
+            if self.use_cuda_graph:
+                if self._cuda_graph is None:
+                    raise RuntimeError("CUDA graph execution requested but setup did not capture a graph")
+                self._cuda_graph.replay()
+            else:
+                for pos, new_k, new_v in self._generated_step_position_pairs:
+                    self.append_active_layers(new_k, new_v, pos=pos)
 
         end_event.record(current_stream)
         self.seq_lengths.fill_(num_decode_steps)
@@ -432,6 +509,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
 
     def teardown(self):
         """Clean up."""
+        self._cuda_graph = None
         del self.kv_cache
         self._generated_k_steps = None
         self._generated_v_steps = None
@@ -464,6 +542,7 @@ def run_benchmark(
     active_layers: int = 16,
     num_decode_steps: int = 256,
     profile: str = "none",
+    use_cuda_graph: bool = False,
     **kwargs
 ) -> Dict[str, Any]:
     """Run optimized KV cache benchmark."""
@@ -476,6 +555,7 @@ def run_benchmark(
         use_fp4=use_fp4,
         active_layers=active_layers,
         num_decode_steps=num_decode_steps,
+        use_cuda_graph=use_cuda_graph,
     )
 
     config = BenchmarkConfig(
@@ -497,4 +577,4 @@ def run_benchmark(
 
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
-    return OptimizedKVFP8Compressed()
+    return OptimizedKVFP8Compressed(use_cuda_graph=True)

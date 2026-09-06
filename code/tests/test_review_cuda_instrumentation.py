@@ -82,10 +82,10 @@ def test_nvtx_headers_compile_in_either_order(
 @pytest.mark.parametrize(
     ("virtual_arch", "real_arch", "expected_min_blocks"),
     [
-        ("compute_100a", "sm_100a", 2),
-        ("compute_103a", "sm_103a", 2),
-        ("compute_120", "sm_120", 1),
-        ("compute_121", "sm_121", 1),
+        ("compute_100a", "sm_100a", 3),
+        ("compute_103a", "sm_103a", 3),
+        ("compute_120", "sm_120", 3),
+        ("compute_121", "sm_121", 3),
     ],
 )
 def test_launch_bounds_metadata_is_valid_for_configured_architecture(
@@ -133,5 +133,5 @@ def test_launch_bounds_metadata_is_valid_for_configured_architecture(
     assert result.returncode == 0, diagnostics
     assert ".minnctapersm will be ignored" not in diagnostics
     ptx = ptx_path.read_text(encoding="utf-8")
-    assert ".maxntid 1024" in ptx
+    assert ".maxntid 512" in ptx
     assert f".minnctapersm {expected_min_blocks}" in ptx

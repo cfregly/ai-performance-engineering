@@ -11,31 +11,57 @@ Requirements:
 Expected Runtime: ~5-10 seconds on 2 GPUs
 """
 import argparse
-
 import os
-
-from core.common.device_utils import resolve_local_rank
-
-from core.optimization.symmetric_memory_patch import (
-    create_symmetric_memory_handle,
-    maybe_create_symmetric_memory_handle,
-    symmetric_memory_available,
-)
-
-from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
-
+import time
 
 import torch
-import torch.distributed as dist
 import torch.cuda.nvtx as nvtx
-from core.profiling.nvtx_helper import standardize_nvtx_label
+import torch.distributed as dist
+
+from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
+from ch04.nvshmem_child_result import NVSHMEMWorkloadResult
+from core.common.device_utils import resolve_local_rank
+from core.optimization.symmetric_memory_patch import (
+    SymmetricMemoryBackend,
+    create_symmetric_memory_handle,
+    maybe_create_symmetric_memory_handle,
+)
+from core.profiling.nvtx_helper import nvtx_range, standardize_nvtx_label
+
+TRADITIONAL_RING_NVTX_RANGE = "transfer_sync:symmetric_memory_traditional_ring"
+SYMMETRIC_RING_NVTX_RANGE = "transfer_sync:symmetric_memory_direct_ring"
+TRADITIONAL_RING_TRANSPORT_BACKEND = "NCCL"
+SYMMETRIC_RING_TRANSPORT_BACKEND = "CUDA"
+
+
+def _make_rank_generator(
+    device: torch.device | str,
+    *,
+    rank: int,
+    base_seed: int = 42,
+) -> torch.Generator:
+    """Build a rank-local input generator without changing harness RNG seeds."""
+    return torch.Generator(device=device).manual_seed(base_seed + rank)
+
+
+def _require_single_node_nccl_world(world_size: int) -> str:
+    """Validate the process-group scope used by both ring transports."""
+    local_world_size = int(os.environ.get("LOCAL_WORLD_SIZE", 0))
+    if local_world_size != world_size or int(os.environ.get("GROUP_RANK", 0)) != 0:
+        raise RuntimeError(
+            "SKIPPED: symmetric-memory ring requires one WORLD group on one node"
+        )
+    process_group_backend = str(dist.get_backend(dist.group.WORLD)).upper()
+    if process_group_backend != TRADITIONAL_RING_TRANSPORT_BACKEND:
+        raise RuntimeError(
+            "SKIPPED: symmetric-memory ring requires an NCCL process group"
+        )
+    return process_group_backend
 
 
 def setup_distributed():
     """Initialize distributed environment for multi-GPU operation."""
     setup_single_gpu_env("symmetric_memory_example", min_world_size=2)
-    if not symmetric_memory_available():
-        raise RuntimeError("SKIPPED: symmetric_memory_example requires SymmetricMemory support")
     if dist.is_initialized():
         torch.cuda.set_device(resolve_local_rank())
         return dist.get_rank(), dist.get_world_size()
@@ -237,7 +263,30 @@ def benchmark_symmetric_memory(tensor: torch.Tensor, iterations: int = 100):
     return start.elapsed_time(end) / iterations
 
 
-def benchmark_traditional_ring(tensor: torch.Tensor, iterations: int = 100) -> float:
+def _ring_exchange(
+    send_tensor: torch.Tensor,
+    recv_tensor: torch.Tensor,
+    *,
+    next_rank: int,
+    previous_rank: int,
+) -> None:
+    """Post both ring directions before waiting for either operation."""
+    requests = dist.batch_isend_irecv(
+        [
+            dist.P2POp(dist.isend, send_tensor, next_rank),
+            dist.P2POp(dist.irecv, recv_tensor, previous_rank),
+        ]
+    )
+    for request in requests:
+        request.wait()
+
+
+def benchmark_traditional_ring(
+    tensor: torch.Tensor,
+    iterations: int = 100,
+    *,
+    return_output: bool = False,
+) -> float | tuple[float, torch.Tensor]:
     """Benchmark ring send/recv using NCCL P2P ops across all ranks."""
     rank = dist.get_rank()
     world_size = dist.get_world_size()
@@ -247,68 +296,127 @@ def benchmark_traditional_ring(tensor: torch.Tensor, iterations: int = 100) -> f
     prev_rank = (rank - 1) % world_size
 
     for _ in range(5):
-        ops = [
-            dist.P2POp(dist.isend, tensor, next_rank),
-            dist.P2POp(dist.irecv, recv_tensor, prev_rank),
-        ]
-        reqs = dist.batch_isend_irecv(ops)
-        for req in reqs:
-            req.wait()
+        _ring_exchange(
+            tensor,
+            recv_tensor,
+            next_rank=next_rank,
+            previous_rank=prev_rank,
+        )
     torch.cuda.synchronize(device)
     dist.barrier()
 
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
     start.record()
-    for _ in range(iterations):
-        ops = [
-            dist.P2POp(dist.isend, tensor, next_rank),
-            dist.P2POp(dist.irecv, recv_tensor, prev_rank),
-        ]
-        reqs = dist.batch_isend_irecv(ops)
-        for req in reqs:
-            req.wait()
-    end.record()
-    torch.cuda.synchronize(device)
+    with nvtx_range(TRADITIONAL_RING_NVTX_RANGE, enable=True):
+        for _ in range(iterations):
+            _ring_exchange(
+                tensor,
+                recv_tensor,
+                next_rank=next_rank,
+                previous_rank=prev_rank,
+            )
+        end.record()
+        torch.cuda.synchronize(device)
     dist.barrier()
-    return start.elapsed_time(end) / iterations
+    time_ms = start.elapsed_time(end) / iterations
+    if return_output:
+        return time_ms, recv_tensor.detach().clone()
+    return time_ms
 
 
-def benchmark_symmetric_ring(tensor: torch.Tensor, iterations: int = 100) -> float:
-    """Benchmark ring traffic using symmetric memory buffers."""
+def benchmark_symmetric_ring(
+    tensor: torch.Tensor,
+    iterations: int = 100,
+    *,
+    return_output: bool = False,
+    backend: SymmetricMemoryBackend = "NVSHMEM",
+) -> float | tuple[float, torch.Tensor]:
+    """Benchmark ring traffic through one explicit symmetric-memory backend."""
     rank = dist.get_rank()
     world_size = dist.get_world_size()
     device = torch.device("cuda", torch.cuda.current_device())
+    requested_backend = backend.upper()
     flat = tensor.flatten()
     local = torch.stack([flat, flat.clone()])
-    handle = create_symmetric_memory_handle(local, group=dist.group.WORLD)
+    handle = create_symmetric_memory_handle(
+        local,
+        group=dist.group.WORLD,
+        backend=backend,
+    )
+    if handle.backend != requested_backend:
+        raise RuntimeError(
+            "Symmetric ring backend identity mismatch: "
+            f"requested {requested_backend}, observed {handle.backend!r}"
+        )
+    # The constructor copies the seed tensor into a separate symmetric allocation.
+    # Peer writes target that allocation, so receives must read its local view.
+    local = handle.buffer
     next_rank = (rank + 1) % world_size
-    prev_rank = (rank - 1) % world_size
     next_buf = handle.get_buffer(next_rank)
-    prev_buf = handle.get_buffer(prev_rank)
-    recv_tensor = torch.empty_like(flat)
 
-    for idx in range(5):
-        buf_idx = idx % 2
-        next_buf[buf_idx].copy_(local[buf_idx], non_blocking=True)
-        torch.cuda.current_stream().synchronize()
-        dist.barrier()
-        recv_tensor.copy_(prev_buf[buf_idx], non_blocking=True)
-        torch.cuda.current_stream().synchronize()
+    if requested_backend == SYMMETRIC_RING_TRANSPORT_BACKEND:
+        for idx in range(5):
+            buf_idx = idx % 2
+            next_buf[buf_idx].copy_(flat, non_blocking=True)
+            # CUDA symmetric-memory barriers execute on this same current stream.
+            # The first distinct channel publishes every peer write.
+            handle.barrier(channel=0, timeout_ms=5000)
+            # The previous rank already wrote into this rank's symmetric slot.
+            # The second channel keeps that zero-copy receive slot alive until
+            # every rank has consumed the published generation.
+            handle.barrier(channel=1, timeout_ms=5000)
+
+        # Finish warmup before recording the complete steady-state iteration
+        # sequence. Capture records these operations; the timed replay executes it.
+        torch.cuda.synchronize(device)
+        graph = torch.cuda.CUDAGraph()
+        capture_started = time.perf_counter()
+        with torch.cuda.graph(graph):
+            for idx in range(iterations):
+                buf_idx = idx % 2
+                next_buf[buf_idx].copy_(flat, non_blocking=True)
+                handle.barrier(channel=0, timeout_ms=5000)
+                handle.barrier(channel=1, timeout_ms=5000)
+        capture_wall_ms = (time.perf_counter() - capture_started) * 1000.0
+        print(
+            f"rank {rank} symmetric_ring_cuda_graph_capture_wall_ms: "
+            f"{capture_wall_ms:.6f}",
+            flush=True,
+        )
+    else:
+        # The NVSHMEM handle's barrier is a no-op in Torch 2.9.1. Retain the
+        # historical NCCL fences for callers that use this function's default.
+        recv_tensor = torch.empty_like(flat)
+        for idx in range(5):
+            buf_idx = idx % 2
+            next_buf[buf_idx].copy_(flat, non_blocking=True)
+            dist.barrier()
+            recv_tensor.copy_(local[buf_idx], non_blocking=True)
+            dist.barrier()
 
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
     start.record()
-    for idx in range(iterations):
-        buf_idx = idx % 2
-        next_buf[buf_idx].copy_(local[buf_idx], non_blocking=True)
-        torch.cuda.current_stream().synchronize()
-        dist.barrier()
-        recv_tensor.copy_(prev_buf[buf_idx], non_blocking=True)
-        torch.cuda.current_stream().synchronize()
-    end.record()
-    torch.cuda.synchronize(device)
-    return start.elapsed_time(end) / iterations
+    with nvtx_range(SYMMETRIC_RING_NVTX_RANGE, enable=True):
+        if requested_backend == SYMMETRIC_RING_TRANSPORT_BACKEND:
+            graph.replay()
+        else:
+            for idx in range(iterations):
+                buf_idx = idx % 2
+                next_buf[buf_idx].copy_(flat, non_blocking=True)
+                dist.barrier()
+                recv_tensor.copy_(local[buf_idx], non_blocking=True)
+                dist.barrier()
+        end.record()
+        torch.cuda.synchronize(device)
+    time_ms = start.elapsed_time(end) / iterations
+    if return_output:
+        if requested_backend == SYMMETRIC_RING_TRANSPORT_BACKEND:
+            final_buf_idx = (iterations - 1) % 2
+            return time_ms, local[final_buf_idx].detach().clone()
+        return time_ms, recv_tensor.detach().clone()
+    return time_ms
 
 
 def benchmark_multigpu_symmetric_memory(
@@ -361,15 +469,23 @@ def benchmark_multigpu_symmetric_memory(
         
         # Warmup
         for _ in range(10):
-            dist.send(tensor, dst=dest_rank)
-            dist.recv(recv_tensor, src=src_rank)
+            _ring_exchange(
+                tensor,
+                recv_tensor,
+                next_rank=dest_rank,
+                previous_rank=src_rank,
+            )
         
         torch.cuda.synchronize(device)
         start.record()
         
         for _ in range(iterations):
-            dist.send(tensor, dst=dest_rank)
-            dist.recv(recv_tensor, src=src_rank)
+            _ring_exchange(
+                tensor,
+                recv_tensor,
+                next_rank=dest_rank,
+                previous_rank=src_rank,
+            )
         
         end.record()
         end.synchronize()
@@ -505,7 +621,7 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main():
+def main() -> NVSHMEMWorkloadResult | None:
     """Compare traditional P2P vs symmetric memory performance."""
     args = _parse_args()
     # Setup
@@ -518,19 +634,66 @@ def main():
                 print("Benchmark mode requires at least 2 GPUs.")
             dist.destroy_process_group()
             return
+        process_group_backend = _require_single_node_nccl_world(world_size)
+        input_generator = _make_rank_generator(device, rank=rank)
         numel = max(1, args.tensor_bytes // 4)
-        tensor = torch.randn(numel, device=device, dtype=torch.float32)
+        tensor = torch.randn(
+            numel,
+            device=device,
+            dtype=torch.float32,
+            generator=input_generator,
+        ).add_(rank)
+        original_tensor = tensor.detach().clone()
         if args.benchmark_mode == "traditional":
-            time_ms = benchmark_traditional_ring(tensor, iterations=args.iterations)
+            measured = benchmark_traditional_ring(
+                tensor,
+                iterations=args.iterations,
+                return_output=True,
+            )
             label = "traditional_ring"
+            transport_backend = TRADITIONAL_RING_TRANSPORT_BACKEND
         else:
-            time_ms = benchmark_symmetric_ring(tensor, iterations=args.iterations)
+            measured = benchmark_symmetric_ring(
+                tensor,
+                iterations=args.iterations,
+                return_output=True,
+                backend=SYMMETRIC_RING_TRANSPORT_BACKEND,
+            )
             label = "symmetric_ring"
+            transport_backend = SYMMETRIC_RING_TRANSPORT_BACKEND
+        if not isinstance(measured, tuple):
+            raise RuntimeError("Symmetric-memory ring measurement output is missing")
+        time_ms, verify_output = measured
+        rank_inputs = [torch.empty_like(original_tensor) for _ in range(world_size)]
+        dist.all_gather(rank_inputs, original_tensor)
+        reference_output = rank_inputs[(rank - 1) % world_size]
         if rank == 0:
             size_kb = args.tensor_bytes / 1024
             print(f"{label}: size={size_kb:.2f} KB time={time_ms:.4f} ms/iter")
+        result = NVSHMEMWorkloadResult(
+            workload="symmetric-ring",
+            rank=rank,
+            world_size=world_size,
+            iterations=args.iterations,
+            time_per_iter_ms=time_ms,
+            configuration={
+                "benchmark_mode": args.benchmark_mode,
+                "tensor_bytes": args.tensor_bytes,
+                "iterations": args.iterations,
+                "process_group_backend": process_group_backend,
+                "requested_transport_backend": transport_backend,
+                "observed_transport_backend": transport_backend,
+            },
+            verify_inputs={"source_tensor": original_tensor},
+            verify_output=verify_output,
+            reference_output=reference_output,
+            batch_size=1,
+            parameter_count=0,
+            collective_type="ring_transfer",
+            output_tolerance=(1e-5, 1e-6),
+        )
         dist.destroy_process_group()
-        return
+        return result
 
     if world_size < 2:
         if rank == 0:

@@ -21,13 +21,16 @@ from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 
 class BaselineDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Baseline: Monolithic inference (prefill and decode share the same GPU)."""
+    """Monolithic inference on one GPU, with optional torchrun participation."""
+
+    multi_gpu_required = False
     
     def __init__(self):
         super().__init__()
         self.model = None
         self.prefill_input = None
         self.decode_input = None
+        self.prefill_output = None
         self.output = None
         self.is_distributed = False
         self.rank = 0
@@ -62,9 +65,7 @@ class BaselineDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
-        # Baseline: Monolithic inference - prefill and decode share same resources
-        # Disaggregated inference separates prefill (parallel) and decode (autoregressive)
-        # This baseline does not separate prefill and decode phases
+        # One model processes both phases sequentially on the selected GPU.
         self.model = nn.Sequential(
             nn.Linear(256, 512),
             nn.ReLU(inplace=True),
@@ -87,12 +88,7 @@ class BaselineDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Benchmark: Monolithic inference."""
         with nvtx_range("baseline_disaggregated", enable=self._enable_nvtx):
             with torch.inference_mode():
-                # Baseline: Monolithic inference
-                # Prefill and decode phases share same resources across GPUs
-                # This causes interference - prefill blocks decode and vice versa
-                # Disaggregated inference separates these phases for better efficiency
-                
-                # Process prefill (long context) - competes with decode for resources
+                # Execute the complete prefill phase before decoding.
                 prefill_output = self.model(self.prefill_input)
                 
                 # Synchronize across GPUs
@@ -100,24 +96,22 @@ class BaselineDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     dist.all_reduce(prefill_output, op=dist.ReduceOp.SUM)
                     prefill_output = prefill_output / self.world_size
                 
-                # Process decode (autoregressive) - competes with prefill for resources
+                # Execute the decode phase using the same model.
                 decode_output = self.model(self.decode_input)
                 
                 # Synchronize across GPUs
                 if self.is_distributed:
                     dist.all_reduce(decode_output, op=dist.ReduceOp.SUM)
                     decode_output = decode_output / self.world_size
+                self.prefill_output = prefill_output
                 self.output = decode_output
                 
-            # Baseline: No separation - both phases interfere with each other
-                # This leads to poor GPU utilization and latency spikes
-
     def capture_verification_payload(self) -> None:
-        if self.prefill_input is None or self.decode_input is None or self.output is None:
+        if self.prefill_input is None or self.decode_input is None or self.prefill_output is None or self.output is None:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
         self._set_verification_payload(
             inputs={"prefill": self.prefill_input, "decode": self.decode_input},
-            output=self.output.to(dtype=torch.float32),
+            output=torch.cat((self.prefill_output, self.output), dim=1).to(dtype=torch.float32),
             batch_size=int(self.batch_size),
             parameter_count=self._payload_parameter_count,
             precision_flags={
@@ -135,6 +129,8 @@ class BaselineDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = None
         self.prefill_input = None
         self.decode_input = None
+        self.prefill_output = None
+        self.output = None
         if self.is_distributed and dist.is_initialized():
             dist.destroy_process_group()
         torch.cuda.empty_cache()

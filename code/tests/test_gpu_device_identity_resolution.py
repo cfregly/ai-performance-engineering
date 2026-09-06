@@ -5,6 +5,7 @@ GPU query or benchmark run.
 """
 
 from types import SimpleNamespace
+import sys
 import uuid
 
 import pytest
@@ -102,3 +103,37 @@ def test_nonnumeric_visibility_without_cuda_uuid_fails_closed(
         resolve_nvml_device_handle(_recording_nvml(calls), 0)
 
     assert calls == []
+
+
+@pytest.mark.parametrize("device_uuid", [_DEVICE_UUID, None])
+def test_foreign_process_query_follows_selected_cuda_device(
+    monkeypatch: pytest.MonkeyPatch, device_uuid: str | None,
+) -> None:
+    from core.harness import validity_checks
+
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "1")
+    calls: list[tuple[str, object]] = []
+    nvml = _recording_nvml(calls)
+    nvml.nvmlInit = lambda: None
+    nvml.nvmlShutdown = lambda: None
+    nvml.nvmlDeviceGetComputeRunningProcesses_v3 = (
+        lambda handle: calls.append(("process_query", handle)) or [
+            SimpleNamespace(pid=1234, usedGpuMemory=1024 * 1024),
+            SimpleNamespace(pid=5678, usedGpuMemory=2 * 1024 * 1024),
+        ]
+    )
+    nvml.nvmlSystemGetProcessName = lambda pid: b"test-process"
+    monkeypatch.setitem(sys.modules, "pynvml", nvml)
+    monkeypatch.setattr(
+        validity_checks.torch.cuda, "get_device_properties",
+        lambda index: SimpleNamespace(uuid=device_uuid),
+    )
+
+    processes, error = validity_checks._list_foreign_cuda_compute_processes(
+        device_index=0, current_pid=1234,
+    )
+
+    expected = f"uuid:GPU-{_DEVICE_UUID}" if device_uuid else "index:1"
+    assert calls[-1] == ("process_query", expected)
+    assert error is None
+    assert [process["pid"] for process in processes] == [5678]

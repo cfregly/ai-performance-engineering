@@ -4,15 +4,16 @@ import pytest
 import torch
 
 from core.harness.benchmark_harness import ExecutionMode
+from labs.decode_optimization import decode_common
 from labs.decode_optimization.baseline_decode import get_benchmark as get_baseline_decode
 from labs.decode_optimization.baseline_decode_candidate_logits import (
     get_benchmark as get_baseline_decode_candidate_logits,
 )
-from labs.decode_optimization.baseline_decode_pinned import (
-    get_benchmark as get_baseline_decode_pinned,
-)
 from labs.decode_optimization.baseline_decode_device_resident import (
     get_benchmark as get_baseline_decode_device_resident,
+)
+from labs.decode_optimization.baseline_decode_pinned import (
+    get_benchmark as get_baseline_decode_pinned,
 )
 from labs.decode_optimization.baseline_decode_prefix_state_cache import (
     get_benchmark as get_baseline_decode_prefix_state_cache,
@@ -24,14 +25,14 @@ from labs.decode_optimization.optimized_decode_candidate_logits import (
 from labs.decode_optimization.optimized_decode_device_resident import (
     get_benchmark as get_optimized_decode_device_resident,
 )
-from labs.decode_optimization.optimized_decode_prefix_state_cache import (
-    get_benchmark as get_optimized_decode_prefix_state_cache,
-)
 from labs.decode_optimization.optimized_decode_graph import (
     get_benchmark as get_optimized_decode_graph,
 )
 from labs.decode_optimization.optimized_decode_pinned import (
     get_benchmark as get_optimized_decode_pinned,
+)
+from labs.decode_optimization.optimized_decode_prefix_state_cache import (
+    get_benchmark as get_optimized_decode_prefix_state_cache,
 )
 from labs.decode_optimization.optimized_decode_ultimate import (
     get_benchmark as get_optimized_decode_ultimate,
@@ -407,6 +408,10 @@ def test_decode_common_inference_paths_skip_autograd_bookkeeping() -> None:
         "def _capture_decode_graph",
         maxsplit=1,
     )[0]
+    graph_section = source.split("def _capture_decode_graph", maxsplit=1)[1].split(
+        "def _run_decode_loop",
+        maxsplit=1,
+    )[0]
     init_model_section = source.split("def _init_model", maxsplit=1)[1].split(
         "def _cache_te_weight_workspaces",
         maxsplit=1,
@@ -438,13 +443,16 @@ def test_decode_common_inference_paths_skip_autograd_bookkeeping() -> None:
 
     assert "self.prefill_fn = self._run_prefill_math" in setup_section
     assert "self.decode_fn = self._run_decode_step_math" in setup_section
-    assert "torch.compile(self._run_prefill_math" in compile_section
-    assert "torch.compile(self._run_decode_step_math" in compile_section
+    assert "self.prefill_fn = torch.compile(" in compile_section
+    assert "self._run_prefill_math," in compile_section
+    assert "self.decode_fn = torch.compile(" in compile_section
+    assert "self._run_decode_step_math," in compile_section
     assert "with self._get_fp8_context(), torch.inference_mode(), self.sdpa_ctx_factory():" in prefetch_section
     assert "with self._get_fp8_context(), torch.inference_mode(), self.sdpa_ctx_factory():" in benchmark_section
+    assert "with self._get_fp8_context(), torch.inference_mode(), self.sdpa_ctx_factory():" in graph_section
     assert "with torch.inference_mode(), te.fp8_autocast(enabled=True, fp8_recipe=self.fp8_recipe):" in te_cache_section
-    assert "with torch.inference_mode(), self.sdpa_ctx_factory():" in prefill_section
-    assert "with torch.inference_mode(), self.sdpa_ctx_factory():" in decode_step_section
+    assert "with self._get_fp8_context(), torch.inference_mode(), self.sdpa_ctx_factory():" in prefill_section
+    assert "with self._get_fp8_context(), torch.inference_mode(), self.sdpa_ctx_factory():" in decode_step_section
     assert "with torch.inference_mode()" not in decode_math_section
     assert "self._decode_combined is None" not in decode_math_section
     assert "with torch.inference_mode():" in init_model_section
@@ -452,6 +460,102 @@ def test_decode_common_inference_paths_skip_autograd_bookkeeping() -> None:
     assert "with torch.no_grad(), te.fp8_autocast" not in te_cache_section
     assert "with torch.no_grad(), self.sdpa_ctx_factory()" not in prefill_section
     assert "with torch.no_grad(), self.sdpa_ctx_factory()" not in decode_step_section
+
+
+def test_decode_compile_keeps_native_torch_functions_fullgraph(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = []
+
+    def compile_control(fn, *, mode, fullgraph):
+        calls.append((fn.__name__, mode, fullgraph))
+        return fn
+
+    monkeypatch.setattr(torch, "compile", compile_control)
+    bench = DecodeBenchmark(DecodeConfig(use_torch_compile=True))
+
+    bench._maybe_compile()
+    bench._refresh_static_custom_metrics()
+
+    assert calls == [
+        ("_run_prefill_math", "reduce-overhead", True),
+        ("_run_decode_step_math", "reduce-overhead", True),
+    ]
+    assert bench.get_custom_metrics()["torch_compile_fullgraph"] == 1.0
+    assert (
+        bench.get_custom_metrics()["torch_compile_transformer_engine_partitioned"]
+        == 0.0
+    )
+
+
+def test_decode_compile_partitions_only_at_transformer_engine_boundaries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = []
+
+    def compile_control(fn, *, mode, fullgraph):
+        calls.append((fn.__name__, mode, fullgraph))
+        return fn
+
+    monkeypatch.setattr(torch, "compile", compile_control)
+    bench = DecodeBenchmark(DecodeConfig(use_torch_compile=True, use_cuda_graphs=True))
+    # This is a CPU control for policy selection. The hardware test below creates
+    # real Transformer Engine FP8 modules and exercises their forwards.
+    bench.cfg.use_fp8 = True
+    bench._fp8_enabled = True
+
+    bench._maybe_compile()
+    bench._refresh_static_custom_metrics()
+
+    assert calls == [
+        ("_run_prefill_math", "default", False),
+        ("_run_decode_step_math", "default", False),
+    ]
+    assert bench.get_custom_metrics()["torch_compile_fullgraph"] == 0.0
+    assert (
+        bench.get_custom_metrics()["torch_compile_transformer_engine_partitioned"]
+        == 1.0
+    )
+    assert bench.get_custom_metrics()["transformer_engine_modules"] == 1.0
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not decode_common.TE_AVAILABLE,
+    reason="CUDA and Transformer Engine are required for the real FP8 compile/graph path",
+)
+def test_decode_fp8_compile_graph_executes_real_multigpu_demo_shape() -> None:
+    cfg = DecodeConfig(
+        batch_size=8,
+        prompt_tokens=1024,
+        decode_tokens=256,
+        hidden_size=2048,
+        use_fp8=True,
+        use_pinned_host=True,
+        use_copy_stream=True,
+        use_compute_stream=True,
+        use_cuda_graphs=True,
+        graph_full_iteration=True,
+        use_torch_compile=True,
+        iterations=1,
+        warmup=0,
+        label="decode_fp8_compile_graph_regression",
+    )
+    bench = DecodeBenchmark(cfg)
+    try:
+        bench.setup()
+        bench.benchmark_fn()
+        torch.cuda.synchronize()
+        bench.capture_verification_payload()
+
+        metrics = bench.get_custom_metrics()
+        assert bench.decode_graph is not None
+        assert bench.validate_result() is None
+        assert metrics["use_fp8"] == 1.0
+        assert metrics["use_cuda_graphs"] == 1.0
+        assert metrics["torch_compile_fullgraph"] == 0.0
+        assert metrics["torch_compile_transformer_engine_partitioned"] == 1.0
+    finally:
+        bench.teardown()
 
 
 def test_decode_nvtx_import_is_cached_outside_iteration_hot_paths() -> None:

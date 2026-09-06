@@ -179,7 +179,9 @@ class BaselinePerformanceBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def get_config(self) -> BenchmarkConfig:
         """Return benchmark-specific config."""
+        # Keep stateful training on the same update count in both arms.
         return BenchmarkConfig(
+            adaptive_iterations=False,
             iterations=5,
             warmup=10,
         )

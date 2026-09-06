@@ -28,6 +28,7 @@ from core.benchmark.verification import (
     PrecisionFlags,
     QuarantineReason,
     compare_topologies,
+    coerce_input_signature,
     extract_distributed_topology,
 )
 from core.benchmark.verification_mixin import VerificationPayloadMixin
@@ -213,6 +214,32 @@ def test_distributed_signature_round_trip_and_undeclared_compatibility() -> None
     assert "barrier_policy" not in payload
     assert "async_completion_policy" not in payload
     assert InputSignature.from_dict(payload) == undeclared
+
+
+def test_coercion_preserves_serialized_distributed_work_contract() -> None:
+    expected = coerce_input_signature(_signature())
+    serialized = json.loads(json.dumps(expected.to_dict()))
+    restored = coerce_input_signature(serialized)
+    assert restored == expected
+    assert extract_distributed_topology(restored) == _topology()
+
+
+@pytest.mark.parametrize(
+    ("field_name", "invalid_value"),
+    [
+        ("collective_algorithm", ""),
+        ("gradient_bucket_bytes", 0),
+        ("barrier_policy", "before_launch"),
+        ("async_completion_policy", "never_wait"),
+    ],
+)
+def test_coercion_rejects_invalid_serialized_work_contract(
+    field_name: str, invalid_value: object,
+) -> None:
+    payload = _signature().to_dict()
+    payload[field_name] = invalid_value
+    with pytest.raises(ValueError, match=field_name):
+        coerce_input_signature(payload)
 
 
 @pytest.mark.parametrize(

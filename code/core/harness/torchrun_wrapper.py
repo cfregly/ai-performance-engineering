@@ -82,6 +82,43 @@ def _run_target_module(module_name: str, argv: list[str]) -> None:
         sys.argv = previous_argv
 
 
+def _run_profiled_target(
+    script_path: Optional[Path], module_name: Optional[str], argv: list[str]
+) -> None:
+    def run_target() -> None:
+        try:
+            if script_path is not None:
+                _run_target_script(script_path, argv)
+            else:
+                _run_target_module(module_name or "", argv)
+        except SystemExit as exc:
+            if exc.code is not None and exc.code != 0:
+                raise
+            # A normal CLI exit must still close its profile and check seeds.
+
+    output = os.environ.get("AISP_TORCH_PROFILE_OUTPUT")
+    if not output:
+        run_target()
+        return
+    from torch.profiler import ProfilerActivity, profile
+
+    rank = _parse_int_env("RANK") or 0
+    trace_path = Path(output)
+    if rank:
+        trace_path = trace_path.with_name(f"{trace_path.stem}.rank{rank}{trace_path.suffix}")
+    trace_path.parent.mkdir(parents=True, exist_ok=True)
+    activities = [ProfilerActivity.CPU]
+    if torch.cuda.is_available():
+        activities.append(ProfilerActivity.CUDA)
+    with profile(activities=activities) as profiler:
+        profiler.add_metadata("aisp_profile_scope", "torchrun_worker_lifetime")
+        profiler.add_metadata("aisp_rank", str(rank))
+        run_target()
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+    profiler.export_chrome_trace(str(trace_path))
+
+
 def main(argv: Optional[list[str]] = None) -> None:
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument(
@@ -151,15 +188,9 @@ def main(argv: Optional[list[str]] = None) -> None:
         with lock_ctx:
             if ramp_requested:
                 ramp_gpu_clocks(device=local_rank)
-            if script_path is not None:
-                _run_target_script(script_path, remainder)
-            else:
-                _run_target_module(module_name or "", remainder)
+            _run_profiled_target(script_path, module_name, remainder)
     else:
-        if script_path is not None:
-            _run_target_script(script_path, remainder)
-        else:
-            _run_target_module(module_name or "", remainder)
+        _run_profiled_target(script_path, module_name, remainder)
 
     current_torch_seed = int(torch.initial_seed())
     if current_torch_seed != expected_torch_seed:

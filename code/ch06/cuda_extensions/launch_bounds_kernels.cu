@@ -19,8 +19,13 @@ namespace {
 
 constexpr int kLaunchBoundsWorkIters = 64;
 constexpr float kLaunchBoundsEps = 1e-6f;
-constexpr int kThreadsPerBlock = 1024;
-constexpr int kMinBlocksPerSm = 2;
+constexpr int kBaselineThreadsPerBlock = 1024;
+// B200 has 64K registers and 64 resident warps per SM.  The previous
+// 1024-thread, two-block bound limited this register-heavy workload to 32
+// registers per thread.  Three 512-thread blocks retain 48 resident warps
+// while raising ptxas's register budget to roughly 42 registers per thread.
+constexpr int kOptimizedThreadsPerBlock = 512;
+constexpr int kOptimizedMinBlocksPerSm = 3;
 
 #define KEEP_LIVE_16(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12,  \
                      a13, a14, a15)                                            \
@@ -104,7 +109,7 @@ __global__ void kernel_no_launch_bounds(const float* input, float* output, int n
 }
 
 // Kernel with launch bounds annotation (optimized)
-__global__ __launch_bounds__(kThreadsPerBlock, kMinBlocksPerSm)
+__global__ __launch_bounds__(kOptimizedThreadsPerBlock, kOptimizedMinBlocksPerSm)
 void kernel_with_launch_bounds(const float* input, float* output, int n) {
     for (int idx = blockIdx.x * blockDim.x + threadIdx.x; idx < n; idx += blockDim.x * gridDim.x) {
         output[idx] = launch_bounds_workload(input[idx]);
@@ -119,7 +124,7 @@ void launch_bounds_baseline(torch::Tensor input, torch::Tensor output, int itera
     TORCH_CHECK(input.size(0) == output.size(0), "input and output must have same size");
     
     int n = input.size(0);
-    int threads_per_block = kThreadsPerBlock;
+    int threads_per_block = kBaselineThreadsPerBlock;
     int num_blocks = (n + threads_per_block - 1) / threads_per_block;
     
     // Use PyTorch's current CUDA stream for consistency
@@ -146,7 +151,7 @@ void launch_bounds_optimized(torch::Tensor input, torch::Tensor output, int iter
     TORCH_CHECK(input.size(0) == output.size(0), "input and output must have same size");
     
     int n = input.size(0);
-    int threads_per_block = kThreadsPerBlock;
+    int threads_per_block = kOptimizedThreadsPerBlock;
     int num_blocks = (n + threads_per_block - 1) / threads_per_block;
     
     // Use PyTorch's current CUDA stream for consistency

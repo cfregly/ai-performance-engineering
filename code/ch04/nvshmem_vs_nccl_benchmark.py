@@ -31,6 +31,8 @@ import torch
 import torch.distributed as dist
 
 from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
+from ch04.nvshmem_child_result import NVSHMEMWorkloadResult
+from ch04.nvshmem_profile_ranges import selected_nvtx_range
 from core.common.device_utils import resolve_local_rank
 from core.optimization.symmetric_memory_patch import (
     maybe_create_symmetric_memory_handle,
@@ -76,6 +78,9 @@ class BenchmarkResult:
     bytes: int
     latency_us: float
     bandwidth_gbps: float
+    verify_input: Optional[torch.Tensor] = None
+    verify_output: Optional[torch.Tensor] = None
+    reference_output: Optional[torch.Tensor] = None
 
 
 def _format_bytes(num_bytes: int) -> str:
@@ -88,14 +93,35 @@ def _format_bytes(num_bytes: int) -> str:
     return f"{value:.1f} {units[unit]}"
 
 
-def _measure_nccl_broadcast(bytes_per_rank: int, iterations: int) -> BenchmarkResult:
+def _make_rank_generator(
+    device: torch.device | str,
+    *,
+    rank: int,
+    base_seed: int = 42,
+) -> torch.Generator:
+    """Build a rank-local input generator without changing harness RNG seeds."""
+    return torch.Generator(device=device).manual_seed(base_seed + rank)
+
+
+def _measure_nccl_broadcast(
+    bytes_per_rank: int,
+    iterations: int,
+    *,
+    generator: torch.Generator,
+) -> BenchmarkResult:
     device = torch.cuda.current_device()
     dtype = torch.float16
     numel = bytes_per_rank // FLOAT16_BYTES
     numel = max(1, numel)
 
-    tensor = torch.randn(numel, device=device, dtype=dtype)
-    compute = torch.randn_like(tensor)
+    tensor = torch.randn(numel, device=device, dtype=dtype, generator=generator)
+    original_tensor = tensor.detach().clone()
+    compute = torch.randn(
+        tensor.shape,
+        device=tensor.device,
+        dtype=tensor.dtype,
+        generator=generator,
+    )
     overlap_compute = os.environ.get("AISP_BROADCAST_OVERLAP", "").lower() in {"1", "true", "yes"}
     compute_passes = max(1, int(os.environ.get("AISP_BROADCAST_COMPUTE_PASSES", "1")))
     comm_stream = torch.cuda.Stream(device=device) if overlap_compute else None
@@ -115,29 +141,44 @@ def _measure_nccl_broadcast(bytes_per_rank: int, iterations: int) -> BenchmarkRe
     start.record(current_stream)
     if comm_stream is not None:
         comm_stream.wait_stream(current_stream)
-    for _ in range(iterations):
-        if overlap_compute and comm_stream is not None:
-            with torch.cuda.stream(comm_stream):
-                work = dist.broadcast(tensor, src=0, async_op=True)
-            for _ in range(compute_passes):
-                compute.mul_(1.0001)
-            work.wait()
-            current_stream.wait_stream(comm_stream)
-        else:
-            dist.broadcast(tensor, src=0)
-            for _ in range(compute_passes):
-                compute.mul_(1.0001)
-    end.record(current_stream)
-    torch.cuda.synchronize(device)
+    with selected_nvtx_range():
+        for _ in range(iterations):
+            if overlap_compute and comm_stream is not None:
+                with torch.cuda.stream(comm_stream):
+                    work = dist.broadcast(tensor, src=0, async_op=True)
+                for _ in range(compute_passes):
+                    compute.mul_(1.0001)
+                work.wait()
+                current_stream.wait_stream(comm_stream)
+            else:
+                dist.broadcast(tensor, src=0)
+                for _ in range(compute_passes):
+                    compute.mul_(1.0001)
+        end.record(current_stream)
+        torch.cuda.synchronize(device)
 
     elapsed_ms = start.elapsed_time(end)
     latency_us = (elapsed_ms * 1000.0) / iterations
     total_bytes = bytes_per_rank * max(dist.get_world_size() - 1, 1)
     bandwidth_gbps = (total_bytes / (elapsed_ms / iterations / 1000.0)) / 1e9
-    return BenchmarkResult(bytes=bytes_per_rank, latency_us=latency_us, bandwidth_gbps=bandwidth_gbps)
+    reference = original_tensor.detach().clone()
+    dist.broadcast(reference, src=0)
+    return BenchmarkResult(
+        bytes=bytes_per_rank,
+        latency_us=latency_us,
+        bandwidth_gbps=bandwidth_gbps,
+        verify_input=original_tensor,
+        verify_output=tensor.detach().clone(),
+        reference_output=reference,
+    )
 
 
-def _measure_symmetric_broadcast(bytes_per_rank: int, iterations: int) -> Optional[BenchmarkResult]:
+def _measure_symmetric_broadcast(
+    bytes_per_rank: int,
+    iterations: int,
+    *,
+    generator: torch.Generator,
+) -> Optional[BenchmarkResult]:
     if not symmetric_memory_available():
         return None
 
@@ -146,12 +187,18 @@ def _measure_symmetric_broadcast(bytes_per_rank: int, iterations: int) -> Option
     numel = bytes_per_rank // FLOAT16_BYTES
     numel = max(1, numel)
 
-    local = torch.randn(numel, device=device, dtype=dtype)
-    compute = torch.randn_like(local)
+    local = torch.randn(numel, device=device, dtype=dtype, generator=generator)
+    compute = torch.randn(
+        local.shape,
+        device=local.device,
+        dtype=local.dtype,
+        generator=generator,
+    )
     sym_handle = maybe_create_symmetric_memory_handle(local)
     if sym_handle is None:
         return None
     buffer = sym_handle.buffer
+    original_tensor = buffer.detach().clone()
 
     rank = dist.get_rank()
     remote_buffers = []
@@ -179,34 +226,44 @@ def _measure_symmetric_broadcast(bytes_per_rank: int, iterations: int) -> Option
     start.record(current_stream)
     if comm_stream is not None:
         comm_stream.wait_stream(current_stream)
-    for _ in range(iterations):
-        if overlap_compute and comm_stream is not None and done is not None:
-            if rank == 0:
-                with torch.cuda.stream(comm_stream):
+    with selected_nvtx_range():
+        for _ in range(iterations):
+            if overlap_compute and comm_stream is not None and done is not None:
+                if rank == 0:
+                    with torch.cuda.stream(comm_stream):
+                        for remote in remote_buffers:
+                            remote.copy_(buffer, non_blocking=True)
+                        done.record(comm_stream)
+                else:
+                    done.record(current_stream)
+                for _ in range(compute_passes):
+                    compute.mul_(1.0001)
+                current_stream.wait_event(done)
+            else:
+                if rank == 0:
                     for remote in remote_buffers:
                         remote.copy_(buffer, non_blocking=True)
-                    done.record(comm_stream)
-            else:
-                done.record(current_stream)
-            for _ in range(compute_passes):
-                compute.mul_(1.0001)
-            current_stream.wait_event(done)
-        else:
-            if rank == 0:
-                for remote in remote_buffers:
-                    remote.copy_(buffer, non_blocking=True)
-            torch.cuda.synchronize(device)
-            for _ in range(compute_passes):
-                compute.mul_(1.0001)
-    end.record(current_stream)
-    torch.cuda.synchronize(device)
-    dist.barrier()
+                torch.cuda.synchronize(device)
+                for _ in range(compute_passes):
+                    compute.mul_(1.0001)
+        end.record(current_stream)
+        torch.cuda.synchronize(device)
+        dist.barrier()
 
     elapsed_ms = start.elapsed_time(end)
     latency_us = (elapsed_ms * 1000.0) / iterations
     total_bytes = bytes_per_rank * max(dist.get_world_size() - 1, 1)
     bandwidth_gbps = (total_bytes / (elapsed_ms / iterations / 1000.0)) / 1e9
-    return BenchmarkResult(bytes=bytes_per_rank, latency_us=latency_us, bandwidth_gbps=bandwidth_gbps)
+    reference = original_tensor.detach().clone()
+    dist.broadcast(reference, src=0)
+    return BenchmarkResult(
+        bytes=bytes_per_rank,
+        latency_us=latency_us,
+        bandwidth_gbps=bandwidth_gbps,
+        verify_input=original_tensor,
+        verify_output=buffer.detach().clone(),
+        reference_output=reference,
+    )
 
 
 def sweep_sizes(min_bytes: int, max_bytes: int, steps: int) -> List[int]:
@@ -225,15 +282,29 @@ def sweep_sizes(min_bytes: int, max_bytes: int, steps: int) -> List[int]:
 def benchmark(args: argparse.Namespace) -> Dict[str, List[BenchmarkResult]]:
     results: Dict[str, List[BenchmarkResult]] = {"nccl": [], "nvshmem": []}
     sizes = sweep_sizes(args.min_bytes, args.max_bytes, args.steps)
+    generator_device = torch.device("cuda", torch.cuda.current_device())
+    rank = dist.get_rank()
+    generators = {
+        "nccl": _make_rank_generator(generator_device, rank=rank),
+        "nvshmem": _make_rank_generator(generator_device, rank=rank),
+    }
 
     for message_size in sizes:
         dist.barrier()
         if args.mode in ("nccl", "both"):
-            nccl = _measure_nccl_broadcast(message_size, args.iterations)
+            nccl = _measure_nccl_broadcast(
+                message_size,
+                args.iterations,
+                generator=generators["nccl"],
+            )
             results["nccl"].append(nccl)
         dist.barrier()
         if args.mode in ("nvshmem", "both"):
-            nvshmem_res = _measure_symmetric_broadcast(message_size, args.iterations)
+            nvshmem_res = _measure_symmetric_broadcast(
+                message_size,
+                args.iterations,
+                generator=generators["nvshmem"],
+            )
             if nvshmem_res is not None:
                 results["nvshmem"].append(nvshmem_res)
         dist.barrier()
@@ -241,7 +312,7 @@ def benchmark(args: argparse.Namespace) -> Dict[str, List[BenchmarkResult]]:
     return results
 
 
-def main(destroy_process_group: bool = True) -> None:
+def main(destroy_process_group: bool = True) -> Optional[NVSHMEMWorkloadResult]:
     parser = argparse.ArgumentParser(description="Compare NVSHMEM vs NCCL broadcast latency/bandwidth")
     parser.add_argument("--min-bytes", type=int, default=1024, help="Smallest message size per rank")
     parser.add_argument("--max-bytes", type=int, default=64 * 1024 * 1024, help="Largest message size per rank")
@@ -276,8 +347,43 @@ def main(destroy_process_group: bool = True) -> None:
             )
 
     dist.barrier()
+    worker_result = None
+    selected_results = results.get(args.mode, [])
+    if args.mode in {"nccl", "nvshmem"} and len(selected_results) == 1:
+        measurement = selected_results[0]
+        if any(
+            tensor is None
+            for tensor in (
+                measurement.verify_input,
+                measurement.verify_output,
+                measurement.reference_output,
+            )
+        ):
+            raise RuntimeError("NVSHMEM collective measurement output is missing")
+        worker_result = NVSHMEMWorkloadResult(
+            workload="collective",
+            rank=rank,
+            world_size=dist.get_world_size(),
+            iterations=args.iterations,
+            time_per_iter_ms=measurement.latency_us / 1000.0,
+            configuration={
+                "min_bytes": args.min_bytes,
+                "max_bytes": args.max_bytes,
+                "steps": args.steps,
+                "iterations": args.iterations,
+                "mode": args.mode,
+            },
+            verify_inputs={"source_tensor": measurement.verify_input},
+            verify_output=measurement.verify_output,
+            reference_output=measurement.reference_output,
+            batch_size=1,
+            parameter_count=0,
+            collective_type="broadcast",
+            output_tolerance=(1e-3, 1e-5),
+        )
     if destroy_process_group:
         dist.destroy_process_group()
+    return worker_result
 
 
 if __name__ == "__main__":
