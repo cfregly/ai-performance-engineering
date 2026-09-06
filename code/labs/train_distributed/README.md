@@ -7,7 +7,6 @@ Collects distributed-training recipes: DDP, FSDP, ZeRO-1/2/3, symmetric memory a
 The shared `training_utils/torchrun_harness.py` wrapper formerly verified an unrelated parent-side Linear model before launching the real child. That surrogate has been removed. Its factories and configuration remain discoverable, but harness execution and verification now stop explicitly before launch until child-produced training results and an independent reference are implemented. A failed launch-spec getter is propagated rather than replaced with a fallback script. Direct training entrypoints are unchanged; executing them alone is not correctness or performance acceptance. The separate ZeRO training tests do not supply a verification protocol for other wrappers.
 
 ## Training runtime prerequisites
-
 The Hugging Face examples need `datasets` and `accelerate` in the Python
 environment that launches the workers. The optimized FlashAttention training
 paths use the **FlashAttention-2** distribution and its public `flash_attn`
