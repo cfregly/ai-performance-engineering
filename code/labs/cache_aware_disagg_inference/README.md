@@ -43,6 +43,7 @@ python -m cli.aisp bench run --targets labs/cache_aware_disagg_inference --profi
 - The cache-aware path should report lower KV transfer volume and fewer worker switches than the round-robin baseline on the same warm/cold request mix.
 
 ## Notes
+- With two GPUs, the distributed target has one prefill and one decode rank. Both placement policies select the same decode rank, so this topology cannot demonstrate a reduction in migrations between decode ranks. On the September 2026 two-B200 check, full outputs passed but the speed contract failed (13.672 ms baseline, 14.592 ms optimized); use at least two decode ranks to investigate the locality benefit.
 - This lab is intentionally a logical reproduction of the scheduler/caching story, not a full serving engine.
 - Treat single-GPU `cache_aware_disagg` as a locality-comparison benchmark with a local comparison contract. The stable value on one GPU is the cache hit rate, KV transfer volume, and worker affinity improvement; the timed delta is recorded, but it is not a trustworthy headline speed gate on this host.
 - Judge the single-GPU target by cache hit rate, KV transfer volume, and worker affinity before raw wall-clock speedup.

@@ -330,6 +330,52 @@ execution-first sweep resumed on `af1708d1b` with those launch distinctions,
 profile mode `none`, and forced reruns of previously invalid distributed
 successes. Successful prior stages retain their original source identities.
 
+### Direct B200 wave 7 and real router inference
+
+All eight wave-7 stages on `40a4b9d17` drained their owned processes. The
+focused selection passed 106 tests. The symmetric-memory performance pair
+passed complete peer-output checks (73.244 ms baseline, 27.442 ms optimized).
+The four Chapter 17 pairs now invoke explicit worker entrypoints and validate
+their actual complete decode output against an independent prefill reference:
+
+| Pair | Baseline / optimized iteration mean | Result |
+| --- | --- | --- |
+| Batched | 1031.455 / 4.137 ms | Correctness and timing contract passed |
+| Prefill/decode overlap | 1119.273 / 283.281 ms | Correctness and timing contract passed |
+| Long-context TPOT | 3385.711 / 831.877 ms | Correctness and timing contract passed |
+| TTFT | 848.487 / 209.079 ms | Correctness and timing contract passed |
+
+These are single aggregate measurements per arm on a virtualized host. They
+are diagnostic results, not repeated interleaved or canonical speedup claims.
+
+Cache-aware distributed inference passed full child-output checks but failed
+its performance contract: 13.672 ms baseline versus 14.592 ms optimized. With
+one prefill and one decode rank, both policies select the same decode rank;
+this topology cannot demonstrate fewer migrations between decode ranks.
+The harness now preserves valid measured ratios below 1.0 rather than
+clamping a regression to 1.0.
+
+Both gradient arms passed Nsight Systems and actual Torch worker profiling.
+The optimized arm also passed Nsight Compute after restricting its capture
+range to rank zero while both ranks execute their collectives. The baseline
+NCU capture timed out; its partial report remains a failure. Commit
+`52560085c` profiles one representative iteration of the same workload while
+leaving the ordinary 50-iteration measurement unchanged. Its fresh B200
+capture and the repaired MoE hybrid pairs are the next focused batch.
+
+The isolated vLLM runtime completed real generation for all 16 router-evaluation
+prompts after the stdout-descriptor repair. Its result explicitly reports
+`vllm_quality_with_synthetic_telemetry` and mixed evidence: quality uses vLLM,
+while latency and routing telemetry are synthetic, and throughput is derived
+from that synthetic latency. Those printed latency/throughput values are not
+measured serving performance or valid cost-per-token inputs.
+
+The breadth sweep was stopped after an owned NVSHMEM pipeline stage stalled;
+its failure and confirmed process drain were retained. The pipeline transport
+and additional NVSHMEM child-result contracts are being repaired. The next
+breadth phase assigns disjoint single-GPU target lists to the two B200s so
+coverage can advance while the remaining distributed repairs are checked.
+
 - Run the complete GPU test suite on the final merged revision.
 - Complete all four sweep stages and reconcile the 486-target inventory,
   including unsupported and failed cases rather than silently dropping them.
