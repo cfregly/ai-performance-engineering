@@ -20,16 +20,14 @@
   } while (0)
 
 constexpr int kLaunchBoundsWorkIters = 64;
-constexpr int kThreads = 1024;
-// A 1024-thread block cannot satisfy a two-block residency request on SM120/SM121.
-// Keep the launch shape identical to the baseline and request the strongest valid
-// minimum-block constraint for each configured architecture.
-#if defined(__CUDA_ARCH__) && \
-    (__CUDA_ARCH__ == 1200 || __CUDA_ARCH__ == 1210)
-constexpr int kMinBlocksPerSm = 1;
-#else
-constexpr int kMinBlocksPerSm = 2;
-#endif
+// B200 has 64K registers and 64 resident warps per SM.  The previous
+// 1024-thread, two-block bound limited this register-heavy workload to 32
+// registers per thread.  Three 512-thread blocks retain 48 resident warps
+// while raising ptxas's register budget to roughly 42 registers per thread.
+// The same geometry is valid on SM120/SM121, whose 48-warp limit is exactly
+// three blocks.
+constexpr int kThreads = 512;
+constexpr int kMinBlocksPerSm = 3;
 constexpr int kWarmupKernelRepeats = 8;
 constexpr int kTimedKernelRepeats = 48;
 constexpr float kLaunchBoundsEps = 1e-6f;
