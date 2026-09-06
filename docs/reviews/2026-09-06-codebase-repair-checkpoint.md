@@ -578,6 +578,80 @@ two passing and two still-running CI checks. That transient CI state and all
 wave-12/wave-13 timings are operational evidence, not public or canonical
 performance claims.
 
+### First complete training pass and direct B200 wave 14
+
+The first 61-row distributed-training pass ran source `feee566fa` to terminal
+state for every row and confirmed all 61 descendants drained. Thirty-one rows
+passed and 30 failed. The failures formed three concrete groups: six could not
+load the required `flash_attn` distribution, 22 pipeline rows attempted an
+in-place ReLU on an autograd leaf, and two ZeRO-3 rows modified a backward-hook
+view in place. These retained failures are execution evidence; the pass did not
+qualify the affected workloads or produce a performance result for them.
+
+Three subsequent source revisions address those groups without relabeling the
+failed pass. Commit `db3f03d17` applies padding-aware labels and loss masking to
+19 training rows; its focused CPU selection passed 14 tests. Commit `eb7e52763`
+preserves autograd leaves at pipeline activation boundaries; six CPU tests ran
+the actual schedules successfully. Commit `582ec8c86` protects ZeRO-3
+backward-hook views from the in-place activation, with 13 focused Gloo CPU
+checks passing. Those CPU checks establish the repaired control and math paths,
+not B200 completion.
+
+The separate FlashAttention-2 environment uses the official
+`flash_attn-2.8.3+cu13torch2.9cxx11abiTRUE` wheel. Its downloaded SHA-256 is
+`a4b43bd016f5d475dc34a87aa91b5a239bd0e8972c13f4fc32839b4032465d21`,
+the extension contains an `sm_100` cubin, and the actual import retained Torch
+2.9.1+cu130 with CXX11 ABI enabled. A fail-closed B200 probe then passed both
+fixed-length `flash_attn_func` and padded, odd-length
+`flash_attn_varlen_func` cases. Every output and Q/K/V gradient element was
+checked against a forced-math FP32 SDPA reference; the probe exited zero in
+2.038 seconds and its supervised process drained. This validates the tested
+FA2 APIs and runtime tuple. It does not replace fresh results from the six
+training rows that previously failed to import FA2.
+
+The repaired 61-row pass completed on `582ec8c86` inside that isolated FA2
+environment: **61 zero exits, zero failures, and all 61 supervised process
+trees drained**. The inventory comprises 27 one-rank and 34 two-rank runs.
+Every receipt binds manifest SHA-256
+`198d92ad61031047c05e026ac0cc012122493ac62257ce32b7d45aa645469066`,
+which retains the original 61 commands, workloads and rank topologies and
+binds 95 source files. This rerun closes the observed import and autograd
+execution failures, including the six FlashAttention rows, 22 pipeline rows
+and two ZeRO-3 rows that failed in the first pass. These remain diagnostic
+training executions: the generic wrappers still lack a qualified child-result
+protocol. Requested step counts are not asserted as completed step counts;
+for example, a DDP loader exhausted after 57 steps and reported that actual
+count.
+
+The training phase finished at 16:23 UTC, and both B200s immediately started
+the resumed 417-target single-GPU inventory in independent shards. The 69
+multi-GPU targets, remaining stages and final tests follow afterward. Those
+stages remain incomplete. Pull request 18 remains open, with its latest CI
+still pending. Full training receipts, commands and logs are retained locally
+under the dated `training-all-repaired` artifact bundle alongside the original
+failed pass.
+
+Wave 14 ran five supervised stages on the intermediate `eb7e52763` source and
+drained all five. The focused XML records ten passes with no failures, errors,
+or skips. The ring generation probe checked three message sizes for 45 changing
+generations each, or 135 full bitwise comparisons per rank, and passed on both
+ranks. The canonical ring benchmark invocation still failed its unchanged
+speed contract at a 0.269935 ratio despite complete verification. The
+disaggregated benchmark with two visible GPUs in one process also passed
+complete verification but failed the speed contract at 0.836775. Its forced
+two-rank invocation failed because the worker did not return the required child
+verification payload; an explicit child-result contract is under repair. None
+of these three failed benchmark results supports a performance claim.
+
+Commit `569e7cf5a` repairs the two-rank disaggregated worker contract: normal
+discovery now requests two torchrun ranks, timing comes from worker CUDA
+events, and both complete prefill/decode outputs are checked for every rank.
+Six focused CPU tests passed, including real two-rank Gloo execution. The
+workload still runs both phases and both reductions on each WORLD rank; it
+does not claim dedicated prefill/decode GPU groups. A fresh two-B200 run of
+this revision remains pending while the broader sweep runs on frozen
+`582ec8c86`.
+
 - Run the complete GPU test suite on the final merged revision.
 - Complete all four sweep stages and reconcile the 486-target inventory,
   including unsupported and failed cases rather than silently dropping them.

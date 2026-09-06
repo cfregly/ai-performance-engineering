@@ -6,6 +6,30 @@ Collects distributed-training recipes: DDP, FSDP, ZeRO-1/2/3, symmetric memory a
 ## Generic wrapper verification unavailable
 The shared `training_utils/torchrun_harness.py` wrapper formerly verified an unrelated parent-side Linear model before launching the real child. That surrogate has been removed. Its factories and configuration remain discoverable, but harness execution and verification now stop explicitly before launch until child-produced training results and an independent reference are implemented. A failed launch-spec getter is propagated rather than replaced with a fallback script. Direct training entrypoints are unchanged; executing them alone is not correctness or performance acceptance. The separate ZeRO training tests do not supply a verification protocol for other wrappers.
 
+## Training runtime prerequisites
+
+The Hugging Face examples need `datasets` and `accelerate` in the Python
+environment that launches the workers. The optimized FlashAttention training
+paths use the **FlashAttention-2** distribution and its public `flash_attn`
+APIs. A FlashAttention-4 namespace import alone does not satisfy that
+requirement. Keep these environments separate when their packages overlap;
+installing a training dependency must not replace another workload's PyTorch
+or attention runtime.
+
+Check the selected training interpreter before launching:
+
+```bash
+python -c 'import torch, datasets, accelerate; from flash_attn import flash_attn_func, flash_attn_varlen_func; print(torch.__version__, torch.version.cuda)'
+```
+
+The September 2026 direct B200 pass exercised all 61 discovered training
+variants (27 one-rank and 34 two-rank runs) with Torch 2.9.1+cu130 and the
+matching FlashAttention 2.8.3 CUDA 13/Torch 2.9/CXX11 ABI wheel. All scripts
+exited successfully; this does not make their generic wrappers qualified
+benchmarks. See the [dated validation checkpoint](../../../docs/reviews/2026-09-06-codebase-repair-checkpoint.md)
+for the source identity, retained failures and execution limits. Direct
+`torchrun` commands work without Slurm.
+
 ## Problem
 Distributed training has too many "optimized" labels that mean different things. This lab is here to keep DDP compression, pipeline schedules, and symmetric-memory training as separate benchmarked choices so you can see what actually helps on the current stack.
 
