@@ -403,9 +403,10 @@ def demo_pipeline_parallel(
                 remote = bucket.handle.get_buffer(rank)
                 microbatch = remote.view_as(microbatch)
                 microbatch = stage1(microbatch)
-                # Complete the read before the producer can reuse this
-                # symmetric slot in the next step.
                 torch.cuda.synchronize(device)
+            # Both peers acknowledge consumption before the producer may reuse
+            # the receiver's symmetric slot during the next training step.
+            dist.barrier()
             if not reuse_buffers and bucket is not None:
                 bucket.close()
         torch.cuda.synchronize(device)

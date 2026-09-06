@@ -295,19 +295,28 @@ class LoadBalancedRouter(nn.Module):
         return index
 
     def forward(self, x: torch.Tensor, *, expert_bias: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor, Dict[str, torch.Tensor]]:
-        logits = self.gate(x)
-        if expert_bias is not None:
-            logits = logits + expert_bias
-        log_route_probs = F.log_softmax(logits, dim=-1)
-        route_probs = log_route_probs.exp()
-        top_logits, top_indices = torch.topk(logits, self.top_k, dim=-1)
-        top_weights = F.softmax(top_logits, dim=-1)
-        expert_usage = route_probs.mean(dim=0)
-        balance_loss = torch.var(expert_usage) * float(self.num_experts)
-        sorted_usage = torch.sort(expert_usage)[0]
-        n = len(sorted_usage)
-        index = self._gini_index_for(sorted_usage)
-        gini = (2 * (index * sorted_usage).sum()) / (n * sorted_usage.sum().clamp_min(1e-9)) - (n + 1) / n
+        if self.gate.weight.dtype != torch.float32:
+            raise RuntimeError("MoE router parameters must remain FP32")
+        # Top-k is discontinuous: a few BF16 ulps from equivalent expert
+        # batching can otherwise become a different route on the next step.
+        # Keep routing decisions and their trainable state in FP32 even while
+        # the surrounding projections and experts use mixed-precision compute.
+        with torch.autocast(device_type=x.device.type, enabled=False):
+            logits = self.gate(x.to(dtype=torch.float32))
+            if expert_bias is not None:
+                logits = logits + expert_bias.to(dtype=torch.float32)
+            log_route_probs = F.log_softmax(logits, dim=-1)
+            route_probs = log_route_probs.exp()
+            top_logits, top_indices = torch.topk(logits, self.top_k, dim=-1)
+            top_weights = F.softmax(top_logits, dim=-1)
+            expert_usage = route_probs.mean(dim=0)
+            balance_loss = torch.var(expert_usage) * float(self.num_experts)
+            sorted_usage = torch.sort(expert_usage)[0]
+            n = len(sorted_usage)
+            index = self._gini_index_for(sorted_usage)
+            gini = (2 * (index * sorted_usage).sum()) / (
+                n * sorted_usage.sum().clamp_min(1e-9)
+            ) - (n + 1) / n
         return top_weights, top_indices, {
             "balance_loss": balance_loss,
             "expert_usage_variance": torch.var(expert_usage),
@@ -383,6 +392,9 @@ class DeepSeekHybridEPModule(nn.Module):
         self._comm_stream = None
         self._latest_forward_output: Optional[torch.Tensor] = None
         self._latest_route_assignments: Optional[torch.Tensor] = None
+        self._dispatch_payload_sent_bytes = 0
+        self._dispatch_metadata_sent_bytes = 0
+        self._return_payload_sent_bytes = 0
 
     @property
     def cuda_device(self) -> torch.device:
@@ -602,15 +614,16 @@ class DeepSeekHybridEPModule(nn.Module):
         return metric_list
 
     def _apply_local_experts(self, tokens: torch.Tensor, expert_ids: torch.Tensor, weights: torch.Tensor, *, buffer_namespace: str = "local") -> torch.Tensor:
+        output_dtype = torch.promote_types(tokens.dtype, weights.dtype)
         if tokens.numel() == 0:
-            return tokens
+            return tokens.to(dtype=output_dtype)
         differentiable = torch.is_grad_enabled() and (
             tokens.requires_grad or weights.requires_grad or any(p.requires_grad for p in self.experts.parameters())
         )
         outputs = self._buffer(
             f"{buffer_namespace}.local_outputs",
             tuple(tokens.shape),
-            tokens.dtype,
+            output_dtype,
             reuse=self.optimized and not differentiable,
             device=tokens.device,
         )
@@ -620,7 +633,7 @@ class DeepSeekHybridEPModule(nn.Module):
         sorted_outputs = self._buffer(
             f"{buffer_namespace}.local_sorted_outputs",
             tuple(sorted_tokens.shape),
-            sorted_tokens.dtype,
+            output_dtype,
             reuse=self.optimized and not differentiable,
             device=sorted_tokens.device,
         )
@@ -639,6 +652,27 @@ class DeepSeekHybridEPModule(nn.Module):
             offset = next_offset
         outputs.index_copy_(0, sort_idx, sorted_outputs)
         return outputs
+
+    def _record_roundtrip_sent_bytes(
+        self,
+        *,
+        group_size: int,
+        dispatch_payload: torch.Tensor,
+        dispatch_metadata: torch.Tensor,
+        return_payload: torch.Tensor,
+    ) -> None:
+        """Record logical collective send bytes from the actual packed tensors."""
+        if group_size <= 1:
+            return
+        self._dispatch_payload_sent_bytes += (
+            dispatch_payload.numel() * dispatch_payload.element_size()
+        )
+        self._dispatch_metadata_sent_bytes += (
+            dispatch_metadata.numel() * dispatch_metadata.element_size()
+        )
+        self._return_payload_sent_bytes += (
+            return_payload.numel() * return_payload.element_size()
+        )
 
     def _exchange_counts(
         self,
@@ -809,6 +843,12 @@ class DeepSeekHybridEPModule(nn.Module):
             recv_weights,
             buffer_namespace=event_label,
         )
+        self._record_roundtrip_sent_bytes(
+            group_size=group_size,
+            dispatch_payload=payload,
+            dispatch_metadata=meta,
+            return_payload=expert_outputs,
+        )
         if events is not None:
             events.mid2.record(current_stream)
 
@@ -825,12 +865,12 @@ class DeepSeekHybridEPModule(nn.Module):
         self,
         hidden: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Dict[str, torch.Tensor], Dict[str, Optional[torch.Tensor]]]:
-        expert_bias = self._expert_bias(hidden.device, hidden.dtype)
+        expert_bias = self._expert_bias(hidden.device, torch.float32)
         top_weights, top_indices, aux = self.router(hidden, expert_bias=expert_bias)
         route_counts = torch.bincount(top_indices.reshape(-1), minlength=self.num_experts)
         token_indices = self._token_indices(hidden.size(0), hidden.device)
         expanded_tokens = hidden.index_select(0, token_indices)
-        expanded_weights = top_weights.reshape(-1, 1).to(hidden.dtype)
+        expanded_weights = top_weights.reshape(-1, 1)
         expanded_experts = top_indices.reshape(-1).to(torch.int64)
         owner_ranks = torch.div(expanded_experts, self.local_experts, rounding_mode="floor")
         local_expert_ids = torch.remainder(expanded_experts, self.local_experts)
@@ -867,6 +907,10 @@ class DeepSeekHybridEPModule(nn.Module):
         token_indices = route_payload["token_indices"]
         expanded_weights = route_payload["expanded_weights"]
 
+        self._dispatch_payload_sent_bytes = 0
+        self._dispatch_metadata_sent_bytes = 0
+        self._return_payload_sent_bytes = 0
+
         same_rank_metrics = (0.0, 0.0, 0.0)
         same_node_metrics = (0.0, 0.0, 0.0)
         remote_metrics = (0.0, 0.0, 0.0)
@@ -875,7 +919,7 @@ class DeepSeekHybridEPModule(nn.Module):
         combined = self._buffer(
             "combined_outputs",
             tuple(hidden.shape),
-            hidden.dtype,
+            torch.promote_types(hidden.dtype, expanded_weights.dtype),
             reuse=self.optimized and not torch.is_grad_enabled(),
             device=hidden.device,
         )
@@ -1047,7 +1091,7 @@ class DeepSeekHybridEPModule(nn.Module):
             same_node_count = float(int(token_indices.numel()))
             remote_count = 0.0
 
-        outputs = self.output_proj(hidden + combined)
+        outputs = self.output_proj(hidden.to(dtype=combined.dtype) + combined)
         # Keep the real final tensor and assignments alive past the optimizer step.
         # The worker copies these after the measured NVTX range has closed.
         self._latest_forward_output = outputs.detach()
@@ -1125,12 +1169,48 @@ class DeepSeekHybridEPModule(nn.Module):
                 "moe.step.expert_compute_intra_node_ms": same_node_metrics[1],
                 "moe.step.expert_compute_inter_node_ms": remote_metrics[1],
                 "moe.step.overlap_pct": overlap_pct,
+                "moe.step.forward_communication_dispatch_payload_global_sent_bytes": float(
+                    self._dispatch_payload_sent_bytes
+                ),
+                "moe.step.forward_communication_metadata_global_sent_bytes": float(
+                    self._dispatch_metadata_sent_bytes
+                ),
+                "moe.step.forward_communication_return_payload_global_sent_bytes": float(
+                    self._return_payload_sent_bytes
+                ),
+                "moe.step.forward_communication_total_global_sent_bytes": float(
+                    self._dispatch_payload_sent_bytes
+                    + self._dispatch_metadata_sent_bytes
+                    + self._return_payload_sent_bytes
+                ),
                 "moe.router_entropy": float(router_entropy),
                 "moe.gini_coefficient": float(gini_coefficient),
                 "moe.expert_usage_variance": float(expert_usage_variance),
             }
         )
         return loss, metrics
+
+
+def _build_fp32_adamw(
+    parameters: Iterable[nn.Parameter],
+    *,
+    learning_rate: float,
+) -> torch.optim.AdamW:
+    """Build AdamW only over FP32 master parameters and optimizer state."""
+    parameter_list = list(parameters)
+    if not parameter_list:
+        raise ValueError("Hybrid-EP optimizer requires at least one parameter")
+    non_fp32 = [
+        parameter.dtype
+        for parameter in parameter_list
+        if parameter.dtype != torch.float32
+    ]
+    if non_fp32:
+        raise ValueError(
+            "Hybrid-EP mixed-precision training requires FP32 master parameters; "
+            f"found {non_fp32[0]}"
+        )
+    return torch.optim.AdamW(parameter_list, lr=learning_rate)
 
 
 class HybridEPTrainer:
@@ -1149,6 +1229,10 @@ class HybridEPTrainer:
             raise ValueError(
                 f"--num-experts ({self.num_experts}) must equal local_experts * world_size ({derived_experts})"
             )
+        # Parameters and AdamW moments stay FP32. ``self.dtype`` remains the
+        # declared projection/expert compute dtype and is applied by autocast in
+        # run_step; this avoids quantizing small schedule-dependent gradient
+        # differences into persistent BF16 optimizer state.
         self.model = DeepSeekHybridEPModule(
             hidden_size=args.hidden_size,
             num_experts=self.num_experts,
@@ -1157,9 +1241,12 @@ class HybridEPTrainer:
             topology=topology,
             route_mode=args.route_mode,
             optimized=optimized,
-        ).to(device=self.device, dtype=self.dtype)
+        ).to(device=self.device, dtype=torch.float32)
         self.model.synchronize_replicated_parameters()
-        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=args.learning_rate)
+        self.optimizer = _build_fp32_adamw(
+            self.model.parameters(),
+            learning_rate=args.learning_rate,
+        )
         data_seed = 4242 + topology.rank
         generator = torch.Generator(device=self.device)
         generator.manual_seed(data_seed)
@@ -1207,12 +1294,17 @@ class HybridEPTrainer:
         current_stream = torch.cuda.current_stream()
 
         total_start.record(current_stream)
-        loss, metrics = self.model.forward_loss(
-            self.inputs,
-            self.targets,
-            overlap_mode=self.args.overlap_mode,
-            aux_loss_scale=self.args.aux_loss_scale,
-        )
+        with torch.autocast(
+            device_type="cuda",
+            dtype=self.dtype,
+            enabled=self.dtype in {torch.bfloat16, torch.float16},
+        ):
+            loss, metrics = self.model.forward_loss(
+                self.inputs,
+                self.targets,
+                overlap_mode=self.args.overlap_mode,
+                aux_loss_scale=self.args.aux_loss_scale,
+            )
         total_after_forward.record(current_stream)
         loss.backward()
         total_after_backward.record(current_stream)
