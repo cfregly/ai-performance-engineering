@@ -300,6 +300,36 @@ their missing verification contract explicitly. GPU inventory routing is also
 being repaired because imported benchmark classes can require multiple devices
 without repeating those requirements in their thin wrapper files.
 
+### Direct B200 wave 6 and corrected sweep routing
+
+All seven wave-6 stages on `9c19a76a6` terminated with confirmed child-process
+drain. The focused tests and unprofiled gradient pair exited zero. The other
+five stages retained failures; they are not qualified passes.
+
+| Target | Observed result | Interpretation |
+| --- | --- | --- |
+| Gradient average, 2 B200 | 33.231804 ms baseline; 0.045565 ms fused | Actual full child outputs passed. One aggregate per arm; no repeated interleaved performance claim. |
+| Pipeline parallel | 15.577399 ms baseline; 23.287443 ms 1F1B | Candidate slower; performance contract failed. Parent virtual verification remains a separate limitation. |
+| Tensor parallel | 9.808 ms baseline; 9.973 ms asynchronous | No measured speedup; performance contract failed. |
+| Symmetric-memory performance | Child signature rejected | `float32` and `torch.float32` were compared without canonicalization; `cc72c9cac` repairs the comparison. Full peer-output checks remain mandatory. |
+| Gradient profiler bundle | Nsight Systems captured both arms; NCU and Torch failed | NCU application-range capture hit NCCL timeouts; Torch selected the in-process factory path. Neither failure is promoted to a capture pass. |
+| Router evaluation | vLLM workers rejected `stdout.fileno()` | `af1708d1b` uses descriptor-backed output capture. Actual model execution is being rerun in the existing isolated vLLM environment. |
+
+The dtype repair passed 49 focused CPU tests, including canonical and
+noncanonical dtype spellings, real dtype mismatches, and incorrect output from
+either rank. The vLLM capture repair passed 13 model/router tests, including
+native descriptor writes and a real subprocess diagnostic on the failure path.
+These CPU checks do not substitute for the subsequent GPU runs.
+
+Commit `4d3c568ab` follows benchmark factories and inherited class metadata
+statically, without importing workload modules. The inventory remains 486
+targets, now correctly classified as 423 single-GPU and 63 multi-GPU targets.
+The multi-GPU set contains 49 torchrun targets and 14 with in-process execution.
+Routing tests also preserve an explicitly declared four-GPU minimum. The
+execution-first sweep resumed on `af1708d1b` with those launch distinctions,
+profile mode `none`, and forced reruns of previously invalid distributed
+successes. Successful prior stages retain their original source identities.
+
 - Run the complete GPU test suite on the final merged revision.
 - Complete all four sweep stages and reconcile the 486-target inventory,
   including unsupported and failed cases rather than silently dropping them.
