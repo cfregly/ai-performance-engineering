@@ -253,6 +253,53 @@ inventory with profiling explicitly disabled, while repaired profiler paths
 and optimization candidates receive separate captures. Those broad results are
 diagnostic execution evidence and cannot satisfy canonical profiling gates.
 
+### Distributed timing and output follow-up
+
+The execution-first sweep attempted the original 22 multi-GPU inventory entries
+and then reached the single-GPU examples. Four distributed targets exited zero
+and 18 returned nonzero. These counts do not qualify distributed performance:
+the audit found that the harness recorded whole-process wall time even when a
+worker emitted iteration latency, and gradient fusion compared an unrelated
+parent-side probe. Successful GEMM and batched-GEMM runs are retained separately.
+
+Commit `8490afa84` adds an explicit worker-timing contract. An opted-in worker
+must emit one finite positive rank-0 iteration mean and declare how many measured
+iterations it represents. Launch duration remains a separate metric; an
+aggregate mean does not acquire invented percentiles. Eleven focused timing
+tests passed, including real subprocess controls. Existing process-duration
+results remain labeled as such and must not be reused as iteration timings.
+
+Commit `9c19a76a6` replaces gradient fusion's repeated in-place FP16 SUM, which
+can overflow over 55 reductions, with a stable gradient-average primitive.
+The paired workload remains 2,048 tensors of 4 KiB, five warmups, and 50 measured
+iterations. Fresh per-rank results carry actual timed output and an independent
+FP32 average reference. Two-rank Gloo controls passed; the NCCL and application-
+range reruns remain separate B200 gates. Old SUM timings are incompatible with
+this corrected operation.
+
+The symmetric-memory pair now transports actual per-rank inputs and receive
+outputs and rejects missing or incorrect peer results. Rank-dependent inputs
+make a local-copy mistake distinguishable despite identical global seeds.
+Pipeline workers also select their own nested stage rather than stage zero,
+and the optimized virtual path traverses its nested layer lists correctly.
+The pipeline pair still has a separate parent-side verification path; passing
+that path does not certify distributed child tensors.
+
+The vLLM tool failed honestly because the prepared FlashAttention 4 environment
+exposes `flash_attn` without the older `flash_attn.ops` module expected by vLLM
+0.16. An existing isolated environment imports the same Torch 2.9.1+cu130 and
+vLLM without that namespace collision; its actual inference rerun is pending.
+No shared runtime was changed. The model fetcher now returns absolute paths and
+checks the presence of every indexed weight shard before treating a cached
+directory as complete. A config file alone is insufficient.
+
+The remaining launch audit identified five more import-only targets in Chapter
+17 and the cache-aware disaggregated lab, plus seven targets that need fresh
+child-output verification. Thirty distributed-training adapters already report
+their missing verification contract explicitly. GPU inventory routing is also
+being repaired because imported benchmark classes can require multiple devices
+without repeating those requirements in their thin wrapper files.
+
 - Run the complete GPU test suite on the final merged revision.
 - Complete all four sweep stages and reconcile the 486-target inventory,
   including unsupported and failed cases rather than silently dropping them.
