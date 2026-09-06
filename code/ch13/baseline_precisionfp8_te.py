@@ -165,7 +165,8 @@ class BaselineTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
-        return BenchmarkConfig(iterations=50, warmup=10, backend_policy="fp32_strict")
+        # Keep stateful training on the same update count in both arms.
+        return BenchmarkConfig(adaptive_iterations=False, iterations=50, warmup=10, backend_policy="fp32_strict")
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return truthful precision metrics for the current FP32 TE run."""

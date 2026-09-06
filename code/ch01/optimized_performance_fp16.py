@@ -181,7 +181,8 @@ class OptimizedPerformanceFP16Benchmark(VerificationPayloadMixin, BaseBenchmark)
             torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
-        return BenchmarkConfig(iterations=5, warmup=10)
+        # Keep stateful training on the same update count in both arms.
+        return BenchmarkConfig(adaptive_iterations=False, iterations=5, warmup=10)
 
     def get_custom_metrics(self) -> Optional[dict]:
         return get_environment_custom_metrics()

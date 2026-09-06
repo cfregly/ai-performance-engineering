@@ -161,7 +161,9 @@ class OptimizedAutogradCompiledBenchmark(VerificationPayloadMixin, BaseBenchmark
     
     def get_config(self) -> BenchmarkConfig:
         """Return benchmark configuration."""
+        # Keep stateful training on the same update count in both arms.
         return BenchmarkConfig(
+            adaptive_iterations=False,
             iterations=50,
             warmup=10,
             enable_memory_tracking=False,

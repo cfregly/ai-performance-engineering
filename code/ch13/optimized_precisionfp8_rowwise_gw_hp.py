@@ -181,7 +181,9 @@ class OptimizedFP8RowwiseGWHpBenchmark(VerificationPayloadMixin, BaseBenchmark):
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
+        # Keep stateful training on the same update count in both arms.
         return BenchmarkConfig(
+            adaptive_iterations=False,
             iterations=50,
             warmup=10,
             enable_memory_tracking=False,
