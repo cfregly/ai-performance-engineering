@@ -247,6 +247,24 @@ def benchmark_symmetric_memory(tensor: torch.Tensor, iterations: int = 100):
     return start.elapsed_time(end) / iterations
 
 
+def _ring_exchange(
+    send_tensor: torch.Tensor,
+    recv_tensor: torch.Tensor,
+    *,
+    next_rank: int,
+    previous_rank: int,
+) -> None:
+    """Post both ring directions before waiting for either operation."""
+    requests = dist.batch_isend_irecv(
+        [
+            dist.P2POp(dist.isend, send_tensor, next_rank),
+            dist.P2POp(dist.irecv, recv_tensor, previous_rank),
+        ]
+    )
+    for request in requests:
+        request.wait()
+
+
 def benchmark_traditional_ring(
     tensor: torch.Tensor,
     iterations: int = 100,
@@ -262,13 +280,12 @@ def benchmark_traditional_ring(
     prev_rank = (rank - 1) % world_size
 
     for _ in range(5):
-        ops = [
-            dist.P2POp(dist.isend, tensor, next_rank),
-            dist.P2POp(dist.irecv, recv_tensor, prev_rank),
-        ]
-        reqs = dist.batch_isend_irecv(ops)
-        for req in reqs:
-            req.wait()
+        _ring_exchange(
+            tensor,
+            recv_tensor,
+            next_rank=next_rank,
+            previous_rank=prev_rank,
+        )
     torch.cuda.synchronize(device)
     dist.barrier()
 
@@ -277,13 +294,12 @@ def benchmark_traditional_ring(
     start.record()
     with nvtx_range(TRADITIONAL_RING_NVTX_RANGE, enable=True):
         for _ in range(iterations):
-            ops = [
-                dist.P2POp(dist.isend, tensor, next_rank),
-                dist.P2POp(dist.irecv, recv_tensor, prev_rank),
-            ]
-            reqs = dist.batch_isend_irecv(ops)
-            for req in reqs:
-                req.wait()
+            _ring_exchange(
+                tensor,
+                recv_tensor,
+                next_rank=next_rank,
+                previous_rank=prev_rank,
+            )
         end.record()
         torch.cuda.synchronize(device)
     dist.barrier()
@@ -393,15 +409,23 @@ def benchmark_multigpu_symmetric_memory(
         
         # Warmup
         for _ in range(10):
-            dist.send(tensor, dst=dest_rank)
-            dist.recv(recv_tensor, src=src_rank)
+            _ring_exchange(
+                tensor,
+                recv_tensor,
+                next_rank=dest_rank,
+                previous_rank=src_rank,
+            )
         
         torch.cuda.synchronize(device)
         start.record()
         
         for _ in range(iterations):
-            dist.send(tensor, dst=dest_rank)
-            dist.recv(recv_tensor, src=src_rank)
+            _ring_exchange(
+                tensor,
+                recv_tensor,
+                next_rank=dest_rank,
+                previous_rank=src_rank,
+            )
         
         end.record()
         end.synchronize()
