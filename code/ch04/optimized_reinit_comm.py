@@ -1,30 +1,36 @@
-"""optimized_reinit_comm.py - Initialize NCCL once and reuse (optimized)."""
+"""Initialize one NCCL communicator once and reuse it.
+
+The default standalone case measures local communicator lifecycle overhead. It
+does not measure network communication performance. A real torchrun context is
+still honored when the benchmark is launched under one.
+"""
 
 from __future__ import annotations
 
-import os
-
-from core.common.device_utils import resolve_local_rank
+from typing import Optional
 
 import torch
 import torch.distributed as dist
 
-from typing import Optional
-
-from ch04.distributed_helper import setup_single_gpu_env
+from ch04.reinit_comm_common import (
+    ReinitCommLaunchContext,
+    initialize_reinit_process_group,
+    resolve_reinit_comm_launch,
+)
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
     WorkloadMetadata,
 )
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
+
 
 class OptimizedReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Initialize the default one-rank NCCL communicator once and reuse it."""
 
     multi_gpu_required = False
-    
+
     def __init__(self):
         super().__init__()
         self.rank = 0
@@ -33,26 +39,31 @@ class OptimizedReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input_tensor = None
         self.tensor = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._launch_context: ReinitCommLaunchContext | None = None
+        self._standalone_store: dist.Store | None = None
         self.initialized = False
         self._enable_nvtx = False
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
             bytes_per_iteration=4.0,  # single float all-reduce
         )
-    
+
     def setup(self) -> None:
-        """Setup: Initialize NCCL once."""
-        setup_single_gpu_env()
-        self.local_rank = resolve_local_rank()
+        """Initialize NCCL once for a standalone or real launcher context."""
+        self._launch_context = resolve_reinit_comm_launch("optimized_reinit_comm")
+        self.local_rank = self._launch_context.local_rank
         torch.cuda.set_device(self.local_rank)
+        if self._launch_context.standalone and dist.is_initialized():
+            dist.destroy_process_group()
+            self._standalone_store = None
         if not dist.is_initialized():
-            dist.init_process_group(
-                "nccl",
-                init_method="env://",
-                device_id=self.local_rank,
+            self._standalone_store = initialize_reinit_process_group(
+                self._launch_context,
+                backend="nccl",
+                device_id=torch.device(f"cuda:{self.local_rank}"),
             )
             self.initialized = True
-        
+
         self.rank = dist.get_rank()
         self.world_size = dist.get_world_size()
         self.device = torch.device(f"cuda:{self.local_rank}")
@@ -70,7 +81,7 @@ class OptimizedReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=float(self._workload.requests_per_iteration or 1.0),
             bytes_per_iteration=float(self._workload.bytes_per_iteration or 0.0),
         )
-    
+
     def benchmark_fn(self) -> None:
         """Benchmark: Reuse existing NCCL communicator."""
         if self.tensor is None or self.input_tensor is None:
@@ -103,16 +114,18 @@ class OptimizedReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
             output_tolerance=(1e-6, 1e-6),
         )
 
-    
+
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
         if dist.is_initialized() and self.initialized:
             dist.destroy_process_group()
+        self._standalone_store = None
+        self._launch_context = None
         self.input_tensor = None
         self.tensor = None
         self._verify_output_buffer = None
         torch.cuda.empty_cache()
-    
+
     def get_config(self) -> BenchmarkConfig:
         """Return benchmark configuration."""
         return BenchmarkConfig(
@@ -121,10 +134,10 @@ class OptimizedReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
             enable_memory_tracking=False,
             enable_profiling=False,
         )
-    
+
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
-    
+
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
         from core.benchmark.metrics import compute_memory_transfer_metrics
