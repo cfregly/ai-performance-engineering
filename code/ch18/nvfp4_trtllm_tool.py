@@ -132,3 +132,22 @@ class NVFP4TRTLLMBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return NVFP4TRTLLMBenchmark()
+
+
+def main() -> None:
+    """Run the chapter tool through the shared standalone benchmark helper."""
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA required for ch18 NVFP4/TRT-LLM tool")
+
+    from core.harness.benchmark_harness import benchmark_main
+
+    benchmark_main(
+        get_benchmark,
+        iterations=10,
+        warmup=5,
+        name="ch18_nvfp4_trtllm_tool",
+    )
+
+
+if __name__ == "__main__":
+    main()

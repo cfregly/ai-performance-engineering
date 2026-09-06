@@ -24,6 +24,19 @@ _BASE_BENCHMARK_QUALNAME = "core.harness.benchmark_harness.BaseBenchmark"
 _VERIFICATION_PAYLOAD_MIXIN_QUALNAME = "core.benchmark.verification_mixin.VerificationPayloadMixin"
 
 
+@lru_cache(maxsize=1)
+def _registered_standalone_paths() -> frozenset[Path]:
+    """Read core registry metadata without importing any workload modules."""
+    from core.demos.demos_commands import DEMOS
+    from core.tools.tools_commands import TOOLS
+
+    return frozenset(
+        spec.script_path.resolve()
+        for registry in (DEMOS, TOOLS)
+        for spec in registry.values()
+    )
+
+
 @dataclass(frozen=True)
 class _ImportRef:
     module_name: Optional[str]
@@ -819,7 +832,12 @@ def check_benchmark_file_ast(file_path: Path) -> Tuple[bool, List[str], List[str
 
         if not has_get_benchmark and not benchmark_class_refs:
             errors.append("No get_benchmark() function or benchmark class found")
-        elif any(_is_main_guard(node) for node in tree.body) or _invokes_main_guard_helper(tree):
+        elif (
+            any(_is_main_guard(node) for node in tree.body) or _invokes_main_guard_helper(tree)
+        ) and (
+            file_path.name.startswith(("baseline_", "optimized_"))
+            or file_path.resolve() not in _registered_standalone_paths()
+        ):
             errors.append(
                 "Benchmark modules must not define __main__ blocks; run them via compare.py or cli.aisp bench run"
             )

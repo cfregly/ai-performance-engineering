@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, ConfigDict, field_validator
+from core.benchmark.evaluation_provenance import EvaluationProvenance
 from core.benchmark.run_manifest import RunManifest
 
 
@@ -385,6 +386,10 @@ class BenchmarkResult(BaseModel):
     gpu_metrics: Optional[Dict[str, Optional[float | str]]] = Field(
         None,
         description="Snapshot of GPU telemetry (temperature, power, utilization, timestamp)",
+    )
+    evaluation: Optional[EvaluationProvenance] = Field(
+        None,
+        description="Worker-captured provenance for benchmarks that explicitly opt in to evaluation claims",
     )
     
     schemaVersion: str = Field("1.0", description="Schema version for forward compatibility")

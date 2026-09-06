@@ -586,3 +586,22 @@ class FP8PerChannelDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
     return FP8PerChannelDemoBenchmark()
+
+
+def main() -> None:
+    """Run the chapter demo through the shared standalone benchmark helper."""
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA required for ch13 FP8 per-channel demo")
+
+    from core.harness.benchmark_harness import benchmark_main
+
+    benchmark_main(
+        get_benchmark,
+        iterations=50,
+        warmup=10,
+        name="ch13_fp8_perchannel_demo",
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -51,6 +51,61 @@ performance wins while required validation remains incomplete.
 
 ## Remaining work
 
+### September 6 direct execution follow-up
+
+PR #15 merged as `c40767b8294d0471082aea9cfb8f5636b8961aec`. The final
+candidate's hosted CPU suite completed with 4,598 passed, 492 skipped, and no
+failures or errors (5,090 collected). Static, dashboard, and native build checks
+also passed. Both retained KV NCU reports were successfully reprocessed after
+the large-artifact hashing repair; the original interrupted/failed runs retain
+their original status.
+
+The unfiltered GPU test suite ran directly on the two-B200 host on
+September 6 starting at 10:05:44 UTC, using the clean merged source, Torch
+2.9.1+cu130, and `python -m pytest tests -q --tb=short`. It completed in
+1,831.28 seconds: **5,008 passed, 77 skipped, and 5 failed**. Two-rank NCCL
+tests executed. One failure selected system CMake 3.28.3 instead of the
+already-installed 3.31.10; four process-lifecycle checks encountered exited
+children retained as zombies by the outer validation supervisor until final
+drain. The supervisor ultimately drained all owned processes. These five
+failures remain recorded and require a rerun after correcting the run's PATH
+and supervisor reaping loop. No full GPU pass is claimed. No Slurm allocation
+is required. The subsequent example
+inventory includes benchmark pairs, registered demos, and tools; the pytest
+suite alone does not establish that all of those entrypoints executed.
+
+The next patch adds explicit optional device-identity and evaluation contracts,
+and distributed workload metadata. Focused CPU checks have passed for these
+components; CUDA/NCCL runtime coverage and integration validation are separate
+pending checks. Declared collective algorithms are not profiler observations,
+and dataset hashes do not prove semantic freedom from contamination.
+
+The integrated local contract/harness suite passed 172 tests and skipped 24
+hardware/platform cases. Evaluation receipts now originate in the actual worker,
+survive subprocess serialization on failure, and finalize after teardown; source
+or threshold drift rejects timing results. The default 873-file benchmark lint
+scan passed without errors or warnings.
+
+Discovery confirmed 486 benchmark targets, 29 demos, and 34 tools. Ten registered
+demo/tool paths previously had factories but no invoked workload entrypoint;
+they now invoke their actual standalone execution paths. Real CLI tests with
+CUDA hidden reject execution with explicit diagnostics rather than exiting
+successfully after import. These remain
+demo/tool runs, not baseline-versus-optimized performance evidence.
+
+The broad sweep has two practical continuation gaps: aggregate preflight can
+reject a whole bucket, and an exception escaping a chapter can abort later
+chapters. The direct validation queue therefore gives each target a separate
+process and result record, continues on nonzero exits, and preserves earlier
+results. Native tier-1, cluster, and fabric entrypoints run separately from this
+486-target pass. Repairing native per-target continuation and resume accounting
+remains an improvement item; the queue does not claim to fix that source path.
+
+CI's broader `--include-unpaired --fail-on-warnings` lint scan also passed:
+932 files, zero errors and warnings. The contract checker recognizes exact
+registered demo/tool paths as standalone entrypoints while continuing to reject
+`__main__` blocks in paired benchmark modules.
+
 - Run the complete GPU test suite on the final merged revision.
 - Complete all four sweep stages and reconcile the 486-target inventory,
   including unsupported and failed cases rather than silently dropping them.

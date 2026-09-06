@@ -44,3 +44,21 @@ class WarpgroupSpecializationDemo(Tcgen05MatmulBenchmarkBase):
 def get_benchmark() -> BaseBenchmark:
     return WarpgroupSpecializationDemo()
 
+
+def main() -> None:
+    """Run the chapter demo through the shared standalone benchmark helper."""
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA required for ch10 warpgroup specialization demo")
+
+    from core.harness.benchmark_harness import benchmark_main
+
+    benchmark_main(
+        get_benchmark,
+        iterations=20,
+        warmup=5,
+        name="ch10_warpgroup_specialization_demo",
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -13,6 +13,13 @@ from pathlib import Path
 from typing import Any, Dict, Optional, TypedDict
 
 import torch
+from core.benchmark.evaluation_provenance import (
+    EvaluationContract,
+    EvaluationFailure,
+    EvaluationProvenance,
+    finalize_evaluation as finalize_evaluation_provenance,
+    start_evaluation,
+)
 from core.profiling.gpu_telemetry import query_gpu_telemetry
 
 try:
@@ -564,6 +571,13 @@ class RunManifest(BaseModel):
     # Verification results (if verify mode was run)
     verify: Optional[VerifyManifestEntry] = Field(None, description="Verification results for this run")
 
+    # Explicit opt-in provenance for workloads that make dataset evaluation claims.
+    # Kernel and systems microbenchmarks leave this unset.
+    evaluation: Optional[EvaluationProvenance] = Field(
+        None,
+        description="Evaluation contract receipt, when the workload explicitly opts in",
+    )
+
     # Non-fatal provenance / collection warnings
     collection_warnings: list[str] = Field(
         default_factory=list,
@@ -710,6 +724,46 @@ class RunManifest(BaseModel):
             schemaVersion=SCHEMA_VERSION,
         )
     
+    def begin_evaluation(self, contract: EvaluationContract) -> EvaluationProvenance:
+        """Validate and snapshot an opted-in evaluation before execution."""
+
+        if self.evaluation is not None:
+            self.evaluation.failures.append(
+                EvaluationFailure(
+                    code="evaluation_already_started",
+                    phase="start",
+                    message="evaluation provenance may be started only once",
+                )
+            )
+            self.evaluation.status = "FAIL"
+            return self.evaluation
+        self.evaluation = start_evaluation(contract)
+        return self.evaluation
+
+    def finalize_evaluation(
+        self,
+        current_contract: Optional[EvaluationContract],
+    ) -> Optional[EvaluationProvenance]:
+        """Finalize an opted-in evaluation and retain structured failures."""
+
+        if self.evaluation is None:
+            if current_contract is None:
+                return None
+            self.evaluation = start_evaluation(current_contract)
+            self.evaluation.failures.append(
+                EvaluationFailure(
+                    code="evaluation_not_started",
+                    phase="finalize",
+                    message="evaluation provenance was not captured before execution",
+                )
+            )
+            self.evaluation.status = "FAIL"
+        self.evaluation = finalize_evaluation_provenance(
+            self.evaluation,
+            current_contract,
+        )
+        return self.evaluation
+
     def finalize(self, end_time: Optional[datetime] = None) -> None:
         """Finalize the manifest with end time and duration.
         
@@ -717,6 +771,10 @@ class RunManifest(BaseModel):
             end_time: Optional end time (defaults to now)
         """
         self.refresh_runtime_capability_limitations()
+        if self.evaluation is not None and self.evaluation.finalized_at is None:
+            # A caller that does not supply the post-run declaration cannot silently
+            # turn an unfinished evaluation receipt into a successful manifest.
+            self.finalize_evaluation(None)
         if end_time is None:
             end_time = datetime.now()
         

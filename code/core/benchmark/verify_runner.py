@@ -31,6 +31,11 @@ import numpy as np
 import torch
 
 from core.harness.backend_policy import apply_backend_policy, normalize_backend_policy, restore_backend_policy
+from core.benchmark.evaluation_provenance import (
+    EvaluationProvenance,
+    finalize_evaluation,
+    start_evaluation,
+)
 from core.benchmark.verification import (
     ComparisonDetails,
     EnforcementPhase,
@@ -417,6 +422,7 @@ class VerifyRunner:
         self._last_baseline_signature: Optional[InputSignature] = None
         self._last_baseline_cache_key: Optional[str] = None
         self._last_baseline_equivalence: Optional[SignatureEquivalenceSpec] = None
+        self._last_evaluation_provenance: Optional[EvaluationProvenance] = None
     
     def _extract_output(self, benchmark: Any) -> Dict[str, torch.Tensor]:
         """Extract output tensor from benchmark using ONLY get_verify_output().
@@ -829,10 +835,17 @@ class VerifyRunner:
                 )
                 cfg = None
 
+        self._last_evaluation_provenance = None
         policy_name = normalize_backend_policy(getattr(cfg, "backend_policy", None))
         backend_state = apply_backend_policy(policy_name, deterministic=True)
 
         try:
+            evaluation_getter = getattr(benchmark, "get_evaluation_contract", None)
+            evaluation_contract = evaluation_getter() if callable(evaluation_getter) else None
+            if evaluation_contract is not None:
+                self._last_evaluation_provenance = start_evaluation(evaluation_contract)
+                self._last_evaluation_provenance.raise_for_failures()
+
             # Setup creates model and fixed inputs deterministically
             benchmark.setup()
 
@@ -959,7 +972,21 @@ class VerifyRunner:
                         RuntimeWarning,
                         stacklevel=2,
                     )
-            restore_backend_policy(backend_state)
+            try:
+                if self._last_evaluation_provenance is not None:
+                    current_getter = getattr(benchmark, "get_evaluation_contract", None)
+                    try:
+                        current_contract = current_getter() if callable(current_getter) else None
+                    except Exception:
+                        # A failing getter cannot leave an opted-in receipt pending.
+                        # Finalization records the unavailable declaration as a failure.
+                        current_contract = None
+                    self._last_evaluation_provenance = finalize_evaluation(
+                        self._last_evaluation_provenance, current_contract
+                    )
+                    self._last_evaluation_provenance.raise_for_failures()
+            finally:
+                restore_backend_policy(backend_state)
 
     def _validate_inputs_match_signature(
         self,
@@ -1371,13 +1398,19 @@ class VerifyRunner:
                 baseline_checksum=golden.checksum,
                 workload_delta=None,
                 seed_info=seed_info,
+                details={"evaluation_provenance": self._last_evaluation_provenance.model_dump(mode="json")}
+                if self._last_evaluation_provenance is not None else None,
             )
 
         except Exception as e:
             msg = str(e)
             if msg.startswith("SKIPPED:"):
                 return VerifyResult.fail(msg)
-            return VerifyResult.fail(f"Baseline execution failed: {e}\n{traceback.format_exc()}")
+            return VerifyResult.fail(
+                f"Baseline execution failed: {e}\n{traceback.format_exc()}",
+                details={"evaluation_provenance": self._last_evaluation_provenance.model_dump(mode="json")}
+                if self._last_evaluation_provenance is not None else None,
+            )
     
     def verify_optimized(
         self,
@@ -1417,6 +1450,7 @@ class VerifyRunner:
         try:
             # Run optimized with same seed
             outputs, metrics, seed_info, inputs, signature = self._run_with_seed(optimized, config.seed)
+            evaluation_provenance = self._last_evaluation_provenance
             if not getattr(optimized, "parameter_signature_only", False):
                 try:
                     self._validate_inputs_match_signature(signature, inputs)
@@ -1629,6 +1663,9 @@ class VerifyRunner:
 
             advisory_warnings = [msg for msg in (fresh_msg, jitter_msg) if msg]
             details = {"warnings": advisory_warnings} if advisory_warnings else None
+            if evaluation_provenance is not None:
+                details = dict(details or {})
+                details["evaluation_provenance"] = evaluation_provenance.model_dump(mode="json")
 
             return VerifyResult.success(
                 signature_hash=sig_hash,
@@ -1643,7 +1680,11 @@ class VerifyRunner:
             msg = str(e)
             if msg.startswith("SKIPPED:"):
                 return VerifyResult.fail(msg)
-            return VerifyResult.fail(f"Optimized execution failed: {e}\n{traceback.format_exc()}")
+            return VerifyResult.fail(
+                f"Optimized execution failed: {e}\n{traceback.format_exc()}",
+                details={"evaluation_provenance": self._last_evaluation_provenance.model_dump(mode="json")}
+                if self._last_evaluation_provenance is not None else None,
+            )
     
     def _validate_timing_config(
         self,

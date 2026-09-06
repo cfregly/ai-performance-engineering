@@ -92,6 +92,12 @@ class InputSignature:
     pipeline_stage_boundaries: Optional[List[Tuple[int, int]]] = None
     per_rank_batch_size: Optional[int] = None
     collective_type: Optional[str] = None
+    # Declared distributed work contract. These describe comparison policy only;
+    # runtime algorithm/completion proof is carried by explicit rank receipts.
+    collective_algorithm: Optional[str] = None
+    gradient_bucket_bytes: Optional[int] = None
+    barrier_policy: Optional[str] = None
+    async_completion_policy: Optional[str] = None
     
     # Optional launch config (required for streams/graphs)
     num_streams: Optional[int] = None
@@ -143,6 +149,14 @@ class InputSignature:
             result["per_rank_batch_size"] = self.per_rank_batch_size
         if self.collective_type is not None:
             result["collective_type"] = self.collective_type
+        if self.collective_algorithm is not None:
+            result["collective_algorithm"] = self.collective_algorithm
+        if self.gradient_bucket_bytes is not None:
+            result["gradient_bucket_bytes"] = self.gradient_bucket_bytes
+        if self.barrier_policy is not None:
+            result["barrier_policy"] = self.barrier_policy
+        if self.async_completion_policy is not None:
+            result["async_completion_policy"] = self.async_completion_policy
         if self.num_streams is not None:
             result["num_streams"] = self.num_streams
         if self.graph_capture_enabled is not None:
@@ -185,6 +199,10 @@ class InputSignature:
             pipeline_stage_boundaries=stage_boundaries,
             per_rank_batch_size=data.get("per_rank_batch_size"),
             collective_type=data.get("collective_type"),
+            collective_algorithm=data.get("collective_algorithm"),
+            gradient_bucket_bytes=data.get("gradient_bucket_bytes"),
+            barrier_policy=data.get("barrier_policy"),
+            async_completion_policy=data.get("async_completion_policy"),
             num_streams=data.get("num_streams"),
             graph_capture_enabled=data.get("graph_capture_enabled"),
             pruning_enabled=data.get("pruning_enabled"),
@@ -217,6 +235,46 @@ class InputSignature:
 
         if not isinstance(self.precision_flags, PrecisionFlags):
             errors.append("precision_flags must be a PrecisionFlags instance")
+
+        distributed_contract_values = (
+            self.collective_algorithm,
+            self.gradient_bucket_bytes,
+            self.barrier_policy,
+            self.async_completion_policy,
+        )
+        if any(value is not None for value in distributed_contract_values):
+            if self.world_size is None or self.world_size <= 1:
+                errors.append(
+                    "distributed work contract fields require world_size > 1"
+                )
+
+        if self.collective_algorithm is not None:
+            if not isinstance(self.collective_algorithm, str) or not self.collective_algorithm.strip():
+                errors.append("collective_algorithm must be a non-empty string when provided")
+            if not isinstance(self.collective_type, str) or not self.collective_type.strip():
+                errors.append("collective_algorithm requires a declared collective_type")
+
+        if self.gradient_bucket_bytes is not None:
+            if (
+                isinstance(self.gradient_bucket_bytes, bool)
+                or not isinstance(self.gradient_bucket_bytes, int)
+                or self.gradient_bucket_bytes <= 0
+            ):
+                errors.append("gradient_bucket_bytes must be a positive integer when provided")
+
+        if self.barrier_policy is not None and self.barrier_policy != "barrier_before_timed_close":
+            errors.append(
+                "barrier_policy must be 'barrier_before_timed_close' when provided"
+            )
+
+        if (
+            self.async_completion_policy is not None
+            and self.async_completion_policy != "wait_for_async_before_timed_close"
+        ):
+            errors.append(
+                "async_completion_policy must be "
+                "'wait_for_async_before_timed_close' when provided"
+            )
 
         if self.pipeline_stages is not None:
             if self.pipeline_stages < 1:
@@ -992,6 +1050,10 @@ class DistributedTopology:
     pipeline_stage_boundaries: Optional[List[Tuple[int, int]]] = None
     per_rank_batch_size: Optional[int] = None
     collective_type: Optional[str] = None  # allreduce, allgather, etc.
+    collective_algorithm: Optional[str] = None  # declared ring, tree, auto, etc.
+    gradient_bucket_bytes: Optional[int] = None
+    barrier_policy: Optional[str] = None
+    async_completion_policy: Optional[str] = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dictionary."""
@@ -1011,6 +1073,14 @@ class DistributedTopology:
             result["per_rank_batch_size"] = self.per_rank_batch_size
         if self.collective_type is not None:
             result["collective_type"] = self.collective_type
+        if self.collective_algorithm is not None:
+            result["collective_algorithm"] = self.collective_algorithm
+        if self.gradient_bucket_bytes is not None:
+            result["gradient_bucket_bytes"] = self.gradient_bucket_bytes
+        if self.barrier_policy is not None:
+            result["barrier_policy"] = self.barrier_policy
+        if self.async_completion_policy is not None:
+            result["async_completion_policy"] = self.async_completion_policy
         return result
     
     @classmethod
@@ -1034,6 +1104,10 @@ class DistributedTopology:
             pipeline_stage_boundaries=stage_boundaries,
             per_rank_batch_size=data.get("per_rank_batch_size"),
             collective_type=data.get("collective_type"),
+            collective_algorithm=data.get("collective_algorithm"),
+            gradient_bucket_bytes=data.get("gradient_bucket_bytes"),
+            barrier_policy=data.get("barrier_policy"),
+            async_completion_policy=data.get("async_completion_policy"),
         )
 
 
@@ -1059,6 +1133,10 @@ def extract_distributed_topology(signature: InputSignature) -> Optional[Distribu
         pipeline_stage_boundaries=signature.pipeline_stage_boundaries,
         per_rank_batch_size=signature.per_rank_batch_size,
         collective_type=signature.collective_type,
+        collective_algorithm=signature.collective_algorithm,
+        gradient_bucket_bytes=signature.gradient_bucket_bytes,
+        barrier_policy=signature.barrier_policy,
+        async_completion_policy=signature.async_completion_policy,
     )
 
 
@@ -1086,6 +1164,11 @@ def compare_topologies(
     # Compare world size
     if baseline_topo.world_size != optimized_topo.world_size:
         return False, f"World size mismatch: {baseline_topo.world_size} vs {optimized_topo.world_size}"
+
+    # Compare participating ranks. Equal world size alone does not establish that
+    # the same ranks performed the measured work.
+    if baseline_topo.ranks != optimized_topo.ranks:
+        return False, f"Ranks mismatch: {baseline_topo.ranks} vs {optimized_topo.ranks}"
     
     # Compare shards
     if baseline_topo.shards != optimized_topo.shards:
@@ -1101,6 +1184,46 @@ def compare_topologies(
             False,
             "Pipeline stage boundaries mismatch: "
             f"{baseline_topo.pipeline_stage_boundaries} vs {optimized_topo.pipeline_stage_boundaries}",
+        )
+
+    if baseline_topo.per_rank_batch_size != optimized_topo.per_rank_batch_size:
+        return (
+            False,
+            "Per-rank batch size mismatch: "
+            f"{baseline_topo.per_rank_batch_size} vs {optimized_topo.per_rank_batch_size}",
+        )
+
+    if baseline_topo.collective_type != optimized_topo.collective_type:
+        return (
+            False,
+            f"Collective type mismatch: {baseline_topo.collective_type} vs {optimized_topo.collective_type}",
+        )
+
+    if baseline_topo.collective_algorithm != optimized_topo.collective_algorithm:
+        return (
+            False,
+            "Collective algorithm mismatch: "
+            f"{baseline_topo.collective_algorithm} vs {optimized_topo.collective_algorithm}",
+        )
+
+    if baseline_topo.gradient_bucket_bytes != optimized_topo.gradient_bucket_bytes:
+        return (
+            False,
+            "Gradient bucket bytes mismatch: "
+            f"{baseline_topo.gradient_bucket_bytes} vs {optimized_topo.gradient_bucket_bytes}",
+        )
+
+    if baseline_topo.barrier_policy != optimized_topo.barrier_policy:
+        return (
+            False,
+            f"Barrier policy mismatch: {baseline_topo.barrier_policy} vs {optimized_topo.barrier_policy}",
+        )
+
+    if baseline_topo.async_completion_policy != optimized_topo.async_completion_policy:
+        return (
+            False,
+            "Async completion policy mismatch: "
+            f"{baseline_topo.async_completion_policy} vs {optimized_topo.async_completion_policy}",
         )
     
     return True, None

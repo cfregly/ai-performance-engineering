@@ -9,6 +9,25 @@ from core.benchmark.contract import check_benchmark_file_ast
 from core.discovery import discover_benchmark_entrypoints
 
 
+@pytest.mark.parametrize("relative_path", [
+    "ch10/warpgroup_specialization_demo.py",
+    "ch13/fp8_perchannel_demo.py",
+    "labs/decode_optimization/decode_multigpu_demo.py",
+    "ch13/dtensor_mesh_tool.py",
+    "ch19/fp8_calibration_free_tool.py",
+    "ch13/fp8_perchannel_bench.py",
+    "ch20/kernel_verification_tool.py",
+    "ch15/kv_cache_management_math.py",
+    "ch18/nvfp4_trtllm_tool.py",
+    "ch20/proofwright_verify_tool.py",
+])
+def test_registered_standalone_workloads_allow_real_main_entrypoint(relative_path):
+    path = Path(__file__).resolve().parents[1] / relative_path
+    valid, errors, warnings = check_benchmark_file_ast(path)
+    assert valid, errors
+    assert not warnings
+
+
 def _lint_tmp_file(tmp_path: Path, name: str, source: str):
     path = tmp_path / name
     path.write_text(source)
