@@ -4,6 +4,7 @@ from core.harness.run_benchmarks import (
     _collect_all_skipped_optimization_reason,
     _format_failed_no_speedup,
     _should_fail_no_speedup,
+    _update_best_measured_speedup,
     generate_markdown_report,
 )
 
@@ -14,6 +15,26 @@ def test_should_fail_no_speedup_only_for_speed_goal_below_threshold() -> None:
     assert _should_fail_no_speedup({"optimization_goal": "memory", "best_speedup": 1.00}) is False
     assert _should_fail_no_speedup({"optimization_goal": "comparison", "best_speedup": 1.00}) is False
     assert _should_fail_no_speedup({"optimization_goal": "tradeoff", "best_speedup": 0.98}) is False
+
+
+def test_slow_candidates_keep_their_measured_ratio_in_failure_message() -> None:
+    result = {
+        "best_speedup": 1.0,
+        "optimizations": [
+            {"status": "succeeded", "speedup": 0.5},
+            {"status": "succeeded", "speedup": 0.75},
+            {"status": "failed_verification", "speedup": 20.0},
+            {"status": "succeeded", "speedup": float("nan")},
+        ],
+    }
+    assert _update_best_measured_speedup(result) == 0.75
+    assert _should_fail_no_speedup(result)
+    assert _format_failed_no_speedup(result) == (
+        "Best speedup 0.75x below required 1.05x threshold for speed-goal benchmark"
+    )
+    result["optimizations"].append({"status": "succeeded", "speedup": 1.2})
+    assert _update_best_measured_speedup(result) == 1.2
+    assert not _should_fail_no_speedup(result)
 
 
 def test_generate_markdown_report_surfaces_failed_no_speedup(tmp_path: Path) -> None:

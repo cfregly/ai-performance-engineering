@@ -1103,6 +1103,21 @@ def _resolve_min_speedup_for_success(result_entry: Dict[str, Any]) -> float:
     return configured
 
 
+def _update_best_measured_speedup(result_entry: Dict[str, Any]) -> Optional[float]:
+    """Keep regressions visible instead of treating the baseline as a candidate."""
+    measured = [
+        ratio
+        for optimization in result_entry.get("optimizations", [])
+        if optimization.get("status") == "succeeded"
+        and (ratio := _coerce_positive_float(optimization.get("speedup"))) is not None
+    ]
+    if not measured:
+        return None
+    best = max(measured)
+    result_entry["best_speedup"] = best
+    return best
+
+
 def _should_fail_no_speedup(result_entry: Dict[str, Any]) -> bool:
     optimization_goal = str(result_entry.get("optimization_goal") or "speed").strip().lower()
     if optimization_goal != "speed":
@@ -2887,10 +2902,18 @@ def _resolve_profile_torchrun_spec(
         spec = getter(profiler=profiler, config=config, output_path=output_path)
         if spec is not None:
             return spec
-    if profiler in {"nsys", "ncu"}:
+    if profiler in {"nsys", "ncu", "torch"}:
         base_getter = getattr(benchmark, "get_torchrun_spec", None)
         if callable(base_getter):
-            return base_getter(config)
+            spec = base_getter(config)
+            if spec is not None and profiler == "torch":
+                if output_path is None:
+                    raise ValueError("Torchrun profiling requires a trace output path")
+                spec = replace(
+                    spec,
+                    env={**(spec.env or {}), "AISP_TORCH_PROFILE_OUTPUT": str(output_path)},
+                )
+            return spec
     return None
 
 
@@ -7655,8 +7678,8 @@ def _test_chapter_impl(
                         input_verification=opt_result.get("input_verification"),
                     )
                     
-                    if opt_result.get("status") == "succeeded" and speedup > result_entry['best_speedup']:
-                        result_entry['best_speedup'] = speedup
+                    _update_best_measured_speedup(result_entry)
+                    if opt_result.get("status") == "succeeded" and _coerce_positive_float(speedup) is not None:
                         speedups.append(speedup)
                     
                 except Exception as e:
@@ -9381,8 +9404,8 @@ def _test_chapter_impl(
                     profiler_metrics=opt_result.get("optimized_profiler_metrics"),
                 )
 
-                if speedup > result_entry['best_speedup']:
-                    result_entry['best_speedup'] = speedup
+                _update_best_measured_speedup(result_entry)
+                if opt_result.get("status") == "succeeded" and _coerce_positive_float(speedup) is not None:
                     speedups.append(speedup)
 
             if result_entry['best_speedup'] > 1.0:
