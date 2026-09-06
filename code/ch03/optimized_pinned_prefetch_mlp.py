@@ -169,7 +169,12 @@ class OptimizedPinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmar
     def get_config(self) -> BenchmarkConfig:
         from core.benchmark.smoke import is_smoke_mode
         low_mem = is_smoke_mode()
-        return BenchmarkConfig(iterations=5 if low_mem else 20, warmup=5 if low_mem else 10)
+        # Stateful training must take the same optimizer updates in both arms.
+        return BenchmarkConfig(
+            iterations=5 if low_mem else 20,
+            warmup=5 if low_mem else 10,
+            adaptive_iterations=False,
+        )
 
     def get_custom_streams(self) -> list["torch.cuda.Stream"]:
         if self.prefetcher is None:

@@ -17,6 +17,15 @@ def _small(benchmark, device):
     return benchmark
 
 
+def test_paired_training_uses_identical_fixed_update_counts():
+    baseline = BaselinePinnedPrefetchMLPBenchmark().get_config()
+    optimized = OptimizedPinnedPrefetchMLPBenchmark().get_config()
+    assert baseline.iterations == optimized.iterations
+    assert baseline.warmup == optimized.warmup
+    assert not baseline.adaptive_iterations
+    assert not optimized.adaptive_iterations
+
+
 def test_baseline_restarts_training_from_first_batch(monkeypatch):
     # Only suppress CUDA lifecycle hooks for this actual CPU tensor execution.
     monkeypatch.setattr(torch.cuda, "synchronize", lambda *args, **kwargs: None)
