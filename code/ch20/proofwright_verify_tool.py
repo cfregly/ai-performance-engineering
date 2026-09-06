@@ -571,3 +571,22 @@ class OptimizedProofwrightBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for harness discovery."""
     return OptimizedProofwrightBenchmark()
+
+
+def main() -> None:
+    """Run the chapter tool through the shared standalone benchmark helper."""
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA required for ch20 ProofWright verification tool")
+
+    from core.harness.benchmark_harness import benchmark_main
+
+    benchmark_main(
+        get_benchmark,
+        iterations=10,
+        warmup=5,
+        name="ch20_proofwright_verify_tool",
+    )
+
+
+if __name__ == "__main__":
+    main()

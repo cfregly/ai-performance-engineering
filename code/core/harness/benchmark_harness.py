@@ -39,11 +39,22 @@ import numpy as np
 import torch
 
 from core.utils.compile_utils import enable_tf32
+from core.benchmark.evaluation_provenance import (
+    EvaluationFailure,
+    EvaluationProvenance,
+    finalize_evaluation as finalize_evaluation_provenance,
+    start_evaluation,
+)
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.backend_policy import apply_backend_policy, normalize_backend_policy, restore_backend_policy
+from core.harness.device_identity_contract import (
+    DeviceIdentityContract,
+    build_device_identity_expectation,
+)
 from core.harness.verify_output_codec import deserialize_verify_tensor
 
 if TYPE_CHECKING:
+    from core.benchmark.evaluation_provenance import EvaluationContract
     from core.benchmark.verification import VerifyResult
 
 # Pydantic is required - fail fast if not available
@@ -798,6 +809,10 @@ class BenchmarkConfig:
     deterministic: bool = field(default_factory=lambda: _get_default_value("deterministic", False))
     seed: Optional[int] = field(default_factory=lambda: _get_default_value("seed", None))
     device: Optional[torch.device] = None  # Not in BenchmarkDefaults (runtime-specific)
+    expected_device_uuid: Optional[str] = None
+    """Expected full-device GPU UUID. Configure together with expected_compute_capability."""
+    expected_compute_capability: Optional[str] = None
+    """Expected CUDA compute capability, normalized to ``major.minor``."""
     enable_profiling: bool = field(default_factory=lambda: _get_default_value("enable_profiling", False))
     enable_nsys: bool = field(default_factory=lambda: _get_default_value("enable_nsys", False))
     enable_ncu: bool = field(default_factory=lambda: _get_default_value("enable_ncu", False))
@@ -1042,6 +1057,14 @@ class BenchmarkConfig:
             self.env_passthrough = []
         if self.target_extra_args is None:
             self.target_extra_args = {}
+
+        device_expectation = build_device_identity_expectation(
+            self.expected_device_uuid,
+            self.expected_compute_capability,
+        )
+        if device_expectation is not None:
+            self.expected_device_uuid = device_expectation.expected_uuid
+            self.expected_compute_capability = device_expectation.expected_compute_capability
 
         validity_profile = str(getattr(self, "validity_profile", "strict")).strip().lower()
         if validity_profile not in {"strict", "portable"}:
@@ -1331,6 +1354,8 @@ class BenchmarkProfilingView:
 @dataclass(frozen=True)
 class BenchmarkValidityView:
     validity_profile: str
+    expected_device_uuid: Optional[str]
+    expected_compute_capability: Optional[str]
     enforce_environment_validation: bool
     allow_virtualization: bool
     allow_foreign_gpu_processes: bool
@@ -1446,6 +1471,10 @@ def _build_profiling_view_from_mapping(values: Dict[str, Any]) -> BenchmarkProfi
 def _build_validity_view_from_mapping(values: Dict[str, Any]) -> BenchmarkValidityView:
     return BenchmarkValidityView(
         validity_profile=str(values["validity_profile"]),
+        expected_device_uuid=cast(Optional[str], values.get("expected_device_uuid")),
+        expected_compute_capability=cast(
+            Optional[str], values.get("expected_compute_capability")
+        ),
         enforce_environment_validation=bool(values["enforce_environment_validation"]),
         allow_virtualization=bool(values["allow_virtualization"]),
         allow_foreign_gpu_processes=bool(values["allow_foreign_gpu_processes"]),
@@ -1734,6 +1763,10 @@ class BaseBenchmark:
         will still stash the merged config on ``self._config`` for runtime checks.
         """
         return getattr(self, "_config", None)
+
+    def get_evaluation_contract(self) -> Optional["EvaluationContract"]:
+        """Return an explicit evaluation-provenance contract when applicable."""
+        return None
 
     def get_verify_inputs(self) -> Dict[str, torch.Tensor]:
         """Return input tensors used for verification/aliasing checks."""
@@ -3184,6 +3217,10 @@ class BenchmarkHarness:
         # Run benchmark
         result = self.benchmark(benchmark)
 
+        worker_evaluation = getattr(result, "evaluation", None)
+        if worker_evaluation is not None:
+            manifest.evaluation = worker_evaluation.model_copy(deep=True)
+
         result_seed_info = _seed_info_to_manifest(getattr(result, "seeds", None))
         if result_seed_info is not None:
             manifest.seeds = result_seed_info
@@ -3384,6 +3421,7 @@ class BenchmarkHarness:
         child_custom_metrics: Optional[Dict[str, float]] = None
         child_runtime_env: Optional[Dict[str, str]] = None
         child_gpu_metrics: Optional[Dict[str, Optional[float | str]]] = None
+        child_evaluation: Optional[EvaluationProvenance] = None
         stage_watchdog: Dict[str, Dict[str, Any]] = {
             "setup": {"status": "pending"},
             "warmup": {"status": "pending"},
@@ -3601,10 +3639,16 @@ class BenchmarkHarness:
                     if suffix and LOGGER_AVAILABLE:
                         logger.debug(f"Stripped non-JSON suffix from subprocess output: {suffix[:200]}")
                     result_success = bool(result_dict.get("success"))
-                    if result_success and result_dict.get("result_json"):
+                    result_json_str = result_dict.get("result_json")
+                    benchmark_result = (
+                        PydanticBenchmarkResult.model_validate_json(result_json_str)
+                        if result_json_str
+                        else None
+                    )
+                    if benchmark_result is not None and benchmark_result.evaluation is not None:
+                        child_evaluation = benchmark_result.evaluation.model_copy(deep=True)
+                    if result_success and benchmark_result is not None:
                         # Deserialize Pydantic BenchmarkResult from JSON
-                        result_json_str = result_dict["result_json"]
-                        benchmark_result = PydanticBenchmarkResult.model_validate_json(result_json_str)
                         child_gpu_metrics = getattr(benchmark_result, "gpu_metrics", None)
                         
                         # Preserve the child's measured summary when raw samples
@@ -3714,7 +3758,13 @@ class BenchmarkHarness:
                         if stderr:
                             _maybe_write_subprocess_stderr(stderr, benchmark_name, config)
                     else:
-                        errors.extend(result_dict.get("errors", ["Subprocess execution failed"]))
+                        if benchmark_result is not None:
+                            errors.extend(
+                                benchmark_result.errors
+                                or result_dict.get("errors", ["Subprocess execution failed"])
+                            )
+                        else:
+                            errors.extend(result_dict.get("errors", ["Subprocess execution failed"]))
                         times_ms = cast(List[float], [])
                         child_timing = None
                         if stderr:
@@ -3845,7 +3895,7 @@ class BenchmarkHarness:
                 "measurement": getattr(config, 'measurement_timeout_seconds', config.timeout_seconds),
             }
             limit = limit_lookup.get(failure_stage, getattr(config, 'measurement_timeout_seconds', config.timeout_seconds))
-            return self._create_timeout_result(
+            result = self._create_timeout_result(
                 stage=failure_stage,
                 duration=duration,
                 limit=limit,
@@ -3854,6 +3904,9 @@ class BenchmarkHarness:
                 config=config,
                 watchdog=stage_watchdog,
             )
+            if child_evaluation is not None:
+                result.evaluation = child_evaluation.model_copy(deep=True)
+            return result
         
         # Compute statistics only from actual samples. Summary-only children
         # retain exactly the statistics they supplied, including absent percentiles.
@@ -3868,6 +3921,8 @@ class BenchmarkHarness:
             result = self._result_from_timing(child_timing, config)
         if child_gpu_metrics is not None:
             result.gpu_metrics = child_gpu_metrics
+        if child_evaluation is not None:
+            result.evaluation = child_evaluation.model_copy(deep=True)
         if child_custom_metrics is not None:
             result.custom_metrics = child_custom_metrics
         else:
@@ -3983,6 +4038,7 @@ class BenchmarkHarness:
         seed_metadata = copy.deepcopy(getattr(self, "_seed_info", None))
         locked_gpu_metrics: Optional[Dict[str, Optional[float | str]]] = None
         captured_custom_metrics: Optional[Dict[str, float]] = None
+        evaluation_provenance: Optional[EvaluationProvenance] = None
         
         # Get benchmark name for error messages (same as subprocess path)
         benchmark_class = benchmark.__class__.__name__
@@ -4074,17 +4130,40 @@ class BenchmarkHarness:
             entry = stage_watchdog.get(stage, {})
             entry['status'] = status
             stage_watchdog[stage] = entry
+
+        def attach_evaluation(result: PydanticBenchmarkResult) -> PydanticBenchmarkResult:
+            """Attach a stable worker receipt to every result path."""
+
+            result.errors = list(errors)
+            if evaluation_provenance is not None:
+                receipt = evaluation_provenance.model_copy(deep=True)
+                if receipt.finalized_at is None:
+                    receipt = finalize_evaluation_provenance(receipt, None)
+                result.evaluation = receipt
+            return result
         
         def run_benchmark_internal():
             """Internal benchmark execution function."""
-            nonlocal times_ms, memory_peak_mb, memory_allocated_mb, profiling_outputs, errors, nsys_metrics, ncu_metrics, timeout_result_storage, inference_timing_data, locked_gpu_metrics, captured_custom_metrics
+            nonlocal times_ms, memory_peak_mb, memory_allocated_mb, profiling_outputs, errors, nsys_metrics, ncu_metrics, timeout_result_storage, inference_timing_data, locked_gpu_metrics, captured_custom_metrics, evaluation_provenance
             validity_profile = str(getattr(config, "validity_profile", "strict")).strip().lower()
             portable_mode = validity_profile == "portable"
             clock_lock_active = False
+            device_identity_contract: Optional[DeviceIdentityContract] = None
             
             with execution_lock:  # Acquire lock during execution
                 lock_stack = ExitStack()
                 try:
+                    if self.device.type == "cuda":
+                        device_identity_contract = DeviceIdentityContract(
+                            self.device,
+                            build_device_identity_expectation(
+                                getattr(config, "expected_device_uuid", None),
+                                getattr(config, "expected_compute_capability", None),
+                            ),
+                        )
+                        device_identity_contract.establish_configured_device()
+                        device_identity_contract.check("after_device_establishment")
+
                     if getattr(config, "lock_gpu_clocks", False) and self.device.type == "cuda":
                         device_index = self.device.index if self.device.index is not None else 0
                         try:
@@ -4163,8 +4242,15 @@ class BenchmarkHarness:
                         return outputs
 
                     def _run_setup_with_detection():
+                        nonlocal evaluation_provenance
                         start_stage('setup')
                         try:
+                            if device_identity_contract is not None:
+                                device_identity_contract.check("before_setup")
+                            evaluation_contract = benchmark.get_evaluation_contract()
+                            if evaluation_contract is not None:
+                                evaluation_provenance = start_evaluation(evaluation_contract)
+                                evaluation_provenance.raise_for_failures()
                             if getattr(config, "detect_setup_precomputation", True):
                                 precompute_ok, precompute_err = check_setup_precomputation(
                                     _collect_outputs_for_hash,
@@ -4174,6 +4260,8 @@ class BenchmarkHarness:
                                     raise RuntimeError(precompute_err or "Setup pre-computation detected")
                             else:
                                 benchmark.setup()
+                            if device_identity_contract is not None:
+                                device_identity_contract.check("after_setup")
                         except Exception:
                             finish_stage('setup', status='error')
                             raise
@@ -4223,7 +4311,11 @@ class BenchmarkHarness:
                         warmup_start_time = time.time()
                         start_stage('warmup')
                         try:
+                            if device_identity_contract is not None:
+                                device_identity_contract.check("before_warmup")
                             self._warmup(benchmark.benchmark_fn, config.warmup, config)
+                            if device_identity_contract is not None:
+                                device_identity_contract.check("after_warmup")
                         except Exception:
                             finish_stage('warmup', status='error')
                             raise
@@ -4320,6 +4412,8 @@ class BenchmarkHarness:
 
                     # Memory tracking: Use context manager to track peak memory during benchmark execution
                     start_stage('measurement')
+                    if device_identity_contract is not None:
+                        device_identity_contract.check("before_measurement")
                     with self._memory_tracking(config) as mem_result:
                         # Benchmark using selected mode
                         # Note: nsys/ncu profiling wraps the entire process, so it's handled separately
@@ -4412,6 +4506,9 @@ class BenchmarkHarness:
                         else:
                             mark_stage('profiling', 'skipped')
                             times_ms, inference_timing_data = self._benchmark_without_profiling(benchmark.benchmark_fn, config)
+
+                    if device_identity_contract is not None:
+                        device_identity_contract.check("after_measurement")
                     
                     # Extract memory tracking results from context manager
                     if mem_result is not None:
@@ -4465,19 +4562,75 @@ class BenchmarkHarness:
                     # Teardown is now safe to call - we hold the lock
                     # Only call teardown once - set flag to prevent double invocation
                     if not teardown_called.is_set():
+                        if device_identity_contract is not None:
+                            try:
+                                device_identity_contract.check("before_teardown")
+                            except Exception as e:
+                                errors.append(f"Device identity validation failed before teardown: {str(e)}")
+                                times_ms = cast(List[float], [])
                         try:
                             benchmark.teardown()
-                            teardown_called.set()
                         except Exception as e:
                             errors.append(f"Teardown failed: {str(e)}")
-                            teardown_called.set()  # Mark as called even on error
+                        finally:
+                            teardown_called.set()
+                            if device_identity_contract is not None:
+                                try:
+                                    device_identity_contract.check("after_teardown")
+                                except Exception as e:
+                                    errors.append(f"Device identity validation failed after teardown: {str(e)}")
+                                    times_ms = cast(List[float], [])
+
+                    try:
+                        current_evaluation_contract = benchmark.get_evaluation_contract()
+                    except Exception as e:
+                        errors.append(f"Evaluation contract unavailable after teardown: {str(e)}")
+                        current_evaluation_contract = None
+                        times_ms = cast(List[float], [])
+
+                    try:
+                        if evaluation_provenance is None and current_evaluation_contract is not None:
+                            evaluation_provenance = start_evaluation(current_evaluation_contract)
+                            evaluation_provenance.failures.append(
+                                EvaluationFailure(
+                                    code="evaluation_not_started",
+                                    phase="finalize",
+                                    message="evaluation provenance was not captured before execution",
+                                )
+                            )
+                            evaluation_provenance.status = "FAIL"
+                        if evaluation_provenance is not None:
+                            evaluation_provenance = finalize_evaluation_provenance(
+                                evaluation_provenance,
+                                current_evaluation_contract,
+                            )
+                            if evaluation_provenance.failures:
+                                failure_codes = ", ".join(
+                                    failure.code for failure in evaluation_provenance.failures
+                                )
+                                errors.append(
+                                    "Evaluation provenance rejected after teardown: "
+                                    f"{failure_codes}"
+                                )
+                                times_ms = cast(List[float], [])
+                    except Exception as e:
+                        errors.append(f"Evaluation provenance finalization failed: {str(e)}")
+                        times_ms = cast(List[float], [])
                     
                     # Force cleanup (only if enabled to avoid distorting timings)
-                    if config.enable_cleanup:
-                        if torch.cuda.is_available():
-                            torch.cuda.empty_cache()
-                        gc.collect()
-                    lock_stack.close()
+                    try:
+                        if config.enable_cleanup:
+                            if torch.cuda.is_available():
+                                torch.cuda.empty_cache()
+                            gc.collect()
+                        lock_stack.close()
+                    finally:
+                        if device_identity_contract is not None:
+                            try:
+                                device_identity_contract.restore_entry_device()
+                            except Exception as e:
+                                errors.append(f"Failed to restore entry CUDA device: {str(e)}")
+                                times_ms = cast(List[float], [])
         
         # ALWAYS run with timeout (required, default 15 seconds). Thread-mode benchmarks execute
         # inside a managed executor so we can recycle workers if a benchmark hangs.
@@ -4561,11 +4714,11 @@ class BenchmarkHarness:
             self._reset_thread_executor()
 
         if timeout_result is not None:
-            return timeout_result
+            return attach_evaluation(timeout_result)
         
         # Check if a timeout occurred in setup/warmup/profiling stages
         if timeout_result_storage[0] is not None:
-            return timeout_result_storage[0]
+            return attach_evaluation(timeout_result_storage[0])
         
         if execution_complete.is_set():
             # Thread completed normally - results are already set
@@ -4622,7 +4775,7 @@ class BenchmarkHarness:
                 "measurement": getattr(config, 'measurement_timeout_seconds', config.timeout_seconds),
             }
             limit = limit_lookup.get(failure_stage, getattr(config, 'measurement_timeout_seconds', config.timeout_seconds))
-            return self._create_timeout_result(
+            return attach_evaluation(self._create_timeout_result(
                 stage=failure_stage,
                 duration=duration,
                 limit=limit,
@@ -4630,10 +4783,11 @@ class BenchmarkHarness:
                 benchmark_name=benchmark_name,
                 config=config,
                 watchdog=stage_watchdog,
-            )
+            ))
         
         # Compute statistics
         result = self._compute_stats(times_ms, config)
+        result = attach_evaluation(result)
         if locked_gpu_metrics is not None:
             result.gpu_metrics = locked_gpu_metrics
         result.seeds = copy.deepcopy(seed_metadata)

@@ -141,8 +141,13 @@ def main() -> None:
     parser.add_argument("--iters", type=int, default=4)
     parser.add_argument("--warmup", type=int, default=1)
     args = parser.parse_args()
+    _resolve_world_size()
     _run_worker(args.iters, args.warmup)
 
 
 def get_benchmark() -> BaseBenchmark:
     return MultiGPUDecodeBenchmark()
+
+
+if __name__ == "__main__":
+    main()

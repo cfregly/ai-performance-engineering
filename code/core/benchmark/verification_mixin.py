@@ -53,6 +53,10 @@ class VerificationPayloadMixin:
         "pipeline_stage_boundaries",
         "per_rank_batch_size",
         "collective_type",
+        "collective_algorithm",
+        "gradient_bucket_bytes",
+        "barrier_policy",
+        "async_completion_policy",
         "num_streams",
         "graph_capture_enabled",
         "pruning_enabled",
@@ -110,6 +114,10 @@ class VerificationPayloadMixin:
             normalized["shards"] = int(normalized["shards"])
         if "per_rank_batch_size" in normalized and normalized["per_rank_batch_size"] is not None:
             normalized["per_rank_batch_size"] = int(normalized["per_rank_batch_size"])
+        if "gradient_bucket_bytes" in normalized and normalized["gradient_bucket_bytes"] is not None:
+            if isinstance(normalized["gradient_bucket_bytes"], bool):
+                raise TypeError("signature_overrides['gradient_bucket_bytes'] must be an integer, not bool")
+            normalized["gradient_bucket_bytes"] = int(normalized["gradient_bucket_bytes"])
         if "num_streams" in normalized and normalized["num_streams"] is not None:
             normalized["num_streams"] = int(normalized["num_streams"])
         if "sparsity_ratio" in normalized and normalized["sparsity_ratio"] is not None:

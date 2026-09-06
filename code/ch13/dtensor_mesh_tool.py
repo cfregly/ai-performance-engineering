@@ -102,3 +102,22 @@ class DTensorMeshBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return DTensorMeshBenchmark()
+
+
+def main() -> None:
+    """Run the chapter tool through the shared standalone benchmark helper."""
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA required for ch13 DTensor mesh tool")
+
+    from core.harness.benchmark_harness import benchmark_main
+
+    benchmark_main(
+        get_benchmark,
+        iterations=10,
+        warmup=5,
+        name="ch13_dtensor_mesh_tool",
+    )
+
+
+if __name__ == "__main__":
+    main()

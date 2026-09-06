@@ -398,3 +398,22 @@ class _FP8CalibrationFreeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return _FP8CalibrationFreeBenchmark()
+
+
+def main() -> None:
+    """Run the chapter tool through the shared standalone benchmark helper."""
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA required for ch19 calibration-free FP8 tool")
+
+    from core.harness.benchmark_harness import benchmark_main
+
+    benchmark_main(
+        get_benchmark,
+        iterations=10,
+        warmup=5,
+        name="ch19_fp8_calibration_free_tool",
+    )
+
+
+if __name__ == "__main__":
+    main()
