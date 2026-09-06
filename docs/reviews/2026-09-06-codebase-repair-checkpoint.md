@@ -752,6 +752,41 @@ Its Linux continuation controls passed all four tests, including real normal
 descendant drainage and timeout cleanup. Training's 61 successful rows retain
 their original `582ec8c86` source identity rather than being relabeled.
 
+That breadth segment added 49 executions through the start of Chapter 13:
+46 passed and three Chapter 10 targets failed. The epilogue and pipelined
+TCGEN05 logs prove a concurrent cache deletion race: Ninja lost its build
+directory and PyTorch's build lock disappeared. Commit `700ed2a46` adds a
+per-extension advisory lock outside the deletable directory, covering cache
+invalidation, compilation and metadata publication. The same repair keeps
+setup buffers private until actual computation produces the epilogue and
+cuBLAS comparison outputs. The expanded CPU lane passed 557 tests with one
+skip after two stale source-inspection assertions were aligned with the
+cached training helper and private output buffers (`00019bed7`).
+
+Both sweep shards stopped after complete stages and drained all descendants.
+The new coordinator then exposed another event-field collision while recording
+their terminal states. Its aborted result remains intact; a separate recovery
+ledger retains the original base and both complete shard ledgers, including
+the three failures. This is ledger recovery, not coordinator success. The
+coordinator event path is receiving an actual stopped/failed-queue regression.
+
+The corrected coordinator passed five Linux controls, including actual
+`wait_queue` completion for both a successful queue and a stopped queue with
+retained failures. Wave 19 on `00019bed7` has now passed the complete saved
+INT8 input oracle on CUDA and fresh full INT8 runs: 1.852722 observed ratio
+for the full pair and 3.322505 for communication-only. All three Chapter 10
+targets also passed their normal B200 execution and verification reruns.
+The separate concurrent build check in an empty private cache remains queued.
+
+Two further performance candidates preserve workload math: `e77dc2f91` avoids
+DDP input routing for tensors already placed on the rank-local device, and
+`c4ce8d566` reuses MoE destination counts for both routing metrics and dispatch,
+removing a redundant device-to-host readback. Their CPU controls pass; actual
+B200 correctness passes for both candidates. The normal DDP run retained a
+0.984355 ratio; the MoE aliases retained 0.957508 and 1.196584. These mixed
+single-observation outcomes are not a performance conclusion. Repeated
+interleaved timing and profiler reruns remain in progress or queued.
+
 The current instance exposes neither an InfiniBand device nor `nvshmemrun`.
 The IBGDA examples therefore retain their explicit runtime/hardware gate;
 Grace/GB10-specific examples still require the named hardware, and NVFP4
