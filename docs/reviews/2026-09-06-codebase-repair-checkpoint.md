@@ -701,6 +701,57 @@ does not establish serving throughput or production cost. Artifacts are
 retained in the dated `wave15`, `cost-tool`, and `continuation-through-ch10`
 bundles.
 
+### Direct B200 waves 16–17 and gradient-compression workers
+
+Wave 16 completed seven stages on `8c867e77f`, with all descendants drained
+and 20 focused tests passing. The no-overlap pair now passes complete training
+output and input verification on two B200s. Its observed ratio was 0.944683,
+so the execution defect is closed while the unchanged speed gate remains open.
+Both ring aliases also passed correctness but missed their speed gates at
+0.848128 and 0.874363. The graph ring passed 135 changing bitwise generations
+per rank; four ABBA blocks with 40 samples per arm yielded a max-rank ratio
+of 0.846141. Nsight confirms one graph launch, 800 barrier kernels, 400 local
+copies and 400 peer copies per rank in each complete 400-iteration range.
+
+Commit `a3d4519a1` removes the ring's redundant local receive copy: the peer
+already writes the symmetric receive slot, which is consumed directly after
+the same publication and consumption barriers. Wave 17 completed all six
+stages and drained every process tree. All 15 focused tests passed, as did
+135 changing bitwise generations per rank and a 500.905 ms delayed-peer
+barrier control. Nsight independently confirms exactly 400 peer transfers
+of 2 MiB and 800 barriers per rank, no local copies or NCCL kernels in the
+timed optimized range, and one graph launch. Four ABBA blocks retained
+40 samples per arm, with max-rank medians of 0.020765 ms for NCCL and
+0.024362 ms for the candidate (0.852351 ratio). The ordinary aliases passed
+complete verification but missed the speed gate at 0.870437 and 0.873836.
+Removing physical copy work has not established a latency win on this host.
+Both waves remain diagnostic measurements from the virtualized, unlocked host.
+
+Commit `03451f9c3` gives all four gradient-compression pairs explicit two-rank
+workers, actual worker timing and complete input/output verification. Each
+rank retains the original 1 GiB gradient, five warmups and ten iterations.
+The full FP16/INT8 variants reduce rewritten compression buffers in place;
+baseline buckets require no added assembly copy. Communication-only variants
+preserve their constant inputs with the same functional out-of-place collective
+in both arms. That process-model allocation differs from the former
+same-process preallocated output API, so absolute latency is not continuous
+with those older measurements. Eight focused CPU tests passed, including
+real two-rank Gloo execution of all eight variants.
+
+The next two-B200 run passed full FP16, FP16 communication-only and INT8
+communication-only checks, with observed ratios of 1.895051, 1.881169 and
+3.314383 respectively. These are diagnostic harness measurements, not repeated
+performance qualification. Full INT8 exposed a parent independent-reference
+failure: three values in the first 16,777,216 elements differed across the
+CPU/CUDA quantizers by one code per rank near a rounding boundary. The child
+reference and timed outputs agree at those positions; the complete inputs,
+outputs and child reference are retained. The parent reference is being
+corrected to use the execution backend without changing tolerances.
+The remaining breadth sweep has resumed on frozen `03451f9c3`.
+Its Linux continuation controls passed all four tests, including real normal
+descendant drainage and timeout cleanup. Training's 61 successful rows retain
+their original `582ec8c86` source identity rather than being relabeled.
+
 The current instance exposes neither an InfiniBand device nor `nvshmemrun`.
 The IBGDA examples therefore retain their explicit runtime/hardware gate;
 Grace/GB10-specific examples still require the named hardware, and NVFP4
