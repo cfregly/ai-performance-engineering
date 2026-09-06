@@ -422,17 +422,20 @@ def _validate_expectation_policy(
 
 
 def _iter_discovered_targets(active_bench_root: Path) -> List[Dict[str, Any]]:
-    from core.benchmark.bench_commands import _collect_multi_gpu_examples, _expectation_example_key
+    from core.benchmark.bench_commands import _collect_benchmark_routing, _expectation_example_key
 
     discovered: Dict[str, Dict[str, Any]] = {}
     chapter_dirs = discover_all_chapters(active_bench_root, bench_roots=[active_bench_root])
     for chapter_dir in chapter_dirs:
         chapter_id = chapter_slug(chapter_dir, active_bench_root, bench_root=active_bench_root)
-        multi_gpu_examples = _collect_multi_gpu_examples(chapter_dir)
+        benchmark_routing = _collect_benchmark_routing(chapter_dir)
         for baseline_path, _optimized_paths, example_name in discover_benchmarks(chapter_dir):
             bench_type = "cuda" if is_cuda_binary_benchmark_file(baseline_path) else "python"
             example_key = _expectation_example_key(example_name, bench_type)
             target = f"{chapter_id}:{example_name}"
+            routing = benchmark_routing.get(example_key)
+            minimum_gpu_count = int(routing.minimum_gpu_count if routing else 1)
+            requires_torchrun = bool(routing.requires_torchrun if routing else False)
             discovered.setdefault(
                 target,
                 {
@@ -440,7 +443,9 @@ def _iter_discovered_targets(active_bench_root: Path) -> List[Dict[str, Any]]:
                     "chapter": chapter_id,
                     "example": example_name,
                     "bench_type": bench_type,
-                    "multi_gpu": bool(multi_gpu_examples.get(example_key, False)),
+                    "multi_gpu": minimum_gpu_count >= 2,
+                    "minimum_gpu_count": minimum_gpu_count,
+                    "requires_torchrun": requires_torchrun,
                 },
             )
     return [discovered[key] for key in sorted(discovered)]
