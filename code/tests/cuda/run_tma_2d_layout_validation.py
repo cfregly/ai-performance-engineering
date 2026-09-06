@@ -95,7 +95,11 @@ def main() -> int:
     feature_target = args.arch.removeprefix("sm_").removesuffix("a")
     for case_id, name in enumerate(CASES):
         binary = (args.output_dir / name).resolve()
-        command = [nvcc, "-O2", "-std=c++17", "-rdc=true", f"-arch={args.arch}",
+        # The shorthand -arch=sm_100a also emits generic compute_100 PTX,
+        # which cannot compile the architecture-specific multicast caller.
+        compute_arch = args.arch.replace("sm_", "compute_", 1)
+        command = [nvcc, "-O2", "-std=c++17", "-rdc=true",
+                   f"-gencode=arch={compute_arch},code={args.arch}",
                    f"-DTMA_MULTICAST_TARGET={feature_target}", f"-DTMA_VALIDATION_CASE={case_id}",
                    str(source), "-lcuda", "-o", str(binary)]
         if run(f"{name}-compile", command).returncode != 0:
