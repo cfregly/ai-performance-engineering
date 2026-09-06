@@ -842,6 +842,118 @@ def _completed_units_from_target_outcomes(
     return completed_units
 
 
+def _successful_targets_from_target_outcomes(
+    targets: list[str],
+    benchmark_summary: dict[str, Any] | None,
+) -> list[str]:
+    """Return exactly the requested targets with successful terminal outcomes."""
+    if not isinstance(benchmark_summary, dict):
+        return []
+    canonical_targets = [_canonical_target_name(target) for target in targets]
+    if (
+        not canonical_targets
+        or any(not target for target in canonical_targets)
+        or len(canonical_targets) != len(set(canonical_targets))
+    ):
+        return []
+    target_lookup = set(canonical_targets)
+    raw_outcomes = benchmark_summary.get("target_outcomes")
+    if not isinstance(raw_outcomes, list) or not all(
+        isinstance(outcome, dict) for outcome in raw_outcomes
+    ):
+        return []
+    observed_targets = [
+        _canonical_target_name(outcome.get("target")) for outcome in raw_outcomes
+    ]
+    if (
+        any(not target for target in observed_targets)
+        or len(observed_targets) != len(set(observed_targets))
+        or any(target not in target_lookup for target in observed_targets)
+    ):
+        return []
+    status_by_target = {
+        target: str(outcome.get("status") or "unknown")
+        for target, outcome in zip(observed_targets, raw_outcomes, strict=True)
+    }
+    return [
+        target for target in canonical_targets if status_by_target.get(target) == "succeeded"
+    ]
+
+
+def _successful_targets_from_attempts(
+    attempts: list[dict[str, Any]], *, frozen_targets: list[str]
+) -> list[str]:
+    """Reconcile the latest verified terminal outcome for each frozen target."""
+    canonical_frozen_targets = [_canonical_target_name(target) for target in frozen_targets]
+    if (
+        not canonical_frozen_targets
+        or any(not target for target in canonical_frozen_targets)
+        or len(canonical_frozen_targets) != len(set(canonical_frozen_targets))
+    ):
+        return []
+    frozen_lookup = set(canonical_frozen_targets)
+    successful_lookup: set[str] = set()
+    for attempt in attempts:
+        requested = attempt.get("verified_targets")
+        benchmark_summary = attempt.get("benchmark_summary")
+        if not isinstance(requested, list):
+            continue
+        canonical_requested = [_canonical_target_name(target) for target in requested]
+        if (
+            not canonical_requested
+            or any(not target for target in canonical_requested)
+            or len(canonical_requested) != len(set(canonical_requested))
+            or any(target not in frozen_lookup for target in canonical_requested)
+        ):
+            continue
+        requested_lookup = set(canonical_requested)
+        frozen_order = [
+            target for target in canonical_frozen_targets if target in requested_lookup
+        ]
+        if canonical_requested != frozen_order:
+            continue
+
+        # A newer verified attempt supersedes an older result for every target
+        # it requested. Malformed or missing outcomes therefore fail closed.
+        successful_lookup.difference_update(requested_lookup)
+        if not isinstance(benchmark_summary, dict):
+            continue
+        successful_lookup.update(
+            _successful_targets_from_target_outcomes(
+                canonical_requested,
+                benchmark_summary,
+            )
+        )
+
+    return [
+        target for target in canonical_frozen_targets if target in successful_lookup
+    ]
+
+
+def _completed_units_from_successful_targets(
+    targets: list[str], *, successful_targets: list[str]
+) -> list[str]:
+    canonical_targets = [_canonical_target_name(target) for target in targets]
+    canonical_successes = [_canonical_target_name(target) for target in successful_targets]
+    if (
+        any(not target for target in canonical_targets + canonical_successes)
+        or len(canonical_targets) != len(set(canonical_targets))
+        or len(canonical_successes) != len(set(canonical_successes))
+        or any(target not in set(canonical_targets) for target in canonical_successes)
+    ):
+        return []
+    successful_lookup = set(canonical_successes)
+    return [
+        str(unit["name"])
+        for unit in _group_targets_by_unit(targets)
+        if unit.get("targets")
+        and all(
+            _canonical_target_name(target) in successful_lookup
+            for target in unit.get("targets", [])
+        )
+    ]
+
+
 def _completed_units_from_attempts(
     attempts: List[Dict[str, Any]], *, frozen_targets: List[str]
 ) -> List[str]:
@@ -907,9 +1019,7 @@ def _verified_full_sweep_attempts(
     verified: List[Dict[str, Any]] = []
     issues: List[str] = []
     for attempt in attempts:
-        if not isinstance(attempt.get("verified_targets"), list) or not isinstance(
-            attempt.get("benchmark_summary"), dict
-        ):
+        if not isinstance(attempt.get("verified_targets"), list):
             continue
         attempt_run_id = str(attempt.get("run_id") or "").strip()
         try:
@@ -927,6 +1037,10 @@ def _verified_full_sweep_attempts(
             issues.append(f"{validated_attempt_run_id}: {evidence_error}")
             continue
         verified.append(attempt)
+        if not isinstance(attempt.get("benchmark_summary"), dict):
+            issues.append(
+                f"{validated_attempt_run_id}: benchmark output lacks a valid summary"
+            )
     return verified, issues
 
 
@@ -950,6 +1064,28 @@ def _remaining_targets_after_completed_units(
     for unit in grouped_units[first_incomplete_index:]:
         remaining.extend([str(target) for target in unit.get("targets", [])])
     return remaining
+
+
+def _remaining_targets_after_successful_targets(
+    targets: list[str],
+    *,
+    successful_targets: list[str],
+) -> list[str]:
+    canonical_targets = [_canonical_target_name(target) for target in targets]
+    canonical_successes = [_canonical_target_name(target) for target in successful_targets]
+    if (
+        any(not target for target in canonical_targets + canonical_successes)
+        or len(canonical_targets) != len(set(canonical_targets))
+        or len(canonical_successes) != len(set(canonical_successes))
+        or any(target not in set(canonical_targets) for target in canonical_successes)
+    ):
+        return list(targets)
+    successful_lookup = set(canonical_successes)
+    return [
+        target
+        for target, canonical_target in zip(targets, canonical_targets, strict=True)
+        if canonical_target not in successful_lookup
+    ]
 
 
 def _remaining_units_after_completed_units(
@@ -4083,6 +4219,7 @@ def _attach_benchmark_attempt_state(
     }
     attempt.pop("benchmark_summary", None)
     attempt.pop("verified_targets", None)
+    attempt.pop("successful_targets", None)
     run_start = _load_benchmark_run_start(
         run_id,
         repo_root=repo_root,
@@ -4104,10 +4241,16 @@ def _attach_benchmark_attempt_state(
             artifacts_dir=artifacts_dir,
         )
         completed_units: List[str] = []
-        if benchmark_summary is not None:
-            completed_units = _completed_units_from_target_outcomes(
-                list(attempt.get("targets") or []),
+        requested_targets = list(attempt.get("verified_targets") or [])
+        if benchmark_summary is not None and requested_targets:
+            successful_targets = _successful_targets_from_target_outcomes(
+                requested_targets,
                 benchmark_summary,
+            )
+            attempt["successful_targets"] = successful_targets
+            completed_units = _completed_units_from_successful_targets(
+                requested_targets,
+                successful_targets=successful_targets,
             )
         attempt["completed_units"] = completed_units
         attempt["active_unit"] = next(
@@ -4198,7 +4341,6 @@ def _revalidate_full_sweep_stage_from_frozen_plan(
         if not frozen_targets:
             continue
         saw_targets = True
-        expected_units = [str(unit["name"]) for unit in _group_targets_by_unit(frozen_targets)]
         verified_attempts, bucket_evidence_issues = _verified_full_sweep_attempts(
             _bucket_attempts(stage, bucket_name),
             repo_root=repo_root,
@@ -4206,11 +4348,13 @@ def _revalidate_full_sweep_stage_from_frozen_plan(
             expected_git_commit=expected_git_commit,
         )
         evidence_issues.extend(bucket_evidence_issues)
-        completed_units = _completed_units_from_attempts(
+        successful_targets = _successful_targets_from_attempts(
             verified_attempts,
             frozen_targets=frozen_targets,
         )
-        if completed_units != expected_units:
+        if successful_targets != [
+            _canonical_target_name(target) for target in frozen_targets
+        ]:
             exact_coverage = False
             break
         exact_coverage = True
@@ -5766,13 +5910,17 @@ def run_benchmark_e2e_sweep(
                                 expected_git_commit=str(validated_git_commit),
                             )
                         )
-                        completed_units = _completed_units_from_attempts(
+                        successful_targets = _successful_targets_from_attempts(
                             verified_bucket_attempts,
                             frozen_targets=all_targets,
                         )
-                        remaining_targets = _remaining_targets_after_completed_units(
+                        completed_units = _completed_units_from_successful_targets(
                             all_targets,
-                            completed_units=completed_units,
+                            successful_targets=successful_targets,
+                        )
+                        remaining_targets = _remaining_targets_after_successful_targets(
+                            all_targets,
+                            successful_targets=successful_targets,
                         )
                         current_target_lookup = {
                             _canonical_target_name(target) for target in current_bucket_targets
@@ -5988,14 +6136,14 @@ def run_benchmark_e2e_sweep(
                             artifacts_dir=artifacts_dir,
                             expected_git_commit=str(validated_git_commit),
                         )
-                        exact_completed_units = _completed_units_from_attempts(
+                        exact_successful_targets = _successful_targets_from_attempts(
                             verified_bucket_attempts,
                             frozen_targets=all_targets,
                         )
-                        expected_completed_units = [
-                            str(unit["name"]) for unit in _group_targets_by_unit(all_targets)
+                        expected_successful_targets = [
+                            _canonical_target_name(target) for target in all_targets
                         ]
-                        if exact_completed_units != expected_completed_units:
+                        if exact_successful_targets != expected_successful_targets:
                             bucket_status = "failed"
                             exact_issue = (
                                 "full-sweep bucket lacks one successful terminal outcome for "

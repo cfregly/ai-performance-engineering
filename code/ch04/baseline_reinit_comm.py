@@ -21,7 +21,9 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 
 
 class BaselineReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Reinitializing NCCL every iteration - poor pattern."""
+    """Reinitialize the default one-rank NCCL communicator every iteration."""
+
+    multi_gpu_required = False
     
     def __init__(self):
         super().__init__()

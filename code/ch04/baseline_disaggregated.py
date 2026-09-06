@@ -21,7 +21,9 @@ from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 
 class BaselineDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Baseline: Monolithic inference (prefill and decode share the same GPU)."""
+    """Monolithic inference on one GPU, with optional torchrun participation."""
+
+    multi_gpu_required = False
     
     def __init__(self):
         super().__init__()

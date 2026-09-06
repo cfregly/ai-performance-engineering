@@ -21,7 +21,9 @@ from core.harness.benchmark_harness import (
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 
 class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Optimized: Disaggregated inference using separate model copies per phase."""
+    """Separate phase models on one GPU, with optional torchrun participation."""
+
+    multi_gpu_required = False
     
     def __init__(self):
         super().__init__()

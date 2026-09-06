@@ -21,7 +21,9 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 class OptimizedReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Initialize NCCL once and reuse - good pattern."""
+    """Initialize the default one-rank NCCL communicator once and reuse it."""
+
+    multi_gpu_required = False
     
     def __init__(self):
         super().__init__()

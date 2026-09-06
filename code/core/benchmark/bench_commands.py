@@ -11,6 +11,7 @@ import sys
 import threading
 import time
 import warnings
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
@@ -489,7 +490,7 @@ def _routing_declared_in(nodes: List[ast.AST]) -> _StaticBenchmarkRouting:
             if call_name == "TorchrunLaunchSpec":
                 requires_torchrun = True
             for keyword in node.keywords:
-                if keyword.arg in {"multi_gpu_required", "multigpu"}:
+                if keyword.arg in {"multi_gpu", "multi_gpu_required", "multigpu"}:
                     try:
                         declares_multi = declares_multi or ast.literal_eval(keyword.value) is True
                     except (ValueError, TypeError):
@@ -520,6 +521,34 @@ def _routing_declared_in(nodes: List[ast.AST]) -> _StaticBenchmarkRouting:
         minimum_gpu_count=max(gpu_counts, default=1),
         requires_torchrun=requires_torchrun,
     )
+
+
+def _local_class_declares_distributed_execution(nodes: list[ast.AST]) -> bool:
+    """Detect strong distributed execution calls in locally defined benchmark classes."""
+    explicit_single_gpu = False
+    distributed_execution = False
+    for root in nodes:
+        for node in ast.walk(root):
+            if isinstance(node, ast.Assign | ast.AnnAssign):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                value = node.value
+                for target in targets:
+                    if not isinstance(target, ast.Name) or target.id != "multi_gpu_required":
+                        continue
+                    with suppress(ValueError, TypeError):
+                        explicit_single_gpu = explicit_single_gpu or ast.literal_eval(value) is False
+            if not isinstance(node, ast.Call):
+                continue
+            call_parts = _attribute_chain(node.func)
+            if not call_parts:
+                continue
+            if (
+                call_parts[-1] == "init_process_group"
+                and len(call_parts) >= 2
+                and call_parts[-2] in {"dist", "distributed"}
+            ) or call_parts[-1] == "DistributedDataParallel":
+                distributed_execution = True
+    return distributed_execution and not explicit_single_gpu
 
 
 @lru_cache(maxsize=None)
@@ -560,11 +589,18 @@ def _static_benchmark_routing(path: Path) -> _StaticBenchmarkRouting:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         and node.name == "get_benchmark"
     ]
+    returned_refs = _returned_benchmark_class_refs(module)
     routes = [_routing_declared_in(factory_nodes)]
     routes.extend(
-        _class_static_routing(str(ref.module_path), ref.class_name)
-        for ref in _returned_benchmark_class_refs(module)
+        _class_static_routing(str(ref.module_path), ref.class_name) for ref in returned_refs
     )
+    local_class_nodes = [
+        module.classes[ref.class_name]
+        for ref in returned_refs
+        if ref.module_path == module.module_path and ref.class_name in module.classes
+    ]
+    if _local_class_declares_distributed_execution(local_class_nodes):
+        routes.append(_StaticBenchmarkRouting(minimum_gpu_count=2))
     return _merge_static_routing(*routes)
 
 
@@ -999,7 +1035,13 @@ def _execute_benchmarks(
                 isolated_preflight_issues[unit_key] = list(unit_issues)
 
         preflight_issues = []
-        if len(isolated_preflight_issues) == len(execution_units):
+        if len(isolated_preflight_issues) == len(execution_units) and all(
+            not only_examples for _, only_examples in execution_units
+        ):
+            # A whole chapter/lab request has no canonical example identity to
+            # attach to a terminal target outcome. Preserve the legacy aggregate
+            # failure for that form. Explicit targets stay isolated even when
+            # every target fails preflight, so each requested target is recorded.
             for unit_issues in isolated_preflight_issues.values():
                 for issue in unit_issues:
                     if issue not in preflight_issues:
