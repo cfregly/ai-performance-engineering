@@ -16,6 +16,7 @@ from ch04.nvshmem_pipeline_parallel_multigpu import (
     NVSHMEMPipelineEngine,
     PipelineStageModule,
     PipelineTransferBuffer,
+    _create_pipeline_control_group,
     _gather_pipeline_verification,
     _require_global_nvshmem,
     _require_transport_consensus,
@@ -87,6 +88,22 @@ def _gloo_pipeline_worker(rank: int, rendezvous_path: str, output_path: str) -> 
         torch.testing.assert_close(actual, reference, rtol=1e-3, atol=1e-3)
         engine.close()
 
+        # Exercise the exact ready/consumed P2P control primitives on real
+        # process groups. This is sideband evidence only, not NVSHMEM payload
+        # evidence; the latter remains a CUDA/NVSHMEM runtime requirement.
+        ready_group = _create_pipeline_control_group(2, 5_000)
+        consumed_group = _create_pipeline_control_group(2, 5_000)
+        token = torch.tensor([rank + 1], dtype=torch.int32)
+        received = torch.zeros_like(token)
+        if rank == 0:
+            dist.isend(token, dst=1, group=ready_group).wait()
+            dist.recv(received, src=1, group=consumed_group)
+            sideband_ok = int(received.item()) == 2
+        else:
+            dist.recv(received, src=0, group=ready_group)
+            sideband_ok = int(received.item()) == 1
+            dist.isend(token, dst=0, group=consumed_group).wait()
+
         try:
             _require_transport_consensus("nccl" if rank == 0 else "nvshmem", device)
         except RuntimeError as exc:
@@ -112,6 +129,7 @@ def _gloo_pipeline_worker(rank: int, rendezvous_path: str, output_path: str) -> 
                     "parameter_count": parameter_count,
                     "mismatch": mismatch,
                     "unavailable": unavailable,
+                    "sideband_ok": sideband_ok,
                 },
                 output_path,
             )
@@ -152,6 +170,7 @@ def test_real_two_rank_gloo_schedule_matches_full_serial_pipeline(tmp_path: Path
     assert payload["parameter_count"] > 0
     assert "selected different" in payload["mismatch"]
     assert "unavailable on at least one rank" in payload["unavailable"]
+    assert payload["sideband_ok"] is True
 
 
 class _LoggedTensor:
@@ -187,10 +206,19 @@ class _SequencingHandle:
         return self.remote
 
     def put_signal(self, rank: int, *, channel: int, timeout_ms: int) -> None:
-        self.events.append((self.slot, "put_signal", rank, channel, timeout_ms))
+        raise AssertionError("PyTorch 2.9 put_signal is a silent no-op")
 
     def wait_signal(self, rank: int, *, channel: int, timeout_ms: int) -> None:
-        self.events.append((self.slot, "wait_signal", rank, channel, timeout_ms))
+        raise AssertionError("PyTorch 2.9 wait_signal is a silent no-op")
+
+
+class _SequencingWork:
+    def __init__(self, events: list[tuple[Any, ...]], label: str):
+        self.events = events
+        self.label = label
+
+    def wait(self) -> None:
+        self.events.append((self.label, "wait"))
 
 
 def test_nvshmem_sequencing_model_waits_before_reuse_and_acks_after_clone(
@@ -202,6 +230,30 @@ def test_nvshmem_sequencing_model_waits_before_reuse_and_acks_after_clone(
     _SequencingHandle.events = []
     _SequencingHandle.next_slot = 0
     monkeypatch.setattr(pipeline, "SymmetricMemoryHandle", _SequencingHandle)
+    groups = iter(("ready", "consumed"))
+    monkeypatch.setattr(
+        pipeline,
+        "_create_pipeline_control_group",
+        lambda _world_size, _timeout_ms: next(groups),
+    )
+
+    def fake_isend(
+        _tensor: torch.Tensor, *, dst: int, group: str
+    ) -> _SequencingWork:
+        label = f"{group}-to-{dst}"
+        _SequencingHandle.events.append((label, "isend"))
+        return _SequencingWork(_SequencingHandle.events, label)
+
+    def fake_recv(_tensor: torch.Tensor, *, src: int, group: str) -> None:
+        _SequencingHandle.events.append((f"{group}-from-{src}", "recv"))
+
+    monkeypatch.setattr(
+        pipeline,
+        "_complete_pipeline_stream",
+        lambda _device: _SequencingHandle.events.append(("stream", "complete")),
+    )
+    monkeypatch.setattr(pipeline.dist, "isend", fake_isend)
+    monkeypatch.setattr(pipeline.dist, "recv", fake_recv)
     channel = PipelineTransferBuffer(
         shape=(2,),
         dtype=torch.float32,
@@ -217,16 +269,22 @@ def test_nvshmem_sequencing_model_waits_before_reuse_and_acks_after_clone(
     channel.receive(source_rank=0)
 
     events = _SequencingHandle.events
-    third_ready = [
+    third_copy = [
         index
         for index, event in enumerate(events)
-        if event[:4] == (0, "put_signal", 1, 0)
+        if event == ("remote-0", "copy", True)
     ][1]
-    reuse_wait = events.index((0, "wait_signal", 1, 1, 1234))
+    ready_completion = events.index(("ready-to-1", "wait"))
+    reuse_ack = events.index(("consumed-from-1", "recv"))
+    first_copy = events.index(("remote-0", "copy", True))
+    first_copy_fence = events.index(("stream", "complete"), first_copy)
+    first_ready = events.index(("ready-to-1", "isend"))
     local_clone = events.index(("local-0", "clone"))
-    consumed_ack = events.index((0, "put_signal", 0, 1, 1234))
-    assert reuse_wait < third_ready
-    assert local_clone < consumed_ack
+    consumed_ack = events.index(("consumed-to-0", "isend"))
+    clone_fence = events.index(("stream", "complete"), local_clone)
+    assert first_copy < first_copy_fence < first_ready
+    assert ready_completion < reuse_ack < third_copy
+    assert local_clone < clone_fence < consumed_ack
 
 
 class _ResultConsumer(NVSHMEMPipelineChildResultMixin):

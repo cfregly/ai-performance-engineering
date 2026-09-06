@@ -68,7 +68,7 @@ import os
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Deque, Literal  # noqa: UP035
+from typing import Any, Deque, Literal  # noqa: UP035
 
 import torch
 import torch.distributed as dist
@@ -94,8 +94,6 @@ def symmem_pipeline_disabled() -> bool:
 
 
 PipelineTransport = Literal["nccl", "nvshmem"]
-_SIGNAL_READY_CHANNEL = 0
-_SIGNAL_CONSUMED_CHANNEL = 1
 _SIGNAL_TIMEOUT_MS = 60_000
 
 
@@ -117,6 +115,30 @@ def _make_rank_generator(
 ) -> torch.Generator:
     """Build a rank-local input generator without changing harness RNG seeds."""
     return torch.Generator(device=device).manual_seed(base_seed + rank)
+
+
+def _create_pipeline_control_group(world_size: int, timeout_ms: int) -> Any:
+    """Create one launch-wide group for a ready or consumed sideband."""
+    if not dist.is_initialized() or dist.get_world_size() != world_size:
+        raise RuntimeError(
+            "SKIPPED: NVSHMEM pipeline sideband requires the full process group"
+        )
+    try:
+        return dist.new_group(
+            ranks=list(range(world_size)),
+            backend=dist.get_backend(),
+            timeout=datetime.timedelta(milliseconds=timeout_ms),
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            "SKIPPED: NVSHMEM pipeline could not create its ready/consumed sideband"
+        ) from exc
+
+
+def _complete_pipeline_stream(device: torch.device) -> None:
+    """Fence payload copies before their sideband state becomes observable."""
+    if device.type == "cuda":
+        torch.cuda.current_stream(device).synchronize()
 
 
 def _require_global_nvshmem(device: torch.device) -> None:
@@ -198,7 +220,15 @@ def _resolve_microbatch_size(batch_size: int, num_microbatches: int, microbatch_
 
 @dataclass
 class PipelineTransferBuffer:
-    """Double-buffered NCCL or NVSHMEM channel shared by both endpoints."""
+    """Double-buffered NCCL or NVSHMEM channel shared by both endpoints.
+
+    PyTorch 2.9 exposes ``SymmetricMemoryHandle.put_signal`` and
+    ``wait_signal`` as silent stubs.  The NVSHMEM data path therefore uses the
+    existing remote symmetric-allocation copy and two independent NCCL
+    sidebands: ready gates the receiver's clone, and consumed gates sender slot
+    reuse. This is NVSHMEM allocation/remote-view data movement with NCCL
+    control, rather than GPU-native NVSHMEM signaling.
+    """
 
     shape: tuple[int, ...]
     dtype: torch.dtype
@@ -213,6 +243,14 @@ class PipelineTransferBuffer:
     _nccl_send_buffers: list[torch.Tensor] = field(default_factory=list, init=False)
     _pending_sends: list[dist.Work | None] = field(default_factory=list, init=False)
     _send_targets: list[int | None] = field(default_factory=list, init=False)
+    _ready_group: Any = field(default=None, init=False)
+    _consumed_group: Any = field(default=None, init=False)
+    _ready_send_tokens: list[torch.Tensor] = field(default_factory=list, init=False)
+    _ready_recv_tokens: list[torch.Tensor] = field(default_factory=list, init=False)
+    _consumed_send_tokens: list[torch.Tensor] = field(default_factory=list, init=False)
+    _consumed_recv_tokens: list[torch.Tensor] = field(default_factory=list, init=False)
+    _pending_ready_sends: list[dist.Work | None] = field(default_factory=list, init=False)
+    _pending_consumed_sends: list[dist.Work | None] = field(default_factory=list, init=False)
     _send_idx: int = field(default=0, init=False)
     _recv_idx: int = field(default=0, init=False)
 
@@ -228,7 +266,29 @@ class PipelineTransferBuffer:
             self.device = torch.device(self.device)
         self._pending_sends = [None for _ in range(self.num_buffers)]
         self._send_targets = [None for _ in range(self.num_buffers)]
-        for _ in range(self.num_buffers):
+        self._pending_ready_sends = [None for _ in range(self.num_buffers)]
+        self._pending_consumed_sends = [None for _ in range(self.num_buffers)]
+        if self.transport == "nvshmem":
+            # Both groups are created by every rank in deterministic engine
+            # construction order, before the timed schedule begins. Separate
+            # groups prevent a backward-ready token from matching a forward ACK.
+            self._ready_group = _create_pipeline_control_group(
+                self.world_size, self.signal_timeout_ms
+            )
+            self._consumed_group = _create_pipeline_control_group(
+                self.world_size, self.signal_timeout_ms
+            )
+            for token_list in (
+                self._ready_send_tokens,
+                self._ready_recv_tokens,
+                self._consumed_send_tokens,
+                self._consumed_recv_tokens,
+            ):
+                token_list.extend(
+                    torch.zeros(1, dtype=torch.int32, device=self.device)
+                    for _ in range(self.num_buffers)
+                )
+        for _slot in range(self.num_buffers):
             local_buffer = torch.zeros(self.shape, dtype=self.dtype, device=self.device)
             if self.transport == "nvshmem":
                 # Every rank constructs each handle in the same order. Failure is
@@ -250,13 +310,15 @@ class PipelineTransferBuffer:
             self._pending_sends[slot] = None
         target = self._send_targets[slot]
         if self.transport == "nvshmem" and target is not None:
-            handle = self.handles[slot]
-            if handle is None:
-                raise RuntimeError("NVSHMEM send slot has no symmetric handle")
-            handle.wait_signal(
-                target,
-                channel=_SIGNAL_CONSUMED_CHANNEL,
-                timeout_ms=self.signal_timeout_ms,
+            ready_work = self._pending_ready_sends[slot]
+            if ready_work is None:
+                raise RuntimeError("NVSHMEM send slot has no ready-token work")
+            ready_work.wait()
+            self._pending_ready_sends[slot] = None
+            dist.recv(
+                self._consumed_recv_tokens[slot],
+                src=target,
+                group=self._consumed_group,
             )
         self._send_targets[slot] = None
 
@@ -278,10 +340,12 @@ class PipelineTransferBuffer:
             if handle is None:
                 raise RuntimeError("NVSHMEM send slot has no symmetric handle")
             handle.get_buffer(target_rank).copy_(data, non_blocking=True)
-            handle.put_signal(
-                target_rank,
-                channel=_SIGNAL_READY_CHANNEL,
-                timeout_ms=self.signal_timeout_ms,
+            _complete_pipeline_stream(self.device)
+            self._ready_send_tokens[slot].fill_(1)
+            self._pending_ready_sends[slot] = dist.isend(
+                self._ready_send_tokens[slot],
+                dst=target_rank,
+                group=self._ready_group,
             )
         self._send_targets[slot] = target_rank
         self._send_idx = (slot + 1) % self.num_buffers
@@ -291,24 +355,33 @@ class PipelineTransferBuffer:
         if source_rank not in range(self.world_size):
             raise ValueError(f"Pipeline receive source rank is invalid: {source_rank}")
         slot = self._recv_idx
-        local_buffer = self.buffers[slot]
         if self.transport == "nccl":
+            local_buffer = self.buffers[slot]
             dist.recv(local_buffer, src=source_rank)
             activation = local_buffer.clone()
         else:
             handle = self.handles[slot]
             if handle is None:
                 raise RuntimeError("NVSHMEM receive slot has no symmetric handle")
-            handle.wait_signal(
-                source_rank,
-                channel=_SIGNAL_READY_CHANNEL,
-                timeout_ms=self.signal_timeout_ms,
+            prior_ack = self._pending_consumed_sends[slot]
+            if prior_ack is not None:
+                prior_ack.wait()
+                self._pending_consumed_sends[slot] = None
+            dist.recv(
+                self._ready_recv_tokens[slot],
+                src=source_rank,
+                group=self._ready_group,
             )
             activation = handle.buffer.clone()
-            handle.put_signal(
-                source_rank,
-                channel=_SIGNAL_CONSUMED_CHANNEL,
-                timeout_ms=self.signal_timeout_ms,
+            _complete_pipeline_stream(self.device)
+            # The ACK token is filled after the clone on the current stream.
+            # Its P2P send therefore prevents the producer from overwriting the
+            # slot until the consumer owns an independent activation tensor.
+            self._consumed_send_tokens[slot].fill_(1)
+            self._pending_consumed_sends[slot] = dist.isend(
+                self._consumed_send_tokens[slot],
+                dst=source_rank,
+                group=self._consumed_group,
             )
         self._recv_idx = (slot + 1) % self.num_buffers
         return activation
@@ -321,11 +394,19 @@ class PipelineTransferBuffer:
         self.buffers.clear()
         self._nccl_send_buffers.clear()
         self.handles.clear()
+        self._ready_send_tokens.clear()
+        self._ready_recv_tokens.clear()
+        self._consumed_send_tokens.clear()
+        self._consumed_recv_tokens.clear()
 
     def finish(self) -> None:
         """Complete every outstanding send or consumed-slot handshake."""
         for slot in range(self.num_buffers):
             self._wait_before_send_slot_reuse(slot)
+        for slot, work in enumerate(self._pending_consumed_sends):
+            if work is not None:
+                work.wait()
+                self._pending_consumed_sends[slot] = None
 
 
 # ============================================================================
