@@ -10,11 +10,11 @@ from ch08.threshold_benchmark_base import ThresholdBenchmarkBase
 
 
 class ThresholdBenchmarkBaseTMA(ThresholdBenchmarkBase):
-    """Blackwell bridge comparison for the threshold kernel on a TMA path.
+    """Blackwell threshold comparison with per-thread async-copy staging.
 
     The chapter-native warp-divergence story lives in `threshold`. This pair keeps
-    the same threshold workload shape but swaps in a TMA-backed launch path so the
-    repo still exposes a real baseline/optimized bridge into the later TMA chapters.
+    the same threshold workload shape but swaps in a Blackwell-gated, per-thread
+    async-copy staging path. The legacy `thresholdtma` name does not denote bulk TMA.
     """
 
     requirement_label = "threshold_tma"

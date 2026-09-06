@@ -1,7 +1,7 @@
 # Lab - MoE CUDA PTX
 
 ## Summary
-Benchmarks a routed top-2 SwiGLU MoE FFN with a conservative BF16 reference path and a staged optimized CUDA path. The lab is built as a standalone MoE kernel story: routing, token packing, grouped expert compute, MXFP8-style quantization surfaces, and layer compute/combine timing all live here. The optimized forward layer pre-packs routes in setup; its timing is not an end-to-end routing measurement.
+Benchmarks a routed top-2 SwiGLU MoE FFN with a conservative BF16 reference path and a staged optimized CUDA path. The lab covers routing, token packing, grouped expert compute, MXFP8-style quantization surfaces, and layer timing. Both forward-layer variants include route selection or packing, expert compute, and output combination in every measured call. Expert assignments and weights are supplied inputs; router-network computation is outside this contract.
 
 ## Problem
 MoE optimization claims usually blur together three different costs:
@@ -22,7 +22,7 @@ This lab keeps those surfaces separate and states whether route preparation is i
 - grouped expert execution on pre-packed token buckets
 - vectorized expert BMM path for forward and backward
 - MXFP8-style activation quantization surface benchmarked separately via `moe_quant`
-- forward CUDA path that prepares route packing during setup and times the packed grouped compute/combine path without quantization; this timing boundary must be kept explicit when comparing it with baseline route masking
+- forward CUDA path that times route packing, grouped compute, and output combination without quantization
 
 ## Targets
 | Target | Path |
@@ -30,12 +30,15 @@ This lab keeps those surfaces separate and states whether route preparation is i
 | `labs/moe_cuda_ptx:moe_quant` | BF16 -> MXFP8-style quantization surface |
 | `labs/moe_cuda_ptx:moe_grouped_gemm_fwd` | Grouped expert forward FFN surface |
 | `labs/moe_cuda_ptx:moe_grouped_gemm_bwd` | Grouped expert forward+backward FFN surface |
-| `labs/moe_cuda_ptx:moe_layer` | Routed top-2 SwiGLU layer; CUDA forward pre-packs routes outside timing |
+| `labs/moe_cuda_ptx:moe_layer` | Routed top-2 SwiGLU layer including per-call route packing and output combination |
 
 ## Repro Commands
 ```bash
 python -m cli.aisp bench list-targets --chapter labs/moe_cuda_ptx
-python -m cli.aisp bench run --targets labs/moe_cuda_ptx:moe_layer --profile minimal
+python -m cli.aisp bench run \
+  --targets labs/moe_cuda_ptx:moe_layer \
+  --target-extra-arg labs/moe_cuda_ptx:moe_layer="--num-tokens 257 --num-experts 8 --hidden-dim 512 --expert-ffn-dim 256 --capacity-factor 1.5 --mode forward --histogram balanced" \
+  --profile minimal
 python -m cli.aisp bench run --targets labs/moe_cuda_ptx:moe_grouped_gemm_fwd --profile minimal
 python -m cli.aisp bench run --targets labs/moe_cuda_ptx:moe_grouped_gemm_bwd --profile minimal
 python -m cli.aisp bench run --targets labs/moe_cuda_ptx:moe_quant --profile minimal
@@ -43,17 +46,52 @@ python -m cli.aisp bench run --targets labs/moe_cuda_ptx:moe_quant --profile min
 
 Layer forward accuracy policy:
 
-`moe_layer --mode forward` does not quantize activations. It now requires `AISP_MOE_PTX_LAYER_ACCURACY_POLICY` naming a reviewed JSON policy with `schema_version: 1` and a `moe_layer_forward` object containing `relative_l2` and `normalized_max_abs`. Both limits must be finite and in `[0, 1)`; no default numerical threshold is supplied. Full logical outputs are checked against an independent unquantized BF16/FP16 reference using original input/weight/routing snapshots. Missing rows, nonfinite results and aliased reference storage fail regardless of pairwise tolerance. A configured policy is not measured GPU accuracy evidence.
+`moe_layer --mode forward` does not quantize activations. Its packaged
+`layer_accuracy_policy.json` uses schema 3 and records separate FP16 and BF16
+limits plus exact validated workload cells. Full logical outputs are checked
+against an independent unquantized reference built from original input,
+weight, and routing snapshots. Missing rows, nonfinite results, shape changes,
+and aliased reference storage fail regardless of the numerical limits.
+
+The limits were fixed before held-out testing: relative L2 must be at most one
+representable epsilon for the workload dtype, and maximum absolute error
+normalized by the maximum reference magnitude must be at most two epsilons.
+Calibration covered both layer implementations, both routing histograms,
+multiple shapes, seeds, and input amplitudes, and an independent FP64
+calculation. Held-out shapes and seeds passed without changing the limits.
+A separate default-cell review used fixed limits, an independent FP64 logical
+route calculation, distinct calibration and holdout seeds, and both layer
+implementations. Zero, half-scale, dropped-row, nonfinite, aliased, and
+truncated outputs were rejected. The policy defines an acceptance bound; it is
+not a performance claim or a substitute for measured GPU evidence on a new
+platform.
+
+The reviewed domain contains the exact forward cells `65x48x32` with four
+experts, `129x128x64` with four experts, and `257x512x256` with eight experts,
+all with top-2 routing, capacity factor 1.5, both supported dtypes, and both
+routing histograms. It also contains the exact default `32768x7168x2048`,
+eight-expert, top-2, capacity-factor-1.25 cell for BF16 with balanced routing.
+That dedicated review does not cover FP16, skewed routing, or nearby default
+shapes. Dimensions cannot be mixed across entries.
+
+`AISP_MOE_PTX_LAYER_ACCURACY_POLICY` remains available for explicit audit
+experiments. An override must use the same schema 3 limits and exact-domain
+structure and must pass the same structural checks.
 
 The original `(rtol=0.05, atol=0.2)` exception falsely attributed drift to quantization. Even the restored `(0.02, 0.02)` pairwise budget can accept all zeros for small outputs; it is only an additional pairwise check after the scale-invariant reference policy. All other quant/grouped/backward verification surfaces retain their existing contracts and are not newly qualified by this change.
 
-After obtaining the target GPU lease, collect diagnostics from the repository root with `python docs/audits/2026-08-30/evidence/moe-ptx/calibrate_layer_accuracy.py --output /absolute/new/attempt.json`. The tool records real baseline and CUDA-BMM errors for the chosen shape/seed/routing, preserves failures, and never generates an acceptance threshold. The full audit receipt includes the bounded CUDA test matrix. Route generation supports `top_k=2` only and now rejects unsupported overrides explicitly.
+After obtaining the target GPU lease, collect a new diagnostic from the
+repository root with `python docs/audits/2026-08-30/evidence/moe-ptx/calibrate_layer_accuracy.py --output /absolute/new/attempt.json`.
+The tool records real baseline and CUDA-BMM errors for the chosen
+shape/seed/routing, preserves failures, and never generates or changes the
+acceptance limits. Route generation supports `top_k=2` only and rejects
+unsupported overrides explicitly.
 
 Useful debug overrides:
 ```bash
 python -m cli.aisp bench run \
   --targets labs/moe_cuda_ptx:moe_layer \
-  --target-extra-arg labs/moe_cuda_ptx:moe_layer="--num-tokens 4096 --hidden-dim 2048 --expert-ffn-dim 1024 --mode forward --histogram skewed"
+  --target-extra-arg labs/moe_cuda_ptx:moe_layer="--num-tokens 257 --num-experts 8 --hidden-dim 512 --expert-ffn-dim 256 --capacity-factor 1.5 --mode forward --histogram skewed"
 ```
 
 Backward verification shape:

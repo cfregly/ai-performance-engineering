@@ -407,15 +407,35 @@ def test_moe_cuda_ptx_skewed_routes_use_cpu_counts_without_fragment_cat() -> Non
     )
 
 
-def test_moe_cuda_ptx_layer_forward_reuses_prepacked_routes() -> None:
-    setup_source = inspect.getsource(moe_common.MoECudaPtxBenchmark.setup)
-    forward_source = inspect.getsource(moe_common.MoECudaPtxBenchmark._benchmark_layer_forward)
-
-    assert 'self.target != "moe_layer" or (' in setup_source
-    assert 'self.backend == "cuda" and self.workload.mode == "forward"' in setup_source
-    assert "counts_cpu=route_counts_cpu" in setup_source
-    assert "packed=self.packed" in forward_source
-    assert "padded_tokens_buffer=self._padded_tokens_buffer" in forward_source
+def test_moe_cuda_ptx_layer_forward_reads_current_activations() -> None:
+    # Exercise the real CPU math path. The same regression is covered by the
+    # GPU acceptance test; this is not a stand-in for CUDA performance evidence.
+    bench = moe_common.MoECudaPtxBenchmark(target="moe_layer", backend="cuda", label="live-inputs")
+    bench.device = torch.device("cpu")
+    bench.workload = moe_common.MoECudaPtxWorkload(
+        num_tokens=65, num_experts=4, hidden_dim=48, expert_ffn_dim=32,
+        capacity_factor=1.5, dtype=torch.bfloat16,
+    )
+    bench.setup()
+    try:
+        assert bench.packed is None
+        assert bench._grouped_output_buffer is None
+        assert bench._padded_tokens_buffer is None
+        bench.benchmark_fn()
+        assert torch.count_nonzero(bench.outputs) > 0
+        # Routing metadata must also come from this invocation's supplied input.
+        bench.state.expert_indices.add_(1).remainder_(bench.workload.num_experts)
+        bench.benchmark_fn()
+        expected = moe_common.reference_layer_forward(
+            moe_common.snapshot_layer_inputs(bench.state), bench.device
+        )
+        limits = moe_common.load_layer_accuracy_limits(bench.workload.dtype, workload=bench.workload)
+        limits.check(moe_common.measure_layer_output_errors(bench.outputs, expected))
+        bench.state.x.zero_()
+        bench.benchmark_fn()
+        assert torch.count_nonzero(bench.outputs) == 0
+    finally:
+        bench.teardown()
 
 
 def test_moe_cuda_ptx_backward_reuses_prepared_autograd_leaves() -> None:

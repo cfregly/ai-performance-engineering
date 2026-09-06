@@ -209,8 +209,7 @@ int main() {
     printf("  - 2 kernel launches per iteration\n");
     printf("  - Global memory round-trip for partial sums\n");
 
-    const float verify_checksum = total;
-    VERIFY_PRINT_CHECKSUM(verify_checksum);
+    VERIFY_PRINT_CHECKSUM(total);
     
     // Cleanup
     CUDA_CHECK(cudaEventDestroy(start));
@@ -221,4 +220,3 @@ int main() {
     
     return 0;
 }
-

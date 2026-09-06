@@ -2,16 +2,58 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from typing import Optional
 
 import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
+from core.utils.compile_utils import configure_tf32, restore_tf32
 from labs.flashattention_gluon.flashattention_gluon_common import (
     FlashAttentionInputs,
     build_flashattention_inputs,
 )
+
+
+@contextmanager
+def _strict_fp32_matmul():
+    """Disable reduced-precision FP32 matmul, then restore the caller's policy."""
+
+    previous_matmul_allow_tf32 = (
+        bool(torch.backends.cuda.matmul.allow_tf32)
+        if hasattr(torch.backends.cuda, "matmul")
+        and hasattr(torch.backends.cuda.matmul, "allow_tf32")
+        else None
+    )
+    previous_cudnn_allow_tf32 = (
+        bool(torch.backends.cudnn.allow_tf32)
+        if hasattr(torch.backends, "cudnn")
+        and hasattr(torch.backends.cudnn, "allow_tf32")
+        else None
+    )
+    previous_precision = (
+        torch.get_float32_matmul_precision()
+        if hasattr(torch, "get_float32_matmul_precision")
+        else None
+    )
+    tf32_state = configure_tf32(matmul_precision="highest")
+    try:
+        if hasattr(torch, "set_float32_matmul_precision"):
+            torch.set_float32_matmul_precision("highest")
+        yield
+    finally:
+        restore_tf32(tf32_state)
+        # configure_tf32() installs compatibility accessors whose shadow values
+        # cannot always be reconstructed from the newer precision strings (for
+        # example, the new API reports "tf32" while the shim tests for "high").
+        # Restore the exact legacy booleans captured before that first patch.
+        if previous_matmul_allow_tf32 is not None:
+            torch.backends.cuda.matmul.allow_tf32 = previous_matmul_allow_tf32
+        if previous_cudnn_allow_tf32 is not None:
+            torch.backends.cudnn.allow_tf32 = previous_cudnn_allow_tf32
+        if previous_precision is not None and hasattr(torch, "set_float32_matmul_precision"):
+            torch.set_float32_matmul_precision(previous_precision)
 
 
 class BaselineFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -65,11 +107,15 @@ class BaselineFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchma
                 v = self.inputs.v
                 if self._k_t is None:
                     raise RuntimeError("FlashAttention key transpose is not initialized")
-                scores = torch.matmul(q, self._k_t)
-                scores.mul_(self._scale)
-                probs = torch.softmax(scores, dim=-1)
-                result = torch.matmul(probs, v)
-                self.output = result
+                # Keep the FP16 input/output contract while avoiding a rounded
+                # QK matrix, probability matrix, and PV accumulation. This is
+                # the independent numerical reference for the tiled kernel.
+                with _strict_fp32_matmul():
+                    scores = torch.matmul(q.float(), self._k_t.float())
+                    scores.mul_(self._scale)
+                    probs = torch.softmax(scores, dim=-1)
+                    result = torch.matmul(probs, v.float())
+                self.output = result.to(dtype=q.dtype)
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
         self._payload_k = k
@@ -89,7 +135,9 @@ class BaselineFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchma
             batch_size=self.batch,
             parameter_count=0,
             precision_flags={"fp16": True, "bf16": False, "tf32": torch.backends.cuda.matmul.allow_tf32},
-            output_tolerance=(0.1, 1.0),
+            # The transport buffer is FP32, but every value was produced and
+            # rounded as FP16. Use the canonical strict FP16 comparison bounds.
+            output_tolerance=(1e-3, 1e-5),
         )
 
     def teardown(self) -> None:

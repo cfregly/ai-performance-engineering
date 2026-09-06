@@ -262,8 +262,7 @@ int main() {
            (fabs(total - N) < 0.01f * N) ? "✓" : "✗");
     printf("  Bandwidth: %.2f GB/s\n", (N * sizeof(float)) / (avg_ms * 1e6));
 
-    const float verify_checksum = total;
-    VERIFY_PRINT_CHECKSUM(verify_checksum);
+    VERIFY_PRINT_CHECKSUM(total);
     
     // Cleanup
     CUDA_CHECK(cudaEventDestroy(start));

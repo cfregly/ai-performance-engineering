@@ -33,8 +33,17 @@ __global__ void baseline_warp_specialized_two_pipelines_kernel(
   float* C_stage = B_stage + kBaselinePipelineStages * kBaselineTileElems;
 
   using pipe_state = cuda::pipeline_shared_state<cuda::thread_scope_block, kBaselinePipelineStages>;
+#if defined(__CUDACC__)
+// CUDA 13 diagnoses these standard CCCL shared-state declarations as dynamic
+// initialization. make_pipeline initializes every barrier before either state
+// is used, so suppress only that front-end diagnostic around the two objects.
+#pragma nv_diag_suppress 20054
+#endif
   __shared__ pipe_state state_lc;
   __shared__ pipe_state state_cs;
+#if defined(__CUDACC__)
+#pragma nv_diag_default 20054
+#endif
   auto pipe_lc = cuda::make_pipeline(cta, &state_lc);
   auto pipe_cs = cuda::make_pipeline(cta, &state_cs);
 

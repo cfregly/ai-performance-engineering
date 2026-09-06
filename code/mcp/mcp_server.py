@@ -115,7 +115,6 @@ import os
 import shlex
 import sys
 import subprocess
-import traceback
 import time
 import threading
 import uuid
@@ -165,8 +164,15 @@ def _discover_code_root() -> Path:
 CODE_ROOT = _discover_code_root()
 
 from core.analysis.tool_router import DEFAULT_SUGGEST_RULES, suggest_tools_auto
+from core.api.redaction import redact_sensitive_data
 from core.harness.progress import ProgressEvent, ProgressRecorder
 from core.jobs import JobStore
+from core.profiling.profiler_config import (
+    MINIMAL_METRICS,
+    NCU_REPLAY_MODES,
+    validate_ncu_app_range_capture,
+    validate_ncu_replay_mode,
+)
 from core.utils.dotenv import load_repo_dotenv
 
 
@@ -1484,10 +1490,11 @@ def _trim_value(
 
 
 def _sanitize_arguments(arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """Return a safe snapshot of arguments without huge payloads."""
+    """Return a bounded argument snapshot with credential values redacted."""
     if not arguments:
         return {}
-    return {k: _trim_value(v) for k, v in arguments.items()}
+    redacted = redact_sensitive_data(arguments)
+    return {key: _trim_value(value) for key, value in redacted.items()}
 
 
 def _argument_details(arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -2158,18 +2165,20 @@ def _build_enriched_tool_payload(
 ) -> Dict[str, Any]:
     """Wrap raw tool output with metadata/context so MCP callers get richer responses."""
     status_is_error = _looks_like_error(result, had_exception)
+    safe_arguments = _sanitize_arguments(arguments)
+    safe_result = redact_sensitive_data(result, source=arguments)
     payload: Dict[str, Any] = {
         "tool": tool_name,
         "status": "error" if status_is_error else "ok",
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "duration_ms": duration_ms,
-        "arguments": _sanitize_arguments(arguments),
-        "arguments_details": _argument_details(arguments),
-        "result": result,
+        "arguments": safe_arguments,
+        "arguments_details": _argument_details(safe_arguments),
+        "result": safe_result,
         "result_preview": _trim_value(
-            result, max_length=_PREVIEW_MAX_LENGTH, max_items=_PREVIEW_MAX_ITEMS
+            safe_result, max_length=_PREVIEW_MAX_LENGTH, max_items=_PREVIEW_MAX_ITEMS
         ),
-        "result_metadata": _result_metadata(result),
+        "result_metadata": _result_metadata(safe_result),
     }
     if server_info:
         payload["server"] = server_info
@@ -2623,10 +2632,11 @@ def tool_clock_lock_check(params: Dict[str, Any]) -> Dict[str, Any]:
                 "ncu_replay_mode": {
                     "type": "string",
                     "description": (
-                        "Nsight Compute replay mode: kernel or application. "
+                        "Nsight Compute replay mode: kernel, application, or app-range "
+                        "(one full NVTX start/stop range with the five minimal metrics). "
                         "Default is kernel for safer profiling on dynamic workloads."
                     ),
-                    "enum": ["kernel", "application"],
+                    "enum": list(NCU_REPLAY_MODES),
                     "default": "kernel",
                 },
                 "validity_profile": {
@@ -2744,6 +2754,11 @@ def tool_run_benchmarks(params: Dict[str, Any]) -> Dict[str, Any]:
     ncu_timeout_seconds = params.get("ncu_timeout_seconds")
     ncu_metric_set = params.get("ncu_metric_set", "minimal")
     ncu_replay_mode = params.get("ncu_replay_mode", "kernel")
+    if ncu_replay_mode is not None:
+        try:
+            ncu_replay_mode = validate_ncu_replay_mode(ncu_replay_mode)
+        except ValueError as exc:
+            return {"error": str(exc)}
     raw_validity_profile = params.get("validity_profile", "strict")
     validity_profile = normalize_param("validity_profile", raw_validity_profile, "strict")
     if validity_profile not in {"strict", "portable"}:
@@ -7502,8 +7517,8 @@ def tool_profile_nsys(params: Dict[str, Any]) -> Dict[str, Any]:
                 },
                 "replay_mode": {
                     "type": "string",
-                    "description": "NCU replay mode: application (profile all launches) or kernel (profile one instance per kernel)",
-                    "enum": ["application", "kernel"],
+                    "description": "NCU replay mode: application, kernel, or app-range (one full NVTX start/stop range; minimal metrics; no launch/kernel limits)",
+                    "enum": list(NCU_REPLAY_MODES),
                     "default": "application",
                 },
             }
@@ -7566,7 +7581,22 @@ def tool_profile_ncu(params: Dict[str, Any]) -> Dict[str, Any]:
     launch_skip = None if launch_skip_param is None else int(launch_skip_param)
     launch_count_param = params.get("launch_count")
     launch_count = None if launch_count_param is None else int(launch_count_param)
-    replay_mode = params.get("replay_mode", "application")
+    try:
+        replay_mode = validate_ncu_replay_mode(params.get("replay_mode", "application"))
+        if replay_mode == "app-range":
+            if str(metric_set).strip().lower() not in {"minimal", "basic"}:
+                raise ValueError("app-range requires metric_set='minimal' or 'basic'.")
+            validate_ncu_app_range_capture(
+                nvtx_includes=nvtx_includes,
+                metrics=MINIMAL_METRICS,
+                kernel_filter=kernel_filter,
+                launch_skip=launch_skip,
+                launch_count=launch_count,
+                sampling_interval=sampling_interval,
+                profile_from_start=profile_from_start,
+            )
+    except ValueError as exc:
+        return make_error(str(exc), include_context, context_level)
     effective_launch_skip = launch_skip
     effective_launch_count = launch_count
     if kernel_filter:
@@ -7679,7 +7709,9 @@ def tool_profile_ncu(params: Dict[str, Any]) -> Dict[str, Any]:
         metric_set_resolved_run = run_details.get("metric_set_resolved", metric_set_resolved)
         ncu_metrics: Dict[str, Any] = {}
         ncu_metrics_error = None
-        if path:
+        if path and replay_mode_used == "app-range":
+            ncu_metrics = dict(run_details.get("ncu_metrics") or {})
+        elif path:
             try:
                 from core.profiling.metrics_extractor import extract_ncu_metrics
 
@@ -7722,6 +7754,8 @@ def tool_profile_ncu(params: Dict[str, Any]) -> Dict[str, Any]:
             "profiles_dir": str(profile_dir),
             "progress_path": str(progress_path),
         }
+        if run_details.get("ncu_capture"):
+            result["ncu_capture"] = run_details["ncu_capture"]
         if ncu_metrics_error:
             result["ncu_metrics_error"] = ncu_metrics_error
         _emit_progress_safe(
@@ -11204,12 +11238,15 @@ class MCPServer:
                 content=_content_from_payload(payload), is_error=payload.get("status") == "error"
             )
         except Exception as e:
-            tb = traceback.format_exc()
             duration_ms = int((time.time() - start_ts) * 1000)
             payload = _build_enriched_tool_payload(
                 name,
                 arguments,
-                _normalize_result({"error": str(e), "traceback": tb}),
+                {
+                    "error": "Tool execution failed.",
+                    "error_type": type(e).__name__,
+                    "success": False,
+                },
                 duration_ms=duration_ms,
                 had_exception=True,
                 server_info=server_info,
@@ -11287,25 +11324,62 @@ class MCPServer:
             self._write_stdio_warning(f"Failed to emit {failure_context}: {exc}")
             return False
 
-    async def handle_message(self, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def handle_message(self, message: Any) -> Optional[Dict[str, Any]]:
         """Handle an MCP message. Returns None for notifications (messages without an id)."""
-        method = message.get("method")
-        msg_id = message.get("id")
-        is_notification = msg_id is None
-        params = message.get("params", {})
-
-        # Validate message structure
         if not isinstance(message, dict):
-            if msg_id is not None:
-                return {
-                    "jsonrpc": "2.0",
-                    "id": msg_id,
-                    "error": {
-                        "code": -32600,
-                        "message": "Invalid Request: message must be an object",
-                    },
-                }
-            return None
+            return {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {
+                    "code": -32600,
+                    "message": "Invalid Request: message must be an object",
+                },
+            }
+
+        msg_id = message.get("id")
+        if (
+            "id" in message
+            and msg_id is not None
+            and (isinstance(msg_id, bool) or not isinstance(msg_id, (str, int, float)))
+        ):
+            return {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {
+                    "code": -32600,
+                    "message": "Invalid Request: id must be a string, number, or null",
+                },
+            }
+        if message.get("jsonrpc") != "2.0":
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "error": {
+                    "code": -32600,
+                    "message": "Invalid Request: jsonrpc must be '2.0'",
+                },
+            }
+
+        method = message.get("method")
+        if not isinstance(method, str) or not method:
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "error": {
+                    "code": -32600,
+                    "message": "Invalid Request: method must be a non-empty string",
+                },
+            }
+
+        params = message.get("params", {})
+        if not isinstance(params, dict):
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "error": {"code": -32602, "message": "Invalid params: expected an object"},
+            }
+
+        is_notification = "id" not in message
 
         # Ignore notifications (messages without an id); MCP clients may send these.
         if is_notification:
@@ -11370,6 +11444,24 @@ class MCPServer:
             elif method == "tools/call":
                 tool_name = params.get("name", "")
                 arguments = params.get("arguments", {})
+                if not isinstance(tool_name, str) or not tool_name:
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": msg_id,
+                        "error": {
+                            "code": -32602,
+                            "message": "Invalid params: tool name must be a non-empty string",
+                        },
+                    }
+                if not isinstance(arguments, dict):
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": msg_id,
+                        "error": {
+                            "code": -32602,
+                            "message": "Invalid params: arguments must be an object",
+                        },
+                    }
                 result = self.call_tool(tool_name, arguments)
 
                 response = {
@@ -11390,7 +11482,7 @@ class MCPServer:
                 }
                 # Don't complete here - will be completed after sending response
                 return response
-        except Exception as e:
+        except Exception:
             # On error, we still need to complete the request
             # But only if we're going to send an error response
             # Re-raise to be handled by outer error handler
@@ -11415,60 +11507,32 @@ class MCPServer:
 
                 message = json.loads(line)
 
-                # Validate JSON-RPC version
-                if message.get("jsonrpc") != "2.0":
-                    msg_id = message.get("id")
-                    if msg_id is not None:
-                        error_response = {
-                            "jsonrpc": "2.0",
-                            "id": msg_id,
-                            "error": {
-                                "code": -32600,
-                                "message": "Invalid Request: jsonrpc must be '2.0'",
-                            },
-                        }
-                        self._emit_stdio_json(
-                            error_response,
-                            failure_context=f"invalid request response for id {msg_id!r}",
-                        )
-                    continue
-
                 response = await self.handle_message(message)
                 if response is not None:
-                    # Send response, then complete the request
-                    # This ensures we only send responses for requests we're still tracking
                     response_id = response.get("id")
-                    should_send = True
-                    if response_id is not None:
-                        with self._request_lock:
-                            if response_id not in self._pending_requests:
-                                # Request was cleaned up (timeout or client restart)
-                                # Don't send response to avoid "unknown message ID" errors
-                                if os.environ.get("AISP_MCP_DEBUG"):
-                                    print(
-                                        f"[DEBUG] Skipping response for cleaned-up request ID: {response_id}",
-                                        file=sys.stderr,
-                                    )
-                                should_send = False
-
-                    if should_send:
-                        print(json.dumps(response), flush=True)
-                        # Complete request after sending response
-                        if response_id is not None:
-                            self._complete_request(response_id)
+                    if (
+                        self._emit_stdio_json(
+                            response,
+                            failure_context=f"response for id {response_id!r}",
+                        )
+                        and response_id is not None
+                    ):
+                        self._complete_request(response_id)
 
             except json.JSONDecodeError as e:
                 print(f"JSON decode error: {e}", file=sys.stderr)
-                line_preview = line[:200] if "line" in locals() else "<unavailable>"
-                self._write_stdio_warning(
-                    "Unable to recover request id from malformed JSON input; "
-                    f"no parse error response emitted. line_preview={line_preview!r}"
+                self._emit_stdio_json(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": None,
+                        "error": {"code": -32700, "message": "Parse error"},
+                    },
+                    failure_context="parse error response",
                 )
             except Exception as e:
-                print(f"Error handling message: {e}", file=sys.stderr)
-                import traceback
-
-                print(traceback.format_exc(), file=sys.stderr)
+                self._write_stdio_warning(
+                    f"Internal error while handling request: {type(e).__name__}"
+                )
                 # Try to send error response
                 try:
                     msg_id = message.get("id") if "message" in locals() else None
@@ -11481,7 +11545,7 @@ class MCPServer:
                                     "id": msg_id,
                                     "error": {
                                         "code": -32603,
-                                        "message": f"Internal error: {str(e)}",
+                                        "message": "Internal error",
                                     },
                                 }
                                 if self._emit_stdio_json(

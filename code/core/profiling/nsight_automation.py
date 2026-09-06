@@ -20,6 +20,11 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any, Sequence
 
 from core.utils.logger import get_logger
+from core.profiling.profiler_config import (
+    MINIMAL_METRICS,
+    validate_ncu_app_range_capture,
+    validate_ncu_replay_mode,
+)
 
 logger = get_logger(__name__)
 
@@ -344,6 +349,8 @@ class NsightAutomation:
         finalize_grace_seconds: float = 20.0,
         extra_env: Optional[Dict[str, str]] = None,
         sanitize_python_startup: bool = True,
+        capture_range_cuda_profiler_api: bool = False,
+        cuda_graph_trace: Optional[str] = None,
     ) -> Optional[Path]:
         """Run Nsight Systems profiling.
         
@@ -355,6 +362,10 @@ class NsightAutomation:
             trace_osrt: Trace OS runtime
             full_timeline: If True, include driver/cu/pti traces and richer capture flags
             trace_forks: If True, trace child processes before exec
+            capture_range_cuda_profiler_api: Capture only between the target's
+                cudaProfilerStart()/cudaProfilerStop() calls and flush on stop
+            cuda_graph_trace: Optional CUDA Graph trace granularity ("graph" or
+                "node"). Leave unset to retain the installed Nsight default.
             wait_mode: NSYS wait mode ('primary' or 'all')
             finalize_grace_seconds: Grace period after SIGINT on timeout
             extra_env: Optional environment overrides for profiled process
@@ -422,6 +433,19 @@ class NsightAutomation:
         ])
         if trace_forks:
             nsys_cmd.extend(['--trace-fork-before-exec', 'true'])
+        if capture_range_cuda_profiler_api:
+            nsys_cmd.extend([
+                '--capture-range=cudaProfilerApi',
+                '--capture-range-end=stop',
+            ])
+        cuda_graph_trace_norm: Optional[str] = None
+        if cuda_graph_trace is not None:
+            cuda_graph_trace_norm = str(cuda_graph_trace).strip().lower()
+            if cuda_graph_trace_norm not in {"graph", "node"}:
+                raise ValueError("cuda_graph_trace must be 'graph', 'node', or None")
+            if not trace_cuda:
+                raise ValueError("cuda_graph_trace requires trace_cuda=True")
+            nsys_cmd.append(f"--cuda-graph-trace={cuda_graph_trace_norm}")
         wait_mode_norm = str(wait_mode or "primary").strip().lower()
         if wait_mode_norm not in {"primary", "all"}:
             raise ValueError("wait_mode must be 'primary' or 'all'")
@@ -436,6 +460,8 @@ class NsightAutomation:
             "cwd": str(self.run_cwd),
             "timeout_seconds": timeout_seconds,
             "preset": preset_normalized,
+            "capture_range_cuda_profiler_api": bool(capture_range_cuda_profiler_api),
+            "cuda_graph_trace": cuda_graph_trace_norm,
             "wait_mode": wait_mode_norm,
             "finalize_grace_seconds": finalize_grace_seconds,
             "sanitize_python_startup": bool(sanitize_python_startup),
@@ -583,6 +609,8 @@ class NsightAutomation:
                     trace_osrt=trace_osrt,
                     full_timeline=full_timeline,
                     trace_forks=trace_forks,
+                    capture_range_cuda_profiler_api=capture_range_cuda_profiler_api,
+                    cuda_graph_trace=cuda_graph_trace_norm,
                     preset=preset_normalized,
                     force_lineinfo=force_lineinfo,
                     timeout_seconds=timeout_seconds,
@@ -601,6 +629,8 @@ class NsightAutomation:
                     trace_osrt=trace_osrt,
                     full_timeline=False,
                     trace_forks=False,
+                    capture_range_cuda_profiler_api=capture_range_cuda_profiler_api,
+                    cuda_graph_trace=cuda_graph_trace_norm,
                     preset="light",
                     force_lineinfo=force_lineinfo,
                     timeout_seconds=timeout_seconds,
@@ -742,6 +772,25 @@ class NsightAutomation:
             raise ValueError(f"Unsupported workload_type: {workload_type}")
         metrics = self.METRIC_SETS[workload_type]
         ncu_set = self._resolve_ncu_set(metric_set)
+        replay_mode = validate_ncu_replay_mode(replay_mode)
+        nvtx_filters = (
+            list(dict.fromkeys(str(tag).strip() for tag in nvtx_includes or [] if str(tag).strip()))
+            if replay_mode == 'app-range'
+            else self._normalize_nvtx_includes(nvtx_includes)
+        )
+        if replay_mode == 'app-range':
+            if ncu_set != 'basic':
+                raise ValueError("app-range requires metric_set='minimal' or 'basic'.")
+            metrics = MINIMAL_METRICS
+            validate_ncu_app_range_capture(
+                nvtx_includes=nvtx_filters,
+                metrics=metrics,
+                kernel_filter=kernel_filter,
+                launch_skip=launch_skip,
+                launch_count=launch_count,
+                sampling_interval=sampling_interval,
+                profile_from_start=profile_from_start,
+            )
         ncu_cmd = [
             'ncu',
             '--set', ncu_set,
@@ -752,13 +801,12 @@ class NsightAutomation:
         if replay_mode:
             ncu_cmd.extend(['--replay-mode', replay_mode])
         # Only add custom metrics when using the full set; other sets bring their own.
-        if metrics and ncu_set == 'full':
+        if metrics and (ncu_set == 'full' or replay_mode == 'app-range'):
             ncu_cmd.extend(['--metrics', ",".join(metrics)])
         if kernel_filter:
             if kernel_name_base:
                 ncu_cmd.extend(['--kernel-name-base', str(kernel_name_base)])
             ncu_cmd.extend(['--kernel-name', kernel_filter])
-        nvtx_filters = self._normalize_nvtx_includes(nvtx_includes)
         if nvtx_filters:
             ncu_cmd.append('--nvtx')
             for tag in nvtx_filters:
@@ -809,11 +857,12 @@ class NsightAutomation:
             metric_set: Metric set to use ('full', 'roofline', 'minimal', 'speed-of-light', 'basic')
             launch_skip: Number of kernel launches to skip before profiling
             launch_count: Number of kernel launches to profile (None = all remaining)
-            replay_mode: Replay mode ('application' or 'kernel')
+            replay_mode: 'application', 'kernel', or 'app-range' (one full NVTX range, minimal metrics)
         
         Returns:
             output_path: Path to .ncu-rep file, or None if failed
         """
+        replay_mode = validate_ncu_replay_mode(replay_mode)
         if not self.ncu_available:
             logger.error("Nsight Compute not available")
             return None
@@ -861,6 +910,7 @@ class NsightAutomation:
             "nvtx_includes": list(nvtx_includes or []),
             "profile_from_start": profile_from_start,
         })
+        capture_started_ns = time.time_ns()
         
         try:
             result = subprocess.run(
@@ -895,6 +945,11 @@ class NsightAutomation:
                 )
             if not output_path.exists():
                 capture_errors.append(f"Expected report file missing: {output_path}")
+            elif replay_mode == 'app-range' and (
+                not output_path.is_file()
+                or output_path.stat().st_mtime_ns < capture_started_ns
+            ):
+                capture_errors.append("Nsight Compute app-range report is not fresh for this capture.")
             if capture_errors:
                 hint_lines: List[str] = []
                 if nvtx_includes:
@@ -911,6 +966,23 @@ class NsightAutomation:
                 self.last_error = " ".join(capture_errors + hint_lines)
                 logger.error(f"Nsight Compute capture invalid: {self.last_error}")
                 return None
+            if replay_mode == 'app-range':
+                from core.profiling.metrics_extractor import inspect_ncu_app_range_report
+
+                try:
+                    range_metrics, capture = inspect_ncu_app_range_report(
+                        output_path,
+                        expected_nvtx_range=ncu_cmd[ncu_cmd.index('--nvtx-include') + 1],
+                        requested_metrics=MINIMAL_METRICS,
+                    )
+                except ValueError as exc:
+                    self.last_error = f"Nsight Compute app-range capture invalid: {exc}"
+                    logger.error(self.last_error)
+                    return None
+                self.last_run.update({"ncu_capture": capture, "ncu_metrics": range_metrics.to_dict()})
+                output_path.with_suffix('.capture.json').write_text(
+                    json.dumps(capture, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+                )
             return output_path
         except subprocess.TimeoutExpired as e:
             self.last_error = f"Nsight Compute timed out after {timeout_seconds}s"

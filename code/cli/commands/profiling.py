@@ -693,6 +693,11 @@ def ncu(args) -> None:
     from rich.console import Console
     from rich.panel import Panel
     from core.profiling.nsight_automation import NsightAutomation
+    from core.profiling.profiler_config import (
+        MINIMAL_METRICS,
+        validate_ncu_app_range_capture,
+        validate_ncu_replay_mode,
+    )
 
     console = Console()
 
@@ -734,6 +739,19 @@ def ncu(args) -> None:
     automation = NsightAutomation(output_root)
     console.print(f"[cyan]Running Nsight Compute ({metric_set}, {workload_type})[/cyan]")
     try:
+        replay_mode = validate_ncu_replay_mode(replay_mode)
+        if replay_mode == "app-range":
+            if str(metric_set).strip().lower() not in {"minimal", "basic"}:
+                raise ValueError("app-range requires metric_set='minimal' or 'basic'.")
+            validate_ncu_app_range_capture(
+                nvtx_includes=nvtx_includes,
+                metrics=MINIMAL_METRICS,
+                kernel_filter=kernel_filter,
+                launch_skip=launch_skip,
+                launch_count=launch_count,
+                sampling_interval=sampling_interval,
+                profile_from_start=profile_from_start,
+            )
         output = automation.profile_ncu(
             command=command_list,
             output_name=output_name,
@@ -776,6 +794,9 @@ def ncu(args) -> None:
         f"Launch count: {launch_count_used if launch_count_used is not None else 'none'}",
         f"Force lineinfo: {force_lineinfo}",
     ]
+    if last_run.get("ncu_capture"):
+        lines.append("Report scope: complete selected NVTX range")
+        lines.append(f"Capture evidence: {Path(output).with_suffix('.capture.json')}")
     console.print(Panel.fit("\n".join(lines), title="Nsight Compute capture", border_style="green"))
     return 0
 

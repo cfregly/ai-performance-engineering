@@ -113,7 +113,7 @@ def test_gpu_stream_single_event(tmp_path):
     status_code, stream_text = asgi_stream_text(
         server.fastapi_app,
         "GET",
-        "/api/gpu/stream?max_events=1&interval=0.01",
+        "/api/gpu/stream?max_events=1&interval=0.1",
     )
     assert status_code == 200
 

@@ -121,7 +121,10 @@ def _call_flex_attention_scaled(query, key, value, scale):
 
         _FLEX_ATTENTION_SCALED = compile_callable(
             _flex_attention_scaled_impl,
-            mode="reduce-overhead",
+            # The server captures the full prefill path below.  Default mode
+            # keeps FlexAttention compiled without creating an inner Inductor
+            # CUDA graph whose replay cannot itself be captured.
+            mode="default",
             fullgraph=True,
             dynamic=True,
         )
@@ -1211,10 +1214,14 @@ class TensorParallelAttention(nn.Module):
             )
             out = output_2d.view(batch_size, seq_len, self.d_model)
         
-        # All-reduce across GPUs (async to enable overlap with downstream work)
+        # All-reduce across GPUs and make its result visible to dependent work.
         if dist.is_initialized():
             work = dist.all_reduce(out, op=dist.ReduceOp.SUM, async_op=True)
             self._pending_work = work
+            # The residual connection consumes ``out`` immediately.  Record the
+            # NCCL-to-compute-stream dependency here so eager execution is
+            # correct and CUDA graph capture includes the dependency.
+            self.complete_pending()
         
         return out, key_local, value_local
 
@@ -1537,6 +1544,11 @@ class InferenceServerMultiGPU:
             device="cpu",
             pin_memory=self.device.type == "cuda",
         )
+        self._serve_loop_control = torch.ones(
+            1,
+            dtype=torch.uint8,
+            device=self.device,
+        )
         self._last_token_lengths = [0] * max_batch_size
         self._prefill_graph: Optional[torch.cuda.CUDAGraph] = None
         self._prefill_graph_available = False
@@ -1617,14 +1629,28 @@ class InferenceServerMultiGPU:
             return
 
         try:
-            torch.cuda.synchronize(self.device)
             self._prefill_graph_input = torch.zeros(
                 (self.max_batch_size, graph_seq_len),
                 dtype=torch.long,
                 device=self.device,
             )
+
+            # First-use FlexAttention and torch.compile work is not graph-safe.
+            # PyTorch requires eager warmup on a side stream before capture.
+            current_stream = torch.cuda.current_stream(self.device)
+            warmup_stream = torch.cuda.Stream(device=self.device)
+            warmup_stream.wait_stream(current_stream)
+            with torch.cuda.stream(warmup_stream), torch.inference_mode():
+                for _ in range(3):
+                    warmup_outputs = self.model(
+                        self._prefill_graph_input,
+                        past_kv=None,
+                    )
+            del warmup_outputs
+            current_stream.wait_stream(warmup_stream)
+
             self._prefill_graph = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(self._prefill_graph):
+            with torch.inference_mode(), torch.cuda.graph(self._prefill_graph):
                 logits, key_stack, value_stack = self.model(
                     self._prefill_graph_input,
                     past_kv=None,
@@ -1644,10 +1670,12 @@ class InferenceServerMultiGPU:
                     f"CUDA Graph captured for static prefill: batch={self.max_batch_size}, seq_len={graph_seq_len}"
                 )
         except RuntimeError as exc:
-            if self.rank == 0:
-                print(f"⚠ CUDA Graph capture skipped: {exc}")
             self._prefill_graph = None
             self._prefill_graph_available = False
+            raise RuntimeError(
+                "CUDA Graph prefill setup failed during required warmup or capture; "
+                "refusing to continue with potentially invalid CUDA state."
+            ) from exc
 
     def _run_prefill_graph(self, input_ids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         assert self._prefill_graph is not None
@@ -1869,7 +1897,22 @@ class InferenceServerMultiGPU:
                 state.is_complete = True
 
         return generated
-    
+
+    def _serve_loop_should_continue(
+        self,
+        loop_start: float,
+        duration_seconds: float,
+    ) -> bool:
+        """Use rank 0's deadline so every rank enters the same model collectives."""
+        if self.world_size == 1 or not dist.is_initialized():
+            return time.perf_counter() - loop_start < duration_seconds
+
+        if self.rank == 0:
+            should_continue = time.perf_counter() - loop_start < duration_seconds
+            self._serve_loop_control.fill_(should_continue)
+        dist.broadcast(self._serve_loop_control, src=0)
+        return bool(self._serve_loop_control.item())
+
     def serve_loop(self, duration_seconds: float = 10.0):
         """
         Main serving loop with continuous batching.
@@ -1881,7 +1924,7 @@ class InferenceServerMultiGPU:
         loop_start = time.perf_counter()
         iteration = 0
         
-        while time.perf_counter() - loop_start < duration_seconds:
+        while self._serve_loop_should_continue(loop_start, duration_seconds):
             iteration += 1
             
             # Get next batch (mix of new and ongoing)

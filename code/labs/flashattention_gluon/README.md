@@ -3,6 +3,11 @@
 ## Summary
 Benchmarks ordinary tiled Triton attention with online softmax against an eager attention reference. Historical Gluon target/module names remain compatible; no Gluon DSL, warp specialization, or TMA implementation is claimed.
 
+The September 5, 2026 correctness update retains FP32 intermediates in both
+paths and rounds the output once to the input dtype. Historical timings below
+predate this precision change and are not current performance evidence. The causal/tail tests
+and FP16/BF16/FP32 precision tests use the existing PyTorch closeness defaults.
+
 ## Problem
 Attention-stack integrations can look "fast" because the benchmark is fuzzy. This lab keeps the pair narrow so you can see whether the tiled Triton path improves this workload on the target stack.
 

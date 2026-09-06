@@ -166,7 +166,6 @@ __global__ void warp_specialized_pingpong(const float* __restrict__ A,
         const int tile = blockIdx.x + tile_iter * gridDim.x;
         const int stage = tile_iter % PIPELINE_STAGES;
         const int prev_stage = stage ^ 1;
-        const size_t offset = static_cast<size_t>(tile) * TILE_ELEMS;
         float* stage_a = a_stages + stage * TILE_ELEMS;
         float* stage_b = b_stages + stage * TILE_ELEMS;
         float* stage_c = c_stages + stage * TILE_ELEMS;

@@ -1032,11 +1032,12 @@ class VerifyRunner:
         elif multi_gpu_required:
             if not torch.cuda.is_available() or effective_visible < 2:
                 raise RuntimeError("SKIPPED: requires >=2 GPUs")
-        else:
-            if effective_visible and effective_visible != 1:
-                raise RuntimeError(
-                    f"World size mismatch: requires exactly 1 visible GPU, found {effective_visible}."
-                )
+        # With no explicit world-size contract, verification runs one benchmark
+        # instance in this process.  Extra visible devices are available capacity,
+        # not evidence that the benchmark participates in a larger world.  The
+        # harness and distributed benchmark setup enforce their actual launch
+        # requirements; keep exact visibility checks scoped to
+        # ``required_world_size`` above.
 
         skip_input = False
         skip_output = False

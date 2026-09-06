@@ -25,6 +25,27 @@ def _print_result(result: Dict[str, Any], json_output: bool) -> None:
     print(json.dumps(result, indent=2, default=_json_default))
 
 
+def _get_single_launch_argv(result: Dict[str, Any]) -> list[str]:
+    """Return the producer-provided argv for a directly executable launch."""
+    engine = result.get("engine")
+    if not isinstance(engine, dict):
+        raise ValueError("deployment result is missing structured engine data")
+    launch_argv = engine.get("launch_argv")
+    if launch_argv is None:
+        raise ValueError(
+            "generated launch plan contains multiple commands; run the displayed steps "
+            "explicitly after review"
+        )
+    if (
+        not isinstance(launch_argv, list)
+        or not launch_argv
+        or not all(isinstance(argument, str) for argument in launch_argv)
+        or not launch_argv[0]
+    ):
+        raise ValueError("deployment result contains an invalid launch argv")
+    return list(launch_argv)
+
+
 def vllm_config(args: Any) -> int:
     """Generate vLLM configuration."""
     model_size = getattr(args, "model_size", None)
@@ -119,6 +140,11 @@ def serve(args: Any) -> int:
         _print_result(result, getattr(args, "json", False))
         return 1
     if getattr(args, "run", False):
-        return subprocess.run(launch_cmd, shell=True).returncode
+        try:
+            launch_argv = _get_single_launch_argv(result)
+        except ValueError as exc:
+            print(f"Cannot execute launch command safely: {exc}.")
+            return 1
+        return subprocess.run(launch_argv).returncode
     print(launch_cmd)
     return 0

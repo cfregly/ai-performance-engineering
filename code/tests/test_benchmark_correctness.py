@@ -40,8 +40,8 @@ pytestmark = pytest.mark.skipif(
 # Whitelist of chapters/benchmarks for quick correctness checks
 # Only test a few representative benchmarks to keep CI fast
 QUICK_TEST_WHITELIST = [
-    ("ch01", "baseline_performance.py"),
-    ("ch01", "optimized_performance.py"),
+    ("ch02", "baseline_cublas.py"),
+    ("ch02", "optimized_cublas.py"),
     ("ch07", "baseline_copy_uncoalesced.py"),
     ("ch07", "optimized_copy_uncoalesced_coalesced.py"),
 ]
@@ -104,10 +104,10 @@ def get_test_chapters(request):
         test_items = []
         for chapter_name, benchmark_file in QUICK_TEST_WHITELIST:
             chapter_dir = repo_root / chapter_name
-            if chapter_dir.exists():
-                benchmark_path = chapter_dir / benchmark_file
-                if benchmark_path.exists():
-                    test_items.append((chapter_dir, [benchmark_path]))
+            assert chapter_dir.is_dir(), f"Whitelisted chapter is missing: {chapter_dir}"
+            benchmark_path = chapter_dir / benchmark_file
+            assert benchmark_path.is_file(), f"Whitelisted benchmark is missing: {benchmark_path}"
+            test_items.append((chapter_dir, [benchmark_path]))
         return test_items
 
 
@@ -297,23 +297,14 @@ def test_benchmark_validation(request):
 
 def test_benchmark_protocol_compliance():
     """Test that benchmarks implement the BaseBenchmark correctly (quick check only)."""
-    from core.harness.benchmark_harness import BaseBenchmark
-    
-    # Test that a sample benchmark implements the protocol
     repo_root = Path(__file__).parent.parent
-    ch01_dir = repo_root / "ch01"
-    
-    if not ch01_dir.exists():
-        pytest.skip("ch01 directory not found")
-    
-    # Use whitelisted benchmark for the quick check
-    baseline_path = ch01_dir / "baseline_ilp.py"
-    if not baseline_path.exists():
-        pytest.skip("baseline_ilp.py not found")
-    
-    benchmark = load_benchmark(baseline_path)
-    if benchmark is None:
-        pytest.skip("Failed to load benchmark")
+    chapter_name, benchmark_file = QUICK_TEST_WHITELIST[0]
+    baseline_path = repo_root / chapter_name / benchmark_file
+    assert baseline_path.is_file(), f"Protocol benchmark is missing: {baseline_path}"
+
+    benchmark = _load_or_skip(baseline_path)
+    assert benchmark is not None
+    assert isinstance(benchmark, BaseBenchmark)
     
     # Check that benchmark implements required methods
     assert hasattr(benchmark, "setup")

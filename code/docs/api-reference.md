@@ -351,6 +351,7 @@ engine.benchmark.speed_test()                   # Quick GEMM/attention test
 - Portable validity profile does not update expectation files unless explicitly enabled (`--allow-portable-expectations-update` / `allow_portable_expectations_update=true`).
 - Use `--force-sync` (CLI) / `force_sync=true` (MCP) to insert a device-wide synchronize after each `benchmark_fn()` when you need an extra safety net outside standard harness timing.
 - Safer profiling defaults are `--ncu-metric-set minimal` and `--ncu-replay-mode kernel` (same defaults in MCP `run_benchmarks`).
+- `--ncu-replay-mode app-range` captures one complete NVTX start/stop range using the five minimal metrics. It requires an explicit range and rejects kernel filters, launch limits and PM sampling. The KV-standard pair prefers this mode locally because per-kernel application replay repeats its full setup and decode workload many times. Each accepted range capture retains report SHA-256, report-carried replay mode/range identity, metric units and full selected-range policy. Its `ncu_range_time_ms` is a profiler measurement and does not represent benchmark latency or an individual kernel time. Timing, correctness checks and Nsight Systems remain separate requirements.
 - MCP `run_benchmarks` emits `speedup_attribution` from captured profiler metrics when available, without requiring an LLM backend.
 - Use `--only-cuda` / `only_cuda=true` to run only CUDA binary wrappers, or `--only-python` / `only_python=true` to skip them.
 

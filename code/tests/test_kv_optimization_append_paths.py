@@ -15,10 +15,12 @@ FP8_REQUIRED = pytest.mark.skipif(
 )
 
 
-def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
+def test_kv_standard_uses_host_seq_lengths_and_full_written_verification_region() -> None:
     for benchmark_cls in (BaselineKVStandard, OptimizedKVFP8Compressed):
         init_source = inspect.getsource(benchmark_cls.__init__)
         setup_source = inspect.getsource(benchmark_cls.setup)
+        written_view_source = inspect.getsource(benchmark_cls._written_cache_view)
+        build_source = inspect.getsource(benchmark_cls._build_verification_output)
         get_kv_source = inspect.getsource(benchmark_cls.get_kv)
         benchmark_source = inspect.getsource(benchmark_cls.benchmark_fn)
         capture_source = inspect.getsource(benchmark_cls.capture_verification_payload)
@@ -41,24 +43,27 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
             assert "self._generated_step_layer_position_pairs = [" in setup_source
             assert "self._generated_step_layer_position_count = len(self._generated_step_layer_position_pairs)" in setup_source
             assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in init_source
-            assert "self._verify_output_buffer = torch.empty(" in setup_source
-            assert "self._verify_output_buffer.copy_(self.output)" in capture_source
-            assert "output=self._verify_output_buffer" in capture_source
+            assert "self._verify_output_buffer.copy_(self.output)" in build_source
+            assert "output=self._build_verification_output()" in capture_source
             assert "self.output.float().clone()" not in capture_source
         else:
-            build_source = inspect.getsource(benchmark_cls._build_verification_output)
             assert "self._generated_step_position_pairs: list[tuple[int, torch.Tensor, torch.Tensor]] = []" in init_source
             assert "self._generated_step_position_count = 0" in init_source
             assert "self._generated_step_position_pairs = [" in setup_source
             assert "self._generated_step_position_count = len(self._generated_step_position_pairs)" in setup_source
             assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in init_source
-            assert "self._verify_output_buffer = torch.empty(" in setup_source
-            assert "torch.div(kq0.float(), k_scale0, out=self._verify_output_buffer[0, 0, 0, :, 0, :])" in build_source
-            assert "torch.div(vq0.float(), v_scale0, out=self._verify_output_buffer[0, 0, 1, :, 0, :])" in build_source
+            assert "self._verify_output_buffer.copy_(self.output)" in build_source
+            assert "self.k_scales[" in build_source
+            assert "self.v_scales[" in build_source
+            assert "self._verify_output_buffer[:, :, 0]" in build_source
+            assert "self._verify_output_buffer[:, :, 1]" in build_source
             assert "return self._verify_output_buffer" in build_source
             assert "torch.stack(" not in build_source
             assert ".detach().clone()" not in build_source
-        assert "self._output_view = self.kv_cache[:1, :1, :, :, :1, : min(8, self.head_dim)]" in setup_source
+        assert "self._output_view = self._written_cache_view()" in setup_source
+        assert "self._verify_output_buffer = None" in setup_source
+        assert ":, self._active_layer_slice, :, :, : self.num_decode_steps, :" in written_view_source
+        assert "torch.empty_like(self.output, dtype=torch.float32)" in build_source
         assert 'self._batch_size_tensor = torch.empty(1, dtype=torch.int64, device="cpu")' in setup_source
         assert "self._batch_size_tensor[0] = self.batch_size" in setup_source
         assert "self._seq_lengths_payload = torch.empty_like(self.seq_lengths)" in setup_source
@@ -121,6 +126,105 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
             assert 'metrics["compression_ratio"] = 2.0 / self.bytes_per_element' in finalize_source
 
 
+def _prepare_cpu_verification_metadata(
+    bench: BaselineKVStandard | OptimizedKVFP8Compressed,
+) -> None:
+    bench._batch_size_tensor = torch.tensor([bench.batch_size], dtype=torch.int64)
+    bench.seq_lengths = torch.full(
+        (bench.batch_size,), bench.num_decode_steps, dtype=torch.int64
+    )
+    bench._seq_lengths_payload = torch.empty_like(bench.seq_lengths)
+
+
+def test_baseline_verification_payload_covers_only_the_full_written_region_on_cpu() -> None:
+    bench = BaselineKVStandard(
+        batch_size=2,
+        num_layers=4,
+        num_heads=3,
+        head_dim=5,
+        max_seq_length=7,
+        active_layers=3,
+        num_decode_steps=4,
+    )
+    bench.device = torch.device("cpu")
+    bench.kv_cache = torch.full(
+        (2, 4, 2, 3, 7, 5), -1000, dtype=torch.bfloat16
+    )
+    expected_shape = (2, 3, 2, 3, 4, 5)
+    expected = torch.arange(2 * 3 * 2 * 3 * 4 * 5, dtype=torch.float32)
+    expected = expected.reshape(expected_shape).to(torch.bfloat16)
+    bench.kv_cache[:, :3, :, :, :4, :].copy_(expected)
+    bench.output = bench._written_cache_view()
+    _prepare_cpu_verification_metadata(bench)
+
+    assert bench._verify_output_buffer is None
+    bench.capture_verification_payload()
+    output = bench.get_verify_output()
+
+    assert output.shape == expected_shape
+    assert output.dtype == torch.float32
+    assert torch.equal(output, expected.float())
+    assert output[-1, -1, -1, -1, -1, -1] == expected[-1, -1, -1, -1, -1, -1]
+    assert not torch.any(output == -1000)
+
+
+def test_optimized_verification_dequantizes_the_full_written_region_on_cpu() -> None:
+    bench = OptimizedKVFP8Compressed(
+        batch_size=2,
+        num_layers=4,
+        num_heads=3,
+        head_dim=5,
+        max_seq_length=7,
+        active_layers=3,
+        num_decode_steps=4,
+    )
+    bench.device = torch.device("cpu")
+    bench.cache_dtype = torch.float32
+    bench.kv_cache = torch.full((2, 4, 2, 3, 7, 5), -1000, dtype=torch.float32)
+    expected_shape = (2, 3, 2, 3, 4, 5)
+    quantized = torch.arange(1, 2 * 3 * 2 * 3 * 4 * 5 + 1, dtype=torch.float32)
+    quantized = quantized.reshape(expected_shape)
+    bench.kv_cache[:, :3, :, :, :4, :].copy_(quantized)
+    bench.k_scales = torch.ones(4, 7, dtype=torch.float32)
+    bench.v_scales = torch.ones(4, 7, dtype=torch.float32)
+    bench.k_scales[:3, :4] = torch.tensor(
+        [[2, 4, 5, 8], [4, 5, 8, 10], [5, 8, 10, 16]], dtype=torch.float32
+    )
+    bench.v_scales[:3, :4] = torch.tensor(
+        [[4, 5, 8, 10], [5, 8, 10, 16], [8, 10, 16, 20]], dtype=torch.float32
+    )
+    bench.output = bench._written_cache_view()
+    _prepare_cpu_verification_metadata(bench)
+
+    expected = quantized.clone()
+    expected[:, :, 0].div_(bench.k_scales[:3, :4].view(1, 3, 1, 4, 1))
+    expected[:, :, 1].div_(bench.v_scales[:3, :4].view(1, 3, 1, 4, 1))
+    assert bench._verify_output_buffer is None
+    bench.capture_verification_payload()
+    output = bench.get_verify_output()
+
+    assert output.shape == expected_shape
+    assert output.dtype == torch.float32
+    assert torch.equal(output, expected)
+    assert output[-1, -1, -1, -1, -1, -1] == expected[-1, -1, -1, -1, -1, -1]
+    assert not torch.any(output == -1000)
+
+
+def test_kv_standard_prefers_full_application_range_replay_for_ncu() -> None:
+    for benchmark_cls in (BaselineKVStandard, OptimizedKVFP8Compressed):
+        bench = benchmark_cls(
+            batch_size=1,
+            num_layers=1,
+            num_heads=1,
+            head_dim=1,
+            max_seq_length=1,
+            active_layers=1,
+            num_decode_steps=1,
+        )
+        assert bench.preferred_ncu_replay_mode == "app-range"
+        assert bench.get_config().ncu_replay_mode == "app-range"
+
+
 def test_kv_standard_cache_allocation_avoids_zero_fill() -> None:
     for benchmark_cls in (BaselineKVStandard, OptimizedKVFP8Compressed):
         setup_source = inspect.getsource(benchmark_cls.setup)
@@ -161,7 +265,10 @@ def test_fp8_append_paths_reuse_quantization_buffers() -> None:
     assert "torch.abs(x, out=abs_buffer)" in compute_scale_source
     assert "absmax = abs_buffer.amax().float()" in compute_scale_source
     assert "x.abs().amax().float()" not in compute_scale_source
-    assert "torch.mul(x, scale, out=out)" in quantize_source
+    assert "scale_for_promotion = scale.reshape(1)" in quantize_source
+    assert "torch.mul(x, scale_for_promotion, out=out)" in quantize_source
+    assert "(x * scale_for_promotion).to(self.cache_dtype)" in quantize_source
+    assert "torch.mul(x, scale, out=out)" not in quantize_source
     assert "k_quantized = self._quantize_step_into(k, k_scale, self._k_quantized_step)" in append_source
     assert "v_quantized = self._quantize_step_into(v, v_scale, self._v_quantized_step)" in append_source
     assert "k_quantized = self._quantize_step_into(k, k_scale, self._k_quantized_step)" in append_active_source
@@ -200,6 +307,41 @@ def test_fp8_append_paths_reuse_quantization_buffers() -> None:
     assert torch.isfinite(small_scale)
     assert bench._scale_abs_buffer.data_ptr() == buffer_ptr
     assert bench._scale_abs_buffer.numel() >= large.numel()
+
+
+@pytest.mark.parametrize("use_fp8", [True, False], ids=["preallocated_out", "conversion_return"])
+def test_quantize_step_promotes_bf16_product_before_low_precision_cast(use_fp8: bool) -> None:
+    bench = OptimizedKVFP8Compressed(
+        batch_size=1,
+        num_layers=1,
+        num_heads=1,
+        head_dim=1,
+        max_seq_length=1,
+        active_layers=1,
+        num_decode_steps=1,
+    )
+    # E4M3 also exercises the conversion-return branch on CPU installations
+    # that do not expose the production FP4 dtype.
+    bench.use_fp8 = use_fp8
+    bench.cache_dtype = torch.float8_e4m3fn
+    x = torch.tensor([[[-2.015625]]], dtype=torch.bfloat16)
+    scale = torch.tensor(135.2452850341797, dtype=torch.float32)
+    out = torch.zeros_like(x, dtype=torch.float8_e4m3fn)
+
+    double_rounded = (x * scale).to(torch.float8_e4m3fn)
+    expected = (x.float() * scale).to(torch.float8_e4m3fn)
+    result = bench._quantize_step_into(x, scale, out)
+
+    assert scale.ndim == 0
+    assert double_rounded.item() == -256.0
+    assert expected.item() == -288.0
+    assert torch.equal(result, expected)
+    if use_fp8:
+        assert result is out
+        assert result.data_ptr() == out.data_ptr()
+    else:
+        assert result is not out
+        assert torch.count_nonzero(out.float()).item() == 0
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for KV append parity")

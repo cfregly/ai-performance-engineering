@@ -713,6 +713,23 @@ class TestEnvironmentProtections:
         # Should capture power info via NVML (fail-fast if not available).
         assert state is not None
         assert state.power_draw_w is not None
+        assert state.power_limit_w is not None
+        assert state.power_limit_w > 0
+
+    @requires_cuda
+    def test_gpu_state_nvml_identity_matches_logical_cuda_device(self):
+        """Read both APIs and prove telemetry follows the visible CUDA identity."""
+        from core.harness.validity_checks import capture_gpu_state
+        from core.profiling.gpu_telemetry import normalize_gpu_uuid
+
+        device = torch.cuda.current_device()
+        cuda_uuid = normalize_gpu_uuid(
+            getattr(torch.cuda.get_device_properties(device), "uuid", None)
+        )
+        if cuda_uuid is None:
+            pytest.skip("this PyTorch build does not expose CUDA device UUIDs")
+        state = capture_gpu_state(device)
+        assert state.device_uuid == cuda_uuid
 
 
 # =============================================================================

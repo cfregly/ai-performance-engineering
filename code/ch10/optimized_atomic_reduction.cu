@@ -188,8 +188,7 @@ int main() {
     printf("  - No intermediate global memory buffer\n");
     printf("  - Modern GPUs have fast atomics\n");
 
-    const float verify_checksum = total;
-    VERIFY_PRINT_CHECKSUM(verify_checksum);
+    VERIFY_PRINT_CHECKSUM(total);
     
     // Cleanup
     CUDA_CHECK(cudaEventDestroy(start));

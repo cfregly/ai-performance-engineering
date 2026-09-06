@@ -203,6 +203,7 @@ def optimized_gloo_bundle(tmp_path_factory):
     }
     env = os.environ.copy()
     env["PYTHONPATH"] = str(CODE_ROOT)
+    env["CUDA_VISIBLE_DEVICES"] = ""  # This verification child is explicitly CPU/Gloo.
     env.update(
         {
             RESULT_DIR_ENV: str(result_dir),
@@ -278,6 +279,7 @@ def _launch_gloo_matrix_case(result_dir: Path, *, mode: str, variant: str) -> di
     }
     env = os.environ.copy()
     env["PYTHONPATH"] = str(CODE_ROOT)
+    env["CUDA_VISIBLE_DEVICES"] = ""  # This verification child is explicitly CPU/Gloo.
     env.update(
         {
             RESULT_DIR_ENV: str(result_dir),

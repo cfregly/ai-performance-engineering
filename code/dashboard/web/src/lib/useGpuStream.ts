@@ -30,6 +30,11 @@ export function useGpuStream(options: UseGpuStreamOptions = {}): GpuStreamState 
     const source = new EventSource(url);
     sourceRef.current = source;
 
+    const markStreamError = () => {
+      setGpu((current) => (current ? { ...current, live: false } : current));
+      setStatus('error');
+    };
+
     source.addEventListener('gpu', (event) => {
       try {
         const payload = JSON.parse((event as MessageEvent).data || '{}');
@@ -39,13 +44,11 @@ export function useGpuStream(options: UseGpuStreamOptions = {}): GpuStreamState 
           setStatus('connected');
         }
       } catch {
-        setStatus('error');
+        markStreamError();
       }
     });
 
-    source.onerror = () => {
-      setStatus('error');
-    };
+    source.onerror = markStreamError;
 
     return () => {
       source.close();

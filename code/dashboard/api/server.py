@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import time
 import webbrowser
@@ -80,6 +81,7 @@ except Exception:  # pragma: no cover - fallback for minimal test environments
 CAMPAIGN_ROOT_ENV = "AISP_DASHBOARD_CAMPAIGN_ROOT"
 UI_ORIGINS_ENV = "AISP_DASHBOARD_ALLOWED_ORIGINS"
 DEFAULT_UI_ORIGINS = ("http://127.0.0.1:3000", "http://localhost:3000")
+MIN_GPU_STREAM_INTERVAL_SECONDS = 0.1
 _campaign_root_override: Path | None = None
 
 
@@ -168,7 +170,9 @@ def _configure_engine(data_file: Path | None) -> None:
 
     handler = get_core(data_file=path, refresh=True)
     engine._handler_instance = handler
-    engine._analyzer_instance = PerformanceAnalyzer(lambda: load_benchmark_data(path, handler.bench_roots))
+    engine._analyzer_instance = PerformanceAnalyzer(
+        lambda: load_benchmark_data(path, handler.bench_roots)
+    )
 
 
 def _parse_bool(value: Any) -> bool:
@@ -290,10 +294,15 @@ async def gpu_stream(
     interval: float = 5.0,
     max_events: int | None = None,
 ) -> StreamingResponse:
-    if interval <= 0:
-        raise ValueError("interval must be > 0")
+    if not math.isfinite(interval) or interval < MIN_GPU_STREAM_INTERVAL_SECONDS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"interval must be finite and at least {MIN_GPU_STREAM_INTERVAL_SECONDS} seconds"
+            ),
+        )
     if max_events is not None and max_events <= 0:
-        raise ValueError("max_events must be > 0")
+        raise HTTPException(status_code=422, detail="max_events must be > 0")
 
     async def _event_stream():
         from core.engine import get_engine
@@ -375,7 +384,9 @@ def cli_serve(
         "--campaign-root",
         help=f"Restrict campaign API access to this directory (or set {CAMPAIGN_ROOT_ENV}).",
     ),
-    open_browser: bool = typer.Option(False, "--open-browser", help="Open browser to the backend URL"),
+    open_browser: bool = typer.Option(
+        False, "--open-browser", help="Open browser to the backend URL"
+    ),
 ) -> None:
     """Start the dashboard API server."""
     serve_dashboard(

@@ -121,15 +121,58 @@ def _run_profile() -> None:
         # Warmup (keep short; profiling is not a timing run)
         benchmark.benchmark_fn()
 
-        # Profile execution
+        # Profile exactly one execution. Nsight Systems defers CUDA activity
+        # buffer flushing until cudaProfilerStop(); calling it explicitly is
+        # required before the successful hard exit below.
         import torch
         if torch.cuda.is_available():
             torch.cuda.synchronize()
 
-        with nvtx_range("compute_kernel:profile", enable=True):
-            benchmark.benchmark_fn()
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
+        _cudart = None
+        _profiler_started = False
+        _profile_error = None
+        try:
+            if torch.cuda.is_available():
+                _cudart = torch.cuda.cudart()
+                _start_status = int(_cudart.cudaProfilerStart())
+                if _start_status != 0:
+                    raise RuntimeError(
+                        f"cudaProfilerStart() failed with status {{_start_status}}"
+                    )
+                _profiler_started = True
+
+            with nvtx_range("compute_kernel:profile", enable=True):
+                benchmark.benchmark_fn()
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+        except BaseException as exc:
+            _profile_error = exc
+            raise
+        finally:
+            if _profiler_started and _cudart is not None:
+                if _profile_error is not None:
+                    try:
+                        torch.cuda.synchronize()
+                    except BaseException as exc:
+                        print(
+                            f"[profile_warning] CUDA synchronize failed while preserving "
+                            f"the primary nsys capture error: {{exc}}",
+                            file=sys.stderr,
+                        )
+                try:
+                    _stop_status = int(_cudart.cudaProfilerStop())
+                    if _stop_status != 0:
+                        raise RuntimeError(
+                            f"cudaProfilerStop() failed with status {{_stop_status}}"
+                        )
+                except BaseException as exc:
+                    if _profile_error is None:
+                        raise
+                    print(
+                        f"[profile_warning] cudaProfilerStop() failed while preserving "
+                        f"the primary nsys capture error: {{exc}}",
+                        file=sys.stderr,
+                    )
 
         # Some benchmarks launch worker processes (e.g., vLLM) and need
         # graceful teardown so Nsight can exit cleanly. Others prefer hard-exit

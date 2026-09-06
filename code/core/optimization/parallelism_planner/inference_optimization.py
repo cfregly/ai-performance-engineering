@@ -10,9 +10,10 @@ Comprehensive inference optimization recommendations:
 - Inference engine recommendations
 """
 
+import shlex
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any, Tuple
 from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class QuantizationType(Enum):
@@ -153,6 +154,9 @@ class InferenceEngineRecommendation:
     # Features
     features: List[str]
     limitations: List[str]
+
+    # A directly executable argument vector is present only for single-command plans.
+    launch_argv: Optional[List[str]] = None
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -164,6 +168,7 @@ class InferenceEngineRecommendation:
                 "memory_gb": self.expected_memory_gb,
             },
             "launch_command": self.launch_command,
+            "launch_argv": self.launch_argv,
             "config": self.config,
             "features": self.features,
             "limitations": self.limitations,
@@ -614,19 +619,26 @@ class InferenceEngineRecommender:
         throughput = self._estimate_throughput(model_params_b, tp, quantization)
         latency = self._estimate_latency(model_params_b, tp)
         
-        # Build launch command
-        quant_arg = ""
+        # Build one executable argument vector and derive the display command from it.
+        launch_argv = [
+            "python",
+            "-m",
+            "vllm.entrypoints.openai.api_server",
+            "--model",
+            model_name,
+            "--tensor-parallel-size",
+            str(tp),
+            "--gpu-memory-utilization",
+            "0.9",
+            "--max-model-len",
+            "8192",
+        ]
         if quantization == QuantizationType.AWQ:
-            quant_arg = "--quantization awq"
+            launch_argv.extend(["--quantization", "awq"])
         elif quantization == QuantizationType.FP8:
-            quant_arg = "--quantization fp8 --kv-cache-dtype fp8"
+            launch_argv.extend(["--quantization", "fp8", "--kv-cache-dtype", "fp8"])
         
-        launch_cmd = f"""python -m vllm.entrypoints.openai.api_server \\
-    --model {model_name} \\
-    --tensor-parallel-size {tp} \\
-    --gpu-memory-utilization 0.9 \\
-    --max-model-len 8192 \\
-    {quant_arg}"""
+        launch_cmd = shlex.join(launch_argv)
         
         return InferenceEngineRecommendation(
             engine=InferenceEngine.VLLM,
@@ -634,7 +646,8 @@ class InferenceEngineRecommender:
             expected_throughput_tps=throughput,
             expected_latency_ms=latency,
             expected_memory_gb=model_memory / tp,
-            launch_command=launch_cmd.strip(),
+            launch_command=launch_cmd,
+            launch_argv=launch_argv,
             config={
                 "tensor_parallel_size": tp,
                 "gpu_memory_utilization": 0.9,
@@ -670,18 +683,39 @@ class InferenceEngineRecommender:
         throughput = self._estimate_throughput(model_params_b, tp, quantization) * 1.3  # TRT is faster
         latency = self._estimate_latency(model_params_b, tp) * 0.7
         
-        launch_cmd = f"""# Build TensorRT engine
-python build.py --model_dir {model_name} \\
-    --tp_size {tp} \\
-    --dtype bfloat16 \\
-    --use_gpt_attention_plugin bfloat16 \\
-    --use_gemm_plugin bfloat16 \\
-    --max_batch_size 256 \\
-    --max_input_len 4096 \\
-    --max_output_len 4096
-
-# Run inference server
-mpirun -n {tp} python run.py --engine_dir ./engine"""
+        build_argv = [
+            "python",
+            "build.py",
+            "--model_dir",
+            model_name,
+            "--tp_size",
+            str(tp),
+            "--dtype",
+            "bfloat16",
+            "--use_gpt_attention_plugin",
+            "bfloat16",
+            "--use_gemm_plugin",
+            "bfloat16",
+            "--max_batch_size",
+            "256",
+            "--max_input_len",
+            "4096",
+            "--max_output_len",
+            "4096",
+        ]
+        server_argv = [
+            "mpirun",
+            "-n",
+            str(tp),
+            "python",
+            "run.py",
+            "--engine_dir",
+            "./engine",
+        ]
+        launch_cmd = (
+            f"# Build TensorRT engine\n{shlex.join(build_argv)}\n\n"
+            f"# Run inference server\n{shlex.join(server_argv)}"
+        )
         
         return InferenceEngineRecommendation(
             engine=InferenceEngine.TENSORRT_LLM,
@@ -716,15 +750,30 @@ mpirun -n {tp} python run.py --engine_dir ./engine"""
     ) -> InferenceEngineRecommendation:
         """Create llama.cpp recommendation."""
         
-        launch_cmd = f"""# Convert to GGUF format (if needed)
-python convert-hf-to-gguf.py {model_name} --outtype q4_k_m
-
-# Run server
-./server -m model-q4_k_m.gguf \\
-    -ngl 99 \\  # Offload all layers to GPU
-    -c 4096 \\  # Context size
-    --host 0.0.0.0 \\
-    --port 8080"""
+        convert_argv = [
+            "python",
+            "convert-hf-to-gguf.py",
+            model_name,
+            "--outtype",
+            "q4_k_m",
+        ]
+        server_argv = [
+            "./server",
+            "-m",
+            "model-q4_k_m.gguf",
+            "-ngl",
+            "99",
+            "-c",
+            "4096",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "8080",
+        ]
+        launch_cmd = (
+            f"# Convert to GGUF format (if needed)\n{shlex.join(convert_argv)}\n\n"
+            f"# Run server\n{shlex.join(server_argv)}"
+        )
         
         return InferenceEngineRecommendation(
             engine=InferenceEngine.LLAMA_CPP,
@@ -847,6 +896,3 @@ def get_inference_optimization_report(
     )
     
     return report.to_dict()
-
-
-

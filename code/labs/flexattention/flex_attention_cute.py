@@ -14,6 +14,7 @@ import argparse
 
 import torch
 
+from core.benchmark.numerical_accuracy import assert_low_precision_attention_accuracy
 from labs.flexattention.flexattention_common import build_qkv_inputs, resolve_device
 
 def to_cute_layout(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
@@ -91,8 +92,11 @@ def main() -> None:
     # outside timing, and the independent PyTorch reference uses BHSD.
     with torch.inference_mode(), torch.nn.attention.sdpa_kernel([torch.nn.attention.SDPBackend.MATH]):
         reference = torch.nn.functional.scaled_dot_product_attention(
-            q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)).transpose(1, 2)
-    torch.testing.assert_close(output_tensor, reference)
+            q.transpose(1, 2).double(),
+            k.transpose(1, 2).double(),
+            v.transpose(1, 2).double(),
+        ).transpose(1, 2)
+    assert_low_precision_attention_accuracy(output_tensor, reference)
     tokens = float(args.batch * args.seq_len)
     iters = float(count)
     ms_per_iter = (elapsed_s * 1e3) / max(iters, 1.0)

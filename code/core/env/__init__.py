@@ -18,8 +18,28 @@ import os
 import site
 import shutil
 import sys
+from functools import wraps
 from pathlib import Path
 from typing import Dict, Iterable, List, Set, Tuple
+
+
+def restore_cuda_visible_devices_after_call(function):
+    """Restore visibility around sequential suite calls, including exceptions.
+
+    These process-global environment changes do not make concurrent suite calls
+    thread-safe; launch concurrent suites in separate processes.
+    """
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        previous = os.environ.get("CUDA_VISIBLE_DEVICES")
+        try:
+            return function(*args, **kwargs)
+        finally:
+            if previous is None:
+                os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+            else:
+                os.environ["CUDA_VISIBLE_DEVICES"] = previous
+    return wrapped
 
 try:
     from core.utils.build_utils import ensure_clean_build_directory

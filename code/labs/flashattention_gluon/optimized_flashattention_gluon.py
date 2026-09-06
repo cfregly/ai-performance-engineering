@@ -9,6 +9,7 @@ import torch
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from labs.flashattention_gluon.flashattention_gluon_common import (
+    TRITON_ATTENTION_PROVIDER,
     FlashAttentionInputs,
     FlashAttentionKernel,
     build_flashattention_inputs,
@@ -30,6 +31,10 @@ class OptimizedFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchm
         self.dtype = torch.float16
         self.inputs: Optional[FlashAttentionInputs] = None
         self.kernel: Optional[FlashAttentionKernel] = None
+        # This lab has one implementation, with no runtime provider fallback.
+        # Non-numeric identity belongs in story metadata, not custom metrics;
+        # declaring it here also makes it available in the parent process.
+        self.story_metadata = {"provider": TRITON_ATTENTION_PROVIDER}
         self.output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
@@ -87,7 +92,9 @@ class OptimizedFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchm
             batch_size=self.batch,
             parameter_count=0,
             precision_flags={"fp16": True, "bf16": False, "tf32": torch.backends.cuda.matmul.allow_tf32},
-            output_tolerance=(0.1, 1.0),
+            # The transport buffer is FP32, but every value was produced and
+            # rounded as FP16. Use the canonical strict FP16 comparison bounds.
+            output_tolerance=(1e-3, 1e-5),
         )
 
     def teardown(self) -> None:
@@ -106,9 +113,6 @@ class OptimizedFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchm
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
-
-    def get_custom_metrics(self) -> Optional[dict]:
-        return {"provider": self.kernel.provider if self.kernel else "unset"}
 
     def validate_result(self) -> Optional[str]:
         if self.inputs is None or self.kernel is None:

@@ -227,6 +227,10 @@ def test_real_gpu_fp4_recipe_and_measurement():
     assert type(recipe).__name__ == "NVFP4BlockScaling"
     result = benchmark_peak.measure_fp4_compute(matrix_size=256, iterations=2)
     assert result["precision"] == "fp4" and result["recipe"] == "NVFP4BlockScaling"
+    assert result["input_dtype"] == result["weight_dtype"] == "torch.bfloat16"
+    assert result["execution_mode"] == "inference"
+    assert result["output_requires_grad"] is False
+    assert result["output_is_inference"] is True
     assert result["peak_tflops"] > 0 and math.isfinite(result["peak_tflops"])
 
 

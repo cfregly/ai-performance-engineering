@@ -8,6 +8,7 @@
 #include "nvtx_label_utils.cuh"
 
 #if defined(ENABLE_NVTX_PROFILING)
+#define AISP_NVTX_ENABLED 1
 #include <nvtx3/nvToolsExt.h>
 
 namespace aisp_nvtx {
@@ -62,11 +63,15 @@ struct NvtxRange {
 };
 }  // namespace aisp_nvtx
 
+#define AISP_NVTX_CONCAT_IMPL(lhs, rhs) lhs##rhs
+#define AISP_NVTX_CONCAT(lhs, rhs) AISP_NVTX_CONCAT_IMPL(lhs, rhs)
 #define NVTX_RANGE(name) \
-  aisp_nvtx::NvtxRange _nvtx_range_##__LINE__{name}
-#define NVTX_RANGE_COLOR(name, color) aisp_nvtx::NvtxRange _nvtx_range_##__LINE__{name, color}
+  aisp_nvtx::NvtxRange AISP_NVTX_CONCAT(_aisp_nvtx_range_, __LINE__){name}
+#define NVTX_RANGE_COLOR(name, color) \
+  aisp_nvtx::NvtxRange AISP_NVTX_CONCAT(_aisp_nvtx_range_, __LINE__){name, color}
 
 #else
+#define AISP_NVTX_ENABLED 0
 
 namespace aisp_nvtx {
 inline uint32_t nvtx_color_for_label(const char*) { return 0; }

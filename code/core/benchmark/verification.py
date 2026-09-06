@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import random
 from dataclasses import asdict, dataclass, field
@@ -389,6 +390,16 @@ class ToleranceSpec:
     atol: float  # Absolute tolerance
     comparator_fn: Optional[Callable[[torch.Tensor, torch.Tensor], bool]] = None
     justification: Optional[str] = None  # Required if looser than dtype defaults
+
+    def __post_init__(self) -> None:
+        for name in ("rtol", "atol"):
+            raw_value = getattr(self, name)
+            if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
+                raise TypeError(f"{name} must be numeric")
+            value = float(raw_value)
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(f"{name} must be finite and nonnegative")
+            setattr(self, name, value)
     
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dictionary (comparator_fn is not serialized)."""

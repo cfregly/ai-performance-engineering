@@ -104,6 +104,7 @@ def _expand_multi_value_option(option_names: List[str]) -> None:
 _expand_multi_value_option(["--targets", "-t", "--hosts", "--labels"])
 
 from core.env import apply_env_defaults, dump_environment_and_capabilities
+from core.env import restore_cuda_visible_devices_after_call
 from core.utils.logger import setup_logging, get_logger
 from core.benchmark.artifact_manager import (
     ArtifactManager,
@@ -252,16 +253,12 @@ def _validate_ncu_metric_set(metric_set: str) -> str:
 def _validate_ncu_replay_mode(mode: str | None) -> Optional[str]:
     if mode is None:
         return None
-    normalized = mode.strip().lower()
-    valid = {"kernel", "application"}
-    if normalized not in valid:
-        message = (
-            f"Invalid Nsight Compute replay mode '{mode}'. Choose from 'kernel' or 'application'."
-        )
+    try:
+        return profiler_config_mod.validate_ncu_replay_mode(mode)
+    except ValueError as exc:
         if TYPER_AVAILABLE and typer is not None:
-            raise typer.BadParameter(message)
-        raise ValueError(message)
-    return normalized
+            raise typer.BadParameter(str(exc)) from exc
+        raise
 
 
 def _validate_profile_type(profile: str | None) -> str:
@@ -520,6 +517,7 @@ else:
     app = None
 
 
+@restore_cuda_visible_devices_after_call
 def _execute_benchmarks(
     targets: Optional[List[str]] = None,
     bench_root: Optional[Path] = None,
@@ -1422,7 +1420,7 @@ if TYPER_AVAILABLE:
         ncu_replay_mode: Optional[str] = Option(
             None,
             "--ncu-replay-mode",
-            help="Nsight Compute replay mode: kernel or application. If omitted, benchmark-specific config or harness defaults apply.",
+            help="Nsight Compute replay mode: kernel, application, or app-range (one full NVTX range with minimal metrics). If omitted, benchmark-specific config or harness defaults apply.",
             callback=_validate_ncu_replay_mode,
         ),
         nsys_timeout_seconds: Optional[int] = Option(
@@ -1794,7 +1792,7 @@ if TYPER_AVAILABLE:
         ncu_replay_mode: Optional[str] = Option(
             None,
             "--ncu-replay-mode",
-            help="Nsight Compute replay mode: kernel or application. If omitted, suite or benchmark-specific config applies.",
+            help="Nsight Compute replay mode: kernel, application, or app-range (one full NVTX range with minimal metrics). If omitted, suite or benchmark-specific config applies.",
             callback=_validate_ncu_replay_mode,
         ),
         nsys_timeout_seconds: Optional[int] = Option(

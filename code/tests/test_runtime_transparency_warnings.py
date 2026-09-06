@@ -129,9 +129,20 @@ def test_reset_cuda_memory_pool_emits_release_pool_limitation_once(monkeypatch) 
         validity_checks.reset_cuda_memory_pool()
         validity_checks.reset_cuda_memory_pool()
 
-    assert len(captured) == 1
-    assert "without a zero-argument reset entrypoint" in str(captured[0].message)
-    assert "_cuda_releasePool(): incompatible function arguments" in str(captured[0].message)
+    # reset_cuda_memory_pool() deliberately calls gc.collect(), which can emit
+    # warnings for unrelated objects made unreachable by earlier tests. Count
+    # this limitation precisely so those warnings cannot make the dedupe check
+    # flaky, while a duplicate release-pool warning still fails the test.
+    release_pool_warnings = [
+        item
+        for item in captured
+        if item.category is RuntimeWarning
+        and "without a zero-argument reset entrypoint" in str(item.message)
+    ]
+    assert len(release_pool_warnings) == 1
+    assert "_cuda_releasePool(): incompatible function arguments" in str(
+        release_pool_warnings[0].message
+    )
     assert validity_checks.get_runtime_capability_limitations() == [
         {
             "key": "cuda_release_pool_signature",

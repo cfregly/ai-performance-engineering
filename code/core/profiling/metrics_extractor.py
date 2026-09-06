@@ -6,16 +6,21 @@ Provides functions for extracting metrics from profiling reports and returning P
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
+import math
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, Optional, Any, Type
+from typing import Any, Dict, Optional, Sequence, Type
+
+from core.profiling.profiler_config import MINIMAL_METRICS
 
 try:
-    from core.benchmark.models import NsysMetrics, NcuMetrics, TorchMetrics, ProtonMetrics
+    from core.benchmark.models import NcuMetrics, NsysMetrics, ProtonMetrics, TorchMetrics
     PYDANTIC_AVAILABLE = True
 except ImportError:
     PYDANTIC_AVAILABLE = False
@@ -39,6 +44,30 @@ NCU_METRIC_DESCRIPTIONS = {
     "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": "Shared Memory Bank Conflicts",
     "sm__inst_executed_pipe_tensor.sum": "Tensor Core Instructions Executed",
 }
+
+NCU_APP_RANGE_DEFAULT_METRICS = tuple(MINIMAL_METRICS)
+
+_NCU_APP_RANGE_METRIC_UNITS = {
+    "gpu__time_duration.avg": "ns",
+    "sm__throughput.avg.pct_of_peak_sustained_elapsed": "%",
+    "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": "%",
+    "lts__throughput.avg.pct_of_peak_sustained_elapsed": "%",
+    "sm__warps_active.avg.pct_of_peak_sustained_active": "%",
+}
+
+_NCU_APP_RANGE_LIMITING_FLAGS = (
+    "--filter-mode",
+    "--kernel-id",
+    "--kernel-name",
+    "--launch-count",
+    "--launch-skip",
+    "--launch-skip-before-match",
+    "--nvtx-exclude",
+    "--pm-sampling-interval",
+    "--range-filter",
+    "--sampling-interval",
+    "--sampling-max-passes",
+)
 
 NSYS_METRIC_KEY_MAP = {
     "total_gpu_time": ["nsys_total_gpu_time_ms", "nsys_total_gpu_time"],
@@ -155,6 +184,467 @@ def extract_nsys_metrics(nsys_rep_path: Path, timeout: int = 180) -> NsysMetrics
     return NsysMetrics(total_gpu_time_ms=total_gpu_time_ms, raw_metrics=raw_metrics, schemaVersion="1.0")
 
 
+def _invalid_ncu_app_range(report_path: Path, detail: str) -> ValueError:
+    return ValueError(f"Invalid NCU app-range report {report_path}: {detail}")
+
+
+def _sha256_path(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _run_ncu_report_import(
+    report_path: Path,
+    *,
+    page: str,
+    timeout: int,
+    metrics: Sequence[str] | None = None,
+) -> str:
+    command = ["ncu", "--csv", "--page", page, "--print-units", "base"]
+    if page == "details":
+        command.extend(["--print-metric-name", "name"])
+    if metrics:
+        command.extend(["--metrics", ",".join(metrics)])
+    command.extend(["--import", str(report_path)])
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise _invalid_ncu_app_range(
+            report_path,
+            f"{page} import timed out after {timeout}s",
+        ) from exc
+    except FileNotFoundError as exc:
+        raise _invalid_ncu_app_range(report_path, "ncu executable is unavailable") from exc
+    except OSError as exc:
+        raise _invalid_ncu_app_range(
+            report_path,
+            f"{page} import could not start: {exc}",
+        ) from exc
+
+    if result.returncode != 0:
+        raise _invalid_ncu_app_range(
+            report_path,
+            f"{page} import exited with code {result.returncode}",
+        )
+    if not result.stdout.strip():
+        raise _invalid_ncu_app_range(report_path, f"{page} import returned empty CSV")
+    return result.stdout
+
+
+def _ncu_csv_table(
+    csv_text: str,
+    *,
+    required_headers: Sequence[str],
+    reject_overlong_rows: bool = False,
+) -> tuple[list[str], list[Dict[str, str]]]:
+    try:
+        rows = list(csv.reader(io.StringIO(csv_text)))
+    except csv.Error:
+        return [], []
+
+    header_index = None
+    header: list[str] = []
+    required = set(required_headers)
+    for index, row in enumerate(rows):
+        candidate = [cell.strip() for cell in row]
+        if required.issubset(candidate):
+            header_index = index
+            header = candidate
+            break
+    if header_index is None or len(set(header)) != len(header):
+        return [], []
+
+    records: list[Dict[str, str]] = []
+    for row_number, row in enumerate(rows[header_index + 1 :], start=header_index + 2):
+        if len(row) > len(header):
+            if reject_overlong_rows:
+                raise ValueError(
+                    f"CSV row {row_number} has {len(row)} columns; expected at most {len(header)}"
+                )
+            continue
+        if not any(cell.strip() for cell in row):
+            continue
+        if len(row) < len(header):
+            row = [*row, *([""] * (len(header) - len(row)))]
+        records.append(dict(zip(header, row, strict=True)))
+    return header, records
+
+
+def _ncu_csv_declares_range(csv_text: str) -> bool:
+    _, records = _ncu_csv_table(
+        csv_text,
+        required_headers=("ID", "Kernel Name"),
+    )
+    return any(record.get("Kernel Name", "").strip() == "range" for record in records)
+
+
+def _strip_ncu_range_export_wrapping(value: str) -> str:
+    normalized = value.strip()
+    if len(normalized) >= 2 and normalized[0] == normalized[-1] == '"':
+        normalized = normalized[1:-1].strip()
+    return normalized
+
+
+def _ncu_cli_option_values(argv: Sequence[str], option: str) -> list[str]:
+    values: list[str] = []
+    for index, token in enumerate(argv):
+        if token == option:
+            if index + 1 >= len(argv) or argv[index + 1].startswith("--"):
+                values.append("")
+            else:
+                values.append(argv[index + 1])
+        elif token.startswith(f"{option}="):
+            values.append(token.split("=", 1)[1])
+    return values
+
+
+def _ncu_cli_has_option(argv: Sequence[str], option: str) -> bool:
+    return any(token == option or token.startswith(f"{option}=") for token in argv)
+
+
+def _parse_ncu_app_range_session(
+    session_csv: str,
+    *,
+    report_path: Path,
+    expected_nvtx_range: str,
+    requested_metrics: Sequence[str],
+) -> Dict[str, Any]:
+    try:
+        rows = list(csv.reader(io.StringIO(session_csv)))
+    except csv.Error as exc:
+        raise _invalid_ncu_app_range(report_path, "session CSV is malformed") from exc
+
+    commands = [
+        row[1].strip()
+        for row in rows
+        if len(row) >= 2 and row[0].strip() == "Profiler Command Line" and row[1].strip()
+    ]
+    if len(commands) != 1:
+        raise _invalid_ncu_app_range(
+            report_path,
+            f"session CSV contains {len(commands)} profiler command lines; expected 1",
+        )
+    try:
+        argv = shlex.split(commands[0])
+    except ValueError as exc:
+        raise _invalid_ncu_app_range(report_path, "session profiler command is not valid argv") from exc
+
+    replay_modes = _ncu_cli_option_values(argv, "--replay-mode")
+    if replay_modes != ["app-range"]:
+        raise _invalid_ncu_app_range(
+            report_path,
+            f"session replay mode is {replay_modes!r}; expected ['app-range']",
+        )
+    if not _ncu_cli_has_option(argv, "--nvtx"):
+        raise _invalid_ncu_app_range(report_path, "session command does not enable NVTX selection")
+    nvtx_values = _ncu_cli_option_values(argv, "--nvtx")
+    if any(value.strip().lower() in {"0", "false", "no", "off"} for value in nvtx_values):
+        raise _invalid_ncu_app_range(report_path, "session command disables NVTX selection")
+
+    nvtx_includes = _ncu_cli_option_values(argv, "--nvtx-include")
+    if nvtx_includes != [expected_nvtx_range]:
+        raise _invalid_ncu_app_range(
+            report_path,
+            f"session NVTX include is {nvtx_includes!r}; expected [{expected_nvtx_range!r}]",
+        )
+
+    target_processes = _ncu_cli_option_values(argv, "--target-processes")
+    if target_processes != ["all"]:
+        raise _invalid_ncu_app_range(
+            report_path,
+            f"session target processes is {target_processes!r}; expected ['all']",
+        )
+
+    metric_options = _ncu_cli_option_values(argv, "--metrics")
+    if len(metric_options) != 1:
+        raise _invalid_ncu_app_range(
+            report_path,
+            f"session command contains {len(metric_options)} metric lists; expected 1",
+        )
+    session_metrics = [metric.strip() for metric in metric_options[0].split(",") if metric.strip()]
+    if len(session_metrics) != len(set(session_metrics)) or set(session_metrics) != set(requested_metrics):
+        raise _invalid_ncu_app_range(
+            report_path,
+            "session metric set does not exactly match the requested metrics",
+        )
+
+    limiting_flags = [
+        flag for flag in _NCU_APP_RANGE_LIMITING_FLAGS if _ncu_cli_has_option(argv, flag)
+    ]
+    profile_from_start = _ncu_cli_option_values(argv, "--profile-from-start")
+    if len(profile_from_start) > 1 or (
+        profile_from_start
+        and any(
+            value.strip().lower() not in {"1", "true", "yes", "on"}
+            for value in profile_from_start
+        )
+    ):
+        limiting_flags.append("--profile-from-start=off")
+    if limiting_flags:
+        raise _invalid_ncu_app_range(
+            report_path,
+            f"session command limits range coverage with {limiting_flags!r}",
+        )
+
+    return {
+        "replay_mode": "app-range",
+        "nvtx_enabled": True,
+        "nvtx_includes": list(nvtx_includes),
+        "target_processes": "all",
+        "metrics": list(session_metrics),
+        "limiting_flags": [],
+        "profile_from_start": profile_from_start[0] if profile_from_start else "default",
+        "command_sha256": hashlib.sha256(commands[0].encode("utf-8")).hexdigest(),
+    }
+
+
+def inspect_ncu_app_range_report(
+    report_path: Path,
+    *,
+    expected_nvtx_range: str = "compute_kernel:profile",
+    requested_metrics: Sequence[str] | None = None,
+    timeout: int = 300,
+) -> tuple[NcuMetrics, Dict[str, Any]]:
+    """Strictly inspect one NCU application-range report.
+
+    This path accepts only report-carried app-range evidence. It never uses a
+    companion CSV and keeps aggregate range duration distinct from kernel time.
+    """
+    if not PYDANTIC_AVAILABLE or NcuMetrics is None:
+        raise ImportError("pydantic and NcuMetrics are required for NCU app-range inspection")
+
+    report_path = Path(report_path)
+    if not report_path.is_file():
+        raise _invalid_ncu_app_range(report_path, "report file does not exist")
+    try:
+        report_stat = report_path.stat()
+    except OSError as exc:
+        raise _invalid_ncu_app_range(report_path, f"report could not be inspected: {exc}") from exc
+    if timeout <= 0:
+        raise _invalid_ncu_app_range(report_path, "timeout must be positive")
+    if not expected_nvtx_range or expected_nvtx_range.strip() != expected_nvtx_range:
+        raise _invalid_ncu_app_range(report_path, "expected NVTX range must be nonempty and trimmed")
+
+    if requested_metrics is None:
+        metric_names = NCU_APP_RANGE_DEFAULT_METRICS
+    elif isinstance(requested_metrics, (str, bytes)):
+        raise _invalid_ncu_app_range(report_path, "requested metrics must be a sequence of names")
+    else:
+        metric_names = tuple(str(metric).strip() for metric in requested_metrics)
+    if not metric_names or any(not metric for metric in metric_names):
+        raise _invalid_ncu_app_range(report_path, "requested metrics must be nonempty")
+    if len(metric_names) != len(set(metric_names)):
+        raise _invalid_ncu_app_range(report_path, "requested metrics contain duplicates")
+    unsupported = sorted(set(metric_names) - set(_NCU_APP_RANGE_METRIC_UNITS))
+    if unsupported:
+        raise _invalid_ncu_app_range(
+            report_path,
+            f"requested metrics have no strict unit contract: {unsupported!r}",
+        )
+    if "gpu__time_duration.avg" not in metric_names:
+        raise _invalid_ncu_app_range(report_path, "requested metrics omit range duration")
+    if set(metric_names) != set(NCU_APP_RANGE_DEFAULT_METRICS) or len(metric_names) != len(
+        NCU_APP_RANGE_DEFAULT_METRICS
+    ):
+        raise _invalid_ncu_app_range(
+            report_path,
+            "app-range qualification requires the five minimal metrics",
+        )
+
+    details_csv = _run_ncu_report_import(
+        report_path,
+        page="details",
+        timeout=timeout,
+        metrics=metric_names,
+    )
+    session_csv = _run_ncu_report_import(
+        report_path,
+        page="session",
+        timeout=timeout,
+    )
+
+    try:
+        header, records = _ncu_csv_table(
+            details_csv,
+            required_headers=(
+                "ID",
+                "Kernel Name",
+                "Section Name",
+                "Metric Name",
+                "Metric Unit",
+                "Metric Value",
+            ),
+            reject_overlong_rows=True,
+        )
+    except ValueError as exc:
+        raise _invalid_ncu_app_range(report_path, f"details {exc}") from exc
+    if not header:
+        raise _invalid_ncu_app_range(report_path, "details CSV is missing the required header")
+    range_headers = [name for name in header if name.startswith("Id:Domain:Start/Stop_Range:")]
+    if len(range_headers) != 1:
+        raise _invalid_ncu_app_range(
+            report_path,
+            f"details CSV contains {len(range_headers)} start/stop range columns; expected 1",
+        )
+    range_header = range_headers[0]
+
+    metric_records = [
+        record
+        for record in records
+        if record.get("Section Name", "").strip() == "Command line profiler metrics"
+    ]
+    if not metric_records:
+        raise _invalid_ncu_app_range(report_path, "details CSV has no command-line metric rows")
+
+    data_records = [record for record in records if record.get("ID", "").strip().isdigit()]
+    if not data_records:
+        raise _invalid_ncu_app_range(report_path, "details CSV has no numeric result records")
+    result_ids = {record.get("ID", "").strip() for record in data_records}
+    if len(result_ids) != 1:
+        raise _invalid_ncu_app_range(
+            report_path,
+            f"details CSV contains {len(result_ids)} logical result IDs; expected 1",
+        )
+    result_id = next(iter(result_ids))
+    if any(record.get("Kernel Name", "").strip() != "range" for record in data_records):
+        raise _invalid_ncu_app_range(report_path, "details result scope is not exclusively 'range'")
+    if any(record.get("ID", "").strip() != result_id for record in metric_records):
+        raise _invalid_ncu_app_range(
+            report_path,
+            "details command-line metric rows do not belong to the numeric range result",
+        )
+
+    range_cells = {record.get(range_header, "") for record in data_records}
+    if len(range_cells) != 1:
+        raise _invalid_ncu_app_range(report_path, "details metric rows disagree on range identity")
+    range_cell_raw = next(iter(range_cells))
+    range_identity = _strip_ncu_range_export_wrapping(range_cell_raw)
+    identity_prefix = f"{result_id}:<default domain>:"
+    identity_suffix = ":none:none:none:none:none:none"
+    if not range_identity.startswith(identity_prefix) or not range_identity.endswith(identity_suffix):
+        raise _invalid_ncu_app_range(report_path, "details start/stop range encoding is unrecognized")
+    observed_nvtx_range = range_identity[
+        len(identity_prefix) : len(range_identity) - len(identity_suffix)
+    ]
+    if observed_nvtx_range != expected_nvtx_range:
+        raise _invalid_ncu_app_range(
+            report_path,
+            f"details NVTX range is {observed_nvtx_range!r}; expected {expected_nvtx_range!r}",
+        )
+
+    by_metric: Dict[str, list[Dict[str, str]]] = {}
+    for record in metric_records:
+        by_metric.setdefault(record.get("Metric Name", "").strip(), []).append(record)
+    if set(by_metric) != set(metric_names):
+        missing = sorted(set(metric_names) - set(by_metric))
+        extra = sorted(set(by_metric) - set(metric_names))
+        raise _invalid_ncu_app_range(
+            report_path,
+            f"details metric set mismatch (missing={missing!r}, extra={extra!r})",
+        )
+    duplicate_metrics = sorted(name for name, rows in by_metric.items() if len(rows) != 1)
+    if duplicate_metrics:
+        raise _invalid_ncu_app_range(
+            report_path,
+            f"details command-line section has duplicate metrics: {duplicate_metrics!r}",
+        )
+
+    values: Dict[str, float] = {}
+    units: Dict[str, str] = {}
+    for metric_name in metric_names:
+        record = by_metric[metric_name][0]
+        unit = record.get("Metric Unit", "").strip()
+        expected_unit = _NCU_APP_RANGE_METRIC_UNITS[metric_name]
+        if unit != expected_unit:
+            raise _invalid_ncu_app_range(
+                report_path,
+                f"metric {metric_name!r} uses unit {unit!r}; expected {expected_unit!r}",
+            )
+        value_text = record.get("Metric Value", "").strip().replace(",", "")
+        try:
+            value = float(value_text)
+        except ValueError as exc:
+            raise _invalid_ncu_app_range(
+                report_path,
+                f"metric {metric_name!r} has nonnumeric value {value_text!r}",
+            ) from exc
+        if not math.isfinite(value):
+            raise _invalid_ncu_app_range(
+                report_path,
+                f"metric {metric_name!r} has a nonfinite value",
+            )
+        values[metric_name] = value
+        units[metric_name] = unit
+    if values["gpu__time_duration.avg"] <= 0:
+        raise _invalid_ncu_app_range(report_path, "range duration must be positive")
+
+    session_capture = _parse_ncu_app_range_session(
+        session_csv,
+        report_path=report_path,
+        expected_nvtx_range=expected_nvtx_range,
+        requested_metrics=metric_names,
+    )
+    try:
+        report_sha256 = _sha256_path(report_path)
+        final_report_stat = report_path.stat()
+    except OSError as exc:
+        raise _invalid_ncu_app_range(report_path, f"report could not be hashed: {exc}") from exc
+    report_identity = (
+        report_stat.st_dev,
+        report_stat.st_ino,
+        report_stat.st_size,
+        report_stat.st_mtime_ns,
+    )
+    final_report_identity = (
+        final_report_stat.st_dev,
+        final_report_stat.st_ino,
+        final_report_stat.st_size,
+        final_report_stat.st_mtime_ns,
+    )
+    if report_identity != final_report_identity:
+        raise _invalid_ncu_app_range(report_path, "report changed during inspection")
+
+    metrics = NcuMetrics(
+        kernel_time_ms=None,
+        range_time_ms=values["gpu__time_duration.avg"] / 1e6,
+        sm_throughput_pct=values.get("sm__throughput.avg.pct_of_peak_sustained_elapsed"),
+        dram_throughput_pct=values.get(
+            "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed"
+        ),
+        l2_throughput_pct=values.get("lts__throughput.avg.pct_of_peak_sustained_elapsed"),
+        occupancy_pct=values.get("sm__warps_active.avg.pct_of_peak_sustained_active"),
+        raw_metrics={},
+        schemaVersion="1.0",
+    )
+    provenance: Dict[str, Any] = {
+        "schema_version": "1.0",
+        "report_sha256": report_sha256,
+        "report_bytes": final_report_stat.st_size,
+        "replay_mode": "app-range",
+        "result_scope": "range",
+        "result_id": int(result_id),
+        "result_count": 1,
+        "nvtx_range": observed_nvtx_range,
+        "nvtx_range_raw": range_cell_raw,
+        "coverage_policy": "full_selected_nvtx_range",
+        "constituent_kernels_enumerated": False,
+        "duration_semantics": "ncu_aggregate_range",
+        "requested_metrics": list(metric_names),
+        "observed_metrics": list(metric_names),
+        "metric_units": units,
+        "session_capture": session_capture,
+    }
+    return metrics, provenance
+
+
 def extract_ncu_metrics(ncu_rep_path: Path, timeout: int = 300) -> NcuMetrics:
     """Extract metrics from ncu report file.
     
@@ -171,6 +661,7 @@ def extract_ncu_metrics(ncu_rep_path: Path, timeout: int = 300) -> NcuMetrics:
     if not ncu_rep_path.exists():
         return NcuMetrics(
             kernel_time_ms=None,
+            range_time_ms=None,
             sm_throughput_pct=None,
             dram_throughput_pct=None,
             l2_throughput_pct=None,
@@ -190,13 +681,7 @@ def extract_ncu_metrics(ncu_rep_path: Path, timeout: int = 300) -> NcuMetrics:
     try:
         # Use --page details (Metric Name/Unit/Value rows) so we can honor units
         # while keeping output small via --metrics filtering.
-        metrics = [
-            "gpu__time_duration.avg",
-            "sm__throughput.avg.pct_of_peak_sustained_elapsed",
-            "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed",
-            "lts__throughput.avg.pct_of_peak_sustained_elapsed",
-            "sm__warps_active.avg.pct_of_peak_sustained_active",
-        ]
+        metrics = list(NCU_APP_RANGE_DEFAULT_METRICS)
         result = subprocess.run(
             ["ncu", "--csv", "--page", "details", "--metrics", ",".join(metrics), "--import", str(ncu_rep_path)],
             capture_output=True,
@@ -204,6 +689,27 @@ def extract_ncu_metrics(ncu_rep_path: Path, timeout: int = 300) -> NcuMetrics:
             timeout=timeout
         )
         
+        if result.returncode == 0 and _ncu_csv_declares_range(result.stdout):
+            try:
+                range_metrics, _ = inspect_ncu_app_range_report(
+                    ncu_rep_path,
+                    requested_metrics=metrics,
+                    timeout=timeout,
+                )
+                return range_metrics
+            except ValueError:
+                # A recognized range must pass the strict report-side contract.
+                # Never reinterpret it as a kernel or qualify it from a sidecar.
+                return NcuMetrics(
+                    kernel_time_ms=None,
+                    range_time_ms=None,
+                    sm_throughput_pct=None,
+                    dram_throughput_pct=None,
+                    l2_throughput_pct=None,
+                    occupancy_pct=None,
+                    raw_metrics={},
+                    schemaVersion="1.0",
+                )
         if result.returncode == 0:
             csv_metrics = _parse_ncu_csv(result.stdout)
             kernel_time_ms, sm_throughput_pct, dram_throughput_pct, l2_throughput_pct, occupancy_pct, raw_metrics = _populate_ncu_metrics(csv_metrics)
@@ -215,6 +721,17 @@ def extract_ncu_metrics(ncu_rep_path: Path, timeout: int = 300) -> NcuMetrics:
     if companion_csv.exists():
         try:
             csv_text = companion_csv.read_text()
+            if _ncu_csv_declares_range(csv_text):
+                return NcuMetrics(
+                    kernel_time_ms=kernel_time_ms,
+                    range_time_ms=None,
+                    sm_throughput_pct=sm_throughput_pct,
+                    dram_throughput_pct=dram_throughput_pct,
+                    l2_throughput_pct=l2_throughput_pct,
+                    occupancy_pct=occupancy_pct,
+                    raw_metrics=raw_metrics,
+                    schemaVersion="1.0",
+                )
             csv_metrics = _parse_ncu_csv(csv_text)
             kt, sm, dram, l2, occ, raw = _populate_ncu_metrics(csv_metrics)
             if kernel_time_ms is None and kt is not None:
@@ -233,6 +750,7 @@ def extract_ncu_metrics(ncu_rep_path: Path, timeout: int = 300) -> NcuMetrics:
     
     return NcuMetrics(
         kernel_time_ms=kernel_time_ms,
+        range_time_ms=None,
         sm_throughput_pct=sm_throughput_pct,
         dram_throughput_pct=dram_throughput_pct,
         l2_throughput_pct=l2_throughput_pct,

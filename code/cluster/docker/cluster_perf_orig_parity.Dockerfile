@@ -25,7 +25,12 @@ RUN python -m pip uninstall -y deep_gemm || true \
     "deep_gemm @ git+https://github.com/deepseek-ai/DeepGEMM.git@0f5f2662027f0db05d4e3f6a94e56e2d8fc45c51"
 
 # nvbandwidth (open-source) for dedicated bandwidth bundle.
-RUN git clone --depth 1 https://github.com/NVIDIA/nvbandwidth.git /opt/nvbandwidth \
+ARG NVBANDWIDTH_COMMIT=82fc4e8c6afa0babb8687793678f615b3b8d793e
+RUN git init /opt/nvbandwidth \
+    && git -C /opt/nvbandwidth remote add origin https://github.com/NVIDIA/nvbandwidth.git \
+    && git -C /opt/nvbandwidth fetch --depth 1 --no-tags origin "${NVBANDWIDTH_COMMIT}" \
+    && git -C /opt/nvbandwidth checkout --detach "${NVBANDWIDTH_COMMIT}" \
+    && test "$(git -C /opt/nvbandwidth rev-parse HEAD)" = "${NVBANDWIDTH_COMMIT}" \
     && cmake -S /opt/nvbandwidth -B /opt/nvbandwidth/build -DCMAKE_BUILD_TYPE=Release \
     && cmake --build /opt/nvbandwidth/build -j"$(nproc)" \
     && cp /opt/nvbandwidth/build/nvbandwidth /usr/local/bin/nvbandwidth

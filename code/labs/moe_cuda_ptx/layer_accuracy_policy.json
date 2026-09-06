@@ -1,0 +1,61 @@
+{
+  "schema_version": 3,
+  "policy_id": "moe-layer-low-precision-v2",
+  "basis": "FP64 logical-route calibration and held-out validation with limits selected from a fixed dtype-epsilon ladder",
+  "validated_workloads": [
+    {
+      "num_tokens": 65,
+      "num_experts": 4,
+      "top_k": 2,
+      "hidden_dim": 48,
+      "expert_ffn_dim": 32,
+      "capacity_factor": 1.5,
+      "mode": "forward",
+      "dtypes": ["fp16", "bf16"],
+      "histograms": ["balanced", "skewed"]
+    },
+    {
+      "num_tokens": 129,
+      "num_experts": 4,
+      "top_k": 2,
+      "hidden_dim": 128,
+      "expert_ffn_dim": 64,
+      "capacity_factor": 1.5,
+      "mode": "forward",
+      "dtypes": ["fp16", "bf16"],
+      "histograms": ["balanced", "skewed"]
+    },
+    {
+      "num_tokens": 257,
+      "num_experts": 8,
+      "top_k": 2,
+      "hidden_dim": 512,
+      "expert_ffn_dim": 256,
+      "capacity_factor": 1.5,
+      "mode": "forward",
+      "dtypes": ["fp16", "bf16"],
+      "histograms": ["balanced", "skewed"]
+    },
+    {
+      "num_tokens": 32768,
+      "num_experts": 8,
+      "top_k": 2,
+      "hidden_dim": 7168,
+      "expert_ffn_dim": 2048,
+      "capacity_factor": 1.25,
+      "mode": "forward",
+      "dtypes": ["bf16"],
+      "histograms": ["balanced"]
+    }
+  ],
+  "moe_layer_forward": {
+    "fp16": {
+      "relative_l2": 0.0009765625,
+      "normalized_max_abs": 0.001953125
+    },
+    "bf16": {
+      "relative_l2": 0.0078125,
+      "normalized_max_abs": 0.015625
+    }
+  }
+}

@@ -21,7 +21,15 @@
 
 constexpr int kLaunchBoundsWorkIters = 64;
 constexpr int kThreads = 1024;
+// A 1024-thread block cannot satisfy a two-block residency request on SM120/SM121.
+// Keep the launch shape identical to the baseline and request the strongest valid
+// minimum-block constraint for each configured architecture.
+#if defined(__CUDA_ARCH__) && \
+    (__CUDA_ARCH__ == 1200 || __CUDA_ARCH__ == 1210)
+constexpr int kMinBlocksPerSm = 1;
+#else
 constexpr int kMinBlocksPerSm = 2;
+#endif
 constexpr int kWarmupKernelRepeats = 8;
 constexpr int kTimedKernelRepeats = 48;
 constexpr float kLaunchBoundsEps = 1e-6f;

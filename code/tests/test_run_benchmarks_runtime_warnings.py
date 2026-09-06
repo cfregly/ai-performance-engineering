@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
+import subprocess
 import sys
+import textwrap
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -191,7 +194,11 @@ def test_harden_profile_env_warns_when_site_discovery_fails(tmp_path, caplog) ->
     caplog.set_level(logging.WARNING)
 
     with patch.object(site, "getusersitepackages", side_effect=RuntimeError("user site boom")):
-        env = run_benchmarks._harden_profile_env({}, repo_root=repo_root, chapter_dir=chapter_dir)
+        env = run_benchmarks._harden_profile_env(
+            {"AISP_PROFILE_NO_USER_SITE": "1"},
+            repo_root=repo_root,
+            chapter_dir=chapter_dir,
+        )
 
     pythonpath_entries = [entry for entry in env["PYTHONPATH"].split(os.pathsep) if entry]
 
@@ -204,3 +211,91 @@ def test_harden_profile_env_warns_when_site_discovery_fails(tmp_path, caplog) ->
         in rec.message
         for rec in caplog.records
     )
+
+
+def test_harden_profile_env_keeps_site_packages_after_stdlib(tmp_path) -> None:
+    """A selected runtime must keep stdlib precedence and its native packages."""
+
+    user_base = tmp_path / "user-base"
+    driver_env = os.environ.copy()
+    driver_env["PYTHONUSERBASE"] = str(user_base)
+    driver_env.pop("PYTHONNOUSERSITE", None)
+    site_probe = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import site; print(site.getusersitepackages())",
+        ],
+        env=driver_env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    hostile_site = Path(site_probe.stdout.strip())
+    hostile_site.mkdir(parents=True, exist_ok=True)
+    (hostile_site / "pathlib.py").write_text(
+        "raise RuntimeError('third-party pathlib shadowed the standard library')\n",
+        encoding="utf-8",
+    )
+
+    explicit_dep = tmp_path / "explicit-dependency"
+    explicit_dep.mkdir()
+    (explicit_dep / "profile_dependency.py").write_text(
+        "VALUE = 'explicit-import-ok'\n",
+        encoding="utf-8",
+    )
+    repo_root = Path(run_benchmarks.__file__).resolve().parents[2]
+    chapter_dir = tmp_path / "chapter"
+    chapter_dir.mkdir()
+    driver_env["PYTHONPATH"] = str(repo_root)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            textwrap.dedent(
+                """\
+                import json, os, subprocess, sys
+                from pathlib import Path
+                from core.harness import run_benchmarks
+
+                repo_root, chapter_dir, explicit_dep, hostile_site = map(Path, sys.argv[1:])
+                base_env = os.environ.copy()
+                base_env["PYTHONPATH"] = str(explicit_dep)
+                env = run_benchmarks._harden_profile_env(
+                    base_env,
+                    repo_root=repo_root,
+                    chapter_dir=chapter_dir,
+                )
+                child = subprocess.run(
+                    [sys.executable, "-c", (
+                        "from pathlib import Path; import profile_dependency, torch; "
+                        "print(Path.__module__, profile_dependency.VALUE, torch.__version__)"
+                    )],
+                    env=env, capture_output=True, text=True, check=False,
+                )
+                entries = env["PYTHONPATH"].split(os.pathsep)
+                print(json.dumps({
+                    "child_returncode": child.returncode,
+                    "child_stdout": child.stdout.strip(),
+                    "child_stderr": child.stderr.strip(),
+                    "explicit_dependency_retained": str(explicit_dep) in entries,
+                    "hostile_site_promoted": str(hostile_site) in entries,
+                }, sort_keys=True))
+                """
+            ),
+            str(repo_root),
+            str(chapter_dir),
+            str(explicit_dep),
+            str(hostile_site),
+        ],
+        env=driver_env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+
+    assert payload["child_returncode"] == 0, payload["child_stderr"]
+    assert payload["child_stdout"].startswith("pathlib explicit-import-ok ")
+    assert payload["explicit_dependency_retained"] is True
+    assert payload["hostile_site_promoted"] is False

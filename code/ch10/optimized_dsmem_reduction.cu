@@ -390,8 +390,7 @@ int main() {
     printf("  Time: %.3f ms\n", avg_dsmem);
     printf("  Sum: %.0f (expected: %d)\n", total_dsmem, N);
 
-    const float verify_checksum = total_dsmem;
-    VERIFY_PRINT_CHECKSUM(verify_checksum);
+    VERIFY_PRINT_CHECKSUM(total_dsmem);
     
     //========================================================================
     // Summary

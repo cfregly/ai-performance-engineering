@@ -30,6 +30,9 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
 
     signature_equivalence_group = "labs_kv_standard_precision"
     signature_equivalence_ignore_fields = ("precision_flags",)
+    # Profile the entire append range per metric pass. Per-kernel replay either
+    # checkpoints the large mutable cache or repeatedly restarts the full workload.
+    preferred_ncu_replay_mode = "app-range"
 
     def __init__(
         self,
@@ -119,17 +122,10 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
             for pos, (k_layer, v_layer) in enumerate(self._generated_step_layer_view_pairs)
         ]
         self._generated_step_layer_position_count = len(self._generated_step_layer_position_pairs)
-        self._output_view = self.kv_cache[:1, :1, :, :, :1, : min(8, self.head_dim)]
-        self._verify_output_buffer = torch.empty(
-            1,
-            1,
-            2,
-            self.num_heads,
-            1,
-            min(8, self.head_dim),
-            device=self.device,
-            dtype=torch.float32,
-        )
+        self._output_view = self._written_cache_view()
+        # The full FP32 verification copy is materialized after timed measurement
+        # so it neither changes the timed workload nor the reported cache footprint.
+        self._verify_output_buffer = None
         self._batch_size_tensor = torch.empty(1, dtype=torch.int64, device="cpu")
         self._batch_size_tensor[0] = self.batch_size
         self._seq_lengths_payload = torch.empty_like(self.seq_lengths)
@@ -202,6 +198,24 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         for batch_idx in range(self.batch_size):
             self._seq_lengths_host[batch_idx] = value
 
+    def _written_cache_view(self) -> torch.Tensor:
+        """Return exactly the cache region populated by ``benchmark_fn``."""
+        return self.kv_cache[
+            :, self._active_layer_slice, :, :, : self.num_decode_steps, :
+        ]
+
+    def _build_verification_output(self) -> torch.Tensor:
+        if self.output is None:
+            raise RuntimeError("benchmark_fn() must run before verification capture")
+        if (
+            self._verify_output_buffer is None
+            or self._verify_output_buffer.shape != self.output.shape
+            or self._verify_output_buffer.device != self.output.device
+        ):
+            self._verify_output_buffer = torch.empty_like(self.output, dtype=torch.float32)
+        self._verify_output_buffer.copy_(self.output)
+        return self._verify_output_buffer
+
     def benchmark_fn(self) -> None:
         """Benchmark KV cache operations."""
         if self._generated_k_steps is None or self._generated_v_steps is None:
@@ -235,17 +249,15 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         if (
             self._batch_size_tensor is None
             or self._seq_lengths_payload is None
-            or self._verify_output_buffer is None
         ):
             raise RuntimeError("setup() must initialize verification metadata tensors")
         self._seq_lengths_payload.copy_(self.seq_lengths)
-        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={
                 "batch_size": self._batch_size_tensor,
                 "seq_lengths": self._seq_lengths_payload,
             },
-            output=self._verify_output_buffer,
+            output=self._build_verification_output(),
             batch_size=self.batch_size,
             parameter_count=0,
             precision_flags={"fp16": False, "bf16": True, "tf32": torch.backends.cuda.matmul.allow_tf32},
@@ -283,6 +295,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
             iterations=10,
             warmup=5,
             enable_memory_tracking=True,
+            ncu_replay_mode="app-range",
         )
 
     def teardown(self):

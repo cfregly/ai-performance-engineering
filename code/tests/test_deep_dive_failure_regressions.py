@@ -192,6 +192,9 @@ def test_autograd_standard_verification_payload_uses_float_output(factory) -> No
     bench.inputs = torch.randn(2, 4, dtype=torch.float16)
     bench.targets = torch.randn(2, 4, dtype=torch.float16)
     bench.output = torch.randn(2, 4, dtype=torch.float16)
+    # setup() preallocates this transport buffer; keep the focused fixture's
+    # lifecycle equivalent while avoiding model and optimizer setup.
+    bench._verify_output_buffer = torch.empty_like(bench.output, dtype=torch.float32)
     bench.capture_verification_payload()
 
     verify_output = bench.get_verify_output()

@@ -17,10 +17,8 @@
  * - CUDA 13.0+, NVSHMEM 3.4+
  * - NVSwitch preferred for all-to-all communication
  *
- * Performance Targets:
- * - AllGather latency: < 10μs for < 1MB tensors
- * - ReduceScatter bandwidth: > 1500 GB/s for large tensors
- * - Column/row parallel overhead: < 5% vs single-GPU baseline
+ * Performance must be measured on the target topology. These examples report
+ * timings but do not establish portable latency or bandwidth targets.
  *
  * Build:
  *   nvcc -O3 -std=c++17 -arch=sm_100 nvshmem_tensor_parallel.cu \
@@ -47,13 +45,14 @@
  * - Backward: dW_local = X_local.T @ dY, dX_local = dY @ W_local.T
  *
  * Why NVSHMEM:
- * - AllGather: 10-15x faster for < 1MB vs NCCL (< 10μs vs ~100μs)
- * - ReduceScatter: 2-3x faster for medium tensors via ring algorithm
- * - Direct GPU-GPU DMA, no CPU involvement
+ * - One-sided operations let GPU kernels initiate peer transfers directly.
+ * - Stream-ordered host collectives provide whole-grid synchronization between
+ *   communication phases.
  */
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -95,6 +94,27 @@
             exit(EXIT_FAILURE);                                              \
         }                                                                    \
     } while (0)
+
+static void initialize_nvshmem_device() {
+    nvshmem_init();
+    const int world_pe = nvshmem_my_pe();
+    const int local_pe = nvshmem_team_my_pe(NVSHMEMX_TEAM_NODE);
+    if (local_pe < 0) {
+        fprintf(stderr, "PE %d has no rank in NVSHMEMX_TEAM_NODE\n", world_pe);
+        nvshmem_global_exit(EXIT_FAILURE);
+    }
+
+    CUDA_CHECK(cudaSetDevice(local_pe));
+    nvshmem_barrier_all();
+    const int status = nvshmemx_init_status();
+    if (status != NVSHMEM_STATUS_IS_INITIALIZED &&
+        status != NVSHMEM_STATUS_LIMITED_MPG &&
+        status != NVSHMEM_STATUS_FULL_MPG) {
+        fprintf(stderr, "PE %d NVSHMEM device initialization failed: status %d\n",
+                world_pe, status);
+        nvshmem_global_exit(EXIT_FAILURE);
+    }
+}
 #endif
 
 // ============================================================================
@@ -169,14 +189,27 @@ __global__ void nvshmem_allgather_kernel(
         
         for (int peer = 0; peer < world_size; ++peer) {
             int offset = my_rank * shard_size + tid;
-            nvshmem_half_p(&gathered_output[offset], value, peer);
+            // Transfer the binary16 payload through the standard 16-bit RMA
+            // type. Some NVSHMEM device archives declare half p() but do not
+            // provide its device-link instantiation.
+            nvshmem_ushort_p(
+                reinterpret_cast<unsigned short*>(&gathered_output[offset]),
+                __half_as_ushort(value), peer);
         }
     }
-    
-    // Synchronize to ensure all puts are complete
-    if (tid == 0) {
-        nvshmemx_barrier_all_on_stream(0);
-    }
+}
+
+void nvshmem_allgather(const half* local_shard, half* gathered_output,
+                       int shard_size, int world_size, int my_rank,
+                       cudaStream_t stream) {
+    const int threads = 256;
+    const int blocks = (shard_size + threads - 1) / threads;
+    nvshmem_allgather_kernel<<<blocks, threads, 0, stream>>>(
+        local_shard, gathered_output, shard_size, world_size, my_rank);
+    CUDA_CHECK(cudaGetLastError());
+    // The collective is issued by the host after the entire grid has finished
+    // its puts; a single device thread cannot synchronize a multi-block grid.
+    nvshmemx_barrier_all_on_stream(stream);
 }
 #endif
 
@@ -236,11 +269,11 @@ __global__ void row_parallel_forward_nvshmem(
  * Each rank sends data to next rank and receives from previous rank.
  * After world_size-1 steps, each rank has the reduced result for its chunk.
  *
- * Performance: ~1500 GB/s bandwidth for large tensors on multi-GPU B200.
+ * Measure bandwidth on the target system; topology and message size dominate.
  */
 #ifdef USE_NVSHMEM
-__global__ void nvshmem_reduce_scatter_ring_kernel(
-    half* data,              // Input/output buffer (will be modified)
+__global__ void nvshmem_reduce_scatter_send_kernel(
+    const half* data,
     half* temp_buffer,       // Temporary buffer for receiving
     int chunk_size,          // Size of each chunk
     int world_size,
@@ -251,29 +284,43 @@ __global__ void nvshmem_reduce_scatter_ring_kernel(
     
     // Determine which chunk to send/receive in this step
     int send_chunk = (my_rank - step + world_size) % world_size;
-    int recv_chunk = (my_rank - step - 1 + world_size) % world_size;
-    
     int next_rank = (my_rank + 1) % world_size;
-    int prev_rank = (my_rank - 1 + world_size) % world_size;
-    
     if (tid < chunk_size) {
         // Send to next rank
         int send_offset = send_chunk * chunk_size + tid;
-        nvshmem_half_p(&temp_buffer[send_offset], data[send_offset], next_rank);
+        nvshmem_ushort_p(
+            reinterpret_cast<unsigned short*>(&temp_buffer[send_offset]),
+            __half_as_ushort(data[send_offset]), next_rank);
     }
-    
-    // Barrier to ensure sends complete
-    if (tid == 0) {
-        nvshmemx_barrier_all_on_stream(0);
-    }
-    __syncthreads();
-    
+}
+
+__global__ void nvshmem_reduce_scatter_accumulate_kernel(
+    half* data, const half* temp_buffer, int chunk_size,
+    int world_size, int my_rank, int step) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    int recv_chunk = (my_rank - step - 1 + world_size) % world_size;
     if (tid < chunk_size) {
         // Accumulate received data
         int recv_offset = recv_chunk * chunk_size + tid;
         data[recv_offset] = __float2half(
             __half2float(data[recv_offset]) + __half2float(temp_buffer[recv_offset])
         );
+    }
+}
+
+void nvshmem_reduce_scatter_ring(half* data, half* temp_buffer,
+                                 int chunk_size, int world_size, int my_rank,
+                                 cudaStream_t stream) {
+    const int threads = 256;
+    const int blocks = (chunk_size + threads - 1) / threads;
+    for (int step = 0; step < world_size - 1; ++step) {
+        nvshmem_reduce_scatter_send_kernel<<<blocks, threads, 0, stream>>>(
+            data, temp_buffer, chunk_size, world_size, my_rank, step);
+        CUDA_CHECK(cudaGetLastError());
+        nvshmemx_barrier_all_on_stream(stream);
+        nvshmem_reduce_scatter_accumulate_kernel<<<blocks, threads, 0, stream>>>(
+            data, temp_buffer, chunk_size, world_size, my_rank, step);
+        CUDA_CHECK(cudaGetLastError());
     }
 }
 #endif
@@ -285,74 +332,176 @@ __global__ void nvshmem_reduce_scatter_ring_kernel(
 /**
  * Custom AllReduce using ring algorithm with NVSHMEM.
  *
- * Combines ReduceScatter + AllGather in one optimized kernel.
+ * Combines stream-ordered ReduceScatter and AllGather phases.
  * Useful for small to medium tensors in tensor parallel training.
  */
 #ifdef USE_NVSHMEM
-__global__ void nvshmem_allreduce_ring_kernel(
-    half* data,
-    half* scratch,
-    int total_size,
-    int world_size,
-    int my_rank
-) {
+__global__ void nvshmem_allreduce_send_kernel(
+    const half* data, half* scratch, int total_size, int chunk_size,
+    int send_chunk, int next_rank) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    int chunk_size = (total_size + world_size - 1) / world_size;
-    
-    // Reduce-Scatter phase
-    for (int step = 0; step < world_size - 1; ++step) {
-        int send_chunk = (my_rank - step + world_size) % world_size;
-        int recv_chunk = (my_rank - step - 1 + world_size) % world_size;
-        
-        int next_rank = (my_rank + 1) % world_size;
-        
-        // Send chunk to next rank
-        if (tid < chunk_size) {
-            int offset = send_chunk * chunk_size + tid;
-            if (offset < total_size) {
-                nvshmem_half_p(&scratch[offset], data[offset], next_rank);
-            }
+    if (tid < chunk_size) {
+        int offset = send_chunk * chunk_size + tid;
+        if (offset < total_size) {
+            nvshmem_ushort_p(
+                reinterpret_cast<unsigned short*>(&scratch[offset]),
+                __half_as_ushort(data[offset]), next_rank);
         }
-        
-        if (tid == 0) {
-            nvshmemx_barrier_all_on_stream(0);
-        }
-        __syncthreads();
-        
-        // Accumulate received chunk
-        if (tid < chunk_size) {
-            int offset = recv_chunk * chunk_size + tid;
-            if (offset < total_size) {
-                data[offset] = __float2half(
-                    __half2float(data[offset]) + __half2float(scratch[offset])
-                );
-            }
-        }
-        
-        if (tid == 0) {
-            nvshmemx_barrier_all_on_stream(0);
-        }
-        __syncthreads();
-    }
-    
-    // AllGather phase
-    for (int step = 0; step < world_size - 1; ++step) {
-        int send_chunk = (my_rank + 1 - step + world_size) % world_size;
-        int next_rank = (my_rank + 1) % world_size;
-        
-        if (tid < chunk_size) {
-            int offset = send_chunk * chunk_size + tid;
-            if (offset < total_size) {
-                nvshmem_half_p(&scratch[offset], data[offset], next_rank);
-            }
-        }
-        
-        if (tid == 0) {
-            nvshmemx_barrier_all_on_stream(0);
-        }
-        __syncthreads();
     }
 }
+
+__global__ void nvshmem_allreduce_accumulate_kernel(
+    half* data, const half* scratch, int total_size, int chunk_size,
+    int recv_chunk) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid < chunk_size) {
+        int offset = recv_chunk * chunk_size + tid;
+        if (offset < total_size) {
+            data[offset] = __float2half(
+                __half2float(data[offset]) + __half2float(scratch[offset]));
+        }
+    }
+}
+
+__global__ void nvshmem_allreduce_copy_kernel(
+    half* data, const half* scratch, int total_size, int chunk_size,
+    int recv_chunk) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid < chunk_size) {
+        int offset = recv_chunk * chunk_size + tid;
+        if (offset < total_size) {
+            data[offset] = scratch[offset];
+        }
+    }
+}
+
+void nvshmem_allreduce_ring(half* data, half* scratch, int total_size,
+                            int world_size, int my_rank,
+                            cudaStream_t stream) {
+    const int chunk_size = (total_size + world_size - 1) / world_size;
+    const int threads = 256;
+    const int blocks = (chunk_size + threads - 1) / threads;
+    const int next_rank = (my_rank + 1) % world_size;
+
+    for (int step = 0; step < world_size - 1; ++step) {
+        const int send_chunk = (my_rank - step + world_size) % world_size;
+        const int recv_chunk = (my_rank - step - 1 + world_size) % world_size;
+        nvshmem_allreduce_send_kernel<<<blocks, threads, 0, stream>>>(
+            data, scratch, total_size, chunk_size, send_chunk, next_rank);
+        CUDA_CHECK(cudaGetLastError());
+        nvshmemx_barrier_all_on_stream(stream);
+        nvshmem_allreduce_accumulate_kernel<<<blocks, threads, 0, stream>>>(
+            data, scratch, total_size, chunk_size, recv_chunk);
+        CUDA_CHECK(cudaGetLastError());
+    }
+
+    for (int step = 0; step < world_size - 1; ++step) {
+        const int send_chunk = (my_rank + 1 - step + world_size) % world_size;
+        const int recv_chunk = (my_rank - step + world_size) % world_size;
+        nvshmem_allreduce_send_kernel<<<blocks, threads, 0, stream>>>(
+            data, scratch, total_size, chunk_size, send_chunk, next_rank);
+        CUDA_CHECK(cudaGetLastError());
+        nvshmemx_barrier_all_on_stream(stream);
+        nvshmem_allreduce_copy_kernel<<<blocks, threads, 0, stream>>>(
+            data, scratch, total_size, chunk_size, recv_chunk);
+        CUDA_CHECK(cudaGetLastError());
+    }
+}
+#endif
+
+// ============================================================================
+// Collective Correctness Check
+// ============================================================================
+
+#ifdef USE_NVSHMEM
+
+bool test_collectives() {
+    const int my_rank = nvshmem_my_pe();
+    const int world_size = nvshmem_n_pes();
+    const int chunk_size = 1024;
+    const int total_size = chunk_size * world_size;
+    const float expected_sum =
+        static_cast<float>(world_size * (world_size + 1)) / 2.0f;
+
+    half* data = static_cast<half*>(nvshmem_malloc(total_size * sizeof(half)));
+    half* scratch = static_cast<half*>(nvshmem_malloc(total_size * sizeof(half)));
+    half* gathered = static_cast<half*>(nvshmem_malloc(total_size * sizeof(half)));
+    if (data == nullptr || scratch == nullptr || gathered == nullptr) {
+        fprintf(stderr, "PE %d failed to allocate symmetric collective storage\n",
+                my_rank);
+        nvshmem_global_exit(EXIT_FAILURE);
+    }
+    half* local_shard = nullptr;
+    CUDA_CHECK(cudaMalloc(&local_shard, chunk_size * sizeof(half)));
+
+    cudaStream_t stream;
+    CUDA_CHECK(cudaStreamCreate(&stream));
+    std::vector<half> host(total_size, __float2half(static_cast<float>(my_rank + 1)));
+    bool correct = true;
+
+    // ReduceScatter: each PE validates the chunk it owns after the ring.
+    CUDA_CHECK(cudaMemcpy(data, host.data(), total_size * sizeof(half),
+                          cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemset(scratch, 0, total_size * sizeof(half)));
+    nvshmem_barrier_all();
+    nvshmem_reduce_scatter_ring(
+        data, scratch, chunk_size, world_size, my_rank, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    const int owned_chunk = (my_rank + 1) % world_size;
+    CUDA_CHECK(cudaMemcpy(host.data(), data + owned_chunk * chunk_size,
+                          chunk_size * sizeof(half), cudaMemcpyDeviceToHost));
+    for (int i = 0; i < chunk_size; ++i) {
+        float value = __half2float(host[i]);
+        correct = correct && std::isfinite(value) && value == expected_sum;
+    }
+
+    // Ring AllReduce: every element on every PE must contain the global sum.
+    std::fill(host.begin(), host.end(), __float2half(static_cast<float>(my_rank + 1)));
+    CUDA_CHECK(cudaMemcpy(data, host.data(), total_size * sizeof(half),
+                          cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemset(scratch, 0, total_size * sizeof(half)));
+    nvshmem_barrier_all();
+    nvshmem_allreduce_ring(data, scratch, total_size, world_size, my_rank, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    CUDA_CHECK(cudaMemcpy(host.data(), data, total_size * sizeof(half),
+                          cudaMemcpyDeviceToHost));
+    for (int i = 0; i < total_size; ++i) {
+        float value = __half2float(host[i]);
+        correct = correct && std::isfinite(value) && value == expected_sum;
+    }
+
+    // AllGather: rank r contributes a constant r+1 shard to every PE.
+    std::vector<half> local(chunk_size,
+                            __float2half(static_cast<float>(my_rank + 1)));
+    CUDA_CHECK(cudaMemcpy(local_shard, local.data(), chunk_size * sizeof(half),
+                          cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemset(gathered, 0, total_size * sizeof(half)));
+    nvshmem_barrier_all();
+    nvshmem_allgather(
+        local_shard, gathered, chunk_size, world_size, my_rank, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    CUDA_CHECK(cudaMemcpy(host.data(), gathered, total_size * sizeof(half),
+                          cudaMemcpyDeviceToHost));
+    for (int peer = 0; peer < world_size; ++peer) {
+        const float expected = static_cast<float>(peer + 1);
+        for (int i = 0; i < chunk_size; ++i) {
+            float value = __half2float(host[peer * chunk_size + i]);
+            correct = correct && std::isfinite(value) && value == expected;
+        }
+    }
+
+    printf("PE %d collective correctness: %s\n",
+           my_rank, correct ? "PASS" : "FAIL");
+
+    CUDA_CHECK(cudaStreamDestroy(stream));
+    CUDA_CHECK(cudaFree(local_shard));
+    nvshmem_barrier_all();
+    nvshmem_free(gathered);
+    nvshmem_free(scratch);
+    nvshmem_free(data);
+    return correct;
+}
+
 #endif
 
 // ============================================================================
@@ -495,14 +644,12 @@ void test_row_parallel() {
 int main(int argc, char** argv) {
     NVTX_RANGE("main");
 #ifdef USE_NVSHMEM
-    // Initialize NVSHMEM
-    nvshmem_init();
+    // Bootstrap NVSHMEM, map this node-local PE to its CUDA device, and
+    // complete deferred device initialization before symmetric allocation.
+    initialize_nvshmem_device();
     
     int my_rank = nvshmem_my_pe();
     int world_size = nvshmem_n_pes();
-    
-    // Set CUDA device
-    CUDA_CHECK(cudaSetDevice(my_rank % std::max(1, world_size)));
     
     if (my_rank == 0) {
         printf("NVSHMEM Tensor Parallel Kernels for Blackwell B200\n");
@@ -520,6 +667,12 @@ int main(int argc, char** argv) {
     }
     
     // Run tests
+    bool all_correct = true;
+    if (strcmp(test_type, "collectives") == 0 || strcmp(test_type, "all") == 0) {
+        all_correct = test_collectives() && all_correct;
+        nvshmem_barrier_all();
+    }
+
     if (strcmp(test_type, "column_parallel") == 0 || strcmp(test_type, "all") == 0) {
         test_column_parallel();
         nvshmem_barrier_all();
@@ -531,11 +684,14 @@ int main(int argc, char** argv) {
     }
     
     if (my_rank == 0) {
-        printf("\nAll tests completed successfully!\n");
+        printf("\nTests completed: %s\n", all_correct ? "PASS" : "FAIL");
     }
     
     // Finalize
     nvshmem_finalize();
+    if (!all_correct) {
+        return EXIT_FAILURE;
+    }
 #else
     printf("NVSHMEM Tensor Parallel Kernels (Conceptual Mode)\n");
     printf("=================================================\n\n");

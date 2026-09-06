@@ -17,6 +17,7 @@ import torch.distributed as dist
 from torch.profiler import profile, record_function, ProfilerActivity
 
 from core.harness.arch_config import ArchitectureConfig
+from core.utils.compile_utils import configure_tf32, restore_tf32
 
 
 def ensure_cuda(feature: str) -> bool:
@@ -29,12 +30,11 @@ def ensure_cuda(feature: str) -> bool:
 @pytest.fixture(autouse=True)
 def ieee_float32_reference_policy():
     """Keep these FP32 reference comparisons independent of prior TF32 tests."""
-    previous = torch.backends.cuda.matmul.allow_tf32
-    torch.backends.cuda.matmul.allow_tf32 = False
+    previous = configure_tf32(enable_matmul=False, enable_cudnn=False)
     try:
         yield
     finally:
-        torch.backends.cuda.matmul.allow_tf32 = previous
+        restore_tf32(previous)
 
 
 def test_architecture_detection():
@@ -158,9 +158,9 @@ def test_performance():
     print(f"FP32 matmul smoke: {2 * 512**3 / elapsed_ms / 1e9:.2f} TFLOP/s")
 
 
-@pytest.fixture
-def nccl_world():
-    """Use an explicit torchrun launch; initialization failures must propagate."""
+@pytest.fixture(scope="module")
+def nccl_process_group():
+    """Keep one NCCL group for the module; in-process reinitialization is unsupported."""
     ensure_cuda("distributed inference")
     if not dist.is_available() or not dist.is_nccl_available():
         pytest.skip("NCCL is unavailable")
@@ -171,15 +171,29 @@ def nccl_world():
     assert local_rank < torch.cuda.device_count(), "LOCAL_RANK exceeds actual CUDA device count"
     torch.cuda.set_device(local_rank)
     if owns_group:
-        dist.init_process_group(backend="nccl", timeout=timedelta(seconds=60))
+        dist.init_process_group(
+            backend="nccl",
+            timeout=timedelta(seconds=60),
+            device_id=torch.device(f"cuda:{local_rank}"),
+        )
     try:
         assert dist.get_world_size() == 2, "These cases require exactly two ranks"
         assert dist.get_backend() == "nccl", "Distributed GPU validation requires NCCL"
-        torch.manual_seed(20260830)
         yield dist.get_rank(), local_rank
     finally:
         if owns_group:
             dist.destroy_process_group()
+
+
+@pytest.fixture
+def nccl_world(nccl_process_group):
+    """Isolate compiler state while reusing the module's live NCCL group."""
+    # Compiled FlexAttention specializations are process-global.  Isolate each
+    # distributed test so shape coverage in one test cannot exhaust Dynamo's
+    # recompile limit in the next one.
+    torch.compiler.reset()
+    torch.manual_seed(20260830)
+    return nccl_process_group
 
 
 def test_kv_cache_batched_attention_2gpu(nccl_world):
@@ -196,7 +210,7 @@ def test_kv_cache_batched_attention_2gpu(nccl_world):
 
     num_layers = 2
     num_heads = 8  # 4 heads per GPU
-    d_model = 64
+    d_model = 128
     head_dim = d_model // num_heads
     vocab_size = 128
     batch_size = 4
@@ -339,6 +353,34 @@ def test_inference_server_multigpu_distributed(nccl_world):
         max_batch_size=32,
         max_seq_len=256,
     )
+    assert (
+        server._prefill_graph_available
+    ), "Distributed prefill CUDA graph was not captured"
+
+    # Verify every graph output against the eager path before timed serving.
+    graph_input = torch.randint(
+        0,
+        model.vocab_size,
+        (server.max_batch_size, server._prefill_graph_seq_len),
+        device=server.device,
+    )
+    with torch.inference_mode():
+        graph_outputs = server._run_prefill_graph(graph_input)
+        eager_outputs = server.model(graph_input, past_kv=None)
+    output_names = ("logits", "keys", "values")
+    assert len(graph_outputs) == len(eager_outputs) == len(output_names)
+    for output_name, graph_output, eager_output in zip(
+        output_names,
+        graph_outputs,
+        eager_outputs,
+    ):
+        torch.testing.assert_close(
+            graph_output,
+            eager_output,
+            rtol=1e-4,
+            atol=1e-5,
+            msg=f"CUDA graph {output_name} output differs from eager inference",
+        )
     
     # Submit test requests (all ranks enqueue identical work to keep the scheduler in sync)
     if rank == 0:

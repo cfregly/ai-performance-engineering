@@ -12,9 +12,25 @@ logger = logging.getLogger(__name__)
 # GPU benchmarks typically have 10-30% variance between runs.
 DEFAULT_THRESHOLD_PCT = 25.0
 
+_NCU_RANGE_DURATION_METRIC_PATHS = frozenset(
+    {
+        "range_time_ms",
+        "ncu_range_time_ms",
+        "profiler_metrics.ncu.range_time_ms",
+        "profiler_metrics.ncu.ncu_range_time_ms",
+        "profiler_metrics.ncu.raw.range_time_ms",
+        "profiler_metrics.ncu.raw.ncu_range_time_ms",
+    }
+)
+
 _chapter_metrics_loader: Optional[Callable[[str], Dict[str, Dict[str, Any]]]] = None
 _target_metadata_loader: Optional[Callable[[], Dict[str, Any]]] = None
 _target_metadata_warning_logged = False
+
+
+def _is_ncu_range_duration_metric(metric_name: str) -> bool:
+    """Return whether a metric is descriptive NCU selected-range duration."""
+    return metric_name in _NCU_RANGE_DURATION_METRIC_PATHS
 
 try:
     from core.benchmark.performance_targets import (
@@ -347,6 +363,8 @@ def extract_metrics(benchmark_result, include_raw_metrics: bool = False) -> Dict
             ncu = prof.ncu
             if ncu.kernel_time_ms is not None:
                 metrics["profiler_metrics.ncu.kernel_time_ms"] = ncu.kernel_time_ms
+            # An NCU selected-range duration is descriptive capture metadata. It
+            # is intentionally not a benchmark timing or per-kernel comparison.
             if ncu.sm_throughput_pct is not None:
                 metrics["profiler_metrics.ncu.sm_throughput_pct"] = ncu.sm_throughput_pct
             if ncu.dram_throughput_pct is not None:
@@ -359,9 +377,12 @@ def extract_metrics(benchmark_result, include_raw_metrics: bool = False) -> Dict
             # Add raw metrics only if explicitly requested
             if include_raw_metrics:
                 for key, value in ncu.raw_metrics.items():
+                    metric_name = f"profiler_metrics.ncu.raw.{key}"
+                    if _is_ncu_range_duration_metric(metric_name):
+                        continue
                     # Avoid isinstance to prevent TypeGuardedType serialization issues
                     try:
-                        metrics[f"profiler_metrics.ncu.raw.{key}"] = float(value)
+                        metrics[metric_name] = float(value)
                     except (TypeError, ValueError):
                         pass
         
@@ -688,6 +709,9 @@ def compare_metric(
     """
     if metric_config is None:
         metric_config = METRIC_CONFIG
+
+    if _is_ncu_range_duration_metric(metric_name):
+        return None
     
     regression_threshold = regression_threshold_pct
     improvement_threshold = improvement_threshold_pct

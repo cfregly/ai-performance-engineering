@@ -293,6 +293,8 @@ def extract_from_ncu_report(ncu_rep: Path) -> Dict[str, float]:
     metrics: Dict[str, float] = {}
     if metrics_obj.kernel_time_ms is not None:
         metrics["kernel_time_ms"] = metrics_obj.kernel_time_ms
+    if metrics_obj.range_time_ms is not None:
+        metrics["range_time_ms"] = metrics_obj.range_time_ms
     if metrics_obj.sm_throughput_pct is not None:
         metrics["sm_throughput_percent"] = metrics_obj.sm_throughput_pct
     if metrics_obj.dram_throughput_pct is not None:

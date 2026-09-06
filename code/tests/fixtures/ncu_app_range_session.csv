@@ -1,0 +1,8 @@
+Launch Settings
+"Launch Attribute","Value"
+"Profiler Command Line","/opt/nvidia/nsight-compute/2025.3.1/ncu --force-overwrite --clock-control none --set basic --metrics gpu__time_duration.avg,sm__throughput.avg.pct_of_peak_sustained_elapsed,gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed,lts__throughput.avg.pct_of_peak_sustained_elapsed,sm__warps_active.avg.pct_of_peak_sustained_active --replay-mode app-range --target-processes all --nvtx --nvtx-include compute_kernel:profile -o test_report python test_profile_child.py"
+
+Session Info
+"Session Attribute","Value"
+"Created","sanitized"
+"Host Name","test-host"

@@ -314,7 +314,7 @@ def measure_bf16_compute(device: torch.device = None, matrix_size: int = 8192, i
 
 
 def measure_fp4_compute(device: torch.device = None, matrix_size: int = 8192, iterations: int = 20) -> dict:
-    """Measure FP4 compute TFLOPS using Transformer Engine NVFP4 (if available)."""
+    """Measure forward inference TFLOPS using Transformer Engine NVFP4."""
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
@@ -334,29 +334,31 @@ def measure_fp4_compute(device: torch.device = None, matrix_size: int = 8192, it
         in_features = matrix_size
         out_features = matrix_size
         
-        # Input tensor - create outside autocast
-        x = torch.randn(1024, in_features, device=device, dtype=torch.float16)
+        # NVFP4's default random Hadamard transform requires BF16 source
+        # operands in Transformer Engine. Quantization/GEMM still execute FP4.
+        x = torch.randn(1024, in_features, device=device, dtype=torch.bfloat16)
         
         # Create TE linear layer - initialize on device first
         fp4_linear = TELinear(
             in_features,
             out_features,
             bias=False,
-            params_dtype=torch.float16,
+            params_dtype=torch.bfloat16,
         ).to(device)
         
         print(f"  Created FP4 recipe: {type(fp4_recipe).__name__}")
         
-        # Initialize the layer INSIDE autocast context with FP4 recipe
-        # This ensures parameters are properly initialized for FP4
-        with _low_precision_autocast(fp4_recipe):
+        # This forward-only measurement needs no backward state. Inference mode
+        # avoids TE's backward-only columnwise input quantization; the forward
+        # operand quantization and FP4 GEMM remain inside every measured call.
+        with torch.inference_mode(), _low_precision_autocast(fp4_recipe):
             # Do initial forward pass to initialize FP4 weights properly
             _ = fp4_linear(x)
         
         torch.cuda.synchronize(device)
         
-        # Warmup - FP4 uses fp8_autocast API with FP4 recipe
-        with _low_precision_autocast(fp4_recipe):
+        # Warmup uses the same inference and FP4 recipe as the measured calls.
+        with torch.inference_mode(), _low_precision_autocast(fp4_recipe):
             for _ in range(10):
                 _ = fp4_linear(x)
         torch.cuda.synchronize(device)
@@ -365,11 +367,12 @@ def measure_fp4_compute(device: torch.device = None, matrix_size: int = 8192, it
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
         
-        start_event.record(torch.cuda.current_stream(device))
-        with _low_precision_autocast(fp4_recipe):
-            for _ in range(iterations):
-                _ = fp4_linear(x)
-        end_event.record(torch.cuda.current_stream(device))
+        with torch.inference_mode():
+            start_event.record(torch.cuda.current_stream(device))
+            with _low_precision_autocast(fp4_recipe):
+                for _ in range(iterations):
+                    output = fp4_linear(x)
+            end_event.record(torch.cuda.current_stream(device))
         torch.cuda.synchronize(device)
         
         elapsed_ms = start_event.elapsed_time(end_event)
@@ -388,6 +391,11 @@ def measure_fp4_compute(device: torch.device = None, matrix_size: int = 8192, it
             "matrix_size": matrix_size,
             "precision": "fp4",
             "recipe": type(fp4_recipe).__name__,
+            "input_dtype": str(x.dtype),
+            "weight_dtype": str(fp4_linear.weight.dtype),
+            "execution_mode": "inference",
+            "output_requires_grad": output.requires_grad,
+            "output_is_inference": output.is_inference(),
         }
     except Exception as e:
         raise RuntimeError(f"FP4 measurement failed: {e}") from e

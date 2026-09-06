@@ -26,6 +26,8 @@ class BlockScalingBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
     benchmark_path = ""
     nvtx_label = ""
     compile_hardware = False
+    hardware_blockscaled = False
+
     def __init__(self) -> None:
         super().__init__()
         self.config: BlockScalingConfig = load_lab_config_from_env()
@@ -89,21 +91,24 @@ class BlockScalingBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
 
-    def get_custom_metrics(self) -> Optional[dict]:
+    def get_custom_metrics(self) -> Optional[dict[str, float]]:
         problem_metrics = {
-            "block_scaling.path": self.benchmark_path,
-            "block_scaling.mnkl": ",".join(str(x) for x in self.config.mnkl),
-            "block_scaling.mma_tiler_mn": ",".join(str(x) for x in self.config.mma_tiler_mn),
-            "block_scaling.cluster_shape_mn": ",".join(
-                str(x) for x in self.config.cluster_shape_mn
-            ),
+            "block_scaling.hardware_blockscaled": float(self.hardware_blockscaled),
             "block_scaling.sf_vec_size": float(self.config.sf_vec_size),
-            "block_scaling.source": BLOCK_SCALING_SOURCE_URL,
         }
         if self.verification_summary is not None:
             problem_metrics["block_scaling.max_abs_error"] = self.verification_summary["max_abs_error"]
             problem_metrics["block_scaling.mean_abs_error"] = self.verification_summary["mean_abs_error"]
         return problem_metrics
+
+    def get_story_metadata(self) -> Optional[dict[str, object]]:
+        return {
+            "block_scaling.path": self.benchmark_path,
+            "block_scaling.mnkl": list(self.config.mnkl),
+            "block_scaling.mma_tiler_mn": list(self.config.mma_tiler_mn),
+            "block_scaling.cluster_shape_mn": list(self.config.cluster_shape_mn),
+            "block_scaling.source": BLOCK_SCALING_SOURCE_URL,
+        }
 
     def capture_verification_payload(self) -> None:
         problem = self._require_problem()
@@ -156,6 +161,7 @@ class OptimizedBlockScalingBenchmarkBase(BlockScalingBenchmarkBase):
     benchmark_path = "hardware_blockscaled_cutlass"
     nvtx_label = "block_scaling_hardware_blockscaled"
     compile_hardware = True
+    hardware_blockscaled = True
 
     def __init__(self) -> None:
         super().__init__()
@@ -224,7 +230,7 @@ class OptimizedBlockScalingBenchmarkBase(BlockScalingBenchmarkBase):
         self._replay_graph = None
         super().teardown()
 
-    def get_custom_metrics(self) -> Optional[dict]:
+    def get_custom_metrics(self) -> Optional[dict[str, float]]:
         metrics = super().get_custom_metrics() or {}
         metrics["block_scaling.graph_replay"] = float(self._replay_graph is not None)
         return metrics

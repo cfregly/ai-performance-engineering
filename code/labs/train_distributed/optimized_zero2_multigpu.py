@@ -8,6 +8,7 @@ with DDP and does not keep gradients sharded between steps.
 from __future__ import annotations
 
 import inspect
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 import torch
@@ -42,9 +43,8 @@ def _optimizer_cfg(params, lr):
     return kwargs
 
 
-def _build_optimizer(params, lr):
-    """Construct the sharded optimizer used by the explicit training step."""
-    params = list(params)
+def _build_single_dtype_optimizer(params, lr):
+    """Construct one sharded optimizer for a homogeneous dense tensor type."""
     return ZeroRedundancyOptimizer(
         params,
         # The custom communication hook does not run a ZeRO optimizer step.
@@ -52,6 +52,79 @@ def _build_optimizer(params, lr):
         overlap_with_ddp=False,
         parameters_as_bucket_view=True,
         **_optimizer_cfg(params, lr),
+    )
+
+
+class _DtypeSeparatedZeroRedundancyOptimizer:
+    """Coordinate independent ZeRO optimizers for mixed-dtype DDP parameters.
+
+    PyTorch requires every dense parameter passed to one
+    ``ZeroRedundancyOptimizer`` to have the same tensor type. The training
+    workload intentionally adds a BF16 communication payload to an FP32 model,
+    so each dtype needs its own sharded owner set. The ordered construction and
+    step sequence are identical on every rank.
+    """
+
+    def __init__(self, optimizers: Sequence[ZeroRedundancyOptimizer]) -> None:
+        if len(optimizers) < 2:
+            raise ValueError("Mixed-dtype ZeRO wrapper requires at least two optimizers")
+        self.optimizers = tuple(optimizers)
+
+    @property
+    def local_optimizers(self) -> tuple[torch.optim.Optimizer, ...]:
+        """Return every rank-local optimizer for state and ownership checks."""
+        return tuple(optimizer.optim for optimizer in self.optimizers)
+
+    @property
+    def state(self) -> dict[torch.Tensor, dict]:
+        """Expose the union of this rank's non-overlapping optimizer states."""
+        state: dict[torch.Tensor, dict] = {}
+        for local_optimizer in self.local_optimizers:
+            duplicate_parameters = state.keys() & local_optimizer.state.keys()
+            if duplicate_parameters:
+                raise RuntimeError("A parameter is owned by multiple local ZeRO optimizers")
+            state.update(local_optimizer.state)
+        return state
+
+    def zero_grad(self, set_to_none: bool = True) -> None:
+        for optimizer in self.optimizers:
+            optimizer.zero_grad(set_to_none=set_to_none)
+
+    def step(self, closure=None, **kwargs):
+        if closure is not None:
+            raise ValueError("Mixed-dtype ZeRO does not support optimizer closures")
+        result = None
+        for optimizer in self.optimizers:
+            step_result = optimizer.step(**kwargs)
+            if step_result is not None:
+                result = step_result
+        return result
+
+
+def _local_optimizers(optimizer) -> tuple[torch.optim.Optimizer, ...]:
+    """Return all rank-local optimizers without hiding dtype partitions."""
+    if isinstance(optimizer, _DtypeSeparatedZeroRedundancyOptimizer):
+        return optimizer.local_optimizers
+    return (getattr(optimizer, "optim", optimizer),)
+
+
+def _build_optimizer(params: Iterable[torch.nn.Parameter], lr):
+    """Construct the sharded optimizer used by the explicit training step."""
+    params = list(params)
+    if not params:
+        raise ValueError("ZeRO optimizer requires at least one parameter")
+
+    params_by_dtype: dict[torch.dtype, list[torch.nn.Parameter]] = {}
+    for parameter in params:
+        params_by_dtype.setdefault(parameter.dtype, []).append(parameter)
+    if len(params_by_dtype) == 1:
+        return _build_single_dtype_optimizer(params, lr)
+
+    return _DtypeSeparatedZeroRedundancyOptimizer(
+        tuple(
+            _build_single_dtype_optimizer(dtype_params, lr)
+            for dtype_params in params_by_dtype.values()
+        )
     )
 
 

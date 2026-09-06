@@ -17,6 +17,7 @@ from typing import Any, Optional, Sequence
 
 import torch
 
+from core.benchmark.tcgen05_requirements import ensure_tcgen05_capability_supported
 from core.utils.extension_loader_template import load_cuda_extension
 from labs.nvfp4_group_gemm.task import input_t, output_t
 
@@ -25,6 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 _EXT_BASE_NAME = "nvfp4_group_gemm_custom_cuda"
 _SOURCE_FILE = "custom_cuda_group_gemm_kernel.cu"
 _EXT: Optional[object] = None
+_MODULE_NAME = "NVFP4 grouped GEMM custom CUDA extension"
 
 
 def _get_process_extension_cache() -> dict[str, object]:
@@ -65,6 +67,27 @@ def _compile_config_hash(*, source_file: str, extra_cuda_cflags: Sequence[str]) 
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha1(encoded).hexdigest()[:12]
+
+
+def _cuda_gencode_flags_for_capability(capability: tuple[int, int]) -> list[str]:
+    """Return one exact arch-conditional tcgen05 target for the active GPU."""
+    ensure_tcgen05_capability_supported(capability, module_name=_MODULE_NAME)
+    major, minor = capability
+    target = f"{major}{minor}a"
+    return [
+        f"-gencode=arch=compute_{target},code=sm_{target}",
+        f"-gencode=arch=compute_{target},code=compute_{target}",
+    ]
+
+
+def _active_cuda_gencode_flags() -> list[str]:
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            f"SKIPPED: {_MODULE_NAME} requires a visible CUDA device "
+            "with a detectable compute capability."
+        )
+    major, minor = torch.cuda.get_device_capability()
+    return _cuda_gencode_flags_for_capability((int(major), int(minor)))
 
 
 def _build_ab_tma_descs(
@@ -127,11 +150,7 @@ def load_custom_cuda_nvfp4_group_gemm(*, verbose: bool = False) -> object:
         "-O3",
         "--use_fast_math",
         "-lineinfo",
-        "-gencode=arch=compute_100a,code=sm_100a",
-        "-gencode=arch=compute_100a,code=compute_100a",
-        "-gencode=arch=compute_103a,code=sm_103a",
-        "-gencode=arch=compute_103a,code=compute_103a",
-    ]
+    ] + _active_cuda_gencode_flags()
     # Compile-time tuning knobs (kept explicit to avoid global default drift).
     # These control constexprs in `custom_cuda_group_gemm_kernel.cu`; compile-config hashing in
     # `ext_name` below ensures knob changes trigger a distinct extension build automatically.
