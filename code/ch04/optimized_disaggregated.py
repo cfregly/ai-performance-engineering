@@ -21,7 +21,7 @@ from core.harness.benchmark_harness import (
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 
 class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Separate phase models on one GPU, with optional torchrun participation."""
+    """Replay separate phase models on one GPU, with optional torchrun participation."""
 
     multi_gpu_required = False
     
@@ -31,6 +31,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.decode_model = None
         self.prefill_input = None
         self.decode_input = None
+        self.prefill_output = None
         self.output = None
         self.is_distributed = False
         self.rank = 0
@@ -65,12 +66,8 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         
-        # Optimization: Disaggregated inference
-        # Separate models/resources for prefill and decode phases
-        # Prefill: Parallel processing, compute-intensive, can use multiple GPUs
-        # Decode: Autoregressive, latency-sensitive, dedicated GPU resources
-        
-        # Prefill model (optimized for parallel processing)
+        # This one-GPU example separates phase state and replays fixed shapes.
+        # Actual placement on different ranks is covered by the distributed labs.
         base_model = ReusableReductionMlp(self.hidden_dim, self.hidden_dim * 2).to(self.device).eval()
         self.prefill_model = base_model
         # Decode model uses identical weights; disaggregation changes placement/scheduling, not math.
@@ -79,7 +76,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._payload_parameter_count = model_param_count * 2
         
         if self.is_distributed:
-            # In disaggregated setup, prefill and decode can use different GPU groups.
+            # Optional distributed execution replicates both phase models per rank.
             self.prefill_model = nn.parallel.DistributedDataParallel(self.prefill_model)
             self.decode_model = nn.parallel.DistributedDataParallel(self.decode_model)
         
@@ -98,7 +95,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         assert self.prefill_input is not None and self.decode_input is not None
         with self._nvtx_range("optimized_disaggregated"):
             with torch.inference_mode():
-                # Process prefill on dedicated prefill GPUs (parallel, compute-intensive)
+                # Process prefill with its phase-specific model replica.
                 prefill_output = self.prefill_model(self.prefill_input)
                 
                 # Synchronize prefill across GPUs
@@ -106,21 +103,22 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     dist.all_reduce(prefill_output, op=dist.ReduceOp.SUM)
                     prefill_output.div_(self.world_size)
                 
-                # Process decode on dedicated decode GPUs (autoregressive, latency-sensitive)
+                # Process decode with its phase-specific model replica.
                 decode_output = self.decode_model(self.decode_input)
                 
                 # Synchronize decode across GPUs
                 if self.is_distributed:
                     dist.all_reduce(decode_output, op=dist.ReduceOp.SUM)
                     decode_output.div_(self.world_size)
+                self.prefill_output = prefill_output
                 self.output = decode_output
 
     def capture_verification_payload(self) -> None:
-        if self.prefill_input is None or self.decode_input is None or self.output is None:
+        if self.prefill_input is None or self.decode_input is None or self.prefill_output is None or self.output is None:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
         self._set_verification_payload(
             inputs={"prefill": self.prefill_input, "decode": self.decode_input},
-            output=self.output.to(dtype=torch.float32),
+            output=torch.cat((self.prefill_output, self.output), dim=1).to(dtype=torch.float32),
             batch_size=int(self.batch_size),
             parameter_count=self._payload_parameter_count,
             precision_flags={
@@ -139,6 +137,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.decode_model = None
         self.prefill_input = None
         self.decode_input = None
+        self.prefill_output = None
         self.output = None
         if self.is_distributed and dist.is_initialized():
             dist.destroy_process_group()
@@ -147,8 +146,10 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def get_config(self) -> BenchmarkConfig:
         """Return benchmark configuration."""
         return BenchmarkConfig(
-        iterations=10,
+            iterations=10,
             warmup=5,
+            # Replay both fixed-shape inference phases with their full outputs.
+            enable_cuda_graph=True,
         )
     
     def get_custom_metrics(self) -> Optional[dict]:
