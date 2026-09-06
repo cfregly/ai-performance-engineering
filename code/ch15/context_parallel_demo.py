@@ -4,7 +4,8 @@ This wrapper calls the Chapter 13 context-parallelism implementation, which is
 shared across chapters.
 
 Run with torchrun, e.g.:
-  torchrun --nproc_per_node <num_gpus> ch15/context_parallel_demo.py
+  python -m torch.distributed.run --nproc_per_node 2 \
+      -m ch15.context_parallel_demo --sequence-length 4096
 """
 
 from __future__ import annotations

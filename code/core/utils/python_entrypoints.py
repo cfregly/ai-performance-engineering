@@ -128,7 +128,6 @@ def build_python_entry_command(
 
 
 def build_torchrun_entry_command(
-    torchrun_executable: str,
     *,
     module_name: Optional[str] = None,
     script_path: Optional[Path] = None,
@@ -137,12 +136,15 @@ def build_torchrun_entry_command(
     nnodes: Optional[int] = None,
     rdzv_backend: Optional[str] = None,
     rdzv_endpoint: Optional[str] = None,
+    python_executable: Optional[str] = None,
 ) -> List[str]:
-    """Build ``torchrun`` command for either a module or a script path."""
+    """Launch distributed workers using the selected Python environment."""
     if bool(module_name) == bool(script_path):
         raise ValueError("Specify exactly one of module_name or script_path.")
     cmd = [
-        torchrun_executable,
+        python_executable or sys.executable,
+        "-m",
+        "torch.distributed.run",
         "--nproc_per_node",
         str(int(nproc_per_node)),
     ]

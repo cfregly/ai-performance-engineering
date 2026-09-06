@@ -170,14 +170,31 @@ def test_tma_cluster_gemm_tiles_use_opt_in_dynamic_shared_memory(
     assert (
         "constexpr size_t B_SMEM_BYTES =\n    static_cast<size_t>(TILE_K) * TILE_N * sizeof(float);"
     ) in source
-    assert "constexpr size_t DYNAMIC_SMEM_BYTES = B_SMEM_BYTES;" in source
-    assert "static_assert(DYNAMIC_SMEM_BYTES == 65536);" in source
     assert "extern __shared__ __align__(128) unsigned char smem_raw[];" in source
-    assert "reinterpret_cast<float (*)[TILE_N]>(smem_raw)" in source
-    assert source.count("__shared__ alignas(128) float A_smem") == 1
-    assert source.count("__shared__ float A_smem") == 1
     assert "__shared__ alignas(128) float B_smem" not in source
     assert "__shared__ float B_smem" not in source
+    if source_name == "tma_multicast_cluster.cu":
+        assert "struct alignas(128) TmaMulticastSharedStorage" in source
+        assert "alignas(128) float B[TILE_K][TILE_N];" in source
+        assert "alignas(128) float A[TILE_M][TILE_K];" in source
+        assert "alignas(block_barrier) unsigned char barrier[sizeof(block_barrier)];" in source
+        assert (
+            "constexpr size_t DYNAMIC_SMEM_BYTES = sizeof(TmaMulticastSharedStorage);"
+            in source
+        )
+        assert "offsetof(TmaMulticastSharedStorage, B) % 128 == 0" in source
+        assert "offsetof(TmaMulticastSharedStorage, A) % 128 == 0" in source
+        assert "DYNAMIC_SMEM_BYTES % 128 == 0" in source
+        assert "auto& shared = *reinterpret_cast<TmaMulticastSharedStorage*>(smem_raw);" in source
+        assert source.count("__shared__") == 1
+        assert "__shared__ alignas(128) float A_smem" not in source
+        assert "__shared__ float A_smem" not in source
+    else:
+        assert "constexpr size_t DYNAMIC_SMEM_BYTES = B_SMEM_BYTES;" in source
+        assert "static_assert(DYNAMIC_SMEM_BYTES == 65536);" in source
+        assert "reinterpret_cast<float (*)[TILE_N]>(smem_raw)" in source
+        assert source.count("__shared__ alignas(128) float A_smem") == 1
+        assert source.count("__shared__ float A_smem") == 1
     assert "cudaDevAttrMaxSharedMemoryPerBlockOptin" in source
     assert "DYNAMIC_SMEM_BYTES + kernel_attributes.sharedSizeBytes" in source
     assert "cudaFuncAttributeMaxDynamicSharedMemorySize" in source

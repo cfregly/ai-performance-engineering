@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 import os
+import signal
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -56,14 +59,15 @@ def test_build_python_entry_command_requires_exactly_one_target(tmp_path: Path) 
 
 def test_build_torchrun_entry_command_supports_module_launch() -> None:
     cmd = build_torchrun_entry_command(
-        "torchrun",
         module_name="ch15.tensor_parallel_demo",
         argv=["--batch", "1"],
         nproc_per_node=2,
         nnodes=1,
     )
     assert cmd == [
-        "torchrun",
+        sys.executable,
+        "-m",
+        "torch.distributed.run",
         "--nproc_per_node",
         "2",
         "--nnodes",
@@ -73,6 +77,45 @@ def test_build_torchrun_entry_command_supports_module_launch() -> None:
         "--batch",
         "1",
     ]
+
+
+def test_real_torchrun_workers_keep_python_when_path_has_another_launcher(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "other-environment-bin"
+    fake_bin.mkdir()
+    other_launcher = fake_bin / "torchrun"
+    other_launcher.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
+    other_launcher.chmod(0o755)
+    probe = tmp_path / "worker_identity.py"
+    probe.write_text(
+        "import json, os, sys\n"
+        "from pathlib import Path\n"
+        "Path(sys.argv[1], os.environ['RANK'] + '.json').write_text("
+        "json.dumps({'executable': sys.executable, 'prefix': sys.prefix}))\n",
+        encoding="utf-8",
+    )
+    with socket.socket() as rendezvous_socket:
+        rendezvous_socket.bind(("127.0.0.1", 0))
+        rendezvous_port = rendezvous_socket.getsockname()[1]
+    command = build_torchrun_entry_command(
+        script_path=probe, argv=[str(tmp_path)], nproc_per_node=2, nnodes=1,
+        rdzv_backend="static", rdzv_endpoint=f"127.0.0.1:{rendezvous_port}",
+    )
+    env = dict(os.environ, PATH=str(fake_bin) + os.pathsep + os.environ.get("PATH", ""))
+    env.pop("PYTHON_EXEC", None)
+    process = subprocess.Popen(
+        command, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    try:
+        output, _ = process.communicate(timeout=45)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        output, _ = process.communicate()
+        pytest.fail(f"Distributed worker identity probe timed out:\n{output}")
+    assert process.returncode == 0, output
+    for rank in (0, 1):
+        identity = json.loads((tmp_path / f"{rank}.json").read_text())
+        assert identity == {"executable": sys.executable, "prefix": sys.prefix}
 
 
 def test_install_local_module_override_loads_package_without_sys_path_mutation(tmp_path: Path) -> None:

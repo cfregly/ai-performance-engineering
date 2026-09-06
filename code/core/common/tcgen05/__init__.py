@@ -69,6 +69,33 @@ _REQUIRED_CUTLASS_HEADERS = (
     Path("cute/tensor.hpp"),
 )
 
+# CUTLASS 4.2.0 at the repository-pinned 57e3cfb revision predates
+# cutlass/detail/collective/moe_stride_utils.hpp. The same four packed-stride
+# overloads exist in its tools utility header under make_cute_packed_stride.
+# This exact-content allowlist keeps the compatibility path scoped to that
+# known implementation. Retire it when the pinned CUTLASS provides the native
+# moe_stride_utils.hpp header.
+_CUTLASS_42_VERSION = (4, 2, 0)
+_CUTLASS_MOE_STRIDE_HEADER = Path("cutlass/detail/collective/moe_stride_utils.hpp")
+_CUTLASS_42_PACKED_STRIDE_HEADER = Path("cutlass/util/packed_stride.hpp")
+_CUTLASS_42_PACKED_STRIDE_SHA256 = (
+    "ca7f6b722a87848a53730cf8049991dcd781a5d79b37d7cda683ab6367710650"
+)
+_CUTLASS_42_MOE_STRIDE_COMPAT_SOURCE = """\
+// Generated compatibility header for repository-pinned CUTLASS 4.2.0.
+#pragma once
+#include <cutlass/util/packed_stride.hpp>
+
+namespace cutlass {
+template <class Stride, class Shape>
+CUTLASS_HOST_DEVICE
+auto make_internal_packed_stride(Stride stride, Shape const& shape)
+    -> decltype(make_cute_packed_stride(stride, shape)) {
+  return make_cute_packed_stride(stride, shape);
+}
+}  // namespace cutlass
+"""
+
 
 def _detect_compute_capability() -> tuple[int, int] | None:
     """Return the visible CUDA compute capability without requiring a GPU at import time."""
@@ -98,6 +125,91 @@ def _current_compute_capability() -> tuple[int, int]:
     return capability
 
 
+def _cutlass_version(include_dir: Path) -> tuple[int, int, int] | None:
+    """Read the numeric CUTLASS version macros from an include directory."""
+    version_path = include_dir / "cutlass" / "version.h"
+    try:
+        lines = version_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError):
+        return None
+
+    values: dict[str, int] = {}
+    wanted = {"CUTLASS_MAJOR", "CUTLASS_MINOR", "CUTLASS_PATCH"}
+    for line in lines:
+        parts = line.split()
+        if len(parts) < 3 or parts[0] != "#define" or parts[1] not in wanted:
+            continue
+        try:
+            values[parts[1]] = int(parts[2])
+        except ValueError:
+            return None
+    if set(values) != wanted:
+        return None
+    return values["CUTLASS_MAJOR"], values["CUTLASS_MINOR"], values["CUTLASS_PATCH"]
+
+
+def _write_cutlass_42_compat_header(destination: Path) -> None:
+    """Atomically materialize the narrow CUTLASS 4.2 stride-name adapter."""
+    if destination.is_file():
+        try:
+            if destination.read_text(encoding="utf-8") == _CUTLASS_42_MOE_STRIDE_COMPAT_SOURCE:
+                return
+        except (OSError, UnicodeError):
+            pass
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=destination.parent,
+            prefix=f".{destination.name}.",
+            delete=False,
+        ) as temporary_file:
+            temporary_file.write(_CUTLASS_42_MOE_STRIDE_COMPAT_SOURCE)
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+            temporary_path = Path(temporary_file.name)
+        temporary_path.replace(destination)
+    finally:
+        if temporary_path is not None:
+            with suppress(FileNotFoundError):
+                temporary_path.unlink()
+
+
+def _cutlass_42_compat_includes(candidate: Path) -> tuple[tuple[Path, ...] | None, str]:
+    """Return verified include roots for the repository-pinned CUTLASS 4.2 shim."""
+    version = _cutlass_version(candidate)
+    if version != _CUTLASS_42_VERSION:
+        return None, f"CUTLASS version is {version!r}, expected {_CUTLASS_42_VERSION!r}"
+
+    utility_include = candidate.parent / "tools" / "util" / "include"
+    utility_header = utility_include / _CUTLASS_42_PACKED_STRIDE_HEADER
+    if not utility_header.is_file():
+        return None, f"missing {_CUTLASS_42_PACKED_STRIDE_HEADER}"
+
+    try:
+        utility_digest = hashlib.sha256(utility_header.read_bytes()).hexdigest()
+    except OSError as error:
+        return None, f"cannot read {_CUTLASS_42_PACKED_STRIDE_HEADER}: {error}"
+    if utility_digest != _CUTLASS_42_PACKED_STRIDE_SHA256:
+        return None, (
+            f"unverified {_CUTLASS_42_PACKED_STRIDE_HEADER} digest {utility_digest}"
+        )
+
+    overlay_digest = hashlib.sha256(
+        (_CUTLASS_42_MOE_STRIDE_COMPAT_SOURCE + utility_digest).encode("utf-8")
+    ).hexdigest()[:16]
+    overlay_include = (
+        _get_extension_build_dir("tcgen05_cutlass_42_compat")
+        / overlay_digest
+        / "include"
+    )
+    _write_cutlass_42_compat_header(overlay_include / _CUTLASS_MOE_STRIDE_HEADER)
+    return (overlay_include, candidate, utility_include), ""
+
+
 def _cutlass_includes_for_capability(
     capability: tuple[int, int],
 ) -> tuple[Path, ...]:
@@ -116,6 +228,15 @@ def _cutlass_includes_for_capability(
         ]
         if not missing:
             return (candidate,)
+        if missing == [_CUTLASS_MOE_STRIDE_HEADER]:
+            compat_includes, incompatibility = _cutlass_42_compat_includes(candidate)
+            if compat_includes is not None:
+                return compat_includes
+            checked.append(
+                f"{candidate} (missing {_CUTLASS_MOE_STRIDE_HEADER}; "
+                f"CUTLASS 4.2 compatibility unavailable: {incompatibility})"
+            )
+            continue
         missing_names = ", ".join(str(header) for header in missing)
         checked.append(f"{candidate} (missing {missing_names})")
 
@@ -129,7 +250,7 @@ def _cutlass_includes_for_capability(
 _CLANG_HOST = _REPO_ROOT / "third_party" / "llvm" / "bin" / "clang++"
 
 # Build fingerprint version. Bump this when changing build logic.
-_BUILD_FINGERPRINT_VERSION = "v3"
+_BUILD_FINGERPRINT_VERSION = "v4"
 
 
 def _tcgen05_cuda_flags() -> list[str]:

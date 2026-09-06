@@ -67,17 +67,21 @@ September 6 starting at 10:05:44 UTC, using the clean merged source, Torch
 tests executed. One failure selected system CMake 3.28.3 instead of the
 already-installed 3.31.10; four process-lifecycle checks encountered exited
 children retained as zombies by the outer validation supervisor until final
-drain. The supervisor ultimately drained all owned processes. These five
-failures remain recorded and require a rerun after correcting the run's PATH
-and supervisor reaping loop. No full GPU pass is claimed. No Slurm allocation
-is required. The subsequent example
+drain. The supervisor ultimately drained all owned processes. All five tests
+then passed on the same merged source in 26.31 seconds after selecting CMake
+3.31.10 and reaping the supervisor's adopted, exited children during execution.
+Both receipts are retained: the original full run remains failed, and the
+targeted rerun passed and drained its processes. No Slurm allocation is required.
+The subsequent example
 inventory includes benchmark pairs, registered demos, and tools; the pytest
 suite alone does not establish that all of those entrypoints executed.
 
-The next patch adds explicit optional device-identity and evaluation contracts,
-and distributed workload metadata. Focused CPU checks have passed for these
-components; CUDA/NCCL runtime coverage and integration validation are separate
-pending checks. Declared collective algorithms are not profiler observations,
+PR #16 (`7b7728a8dd043a1e9a07a29565626dfed89c8984`) adds explicit optional
+device-identity and evaluation contracts, and distributed workload metadata.
+It merged as `3d7982a8860506505d1ca24b8c3754f3826fdba1` after CPU validation,
+dashboard, static analysis, and dual-architecture native build checks passed.
+Its 86 focused contract tests passed on the B200 host with no skips in 9.29
+seconds. Declared collective algorithms are not profiler observations,
 and dataset hashes do not prove semantic freedom from contamination.
 
 The integrated local contract/harness suite passed 172 tests and skipped 24
@@ -93,13 +97,38 @@ CUDA hidden reject execution with explicit diagnostics rather than exiting
 successfully after import. These remain
 demo/tool runs, not baseline-versus-optimized performance evidence.
 
-The broad sweep has two practical continuation gaps: aggregate preflight can
+The broad sweep exposed two practical continuation gaps: aggregate preflight can
 reject a whole bucket, and an exception escaping a chapter can abort later
 chapters. The direct validation queue therefore gives each target a separate
 process and result record, continues on nonzero exits, and preserves earlier
 results. Native tier-1, cluster, and fabric entrypoints run separately from this
-486-target pass. Repairing native per-target continuation and resume accounting
-remains an improvement item; the queue does not claim to fix that source path.
+486-target pass. A follow-up repair now isolates explicit filtered targets when
+continuation is requested, records preflight failures and ordinary exceptions,
+and proceeds to later units. Its 78 focused and existing regression tests passed.
+Run-level aborts still propagate. Batch target resolution and contiguous-prefix
+native resume accounting remain improvement items.
+
+The first direct demo pass attempted all 29 registered demos: 23 exited
+successfully and six required follow-up. One requires GB10 coherent memory;
+two need explicit workload arguments; the other three exposed a TMA alignment
+failure, a CUTLASS dependency preflight failure, and a distributed launcher
+selecting another environment's Python through `PATH`. Tools also began
+executing. Completed results were preserved before replacing the coordinator
+to resume with corrected source and arguments.
+
+The launcher repair uses the selected Python's `torch.distributed.run` for demos
+and profiler workers, matching benchmark timing. A real two-worker identity test
+passes even with another environment's `torchrun` first on `PATH`. The combined
+launcher and TMA static contract selection passed 82 tests with two skips.
+The CUDA alignment repair then passed the actual production kernel's three
+full-output and canary shapes under Compute Sanitizer with zero reported errors,
+and the original 2048-square demo completed. The focused B200 regression
+selection passed 90 tests with no skips. The initial standalone validator
+compile exposed a separate flag defect: `-arch=sm_100a` emits generic PTX as well;
+the architecture-specific caller requires an explicit `compute_100a` to
+`sm_100a` code-generation target. The launcher, alignment, and continuation
+repairs are committed in `a738687c28c10161e3000a97ce2ed640795872b6`; they are
+not yet merged. The validator flag repair follows that commit.
 
 CI's broader `--include-unpaired --fail-on-warnings` lint scan also passed:
 932 files, zero errors and warnings. The contract checker recognizes exact

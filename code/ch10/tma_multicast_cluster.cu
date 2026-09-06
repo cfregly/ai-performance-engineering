@@ -14,6 +14,7 @@
 #include <cuda/barrier>
 #include <cuda_runtime.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -66,8 +67,28 @@ constexpr int TILE_K = 128;
 constexpr int BLOCK_SIZE = 128;
 constexpr size_t B_SMEM_BYTES =
     static_cast<size_t>(TILE_K) * TILE_N * sizeof(float);
-constexpr size_t DYNAMIC_SMEM_BYTES = B_SMEM_BYTES;
-static_assert(DYNAMIC_SMEM_BYTES == 65536);
+constexpr size_t A_SMEM_BYTES =
+    static_cast<size_t>(TILE_M) * TILE_K * sizeof(float);
+
+using block_barrier = cuda::barrier<cuda::thread_scope_block>;
+
+// Keep every shared object in one aligned dynamic allocation so the TMA
+// destination and multicast barrier have fixed, aligned CTA-relative offsets in
+// every block.
+struct alignas(128) TmaMulticastSharedStorage {
+    alignas(128) float B[TILE_K][TILE_N];
+    alignas(128) float A[TILE_M][TILE_K];
+    alignas(block_barrier) unsigned char barrier[sizeof(block_barrier)];
+};
+
+constexpr size_t DYNAMIC_SMEM_BYTES = sizeof(TmaMulticastSharedStorage);
+static_assert(B_SMEM_BYTES == 65536);
+static_assert(A_SMEM_BYTES == 2048);
+static_assert(offsetof(TmaMulticastSharedStorage, B) % 128 == 0);
+static_assert(offsetof(TmaMulticastSharedStorage, A) % 128 == 0);
+static_assert(
+    offsetof(TmaMulticastSharedStorage, barrier) % alignof(block_barrier) == 0);
+static_assert(DYNAMIC_SMEM_BYTES % 128 == 0);
 
 // Cluster configuration: 16x1 cluster along M (shares B tiles).
 constexpr int CLUSTER_M = 16;
@@ -117,7 +138,9 @@ void tma_multicast_gemm_kernel(
     int M, int N, int K
 ) {
     extern __shared__ __align__(128) unsigned char smem_raw[];
-    auto* B_smem = reinterpret_cast<float (*)[TILE_N]>(smem_raw);
+    auto& shared = *reinterpret_cast<TmaMulticastSharedStorage*>(smem_raw);
+    auto& B_smem = shared.B;
+    auto& A_smem = shared.A;
 #if TMA_MULTICAST_TARGET == 100 || TMA_MULTICAST_TARGET == 103
     cg::cluster_group cluster = cg::this_cluster();
     const int cluster_rank = cluster.block_rank();
@@ -133,11 +156,7 @@ void tma_multicast_gemm_kernel(
     const int thread_m = tid / THREADS_PER_ROW;                // 0..3
     const int thread_n = (tid % THREADS_PER_ROW) * COLS_PER_THREAD;  // 0..124
 
-    __shared__ alignas(128) float A_smem[TILE_M][TILE_K];
-
-    using block_barrier = cuda::barrier<cuda::thread_scope_block>;
-    __shared__ alignas(block_barrier) unsigned char barrier_storage[sizeof(block_barrier)];
-    auto* bar = reinterpret_cast<block_barrier*>(barrier_storage);
+    auto* bar = reinterpret_cast<block_barrier*>(shared.barrier);
     if (tid == 0) {
         init(bar, static_cast<int>(blockDim.x));
         cde::fence_proxy_async_shared_cta();
@@ -226,7 +245,6 @@ void tma_multicast_gemm_kernel(
     const int tile_n = blockIdx.y;
     const int tid = threadIdx.x;
 
-    __shared__ float A_smem[TILE_M][TILE_K];
     constexpr int COLS_PER_THREAD = 4;
     constexpr int THREADS_PER_ROW = TILE_N / COLS_PER_THREAD;
     float acc[COLS_PER_THREAD] = {0.0f};
