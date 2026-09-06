@@ -26,6 +26,12 @@ logger = get_logger(__name__)
 # fresh full-output evidence.
 LLAMA_BF16_OUTPUT_TOLERANCE = (0.02, 0.02)
 
+# Llama 3.1 uses a fixed RMSNorm epsilon. Leaving ``eps`` unset makes
+# ``nn.RMSNorm`` choose the input dtype's machine epsilon (0.0078125 for
+# BF16), which is not the model's normalization contract and can take a
+# different arithmetic path when the full stack is compiled.
+LLAMA_RMS_NORM_EPS = 1e-5
+
 
 class Llama31_8B_Optimization:
     """Llama 3.1 8B optimization benchmark."""
@@ -147,8 +153,14 @@ class Llama31_8B_Optimization:
                 super().__init__()
                 self.attention = attention
                 self.mlp = mlp
-                self.input_layernorm = nn.RMSNorm(Llama31_8B_Optimization.HIDDEN_SIZE)
-                self.post_attention_layernorm = nn.RMSNorm(Llama31_8B_Optimization.HIDDEN_SIZE)
+                self.input_layernorm = nn.RMSNorm(
+                    Llama31_8B_Optimization.HIDDEN_SIZE,
+                    eps=LLAMA_RMS_NORM_EPS,
+                )
+                self.post_attention_layernorm = nn.RMSNorm(
+                    Llama31_8B_Optimization.HIDDEN_SIZE,
+                    eps=LLAMA_RMS_NORM_EPS,
+                )
             
             def forward(self, x):
                 # Attention with residual

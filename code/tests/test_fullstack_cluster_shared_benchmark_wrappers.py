@@ -619,47 +619,61 @@ def test_moe_hybrid_ep_buffer_reuses_larger_capacity_for_smaller_views() -> None
     assert module._buffer_cache[key].numel() == 15
 
 
-def test_moe_hybrid_ep_wrapper_reuses_latest_metrics_dict() -> None:
-    source = (
-        Path(__file__).resolve().parents[1]
-        / "labs/fullstack_cluster/moe_hybrid_ep_common.py"
-    ).read_text(encoding="utf-8")
-    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
-        "def setup", maxsplit=1
-    )[0]
-    setup_section = source.split("def setup", maxsplit=1)[1].split(
-        "def teardown", maxsplit=1
-    )[0]
-    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
-        "def _prepare_verification_payload", maxsplit=1
-    )[0]
-
-    assert "self._latest_metrics: Dict[str, float] = {}" in source
-    assert "self._has_latest_metrics = False" in source
-    assert "self._verify_probe = torch.zeros(1, dtype=torch.float32)" in source
-    assert "latest_metrics = self._latest_metrics" in benchmark_section
-    assert "latest_metrics.clear()" in benchmark_section
-    assert "latest_metrics.update(artifacts.metrics)" in benchmark_section
-    assert "dict(artifacts.metrics)" not in benchmark_section
-    assert "self._latest_metrics.clear()" in setup_section
-    assert 'inputs={"probe": self._verify_probe}' in capture_section
-    assert "torch.zeros(" not in capture_section
-
-
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for benchmark wrappers")
-def test_single_gpu_moe_hybrid_ep_uses_inprocess_step_runner() -> None:
+def test_moe_hybrid_ep_wrapper_rejects_inprocess_verification() -> None:
     from labs.fullstack_cluster.baseline_moe_hybrid_ep import get_benchmark
 
     bench = get_benchmark()
-    with mock.patch("torch.cuda.device_count", return_value=1), mock.patch("torch.cuda.is_available", return_value=True):
-        config = bench.get_config()
+    bench.setup()
+    try:
+        with pytest.raises(RuntimeError, match="fresh torchrun child-result path"):
+            bench.benchmark_fn()
+        with pytest.raises(RuntimeError, match="fresh torchrun child result"):
+            bench.capture_verification_payload()
+    finally:
+        bench.teardown()
 
-    assert config.launch_via == LaunchVia.PYTHON
-    assert config.use_subprocess is False
+
+def test_single_gpu_moe_hybrid_ep_uses_fresh_child_result_path() -> None:
+    from core.benchmark.defaults import get_defaults
+    from core.harness.run_benchmarks import _merge_benchmark_config
+    from labs.fullstack_cluster.baseline_moe_hybrid_ep import get_benchmark
+
+    bench = get_benchmark()
+    cli_config = BenchmarkConfig(
+        launch_via=LaunchVia.PYTHON,
+        single_gpu=True,
+    )
+    with (
+        mock.patch("torch.cuda.device_count", return_value=1),
+        mock.patch("torch.cuda.is_available", return_value=True),
+    ):
+        config = _merge_benchmark_config(
+            base_config=cli_config,
+            benchmark_obj=bench,
+            defaults_obj=get_defaults(),
+            locked_fields=set(),
+        )
+
+    assert config.launch_via == LaunchVia.TORCHRUN
+    assert config.use_subprocess is True
     assert config.single_gpu is True
+    assert config.nproc_per_node == 1
+    assert config.nnodes == "1"
     assert config.timing_method == "wall_clock"
     assert config.iterations == 1
     assert config.warmup == 5
+
+    spec = bench.get_torchrun_spec(config)
+    context = bench._moe_hybrid_ep_result_context
+    assert context is not None
+    contract = context["contract"]
+    assert contract.world_size == 1
+    assert contract.iterations == config.iterations
+    assert contract.warmup_steps == config.warmup
+    assert spec.result_callback is not None
+    assert spec.timing_source == "rank0_time_per_iter_ms"
+    assert spec.timing_iterations_per_sample == config.iterations
+    context["result_dir"].rmdir()
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for benchmark wrappers")

@@ -1088,3 +1088,45 @@ Evidence is retained in the complete sweep's `ledgers/through-breadth.jsonl`,
 `failure-triage.json`, and `final-gpu-tests/full-gpu.xml`, plus Wave 27's
 per-stage termination receipts, benchmark results, and calibration JSON.
 CI and final merges remain deferred while code repair continues.
+
+### Wave 28: repaired examples execute on B200
+
+On `9aef30880`, the actual two-rank sequence-parallel pair passed its complete
+output contract (`1.583753x` observed). Both training metric pairs passed
+full-output comparison with unchanged tolerances. All five NVFP4 grouped
+cases completed graph capture and full comparison against the independent
+FP64 reference. The MoE compiled and aggregate targets passed with maximum
+output difference `0.00390625`. These are targeted current-host observations,
+not repeated, canonical performance claims.
+
+Focused GPU tests reported **114 passed, three skipped, and one failed**.
+The failure was in the newly added graph regression's fixture: 256 packed
+bytes were incorrectly reshaped into 128 slots. The fixture now retains all
+256 bytes and checks all 512 decoded values, with an additional complete
+CPU decode check. Its GPU rerun remains pending.
+
+One isolated Triton MoE attempt passed; a subsequent attempt again exited
+139 immediately after optimized timing. The labels requested cold/warm
+environment caches, but the harness creates its own per-process Triton
+cache. Those labels therefore do not prove a cache-dependent cause. Native
+crash attribution and model-only controls remain open.
+
+The broad monolithic profiler stage was interrupted through its owned
+supervisor after the baseline NCU kernel replay consumed several minutes.
+The action, process identity, reason, and artifacts were retained; all child
+processes drained. This capture remains incomplete. A bounded full-request
+Nsight Systems capture and an explicitly sampled NCU diagnostic are next.
+
+Two further source repairs are ready for target validation:
+
+- Single-GPU hybrid EP now uses the same fresh, fixed-step child-result path
+  as multi-GPU execution. Adaptive in-process timing had applied different
+  numbers of optimizer updates to the two arms. The ordinary `--single-gpu`
+  configuration resolves to one torchrun worker; no scheduler is required.
+  CPU tests cover the actual configuration merge and full child receipts
+  for one and two ranks.
+- The simplified Llama stack now explicitly uses RMSNorm epsilon `1e-5`.
+  The previous unset value selected BF16 machine epsilon (`0.0078125`).
+  This repairs model semantics but has not yet resolved the retained
+  full-stack output mismatch. A full 32-layer, 2,048-token comparison of
+  materialized attention, eager SDPA, and compiled SDPA will localize it.
