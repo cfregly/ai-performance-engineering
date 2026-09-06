@@ -918,6 +918,38 @@ isolated-process cleanup. Its complete stderr is retained. Cold-cache
 vanilla and repository-path reproductions are required before attributing
 that failure to the toolchain or changing a compiler mode.
 
+### Wave 24: Chapter 13/16 B200 reruns
+
+All nine stages on `5a59db088` drained their owned processes. The focused GPU
+lane passed 60 tests. Regional compilation now verifies the complete latest
+output, with maximum difference `0.03125`, and its diagnostic speed ratio was
+`1.0931`. Dense Flash Attention passes full verification with maximum
+difference `0.00048828125`; its diagnostic ratio was `12.9137`.
+
+The corrected memory-goal study passes execution and correctness, but does
+**not** show a memory benefit: baseline peak was `287.2974 MiB`, candidate
+peak `288.2974 MiB`, and the candidate was slower. The pooled KV-cache and
+Transformer Engine examples now pass correctness while retaining speed
+failures (`0.9478` and `0.6819` respectively). Passing a correctness gate does
+not turn these observations into optimization wins.
+
+Chapter 14 regional Triton passed a fresh cold-cache harness run. Separate
+cold-cache vanilla main-thread and worker-thread probes used the unchanged
+model definitions without importing repository modules. Both compared all
+outputs for 18 invocations and exited cleanly, with maximum difference
+`0.03125`. The original native crash remains an unreproduced failure; no
+compiler downgrade or toolchain attribution was added.
+
+Two further candidates are ready for measurement. The pooled KV cache now
+prepares token and prefix views when allocating the pool, avoiding repeated
+view construction in the decoding loop. RoPE writes its rotations directly
+into each cache slot, removing the scratch copy and final cache copy without
+batching future decoding steps. Both RoPE arms now verify every written
+cache slot and all step inputs. Full-prefix/cache CPU controls, including
+reused requests and untouched cache tails, pass; the focused/hygiene lane
+passed 561 tests with one skip. These candidates still require B200 timing
+and profiler evidence.
+
 - Run the complete GPU test suite on the final merged revision.
 - Complete all four sweep stages and reconcile the 486-target inventory,
   including unsupported and failed cases rather than silently dropping them.

@@ -110,7 +110,7 @@ class BaselineRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._cos_step_count = len(self._cos_step_views)
         self._sin_step_count = len(self._sin_step_views)
         self._step_group_count = len(self._step_groups)
-        self._output_view = self._cache_step_views[self.cfg.steps - 1]
+        self._output_view = self.cache[:, :, : self.cfg.steps, :]
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -145,7 +145,7 @@ class BaselineRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.inputs is None or self.output is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         self._set_verification_payload(
-            inputs={"inputs": self.inputs[:1].detach()},
+            inputs={"inputs": self.inputs.detach()},
             output=self.output.detach(),
             batch_size=self.cfg.batch_size,
             parameter_count=0,
