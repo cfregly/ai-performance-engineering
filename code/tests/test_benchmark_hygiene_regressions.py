@@ -18458,11 +18458,15 @@ def test_moe_level6_full_stack_weights_expert_outputs_in_place() -> None:
     assert "(out * expert_weights.unsqueeze(-1)).sum(dim=1)" not in experts_forward
 
 
-def test_moe_level4_and_level6_defer_verification_slices_after_timing() -> None:
+def test_moe_level4_and_level6_defer_full_verification_outputs_after_timing() -> None:
     for filename in ("level4_triton.py", "level6_full_stack.py"):
         source = (
             REPO_ROOT / "labs" / "moe_optimization_journey" / filename
         ).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def _get_timing_events",
+            maxsplit=1,
+        )[0]
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def finalize_iteration_metrics",
             maxsplit=1,
@@ -18486,11 +18490,10 @@ def test_moe_level4_and_level6_defer_verification_slices_after_timing() -> None:
         assert "return metrics" in finalize_section
         assert '"latency_ms": float(self.last_latency_ms)' not in finalize_section
         assert '"tokens_per_sec": float(self.last_tokens_per_sec)' not in finalize_section
-        assert "output_slice = self.output[" in capture_section
-        assert ": self._verify_output_buffer.shape[0]," in capture_section
-        assert ": self._verify_output_buffer.shape[1]," in capture_section
-        assert ": self._verify_output_buffer.shape[2]," in capture_section
-        assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+        assert "(self.config.batch_size, self.config.seq_len, self.config.vocab_size)" in setup_section
+        assert "self.output.shape != self._verify_output_buffer.shape" in capture_section
+        assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+        assert "output_slice = self.output[" not in capture_section
         assert "output=self._verify_output_buffer" in capture_section
         assert "output=output_slice.detach().float().clone()" not in capture_section
 
@@ -22863,10 +22866,13 @@ def test_ch16_and_lab_forward_benchmarks_use_inference_mode() -> None:
             assert "sum(p.numel()" not in capture_section
             assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
             assert "self._verify_output_buffer = torch.empty(" in setup_section
-            assert "min(128, self.seq_len)" in setup_section
-            assert "min(256, self.vocab_size)" in setup_section
-            assert "output_slice = self.output[" in capture_section
-            assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+            assert "self.seq_len," in setup_section
+            assert "self.vocab_size," in setup_section
+            assert "min(128, self.seq_len)" not in setup_section
+            assert "min(256, self.vocab_size)" not in setup_section
+            assert "self.output.shape != self._verify_output_buffer.shape" in capture_section
+            assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+            assert "output_slice = self.output[" not in capture_section
             assert "output=self._verify_output_buffer" in capture_section
             assert "output=self.output.detach().clone()" not in capture_section
             assert "self._verify_output_buffer = None" in capture_section

@@ -284,8 +284,8 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self._verify_output_buffer = torch.empty(
             self.batch,
-            min(128, self.seq_len),
-            min(256, self.vocab_size),
+            self.seq_len,
+            self.vocab_size,
             device=self.device,
             dtype=torch.bfloat16,
         )
@@ -324,12 +324,12 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.output is None or self.inputs is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() did not produce output")
-        output_slice = self.output[
-            : self._verify_output_buffer.shape[0],
-            : self._verify_output_buffer.shape[1],
-            : self._verify_output_buffer.shape[2],
-        ]
-        self._verify_output_buffer.copy_(output_slice)
+        if self.output.shape != self._verify_output_buffer.shape:
+            raise RuntimeError(
+                "Timed output shape does not match the full verification buffer: "
+                f"output={tuple(self.output.shape)} buffer={tuple(self._verify_output_buffer.shape)}"
+            )
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input_ids": self.inputs.detach()},
             output=self._verify_output_buffer,

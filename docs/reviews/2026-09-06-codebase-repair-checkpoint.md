@@ -1099,6 +1099,12 @@ FP64 reference. The MoE compiled and aggregate targets passed with maximum
 output difference `0.00390625`. These are targeted current-host observations,
 not repeated, canonical performance claims.
 
+The MoE journey's existing verification payload retains only a `[4, 1, 8]`
+logit slice. Its successful comparisons above establish that the compilation
+error is repaired and the retained slice matches; they do not establish
+full-logit correctness. Expanding that payload to every timed token and logit
+is a separate pending repair and rerun.
+
 Focused GPU tests reported **114 passed, three skipped, and one failed**.
 The failure was in the newly added graph regression's fixture: 256 packed
 bytes were incorrectly reshaped into 128 slots. The fixture now retains all
@@ -1130,3 +1136,56 @@ Two further source repairs are ready for target validation:
   This repairs model semantics but has not yet resolved the retained
   full-stack output mismatch. A full 32-layer, 2,048-token comparison of
   materialized attention, eager SDPA, and compiled SDPA will localize it.
+
+### Wave 29: fixed-step validation and numerical localization
+
+All 37 stages on `b601e9883` drained. The 31 focused GPU tests passed without
+skips, including the corrected complete FP4 graph regression. The one-worker
+hybrid EP path passed full child-result verification and measured `1.109086x`;
+the two-worker path again passed correctness but missed the speed threshold
+(`0.976906x`). Fixed-step execution closes the observed single-worker state
+mismatch without relaxing output tolerances.
+
+Monolithic inference retained eight observations per arm in four ABBA blocks,
+with 20 complete requests per observation. Median CUDA-event times were
+`10.224390 ms` and `4.253014 ms`, a `2.404034x` ratio; block ratios ranged
+from `2.398363x` to `2.411166x`. Every one of 65,536 output values passed
+before/after timing and after two prompt changes (`max_diff=0.000244140625`).
+Complete-request Nsight Systems captures show 10,330 ordinary kernel launches
+across ten baseline requests, versus ten graph launches and ten ordinary
+launches for the candidate. Both profiler outputs passed full comparison.
+The companion NCU captures deliberately sample eight launches per arm; they
+are not whole-request counter totals. These measurements remain diagnostic
+and noncanonical on this virtualized host, with unlocked clocks in the ABBA
+probe.
+
+The full 32-layer, 2,048-token Llama probe retained all eager layer outputs
+and every final output. Eager materialized attention versus eager SDPA first
+exceeded the unchanged tolerance at layer six; by layer 32 there were
+121,227 violating elements out of 8,388,608. Eager versus compiled SDPA had
+354,852 violations (`max_diff=0.28125`). The explicit RMSNorm epsilon repair
+does not close these differences; attention and compiled arithmetic require
+further numerical investigation.
+
+All six model-only MoE lifecycle controls completed using the full default
+model dimensions, two runs each in main-thread, joined-worker, and unjoined-
+worker modes. Those controls reproduced the old small verification-slice
+lifecycle; they do not prove complete-logit correctness. The actual harness
+under GDB still stopped at a native segmentation fault. Its backtraces and
+effective cache paths are retained; neither cache warmth nor worker joining
+has been established as the cause.
+
+Twenty-four Ozaki measurements used actual 4,096-cubed GEMMs, seeds 42/43/44,
+input scales `0.001` and `1`, and dynamic-16 or fixed 8/12/16-bit settings.
+Every run reported emulation use and explicitly exited with measurement-only
+status, without accepted timing or checksums. Dynamic relative L2 error was
+`0.026696–0.027471`; fixed 8/12-bit runs measured approximately `0.00012`,
+and fixed 16-bit runs `5.22e-7–5.40e-7`. No acceptance policy is inferred from
+these measurements.
+
+The next MoE source change expands all five affected verification paths to
+complete outputs, preserves every input ID, and rejects shape mismatches.
+A real small CPU MoE forward now proves that corruption in the final token's
+final logit is detected. Existing CUDA synchronization semantics are retained
+through the device-aware harness helper. The focused checks pass; fresh B200
+full-output validation remains required.

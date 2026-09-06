@@ -463,7 +463,7 @@ class Level4Triton(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
         )
         self._verify_output_buffer = torch.empty(
-            (self.config.batch_size, 1, min(8, self.config.vocab_size)),
+            (self.config.batch_size, self.config.seq_len, self.config.vocab_size),
             device=self.device,
             dtype=torch.float32,
         )
@@ -520,12 +520,12 @@ class Level4Triton(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.input_ids is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
-        output_slice = self.output[
-            : self._verify_output_buffer.shape[0],
-            : self._verify_output_buffer.shape[1],
-            : self._verify_output_buffer.shape[2],
-        ]
-        self._verify_output_buffer.copy_(output_slice)
+        if self.output.shape != self._verify_output_buffer.shape:
+            raise RuntimeError(
+                "Timed output shape does not match the full verification buffer: "
+                f"output={tuple(self.output.shape)} buffer={tuple(self._verify_output_buffer.shape)}"
+            )
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input_ids": self.input_ids.detach()},
             output=self._verify_output_buffer,

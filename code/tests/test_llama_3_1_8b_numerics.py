@@ -13,7 +13,6 @@ def test_llama_layers_use_the_declared_rms_norm_epsilon(monkeypatch) -> None:
     monkeypatch.setattr(Llama31_8B_Optimization, "NUM_HEADS", 2)
     monkeypatch.setattr(Llama31_8B_Optimization, "NUM_LAYERS", 2)
     monkeypatch.setattr(Llama31_8B_Optimization, "INTERMEDIATE_SIZE", 32)
-    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
 
     benchmark = Llama31_8B_Optimization(
         batch_size=1,
@@ -23,6 +22,7 @@ def test_llama_layers_use_the_declared_rms_norm_epsilon(monkeypatch) -> None:
         use_flex_attention=False,
         prefer_sdpa=False,
     )
+    benchmark.device = torch.device("cpu")
     benchmark.setup()
 
     assert LLAMA_RMS_NORM_EPS == 1e-5
