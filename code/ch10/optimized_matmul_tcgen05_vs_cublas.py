@@ -45,6 +45,7 @@ class OptimizedMatmulTCGen05Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.B: Optional[torch.Tensor] = None
         self._B_t: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self.register_workload_metadata(bytes_per_iteration=float(self.n * self.n * 2 * 3))
 
@@ -56,7 +57,9 @@ class OptimizedMatmulTCGen05Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.A = torch.randn(self.size, self.size, device=self.device, dtype=self.dtype)
         self.B = torch.randn(self.size, self.size, device=self.device, dtype=self.dtype)
         self._B_t = self.B.transpose(0, 1)
-        self.output = torch.empty(self.size, self.size, device=self.device, dtype=self.dtype)
+        self._output_buffer = torch.empty(
+            self.size, self.size, device=self.device, dtype=self.dtype
+        )
         self._verify_output_buffer = torch.empty(
             min(128, self.size),
             min(256, self.size),
@@ -68,11 +71,12 @@ class OptimizedMatmulTCGen05Benchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         if not self._tcgen05_available:
             raise RuntimeError(self._skip_reason)
-        assert self.A is not None and self._B_t is not None and self.output is not None
+        assert self.A is not None and self._B_t is not None and self._output_buffer is not None
         with self._nvtx_range("optimized_matmul_tcgen05_vs_cublas_cublas"):
             with torch.inference_mode():
                 # Match baseline math: baseline kernel treats B as (N, K) and computes A @ B^T
-                torch.mm(self.A, self._B_t, out=self.output)
+                torch.mm(self.A, self._B_t, out=self._output_buffer)
+                self.output = self._output_buffer
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
@@ -102,6 +106,7 @@ class OptimizedMatmulTCGen05Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.B = None
         self._B_t = None
         self.output = None
+        self._output_buffer = None
         self._verify_output_buffer = None
         super().teardown()
 

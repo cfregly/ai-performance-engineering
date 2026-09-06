@@ -23249,13 +23249,16 @@ def test_ch10_optimized_tcgen05_vs_cublas_reuses_output_buffer() -> None:
         maxsplit=1,
     )[0]
 
-    assert "self.output = torch.empty(self.size, self.size, device=self.device, dtype=self.dtype)" in setup_section
+    assert "self._output_buffer = torch.empty(" in setup_section
+    assert "self.output =" not in setup_section
     assert "self._B_t = self.B.transpose(0, 1)" in setup_section
-    assert "torch.mm(self.A, self._B_t, out=self.output)" in benchmark_section
+    assert "torch.mm(self.A, self._B_t, out=self._output_buffer)" in benchmark_section
+    assert "self.output = self._output_buffer" in benchmark_section
     assert "self.B.transpose(0, 1)" not in benchmark_section
     assert "torch.matmul(self.A, self.B.transpose(0, 1))" not in benchmark_section
     assert "self._B_t = None" in teardown_section
     assert "self.output = None" in teardown_section
+    assert "self._output_buffer = None" in teardown_section
 
 
 def test_ch10_matmul_wrappers_sample_verification_outputs() -> None:
