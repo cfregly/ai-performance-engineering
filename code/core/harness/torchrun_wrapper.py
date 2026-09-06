@@ -86,10 +86,15 @@ def _run_profiled_target(
     script_path: Optional[Path], module_name: Optional[str], argv: list[str]
 ) -> None:
     def run_target() -> None:
-        if script_path is not None:
-            _run_target_script(script_path, argv)
-        else:
-            _run_target_module(module_name or "", argv)
+        try:
+            if script_path is not None:
+                _run_target_script(script_path, argv)
+            else:
+                _run_target_module(module_name or "", argv)
+        except SystemExit as exc:
+            if exc.code is not None and exc.code != 0:
+                raise
+            # A normal CLI exit must still close its profile and check seeds.
 
     output = os.environ.get("AISP_TORCH_PROFILE_OUTPUT")
     if not output:

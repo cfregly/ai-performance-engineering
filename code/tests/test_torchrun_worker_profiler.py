@@ -43,6 +43,7 @@ value = torch.full((8,), float(dist.get_rank() + 1))
 dist.all_reduce(value)
 torch.testing.assert_close(value, torch.full((8,), 3.0))
 dist.destroy_process_group()
+raise SystemExit(0)
 """,
         encoding="utf-8",
     )
