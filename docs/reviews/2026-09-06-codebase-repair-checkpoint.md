@@ -1006,6 +1006,16 @@ zero. The original result is preserved, and acceptance policies are unchanged.
 The focused and hygiene controls for these follow-ups passed 560 tests with
 one skip.
 
+The single-rank hybrid expert-parallel run exposed a signature error: it
+declared a distributed collective algorithm despite `world_size=1`. Its
+signature now describes local work without a collective; multi-rank runs
+retain their all-to-all contract. Thirteen focused CPU controls passed with
+one skip. Fresh one- and two-B200 execution remains pending.
+
+CI is deferred to the end of the remaining runtime and repair work, per the
+user's updated direction. Code changes continue to be committed and pushed;
+final checks and merges remain outstanding.
+
 - Run the complete GPU test suite on the final merged revision.
 - Complete all four sweep stages and reconcile the 486-target inventory,
   including unsupported and failed cases rather than silently dropping them.
