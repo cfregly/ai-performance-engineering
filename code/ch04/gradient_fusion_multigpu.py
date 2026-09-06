@@ -14,8 +14,11 @@ import torch.distributed as dist
 from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
 from core.benchmark.gpu_requirements import require_min_gpus
 from core.common.device_utils import resolve_local_rank
+from core.profiling.nvtx_helper import nvtx_range
 
 FLOAT16_BYTES = torch.finfo(torch.float16).bits // 8
+BASELINE_PROFILE_NVTX_RANGE = "compute_kernel:gradient_fusion_many_allreduces"
+OPTIMIZED_PROFILE_NVTX_RANGE = "compute_kernel:gradient_fusion_fused_allreduce"
 
 
 def init_distributed() -> Tuple[int, int, torch.device]:
@@ -34,6 +37,23 @@ def init_distributed() -> Tuple[int, int, torch.device]:
             device_id=local_rank,
         )
     return dist.get_rank(), dist.get_world_size(), torch.device(f"cuda:{torch.cuda.current_device()}")
+
+
+def _run_collectives(
+    mode: str,
+    tensors: list[torch.Tensor],
+    fused: torch.Tensor | None,
+    *,
+    iterations: int,
+) -> None:
+    for _ in range(iterations):
+        if mode == "baseline":
+            for tensor in tensors:
+                dist.all_reduce(tensor)
+        else:
+            if fused is None:
+                raise RuntimeError("optimized gradient fusion requires a fused tensor")
+            dist.all_reduce(fused)
 
 
 def run_benchmark(
@@ -67,23 +87,19 @@ def run_benchmark(
             fused[offset:next_offset].copy_(tensor.view(-1))
             offset = next_offset
 
-    for _ in range(5):
-        if mode == "baseline":
-            for t in tensors:
-                dist.all_reduce(t)
-        else:
-            dist.all_reduce(fused)
+    _run_collectives(mode, tensors, fused, iterations=5)
     torch.cuda.synchronize(device)
 
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
     start.record()
-    for _ in range(iterations):
-        if mode == "baseline":
-            for t in tensors:
-                dist.all_reduce(t)
-        else:
-            dist.all_reduce(fused)
+    profile_range = (
+        BASELINE_PROFILE_NVTX_RANGE
+        if mode == "baseline"
+        else OPTIMIZED_PROFILE_NVTX_RANGE
+    )
+    with nvtx_range(profile_range, enable=True):
+        _run_collectives(mode, tensors, fused, iterations=iterations)
     end.record()
     torch.cuda.synchronize(device)
 

@@ -8,13 +8,14 @@ from typing import Optional
 
 import torch
 
+from ch04.gradient_fusion_multigpu import OPTIMIZED_PROFILE_NVTX_RANGE
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     LaunchVia,
     TorchrunLaunchSpec,
 )
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 
 
 class OptimizedGradientFusionMultiGPU(VerificationPayloadMixin, BaseBenchmark):
@@ -62,7 +63,12 @@ class OptimizedGradientFusionMultiGPU(VerificationPayloadMixin, BaseBenchmark):
 
     def get_config(self) -> BenchmarkConfig:
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
-            return BenchmarkConfig(iterations=1, warmup=5, measurement_timeout_seconds=300)
+            return BenchmarkConfig(
+                iterations=1,
+                warmup=5,
+                measurement_timeout_seconds=300,
+                nsys_nvtx_include=[OPTIMIZED_PROFILE_NVTX_RANGE],
+            )
         return BenchmarkConfig(
             launch_via=LaunchVia.TORCHRUN,
             nproc_per_node=torch.cuda.device_count(),
@@ -70,6 +76,7 @@ class OptimizedGradientFusionMultiGPU(VerificationPayloadMixin, BaseBenchmark):
             warmup=5,
             multi_gpu_required=True,
             measurement_timeout_seconds=300,
+            nsys_nvtx_include=[OPTIMIZED_PROFILE_NVTX_RANGE],
         )
 
     def _prepare_verification_payload(self) -> None:
@@ -102,5 +109,3 @@ class OptimizedGradientFusionMultiGPU(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedGradientFusionMultiGPU()
-
-
