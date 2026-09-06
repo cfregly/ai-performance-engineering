@@ -2,7 +2,7 @@
 //
 // This file demonstrates:
 // 1. Pipeline-staged 1D neighbor copies with cuda::pipeline
-// 2. A descriptor-backed 2D tensor-map copy when CUDA 13+/TMA support is present
+// 2. A descriptor-backed 2D tiled-neighbor transform when CUDA 13+/TMA support is present
 //
 // BEFORE (manual tiling):
 //     for (tile_y) for (tile_x):
@@ -72,6 +72,32 @@ __host__ __device__ __forceinline__ float combine_values(float center, float nea
 
 constexpr int kTile2D_M = 64;   // Tile height (rows)
 constexpr int kTile2D_N = 64;   // Tile width (cols)  
+
+float tiled_neighbor_reference_at(
+    const std::vector<float>& input,
+    int rows,
+    int columns,
+    std::size_t index) {
+    const int row = static_cast<int>(index / static_cast<std::size_t>(columns));
+    const int column = static_cast<int>(index % static_cast<std::size_t>(columns));
+    const int row_origin = (row / kTile2D_M) * kTile2D_M;
+    const int column_origin = (column / kTile2D_N) * kTile2D_N;
+    const int tile_rows = std::min(kTile2D_M, rows - row_origin);
+    const int tile_columns = std::min(kTile2D_N, columns - column_origin);
+    const int tile_elements = tile_rows * tile_columns;
+    const int local = (row - row_origin) * tile_columns + column - column_origin;
+    const int near = std::min(local + 1, tile_elements - 1);
+    const int far = std::min(local + kLookahead, tile_elements - 1);
+    const auto global_index = [&](int tile_index) {
+        const int source_row = row_origin + tile_index / tile_columns;
+        const int source_column = column_origin + tile_index % tile_columns;
+        return static_cast<std::size_t>(source_row) * columns + source_column;
+    };
+    return combine_values(
+        input[index],
+        input[global_index(near)],
+        input[global_index(far)]);
+}
 
 template <int TILE_M, int TILE_N>
 __global__ void async_pipeline_2d_copy_kernel(
@@ -422,7 +448,7 @@ float checksum(const std::vector<float>& data) {
 }  // namespace
 
 bool benchmark_tma_2d(cudaDeviceProp& prop) {
-    std::printf("\n--- 2D Copy Benchmark ---\n");
+    std::printf("\n--- 2D TMA Tiled-Neighbor Transform Benchmark ---\n");
 #if !TMA_CUDA13_AVAILABLE
     (void)prop;
     std::fprintf(stderr, "SKIPPED: optimized_tma_copy requires usable tensor-map/TMA support\n");
@@ -509,12 +535,13 @@ bool benchmark_tma_2d(cudaDeviceProp& prop) {
         h_matrix_out.data(), d_mat_dst, matrix_bytes, cudaMemcpyDeviceToHost));
     bool copy_ok = true;
     for (std::size_t idx = 0; idx < h_matrix_out.size(); ++idx) {
-        if (h_matrix_out[idx] != h_matrix[idx]) {
+        const float expected = tiled_neighbor_reference_at(h_matrix, M, N, idx);
+        if (h_matrix_out[idx] != expected) {
             std::fprintf(stderr,
-                         "2D TMA mismatch at %zu: got %.9g expected %.9g\n",
+                         "2D TMA tiled-neighbor mismatch at %zu: got %.9g expected %.9g\n",
                          idx,
                          static_cast<double>(h_matrix_out[idx]),
-                         static_cast<double>(h_matrix[idx]));
+                         static_cast<double>(expected));
             copy_ok = false;
             break;
         }
@@ -538,7 +565,7 @@ bool benchmark_tma_2d(cudaDeviceProp& prop) {
     const double efficiency = 100.0 * bandwidth_gbps / peak_bandwidth;
     
     std::printf("%s (%dx%d, tile=%dx%d): %.3f ms\n",
-                "Descriptor-backed 2D TMA copy",
+                "Descriptor-backed 2D TMA tiled-neighbor transform",
                 M, N, kTile2D_M, kTile2D_N, avg_tma2d_ms);
     std::printf("  Achieved bandwidth: %.1f GB/s (%.1f%% of peak)\n",
                 bandwidth_gbps, efficiency);
