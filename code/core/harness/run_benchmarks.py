@@ -16,7 +16,6 @@ import os
 import atexit
 from pathlib import Path
 import json
-import shutil
 import argparse
 import csv
 import shlex
