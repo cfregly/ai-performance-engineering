@@ -332,11 +332,15 @@ def benchmark_symmetric_ring(
     for idx in range(5):
         buf_idx = idx % 2
         next_buf[buf_idx].copy_(flat, non_blocking=True)
-        torch.cuda.current_stream().synchronize()
+        # NCCL barrier orders its communication stream after work already
+        # queued on the current stream and blocks until the collective ends.
+        # It therefore publishes the peer write without a separate host-side
+        # stream synchronization.
         dist.barrier()
         # The previous rank writes directly into this rank's symmetric slot.
         recv_tensor.copy_(local[buf_idx], non_blocking=True)
-        torch.cuda.current_stream().synchronize()
+        # Keep this second barrier so every rank consumes the slot before a
+        # peer can reuse it on a later iteration.
         dist.barrier()
 
     start = torch.cuda.Event(enable_timing=True)
@@ -346,10 +350,8 @@ def benchmark_symmetric_ring(
         for idx in range(iterations):
             buf_idx = idx % 2
             next_buf[buf_idx].copy_(flat, non_blocking=True)
-            torch.cuda.current_stream().synchronize()
             dist.barrier()
             recv_tensor.copy_(local[buf_idx], non_blocking=True)
-            torch.cuda.current_stream().synchronize()
             dist.barrier()
         end.record()
         torch.cuda.synchronize(device)
