@@ -31,6 +31,16 @@ TRADITIONAL_RING_NVTX_RANGE = "transfer_sync:symmetric_memory_traditional_ring"
 SYMMETRIC_RING_NVTX_RANGE = "transfer_sync:symmetric_memory_direct_ring"
 
 
+def _make_rank_generator(
+    device: torch.device | str,
+    *,
+    rank: int,
+    base_seed: int = 42,
+) -> torch.Generator:
+    """Build a rank-local input generator without changing harness RNG seeds."""
+    return torch.Generator(device=device).manual_seed(base_seed + rank)
+
+
 def setup_distributed():
     """Initialize distributed environment for multi-GPU operation."""
     setup_single_gpu_env("symmetric_memory_example", min_world_size=2)
@@ -540,10 +550,14 @@ def main() -> NVSHMEMWorkloadResult | None:
                 print("Benchmark mode requires at least 2 GPUs.")
             dist.destroy_process_group()
             return
-        torch.manual_seed(42 + rank)
-        torch.cuda.manual_seed_all(42 + rank)
+        input_generator = _make_rank_generator(device, rank=rank)
         numel = max(1, args.tensor_bytes // 4)
-        tensor = torch.randn(numel, device=device, dtype=torch.float32).add_(rank)
+        tensor = torch.randn(
+            numel,
+            device=device,
+            dtype=torch.float32,
+            generator=input_generator,
+        ).add_(rank)
         original_tensor = tensor.detach().clone()
         if args.benchmark_mode == "traditional":
             measured = benchmark_traditional_ring(

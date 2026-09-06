@@ -109,6 +109,16 @@ def _default_transport() -> PipelineTransport:
     return "nccl" if symmem_pipeline_disabled() else "nvshmem"
 
 
+def _make_rank_generator(
+    device: torch.device | str,
+    *,
+    rank: int,
+    base_seed: int = 42,
+) -> torch.Generator:
+    """Build a rank-local input generator without changing harness RNG seeds."""
+    return torch.Generator(device=device).manual_seed(base_seed + rank)
+
+
 def _require_global_nvshmem(device: torch.device) -> None:
     """Fail every rank before allocation if any rank lacks NVSHMEM support."""
     local_ready = int(symmetric_memory_available() and not symmem_pipeline_disabled())
@@ -744,8 +754,6 @@ def demo_1f1b_pipeline(
     """
     transport = _validate_transport(transport)
     rank, world_size, device = init_distributed(transport)
-    torch.manual_seed(42 + rank)
-    torch.cuda.manual_seed_all(42 + rank)
 
     # Configuration
     pipeline_dtype = torch.float16
@@ -770,8 +778,16 @@ def demo_1f1b_pipeline(
     # Generate input (only for first stage)
     input_batches = None
     if rank == 0:
+        input_generator = _make_rank_generator(device, rank=rank)
         input_batches = [
-            torch.randn(microbatch_size, seq_len, hidden_dim, device=device, dtype=pipeline_dtype)
+            torch.randn(
+                microbatch_size,
+                seq_len,
+                hidden_dim,
+                device=device,
+                dtype=pipeline_dtype,
+                generator=input_generator,
+            )
             for _ in range(num_microbatches)
         ]
 
@@ -880,8 +896,16 @@ def demo_interleaved_pipeline(
     # Generate input (only for first stage)
     input_batches = None
     if rank == 0:
+        input_generator = _make_rank_generator(device, rank=rank)
         input_batches = [
-            torch.randn(microbatch_size, seq_len, hidden_dim, device=device, dtype=pipeline_dtype)
+            torch.randn(
+                microbatch_size,
+                seq_len,
+                hidden_dim,
+                device=device,
+                dtype=pipeline_dtype,
+                generator=input_generator,
+            )
             for _ in range(num_microbatches)
         ]
 

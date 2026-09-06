@@ -111,6 +111,16 @@ def pipeline_sync_enabled() -> bool:
     return os.environ.get("AISP_PIPELINE_SYNC", "").lower() not in {"0", "false", "no"}
 
 
+def _make_rank_generator(
+    device: torch.device | str,
+    *,
+    rank: int,
+    base_seed: int,
+) -> torch.Generator:
+    """Build a rank-local input generator without changing harness RNG seeds."""
+    return torch.Generator(device=device).manual_seed(base_seed + rank)
+
+
 def init_process_group() -> Tuple[int, int, int]:
     """Initialize NCCL process group for multi-GPU setup."""
     rank, world_size, local_rank = setup_single_gpu_env(
@@ -269,8 +279,6 @@ def demo_gradient_sync(benchmark: bool = False) -> NVSHMEMWorkloadResult:
     """
     rank, world_size, device = init_process_group()
 
-    torch.manual_seed(42)
-    torch.cuda.manual_seed_all(42)
     # Use many tiny layers to amplify per-parameter sync latency in the baseline path.
     hidden_dim = 64
     num_layers = 256
@@ -299,13 +307,27 @@ def demo_gradient_sync(benchmark: bool = False) -> NVSHMEMWorkloadResult:
     # Training loop
     num_steps = 10 if not benchmark else 100
     batch_size = 1
-    torch.cuda.manual_seed(17 + rank)
-    measured_rng_state = torch.cuda.get_rng_state(device)
+    generator_device = torch.device("cuda", device)
+    input_generator = _make_rank_generator(
+        generator_device,
+        rank=rank,
+        base_seed=17,
+    )
+    reference_input_generator = _make_rank_generator(
+        generator_device,
+        rank=rank,
+        base_seed=17,
+    )
     torch.cuda.synchronize(device)
     start_time = time.perf_counter()
     with selected_nvtx_range():
         for _ in range(num_steps):
-            inputs = torch.randn(batch_size, hidden_dim, device=device)
+            inputs = torch.randn(
+                batch_size,
+                hidden_dim,
+                device=device,
+                generator=input_generator,
+            )
             outputs = model(inputs)
             loss = outputs.sum()
             loss.backward()
@@ -327,12 +349,15 @@ def demo_gradient_sync(benchmark: bool = False) -> NVSHMEMWorkloadResult:
         [parameter.detach().flatten() for parameter in model.parameters()]
     )
 
-    post_measurement_rng_state = torch.cuda.get_rng_state(device)
-    torch.cuda.set_rng_state(measured_rng_state, device)
     measured_inputs = [
-        torch.randn(batch_size, hidden_dim, device=device) for _ in range(num_steps)
+        torch.randn(
+            batch_size,
+            hidden_dim,
+            device=device,
+            generator=reference_input_generator,
+        )
+        for _ in range(num_steps)
     ]
-    torch.cuda.set_rng_state(post_measurement_rng_state, device)
     local_input_sequence = torch.stack(measured_inputs)
     rank_input_sequences = [torch.empty_like(local_input_sequence) for _ in range(world_size)]
     dist.all_gather(rank_input_sequences, local_input_sequence)

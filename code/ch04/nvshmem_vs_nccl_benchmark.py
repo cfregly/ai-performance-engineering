@@ -93,15 +93,35 @@ def _format_bytes(num_bytes: int) -> str:
     return f"{value:.1f} {units[unit]}"
 
 
-def _measure_nccl_broadcast(bytes_per_rank: int, iterations: int) -> BenchmarkResult:
+def _make_rank_generator(
+    device: torch.device | str,
+    *,
+    rank: int,
+    base_seed: int = 42,
+) -> torch.Generator:
+    """Build a rank-local input generator without changing harness RNG seeds."""
+    return torch.Generator(device=device).manual_seed(base_seed + rank)
+
+
+def _measure_nccl_broadcast(
+    bytes_per_rank: int,
+    iterations: int,
+    *,
+    generator: torch.Generator,
+) -> BenchmarkResult:
     device = torch.cuda.current_device()
     dtype = torch.float16
     numel = bytes_per_rank // FLOAT16_BYTES
     numel = max(1, numel)
 
-    tensor = torch.randn(numel, device=device, dtype=dtype)
+    tensor = torch.randn(numel, device=device, dtype=dtype, generator=generator)
     original_tensor = tensor.detach().clone()
-    compute = torch.randn_like(tensor)
+    compute = torch.randn(
+        tensor.shape,
+        device=tensor.device,
+        dtype=tensor.dtype,
+        generator=generator,
+    )
     overlap_compute = os.environ.get("AISP_BROADCAST_OVERLAP", "").lower() in {"1", "true", "yes"}
     compute_passes = max(1, int(os.environ.get("AISP_BROADCAST_COMPUTE_PASSES", "1")))
     comm_stream = torch.cuda.Stream(device=device) if overlap_compute else None
@@ -153,7 +173,12 @@ def _measure_nccl_broadcast(bytes_per_rank: int, iterations: int) -> BenchmarkRe
     )
 
 
-def _measure_symmetric_broadcast(bytes_per_rank: int, iterations: int) -> Optional[BenchmarkResult]:
+def _measure_symmetric_broadcast(
+    bytes_per_rank: int,
+    iterations: int,
+    *,
+    generator: torch.Generator,
+) -> Optional[BenchmarkResult]:
     if not symmetric_memory_available():
         return None
 
@@ -162,8 +187,13 @@ def _measure_symmetric_broadcast(bytes_per_rank: int, iterations: int) -> Option
     numel = bytes_per_rank // FLOAT16_BYTES
     numel = max(1, numel)
 
-    local = torch.randn(numel, device=device, dtype=dtype)
-    compute = torch.randn_like(local)
+    local = torch.randn(numel, device=device, dtype=dtype, generator=generator)
+    compute = torch.randn(
+        local.shape,
+        device=local.device,
+        dtype=local.dtype,
+        generator=generator,
+    )
     sym_handle = maybe_create_symmetric_memory_handle(local)
     if sym_handle is None:
         return None
@@ -252,15 +282,29 @@ def sweep_sizes(min_bytes: int, max_bytes: int, steps: int) -> List[int]:
 def benchmark(args: argparse.Namespace) -> Dict[str, List[BenchmarkResult]]:
     results: Dict[str, List[BenchmarkResult]] = {"nccl": [], "nvshmem": []}
     sizes = sweep_sizes(args.min_bytes, args.max_bytes, args.steps)
+    generator_device = torch.device("cuda", torch.cuda.current_device())
+    rank = dist.get_rank()
+    generators = {
+        "nccl": _make_rank_generator(generator_device, rank=rank),
+        "nvshmem": _make_rank_generator(generator_device, rank=rank),
+    }
 
     for message_size in sizes:
         dist.barrier()
         if args.mode in ("nccl", "both"):
-            nccl = _measure_nccl_broadcast(message_size, args.iterations)
+            nccl = _measure_nccl_broadcast(
+                message_size,
+                args.iterations,
+                generator=generators["nccl"],
+            )
             results["nccl"].append(nccl)
         dist.barrier()
         if args.mode in ("nvshmem", "both"):
-            nvshmem_res = _measure_symmetric_broadcast(message_size, args.iterations)
+            nvshmem_res = _measure_symmetric_broadcast(
+                message_size,
+                args.iterations,
+                generator=generators["nvshmem"],
+            )
             if nvshmem_res is not None:
                 results["nvshmem"].append(nvshmem_res)
         dist.barrier()
@@ -283,8 +327,6 @@ def main(destroy_process_group: bool = True) -> Optional[NVSHMEMWorkloadResult]:
     args = parser.parse_args()
 
     rank = init_distributed()
-    torch.manual_seed(42 + rank)
-    torch.cuda.manual_seed_all(42 + rank)
     results = benchmark(args)
 
     if rank == 0:
