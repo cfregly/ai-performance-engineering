@@ -135,6 +135,64 @@ CI's broader `--include-unpaired --fail-on-warnings` lint scan also passed:
 registered demo/tool paths as standalone entrypoints while continuing to reject
 `__main__` blocks in paired benchmark modules.
 
+### Resumed examples and measured KV graph candidate
+
+The resumed queue uses clean source
+`57e754fe5eb87d8669e800a0dca3e05bef31a1aa`, retaining prior source identities
+for reused results. All 29 registered demos and 34 tools have been attempted.
+The reconciled exit counts are 25 successful demo exits and four nonzero exits,
+and 32 successful tool exits and two nonzero exits. These are execution counts,
+not inference-quality claims: some tools are calculators, simulations, asset
+generators, or dependency probes. The GB10-only demo remains unsupported on B200.
+
+The two-B200 reruns exposed invalid collective keyword arguments in expert
+parallelism, unsafe unbatched ring transfers and fully masked softmax blocks,
+and an incompatible full-graph compile request around Transformer Engine's
+disabled compiler boundary. The DTensor tool also confused visible device IDs
+with process ranks. Repairs are committed in `99a365de6` with 57 focused CPU
+checks passing and three hardware checks skipped. Their B200 reruns remain
+pending. The default dynamic-router tool now fails if requested vLLM execution
+cannot initialize; explicit synthetic mode records its provenance. Its earlier
+successful exit must not be reused as real vLLM evidence.
+
+The seven-caller TMA validator compiled and found a separate odd-width defect:
+the Chapter 7 copy kernel overwrote 387 row-padding values for a 129-by-385
+logical tensor with leading dimension 400. The follow-up preserves TMA stores
+for full tiles and bounds ordinary stores on partial tiles. Strict full-output
+and canary checks are unchanged; the B200 rerun is still required.
+
+The standalone KV experiment compared the exact 256-step FP8 body with graph
+replay on the same buffers. Eight interleaved AB/BA rounds produced 80 samples
+per path, after five warmups per path:
+
+| Diagnostic | Eager FP8 body | CUDA graph replay |
+|---|---:|---:|
+| Median CUDA-event time | 36.7343 ms | 23.8563 ms |
+| 5th–95th percentile | 36.7258–36.7649 ms | 23.8482–23.8694 ms |
+| Profiled kernel executions | 8,192 | 8,192 |
+| In-range CUDA runtime calls | 16,385 | 3 |
+
+Raw FP8 bytes and FP32 scales matched bitwise before and after measurement;
+the full BF16-reference check also passed at its existing tolerance. Graph
+preparation cost 175.357 ms including three preruns, with 1,024 additional
+allocated bytes and 4 MiB additional reserved memory. This is approximately
+35.1% lower latency for the existing FP8 body, with matching kernel work in the
+Nsight trace. It is a noncanonical mechanism experiment, not an overall win
+against the BF16 baseline. The integrated candidate still needs its full paired
+benchmark and required profiler checks.
+
+The first two multi-GPU benchmark targets completed timing and Nsight Systems
+capture but retained `failed_profiler` outcomes. The pure-copy Chapter 2 target
+produced no NCU kernel report, and Chapter 4 gradient fusion lacked an explicit
+timed NVTX range for direct distributed NCU capture. These failures remain
+visible while the queue continues.
+
+Practical improvement priorities are consistent standalone launch metadata,
+real behavioral tests for distributed paths, explicit synthetic/unsupported
+result categories, and profiler requirements that reflect the workload being
+measured. The cost calculator now also ran with explicitly illustrative inputs;
+those values are not measured B200 power or token throughput.
+
 - Run the complete GPU test suite on the final merged revision.
 - Complete all four sweep stages and reconcile the 486-target inventory,
   including unsupported and failed cases rather than silently dropping them.
