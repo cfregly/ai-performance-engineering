@@ -117,21 +117,38 @@ def _make_rank_generator(
     return torch.Generator(device=device).manual_seed(base_seed + rank)
 
 
-def _create_pipeline_control_group(world_size: int, timeout_ms: int) -> Any:
-    """Create one launch-wide group for a ready or consumed sideband."""
+def _create_pipeline_control_group(
+    world_size: int,
+    timeout_ms: int,
+    *,
+    device: torch.device,
+) -> Any:
+    """Create and collectively initialize one launch-wide sideband group."""
     if not dist.is_initialized() or dist.get_world_size() != world_size:
         raise RuntimeError(
             "SKIPPED: NVSHMEM pipeline sideband requires the full process group"
         )
     try:
-        return dist.new_group(
+        group_device = device
+        if device.type == "cuda" and device.index is None:
+            group_device = torch.device("cuda", torch.cuda.current_device())
+        group = dist.new_group(
             ranks=list(range(world_size)),
             backend=dist.get_backend(),
             timeout=datetime.timedelta(milliseconds=timeout_ms),
+            device_id=group_device if group_device.type == "cuda" else None,
         )
+        # NCCL initializes a new communicator lazily unless device_id is
+        # supplied. The real group barrier also makes initialization explicit
+        # for every backend before asymmetric ready/consumed P2P begins.
+        if group_device.type == "cuda":
+            dist.barrier(group=group, device_ids=[group_device.index])
+        else:
+            dist.barrier(group=group)
+        return group
     except Exception as exc:
         raise RuntimeError(
-            "SKIPPED: NVSHMEM pipeline could not create its ready/consumed sideband"
+            "SKIPPED: NVSHMEM pipeline could not initialize its ready/consumed sideband"
         ) from exc
 
 
@@ -273,10 +290,14 @@ class PipelineTransferBuffer:
             # construction order, before the timed schedule begins. Separate
             # groups prevent a backward-ready token from matching a forward ACK.
             self._ready_group = _create_pipeline_control_group(
-                self.world_size, self.signal_timeout_ms
+                self.world_size,
+                self.signal_timeout_ms,
+                device=self.device,
             )
             self._consumed_group = _create_pipeline_control_group(
-                self.world_size, self.signal_timeout_ms
+                self.world_size,
+                self.signal_timeout_ms,
+                device=self.device,
             )
             for token_list in (
                 self._ready_send_tokens,

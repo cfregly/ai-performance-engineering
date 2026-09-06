@@ -91,8 +91,8 @@ def _gloo_pipeline_worker(rank: int, rendezvous_path: str, output_path: str) -> 
         # Exercise the exact ready/consumed P2P control primitives on real
         # process groups. This is sideband evidence only, not NVSHMEM payload
         # evidence; the latter remains a CUDA/NVSHMEM runtime requirement.
-        ready_group = _create_pipeline_control_group(2, 5_000)
-        consumed_group = _create_pipeline_control_group(2, 5_000)
+        ready_group = _create_pipeline_control_group(2, 5_000, device=device)
+        consumed_group = _create_pipeline_control_group(2, 5_000, device=device)
         token = torch.tensor([rank + 1], dtype=torch.int32)
         received = torch.zeros_like(token)
         if rank == 0:
@@ -173,6 +173,37 @@ def test_real_two_rank_gloo_schedule_matches_full_serial_pipeline(tmp_path: Path
     assert payload["sideband_ok"] is True
 
 
+def test_control_group_is_collectively_initialized_before_return(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Check the setup ordering; the spawned Gloo test exercises the real path."""
+    events: list[tuple[str, Any]] = []
+    group = object()
+
+    monkeypatch.setattr(dist, "is_initialized", lambda: True)
+    monkeypatch.setattr(dist, "get_world_size", lambda: 2)
+    monkeypatch.setattr(dist, "get_backend", lambda: "gloo")
+
+    def fake_new_group(**kwargs: Any) -> object:
+        events.append(("new_group", kwargs["device_id"]))
+        return group
+
+    def fake_barrier(*, group: object, **_kwargs: Any) -> None:
+        events.append(("barrier", group))
+
+    monkeypatch.setattr(dist, "new_group", fake_new_group)
+    monkeypatch.setattr(dist, "barrier", fake_barrier)
+
+    actual = _create_pipeline_control_group(
+        2,
+        5_000,
+        device=torch.device("cpu"),
+    )
+
+    assert actual is group
+    assert events == [("new_group", None), ("barrier", group)]
+
+
 class _LoggedTensor:
     def __init__(self, tensor: torch.Tensor, events: list[tuple[Any, ...]], label: str):
         self.tensor = tensor
@@ -234,7 +265,7 @@ def test_nvshmem_sequencing_model_waits_before_reuse_and_acks_after_clone(
     monkeypatch.setattr(
         pipeline,
         "_create_pipeline_control_group",
-        lambda _world_size, _timeout_ms: next(groups),
+        lambda _world_size, _timeout_ms, *, device: next(groups),
     )
 
     def fake_isend(
