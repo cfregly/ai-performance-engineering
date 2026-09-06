@@ -50,6 +50,10 @@ class BaselinePinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmark
         )
 
     def setup(self) -> None:
+        self.batch_idx = 0
+        self.host_batches = []
+        self.targets = []
+        self.output = None
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         log_allocator_guidance("ch03/baseline_pinned_prefetch_mlp", optimized=False)
@@ -113,6 +117,7 @@ class BaselinePinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.host_batches = []
         self.targets = []
         self._batch_count = 0
+        self.batch_idx = 0
         self.output = None
         torch.cuda.empty_cache()
 
