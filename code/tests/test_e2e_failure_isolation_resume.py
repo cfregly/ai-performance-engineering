@@ -151,12 +151,12 @@ def test_static_routing_reads_attached_literal_metadata_without_import(tmp_path:
 
 
 def test_observed_multigpu_misroutes_use_declared_source_metadata() -> None:
-    required = {
-        "ch04:gradient_compression_fp16_comm_only_multigpu",
-        "ch04:gradient_compression_fp16_multigpu",
-        "ch04:gradient_compression_int8_comm_only_multigpu",
-        "ch04:gradient_compression_int8_multigpu",
-        "ch15:prefill_decode_disagg_multigpu",
+    expected_torchrun = {
+        "ch04:gradient_compression_fp16_comm_only_multigpu": True,
+        "ch04:gradient_compression_fp16_multigpu": True,
+        "ch04:gradient_compression_int8_comm_only_multigpu": True,
+        "ch04:gradient_compression_int8_multigpu": True,
+        "ch15:prefill_decode_disagg_multigpu": False,
     }
     explicitly_single = {"ch04:disaggregated", "ch04:reinit_comm"}
 
@@ -164,10 +164,14 @@ def test_observed_multigpu_misroutes_use_declared_source_metadata() -> None:
         entry["target"]: entry for entry in e2e_sweep._iter_discovered_targets(_CODE_ROOT)
     }
 
-    assert required <= inventory.keys()
-    assert all(inventory[target]["minimum_gpu_count"] >= 2 for target in required)
-    assert all(inventory[target]["multi_gpu"] is True for target in required)
-    assert all(inventory[target]["requires_torchrun"] is False for target in required)
+    assert expected_torchrun.keys() <= inventory.keys()
+    assert all(
+        inventory[target]["minimum_gpu_count"] >= 2 for target in expected_torchrun
+    )
+    assert all(inventory[target]["multi_gpu"] is True for target in expected_torchrun)
+    assert {
+        target: inventory[target]["requires_torchrun"] for target in expected_torchrun
+    } == expected_torchrun
     assert all(inventory[target]["minimum_gpu_count"] == 1 for target in explicitly_single)
     assert all(inventory[target]["multi_gpu"] is False for target in explicitly_single)
 

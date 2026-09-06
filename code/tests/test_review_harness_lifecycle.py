@@ -104,6 +104,22 @@ def _pid_exists(pid: int) -> bool:
     return True
 
 
+def test_cpu_memory_tracking_does_not_query_cuda_allocator(monkeypatch) -> None:
+    harness, config = _cpu_harness()
+    config.enable_memory_tracking = True
+
+    def unexpected_cuda_call(*args, **kwargs):
+        raise AssertionError("CPU memory tracking must not query the CUDA allocator")
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "reset_peak_memory_stats", unexpected_cuda_call)
+    monkeypatch.setattr(torch.cuda, "synchronize", unexpected_cuda_call)
+    with harness._memory_tracking(config) as memory:
+        output = torch.arange(8, dtype=torch.float32).square()
+    assert memory is None
+    torch.testing.assert_close(output, torch.tensor([0., 1., 4., 9., 16., 25., 36., 49.]))
+
+
 def _wait_for_pid_exit(pid: int, timeout: float = 3.0) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:

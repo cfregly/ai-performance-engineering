@@ -71,6 +71,23 @@ def test_get_input_signature_safe_executes_payload_path() -> None:
     assert isinstance(sig, InputSignature)
 
 
+def test_signature_capture_requires_distributed_worker_payload() -> None:
+    from core.harness.benchmark_harness import BenchmarkConfig, LaunchVia
+
+    class DistributedPayload(_DummyPayloadBenchmark):
+        def get_config(self):
+            return BenchmarkConfig(launch_via=LaunchVia.TORCHRUN, nproc_per_node=2)
+
+        def benchmark_fn(self):
+            raise AssertionError("standalone validation must not run a parent proxy")
+
+    signature, error = get_input_signature_safe(DistributedPayload())
+    assert signature is None
+    assert error is not None and "SKIPPED:" in error
+    assert "requires a torchrun worker result" in error
+    assert "aisp bench run" in error
+
+
 def test_discover_benchmark_pairs_matches_optimized_variants(tmp_path: Path) -> None:
     ch_dir = tmp_path / "ch01"
     ch_dir.mkdir(parents=True)
@@ -479,7 +496,10 @@ def test_ch04_nvshmem_pairs_skip_cleanly_on_single_gpu_or_missing_symmem() -> No
             assert result.error is not None and "SKIPPED" in result.error
         elif result.skipped:
             assert result.error is not None and "SKIPPED" in result.error
-            pytest.skip(result.error)
+            assert (
+                "requires NVSHMEM or SymmetricMemory support" in result.error
+                or "requires a torchrun worker result" in result.error
+            )
         else:
             assert result.valid, result.to_dict()
             assert result.baseline_has_signature and result.optimized_has_signature

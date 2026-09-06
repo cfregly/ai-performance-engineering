@@ -776,7 +776,10 @@ retained failures. Wave 19 on `00019bed7` has now passed the complete saved
 INT8 input oracle on CUDA and fresh full INT8 runs: 1.852722 observed ratio
 for the full pair and 3.322505 for communication-only. All three Chapter 10
 targets also passed their normal B200 execution and verification reruns.
-The separate concurrent build check in an empty private cache remains queued.
+The separate concurrent build check passed on `cfcb13bc0`: two processes
+rebuilt in an empty private cache, loaded the identical extension hash and
+produced exact complete CUDA matmul outputs on the two B200s. The overlapping
+load calls completed in 39.13 seconds.
 
 Two further performance candidates preserve workload math: `e77dc2f91` avoids
 DDP input routing for tensors already placed on the rank-local device, and
@@ -784,8 +787,55 @@ DDP input routing for tensors already placed on the rank-local device, and
 removing a redundant device-to-host readback. Their CPU controls pass; actual
 B200 correctness passes for both candidates. The normal DDP run retained a
 0.984355 ratio; the MoE aliases retained 0.957508 and 1.196584. These mixed
-single-observation outcomes are not a performance conclusion. Repeated
-interleaved timing and profiler reruns remain in progress or queued.
+single-observation outcomes are not a performance conclusion. DDP subsequently
+passed all 16 full-output ABBA observations on `00019bed7`, with eight samples
+per arm and a 0.990286 ratio between rank-maximum medians. It remains a measured
+performance miss. Its baseline Nsight trace contains the expected 30 workload
+ranges (five warmups plus ten measured steps on each rank); the private
+validator incorrectly searched for the uncanonicalized range name. The failed
+receipt is retained, and a profile-only retry uses the actual canonical labels.
+Repeated MoE timing and both fresh DDP profiles remain queued behind the full
+GPU test suite.
+
+The full suite completed all 5,634 tests on `cfcb13bc0`: 5,552 passed,
+78 skipped and four failed in 33 minutes 18 seconds. Every descendant drained,
+and the complete logs and JUnit report are retained. Hosted CPU CI completed
+with 5,129 passed, 503 skipped and two
+stale assertion failures. One still expected the four gradient-compression
+targets to run in a single process; the other expected the TMA neighbor
+transform to equal its untransformed input. The updated assertions check the
+exact per-target launch modes and the full tiled-neighbor reference. Their
+owning tests and compiled host-oracle controls pass locally (21 tests).
+
+The GPU-only CPU-control failure exposed a harness bug: CUDA memory accounting
+was selected whenever CUDA was available, even for a benchmark on the CPU.
+Memory tracking now checks the benchmark device. The fourth GPU-suite failure
+came from standalone signature capture on an NVSHMEM wrapper that requires
+a distributed worker's complete result callback. That tool now explicitly
+reports the required `aisp bench run` path instead of attempting parent-side
+signature capture. The focused CPU lane passed 46 tests; two additional controls
+cover the distributed-signature boundary and all 1,064,960 gradient elements.
+Fresh B200 reruns of these repairs remain required.
+
+The training-patterns candidate batches the 512 gradient-pack and 512 unpack
+operations with two foreach calls. It preserves every value, collective,
+synchronization fence and optimizer update. CPU controls cover disjoint bucket
+views, inactive gradients and replacement gradient objects across steps.
+Its previous 1.049336 ratio narrowly missed the 1.05 gate; the candidate still
+requires full two-rank verification and repeated timing before any speed claim.
+
+Profiler policy explicitly permits interrupting or terminating owned NCU/NSYS
+processes without asking, for direct runs and scheduler jobs. Interrupted
+captures retain their artifacts and incomplete status.
+
+The cache-aware disaggregation performance miss also has a precise topology
+limit: one prefill rank plus one decode rank produces identical baseline and
+optimized locality routes. At least two decode ranks are necessary to test
+the locality benefit. The smallest useful explicit layout is three GPUs
+configured as one prefill plus two decode ranks; the first useful default
+layout is four GPUs (two plus two). Existing route tests and documentation
+already encode the one-decode-rank control. The two-B200 run remains valid
+correctness evidence, and its measured speed failure is preserved.
 
 The current instance exposes neither an InfiniBand device nor `nvshmemrun`.
 The IBGDA examples therefore retain their explicit runtime/hardware gate;

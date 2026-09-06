@@ -165,7 +165,8 @@ class GradientBucket:
     - Direct GPU-GPU access over NVLink 5.0
     - Manual ring algorithm for educational purposes
 
-    Performance: 10-15x faster for gradients < 100KB
+    Performance depends on payload size, topology, and synchronization overhead;
+    compare with NCCL on the target hardware before claiming a speedup.
     """
 
     numel: int
@@ -222,10 +223,8 @@ class NVSHMEMGradientSync:
     """
     Custom gradient synchronization using NVSHMEM buckets.
 
-    Benefits vs NCCL:
-    - 10-15x lower latency for small gradients
-    - Fine-grained control over synchronization
-    - Can overlap computation with communication
+    Packs gradients into a shared bucket and explicitly synchronizes peer reads.
+    The caller waits for the reduction before applying optimizer updates.
 
     Usage:
         sync = NVSHMEMGradientSync(model.parameters(), world_size)
@@ -246,26 +245,50 @@ class NVSHMEMGradientSync:
             world_size=world_size,
         )
 
-    def synchronize_gradients(self, rank: int) -> None:
-        """Collect gradients from all parameters and synchronize."""
-        # Flatten all gradients into bucket
+    def _pack_gradients(self) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
+        """Copy active gradients into their contiguous bucket views in one batch."""
+        bucket_tensor = self.bucket.tensor
+        if bucket_tensor is None:
+            raise RuntimeError("GradientBucket tensor not initialized")
+
+        gradients: list[torch.Tensor] = []
+        bucket_views: list[torch.Tensor] = []
         offset = 0
         for param in self.parameters:
-            if param.grad is not None:
-                numel = param.grad.numel()
-                self.bucket.tensor[offset:offset+numel].copy_(param.grad.flatten())
-                offset += numel
+            gradient = param.grad
+            if gradient is None:
+                continue
+            numel = gradient.numel()
+            gradients.append(gradient)
+            bucket_views.append(
+                bucket_tensor[offset : offset + numel].view_as(gradient)
+            )
+            offset += numel
+
+        if gradients:
+            torch._foreach_copy_(bucket_views, gradients)
+        return gradients, bucket_views
+
+    @staticmethod
+    def _unpack_gradients(
+        gradients: list[torch.Tensor],
+        bucket_views: list[torch.Tensor],
+    ) -> None:
+        """Copy averaged bucket views back to the active gradients in one batch."""
+        if gradients:
+            torch._foreach_copy_(gradients, bucket_views)
+
+    def synchronize_gradients(self, rank: int) -> None:
+        """Collect gradients from all parameters and synchronize."""
+        # Preserve the existing active-gradient packing order while batching the
+        # device copies into one foreach call.
+        gradients, bucket_views = self._pack_gradients()
         
         # Synchronize using ring AllReduce
         self.bucket.allreduce_ring(rank)
         
-        # Copy averaged gradients back
-        offset = 0
-        for param in self.parameters:
-            if param.grad is not None:
-                numel = param.grad.numel()
-                param.grad.copy_(self.bucket.tensor[offset:offset+numel].view_as(param.grad))
-                offset += numel
+        # Copy the averaged values back with the matching batched device copy.
+        self._unpack_gradients(gradients, bucket_views)
 
 
 def demo_gradient_sync(benchmark: bool = False) -> NVSHMEMWorkloadResult:

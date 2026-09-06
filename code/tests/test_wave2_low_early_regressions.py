@@ -138,8 +138,11 @@ def test_w2_100_through_w2_102_tma_copies_compare_nonuniform_full_outputs() -> N
     assert "h_dst[idx] != h_src[idx]" in bulk_copy
     assert "return copy_ok ? 0 : 2;" in bulk_copy
 
-    assert "h_matrix_out[idx] != h_matrix[idx]" in optimized_copy
-    assert "2D TMA mismatch at %zu" in optimized_copy
+    assert "idx < h_matrix_out.size()" in optimized_copy
+    assert "tiled_neighbor_reference_at(h_matrix, M, N, idx)" in optimized_copy
+    assert "h_matrix_out[idx] != expected" in optimized_copy
+    assert "h_matrix_out[idx] != h_matrix[idx]" not in optimized_copy
+    assert "2D TMA tiled-neighbor mismatch at %zu" in optimized_copy
     assert "2D TMA validation failed" in optimized_copy
     assert "std::exit(EXIT_FAILURE);" in optimized_copy
 

@@ -2950,7 +2950,11 @@ class BenchmarkHarness:
         # Use provided config or fall back to instance config
         check_config = config if config is not None else self.config
         
-        if not check_config.enable_memory_tracking or not torch.cuda.is_available():
+        if (
+            not check_config.enable_memory_tracking
+            or self.device.type != "cuda"
+            or not torch.cuda.is_available()
+        ):
             yield None
             return
         
