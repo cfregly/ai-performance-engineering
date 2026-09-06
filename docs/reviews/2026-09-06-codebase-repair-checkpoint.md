@@ -447,9 +447,57 @@ register-heavy kernels. Baseline geometry, input size, arithmetic, and repeat
 counts remain unchanged. It is an optimization hypothesis until real
 correctness, interleaved timing, and counter evidence establish the result.
 
-Wave 10 runs the repaired training/NVSHMEM pairs and both launch-bounds pairs
-directly with profile mode `none`. The stopped breadth sweep will resume using
-its retained terminal results after the focused batch drains.
+### Direct B200 wave 10 and resumed coverage
+
+Wave 10 on `1a8958ac1` completed all nine stages and drained their processes.
+All 40 focused tests passed on the real CUDA runtime, including architecture
+compilation checks. Ordinary benchmark runs used profile mode `none`.
+
+| Pair | Baseline / optimized mean (ms) | Actual result |
+| --- | --- | --- |
+| Pinned-prefetch MLP | 1.236 / 0.569 | Complete output and performance contract passed |
+| NVSHMEM broadcast | 0.04346 / 0.03318 | Two-rank complete output and performance contract passed |
+| NVSHMEM training patterns | 24.007 / 22.878 | Complete output passed; 1.04934 ratio missed the unchanged 1.05 threshold |
+| Symmetric-memory ring | 0.02337 / 0.09875 | Complete output passed; optimized transport was slower |
+| Launch bounds, Python extension | 17.817 / 17.578 | Complete output and performance contract passed |
+| Launch bounds, CUDA binary | 0.18485 / 0.18247 | Complete output and performance contract passed |
+
+Both NVSHMEM pipeline variants passed baseline execution and rejected the
+optimized full output. About half the output values differed from the serial
+reference, with maximum absolute difference 5.0625. The seed repair allowed
+the real transport correctness check to run; it did not establish pipeline
+correctness. The signal/handoff implementation remains under repair.
+
+A separate launch-bounds experiment on the same source used four ABBA blocks
+and five samples per slot, totaling 40 samples per arm. Every slot retained
+bitwise equality of all 1,048,576 output elements. Median time for 96 kernel
+launches was 17.8022 ms baseline versus 17.5111 ms optimized, a 1.01662 ratio.
+Sample standard deviations were 0.01295 and 0.00211 ms. Both Nsight Compute
+captures succeeded: the 1024-thread baseline used 36 registers per thread,
+while the 512-thread candidate used 39; measured active-warps occupancy rose
+from 48.93% to 68.37%. This supports the launch-geometry mechanism. The host
+is virtualized and the interleaved probe did not lock clocks; these remain
+diagnostic measurements, not a canonical performance claim.
+
+Commit `6cf523280` fixes target-level sweep continuation/resume and GPU
+classification. It retains successful verified targets individually, invalidates
+stale successes after a newer failed or missing-summary attempt, and preserves
+frozen target identities. The focused CPU selection passed 151 tests. The
+inventory is now 486 targets: 417 single-GPU and 69 multi-GPU. Five examples
+require two visible GPUs in one process; they do not require torchrun. The
+disaggregated/reinit examples explicitly retain their one-rank default.
+
+Commit `96027d064` extends the fixed-update correction to 13 other stateful
+training targets, changing 22 variant configurations while preserving their
+existing iteration/warmup counts. The configuration/lifecycle selection passed
+14 CPU tests with two actual-CUDA cases skipped. Full execution of those
+targets remains part of the sweep.
+
+At 14:17 UTC, two fresh direct queues resumed disjoint halves of the 417
+single-GPU targets on `96027d064`. They share the combined retained ledger,
+preserve its original source identities, and force repaired early training
+and one-rank metadata targets to rerun. Distributed work will run after this
+phase drains. Neither examples nor these queues require Slurm.
 
 - Run the complete GPU test suite on the final merged revision.
 - Complete all four sweep stages and reconcile the 486-target inventory,
