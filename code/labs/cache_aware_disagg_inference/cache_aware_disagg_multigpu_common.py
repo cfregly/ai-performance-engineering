@@ -27,8 +27,18 @@ from core.harness.benchmark_harness import (
     TorchrunLaunchSpec,
     WorkloadMetadata,
 )
+from core.profiling.nvtx_helper import nvtx_range
+from labs.cache_aware_disagg_inference.cache_aware_disagg_multigpu_result import (
+    CACHE_AWARE_METRICS_PATH_ENV,
+    CACHE_AWARE_RESULT_CALLBACK,
+    CacheAwareDisaggChildResultMixin,
+    make_cache_aware_result_config,
+    write_cache_aware_child_result,
+)
 
-METRICS_ENV_VAR = "AISP_CACHE_AWARE_DISAGG_METRICS_PATH"
+METRICS_ENV_VAR = CACHE_AWARE_METRICS_PATH_ENV
+CACHE_AWARE_BASELINE_NVTX_RANGE = "compute_kernel:cache_aware_disagg_round_robin"
+CACHE_AWARE_OPTIMIZED_NVTX_RANGE = "compute_kernel:cache_aware_disagg_sticky"
 
 
 class DecodeAffinityMode(str, Enum):
@@ -404,6 +414,12 @@ def _run_torchrun_worker(
     iters: int,
     warmup: int,
 ) -> None:
+    if not torch.cuda.is_available():
+        raise RuntimeError("SKIPPED: CUDA required for cache-aware disaggregated inference")
+    if int(iters) <= 0:
+        raise ValueError("--iters must be positive")
+    if int(warmup) < 0:
+        raise ValueError("--warmup must be non-negative")
     rank, world_size, device = _init_distributed()
     if world_size < 2:
         raise RuntimeError("cache-aware disaggregated inference requires >=2 torchrun ranks")
@@ -512,7 +528,10 @@ def _run_torchrun_worker(
         "shared_reload_bytes": 0.0,
     }
 
-    def run_iteration() -> tuple[Dict[str, float], float, float, int]:
+    def run_iteration(
+        *,
+        capture_outputs: bool = False,
+    ) -> tuple[dict[str, float], float, float, int, dict[int, torch.Tensor]]:
         active_caches.clear()
         local_metrics["cache_hits"] = 0.0
         local_metrics["cache_misses"] = 0.0
@@ -523,6 +542,7 @@ def _run_torchrun_worker(
         ttft_sum_ms = 0.0
         tpot_sum_ms = 0.0
         request_count = 0
+        iteration_outputs: dict[int, torch.Tensor] = {}
 
         for plan in plans:
             current_owner = (
@@ -620,7 +640,9 @@ def _run_torchrun_worker(
                 recv_seed = recv_seed_buffer
                 dist.recv(recv_seed, src=plan.prefill_rank)
                 cache = active_caches[plan.global_request_idx]
-                _ = model.decode(recv_seed, cache, cfg.decode_tokens)
+                decode_output = model.decode(recv_seed, cache, cfg.decode_tokens)
+                if capture_outputs:
+                    iteration_outputs[plan.global_request_idx] = decode_output.detach()
                 active_caches.pop(plan.global_request_idx, None)
             _sync_and_barrier(device)
 
@@ -631,14 +653,13 @@ def _run_torchrun_worker(
                 tpot_sum_ms += max(total_ms - ttft_ms, 0.0) / max(cfg.decode_tokens, 1)
                 request_count += 1
 
-        return local_metrics, ttft_sum_ms, tpot_sum_ms, request_count
+        return local_metrics, ttft_sum_ms, tpot_sum_ms, request_count, iteration_outputs
 
     _sync_and_barrier(device)
     for _ in range(max(int(warmup), 0)):
         run_iteration()
         _sync_and_barrier(device)
 
-    elapsed_start = time.perf_counter()
     aggregate = {
         "cache_hits": 0.0,
         "cache_misses": 0.0,
@@ -650,15 +671,33 @@ def _run_torchrun_worker(
     ttft_total_ms = 0.0
     tpot_total_ms = 0.0
     request_total = 0
-    for _ in range(max(int(iters), 1)):
-        iteration_metrics, iteration_ttft, iteration_tpot, iteration_requests = run_iteration()
-        for key, value in iteration_metrics.items():
-            aggregate[key] += float(value)
-        ttft_total_ms += float(iteration_ttft)
-        tpot_total_ms += float(iteration_tpot)
-        request_total += int(iteration_requests)
-        _sync_and_barrier(device)
-    elapsed_s = max(time.perf_counter() - elapsed_start, 1e-9)
+    final_actual_outputs: dict[int, torch.Tensor] = {}
+    profile_range = (
+        CACHE_AWARE_OPTIMIZED_NVTX_RANGE
+        if affinity_mode == DecodeAffinityMode.STICKY
+        else CACHE_AWARE_BASELINE_NVTX_RANGE
+    )
+    with nvtx_range(profile_range, enable=True):
+        elapsed_start = time.perf_counter()
+        for iteration_idx in range(int(iters)):
+            (
+                iteration_metrics,
+                iteration_ttft,
+                iteration_tpot,
+                iteration_requests,
+                iteration_outputs,
+            ) = run_iteration(capture_outputs=iteration_idx == int(iters) - 1)
+            for key, value in iteration_metrics.items():
+                aggregate[key] += float(value)
+            ttft_total_ms += float(iteration_ttft)
+            tpot_total_ms += float(iteration_tpot)
+            request_total += int(iteration_requests)
+            if iteration_outputs:
+                final_actual_outputs = iteration_outputs
+            # This drain and rank barrier are inside the measured range so all
+            # asynchronous GPU and communication work completes before timing closes.
+            _sync_and_barrier(device)
+        elapsed_s = max(time.perf_counter() - elapsed_start, 1e-9)
 
     reduced = torch.tensor(
         [
@@ -677,6 +716,7 @@ def _run_torchrun_worker(
     )
     dist.all_reduce(reduced, op=dist.ReduceOp.SUM)
 
+    rank0_custom_metrics: dict[str, float] | None = None
     if rank == 0:
         reduced_host = reduced.detach().cpu()
         cache_hits = float(reduced_host[0])
@@ -693,7 +733,7 @@ def _run_torchrun_worker(
         total_generated_tokens = (
             cfg.requests_per_rank * prefill_ranks * cfg.batch_size * cfg.decode_tokens
         )
-        custom_metrics = {
+        rank0_custom_metrics = {
             **compute_inference_metrics(
                 ttft_ms=float(ttft_reduced_ms) / total_requests,
                 tpot_ms=float(tpot_reduced_ms) / total_requests,
@@ -707,21 +747,103 @@ def _run_torchrun_worker(
             "cache_aware.worker_switches_per_request": float(worker_switches) / total_requests,
             "cache_aware.peer_handoffs": float(peer_handoffs),
             "cache_aware.shared_reload_mb": float(shared_reload_bytes) / 1e6,
-            "cache_aware.time_per_iter_ms": (elapsed_s / max(int(iters), 1)) * 1000.0,
+            "cache_aware.time_per_iter_ms": (elapsed_s / int(iters)) * 1000.0,
             "cache_aware.wall_tokens_per_second": (
-                total_generated_tokens * (max(int(iters), 1) / elapsed_s)
+                total_generated_tokens * (int(iters) / elapsed_s)
             ),
         }
         _write_metrics_sidecar(
             label=label,
             optimized=affinity_mode == DecodeAffinityMode.STICKY,
-            custom_metrics=custom_metrics,
+            custom_metrics=rank0_custom_metrics,
         )
+        print(
+            f"rank0 time_per_iter_ms: {(elapsed_s / int(iters)) * 1000.0:.9f}",
+            flush=True,
+        )
+
+    expected_local_output_ids = {
+        plan.global_request_idx
+        for plan in plans
+        if _choose_decode_rank(
+            plan,
+            plan.total_chunks,
+            affinity_mode=affinity_mode,
+            prefill_ranks=prefill_ranks,
+            decode_ranks=decode_ranks,
+        )
+        == rank
+    }
+    if set(final_actual_outputs) != expected_local_output_ids:
+        raise RuntimeError(
+            "Timed cache-aware decode outputs are incomplete for rank "
+            f"{rank}: expected {sorted(expected_local_output_ids)}, "
+            f"found {sorted(final_actual_outputs)}"
+        )
+
+    reference_outputs: dict[int, torch.Tensor] = {}
+    verification_prompt: torch.Tensor | None = None
+    if rank < prefill_ranks:
+        if prompts is None:
+            raise RuntimeError(f"Prefill prompts are missing on rank {rank}")
+        with torch.inference_mode():
+            for plan in plans:
+                if plan.prefill_rank != rank:
+                    continue
+                prompt = prompts[plan.local_request_idx]
+                reference_cache, reference_seed = model.prefill(prompt)
+                reference_outputs[plan.global_request_idx] = model.decode(
+                    reference_seed,
+                    reference_cache,
+                    cfg.decode_tokens,
+                ).detach()
+            torch.cuda.synchronize(device)
+        if rank == 0:
+            verification_prompt = prompts[0].detach()
+    expected_local_reference_ids = {
+        plan.global_request_idx for plan in plans if plan.prefill_rank == rank
+    }
+    if set(reference_outputs) != expected_local_reference_ids:
+        raise RuntimeError(
+            "Cache-aware reference outputs are incomplete for rank "
+            f"{rank}: expected {sorted(expected_local_reference_ids)}, "
+            f"found {sorted(reference_outputs)}"
+        )
+
+    result_config = make_cache_aware_result_config(
+        hidden_size=cfg.hidden_size,
+        num_layers=cfg.num_layers,
+        batch_size=cfg.batch_size,
+        requests_per_rank=cfg.requests_per_rank,
+        context_window=cfg.context_window,
+        chunk_size=cfg.chunk_size,
+        decode_tokens=cfg.decode_tokens,
+        warm_request_ratio=cfg.warm_request_ratio,
+        warm_prefix_ratio=cfg.warm_prefix_ratio,
+        prefill_ranks=prefill_ranks,
+        dtype=cfg.dtype,
+    )
+    write_cache_aware_child_result(
+        variant="optimized" if affinity_mode == DecodeAffinityMode.STICKY else "baseline",
+        label=label,
+        rank=rank,
+        world_size=world_size,
+        iterations_completed=int(iters),
+        config=result_config,
+        actual_outputs=final_actual_outputs,
+        reference_outputs=reference_outputs,
+        verification_prompt=verification_prompt,
+        custom_metrics=rank0_custom_metrics,
+    )
 
     dist.destroy_process_group()
 
 
-class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class CacheAwareDisaggMultiGPUBenchmark(
+    CacheAwareDisaggChildResultMixin,
+    VerificationPayloadMixin,
+    BaseBenchmark,
+):
     """Benchmark object for the torchrun-backed cache-aware multi-GPU lab."""
 
     multi_gpu_required = True
@@ -1246,17 +1368,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         )
 
     def _prepare_verification_payload(self) -> None:
-        if hasattr(self, "_subprocess_verify_output"):
-            return
-        self.setup()
-        try:
-            self.benchmark_fn()
-            self.capture_verification_payload()
-            self._subprocess_verify_output = self.get_verify_output()
-            self._subprocess_output_tolerance = self.get_output_tolerance()
-            self._subprocess_input_signature = self.get_input_signature()
-        finally:
-            self.teardown()
+        self.require_cache_aware_child_result()
 
     def teardown(self) -> None:
         self._prefill_models = {}
@@ -1294,6 +1406,11 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
     def get_config(self) -> BenchmarkConfig:
         world_size = self._resolved_world_size or _world_size_hint()
+        profile_range = (
+            CACHE_AWARE_OPTIMIZED_NVTX_RANGE
+            if self.optimized
+            else CACHE_AWARE_BASELINE_NVTX_RANGE
+        )
         return BenchmarkConfig(
             launch_via=LaunchVia.TORCHRUN,
             nproc_per_node=world_size,
@@ -1301,26 +1418,72 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
             warmup=5,
             multi_gpu_required=True,
             measurement_timeout_seconds=900,
+            nsys_nvtx_include=[profile_range],
+            ncu_replay_mode="app-range",
+            ncu_replay_mode_override=True,
         )
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload_metadata
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
-        if (
-            torch.cuda.is_available()
-            and torch.cuda.device_count() >= 2
-            and (
-                self.cfg.prefill_ranks is not None
-                or (torch.cuda.device_count() % 2 == 0)
+        effective_config = config or self.get_config()
+        nnodes = int(effective_config.nnodes or 1)
+        if nnodes != 1:
+            raise RuntimeError("Cache-aware child-result transport requires nnodes == 1")
+        world_size = int(effective_config.nproc_per_node or _world_size_hint())
+        prefill_ranks = _resolve_prefill_ranks(world_size, self.cfg.prefill_ranks)
+        decode_ranks = world_size - prefill_ranks
+        plans = _build_request_plans(self.cfg, prefill_ranks=prefill_ranks)
+        output_rank_by_request = {
+            plan.global_request_idx: _choose_decode_rank(
+                plan,
+                plan.total_chunks,
+                affinity_mode=self.affinity_mode,
+                prefill_ranks=prefill_ranks,
+                decode_ranks=decode_ranks,
             )
-        ):
-            self._prepare_verification_payload()
-        self._metrics_sidecar_path.unlink(missing_ok=True)
+            for plan in plans
+        }
+        reference_rank_by_request = {
+            plan.global_request_idx: plan.prefill_rank for plan in plans
+        }
+        result_config = make_cache_aware_result_config(
+            hidden_size=self.cfg.hidden_size,
+            num_layers=self.cfg.num_layers,
+            batch_size=self.cfg.batch_size,
+            requests_per_rank=self.cfg.requests_per_rank,
+            context_window=self.cfg.context_window,
+            chunk_size=self.cfg.chunk_size,
+            decode_tokens=self.cfg.decode_tokens,
+            warm_request_ratio=self.cfg.warm_request_ratio,
+            warm_prefix_ratio=self.cfg.warm_prefix_ratio,
+            prefill_ranks=prefill_ranks,
+            dtype=self.cfg.dtype,
+        )
+        env = self.prepare_cache_aware_child_result(
+            variant="optimized" if self.optimized else "baseline",
+            label=self.label,
+            world_size=world_size,
+            iterations=int(effective_config.iterations),
+            config=result_config,
+            output_rank_by_request=output_rank_by_request,
+            reference_rank_by_request=reference_rank_by_request,
+        )
+        self._metrics_sidecar_path = Path(env[METRICS_ENV_VAR])
         return TorchrunLaunchSpec(
-            script_path=Path(self.script_path) if self.script_path else None,
-            script_args=_shared_args_to_cli(self.cfg),
-            env={METRICS_ENV_VAR: str(self._metrics_sidecar_path)},
+            module_name="core.harness.benchmark_worker",
+            script_args=[
+                "--module",
+                "labs.cache_aware_disagg_inference.cache_aware_disagg_multigpu_worker",
+                "--callable",
+                "main",
+                "--",
+                "--variant",
+                "optimized" if self.optimized else "baseline",
+                *_shared_args_to_cli(self.cfg),
+            ],
+            env=env,
             parse_rank0_only=True,
             multi_gpu_required=True,
             name=self.label,
@@ -1328,9 +1491,14 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 "iterations": "--iters",
                 "warmup": "--warmup",
             },
+            result_callback=CACHE_AWARE_RESULT_CALLBACK,
+            timing_source="rank0_time_per_iter_ms",
+            timing_iterations_per_sample=int(effective_config.iterations),
         )
 
     def get_custom_metrics(self) -> Optional[Dict[str, float]]:
+        if self._cache_aware_result_metrics is not None:
+            return dict(self._cache_aware_result_metrics)
         if self._metrics_sidecar_path.exists():
             try:
                 payload = json.loads(self._metrics_sidecar_path.read_text(encoding="utf-8"))
@@ -1346,10 +1514,10 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         return dict(self._custom_metrics) if self._custom_metrics else None
 
     def validate_result(self) -> Optional[str]:
-        if self.output is None:
-            return "No output captured"
-        if not self._custom_metrics:
-            return "No custom metrics captured"
+        if self._cache_aware_result_bundle is None:
+            return "Fresh full-rank cache-aware worker output is missing"
+        if not self._cache_aware_result_metrics:
+            return "Fresh cache-aware worker metrics are missing"
         return None
 
 
@@ -1398,19 +1566,31 @@ def add_shared_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _parse_args() -> argparse.Namespace:
+def _parse_args(
+    argv: Sequence[str] | None = None,
+    *,
+    require_variant: bool = False,
+) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run the multi-GPU cache-aware disaggregated inference lab under torchrun.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
+    if require_variant:
+        parser.add_argument("--variant", choices=("baseline", "optimized"), required=True)
     add_shared_args(parser)
     parser.add_argument("--iters", type=int, default=4)
     parser.add_argument("--warmup", type=int, default=3)
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def run_cli(*, optimized: bool) -> None:
-    args = _parse_args()
+def run_cli(
+    *,
+    optimized: bool | None = None,
+    argv: Sequence[str] | None = None,
+) -> None:
+    args = _parse_args(argv, require_variant=optimized is None)
+    if optimized is None:
+        optimized = args.variant == "optimized"
     cfg = build_config_from_args(args)
     _run_torchrun_worker(
         cfg,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -14,11 +15,15 @@ from core.harness.benchmark_harness import BaseBenchmark
 from labs.cache_aware_disagg_inference.cache_aware_disagg_common import (
     CacheAwareDisaggBenchmark,
     CacheAwareDisaggConfig,
+)
+from labs.cache_aware_disagg_inference.cache_aware_disagg_common import (
     _extend_cache_buffer as _extend_cache_buffer_single,
 )
 from labs.cache_aware_disagg_inference.cache_aware_disagg_multigpu_common import (
     CacheAwareDisaggMultiGPUBenchmark,
     CacheAwareDisaggMultiGPUConfig,
+)
+from labs.cache_aware_disagg_inference.cache_aware_disagg_multigpu_common import (
     _extend_cache_buffer as _extend_cache_buffer_multi,
 )
 
@@ -242,12 +247,27 @@ def test_cache_aware_disagg_multigpu_wrappers_expose_torchrun_specs(
     bench.cfg = CacheAwareDisaggMultiGPUConfig(prefill_ranks=prefill_ranks)
     spec = bench.get_torchrun_spec()
 
-    assert spec.script_path == module_path
-    assert spec.parse_rank0_only is True
-    assert spec.multi_gpu_required is True
-    assert METRICS_ENV_KEY in spec.env
-    assert "--prefill-ranks" in spec.script_args
-    assert str(prefill_ranks) in spec.script_args
+    try:
+        assert spec.script_path is None
+        assert spec.module_name == "core.harness.benchmark_worker"
+        assert spec.script_args[:5] == [
+            "--module",
+            "labs.cache_aware_disagg_inference.cache_aware_disagg_multigpu_worker",
+            "--callable",
+            "main",
+            "--",
+        ]
+        assert spec.parse_rank0_only is True
+        assert spec.multi_gpu_required is True
+        assert spec.result_callback == "consume_cache_aware_child_results"
+        assert spec.timing_source == "rank0_time_per_iter_ms"
+        assert METRICS_ENV_KEY in spec.env
+        assert "--prefill-ranks" in spec.script_args
+        assert str(prefill_ranks) in spec.script_args
+    finally:
+        result_dir = spec.env.get("AISP_CACHE_AWARE_DISAGG_RESULT_DIR")
+        if result_dir:
+            shutil.rmtree(result_dir, ignore_errors=True)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for cache-aware lab metrics")
