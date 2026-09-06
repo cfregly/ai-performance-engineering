@@ -263,3 +263,175 @@ def test_ring_launch_rejects_wrong_scope_or_control_backend(
 
     with pytest.raises(RuntimeError, match=message):
         symmetric_memory_example._require_single_node_nccl_world(2)
+
+
+def test_cuda_ring_records_full_iteration_topology_and_replays_once(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[tuple[Any, ...]] = []
+
+    class ControlTensor:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def flatten(self) -> ControlTensor:
+            return self
+
+        def detach(self) -> ControlTensor:
+            return self
+
+        def clone(self) -> ControlTensor:
+            calls.append(("clone", self.name))
+            return ControlTensor(f"{self.name}-snapshot")
+
+        def copy_(
+            self,
+            source: ControlTensor,
+            *,
+            non_blocking: bool = False,
+        ) -> ControlTensor:
+            calls.append(("copy", self.name, source.name, non_blocking))
+            return self
+
+    class IndexedBuffer:
+        def __init__(self, prefix: str) -> None:
+            self.slots = [ControlTensor(f"{prefix}-{index}") for index in range(2)]
+
+        def __getitem__(self, index: int) -> ControlTensor:
+            return self.slots[index]
+
+    class ControlHandle:
+        backend = "CUDA"
+
+        def __init__(self) -> None:
+            self.buffer = IndexedBuffer("local")
+            self.peer = IndexedBuffer("peer")
+
+        def get_buffer(self, rank: int) -> IndexedBuffer:
+            calls.append(("get_buffer", rank))
+            return self.peer
+
+        def barrier(self, *, channel: int, timeout_ms: int) -> None:
+            calls.append(("barrier", channel, timeout_ms))
+
+    class ControlGraph:
+        def __init__(self) -> None:
+            calls.append(("graph_create",))
+
+        def replay(self) -> None:
+            calls.append(("graph_replay",))
+
+    class GraphCapture:
+        def __enter__(self) -> None:
+            calls.append(("graph_capture_enter",))
+
+        def __exit__(self, *exc: object) -> None:
+            calls.append(("graph_capture_exit", *exc))
+
+    class ControlEvent:
+        def __init__(self, *, enable_timing: bool) -> None:
+            assert enable_timing is True
+            self.index = sum(call[0] == "event_create" for call in calls)
+            calls.append(("event_create", self.index))
+
+        def record(self) -> None:
+            calls.append(("event_record", self.index))
+
+        def elapsed_time(self, other: ControlEvent) -> float:
+            calls.append(("elapsed_time", self.index, other.index))
+            return 80.0
+
+    class NvtxRange:
+        def __enter__(self) -> None:
+            calls.append(("nvtx_enter",))
+
+        def __exit__(self, *exc: object) -> None:
+            calls.append(("nvtx_exit", *exc))
+
+    handle = ControlHandle()
+    input_tensor = ControlTensor("input")
+    monkeypatch.setattr(symmetric_memory_example.dist, "get_rank", lambda: 0)
+    monkeypatch.setattr(symmetric_memory_example.dist, "get_world_size", lambda: 2)
+    monkeypatch.setattr(
+        symmetric_memory_example.dist,
+        "barrier",
+        lambda: pytest.fail("CUDA symmetric ring must not use a host barrier"),
+    )
+    monkeypatch.setattr(
+        symmetric_memory_example.torch.cuda,
+        "current_device",
+        lambda: 0,
+    )
+    monkeypatch.setattr(
+        symmetric_memory_example.torch.cuda,
+        "synchronize",
+        lambda _device: calls.append(("synchronize",)),
+    )
+    monkeypatch.setattr(symmetric_memory_example.torch.cuda, "CUDAGraph", ControlGraph)
+    monkeypatch.setattr(
+        symmetric_memory_example.torch.cuda,
+        "graph",
+        lambda _graph: GraphCapture(),
+    )
+    monkeypatch.setattr(symmetric_memory_example.torch.cuda, "Event", ControlEvent)
+    monkeypatch.setattr(
+        symmetric_memory_example.torch,
+        "stack",
+        lambda _values: ControlTensor("stacked-seed"),
+    )
+    monkeypatch.setattr(
+        symmetric_memory_example.torch,
+        "empty_like",
+        lambda _value: ControlTensor("receive"),
+    )
+    monkeypatch.setattr(
+        symmetric_memory_example,
+        "create_symmetric_memory_handle",
+        lambda *_args, **_kwargs: handle,
+    )
+    monkeypatch.setattr(
+        symmetric_memory_example,
+        "nvtx_range",
+        lambda *_args, **_kwargs: NvtxRange(),
+    )
+
+    elapsed = symmetric_memory_example.benchmark_symmetric_ring(
+        input_tensor,
+        iterations=4,
+        backend="CUDA",
+    )
+
+    # These fakes record Python dispatch only. Replay is intentionally opaque:
+    # this CPU control does not simulate execution of captured CUDA operations.
+    assert elapsed == 20.0
+    assert calls.count(("graph_replay",)) == 1
+    assert [call[1] for call in calls if call[0] == "barrier"] == [0, 1] * 9
+    assert len([call for call in calls if call[:2] == ("copy", "peer-0")]) == 5
+    assert len([call for call in calls if call[:2] == ("copy", "peer-1")]) == 4
+    assert len([call for call in calls if call[:2] == ("copy", "receive")]) == 9
+    capture_exit = next(
+        index for index, call in enumerate(calls) if call[0] == "graph_capture_exit"
+    )
+    capture_enter = calls.index(("graph_capture_enter",))
+    assert calls.index(("synchronize",)) < capture_enter
+    captured_dispatches = [
+        call[0:2]
+        for call in calls[capture_enter + 1 : capture_exit]
+    ]
+    assert captured_dispatches == [
+        ("copy", "peer-0"),
+        ("barrier", 0),
+        ("copy", "receive"),
+        ("barrier", 1),
+        ("copy", "peer-1"),
+        ("barrier", 0),
+        ("copy", "receive"),
+        ("barrier", 1),
+    ] * 2
+    assert not any(call[:2] == ("copy", "input") for call in calls)
+    start = calls.index(("event_record", 0))
+    replay = calls.index(("graph_replay",))
+    end = calls.index(("event_record", 1))
+    assert capture_exit < start < replay < end
+    assert "symmetric_ring_cuda_graph_capture_wall_ms" in capsys.readouterr().out

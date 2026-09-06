@@ -12,6 +12,7 @@ Expected Runtime: ~5-10 seconds on 2 GPUs
 """
 import argparse
 import os
+import time
 
 import torch
 import torch.cuda.nvtx as nvtx
@@ -366,6 +367,25 @@ def benchmark_symmetric_ring(
             recv_tensor.copy_(local[buf_idx], non_blocking=True)
             # The second channel keeps each slot alive until every rank consumes it.
             handle.barrier(channel=1, timeout_ms=5000)
+
+        # Finish warmup before recording the complete steady-state iteration
+        # sequence. Capture records these operations; the timed replay executes it.
+        torch.cuda.synchronize(device)
+        graph = torch.cuda.CUDAGraph()
+        capture_started = time.perf_counter()
+        with torch.cuda.graph(graph):
+            for idx in range(iterations):
+                buf_idx = idx % 2
+                next_buf[buf_idx].copy_(flat, non_blocking=True)
+                handle.barrier(channel=0, timeout_ms=5000)
+                recv_tensor.copy_(local[buf_idx], non_blocking=True)
+                handle.barrier(channel=1, timeout_ms=5000)
+        capture_wall_ms = (time.perf_counter() - capture_started) * 1000.0
+        print(
+            f"rank {rank} symmetric_ring_cuda_graph_capture_wall_ms: "
+            f"{capture_wall_ms:.6f}",
+            flush=True,
+        )
     else:
         # The NVSHMEM handle's barrier is a no-op in Torch 2.9.1. Retain the
         # historical NCCL fences for callers that use this function's default.
@@ -381,12 +401,7 @@ def benchmark_symmetric_ring(
     start.record()
     with nvtx_range(SYMMETRIC_RING_NVTX_RANGE, enable=True):
         if requested_backend == SYMMETRIC_RING_TRANSPORT_BACKEND:
-            for idx in range(iterations):
-                buf_idx = idx % 2
-                next_buf[buf_idx].copy_(flat, non_blocking=True)
-                handle.barrier(channel=0, timeout_ms=5000)
-                recv_tensor.copy_(local[buf_idx], non_blocking=True)
-                handle.barrier(channel=1, timeout_ms=5000)
+            graph.replay()
         else:
             for idx in range(iterations):
                 buf_idx = idx % 2

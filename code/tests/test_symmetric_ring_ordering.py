@@ -39,24 +39,29 @@ def test_symmetric_ring_cuda_branch_uses_two_device_fences() -> None:
     assert source.count("recv_tensor.copy_(local[buf_idx], non_blocking=True)") == 4
     assert source.count("dist.barrier()") == 4
     assert "torch.cuda.current_stream().synchronize()" not in source
-    assert source.count("torch.cuda.synchronize(device)") == 1
+    assert source.count("torch.cuda.synchronize(device)") == 2
+    assert source.count("torch.cuda.CUDAGraph()") == 1
+    assert source.count("graph.replay()") == 1
+    assert not any(isinstance(node, ast.ExceptHandler) for node in ast.walk(function))
 
 
-def test_symmetric_ring_timed_iteration_preserves_publish_consume_order() -> None:
+def test_symmetric_ring_captured_iteration_preserves_publish_consume_order() -> None:
     function, _source = _symmetric_ring_function()
-    timed_with = next(
+    graph_with = next(
         node
         for node in ast.walk(function)
         if isinstance(node, ast.With)
         and any(
             isinstance(item.context_expr, ast.Call)
-            and isinstance(item.context_expr.func, ast.Name)
-            and item.context_expr.func.id == "nvtx_range"
+            and isinstance(item.context_expr.func, ast.Attribute)
+            and ast.unparse(item.context_expr.func) == "torch.cuda.graph"
             for item in node.items
         )
     )
-    backend_branch = next(node for node in timed_with.body if isinstance(node, ast.If))
-    measured_loop = next(node for node in backend_branch.body if isinstance(node, ast.For))
+    measured_loop = next(
+        node for node in graph_with.body if isinstance(node, ast.For)
+    )
+    assert ast.unparse(measured_loop.iter) == "range(iterations)"
     operations = [
         ast.unparse(statement.value.func)
         for statement in measured_loop.body
@@ -78,6 +83,21 @@ def test_symmetric_ring_timed_iteration_preserves_publish_consume_order() -> Non
         and ast.unparse(statement.value.func) == "handle.barrier"
     ]
     assert channels == [0, 1]
+
+    timed_with = next(
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.With)
+        and any(
+            isinstance(item.context_expr, ast.Call)
+            and isinstance(item.context_expr.func, ast.Name)
+            and item.context_expr.func.id == "nvtx_range"
+            for item in node.items
+        )
+    )
+    backend_branch = next(node for node in timed_with.body if isinstance(node, ast.If))
+    replay_call = next(node for node in backend_branch.body if isinstance(node, ast.Expr))
+    assert ast.unparse(replay_call.value) == "graph.replay()"
 
     legacy_loop = next(
         node for node in backend_branch.orelse if isinstance(node, ast.For)
