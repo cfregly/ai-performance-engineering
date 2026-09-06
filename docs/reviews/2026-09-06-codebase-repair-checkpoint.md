@@ -376,6 +376,37 @@ and additional NVSHMEM child-result contracts are being repaired. The next
 breadth phase assigns disjoint single-GPU target lists to the two B200s so
 coverage can advance while the remaining distributed repairs are checked.
 
+### Direct B200 wave 8 and parallel single-GPU coverage
+
+Wave 8 on `52560085c` completed all four stages with confirmed process drain.
+Focused tests passed. Both MoE hybrid variants passed the baseline replay but
+rejected the optimized final route assignments. A separate real two-rank,
+six-step diagnostic started both paths with identical parameters and input.
+Initial routes matched; BF16 output differences of 0.002–0.004 and gradient
+differences up to 1.9e-6 became different BF16 AdamW parameter updates. Routes
+then diverged on later steps. The mixed-precision training repair remains open;
+the output and route checks have not been relaxed.
+
+The one-iteration gradient profiler retry still failed baseline NCU replay.
+Both Nsight Systems and Torch captures succeeded, and normal 50-iteration
+gradient correctness passed (33.012 ms baseline, 0.045810 ms fused). A failed
+profiler bundle remains failed even when ordinary execution succeeds.
+
+Commit `f99426593` preserves all four distributed work-contract fields when
+coercing serialized signatures; 34 CPU tests passed, including real Gloo
+execution. Commit `4c640451e` fixes foreign-process inspection to query the
+selected CUDA device's NVML identity. Its 42 CPU controls passed, and a live
+B200 check confirmed that logical device zero under `CUDA_VISIBLE_DEVICES=1`
+resolves to physical GPU 1.
+
+The full inventory on `4c640451e` contains 486 targets: 422 single-GPU and 64
+multi-GPU. At 13:36 UTC, two direct queues began disjoint sets of 211 single-GPU
+targets each. Both initial GEMM targets entered real isolated worker execution.
+These queues use profile mode `none`; their timings are diagnostic coverage
+results. No two-GPU workload overlaps this phase. The remaining distributed
+training manifest contains 61 explicit variant commands with source hashes;
+those direct runs and final-source full-suite validation are still pending.
+
 - Run the complete GPU test suite on the final merged revision.
 - Complete all four sweep stages and reconcile the 486-target inventory,
   including unsupported and failed cases rather than silently dropping them.
