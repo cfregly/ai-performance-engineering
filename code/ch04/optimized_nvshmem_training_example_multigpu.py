@@ -16,6 +16,10 @@ from ch04.nccl_blackwell_config import (
     configure_nccl_for_multigpu,
     detect_b200_multigpu_topology,
 )
+from ch04.nvshmem_profile_ranges import (
+    PROFILE_NVTX_RANGE_ENV,
+    TRAINING_EXAMPLE_OPTIMIZED_NVTX_RANGE,
+)
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -44,6 +48,7 @@ def _configure_blackwell_nccl() -> None:
 
 class OptimizedNVSHMEMTrainingExampleMultiGPU(VerificationPayloadMixin, BaseBenchmark):
     multi_gpu_required = True
+    preferred_ncu_replay_mode = "app-range"
     allowed_benchmark_fn_antipatterns = ("random_input_regeneration",)
 
     def __init__(self) -> None:
@@ -134,7 +139,14 @@ class OptimizedNVSHMEMTrainingExampleMultiGPU(VerificationPayloadMixin, BaseBenc
 
     def get_config(self) -> BenchmarkConfig:
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
-            return BenchmarkConfig(iterations=1, warmup=5, measurement_timeout_seconds=300)
+            return BenchmarkConfig(
+                iterations=1,
+                warmup=5,
+                measurement_timeout_seconds=300,
+                nsys_nvtx_include=[TRAINING_EXAMPLE_OPTIMIZED_NVTX_RANGE],
+                ncu_replay_mode="app-range",
+                ncu_replay_mode_override=True,
+            )
         return BenchmarkConfig(
             launch_via=LaunchVia.TORCHRUN,
             nproc_per_node=torch.cuda.device_count(),
@@ -142,6 +154,9 @@ class OptimizedNVSHMEMTrainingExampleMultiGPU(VerificationPayloadMixin, BaseBenc
             warmup=5,
             multi_gpu_required=True,
             measurement_timeout_seconds=300,
+            nsys_nvtx_include=[TRAINING_EXAMPLE_OPTIMIZED_NVTX_RANGE],
+            ncu_replay_mode="app-range",
+            ncu_replay_mode_override=True,
         )
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
@@ -154,7 +169,10 @@ class OptimizedNVSHMEMTrainingExampleMultiGPU(VerificationPayloadMixin, BaseBenc
                 "optimized",
                 *self._training_args(),
             ],
-            env={"AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS": "1"},
+            env={
+                "AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS": "1",
+                PROFILE_NVTX_RANGE_ENV: TRAINING_EXAMPLE_OPTIMIZED_NVTX_RANGE,
+            },
             multi_gpu_required=True,
             name="optimized_nvshmem_training_example_multigpu",
         )

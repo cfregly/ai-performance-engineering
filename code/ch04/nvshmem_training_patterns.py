@@ -96,6 +96,8 @@ from torch.distributed.fsdp import (
     StateDictType,
 )
 
+from ch04.nvshmem_profile_ranges import selected_nvtx_range
+
 
 # ============================================================================
 # Utilities
@@ -193,7 +195,7 @@ class GradientBucket:
         if nvshmem_available() and self.handle is not None:
             # Use symmetric memory for direct GPU-GPU access
             chunk_size = (self.numel + self.world_size - 1) // self.world_size
-            
+
             # Reduce-scatter phase
             for step in range(self.world_size - 1):
                 send_rank = (rank - step) % self.world_size
@@ -221,7 +223,7 @@ class GradientBucket:
                     self.tensor[recv_chunk_start:recv_chunk_end].add_(
                         remote_buf[recv_chunk_start:recv_chunk_end]
                     )
-            
+
             # AllGather phase
             for step in range(self.world_size - 1):
                 send_rank = (rank + 1 - step) % self.world_size
@@ -324,23 +326,24 @@ def demo_gradient_sync(benchmark: bool = False) -> None:
     batch_size = 1
     
     start_time = time.perf_counter()
-    for step in range(num_steps):
-        inputs = torch.randn(batch_size, hidden_dim, device=device)
-        outputs = model(inputs)
-        loss = outputs.sum()
-        loss.backward()
-        
-        # Custom gradient sync with NVSHMEM (or naive per-parameter fallback).
-        if use_naive:
-            for param in model.parameters():
-                if param.grad is not None:
-                    dist.all_reduce(param.grad, op=dist.ReduceOp.SUM)
-                    param.grad.div_(world_size)
-        else:
-            sync.synchronize_gradients(rank)
-        
-        optimizer.step()
-        optimizer.zero_grad()
+    with selected_nvtx_range():
+        for step in range(num_steps):
+            inputs = torch.randn(batch_size, hidden_dim, device=device)
+            outputs = model(inputs)
+            loss = outputs.sum()
+            loss.backward()
+
+            # Custom gradient sync with NVSHMEM (or naive per-parameter fallback).
+            if use_naive:
+                for param in model.parameters():
+                    if param.grad is not None:
+                        dist.all_reduce(param.grad, op=dist.ReduceOp.SUM)
+                        param.grad.div_(world_size)
+            else:
+                sync.synchronize_gradients(rank)
+
+            optimizer.step()
+            optimizer.zero_grad()
     
     elapsed = time.perf_counter() - start_time
     

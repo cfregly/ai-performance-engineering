@@ -39,6 +39,7 @@ from core.optimization.symmetric_memory_patch import (
 )
 
 from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
+from ch04.nvshmem_profile_ranges import selected_nvtx_range
 
 
 import torch
@@ -184,13 +185,14 @@ def demo_gradient_buckets(batch: torch.Tensor, model: nn.Module, steps: int = 1)
     for p in model.parameters():
         p.register_hook(lambda grad, p=p: _hook(p, grad))
 
-    for _ in range(steps):
-        offset = 0
-        output = model(batch)
-        loss = output.float().sum()
-        loss.backward()
-        bucket.allreduce_ring(rank)
-        model.zero_grad(set_to_none=True)
+    with selected_nvtx_range():
+        for _ in range(steps):
+            offset = 0
+            output = model(batch)
+            loss = output.float().sum()
+            loss.backward()
+            bucket.allreduce_ring(rank)
+            model.zero_grad(set_to_none=True)
     dist.barrier()
 
     if rank == 0:
@@ -296,13 +298,14 @@ def demo_hybrid_sharding(microbatch: torch.Tensor, steps: int = 1) -> None:
         tensor.copy_(mirror.view_as(tensor))
 
     buffer_count = 0
-    for _ in range(steps):
-        out = fsdp_model(microbatch.to(device))
-        loss = out.sum()
-        loss.backward()
-        buffer_count = len(server.buffers)
-        dist.barrier()
-        fsdp_model.zero_grad(set_to_none=True)
+    with selected_nvtx_range():
+        for _ in range(steps):
+            out = fsdp_model(microbatch.to(device))
+            loss = out.sum()
+            loss.backward()
+            buffer_count = len(server.buffers)
+            dist.barrier()
+            fsdp_model.zero_grad(set_to_none=True)
     server.close()
 
     if rank == 0:
@@ -358,33 +361,34 @@ def demo_pipeline_parallel(microbatch: torch.Tensor, steps: int = 1) -> None:
         )
 
     partner_offset = world_size // 2
-    for _ in range(steps):
-        if not reuse_buffers:
-            bucket = GradientBucket(
-                numel=microbatch.numel(),
-                dtype=microbatch.dtype,
-                device=device,
-                world_size=world_size,
-            )
-        if rank < partner_offset:
-            microbatch = stage0(microbatch.to(device))
-            bucket.tensor.copy_(microbatch.flatten())
-            if bucket.handle is None:
-                raise RuntimeError("SKIPPED: nvshmem_training_example requires NVSHMEM or SymmetricMemory support")
-            next_rank = rank + partner_offset
-            remote = bucket.handle.get_buffer(next_rank)
-            remote.copy_(bucket.tensor, non_blocking=True)
-            torch.cuda.synchronize(device)
-            dist.barrier()
-        else:
-            if bucket.handle is None:
-                raise RuntimeError("SKIPPED: nvshmem_training_example requires NVSHMEM or SymmetricMemory support")
-            dist.barrier()
-            remote = bucket.handle.get_buffer(rank)
-            microbatch = remote.view_as(microbatch)
-            microbatch = stage1(microbatch)
-        if not reuse_buffers and bucket is not None:
-            bucket.close()
+    with selected_nvtx_range():
+        for _ in range(steps):
+            if not reuse_buffers:
+                bucket = GradientBucket(
+                    numel=microbatch.numel(),
+                    dtype=microbatch.dtype,
+                    device=device,
+                    world_size=world_size,
+                )
+            if rank < partner_offset:
+                microbatch = stage0(microbatch.to(device))
+                bucket.tensor.copy_(microbatch.flatten())
+                if bucket.handle is None:
+                    raise RuntimeError("SKIPPED: nvshmem_training_example requires NVSHMEM or SymmetricMemory support")
+                next_rank = rank + partner_offset
+                remote = bucket.handle.get_buffer(next_rank)
+                remote.copy_(bucket.tensor, non_blocking=True)
+                torch.cuda.synchronize(device)
+                dist.barrier()
+            else:
+                if bucket.handle is None:
+                    raise RuntimeError("SKIPPED: nvshmem_training_example requires NVSHMEM or SymmetricMemory support")
+                dist.barrier()
+                remote = bucket.handle.get_buffer(rank)
+                microbatch = remote.view_as(microbatch)
+                microbatch = stage1(microbatch)
+            if not reuse_buffers and bucket is not None:
+                bucket.close()
 
     dist.barrier()
     if bucket is not None:

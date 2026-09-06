@@ -16,6 +16,10 @@ from ch04.nccl_blackwell_config import (
     configure_nccl_for_multigpu,
     detect_b200_multigpu_topology,
 )
+from ch04.nvshmem_profile_ranges import (
+    COLLECTIVE_OPTIMIZED_NVTX_RANGE,
+    PROFILE_NVTX_RANGE_ENV,
+)
 from ch04.nvshmem_vs_nccl_benchmark import BenchmarkResult, benchmark, init_distributed
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
@@ -44,6 +48,7 @@ def _configure_blackwell_nccl() -> None:
 
 class OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU(VerificationPayloadMixin, BaseBenchmark):
     multi_gpu_required = True
+    preferred_ncu_replay_mode = "app-range"
     allowed_benchmark_fn_antipatterns = ("random_input_regeneration", "sync")
 
     def __init__(self) -> None:
@@ -131,7 +136,14 @@ class OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU(VerificationPayloadMixin, BaseBenc
 
     def get_config(self) -> BenchmarkConfig:
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
-            return BenchmarkConfig(iterations=1, warmup=5, measurement_timeout_seconds=300)
+            return BenchmarkConfig(
+                iterations=1,
+                warmup=5,
+                measurement_timeout_seconds=300,
+                nsys_nvtx_include=[COLLECTIVE_OPTIMIZED_NVTX_RANGE],
+                ncu_replay_mode="app-range",
+                ncu_replay_mode_override=True,
+            )
         return BenchmarkConfig(
             launch_via=LaunchVia.TORCHRUN,
             nproc_per_node=torch.cuda.device_count(),
@@ -139,6 +151,9 @@ class OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU(VerificationPayloadMixin, BaseBenc
             warmup=5,
             multi_gpu_required=True,
             measurement_timeout_seconds=300,
+            nsys_nvtx_include=[COLLECTIVE_OPTIMIZED_NVTX_RANGE],
+            ncu_replay_mode="app-range",
+            ncu_replay_mode_override=True,
         )
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
@@ -164,6 +179,7 @@ class OptimizedNVSHMEMVsNCCLBenchmarkMultiGPU(VerificationPayloadMixin, BaseBenc
                 "AISP_DISABLE_SYMMETRIC_MEMORY": "0",
                 "AISP_BROADCAST_OVERLAP": "1",
                 "AISP_BROADCAST_COMPUTE_PASSES": "8",
+                PROFILE_NVTX_RANGE_ENV: COLLECTIVE_OPTIMIZED_NVTX_RANGE,
             },
             multi_gpu_required=True,
             name="optimized_nvshmem_vs_nccl_benchmark_multigpu",

@@ -31,6 +31,7 @@ import torch
 import torch.distributed as dist
 
 from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
+from ch04.nvshmem_profile_ranges import selected_nvtx_range
 from core.common.device_utils import resolve_local_rank
 from core.optimization.symmetric_memory_patch import (
     maybe_create_symmetric_memory_handle,
@@ -115,18 +116,19 @@ def _measure_nccl_broadcast(bytes_per_rank: int, iterations: int) -> BenchmarkRe
     start.record(current_stream)
     if comm_stream is not None:
         comm_stream.wait_stream(current_stream)
-    for _ in range(iterations):
-        if overlap_compute and comm_stream is not None:
-            with torch.cuda.stream(comm_stream):
-                work = dist.broadcast(tensor, src=0, async_op=True)
-            for _ in range(compute_passes):
-                compute.mul_(1.0001)
-            work.wait()
-            current_stream.wait_stream(comm_stream)
-        else:
-            dist.broadcast(tensor, src=0)
-            for _ in range(compute_passes):
-                compute.mul_(1.0001)
+    with selected_nvtx_range():
+        for _ in range(iterations):
+            if overlap_compute and comm_stream is not None:
+                with torch.cuda.stream(comm_stream):
+                    work = dist.broadcast(tensor, src=0, async_op=True)
+                for _ in range(compute_passes):
+                    compute.mul_(1.0001)
+                work.wait()
+                current_stream.wait_stream(comm_stream)
+            else:
+                dist.broadcast(tensor, src=0)
+                for _ in range(compute_passes):
+                    compute.mul_(1.0001)
     end.record(current_stream)
     torch.cuda.synchronize(device)
 
@@ -179,25 +181,26 @@ def _measure_symmetric_broadcast(bytes_per_rank: int, iterations: int) -> Option
     start.record(current_stream)
     if comm_stream is not None:
         comm_stream.wait_stream(current_stream)
-    for _ in range(iterations):
-        if overlap_compute and comm_stream is not None and done is not None:
-            if rank == 0:
-                with torch.cuda.stream(comm_stream):
+    with selected_nvtx_range():
+        for _ in range(iterations):
+            if overlap_compute and comm_stream is not None and done is not None:
+                if rank == 0:
+                    with torch.cuda.stream(comm_stream):
+                        for remote in remote_buffers:
+                            remote.copy_(buffer, non_blocking=True)
+                        done.record(comm_stream)
+                else:
+                    done.record(current_stream)
+                for _ in range(compute_passes):
+                    compute.mul_(1.0001)
+                current_stream.wait_event(done)
+            else:
+                if rank == 0:
                     for remote in remote_buffers:
                         remote.copy_(buffer, non_blocking=True)
-                    done.record(comm_stream)
-            else:
-                done.record(current_stream)
-            for _ in range(compute_passes):
-                compute.mul_(1.0001)
-            current_stream.wait_event(done)
-        else:
-            if rank == 0:
-                for remote in remote_buffers:
-                    remote.copy_(buffer, non_blocking=True)
-            torch.cuda.synchronize(device)
-            for _ in range(compute_passes):
-                compute.mul_(1.0001)
+                torch.cuda.synchronize(device)
+                for _ in range(compute_passes):
+                    compute.mul_(1.0001)
     end.record(current_stream)
     torch.cuda.synchronize(device)
     dist.barrier()

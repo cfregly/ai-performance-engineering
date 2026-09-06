@@ -16,6 +16,10 @@ from ch04.nccl_blackwell_config import (
     configure_nccl_for_multigpu,
     detect_b200_multigpu_topology,
 )
+from ch04.nvshmem_profile_ranges import (
+    PROFILE_NVTX_RANGE_ENV,
+    TRAINING_PATTERNS_OPTIMIZED_NVTX_RANGE,
+)
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -43,6 +47,7 @@ def _configure_blackwell_nccl() -> None:
 
 class OptimizedNVSHMEMTrainingPatternsMultiGPU(VerificationPayloadMixin, BaseBenchmark):
     multi_gpu_required = True
+    preferred_ncu_replay_mode = "app-range"
 
     def __init__(self) -> None:
         super().__init__()
@@ -118,7 +123,14 @@ class OptimizedNVSHMEMTrainingPatternsMultiGPU(VerificationPayloadMixin, BaseBen
 
     def get_config(self) -> BenchmarkConfig:
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
-            return BenchmarkConfig(iterations=1, warmup=5, measurement_timeout_seconds=300)
+            return BenchmarkConfig(
+                iterations=1,
+                warmup=5,
+                measurement_timeout_seconds=300,
+                nsys_nvtx_include=[TRAINING_PATTERNS_OPTIMIZED_NVTX_RANGE],
+                ncu_replay_mode="app-range",
+                ncu_replay_mode_override=True,
+            )
         return BenchmarkConfig(
             launch_via=LaunchVia.TORCHRUN,
             nproc_per_node=torch.cuda.device_count(),
@@ -126,6 +138,9 @@ class OptimizedNVSHMEMTrainingPatternsMultiGPU(VerificationPayloadMixin, BaseBen
             warmup=5,
             multi_gpu_required=True,
             measurement_timeout_seconds=300,
+            nsys_nvtx_include=[TRAINING_PATTERNS_OPTIMIZED_NVTX_RANGE],
+            ncu_replay_mode="app-range",
+            ncu_replay_mode_override=True,
         )
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
@@ -140,7 +155,10 @@ class OptimizedNVSHMEMTrainingPatternsMultiGPU(VerificationPayloadMixin, BaseBen
                 "gradient",
                 "--benchmark",
             ],
-            env={"AISP_GRAD_SYNC_NAIVE": "0"},
+            env={
+                "AISP_GRAD_SYNC_NAIVE": "0",
+                PROFILE_NVTX_RANGE_ENV: TRAINING_PATTERNS_OPTIMIZED_NVTX_RANGE,
+            },
             multi_gpu_required=True,
             name="optimized_nvshmem_training_patterns_multigpu",
         )

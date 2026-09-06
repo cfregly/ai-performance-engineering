@@ -6,19 +6,21 @@ from pathlib import Path
 
 import torch
 
+from ch04.symmetric_memory_example import TRADITIONAL_RING_NVTX_RANGE
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     LaunchVia,
     TorchrunLaunchSpec,
 )
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.optimization.symmetric_memory_patch import symmetric_memory_available
 from typing import Optional
 
 
 class SymmetricMemoryMultiGPU(VerificationPayloadMixin, BaseBenchmark):
     multi_gpu_required = True
+    preferred_ncu_replay_mode = "app-range"
     def __init__(self) -> None:
         super().__init__()
         self.register_workload_metadata(requests_per_iteration=1.0)
@@ -81,6 +83,9 @@ class SymmetricMemoryMultiGPU(VerificationPayloadMixin, BaseBenchmark):
             warmup=5,
             multi_gpu_required=True,
             measurement_timeout_seconds=300,
+            nsys_nvtx_include=[TRADITIONAL_RING_NVTX_RANGE],
+            ncu_replay_mode="app-range",
+            ncu_replay_mode_override=True,
         )
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:

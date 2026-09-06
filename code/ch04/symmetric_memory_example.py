@@ -28,7 +28,10 @@ from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_
 import torch
 import torch.distributed as dist
 import torch.cuda.nvtx as nvtx
-from core.profiling.nvtx_helper import standardize_nvtx_label
+from core.profiling.nvtx_helper import nvtx_range, standardize_nvtx_label
+
+TRADITIONAL_RING_NVTX_RANGE = "transfer_sync:symmetric_memory_traditional_ring"
+SYMMETRIC_RING_NVTX_RANGE = "transfer_sync:symmetric_memory_direct_ring"
 
 
 def setup_distributed():
@@ -260,14 +263,15 @@ def benchmark_traditional_ring(tensor: torch.Tensor, iterations: int = 100) -> f
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
     start.record()
-    for _ in range(iterations):
-        ops = [
-            dist.P2POp(dist.isend, tensor, next_rank),
-            dist.P2POp(dist.irecv, recv_tensor, prev_rank),
-        ]
-        reqs = dist.batch_isend_irecv(ops)
-        for req in reqs:
-            req.wait()
+    with nvtx_range(TRADITIONAL_RING_NVTX_RANGE, enable=True):
+        for _ in range(iterations):
+            ops = [
+                dist.P2POp(dist.isend, tensor, next_rank),
+                dist.P2POp(dist.irecv, recv_tensor, prev_rank),
+            ]
+            reqs = dist.batch_isend_irecv(ops)
+            for req in reqs:
+                req.wait()
     end.record()
     torch.cuda.synchronize(device)
     dist.barrier()
@@ -299,13 +303,14 @@ def benchmark_symmetric_ring(tensor: torch.Tensor, iterations: int = 100) -> flo
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
     start.record()
-    for idx in range(iterations):
-        buf_idx = idx % 2
-        next_buf[buf_idx].copy_(local[buf_idx], non_blocking=True)
-        torch.cuda.current_stream().synchronize()
-        dist.barrier()
-        recv_tensor.copy_(prev_buf[buf_idx], non_blocking=True)
-        torch.cuda.current_stream().synchronize()
+    with nvtx_range(SYMMETRIC_RING_NVTX_RANGE, enable=True):
+        for idx in range(iterations):
+            buf_idx = idx % 2
+            next_buf[buf_idx].copy_(local[buf_idx], non_blocking=True)
+            torch.cuda.current_stream().synchronize()
+            dist.barrier()
+            recv_tensor.copy_(prev_buf[buf_idx], non_blocking=True)
+            torch.cuda.current_stream().synchronize()
     end.record()
     torch.cuda.synchronize(device)
     return start.elapsed_time(end) / iterations

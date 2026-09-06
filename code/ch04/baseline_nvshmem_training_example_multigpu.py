@@ -10,6 +10,10 @@ from typing import Optional
 import torch
 import torch.distributed as dist
 
+from ch04.nvshmem_profile_ranges import (
+    PROFILE_NVTX_RANGE_ENV,
+    TRAINING_EXAMPLE_BASELINE_NVTX_RANGE,
+)
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -22,6 +26,7 @@ from core.optimization.symmetric_memory_patch import symmetric_memory_available
 
 class NVSHMEMTrainingExampleMultiGPU(VerificationPayloadMixin, BaseBenchmark):
     multi_gpu_required = True
+    preferred_ncu_replay_mode = "app-range"
     allowed_benchmark_fn_antipatterns = ("random_input_regeneration",)
 
     def __init__(self) -> None:
@@ -111,7 +116,14 @@ class NVSHMEMTrainingExampleMultiGPU(VerificationPayloadMixin, BaseBenchmark):
 
     def get_config(self) -> BenchmarkConfig:
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
-            return BenchmarkConfig(iterations=1, warmup=5, measurement_timeout_seconds=300)
+            return BenchmarkConfig(
+                iterations=1,
+                warmup=5,
+                measurement_timeout_seconds=300,
+                nsys_nvtx_include=[TRAINING_EXAMPLE_BASELINE_NVTX_RANGE],
+                ncu_replay_mode="app-range",
+                ncu_replay_mode_override=True,
+            )
         return BenchmarkConfig(
             launch_via=LaunchVia.TORCHRUN,
             nproc_per_node=torch.cuda.device_count(),
@@ -119,6 +131,9 @@ class NVSHMEMTrainingExampleMultiGPU(VerificationPayloadMixin, BaseBenchmark):
             warmup=5,
             multi_gpu_required=True,
             measurement_timeout_seconds=300,
+            nsys_nvtx_include=[TRAINING_EXAMPLE_BASELINE_NVTX_RANGE],
+            ncu_replay_mode="app-range",
+            ncu_replay_mode_override=True,
         )
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
@@ -131,7 +146,10 @@ class NVSHMEMTrainingExampleMultiGPU(VerificationPayloadMixin, BaseBenchmark):
                 "baseline",
                 *self._training_args(),
             ],
-            env={"AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS": "0"},
+            env={
+                "AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS": "0",
+                PROFILE_NVTX_RANGE_ENV: TRAINING_EXAMPLE_BASELINE_NVTX_RANGE,
+            },
             multi_gpu_required=True,
             name="baseline_nvshmem_training_example_multigpu",
         )

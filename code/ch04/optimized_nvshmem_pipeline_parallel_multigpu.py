@@ -19,6 +19,10 @@ from ch04.nccl_blackwell_config import (
     configure_nccl_for_multigpu,
     detect_b200_multigpu_topology,
 )
+from ch04.nvshmem_profile_ranges import (
+    PIPELINE_OPTIMIZED_NVTX_RANGE,
+    PROFILE_NVTX_RANGE_ENV,
+)
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -50,7 +54,7 @@ def _enable_symmem_pipeline() -> bool:
 
 class OptimizedNVSHMEMPipelineParallelMultiGPU(VerificationPayloadMixin, BaseBenchmark):
     multi_gpu_required = True
-    preferred_ncu_replay_mode = "kernel"
+    preferred_ncu_replay_mode = "app-range"
     allowed_benchmark_fn_antipatterns = ("host_transfer", "random_input_regeneration", "sync")
 
     def __init__(self) -> None:
@@ -147,7 +151,14 @@ class OptimizedNVSHMEMPipelineParallelMultiGPU(VerificationPayloadMixin, BaseBen
 
     def get_config(self) -> BenchmarkConfig:
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
-            return BenchmarkConfig(iterations=1, warmup=5, measurement_timeout_seconds=300)
+            return BenchmarkConfig(
+                iterations=1,
+                warmup=5,
+                measurement_timeout_seconds=300,
+                nsys_nvtx_include=[PIPELINE_OPTIMIZED_NVTX_RANGE],
+                ncu_replay_mode="app-range",
+                ncu_replay_mode_override=True,
+            )
         return BenchmarkConfig(
             launch_via=LaunchVia.TORCHRUN,
             nproc_per_node=torch.cuda.device_count(),
@@ -155,6 +166,9 @@ class OptimizedNVSHMEMPipelineParallelMultiGPU(VerificationPayloadMixin, BaseBen
             warmup=5,
             multi_gpu_required=True,
             measurement_timeout_seconds=300,
+            nsys_nvtx_include=[PIPELINE_OPTIMIZED_NVTX_RANGE],
+            ncu_replay_mode="app-range",
+            ncu_replay_mode_override=True,
         )
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
@@ -170,6 +184,7 @@ class OptimizedNVSHMEMPipelineParallelMultiGPU(VerificationPayloadMixin, BaseBen
             env={
                 "AISP_DISABLE_SYMMEM_PIPELINE": "0",
                 "AISP_SYMMEM_PIPELINE_ASYNC": "1",
+                PROFILE_NVTX_RANGE_ENV: PIPELINE_OPTIMIZED_NVTX_RANGE,
             },
             multi_gpu_required=True,
             name="optimized_nvshmem_pipeline_parallel_multigpu",

@@ -80,6 +80,7 @@ def symmem_pipeline_async_enabled() -> bool:
     return os.environ.get("AISP_SYMMEM_PIPELINE_ASYNC", "").lower() in {"1", "true", "yes"}
 
 from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
+from ch04.nvshmem_profile_ranges import selected_nvtx_range
 
 from core.benchmark.gpu_requirements import require_min_gpus, warn_optimal_gpu_count
 
@@ -664,7 +665,8 @@ def demo_1f1b_pipeline(
     
     # Run 1F1B schedule
     start_time = time.perf_counter()
-    losses = engine.run_1f1b_schedule(input_batches)
+    with selected_nvtx_range():
+        losses = engine.run_1f1b_schedule(input_batches)
     torch.cuda.synchronize()
     elapsed = time.perf_counter() - start_time
     
@@ -730,7 +732,8 @@ def demo_interleaved_pipeline(
     
     # Run interleaved schedule
     start_time = time.perf_counter()
-    pipeline.run_interleaved_schedule(input_batches)
+    with selected_nvtx_range():
+        pipeline.run_interleaved_schedule(input_batches)
     torch.cuda.synchronize()
     elapsed = time.perf_counter() - start_time
     

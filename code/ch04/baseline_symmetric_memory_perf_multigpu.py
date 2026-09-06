@@ -15,6 +15,11 @@ import torch
 import torch.distributed as dist
 
 from ch04.symmetric_memory_perf_common import build_square_verification_probe
+from ch04.symmetric_memory_perf_common import (
+    SYMMETRIC_MEMORY_PERF_BASELINE_NVTX_RANGE,
+    SYMMETRIC_MEMORY_PERF_RESULT_CALLBACK,
+    SymmetricMemoryPerfChildResultMixin,
+)
 from core.benchmark.cuda_event_timing import elapsed_ms
 from core.benchmark.metrics import compute_memory_transfer_metrics
 from core.benchmark.verification_mixin import VerificationPayloadMixin
@@ -45,9 +50,14 @@ def init_distributed() -> Tuple[int, int, int]:
     return dist.get_rank(), dist.get_world_size(), torch.cuda.current_device()
 
 
-class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class BaselineSymmetricMemoryPerfBenchmark(
+    SymmetricMemoryPerfChildResultMixin,
+    VerificationPayloadMixin,
+    BaseBenchmark,
+):
     """Baseline NCCL P2P send/recv benchmark for symmetric memory comparison."""
     multi_gpu_required = True
+    preferred_ncu_replay_mode = "app-range"
 
     def __init__(self, size_mb: float = 1.0):
         super().__init__()
@@ -131,11 +141,10 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
         self.finalize_iteration_metrics()
         if self._verify_input is None or self._verify_output_buffer is None:
             raise RuntimeError("Verification buffers not initialized")
+        if self._verify_output is None:
+            raise RuntimeError("Timed receive output was not produced")
         probe = self._verify_input
-        if self._verify_output is not None:
-            output_source = self._verify_output[: self._verify_numel].view_as(self._verify_input).detach()
-        else:
-            output_source = probe
+        output_source = self._verify_output[: self._verify_numel].view_as(probe).detach()
         self._verify_output_buffer.copy_(output_source)
 
         self._set_verification_payload(
@@ -150,16 +159,11 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
                 "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
             },
             output_tolerance=(1e-5, 1e-5),
-            signature_overrides={"world_size": torch.cuda.device_count()},
+            signature_overrides={"world_size": self.world_size},
         )
 
     def _prepare_verification_payload(self) -> None:
-        if hasattr(self, "_subprocess_verify_output"):
-            return
-        self.capture_verification_payload()
-        self._subprocess_verify_output = self.get_verify_output()
-        self._subprocess_output_tolerance = self.get_output_tolerance()
-        self._subprocess_input_signature = self.get_input_signature()
+        self.require_symmetric_memory_perf_child_result()
 
     def teardown(self) -> None:
         """Cleanup distributed resources."""
@@ -176,7 +180,13 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
 
     def get_config(self) -> BenchmarkConfig:
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
-            return BenchmarkConfig(iterations=10, warmup=5)
+            return BenchmarkConfig(
+                iterations=10,
+                warmup=5,
+                nsys_nvtx_include=[SYMMETRIC_MEMORY_PERF_BASELINE_NVTX_RANGE],
+                ncu_replay_mode="app-range",
+                ncu_replay_mode_override=True,
+            )
         return BenchmarkConfig(
             launch_via=LaunchVia.TORCHRUN,
             nproc_per_node=torch.cuda.device_count(),
@@ -184,15 +194,41 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
             warmup=5,
             multi_gpu_required=True,
             measurement_timeout_seconds=300,
+            nsys_nvtx_include=[SYMMETRIC_MEMORY_PERF_BASELINE_NVTX_RANGE],
+            ncu_replay_mode="app-range",
+            ncu_replay_mode_override=True,
         )
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
-        self._prepare_verification_payload()
+        effective_config = config or self.get_config()
+        nnodes = int(effective_config.nnodes or 1)
+        if nnodes != 1:
+            raise RuntimeError(
+                "Symmetric-memory perf child-result transport requires nnodes == 1"
+            )
+        nproc_per_node = int(
+            effective_config.nproc_per_node or torch.cuda.device_count()
+        )
+        env = self.prepare_symmetric_memory_perf_child_result(
+            variant="baseline",
+            world_size=nproc_per_node,
+        )
         return TorchrunLaunchSpec(
-            script_path=Path(__file__).resolve(),
-            script_args=[],
+            script_path=Path(__file__).resolve().with_name(
+                "symmetric_memory_perf_worker.py"
+            ),
+            script_args=[
+                "--variant",
+                "baseline",
+                "--warmup",
+                str(effective_config.warmup),
+                "--iterations",
+                str(effective_config.iterations),
+            ],
+            env=env,
             multi_gpu_required=True,
             name="baseline_symmetric_memory_perf_multigpu",
+            result_callback=SYMMETRIC_MEMORY_PERF_RESULT_CALLBACK,
         )
 
     def get_custom_metrics(self) -> Optional[Dict[str, float]]:
@@ -207,6 +243,8 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
     def validate_result(self) -> Optional[str]:
         self.finalize_iteration_metrics()
         """Validate benchmark ran successfully."""
+        if self._symmetric_memory_perf_result_bundle is not None:
+            return None
         if self.tensor is None:
             return "Tensor not initialized"
         if self._last_avg_ms <= 0:
