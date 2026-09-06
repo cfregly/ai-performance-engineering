@@ -128,7 +128,9 @@ compile exposed a separate flag defect: `-arch=sm_100a` emits generic PTX as wel
 the architecture-specific caller requires an explicit `compute_100a` to
 `sm_100a` code-generation target. The launcher, alignment, and continuation
 repairs are committed in `a738687c28c10161e3000a97ce2ed640795872b6`; they are
-not yet merged. The validator flag repair follows that commit.
+included in PR #17, which merged as
+`cd35b3bd36970a5dcf3b91f89d5a317b3adb80d7` after all four hosted checks passed.
+The validator code-generation flag repair is included in that merge.
 
 CI's broader `--include-unpaired --fail-on-warnings` lint scan also passed:
 932 files, zero errors and warnings. The contract checker recognizes exact
@@ -150,8 +152,8 @@ parallelism, unsafe unbatched ring transfers and fully masked softmax blocks,
 and an incompatible full-graph compile request around Transformer Engine's
 disabled compiler boundary. The DTensor tool also confused visible device IDs
 with process ranks. Repairs are committed in `99a365de6` with 57 focused CPU
-checks passing and three hardware checks skipped. Their B200 reruns remain
-pending. The default dynamic-router tool now fails if requested vLLM execution
+checks passing and three hardware checks skipped. Their B200 results follow
+below. The default dynamic-router tool now fails if requested vLLM execution
 cannot initialize; explicit synthetic mode records its provenance. Its earlier
 successful exit must not be reused as real vLLM evidence.
 
@@ -159,7 +161,7 @@ The seven-caller TMA validator compiled and found a separate odd-width defect:
 the Chapter 7 copy kernel overwrote 387 row-padding values for a 129-by-385
 logical tensor with leading dimension 400. The follow-up preserves TMA stores
 for full tiles and bounds ordinary stores on partial tiles. Strict full-output
-and canary checks are unchanged; the B200 rerun is still required.
+and canary checks are unchanged; the subsequent B200 closure is recorded below.
 
 The standalone KV experiment compared the exact 256-step FP8 body with graph
 replay on the same buffers. Eight interleaved AB/BA rounds produced 80 samples
@@ -192,6 +194,64 @@ real behavioral tests for distributed paths, explicit synthetic/unsupported
 result categories, and profiler requirements that reflect the workload being
 measured. The cost calculator now also ran with explicitly illustrative inputs;
 those values are not measured B200 power or token throughput.
+
+### Integrated lab reruns and remaining launch repairs
+
+The direct repair wave on `90bc4f720eaf2881213a2a151087aafe05861730`
+passed **64 focused GPU tests with no skips**. The expert-parallel, compiled
+decode, and DTensor entrypoints completed with two actual B200 workers. The
+context-parallel demo completed with `CUDA_LAUNCH_BLOCKING=1`, then passed a
+separate normal asynchronous two-rank rerun. All completed stages drained
+their owned processes.
+
+The integrated `labs/kv_optimization:kv_standard` pair passed its full default
+workload, correctness checks, and both required profilers with graph replay
+enabled. This closes the integrated graph candidate's execution gate on this
+virtualized host. The paired run used 16,566 MiB versus 32,948 MiB for BF16,
+a 49.72% memory reduction, while latency was 22.999 ms versus 17.334 ms.
+It passed the declared memory goal; the FP8 path remained slower than BF16.
+It does not turn the earlier FP8-versus-FP8 experiment into
+an overall performance win against BF16 or into canonical hardware evidence.
+
+The broader sweep had completed 13 multi-GPU target attempts before the repair
+wave; none had an overall passing result. Some timing and Nsight Systems
+captures completed, but required profiler stages failed. The gradient-fusion
+range repair allowed NCU to start, then kernel replay stalled for more than
+12 minutes. The owned stage was interrupted with its artifacts retained and
+an explicit failed result. Distributed collectives need concurrent execution;
+the follow-up selects application-range replay instead of serial kernel replay,
+consistent with NVIDIA's [profiling guide](https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html).
+That follow-up still requires a fresh successful capture.
+
+The launch audit also found paired distributed modules whose torchrun specs
+executed their files without invoking the defined `main()` function. The repair
+uses an explicit named-function worker adapter, preserving paired modules as
+import-only. CLI tests must demonstrate that the requested worker entrypoint
+is invoked; a successful import is insufficient execution evidence.
+
+The seven-caller TMA wave passed cases 0, 5, and 6 under memcheck. Cases 1, 2,
+and 4 exposed the same 387 overwritten padding values on an odd-width tensor;
+case 3 required the relaxed-constexpr compiler flag already used by native
+builds. Commit `284c89346` bounds partial-tile stores in the remaining callers
+and adds that flag to the standalone validator. Full tiles retain their TMA
+path. Its real host helper regression checks all logical output, padding, and
+allocation guards. The subsequent B200 gate on `284c89346` passed all seven
+callers and all 42 full-output/canary cases, with Compute Sanitizer enabled.
+
+The same commit removes the NVFP4 tool's FP16 Transformer Engine fallback and
+unused graph capture. It requires an explicit single-rank TensorRT-LLM NVFP4
+engine with usable assets and actual generation output. Without that engine,
+the tool reports an unsupported prerequisite and exits nonzero. A positive
+engine-load/generation claim remains gated by a real engine asset. The combined
+local TMA, distributed-range, and NVFP4 selection passed 64 tests and skipped
+the real-engine-only test. The B200 TMA/NVFP4 selection passed 36 tests with
+that same asset-dependent skip. The real NVFP4 CLI returned nonzero with the
+explicit missing-engine diagnostic. These reruns drained all owned processes.
+
+The next broad pass prioritizes execution and correctness across the complete
+inventory with profiling explicitly disabled, while repaired profiler paths
+and optimization candidates receive separate captures. Those broad results are
+diagnostic execution evidence and cannot satisfy canonical profiling gates.
 
 - Run the complete GPU test suite on the final merged revision.
 - Complete all four sweep stages and reconcile the 486-target inventory,
