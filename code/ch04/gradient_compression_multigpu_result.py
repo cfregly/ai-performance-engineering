@@ -28,7 +28,7 @@ RESULT_DIR_ENV = "AISP_GRADIENT_COMPRESSION_RESULT_DIR"
 RESULT_TOKEN_ENV = "AISP_GRADIENT_COMPRESSION_RESULT_TOKEN"
 RESULT_VARIANT_ENV = "AISP_GRADIENT_COMPRESSION_VARIANT"
 LAUNCH_WALL_NS_ENV = "AISP_TORCHRUN_RESULT_LAUNCH_WALL_NS"
-RESULT_SCHEMA = "aisp.ch04-gradient-compression.child-result.v1"
+RESULT_SCHEMA = "aisp.ch04-gradient-compression.child-result.v2"
 COLLECTIVE_ALGORITHM = "backend_selected_all_reduce"
 
 
@@ -260,28 +260,81 @@ def assert_close_full(
 def _reference_scale(
     contract: GradientCompressionResultContract,
     rank_inputs: list[torch.Tensor],
+    *,
+    arithmetic_device: torch.device,
 ) -> torch.Tensor | None:
     if contract.effective_compression != "int8":
         return None
-    maximum = torch.zeros((), dtype=torch.float32, device=rank_inputs[0].device)
+    maximum = torch.zeros((), dtype=torch.float32, device=arithmetic_device)
     for rank_input in rank_inputs:
         for section in _iter_slices(rank_input.numel()):
-            maximum = torch.maximum(maximum, rank_input[section].abs().max())
+            device_section = rank_input[section].to(
+                device=arithmetic_device,
+                dtype=torch.float32,
+            )
+            maximum = torch.maximum(maximum, device_section.abs().max())
     limit = max(1, 127 // contract.world_size)
     scale = maximum / float(limit)
     return torch.where(scale == 0, torch.ones_like(scale), scale)
+
+
+def _reference_arithmetic_device(execution_device_type: str) -> torch.device:
+    """Return the device whose FP32 quantizer semantics produced the child output."""
+
+    if execution_device_type == "cpu":
+        return torch.device("cpu")
+    if execution_device_type != "cuda":
+        raise RuntimeError(
+            "Gradient-compression execution device type must be 'cpu' or 'cuda'"
+        )
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "Gradient-compression CUDA child evidence requires CUDA for exact-backend "
+            "INT8 oracle replay; CPU replay is not equivalent at rounding boundaries"
+        )
+    return torch.device("cuda", torch.cuda.current_device())
+
+
+def _validate_execution_device_for_backend(
+    *,
+    backend: str,
+    execution_device_type: str,
+    label: str,
+) -> None:
+    expected_by_backend = {"gloo": "cpu", "nccl": "cuda"}
+    expected_device_type = expected_by_backend.get(backend)
+    if expected_device_type is None:
+        raise RuntimeError(
+            f"Gradient-compression execution backend is unsupported at {label}: {backend!r}"
+        )
+    if execution_device_type != expected_device_type:
+        raise RuntimeError(
+            "Gradient-compression execution device/backend evidence differs at "
+            f"{label}: {execution_device_type!r} vs {backend!r}"
+        )
 
 
 def assert_reference_from_rank_inputs(
     contract: GradientCompressionResultContract,
     rank_inputs: list[torch.Tensor],
     reference: torch.Tensor,
+    *,
+    execution_device_type: str,
 ) -> None:
-    """Recompute the full mathematical oracle from saved pre-timing inputs."""
+    """Recompute the full oracle, preserving INT8 execution-device arithmetic."""
 
     if len(rank_inputs) != contract.world_size:
         raise RuntimeError("Gradient-compression oracle requires every rank input")
-    scale = _reference_scale(contract, rank_inputs)
+    arithmetic_device = (
+        _reference_arithmetic_device(execution_device_type)
+        if contract.effective_compression == "int8"
+        else torch.device("cpu")
+    )
+    scale = _reference_scale(
+        contract,
+        rank_inputs,
+        arithmetic_device=arithmetic_device,
+    )
     limit = max(1, 127 // contract.world_size)
     for section in _iter_slices(contract.numel):
         if contract.effective_compression == "none":
@@ -295,10 +348,20 @@ def assert_reference_from_rank_inputs(
             expected = expected_half.float()
         else:
             assert scale is not None
-            expected_int = torch.zeros_like(rank_inputs[0][section], dtype=torch.int32)
+            # CUDA and CPU FP32 division can land on opposite sides of an exact
+            # half-integer for a tiny number of values in a GiB-scale tensor.
+            # Replaying bounded sections on the recorded execution device keeps
+            # this an independent input-derived oracle without weakening the
+            # tolerance or retaining another full-size device tensor.
+            expected_int = torch.zeros(
+                rank_inputs[0][section].shape,
+                dtype=torch.int32,
+                device=arithmetic_device,
+            )
             for rank_input in rank_inputs:
                 quantized = (
                     rank_input[section]
+                    .to(device=arithmetic_device, dtype=torch.float32)
                     .div(scale)
                     .round()
                     .clamp(-limit, limit)
@@ -306,6 +369,8 @@ def assert_reference_from_rank_inputs(
                 )
                 expected_int.add_(quantized)
             expected = expected_int.float().mul_(scale)
+            if expected.device != reference.device:
+                expected = expected.to(device=reference.device)
         try:
             torch.testing.assert_close(
                 reference[section],
@@ -400,6 +465,7 @@ class GradientCompressionChildResultMixin:
 
         payloads: dict[int, dict[str, Any]] = {}
         receipts: list[DistributedRankWorkReceipt] = []
+        execution_device_types: set[str] = set()
         raw_bytes = 0
         for path in metadata_paths:
             if path.is_symlink() or not path.is_file():
@@ -444,6 +510,17 @@ class GradientCompressionChildResultMixin:
                     f"Gradient-compression process collective mode mismatch at {path}"
                 )
             receipt = DistributedRankWorkReceipt.from_dict(payload.get("work_receipt"))
+            execution_device_type = payload.get("execution_device_type")
+            if execution_device_type not in {"cpu", "cuda"}:
+                raise RuntimeError(
+                    f"Gradient-compression execution device evidence is invalid at {path}"
+                )
+            _validate_execution_device_for_backend(
+                backend=receipt.backend,
+                execution_device_type=execution_device_type,
+                label=str(path),
+            )
+            execution_device_types.add(execution_device_type)
             if len(receipt.collective_launch_ns) != expected.expected_collectives_per_rank:
                 raise RuntimeError(
                     "Gradient-compression measured collective count mismatch at "
@@ -485,12 +562,23 @@ class GradientCompressionChildResultMixin:
             distributed_topology(expected), receipts
         )
         validation.raise_for_failure()
+        if len(execution_device_types) != 1:
+            raise RuntimeError(
+                "Gradient-compression execution device type differs across ranks: "
+                f"{sorted(execution_device_types)}"
+            )
+        execution_device_type = next(iter(execution_device_types))
 
         ordered = [payloads[rank] for rank in range(expected.world_size)]
         reference = ordered[0]["tensors"]["reference"]
         rank_inputs = [item["tensors"]["input"] for item in ordered]
         rank_outputs = [item["tensors"]["output"] for item in ordered]
-        assert_reference_from_rank_inputs(expected, rank_inputs, reference)
+        assert_reference_from_rank_inputs(
+            expected,
+            rank_inputs,
+            reference,
+            execution_device_type=execution_device_type,
+        )
         for rank, output in enumerate(rank_outputs):
             assert_close_full(
                 output,
@@ -533,6 +621,7 @@ class GradientCompressionChildResultMixin:
             "work_receipts": receipts,
             "collective_algorithm_evidence": validation.collective_algorithm_evidence,
             "process_collective_mode": expected.process_collective_mode,
+            "execution_device_type": execution_device_type,
             "raw_result_tensor_bytes": raw_bytes,
         }
         try:
@@ -663,6 +752,7 @@ def write_gradient_compression_child_result(
         "work_receipt": work_receipt.to_dict(),
         "algorithm_evidence": DECLARED_ALGORITHM_EVIDENCE,
         "process_collective_mode": contract.process_collective_mode,
+        "execution_device_type": initial_input.device.type,
     }
     temporary_metadata = result_dir / f".rank-{rank}-{os.getpid()}.json.tmp"
     destination = result_dir / f"rank-{rank}.json"

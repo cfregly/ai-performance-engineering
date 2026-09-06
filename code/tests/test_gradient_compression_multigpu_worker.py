@@ -13,6 +13,9 @@ import torch.multiprocessing as mp
 from ch04.gradient_compression_common import GradientCompressionBenchmark
 from ch04.gradient_compression_multigpu_result import (
     GradientCompressionResultContract,
+    _reference_arithmetic_device,
+    _validate_execution_device_for_backend,
+    assert_reference_from_rank_inputs,
     input_signature,
     make_result_contract,
 )
@@ -49,7 +52,12 @@ def _contract(
     bucket_mb = 0
     if variant == "baseline" and not comm_only:
         bucket_mb = 1
-    tolerance = (1e-3, 1e-2) if compression == "fp16" else (1e-1, 5e-1)
+    if compression == "fp16":
+        tolerance = (1e-3, 1e-2)
+    elif comm_only:
+        tolerance = (1e-1, 5e-1)
+    else:
+        tolerance = (1e-1, 1e-1)
     return make_result_contract(
         variant=variant,
         pair_compression=compression,
@@ -241,8 +249,88 @@ def test_real_two_rank_gloo_work_and_fresh_full_output_quorum(
     assert bundle["raw_result_tensor_bytes"] == result_contract.raw_result_tensor_bytes
     assert bundle["collective_algorithm_evidence"] == "declared_only"
     assert bundle["process_collective_mode"] == "functional_out_of_place_constant_payload"
+    assert bundle["execution_device_type"] == "cpu"
     assert parent._gradient_compression_result_context["retention"] == "cleaned-after-success"
     assert not Path(parent._gradient_compression_result_context["result_dir"]).exists()
+
+
+def test_int8_oracle_fixture_preserves_observed_half_boundary() -> None:
+    """Pin the CPU half-boundary that differed from the retained B200 receipt."""
+
+    contract = _contract("optimized", "int8", False, tensor_size_mb=1)
+    global_max = torch.tensor(5.833953380584717, dtype=torch.float32)
+    observed_inputs = torch.tensor(
+        [
+            0.2315060943365097,
+            -0.1389036476612091,
+            -0.3241085112094879,
+        ],
+        dtype=torch.float32,
+    )
+    rank_input = torch.zeros(contract.numel, dtype=torch.float32)
+    rank_input[: observed_inputs.numel()] = observed_inputs
+    rank_input[-1] = global_max
+    rank_inputs = [rank_input, rank_input.clone()]
+    cpu_reference = torch.zeros_like(rank_input)
+    scale = global_max / 63.0
+    cpu_reference[: observed_inputs.numel()] = torch.tensor(
+        [6.0, -4.0, -8.0], dtype=torch.float32
+    ).mul_(scale)
+    cpu_reference[-1] = 126.0 * scale
+
+    retained_cuda_reference = cpu_reference.clone()
+    retained_cuda_reference[: observed_inputs.numel()] = torch.tensor(
+        [4.0, -2.0, -6.0], dtype=torch.float32
+    ).mul_(scale)
+    with pytest.raises(RuntimeError, match="section starting 0"):
+        assert_reference_from_rank_inputs(
+            contract,
+            rank_inputs,
+            retained_cuda_reference,
+            execution_device_type="cpu",
+        )
+
+    assert_reference_from_rank_inputs(
+        contract,
+        rank_inputs,
+        cpu_reference,
+        execution_device_type="cpu",
+    )
+
+
+def test_cuda_oracle_replay_fails_closed_when_cuda_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    with pytest.raises(RuntimeError, match="requires CUDA for exact-backend INT8"):
+        _reference_arithmetic_device("cuda")
+
+
+@pytest.mark.parametrize(
+    "backend,execution_device_type",
+    [("nccl", "cpu"), ("gloo", "cuda"), ("ucc", "cuda")],
+)
+def test_execution_device_and_collective_backend_must_agree(
+    backend: str,
+    execution_device_type: str,
+) -> None:
+    with pytest.raises(RuntimeError, match="execution (?:device/backend|backend)"):
+        _validate_execution_device_for_backend(
+            backend=backend,
+            execution_device_type=execution_device_type,
+            label="test receipt",
+        )
+
+    _validate_execution_device_for_backend(
+        backend="nccl",
+        execution_device_type="cuda",
+        label="test receipt",
+    )
+    _validate_execution_device_for_backend(
+        backend="gloo",
+        execution_device_type="cpu",
+        label="test receipt",
+    )
 
 
 def test_missing_rank_receipt_fails_and_retains_result_directory() -> None:
