@@ -10,6 +10,7 @@ import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
+import ch04.ddp_overlap as ddp_overlap_module
 from ch04.ddp_no_overlap import (
     BaselineNoOverlapBenchmark,
     _run_no_overlap_step,
@@ -233,6 +234,69 @@ def test_pair_declares_fresh_result_callback_and_child_cuda_timing(
         }
     finally:
         shutil.rmtree(result_dir)
+
+
+def test_optimized_setup_keeps_preplaced_inputs_and_disables_ddp_input_routing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ddp_calls: list[tuple[torch.nn.Module, dict[str, object]]] = []
+    model_devices: list[torch.device] = []
+    input_devices: list[torch.device] = []
+
+    class RecordingDdp(torch.nn.Module):
+        def __init__(self, module: torch.nn.Module, **kwargs: object) -> None:
+            super().__init__()
+            self.module = module
+            ddp_calls.append((module, kwargs))
+
+        def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+            return self.module(inputs)
+
+    def record_model_placement(
+        model: torch.nn.Module,
+        device: torch.device,
+    ) -> torch.nn.Module:
+        model_devices.append(torch.device(device))
+        return model
+
+    real_randn = torch.randn
+
+    def record_input_placement(*shape: int, **kwargs: object) -> torch.Tensor:
+        device = kwargs.pop("device")
+        input_devices.append(torch.device(device))
+        return real_randn(*shape, **kwargs)
+
+    monkeypatch.setattr(ddp_overlap_module, "require_min_gpus", lambda *_: None)
+    monkeypatch.setattr(
+        ddp_overlap_module,
+        "setup_single_gpu_env",
+        lambda *_args, **_kwargs: (0, 2, 0),
+    )
+    monkeypatch.setattr(ddp_overlap_module.dist, "is_initialized", lambda: True)
+    monkeypatch.setattr(ddp_overlap_module.torch.cuda, "set_device", lambda *_: None)
+    monkeypatch.setattr(ddp_overlap_module.torch.cuda, "manual_seed_all", lambda *_: None)
+    monkeypatch.setattr(ddp_overlap_module.torch.cuda, "synchronize", lambda: None)
+    monkeypatch.setattr(ddp_overlap_module.MultiLayerNet, "to", record_model_placement)
+    monkeypatch.setattr(ddp_overlap_module.torch, "randn", record_input_placement)
+    monkeypatch.setattr(
+        ddp_overlap_module.torch.nn.parallel,
+        "DistributedDataParallel",
+        RecordingDdp,
+    )
+
+    benchmark = OptimizedOverlapDdpBenchmark()
+    benchmark.setup()
+
+    assert model_devices == [torch.device("cuda:0")]
+    assert input_devices == [torch.device("cuda:0"), torch.device("cuda:0")]
+    assert len(ddp_calls) == 1
+    _, ddp_kwargs = ddp_calls[0]
+    assert ddp_kwargs == {
+        "device_ids": None,
+        "gradient_as_bucket_view": True,
+        "broadcast_buffers": False,
+        "static_graph": True,
+    }
 
 
 @pytest.mark.skipif(not dist.is_gloo_available(), reason="Gloo is unavailable")

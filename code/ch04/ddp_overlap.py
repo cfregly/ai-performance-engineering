@@ -120,7 +120,10 @@ class OptimizedOverlapDdpBenchmark(
 
             self.model = DDP(
                 model,
-                device_ids=[self.device.index],
+                # The worker places both the module and its inputs on the
+                # rank-local device.  Leaving device_ids unset avoids DDP's
+                # per-forward input routing without changing gradient sync.
+                device_ids=None,
                 gradient_as_bucket_view=True,  # Key optimization for overlap
                 broadcast_buffers=False,
                 static_graph=True,  # Additional optimization
