@@ -91,8 +91,8 @@ def _gloo_pipeline_worker(rank: int, rendezvous_path: str, output_path: str) -> 
         # Exercise the exact ready/consumed P2P control primitives on real
         # process groups. This is sideband evidence only, not NVSHMEM payload
         # evidence; the latter remains a CUDA/NVSHMEM runtime requirement.
-        ready_group = _create_pipeline_control_group(2, 5_000, device=device)
-        consumed_group = _create_pipeline_control_group(2, 5_000, device=device)
+        ready_group = _create_pipeline_control_group(2, 5_000)
+        consumed_group = _create_pipeline_control_group(2, 5_000)
         token = torch.tensor([rank + 1], dtype=torch.int32)
         received = torch.zeros_like(token)
         if rank == 0:
@@ -173,7 +173,7 @@ def test_real_two_rank_gloo_schedule_matches_full_serial_pipeline(tmp_path: Path
     assert payload["sideband_ok"] is True
 
 
-def test_control_group_is_collectively_initialized_before_return(
+def test_control_group_is_gloo_and_collectively_initialized_before_return(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Check the setup ordering; the spawned Gloo test exercises the real path."""
@@ -182,10 +182,10 @@ def test_control_group_is_collectively_initialized_before_return(
 
     monkeypatch.setattr(dist, "is_initialized", lambda: True)
     monkeypatch.setattr(dist, "get_world_size", lambda: 2)
-    monkeypatch.setattr(dist, "get_backend", lambda: "gloo")
+    monkeypatch.setattr(dist, "is_gloo_available", lambda: True)
 
     def fake_new_group(**kwargs: Any) -> object:
-        events.append(("new_group", kwargs["device_id"]))
+        events.append(("new_group", kwargs["backend"]))
         return group
 
     def fake_barrier(*, group: object, **_kwargs: Any) -> None:
@@ -194,14 +194,94 @@ def test_control_group_is_collectively_initialized_before_return(
     monkeypatch.setattr(dist, "new_group", fake_new_group)
     monkeypatch.setattr(dist, "barrier", fake_barrier)
 
-    actual = _create_pipeline_control_group(
-        2,
-        5_000,
-        device=torch.device("cpu"),
-    )
+    actual = _create_pipeline_control_group(2, 5_000)
 
     assert actual is group
-    assert events == [("new_group", None), ("barrier", group)]
+    assert events == [("new_group", "gloo"), ("barrier", group)]
+
+
+def test_control_group_rejects_missing_gloo_without_backend_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(dist, "is_initialized", lambda: True)
+    monkeypatch.setattr(dist, "get_world_size", lambda: 2)
+    monkeypatch.setattr(dist, "is_gloo_available", lambda: False)
+
+    with pytest.raises(RuntimeError, match="requires the Gloo control backend"):
+        _create_pipeline_control_group(2, 5_000)
+
+
+def _gloo_sideband_ring_worker(
+    rank: int,
+    world_size: int,
+    rendezvous_path: str,
+    output_path: str,
+) -> None:
+    os.environ["GLOO_SOCKET_IFNAME"] = "lo0" if sys.platform == "darwin" else "lo"
+    dist.init_process_group(
+        "gloo",
+        init_method=f"file://{rendezvous_path}",
+        rank=rank,
+        world_size=world_size,
+    )
+    try:
+        ready_group = _create_pipeline_control_group(world_size, 5_000)
+        consumed_group = _create_pipeline_control_group(world_size, 5_000)
+        target = (rank + 1) % world_size
+        source = (rank - 1) % world_size
+        for step in range(7):
+            ready_send = torch.tensor([step, rank], dtype=torch.int64)
+            ready_recv = torch.full_like(ready_send, -1)
+            ready_work = dist.isend(ready_send, dst=target, group=ready_group)
+            dist.recv(ready_recv, src=source, group=ready_group)
+            ready_work.wait()
+            assert ready_recv.tolist() == [step, source]
+
+            consumed_send = torch.tensor([step, rank], dtype=torch.int64)
+            consumed_recv = torch.full_like(consumed_send, -1)
+            consumed_work = dist.isend(
+                consumed_send,
+                dst=source,
+                group=consumed_group,
+            )
+            dist.recv(consumed_recv, src=target, group=consumed_group)
+            consumed_work.wait()
+            assert consumed_recv.tolist() == [step, target]
+            assert ready_send.device.type == consumed_send.device.type == "cpu"
+
+        dist.barrier()
+        if rank == 0:
+            torch.save(
+                {"world_size": world_size, "steps": 7, "token_device": "cpu"},
+                output_path,
+            )
+    finally:
+        if dist.is_initialized():
+            dist.destroy_process_group()
+
+
+@pytest.mark.skipif(not dist.is_gloo_available(), reason="Gloo is unavailable")
+@pytest.mark.parametrize("world_size", (2, 3))
+def test_real_gloo_ready_consumed_ring_protocol(
+    tmp_path: Path,
+    world_size: int,
+) -> None:
+    rendezvous_path = tmp_path / f"gloo-sideband-{world_size}"
+    output_path = tmp_path / f"sideband-result-{world_size}.pt"
+    context = mp.spawn(
+        _gloo_sideband_ring_worker,
+        args=(world_size, str(rendezvous_path), str(output_path)),
+        nprocs=world_size,
+        join=False,
+    )
+    _join_spawn(context)
+
+    payload = torch.load(output_path, map_location="cpu", weights_only=True)
+    assert payload == {
+        "world_size": world_size,
+        "steps": 7,
+        "token_device": "cpu",
+    }
 
 
 class _LoggedTensor:
@@ -265,7 +345,7 @@ def test_nvshmem_sequencing_model_waits_before_reuse_and_acks_after_clone(
     monkeypatch.setattr(
         pipeline,
         "_create_pipeline_control_group",
-        lambda _world_size, _timeout_ms, *, device: next(groups),
+        lambda _world_size, _timeout_ms: next(groups),
     )
 
     def fake_isend(
@@ -292,6 +372,16 @@ def test_nvshmem_sequencing_model_waits_before_reuse_and_acks_after_clone(
         world_size=2,
         transport="nvshmem",
         signal_timeout_ms=1234,
+    )
+    assert all(
+        token.device.type == "cpu"
+        for token_list in (
+            channel._ready_send_tokens,
+            channel._ready_recv_tokens,
+            channel._consumed_send_tokens,
+            channel._consumed_recv_tokens,
+        )
+        for token in token_list
     )
 
     channel.send(torch.tensor([1.0, 2.0]), target_rank=1)

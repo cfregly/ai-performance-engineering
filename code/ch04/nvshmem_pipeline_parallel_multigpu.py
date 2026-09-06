@@ -3,8 +3,8 @@
 Pipeline Parallelism with NVSHMEM for multi-GPU B200
 ==============================================
 
-Production-ready pipeline parallelism implementation using NVSHMEM/symmetric
-memory for ultra-low latency microbatch handoff between pipeline stages.
+Pipeline parallelism implementation using NVSHMEM/symmetric-memory payload
+movement with explicit ready and consumed ownership between pipeline stages.
 
 This file implements advanced pipeline schedules optimized for Blackwell B200:
 1. 1F1B (One-Forward-One-Backward) schedule with symmetric memory
@@ -18,10 +18,10 @@ Hardware Requirements:
 - CUDA 13.0+, PyTorch 2.10+
 - torch.distributed.nn.SymmetricMemory support
 
-Performance Targets:
-- Microbatch handoff latency: < 5μs (vs ~50μs with NCCL P2P)
-- Pipeline bubble time: < 10% (vs ~20% with traditional pipelines)
-- Throughput: 1.8-2.0x vs sequential execution
+Correctness Requirements:
+- Payload completion precedes the ready token
+- Receiver cloning precedes the consumed token
+- Producer slot reuse waits for that consumed token
 
 Usage:
     # 1F1B schedule
@@ -43,10 +43,9 @@ Traditional pipeline parallel uses NCCL P2P send/recv for activation tensors:
 - Bubble time typically 15-25%
 
 NVSHMEM pipeline parallel:
-- Direct GPU-GPU DMA writes over NVLink 5.0
-- < 5μs latency per microbatch handoff
-- Fully asynchronous, no CPU involvement
-- Bubble time < 10%
+- Direct remote symmetric-allocation copies over the GPU interconnect
+- CPU/Gloo readiness control while PyTorch symmetric signal APIs are unavailable
+- Explicit completion fencing before ownership changes
 
 When to Use:
 - Very large models (> 10B parameters) that don't fit on one GPU
@@ -120,31 +119,25 @@ def _make_rank_generator(
 def _create_pipeline_control_group(
     world_size: int,
     timeout_ms: int,
-    *,
-    device: torch.device,
 ) -> Any:
-    """Create and collectively initialize one launch-wide sideband group."""
+    """Create one launch-wide CPU/Gloo sideband group."""
     if not dist.is_initialized() or dist.get_world_size() != world_size:
         raise RuntimeError(
             "SKIPPED: NVSHMEM pipeline sideband requires the full process group"
         )
+    if not dist.is_gloo_available():
+        raise RuntimeError(
+            "SKIPPED: NVSHMEM pipeline sideband requires the Gloo control backend"
+        )
     try:
-        group_device = device
-        if device.type == "cuda" and device.index is None:
-            group_device = torch.device("cuda", torch.cuda.current_device())
         group = dist.new_group(
             ranks=list(range(world_size)),
-            backend=dist.get_backend(),
+            backend="gloo",
             timeout=datetime.timedelta(milliseconds=timeout_ms),
-            device_id=group_device if group_device.type == "cuda" else None,
         )
-        # NCCL initializes a new communicator lazily unless device_id is
-        # supplied. The real group barrier also makes initialization explicit
-        # for every backend before asymmetric ready/consumed P2P begins.
-        if group_device.type == "cuda":
-            dist.barrier(group=group, device_ids=[group_device.index])
-        else:
-            dist.barrier(group=group)
+        # Initialize the CPU control plane collectively before asymmetric P2P.
+        # This keeps unmatched control sends out of CUDA/NCCL stream ordering.
+        dist.barrier(group=group)
         return group
     except Exception as exc:
         raise RuntimeError(
@@ -241,9 +234,9 @@ class PipelineTransferBuffer:
 
     PyTorch 2.9 exposes ``SymmetricMemoryHandle.put_signal`` and
     ``wait_signal`` as silent stubs.  The NVSHMEM data path therefore uses the
-    existing remote symmetric-allocation copy and two independent NCCL
+    existing remote symmetric-allocation copy and two independent CPU/Gloo
     sidebands: ready gates the receiver's clone, and consumed gates sender slot
-    reuse. This is NVSHMEM allocation/remote-view data movement with NCCL
+    reuse. This is NVSHMEM allocation/remote-view data movement with Gloo
     control, rather than GPU-native NVSHMEM signaling.
     """
 
@@ -292,12 +285,10 @@ class PipelineTransferBuffer:
             self._ready_group = _create_pipeline_control_group(
                 self.world_size,
                 self.signal_timeout_ms,
-                device=self.device,
             )
             self._consumed_group = _create_pipeline_control_group(
                 self.world_size,
                 self.signal_timeout_ms,
-                device=self.device,
             )
             for token_list in (
                 self._ready_send_tokens,
@@ -306,7 +297,7 @@ class PipelineTransferBuffer:
                 self._consumed_recv_tokens,
             ):
                 token_list.extend(
-                    torch.zeros(1, dtype=torch.int32, device=self.device)
+                    torch.zeros(1, dtype=torch.int32, device="cpu")
                     for _ in range(self.num_buffers)
                 )
         for _slot in range(self.num_buffers):
@@ -479,9 +470,9 @@ class NVSHMEMPipelineEngine:
     Benefits:
     - Lower memory footprint than GPipe (doesn't accumulate all activations)
     - Better GPU utilization than naive pipeline
-    - NVSHMEM reduces microbatch handoff latency by 10x
+    - Symmetric memory keeps activation payload movement off the CPU
 
-    Performance: ~1.8x throughput vs sequential, < 10% bubble time
+    Performance is established by the benchmark harness for each runtime.
 
     Interleaved 1F1B:
     - To smooth stage imbalance, you can split each physical stage into multiple
