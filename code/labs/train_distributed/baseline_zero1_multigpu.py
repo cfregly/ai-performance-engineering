@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import argparse
-import time
 from typing import Iterable
 from pathlib import Path
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from torch.optim import AdamW, Optimizer
+from torch.optim import AdamW
 
 from core.benchmark.gpu_requirements import require_min_gpus
+from core.optimization.manual_zero1 import OptimizerStateSharder
 from labs.train_distributed.training_utils.memory import print_memory_stats
 from labs.train_distributed.training_utils.utils import get
 from labs.train_distributed.training_utils.torchrun_harness import TorchrunScriptBenchmark
@@ -24,66 +24,6 @@ def parse_args():
     parser.add_argument("--hidden-size", type=int, default=10_000)
     parser.add_argument("--batch-size", type=int, default=16)
     return parser.parse_args()
-
-
-class OptimizerStateSharder:
-    """Only keep a slice of optimizer states per rank (ZeRO-1)."""
-
-    def __init__(self, optimizer: Optimizer):
-        self.optimizer = optimizer
-        self.params: list[torch.nn.Parameter] = [
-            p for group in optimizer.param_groups for p in group["params"]
-        ]
-        self._partition_parameters()
-        self.communication_time = 0.0
-        self.step_time = 0.0
-
-    def _partition_parameters(self):
-        world_size = get("ws")
-        rank = get("rank")
-        shard_size = len(self.params) // world_size
-        remainder = len(self.params) % world_size
-
-        start = rank * shard_size + min(rank, remainder)
-        end = start + shard_size + (1 if rank < remainder else 0)
-
-        self.local_indices = list(range(start, end))
-        self.local_params = {self.params[i] for i in self.local_indices}
-
-        for group in self.optimizer.param_groups:
-            group["params"] = [p for p in group["params"] if p in self.local_params]
-
-    def step(self, closure=None):
-        step_start = time.perf_counter()
-        comm_start = step_start
-
-        # Gradient all-reduce across all ranks.
-        for param in self.params:
-            if param.grad is not None:
-                dist.all_reduce(param.grad, op=dist.ReduceOp.SUM)
-                param.grad /= get("ws")
-
-        torch.cuda.synchronize()
-        self.communication_time += time.perf_counter() - comm_start
-
-        # Optimizer step on local shard only.
-        self.optimizer.step(closure)
-
-        # Broadcast updated params to keep replicas in sync.
-        shard_size = len(self.params) // get("ws")
-        remainder = len(self.params) % get("ws")
-        for idx, param in enumerate(self.params):
-            if idx < (shard_size + 1) * remainder:
-                owner = idx // (shard_size + 1)
-            else:
-                owner = (idx - remainder) // shard_size
-            dist.broadcast(param.data, src=owner)
-
-        torch.cuda.synchronize()
-        self.step_time += time.perf_counter() - step_start
-
-    def zero_grad(self):
-        self.optimizer.zero_grad(set_to_none=True)
 
 
 def _build_model(hidden_size: int, device):
