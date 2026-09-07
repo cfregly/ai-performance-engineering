@@ -109,6 +109,8 @@ def test_measured_samples_still_drive_statistics():
      ("1000 tokens/s", 1000.0),
      ("1 toks/s", 1.0),
      ("0 TOKENS/S", 0.0),
+     ("[optimized-ddp] step 0/32 loss=12.7675 tokens/step=4,096", None),
+     ("[optimized-ddp] 32 steps | 48,507 toks/s per rank", 48507.0),
      ("no throughput available", None)],
 )
 def test_torchrun_throughput_log_parser(line, expected):

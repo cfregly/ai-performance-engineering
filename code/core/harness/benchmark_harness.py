@@ -2523,7 +2523,8 @@ class BenchmarkHarness:
     @staticmethod
     def _extract_tokens_per_s(lines: List[str]) -> Optional[float]:
         """Read reported token throughput without requiring a literal backslash."""
-        pattern = re.compile(r"([0-9][0-9,.]*)\s*(tok(?:ens)?/s|toks/s)", re.IGNORECASE)
+        # A unit must end here: "loss=12.7 tokens/step=4096" is not throughput.
+        pattern = re.compile(r"([0-9][0-9,.]*)\s*(tok(?:ens)?/s|toks/s)\b", re.IGNORECASE)
         best: Optional[float] = None
         for line in lines:
             match = pattern.search(line)
@@ -2581,11 +2582,16 @@ class BenchmarkHarness:
                 if dedupe and key in seen:
                     continue
                 seen.add(key)
-                # Keep messages that either don't mention rank or explicitly mention rank 0
-                if "rank 0" in key or "local_rank: 0" in key or "r0" in key:
-                    filtered.append(stripped)
-                elif "rank" not in key or "world_size" in key:
-                    filtered.append(stripped)
+                # Filter explicit worker labels, not prose such as "per rank".
+                # Unlabelled summaries are emitted by rank 0 in training scripts.
+                rank = re.search(
+                    r"\b(?:local_rank|rank)[\s:=]*(\d+)\b|\br(\d+)\b", key
+                )
+                if spec.parse_rank0_only and rank is not None:
+                    rank_number = next(group for group in rank.groups() if group is not None)
+                    if int(rank_number) != 0 and "world_size" not in key:
+                        continue
+                filtered.append(stripped)
             return filtered
 
         errors: List[str] = []
