@@ -21,6 +21,7 @@ import subprocess
 import time
 import traceback
 import warnings
+from collections.abc import Mapping
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -1273,11 +1274,72 @@ class VerifyRunner:
             if not tensor_indices:
                 return True, "Jitter check skipped: output contains no tensor leaves"
 
-            # Perturb the input by adding small noise
+            # Floating inputs retain the existing small-noise behavior. Integer
+            # inputs require an explicit valid domain because arbitrary numeric
+            # noise can create invalid token IDs, class labels, or indices.
+            try:
+                integer_dtype = torch.iinfo(input_tensor.dtype)
+            except TypeError:
+                integer_dtype = None
+
             with torch.no_grad():
-                noise = torch.randn_like(input_tensor) * 0.01
-                input_tensor.add_(noise)
-                perturbation_started = True
+                if integer_dtype is None:
+                    noise = torch.randn_like(input_tensor) * 0.01
+                    input_tensor.add_(noise)
+                    perturbation_started = True
+                else:
+                    bounds_by_input = getattr(benchmark, "input_jitter_bounds", None)
+                    if not isinstance(bounds_by_input, Mapping) or tensor_name not in bounds_by_input:
+                        return True, (
+                            f"Jitter check skipped: integer input '{tensor_name}' requires "
+                            "input_jitter_bounds[name] = (inclusive_low, exclusive_high)"
+                        )
+                    bounds = bounds_by_input[tensor_name]
+                    if (
+                        not isinstance(bounds, (tuple, list))
+                        or len(bounds) != 2
+                        or any(isinstance(value, bool) or not isinstance(value, int) for value in bounds)
+                    ):
+                        return False, (
+                            f"Jitter check failed: input_jitter_bounds['{tensor_name}'] "
+                            "must be a pair of integers"
+                        )
+                    low, high = bounds
+                    if high - low < 2:
+                        return False, (
+                            f"Jitter check failed: input_jitter_bounds['{tensor_name}'] "
+                            "must contain at least two values"
+                        )
+                    if low < integer_dtype.min or high - 1 > integer_dtype.max:
+                        return False, (
+                            f"Jitter check failed: input_jitter_bounds['{tensor_name}'] "
+                            f"does not fit dtype {input_tensor.dtype}"
+                        )
+                    if input_tensor.numel() == 0:
+                        return False, f"Jitter check failed: integer input '{tensor_name}' is empty"
+                    if bool(((input_tensor < low) | (input_tensor >= high)).any()):
+                        return False, (
+                            f"Jitter check failed: integer input '{tensor_name}' contains "
+                            f"values outside [{low}, {high})"
+                        )
+                    try:
+                        replacement = torch.randint(
+                            low,
+                            high,
+                            input_tensor.shape,
+                            dtype=input_tensor.dtype,
+                            device=input_tensor.device,
+                        )
+                    except (RuntimeError, TypeError, ValueError) as exc:
+                        return False, (
+                            f"Jitter check failed: cannot draw valid values for integer input "
+                            f"'{tensor_name}': {exc}"
+                        )
+                    if torch.equal(replacement, original_input):
+                        original_value = int(original_input.reshape(-1)[0])
+                        replacement.reshape(-1)[0] = low if original_value != low else low + 1
+                    input_tensor.copy_(replacement)
+                    perturbation_started = True
             
             # Re-run benchmark
             benchmark.benchmark_fn()
