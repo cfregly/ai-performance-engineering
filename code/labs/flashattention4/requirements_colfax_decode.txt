@@ -1,0 +1,3 @@
+# Optional experiment environment; do not overlay the repo's CUTLASS 4.5.2 stack.
+nvidia-cutlass-dsl[cu13]==4.6.2
+flash-attn-4[cu13] @ git+https://github.com/Dao-AILab/flash-attention.git@a93c9a8fb95516a08e0974743bd5723122613377#subdirectory=flash_attn/cute

@@ -27,7 +27,7 @@ If a lab cannot answer those questions yet, the doc should say so directly inste
 ## Directory Layout
 | Path | Description |
 | --- | --- |
-| `labs/block_scaling`, `labs/blackwell_matmul`, `labs/blackwell_gemm_optimizations`, `labs/flashattention4`, `labs/memory_bandwidth_patterns`, `labs/nccl_nixl_nvshmem`, `labs/persistent_decode`, `labs/parameterized_cuda_graphs`, `labs/training_hotpath` | Benchmark-pair labs with strong kernel/perf narratives and artifact-backed measured deltas, including narrow bandwidth-pattern, communication-stack tradeoff, and CUDA-graph replay labs. |
+| `labs/block_scaling`, `labs/blackwell_matmul`, `labs/blackwell_gemm_optimizations`, `labs/flashattention4`, `labs/memory_bandwidth_patterns`, `labs/nccl_nixl_nvshmem`, `labs/persistent_decode`, `labs/parameterized_cuda_graphs`, `labs/training_hotpath` | Benchmark-pair labs with strong kernel/perf narratives. Measured claims require retained artifacts; the FlashAttention-4 Colfax diary pairs are source-grounded studies whose local target-GPU qualification is pending. |
 | `labs/decode_optimization`, `labs/kv_optimization`, `labs/moe_cuda`, `labs/moe_optimization_journey` | Serving-path and MoE labs where the benchmark pair is part of a broader optimization story. |
 | `labs/moe_decode_blackwell_matrix`, `labs/nanochat_fullstack`, `labs/python_concurrency`, `labs/vllm-deepseek-tuning` | Larger workflow-oriented and matrix/playbook labs that need a richer doc model than a simple pair benchmark. |
 | `labs/nvfp4_*` | Low-precision kernel labs where verification discipline matters as much as the timing win. |
@@ -66,7 +66,7 @@ python -m cli.aisp bench list-targets --chapter labs/moe_cuda
 | `labs/cutlass_profiler_kernel_selector/` | CUTLASS profiler-based kernel selection | ch06, ch09 |
 | `labs/decode_optimization/` | Decoder hot-path optimization | ch18, ch19 |
 | `labs/dynamic_router/` | Dynamic prefill/decode routing | ch17, ch19 |
-| `labs/flashattention4/` | FlashAttention-4 pipeline co-design | ch10, ch18 |
+| `labs/flashattention4/` | FlashAttention-4 pipeline co-design, including a [Colfax diary guide](flashattention4/colfax_optimization_diaries.md) to decode S/P ping-pong and backward hdim-64 TMEM de-aliasing | ch10, ch11, ch18 |
 | `labs/flashattention_gluon/` | FlashAttention experimentation | ch18 |
 | `labs/flashinfer_attention/` | FlashInfer block-sparse attention lab | ch16 |
 | `labs/flexattention/` | FlexAttention harness and sweeps | ch18 |

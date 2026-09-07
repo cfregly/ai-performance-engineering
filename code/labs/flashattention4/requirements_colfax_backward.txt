@@ -1,0 +1,3 @@
+# Optional experiment environment; use separately from the decode PR environment.
+nvidia-cutlass-dsl[cu13]==4.6.2
+flash-attn-4[cu13] @ git+https://github.com/Dao-AILab/flash-attention.git@c33d03d9f3edc850ecb5e21466d5dd31331ca7b6#subdirectory=flash_attn/cute
