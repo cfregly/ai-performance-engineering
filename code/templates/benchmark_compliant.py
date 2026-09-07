@@ -1,7 +1,7 @@
 """Reference template for harness-compliant benchmarks.
 
 Copy this file when adding a new benchmark. It demonstrates:
-- Deterministic seeding (seed=42)
+- Caller-owned deterministic seeding
 - VerificationPayloadMixin to surface inputs/output/signature/tolerance
 - Explicit BenchmarkConfig with warmup/iterations
 
@@ -32,9 +32,6 @@ class CompliantBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.hidden_dim = 128
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.model = nn.Linear(self.hidden_dim, self.hidden_dim).to(self.device)
         self.input = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float32)
 

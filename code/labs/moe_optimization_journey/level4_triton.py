@@ -473,9 +473,6 @@ class Level4Triton(VerificationPayloadMixin, BaseBenchmark):
         )
     
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         print("=" * 60)
         print(f"Level {self.LEVEL}: {self.NAME}")
         print("=" * 60)

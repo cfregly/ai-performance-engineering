@@ -101,7 +101,6 @@ class RooflineAnalysisILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: Initialize roofline analyzer."""
-        torch.manual_seed(42)
         self.analyzer = RooflineAnalyzer(
             peak_bandwidth_gbs=8000,
             peak_compute_tflops=2000,

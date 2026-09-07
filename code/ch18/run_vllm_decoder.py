@@ -486,8 +486,6 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     # --------------------------------------------------------------------- setup
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         cfg = self.config
         self.model = SimpleMoEGPT(cfg, device=self.device).eval()
         self._replace_moe_dispatch(self.model, cfg)

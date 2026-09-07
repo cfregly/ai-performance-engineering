@@ -432,8 +432,6 @@ class SlidingWindowDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         """Setup: Initialize SDPA-based attention module."""
-        torch.manual_seed(42)
-        
         # Match baseline dtype for strict signature/workload comparability.
         self.dtype = torch.float16
         

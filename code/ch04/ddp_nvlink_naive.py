@@ -45,8 +45,6 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         num = torch.cuda.device_count()
         skip_if_insufficient_gpus(2)
         for rank in range(num):

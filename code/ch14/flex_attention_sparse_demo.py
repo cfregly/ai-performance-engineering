@@ -432,7 +432,6 @@ class FlexAttentionSparseDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         """Setup: Initialize FlexAttention benchmark."""
-        torch.manual_seed(42)
         self.demo_benchmark = FlexAttentionBenchmark(
             batch_size=self.batch_size,
             num_heads=self.num_heads,
