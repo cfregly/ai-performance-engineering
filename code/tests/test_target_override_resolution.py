@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
+import sys
+import textwrap
 from typing import Optional
 
 import torch
@@ -91,3 +94,86 @@ def test_harness_applies_target_overrides_before_get_config() -> None:
     assert result.errors == []
     assert benchmark.mode_seen_by_get_config == "fwd_bwd"
     assert benchmark.mode == "fwd_bwd"
+
+
+def test_subprocess_worker_import_receives_target_extra_args(tmp_path, monkeypatch) -> None:
+    module_path = tmp_path / "import_arg_benchmark.py"
+    module_path.write_text(
+        textwrap.dedent(
+            """
+            import argparse
+
+            import torch
+
+            from core.harness.benchmark_harness import BaseBenchmark
+
+            parser = argparse.ArgumentParser(add_help=False)
+            parser.add_argument("--scale", type=float, default=1.0)
+            import_args, _ = parser.parse_known_args()
+
+
+            class ImportArgBenchmark(BaseBenchmark):
+                allow_cpu = True
+
+                def setup(self):
+                    self.input = torch.arange(4, dtype=torch.float32)
+                    self.output = None
+
+                def benchmark_fn(self):
+                    self.output = self.input * import_args.scale
+
+                def get_verify_inputs(self):
+                    return {"input": self.input}
+
+                def get_verify_output(self):
+                    if self.output is None:
+                        raise RuntimeError("CPU benchmark did not execute")
+                    return self.output
+
+                def get_input_signature(self):
+                    return {"scale": import_args.scale}
+
+                def get_output_tolerance(self):
+                    return (0.0, 0.0)
+
+                def validate_result(self):
+                    torch.testing.assert_close(
+                        self.output,
+                        self.input * import_args.scale,
+                        rtol=0.0,
+                        atol=0.0,
+                    )
+            """
+        ),
+        encoding="utf-8",
+    )
+    module_name = "target_override_import_arg_benchmark"
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, module_name, module)
+    spec.loader.exec_module(module)
+    benchmark = module.ImportArgBenchmark()
+    config = BenchmarkConfig(
+        device=torch.device("cpu"),
+        iterations=1,
+        warmup=0,
+        use_subprocess=False,
+        enable_profiling=False,
+        enable_memory_tracking=False,
+        enforce_environment_validation=False,
+        target_label="labs/example:import_arg",
+        target_extra_args={"labs/example:import_arg": ["--scale", "3"]},
+    )
+    harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=config)
+    harness._ensure_runtime_initialized()
+
+    result = harness._benchmark_with_subprocess(benchmark, config)
+
+    assert result.errors == []
+    torch.testing.assert_close(
+        benchmark._subprocess_verify_output,
+        torch.tensor([0.0, 3.0, 6.0, 9.0]),
+        rtol=0.0,
+        atol=0.0,
+    )

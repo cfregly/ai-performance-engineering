@@ -3605,6 +3605,17 @@ class BenchmarkHarness:
             "device": str(self.device) if self.device else None,
             "initial_state": initial_state or None,
         }
+        target_overrides = _lookup_target_extra_args(
+            getattr(config, "target_extra_args", {}) or {},
+            getattr(config, "target_label", None),
+        )
+        target_override_argv = (
+            shlex.split(target_overrides)
+            if isinstance(target_overrides, str)
+            else list(target_overrides or [])
+        )
+        if target_override_argv:
+            input_data["target_override_argv"] = target_override_argv
         # Spawn subprocess using isolated runner
         # Use measurement_timeout_seconds (or fallback to timeout_seconds for backward compatibility).
         # Fail fast if no timeout is configured to avoid indefinite hangs.
