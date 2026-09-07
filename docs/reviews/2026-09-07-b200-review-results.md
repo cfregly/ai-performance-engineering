@@ -11,14 +11,17 @@ that are unavailable on this host.
 | Check | Current result |
 | --- | --- |
 | Broad target execution | 486 targets attempted; unsupported and informational outcomes remain separate from passes |
-| Benchmark contract scan | 932 entrypoints; zero errors and warnings |
+| Benchmark contract scan | 936 entrypoints; zero errors and warnings |
 | Repository-wide Ruff correctness checks | Passed |
-| Latest focused GPU regressions | 813 passed; all six isolated Llama tests also passed on `9d342cc79` |
-| Integrated GPU suite | 5,722 passed, 78 skipped, 30 failed; affected files passed after repairs in the focused rerun |
+| Focused GPU regressions | Earlier 813 affected-file tests and six isolated Llama tests passed; latest Colfax suites passed 32 cases in each pinned environment |
+| Latest integrated GPU suite | **5,795 passed, 79 skipped, zero failures or errors** on `46ba89929`; normal exit and complete process drain |
 | Standalone MoE entrypoint | Level 0 completed its normal 436.5M-parameter workload |
 | Normal dual-pool vLLM runs | Exact tokens passed twice; speed target failed twice |
 | Gradient-fusion NCU | Complete five-metric baseline and optimized reports inspected; repeated baseline replay remains intermittent |
-| Hosted CI and main delivery | Final checks and merge status are tracked in [PR #21](https://github.com/cfregly/ai-performance-engineering/pull/21) |
+| Hosted CI | 5,310 CPU tests passed, 535 skipped; static analysis, dashboard and dual-architecture CUDA builds passed on `d77181e28` |
+| Main delivery | [PR #21](https://github.com/cfregly/ai-performance-engineering/pull/21) merged as `814866061`; its tree matches the tested code. PR #20 is also merged |
+| Explicit opt-in GPU tests | ZeRO2 passed; two Blackwell tests passed on each of two ranks; local-model vLLM passed |
+| New Colfax GPU validation | Both full-workload deep-dive runs, both ABBA repeats, 64 opt-in cases and eight Nsight report inspections passed on `356490bd1` |
 
 The original broad inventory included 441 zero exits, 44 exits with code 1, and
 one native crash. Zero exits include skips and informational results. Later
@@ -26,12 +29,24 @@ targeted runs repaired the executable and verification defects; the complete
 attempt history and remaining dispositions are in the
 [repair checkpoint](2026-09-06-codebase-repair-checkpoint.md).
 
-The integrated suite ran every collected case. Its failures exposed outdated
-fixtures and assertions plus an autotune compilation timeout. All affected files
-passed the subsequent B200 rerun; this is a full diagnostic run followed by
-focused repair validation, not a single passing integrated run. Pytest shutdown
-needed scoped cleanup of surviving compiler work after the original report was
-written. Both the test counts and cleanup receipt are preserved.
+Earlier integrated suites exposed outdated fixtures and assertions plus an
+autotune compilation timeout. Those original failures and compiler cleanup
+receipts remain preserved. After the repairs, the latest integrated suite ran
+all 5,874 collected cases successfully, with 79 explicit skips, in 31 minutes
+29 seconds. It exited normally and drained all owned processes.
+
+The final distributed bootstrap repair passed all eight CPU/CUDA worker tests
+on B200, including one- and two-rank execution. Both final hosted workflows
+then passed: [benchmark validation](https://github.com/cfregly/ai-performance-engineering/actions/runs/34143112135)
+and [dual-architecture builds](https://github.com/cfregly/ai-performance-engineering/actions/runs/34143112148).
+The fresh integrated GPU rerun used merged `main` with the same tested code tree.
+It completed all 5,845 cases in 41 minutes 52 seconds and retained one repeated
+Llama autotune timeout. Native CUTLASS compilation was still active; pytest
+shutdown again needed scoped cleanup after its complete XML report was saved.
+The unchanged numerical workload now runs in a fresh interpreter with owned
+compiler cleanup. It passed with full collection and again inside the completed
+passing integrated run. Some skipped hardening tests also document detectors that are not yet
+implemented, rather than demonstrating those protections.
 
 The profiler builders now request exactly the five validated metrics for
 application-range replay, without adding a section set. All 67 profiler checks
@@ -47,14 +62,33 @@ unproven on this stack. Both successful and incomplete attempts are retained.
 | NanoChat | Approximately 2.00409x; repeated equivalent-workload measurements, complete bitwise outputs and Nsight Systems evidence |
 | Chapter 2 transfer | Approximately 26.60845x for the full 100 MiB transfer; repeated interleaved measurements and peer-transfer trace evidence |
 | Llama | Approximately 1.07956x; complete 8,388,608-element bitwise outputs, fresh inputs, repeated measurements and CUDA graph trace evidence |
-| Memory-bound compilation | Full output passed at 1e-5 relative/2e-5 absolute tolerance; 26.7x observed in one normal run, with repeated performance validation still needed |
-| Two-GPU cache-aware inference | Full verification passed; 1.64306x observed in one normal run, with repeated performance validation still needed |
+| Memory-bound compilation | 31.74309x repeated ABBA observation; all 16,777,216 outputs passed at 1e-5 relative/2e-5 absolute tolerance; Nsight confirmed 128 kernels fused into one |
+| Two-GPU cache-aware inference | Full 2,048-element outputs matched exactly; repeated ABBA measured 0.988428x, so the earlier single-run 1.64306x did not reproduce |
+| Colfax FA4 decode | 1.173108x repeated ABBA; all 32,768 outputs matched exactly; normal deep-dive run and profiler inspection passed |
+| Colfax FA4 backward | 1.080924x repeated ABBA; all 402,653,184 gradient elements matched exactly; normal deep-dive run and profiler inspection passed |
 | One-/two-GPU DDP | Exact outputs passed, including partial accumulation groups; no qualifying speedup |
 | Two-GPU disaggregated inference | Exact output passed; 1.00818x remained below the 1.05x speed requirement |
 | Dual-pool vLLM | Exact tokens passed with batch-invariant Triton; 0.95366x and 0.97053x in normal runs including engine startup |
 
 These are portable observations from the retained runtime. Memory regressions,
 default-backend token mismatches, and no-speedup results remain visible.
+
+The latest memory and cache-aware measurements used four fresh seeds and eight
+observations per arm. Memory medians were 2.387228 ms baseline and 0.075205 ms
+optimized, with standard deviations 0.006990 and 0.010427 ms. Cache-aware medians
+were 14.331648 and 14.499441 ms, with standard deviations 0.470046 and 0.517233 ms.
+Complete outputs were compared before and after timing in every block. Both
+memory Nsight Systems and five-metric Nsight Compute reports were inspected;
+both cache-aware arms also retained Systems traces. The two-GPU topology has
+only one decode rank, so it cannot establish an affinity-migration benefit.
+
+The Colfax repeats used four fresh seeds and eight observations per arm at the
+unchanged default shapes. Decode medians were 1.056113/0.900269 ms, with standard
+deviations 0.000819/0.000216 ms. Backward medians were 30.557050/28.269385 ms,
+with standard deviations 0.398677/0.072006 ms. Both source revisions are checked
+against every runtime Python file and installed Git provenance. The traces and
+counters support the measured ablation; internal TMEM/barrier ordering was not
+directly traced. See the [lab](../../code/labs/flashattention4/README.md).
 
 ## Improvements to prioritize
 

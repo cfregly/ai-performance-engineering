@@ -2006,3 +2006,116 @@ the code root and deliberately excludes inherited `PYTHONPATH`. This changes the
 test bootstrap, not the optimizer arithmetic or its strict comparisons. Its
 fresh validation and final CI outcome are tracked in
 [PR #21](https://github.com/cfregly/ai-performance-engineering/pull/21).
+
+### Wave58 and final CI: distributed bootstrap passes, fixes merged
+
+On `d77181e28`, all eight distributed optimizer worker cases passed on B200 in
+31.27 seconds: manual and Torch optimizers, one and two ranks, CPU and CUDA.
+The stage exited zero and drained. Final hosted benchmark validation then passed
+with 5,310 tests passed, 535 skipped, and no failures or errors; static analysis,
+dashboard checks, and dual-architecture CUDA builds also passed.
+
+PR #21 merged into `main` as `8148660617a145ae87f5a42b7c5d765243e08915`;
+PR #20 is also merged. The merge tree is identical to tested `d77181e28`.
+After the preceding GPU stages drained, the direct checkout was fast-forwarded
+to that merge. Wave59 collected all 5,845 tests and started a fresh full GPU
+suite with both B200s visible. Its final test and process-cleanup outcomes remain
+pending; the merge itself does not close that validation step.
+
+### Wave59: full merged-source run, one repeated compiler timeout
+
+All 5,845 cases completed on `814866061`: 5,766 passed, 78 skipped, and one
+failed in 41 minutes 52 seconds. The remaining failure was the Llama CUDA
+numerical test's 600-second autotune limit. Live process inspection showed
+continuing native CUTLASS template builds. After the complete XML was retained,
+pytest shutdown still awaited compiler work; the owned supervisor was signaled,
+drained its children, and returned 143. That process disposition is separate
+from the test counts. The XML SHA-256 is
+`16c72d1b262ac3de6d7eaeb9d2bb0b2f98b91daf19332facf79d1560627b5299`.
+
+A repair now places the unchanged two-input numerical workload in a fresh
+interpreter and scopes native worker cleanup to that process group. Five CPU
+tests passed and the CUDA case skipped locally; GPU acceptance is pending.
+Wave60 first repeats the unmodified isolated CUDA case, then runs the supported
+opt-in ZeRO, distributed Blackwell, and local-model routing checks, followed by
+full-workload memory/cache ABBA measurements and profiler inspection. Other
+hardening skips remain explicit where production detectors do not exist.
+
+### Wave60: opt-in coverage and repeated performance evidence
+
+On unchanged `814866061`, the isolated Llama case passed in 2.755 seconds,
+the real two-rank ZeRO2 case passed, both Blackwell tests passed on each rank,
+and local-model vLLM passed in 30.893 seconds. All stages drained.
+
+Full-workload memory ABBA measured 31.74309x from eight observations per arm
+across four fresh seeds. Baseline/optimized medians were 2.387228/0.075205 ms,
+with standard deviations 0.006990/0.010427 ms. Every full 16,777,216-element
+comparison passed the existing tolerances; maximum absolute error was
+0.00001144409. Both Nsight Systems and five-metric Nsight Compute captures
+completed. The first private inspection script assumed a long-form CSV and
+failed on NCU's wide format; the corrected inspector verified all requested
+columns, finite values, units, report hashes and the 128-to-one kernel reduction.
+The original inspection failure remains retained alongside the successful check.
+
+Cache-aware two-GPU ABBA passed all full 2,048-element comparisons exactly but
+measured **0.988428x**, with medians 14.331648/14.499441 ms and standard deviations
+0.470046/0.517233 ms. Four fresh seeds, eight observations per arm and both-arm
+Nsight Systems traces are retained. The earlier single-run 1.64306x was not
+reproduced. These are portable unlocked observations; the single decode rank
+cannot qualify migration improvements between decode ranks.
+
+### Wave61: compiler isolation and newly merged lab coverage
+
+After all prior stages drained, the checkout advanced to `46ba89929`, including
+the compiler-process repair and the newly merged Colfax lab additions. The
+Llama CUDA case passed with full-suite collection, then passed again in 5.625
+seconds inside the integrated suite. The completed run passed **5,795 tests**,
+with **79 skips and zero failures or errors**, in 1,888.955 seconds. Both stages
+exited zero and drained normally. Its complete XML SHA-256 is
+`94638463093ee4a2d7983fa6dbaacef4e74f360c9447e20fa6512652e7f9c0c2`.
+
+The new Colfax README additions initially failed the generator synchronization
+check. Their content now survives regeneration; the focused local batch passed
+45 tests with two CUDA skips. Decode and backward dependencies were installed
+in separate copies of the task environment, retaining PyTorch 2.9.1+cu130 and
+verifying the donor was unchanged. Package installation and source pin checks
+are preflight only; real Colfax GPU validation is next.
+
+The subsequent Colfax source review extended verification from selected files
+to all 52 runtime Python files plus the installed VCS repository, exact commit,
+and package subdirectory. The GPU test now changes Q or dO in place on the same
+graph and checks fresh outputs against an independent reference before restoring
+the input. The local focused batch passed 48 tests with two CUDA skips. These
+newer Colfax repairs still need their own GPU execution; the integrated suite
+above used the preceding source revision.
+
+### Waves62–63: Colfax execution repair and complete paired validation
+
+Wave62 passed all 32 opt-in GPU tests in each pinned environment. Full-default
+ABBA comparisons passed, but the normal decode harness rejected output exposed
+during graph capture as setup pre-computation. Backward's tuple output did not
+trigger that detector. The fix keeps graph-owned storage private until a real
+replay publishes the output; it preserves capture, workload, and tolerances.
+The GPU regression now runs the actual setup detector before poisoning output
+buffers and checking changed inputs on the same graph.
+
+On repaired `356490bd1`, Wave63 completed all seven stages with zero exits and
+normal process drain. Both 32-case GPU suites passed with no skips. Both normal
+deep-dive harness runs passed full verification and all three profiler captures.
+Normal speed ratios were 1.170342x decode and 1.094264x backward.
+
+The four-seed ABBA repeats produced eight observations per arm. Decode medians
+were 1.056113/0.900269 ms (1.173108x), with standard deviations
+0.000819/0.000216 ms. Backward medians were 30.557050/28.269385 ms (1.080924x),
+with standard deviations 0.398677/0.072006 ms. Every complete 32,768-element
+decode and 402,653,184-element gradient comparison matched exactly, before and
+after timing in every block. All eight Nsight reports passed inspection,
+including the five requested NCU metrics. The inspection receipt SHA-256 is
+`c997356673c44cf699a4aa6f24e32fb49cb14511b8ddb2834b8c4d5b760c2f04`.
+These portable current-host measurements do not establish canonical hardware
+expectations or directly trace internal TMEM/barrier ordering. The original
+Wave62 failure remains retained.
+
+The refreshed repository-wide scan checked 936 entrypoints with zero errors or
+warnings; Ruff correctness checks passed. Final hosted CI and delivery of these
+last repairs remain pending.

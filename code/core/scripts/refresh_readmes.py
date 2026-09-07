@@ -922,7 +922,7 @@ ENTRIES["labs/README.md"] = Entry(
         "Point contributors toward the repo's expected lab quality bar.",
     ],
     contents=[
-        ("`labs/block_scaling`, `labs/blackwell_matmul`, `labs/blackwell_gemm_optimizations`, `labs/flashattention4`, `labs/memory_bandwidth_patterns`, `labs/nccl_nixl_nvshmem`, `labs/persistent_decode`, `labs/parameterized_cuda_graphs`, `labs/training_hotpath`", "Benchmark-pair labs with strong kernel/perf narratives and artifact-backed measured deltas, including narrow bandwidth-pattern, communication-stack tradeoff, and CUDA-graph replay labs."),
+        ("`labs/block_scaling`, `labs/blackwell_matmul`, `labs/blackwell_gemm_optimizations`, `labs/flashattention4`, `labs/memory_bandwidth_patterns`, `labs/nccl_nixl_nvshmem`, `labs/persistent_decode`, `labs/parameterized_cuda_graphs`, `labs/training_hotpath`", "Benchmark-pair labs with strong kernel/perf narratives. Measured claims require retained artifacts; the FlashAttention-4 Colfax diary pairs are source-grounded studies whose local target-GPU qualification is pending."),
         ("`labs/decode_optimization`, `labs/kv_optimization`, `labs/moe_cuda`, `labs/moe_optimization_journey`", "Serving-path and MoE labs where the benchmark pair is part of a broader optimization story."),
         ("`labs/moe_decode_blackwell_matrix`, `labs/nanochat_fullstack`, `labs/python_concurrency`, `labs/vllm-deepseek-tuning`", "Larger workflow-oriented and matrix/playbook labs that need a richer doc model than a simple pair benchmark."),
         ("`labs/nvfp4_*`", "Low-precision kernel labs where verification discipline matters as much as the timing win."),
@@ -965,7 +965,7 @@ ENTRIES["labs/README.md"] = Entry(
             | `labs/cutlass_profiler_kernel_selector/` | CUTLASS profiler-based kernel selection | ch06, ch09 |
             | `labs/decode_optimization/` | Decoder hot-path optimization | ch18, ch19 |
             | `labs/dynamic_router/` | Dynamic prefill/decode routing | ch17, ch19 |
-            | `labs/flashattention4/` | FlashAttention-4 pipeline co-design | ch10, ch18 |
+            | `labs/flashattention4/` | FlashAttention-4 pipeline co-design, including a [Colfax diary guide](flashattention4/colfax_optimization_diaries.md) to decode S/P ping-pong and backward hdim-64 TMEM de-aliasing | ch10, ch11, ch18 |
             | `labs/flashattention_gluon/` | FlashAttention experimentation | ch18 |
             | `labs/flashinfer_attention/` | FlashInfer block-sparse attention lab | ch16 |
             | `labs/flexattention/` | FlexAttention harness and sweeps | ch18 |
@@ -2050,6 +2050,7 @@ ENTRIES["ch10"] = chapter_entry(
         "Prototype persistent matmuls that amortize launch overhead across iterations.",
         "Exercise thread-block clusters with and without DSMEM to understand hardware limits.",
         "Combine PyTorch, Triton, and CUDA kernels while keeping expectations synchronized.",
+        "Study how [FA4 decode ping-pong and backward TMEM de-aliasing](../labs/flashattention4/colfax_optimization_diaries.md) change MMA issue order and synchronization scope without changing the attention math.",
     ],
     contents=[
         ("`baseline_attention.py`, `optimized_attention.py`, `baseline_flash_attention.py`, `optimized_flash_attention.py`, `analyze_scaling.py`", "Attention workloads that span eager, fused, and `torch.compile` paths for modern decoder models."),
@@ -2162,6 +2163,7 @@ ENTRIES["ch11"] = chapter_entry(
         "Control ordering constraints for KV-cache updates and stream-ordered memory pools.",
         "Benchmark warp-specialized multistream kernels that share data via DSMEM.",
         "Introduce adaptive policies that adjust stream usage based on runtime telemetry.",
+        "Connect stream-level ideas to [FA4's intra-kernel producer/consumer pipelines](../labs/flashattention4/colfax_optimization_diaries.md), where per-slot phases and warp-local signals expose otherwise serialized work.",
     ],
     contents=[
         ("`baseline_streams.py`, `optimized_streams.py`, `streams_overlap_demo.cu`, `streams_ordered_demo.cu`, `streams_warp_specialized_demo.cu`, `stream_overlap_base.py`", "Core stream overlap demos that contrast serialized launches with overlapped workloads."),
@@ -3040,6 +3042,7 @@ ENTRIES["ch18"] = chapter_entry(
         "Test tensor-core optimized attention kernels tailored for Blackwell tmem limits.",
         "Validate integration points with serving frameworks (vLLM) using the provided runners.",
         "Separate EOS polling overhead from early-exit work reduction when a batch finishes before the max decode budget.",
+        "Compare prefill and decode schedules through [FA4 S/P ping-pong](../labs/flashattention4/colfax_optimization_diaries.md), and keep that kernel-internal TMEM experiment distinct from FlexAttention masking and score-mod sweeps.",
     ],
     contents=[
         ("`baseline_flexdecoding.py`, `optimized_flexdecoding.py`, `optimized_flexdecoding_graphs.py`, `v1_engine_loop.py`, `v1_engine_loop_common.py`", "FlexDecoding benchmarks plus a V1 polling-loop correctness tool (not a benchmark pair)."),
@@ -3744,7 +3747,7 @@ ENTRIES["labs/cache_aware_disagg_inference"] = lab_entry(
         "The cache-aware path should report lower KV transfer volume and fewer worker switches than the round-robin baseline on the same warm/cold request mix.",
     ],
     notes=[
-        "With two GPUs, the distributed target has one prefill and one decode rank. Both placement policies select the same decode rank, so this topology cannot demonstrate a reduction in migrations between decode ranks. An early September 2026 two-B200 check passed full outputs but failed the speed contract (13.672 ms baseline, 14.592 ms optimized). The later repaired live-input run passed full verification at 23.810 ms baseline and 14.491 ms optimized (1.64306x, one observation). Neither observation establishes a migration benefit; use at least two decode ranks to investigate that mechanism.",
+        "With two GPUs, the distributed target has one prefill and one decode rank. Both placement policies select the same decode rank, so this topology cannot demonstrate a reduction in migrations between decode ranks. September 7, 2026 repeated ABBA measurements on two B200s passed every full 2,048-element output comparison but found no speedup: median 14.331648 ms baseline and 14.499441 ms optimized (0.988428x; eight observations per arm, four fresh seeds). Standard deviations were 0.470046 and 0.517233 ms. These portable, unlocked observations did not reproduce the earlier single live-input run's 1.64306x. Both-arm Nsight traces are retained. Use at least two decode ranks to investigate migration benefits; this topology cannot establish that mechanism.",
         "This lab is intentionally a logical reproduction of the scheduler/caching story, not a full serving engine.",
         "Treat single-GPU `cache_aware_disagg` as a locality-comparison benchmark with a local comparison contract. The stable value on one GPU is the cache hit rate, KV transfer volume, and worker affinity improvement; the timed delta is recorded, but it is not a trustworthy headline speed gate on this host.",
         "Judge the single-GPU target by cache hit rate, KV transfer volume, and worker affinity before raw wall-clock speedup.",
@@ -4231,6 +4234,83 @@ ENTRIES["labs/flashattention4"] = lab_entry(
     title='Lab - FlashAttention-4 Pipeline Co-Design',
     summary='Recreates the practical shape of the FlashAttention-4 article: eager FlexAttention as the scalar-heavy baseline, then a compiled Blackwell-friendly path that tries the FLASH backend and falls back to FlexAttention+TMA when needed. The default benchmark uses ALiBi because it is stable on the local stack and still exercises the FA4 score-mod path.',
     lead_sections=[
+        MarkdownSection(
+            'Colfax decode and backward kernel ablations',
+            dedent(
+                """\
+                The [Colfax optimization diaries guide](colfax_optimization_diaries.md) extends
+                this lab with two direct upstream FA4 comparisons, linked from Chapters 10, 11,
+                and 18. These use separate, pinned PR revisions and do not use the provider
+                selection path described in the older forward experiments below.
+
+                | Harness target | `baseline_` path | `optimized_` path |
+                | --- | --- | --- |
+                | `flashattention4_decode` | Single S/P TMEM slot | Two-slot S/P ping-pong, overlapping next-tile QK with softmax |
+                | `flashattention4_backward` | Aliased P/S and dS/dP; compute-wide barriers | Dedicated P/dS storage plus warp-local synchronization at head dimension 64 |
+
+                Both arms replay one captured CUDA graph per iteration. JIT compilation, warmup,
+                and capture are setup costs. Backward times preprocessing, gradient kernels, and
+                postprocessing; its common forward output/LSE are prepared outside the timer.
+                Verification consumes the full replay output, including **all of dQ, dK, and dV**
+                for backward. Deterministic backward requires exact gradient equality between
+                arms; the GPU test also checks an independent high-precision reference.
+                `optimized_` identifies the candidate, not a measured speedup.
+
+                Use **two separate CUDA 13 / SM100 environments** with the repository harness
+                dependencies available. These experiments need CUTLASS DSL 4.6.2, whereas the
+                repository's default stack pins 4.5.2. Install one recipe per environment; installing
+                both in one environment replaces the first FA4 revision. From `code/`:
+
+                ```bash
+                # In the dedicated decode environment:
+                python -m pip install -r labs/flashattention4/requirements_colfax_decode.txt
+                python -m cli.aisp bench run --targets labs/flashattention4:flashattention4_decode --profile deep_dive --single-gpu
+                AISP_TEST_COLFAX_KIND=decode python -m pytest -q tests/test_flashattention4_colfax.py
+
+                # In the dedicated backward environment:
+                python -m pip install -r labs/flashattention4/requirements_colfax_backward.txt
+                python -m cli.aisp bench run --targets labs/flashattention4:flashattention4_backward --profile deep_dive --single-gpu
+                AISP_TEST_COLFAX_KIND=backward python -m pytest -q tests/test_flashattention4_colfax.py
+                ```
+
+                Missing CUDA, a non-SM100 GPU, or mismatched installed source produces
+                an explicit `SKIPPED:` diagnostic. Before importing CUDA code, the loader
+                verifies the exact VCS installation and all 52 upstream runtime Python files.
+                There is no substitute backend. The source
+                pins are in [colfax_upstream.json](colfax_upstream.json); benchmark workloads and
+                the performance hypothesis are in [colfax_workload_spec.yaml](colfax_workload_spec.yaml)
+                and [colfax_performance_intake.yaml](colfax_performance_intake.yaml).
+
+                Direct B200 validation on 2026-09-07 used source `356490bd1` and the full
+                default workloads. Both normal deep-dive runs passed, including complete
+                output verification and Nsight Systems, Nsight Compute, and PyTorch capture.
+                Each opt-in GPU suite passed all 32 cases, including setup detection,
+                output poisoning, and changed-input replay on the same graph.
+
+                | Pair | ABBA baseline median | ABBA optimized median | Ratio | Standard deviation, baseline / optimized |
+                | --- | ---: | ---: | ---: | ---: |
+                | Decode | 1.056113 ms | 0.900269 ms | 1.173108x | 0.000819 / 0.000216 ms |
+                | Backward | 30.557050 ms | 28.269385 ms | 1.080924x | 0.398677 / 0.072006 ms |
+
+                Each pair used four fresh seeds and eight observations per arm, with 20
+                replays per observation. All 32,768 decode outputs and all 402,653,184
+                backward gradient elements matched exactly in every full-output comparison;
+                the configured tolerances were unchanged. All eight Nsight reports passed
+                inspection, including all five requested NCU metrics. These are portable
+                current-host observations, not canonical hardware expectations. The traces
+                and counters accompany the source ablation; they do not directly visualize
+                the internal TMEM/barrier schedule. Earlier forward/provider results below
+                apply only to their named targets.
+
+                Local validation on 2026-09-07 (macOS, Python 3.12, CPU PyTorch 2.14.0):
+
+                - `python -m pytest -q tests/test_flashattention4_colfax.py`: **31 passed, 1 skipped**; the opt-in SM100 test was not enabled. The GPU test changes Q or dO on the same graph, compares against an independent reference, and checks restored-input replay.
+                - `python scripts/linting/check_benchmarks.py labs/flashattention4/baseline_flashattention4_decode.py labs/flashattention4/optimized_flashattention4_decode.py labs/flashattention4/baseline_flashattention4_backward.py labs/flashattention4/optimized_flashattention4_backward.py`: **0 errors, 0 warnings**.
+                - `python -m cli.aisp bench list-targets --chapter labs/flashattention4`: both new targets discovered.
+                - Ruff, syntax, documentation links, requirement/manifest consistency, and SHA256 checks against the pinned upstream sources passed. Direct setup returned the expected CUDA-required `SKIPPED:` diagnostic.
+                """
+            ),
+        ),
         MarkdownSection(
             'Problem',
             dedent(

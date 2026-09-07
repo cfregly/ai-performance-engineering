@@ -14,15 +14,19 @@ import torch
 
 from core.discovery import discover_benchmarks
 from core.harness.benchmark_harness import BaseBenchmark
+from core.harness.validity_checks import check_setup_precomputation
 from labs.flashattention4.colfax_benchmarks import (
     ColfaxBenchmark,
     ColfaxConfig,
     build_inputs,
     default_config,
     load_upstream,
+    python_source_tree_fingerprint,
     reference_attention,
     source_manifest,
+    verify_python_source_tree,
     verify_source_files,
+    verify_vcs_direct_url,
 )
 from tests.protection_test_utils import preserve_rng_state
 
@@ -31,18 +35,19 @@ EXPECTED_PINS = {
     "decode": {
         "pr": 2817,
         "commit": "a93c9a8fb95516a08e0974743bd5723122613377",
-        "files": {
-            "interface.py": "ad66e664523002b769a24bd2df076e8b96bb4005c8a5eb8f60da94e0bb823aae",
-            "flash_fwd_sm100.py": "ccae92a1d287fb1745b413170d984a7b4d6aa90cf91f67f32baacab92d2db779",
-            "utils.py": "a48f62478027f84d2573fdc4eb75967cd27f99741f14b33cc0a843fb547a0591",
+        "python_source_tree": {
+            "format": "sha256-path-content-sha256-v1",
+            "file_count": 52,
+            "sha256": "5fc8266486cef1883118d18278eefe4d320556c32365b59f842649827354117a",
         },
     },
     "backward": {
         "pr": 2804,
         "commit": "c33d03d9f3edc850ecb5e21466d5dd31331ca7b6",
-        "files": {
-            "interface.py": "de3b6d986101de5142e877c27395e70f79c6a16c4a43f0c11bfe736d91b389c9",
-            "flash_bwd_sm100.py": "4301340010d097fa44817b2ed70aad6e972458cb66ce8689546c7cdf3c1fe6fe",
+        "python_source_tree": {
+            "format": "sha256-path-content-sha256-v1",
+            "file_count": 52,
+            "sha256": "019cd50a4f70211405703f926cd64f691c71e03773a722bb49ea878a2552a5ba",
         },
     },
 }
@@ -259,8 +264,22 @@ def test_source_manifests_and_requirement_files_pin_distinct_exact_revisions() -
         manifest = manifests[kind]
         assert manifest["pr"] == expected["pr"]
         assert manifest["commit"] == expected["commit"]
-        assert manifest["files"] == expected["files"]
-        assert all(re.fullmatch(r"[0-9a-f]{64}", digest) for digest in manifest["files"].values())
+        assert {
+            key: manifest["python_source_tree"][key]
+            for key in ("format", "file_count", "sha256")
+        } == expected["python_source_tree"]
+        assert re.fullmatch(r"[0-9a-f]{64}", manifest["python_source_tree"]["sha256"])
+        assert manifest["python_source_tree"]["include"] == "**/*.py"
+        assert manifest["python_source_tree"]["excluded_generated"] == [
+            "**/__pycache__/**",
+            "**/*.pyc",
+            "../flash_attn_4-*.dist-info/**",
+        ]
+        assert manifest["installed_vcs"] == {
+            "distribution": "flash-attn-4",
+            "subdirectory": "flash_attn/cute",
+            "metadata": "direct_url.json",
+        }
         requirement = (LAB_DIR / f"requirements_colfax_{kind}.txt").read_text(encoding="utf-8")
         assert (
             f"flash-attention.git@{expected['commit']}#subdirectory=flash_attn/cute" in requirement
@@ -274,14 +293,41 @@ def test_source_verification_rejects_a_real_directory_with_mismatched_files(
     tmp_path: Path,
     kind: str,
 ) -> None:
-    manifest = source_manifest(kind)
-    for filename in manifest["files"]:
-        path = tmp_path / filename
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(f"not Colfax {kind}\n".encode())
+    (tmp_path / "interface.py").write_text(f"not Colfax {kind}\n", encoding="utf-8")
 
-    with pytest.raises(RuntimeError, match=rf"SKIPPED: Colfax {kind}.*source mismatch"):
+    with pytest.raises(RuntimeError, match=rf"SKIPPED: Colfax {kind}.*source tree mismatch"):
         verify_source_files(tmp_path, kind)
+
+
+def test_python_source_tree_fingerprint_rejects_a_tampered_helper(tmp_path: Path) -> None:
+    (tmp_path / "interface.py").write_text("from .helper import run\n", encoding="utf-8")
+    helper = tmp_path / "helper.py"
+    helper.write_text("def run(): return 1\n", encoding="utf-8")
+    expected = python_source_tree_fingerprint(tmp_path)
+
+    helper.write_text("def run(): return 2\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="Python source tree mismatch"):
+        verify_python_source_tree(tmp_path, expected, kind="decode", commit="fixture")
+
+
+@pytest.mark.parametrize("kind", ["decode", "backward"])
+def test_vcs_direct_url_requires_the_exact_requested_commit(kind: str) -> None:
+    manifest = source_manifest(kind)
+    direct_url = {
+        "subdirectory": "flash_attn/cute",
+        "url": f"{manifest['repository']}.git",
+        "vcs_info": {
+            "commit_id": manifest["commit"],
+            "requested_revision": manifest["commit"],
+            "vcs": "git",
+        },
+    }
+    assert verify_vcs_direct_url(direct_url, kind) == manifest
+
+    direct_url["vcs_info"]["commit_id"] = "0" * 40
+    with pytest.raises(RuntimeError, match="requires an exact VCS install"):
+        verify_vcs_direct_url(direct_url, kind)
 
 
 def test_real_discovery_finds_both_colfax_pairs() -> None:
@@ -357,23 +403,64 @@ def test_opt_in_real_colfax_sm100_lifecycle_and_full_outputs() -> None:
             decode_switch = (
                 interface.utils._fa_disable_s_ping_pong_enabled if kind == "decode" else None
             )
-            benchmark.setup()
+            setup_valid, setup_error = check_setup_precomputation(
+                lambda benchmark=benchmark: {"output": benchmark.output}, benchmark.setup
+            )
+            assert setup_valid, setup_error
+            assert benchmark.output is None
             if kind == "decode":
                 assert interface.utils._fa_disable_s_ping_pong_enabled is decode_switch
             with pytest.raises(RuntimeError, match=r"benchmark_fn\(\) must replay"):
                 benchmark.capture_verification_payload()
 
+            benchmark.benchmark_fn()
+            captured_outputs = (
+                (benchmark.output,)
+                if isinstance(benchmark.output, torch.Tensor)
+                else benchmark.output
+            )
+            assert captured_outputs is not None
             for _ in range(2):
-                captured_outputs = (
-                    (benchmark.output,)
-                    if isinstance(benchmark.output, torch.Tensor)
-                    else benchmark.output
-                )
-                assert captured_outputs is not None
                 for tensor in captured_outputs:
                     tensor.fill_(float("nan"))
                 benchmark.benchmark_fn()
                 assert all(torch.isfinite(tensor).all() for tensor in captured_outputs)
+
+            before_perturbation = tuple(tensor.detach().clone() for tensor in captured_outputs)
+            input_name = "q" if kind == "decode" else "dout"
+            assert benchmark.inputs is not None
+            input_tensor = benchmark.inputs[input_name]
+            original_input = input_tensor.detach().clone()
+            with torch.no_grad():
+                input_tensor.mul_(0.5).add_(0.25)
+            benchmark.benchmark_fn()
+            after_perturbation = tuple(tensor.detach().clone() for tensor in captured_outputs)
+            assert any(
+                not torch.equal(before, after)
+                for before, after in zip(before_perturbation, after_perturbation, strict=True)
+            )
+            perturbed_inputs = {
+                name: tensor.detach().clone() for name, tensor in benchmark.inputs.items()
+            }
+            reference_output, reference_gradients = _torch_attention_oracle(
+                perturbed_inputs,
+                causal=config.causal,
+            )
+            expected_perturbed = (
+                (reference_output,) if kind == "decode" else reference_gradients
+            )
+            assert expected_perturbed is not None
+            for actual, expected in zip(after_perturbation, expected_perturbed, strict=True):
+                torch.testing.assert_close(
+                    actual.detach().cpu().double(), expected, rtol=3e-2, atol=3e-2
+                )
+
+            with torch.no_grad():
+                input_tensor.copy_(original_input)
+            benchmark.benchmark_fn()
+            restored_outputs = tuple(tensor.detach().clone() for tensor in captured_outputs)
+            for before, restored in zip(before_perturbation, restored_outputs, strict=True):
+                torch.testing.assert_close(before, restored, rtol=0, atol=0)
 
             benchmark.capture_verification_payload()
             assert benchmark.inputs is not None

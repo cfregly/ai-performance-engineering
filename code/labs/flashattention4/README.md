@@ -1,7 +1,9 @@
 # Lab - FlashAttention-4 Pipeline Co-Design
 
-## Colfax decode and backward kernel ablations
+## Summary
+Recreates the practical shape of the FlashAttention-4 article: eager FlexAttention as the scalar-heavy baseline, then a compiled Blackwell-friendly path that tries the FLASH backend and falls back to FlexAttention+TMA when needed. The default benchmark uses ALiBi because it is stable on the local stack and still exercises the FA4 score-mod path.
 
+## Colfax decode and backward kernel ablations
 The [Colfax optimization diaries guide](colfax_optimization_diaries.md) extends
 this lab with two direct upstream FA4 comparisons, linked from Chapters 10, 11,
 and 18. These use separate, pinned PR revisions and do not use the provider
@@ -37,26 +39,41 @@ python -m cli.aisp bench run --targets labs/flashattention4:flashattention4_back
 AISP_TEST_COLFAX_KIND=backward python -m pytest -q tests/test_flashattention4_colfax.py
 ```
 
-Missing CUDA, a non-SM100 GPU, or mismatched pinned kernel/interface files produces
-an explicit `SKIPPED:` diagnostic. There is no substitute backend. The source
+Missing CUDA, a non-SM100 GPU, or mismatched installed source produces
+an explicit `SKIPPED:` diagnostic. Before importing CUDA code, the loader
+verifies the exact VCS installation and all 52 upstream runtime Python files.
+There is no substitute backend. The source
 pins are in [colfax_upstream.json](colfax_upstream.json); benchmark workloads and
 the performance hypothesis are in [colfax_workload_spec.yaml](colfax_workload_spec.yaml)
 and [colfax_performance_intake.yaml](colfax_performance_intake.yaml).
 
-These new pairs have **no local GPU measurements or expectations yet**. Run the
-opt-in correctness tests and retain harness clock/provenance, interleaved repeat,
-Nsight Systems, and Nsight Compute evidence before claiming a win. The older
-results below apply only to their named forward/provider targets.
+Direct B200 validation on 2026-09-07 used source `356490bd1` and the full
+default workloads. Both normal deep-dive runs passed, including complete
+output verification and Nsight Systems, Nsight Compute, and PyTorch capture.
+Each opt-in GPU suite passed all 32 cases, including setup detection,
+output poisoning, and changed-input replay on the same graph.
+
+| Pair | ABBA baseline median | ABBA optimized median | Ratio | Standard deviation, baseline / optimized |
+| --- | ---: | ---: | ---: | ---: |
+| Decode | 1.056113 ms | 0.900269 ms | 1.173108x | 0.000819 / 0.000216 ms |
+| Backward | 30.557050 ms | 28.269385 ms | 1.080924x | 0.398677 / 0.072006 ms |
+
+Each pair used four fresh seeds and eight observations per arm, with 20
+replays per observation. All 32,768 decode outputs and all 402,653,184
+backward gradient elements matched exactly in every full-output comparison;
+the configured tolerances were unchanged. All eight Nsight reports passed
+inspection, including all five requested NCU metrics. These are portable
+current-host observations, not canonical hardware expectations. The traces
+and counters accompany the source ablation; they do not directly visualize
+the internal TMEM/barrier schedule. Earlier forward/provider results below
+apply only to their named targets.
 
 Local validation on 2026-09-07 (macOS, Python 3.12, CPU PyTorch 2.14.0):
 
-- `python -m pytest -q tests/test_flashattention4_colfax.py`: **28 passed, 1 skipped**; the opt-in SM100 test was not enabled.
+- `python -m pytest -q tests/test_flashattention4_colfax.py`: **31 passed, 1 skipped**; the opt-in SM100 test was not enabled. The GPU test changes Q or dO on the same graph, compares against an independent reference, and checks restored-input replay.
 - `python scripts/linting/check_benchmarks.py labs/flashattention4/baseline_flashattention4_decode.py labs/flashattention4/optimized_flashattention4_decode.py labs/flashattention4/baseline_flashattention4_backward.py labs/flashattention4/optimized_flashattention4_backward.py`: **0 errors, 0 warnings**.
 - `python -m cli.aisp bench list-targets --chapter labs/flashattention4`: both new targets discovered.
 - Ruff, syntax, documentation links, requirement/manifest consistency, and SHA256 checks against the pinned upstream sources passed. Direct setup returned the expected CUDA-required `SKIPPED:` diagnostic.
-
-## Summary
-Recreates the practical shape of the FlashAttention-4 article: eager FlexAttention as the scalar-heavy baseline, then a compiled Blackwell-friendly path that tries the FLASH backend and falls back to FlexAttention+TMA when needed. The default benchmark uses ALiBi because it is stable on the local stack and still exercises the FA4 score-mod path.
 
 ## Problem
 This lab is here to test two different questions cleanly:
