@@ -2211,9 +2211,18 @@ class BaseBenchmark:
 
 
 def _maybe_write_subprocess_stderr(stderr: str, benchmark_name: str, config: BenchmarkConfig) -> None:
-    if not stderr:
+    _maybe_write_subprocess_stream(stderr, benchmark_name, config, stream="stderr")
+
+
+def _maybe_write_subprocess_stream(
+    content: str, benchmark_name: str, config: BenchmarkConfig, *, stream: str
+) -> None:
+    """Retain raw worker diagnostics before JSON parsing discards log prefixes."""
+    if stream not in {"stdout", "stderr"}:
+        raise ValueError(f"Unsupported subprocess stream: {stream}")
+    if not content:
         return
-    env_flag = os.environ.get("AISP_CAPTURE_SUBPROCESS_STDERR")
+    env_flag = os.environ.get(f"AISP_CAPTURE_SUBPROCESS_{stream.upper()}")
     if env_flag is not None:
         if str(env_flag).strip().lower() not in {"1", "true", "yes", "y", "on"}:
             return
@@ -2223,11 +2232,11 @@ def _maybe_write_subprocess_stderr(stderr: str, benchmark_name: str, config: Ben
     try:
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         slug = re.sub(r"[^a-zA-Z0-9_.-]+", "_", benchmark_name).strip("_")
-        path = Path(output_dir) / f"{slug}_subprocess.stderr.log"
-        path.write_text(stderr)
+        path = Path(output_dir) / f"{slug}_subprocess.{stream}.log"
+        path.write_text(content)
     except Exception as exc:
         if LOGGER_AVAILABLE:
-            logger.warning("Failed to persist subprocess stderr for %s: %s", benchmark_name, exc)
+            logger.warning("Failed to persist subprocess %s for %s: %s", stream, benchmark_name, exc)
 
 
 class BenchmarkHarness:
@@ -2799,6 +2808,9 @@ class BenchmarkHarness:
             elapsed = time.perf_counter() - start
             finish_monotonic_ns = time.monotonic_ns()
             finish_wall_ns = time.time_ns()
+            _maybe_write_subprocess_stream(
+                stdout, f"torchrun_{spec.name or benchmark.__class__.__name__}", config, stream="stdout"
+            )
             if process.returncode != 0:
                 stdout_lines = stdout.splitlines() if stdout else []
                 stderr_lines = [line.strip() for line in (stderr or "").splitlines() if line.strip()]
@@ -3704,6 +3716,7 @@ class BenchmarkHarness:
             else:
                 _cleanup_process_group(child_pgid)
 
+            _maybe_write_subprocess_stream(stdout, benchmark_name, config, stream="stdout")
             if subprocess_failed or process.returncode != 0:
                 error_msg = f"Subprocess exited with code {process.returncode}"
                 errors.append(error_msg)

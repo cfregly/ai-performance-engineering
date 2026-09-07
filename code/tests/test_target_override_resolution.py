@@ -102,6 +102,7 @@ def test_subprocess_worker_import_receives_target_extra_args(tmp_path, monkeypat
         textwrap.dedent(
             """
             import argparse
+            import os
 
             import torch
 
@@ -120,6 +121,7 @@ def test_subprocess_worker_import_receives_target_extra_args(tmp_path, monkeypat
                     self.output = None
 
                 def benchmark_fn(self):
+                    os.write(1, b"native worker diagnostic before JSON\\n")
                     self.output = self.input * import_args.scale
 
                 def get_verify_inputs(self):
@@ -164,6 +166,7 @@ def test_subprocess_worker_import_receives_target_extra_args(tmp_path, monkeypat
         enforce_environment_validation=False,
         target_label="labs/example:import_arg",
         target_extra_args={"labs/example:import_arg": ["--scale", "3"]},
+        subprocess_stderr_dir=str(tmp_path / "worker-logs"),
     )
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=config)
     harness._ensure_runtime_initialized()
@@ -171,6 +174,9 @@ def test_subprocess_worker_import_receives_target_extra_args(tmp_path, monkeypat
     result = harness._benchmark_with_subprocess(benchmark, config)
 
     assert result.errors == []
+    logs = list((tmp_path / "worker-logs").glob("*_subprocess.stdout.log"))
+    assert len(logs) == 1
+    assert "native worker diagnostic before JSON" in logs[0].read_text()
     torch.testing.assert_close(
         benchmark._subprocess_verify_output,
         torch.tensor([0.0, 3.0, 6.0, 9.0]),
