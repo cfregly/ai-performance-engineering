@@ -259,23 +259,18 @@ class ArchitectureConfig:
                 if cutlass_root is not None:
                     cfg.cuda.cutlass_dir = cutlass_root
                 try:
-                    import cutlass  # noqa: F401 - retain optional DSL availability detection
-                    try:
-                        cutlass_pkg_version = importlib_metadata.version("nvidia-cutlass-dsl")
-                        self.cutlass_version = cutlass_pkg_version
-                        if _parse_version_tuple(cutlass_pkg_version) < (4, 2, 0):
-                            warnings.warn(
-                                "nvidia-cutlass-dsl < 4.2 detected; upgrade recommended for full Blackwell support.",
-                                RuntimeWarning,
-                            )
-                    except importlib_metadata.PackageNotFoundError:
+                    # Read package metadata without importing the DSL's
+                    # `cutlass` namespace before Inductor loads its generators.
+                    cutlass_pkg_version = importlib_metadata.version("nvidia-cutlass-dsl")
+                    self.cutlass_version = cutlass_pkg_version
+                    if _parse_version_tuple(cutlass_pkg_version) < (4, 2, 0):
                         warnings.warn(
-                            "nvidia-cutlass-dsl package not found; CUTLASS kernels may be skipped.",
+                            "nvidia-cutlass-dsl < 4.2 detected; upgrade recommended for full Blackwell support.",
                             RuntimeWarning,
                         )
-                except ImportError:
-                    # If cutlass not installed, unset cutlass_dir
-                    # PyTorch will skip CUTLASS backend
+                except importlib_metadata.PackageNotFoundError:
+                    # The optional DSL package is independent of the source
+                    # tree used by the Inductor CUTLASS backend.
                     pass
 
             if "TRITON_PTXAS_PATH" not in os.environ:

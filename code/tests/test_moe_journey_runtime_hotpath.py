@@ -94,6 +94,110 @@ def test_level4_grouped_moe_batches_expert_count_metadata_reads() -> None:
     assert "x.unsqueeze(1).expand" not in grouped_section
 
 
+def test_level4_prepares_persistent_inference_state_before_compile() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "labs"
+        / "moe_optimization_journey"
+        / "level4_triton.py"
+    ).read_text(encoding="utf-8")
+    setup_section = source.split("    def setup(self) -> None:", maxsplit=1)[1].split(
+        "    def _get_timing_events",
+        maxsplit=1,
+    )[0]
+
+    prepare_call = "module.prepare_inference_workspaces("
+    assert prepare_call in setup_section
+    assert setup_section.index(prepare_call) < setup_section.index("torch.compile(")
+
+    layer = GroupedMoEExperts(num_experts=3, hidden_size=4, intermediate_size=8).eval()
+    batch_seq = 5
+    top_k = 2
+    assignments = batch_seq * top_k
+    layer.prepare_inference_workspaces(batch_seq, top_k)
+
+    route_token_ids = layer._route_token_cache[(batch_seq, top_k, "cpu")]
+    torch.testing.assert_close(
+        route_token_ids,
+        torch.arange(batch_seq, dtype=torch.long).repeat_interleave(top_k),
+    )
+    assert layer._expert_metadata_workspace.shape == (2, layer.num_experts)
+    assert layer._expert_metadata_host.shape == (2, layer.num_experts)
+    assert layer._sorted_expert_ids_buffer.numel() == assignments
+    assert layer._sorted_token_ids_buffer.numel() == assignments
+    assert layer._sorted_x_buffer.numel() == assignments * layer.hidden_size
+    assert layer._sorted_weight_buffer.numel() == assignments
+    assert layer._sorted_output_buffer.numel() == assignments * layer.hidden_size
+    assert layer._unsorted_output_buffer.numel() == assignments * layer.hidden_size
+
+    sorted_weight_column = next(iter(layer._sorted_weight_column_cache.values()))
+    assert len(layer._route_token_cache) == 1
+    assert len(layer._sorted_weight_column_cache) == 1
+    assert sorted_weight_column.shape == (assignments, 1)
+    assert sorted_weight_column.data_ptr() == layer._sorted_weight_buffer.data_ptr()
+
+    prepared_ptrs = {
+        name: getattr(layer, name).data_ptr()
+        for name in (
+            "_expert_metadata_workspace",
+            "_expert_metadata_host",
+            "_sorted_output_buffer",
+            "_unsorted_output_buffer",
+            "_sorted_token_ids_buffer",
+            "_sorted_expert_ids_buffer",
+            "_sorted_x_buffer",
+            "_sorted_weight_buffer",
+        )
+    }
+    prepared_route_ptr = route_token_ids.data_ptr()
+    prepared_column = sorted_weight_column
+
+    x = torch.randn(batch_seq, layer.hidden_size)
+    expert_indices = torch.tensor(
+        [[2, 0], [1, 2], [0, 1], [2, 1], [1, 0]],
+        dtype=torch.long,
+    )
+    expert_weights = torch.rand(batch_seq, top_k)
+    expert_weights.div_(expert_weights.sum(dim=-1, keepdim=True))
+
+    def reference(
+        tokens: torch.Tensor,
+        indices: torch.Tensor,
+        weights: torch.Tensor,
+    ) -> torch.Tensor:
+        result = torch.zeros_like(tokens)
+        for token_idx in range(tokens.shape[0]):
+            token = tokens[token_idx : token_idx + 1]
+            for route_idx in range(indices.shape[1]):
+                expert_id = int(indices[token_idx, route_idx])
+                gate = F.silu(token @ layer.w1[expert_id])
+                up = token @ layer.w3[expert_id]
+                expert_out = (gate * up) @ layer.w2[expert_id]
+                result[token_idx].add_(
+                    expert_out.squeeze(0) * weights[token_idx, route_idx]
+                )
+        return result
+
+    second_x = x.neg()
+    second_indices = expert_indices.flip(-1)
+    second_weights = expert_weights.flip(-1)
+    with torch.inference_mode():
+        first_output = layer(x, expert_indices, expert_weights).clone()
+        second_output = layer(second_x, second_indices, second_weights).clone()
+        first_reference = reference(x, expert_indices, expert_weights)
+        second_reference = reference(second_x, second_indices, second_weights)
+
+    torch.testing.assert_close(first_output, first_reference)
+    torch.testing.assert_close(second_output, second_reference)
+
+    assert route_token_ids.data_ptr() == prepared_route_ptr
+    assert len(layer._route_token_cache) == 1
+    assert len(layer._sorted_weight_column_cache) == 1
+    assert next(iter(layer._sorted_weight_column_cache.values())) is prepared_column
+    for name, data_ptr in prepared_ptrs.items():
+        assert getattr(layer, name).data_ptr() == data_ptr
+
+
 def test_level4_grouped_moe_overwrites_sorted_expert_output() -> None:
     source = (
         Path(__file__).resolve().parents[1]

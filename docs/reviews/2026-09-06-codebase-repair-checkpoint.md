@@ -1298,3 +1298,39 @@ Three further repairs are prepared for B200 validation:
 Focused CPU checks for the source-directory, architecture and transfer changes
 passed (`22 passed, 1 skipped`); four NanoChat checks also passed. No shared
 Python installation, driver, permissions, or scheduler configuration changed.
+
+### Worker TLS lifetime and graph workspace repairs
+
+The native MoE crash now has a reproducible local mechanism. The repository's
+CUDA graph fallback wrote short-lived Python worker dictionaries through
+PyTorch's private native TLS API. Five CPU reproducer trials crashed after
+3–27 worker/logging cycles; independent logging, reset, thread, and Python-local
+storage controls passed. Direct native writes also crashed with joined workers,
+so changing executor shutdown would not address the ownership defect.
+
+The fallback now retains new buckets only in Python `threading.local`, while
+preserving existing native-TLS reads and unknown-key errors. The repaired exact
+path passed 100 and 1,000 cycles. Four regression tests cover real worker
+lifetimes, native-read behavior, and a disposable debug-allocator process.
+These CPU controls establish the local lifetime repair; repeated cold-cache
+normal B200 fused/Triton runs remain the target-host acceptance check.
+
+Level4 now allocates all persistent routing metadata, token IDs, workspaces,
+and cached views before compilation. This addresses the next observed failure:
+a cached token-ID tensor allocated inside a CUDA graph was later overwritten
+by graph replay. The compile mode remains `max-autotune`. CPU tests exercise
+two changing inputs against independent expert math and verify stable storage;
+the real full-size factory still requires B200 validation.
+
+Both rowwise FP8 verification paths now explicitly disable inference mode and
+dequantize tensor-subclass outputs before ordinary slicing/copy operations.
+This avoids torchao's unsupported axiswise inference-tensor reshape without
+changing shapes or tolerances. Both real torchao 0.15 emulated recipes passed,
+including capture under an inherited inference context. The CUTLASS metadata
+check also avoids importing the DSL namespace before Inductor's generators.
+
+The combined focused CPU run passed 19 tests and skipped four GPU/optional
+dependency cases. Direct B200 follow-up includes those checks, complete
+outputs, two-GPU destination validation, and the corrected informational
+runner using the prepared virtualenv executable without resolving its symlink.
+CI remains deferred until the end at the user's request.

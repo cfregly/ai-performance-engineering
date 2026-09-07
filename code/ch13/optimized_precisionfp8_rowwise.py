@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Optional
 
 import torch
@@ -40,6 +39,41 @@ class SimpleModel(nn.Module):
         x = self.relu(self.fc1(x))
         x = self.fc2(x)
         return x
+
+
+def _capture_rowwise_verification_output(
+    model: nn.Module,
+    verify_input: torch.Tensor,
+    output_buffer: torch.Tensor,
+) -> torch.Tensor:
+    """Run the full rowwise model and copy a plain high-precision payload slice.
+
+    torchao 0.15 cannot reshape an axiswise-scaled Float8TrainingTensor while
+    PyTorch inference mode is active.  Explicitly disabling inherited inference
+    mode avoids that unsupported path, while no_grad keeps this verification-only
+    forward outside autograd.  Some torchao configurations can still return a
+    tensor subclass, so explicitly dequantize it before slicing and copying.
+    """
+    with torch.inference_mode(False), torch.no_grad():
+        raw_output = model(verify_input)
+
+        if type(raw_output) is not torch.Tensor:
+            to_original_precision = getattr(raw_output, "to_original_precision", None)
+            if not callable(to_original_precision):
+                raise TypeError(
+                    "Rowwise FP8 verification output is a tensor subclass without "
+                    "to_original_precision()"
+                )
+            raw_output = to_original_precision()
+        if type(raw_output) is not torch.Tensor:
+            raise TypeError("Rowwise FP8 dequantization did not return a plain torch.Tensor")
+
+        output_slice = raw_output[
+            : output_buffer.shape[0],
+            : output_buffer.shape[1],
+        ]
+        output_buffer.copy_(output_slice)
+    return output_buffer
 
 
 class OptimizedFP8RowwiseBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -144,14 +178,11 @@ class OptimizedFP8RowwiseBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.model is None or self._verify_input is None or self._verify_input_fp16 is None or self._verify_output_buffer is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
-        with torch.inference_mode():
-            verify_out = self.model(self._verify_input_fp16)
-            output_slice = verify_out[
-                : self._verify_output_buffer.shape[0],
-                : self._verify_output_buffer.shape[1],
-            ]
-            self._verify_output_buffer.copy_(output_slice)
-            self.output = self._verify_output_buffer
+        self.output = _capture_rowwise_verification_output(
+            self.model,
+            self._verify_input_fp16,
+            self._verify_output_buffer,
+        )
         self._set_verification_payload(
             inputs={"input": self._verify_input},
             output=self._verify_output_buffer,

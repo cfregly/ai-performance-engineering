@@ -596,11 +596,14 @@ def _make_tls_default(attr_name: str) -> Optional[Any]:
 
 def _patch_cudagraph_tls_bug() -> None:
     """
-    Work around a PyTorch TLS regression on newly added architectures (e.g. SM12.1).
-    
-    When CUDA graph trees try to read thread-local state before the Inductor module
-    has stashed the default dictionaries, an assertion is raised. We defensively
-    recreate the missing structures and stash them so later reads succeed.
+    Supply missing CUDA graph tree state to Python benchmark worker threads.
+
+    PyTorch initializes both Python ``threading.local`` and native TLS entries in
+    the importing thread. A Python-created worker can have neither entry. Keep a
+    worker fallback owned only by ``threading.local``: stashing a short-lived
+    fallback through the private native TLS API couples its lifetime to worker
+    teardown and has reproduced interpreter memory corruption. Existing native
+    TLS entries remain authoritative when present.
     """
     global _CUDAGRAPH_TLS_PATCHED
     if _CUDAGRAPH_TLS_PATCHED:
@@ -629,11 +632,7 @@ def _patch_cudagraph_tls_bug() -> None:
             raise AssertionError(f"Missing TLS object for {attr_name}")
 
         setattr(local, attr_name, fallback)
-        try:
-            torch._C._stash_obj_in_tls(attr_name, fallback)
-        except Exception:
-            logger.debug("Unable to stash TLS object for %s", attr_name, exc_info=True)
-        _log_once(f"Rebuilt missing CUDA graph TLS bucket '{attr_name}' to avoid torch.compile crashes.")
+        _log_once(f"Initialized Python-local CUDA graph TLS bucket '{attr_name}' for benchmark worker.")
         return fallback
 
     trees.get_obj = patched_get_obj  # type: ignore[assignment]

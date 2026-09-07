@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Optional
 
 import torch
@@ -19,6 +18,7 @@ except Exception as exc:  # pragma: no cover
 else:
     TORCHAO_IMPORT_ERROR = None
 
+from ch13.optimized_precisionfp8_rowwise import _capture_rowwise_verification_output
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -144,14 +144,11 @@ class OptimizedFP8RowwiseGWHpBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.model is None or self._verify_input is None or self._verify_input_fp16 is None or self._verify_output_buffer is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
-        with torch.inference_mode():
-            verify_out = self.model(self._verify_input_fp16)
-            output_slice = verify_out[
-                : self._verify_output_buffer.shape[0],
-                : self._verify_output_buffer.shape[1],
-            ]
-            self._verify_output_buffer.copy_(output_slice)
-            self.output = self._verify_output_buffer
+        self.output = _capture_rowwise_verification_output(
+            self.model,
+            self._verify_input_fp16,
+            self._verify_output_buffer,
+        )
         self._set_verification_payload(
             inputs={"input": self._verify_input},
             output=self._verify_output_buffer,

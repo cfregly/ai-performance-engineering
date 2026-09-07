@@ -214,6 +214,47 @@ class GroupedMoEExperts(nn.Module):
                 token_ids.div_(top_k, rounding_mode="floor")
             self._route_token_cache[key] = token_ids
         return token_ids
+
+    def prepare_inference_workspaces(self, batch_seq: int, top_k: int) -> None:
+        """Own fixed-shape inference state before CUDA Graph capture."""
+        batch_seq = int(batch_seq)
+        top_k = int(top_k)
+        if batch_seq <= 0 or top_k <= 0:
+            raise ValueError("batch_seq and top_k must be positive")
+
+        assignments = batch_seq * top_k
+        device = self.w1.device
+        dtype = self.w1.dtype
+
+        self._expert_metadata_buffers(device)
+        self._route_token_ids(batch_seq, top_k, device)
+        self._workspace(
+            "_sorted_expert_ids_buffer",
+            (assignments,),
+            device=device,
+            dtype=torch.long,
+        )
+        self._workspace(
+            "_sorted_token_ids_buffer",
+            (assignments,),
+            device=device,
+            dtype=torch.long,
+        )
+        sorted_x = self._workspace(
+            "_sorted_x_buffer",
+            (assignments, self.hidden_size),
+            device=device,
+            dtype=dtype,
+        )
+        sorted_weights = self._workspace(
+            "_sorted_weight_buffer",
+            (assignments,),
+            device=device,
+            dtype=dtype,
+        )
+        sorted_output = self._sorted_output_like(sorted_x)
+        self._unsorted_output_like(sorted_output)
+        self._sorted_weight_column(sorted_weights)
     
     def forward(
         self,
@@ -450,12 +491,16 @@ class Level4Triton(VerificationPayloadMixin, BaseBenchmark):
         self.model = TritonMoEModel(self.config).to(self.device).to(torch.bfloat16)
         self.model.eval()
 
-        # Pinned host allocation is a setup operation: Inductor cannot lower
-        # pin_memory=True inside the compiled forward. Materialize the reusable
-        # routing metadata on the model's actual device before tracing it.
+        # Persistent routing state must be owned before tracing. Otherwise a
+        # tensor retained in these caches can point into CUDA Graph memory that
+        # a later replay is allowed to overwrite.
+        batch_seq = self.config.batch_size * self.config.seq_len
         for module in self.model.modules():
             if isinstance(module, GroupedMoEExperts):
-                module._expert_metadata_buffers(module.w1.device)
+                module.prepare_inference_workspaces(
+                    batch_seq,
+                    self.config.num_experts_per_tok,
+                )
         
         # Compile with max-autotune for best Triton kernels
         print("  Compiling with max-autotune...")
