@@ -1748,3 +1748,78 @@ Neither failed router attempt counts as execution coverage. Compact reports
 and logs are retained under
 `/Users/admin/.codex/artifacts/ai-perf-remaining-20260906/wave46`;
 large tensor and profiler captures remain on the B200 host.
+
+### Waves47–49: compiler-state reproduction and training repairs
+
+Waves47 and48 completed and drained on `892fab17b`. The isolated memory-bound
+CUDA test passed all three cases, and the real verifier matched complete
+8,193-element outputs for seeds 42 and1042 within 7.63e-6. Repeated warm- and
+cold-cache input mutations also produced the expected changed outputs. These
+small isolated passes did not close the earlier full-size CLI failure.
+
+Wave49 uses frozen source `6fb4ec61b`. Its first three fresh-process probes
+preserve the default 16,777,216-element input and64 repeats. The ordinary
+compiler configuration passes; importing the repository architecture policy
+reproduces the full-output mismatch; retaining that policy while restoring
+CUDA graph trees passes. The architecture policy's legacy graph setting is
+therefore the repair target. The normal CLI gate and original combined test
+order still require a rerun after the source fix.
+
+The guarded router source invocation exposed the actual initialization failure:
+vLLM 0.16 assumes that an installed `flash_attn` namespace contains the legacy
+`flash_attn.ops` module, which FlashAttention 4 does not provide. The CUDA rotary
+path uses vLLM's own bundled implementation. A task-private complete vLLM wheel
+overlay with the upstream defensive-import fix is queued; its original wheel,
+source hashes, changed file, and import-resolution checks are retained. It does
+not modify the shared runtime. Model execution remains unvalidated until the
+actual engine run succeeds.
+
+The optimized DDP examples now synchronize and step the final partial gradient
+accumulation group, scale each group by its actual size, and include both forward
+and backward in `no_sync`. Seven focused CPU tests passed, including real
+one- and two-rank comparisons against a dense grouped reference for five steps
+with accumulation3, two steps with accumulation3, and ordinary accumulation1.
+Actual one- and two-B200 runs are in Wave49. The production ZeRO-2 communication
+hook also passed its real two-rank CPU reference test; its NCCL case is included
+in the same GPU batch.
+
+Fifteen chapter worker definitions and the imported chapter15 adapter now
+transport the caller's seed through the CLI and launch configuration. The
+default remains 42; five focused tests verify legacy 42 output, fresh 1042 output,
+two real Gloo ranks, and all worker call sites. Representative two-B200 launches
+are queued. Raw isolated-worker and torchrun stdout is now retained alongside
+stderr when an artifact directory is configured, before JSON extraction or
+console filtering, so native engine failures and reported metrics remain
+inspectable. Three focused subprocess controls passed.
+
+All thirteen Wave49 stages completed and drained. The focused GPU batch passed
+19 tests, including the actual NCCL ZeRO-2 case. Both two-GPU partial DDP runs
+passed, as did the explicit seed-1042 worker launch. Ordinary one- and two-GPU
+DDP comparisons retained exact full-output verification and remained below the
+1.05x speed target. The single-GPU partial DDP run exposed an initial `no_sync`
+failure with the static reducer. The repaired path keeps static DDP for the
+default accumulation of one and uses the supported reducer for accumulation.
+Real one- and two-rank CPU counterfactuals reproduced the assertion, and seven
+dense-reference regression cases passed after the fix. The B200 rerun is pending.
+
+Raw worker logs resolved the 12.7675 tokens/s anomaly: the parser accepted
+`tokens/step` as a throughput unit and read the preceding training loss, while
+the rank filter discarded the actual `toks/s per rank` summary. The parser now
+requires a complete unit and filters explicit rank labels. The actual retained
+DDP summaries report approximately 42,000–49,000 tokens/s per rank. Thirty-three
+focused controls, including a real torchrun process, passed; old published
+metrics remain preserved as rejected values rather than being rewritten.
+
+The normal chapter4 TorchComms and chapter15 disaggregated pairs exposed output
+mismatches in Wave49 despite successful child execution. Their fresh-seed
+reference construction is under investigation; neither counts as a verified
+pair. The cache-aware distributed worker now also transports the caller seed,
+with27 focused CPU tests passing and four CUDA cases pending.
+
+Wave49b completed both stages and drained on the same source. The private vLLM
+overlay resolved correctly, retained FlashAttention4 and bundled CUDA rotary,
+and the real router model workload completed with its full output captured.
+The first overlay check had incorrectly required its constructor to leave CUDA
+uninitialized; the corrected probe records that state and preserves the failed
+attempt. The baseline source run is execution evidence only. Paired dynamic
+and dual-pool router verification is running separately in Wave49c.
