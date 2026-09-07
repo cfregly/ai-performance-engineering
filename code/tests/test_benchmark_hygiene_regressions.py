@@ -24313,8 +24313,10 @@ def test_iteration_seed_and_clone_fixes_for_reviewed_pairs_remain_applied() -> N
     assert "with torch.inference_mode():" in blackwell_tcgen05
     assert "with torch.no_grad():" not in blackwell_tcgen05
     for source in (baseline_double_buffer, optimized_double_buffer):
-        assert "torch.manual_seed(42)" in source
-        assert "torch.cuda.manual_seed_all(42)" in source
+        setup = source.split("def setup", maxsplit=1)[1].split("def benchmark_fn", maxsplit=1)[0]
+        # The harness supplies both default and fresh verification seeds.
+        assert "torch.manual_seed(42)" not in setup
+        assert "torch.cuda.manual_seed_all(42)" not in setup
 
     assert "host_template.pin_memory()" in optimized_rack_prep
     assert "host_template.clone().pin_memory()" in optimized_rack_prep
