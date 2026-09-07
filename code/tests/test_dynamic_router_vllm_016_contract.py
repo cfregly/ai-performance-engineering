@@ -228,6 +228,7 @@ def test_all_four_benchmark_call_paths_use_current_vllm_api(
             req_count=2,
             max_tokens=1,
             cli_args=args,
+            prompt_token_ids=vllm_runner.build_prompt_token_ids([64, 64]),
         )
         expected_requests = 2
     else:
@@ -244,6 +245,7 @@ def test_all_four_benchmark_call_paths_use_current_vllm_api(
             max_tokens=1,
             prefill_ctx_thresh=3,
             cli_args=args,
+            prompt_token_ids=vllm_runner.build_prompt_token_ids([4, 2, 2]),
         )
         expected_requests = 3
 
@@ -271,6 +273,12 @@ def test_prompt_token_ids_preserve_default_prompts_and_are_live() -> None:
     assert vllm_runner._split_prompt_token_ids(
         prompt_token_ids, prompt_lengths
     ) == [[0, 1, 1, 1], [0, 1]]
+
+
+def test_request_admission_rejects_non_cpu_prompt_ids_before_conversion() -> None:
+    prompt_token_ids = torch.empty((1, 6), dtype=torch.int64, device="meta")
+    with pytest.raises(ValueError, match="requires CPU prompt_token_ids"):
+        vllm_runner._split_prompt_token_ids(prompt_token_ids, [4, 2])
 
 
 @pytest.mark.parametrize("call_path", ["dynamic", "dual_pool"])

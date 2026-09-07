@@ -22,6 +22,10 @@ from labs.dynamic_router.vllm_runner import run_vllm_routing_with_topology
 class BaselineDynamicRouterVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Runs vLLM without feedback routing (round-robin placement)."""
 
+    # vLLM admission consumes Python token lists. Rebuild them from the live
+    # CPU input each invocation so verification mutations reach the engine.
+    # _split_prompt_token_ids rejects GPU inputs before host conversion.
+    allowed_benchmark_fn_antipatterns = ("host_transfer",)
     multi_gpu_required = True
     _is_deterministic = True
     input_jitter_bounds = {"prompt_token_ids": (0, 2)}

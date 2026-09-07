@@ -195,7 +195,7 @@ def build_prompt_token_ids(prompt_lengths: Sequence[int]) -> torch.Tensor:
     lengths = [int(length) for length in prompt_lengths]
     if not lengths or any(length <= 0 for length in lengths):
         raise ValueError("prompt_lengths must contain only positive values")
-    return torch.ones((1, sum(lengths)), dtype=torch.int64)
+    return torch.ones((1, sum(lengths)), dtype=torch.int64, device="cpu")
 
 
 def _split_prompt_token_ids(
@@ -212,6 +212,8 @@ def _split_prompt_token_ids(
         )
     if prompt_token_ids.dtype != torch.int64:
         raise TypeError("prompt_token_ids must use torch.int64")
+    if prompt_token_ids.device.type != "cpu":
+        raise ValueError("vLLM request admission requires CPU prompt_token_ids")
     if bool((prompt_token_ids < 0).any()):
         raise ValueError("prompt_token_ids must be non-negative")
 
@@ -648,7 +650,7 @@ def run_vllm_routing_with_topology(
     req_count: Optional[int] = None,
     max_tokens: Optional[int] = None,
     cli_args: Optional[argparse.Namespace] = None,
-    prompt_token_ids: Optional[torch.Tensor] = None,
+    prompt_token_ids: torch.Tensor,
 ) -> Dict[str, float]:
     """Run a small vLLM-backed routing demo with a precomputed topology snapshot."""
     if not torch.cuda.is_available():
@@ -667,8 +669,6 @@ def run_vllm_routing_with_topology(
     max_tokens_val = max_tokens or args.max_tokens
     if max_tokens_val <= 0:
         raise ValueError("max_tokens must be positive")
-    if prompt_token_ids is None:
-        prompt_token_ids = build_prompt_token_ids(prompt_lengths)
     request_prompt_token_ids = _split_prompt_token_ids(prompt_token_ids, prompt_lengths)
 
     topo = topology_snapshot
@@ -762,6 +762,8 @@ def run_vllm_routing(
     prompt_token_ids: Optional[torch.Tensor] = None,
 ) -> Dict[str, float]:
     topo = topology_snapshot or detect_topology(max_gpus=torch.cuda.device_count())
+    if prompt_token_ids is None:
+        prompt_token_ids = build_prompt_token_ids(routing_prompt_lengths(cli_args or _CLI_ARGS, req_count=req_count))
     return run_vllm_routing_with_topology(
         mode,
         topology_snapshot=topo,
@@ -784,7 +786,7 @@ def run_dual_pool_vllm_with_topology(
     max_tokens: Optional[int] = None,
     prefill_ctx_thresh: Optional[int] = None,
     cli_args: Optional[argparse.Namespace] = None,
-    prompt_token_ids: Optional[torch.Tensor] = None,
+    prompt_token_ids: torch.Tensor,
 ) -> Dict[str, float]:
     """
     Dual-pool vLLM experiment: compare shared-pool vs disaggregated prefill/decode.
@@ -824,8 +826,6 @@ def run_dual_pool_vllm_with_topology(
         decode_requests=decode_requests,
         continue_requests=continue_requests,
     )
-    if prompt_token_ids is None:
-        prompt_token_ids = build_prompt_token_ids(prompt_lengths)
     request_prompt_token_ids = _split_prompt_token_ids(prompt_token_ids, prompt_lengths)
 
     prefill_ids = _parse_device_list(args.prefill_gpus, "0", total_gpus)
@@ -1019,6 +1019,12 @@ def run_dual_pool_vllm(
     prompt_token_ids: Optional[torch.Tensor] = None,
 ) -> Dict[str, float]:
     topo = topology_snapshot or detect_topology(max_gpus=torch.cuda.device_count())
+    if prompt_token_ids is None:
+        prompt_token_ids = build_prompt_token_ids(dual_pool_prompt_lengths(
+            cli_args or _CLI_ARGS, long_prompt_tokens=long_prompt_tokens,
+            short_prompt_tokens=short_prompt_tokens, prefill_burst=prefill_burst,
+            decode_requests=decode_requests, continue_requests=continue_requests,
+        ))
     return run_dual_pool_vllm_with_topology(
         mode,
         topology_snapshot=topo,
