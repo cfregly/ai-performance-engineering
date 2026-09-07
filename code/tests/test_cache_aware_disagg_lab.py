@@ -271,119 +271,131 @@ def test_cache_aware_disagg_multigpu_wrappers_expose_torchrun_specs(
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for cache-aware lab metrics")
-def test_cache_aware_disagg_optimized_path_improves_locality_without_changing_output() -> None:
-    cfg = CacheAwareDisaggConfig(
-        hidden_size=128,
-        num_layers=2,
-        batch_size=1,
-        requests_per_iteration=6,
-        context_window=384,
-        chunk_size=96,
-        decode_tokens=24,
-        logical_decode_workers=3,
-        warm_request_ratio=0.5,
-        warm_prefix_ratio=0.5,
-    )
+@pytest.mark.parametrize("seed", [42, 1042])
+def test_cache_aware_disagg_optimized_path_improves_locality_without_changing_output(seed: int) -> None:
+    from tests.protection_test_utils import preserve_rng_state
 
-    baseline = CacheAwareDisaggBenchmark(
-        optimized=False,
-        label="baseline_cache_aware_disagg_test",
-        cfg=cfg,
-    )
-    optimized = CacheAwareDisaggBenchmark(
-        optimized=True,
-        label="optimized_cache_aware_disagg_test",
-        cfg=cfg,
-    )
+    with preserve_rng_state():
+        cfg = CacheAwareDisaggConfig(
+            hidden_size=128,
+            num_layers=2,
+            batch_size=1,
+            requests_per_iteration=6,
+            context_window=384,
+            chunk_size=96,
+            decode_tokens=24,
+            logical_decode_workers=3,
+            warm_request_ratio=0.5,
+            warm_prefix_ratio=0.5,
+        )
 
-    baseline.setup()
-    try:
-        baseline.benchmark_fn()
-        baseline.capture_verification_payload()
-        baseline_metrics = baseline.get_custom_metrics()
-        baseline_output = baseline.output.detach().cpu() if baseline.output is not None else None
-    finally:
-        baseline.teardown()
+        baseline = CacheAwareDisaggBenchmark(
+            optimized=False,
+            label="baseline_cache_aware_disagg_test",
+            cfg=cfg,
+        )
+        optimized = CacheAwareDisaggBenchmark(
+            optimized=True,
+            label="optimized_cache_aware_disagg_test",
+            cfg=cfg,
+        )
 
-    optimized.setup()
-    try:
-        optimized.benchmark_fn()
-        optimized.capture_verification_payload()
-        optimized_metrics = optimized.get_custom_metrics()
-        optimized_output = optimized.output.detach().cpu() if optimized.output is not None else None
-    finally:
-        optimized.teardown()
+        torch.manual_seed(seed)
+        baseline.setup()
+        try:
+            baseline.benchmark_fn()
+            baseline.capture_verification_payload()
+            baseline_metrics = baseline.get_custom_metrics()
+            baseline_output = baseline.output.detach().cpu() if baseline.output is not None else None
+        finally:
+            baseline.teardown()
 
-    assert baseline_metrics is not None
-    assert optimized_metrics is not None
-    assert baseline_output is not None
-    assert optimized_output is not None
-    assert torch.allclose(baseline_output, optimized_output, atol=0.0, rtol=0.0)
-    assert optimized_metrics["cache_aware.cache_hit_rate"] > baseline_metrics["cache_aware.cache_hit_rate"]
-    assert optimized_metrics["cache_aware.kv_transfer_mb"] < baseline_metrics["cache_aware.kv_transfer_mb"]
-    assert optimized_metrics["cache_aware.worker_switches_per_request"] < baseline_metrics["cache_aware.worker_switches_per_request"]
+        torch.manual_seed(seed)
+        optimized.setup()
+        try:
+            optimized.benchmark_fn()
+            optimized.capture_verification_payload()
+            optimized_metrics = optimized.get_custom_metrics()
+            optimized_output = optimized.output.detach().cpu() if optimized.output is not None else None
+        finally:
+            optimized.teardown()
+
+        assert baseline_metrics is not None
+        assert optimized_metrics is not None
+        assert baseline_output is not None
+        assert optimized_output is not None
+        assert torch.allclose(baseline_output, optimized_output, atol=0.0, rtol=0.0)
+        assert optimized_metrics["cache_aware.cache_hit_rate"] > baseline_metrics["cache_aware.cache_hit_rate"]
+        assert optimized_metrics["cache_aware.kv_transfer_mb"] < baseline_metrics["cache_aware.kv_transfer_mb"]
+        assert optimized_metrics["cache_aware.worker_switches_per_request"] < baseline_metrics["cache_aware.worker_switches_per_request"]
 
 
 METRICS_ENV_KEY = "AISP_CACHE_AWARE_DISAGG_METRICS_PATH"
 
 
 @pytest.mark.skipif(torch.cuda.device_count() < 2, reason="2+ GPUs required for cache-aware multi-GPU lab")
-def test_cache_aware_disagg_multigpu_locality_matches_available_decode_workers() -> None:
-    prefill_ranks = 1 if torch.cuda.device_count() == 2 else 2
-    cfg = CacheAwareDisaggMultiGPUConfig(
-        hidden_size=64,
-        num_layers=2,
-        batch_size=1,
-        requests_per_rank=2,
-        context_window=192,
-        chunk_size=64,
-        decode_tokens=8,
-        warm_request_ratio=0.5,
-        warm_prefix_ratio=0.5,
-        prefill_ranks=prefill_ranks,
-    )
+@pytest.mark.parametrize("seed", [42, 1042])
+def test_cache_aware_disagg_multigpu_locality_matches_available_decode_workers(seed: int) -> None:
+    from tests.protection_test_utils import preserve_rng_state
 
-    baseline = CacheAwareDisaggMultiGPUBenchmark(
-        optimized=False,
-        label="baseline_cache_aware_disagg_multigpu_test",
-        cfg=cfg,
-    )
-    optimized = CacheAwareDisaggMultiGPUBenchmark(
-        optimized=True,
-        label="optimized_cache_aware_disagg_multigpu_test",
-        cfg=cfg,
-    )
+    with preserve_rng_state():
+        prefill_ranks = 1 if torch.cuda.device_count() == 2 else 2
+        cfg = CacheAwareDisaggMultiGPUConfig(
+            hidden_size=64,
+            num_layers=2,
+            batch_size=1,
+            requests_per_rank=2,
+            context_window=192,
+            chunk_size=64,
+            decode_tokens=8,
+            warm_request_ratio=0.5,
+            warm_prefix_ratio=0.5,
+            prefill_ranks=prefill_ranks,
+        )
 
-    baseline.setup()
-    try:
-        baseline.benchmark_fn()
-        baseline.capture_verification_payload()
-        baseline_metrics = baseline.get_custom_metrics()
-        baseline_output = baseline.output.detach().cpu() if baseline.output is not None else None
-    finally:
-        baseline.teardown()
+        baseline = CacheAwareDisaggMultiGPUBenchmark(
+            optimized=False,
+            label="baseline_cache_aware_disagg_multigpu_test",
+            cfg=cfg,
+        )
+        optimized = CacheAwareDisaggMultiGPUBenchmark(
+            optimized=True,
+            label="optimized_cache_aware_disagg_multigpu_test",
+            cfg=cfg,
+        )
 
-    optimized.setup()
-    try:
-        optimized.benchmark_fn()
-        optimized.capture_verification_payload()
-        optimized_metrics = optimized.get_custom_metrics()
-        optimized_output = optimized.output.detach().cpu() if optimized.output is not None else None
-    finally:
-        optimized.teardown()
+        torch.manual_seed(seed)
+        baseline.setup()
+        try:
+            baseline.benchmark_fn()
+            baseline.capture_verification_payload()
+            baseline_metrics = baseline.get_custom_metrics()
+            baseline_output = baseline.output.detach().cpu() if baseline.output is not None else None
+        finally:
+            baseline.teardown()
 
-    assert baseline_metrics is not None
-    assert optimized_metrics is not None
-    assert baseline_output is not None
-    assert optimized_output is not None
-    assert torch.allclose(baseline_output, optimized_output, atol=0.0, rtol=0.0)
-    decode_ranks = torch.cuda.device_count() - prefill_ranks
-    if decode_ranks == 1:
-        # Both policies select the sole decode worker. There is no handoff to
-        # eliminate, so a 1P1D or 2P1D run must not manufacture a locality win.
-        assert optimized_metrics["cache_aware.kv_transfer_mb"] == baseline_metrics["cache_aware.kv_transfer_mb"]
-        assert optimized_metrics["cache_aware.worker_switches_per_request"] == 0
-        assert baseline_metrics["cache_aware.worker_switches_per_request"] == 0
-    else:
-        assert optimized_metrics["cache_aware.kv_transfer_mb"] < baseline_metrics["cache_aware.kv_transfer_mb"]
-        assert optimized_metrics["cache_aware.worker_switches_per_request"] < baseline_metrics["cache_aware.worker_switches_per_request"]
+        torch.manual_seed(seed)
+        optimized.setup()
+        try:
+            optimized.benchmark_fn()
+            optimized.capture_verification_payload()
+            optimized_metrics = optimized.get_custom_metrics()
+            optimized_output = optimized.output.detach().cpu() if optimized.output is not None else None
+        finally:
+            optimized.teardown()
+
+        assert baseline_metrics is not None
+        assert optimized_metrics is not None
+        assert baseline_output is not None
+        assert optimized_output is not None
+        assert torch.allclose(baseline_output, optimized_output, atol=0.0, rtol=0.0)
+        decode_ranks = torch.cuda.device_count() - prefill_ranks
+        if decode_ranks == 1:
+            # Both policies select the sole decode worker. There is no handoff to
+            # eliminate, so a 1P1D or 2P1D run must not manufacture a locality win.
+            assert optimized_metrics["cache_aware.kv_transfer_mb"] == baseline_metrics["cache_aware.kv_transfer_mb"]
+            assert optimized_metrics["cache_aware.worker_switches_per_request"] == 0
+            assert baseline_metrics["cache_aware.worker_switches_per_request"] == 0
+        else:
+            assert optimized_metrics["cache_aware.kv_transfer_mb"] < baseline_metrics["cache_aware.kv_transfer_mb"]
+            assert optimized_metrics["cache_aware.worker_switches_per_request"] < baseline_metrics["cache_aware.worker_switches_per_request"]
