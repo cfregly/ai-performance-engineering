@@ -1,0 +1,38 @@
+run_metadata:
+  benchmark_layer: component
+  benchmark_grade: realism
+  use_case: engineering_debug
+comparison_axis:
+  variable_under_test: kernel_tmem_layout_and_synchronization
+  control: decode ping-pong disabled; backward split_P_dS=False and warp_sync=False
+  candidate: decode ping-pong enabled; backward split_P_dS=True and warp_sync=True
+  constants_locked: [source_revision_within_pair, shape, bf16, input_seed, causal_mask, split_count, graph_replay, deterministic_backward]
+workload:
+  decode: {batch: 32, seqlen_q: 1, seqlen_k: 131072, heads_q: 16, heads_kv: 1, head_dim: 64, causal: false}
+  backward: {batch: 4, seqlen_q: 16384, seqlen_k: 16384, heads_q: 32, heads_kv: 32, head_dim: 64, causal: false, deterministic: true}
+  precision: bf16
+  input_distribution: caller-seeded standard normal Q/K/V and backward dO
+  forward_options: {tile_m: 128, tile_n: 128, pack_gqa: true, num_splits: 1}
+  excluded_from_timing: [input_allocation, jit_compilation, warmup, graph_capture, backward_common_forward, verification]
+  included_in_backward_timing: [preprocess_and_accumulator_initialization, main_backward, postprocess]
+  verification: full decode output or concatenated dQ/dK/dV from the timed replay
+  tolerances: {decode_rtol: 0.02, decode_atol: 0.02, deterministic_backward_rtol: 0.0, deterministic_backward_atol: 0.0}
+execution:
+  hardware_tier: {gpu_architecture: SM100, gpu_models: [B200, GB200], gpu_count: 1}
+  source_pins: colfax_upstream.json
+  optional_dependencies: requirements_colfax_decode.txt or requirements_colfax_backward.txt, separately
+measurement_policy:
+  iterations: 20
+  warmup_iterations: 5
+  publication_trials: 5
+  publication_order: repeated interleaved baseline/candidate
+  report_statistics: [median, mean, stddev, cv_pct]
+  environment_controls: {gpu_clocks_locked: true, app_clocks_recorded: true, background_load_recorded: true}
+  outlier_policy: retain raw samples and report rejected runs with reasons
+diagnosis_policy:
+  required_signals: [nsys_trace, ncu_counters, kernel_identity, correctness]
+  scheduling_detail: IKET or equivalent in-kernel tracing is needed to directly establish warp overlap
+artifacts:
+  baseline: null
+  candidate: null
+  status: GPU execution pending; no local speedup claim or expectation update

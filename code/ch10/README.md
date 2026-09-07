@@ -49,6 +49,7 @@ python -m cli.aisp bench run --targets ch10 --profile minimal
 - Prototype persistent matmuls that amortize launch overhead across iterations.
 - Exercise thread-block clusters with and without DSMEM to understand hardware limits.
 - Combine PyTorch, Triton, and CUDA kernels while keeping expectations synchronized.
+- Study how [FA4 decode ping-pong and backward TMEM de-aliasing](../labs/flashattention4/colfax_optimization_diaries.md) change MMA issue order and synchronization scope without changing the attention math.
 
 ## Directory Layout
 | Path | Description |

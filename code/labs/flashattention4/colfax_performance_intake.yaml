@@ -1,0 +1,38 @@
+objective:
+  primary_kpi: latency_ms
+  secondary_kpis: [kv_bytes_per_second, backward_tflops]
+benchmark:
+  layer: component
+  grade: realism
+  variable_under_test: kernel_tmem_layout_and_synchronization
+workload:
+  decode: {batch: 32, seqlen_q: 1, seqlen_k: 131072, heads_q: 16, heads_kv: 1, head_dim: 64, dtype: bf16}
+  backward: {batch: 4, seqlen_q: 16384, seqlen_k: 16384, heads_q: 32, heads_kv: 32, head_dim: 64, dtype: bf16}
+  constraints: [same_inputs_per_pair, same_upstream_revision_per_pair, full_output_verification]
+hot_path_model:
+  path: labs.flashattention4.colfax_benchmarks.ColfaxBenchmark.benchmark_fn
+  phase: steady_state
+  invocation_frequency: per_batch
+  invocations_per_primary_unit: 1
+  estimated_costs:
+    decode_minimum_kv_bytes_read: 1073741824
+    decode_output_bytes_written: 65536
+    host_device_bytes: 0
+    graph_launches: 1
+    storage_or_network_operations: 0
+  operation_cost_source: tensor shapes; no local measured operation costs
+  expected_dominant_cost: decode KV traffic and QK/softmax serialization; backward MMA/synchronization and deterministic dQ accumulation
+  best_case_primary_kpi_improvement_pct: null
+evidence:
+  baseline_artifact: null
+  profile_artifacts: []
+  hardware_counter_artifacts: []
+  static_review_findings:
+    - Decode has spare TMEM for S/P ping-pong; eligibility is fixed by the lab shape and dispatch options.
+    - Backward hd64 can separate P/dS storage to remove alias guards and enable warp-local signaling.
+candidate_optimizations:
+  - Decode PR2817 S/P ping-pong on versus off, all other arguments fixed.
+  - Backward PR2804 split_P_dS and warp_sync together on versus off, deterministic mode fixed.
+risk_guardrails:
+  correctness_tests: [tests/test_flashattention4_colfax.py, harness_full_output_verification]
+  publication_boundary: source and CPU tests do not establish GPU correctness or performance

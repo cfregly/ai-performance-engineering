@@ -1,0 +1,23 @@
+{
+  "decode": {
+    "repository": "https://github.com/Dao-AILab/flash-attention",
+    "pr": 2817,
+    "commit": "a93c9a8fb95516a08e0974743bd5723122613377",
+    "article": "https://research.colfax-intl.com/optimization-diaries-s-p-ping-pong-for-flashattention-4-decode/",
+    "files": {
+      "interface.py": "ad66e664523002b769a24bd2df076e8b96bb4005c8a5eb8f60da94e0bb823aae",
+      "flash_fwd_sm100.py": "ccae92a1d287fb1745b413170d984a7b4d6aa90cf91f67f32baacab92d2db779",
+      "utils.py": "a48f62478027f84d2573fdc4eb75967cd27f99741f14b33cc0a843fb547a0591"
+    }
+  },
+  "backward": {
+    "repository": "https://github.com/Dao-AILab/flash-attention",
+    "pr": 2804,
+    "commit": "c33d03d9f3edc850ecb5e21466d5dd31331ca7b6",
+    "article": "https://research.colfax-intl.com/optimization-diaries-improving-flashattention-4-backward-for-head-dimension-64/",
+    "files": {
+      "interface.py": "de3b6d986101de5142e877c27395e70f79c6a16c4a43f0c11bfe736d91b389c9",
+      "flash_bwd_sm100.py": "4301340010d097fa44817b2ed70aad6e972458cb66ce8689546c7cdf3c1fe6fe"
+    }
+  }
+}
