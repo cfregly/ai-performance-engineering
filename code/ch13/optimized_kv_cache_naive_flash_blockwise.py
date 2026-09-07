@@ -233,10 +233,6 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
-
         self.layers = nn.ModuleList(
             [
                 FlashBlockwiseAttentionLayer(self.hidden_dim, self.num_heads, self.head_dim, dtype=self.workload.dtype)

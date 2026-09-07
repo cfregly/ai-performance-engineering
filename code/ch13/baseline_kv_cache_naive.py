@@ -148,9 +148,6 @@ class BaselineKVCacheNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
     
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.model = nn.ModuleList(
             [
                 SimpleAttentionLayer(self.hidden_dim, self.num_heads, self.head_dim, dtype=self.workload.dtype)

@@ -1416,3 +1416,25 @@ elements outside tolerance versus compiled SDPA, and eager versus compiled
 SDPA had two. NanoChat passed all 40,000 nonzero output logits but showed no
 speedup in eight interleaved observations per arm (`46.566` versus `47.801` ms).
 Both negative results are retained and remain open.
+
+### Wave35: combined target-host verification
+
+At source `a48ab0207`, all 20 scheduled stages terminated and drained. The
+focused target-host suite passed 32 tests. Fourteen of the 17 informational
+pair identities passed their configured verification gates, including the
+native conditional-graph pair, all three FP8 recipes, the storage pipeline,
+the KV-cache pair, piece graphs, inference-full, NVFP4 training, and persistent
+decode. The three FP8 and compiled-TorchAO full-output probes also passed again
+after the input-binding changes.
+
+Two execution failures remain: compiled TorchAO and pipeline parallelism raise
+an assertion during the initialized sensitivity lifecycle. Exact traceback
+probes are prepared. Inference placement still reports the expected mismatch
+between different policies; its independent policy/metric semantic validation
+is retained separately and is not counted as a pair-comparison pass.
+
+The next seed-contract patch removes setup-time reseeding in the naive/Flash
+KV-cache pair, both piece-graph paths, and both inference-full paths. Real CPU
+checks confirm different requested seeds produce different inputs/weights and
+that the inference-full pair passes fresh-input and sensitivity checks without
+warnings. Seventeen focused checks passed; target-host reruns remain pending.
