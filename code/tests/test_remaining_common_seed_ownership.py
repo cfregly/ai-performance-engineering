@@ -104,6 +104,7 @@ def test_real_cuda_graph_cleanup_preserves_fresh_setup_seed(kind: str) -> None:
             else:
                 snapshot = (benchmark.embedding.weight.detach().clone(), benchmark.host_prompt.clone())
             benchmark.benchmark_fn()
+            benchmark.capture_verification_payload()
             assert benchmark.output is not None
             assert torch.isfinite(benchmark.output).all()
             snapshots.append((*snapshot, benchmark.output.detach().clone()))
