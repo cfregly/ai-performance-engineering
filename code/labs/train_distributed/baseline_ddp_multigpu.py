@@ -4,12 +4,19 @@ from __future__ import annotations
 
 import argparse
 import os
-
-from core.common.device_utils import resolve_local_rank
-from time import perf_counter
 from pathlib import Path
+from time import perf_counter
 
 from core.benchmark.gpu_requirements import require_min_gpus
+from core.common.device_utils import resolve_local_rank
+from labs.train_distributed.training_utils.child_result import child_result_requested
+from labs.train_distributed.training_utils.ddp_child_result import (
+    bind_distributed_sampler_seed,
+    initialize_ddp_seed,
+    make_ddp_adamw,
+    make_ddp_child_result_contract,
+    publish_ddp_child_result,
+)
 from labs.train_distributed.training_utils.torchrun_harness import TorchrunScriptBenchmark
 
 
@@ -25,12 +32,13 @@ def main():
     require_min_gpus(2, script_name="baseline_ddp_multigpu.py")
     import torch
     import torch.distributed as dist
-    from torch.nn.parallel import DistributedDataParallel as DDP
+    from torch.nn.parallel import DistributedDataParallel as DistributedModel
 
     from labs.train_distributed.training_utils.utils import (
         build_dataloader,
         build_text_model,
         build_tokenizer,
+        configure_training_matmul_policy,
         get_dataset,
         make_causal_lm_labels,
     )
@@ -48,6 +56,8 @@ def main():
 
     rank = dist.get_rank() if dist.is_initialized() else 0
     is_main = rank == 0
+    active_seed = initialize_ddp_seed()
+    configure_training_matmul_policy()
 
     tokenizer = build_tokenizer()
     dataset = get_dataset()["train"]
@@ -61,6 +71,7 @@ def main():
         num_workers=2,
         prefetch_factor=2,
     )
+    bind_distributed_sampler_seed(dataloader, active_seed)
 
     model = build_text_model()
     model.to(device)
@@ -68,7 +79,7 @@ def main():
 
     ddp_model = model
     if dist.is_initialized() and dist.get_world_size() > 1:
-        ddp_model = DDP(
+        ddp_model = DistributedModel(
             model,
             device_ids=[local_rank] if device.type == "cuda" else None,
             gradient_as_bucket_view=False,
@@ -76,13 +87,15 @@ def main():
             bucket_cap_mb=1,
         )
 
-    optimizer = torch.optim.AdamW(ddp_model.parameters(), lr=args.learning_rate)
+    optimizer = make_ddp_adamw(ddp_model.parameters(), args.learning_rate, prefer_fused=False)
 
     num_steps = min(args.steps, len(dataloader))
     start = perf_counter()
     total_tokens = 0
     loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)
 
+    completed_steps = 0
+    final_batch = None
     for step, batch in enumerate(dataloader):
         if step >= num_steps:
             break
@@ -91,13 +104,13 @@ def main():
 
         batch = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
 
-        batch["labels"] = make_causal_lm_labels(
-            batch["input_ids"], batch["attention_mask"]
-        )
+        batch["labels"] = make_causal_lm_labels(batch["input_ids"], batch["attention_mask"])
         outputs = ddp_model(**batch)
         loss = outputs.loss
         loss.backward()
         optimizer.step()
+        completed_steps += 1
+        final_batch = batch
 
         total_tokens += batch["input_ids"].numel()
 
@@ -109,10 +122,26 @@ def main():
     if device.type == "cuda":
         torch.cuda.synchronize(device)
     elapsed = perf_counter() - start
+    if completed_steps <= 0:
+        raise RuntimeError("DDP training completed no optimization steps")
     if is_main:
         toks_per_sec = total_tokens / elapsed if elapsed > 0 else 0.0
-        print(f"[baseline-ddp] finished {num_steps} steps in {elapsed:.1f}s "
-              f"({toks_per_sec:,.0f} toks/s per rank)")
+        print(
+            f"[baseline-ddp] finished {completed_steps} steps in {elapsed:.1f}s "
+            f"({toks_per_sec:,.0f} toks/s per rank)"
+        )
+        if child_result_requested():
+            print(
+                f"rank0 time_per_iter_ms: {elapsed * 1000.0 / completed_steps:.9f}",
+                flush=True,
+            )
+
+    publish_ddp_child_result(
+        candidate_model=ddp_model,
+        reference_model=model,
+        final_batch=final_batch,
+        completed_iterations=completed_steps,
+    )
 
     if dist.is_initialized():
         dist.destroy_process_group()
@@ -128,4 +157,5 @@ def get_benchmark():
         target_label="labs/train_distributed:ddp_multigpu",
         default_nproc_per_node=None,
         name="baseline_ddp_multigpu",
+        child_result_contract=make_ddp_child_result_contract(multigpu=True),
     )
