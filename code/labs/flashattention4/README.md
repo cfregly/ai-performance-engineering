@@ -1,7 +1,9 @@
 # Lab - FlashAttention-4 Pipeline Co-Design
 
-## Colfax decode and backward kernel ablations
+## Summary
+Recreates the practical shape of the FlashAttention-4 article: eager FlexAttention as the scalar-heavy baseline, then a compiled Blackwell-friendly path that tries the FLASH backend and falls back to FlexAttention+TMA when needed. The default benchmark uses ALiBi because it is stable on the local stack and still exercises the FA4 score-mod path.
 
+## Colfax decode and backward kernel ablations
 The [Colfax optimization diaries guide](colfax_optimization_diaries.md) extends
 this lab with two direct upstream FA4 comparisons, linked from Chapters 10, 11,
 and 18. These use separate, pinned PR revisions and do not use the provider
@@ -54,9 +56,6 @@ Local validation on 2026-09-07 (macOS, Python 3.12, CPU PyTorch 2.14.0):
 - `python scripts/linting/check_benchmarks.py labs/flashattention4/baseline_flashattention4_decode.py labs/flashattention4/optimized_flashattention4_decode.py labs/flashattention4/baseline_flashattention4_backward.py labs/flashattention4/optimized_flashattention4_backward.py`: **0 errors, 0 warnings**.
 - `python -m cli.aisp bench list-targets --chapter labs/flashattention4`: both new targets discovered.
 - Ruff, syntax, documentation links, requirement/manifest consistency, and SHA256 checks against the pinned upstream sources passed. Direct setup returned the expected CUDA-required `SKIPPED:` diagnostic.
-
-## Summary
-Recreates the practical shape of the FlashAttention-4 article: eager FlexAttention as the scalar-heavy baseline, then a compiled Blackwell-friendly path that tries the FLASH backend and falls back to FlexAttention+TMA when needed. The default benchmark uses ALiBi because it is stable on the local stack and still exercises the FA4 score-mod path.
 
 ## Problem
 This lab is here to test two different questions cleanly:
