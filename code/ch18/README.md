@@ -70,6 +70,7 @@ python -m cli.aisp bench run --targets ch18:flexdecoding --profile deep_dive --s
 - Test tensor-core optimized attention kernels tailored for Blackwell tmem limits.
 - Validate integration points with serving frameworks (vLLM) using the provided runners.
 - Separate EOS polling overhead from early-exit work reduction when a batch finishes before the max decode budget.
+- Compare prefill and decode schedules through [FA4 S/P ping-pong](../labs/flashattention4/colfax_optimization_diaries.md), and keep that kernel-internal TMEM experiment distinct from FlexAttention masking and score-mod sweeps.
 
 ## Directory Layout
 | Path | Description |

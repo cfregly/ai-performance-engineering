@@ -54,6 +54,7 @@ python -m cli.aisp bench run --targets ch11:streams --profile deep_dive --single
 - Control ordering constraints for KV-cache updates and stream-ordered memory pools.
 - Benchmark warp-specialized multistream kernels that share data via DSMEM.
 - Introduce adaptive policies that adjust stream usage based on runtime telemetry.
+- Connect stream-level ideas to [FA4's intra-kernel producer/consumer pipelines](../labs/flashattention4/colfax_optimization_diaries.md), where per-slot phases and warp-local signals expose otherwise serialized work.
 
 ## Directory Layout
 | Path | Description |
