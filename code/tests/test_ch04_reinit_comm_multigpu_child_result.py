@@ -183,7 +183,7 @@ def test_worker_iteration_reinitializes_only_the_baseline(
         events.append("destroy")
         state["initialized"] = False
 
-    def initialize(local_rank: int) -> None:
+    def initialize(local_rank: int, rendezvous) -> None:
         assert local_rank == 0
         events.append("init")
         state["initialized"] = True
@@ -197,14 +197,33 @@ def test_worker_iteration_reinitializes_only_the_baseline(
     monkeypatch.setattr(worker, "_initialize_process_group", initialize)
     monkeypatch.setattr(worker.dist, "all_reduce", all_reduce)
     monkeypatch.setattr(worker.torch.cuda, "set_device", lambda _: None)
+    monkeypatch.setattr(worker.torch.cuda, "synchronize", lambda _: None)
     input_tensor = torch.tensor([[3.0]])
     output = torch.empty_like(input_tensor)
 
-    worker._run_iteration("baseline", local_rank=0, input_tensor=input_tensor, output=output)
+    rendezvous = worker._RendezvousState(worker.dist.HashStore(), 0, 2)
+    worker._run_iteration("baseline", local_rank=0, input_tensor=input_tensor, output=output, rendezvous=rendezvous)
     assert events == ["destroy", "init", "all_reduce"]
     assert torch.equal(output, torch.tensor([[6.0]]))
 
     events.clear()
-    worker._run_iteration("optimized", local_rank=0, input_tensor=input_tensor, output=output)
+    worker._run_iteration("optimized", local_rank=0, input_tensor=input_tensor, output=output, rendezvous=rendezvous)
     assert events == ["all_reduce"]
     assert torch.equal(output, torch.tensor([[6.0]]))
+
+
+def test_reinitialized_groups_cannot_read_stale_rendezvous_ids(monkeypatch) -> None:
+    rendezvous = worker._RendezvousState(worker.dist.HashStore(), 1, 2)
+    stores = []
+    monkeypatch.setattr(worker.dist, "is_initialized", lambda: False)
+
+    def initialize(*, store, rank, world_size, **kwargs):
+        assert (rank, world_size) == (1, 2)
+        assert not store.check(["nccl_id"])
+        store.set("nccl_id", str(len(stores)))
+        stores.append(store)
+
+    monkeypatch.setattr(worker.dist, "init_process_group", initialize)
+    for _ in range(3):
+        worker._initialize_process_group(1, rendezvous)
+    assert [store.get("nccl_id") for store in stores] == [b"0", b"1", b"2"]

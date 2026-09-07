@@ -1539,3 +1539,50 @@ creation and destruction include CPU work. Eleven focused tests and two
 hygiene checks passed; actual two-B200 execution is next. Router metadata and
 distributed-training workload/result repairs continue. No hosted CI is being
 run or used as a substitute for these runtime checks.
+
+### Wave40: transfer profiles and a stronger Llama comparison
+
+Both diagnostic stages on `1b8caadf9` completed and drained. Chapter 2's two
+instrumented Nsight Systems captures validated all 104,857,600 destination
+values. The baseline recorded 203 `cudaMemcpy` calls: 200 timed, two warmup,
+and one validation copy. The peer candidate recorded 101 `cudaMemcpyPeer`
+calls (100 timed, one warmup) plus one validation `cudaMemcpy`. Both recorded
+100 timed NVTX ranges and one verification range. This closes the Systems
+capture/parser issue; it does not imply a compute-kernel NCU result.
+
+The private Llama comparison uses identical 32-layer, 7,784,890,368-parameter
+models, batch one, and 2,048 tokens. Both arms use SDPA, FP32 residuals, and the
+same RMSNorm kernel; compilation is the measured difference. All 8,388,608
+outputs matched bitwise for eight distinct inputs and all 16 timed observations.
+Median CUDA-event time was 30.481 ms eager and 28.233 ms compiled (1.080x).
+The result supports implementing a stronger eager-SDPA baseline for an explicitly
+compile-only example. It does not close the independent manual-attention
+numerical discrepancy. Actual source factories, normal harness verification,
+and profiling must still be rerun after implementation.
+
+Compact reports, logs, CSV tables, and scripts for Waves35–40 are retained at
+`/Users/admin/.codex/artifacts/ai-perf-remaining-20260906/`. Large raw captures
+and output dumps remain in the corresponding direct-host wave directories.
+The Llama compiler also logged the existing CUTLASS generator/DSL namespace
+incompatibility; the measured run does not demonstrate CUTLASS backend coverage.
+
+### Wave41: compiled gates pass; communicator bootstrap repair
+
+The TorchAO compiled/uncompiled and pipeline gates passed on `38847c634` after
+the verifier metadata fix. Twelve focused target-host tests passed. The actual
+two-rank communicator worker exposed an NCCL bootstrap failure while repeatedly
+destroying and creating its default process group. Recreated groups reused the
+same rendezvous keys, allowing an old communicator ID to point at a closed
+socket. The worker now retains its rendezvous store and gives each generation
+an isolated prefix, synchronizing pending GPU work before destruction. The
+fresh-store regression passes; the repaired two-B200 run remains pending.
+
+A separate source audit found that both optimized ZeRO-1 scripts enabled
+hook-driven overlap without registering its required hook, then called explicit
+`optimizer.step()`, which is a no-op in that mode. They now use the explicit-step
+ZeRO-1 API, preserving accumulation and clipping, and no longer forward a DDP-only
+option into AdamW. Real one- and two-rank CPU tests compare every updated
+parameter against ordinary AdamW for three accumulated, clipped steps and verify
+replica agreement. Both passed; GPU versions remain pending. The first local
+test attempt timed out in standalone rendezvous; an explicit loopback rendezvous
+fixed the test launch. All attempts are retained.

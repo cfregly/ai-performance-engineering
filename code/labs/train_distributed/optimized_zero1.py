@@ -1,4 +1,4 @@
-"""Optimized ZeRO-1 using PyTorch's ZeroRedundancyOptimizer + DDP overlap."""
+"""Optimized ZeRO-1 using optimizer-state sharding and DDP gradients."""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ from pathlib import Path
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from torch.distributed.optim import ZeroRedundancyOptimizer
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 from labs.train_distributed.training_utils.memory import print_memory_stats
 from labs.train_distributed.training_utils.utils import get
 from labs.train_distributed.training_utils.torchrun_harness import TorchrunScriptBenchmark
+from labs.train_distributed.training_utils.zero1_optimizer import make_zero1_optimizer
 
 
 def parse_args():
@@ -26,24 +26,6 @@ def parse_args():
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--compile", action="store_true", help="Use torch.compile on the DDP module.")
     return parser.parse_args()
-
-
-def _maybe_fused_adamw(params, lr):
-    try:
-        return dict(
-            optimizer_class=torch.optim.AdamW,
-            lr=lr,
-            betas=(0.9, 0.95),
-            weight_decay=0.1,
-            fused=True,
-        )
-    except TypeError:
-        return dict(
-            optimizer_class=torch.optim.AdamW,
-            lr=lr,
-            betas=(0.9, 0.95),
-            weight_decay=0.1,
-        )
 
 
 def _build_model(hidden_size: int, device):
@@ -75,13 +57,7 @@ def main():
     if args.compile:
         ddp_model = torch.compile(ddp_model, mode="reduce-overhead")
 
-    optimizer_cfg = _maybe_fused_adamw(ddp_model.parameters(), args.learning_rate)
-    optimizer = ZeroRedundancyOptimizer(
-        ddp_model.parameters(),
-        overlap_with_ddp=True,
-        gradient_as_bucket_view=True,
-        **optimizer_cfg,
-    )
+    optimizer = make_zero1_optimizer(ddp_model.parameters(), args.learning_rate)
 
     grad_clip = 1.0
     total_tokens = 0

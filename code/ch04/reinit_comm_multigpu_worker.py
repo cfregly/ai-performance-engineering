@@ -7,6 +7,7 @@ import datetime
 import math
 import os
 import time
+from dataclasses import dataclass
 
 import torch
 import torch.distributed as dist
@@ -18,12 +19,27 @@ from core.common.device_utils import resolve_local_rank
 from core.profiling.nvtx_helper import nvtx_range
 
 
-def _initialize_process_group(local_rank: int) -> None:
+@dataclass
+class _RendezvousState:
+    store: dist.Store
+    rank: int
+    world_size: int
+    generation: int = 0
+
+
+def _initialize_process_group(local_rank: int, rendezvous: _RendezvousState) -> None:
     if dist.is_initialized():
         raise RuntimeError("Reinit-comm process group is already initialized")
+    # A recreated default process group resets its internal store-key sequence.
+    # Isolate generations so a faster rank cannot consume an old NCCL ID whose
+    # communicator has already closed its bootstrap socket.
+    store = dist.PrefixStore(f"reinit_comm/{rendezvous.generation}", rendezvous.store)
+    rendezvous.generation += 1
     dist.init_process_group(
         backend="nccl",
-        init_method="env://",
+        store=store,
+        rank=rendezvous.rank,
+        world_size=rendezvous.world_size,
         timeout=datetime.timedelta(seconds=120),
         device_id=local_rank,
     )
@@ -35,12 +51,14 @@ def _run_iteration(
     local_rank: int,
     input_tensor: torch.Tensor,
     output: torch.Tensor,
+    rendezvous: _RendezvousState,
 ) -> None:
     if variant == "baseline":
         if dist.is_initialized():
+            torch.cuda.synchronize(local_rank)
             dist.destroy_process_group()
         torch.cuda.set_device(local_rank)
-        _initialize_process_group(local_rank)
+        _initialize_process_group(local_rank, rendezvous)
     elif variant != "optimized":
         raise ValueError(f"Unsupported reinit-comm variant: {variant!r}")
     if not dist.is_initialized():
@@ -71,6 +89,9 @@ def run_worker(variant: str, *, iterations: int, warmup: int) -> None:
     if iterations <= 0 or warmup < 0:
         raise ValueError("Iterations must be positive and warmup non-negative")
     rank, world_size, local_rank, device = _init_worker()
+    store_iterator = dist.rendezvous("env://", rank=rank, world_size=world_size)
+    store, _, _ = next(store_iterator)
+    rendezvous = _RendezvousState(store, rank, world_size)
     generator = torch.Generator(device=device)
     generator.manual_seed(torch.initial_seed())
     input_tensor = torch.randn((1, 1), device=device, dtype=torch.float32, generator=generator)
@@ -78,17 +99,18 @@ def run_worker(variant: str, *, iterations: int, warmup: int) -> None:
 
     try:
         if variant == "optimized":
-            _initialize_process_group(local_rank)
+            _initialize_process_group(local_rank, rendezvous)
         for _ in range(warmup):
             _run_iteration(
                 variant,
                 local_rank=local_rank,
                 input_tensor=input_tensor,
                 output=output,
+                rendezvous=rendezvous,
             )
         if not dist.is_initialized():
             # Establish an untimed rendezvous solely to align rank-local clocks.
-            _initialize_process_group(local_rank)
+            _initialize_process_group(local_rank, rendezvous)
         dist.barrier()
         torch.cuda.synchronize(device)
 
@@ -100,6 +122,7 @@ def run_worker(variant: str, *, iterations: int, warmup: int) -> None:
                     local_rank=local_rank,
                     input_tensor=input_tensor,
                     output=output,
+                    rendezvous=rendezvous,
                 )
         torch.cuda.synchronize(device)
         elapsed_ms = (time.perf_counter_ns() - start_ns) / 1_000_000.0
