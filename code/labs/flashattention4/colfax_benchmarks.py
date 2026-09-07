@@ -12,6 +12,7 @@ import importlib.util
 import json
 from contextlib import contextmanager
 from dataclasses import dataclass
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 
 import torch
@@ -101,23 +102,127 @@ def reference_attention(q, k, v, causal: bool = False):
 def source_manifest(kind: str) -> dict:
     if kind not in ("decode", "backward"):
         raise ValueError("kind must be decode or backward")
-    return json.loads(Path(__file__).with_name("colfax_upstream.json").read_text())[kind]
+    return json.loads(
+        Path(__file__).with_name("colfax_upstream.json").read_text(encoding="utf-8")
+    )[kind]
+
+
+_SOURCE_TREE_FORMAT = "sha256-path-content-sha256-v1"
+
+
+def python_source_tree_fingerprint(root: Path) -> dict[str, int | str]:
+    """Fingerprint every importable Python source path and its exact bytes."""
+    sources = sorted(
+        (path.relative_to(root).as_posix(), path)
+        for path in root.rglob("*.py")
+        if path.is_file()
+    )
+    digest = hashlib.sha256()
+    for relative_path, path in sources:
+        digest.update(relative_path.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(hashlib.sha256(path.read_bytes()).hexdigest().encode("ascii"))
+        digest.update(b"\0")
+    return {
+        "format": _SOURCE_TREE_FORMAT,
+        "file_count": len(sources),
+        "sha256": digest.hexdigest(),
+    }
+
+
+def verify_python_source_tree(
+    root: Path,
+    expected: dict,
+    *,
+    kind: str,
+    commit: str,
+) -> None:
+    if expected.get("format") != _SOURCE_TREE_FORMAT:
+        raise RuntimeError(f"Invalid Colfax {kind} source-tree manifest format")
+    actual = python_source_tree_fingerprint(root)
+    expected_fingerprint = {
+        "format": expected.get("format"),
+        "file_count": expected.get("file_count"),
+        "sha256": expected.get("sha256"),
+    }
+    if actual != expected_fingerprint:
+        raise RuntimeError(
+            f"SKIPPED: Colfax {kind} requires unmodified FA4 {commit}; "
+            "Python source tree mismatch. "
+            f"See requirements_colfax_{kind}.txt."
+        )
+
+
+def verify_vcs_direct_url(direct_url: dict, kind: str) -> dict:
+    """Validate PEP 610 metadata without importing the CUDA package."""
+    manifest = source_manifest(kind)
+    expected = manifest["installed_vcs"]
+    vcs_info = direct_url.get("vcs_info")
+    actual_url = direct_url.get("url")
+    expected_url = manifest["repository"]
+    if isinstance(actual_url, str):
+        actual_url = actual_url.removeprefix("git+").rstrip("/").removesuffix(".git")
+    if isinstance(expected_url, str):
+        expected_url = expected_url.removeprefix("git+").rstrip("/").removesuffix(".git")
+    valid = (
+        isinstance(vcs_info, dict)
+        and vcs_info.get("vcs") == "git"
+        and vcs_info.get("commit_id") == manifest["commit"]
+        and vcs_info.get("requested_revision") == manifest["commit"]
+        and actual_url == expected_url
+        and direct_url.get("subdirectory") == expected["subdirectory"]
+    )
+    if not valid:
+        raise RuntimeError(
+            f"SKIPPED: Colfax {kind} requires an exact VCS install of FA4 "
+            f"{manifest['commit']} from {manifest['repository']}#{expected['subdirectory']}"
+        )
+    return manifest
+
+
+def verify_installed_vcs_commit(kind: str) -> dict:
+    manifest = source_manifest(kind)
+    installed_vcs = manifest["installed_vcs"]
+    distribution_name = installed_vcs["distribution"]
+    metadata_name = installed_vcs["metadata"]
+    try:
+        distribution = importlib_metadata.distribution(distribution_name)
+        direct_url_text = distribution.read_text(metadata_name)
+    except importlib_metadata.PackageNotFoundError as exc:
+        raise RuntimeError(
+            f"SKIPPED: install requirements_colfax_{kind}.txt in a dedicated environment"
+        ) from exc
+    if direct_url_text is None:
+        raise RuntimeError(
+            f"SKIPPED: Colfax {kind} requires PEP 610 {metadata_name} VCS provenance"
+        )
+    try:
+        direct_url = json.loads(direct_url_text)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f"SKIPPED: Colfax {kind} has invalid PEP 610 {metadata_name} provenance"
+        ) from exc
+    if not isinstance(direct_url, dict):
+        raise RuntimeError(
+            f"SKIPPED: Colfax {kind} has invalid PEP 610 {metadata_name} provenance"
+        )
+    return verify_vcs_direct_url(direct_url, kind)
 
 
 def verify_source_files(root: Path, kind: str) -> dict:
-    """Reject drift in the interface, controls and kernels before importing CUDA code."""
+    """Reject drift in every runtime Python source before importing CUDA code."""
     manifest = source_manifest(kind)
-    for name, expected in manifest["files"].items():
-        path = root / name
-        if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
-            raise RuntimeError(
-                f"SKIPPED: Colfax {kind} requires unmodified FA4 {manifest['commit']}; "
-                f"source mismatch: {name}. See requirements_colfax_{kind}.txt."
-            )
+    verify_python_source_tree(
+        root,
+        manifest["python_source_tree"],
+        kind=kind,
+        commit=manifest["commit"],
+    )
     return manifest
 
 
 def load_upstream(kind: str):
+    verify_installed_vcs_commit(kind)
     try:
         spec = importlib.util.find_spec("flash_attn.cute")
     except ModuleNotFoundError as exc:

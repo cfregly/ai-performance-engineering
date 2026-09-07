@@ -4273,8 +4273,10 @@ ENTRIES["labs/flashattention4"] = lab_entry(
                 AISP_TEST_COLFAX_KIND=backward python -m pytest -q tests/test_flashattention4_colfax.py
                 ```
 
-                Missing CUDA, a non-SM100 GPU, or mismatched pinned kernel/interface files produces
-                an explicit `SKIPPED:` diagnostic. There is no substitute backend. The source
+                Missing CUDA, a non-SM100 GPU, or mismatched installed source produces
+                an explicit `SKIPPED:` diagnostic. Before importing CUDA code, the loader
+                verifies the exact VCS installation and all 52 upstream runtime Python files.
+                There is no substitute backend. The source
                 pins are in [colfax_upstream.json](colfax_upstream.json); benchmark workloads and
                 the performance hypothesis are in [colfax_workload_spec.yaml](colfax_workload_spec.yaml)
                 and [colfax_performance_intake.yaml](colfax_performance_intake.yaml).
@@ -4286,7 +4288,7 @@ ENTRIES["labs/flashattention4"] = lab_entry(
 
                 Local validation on 2026-09-07 (macOS, Python 3.12, CPU PyTorch 2.14.0):
 
-                - `python -m pytest -q tests/test_flashattention4_colfax.py`: **28 passed, 1 skipped**; the opt-in SM100 test was not enabled.
+                - `python -m pytest -q tests/test_flashattention4_colfax.py`: **31 passed, 1 skipped**; the opt-in SM100 test was not enabled. The GPU test changes Q or dO on the same graph, compares against an independent reference, and checks restored-input replay.
                 - `python scripts/linting/check_benchmarks.py labs/flashattention4/baseline_flashattention4_decode.py labs/flashattention4/optimized_flashattention4_decode.py labs/flashattention4/baseline_flashattention4_backward.py labs/flashattention4/optimized_flashattention4_backward.py`: **0 errors, 0 warnings**.
                 - `python -m cli.aisp bench list-targets --chapter labs/flashattention4`: both new targets discovered.
                 - Ruff, syntax, documentation links, requirement/manifest consistency, and SHA256 checks against the pinned upstream sources passed. Direct setup returned the expected CUDA-required `SKIPPED:` diagnostic.
