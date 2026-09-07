@@ -87,7 +87,9 @@ class OptimizedMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
             },
-            output_tolerance=(1e-1, 1e-1),
+            # Allow FP32 fused-rounding differences without accepting a missing
+            # multiply/add repeat in the timed workload.
+            output_tolerance=(1e-5, 2e-5),
         )
 
     

@@ -30,6 +30,25 @@ def test_memory_bound_metadata_is_available_before_setup() -> None:
     assert optimized.get_workload_metadata().tokens_per_iteration == 16_777_216 * 64
 
 
+def test_memory_bound_tolerance_rejects_a_missing_repeat() -> None:
+    benchmark = BaselineMemoryBoundBenchmark()
+    benchmark.device = torch.device("cpu")
+    benchmark.N = 8193
+    try:
+        benchmark.setup()
+        benchmark.tensor.fill_(1.0)
+        benchmark.benchmark_fn()
+        benchmark.capture_verification_payload()
+        complete = benchmark.get_verify_output().clone()
+        rtol, atol = benchmark.get_output_tolerance()
+        benchmark._repeat_range = range(benchmark.repeats - 1)
+        benchmark.benchmark_fn()
+        benchmark.capture_verification_payload()
+        assert not torch.allclose(benchmark.get_verify_output(), complete, rtol=rtol, atol=atol)
+    finally:
+        benchmark.teardown()
+
+
 @pytest.mark.parametrize("optimized", [False, True])
 def test_memory_bound_captures_live_tail_beyond_old_crop(optimized: bool) -> None:
     if optimized and not torch.cuda.is_available():
