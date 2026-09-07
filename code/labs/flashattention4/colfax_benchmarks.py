@@ -273,6 +273,7 @@ class ColfaxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs = None
         self.output = None
         self.graph = None
+        self._graph_output = None
         self._ran = False
         self._forward_state = None
 
@@ -293,6 +294,8 @@ class ColfaxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if interface._get_device_arch() != 100:
             raise RuntimeError("SKIPPED: FA4 architecture override must resolve to SM100")
         self.inputs = build_inputs(self.spec, self.device)
+        self.output = None
+        self._graph_output = None
         self._ran = False
         cfg, x = self.spec, self.inputs
         fwd_kwargs = {
@@ -373,16 +376,17 @@ class ColfaxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         stream.synchronize()
         self.graph = torch.cuda.CUDAGraph()
         with torch.cuda.graph(self.graph, stream=stream):
-            self.output = run()
+            self._graph_output = run()
         torch.cuda.current_stream(self.device).wait_stream(stream)
 
     def benchmark_fn(self) -> None:
-        if self.graph is None:
+        if self.graph is None or self._graph_output is None:
             raise RuntimeError("setup() must complete before benchmark_fn()")
         with self._nvtx_range(
             f"colfax_{self.kind}_{'optimized' if self.optimized else 'baseline'}"
         ):
             self.graph.replay()
+        self.output = self._graph_output
         self._ran = True
 
     def capture_verification_payload(self) -> None:
@@ -437,6 +441,7 @@ class ColfaxBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def teardown(self) -> None:
         self.graph = None
+        self._graph_output = None
         self.output = None
         self.inputs = None
         self._forward_state = None

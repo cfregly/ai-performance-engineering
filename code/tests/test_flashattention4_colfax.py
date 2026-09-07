@@ -14,6 +14,7 @@ import torch
 
 from core.discovery import discover_benchmarks
 from core.harness.benchmark_harness import BaseBenchmark
+from core.harness.validity_checks import check_setup_precomputation
 from labs.flashattention4.colfax_benchmarks import (
     ColfaxBenchmark,
     ColfaxConfig,
@@ -402,19 +403,24 @@ def test_opt_in_real_colfax_sm100_lifecycle_and_full_outputs() -> None:
             decode_switch = (
                 interface.utils._fa_disable_s_ping_pong_enabled if kind == "decode" else None
             )
-            benchmark.setup()
+            setup_valid, setup_error = check_setup_precomputation(
+                lambda benchmark=benchmark: {"output": benchmark.output}, benchmark.setup
+            )
+            assert setup_valid, setup_error
+            assert benchmark.output is None
             if kind == "decode":
                 assert interface.utils._fa_disable_s_ping_pong_enabled is decode_switch
             with pytest.raises(RuntimeError, match=r"benchmark_fn\(\) must replay"):
                 benchmark.capture_verification_payload()
 
+            benchmark.benchmark_fn()
+            captured_outputs = (
+                (benchmark.output,)
+                if isinstance(benchmark.output, torch.Tensor)
+                else benchmark.output
+            )
+            assert captured_outputs is not None
             for _ in range(2):
-                captured_outputs = (
-                    (benchmark.output,)
-                    if isinstance(benchmark.output, torch.Tensor)
-                    else benchmark.output
-                )
-                assert captured_outputs is not None
                 for tensor in captured_outputs:
                     tensor.fill_(float("nan"))
                 benchmark.benchmark_fn()
