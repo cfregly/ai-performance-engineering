@@ -17,6 +17,7 @@ BENCHMARK_*.json
 code/cluster/results/structured/mcp_cluster_smoke_test*
 .venv/
 .pytest_cache/
+.hypothesis/
 manuscript_diffs/
 .torch_inductor/
 .torch_extensions/
