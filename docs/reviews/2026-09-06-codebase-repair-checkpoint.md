@@ -5,6 +5,11 @@ distributed launch behavior, and environment diagnostics. It is a validated
 repair checkpoint, not a claim that every example is maximally fast or that the
 complete hardware matrix has passed.
 
+The latest completed follow-up is [Waves49c–51](#waves49c51-correctness-closure-and-reproducible-router-runtime).
+Earlier pending statements below record the state of those attempts; the later
+entries resolve them where fresh execution is available. Final integrated GPU
+tests, hosted CI, and the remaining merges are still pending.
+
 ## Main repairs
 
 - Preserve real numerical verification and equivalent workloads in block
@@ -1823,3 +1828,74 @@ The first overlay check had incorrectly required its constructor to leave CUDA
 uninitialized; the corrected probe records that state and preserves the failed
 attempt. The baseline source run is execution evidence only. Paired dynamic
 and dual-pool router verification is running separately in Wave49c.
+
+### Waves49c–51: correctness closure and reproducible router runtime
+
+Wave50 completed ten stages on `c35f7b082`; Wave51 completed nine on `63885e8ab`.
+Every stage drained its owned processes. These remain portable, non-canonical
+direct runs on two B200s with the retained Torch 2.9.1/CUDA 13 runtime.
+
+The memory-bound failure came from disabling CUDA graph trees in the shared
+architecture policy. Retaining graph-tree ownership while leaving implicit
+graph capture disabled repairs the full 16,777,216-element, 64-repeat workload.
+The combined GPU regressions passed 61 tests in Wave50, and the normal full-output
+gate passed. One normal timing measured 2.404318 ms baseline and 0.090038 ms compiled;
+this is an observation, not a repeated interleaved performance claim. Modeled
+global traffic now distinguishes eager repeated reads/writes from the fused
+kernel's single input read and output write; it is not a measured HBM counter.
+Wave51 also passed the tightened 1e-5 relative/2e-5 absolute tolerance. A missing
+repeat is rejected by the new numerical negative control.
+
+The single-GPU DDP reducer repair passed real 5/3, 2/3 and 5/1 step/accumulation runs.
+Normal one- and two-GPU DDP pairs retained exact full-output verification and
+remained below the speed threshold. Throughput parsing now captures the actual
+per-rank summaries, approximately 41,874 and 48,497 tokens/s, rather than a loss
+value preceding `tokens/step`.
+
+The parent torchrun reference was being constructed before harness seeding.
+Moving runtime initialization before specification construction restores the
+same active seed on both sides. A real CPU torchrun test covers 42 and 1042 after
+unrelated RNG use. Wave51 then passed ordinary two-GPU TorchComms verification
+and the chapter 15 disaggregated comparison. The latter measured 1906.060 ms versus
+1890.588 ms: its 1.00818x result remains `failed_no_speedup`, with no correctness
+error. The speed requirement has not been weakened.
+
+Cache-aware input jitter had modified a saved prompt copy. Verification now
+binds a live prompt view, preferring a cold request whose complete prompt is
+processed. The real model input-mutation control and Wave51 gate passed. Its
+normal two-GPU pair measured 23.810146 ms versus 14.491368 ms and passed verification;
+the 1.64306x observation still needs an interleaved timing campaign before being
+promoted to a performance claim.
+
+Wave49c's normal dynamic-router pair passed complete token verification. Its
+31.325 s versus 29.504 s timings include engine startup on every invocation. The
+dual-pool default-backend pair failed exact tokens, and repeated optimized runs
+also differed despite identical prompts. Wave51's explicit
+`VLLM_BATCH_INVARIANT=1` plus `TRITON_ATTN` produced identical full 1,734-element
+outputs across both policies. The new `--attention-backend` option carries this
+choice into both engine configurations; the lab README gives the exact command.
+Default-backend failures remain retained, and other models require their own
+verification.
+
+The repository now contains an explicit vLLM 0.16/FlashAttention 4 backport builder.
+It checks the pinned wheel and source hashes, changes only the known rotary
+import and wheel RECORD, and verifies the installed package origin. Wave51 built
+and installed the actual wheel in a disposable composed environment, retained
+FlashAttention 4 CuTe, and imported vLLM's bundled CUDA extension. The shared
+environment was unchanged. Twenty-five focused GPU tests passed in the same
+wave. Normal router runs using this installed wheel remain the next check.
+
+The final 22 shared setup implementations now preserve the caller's active seed.
+MoE and decode retain their CUDA graph cleanup while resetting the generator to
+that active seed. CPU controls passed, and Wave52 passed 24 GPU checks before a
+new test incorrectly inspected decode output before its post-timing capture.
+That test now follows the real capture lifecycle; the failed attempt is retained
+and the corrected batch precedes the final integrated GPU suite.
+
+The baseline gradient-fusion NCU capture remains incomplete. Even with one full
+2048-tensor iteration, its five-metric application-range replay exceeded 600 s.
+Optimized NCU, Torch and Nsight Systems captures passed; this does not close the
+baseline NCU requirement. A bounded one-metric diagnostic is separate from the
+required five-metric report. Precision-policy cases, unavailable model engines,
+and hardware requirements beyond this two-GPU host retain their prior explicit
+dispositions.
