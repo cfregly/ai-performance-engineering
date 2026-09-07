@@ -54,8 +54,6 @@ class BaselinePinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.host_batches = []
         self.targets = []
         self.output = None
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         log_allocator_guidance("ch03/baseline_pinned_prefetch_mlp", optimized=False)
         self.model = nn.Sequential(
             nn.Linear(self.input_dim, self.hidden_dim),

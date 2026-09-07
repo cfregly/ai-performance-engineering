@@ -132,7 +132,10 @@ def test_torchrun_spec_calls_the_owned_main_through_the_explicit_adapter(
     assert spec.script_path == Path(benchmark_worker.__file__).resolve()
     assert spec.module_name is None
     assert spec.script_args == ["--module", module_name, "--callable", "main", "--"]
-    assert spec.config_arg_map == {"iterations": "--iters", "warmup": "--warmup"}
+    expected_config_args = {"iterations": "--iters", "warmup": "--warmup"}
+    if module_name.startswith("ch15."):
+        expected_config_args["seed"] = "--seed"
+    assert spec.config_arg_map == expected_config_args
 
 
 def test_adapter_reaches_real_ch13_main_and_preserves_its_capability_failure() -> None:

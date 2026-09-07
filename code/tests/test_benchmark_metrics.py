@@ -320,6 +320,16 @@ class TestDistributedAndTritonMetrics:
 
 class TestPrecisionMetrics:
     """Test compute_precision_metrics."""
+
+    def test_unmeasured_accuracy_is_absent(self):
+        metrics = compute_precision_metrics(None, None, "fp8")
+        assert "precision.accuracy_delta" not in metrics
+        assert "precision.memory_reduction_factor" not in metrics
+        assert metrics["precision.theoretical_storage_reduction_factor"] == 4.0
+
+    def test_measured_zero_accuracy_delta_is_preserved(self):
+        metrics = compute_precision_metrics(None, None, "fp8", accuracy_delta=0.0)
+        assert metrics["precision.accuracy_delta"] == 0.0
     
     def test_fp8_speedup(self):
         """Test FP8 precision speedup."""
@@ -330,7 +340,7 @@ class TestPrecisionMetrics:
         )
         
         assert metrics["precision.speedup"] == 4.0
-        assert metrics["precision.memory_reduction_factor"] == 4.0
+        assert metrics["precision.theoretical_storage_reduction_factor"] == 4.0
         assert metrics["precision.speedup_efficiency_pct"] == 100.0
     
     def test_fp16_speedup(self):
@@ -342,7 +352,7 @@ class TestPrecisionMetrics:
         )
         
         assert metrics["precision.speedup"] == 2.0
-        assert metrics["precision.memory_reduction_factor"] == 2.0
+        assert metrics["precision.theoretical_storage_reduction_factor"] == 2.0
 
     def test_int8_speedup(self):
         """Test INT8 precision speedup."""
@@ -353,7 +363,7 @@ class TestPrecisionMetrics:
         )
 
         assert metrics["precision.speedup"] == 4.0
-        assert metrics["precision.memory_reduction_factor"] == 4.0
+        assert metrics["precision.theoretical_storage_reduction_factor"] == 4.0
         assert metrics["precision.speedup_efficiency_pct"] == 100.0
 
     def test_int4_reports_eight_x_memory_reduction(self):
@@ -365,7 +375,7 @@ class TestPrecisionMetrics:
         )
 
         assert metrics["precision.speedup"] == 6.0
-        assert metrics["precision.memory_reduction_factor"] == 8.0
+        assert metrics["precision.theoretical_storage_reduction_factor"] == 8.0
 
     def test_fp32_is_neutral_precision(self):
         """FP32 should report no storage reduction versus itself."""
@@ -376,7 +386,7 @@ class TestPrecisionMetrics:
         )
 
         assert metrics["precision.fp32_ms"] == 10.0
-        assert metrics["precision.memory_reduction_factor"] == 1.0
+        assert metrics["precision.theoretical_storage_reduction_factor"] == 1.0
 
 
 class TestInferenceMetrics:

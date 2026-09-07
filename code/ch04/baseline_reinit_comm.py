@@ -54,8 +54,6 @@ class BaselineReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.local_rank = self._launch_context.local_rank
         self.device = torch.device(f"cuda:{self.local_rank}")
         torch.cuda.set_device(self.local_rank)
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         # Intentionally tiny payload: this benchmark isolates communicator reinit overhead,
         # not bandwidth. Larger tensors would dilute the init/destroy cost.
         self.input_tensor = torch.randn(1, 1, device=self.device, dtype=torch.float32)

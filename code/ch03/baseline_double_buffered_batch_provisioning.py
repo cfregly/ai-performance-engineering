@@ -46,8 +46,6 @@ class BaselineDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin,
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.model = nn.Sequential(
             nn.Linear(1024, 1024),
             nn.ReLU(inplace=True),

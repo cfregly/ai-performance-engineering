@@ -47,8 +47,6 @@ class BaselineNvfp4GemvBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA is required for NVFP4 GEMV benchmarks")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         utils_mod = load_utils_module(LAB_DIR / "utils.py", "nvfp4_gemv_utils_for_baseline")
         reference_mod = load_reference_module(
             LAB_DIR / "reference_submission.py",

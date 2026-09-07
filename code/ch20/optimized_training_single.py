@@ -57,8 +57,6 @@ class OptimizedTrainingSingleBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._payload_parameter_count = 0
     
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self._tf32_state = (
             bool(torch.backends.cuda.matmul.allow_tf32),
             bool(torch.backends.cudnn.allow_tf32),

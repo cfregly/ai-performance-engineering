@@ -57,9 +57,6 @@ class BaselineTrtLlmPhi35MoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("SKIPPED: CUDA is required for the TRT-LLM Phi-3.5-MoE baseline")
         self.model_path = resolve_model_path(self.model_path)
         ensure_trtllm_assets(self.model_path, require_engine=False)
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         disable_accelerate_transformer_engine()
         try:
             from transformers import AutoModelForCausalLM, AutoTokenizer

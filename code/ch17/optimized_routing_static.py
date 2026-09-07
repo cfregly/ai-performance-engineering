@@ -56,9 +56,9 @@ class OptimizedRoutingStaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
-        random.seed(42)
+        # Capture the harness seed before model/runtime setup. Inputs deliberately restart
+        # from that seed so paired implementations keep aligned stochastic data.
+        setup_seed = int(torch.initial_seed())
 
         self.model = LargeModel(self.hidden_dim, self.num_layers).to(self.device)
         if self.device.type == "cuda":
@@ -68,8 +68,8 @@ class OptimizedRoutingStaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         dtype = next(self.model.parameters()).dtype
         self.inputs = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=dtype)
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
+        torch.manual_seed(setup_seed)
+        torch.cuda.manual_seed_all(setup_seed)
         self._verify_input = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=dtype)
         self._verify_output_buffer = torch.empty(
             self.batch_size,

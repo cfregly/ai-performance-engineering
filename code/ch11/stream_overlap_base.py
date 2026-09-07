@@ -45,9 +45,6 @@ class StridedStreamBaseline(VerificationPayloadMixin, BaseBenchmark):
         self.register_workload_metadata(bytes_per_iteration=bytes_transferred)
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.stream = torch.cuda.Stream()
         self.host_input = torch.randn(
             self.N, device="cpu", dtype=torch.float32, pin_memory=True
@@ -193,9 +190,6 @@ class ConcurrentStreamOptimized(VerificationPayloadMixin, BaseBenchmark):
         self.register_workload_metadata(bytes_per_iteration=bytes_transferred)
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         if self.num_streams < 1:
             raise ValueError("num_streams must be >= 1")
         if self.num_segments < 1:

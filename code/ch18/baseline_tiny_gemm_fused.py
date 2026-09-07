@@ -41,8 +41,6 @@ class BaselineTinyGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA required for tiny GEMM benchmark")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         (
             self.x,
             self.w_q,

@@ -2,29 +2,33 @@
 
 from __future__ import annotations
 
-import os
-
-from core.common.device_utils import resolve_local_rank
+from typing import Optional
 
 import torch
 import torch.distributed as dist
 
-from core.benchmark.gpu_requirements import skip_if_insufficient_gpus
-
-from typing import Optional
-
 from ch04.distributed_helper import setup_single_gpu_env
-from core.harness.benchmark_harness import (  # noqa: E402
+from ch04.reinit_comm_multigpu_result import ReinitCommChildResultMixin
+from core.benchmark.gpu_requirements import skip_if_insufficient_gpus
+from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.common.device_utils import resolve_local_rank
+from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
+    LaunchVia,
     WorkloadMetadata,
 )
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
-class OptimizedReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
+
+class OptimizedReinitCommBenchmark(
+    ReinitCommChildResultMixin,
+    VerificationPayloadMixin,
+    BaseBenchmark,
+):
     """Initialize NCCL once and reuse - good pattern."""
     multi_gpu_required = True
+    _reinit_comm_variant = "optimized"
     
     def __init__(self):
         super().__init__()
@@ -39,6 +43,10 @@ class OptimizedReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
             bytes_per_iteration=4.0,  # single float all-reduce
+        )
+        self.register_workload_metadata(
+            requests_per_iteration=self._workload.requests_per_iteration,
+            bytes_per_iteration=self._workload.bytes_per_iteration,
         )
     
     def setup(self) -> None:
@@ -58,8 +66,6 @@ class OptimizedReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.rank = dist.get_rank()
         self.world_size = dist.get_world_size()
         self.device = torch.device(f"cuda:{self.local_rank}")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         # Intentionally tiny payload: this benchmark isolates communicator reuse vs reinit,
         # not bandwidth. Larger tensors would dilute the init/destroy cost.
         self.input_tensor = torch.randn(1, 1, device=self.device, dtype=torch.float32)
@@ -84,6 +90,9 @@ class OptimizedReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dist.all_reduce(self.tensor)
 
     def capture_verification_payload(self) -> None:
+        if self._reinit_comm_result_context is not None:
+            self.require_reinit_comm_child_result()
+            return
         if (
             self.input_tensor is None
             or self.tensor is None
@@ -118,6 +127,8 @@ class OptimizedReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def get_config(self) -> BenchmarkConfig:
         """Return benchmark configuration."""
         return BenchmarkConfig(
+            launch_via=LaunchVia.TORCHRUN,
+            nproc_per_node=2,
             iterations=5,
             warmup=5,
             enable_memory_tracking=False,
@@ -139,6 +150,9 @@ class OptimizedReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""
+        child_error = self.validate_reinit_comm_child_result()
+        if self._reinit_comm_result_context is not None:
+            return child_error
         if self.tensor is None:
             return "Tensor not initialized"
         if not dist.is_initialized():

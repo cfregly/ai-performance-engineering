@@ -36,15 +36,9 @@ class BaselineCudaGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Setup: Initialize tensors and load CUDA extension."""
         self._extension = load_cuda_graphs_extension()
         
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
         # Warm up kernel launches so compilation/init costs are excluded.
         self._extension.separate_kernel_launches(self.data, 1)
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
         self._verify_input = self.data.detach().clone()
         self._verify_output_buffer = torch.empty_like(self.data)

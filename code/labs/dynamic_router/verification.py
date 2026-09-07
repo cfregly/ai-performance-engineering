@@ -10,6 +10,23 @@ import torch
 VERIFICATION_OUTPUT_KEY = "_verification_output_token_ids"
 
 
+def require_verification_output(metrics: Mapping[str, object]) -> None:
+    """Reject vLLM summaries that do not contain complete generated token ids."""
+    if VERIFICATION_OUTPUT_KEY not in metrics:
+        raise RuntimeError(
+            f"vLLM verification requires {VERIFICATION_OUTPUT_KEY}; "
+            "timing and routing metrics are not model outputs"
+        )
+    verification_output = metrics[VERIFICATION_OUTPUT_KEY]
+    if not isinstance(verification_output, list | tuple):
+        raise TypeError(f"{VERIFICATION_OUTPUT_KEY} must be a list or tuple of token ids")
+    if not verification_output:
+        raise RuntimeError(f"{VERIFICATION_OUTPUT_KEY} must contain framed request outputs")
+    for value in verification_output:
+        if isinstance(value, bool) or not isinstance(value, Number):
+            raise TypeError(f"{VERIFICATION_OUTPUT_KEY} must contain only numeric token ids")
+
+
 def numeric_metric_values(metrics: Mapping[str, object], out: list[float] | None = None) -> list[float]:
     """Build the verification row, preferring explicit model outputs when present."""
     values = [] if out is None else out

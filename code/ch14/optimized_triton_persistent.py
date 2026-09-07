@@ -64,8 +64,6 @@ class OptimizedTritonPersistentBenchmark(VerificationPayloadMixin, BaseBenchmark
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         props = torch.cuda.get_device_properties(self.device)
         self.num_sms = props.multi_processor_count

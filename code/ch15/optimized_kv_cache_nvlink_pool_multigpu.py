@@ -64,8 +64,6 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._payload_parameter_count = 0
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         skip_if_insufficient_gpus(2)
 
         self.device_ids = list(range(torch.cuda.device_count()))

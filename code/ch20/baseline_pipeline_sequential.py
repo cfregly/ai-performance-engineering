@@ -82,8 +82,6 @@ class BaselinePipelineSequentialBenchmark(VerificationPayloadMixin, BaseBenchmar
 
     def setup(self) -> None:
         """Setup: Initialize pipeline stages."""
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         
         # Sequential pipeline stages
         self.stages = nn.ModuleList([

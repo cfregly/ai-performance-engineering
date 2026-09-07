@@ -40,8 +40,6 @@ class AiOptimizationBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
             extra_cuda_cflags=["-O3", "--use_fast_math", "-lineinfo"],
         )
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.inputs = torch.randn(
             self.rows,
             self.cols,

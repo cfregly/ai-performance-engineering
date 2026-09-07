@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Optional
 
 import torch
@@ -45,6 +44,41 @@ class SimpleModel(nn.Module):
         return x
 
 
+def _capture_fp8_verification_output(
+    model: nn.Module,
+    verify_input: torch.Tensor,
+    output_buffer: torch.Tensor,
+) -> torch.Tensor:
+    """Evaluate the model from the current declared input and copy its payload slice.
+
+    The declared verification input is float32 while the benchmark model consumes
+    float16.  Convert it for every capture so input perturbations cannot be hidden
+    behind a setup-time cache.  Explicitly disabling inherited inference mode also
+    avoids torchao 0.15's unsupported axiswise Float8TrainingTensor reshape path.
+    """
+    with torch.inference_mode(False), torch.no_grad():
+        model_input = verify_input.to(dtype=torch.float16)
+        raw_output = model(model_input)
+
+        if type(raw_output) is not torch.Tensor:
+            to_original_precision = getattr(raw_output, "to_original_precision", None)
+            if not callable(to_original_precision):
+                raise TypeError(
+                    "FP8 verification output is a tensor subclass without "
+                    "to_original_precision()"
+                )
+            raw_output = to_original_precision()
+        if type(raw_output) is not torch.Tensor:
+            raise TypeError("FP8 dequantization did not return a plain torch.Tensor")
+
+        output_slice = raw_output[
+            : output_buffer.shape[0],
+            : output_buffer.shape[1],
+        ]
+        output_buffer.copy_(output_slice)
+    return output_buffer
+
+
 class OptimizedFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
     """Optimized FP8 path using torchao Float8Linear training kernels."""
 
@@ -62,7 +96,6 @@ class OptimizedFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.criterion: Optional[nn.Module] = None
         self.output: Optional[torch.Tensor] = None  # For output verification
         self._verify_input: Optional[torch.Tensor] = None
-        self._verify_input_fp16: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         self.batch_size = 8192
@@ -82,10 +115,6 @@ class OptimizedFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError(
                 f"SKIPPED: torchao is required for {self.__class__.__name__}: {TORCHAO_IMPORT_ERROR}"
             )
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
-
         # Harness provides seeding - creation order must match baseline
         model = SimpleModel(hidden_dim=self.hidden_dim).to(self.device).half().train()
         fp8_config = Float8LinearConfig.from_recipe_name(Float8LinearRecipeName.TENSORWISE)
@@ -105,7 +134,6 @@ class OptimizedFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=torch.float32,
         )
         self._verify_input = self.inputs.detach().clone()
-        self._verify_input_fp16 = self._verify_input.to(torch.float16)
         self._verify_output_buffer = torch.empty(
             min(128, self.batch_size),
             min(256, self.hidden_dim),
@@ -141,23 +169,20 @@ class OptimizedFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimizer.step()
 
     def benchmark_fn(self) -> None:
-        if self._verify_input is None or self._verify_input_fp16 is None:
+        if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
         with self._nvtx_range("optimized_precisionfp8"):
             self._train_step()
             self.output = None
 
     def capture_verification_payload(self) -> None:
-        if self.model is None or self._verify_input is None or self._verify_input_fp16 is None or self._verify_output_buffer is None:
+        if self.model is None or self._verify_input is None or self._verify_output_buffer is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
-        with torch.inference_mode():
-            verify_out = self.model(self._verify_input_fp16)
-            output_slice = verify_out[
-                : self._verify_output_buffer.shape[0],
-                : self._verify_output_buffer.shape[1],
-            ]
-            self._verify_output_buffer.copy_(output_slice)
-            self.output = self._verify_output_buffer
+        self.output = _capture_fp8_verification_output(
+            self.model,
+            self._verify_input,
+            self._verify_output_buffer,
+        )
         self._set_verification_payload(
             inputs={"input": self._verify_input},
             output=self._verify_output_buffer,
@@ -182,7 +207,6 @@ class OptimizedFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.criterion = None
         self.output = None
         self._verify_input = None
-        self._verify_input_fp16 = None
         self._verify_output_buffer = None
         super().teardown()
 

@@ -82,9 +82,6 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self):
         """Initialize KV cache."""
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         # Pre-allocate KV cache
         # Shape: [batch, num_layers, 2, num_heads, max_seq, head_dim]
         self.kv_cache = torch.empty(

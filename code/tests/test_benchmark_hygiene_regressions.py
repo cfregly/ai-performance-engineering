@@ -4069,7 +4069,7 @@ def test_ch09_baseline_memory_bound_reuses_repeat_range() -> None:
     assert "for _ in range(self.repeats):" not in benchmark_section
 
 
-def test_ch09_memory_bound_verification_reuses_slice_buffer() -> None:
+def test_ch09_memory_bound_verification_reuses_full_buffer() -> None:
     for filename in ("baseline_memory_bound.py", "optimized_memory_bound.py"):
         source = (REPO_ROOT / "ch09" / filename).read_text(encoding="utf-8")
         setup_section = source.split("def setup", maxsplit=1)[1].split(
@@ -4088,9 +4088,10 @@ def test_ch09_memory_bound_verification_reuses_slice_buffer() -> None:
         )[0]
 
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
-        assert "self._verify_output_buffer = torch.empty(4096, device=self.device, dtype=torch.float32)" in setup_section
-        assert "output_slice = self.output[: self._verify_output_buffer.numel()].detach()" in capture_section
-        assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+        input_name = "tensor" if filename.startswith("baseline_") else "data"
+        assert f"self._verify_output_buffer = torch.empty_like(self.{input_name})" in setup_section
+        assert "output_slice" not in capture_section
+        assert "self._verify_output_buffer.copy_(self.output.detach())" in capture_section
         assert "output=self._verify_output_buffer" in capture_section
         assert ".detach().clone()" not in capture_section
         assert "self._verify_output_buffer = None" in teardown_section
@@ -7711,8 +7712,11 @@ def test_real_world_model_wrappers_reuse_metric_state() -> None:
     assert "self._last_metrics = {}" not in baseline_benchmark
     assert "self._last_metrics = {}" not in optimized_benchmark
     assert '"llama.use_compile": 1.0' in optimized_init
-    assert '"llama.use_flex_attention": 1.0' in optimized_init
-    assert '"llama.use_fp8": 1.0 if self.use_fp8 else 0.0' in optimized_init
+    assert '"llama.attention.preferred_sdpa": 1.0' in optimized_init
+    assert '"llama.fp32_residual": 1.0' in optimized_init
+    assert '"llama.stable_rms_norm": 1.0' in optimized_init
+    assert "use_flex_attention" not in optimized_init
+    assert "use_fp8" not in optimized_init
     assert "return self._last_metrics" in optimized_metrics
     assert "self._last_metrics.copy()" not in optimized_metrics
 
@@ -9280,7 +9284,7 @@ def test_remaining_benchmark_wrappers_cache_verification_parameter_count() -> No
             assert "self.inputs.detach().float().clone()" not in capture_section
             assert "self.output.detach().float().clone()" not in capture_section
         if "nanochat_fullstack" in relative:
-            assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+            assert "self._verify_output_buffer: torch.Tensor | None = None" in source
             assert "self._verify_output_buffer = torch.empty(" in setup_section
             assert "self._verify_output_buffer.copy_(self.output)" in capture_section
             assert "output=self._verify_output_buffer" in capture_section
@@ -10727,7 +10731,7 @@ def test_ch18_paged_vllm_cache_reset_is_metadata_only() -> None:
     assert "self.page_faults = 0" in cache_section
 
 
-def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
+def test_ch18_optimized_rope_q_cache_writes_rope_directly_to_cache() -> None:
     from ch18.rope_q_cache_common import apply_rope, apply_rope_inplace, apply_rope_out, build_rope_tables
 
     common_source = (REPO_ROOT / "ch18" / "rope_q_cache_common.py").read_text(encoding="utf-8")
@@ -10777,7 +10781,7 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "self._cos_step_count = len(self._cos_step_views)" in baseline_setup
     assert "self._sin_step_count = len(self._sin_step_views)" in baseline_setup
     assert "self._step_group_count = len(self._step_groups)" in baseline_setup
-    assert "self._output_view = self._cache_step_views[self.cfg.steps - 1]" in baseline_setup
+    assert "self._output_view = self.cache[:, :, : self.cfg.steps, :]" in baseline_setup
     assert "emb = torch.cat([freqs, freqs], dim=-1)" not in common_source
     assert "cos[:, :half].copy_(cos_half)" in common_source
     assert "sin[:, half:].copy_(sin_half)" in common_source
@@ -10824,7 +10828,7 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "q[:, h, :]" not in baseline_benchmark
     assert "self.cache = torch.empty(" in setup_section
     assert "self.cache = torch.zeros(" not in setup_section
-    assert "self.rope_scratch = torch.empty(" in setup_section
+    assert "self.rope_scratch" not in source
     assert "self.q_buffer: Optional[torch.Tensor] = None" in source
     assert "self.q_heads: Optional[torch.Tensor] = None" in source
     assert "self._input_step_views: list[torch.Tensor] = []" in source
@@ -10847,7 +10851,7 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "self._cos_step_count = len(self._cos_step_views)" in setup_section
     assert "self._sin_step_count = len(self._sin_step_views)" in setup_section
     assert "self._step_group_count = len(self._step_groups)" in setup_section
-    assert "self._output_view = self._cache_step_views[self.cfg.steps - 1]" in setup_section
+    assert "self._output_view = self.cache[:, :, : self.cfg.steps, :]" in setup_section
     assert "for x, cache_step, cos_t, sin_t in self._step_groups:" in benchmark_section
     assert "self._input_step_count != self.cfg.steps" in benchmark_section
     assert "self._cache_step_count != self.cfg.steps" in benchmark_section
@@ -10861,7 +10865,8 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "len(self._step_groups)" not in benchmark_section
     assert "zip(" not in benchmark_section
     assert "torch.mm(x, self.q_weight, out=self.q_buffer)" in benchmark_section
-    assert "apply_rope_inplace(self.q_heads, cos_t, sin_t, self.rope_scratch)" in benchmark_section
+    assert "apply_rope_out(self.q_heads, cos_t, sin_t, cache_step)" in benchmark_section
+    assert "cache_step.copy_(q)" not in benchmark_section
     assert "apply_rope(q, cos_t, sin_t)" not in benchmark_section
     assert "q = x @ self.q_weight" not in benchmark_section
     assert "self.cache[:, :, step, :] = q" not in benchmark_section
@@ -12862,8 +12867,9 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "def _allocate_host_tensor(" in source
     assert "pin_memory=True" in source
     assert "return self._allocate_host_tensor(shape, self.cfg.dtype)" in source
-    assert "self._verify_prompt = self._allocate_host_tensor(" in setup_section
-    assert "self._verify_prompt.copy_(self._prompts[0][0], non_blocking=False)" in setup_section
+    assert "self._bind_live_verification_prompt()" in setup_section
+    assert "self._verify_prompt = prompts[plan.local_request_idx]" in source
+    assert "self._verify_prompt.copy_(" not in setup_section
     assert "self._prompts[0][0].detach().cpu()" not in setup_section
     assert "output_idx = 0" in benchmark_section
     assert "outputs.append(" not in benchmark_section
@@ -13116,9 +13122,11 @@ def test_nanochat_optimized_inference_reuses_decode_step_views() -> None:
     assert "self.decode_token_steps: tuple[torch.Tensor, ...] = ()" in init_section
     assert "self.decode_token_steps = tuple(" in setup_section
     assert "self.decode_tokens[:, t : t + 1]" in setup_section
-    assert "for step_ids in self.decode_token_steps[: min(4, self.decode_len)]:" in setup_section
-    assert "or not self.decode_token_steps" in benchmark_section
-    assert "for step_ids in self.decode_token_steps:" in benchmark_section
+    assert "self._graph_output = self._run_request()" in setup_section
+    request_section = source.split("def _run_request", maxsplit=1)[1].split("def benchmark_fn", maxsplit=1)[0]
+    assert "or not self.decode_token_steps" in request_section
+    assert "for step_ids in self.decode_token_steps:" in request_section
+    assert "self._request_graph.replay()" in benchmark_section
     assert "self.decode_tokens[:, t : t + 1]" not in benchmark_section
 
 
@@ -17563,17 +17571,20 @@ def test_ch13_precisionfp8_defers_verification_forwards_and_casts_outside_hot_lo
             "def get_config", maxsplit=1
         )[0]
 
-        assert "verify_out = self.model(self._verify_input_fp16)" not in benchmark_section
+        assert "_verify_input_fp16" not in source
+        assert "manual_seed" not in setup_section
         assert ".detach().float().clone()" not in benchmark_section
-        assert "verify_out = self.model(self._verify_input_fp16)" in capture_section
-        assert "with torch.inference_mode():" in capture_section
-        assert "with torch.no_grad():" not in capture_section
+        assert ".to(dtype=torch.float16)" not in benchmark_section
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
         assert "self._verify_output_buffer = torch.empty(" in setup_section
         assert "min(128, self.batch_size)" in setup_section
         assert "min(256, self.hidden_dim)" in setup_section
-        assert "output_slice = verify_out[" in capture_section
-        assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+        if name == "baseline_precisionfp8.py":
+            assert "verify_input_fp16 = self._verify_input.to(dtype=torch.float16)" in capture_section
+            assert "verify_out = self.model(verify_input_fp16)" in capture_section
+        else:
+            assert "_capture_fp8_verification_output(" in capture_section
+            assert "self._verify_input," in capture_section
         assert "output=self._verify_output_buffer" in capture_section
         assert "output=self.output.detach().float().clone()" not in capture_section
         assert "self._verify_output_buffer = None" in teardown_section
@@ -17597,16 +17608,16 @@ def test_ch13_precisionfp8_defers_verification_forwards_and_casts_outside_hot_lo
         assert expected_assignment in benchmark_section
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
         assert "self._verify_output_buffer = torch.empty(" in setup_section
-        assert "min(128," in setup_section
-        assert "min(256," in setup_section
-        assert "output_slice = self.output[" in capture_section
-        assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+        assert "min(128," not in setup_section
+        assert "min(256," not in setup_section
+        assert "output_slice" not in capture_section
+        assert "self._verify_output_buffer.copy_(self.output)" in capture_section
         assert "output=self._verify_output_buffer" in capture_section
         assert "output=self.output.detach().float().clone()" not in capture_section
         assert "self._verify_output_buffer = None" in teardown_section
 
 
-def test_ch13_quantization_wrappers_sample_verification_outputs() -> None:
+def test_ch13_quantization_wrappers_preserve_declared_verification_extent() -> None:
     for name in (
         "baseline_quantization.py",
         "optimized_quantization.py",
@@ -17633,9 +17644,15 @@ def test_ch13_quantization_wrappers_sample_verification_outputs() -> None:
 
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
         assert "self._verify_output_buffer = torch.empty(" in setup_section
-        assert "min(128, self.batch_size)" in setup_section
-        assert "min(256, self.out_features)" in setup_section
-        assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+        if "torchao" in name:
+            assert "min(128, self.batch_size)" not in setup_section
+            assert "min(256, self.out_features)" not in setup_section
+            assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+            assert "output_slice" not in capture_section
+        else:
+            assert "min(128, self.batch_size)" in setup_section
+            assert "min(256, self.out_features)" in setup_section
+            assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
         assert "output=self._verify_output_buffer" in capture_section
         assert "self.output.detach().float().clone()" not in capture_section
         assert ".detach().float().clone()" not in benchmark_section
@@ -18457,11 +18474,15 @@ def test_moe_level6_full_stack_weights_expert_outputs_in_place() -> None:
     assert "(out * expert_weights.unsqueeze(-1)).sum(dim=1)" not in experts_forward
 
 
-def test_moe_level4_and_level6_defer_verification_slices_after_timing() -> None:
+def test_moe_level4_and_level6_defer_full_verification_outputs_after_timing() -> None:
     for filename in ("level4_triton.py", "level6_full_stack.py"):
         source = (
             REPO_ROOT / "labs" / "moe_optimization_journey" / filename
         ).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def _get_timing_events",
+            maxsplit=1,
+        )[0]
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def finalize_iteration_metrics",
             maxsplit=1,
@@ -18485,11 +18506,10 @@ def test_moe_level4_and_level6_defer_verification_slices_after_timing() -> None:
         assert "return metrics" in finalize_section
         assert '"latency_ms": float(self.last_latency_ms)' not in finalize_section
         assert '"tokens_per_sec": float(self.last_tokens_per_sec)' not in finalize_section
-        assert "output_slice = self.output[" in capture_section
-        assert ": self._verify_output_buffer.shape[0]," in capture_section
-        assert ": self._verify_output_buffer.shape[1]," in capture_section
-        assert ": self._verify_output_buffer.shape[2]," in capture_section
-        assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+        assert "(self.config.batch_size, self.config.seq_len, self.config.vocab_size)" in setup_section
+        assert "self.output.shape != self._verify_output_buffer.shape" in capture_section
+        assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+        assert "output_slice = self.output[" not in capture_section
         assert "output=self._verify_output_buffer" in capture_section
         assert "output=output_slice.detach().float().clone()" not in capture_section
 
@@ -22862,16 +22882,19 @@ def test_ch16_and_lab_forward_benchmarks_use_inference_mode() -> None:
             assert "sum(p.numel()" not in capture_section
             assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
             assert "self._verify_output_buffer = torch.empty(" in setup_section
-            assert "min(128, self.seq_len)" in setup_section
-            assert "min(256, self.vocab_size)" in setup_section
-            assert "output_slice = self.output[" in capture_section
-            assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+            assert "self.seq_len," in setup_section
+            assert "self.vocab_size," in setup_section
+            assert "min(128, self.seq_len)" not in setup_section
+            assert "min(256, self.vocab_size)" not in setup_section
+            assert "self.output.shape != self._verify_output_buffer.shape" in capture_section
+            assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+            assert "output_slice = self.output[" not in capture_section
             assert "output=self._verify_output_buffer" in capture_section
             assert "output=self.output.detach().clone()" not in capture_section
             assert "self._verify_output_buffer = None" in capture_section
 
 
-def test_moe_journey_slice_verification_reuses_buffers() -> None:
+def test_moe_journey_declared_verification_reuses_buffers() -> None:
     paths = (
         "labs/moe_optimization_journey/moe_benchmark.py",
         "labs/moe_optimization_journey/level4_triton.py",
@@ -22901,7 +22924,8 @@ def test_moe_journey_slice_verification_reuses_buffers() -> None:
             assert "output_slice" not in capture_section
             assert "output=verify_output" in capture_section
         else:
-            assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+            assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+            assert "output_slice" not in capture_section
             assert "output=self._verify_output_buffer" in capture_section
 
 
@@ -23945,8 +23969,8 @@ def test_moe_cuda_graphs_journey_uses_real_graph_capture_and_correct_leveling() 
     )[0]
     assert "self.output = logits" in benchmark_hot_section
     assert "self.output = logits[:, :1, : min(8, logits.shape[-1])]" not in benchmark_hot_section
-    assert "output_slice = self.output[" in benchmark_capture
-    assert "self._verify_output_buffer.copy_(output_slice)" in benchmark_capture
+    assert "output_slice" not in benchmark_capture
+    assert "self._verify_output_buffer.copy_(self.output)" in benchmark_capture
     assert "output=self._verify_output_buffer" in benchmark_capture
     assert ".float().clone()" not in benchmark_capture
     assert ".float().clone()" not in benchmark_source.split("def capture_verification_payload", maxsplit=1)[0]
@@ -24293,15 +24317,17 @@ def test_iteration_seed_and_clone_fixes_for_reviewed_pairs_remain_applied() -> N
     assert "self.output = result" in optimized_gluon
     assert "self.output = result.detach()" not in optimized_gluon
 
-    assert "torch.manual_seed(42)" in blackwell
-    assert "torch.cuda.manual_seed_all(42)" in blackwell
+    assert "torch.manual_seed(42)" not in blackwell
+    assert "torch.cuda.manual_seed_all(42)" not in blackwell
     assert "with torch.inference_mode():" in blackwell
     assert "with torch.no_grad():" not in blackwell
     assert "with torch.inference_mode():" in blackwell_tcgen05
     assert "with torch.no_grad():" not in blackwell_tcgen05
     for source in (baseline_double_buffer, optimized_double_buffer):
-        assert "torch.manual_seed(42)" in source
-        assert "torch.cuda.manual_seed_all(42)" in source
+        setup = source.split("def setup", maxsplit=1)[1].split("def benchmark_fn", maxsplit=1)[0]
+        # The harness supplies both default and fresh verification seeds.
+        assert "torch.manual_seed(42)" not in setup
+        assert "torch.cuda.manual_seed_all(42)" not in setup
 
     assert "host_template.pin_memory()" in optimized_rack_prep
     assert "host_template.clone().pin_memory()" in optimized_rack_prep
@@ -24361,15 +24387,16 @@ def test_ch15_optimized_monolithic_uses_token_equivalent_decode_steps() -> None:
     assert "torch.relu_(layer(x))" in common_source
     assert "torch.relu(layer(x))" not in common_source
     assert "with torch.inference_mode():" in optimized_source
-    assert "for token_idx in range(num_tokens):" in optimized_source
-    assert "buffer[:, token_idx : token_idx + 1, :] = current" in optimized_source
-    assert "self._decode_buffer = torch.empty(" in optimized_setup
+    assert "for token_idx in range(token_count):" in common_source
+    assert "output_buffer[:, token_idx : token_idx + 1, :] = current" in common_source
+    assert "return self.model.decode_autoregressive(kv_cache, num_tokens=self.num_tokens)" in optimized_source
+    assert "self._decode_buffer" not in optimized_source
     assert "(self.batch_size, self.num_tokens, self.model.hidden_dim)" in optimized_setup
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in optimized_source
-    assert "self._verify_output_buffer = torch.empty_like(self._decode_buffer, dtype=torch.float32)" in optimized_setup
-    assert "self._compiled_inference = torch.compile(_full_inference, mode=\"reduce-overhead\")" in optimized_setup
-    assert "_ = self._compiled_inference(self.prompt, self._decode_buffer)" in optimized_setup
-    assert "self.output = self._compiled_inference(self.prompt, self._decode_buffer)" in optimized_benchmark
+    assert "self._verify_output_buffer = torch.empty(" in optimized_setup
+    assert "self._compiled_inference = torch.compile(self._full_inference, mode=\"reduce-overhead\")" in optimized_setup
+    assert "_ = self._compiled_inference(self.prompt)" in optimized_setup
+    assert "self.output = self._compiled_inference(self.prompt)" in optimized_benchmark
     assert "kv_cache.new_empty" not in optimized_setup
     assert "self.model.prefill(self.prompt)" not in optimized_benchmark
     assert "self.output = self.model.decode(kv_cache, num_tokens=self.num_tokens)" not in optimized_source

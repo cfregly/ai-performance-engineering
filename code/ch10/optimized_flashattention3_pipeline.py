@@ -381,9 +381,9 @@ class OptimizedFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark)
     
     def setup(self) -> None:
         """Setup optimized FA3 model with compilation."""
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
+        # Capture the harness seed before model/runtime setup. Inputs deliberately restart
+        # from that seed so paired implementations keep aligned stochastic data.
+        setup_seed = int(torch.initial_seed())
         
         self.model = FA3PipelinedAttention(
             hidden_dim=self.hidden_dim,
@@ -400,9 +400,9 @@ class OptimizedFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark)
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
 
         # Reset RNG after model construction so baseline/optimized see identical weights and inputs.
-        torch.manual_seed(42)
+        torch.manual_seed(setup_seed)
         if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
+            torch.cuda.manual_seed_all(setup_seed)
 
         weight_scale = 0.02
         q_weight = torch.randn(self.hidden_dim, self.hidden_dim, device=self.device, dtype=dtype) * weight_scale

@@ -63,8 +63,6 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._payload_parameter_count = 0
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: requires CUDA")
         # Single-GPU: treat peer cache as an expanded local pool.

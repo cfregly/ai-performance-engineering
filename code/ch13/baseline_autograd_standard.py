@@ -55,8 +55,6 @@ class BaselineAutogradStandardBenchmark(VerificationPayloadMixin, BaseBenchmark)
     
     def setup(self) -> None:
         """Setup: Initialize model and data."""
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         
         self.model = SimpleModel(hidden_dim=self.hidden_dim).to(self.device).half().train()
         self.inputs = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float16)

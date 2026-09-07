@@ -43,8 +43,6 @@ class BaselineTcgen05MatmulBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Compile the extension (first time only) outside the timed hot path.
         self._module = load_tcgen05_module()
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         dtype = torch.float16
         self.a = torch.randn((self.size, self.size), device=self.device, dtype=dtype)

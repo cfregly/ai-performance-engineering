@@ -29,6 +29,13 @@ from labs.speculative_decode.speculative_decode_common import SpecDecodeWorkload
 from labs.speculative_decode.speculative_decode_common import TRITON_AVAILABLE as LAB_TRITON_AVAILABLE
 from labs.speculative_decode.speculative_decode_common import TokenMLP as LabTokenMLP
 from labs.speculative_decode.speculative_decode_common import accept_prefix_length as lab_accept_prefix_length
+from tests.protection_test_utils import preserve_rng_state
+
+
+@pytest.fixture(autouse=True)
+def _restore_rng_after_test():
+    with preserve_rng_state():
+        yield
 
 
 def _assert_accept_prefix_lengths(helper, device: torch.device) -> None:
@@ -155,7 +162,8 @@ def test_ch15_token_mlp_forward_into_prepared_unchecked_matches_forward() -> Non
     torch.testing.assert_close(actual, expected)
 
 
-def test_ch15_speculative_decode_fallback_matches_greedy_when_draft_rejects() -> None:
+@pytest.mark.parametrize("seed", [42, 1042])
+def test_ch15_speculative_decode_fallback_matches_greedy_when_draft_rejects(seed: int) -> None:
     workload_overrides = {
         "vocab_size": 64,
         "target_hidden": 32,
@@ -173,6 +181,7 @@ def test_ch15_speculative_decode_fallback_matches_greedy_when_draft_rejects() ->
         bench.allow_cpu = True
         bench.workload = replace(bench.workload, **workload_overrides)
         try:
+            torch.manual_seed(seed)
             bench.setup()
             bench.benchmark_fn()
             assert bench.output is not None
@@ -187,7 +196,8 @@ def test_ch15_speculative_decode_fallback_matches_greedy_when_draft_rejects() ->
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for lab speculative decode")
-def test_lab_speculative_decode_matches_greedy_when_draft_rejects() -> None:
+@pytest.mark.parametrize("seed", [42, 1042])
+def test_lab_speculative_decode_matches_greedy_when_draft_rejects(seed: int) -> None:
     workload = SpecDecodeWorkload(
         vocab_size=128,
         target_hidden=64,
@@ -203,7 +213,9 @@ def test_lab_speculative_decode_matches_greedy_when_draft_rejects() -> None:
     baseline.workload = workload
     optimized.workload = workload
     try:
+        torch.manual_seed(seed)
         baseline.setup()
+        torch.manual_seed(seed)
         optimized.setup()
         baseline.benchmark_fn()
         optimized.benchmark_fn()
@@ -218,7 +230,8 @@ def test_lab_speculative_decode_matches_greedy_when_draft_rejects() -> None:
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for trusted speculative decode")
-def test_lab_trusted_speculative_decode_matches_verified_decode() -> None:
+@pytest.mark.parametrize("seed", [42, 1042])
+def test_lab_trusted_speculative_decode_matches_verified_decode(seed: int) -> None:
     workload = SpecDecodeWorkload(
         vocab_size=512,
         target_hidden=128,
@@ -234,7 +247,9 @@ def test_lab_trusted_speculative_decode_matches_verified_decode() -> None:
     baseline.workload = workload
     optimized.workload = workload
     try:
+        torch.manual_seed(seed)
         baseline.setup()
+        torch.manual_seed(seed)
         optimized.setup()
         baseline.benchmark_fn()
         optimized.benchmark_fn()
@@ -254,7 +269,8 @@ def test_lab_trusted_speculative_decode_matches_verified_decode() -> None:
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for transition-table speculative decode")
-def test_lab_transition_table_speculative_decode_matches_trusted_draft() -> None:
+@pytest.mark.parametrize("seed", [42, 1042])
+def test_lab_transition_table_speculative_decode_matches_trusted_draft(seed: int) -> None:
     workload = SpecDecodeWorkload(
         vocab_size=512,
         target_hidden=128,
@@ -270,7 +286,9 @@ def test_lab_transition_table_speculative_decode_matches_trusted_draft() -> None
     baseline.workload = workload
     optimized.workload = workload
     try:
+        torch.manual_seed(seed)
         baseline.setup()
+        torch.manual_seed(seed)
         optimized.setup()
         baseline.benchmark_fn()
         optimized.benchmark_fn()

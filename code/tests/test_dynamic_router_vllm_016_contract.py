@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import importlib
+from functools import partial
 from types import SimpleNamespace
 
 import pytest
+import torch
 
 from labs.dynamic_router import vllm_runner
 from labs.dynamic_router.topology import TopologySnapshot
@@ -39,6 +42,7 @@ class _FakeEngineArgs:
         gpu_memory_utilization: float,
         enable_prefix_caching: bool,
         enforce_eager: bool,
+        attention_backend: str | None = None,
     ) -> None:
         self.model = model
         self.tensor_parallel_size = tensor_parallel_size
@@ -46,6 +50,7 @@ class _FakeEngineArgs:
         self.gpu_memory_utilization = gpu_memory_utilization
         self.enable_prefix_caching = enable_prefix_caching
         self.enforce_eager = enforce_eager
+        self.attention_backend = attention_backend
         self.created.append(self)
 
     def create_engine_config(self) -> SimpleNamespace:
@@ -80,10 +85,14 @@ class _FakeEngine:
         outputs = [
             SimpleNamespace(
                 request_id=request_id,
-                outputs=[SimpleNamespace(token_ids=list(range(params.max_tokens)))],
+                outputs=[
+                    SimpleNamespace(
+                        token_ids=[sum(prompt) + index for index in range(params.max_tokens)]
+                    )
+                ],
                 finished=True,
             )
-            for request_id, (_, params) in self.pending.items()
+            for request_id, (prompt, params) in self.pending.items()
         ]
         self.pending.clear()
         return outputs
@@ -104,6 +113,9 @@ class _FakeLLMEngine:
 
 @pytest.fixture
 def vllm_016_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    # This CPU fake models two devices. Match its visibility contract even when
+    # the surrounding real-GPU test shard was launched with a single device.
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1")
     _FakeEngineArgs.created.clear()
     _FakeLLMEngine.created.clear()
     monkeypatch.setattr(vllm_runner, "EngineArgs", _FakeEngineArgs)
@@ -173,6 +185,18 @@ def test_wrapper_uses_vllm_016_engine_and_request_signatures(vllm_016_api: None)
     assert _FakeLLMEngine.created[0].pending["req-0"][1].ignore_eos is True
 
 
+def test_explicit_attention_backend_reaches_engine_config(vllm_016_api: None) -> None:
+    vllm_runner._VllmWrapper("gpu0", 0, "/models/local-test-model", attention_backend="TRITON_ATTN")
+    assert _FakeEngineArgs.created[-1].attention_backend == "TRITON_ATTN"
+
+
+def test_attention_backend_cli_is_explicit(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(vllm_runner.sys, "argv", ["router", "--attention-backend", "TRITON_ATTN"])
+    assert vllm_runner._parse_cli_args().attention_backend == "TRITON_ATTN"
+    monkeypatch.setattr(vllm_runner.sys, "argv", ["router"])
+    assert vllm_runner._parse_cli_args().attention_backend is None
+
+
 def test_pinned_api_mismatch_fails_explicitly_without_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -204,6 +228,7 @@ def test_all_four_benchmark_call_paths_use_current_vllm_api(
             req_count=2,
             max_tokens=1,
             cli_args=args,
+            prompt_token_ids=vllm_runner.build_prompt_token_ids([64, 64]),
         )
         expected_requests = 2
     else:
@@ -220,6 +245,7 @@ def test_all_four_benchmark_call_paths_use_current_vllm_api(
             max_tokens=1,
             prefill_ctx_thresh=3,
             cli_args=args,
+            prompt_token_ids=vllm_runner.build_prompt_token_ids([4, 2, 2]),
         )
         expected_requests = 3
 
@@ -231,6 +257,218 @@ def test_all_four_benchmark_call_paths_use_current_vllm_api(
         "cuda:1",
     }
     assert sum(len(engine.add_calls) for engine in _FakeLLMEngine.created) == expected_requests
+
+
+def test_explicit_zero_request_groups_do_not_restore_default_work() -> None:
+    args = _args()
+    assert vllm_runner.dual_pool_prompt_lengths(
+        args, prefill_burst=0, decode_requests=1, continue_requests=0,
+        short_prompt_tokens=2,
+    ) == [2]
+    with pytest.raises(ValueError, match="at least one request"):
+        vllm_runner.dual_pool_prompt_lengths(args, prefill_burst=0, decode_requests=0, continue_requests=0)
+    with pytest.raises(ValueError, match="req_count must be positive"):
+        vllm_runner.routing_prompt_lengths(args, req_count=0)
+    with pytest.raises(ValueError, match="prompt token counts must be positive"):
+        vllm_runner.dual_pool_prompt_lengths(args, long_prompt_tokens=0)
+
+
+def test_zero_request_groups_reach_actual_admission_loop(vllm_016_api: None) -> None:
+    summary = vllm_runner.run_dual_pool_vllm(
+        "shared", cli_args=_args(), topology_snapshot=_topology(),
+        prefill_burst=0, decode_requests=1, continue_requests=0,
+        short_prompt_tokens=2, max_tokens=1,
+    )
+    assert summary["requests"] == summary["completed"] == 1
+    assert sum(len(engine.add_calls) for engine in _FakeLLMEngine.created) == 1
+
+
+def test_prompt_token_ids_preserve_default_prompts_and_are_live() -> None:
+    prompt_lengths = [4, 2]
+    prompt_token_ids = vllm_runner.build_prompt_token_ids(prompt_lengths)
+
+    assert prompt_token_ids.shape == (1, 6)
+    assert prompt_token_ids.dtype == torch.int64
+    assert vllm_runner._split_prompt_token_ids(
+        prompt_token_ids, prompt_lengths
+    ) == [[1, 1, 1, 1], [1, 1]]
+
+    prompt_token_ids[0, (0, 4)] = 0
+    assert vllm_runner._split_prompt_token_ids(
+        prompt_token_ids, prompt_lengths
+    ) == [[0, 1, 1, 1], [0, 1]]
+
+
+def test_request_admission_rejects_non_cpu_prompt_ids_before_conversion() -> None:
+    prompt_token_ids = torch.empty((1, 6), dtype=torch.int64, device="meta")
+    with pytest.raises(ValueError, match="requires CPU prompt_token_ids"):
+        vllm_runner._split_prompt_token_ids(prompt_token_ids, [4, 2])
+
+
+@pytest.mark.parametrize("call_path", ["dynamic", "dual_pool"])
+def test_changed_prompt_ids_change_complete_generated_outputs(
+    vllm_016_api: None,
+    call_path: str,
+) -> None:
+    args = _args()
+    if call_path == "dynamic":
+        prompt_lengths = vllm_runner.routing_prompt_lengths(args)
+        run = partial(
+            vllm_runner.run_vllm_routing_with_topology,
+            "optimized",
+            topology_snapshot=_topology(),
+            cli_args=args,
+        )
+    else:
+        args.decode_gpus = "1"
+        prompt_lengths = vllm_runner.dual_pool_prompt_lengths(args)
+        run = partial(
+            vllm_runner.run_dual_pool_vllm_with_topology,
+            "dual",
+            topology_snapshot=_topology(),
+            cli_args=args,
+        )
+
+    prompt_token_ids = vllm_runner.build_prompt_token_ids(prompt_lengths)
+    first_new_engine = len(_FakeLLMEngine.created)
+    original = run(prompt_token_ids=prompt_token_ids)
+    prompt_token_ids.zero_()
+    changed = run(prompt_token_ids=prompt_token_ids)
+
+    verification_key = vllm_runner.VERIFICATION_OUTPUT_KEY
+    assert original[verification_key] != changed[verification_key]
+    add_calls = [
+        call
+        for engine in _FakeLLMEngine.created[first_new_engine:]
+        for call in engine.add_calls
+    ]
+    assert any(0 in call["prompt"] for call in add_calls)
+
+
+@pytest.mark.parametrize(
+    ("module_name", "benchmark_name", "expected_requests", "expected_tokens"),
+    [
+        (
+            "labs.dynamic_router.baseline_dynamic_router_vllm",
+            "BaselineDynamicRouterVllmBenchmark",
+            2,
+            130,
+        ),
+        (
+            "labs.dynamic_router.optimized_dynamic_router_vllm",
+            "OptimizedDynamicRouterVllmBenchmark",
+            2,
+            130,
+        ),
+        (
+            "labs.dynamic_router.baseline_dual_pool_vllm",
+            "BaselineDualPoolVllmBenchmark",
+            3,
+            11,
+        ),
+        (
+            "labs.dynamic_router.optimized_dual_pool_vllm",
+            "OptimizedDualPoolVllmBenchmark",
+            3,
+            11,
+        ),
+    ],
+)
+def test_vllm_wrappers_declare_multigpu_and_bind_live_prompt_input(
+    vllm_016_api: None,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+    module_name: str,
+    benchmark_name: str,
+    expected_requests: int,
+    expected_tokens: int,
+) -> None:
+    from core.benchmark.verification import select_jitter_dimension
+    from core.benchmark.verify_runner import VerifyConfig, VerifyRunner
+
+    module = importlib.import_module(module_name)
+    args = _args()
+    if "dual_pool" in module_name:
+        args.decode_gpus = "1"
+    monkeypatch.setattr(vllm_runner, "_CLI_ARGS", args)
+    monkeypatch.setattr(module, "detect_topology", lambda **_kwargs: _topology())
+
+    benchmark_type = getattr(module, benchmark_name)
+    benchmark = benchmark_type()
+    assert benchmark.multi_gpu_required is True
+    assert benchmark.get_config().multi_gpu_required is True
+    assert benchmark._is_deterministic is True
+    metadata = benchmark.get_workload_metadata()
+    assert metadata.requests_per_iteration == expected_requests
+    assert metadata.tokens_per_iteration == expected_tokens
+
+    try:
+        benchmark.setup()
+        benchmark.benchmark_fn()
+        benchmark.capture_verification_payload()
+        signature = benchmark.get_input_signature()
+        assert select_jitter_dimension(signature) == ("prompt_token_ids", 1)
+        prompt_ids = benchmark.get_verify_inputs()["prompt_token_ids"]
+        assert prompt_ids.shape[0] == 1
+        assert prompt_ids.shape[1] == sum(benchmark._prompt_lengths)
+
+        torch.manual_seed(123)
+        jitter_ok, jitter_error = VerifyRunner(
+            cache_dir=tmp_path / "cache"
+        )._run_jitter_check(benchmark, signature, VerifyConfig())
+        assert jitter_ok, jitter_error
+    finally:
+        benchmark.teardown()
+
+
+def test_vllm_verification_rejects_metric_only_summary() -> None:
+    from labs.dynamic_router.verification import require_verification_output
+
+    with pytest.raises(RuntimeError, match="timing and routing metrics are not model outputs"):
+        require_verification_output({"ttft_ms_p95": 1.0, "completed": 2})
+
+
+@pytest.mark.parametrize(
+    ("baseline_module_name", "optimized_module_name"),
+    [
+        (
+            "labs.dynamic_router.baseline_dynamic_router_vllm",
+            "labs.dynamic_router.optimized_dynamic_router_vllm",
+        ),
+        (
+            "labs.dynamic_router.baseline_dual_pool_vllm",
+            "labs.dynamic_router.optimized_dual_pool_vllm",
+        ),
+    ],
+)
+def test_full_vllm_pair_verification_uses_live_generated_outputs(
+    vllm_016_api: None,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+    baseline_module_name: str,
+    optimized_module_name: str,
+) -> None:
+    from core.benchmark.verify_runner import VerifyRunner
+
+    baseline_module = importlib.import_module(baseline_module_name)
+    optimized_module = importlib.import_module(optimized_module_name)
+    args = _args()
+    if "dual_pool" in baseline_module_name:
+        args.decode_gpus = "1"
+    monkeypatch.setattr(vllm_runner, "_CLI_ARGS", args)
+    for module in (baseline_module, optimized_module):
+        monkeypatch.setattr(module, "detect_topology", lambda **_kwargs: _topology())
+
+    baseline = baseline_module.get_benchmark()
+    optimized = optimized_module.get_benchmark()
+    baseline.device = torch.device("cpu")
+    optimized.device = torch.device("cpu")
+    result = VerifyRunner(cache_dir=tmp_path / "cache").verify_pair(
+        baseline,
+        optimized,
+    )
+
+    assert result.passed, result.reason
 
 
 def test_v1_direct_loop_completes_required_engine_post_step() -> None:

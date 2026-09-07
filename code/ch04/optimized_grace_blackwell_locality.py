@@ -35,8 +35,6 @@ class OptimizedGb200LocalityBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         # Keep data resident on GPU to maximize locality.
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.device_template = torch.ones(self.numel, device=self.device, dtype=torch.float32)
         self.device_buf = torch.empty_like(self.device_template)
         self._verify_probe = self.device_template[: 256 * 256].view(256, 256)

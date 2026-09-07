@@ -467,6 +467,7 @@ class MetricReductionVectorizedBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.preds: Optional[torch.Tensor] = None
         self.targets: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self._extension = None
         self._custom_metrics: dict[str, float] = {}
         self._refresh_workload_metadata()
@@ -479,10 +480,10 @@ class MetricReductionVectorizedBenchmark(VerificationPayloadMixin, BaseBenchmark
         if not torch.cuda.is_available():
             raise RuntimeError("labs.training_hotpath metric-reduction benchmarks require CUDA")
         self.preds, self.targets = build_metric_inputs(self.workload, self.device)
-        self.output = torch.empty(self.workload.responders * 3, device=self.device, dtype=torch.float32)
+        self.output = None
+        self._output_buffer = torch.empty(self.workload.responders * 3, device=self.device, dtype=torch.float32)
         if self.optimized:
             self._extension = load_training_hotpath_extension()
-            self._extension.metric_reduction_fused_out(self.preds, self.targets, self.output)
         else:
             self._extension = None
         total = self.workload.batch_size * self.workload.max_num_tokens * self.workload.responders
@@ -500,13 +501,13 @@ class MetricReductionVectorizedBenchmark(VerificationPayloadMixin, BaseBenchmark
         if self.optimized:
             if self._extension is None:
                 raise RuntimeError("CUDA extension not loaded")
-            if self.output is None:
+            if self._output_buffer is None:
                 raise RuntimeError("Metric output buffer not initialized")
-            self.output = self._extension.metric_reduction_fused_out(self.preds, self.targets, self.output)
+            self.output = self._extension.metric_reduction_fused_out(self.preds, self.targets, self._output_buffer)
         else:
-            if self.output is None:
+            if self._output_buffer is None:
                 raise RuntimeError("Metric output buffer not initialized")
-            self.output = scalar_metric_reduction(self.preds, self.targets, self.output)
+            self.output = scalar_metric_reduction(self.preds, self.targets, self._output_buffer)
 
     def capture_verification_payload(self) -> None:
         if self.output is None or self.preds is None or self.targets is None:
@@ -524,6 +525,7 @@ class MetricReductionVectorizedBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.preds = None
         self.targets = None
         self.output = None
+        self._output_buffer = None
         self._extension = None
         torch.cuda.empty_cache()
 
@@ -574,6 +576,7 @@ class MetricReductionCudaBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._baseline_out: Optional[torch.Tensor] = None
         self._baseline_abs: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self._extension = None
         self._custom_metrics: dict[str, float] = {}
         self._refresh_workload_metadata()
@@ -590,14 +593,14 @@ class MetricReductionCudaBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.segment_ids, self.segment_lengths = build_segment_metadata(self.offsets)
         self._baseline_out = torch.empty(self.workload.num_segments, device=self.device, dtype=torch.float32)
         self._baseline_abs = torch.empty_like(self.flat) if not self.optimized else None
-        self.output = (
+        self.output = None
+        self._output_buffer = (
             torch.empty(self.workload.num_segments, device=self.device, dtype=torch.float32)
             if self.optimized
             else None
         )
         if self.optimized:
             self._extension = load_training_hotpath_extension()
-            self._extension.segment_abs_mean_out(self.flat, self.offsets, self.output)
         else:
             self._extension = None
         self._custom_metrics = {
@@ -614,12 +617,12 @@ class MetricReductionCudaBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.optimized:
             if self._extension is None:
                 raise RuntimeError("CUDA extension not loaded")
-            if self.output is None:
+            if self._output_buffer is None:
                 raise RuntimeError("Segment output buffer not initialized")
             self.output = self._extension.segment_abs_mean_out(
                 self.flat,
                 self.offsets,
-                self.output,
+                self._output_buffer,
             )
         else:
             if (
@@ -656,6 +659,7 @@ class MetricReductionCudaBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._baseline_out = None
         self._baseline_abs = None
         self.output = None
+        self._output_buffer = None
         self._extension = None
         torch.cuda.empty_cache()
 

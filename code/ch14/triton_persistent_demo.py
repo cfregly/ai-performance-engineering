@@ -482,9 +482,6 @@ class TritonPersistentDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         """Setup: Initialize matrices and detect SM count."""
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
-        
         props = torch.cuda.get_device_properties(self.device)
         self.num_sms = props.multi_processor_count
         

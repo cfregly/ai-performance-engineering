@@ -50,8 +50,6 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
             require_peer_access(0, peer, script_name="optimizer_central_nvlink.py")
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self._require_root_peer_access()
         num_gpus = max(1, torch.cuda.device_count())
         skip_if_insufficient_gpus(2)

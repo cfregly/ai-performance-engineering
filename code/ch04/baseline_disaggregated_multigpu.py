@@ -90,8 +90,6 @@ class BaselineDisaggregatedBenchmark(
             self.rank = dist.get_rank()
             self.world_size = dist.get_world_size()
         
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         # Baseline: prefill and decode share one model instance on each rank.
         self.model = nn.Sequential(
             nn.Linear(256, 512),

@@ -53,9 +53,6 @@ class OptimizedTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchma
 
     def setup(self) -> None:
         self.device = resolve_device()
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
 
         if self.num_streams < 1:
             raise ValueError("num_streams must be >= 1")

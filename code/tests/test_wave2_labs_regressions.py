@@ -220,18 +220,26 @@ def test_llama_bf16_verification_rejects_zero_and_grossly_wrong_outputs() -> Non
         assert "output_tolerance=(0.1, 1.0)" not in source
 
 
-def test_llama_baseline_preserves_bf16_math_and_builds_the_declared_depth() -> None:
+def test_llama_compile_pair_uses_shared_sdpa_math_and_declared_depth() -> None:
     repo_code = Path(__file__).resolve().parents[1]
-    source = (
+    model_source = (
         repo_code / "labs/real_world_models/llama_3_1_8b_optimization.py"
     ).read_text(encoding="utf-8")
+    baseline_source = (
+        repo_code / "labs/real_world_models/baseline_llama_3_1_8b.py"
+    ).read_text(encoding="utf-8")
+    optimized_source = (
+        repo_code / "labs/real_world_models/optimized_llama_3_1_8b.py"
+    ).read_text(encoding="utf-8")
 
-    assert "scores = torch.matmul(q, k.transpose(-2, -1))" in source
-    assert "attn = torch.matmul(probs, v)" in source
-    assert "q_fp32 = q.float()" not in source
-    assert "v_fp32 = v.float()" not in source
-    assert "for _ in range(self.NUM_LAYERS)" in source
-    assert "for _ in range(4)" not in source
+    assert 'attention_mode="preferred_sdpa"' in baseline_source
+    assert 'attention_mode="preferred_sdpa"' in optimized_source
+    assert 'attention_mode == "manual"' in model_source
+    assert "scores = torch.matmul(q, k.transpose(-2, -1))" in model_source
+    assert "residual = x.float()" in model_source
+    assert "StableLlamaRMSNorm" in model_source
+    assert "for _ in range(self.NUM_LAYERS)" in model_source
+    assert "for _ in range(4)" not in model_source
 
 
 def test_gpt4_proxy_reports_only_optimizations_it_executes() -> None:

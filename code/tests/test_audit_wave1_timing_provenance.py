@@ -86,7 +86,9 @@ def test_real_torchrun_reports_one_observed_process_interval(tmp_path):
         "x=torch.arange(8); y=x.clone()\n"
         "for _ in range(a.steps): y.add_(x)\n"
         f"Path({str(output)!r}).write_text(str(y.tolist()))\n"
-        "print('123 tokens/s')\n"
+        "print('[optimized-ddp] step 0/7 loss=912.7675 tokens/step=8')\n"
+        "print('[rank1] 999,999 toks/s')\n"
+        "print('[optimized-ddp] finished 7 steps (123 toks/s per rank)')\n"
     )
     harness, config = cpu_harness(iterations=7, mode=BenchmarkMode.CUSTOM)
     # Static loopback avoids this Mac's unresolvable reverse-DNS hostname in

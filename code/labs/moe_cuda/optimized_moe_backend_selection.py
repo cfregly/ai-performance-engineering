@@ -37,8 +37,6 @@ class OptimizedMoEBackendSelectionBenchmark(VerificationPayloadMixin, BaseBenchm
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA required for MoE backend selection")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.workload = MoEBackendWorkload(self.cfg, self.device)
 
         vectorized = self.workload.forward_vectorized

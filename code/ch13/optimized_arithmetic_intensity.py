@@ -45,9 +45,6 @@ class OptimizedArithmeticIntensityBenchmark(VerificationPayloadMixin, BaseBenchm
     def setup(self) -> None:
         """Setup: Initialize tensors for compute-bound operation."""
 
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         
         # Smaller tensors but with high compute intensity
         self.A = torch.randn(self.M, self.K, device=self.device, dtype=torch.float32)

@@ -199,8 +199,6 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA required for prefill/decode disaggregation")
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         self.pairs = self._resolve_pairs()
         self._require_peer_paths(self.pairs)

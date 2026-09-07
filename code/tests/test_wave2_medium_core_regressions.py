@@ -397,6 +397,7 @@ def test_w2_127_router_verification_uses_generated_token_ids() -> None:
             "tpot_tok_per_step_gpu0": 0.01,
             VERIFICATION_OUTPUT_KEY: framed_tokens,
         }
+        benchmark._prompt_token_ids = torch.ones((1, 2), dtype=torch.int64)
         benchmark._summary_ready = True
 
         benchmark.capture_verification_payload()

@@ -218,15 +218,18 @@ class BaselineVLLMV1Integration:
 
     def setup(self) -> None:
         """Initialize vLLM model."""
+        # Capture the harness seed before model/runtime setup. Inputs deliberately restart
+        # from that seed so paired implementations keep aligned stochastic data.
+        setup_seed = int(torch.initial_seed())
         (
             self._llm_cls,
             self._sampling_params_cls,
             self._tokens_prompt_cls,
             _serving_stack,
         ) = _prepare_vllm_runtime()
-        random.seed(42)
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
+        random.seed(setup_seed)
+        torch.manual_seed(setup_seed)
+        torch.cuda.manual_seed_all(setup_seed)
         import gc
 
         # Force cleanup before vLLM initialization to avoid resource conflicts

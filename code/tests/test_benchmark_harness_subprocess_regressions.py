@@ -121,6 +121,7 @@ def test_torchrun_skip_reason_propagates_without_generic_exit_error(tmp_path: Pa
         nproc_per_node=1,
         multi_gpu_required=False,
         enforce_environment_validation=False,
+        subprocess_stderr_dir=str(tmp_path / "worker-logs"),
     )
     harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=config)
     result = harness.benchmark(_TorchrunSkipBenchmark(script))
@@ -128,3 +129,6 @@ def test_torchrun_skip_reason_propagates_without_generic_exit_error(tmp_path: Pa
     joined = "\n".join(result.errors)
     assert "SKIPPED: unit-test torchrun skip path" in joined
     assert "torchrun exited with code" not in joined
+    logs = list((tmp_path / "worker-logs").glob("*_subprocess.stdout.log"))
+    assert len(logs) == 1
+    assert "SKIPPED: unit-test torchrun skip path" in logs[0].read_text()

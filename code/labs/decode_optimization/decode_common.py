@@ -261,6 +261,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
+        setup_seed = int(torch.initial_seed())
         import gc
 
         # CRITICAL: Clean up CUDA state from previous benchmarks
@@ -280,7 +281,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device_idx = torch.cuda.current_device()
             gen = torch.cuda.default_generators[device_idx]
             gen.set_offset(0)
-            gen.manual_seed(42)
+            gen.manual_seed(setup_seed)
         except Exception:
             pass
 
@@ -294,9 +295,6 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         except Exception:
             pass
 
-        # Ensure deterministic RNG state for verification (harness seed is 42).
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         if enable_tf32 is not None:
             enable_tf32(set_global_precision=True)
         else:

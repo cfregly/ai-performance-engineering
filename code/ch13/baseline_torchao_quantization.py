@@ -42,9 +42,6 @@ class BaselineTorchAOQuantizationBenchmark(VerificationPayloadMixin, BaseBenchma
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         if not torch.cuda.is_available():
             raise RuntimeError("CUDA required for torchao quantization benchmark")
         # Measure a true FP32 baseline instead of the default TF32-backed matmul path.
@@ -67,10 +64,10 @@ class BaselineTorchAOQuantizationBenchmark(VerificationPayloadMixin, BaseBenchma
             device=self.device,
             dtype=torch.float32,
         )
-        self._verify_input = self.data.detach().clone()
+        self._verify_input = self.data
         self._verify_output_buffer = torch.empty(
-            min(128, self.batch_size),
-            min(256, self.out_features),
+            self.batch_size,
+            self.out_features,
             device=self.device,
             dtype=torch.float32,
         )
@@ -87,11 +84,7 @@ class BaselineTorchAOQuantizationBenchmark(VerificationPayloadMixin, BaseBenchma
     def capture_verification_payload(self) -> None:
         if self._verify_input is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        output_slice = self.output[
-            : self._verify_output_buffer.shape[0],
-            : self._verify_output_buffer.shape[1],
-        ]
-        self._verify_output_buffer.copy_(output_slice)
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self._verify_input},
             output=self._verify_output_buffer,

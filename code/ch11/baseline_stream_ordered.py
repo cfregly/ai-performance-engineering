@@ -55,8 +55,6 @@ class BaselineStreamOrderedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return self.inner_iterations
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self._active_inner_iterations_count = self._active_inner_iterations()
         # Compile + warm the extension outside the timed region.
         self._module = load_stream_ordered_module()

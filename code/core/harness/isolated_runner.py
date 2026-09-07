@@ -11,6 +11,7 @@ Protocol:
     "benchmark_module_path": "/path/to/benchmark.py",
     "benchmark_class_name": "MyBenchmark" | "get_benchmark",
     "config_dict": {...},
+    "target_override_argv": ["--flag", "value"] | null,
     "device": "cuda:0" | null,
     "initial_state": {...} | null
   }
@@ -254,14 +255,25 @@ def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
         mode_str = input_data.get("mode") or config_dict.pop("mode", None)
         verify_output_path = input_data.get("verify_output_path")
         verify_output_max_bytes = int(input_data.get("verify_output_max_bytes", 0) or 0)
+        raw_target_override_argv = input_data.get("target_override_argv") or []
+        if not isinstance(raw_target_override_argv, list) or not all(
+            isinstance(arg, str) for arg in raw_target_override_argv
+        ):
+            errors.append("target_override_argv must be a list of strings")
+            return _make_error_response(errors)
+        target_override_argv = list(raw_target_override_argv)
 
         benchmark_name = class_name
+        original_argv = sys.argv
 
         try:
             # Reset CUDA state BEFORE loading the module
             reset_cuda_state(device_str)
 
-            # Load module
+            # Some target modules bind their CLI configuration at import time.
+            # Present only the resolved override for this target while the
+            # dedicated worker loads and executes it.
+            sys.argv = [str(module_path), *target_override_argv]
             spec = importlib.util.spec_from_file_location("benchmark_module", str(module_path))
             if spec is None or spec.loader is None:
                 errors.append(f"Failed to load module spec from {module_path}")
@@ -453,6 +465,8 @@ def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
             errors.append(f"Benchmark execution failed: {e}")
             errors.append(tb)
             return _make_error_response(errors)
+        finally:
+            sys.argv = original_argv
     
     stdout_buffer = io.StringIO()
     with redirect_stdout(stdout_buffer):

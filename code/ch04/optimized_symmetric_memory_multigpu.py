@@ -66,8 +66,6 @@ class OptimizedSymmetricMemoryMultiGPU(
                 "SKIPPED: symmetric_memory requires the CUDA symmetric-memory backend API"
             )
         _configure_blackwell_nccl()
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self._benchmark_ready = True
 
     def benchmark_fn(self) -> None:

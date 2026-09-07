@@ -79,6 +79,7 @@ class MoEJourneyBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
     
     def setup(self) -> None:
+        setup_seed = int(torch.initial_seed())
         import gc
         
         # Clean up CUDA graph state from previous benchmarks
@@ -99,7 +100,7 @@ class MoEJourneyBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 device_idx = torch.cuda.current_device()
                 gen = torch.cuda.default_generators[device_idx]
                 gen.set_offset(0)
-                gen.manual_seed(42)
+                gen.manual_seed(setup_seed)
             except Exception:
                 pass
             
@@ -132,9 +133,6 @@ class MoEJourneyBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 print(f"    Level {l}: {opt_desc}")
         print()
         
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         # Create model with optimizations up to this level
         self.model, self.opts = create_model(
             level=level,
@@ -169,7 +167,7 @@ class MoEJourneyBenchmark(VerificationPayloadMixin, BaseBenchmark):
             (self.BATCH_SIZE, self.SEQ_LEN),
         ).to(self.device)
         self._verify_output_buffer = torch.empty(
-            (self.BATCH_SIZE, 1, min(8, self.VOCAB_SIZE)),
+            (self.BATCH_SIZE, self.SEQ_LEN, self.VOCAB_SIZE),
             device=self.device,
             dtype=torch.float32,
         )
@@ -181,7 +179,7 @@ class MoEJourneyBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 _ = self.compiled_model(self.input_ids)
             if i == 0 and self.opts.use_compile:
                 print("    First run (compile): done")
-        torch.cuda.synchronize()
+        self._synchronize()
         print("  Ready")
 
     def benchmark_fn(self) -> None:
@@ -195,12 +193,12 @@ class MoEJourneyBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.input_ids is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
-        output_slice = self.output[
-            : self._verify_output_buffer.shape[0],
-            : self._verify_output_buffer.shape[1],
-            : self._verify_output_buffer.shape[2],
-        ]
-        self._verify_output_buffer.copy_(output_slice)
+        if self.output.shape != self._verify_output_buffer.shape:
+            raise RuntimeError(
+                "Timed output shape does not match the full verification buffer: "
+                f"output={tuple(self.output.shape)} buffer={tuple(self._verify_output_buffer.shape)}"
+            )
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input_ids": self.input_ids.detach()},
             output=self._verify_output_buffer,
@@ -269,8 +267,10 @@ class MoEJourneyBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
 
 
-def run_level(level: int) -> None:
-    """Run a specific level benchmark."""
+def run_level(level: int) -> float:
+    """Run one standalone level with the demo's reproducible default seed."""
+    # The standalone entrypoint owns its default; setup preserves harness seeds.
+    torch.manual_seed(42)
     class LevelBenchmark(MoEJourneyBenchmark):
         LEVEL = level
     

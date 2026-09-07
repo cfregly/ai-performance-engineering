@@ -278,8 +278,6 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
     def setup(self) -> None:
         """Setup: Initialize model with integrated KV cache."""
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         
         self.layers = nn.ModuleList(
             [

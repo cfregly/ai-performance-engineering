@@ -32,11 +32,8 @@ class BaselineMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.tensor = torch.randn(self.N, device=self.device, dtype=torch.float32)
-        self._verify_output_buffer = torch.empty(4096, device=self.device, dtype=torch.float32)
+        self._verify_output_buffer = torch.empty_like(self.tensor)
 
     def benchmark_fn(self) -> None:
         with torch.inference_mode(), self._nvtx_range("baseline_memory_bound"):
@@ -50,11 +47,7 @@ class BaselineMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.output is None or self.tensor is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must be called before verification")
-        # Keep verification lightweight: slice the large output tensor.
-        # This avoids serializing ~64MB outputs in subprocess mode while still
-        # validating correctness on representative data.
-        output_slice = self.output[: self._verify_output_buffer.numel()].detach()
-        self._verify_output_buffer.copy_(output_slice)
+        self._verify_output_buffer.copy_(self.output.detach())
         self._set_verification_payload(
             inputs={"tensor": self.tensor},
             output=self._verify_output_buffer,
@@ -66,7 +59,9 @@ class BaselineMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
             },
-            output_tolerance=(1e-1, 1e-1),
+            # Allow FP32 fused-rounding differences without accepting a missing
+            # multiply/add repeat in the timed workload.
+            output_tolerance=(1e-5, 2e-5),
         )
 
     def teardown(self) -> None:
@@ -86,14 +81,21 @@ class BaselineMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return self._workload
 
     def get_custom_metrics(self) -> Optional[dict]:
-        """Return domain-specific metrics using standardized helper."""
+        """Model separate global read/write passes for multiply and add.
+
+        These are algorithmic traffic estimates, not measured HBM counters;
+        device caches can satisfy some of the global-memory accesses.
+        """
         from core.benchmark.metrics import compute_roofline_metrics
-        return compute_roofline_metrics(
+        modeled_bytes = float(self.N * torch.float32.itemsize * 4 * self.repeats)
+        metrics = compute_roofline_metrics(
             total_flops=float(self.N * 2 * self.repeats),
-            total_bytes=float(self.N * torch.float32.itemsize * 2 * self.repeats),
+            total_bytes=modeled_bytes,
             elapsed_ms=getattr(self, "_last_elapsed_ms", None),
             precision="fp32",
         )
+        metrics["memory_bound.modeled_global_bytes"] = modeled_bytes
+        return metrics
 
     def validate_result(self) -> Optional[str]:
         if self.tensor is None:

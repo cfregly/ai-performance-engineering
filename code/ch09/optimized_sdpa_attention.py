@@ -85,9 +85,6 @@ class OptimizedSDPAAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
 
         if torch.cuda.is_available() and not torch.backends.cuda.flash_sdp_enabled():
             raise RuntimeError("Flash SDP backend is disabled; enable flash attention for this benchmark.")

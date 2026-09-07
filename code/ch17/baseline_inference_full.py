@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-import random
-
 import torch
 import torch.nn as nn
 
@@ -80,10 +78,6 @@ class BaselineInferenceFullBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
-        random.seed(42)
-
         self.model = FullDepthModel(self.hidden_dim, self.num_layers).to(self.device)
         if self.device.type == "cuda":
             self.model = self.model.half()

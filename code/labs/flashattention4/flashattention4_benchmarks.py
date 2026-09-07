@@ -60,9 +60,6 @@ class FlashAttention4BenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         resolve_cuda_device()
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self._prev_matmul_allow_tf32 = torch.backends.cuda.matmul.allow_tf32
         self._prev_cudnn_allow_tf32 = torch.backends.cudnn.allow_tf32
         torch.backends.cuda.matmul.allow_tf32 = False

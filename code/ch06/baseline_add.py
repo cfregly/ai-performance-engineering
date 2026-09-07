@@ -29,8 +29,6 @@ class BaselineAddBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: Initialize tensors (excluded from timing)."""
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.A = torch.arange(self.N, dtype=torch.float32, device=self.device)
         self.B = 2 * self.A
         self.C = torch.empty_like(self.A)

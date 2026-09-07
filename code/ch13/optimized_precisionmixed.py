@@ -69,9 +69,6 @@ class OptimizedPrecisionMixedBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: Initialize model with mixed precision."""
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         
         # Keep the "precision mixed" story focused: use bf16 autocast with FP32 weights.
         # BF16 keeps the FP32 exponent range and typically does not require gradient scaling.

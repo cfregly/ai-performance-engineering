@@ -74,8 +74,6 @@ class OptimizedGraphBreakControlFlowBenchmark(VerificationPayloadMixin, BaseBenc
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         self.model = TensorizedControlFlowBlock(
             hidden_size=self.hidden_size,

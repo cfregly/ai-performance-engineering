@@ -120,8 +120,6 @@ class BaselineTrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Clear memory before setup
         torch.cuda.empty_cache()
         torch.cuda.reset_peak_memory_stats(self.device)
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         
         self.model = TransformerModel(
             hidden_dim=self.hidden_dim,

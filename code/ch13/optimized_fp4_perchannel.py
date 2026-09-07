@@ -131,9 +131,6 @@ class OptimizedFP4PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             disable_rht=True,
             disable_stochastic_rounding=True,
         )
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
 
         model = FP4PerChannelMLP(hidden_dim=self.hidden_dim).to(self.device, dtype=self.dtype).eval()
         self.model = model

@@ -41,14 +41,12 @@ class OptimizedKernelFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Load CUDA extension (will compile on first call)
         self._extension = load_kernel_fusion_extension()
         
-        torch.manual_seed(42)
         self.data = torch.arange(self.N, dtype=torch.float32, device=self.device)
         self._verify_input = self.data.detach().clone()
         torch.cuda.synchronize(self.device)
         # Dry run so first-launch kernel fusion overhead is prepaid
         self._extension.fused_kernel(self.data, 1)
         torch.cuda.synchronize()
-        torch.manual_seed(42)
         self.data = torch.arange(self.N, dtype=torch.float32, device=self.device)
         self._verify_output_buffer = torch.empty_like(self.data)
         torch.cuda.synchronize()

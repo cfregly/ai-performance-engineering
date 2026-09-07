@@ -47,9 +47,6 @@ class BaselineNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenc
         self.register_workload_metadata(tokens_per_iteration=tokens_per_iteration())
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.inputs = build_inputs(self.device)
         self.prefill_src = torch.randn(
             self.prefill_chunks, self.prefill_chunk_elems, device=self.device

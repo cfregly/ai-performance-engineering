@@ -112,8 +112,6 @@ class BaselineSequenceParallelMultigpuBenchmark(VerificationPayloadMixin, BaseBe
         self._layer_triples = None
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self._up_proj, self._down_proj, self._norms = build_layers(self._sp_config, self._world_size, self.device)
         self._layer_triples = tuple(zip(self._up_proj, self._down_proj, self._norms, strict=True))
         self._input = torch.randn(
@@ -169,7 +167,9 @@ class BaselineSequenceParallelMultigpuBenchmark(VerificationPayloadMixin, BaseBe
                 tf32=False,
             ),
             output_tolerance=(0.0, 0.0),
-            signature_overrides={"world_size": self._world_size, "collective_type": "all_gather"},
+            # Both variants require this tensor-parallel reduction. The baseline's
+            # removable full-sequence gather is implementation work, not workload identity.
+            signature_overrides={"world_size": self._world_size, "collective_type": "all_reduce"},
         )
 
     def _prepare_verification_payload(self) -> None:

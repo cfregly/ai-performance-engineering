@@ -147,9 +147,6 @@ class NVFP4MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             if not self.config_dict:
                 raise RuntimeError("NVFP4MLPBenchmark requires an explicit config")
             self.config = NVFP4MLPConfig(**self.config_dict)
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         if self.device.type != "cuda":
             raise RuntimeError("SKIPPED: NVFP4 MLP benchmark requires CUDA")
         dtype = torch.bfloat16

@@ -41,8 +41,6 @@ class BaselinePageableCopyBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.host_tensor = torch.randn(128_000_000, dtype=torch.float32)  # ~512 MB
         self.device_buffer = torch.empty_like(self.host_tensor, device=self.device)
         self._output_buffer = torch.empty(1, device=self.device, dtype=torch.float32)

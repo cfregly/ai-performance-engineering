@@ -618,10 +618,6 @@ class FP8StaticDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         """Setup: Initialize and calibrate static FP8 model."""
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
-        
         # Create simple model
         class SimpleModel(nn.Module):
             def __init__(self, dim: int, num_layers: int = 4):

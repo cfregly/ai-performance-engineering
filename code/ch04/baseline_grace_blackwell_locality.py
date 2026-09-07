@@ -36,8 +36,6 @@ class BaselineGb200LocalityBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         # Pinned host buffer to simulate “remote” access each iteration.
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.host_buf = torch.ones(self.numel, dtype=torch.float32, pin_memory=True)
         # Destination buffer on device.
         self.device_buf = torch.empty_like(self.host_buf, device=self.device, pin_memory=False)

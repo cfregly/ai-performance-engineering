@@ -57,7 +57,6 @@ class BaselineDualPipelineBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Load extension in setup to avoid timeout during discovery
         self.ext = _load_baseline_extension()
         
-        torch.manual_seed(42)
         total_elems = self.tiles * self.tile_elems
         self.input_a = torch.randn(total_elems, device=self.device, dtype=torch.float32)
         self.input_b = torch.randn(total_elems, device=self.device, dtype=torch.float32)

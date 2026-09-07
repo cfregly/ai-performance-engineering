@@ -39,8 +39,6 @@ class BaselineAutotuningBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._payload_parameter_count = 0
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         self.model = AutotuneModel(self.hidden_dim).to(self.device, dtype=torch.bfloat16).eval()
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())

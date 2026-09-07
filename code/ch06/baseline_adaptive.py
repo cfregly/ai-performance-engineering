@@ -30,7 +30,6 @@ class BaselineAdaptiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: Initialize with static configuration."""
-        torch.manual_seed(42)
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self.output = None
         self._output_buffer = torch.empty_like(self.input)

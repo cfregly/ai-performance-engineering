@@ -40,8 +40,6 @@ class BaselineOptimizerReplicatedBenchmark(VerificationPayloadMixin, BaseBenchma
 
     def setup(self) -> None:
         skip_if_insufficient_gpus(2)
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         num_gpus = torch.cuda.device_count()
         for rank in range(num_gpus):
             device = f"cuda:{rank}"

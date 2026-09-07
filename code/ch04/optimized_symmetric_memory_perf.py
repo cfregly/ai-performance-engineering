@@ -46,8 +46,6 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: requires CUDA")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.local_tensor = torch.randn(self.numel, device=self.device, dtype=torch.float32)
         self.peer_buffer = torch.empty_like(self.local_tensor)
         self._verify_input, self._verify_numel = build_square_verification_probe(self.local_tensor)

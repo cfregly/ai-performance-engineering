@@ -576,6 +576,7 @@ class ProfilerConfig:
         else:
             ncu_set = NCU_SET_BY_METRIC.get(metric_set_norm, "full")
 
+        requested_replay_mode = str(self.ncu_replay_mode).strip().lower()
         cmd = [
             "ncu",
             # We manage GPU clocks at the harness level when possible. On many
@@ -583,15 +584,17 @@ class ProfilerConfig:
             # denied) which causes noisy stderr and can end profiling early.
             "--clock-control",
             "none",
-            "--set", ncu_set,
-            "--metrics", ",".join(metrics),
         ]
+        # Section sets add metrics to --metrics. Application-range replay must
+        # collect exactly its validated five metrics, avoiding extra NCCL passes.
+        if requested_replay_mode != "app-range":
+            cmd.extend(["--set", ncu_set])
+        cmd.extend(["--metrics", ",".join(metrics)])
 
         nvtx_filters = list(dict.fromkeys(nvtx_includes or self.nvtx_includes or []))
         minimal_capture = preset == "minimal" or metric_set_norm == "minimal"
         # NVSHMEM's existing benchmark-local range replay is not a public CLI
         # choice. Preserve its command path while validating public modes.
-        requested_replay_mode = str(self.ncu_replay_mode).strip().lower()
         if requested_replay_mode != "range":
             requested_replay_mode = validate_ncu_replay_mode(requested_replay_mode)
         if requested_replay_mode == "app-range":

@@ -16,7 +16,7 @@ import sys
 import time
 from contextlib import redirect_stdout
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 import torch
 
@@ -127,6 +127,10 @@ def _assert_vllm_runtime_ready() -> None:
 def _parse_cli_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--model", type=str, help="Local HF model path/id for vLLM.")
+    parser.add_argument(
+        "--attention-backend", type=str, default=None,
+        help="Explicit vLLM attention backend; use TRITON_ATTN with VLLM_BATCH_INVARIANT=1 for exact dual-pool comparisons.",
+    )
     parser.add_argument("--prefill-gpus", type=str, default=None, help="Comma list of GPU ids for prefill pool.")
     parser.add_argument("--decode-gpus", type=str, default=None, help="Comma list of GPU ids for decode pool.")
     parser.add_argument("--req-count", type=int, default=16, help="Number of requests for routing demo.")
@@ -146,6 +150,80 @@ def _parse_cli_args() -> argparse.Namespace:
 
 
 _CLI_ARGS = _parse_cli_args()
+
+
+def routing_prompt_lengths(
+    cli_args: argparse.Namespace,
+    *,
+    req_count: Optional[int] = None,
+) -> List[int]:
+    """Return the exact per-request prompt lengths for the routing workload."""
+    count = cli_args.req_count if req_count is None else req_count
+    if count <= 0:
+        raise ValueError("req_count must be positive")
+    return [64] * count
+
+
+def dual_pool_prompt_lengths(
+    cli_args: argparse.Namespace,
+    *,
+    long_prompt_tokens: Optional[int] = None,
+    short_prompt_tokens: Optional[int] = None,
+    prefill_burst: Optional[int] = None,
+    decode_requests: Optional[int] = None,
+    continue_requests: Optional[int] = None,
+) -> List[int]:
+    """Return the exact request order and prompt lengths for the dual-pool workload."""
+    long_tokens = cli_args.long_prompt_tokens if long_prompt_tokens is None else long_prompt_tokens
+    short_tokens = cli_args.short_prompt_tokens if short_prompt_tokens is None else short_prompt_tokens
+    prefill_count = cli_args.prefill_burst if prefill_burst is None else prefill_burst
+    decode_count = cli_args.decode_requests if decode_requests is None else decode_requests
+    continue_count = cli_args.continue_requests if continue_requests is None else continue_requests
+    if long_tokens <= 0 or short_tokens <= 0:
+        raise ValueError("prompt token counts must be positive")
+    if prefill_count < 0 or decode_count < 0 or continue_count < 0:
+        raise ValueError("request counts must be non-negative")
+    lengths = [long_tokens] * prefill_count
+    lengths.extend([short_tokens] * (decode_count + continue_count))
+    if not lengths:
+        raise ValueError("dual-pool workload must contain at least one request")
+    return lengths
+
+
+def build_prompt_token_ids(prompt_lengths: Sequence[int]) -> torch.Tensor:
+    """Build the flat live input containing every request's actual token IDs."""
+    lengths = [int(length) for length in prompt_lengths]
+    if not lengths or any(length <= 0 for length in lengths):
+        raise ValueError("prompt_lengths must contain only positive values")
+    return torch.ones((1, sum(lengths)), dtype=torch.int64, device="cpu")
+
+
+def _split_prompt_token_ids(
+    prompt_token_ids: torch.Tensor,
+    prompt_lengths: Sequence[int],
+) -> List[List[int]]:
+    """Split the flat verification input into the exact vLLM request prompts."""
+    lengths = [int(length) for length in prompt_lengths]
+    expected_shape = (1, sum(lengths))
+    if tuple(prompt_token_ids.shape) != expected_shape:
+        raise ValueError(
+            "prompt_token_ids shape mismatch: "
+            f"expected {expected_shape}, got {tuple(prompt_token_ids.shape)}"
+        )
+    if prompt_token_ids.dtype != torch.int64:
+        raise TypeError("prompt_token_ids must use torch.int64")
+    if prompt_token_ids.device.type != "cpu":
+        raise ValueError("vLLM request admission requires CPU prompt_token_ids")
+    if bool((prompt_token_ids < 0).any()):
+        raise ValueError("prompt_token_ids must be non-negative")
+
+    flat_token_ids = prompt_token_ids.reshape(-1).tolist()
+    requests: List[List[int]] = []
+    offset = 0
+    for length in lengths:
+        requests.append(flat_token_ids[offset : offset + length])
+        offset += length
+    return requests
 
 
 @dataclass
@@ -194,7 +272,7 @@ class _RoutingTelemetry:
         }
 
 
-def _build_vllm_engine(engine_cls, model_id: str, device_index: int):
+def _build_vllm_engine(engine_cls, model_id: str, device_index: int, *, attention_backend: str | None = None):
     """Build a pinned-vLLM engine on one logical CUDA device.
 
     vLLM 0.16 removed ``device`` from ``EngineArgs``. Its single-process
@@ -214,6 +292,7 @@ def _build_vllm_engine(engine_cls, model_id: str, device_index: int):
         # the full prefill length on every request.
         enable_prefix_caching=False,
         enforce_eager=True,
+        attention_backend=attention_backend,
     )
     create_engine_config = getattr(engine_args, "create_engine_config", None)
     from_vllm_config = getattr(engine_cls, "from_vllm_config", None)
@@ -237,7 +316,7 @@ def _build_vllm_engine(engine_cls, model_id: str, device_index: int):
 class _VllmWrapper:
     """Minimal wrapper around LLMEngine for metrics and request tracking."""
 
-    def __init__(self, gpu_id: str, device_index: int, model_id: str) -> None:
+    def __init__(self, gpu_id: str, device_index: int, model_id: str, *, attention_backend: str | None = None) -> None:
         _assert_vllm_runtime_ready()
         if EngineArgs is None or LLMEngine is None or SamplingParams is None:
             _skip(_format_vllm_import_error(_IMPORT_ERROR or RuntimeError("unknown vLLM import failure")))
@@ -246,7 +325,7 @@ class _VllmWrapper:
         self.device_index = device_index
         buf = io.StringIO()
         with redirect_stdout(buf):
-            self.engine = _build_vllm_engine(LLMEngine, model_id, device_index)
+            self.engine = _build_vllm_engine(LLMEngine, model_id, device_index, attention_backend=attention_backend)
         captured = buf.getvalue().strip()
         if captured:
             try:
@@ -257,7 +336,11 @@ class _VllmWrapper:
         self._inflight: Dict[str, _RequestRuntime] = {}
         self._completed_output_token_ids: Dict[str, Tuple[int, ...]] = {}
 
-    def add_request(self, rt: _RequestRuntime) -> None:
+    def add_request(
+        self,
+        rt: _RequestRuntime,
+        prompt_token_ids: Optional[Sequence[int]] = None,
+    ) -> None:
         if rt.req.expected_new_tokens <= 0:
             raise ValueError("expected_new_tokens must be positive")
         params = SamplingParams(
@@ -275,10 +358,20 @@ class _VllmWrapper:
         # vLLM accepts pretokenized ``list[int]`` prompts. Supplying the token
         # IDs directly makes the requested prefill length exact; a text string
         # such as ``"x" * prompt_tokens`` can collapse to far fewer BPE tokens.
-        prompt_token_ids = [1] * rt.req.prompt_tokens
+        if prompt_token_ids is None:
+            prompt_ids = [1] * rt.req.prompt_tokens
+        else:
+            prompt_ids = [int(token_id) for token_id in prompt_token_ids]
+            if len(prompt_ids) != rt.req.prompt_tokens:
+                raise ValueError(
+                    f"Request {rt.req.req_id} received {len(prompt_ids)} prompt tokens; "
+                    f"expected {rt.req.prompt_tokens}"
+                )
+            if any(token_id < 0 for token_id in prompt_ids):
+                raise ValueError("prompt token ids must be non-negative")
         self.engine.add_request(
             request_id=rt.req.req_id,
-            prompt=prompt_token_ids,
+            prompt=prompt_ids,
             params=params,
             arrival_time=rt.admitted_at,
         )
@@ -369,7 +462,7 @@ class _VllmV1Wrapper(_VllmWrapper):
     so we can access ``engine_core.step_fn()`` and surface the executed flag.
     """
 
-    def __init__(self, gpu_id: str, device_index: int, model_id: str) -> None:
+    def __init__(self, gpu_id: str, device_index: int, model_id: str, *, attention_backend: str | None = None) -> None:
         _assert_vllm_runtime_ready()
         if EngineArgs is None or SamplingParams is None:
             _skip(f"vLLM import failed: {_IMPORT_ERROR}")
@@ -385,7 +478,7 @@ class _VllmV1Wrapper(_VllmWrapper):
         # Keep EngineCore in-process so we can drive step_fn() directly.
         buf = io.StringIO()
         with redirect_stdout(buf):
-            self.engine = _build_vllm_engine(V1LLMEngine, model_id, device_index)
+            self.engine = _build_vllm_engine(V1LLMEngine, model_id, device_index, attention_backend=attention_backend)
         captured = buf.getvalue().strip()
         if captured:
             try:
@@ -557,6 +650,7 @@ def run_vllm_routing_with_topology(
     req_count: Optional[int] = None,
     max_tokens: Optional[int] = None,
     cli_args: Optional[argparse.Namespace] = None,
+    prompt_token_ids: torch.Tensor,
 ) -> Dict[str, float]:
     """Run a small vLLM-backed routing demo with a precomputed topology snapshot."""
     if not torch.cuda.is_available():
@@ -570,8 +664,12 @@ def run_vllm_routing_with_topology(
         _skip("Pass --model <local HF path/id> to run vLLM demo.")
     _assert_vllm_runtime_ready()
 
-    req_count_val = req_count or args.req_count
-    max_tokens_val = max_tokens or args.max_tokens
+    prompt_lengths = routing_prompt_lengths(args, req_count=req_count)
+    req_count_val = len(prompt_lengths)
+    max_tokens_val = args.max_tokens if max_tokens is None else max_tokens
+    if max_tokens_val <= 0:
+        raise ValueError("max_tokens must be positive")
+    request_prompt_token_ids = _split_prompt_token_ids(prompt_token_ids, prompt_lengths)
 
     topo = topology_snapshot
     gpu_numa = topo.gpu_numa
@@ -579,7 +677,10 @@ def run_vllm_routing_with_topology(
     decode_ids = _parse_device_list(args.decode_gpus, "0,1", torch.cuda.device_count())
     if not decode_ids:
         decode_ids = list(range(min(2, torch.cuda.device_count())))
-    engines = {f"gpu{idx}": _VllmWrapper(f"gpu{idx}", idx, model_id) for idx in decode_ids}
+    engines = {
+        f"gpu{idx}": _VllmWrapper(f"gpu{idx}", idx, model_id, attention_backend=getattr(args, "attention_backend", None))
+        for idx in decode_ids
+    }
 
     # Router selection
     router = Router() if mode == "optimized" else None
@@ -603,7 +704,11 @@ def run_vllm_routing_with_topology(
     for i in range(req_count_val):
         rid = f"req-{i}"
         request_ids.append(rid)
-        req = Request(req_id=rid, prompt_tokens=64, expected_new_tokens=max_tokens_val)
+        req = Request(
+            req_id=rid,
+            prompt_tokens=prompt_lengths[i],
+            expected_new_tokens=max_tokens_val,
+        )
         admitted = time.time()
         if router:
             # Round-trip through Router for placement
@@ -611,7 +716,7 @@ def run_vllm_routing_with_topology(
         else:
             gid = engine_ids[i % len(engine_ids)]
         rt = _RequestRuntime(req=req, gpu_id=gid, admitted_at=admitted)
-        engines[gid].add_request(rt)
+        engines[gid].add_request(rt, request_prompt_token_ids[i])
 
     active = True
     while active:
@@ -654,14 +759,18 @@ def run_vllm_routing(
     max_tokens: Optional[int] = None,
     cli_args: Optional[argparse.Namespace] = None,
     topology_snapshot: Optional[TopologySnapshot] = None,
+    prompt_token_ids: Optional[torch.Tensor] = None,
 ) -> Dict[str, float]:
     topo = topology_snapshot or detect_topology(max_gpus=torch.cuda.device_count())
+    if prompt_token_ids is None:
+        prompt_token_ids = build_prompt_token_ids(routing_prompt_lengths(cli_args or _CLI_ARGS, req_count=req_count))
     return run_vllm_routing_with_topology(
         mode,
         topology_snapshot=topo,
         req_count=req_count,
         max_tokens=max_tokens,
         cli_args=cli_args,
+        prompt_token_ids=prompt_token_ids,
     )
 
 
@@ -677,6 +786,7 @@ def run_dual_pool_vllm_with_topology(
     max_tokens: Optional[int] = None,
     prefill_ctx_thresh: Optional[int] = None,
     cli_args: Optional[argparse.Namespace] = None,
+    prompt_token_ids: torch.Tensor,
 ) -> Dict[str, float]:
     """
     Dual-pool vLLM experiment: compare shared-pool vs disaggregated prefill/decode.
@@ -700,14 +810,25 @@ def run_dual_pool_vllm_with_topology(
     else:
         normalized_mode = "shared"
 
-    long_prompt_tokens = long_prompt_tokens or args.long_prompt_tokens
-    short_prompt_tokens = short_prompt_tokens or args.short_prompt_tokens
-    prefill_burst = prefill_burst or args.prefill_burst
-    decode_requests = decode_requests or args.decode_requests
-    continue_requests = continue_requests or args.continue_requests
-    max_tokens = max_tokens or args.max_tokens
-    prefill_ctx_thresh = prefill_ctx_thresh or args.prefill_ctx_thresh
-    max_tokens_val = max(1, max_tokens)
+    long_prompt_tokens = args.long_prompt_tokens if long_prompt_tokens is None else long_prompt_tokens
+    short_prompt_tokens = args.short_prompt_tokens if short_prompt_tokens is None else short_prompt_tokens
+    prefill_burst = args.prefill_burst if prefill_burst is None else prefill_burst
+    decode_requests = args.decode_requests if decode_requests is None else decode_requests
+    continue_requests = args.continue_requests if continue_requests is None else continue_requests
+    max_tokens = args.max_tokens if max_tokens is None else max_tokens
+    prefill_ctx_thresh = args.prefill_ctx_thresh if prefill_ctx_thresh is None else prefill_ctx_thresh
+    max_tokens_val = max_tokens
+    if max_tokens_val <= 0:
+        raise ValueError("max_tokens must be positive")
+    prompt_lengths = dual_pool_prompt_lengths(
+        args,
+        long_prompt_tokens=long_prompt_tokens,
+        short_prompt_tokens=short_prompt_tokens,
+        prefill_burst=prefill_burst,
+        decode_requests=decode_requests,
+        continue_requests=continue_requests,
+    )
+    request_prompt_token_ids = _split_prompt_token_ids(prompt_token_ids, prompt_lengths)
 
     prefill_ids = _parse_device_list(args.prefill_gpus, "0", total_gpus)
     decode_default = "1" if total_gpus > 1 else "0"
@@ -734,7 +855,10 @@ def run_dual_pool_vllm_with_topology(
         _skip("No usable GPUs after parsing pool assignments.")
 
     wrapper_cls = _VllmV1Wrapper if getattr(args, "use_v1_core_loop", False) else _VllmWrapper
-    engines = {h.gpu_id: wrapper_cls(h.gpu_id, h.device_index, model_id) for h in handles}
+    engines = {
+        h.gpu_id: wrapper_cls(h.gpu_id, h.device_index, model_id, attention_backend=getattr(args, "attention_backend", None))
+        for h in handles
+    }
 
     router = Router()
     for h in handles:
@@ -775,7 +899,9 @@ def run_dual_pool_vllm_with_topology(
 
     requests: Dict[str, _RequestRuntime] = {}
     req_roles: Dict[str, str] = {}
-    for req, hint in workload:
+    if len(workload) != len(request_prompt_token_ids):
+        raise RuntimeError("prompt input request count does not match the routed workload")
+    for request_index, (req, hint) in enumerate(workload):
         route = "prefill" if hint == "prefill" or req.prompt_tokens >= prefill_ctx_thresh else "decode"
         if route == "prefill":
             target = router.choose_prefill_gpu() or (prefill_pool_ids[0] if prefill_pool_ids else None)
@@ -797,7 +923,7 @@ def run_dual_pool_vllm_with_topology(
         if target is None:
             _skip("No GPU available for routed request.")
         rt = _RequestRuntime(req=req, gpu_id=target, admitted_at=time.time(), role=route)
-        engines[target].add_request(rt)
+        engines[target].add_request(rt, request_prompt_token_ids[request_index])
         requests[req.req_id] = rt
         req_roles[req.req_id] = route
 
@@ -892,8 +1018,15 @@ def run_dual_pool_vllm(
     prefill_ctx_thresh: Optional[int] = None,
     cli_args: Optional[argparse.Namespace] = None,
     topology_snapshot: Optional[TopologySnapshot] = None,
+    prompt_token_ids: Optional[torch.Tensor] = None,
 ) -> Dict[str, float]:
     topo = topology_snapshot or detect_topology(max_gpus=torch.cuda.device_count())
+    if prompt_token_ids is None:
+        prompt_token_ids = build_prompt_token_ids(dual_pool_prompt_lengths(
+            cli_args or _CLI_ARGS, long_prompt_tokens=long_prompt_tokens,
+            short_prompt_tokens=short_prompt_tokens, prefill_burst=prefill_burst,
+            decode_requests=decode_requests, continue_requests=continue_requests,
+        ))
     return run_dual_pool_vllm_with_topology(
         mode,
         topology_snapshot=topo,
@@ -905,4 +1038,5 @@ def run_dual_pool_vllm(
         max_tokens=max_tokens,
         prefill_ctx_thresh=prefill_ctx_thresh,
         cli_args=cli_args,
+        prompt_token_ids=prompt_token_ids,
     )

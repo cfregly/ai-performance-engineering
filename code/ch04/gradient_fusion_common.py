@@ -57,8 +57,6 @@ class GradientFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA required for gradient fusion benchmark")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         numel = max(1, (self.tensor_kb * 1024) // FLOAT32_BYTES)
         self.tensors = [
             torch.randn(numel, device=self.device, dtype=torch.float32)

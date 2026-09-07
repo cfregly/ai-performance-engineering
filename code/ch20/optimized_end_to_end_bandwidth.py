@@ -133,8 +133,6 @@ class OptimizedEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._payload_parameter_count = 0
     
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.model = SimplePipeline(hidden_dim=self.hidden_dim).to(self.device, dtype=torch.float32).eval()
         self.model.cache_weight_views()
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())

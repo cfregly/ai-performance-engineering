@@ -21,6 +21,7 @@ import subprocess
 import time
 import traceback
 import warnings
+from collections.abc import Mapping
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -291,6 +292,14 @@ class VerifyConfig:
     workload_tolerance: float = 0.01  # 1% tolerance for workload metrics
     verbose: bool = False
     force_recache: bool = False  # Ignore existing cache
+
+
+@dataclass(frozen=True)
+class _OutputToleranceSnapshot:
+    """Tolerance metadata captured before benchmark teardown."""
+
+    value: Optional[ToleranceSpec]
+    error: Optional[str]
 
 
 @dataclass
@@ -800,21 +809,30 @@ class VerifyRunner:
         self,
         benchmark: Any,
         seed: int,
+        *,
+        live_check: Callable[[Any, InputSignature], None] | None = None,
+        capture_output_tolerance: bool = False,
     ) -> Tuple[
         Dict[str, torch.Tensor],
         Dict[str, float],
         Dict[str, int],
         Dict[str, torch.Tensor],
         InputSignature,
+        Optional[_OutputToleranceSnapshot],
     ]:
         """Run a benchmark with specific seed and extract outputs.
         
         Args:
             benchmark: The benchmark instance
             seed: Random seed to use
+            live_check: Optional check that must run after output capture while
+                the benchmark is still initialized. The benchmark is torn down
+                exactly once after this callback returns or raises.
+            capture_output_tolerance: Capture tolerance metadata before teardown.
         
         Returns:
-            Tuple of (outputs, workload_metrics, seed_info, inputs_used, input_signature)
+            Tuple of (outputs, workload_metrics, seed_info, inputs_used,
+            input_signature, output_tolerance_snapshot)
         """
         # Set deterministic seeds BEFORE setup and capture seed_info
         # NOTE: We do NOT re-seed after setup. This ensures inputs created
@@ -921,6 +939,22 @@ class VerifyRunner:
             if signature is None:
                 raise RuntimeError("get_input_signature() did not produce a signature during verification run")
 
+            tolerance_snapshot: Optional[_OutputToleranceSnapshot] = None
+            if capture_output_tolerance:
+                # Payload-backed benchmarks may release their verification payload
+                # during teardown. Preserve only normalized tolerance metadata (or
+                # its read error) while the payload is still live.
+                try:
+                    tolerance_snapshot = _OutputToleranceSnapshot(
+                        value=get_output_tolerance(benchmark),
+                        error=None,
+                    )
+                except Exception as exc:
+                    tolerance_snapshot = _OutputToleranceSnapshot(
+                        value=None,
+                        error=str(exc),
+                    )
+
             # Stream audit check for verification path
             if stream_auditor is not None:
                 from core.harness.validity_checks import check_stream_sync_completeness, get_active_streams
@@ -955,11 +989,21 @@ class VerifyRunner:
                         "STREAM TIMING VIOLATION (verification): " + " | ".join(issues)
                     )
 
-            # Check for seed mutation
+            if live_check is not None:
+                live_check(benchmark, signature)
+
+            # Check for seed mutation, including any live check rerun.
             if detect_seed_mutation(seed_info):
                 raise RuntimeError("Benchmark mutated RNG seeds during execution")
 
-            return outputs, metrics, seed_info, inputs_for_validation, signature
+            return (
+                outputs,
+                metrics,
+                seed_info,
+                inputs_for_validation,
+                signature,
+                tolerance_snapshot,
+            )
 
         finally:
             # Always teardown
@@ -1112,7 +1156,7 @@ class VerifyRunner:
         try:
             # Run with different seed
             fresh_seed = config.seed + 1000
-            fresh_outputs, _, _, _, _ = self._run_with_seed(benchmark, fresh_seed)
+            fresh_outputs, _, _, _, _, _ = self._run_with_seed(benchmark, fresh_seed)
             
             # For deterministic algorithms, outputs should match
             # For non-deterministic, they should differ
@@ -1230,11 +1274,72 @@ class VerifyRunner:
             if not tensor_indices:
                 return True, "Jitter check skipped: output contains no tensor leaves"
 
-            # Perturb the input by adding small noise
+            # Floating inputs retain the existing small-noise behavior. Integer
+            # inputs require an explicit valid domain because arbitrary numeric
+            # noise can create invalid token IDs, class labels, or indices.
+            try:
+                integer_dtype = torch.iinfo(input_tensor.dtype)
+            except TypeError:
+                integer_dtype = None
+
             with torch.no_grad():
-                noise = torch.randn_like(input_tensor) * 0.01
-                input_tensor.add_(noise)
-                perturbation_started = True
+                if integer_dtype is None:
+                    noise = torch.randn_like(input_tensor) * 0.01
+                    input_tensor.add_(noise)
+                    perturbation_started = True
+                else:
+                    bounds_by_input = getattr(benchmark, "input_jitter_bounds", None)
+                    if not isinstance(bounds_by_input, Mapping) or tensor_name not in bounds_by_input:
+                        return True, (
+                            f"Jitter check skipped: integer input '{tensor_name}' requires "
+                            "input_jitter_bounds[name] = (inclusive_low, exclusive_high)"
+                        )
+                    bounds = bounds_by_input[tensor_name]
+                    if (
+                        not isinstance(bounds, (tuple, list))
+                        or len(bounds) != 2
+                        or any(isinstance(value, bool) or not isinstance(value, int) for value in bounds)
+                    ):
+                        return False, (
+                            f"Jitter check failed: input_jitter_bounds['{tensor_name}'] "
+                            "must be a pair of integers"
+                        )
+                    low, high = bounds
+                    if high - low < 2:
+                        return False, (
+                            f"Jitter check failed: input_jitter_bounds['{tensor_name}'] "
+                            "must contain at least two values"
+                        )
+                    if low < integer_dtype.min or high - 1 > integer_dtype.max:
+                        return False, (
+                            f"Jitter check failed: input_jitter_bounds['{tensor_name}'] "
+                            f"does not fit dtype {input_tensor.dtype}"
+                        )
+                    if input_tensor.numel() == 0:
+                        return False, f"Jitter check failed: integer input '{tensor_name}' is empty"
+                    if bool(((input_tensor < low) | (input_tensor >= high)).any()):
+                        return False, (
+                            f"Jitter check failed: integer input '{tensor_name}' contains "
+                            f"values outside [{low}, {high})"
+                        )
+                    try:
+                        replacement = torch.randint(
+                            low,
+                            high,
+                            input_tensor.shape,
+                            dtype=input_tensor.dtype,
+                            device=input_tensor.device,
+                        )
+                    except (RuntimeError, TypeError, ValueError) as exc:
+                        return False, (
+                            f"Jitter check failed: cannot draw valid values for integer input "
+                            f"'{tensor_name}': {exc}"
+                        )
+                    if torch.equal(replacement, original_input):
+                        original_value = int(original_input.reshape(-1)[0])
+                        replacement.reshape(-1)[0] = low if original_value != low else low + 1
+                    input_tensor.copy_(replacement)
+                    perturbation_started = True
             
             # Re-run benchmark
             benchmark.benchmark_fn()
@@ -1297,6 +1402,42 @@ class VerifyRunner:
             if perturbation_started or restore_error:
                 return False, f"Jitter check failed due to error: {e}.{restore_error or ''}".rstrip()
             return True, f"Jitter check skipped due to error: {e}.{restore_error or ''}".rstrip()
+
+    def _run_live_jitter_check(
+        self,
+        benchmark: Any,
+        config: VerifyConfig,
+    ) -> tuple[bool, str | None]:
+        """Run jitter inside a complete, independently owned benchmark lifecycle."""
+        if config.skip_jitter_check:
+            return True, None
+
+        jitter_result: tuple[bool, str | None] | None = None
+
+        def check_initialized_benchmark(
+            initialized_benchmark: Any,
+            input_signature: InputSignature,
+        ) -> None:
+            nonlocal jitter_result
+            jitter_result = self._run_jitter_check(
+                initialized_benchmark,
+                input_signature,
+                config,
+            )
+
+        try:
+            self._run_with_seed(
+                benchmark,
+                config.seed,
+                live_check=check_initialized_benchmark,
+            )
+        except Exception as exc:
+            detail = str(exc) or type(exc).__name__
+            return False, f"Jitter check failed during live execution: {detail}"
+
+        if jitter_result is None:
+            return False, "Jitter check failed during live execution: check did not run"
+        return jitter_result
     
     def verify_baseline(
         self,
@@ -1335,7 +1476,11 @@ class VerifyRunner:
 
         try:
             # Run baseline with deterministic seed
-            outputs, metrics, seed_info, inputs, signature = self._run_with_seed(baseline, config.seed)
+            outputs, metrics, seed_info, inputs, signature, tolerance_snapshot = self._run_with_seed(
+                baseline,
+                config.seed,
+                capture_output_tolerance=True,
+            )
             if not getattr(baseline, "parameter_signature_only", False):
                 try:
                     self._validate_inputs_match_signature(signature, inputs)
@@ -1352,14 +1497,22 @@ class VerifyRunner:
             self._last_baseline_equivalence = equivalence
             self._last_baseline_cache_key = sig_hash
 
-            # Capture baseline tolerance (fail-fast)
-            try:
-                baseline_tol = get_output_tolerance(baseline)
-            except Exception as exc:
+            # Consume the tolerance captured while the benchmark payload was live.
+            if tolerance_snapshot is None:
+                raise RuntimeError("Baseline tolerance snapshot was not captured")
+            if tolerance_snapshot.error is not None:
                 return VerifyResult(
                     passed=False,
                     reason=QuarantineReason.MISSING_OUTPUT_TOLERANCE.value,
-                    details={"error": str(exc)},
+                    details={"error": tolerance_snapshot.error},
+                    timestamp=datetime.now(),
+                )
+            baseline_tol = tolerance_snapshot.value
+            if baseline_tol is None:
+                return VerifyResult(
+                    passed=False,
+                    reason=QuarantineReason.MISSING_OUTPUT_TOLERANCE.value,
+                    details={"error": "get_output_tolerance() produced no tolerance"},
                     timestamp=datetime.now(),
                 )
 
@@ -1449,7 +1602,11 @@ class VerifyRunner:
 
         try:
             # Run optimized with same seed
-            outputs, metrics, seed_info, inputs, signature = self._run_with_seed(optimized, config.seed)
+            outputs, metrics, seed_info, inputs, signature, tolerance_snapshot = self._run_with_seed(
+                optimized,
+                config.seed,
+                capture_output_tolerance=config.tolerance_override is None,
+            )
             evaluation_provenance = self._last_evaluation_provenance
             if not getattr(optimized, "parameter_signature_only", False):
                 try:
@@ -1552,13 +1709,21 @@ class VerifyRunner:
             # Get tolerance - enforce baseline-bound tolerances
             tolerance = config.tolerance_override
             if tolerance is None:
-                try:
-                    tolerance = get_output_tolerance(optimized)
-                except Exception as exc:
+                if tolerance_snapshot is None:
+                    raise RuntimeError("Optimized tolerance snapshot was not captured")
+                if tolerance_snapshot.error is not None:
                     return VerifyResult(
                         passed=False,
                         reason=QuarantineReason.MISSING_OUTPUT_TOLERANCE.value,
-                        details={"error": str(exc)},
+                        details={"error": tolerance_snapshot.error},
+                        timestamp=datetime.now(),
+                    )
+                tolerance = tolerance_snapshot.value
+                if tolerance is None:
+                    return VerifyResult(
+                        passed=False,
+                        reason=QuarantineReason.MISSING_OUTPUT_TOLERANCE.value,
+                        details={"error": "get_output_tolerance() produced no tolerance"},
                         timestamp=datetime.now(),
                     )
             baseline_tol = golden.tolerance
@@ -1633,8 +1798,8 @@ class VerifyRunner:
             fresh_passed, fresh_msg = self._run_fresh_input_check(
                 optimized, outputs, config
             )
-            jitter_passed, jitter_msg = self._run_jitter_check(
-                optimized, signature, config
+            jitter_passed, jitter_msg = self._run_live_jitter_check(
+                optimized, config
             )
             
             if not fresh_passed:
@@ -1900,7 +2065,9 @@ class VerifyRunner:
 
         # Step 1: Run local verification
         try:
-            outputs, metrics, seed_info, _, signature = self._run_with_seed(benchmark, config.seed)
+            outputs, metrics, seed_info, _, signature, _ = self._run_with_seed(
+                benchmark, config.seed
+            )
         except Exception as e:
             return VerifyResult.fail(f"Rank {rank} execution failed: {e}")
 

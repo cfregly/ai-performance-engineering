@@ -5,6 +5,7 @@ from types import MethodType
 
 import torch
 
+from core.benchmark.verify_runner import VerifyRunner
 from labs.moe_optimization_journey.moe_benchmark import MoEJourneyBenchmark
 from labs.moe_optimization_journey.level7_compiled import Level7Compiled
 from labs.moe_optimization_journey.moe_model import ConfigurableMoEModel, MoEExperts, MoEOptimizations
@@ -132,6 +133,61 @@ def test_graphable_bmm_fused_path_matches_dynamic_bmm_path() -> None:
     torch.testing.assert_close(dynamic_again, dynamic)
     torch.testing.assert_close(graphable, dynamic)
     torch.testing.assert_close(graphable_again, dynamic)
+
+
+def test_graphable_bmm_fused_path_is_aot_compile_safe() -> None:
+    experts = _make_experts(use_cuda_graphs=True).eval()
+    experts.opts.use_compile = True
+    x = torch.randn(4, 4)
+    expert_indices = torch.tensor([[0], [1], [0], [1]], dtype=torch.long)
+    expert_weights = torch.ones(4, 1)
+
+    with torch.inference_mode():
+        expected = experts._forward_bmm_fused_graphable(x, expert_indices, expert_weights)
+        compiled = torch.compile(
+            experts._forward_bmm_fused_graphable,
+            backend="aot_eager",
+            fullgraph=True,
+        )
+        actual = compiled(x, expert_indices, expert_weights)
+
+    torch.testing.assert_close(actual, expected)
+
+
+def test_moe_verification_payload_detects_late_output_mutation() -> None:
+    shape = (2, 3, 11)
+    bench = MoEJourneyBenchmark()
+    bench.device = torch.device("cpu")
+    bench.BATCH_SIZE, bench.SEQ_LEN, bench.VOCAB_SIZE = shape
+    bench.HIDDEN_SIZE = 4
+    bench.INTERMEDIATE_SIZE = 8
+    bench.NUM_HEADS = 1
+    bench.NUM_EXPERTS = 2
+    bench.NUM_EXPERTS_PER_TOK = 1
+    bench.WARMUP = 5
+    bench.setup()
+    bench.benchmark_fn()
+    bench.capture_verification_payload()
+
+    baseline = bench.get_verify_output().clone()
+    captured_ids = bench.get_verify_inputs()["input_ids"]
+    assert tuple(baseline.shape) == shape
+    assert tuple(captured_ids.shape) == shape[:2]
+    torch.testing.assert_close(captured_ids, bench.input_ids)
+
+    mutated_output = torch.empty(shape, dtype=bench.output.dtype)
+    mutated_output.copy_(bench.output)
+    mutated_output[-1, -1, -1] += 32.0
+    bench.output = mutated_output
+    bench.capture_verification_payload()
+    comparison = VerifyRunner().compare_perf_outputs(
+        baseline,
+        bench.get_verify_output(),
+        bench.get_output_tolerance(),
+    )
+
+    assert not comparison.passed
+    assert comparison.location == (shape[0] - 1, shape[1] - 1, shape[2] - 1)
 
 
 def test_moe_benchmark_metrics_surface_model_cuda_graph_state() -> None:

@@ -1,19 +1,15 @@
 """Python harness wrapper for optimized_memory_transfer_multigpu.cu."""
 
 from __future__ import annotations
+
 from pathlib import Path
-from typing import Optional
 
-import torch
-
-from core.benchmark.cuda_binary_benchmark import CudaBinaryBenchmark
-from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from ch02.memory_transfer_multigpu_common import MemoryTransferMultiGPUBenchmark
+from core.harness.benchmark_harness import BaseBenchmark
 
 
-class OptimizedMemoryTransferMultigpuBenchmark(CudaBinaryBenchmark):
+class OptimizedMemoryTransferMultigpuBenchmark(MemoryTransferMultiGPUBenchmark):
     """Wraps the optimized CUDA binary."""
-
-    multi_gpu_required = True
 
     def __init__(self) -> None:
         chapter_dir = Path(__file__).parent
@@ -21,26 +17,12 @@ class OptimizedMemoryTransferMultigpuBenchmark(CudaBinaryBenchmark):
             chapter_dir=chapter_dir,
             binary_name="optimized_memory_transfer_multigpu",
             friendly_name="Optimized Memory Transfer Multigpu",
-            iterations=5,
-            warmup=5,
-            timeout_seconds=180,
-            workload_params={
-                "device_count": int(torch.cuda.device_count()) if torch.cuda.is_available() else 0,
-                "dtype": 'float32',
-                "batch_size": 1,
-            },
         )
 
-    def get_config(self) -> BenchmarkConfig:
-        cfg = super().get_config()
-        cfg.multi_gpu_required = True
-        return cfg
-
-    def get_custom_metrics(self) -> Optional[dict]:
+    def get_custom_metrics(self) -> dict | None:
         return None
 
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedMemoryTransferMultigpuBenchmark()
-
 

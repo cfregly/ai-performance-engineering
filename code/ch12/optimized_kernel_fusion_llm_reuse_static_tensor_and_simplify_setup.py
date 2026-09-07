@@ -51,7 +51,6 @@ class OptimizedKernelFusionReuseStaticTensorBenchmark(VerificationPayloadMixin, 
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
 
         # Initialize data once; we keep this buffer layout stable
-        torch.manual_seed(42)
         self.data = torch.arange(self.N, dtype=torch.float32, device=self.device)
         self._verify_input = self.data.detach().clone()
         torch.cuda.synchronize(self.device)
@@ -64,7 +63,6 @@ class OptimizedKernelFusionReuseStaticTensorBenchmark(VerificationPayloadMixin, 
 
         # Reset data contents deterministically without reallocating the tensor
         # to keep memory addresses and layout stable.
-        torch.manual_seed(42)
         # Refill the existing storage instead of allocating a new tensor
         self.data.copy_(torch.arange(self.N, dtype=torch.float32, device=self.device))
         self._verify_output_buffer = torch.empty_like(self.data)

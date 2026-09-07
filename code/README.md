@@ -29,7 +29,7 @@ That command now writes a stable history package under `artifacts/history/tier1/
 See [`docs/tier1_benchmark_suite.md`](docs/tier1_benchmark_suite.md) for the current target list, artifact contract, and interpretation guidance.
 
 ## Historical Representative Deltas
-These hardcoded historical rows are retained in the README generator. The cited original artifact is unavailable in this checkout. Their lineage and measurements remain unverified. This audit changed correctness, workload and verification contracts; neither the table nor its aggregate speedups qualify the repaired revision. Repeat the applicable full-output and exact-target timing gates before making new performance claims.
+These hardcoded historical rows are retained in the README generator. The cited original artifact is not part of the checked-in generator source. Their lineage and measurements remain unverified. This audit changed correctness, workload and verification contracts; neither the table nor its aggregate speedups qualify the repaired revision. Repeat the applicable full-output and exact-target timing gates before making new performance claims.
 
 Source artifact: `artifacts/history/tier1/20260329_e2e_truthful_canonical_main_4a8c827a__tier1/summary.json`
 
@@ -171,6 +171,26 @@ python -m cli.aisp bench run-tier1 --single-gpu --profile minimal
 ## Validation Checklist
 - `pytest tests/integration` succeeds to confirm harness discovery and CLI plumbing.
 - `python core/benchmark/benchmark_peak.py` reports TFLOP/s, bandwidth, and NVLink numbers close to the published ceilings.
+
+## Optional vLLM and FlashAttention 4 compatibility
+
+For the qualified FlashAttention 4 (`flash-attn-4==4.0.0b19`) environment on
+Linux x86_64, backport the merged vLLM rotary-import fix into the pinned wheel:
+```bash
+mkdir -p third_party/wheels/vllm-upstream
+python -m pip download --no-deps --only-binary=:all: \
+  --index-url https://wheels.vllm.ai/0.16.0/cu130 \
+  --dest third_party/wheels/vllm-upstream 'vllm==0.16.0+cu130'
+python scripts/build_vllm_fa4_compat_wheel.py \
+  --input-wheel third_party/wheels/vllm-upstream/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl \
+  --output-dir third_party/wheels/vllm-fa4-backport \
+  --install-python "$VIRTUAL_ENV/bin/python"
+```
+The tool accepts only the qualified wheel hash, preserves the Torch and FA4
+versions, installs with `--no-deps`, and writes a provenance manifest. Retire
+the backport after `vllm_no_deps.pin` advances to a wheel containing
+[vLLM PR #42679](https://github.com/vllm-project/vllm/pull/42679) and that wheel
+passes the same FA4 import and full-model gates.
 
 ## Wall of Shame
 The benchmark harness includes a strict set of correctness and validity checks to prevent misleading speedups.

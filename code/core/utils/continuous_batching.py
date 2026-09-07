@@ -94,9 +94,6 @@ class ContinuousBatchingBase(BaseBenchmark):
         if self.multi_gpu and torch.cuda.device_count() < 2:
             raise RuntimeError("SKIPPED: requires >=2 GPUs")
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
-
         if self.multi_gpu:
             self.device_ids = list(range(torch.cuda.device_count()))
         else:

@@ -66,6 +66,9 @@ class FlexDecodingHarness(VerificationPayloadMixin, BaseBenchmark):
 
     # --------------------------------------------------------------------- setup
     def setup(self) -> None:
+        # Capture the harness seed before model/runtime setup. Inputs deliberately restart
+        # from that seed so paired implementations keep aligned stochastic data.
+        setup_seed = int(torch.initial_seed())
         if not torch.cuda.is_available():
             raise RuntimeError("FlexDecoding benchmarks require CUDA")
         if self.require_flex and not getattr(flexdemo, "HAS_FLEX", False):
@@ -82,8 +85,8 @@ class FlexDecodingHarness(VerificationPayloadMixin, BaseBenchmark):
         self.model.ensure_compiled()
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
+        torch.manual_seed(setup_seed)
+        torch.cuda.manual_seed_all(setup_seed)
         self.prefill_tokens = torch.randn(
             1,
             self.config.window * 2,

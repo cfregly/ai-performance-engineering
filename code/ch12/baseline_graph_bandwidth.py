@@ -42,9 +42,6 @@ class BaselineGraphBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Load CUDA extension (will compile on first call)
         self._extension = load_graph_bandwidth_extension()
         
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.src = torch.randn(self.N, dtype=torch.float32, device=self.device)
         self.dst = torch.empty_like(self.src)
         torch.cuda.synchronize(self.device)

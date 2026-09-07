@@ -57,7 +57,6 @@ class OptimizedDualPipelineBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)  # Match baseline seed
         self.ext = _load_optimized_extension()
         total_elems = self.tiles * self.tile_elems
         self.input_a = torch.randn(total_elems, device=self.device, dtype=torch.float32)

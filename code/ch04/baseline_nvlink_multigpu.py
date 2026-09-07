@@ -37,8 +37,6 @@ class BaselineNVLinkBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         require_min_gpus(2, "baseline_nvlink_multigpu.py")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         self.device_ids = list(range(torch.cuda.device_count()))
         self.pairs = [(idx, (idx + 1) % len(self.device_ids)) for idx in self.device_ids]

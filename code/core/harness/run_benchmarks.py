@@ -1135,6 +1135,21 @@ def _should_fail_no_speedup(result_entry: Dict[str, Any]) -> bool:
     return best_speedup < _resolve_min_speedup_for_success(result_entry)
 
 
+def _update_best_measured_memory_savings(result_entry: Dict[str, Any]) -> Optional[float]:
+    """Keep measured memory regressions visible in the comparison summary."""
+    measured = [
+        savings
+        for optimization in result_entry.get("optimizations", [])
+        if optimization.get("status") == "succeeded"
+        and (savings := _coerce_finite_float(optimization.get("memory_savings_pct"))) is not None
+    ]
+    if not measured:
+        return None
+    best = max(measured)
+    result_entry["best_memory_savings_pct"] = best
+    return best
+
+
 def _format_failed_no_speedup(result_entry: Dict[str, Any]) -> str:
     best_speedup = _coerce_finite_float(result_entry.get("best_speedup"))
     rendered_speedup = _format_speedup_ratio(best_speedup)
@@ -7687,6 +7702,7 @@ def _test_chapter_impl(
                     )
                     
                     _update_best_measured_speedup(result_entry)
+                    _update_best_measured_memory_savings(result_entry)
                     if opt_result.get("status") == "succeeded" and _coerce_positive_float(speedup) is not None:
                         speedups.append(speedup)
                     
@@ -9413,6 +9429,7 @@ def _test_chapter_impl(
                 )
 
                 _update_best_measured_speedup(result_entry)
+                _update_best_measured_memory_savings(result_entry)
                 if opt_result.get("status") == "succeeded" and _coerce_positive_float(speedup) is not None:
                     speedups.append(speedup)
 

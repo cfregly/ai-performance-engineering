@@ -9,7 +9,6 @@ Implements BaseBenchmark for harness integration.
 from __future__ import annotations
 
 from functools import partial
-from pathlib import Path
 from typing import Optional
 
 import torch
@@ -60,7 +59,6 @@ class BaselinePrecisionFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.batch_size = 8192
         self.hidden_dim = 8192
         self._verify_input: Optional[torch.Tensor] = None
-        self._verify_input_fp16: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         tokens = self.batch_size * self.hidden_dim
@@ -75,16 +73,11 @@ class BaselinePrecisionFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: Initialize FP16 model and data."""
-        # Harness provides seeding - creation order must match optimized
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
-
+        # Harness provides seeding - creation order must match optimized.
         self.model = SimpleModel(hidden_dim=self.hidden_dim).to(self.device).half().train()
         self.inputs = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float32)
         self.targets = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float32)
         self._verify_input = self.inputs.detach().clone()
-        self._verify_input_fp16 = self._verify_input.to(torch.float16)
         self._verify_output_buffer = torch.empty(
             min(128, self.batch_size),
             min(256, self.hidden_dim),
@@ -124,7 +117,6 @@ class BaselinePrecisionFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
             or self.optimizer is None
             or self.criterion is None
             or self._verify_input is None
-            or self._verify_input_fp16 is None
         ):
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("baseline_precisionfp8"):
@@ -132,10 +124,11 @@ class BaselinePrecisionFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
             self.output = None
 
     def capture_verification_payload(self) -> None:
-        if self.model is None or self._verify_input is None or self._verify_input_fp16 is None or self._verify_output_buffer is None:
+        if self.model is None or self._verify_input is None or self._verify_output_buffer is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
+        verify_input_fp16 = self._verify_input.to(dtype=torch.float16)
         with torch.inference_mode():
-            verify_out = self.model(self._verify_input_fp16)
+            verify_out = self.model(verify_input_fp16)
             output_slice = verify_out[
                 : self._verify_output_buffer.shape[0],
                 : self._verify_output_buffer.shape[1],
@@ -161,7 +154,6 @@ class BaselinePrecisionFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         del self.model, self.inputs, self.targets, self.inputs_fp16, self.targets_fp16, self.optimizer, self.criterion
         self.output = None
         self._verify_input = None
-        self._verify_input_fp16 = None
         self._verify_output_buffer = None
         super().teardown()
     

@@ -40,8 +40,6 @@ class OptimizedPageableCopyBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         # Pinned memory is the optimization: it allows the H2D copy to remain
         # non-blocking while still being fully measured on the benchmark stream.
         self.host_tensor = torch.randn(128_000_000, dtype=torch.float32, pin_memory=True)

@@ -10,12 +10,25 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from labs.dynamic_router import vllm_runner
 from labs.dynamic_router.topology import detect_topology
-from labs.dynamic_router.verification import metric_row_buffer, numeric_metric_values, scalar_int_buffer
+from labs.dynamic_router.verification import (
+    metric_row_buffer,
+    numeric_metric_values,
+    require_verification_output,
+    scalar_int_buffer,
+)
 from labs.dynamic_router.vllm_runner import run_vllm_routing_with_topology
 
 
 class OptimizedDynamicRouterVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Runs vLLM with the feedback-based router (prefill/decode scoring)."""
+
+    # vLLM admission consumes Python token lists. Rebuild them from the live
+    # CPU input each invocation so verification mutations reach the engine.
+    # _split_prompt_token_ids rejects GPU inputs before host conversion.
+    allowed_benchmark_fn_antipatterns = ("host_transfer",)
+    multi_gpu_required = True
+    _is_deterministic = True
+    input_jitter_bounds = {"prompt_token_ids": (0, 2)}
 
     def __init__(self) -> None:
         super().__init__()
@@ -24,32 +37,50 @@ class OptimizedDynamicRouterVllmBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._metric_values: Optional[list[float]] = None
         self._metric_output_buffer: Optional[torch.Tensor] = None
         self._mode_input: Optional[torch.Tensor] = None
+        self._prompt_token_ids: Optional[torch.Tensor] = None
+        self._prompt_lengths = vllm_runner.routing_prompt_lengths(vllm_runner._CLI_ARGS)
         self._topology = None
         self._summary_ready = False
-        self.register_workload_metadata(requests_per_iteration=1.0)
+        request_count = len(self._prompt_lengths)
+        self.register_workload_metadata(
+            requests_per_iteration=float(request_count),
+            tokens_per_iteration=float(
+                sum(self._prompt_lengths) + request_count * vllm_runner._CLI_ARGS.max_tokens
+            ),
+        )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
+        self._mode_input = scalar_int_buffer(self, "_mode_input", 2)
+        self._prompt_token_ids = vllm_runner.build_prompt_token_ids(
+            self._prompt_lengths
+        )
         self._topology = detect_topology(max_gpus=torch.cuda.device_count())
 
     def benchmark_fn(self) -> None:
+        if self._mode_input is None or int(self._mode_input[0]) != 2:
+            raise RuntimeError("setup() must initialize optimized routing mode")
+        if self._prompt_token_ids is None:
+            raise RuntimeError("setup() must initialize live prompt-token input")
         self._summary = run_vllm_routing_with_topology(
             "optimized",
             topology_snapshot=self._topology,
             cli_args=vllm_runner._CLI_ARGS,
+            prompt_token_ids=self._prompt_token_ids,
         )
         self._summary_ready = True
 
     def capture_verification_payload(self) -> None:
         if not self._summary_ready:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        if self._prompt_token_ids is None:
+            raise RuntimeError("setup() must initialize live prompt-token input")
+        require_verification_output(self._summary)
         metric_values = numeric_metric_values(self._summary, self._metric_values)
         self._metric_values = metric_values
         self.output = metric_row_buffer(self, metric_values)
         self._set_verification_payload(
             inputs={
+                "prompt_token_ids": self._prompt_token_ids,
                 "mode": scalar_int_buffer(self, "_mode_input", 2),
             },  # optimized
             output=self.output,
@@ -64,12 +95,13 @@ class OptimizedDynamicRouterVllmBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._metric_values = None
         self._metric_output_buffer = None
         self._mode_input = None
+        self._prompt_token_ids = None
         self._topology = None
         self._summary_ready = False
         super().teardown()
 
     def get_config(self) -> Optional[BenchmarkConfig]:
-        return BenchmarkConfig(iterations=1, warmup=5)
+        return BenchmarkConfig(iterations=1, warmup=5, multi_gpu_required=True)
 
     def get_custom_metrics(self) -> Optional[Dict[str, float]]:
         return self._summary or None

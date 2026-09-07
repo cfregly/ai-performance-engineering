@@ -7,14 +7,11 @@ It measures a fixed prefill + decode workload using the NanoChat GPT model.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import torch
 
 from core.benchmark.verification import PrecisionFlags, simple_signature
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
-
 from labs.nanochat_fullstack.nanochat.engine import KVCache
 from labs.nanochat_fullstack.nanochat.gpt import GPT, GPTConfig
 
@@ -33,13 +30,13 @@ class BaselineNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.n_kv_head = 8
         self.n_embd = 512
 
-        self.model: Optional[GPT] = None
-        self.kv_cache: Optional[KVCache] = None
-        self.prompt: Optional[torch.Tensor] = None
-        self.decode_tokens: Optional[torch.Tensor] = None
+        self.model: GPT | None = None
+        self.kv_cache: KVCache | None = None
+        self.prompt: torch.Tensor | None = None
+        self.decode_tokens: torch.Tensor | None = None
         self.decode_token_steps: tuple[torch.Tensor, ...] = ()
-        self.output: Optional[torch.Tensor] = None
-        self._verify_output_buffer: Optional[torch.Tensor] = None
+        self.output: torch.Tensor | None = None
+        self._verify_output_buffer: torch.Tensor | None = None
         self._payload_parameter_count = 0
 
         self.register_workload_metadata(
@@ -50,9 +47,6 @@ class BaselineNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: nanochat inference benchmark requires CUDA")
-
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         cfg = GPTConfig(
             sequence_len=1024,
@@ -72,6 +66,9 @@ class BaselineNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark
             model = GPT(cfg)
         model.to_empty(device=self.device)
         model.init_weights()
+        # Training initialization zeros the residual projections and lm_head.
+        # Reinitialize them so inference verification observes nonzero logits.
+        model.apply(model._init_weights)
         model = model.to(dtype=torch.bfloat16)
         model.eval()
 
@@ -167,9 +164,13 @@ class BaselineNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark
             precision_flags=PrecisionFlags(bf16=True, tf32=False),
         ).to_dict()
 
-    def validate_result(self) -> Optional[str]:
+    def validate_result(self) -> str | None:
         if self.output is None:
             return "benchmark_fn() did not produce output"
+        if not bool(torch.isfinite(self.output).all()):
+            return "benchmark_fn() produced non-finite logits"
+        if not bool(torch.count_nonzero(self.output)):
+            return "benchmark_fn() produced degenerate all-zero logits"
         return None
 
     def teardown(self) -> None:

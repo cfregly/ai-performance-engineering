@@ -34,8 +34,6 @@ class BaselineMemoryTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         """Setup: Initialize tensors and verification output."""
         # Seed FIRST for deterministic verification
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         
         # Baseline uses pageable host memory (slower H2D transfers vs pinned DMA).
         self.host_data = torch.randn(self.N, dtype=torch.float32, pin_memory=False)

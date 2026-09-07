@@ -40,10 +40,6 @@ class MyBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         """Setup phase: initialize models, data, etc."""
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
-
         self.model = nn.Linear(256, 256).to(self.device)
         self.input_data = torch.randn(32, 256, device=self.device)
 

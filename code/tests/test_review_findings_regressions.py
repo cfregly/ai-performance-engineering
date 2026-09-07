@@ -471,7 +471,10 @@ def test_ch14_model_compile_pair_uses_reduced_precision_name_not_bf16_alias() ->
 @pytest.mark.skipif(
     not torch.cuda.is_available(), reason="CUDA required for speculative decoding stability check"
 )
-def test_ch15_speculative_decoding_acceptance_metrics_are_stable_run_to_run() -> None:
+@pytest.mark.parametrize("seed", [42, 1042])
+def test_ch15_speculative_decoding_acceptance_metrics_are_stable_run_to_run(seed: int) -> None:
+    from tests.protection_test_utils import preserve_rng_state
+
     def _run_acceptance_rate() -> float:
         bench = SpeculativeDecodingBenchmark(
             use_speculative=True, label="speculative_decode_stability"
@@ -485,6 +488,7 @@ def test_ch15_speculative_decoding_acceptance_metrics_are_stable_run_to_run() ->
             total_tokens=32,
         )
         try:
+            torch.manual_seed(seed)
             bench.setup()
             bench.benchmark_fn()
             metrics = bench.get_custom_metrics()
@@ -493,8 +497,9 @@ def test_ch15_speculative_decoding_acceptance_metrics_are_stable_run_to_run() ->
         finally:
             bench.teardown()
 
-    first = _run_acceptance_rate()
-    second = _run_acceptance_rate()
+    with preserve_rng_state():
+        first = _run_acceptance_rate()
+        second = _run_acceptance_rate()
     assert first == second
 
 
@@ -678,7 +683,8 @@ def test_ch13_pair_remediations_keep_canonical_and_informational_targets_split()
     assert "configure_tf32(" in canonical_quant
     assert 'matmul_precision="highest"' in canonical_quant
     assert "restore_tf32(self._tf32_state)" in canonical_quant
-    assert "torch.compile(self.model" in compiled_quant
+    assert "torch.compile(_TorchAOCompiledModule(module)" in compiled_quant
+    assert "self.compiled_model = _compile_torchao_module(self.model)" in compiled_quant
     assert "torchao_quantization_compiled" in INFORMATIONAL_BENCHMARKS["ch13"]
     assert "precisionfp8" in INFORMATIONAL_BENCHMARKS["ch13"]
     assert "precisionfp8_rowwise" in INFORMATIONAL_BENCHMARKS["ch13"]

@@ -39,8 +39,6 @@ class OptimizedAdaptiveParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: adaptive_parallelism requires CUDA")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.workload = build_workload(self.cfg, self.device)
         self._result_buffer = torch.empty(
             self.cfg.num_requests,

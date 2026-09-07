@@ -473,23 +473,30 @@ def test_real_thread_async_copy_eager_and_graph_current_stream():
 
 
 @CUDA
-def test_real_eager_vs_graph_persistent_decode_repeated_states():
-    from labs.decode_optimization.decode_common import DecodeConfig
-    from labs.decode_optimization.baseline_decode_warp_specialized import PersistentPrefillBaselineBenchmark
-    from labs.decode_optimization.optimized_decode_warp_specialized import CUDAGraphPersistentDecodeBenchmark
-    cfg = DecodeConfig(batch_size=2, prompt_tokens=16, decode_tokens=4, hidden_size=64,
-        vocab_size=128, use_pinned_host=True, use_copy_stream=True, use_compute_stream=True)
-    baseline, graph = PersistentPrefillBaselineBenchmark(cfg), CUDAGraphPersistentDecodeBenchmark(cfg)
-    baseline.setup(); graph.setup()
-    consumer = torch.cuda.Stream()
-    consumer.wait_stream(torch.cuda.current_stream())
-    try:
-        torch.testing.assert_close(baseline._prefilled_state, graph._prefilled_state, rtol=0, atol=0)
-        for _ in range(4):
-            with torch.cuda.stream(consumer):
-                baseline.benchmark_fn(); graph.benchmark_fn()
-                torch.testing.assert_close(graph.state_buffer, baseline.state_buffer)
-                torch.testing.assert_close(graph.current_tokens, baseline.current_tokens, rtol=0, atol=0)
-        consumer.synchronize()
-    finally:
-        torch.cuda.synchronize(); baseline.teardown(); graph.teardown()
+@pytest.mark.parametrize("seed", [42, 1042])
+def test_real_eager_vs_graph_persistent_decode_repeated_states(seed: int):
+    from tests.protection_test_utils import preserve_rng_state
+
+    with preserve_rng_state():
+        from labs.decode_optimization.decode_common import DecodeConfig
+        from labs.decode_optimization.baseline_decode_warp_specialized import PersistentPrefillBaselineBenchmark
+        from labs.decode_optimization.optimized_decode_warp_specialized import CUDAGraphPersistentDecodeBenchmark
+        cfg = DecodeConfig(batch_size=2, prompt_tokens=16, decode_tokens=4, hidden_size=64,
+            vocab_size=128, use_pinned_host=True, use_copy_stream=True, use_compute_stream=True)
+        baseline, graph = PersistentPrefillBaselineBenchmark(cfg), CUDAGraphPersistentDecodeBenchmark(cfg)
+        torch.manual_seed(seed)
+        baseline.setup()
+        torch.manual_seed(seed)
+        graph.setup()
+        consumer = torch.cuda.Stream()
+        consumer.wait_stream(torch.cuda.current_stream())
+        try:
+            torch.testing.assert_close(baseline._prefilled_state, graph._prefilled_state, rtol=0, atol=0)
+            for _ in range(4):
+                with torch.cuda.stream(consumer):
+                    baseline.benchmark_fn(); graph.benchmark_fn()
+                    torch.testing.assert_close(graph.state_buffer, baseline.state_buffer)
+                    torch.testing.assert_close(graph.current_tokens, baseline.current_tokens, rtol=0, atol=0)
+            consumer.synchronize()
+        finally:
+            torch.cuda.synchronize(); baseline.teardown(); graph.teardown()

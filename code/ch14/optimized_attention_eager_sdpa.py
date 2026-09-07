@@ -68,9 +68,6 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
     def setup(self) -> None:
         """Setup: materialize query/key/value tensors (same workload as baseline)."""
 
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
         shape = (self.seq_len, self.num_heads, self.head_dim)

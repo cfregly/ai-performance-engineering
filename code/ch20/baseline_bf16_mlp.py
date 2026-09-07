@@ -64,8 +64,6 @@ class BaselineBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._payload_parameter_count = 0
     
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         # FP32 - no tensor core acceleration
         self.model = UnoptimizedModel(hidden_dim=self.hidden_dim).to(self.device).float().eval()
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())

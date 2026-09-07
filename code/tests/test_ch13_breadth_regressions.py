@@ -127,3 +127,31 @@ def test_te_pair_declares_only_precision_signature_equivalence():
     # accessor that returned the input unchanged.
     assert "get_output_for_verification" not in BaselineTEFP8Benchmark.__dict__
     assert "get_output_for_verification" not in OptimizedTEFP8Benchmark.__dict__
+
+
+def test_pool_reuses_views_and_matches_every_prefix_across_requests():
+    from ch13.optimized_kv_cache_naive_pool import OptimizedKVCache
+
+    cache = OptimizedKVCache(23, 2, 2, 3, 4, torch.float32, torch.device("cpu"))
+    torch.manual_seed(13)
+    for request_number, length in enumerate((23, 7, 19)):
+        request = str(request_number)
+        cache.allocate(request)
+        keys, values = [[], []], [[], []]
+        for pos in range(length):
+            for layer in range(2):
+                k, v = torch.randn(2, 3, 4), torch.randn(2, 3, 4)
+                keys[layer].append(k)
+                values[layer].append(v)
+                cache.append(request, layer, k, v, pos)
+                actual = cache.get(request, layer, 0, pos + 1)
+                expected_k = torch.stack(keys[layer], dim=2)
+                expected_v = torch.stack(values[layer], dim=2)
+                torch.testing.assert_close(actual[0], expected_k, rtol=0, atol=0)
+                torch.testing.assert_close(actual[1], expected_v, rtol=0, atol=0)
+                assert cache.get(request, layer, 0, pos + 1) is actual
+                tail_k, tail_v = cache.get(request, layer, 1, pos + 1)
+                torch.testing.assert_close(tail_k, expected_k[:, :, 1:, :], rtol=0, atol=0)
+                torch.testing.assert_close(tail_v, expected_v[:, :, 1:, :], rtol=0, atol=0)
+        cache.free(request)
+    assert len(cache.free_indices) == 2

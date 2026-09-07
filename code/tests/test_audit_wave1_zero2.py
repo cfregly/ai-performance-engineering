@@ -1,8 +1,7 @@
 """Real distributed optimizer checks for W1-004, without GPU emulation.
 
-The Gloo case verifies optimizer updates/state with real two-rank CPU DDP.
-The separate NCCL case exercises the production reduce-scatter/all-gather hook;
-it requires two real GPUs and must not be credited when skipped.
+Both cases exercise the production reduce-scatter/all-gather construction. The
+NCCL case requires two real GPUs and must not be credited when skipped.
 """
 
 from __future__ import annotations
@@ -16,16 +15,15 @@ from pathlib import Path
 import pytest
 import torch
 import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel
 
 
 def _train_worker(rank: int, rendezvous: str, backend: str, output_dir: str) -> None:
-    from labs.train_distributed.optimized_zero2_multigpu import (
-        _build_optimizer,
-        _local_optimizers,
-        _reduce_scatter_allgather_hook,
-    )
+    from labs.train_distributed.optimized_zero2_multigpu import _local_optimizers
     from labs.train_distributed.training_utils.memory import get_optimizer_memory
+    from labs.train_distributed.zero2_common import (
+        build_training_components,
+        get_zero2_communication_evidence,
+    )
 
     torch.set_num_threads(1)
     device = torch.device(f"cuda:{rank}" if backend == "nccl" else "cpu")
@@ -42,16 +40,15 @@ def _train_worker(rank: int, rendezvous: str, backend: str, output_dir: str) -> 
         ).to(device)
         model.register_parameter(
             "extra_grad_payload",
-            torch.nn.Parameter(torch.zeros(7, device=device, dtype=torch.bfloat16)),
+            torch.nn.Parameter(torch.full((7,), 0.125, device=device, dtype=torch.bfloat16)),
         )
         reference = copy.deepcopy(model)
-        ddp = DistributedDataParallel(
-            model, device_ids=[rank] if backend == "nccl" else None,
-            static_graph=True, gradient_as_bucket_view=True,
+        ddp, optimizer = build_training_components(
+            model,
+            0.01,
+            optimized=True,
+            device_ids=[rank] if backend == "nccl" else None,
         )
-        if backend == "nccl":
-            ddp.register_comm_hook(dist.group.WORLD, _reduce_scatter_allgather_hook)
-        optimizer = _build_optimizer(ddp.parameters(), 0.01)
         reference_optimizer = torch.optim.AdamW(
             reference.parameters(), lr=0.01, betas=(0.9, 0.95), weight_decay=0.05,
             fused=True,
@@ -68,8 +65,13 @@ def _train_worker(rank: int, rendezvous: str, backend: str, output_dir: str) -> 
                 rows = slice(rank * 2, (rank + 1) * 2)
                 loss = torch.nn.functional.mse_loss(ddp(all_x[rows]), all_y[rows]) / 2
                 reference_loss = torch.nn.functional.mse_loss(reference(all_x), all_y) / 2
-                loss = loss + model.extra_grad_payload.sum() * 0.0
-                reference_loss = reference_loss + reference.extra_grad_payload.sum() * 0.0
+                # Exercise the separately owned BF16 parameter with a nonzero
+                # gradient; the timed workload intentionally uses a zero payload.
+                loss = loss + model.extra_grad_payload.float().sum() * (0.25 / 2)
+                reference_loss = (
+                    reference_loss
+                    + reference.extra_grad_payload.float().sum() * (0.25 / 2)
+                )
                 loss.backward()
                 reference_loss.backward()
             torch.nn.utils.clip_grad_norm_(ddp.parameters(), 1.0)
@@ -96,15 +98,20 @@ def _train_worker(rank: int, rendezvous: str, backend: str, output_dir: str) -> 
         state_count = len(local_states)
         assert state_count == local_state_count, "A parameter had more than one local owner"
         assert 0 < state_count < len(list(model.parameters()))
-        for parameter, state in local_states.items():
+        for state in local_states.values():
             assert int(state["step"]) == 3
-            if parameter is not model.extra_grad_payload:
-                assert state["exp_avg"].abs().sum() > 0
+            assert state["exp_avg"].abs().sum() > 0
+        communication = get_zero2_communication_evidence(ddp)
+        assert communication["mechanism"] == "reduce-scatter-all-gather"
+        assert communication["hook_invocations"] > 0
+        assert communication["reduce_scatter_completions"] == communication["hook_invocations"]
+        assert communication["all_gather_completions"] == communication["hook_invocations"]
         Path(output_dir, f"{backend}-rank-{rank}.json").write_text(json.dumps({
             "backend": backend, "device": str(device), "rank": rank,
             "world_size": 2, "parameter_l1_deltas": deltas,
             "local_optimizer_state_entries": state_count,
             "optimizer_memory_mb": get_optimizer_memory(optimizer),
+            "communication": communication,
             "reference": "full-batch AdamW, three steps, two microbatches per step",
         }, indent=2))
     finally:

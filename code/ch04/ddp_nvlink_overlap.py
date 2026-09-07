@@ -91,8 +91,6 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.comm_stream = torch.cuda.Stream(device=self.root_device)
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         _require_root_peer_access()
         num = torch.cuda.device_count()
         skip_if_insufficient_gpus(2)

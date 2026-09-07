@@ -147,9 +147,6 @@ class OptimizedQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
     
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         if not hasattr(torch, "_int_mm"):
             raise RuntimeError("torch._int_mm is required for INT8 quantization benchmark")
         if not torch.cuda.is_available():

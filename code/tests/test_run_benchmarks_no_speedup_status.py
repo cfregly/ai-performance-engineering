@@ -5,6 +5,7 @@ from core.harness.run_benchmarks import (
     _format_failed_no_speedup,
     _should_fail_no_speedup,
     _update_best_measured_speedup,
+    _update_best_measured_memory_savings,
     generate_markdown_report,
 )
 
@@ -35,6 +36,24 @@ def test_slow_candidates_keep_their_measured_ratio_in_failure_message() -> None:
     result["optimizations"].append({"status": "succeeded", "speedup": 1.2})
     assert _update_best_measured_speedup(result) == 1.2
     assert not _should_fail_no_speedup(result)
+
+
+def test_memory_summary_keeps_negative_savings_from_successful_candidates() -> None:
+    result = {
+        "best_memory_savings_pct": 0.0,
+        "optimizations": [
+            {"status": "succeeded", "memory_savings_pct": -20.0},
+            {"status": "succeeded", "memory_savings_pct": -0.35},
+            {"status": "failed_verification", "memory_savings_pct": 99.0},
+            {"status": "succeeded", "memory_savings_pct": float("nan")},
+            {"status": "succeeded", "memory_savings_pct": float("inf")},
+        ],
+    }
+    assert _update_best_measured_memory_savings(result) == -0.35
+    assert result["best_memory_savings_pct"] == -0.35
+    result["optimizations"].append({"status": "succeeded", "memory_savings_pct": 12.0})
+    assert _update_best_measured_memory_savings(result) == 12.0
+    assert _update_best_measured_memory_savings({"optimizations": []}) is None
 
 
 def test_generate_markdown_report_surfaces_failed_no_speedup(tmp_path: Path) -> None:

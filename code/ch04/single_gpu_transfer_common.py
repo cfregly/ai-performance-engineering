@@ -51,8 +51,6 @@ class SingleGPUTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA required for single-GPU transfer benchmark")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         bytes_per_iter = self.size_mb * 1024 * 1024
         numel = bytes_per_iter // 4  # float32
         self._total_bytes_per_benchmark = bytes_per_iter * self.inner_iterations

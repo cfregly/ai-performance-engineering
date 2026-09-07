@@ -43,9 +43,6 @@ class BaselineAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_output_buffer: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         
         # Create Q, K, V tensors in FP16 so baseline/optimized compare the same precision.
         self.query = torch.randn(

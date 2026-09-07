@@ -29,6 +29,7 @@ from core.harness.benchmark_harness import (
 )
 from core.profiling.nvtx_helper import nvtx_range
 from core.utils.logger import get_logger
+from core.utils.worker_seed import apply_worker_seed
 
 logger = get_logger(__name__)
 
@@ -123,6 +124,7 @@ def _run_worker(
     seq_length: int,
     hidden: Optional[int],
     num_layers: int,
+    seed: int,
 ) -> None:
     require_min_gpus(2, "optimized_tensor_parallel_async.py")
     rank, world_size, local_rank = _init_distributed()
@@ -130,8 +132,7 @@ def _run_worker(
         raise RuntimeError("optimized_tensor_parallel_async requires >=2 GPUs.")
     hidden = _resolve_hidden(hidden, world_size)
 
-    torch.manual_seed(42)
-    torch.cuda.manual_seed_all(42)
+    apply_worker_seed(seed)
 
     device = torch.device(f"cuda:{local_rank}")
     hidden_per_rank = hidden // world_size
@@ -188,6 +189,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Optimized tensor parallel benchmark")
     parser.add_argument("--iters", type=int, default=3)
     parser.add_argument("--warmup", type=int, default=5)
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--batch-size", type=int, default=_DEFAULT_BATCH)
     parser.add_argument("--seq-length", type=int, default=_DEFAULT_SEQ)
     parser.add_argument(
@@ -205,6 +207,7 @@ def main() -> None:
         args.seq_length,
         args.hidden_size,
         args.num_layers,
+        seed=args.seed,
     )
 
 
@@ -238,8 +241,6 @@ class OptimizedTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._world_size = torch.cuda.device_count()
         self._hidden = _resolve_hidden(None, self._world_size)
         self._hidden_per_rank = self._hidden // self._world_size
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self._shard_layers, self._proj_layers, self._aux_layers = _build_layers(
             self._hidden,
             self._hidden_per_rank,
@@ -365,6 +366,7 @@ class OptimizedTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             config_arg_map={
                 "iterations": "--iters",
                 "warmup": "--warmup",
+                "seed": "--seed",
             },
         )
 

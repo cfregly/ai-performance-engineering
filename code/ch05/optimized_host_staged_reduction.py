@@ -28,8 +28,6 @@ class OptimizedHostStagedReductionBenchmark(VerificationPayloadMixin, BaseBenchm
         """Setup: Initialize data on the active CUDA device."""
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: requires CUDA")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.data = torch.randn(self.num_elements, device=self.device)
         self._output_buffer = torch.empty((), device=self.device, dtype=self.data.dtype)
         self._synchronize()

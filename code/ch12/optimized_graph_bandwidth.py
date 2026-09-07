@@ -50,9 +50,6 @@ class OptimizedGraphBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 f"This may indicate hardware/driver incompatibility or missing CUDA toolkit components."
             ) from e
         
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.src = torch.randn(self.N, dtype=torch.float32, device=self.device)
         self.dst = torch.empty_like(self.src)
         torch.cuda.synchronize(self.device)

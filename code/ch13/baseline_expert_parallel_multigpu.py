@@ -84,8 +84,6 @@ class BaselineExpertParallelMultigpuBenchmark(VerificationPayloadMixin, BaseBenc
         self._payload_parameter_count = 0
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         tokens_per_rank = self._ep_config.batch_size * self._ep_config.seq_len
         self._input = torch.randn(
             tokens_per_rank,

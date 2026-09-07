@@ -31,7 +31,6 @@ class SchedulingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._enable_nvtx = False
 
     def setup(self) -> None:
-        random.seed(42)
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.queue.clear()

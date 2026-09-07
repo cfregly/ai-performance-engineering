@@ -55,7 +55,6 @@ class OptimizedGpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         # Use same seed as baseline for deterministic verification
-        torch.manual_seed(42)
         
         # Build model with same architecture as baseline for fair comparison.
         self.model = ReusableReductionMlp(self.hidden_dim, self.inner_dim).to(self.device).eval()

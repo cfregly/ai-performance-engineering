@@ -55,8 +55,6 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA required for prefill/decode disaggregation")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.prefill_model = TinyPrefillDecode(
             self.cfg.hidden_size, self.cfg.num_layers, self.device, self.cfg.dtype
         ).eval()

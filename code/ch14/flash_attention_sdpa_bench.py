@@ -120,9 +120,6 @@ class FlashAttentionSdpaBenchBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         """Setup: Initialize Flash Attention model."""
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
-        
         self.model = FlashAttentionModule(
             self.embed_dim, self.num_heads
         ).to(self.device, self.dtype).eval()

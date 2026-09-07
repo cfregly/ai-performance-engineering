@@ -251,9 +251,6 @@ class PTQQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA required for Chapter 16 PTQ benchmarks")
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
-
         self.reference_model = ReferenceMLP(self.workload, self.device).eval()
         self._payload_parameter_count = sum(p.numel() for p in self.reference_model.parameters())
         self.inputs = torch.randn(

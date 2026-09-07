@@ -32,10 +32,13 @@ python -m cli.aisp bench run --targets labs/dynamic_router --profile minimal
 - `python labs/dynamic_router/driver.py --mode baseline` vs `--mode optimized` shows lower TTFT variance and higher TPOT for the optimized policy.
 - `python -m cli.aisp bench run --targets labs/dynamic_router --profile minimal` records artifacts comparing baseline/optimized harness runs.
 - `python -m cli.aisp bench run --targets labs/dynamic_router:dynamic_router_vllm --target-extra-arg labs/dynamic_router:dynamic_router_vllm="--model /path/to/model --decode-gpus 0,1"` succeeds on hosts with at least two GPUs and a local model copy.
-- `python -m cli.aisp bench run --targets labs/dynamic_router:dual_pool_vllm --target-extra-arg labs/dynamic_router:dual_pool_vllm="--model /path/to/model --prefill-gpus 0 --decode-gpus 1"` contrasts shared versus dual pools and emits per-pool TTFT and queue depth.
+- `VLLM_BATCH_INVARIANT=1 python -m cli.aisp bench run --targets labs/dynamic_router:dual_pool_vllm --launch-via python --target-extra-arg labs/dynamic_router:dual_pool_vllm="--model /path/to/model --prefill-gpus 0 --decode-gpus 1 --attention-backend TRITON_ATTN"` contrasts shared versus dual pools with exact token verification and emits per-pool TTFT and queue depth.
 - `python -m cli.aisp bench run --targets labs/dynamic_router:topology_probe` captures GPU↔NUMA mappings and distance matrices for consumption by the router.
 
 ## Notes
+- The dual-pool policies produce different batch shapes. On the pinned vLLM 0.16 stack with GPT-OSS-20B, the default backend produced different greedy tokens for identical prompts, including across repeated optimized runs. The explicit batch-invariant Triton configuration above matched all 1,734 output elements on 2×B200. Apply the same backend and environment to both arms; the option does not change the default backend for other workloads. Other models and stacks still require their own correctness check.
+- Harness latency includes constructing both model engines on every benchmark invocation. Treat it as startup plus request processing, rather than steady-state routing throughput. Prefix caching is disabled so every request processes its full declared prompt.
+- The harness prepares live CPU prompt IDs during setup. The topology-aware runner requires this input; standalone entrypoints create default prompts before calling it. Conversion to the Python token lists required by vLLM remains part of request admission, and GPU-resident prompt inputs fail explicitly before conversion.
 - `driver.py` accepts knobs such as `--prefill-gpus`, `--decode-gpus`, and `--migration-budget` to stress different regimes.
 - vLLM integration now takes flags (`--model`, `--prefill-gpus`, `--decode-gpus`, etc.) plus locally available tokenizer/model weights.
 - Router scoring incorporates pinned-host KV slab availability and NUMA-locality bias; feed it real topology via `topology_probe.py` or NVML when available.

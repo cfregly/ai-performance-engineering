@@ -67,8 +67,6 @@ class GuidedDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         self.logits = torch.randn(
             self.batch_size,

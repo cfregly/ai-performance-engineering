@@ -45,9 +45,6 @@ class OptimizedTensorCoresBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: Initialize matrices in FP16/BF16 for tensor cores."""
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         # Keep verification inputs FP32 to match the baseline signature; compute path casts to FP16/BF16.
         self.A = torch.randn(self.size, self.size, device=self.device, dtype=torch.float32)
         self.B = torch.randn(self.size, self.size, device=self.device, dtype=torch.float32)

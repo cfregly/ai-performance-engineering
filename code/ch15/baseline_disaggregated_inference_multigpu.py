@@ -35,6 +35,7 @@ from core.optimization.moe_inference import (  # noqa: E402
     env_override_int,
 )
 from core.profiling.nvtx_helper import nvtx_range
+from core.utils.worker_seed import apply_worker_seed
 
 BASELINE_PROFILE_NVTX_RANGE = "compute_kernel:disaggregated_inference_serialized_pipeline"
 OPTIMIZED_PROFILE_NVTX_RANGE = "compute_kernel:disaggregated_inference_overlapped_pipeline"
@@ -313,6 +314,7 @@ def _run_torchrun_worker(
     iters: int,
     warmup: int,
     profile_nvtx_range: str,
+    seed: int,
 ) -> None:
     cfg = _apply_profile_overrides(cfg)
     rank, world_size, device = _init_distributed()
@@ -373,8 +375,7 @@ def _run_torchrun_worker(
         for req in handles:
             req.wait()
 
-    torch.manual_seed(42)
-    torch.cuda.manual_seed_all(42)
+    apply_worker_seed(seed)
 
     moe_cfg = _build_moe_config(cfg)
     model = SimpleMoEGPT(moe_cfg, device=device).eval()
@@ -654,8 +655,6 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
                 f"SKIPPED: requires >= {self.world_size} GPUs (found {torch.cuda.device_count()})"
             )
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         moe_cfg = _build_moe_config(self.cfg)
         self._pairs = []
@@ -922,6 +921,7 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
             config_arg_map={
                 "iterations": "--iters",
                 "warmup": "--warmup",
+                "seed": "--seed",
             },
         )
 
@@ -959,6 +959,7 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--iters", type=int, default=4)
     parser.add_argument("--warmup", type=int, default=5)
+    parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
 
 
@@ -971,4 +972,5 @@ def main() -> None:
         iters=int(args.iters),
         warmup=int(args.warmup),
         profile_nvtx_range=BASELINE_PROFILE_NVTX_RANGE,
+        seed=args.seed,
     )

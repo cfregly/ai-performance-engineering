@@ -82,8 +82,6 @@ class NVLSCollectivesBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.cuda.set_device(local_rank)
             dist.init_process_group("nccl", device_id=local_rank)
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.tensor = torch.randn(32, 32, device=self.device, dtype=torch.float32)
         self._verify_output_buffer = torch.empty_like(self.tensor)
         config = getattr(self, "_config", None) or self.get_config()

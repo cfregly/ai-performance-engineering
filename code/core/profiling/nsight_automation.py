@@ -791,13 +791,16 @@ class NsightAutomation:
                 sampling_interval=sampling_interval,
                 profile_from_start=profile_from_start,
             )
-        ncu_cmd = [
-            'ncu',
-            '--set', ncu_set,
+        ncu_cmd = ['ncu']
+        # --set adds section metrics beyond --metrics. Keep app-range at its
+        # exact validated metric list so collectives do not need extra replays.
+        if replay_mode != 'app-range':
+            ncu_cmd.extend(['--set', ncu_set])
+        ncu_cmd.extend([
             '--target-processes', 'all',
             '--export', str(output_path),
             '--force-overwrite',
-        ]
+        ])
         if replay_mode:
             ncu_cmd.extend(['--replay-mode', replay_mode])
         # Only add custom metrics when using the full set; other sets bring their own.

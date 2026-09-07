@@ -251,15 +251,25 @@ def _latest_tier1_summary(repo_root: Optional[Path] = None) -> Tuple[Optional[Di
     return summary, summary_path, warnings
 
 
-def _render_current_representative_deltas_body(repo_root: Optional[Path] = None) -> str:
+def _render_current_representative_deltas_body(history_source_root: Optional[Path] = None) -> str:
+    """Render checked-in rows unless a history source is explicitly requested.
+
+    Tier-1 history is ignored by git, so consulting the default checkout while
+    constructing ``ENTRIES`` would make generator-owned README content depend on
+    local artifacts. Callers that want to inspect history must provide its root.
+    """
+
     def _fallback_body(warnings: Optional[Sequence[str]] = None) -> str:
         rows = _fallback_tier1_representative_rows()
-        source_path = root / rows[0][3]
-        source_status = (
-            "The cited original artifact is unavailable in this checkout."
-            if not source_path.is_file()
-            else "The cited artifact exists but is not loaded or verified by this fallback."
-        )
+        if history_source_root is None:
+            source_status = "The cited original artifact is not part of the checked-in generator source."
+        else:
+            source_path = root / rows[0][3]
+            source_status = (
+                "The cited original artifact is unavailable in this history source."
+                if not source_path.is_file()
+                else "The cited artifact exists in this history source but is not loaded or verified by this fallback."
+            )
         lines = [
             "These hardcoded historical rows are retained in the README generator. " + source_status + " Their lineage and measurements remain unverified. This audit changed correctness, workload and verification contracts; neither the table nor its aggregate speedups qualify the repaired revision. Repeat the applicable full-output and exact-target timing gates before making new performance claims.",
             "",
@@ -285,7 +295,9 @@ def _render_current_representative_deltas_body(repo_root: Optional[Path] = None)
             )
         return "\n".join(lines)
 
-    root = Path(repo_root or REPO_ROOT)
+    root = Path(history_source_root or REPO_ROOT)
+    if history_source_root is None:
+        return _fallback_body()
     summary, summary_path, warnings = _latest_tier1_summary(root)
     if summary is None or summary_path is None:
         return _fallback_body(warnings)
@@ -839,7 +851,30 @@ ENTRIES["README.md"] = Entry(
         "`pytest tests/integration` succeeds to confirm harness discovery and CLI plumbing.",
         "`python core/benchmark/benchmark_peak.py` reports TFLOP/s, bandwidth, and NVLink numbers close to the published ceilings.",
     ],
-    extra_sections=[WALL_OF_SHAME],
+    extra_sections=[
+        dedent(r"""
+            ## Optional vLLM and FlashAttention 4 compatibility
+
+            For the qualified FlashAttention 4 (`flash-attn-4==4.0.0b19`) environment on
+            Linux x86_64, backport the merged vLLM rotary-import fix into the pinned wheel:
+            ```bash
+            mkdir -p third_party/wheels/vllm-upstream
+            python -m pip download --no-deps --only-binary=:all: \
+              --index-url https://wheels.vllm.ai/0.16.0/cu130 \
+              --dest third_party/wheels/vllm-upstream 'vllm==0.16.0+cu130'
+            python scripts/build_vllm_fa4_compat_wheel.py \
+              --input-wheel third_party/wheels/vllm-upstream/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl \
+              --output-dir third_party/wheels/vllm-fa4-backport \
+              --install-python "$VIRTUAL_ENV/bin/python"
+            ```
+            The tool accepts only the qualified wheel hash, preserves the Torch and FA4
+            versions, installs with `--no-deps`, and writes a provenance manifest. Retire
+            the backport after `vllm_no_deps.pin` advances to a wheel containing
+            [vLLM PR #42679](https://github.com/vllm-project/vllm/pull/42679) and that wheel
+            passes the same FA4 import and full-model gates.
+        """),
+        WALL_OF_SHAME,
+    ],
     notes=[
         "`core/scripts/profile_all_workloads.sh` and `ncu_template.ini` capture Nsight traces with consistent metric sets.",
         "`artifacts/runs/` holds run outputs (results/profiles/reports/logs); clean via `python cleanup.py` when rotating hardware.",
@@ -3648,10 +3683,13 @@ ENTRIES["labs/dynamic_router"] = lab_entry(
         "`python labs/dynamic_router/driver.py --mode baseline` vs `--mode optimized` shows lower TTFT variance and higher TPOT for the optimized policy.",
         "`python -m cli.aisp bench run --targets labs/dynamic_router --profile minimal` records artifacts comparing baseline/optimized harness runs.",
         "`python -m cli.aisp bench run --targets labs/dynamic_router:dynamic_router_vllm --target-extra-arg labs/dynamic_router:dynamic_router_vllm=\"--model /path/to/model --decode-gpus 0,1\"` succeeds on hosts with at least two GPUs and a local model copy.",
-        "`python -m cli.aisp bench run --targets labs/dynamic_router:dual_pool_vllm --target-extra-arg labs/dynamic_router:dual_pool_vllm=\"--model /path/to/model --prefill-gpus 0 --decode-gpus 1\"` contrasts shared versus dual pools and emits per-pool TTFT and queue depth.",
+        "`VLLM_BATCH_INVARIANT=1 python -m cli.aisp bench run --targets labs/dynamic_router:dual_pool_vllm --launch-via python --target-extra-arg labs/dynamic_router:dual_pool_vllm=\"--model /path/to/model --prefill-gpus 0 --decode-gpus 1 --attention-backend TRITON_ATTN\"` contrasts shared versus dual pools with exact token verification and emits per-pool TTFT and queue depth.",
         "`python -m cli.aisp bench run --targets labs/dynamic_router:topology_probe` captures GPU↔NUMA mappings and distance matrices for consumption by the router.",
     ],
     notes=[
+        "The dual-pool policies produce different batch shapes. On the pinned vLLM 0.16 stack with GPT-OSS-20B, the default backend produced different greedy tokens for identical prompts, including across repeated optimized runs. The explicit batch-invariant Triton configuration above matched all 1,734 output elements on 2×B200. Apply the same backend and environment to both arms; the option does not change the default backend for other workloads. Other models and stacks still require their own correctness check.",
+        "Harness latency includes constructing both model engines on every benchmark invocation. Treat it as startup plus request processing, rather than steady-state routing throughput. Prefix caching is disabled so every request processes its full declared prompt.",
+        "The harness prepares live CPU prompt IDs during setup. The topology-aware runner requires this input; standalone entrypoints create default prompts before calling it. Conversion to the Python token lists required by vLLM remains part of request admission, and GPU-resident prompt inputs fail explicitly before conversion.",
         "`driver.py` accepts knobs such as `--prefill-gpus`, `--decode-gpus`, and `--migration-budget` to stress different regimes.",
         "vLLM integration now takes flags (`--model`, `--prefill-gpus`, `--decode-gpus`, etc.) plus locally available tokenizer/model weights.",
         "Router scoring incorporates pinned-host KV slab availability and NUMA-locality bias; feed it real topology via `topology_probe.py` or NVML when available.",
@@ -3706,6 +3744,7 @@ ENTRIES["labs/cache_aware_disagg_inference"] = lab_entry(
         "The cache-aware path should report lower KV transfer volume and fewer worker switches than the round-robin baseline on the same warm/cold request mix.",
     ],
     notes=[
+        "With two GPUs, the distributed target has one prefill and one decode rank. Both placement policies select the same decode rank, so this topology cannot demonstrate a reduction in migrations between decode ranks. An early September 2026 two-B200 check passed full outputs but failed the speed contract (13.672 ms baseline, 14.592 ms optimized). The later repaired live-input run passed full verification at 23.810 ms baseline and 14.491 ms optimized (1.64306x, one observation). Neither observation establishes a migration benefit; use at least two decode ranks to investigate that mechanism.",
         "This lab is intentionally a logical reproduction of the scheduler/caching story, not a full serving engine.",
         "Treat single-GPU `cache_aware_disagg` as a locality-comparison benchmark with a local comparison contract. The stable value on one GPU is the cache hit rate, KV transfer volume, and worker affinity improvement; the timed delta is recorded, but it is not a trustworthy headline speed gate on this host.",
         "Judge the single-GPU target by cache hit rate, KV transfer volume, and worker affinity before raw wall-clock speedup.",
@@ -5029,45 +5068,41 @@ ENTRIES["labs/nanochat_fullstack"] = lab_entry(
     title="Lab - NanoChat Fullstack",
     summary=dedent(
         """\
-        Wraps the NanoChat full-stack tree with a clean harness benchmark pair so the repo can talk about a real end-to-end inference stack with measured baseline vs optimized deltas, not just kernels."""
+        Provides a harness-comparable NanoChat inference pair for a fixed prefill-plus-decode workload. The baseline launches the eager model for both phases; the optimized path replays the complete request in one CUDA graph."""
     ),
     lead_sections=[
         MarkdownSection(
             "Problem",
             dedent(
                 """\
-                Full-stack LLM projects are easy to describe in product terms and hard to benchmark cleanly. This lab keeps a narrow baseline/optimized inference pair inside the larger NanoChat tree so the performance story stays measurable."""
+                Full-stack LLM comparisons can look successful while checking degenerate outputs or timing different execution scopes. This lab holds the model, inputs, attention settings, KV-cache layout, and decode work constant, then verifies the final decode logits from both paths."""
             ),
         ),
         MarkdownSection(
             "Baseline Path",
             dedent(
                 """\
-                - slower NanoChat inference path
-                - end-to-end reference inside the same full-stack project
-                - useful for checking whether the optimized path is buying real latency reduction"""
+                - Runs a batch of 4 with a 512-token prefill followed by 64 one-token decode steps.
+                - Uses the eager NanoChat GPT model for prefill and decode.
+                - Captures the final decode logits as the verification output."""
             ),
         ),
         MarkdownSection(
             "Optimized Path",
             dedent(
                 """\
-                - optimized NanoChat inference path
-                - same harness contract and verification expectations
-                - intended to represent the practical serving-side improvements, not just a kernel microbench"""
+                - Runs the same model configuration, inputs, attention path, KV cache, and decode loop as the baseline.
+                - Captures the fixed 512-token prefill and all 64 ordered decode steps in one CUDA graph, preserving the baseline kernels and supplied decode tokens.
+                - Warms and captures during setup; reports those costs separately from steady-state replay. Inputs remain mutable in place, and each replay overwrites the complete request's KV-cache state."""
             ),
         ),
         MarkdownSection(
-            "Measured Delta",
+            "Historical Delta",
             dedent(
                 """\
-                Representative strict result from `artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/`:
+                No current performance delta is published. Earlier README timings and the retained expectation files were produced by older benchmark source. The current pair reinitializes projections that the training initializer leaves at zero, rejects all-zero or non-finite logits, and captures the complete request for replay. Prior numbers therefore do not establish the performance of this workload.
 
-                | Target | Baseline | Optimized | Measured delta |
-                | --- | ---: | ---: | ---: |
-                | `nanochat_inference` | `122.975 ms` | `67.621 ms` | `1.82x` |
-
-                That is the useful local story: NanoChat is still a full-stack project, but the repo now has a concrete measured inference delta for it instead of leaving the performance claim buried in a much larger README."""
+                Publish a new delta only from the current source after output verification, repeated interleaved baseline/optimized measurements on the target hardware, noise reporting, and profiler evidence."""
             ),
         ),
         MarkdownSection(
@@ -5075,10 +5110,11 @@ ENTRIES["labs/nanochat_fullstack"] = lab_entry(
             dedent(
                 """\
                 ```bash
-                python -m cli.aisp bench run --targets labs/nanochat_fullstack:nanochat_inference --profile deep_dive --single-gpu
+                cd code
+                python -m cli.aisp bench run -t labs/nanochat_fullstack:nanochat_inference --profile deep_dive --single-gpu
                 ```
 
-                Use the deep-dive path when you want Nsight evidence for the inference stack. Keep the `speedrun.sh` story separate from the benchmark pair; they answer different questions."""
+                Use this path to compare eager kernel launches with whole-request CUDA graph replay. A successful correctness run alone does not establish a performance win. Keep the `speedrun.sh` workflow separate from this harness pair; they exercise different scopes."""
             ),
         ),
         MarkdownSection(
@@ -5086,37 +5122,50 @@ ENTRIES["labs/nanochat_fullstack"] = lab_entry(
             dedent(
                 """\
                 ```bash
+                cd code
                 python -m cli.aisp bench list-targets --chapter labs/nanochat_fullstack
-                python -m cli.aisp bench run --targets labs/nanochat_fullstack:nanochat_inference --profile minimal
                 python -m cli.aisp bench verify -t labs/nanochat_fullstack:nanochat_inference
+                python -m cli.aisp bench run -t labs/nanochat_fullstack:nanochat_inference --profile minimal --single-gpu
                 ```"""
             ),
         ),
     ],
     goals=[
-        "Keep a real full-stack LLM project in the benchmark story, not just microkernels.",
-        "Benchmark NanoChat inference as a clean baseline/optimized pair inside the larger tree.",
-        "Point readers at the broader project context without losing the measured harness story.",
+        "Keep a full-stack LLM workload in the benchmark suite rather than reducing the comparison to one kernel.",
+        "Reduce host launch overhead while preserving the complete prefill and decode work.",
+        "Require meaningful final logits before interpreting timing or profiler results.",
     ],
     contents=[
-        ("`baseline_nanochat_inference.py`, `optimized_nanochat_inference.py`", "Harness benchmark pair for NanoChat inference."),
+        ("`baseline_nanochat_inference.py`, `optimized_nanochat_inference.py`", "Harness pair for eager prefill/decode versus whole-request CUDA graph replay."),
         ("`benchmark_incremental_optimizations.py`", "Incremental benchmarking helper inside the NanoChat tree."),
         ("`speedrun.sh`, `run1000.sh`, `README_FAST.md`", "Broader NanoChat quick-start and end-to-end project entrypoints."),
         ("`nanochat/`, `scripts/`, `tasks/`, `tests/`", "Core NanoChat project tree and operational helpers."),
     ],
+    run=RunSection(
+        commands=[
+            "cd code",
+            "python -m cli.aisp bench list-targets --chapter labs/nanochat_fullstack",
+            "python -m cli.aisp bench run -t labs/nanochat_fullstack:nanochat_inference --profile minimal --single-gpu",
+        ],
+        notes=[
+            "The benchmark requires CUDA and uses one visible GPU with `--single-gpu`.",
+            "Benchmark validity defaults to `strict`; use `portable` only when its documented compatibility tradeoffs are acceptable.",
+            "Treat the retained expectation files as historical until current-source measurements pass the verification and evidence gates above.",
+        ],
+    ),
     validation=[
-        "`python -m cli.aisp bench run --targets labs/nanochat_fullstack:nanochat_inference --profile minimal` should keep the optimized path ahead under the harness contract.",
-        "`python -m cli.aisp bench verify -t labs/nanochat_fullstack:nanochat_inference` should stay green before any performance claim is accepted.",
+        "`python -m cli.aisp bench verify -t labs/nanochat_fullstack:nanochat_inference` must compare finite, nonzero final decode logits before timing is interpreted.",
+        "Do not require or claim that the optimized path wins until a current-source, equivalent-workload run supplies repeated measurements and profiler attribution.",
     ],
     notes=[
-        "This README focuses on the repo's benchmarked NanoChat story. Use `README_FAST.md` and the project scripts when you want the broader training/serving walkthrough.",
+        "This README covers the harness pair. Use `README_FAST.md` and the project scripts for the broader training and serving walkthrough.",
         "The decode microbenchmarks live separately in `labs/decode_optimization`; this lab is the broader inference-stack companion.",
     ],
     extra_sections=[
         dedent(
             """\
             ## Project Context
-            NanoChat is intentionally bigger than a single benchmark pair. The point of this lab entry is to give the repo one clean performance anchor inside that tree, not to replace the broader NanoChat project documentation.
+            NanoChat is intentionally bigger than a single benchmark pair. This lab entry provides one narrow, auditable inference comparison inside that tree; it does not replace the broader NanoChat project documentation.
 
             - Use [README_FAST.md](README_FAST.md) for the faster end-to-end project walkthrough.
             - Use [speedrun.sh](speedrun.sh) when you want the broader "train and talk to a small model" experience.
@@ -6807,31 +6856,45 @@ ENTRIES["labs/real_world_models"] = lab_entry(
             "Baseline Path",
             dedent(
                 """\
-                - representative model skeletons with conservative serving/training defaults
-                - enough realism to surface KV-cache, routing, and compile effects
-                - intentionally simpler than production deployment code so the optimization deltas stay readable"""
+                - Llama uses eager preferred SDPA with FP32 residuals and one stable RMSNorm implementation
+                - the baseline and optimized Llama arms have identical weights, inputs, attention, and normalization
+                - materialized manual attention remains a separate numerical diagnostic, not the performance baseline"""
             ),
         ),
         MarkdownSection(
             "Optimized Path",
             dedent(
                 """\
-                - torch.compile and fused attention where they help
+                - the Llama pair changes only max-autotune `torch.compile`
                 - topology-aware and memory-aware configuration choices
                 - the same benchmark harness contract as the lower-level labs"""
             ),
         ),
         MarkdownSection(
-            "Measured Delta",
+            "Measured Delta (portable B200 observations)",
             dedent(
                 """\
-                Current validated result from `artifacts/runs/20260302_full_strict_all_singlegpu/`:
+                Wave 46 ran the actual factories with identical 32-layer,
+                7,784,890,368-parameter models at batch one and 2,048 tokens. Four
+                ABBA blocks covered eight fresh inputs and eight observations per
+                arm. Every complete 8,388,608-element output matched bitwise.
+                CUDA-event medians were `30.3838 ms` eager and `28.1446 ms` compiled
+                (`1.07956x`); sample standard deviations were `0.3793 ms` and
+                `0.4166 ms`, with block ratios from `1.0639x` to `1.0970x`.
 
-                | Target | Baseline | Optimized | Measured delta |
-                | --- | ---: | ---: | ---: |
-                | `llama_3_1_8b` | `13.143 ms` | `5.274 ms` | `2.49x` |
+                Separate Nsight Systems captures observed three steady-state
+                requests per arm: 1,731 eager kernels versus 1,443 compiled kernels
+                and exactly three CUDA graph launches. Complete final outputs
+                remained bitwise equal. These portable observations support the
+                compilation mechanism for this workload, not a cross-machine or
+                locked-clock performance guarantee. See the repository's
+                [repair checkpoint](../../../docs/reviews/2026-09-06-codebase-repair-checkpoint.md)
+                for the retained attempt history and evidence boundaries.
 
-                This is the right lab to use when you want to sanity-check that the lower-level wins still add up on a model-shaped workload."""
+                The retained materialized-attention comparisons exceeded the
+                unchanged `rtol=0.02`, `atol=0.02` gate. That path remains available
+                as `attention_mode="manual"` for diagnosis and is not used as the
+                performance baseline."""
             ),
         ),
         MarkdownSection(
@@ -6851,8 +6914,7 @@ ENTRIES["labs/real_world_models"] = lab_entry(
                 """\
                 ```bash
                 python -m cli.aisp bench list-targets --chapter labs/real_world_models
-                python -m cli.aisp bench run --targets labs/real_world_models --profile minimal
-                python labs/real_world_models/llama_3_1_8b_optimization.py --seq-length 8192 --use-compile
+                python -m cli.aisp bench run --targets labs/real_world_models:llama_3_1_8b --profile minimal --single-gpu
                 ```"""
             ),
         ),
@@ -6861,10 +6923,11 @@ ENTRIES["labs/real_world_models"] = lab_entry(
         "Exercise attention, MoE, and memory optimizations on realistic architectures instead of toy kernels.",
         "Use the benchmark harness to collect reproducible throughput/latency metrics across models.",
         "Track expert balance, routing entropy, and KV-cache pressure while iterating on serving choices.",
-        "Compare FP8/FP16, torch.compile, and topology-aware placements without changing source code.",
+        "Compare eager and compiled execution without changing the Llama math or workload.",
     ],
     contents=[
-        ("`llama_3_1_8b_optimization.py`", "Single-node 8B walkthrough with `torch.compile`, FlexAttention, and Flash SDPA toggles."),
+        ("`baseline_llama_3_1_8b.py`, `optimized_llama_3_1_8b.py`", "Compile-only Llama pair with shared preferred SDPA, FP32 residuals, stable RMSNorm, and complete-output verification."),
+        ("`llama_3_1_8b_optimization.py`", "Shared 32-layer model plus an explicit materialized-attention diagnostic mode."),
         ("`deepseek_r1_moe_optimization.py`", "64-expert top-6 routing demo with balance/Gini/entropy metrics and auxiliary loss."),
         ("`gpt4_architecture_optimization.py`", "GPT-4-style MoE + context-parallel sketch with FP8 support and memory estimation."),
         ("`__init__.py`", "Exports harness targets for the CLI."),
@@ -6873,24 +6936,21 @@ ENTRIES["labs/real_world_models"] = lab_entry(
         commands=[
             "cd ai-performance-engineering",
             "python -m cli.aisp bench list-targets --chapter labs/real_world_models",
-            "python -m cli.aisp bench run --targets labs/real_world_models --profile minimal",
-            "# Direct runs",
-            "python labs/real_world_models/llama_3_1_8b_optimization.py --seq-length 8192 --use-compile",
-            "python labs/real_world_models/deepseek_r1_moe_optimization.py --num-experts 64 --top-k 6 --batch-size 4",
-            "python labs/real_world_models/gpt4_architecture_optimization.py --seq-length 8192 --context-parallel",
+            "python -m cli.aisp bench run --targets labs/real_world_models:llama_3_1_8b --profile minimal --single-gpu",
         ],
         notes=[
             "Override per-model flags via `--target-extra-arg labs/real_world_models:<target>=\"--flag value\"` when using the harness.",
         ],
     ),
     validation=[
-        "`llama_3_1_8b_optimization.py` sustains ~20K tokens/sec on B200 with `--use-compile` enabled and stays memory-efficient at 8K+ context.",
+        "`llama_3_1_8b` preserves batch one, 2,048 tokens, 4,096 hidden size, and 32 layers; it compares every output value at `rtol=0.02`, `atol=0.02`.",
+        "The normal source factories and profiler must pass on the target GPU before publishing a performance result from the compile-only pair.",
         "`deepseek_r1_moe_optimization.py` reports balanced experts (Gini < 0.2) and stable router entropy across batches.",
         "`gpt4_architecture_optimization.py` runs the context-parallel path without OOM on appropriately sized clusters; memory estimates match the printed budget.",
         "Harness runs emit comparable baseline/optimized timings for every target without manual wiring.",
     ],
     notes=[
-        "These scripts are intentionally weight-light sketches for benchmarking; swap in real checkpoints to validate production settings.",
+        "These are architecture-shaped random-weight benchmarks, not checkpoint-backed production models; validate production settings in the actual serving stack.",
         "Hardware expectations: B200/GB200 for best results; GPT-4-scale examples assume 24+ GPUs with NVLink/NVL fabrics.",
         "Metrics (balance loss, entropy, KV cache) are emitted alongside throughput so you can gate deployments with more than raw speed.",
     ],

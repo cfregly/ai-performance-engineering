@@ -67,7 +67,6 @@ class BaselineCudaPythonBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: Initialize tensors for operations."""
-        torch.manual_seed(42)
         
         # Input tensor (batch, seq, hidden)
         self.input = torch.randn(

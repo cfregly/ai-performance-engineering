@@ -88,8 +88,6 @@ class BaselineSymmetricMemoryPerfBenchmark(
         
         self.rank, self.world_size, device_id = init_distributed()
         device = torch.device("cuda", device_id)
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.tensor = make_rank_distinct_input(self.numel, device, self.rank)
         self.recv_tensor = torch.empty_like(self.tensor)
         self._verify_input, self._verify_numel = build_square_verification_probe(self.tensor)

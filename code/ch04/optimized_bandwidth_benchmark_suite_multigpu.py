@@ -69,8 +69,6 @@ class OptimizedBandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         require_min_gpus(2, "optimized_bandwidth_benchmark_suite_multigpu.py")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         bytes_per_iter = int(self.size_mb * 1024 * 1024)
         numel = bytes_per_iter // 4  # float32
         device_count = torch.cuda.device_count()

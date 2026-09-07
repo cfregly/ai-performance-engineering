@@ -57,6 +57,22 @@ def _small_contract(*, label: str = "baseline_moe_hybrid_ep") -> MoEHybridEPResu
     )
 
 
+def test_single_rank_signature_declares_local_work_without_a_collective() -> None:
+    contract = replace(_small_contract(), world_size=1, num_experts=2)
+    contract.validate()
+    signature = _input_signature(contract)
+    assert signature.validate(strict=True) == []
+    assert signature.world_size == 1
+    assert signature.ranks == [0]
+    assert signature.shapes["output"] == (contract.tokens_per_rank, contract.hidden_size)
+    assert signature.collective_type is None
+    assert signature.collective_algorithm is None
+    distributed = _input_signature(_small_contract())
+    assert distributed.validate(strict=True) == []
+    assert distributed.collective_type == "all_to_all"
+    assert distributed.collective_algorithm == "bidirectional_expert_route_exchange"
+
+
 def _write_rank_in_real_subprocess(
     *,
     transport: dict[str, str],
@@ -195,9 +211,25 @@ def test_rank0_timing_is_computed_from_trainer_cuda_events() -> None:
     )
 
 
-def test_real_cpu_subprocess_rank_quorum_exposes_full_outputs_and_inputs() -> None:
+@pytest.mark.parametrize(
+    ("world_size", "num_experts", "collective_type", "collective_algorithm"),
+    [
+        (1, 2, None, None),
+        (2, 4, "all_to_all", "bidirectional_expert_route_exchange"),
+    ],
+)
+def test_real_cpu_subprocess_rank_quorum_exposes_full_outputs_and_inputs(
+    world_size: int,
+    num_experts: int,
+    collective_type: str | None,
+    collective_algorithm: str | None,
+) -> None:
     benchmark = get_benchmark()
-    contract = _small_contract()
+    contract = replace(
+        _small_contract(),
+        world_size=world_size,
+        num_experts=num_experts,
+    )
     transport = benchmark.prepare_moe_hybrid_ep_child_result(contract)
     result_dir = Path(transport[MOE_HYBRID_EP_RESULT_DIR_ENV])
     launch_wall_ns = time.time_ns()
@@ -222,16 +254,19 @@ def test_real_cpu_subprocess_rank_quorum_exposes_full_outputs_and_inputs() -> No
     output = benchmark.get_verify_output()
     inputs = benchmark.get_verify_inputs()
     signature = benchmark.get_input_signature()
-    assert output.shape == (6, 4)
+    assert output.shape == (contract.tokens_per_rank * world_size, contract.hidden_size)
     assert output.numel() > 1
-    assert inputs["inputs"].shape == (6, 4)
-    assert inputs["targets"].shape == (6, 4)
-    assert inputs["route_assignments"].shape == (6, 2)
+    assert inputs["inputs"].shape == output.shape
+    assert inputs["targets"].shape == output.shape
+    assert inputs["route_assignments"].shape == (
+        contract.tokens_per_rank * world_size,
+        contract.top_k,
+    )
     torch.testing.assert_close(output, inputs["reference_output"], rtol=1e-5, atol=1e-8)
-    assert signature.world_size == 2
-    assert signature.ranks == [0, 1]
-    assert signature.collective_type == "all_to_all"
-    assert signature.collective_algorithm == "bidirectional_expert_route_exchange"
+    assert signature.world_size == world_size
+    assert signature.ranks == list(range(world_size))
+    assert signature.collective_type == collective_type
+    assert signature.collective_algorithm == collective_algorithm
     assert benchmark.validate_result() is None
     assert benchmark.get_custom_metrics()["moe.step.total_ms"] == 1.25
     assert benchmark._moe_hybrid_ep_result_context["retention"] == "cleaned-after-success"

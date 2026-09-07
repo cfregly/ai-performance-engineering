@@ -148,9 +148,6 @@ class BaselineKVCacheNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
     
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.model = nn.ModuleList(
             [
                 SimpleAttentionLayer(self.hidden_dim, self.num_heads, self.head_dim, dtype=self.workload.dtype)
@@ -194,7 +191,10 @@ class BaselineKVCacheNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=torch.float32,
         )
         if self.inputs:
-            self._verify_input = self.inputs[0].detach().clone()
+            # The timed output is the final token from the final request. Keep
+            # verification bound to that request's live storage so perturbing
+            # the declared input also updates the precomputed token views.
+            self._verify_input = self.inputs[-1]
         self._synchronize()
     
     def benchmark_fn(self) -> None:

@@ -53,8 +53,6 @@ class TilingBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         """Compile/load the CUDA extension, allocate tensors, and warm up."""
         self._load_extension()
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.matrix_a = torch.randn(
             self.matrix_rows,
             self.shared_dim,

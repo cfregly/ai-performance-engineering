@@ -275,8 +275,6 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not torch.cuda.is_available():
             raise RuntimeError("CUDA required for cache-aware disaggregated inference lab")
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.request_plans = self._build_request_plans()
         self._request_plan_count = len(self.request_plans)
         self._decode_chunk_ranges = {

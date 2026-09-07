@@ -160,8 +160,6 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._last_bits = self._refresh_schedule_bits[-1]
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self._quant_scratch = torch.randn(*_CACHE_SHAPE, device=self.device, dtype=torch.float32)
         self._reference_cache = torch.empty_like(self._quant_scratch)
         self._refresh_reference_cache()

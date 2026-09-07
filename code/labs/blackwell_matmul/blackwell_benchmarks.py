@@ -96,8 +96,6 @@ class GraceBlackwellMatmulBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA required")
         device = self.device
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self._lhs = torch.randn(
             self._size_m, self._size_k, device=device, dtype=self._dtype
         )

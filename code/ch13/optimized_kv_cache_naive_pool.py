@@ -42,6 +42,8 @@ class OptimizedKVCache:
         self.dtype = dtype
         self.device = device
         self.cache_pool = []
+        self._token_views = []
+        self._prefix_views = []
         self.allocated_caches = {}
         # The benchmark processes requests sequentially (single in-flight request),
         # so a small pool demonstrates reuse without inflating the allocator's
@@ -49,6 +51,8 @@ class OptimizedKVCache:
         pool_size = 2
         for _ in range(pool_size):
             cache_entry = []
+            token_views = []
+            prefix_views = []
             for _ in range(self.num_layers):
                 # Store in SDPA layout: [batch, heads, seq, dim] to avoid permutes.
                 k = torch.empty(
@@ -61,7 +65,20 @@ class OptimizedKVCache:
                 )
                 v = torch.empty_like(k)
                 cache_entry.append((k, v))
+                # Independent views remain writable when an ordinary module
+                # call records gradients. unbind() returns multiple views and
+                # autograd forbids copying a grad-tracked projection into them.
+                token_views.append([
+                    (k[:, :, pos, :], v[:, :, pos, :])
+                    for pos in range(self.max_seq_len)
+                ])
+                prefix_views.append([
+                    (k[:, :, :end, :], v[:, :, :end, :])
+                    for end in range(self.max_seq_len + 1)
+                ])
             self.cache_pool.append(cache_entry)
+            self._token_views.append(token_views)
+            self._prefix_views.append(prefix_views)
         self.free_indices = list(range(pool_size))
 
     def allocate(self, request_id: str) -> None:
@@ -77,12 +94,16 @@ class OptimizedKVCache:
         if request_id not in self.allocated_caches:
             self.allocate(request_id)
         cache_idx = self.allocated_caches[request_id]
-        cache_k, cache_v = self.cache_pool[cache_idx][layer_idx]
-        cache_k[:, :, pos, :].copy_(k)
-        cache_v[:, :, pos, :].copy_(v)
+        # Fixed-capacity token views are prepared once with the pool. Avoid
+        # rebuilding strided views for every layer of every decoded token.
+        cache_k, cache_v = self._token_views[cache_idx][layer_idx][pos]
+        cache_k.copy_(k)
+        cache_v.copy_(v)
 
     def get(self, request_id: str, layer_idx: int, start: int, end: int) -> tuple[torch.Tensor, torch.Tensor]:
         cache_idx = self.allocated_caches[request_id]
+        if start == 0 and 0 <= end <= self.max_seq_len:
+            return self._prefix_views[cache_idx][layer_idx][end]
         cache_k, cache_v = self.cache_pool[cache_idx][layer_idx]
         return cache_k[:, :, start:end, :], cache_v[:, :, start:end, :]
 
@@ -201,9 +222,6 @@ class OptimizedKVCacheNaivePoolBenchmark(VerificationPayloadMixin, BaseBenchmark
         )
     
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         
         self.model = nn.ModuleList(
             [

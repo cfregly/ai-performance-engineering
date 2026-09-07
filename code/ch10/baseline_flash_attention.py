@@ -51,8 +51,6 @@ class BaselineFlashAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: Initialize attention model without FlashAttention."""
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         
         # Projections
         # Use the same datatype as the optimized (FlashAttention/SDPA) path so the

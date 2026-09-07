@@ -88,9 +88,6 @@ class BaselineDataloaderDefaultBenchmark(VerificationPayloadMixin, BaseBenchmark
         # oversubscription. Keep the baseline preprocessing deterministic by
         # matching that setting in the main process as well.
         torch.set_num_threads(1)
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         
         self.model = SimpleModel(input_dim=self.feature_dim).to(self.device)
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.01)

@@ -489,7 +489,6 @@ class FP8PerChannelDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         """Setup: Initialize per-channel FP8 benchmark."""
-        torch.manual_seed(42)
         self.demo_benchmark = FP8PerChannelBenchmark(
             batch_size=self.batch_size,
             seq_len=self.seq_len,

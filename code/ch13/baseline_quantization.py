@@ -39,9 +39,6 @@ class BaselineQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: Initialize model in FP32."""
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.model = nn.Sequential(
             nn.Linear(self.in_features, self.hidden_features),
             nn.ReLU(inplace=True),

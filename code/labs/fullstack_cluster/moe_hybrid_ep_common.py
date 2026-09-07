@@ -20,7 +20,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from core.benchmark.metrics import compute_moe_metrics
-from core.benchmark.verification import get_tolerance_for_dtype
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.common.device_utils import resolve_local_rank
 from core.harness.benchmark_harness import (
@@ -1828,87 +1827,34 @@ class MoEHybridEPBenchmark(
         # Keep constructor-side verification state on CPU so benchmark discovery/load
         # does not create a parent-process CUDA context before subprocess isolation.
         self._verify_output = torch.zeros(1, dtype=torch.float32)
-        self._verify_probe = torch.zeros(1, dtype=torch.float32)
         self._metrics_sidecar_path = Path(tempfile.gettempdir()) / (
             f"aisp_{label}_metrics.json"
         )
-        self._single_gpu_args: Optional[argparse.Namespace] = None
-        self._single_gpu_topology: Optional[TopologyInfo] = None
-        self._single_gpu_trainer: Optional[HybridEPTrainer] = None
-        self._single_gpu_latest_output: Optional[torch.Tensor] = None
-        self._single_gpu_latest_probe: Optional[torch.Tensor] = None
-        self._latest_metrics: Dict[str, float] = {}
-        self._has_latest_metrics = False
 
     def benchmark_fn(self) -> None:
-        if self._single_gpu_trainer is None:
-            raise RuntimeError(
-                "Hybrid-EP in-process execution requires setup(); torchrun verification "
-                "is populated only by its fresh child-result callback"
-            )
-        artifacts = self._single_gpu_trainer.run_step()
-        latest_metrics = self._latest_metrics
-        latest_metrics.clear()
-        latest_metrics.update(artifacts.metrics)
-        latest_metrics["moe_hybrid_ep.workload_size"] = float(self.workload_size)
-        self._has_latest_metrics = True
-        if artifacts.output is None:
-            raise RuntimeError("Hybrid-EP in-process step did not retain its full output")
-        self._single_gpu_latest_output = artifacts.output
-        self._single_gpu_latest_probe = self._single_gpu_trainer.inputs
+        raise RuntimeError(
+            "Hybrid-EP execution requires the fresh torchrun child-result path"
+        )
 
     def setup(self) -> None:
-        self._latest_metrics.clear()
-        self._has_latest_metrics = False
         self._verify_output.zero_()
         self._metrics_sidecar_path.unlink(missing_ok=True)
-        if not self._use_local_single_gpu_runner():
-            return
-        parser = build_parser(optimized=self.optimized)
-        args = parser.parse_args(["--skip-preflight", "--iters", "1"])
-        topology = init_topology()
-        trainer = HybridEPTrainer(args, topology, optimized=self.optimized)
-        self._single_gpu_args = args
-        self._single_gpu_topology = topology
-        self._single_gpu_trainer = trainer
-        self.parameter_count = sum(p.numel() for p in trainer.model.parameters())
 
     def teardown(self) -> None:
-        topology = self._single_gpu_topology
-        self._single_gpu_args = None
-        self._single_gpu_topology = None
-        self._single_gpu_trainer = None
-        self._single_gpu_latest_output = None
-        self._single_gpu_latest_probe = None
-        self._latest_metrics.clear()
-        self._has_latest_metrics = False
         self._metrics_sidecar_path.unlink(missing_ok=True)
-        if topology is not None:
-            shutdown_topology(topology)
         super().teardown()
-
-    def _use_local_single_gpu_runner(self) -> bool:
-        return (not self.multigpu) and torch.cuda.is_available() and torch.cuda.device_count() == 1
 
     def get_config(self) -> BenchmarkConfig:
         visible_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
-        if not self.multigpu and visible_gpus == 1:
-            return BenchmarkConfig(
-                launch_via=LaunchVia.PYTHON,
-                iterations=1,
-                warmup=5,
-                use_subprocess=False,
-                single_gpu=True,
-                measurement_timeout_seconds=1800,
-                timing_method="wall_clock",
-            )
+        single_gpu = not self.multigpu and visible_gpus == 1
         return BenchmarkConfig(
             launch_via=LaunchVia.TORCHRUN,
             nproc_per_node=max(1, visible_gpus),
             nnodes=None if self.multigpu else "1",
             iterations=1,
-            warmup=2,
+            warmup=5 if single_gpu else 2,
             multi_gpu_required=self.multigpu,
+            single_gpu=single_gpu,
             measurement_timeout_seconds=1800,
             timing_method="wall_clock",
             nsys_nvtx_include=[_profile_range(optimized=self.optimized)],
@@ -1919,8 +1865,6 @@ class MoEHybridEPBenchmark(
             metrics = dict(self._moe_hybrid_ep_result_metrics)
             metrics["moe_hybrid_ep.workload_size"] = float(self.workload_size)
             return metrics
-        if self._has_latest_metrics:
-            return dict(self._latest_metrics)
         if not self._metrics_sidecar_path.exists():
             return {
                 "moe_hybrid_ep.workload_size": float(self.workload_size),
@@ -2011,33 +1955,8 @@ class MoEHybridEPBenchmark(
     def capture_verification_payload(self) -> None:
         if self._moe_hybrid_ep_result_bundle is not None:
             return
-        if self._single_gpu_latest_output is not None:
-            self._verify_output = (
-                self._single_gpu_latest_output.detach().to(device="cpu").contiguous()
-            )
-        if self._single_gpu_latest_probe is not None:
-            self._verify_probe = (
-                self._single_gpu_latest_probe.detach().to(device="cpu").contiguous()
-            )
-        self._single_gpu_latest_output = None
-        self._single_gpu_latest_probe = None
-        tolerance = get_tolerance_for_dtype(self._verify_output.dtype)
-        self._set_verification_payload(
-            inputs={"probe": self._verify_probe},
-            output=self._verify_output,
-            batch_size=1,
-            parameter_count=int(self.parameter_count),
-            precision_flags={
-                "fp16": self._verify_output.dtype == torch.float16,
-                "bf16": self._verify_output.dtype == torch.bfloat16,
-                "fp8": False,
-                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
-            },
-            output_tolerance=(tolerance.rtol, tolerance.atol),
-            signature_overrides={
-                "world_size": max(torch.cuda.device_count(), 1),
-                "collective_type": "hybrid_ep_optimizer_step",
-            },
+        raise RuntimeError(
+            "Hybrid-EP verification requires a fresh torchrun child result"
         )
 
     def _prepare_verification_payload(self) -> None:

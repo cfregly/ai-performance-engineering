@@ -53,7 +53,6 @@ class BaselineNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: Initialize model."""
-        torch.manual_seed(42)
         
         self.model = ReusableReductionMlp(self.hidden_dim, self.inner_dim).to(self.device).eval()
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())

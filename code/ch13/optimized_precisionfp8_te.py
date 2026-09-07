@@ -105,9 +105,6 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         # Transformer Engine 2.x defaults to HYBRID format (E4M3 forward,
         # E5M2 backward); keep a long amax history and the standard max policy.
         self.fp8_recipe = _create_delayed_scaling_recipe(te_recipe_module)
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
 
         model = TEFP8MLP(hidden_dim=self.hidden_dim).to(self.device, dtype=self.compute_dtype).train()
         self.model = model

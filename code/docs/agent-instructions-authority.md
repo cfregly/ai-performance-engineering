@@ -782,27 +782,33 @@ def get_output_tolerance(self) -> tuple:
 
 ## Deterministic Seed Pattern (CRITICAL)
 
-The harness uses **seed 42** by default. Benchmarks MUST match this seed.
+The harness uses **seed 42** by default and owns the active seed. Benchmarks
+must preserve the seed supplied by their caller, including nondefault seeds.
 
 **Why this matters:**
-- The harness sets seeds via `set_deterministic_seeds(42)` before `setup()`
-- After `benchmark_fn()`, it checks if `torch.initial_seed() == 42`
-- If seeds don't match → "Benchmark mutated RNG seeds during execution" error
+- The harness sets seeds before `setup()` and checks that execution preserves them.
+- Fresh-input verification deliberately repeats setup with `config.seed + 1000`.
+- Resetting to 42 inside setup defeats that fresh-input check and can trigger
+  "Benchmark mutated RNG seeds during execution" even though the default run passes.
 
 **Correct Pattern:**
 ```python
 def setup(self) -> None:
-    torch.manual_seed(42)           # MUST be 42 to match harness
-    torch.cuda.manual_seed_all(42)  # Always include for CUDA determinism
-    # ... rest of setup
+    # Torch parameters and inputs use the RNG already seeded by the harness.
+    input_seed = torch.initial_seed()
+    # If another RNG is required, initialize it from the same active seed.
+    rng = np.random.default_rng(input_seed)
+    # ... create model parameters and inputs
 ```
 
 **Anti-pattern (DO NOT USE):**
 ```python
 def setup(self) -> None:
-    torch.manual_seed(1)    # BAD: mismatches harness seed 42
-    torch.manual_seed(101)  # BAD: mismatches harness seed 42
+    torch.manual_seed(42)  # BAD: overwrites nondefault verification seeds
 ```
+
+Standalone entrypoints may explicitly set a documented seed before calling
+`setup()`. Keep that entrypoint policy outside the benchmark lifecycle.
 
 ## Deterministic Algorithms vs Performance (CRITICAL)
 

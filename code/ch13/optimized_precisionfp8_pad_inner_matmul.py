@@ -70,15 +70,11 @@ class OptimizedPrecisionFP8PadInnerMatmulBenchmark(VerificationPayloadMixin, Bas
             raise RuntimeError(
                 f"SKIPPED: torchao is required for {self.__class__.__name__}: {TORCHAO_IMPORT_ERROR}"
             )
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
-
         self.a = torch.randn(self.m, self.k, device=self.device, dtype=torch.float32) * self.input_scale
         self.b = torch.randn(self.k, self.n, device=self.device, dtype=torch.float32) * self.input_scale
         self._verify_output_buffer = torch.empty(
-            min(128, self.m),
-            min(256, self.n),
+            self.m,
+            self.n,
             device=self.device,
             dtype=torch.float32,
         )
@@ -138,11 +134,7 @@ class OptimizedPrecisionFP8PadInnerMatmulBenchmark(VerificationPayloadMixin, Bas
     def capture_verification_payload(self) -> None:
         if self.a is None or self.b is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("Benchmark not configured")
-        output_slice = self.output[
-            : self._verify_output_buffer.shape[0],
-            : self._verify_output_buffer.shape[1],
-        ]
-        self._verify_output_buffer.copy_(output_slice)
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"a": self.a, "b": self.b},
             output=self._verify_output_buffer,

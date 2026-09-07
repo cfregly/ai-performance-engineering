@@ -286,7 +286,6 @@ class BaselineFP4WeightQuantizationBenchmark(VerificationPayloadMixin, BaseBench
     
     def setup(self) -> None:
         """Setup baseline FP4 model (dequant every forward)."""
-        torch.manual_seed(42)
         
         dtype = torch.float16
         if torch.cuda.is_available() and torch.cuda.is_bf16_supported():

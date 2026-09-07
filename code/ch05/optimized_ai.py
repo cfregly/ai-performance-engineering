@@ -27,6 +27,7 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.block: Optional[nn.Module] = None
         self.inputs_path: Optional[str] = None
         self.mapped_inputs: Optional[np.memmap] = None
+        self._verify_input: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._last_input: Optional[torch.Tensor] = None
         self.copy_stream: Optional[torch.cuda.Stream] = None
@@ -46,12 +47,11 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
+        input_seed = torch.initial_seed()
         self.block = BufferedTinyBlock(self.hidden).to(self.device).eval()
         self.parameter_count = sum(p.numel() for p in self.block.parameters())
 
-        host_batches = np.random.default_rng(42).standard_normal(
+        host_batches = np.random.default_rng(input_seed).standard_normal(
             (self.num_blocks, self.batch, self.hidden),
             dtype=np.float32,
         )
@@ -59,7 +59,10 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs_path = f.name
         f.close()
         np.save(self.inputs_path, host_batches)
-        self.mapped_inputs = np.load(self.inputs_path, mmap_mode="r")
+        self.mapped_inputs = np.load(self.inputs_path, mmap_mode="r+")
+        # Verification must perturb the backing source, not a staging buffer
+        # that the next storage read will immediately overwrite.
+        self._verify_input = torch.from_numpy(self.mapped_inputs[-1])
         self._block_range = range(self.num_blocks)
 
         pin_memory = torch.cuda.is_available()
@@ -132,8 +135,10 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = out
 
     def capture_verification_payload(self) -> None:
+        if self._verify_input is None or self.output is None:
+            raise RuntimeError("setup() and benchmark_fn() must run before capture")
         self._set_verification_payload(
-            inputs={"inputs": self._last_input},
+            inputs={"inputs": self._verify_input},
             output=self.output,
             batch_size=self.batch,
             parameter_count=self.parameter_count,
@@ -148,6 +153,7 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def teardown(self) -> None:
         self.block = None
+        self._verify_input = None
         self.mapped_inputs = None
         self.output = None
         self._last_input = None

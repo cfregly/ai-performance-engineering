@@ -60,7 +60,6 @@ class BaselineDataParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Setup: Initialize model, optimizer, and data."""
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: requires CUDA")
-        torch.manual_seed(42)
         
         # Keep input tensors on CPU so DataParallel copies every iteration.
         model = SimpleNet(self.input_size).to(self.device)

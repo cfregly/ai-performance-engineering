@@ -70,8 +70,6 @@ class OptimizedMatmulPyTorchBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         """Setup: Initialize matrices."""
         
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.extension = load_matmul_epilogue_extension()
 
         self.A = torch.randn(self.m, self.k, device=self.device, dtype=torch.float16)

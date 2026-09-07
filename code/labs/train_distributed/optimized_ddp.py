@@ -4,16 +4,29 @@ from __future__ import annotations
 
 import argparse
 import os
-
-from core.common.device_utils import resolve_local_rank
+from pathlib import Path
 from time import perf_counter
-from contextlib import nullcontext
 
 import torch
 import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel as DDP
-from pathlib import Path
+from torch.nn.parallel import DistributedDataParallel as DistributedModel
 
+from core.common.device_utils import resolve_local_rank
+from labs.train_distributed.training_utils.child_result import child_result_requested
+from labs.train_distributed.training_utils.ddp_child_result import (
+    bind_distributed_sampler_seed,
+    initialize_ddp_seed,
+    make_ddp_adamw,
+    make_ddp_child_result_contract,
+    publish_ddp_child_result,
+)
+from labs.train_distributed.training_utils.gradient_accumulation import (
+    build_gradient_accumulation_plan,
+    ddp_static_graph_enabled,
+    gradient_sync_context,
+    validate_gradient_accumulation,
+)
+from labs.train_distributed.training_utils.torchrun_harness import TorchrunScriptBenchmark
 from labs.train_distributed.training_utils.utils import (
     build_dataloader,
     build_text_model,
@@ -21,9 +34,7 @@ from labs.train_distributed.training_utils.utils import (
     configure_training_matmul_policy,
     get_dataset,
     make_causal_lm_labels,
-    set_seed,
 )
-from labs.train_distributed.training_utils.torchrun_harness import TorchrunScriptBenchmark
 
 
 def parse_args():
@@ -35,26 +46,9 @@ def parse_args():
     return parser.parse_args()
 
 
-def _maybe_fused_adamw(params, lr):
-    try:
-        return torch.optim.AdamW(
-            params,
-            lr=lr,
-            betas=(0.9, 0.95),
-            weight_decay=0.1,
-            fused=True,
-        )
-    except TypeError:
-        return torch.optim.AdamW(
-            params,
-            lr=lr,
-            betas=(0.9, 0.95),
-            weight_decay=0.1,
-        )
-
-
 def main():
     args = parse_args()
+    validate_gradient_accumulation(args.steps, args.grad_accum)
     local_rank = resolve_local_rank()
     if not torch.cuda.is_available():
         raise RuntimeError("DDP optimized run requires CUDA GPUs.")
@@ -66,12 +60,14 @@ def main():
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
             dist.init_process_group(backend="nccl", device_id=local_rank)
         else:
-            raise RuntimeError("DDP optimized run requires torch.distributed process group to be initialized.")
+            raise RuntimeError(
+                "DDP optimized run requires torch.distributed process group to be initialized."
+            )
 
     rank = dist.get_rank()
     world_size = dist.get_world_size()
     is_main = rank == 0
-    set_seed(42)
+    active_seed = initialize_ddp_seed()
     configure_training_matmul_policy()
     use_ddp = dist.is_initialized()
     tokenizer = build_tokenizer()
@@ -88,6 +84,7 @@ def main():
         prefetch_factor=4,
         pin_memory=True,
     )
+    bind_distributed_sampler_seed(dataloader, active_seed)
 
     model = build_text_model(dtype=torch.bfloat16)
     model.to(device)
@@ -95,42 +92,45 @@ def main():
 
     ddp_model = model
     if use_ddp:
-        ddp_model = DDP(
+        ddp_model = DistributedModel(
             model,
             device_ids=[local_rank],
-            static_graph=True,
+            static_graph=ddp_static_graph_enabled(args.grad_accum),
             bucket_cap_mb=50,
             gradient_as_bucket_view=True,
         )
 
-    optimizer = _maybe_fused_adamw(ddp_model.parameters(), args.learning_rate)
+    optimizer = make_ddp_adamw(ddp_model.parameters(), args.learning_rate, prefer_fused=True)
     num_steps = min(args.steps, len(dataloader))
+    accumulation_plan = build_gradient_accumulation_plan(num_steps, args.grad_accum)
     total_tokens = 0
     start_time = perf_counter()
     loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)
 
+    completed_steps = 0
+    final_batch = None
     for step, batch in enumerate(dataloader):
         if step >= num_steps:
             break
 
-        micro_step = step % args.grad_accum
-        sync_ctx = (
-            ddp_model.no_sync()
-            if use_ddp and args.grad_accum > 1 and micro_step != args.grad_accum - 1
-            else nullcontext()
+        accumulation = accumulation_plan[step]
+        sync_ctx = gradient_sync_context(
+            ddp_model,
+            accumulation,
+            distributed=use_ddp,
         )
         with sync_ctx:
             batch = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
-            batch["labels"] = make_causal_lm_labels(
-                batch["input_ids"], batch["attention_mask"]
-            )
+            batch["labels"] = make_causal_lm_labels(batch["input_ids"], batch["attention_mask"])
             outputs = ddp_model(**batch)
-            loss = outputs.loss / args.grad_accum
-        loss.backward()
+            loss = outputs.loss / accumulation.group_size
+            loss.backward()
 
-        if micro_step == args.grad_accum - 1:
+        if accumulation.should_step:
             optimizer.step()
             optimizer.zero_grad(set_to_none=True)
+        completed_steps += 1
+        final_batch = batch
 
         total_tokens += batch["input_ids"].numel()
 
@@ -145,13 +145,27 @@ def main():
 
     torch.cuda.synchronize(device)
     total_time = perf_counter() - start_time
+    if completed_steps <= 0:
+        raise RuntimeError("DDP training completed no optimization steps")
     if is_main:
         toks_sec = total_tokens / total_time if total_time > 0 else 0.0
         effective_bs = args.batch_size * args.grad_accum * world_size
         print(
-            f"[optimized-ddp] {num_steps} steps | total tokens {total_tokens:,} | "
+            f"[optimized-ddp] {completed_steps} steps | total tokens {total_tokens:,} | "
             f"global batch {effective_bs} | {toks_sec:,.0f} toks/s per rank"
         )
+        if child_result_requested():
+            print(
+                f"rank0 time_per_iter_ms: {total_time * 1000.0 / completed_steps:.9f}",
+                flush=True,
+            )
+
+    publish_ddp_child_result(
+        candidate_model=ddp_model,
+        reference_model=model,
+        final_batch=final_batch,
+        completed_iterations=completed_steps,
+    )
 
     if dist.is_initialized():
         dist.destroy_process_group()
@@ -176,4 +190,5 @@ def get_benchmark():
         default_nproc_per_node=1,
         multi_gpu_required=False,
         name="optimized_ddp",
+        child_result_contract=make_ddp_child_result_contract(multigpu=False),
     )

@@ -64,8 +64,6 @@ class OptimizedMemoryProfilingBenchmark(VerificationPayloadMixin, BaseBenchmark)
         )
     
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         torch.cuda.reset_peak_memory_stats()
 
         self.model = OptimizedModel(hidden_dim=self.hidden_dim).to(self.device)

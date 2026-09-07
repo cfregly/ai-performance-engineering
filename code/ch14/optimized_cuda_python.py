@@ -246,7 +246,6 @@ class OptimizedCudaPythonBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: Initialize tensors and compile kernel."""
-        torch.manual_seed(42)
         
         # Input tensor (batch, seq, hidden)
         self.input = torch.randn(

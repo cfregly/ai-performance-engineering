@@ -113,7 +113,6 @@ class PlanBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return self._override_device
 
     def setup(self) -> None:
-        torch.manual_seed(42)
         self.report = None
         self._summary = None
         if self.metrics is None or tuple(self.metrics.shape) != (1, 3):

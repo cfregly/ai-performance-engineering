@@ -39,8 +39,6 @@ class OptimizedAllReduceRMSNormBenchmark(VerificationPayloadMixin, BaseBenchmark
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA required for AR+RMSNorm fusion")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.shards = build_shards(self.device, self.cfg)
         self._reduced_buffer = torch.empty(
             self.cfg.batch_size,

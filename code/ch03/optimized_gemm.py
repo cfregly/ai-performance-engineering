@@ -59,8 +59,6 @@ class OptimizedGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         # Create input matrices - same as baseline version
         self.left = torch.randn(self.m, self.k, device=self.device, dtype=torch.float32)
         self.right = torch.randn(self.k, self.n, device=self.device, dtype=torch.float32)

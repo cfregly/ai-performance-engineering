@@ -15,6 +15,26 @@ from ch13.optimized_torchao_quantization import OptimizedTorchAOQuantizationBenc
 from core.harness.benchmark_harness import BaseBenchmark
 
 
+class _TorchAOCompiledModule(torch.nn.Module):
+    """Give this benchmark a Dynamo cache entry it can release at teardown."""
+
+    def __init__(self, module: torch.nn.Module) -> None:
+        super().__init__()
+        self.module = module
+
+    def forward(self, value: torch.Tensor) -> torch.Tensor:
+        return self.module(value)
+
+
+def _compile_torchao_module(module: torch.nn.Module) -> torch.nn.Module:
+    return torch.compile(_TorchAOCompiledModule(module), mode="max-autotune")
+
+
+def _release_torchao_compiled_cache() -> None:
+    """Release only the Dynamo entry owned by this compiled benchmark."""
+    torch._dynamo.eval_frame.remove_from_cache(_TorchAOCompiledModule.forward)
+
+
 class OptimizedTorchAOQuantizationCompiledBenchmark(OptimizedTorchAOQuantizationBenchmark):
     """Compound informational variant: quantized model plus compiled execution."""
 
@@ -26,7 +46,7 @@ class OptimizedTorchAOQuantizationCompiledBenchmark(OptimizedTorchAOQuantization
         super().setup()
         if self.model is None or self.data is None:
             raise RuntimeError("Model/data not initialized")
-        self.compiled_model = torch.compile(self.model, mode="max-autotune")
+        self.compiled_model = _compile_torchao_module(self.model)
         for _ in range(3):
             with torch.inference_mode():
                 _ = self.compiled_model(self.data)
@@ -41,7 +61,12 @@ class OptimizedTorchAOQuantizationCompiledBenchmark(OptimizedTorchAOQuantization
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def teardown(self) -> None:
+        had_compiled_model = self.compiled_model is not None
         self.compiled_model = None
+        self.output = None
+        self._verification_payload = None
+        if had_compiled_model:
+            _release_torchao_compiled_cache()
         super().teardown()
 
     def validate_result(self) -> Optional[str]:

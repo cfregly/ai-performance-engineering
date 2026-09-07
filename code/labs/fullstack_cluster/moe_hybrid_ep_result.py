@@ -159,8 +159,10 @@ def _input_signature(contract: MoEHybridEPResultContract) -> InputSignature:
         ranks=list(range(contract.world_size)),
         shards=contract.world_size,
         per_rank_batch_size=contract.tokens_per_rank,
-        collective_type="all_to_all",
-        collective_algorithm="bidirectional_expert_route_exchange",
+        collective_type="all_to_all" if contract.world_size > 1 else None,
+        collective_algorithm=(
+            "bidirectional_expert_route_exchange" if contract.world_size > 1 else None
+        ),
     )
 
 

@@ -70,8 +70,6 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
     def setup(self) -> None:
         if not torch.cuda.is_available() or torch.cuda.device_count() < 2:
             raise RuntimeError("SKIPPED: requires >=2 GPUs")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         self.device_ids = list(range(torch.cuda.device_count()))
         world_size = len(self.device_ids)

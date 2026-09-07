@@ -46,6 +46,19 @@ def _default_sdpa_backends() -> List[Any]:
 _PREFERRED_SDPA_BACKENDS: List[Any] = _default_sdpa_backends()
 
 
+def _configure_triton_compile_policy(triton_cfg: Any) -> None:
+    """Configure graph activation and graph ownership as distinct controls."""
+    if hasattr(triton_cfg, "unique_kernel_names"):
+        triton_cfg.unique_kernel_names = True
+    # Individual compiles may explicitly enable graphs (for example through
+    # ``mode="reduce-overhead"``). Keep their modern lifetime manager enabled.
+    if hasattr(triton_cfg, "cudagraph_trees"):
+        triton_cfg.cudagraph_trees = True
+    # Do not wrap every compiled graph merely because architecture defaults ran.
+    if hasattr(triton_cfg, "cudagraphs"):
+        triton_cfg.cudagraphs = False
+
+
 def prefer_sdpa_backends(order: Optional[List[Any]] = None):
     """
     Return a context manager that routes scaled_dot_product_attention to preferred backends.
@@ -85,6 +98,28 @@ def _parse_version_tuple(version: str) -> tuple:
         else:
             parts.append(0)
     return tuple(parts)
+
+def _inductor_cutlass_root(configured_root: Optional[str], *, repo_root: Path) -> Optional[str]:
+    """Locate CUTLASS C++ sources and generators, preserving a usable config.
+
+    The CuTe DSL's ``cutlass`` Python package is a different distribution;
+    its package directory is not an Inductor CUTLASS source checkout.
+    """
+    candidates = [configured_root, os.environ.get("CUTLASS_PATH"), repo_root / "third_party" / "cutlass"]
+    required = (
+        "include/cutlass/cutlass.h",
+        "python/cutlass_library/generator.py",
+        "python/cutlass_library/library.py",
+        "python/cutlass_library/manifest.py",
+    )
+    for candidate in candidates:
+        if candidate is None or not str(candidate).strip():
+            continue
+        root = Path(candidate).expanduser().resolve()
+        if all((root / relative).is_file() for relative in required):
+            return str(root)
+    return None
+
 
 class ArchitectureConfig:
     """Provide configuration details for NVIDIA Blackwell GPUs."""
@@ -200,13 +235,7 @@ class ArchitectureConfig:
             # Enable PyTorch 2.10 features
             if hasattr(cfg, "triton"):
                 triton_cfg = cfg.triton
-                if hasattr(triton_cfg, "unique_kernel_names"):
-                    triton_cfg.unique_kernel_names = True
-                # Avoid automatic cudagraph wrapping to prevent RNG capture issues in setup code.
-                if hasattr(triton_cfg, "cudagraph_trees"):
-                    triton_cfg.cudagraph_trees = False
-                if hasattr(triton_cfg, "cudagraphs"):
-                    triton_cfg.cudagraphs = False
+                _configure_triton_compile_policy(triton_cfg)
             
             # Enable max-autotune GEMM backends (PyTorch 2.10)
             # CUTLASS provides optimized GEMM kernels for NVIDIA GPUs
@@ -228,31 +257,27 @@ class ArchitectureConfig:
             except ImportError:
                 triton = None
 
-            # Configure CUTLASS for torch.compile backend
-            # Fix the cutlass_dir path to point to nvidia-cutlass-dsl installation
+            # Inductor needs the CUTLASS source tree, not the CuTe DSL package.
             if hasattr(cfg, "cuda") and hasattr(cfg.cuda, "cutlass_dir"):
+                cutlass_root = _inductor_cutlass_root(
+                    cfg.cuda.cutlass_dir,
+                    repo_root=Path(__file__).resolve().parents[2],
+                )
+                if cutlass_root is not None:
+                    cfg.cuda.cutlass_dir = cutlass_root
                 try:
-                    import cutlass
-                    # Get the nvidia_cutlass_dsl root directory
-                    cutlass_module_path = os.path.dirname(cutlass.__file__)
-                    nvidia_cutlass_root = os.path.dirname(os.path.dirname(cutlass_module_path))
-                    cfg.cuda.cutlass_dir = nvidia_cutlass_root
-                    try:
-                        cutlass_pkg_version = importlib_metadata.version("nvidia-cutlass-dsl")
-                        self.cutlass_version = cutlass_pkg_version
-                        if _parse_version_tuple(cutlass_pkg_version) < (4, 2, 0):
-                            warnings.warn(
-                                "nvidia-cutlass-dsl < 4.2 detected; upgrade recommended for full Blackwell support.",
-                                RuntimeWarning,
-                            )
-                    except importlib_metadata.PackageNotFoundError:
+                    # Read package metadata without importing the DSL's
+                    # `cutlass` namespace before Inductor loads its generators.
+                    cutlass_pkg_version = importlib_metadata.version("nvidia-cutlass-dsl")
+                    self.cutlass_version = cutlass_pkg_version
+                    if _parse_version_tuple(cutlass_pkg_version) < (4, 2, 0):
                         warnings.warn(
-                            "nvidia-cutlass-dsl package not found; CUTLASS kernels may be skipped.",
+                            "nvidia-cutlass-dsl < 4.2 detected; upgrade recommended for full Blackwell support.",
                             RuntimeWarning,
                         )
-                except ImportError:
-                    # If cutlass not installed, unset cutlass_dir
-                    # PyTorch will skip CUTLASS backend
+                except importlib_metadata.PackageNotFoundError:
+                    # The optional DSL package is independent of the source
+                    # tree used by the Inductor CUTLASS backend.
                     pass
 
             if "TRITON_PTXAS_PATH" not in os.environ:

@@ -81,8 +81,6 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.num_experts % self.world_size != 0:
             raise ValueError("num_experts must be divisible by world_size")
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         self.expert = ExpertMLP(self.hidden_size, self.ffn_size, device=self.device, dtype=self.dtype).eval()
         self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())

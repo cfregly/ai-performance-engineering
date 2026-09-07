@@ -95,7 +95,6 @@ class InferenceBenchmarkBase(BaseBenchmark):
     
     def setup(self) -> None:
         """Common setup: create model and data."""
-        torch.manual_seed(42)
         self.model = self._create_model().to(self.device)
         self.data = torch.randn(
             self.batch_size, self.seq_len, 512,

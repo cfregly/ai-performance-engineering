@@ -28,6 +28,7 @@ from core.harness.benchmark_harness import (
     WorkloadMetadata,
 )
 from core.profiling.nvtx_helper import nvtx_range
+from core.utils.worker_seed import apply_worker_seed
 from labs.cache_aware_disagg_inference.cache_aware_disagg_multigpu_result import (
     CACHE_AWARE_METRICS_PATH_ENV,
     CACHE_AWARE_RESULT_CALLBACK,
@@ -259,6 +260,19 @@ def _build_request_plans(
     return plans
 
 
+def _verification_prompt_plan(
+    plans: Sequence[DistributedRequestPlan],
+) -> DistributedRequestPlan:
+    """Choose a rank-zero prompt whose full contents remain live for verification."""
+    rank_zero_plans = [plan for plan in plans if plan.prefill_rank == 0]
+    if not rank_zero_plans:
+        raise RuntimeError("Verification requires a request owned by prefill rank 0")
+    return next(
+        (plan for plan in rank_zero_plans if not plan.is_warm),
+        rank_zero_plans[0],
+    )
+
+
 def _build_reference_state(cfg: CacheAwareDisaggMultiGPUConfig) -> Dict[str, torch.Tensor]:
     reference = TinyPrefillDecode(
         cfg.hidden_size,
@@ -413,6 +427,7 @@ def _run_torchrun_worker(
     label: str,
     iters: int,
     warmup: int,
+    seed: int,
 ) -> None:
     if not torch.cuda.is_available():
         raise RuntimeError("SKIPPED: CUDA required for cache-aware disaggregated inference")
@@ -435,8 +450,7 @@ def _run_torchrun_worker(
     if rank == 0:
         _emit_split_advice(prefill_ranks, decode_ranks)
 
-    torch.manual_seed(42)
-    torch.cuda.manual_seed_all(42)
+    apply_worker_seed(seed)
     model = TinyPrefillDecode(cfg.hidden_size, cfg.num_layers, device, cfg.dtype).eval()
 
     prompts: Optional[torch.Tensor] = None
@@ -799,7 +813,8 @@ def _run_torchrun_worker(
                 ).detach()
             torch.cuda.synchronize(device)
         if rank == 0:
-            verification_prompt = prompts[0].detach()
+            verification_plan = _verification_prompt_plan(plans)
+            verification_prompt = prompts[verification_plan.local_request_idx].detach()
     expected_local_reference_ids = {
         plan.global_request_idx for plan in plans if plan.prefill_rank == rank
     }
@@ -960,6 +975,15 @@ class CacheAwareDisaggMultiGPUBenchmark(
         )
         return self._allocate_host_tensor(shape, self.cfg.dtype)
 
+    def _bind_live_verification_prompt(self) -> None:
+        plan = _verification_prompt_plan(self._request_plans)
+        prompts = self._prompts.get(plan.prefill_rank)
+        if prompts is None:
+            raise RuntimeError(
+                f"Verification prompts missing for prefill rank {plan.prefill_rank}"
+            )
+        self._verify_prompt = prompts[plan.local_request_idx]
+
     def _ensure_local_cache(
         self,
         *,
@@ -1036,9 +1060,6 @@ class CacheAwareDisaggMultiGPUBenchmark(
             self.cfg.batch_size,
         )
         self._decode_token_divisor = float(max(self.cfg.decode_tokens, 1))
-
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         reference_state = _build_reference_state(self.cfg)
         self._prefill_models = {}
@@ -1172,11 +1193,7 @@ class CacheAwareDisaggMultiGPUBenchmark(
                 self._prefill_seed_store[plan.global_request_idx] = seed
 
         self.parameter_count = total_params
-        self._verify_prompt = self._allocate_host_tensor(
-            self._prompts[0][0].shape,
-            self._prompts[0][0].dtype,
-        )
-        self._verify_prompt.copy_(self._prompts[0][0], non_blocking=False)
+        self._bind_live_verification_prompt()
         self._pending_metrics = {
             "cache_hits": 0.0,
             "cache_misses": 0.0,
@@ -1490,6 +1507,7 @@ class CacheAwareDisaggMultiGPUBenchmark(
             config_arg_map={
                 "iterations": "--iters",
                 "warmup": "--warmup",
+                "seed": "--seed",
             },
             result_callback=CACHE_AWARE_RESULT_CALLBACK,
             timing_source="rank0_time_per_iter_ms",
@@ -1580,6 +1598,7 @@ def _parse_args(
     add_shared_args(parser)
     parser.add_argument("--iters", type=int, default=4)
     parser.add_argument("--warmup", type=int, default=3)
+    parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args(argv)
 
 
@@ -1602,4 +1621,5 @@ def run_cli(
         ),
         iters=int(args.iters),
         warmup=int(args.warmup),
+        seed=args.seed,
     )

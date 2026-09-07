@@ -102,8 +102,6 @@ class BaselinePersistentMatmulTMABenchmark(VerificationPayloadMixin, BaseBenchma
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         torch.cuda.empty_cache()
         self.A = torch.randn((self.M, self.K), device=self.device, dtype=torch.float16)
         self.B = torch.randn((self.K, self.N), device=self.device, dtype=torch.float16)
