@@ -1486,8 +1486,9 @@ NVTX instrumentation. Those failed attempts remain retained; an explicitly
 instrumented profiling build is next. No failed profiler is counted as passing.
 
 The piece-graph, inference-full, and corrected KV-cache seed gates passed.
-The two dynamic-router invocations exited successfully; their structured
-execution coverage still needs readback. FP8 padded matmul passed its gate.
+The two dynamic-router invocations exited successfully but their structured
+results were skips: missing multi-GPU metadata restricted them to one GPU.
+They did not execute the requested two-GPU workload. FP8 padded matmul passed its gate.
 The forward-only FP8 padded MLP and uncompiled TorchAO paths exposed detached
 verification inputs. Their payload inputs now alias the actual request; the
 FP8 path refreshes its reusable FP16 input buffer inside the timed request.
@@ -1508,3 +1509,33 @@ The full Llama FP32-attention diagnostic still had seven out-of-tolerance
 values; eager and compiled SDPA remained bitwise equal. These are open work,
 along with the distributed-training result contracts and runtime-specific
 CUTLASS generator/DSL namespace incompatibility.
+
+### Wave39: live inputs pass; verifier metadata ordering exposed
+
+At source `1b8caadf9`, all six direct stages drained. Sixteen focused tests
+passed on the B200 host, including all four actual CUDA input-mutation and
+restoration cases. The uncompiled TorchAO and FP8 padded MLP gates passed.
+The separate compiled TorchAO comparison again checked all 33,554,432 output
+values successfully.
+
+Both compiled verification gates progressed beyond the stale-pointer assertion.
+They then failed because the verifier read output tolerance after teardown had
+released the payload. The repair snapshots scalar tolerance metadata while the
+payload is live, allowing teardown to release compiled graph state. Its focused
+CPU lifecycle and protection checks passed (228 passed, 103 optional skips);
+the repaired B200 gates remain pending.
+
+The instrumented Chapter 2 Nsight Systems binary built and captured correctly.
+Its private report parser rejected Nsight's leading colon for the empty domain
+and expected the wrong verification category. The parser now preserves named
+domains, normalizes the empty domain, and checks `compute_kernel:verification`.
+The retained real baseline CSV passed the parser control; a complete capture
+of both arms is still required.
+
+The Chapter 4 multi-GPU pair now has an explicit two-rank NCCL worker and fresh
+full-rank result transport. It keeps one float per rank, five warmups, and five
+timed iterations. It reports synchronized host time because communicator
+creation and destruction include CPU work. Eleven focused tests and two
+hygiene checks passed; actual two-B200 execution is next. Router metadata and
+distributed-training workload/result repairs continue. No hosted CI is being
+run or used as a substitute for these runtime checks.

@@ -293,6 +293,14 @@ class VerifyConfig:
     force_recache: bool = False  # Ignore existing cache
 
 
+@dataclass(frozen=True)
+class _OutputToleranceSnapshot:
+    """Tolerance metadata captured before benchmark teardown."""
+
+    value: Optional[ToleranceSpec]
+    error: Optional[str]
+
+
 @dataclass
 class TimingConfig:
     """Timing configuration extracted from a benchmark or harness config.
@@ -802,12 +810,14 @@ class VerifyRunner:
         seed: int,
         *,
         live_check: Callable[[Any, InputSignature], None] | None = None,
+        capture_output_tolerance: bool = False,
     ) -> Tuple[
         Dict[str, torch.Tensor],
         Dict[str, float],
         Dict[str, int],
         Dict[str, torch.Tensor],
         InputSignature,
+        Optional[_OutputToleranceSnapshot],
     ]:
         """Run a benchmark with specific seed and extract outputs.
         
@@ -817,9 +827,11 @@ class VerifyRunner:
             live_check: Optional check that must run after output capture while
                 the benchmark is still initialized. The benchmark is torn down
                 exactly once after this callback returns or raises.
+            capture_output_tolerance: Capture tolerance metadata before teardown.
         
         Returns:
-            Tuple of (outputs, workload_metrics, seed_info, inputs_used, input_signature)
+            Tuple of (outputs, workload_metrics, seed_info, inputs_used,
+            input_signature, output_tolerance_snapshot)
         """
         # Set deterministic seeds BEFORE setup and capture seed_info
         # NOTE: We do NOT re-seed after setup. This ensures inputs created
@@ -926,6 +938,22 @@ class VerifyRunner:
             if signature is None:
                 raise RuntimeError("get_input_signature() did not produce a signature during verification run")
 
+            tolerance_snapshot: Optional[_OutputToleranceSnapshot] = None
+            if capture_output_tolerance:
+                # Payload-backed benchmarks may release their verification payload
+                # during teardown. Preserve only normalized tolerance metadata (or
+                # its read error) while the payload is still live.
+                try:
+                    tolerance_snapshot = _OutputToleranceSnapshot(
+                        value=get_output_tolerance(benchmark),
+                        error=None,
+                    )
+                except Exception as exc:
+                    tolerance_snapshot = _OutputToleranceSnapshot(
+                        value=None,
+                        error=str(exc),
+                    )
+
             # Stream audit check for verification path
             if stream_auditor is not None:
                 from core.harness.validity_checks import check_stream_sync_completeness, get_active_streams
@@ -967,7 +995,14 @@ class VerifyRunner:
             if detect_seed_mutation(seed_info):
                 raise RuntimeError("Benchmark mutated RNG seeds during execution")
 
-            return outputs, metrics, seed_info, inputs_for_validation, signature
+            return (
+                outputs,
+                metrics,
+                seed_info,
+                inputs_for_validation,
+                signature,
+                tolerance_snapshot,
+            )
 
         finally:
             # Always teardown
@@ -1120,7 +1155,7 @@ class VerifyRunner:
         try:
             # Run with different seed
             fresh_seed = config.seed + 1000
-            fresh_outputs, _, _, _, _ = self._run_with_seed(benchmark, fresh_seed)
+            fresh_outputs, _, _, _, _, _ = self._run_with_seed(benchmark, fresh_seed)
             
             # For deterministic algorithms, outputs should match
             # For non-deterministic, they should differ
@@ -1379,7 +1414,11 @@ class VerifyRunner:
 
         try:
             # Run baseline with deterministic seed
-            outputs, metrics, seed_info, inputs, signature = self._run_with_seed(baseline, config.seed)
+            outputs, metrics, seed_info, inputs, signature, tolerance_snapshot = self._run_with_seed(
+                baseline,
+                config.seed,
+                capture_output_tolerance=True,
+            )
             if not getattr(baseline, "parameter_signature_only", False):
                 try:
                     self._validate_inputs_match_signature(signature, inputs)
@@ -1396,14 +1435,22 @@ class VerifyRunner:
             self._last_baseline_equivalence = equivalence
             self._last_baseline_cache_key = sig_hash
 
-            # Capture baseline tolerance (fail-fast)
-            try:
-                baseline_tol = get_output_tolerance(baseline)
-            except Exception as exc:
+            # Consume the tolerance captured while the benchmark payload was live.
+            if tolerance_snapshot is None:
+                raise RuntimeError("Baseline tolerance snapshot was not captured")
+            if tolerance_snapshot.error is not None:
                 return VerifyResult(
                     passed=False,
                     reason=QuarantineReason.MISSING_OUTPUT_TOLERANCE.value,
-                    details={"error": str(exc)},
+                    details={"error": tolerance_snapshot.error},
+                    timestamp=datetime.now(),
+                )
+            baseline_tol = tolerance_snapshot.value
+            if baseline_tol is None:
+                return VerifyResult(
+                    passed=False,
+                    reason=QuarantineReason.MISSING_OUTPUT_TOLERANCE.value,
+                    details={"error": "get_output_tolerance() produced no tolerance"},
                     timestamp=datetime.now(),
                 )
 
@@ -1493,7 +1540,11 @@ class VerifyRunner:
 
         try:
             # Run optimized with same seed
-            outputs, metrics, seed_info, inputs, signature = self._run_with_seed(optimized, config.seed)
+            outputs, metrics, seed_info, inputs, signature, tolerance_snapshot = self._run_with_seed(
+                optimized,
+                config.seed,
+                capture_output_tolerance=config.tolerance_override is None,
+            )
             evaluation_provenance = self._last_evaluation_provenance
             if not getattr(optimized, "parameter_signature_only", False):
                 try:
@@ -1596,13 +1647,21 @@ class VerifyRunner:
             # Get tolerance - enforce baseline-bound tolerances
             tolerance = config.tolerance_override
             if tolerance is None:
-                try:
-                    tolerance = get_output_tolerance(optimized)
-                except Exception as exc:
+                if tolerance_snapshot is None:
+                    raise RuntimeError("Optimized tolerance snapshot was not captured")
+                if tolerance_snapshot.error is not None:
                     return VerifyResult(
                         passed=False,
                         reason=QuarantineReason.MISSING_OUTPUT_TOLERANCE.value,
-                        details={"error": str(exc)},
+                        details={"error": tolerance_snapshot.error},
+                        timestamp=datetime.now(),
+                    )
+                tolerance = tolerance_snapshot.value
+                if tolerance is None:
+                    return VerifyResult(
+                        passed=False,
+                        reason=QuarantineReason.MISSING_OUTPUT_TOLERANCE.value,
+                        details={"error": "get_output_tolerance() produced no tolerance"},
                         timestamp=datetime.now(),
                     )
             baseline_tol = golden.tolerance
@@ -1944,7 +2003,9 @@ class VerifyRunner:
 
         # Step 1: Run local verification
         try:
-            outputs, metrics, seed_info, _, signature = self._run_with_seed(benchmark, config.seed)
+            outputs, metrics, seed_info, _, signature, _ = self._run_with_seed(
+                benchmark, config.seed
+            )
         except Exception as e:
             return VerifyResult.fail(f"Rank {rank} execution failed: {e}")
 
