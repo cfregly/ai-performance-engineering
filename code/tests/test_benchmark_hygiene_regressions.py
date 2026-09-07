@@ -7711,8 +7711,11 @@ def test_real_world_model_wrappers_reuse_metric_state() -> None:
     assert "self._last_metrics = {}" not in baseline_benchmark
     assert "self._last_metrics = {}" not in optimized_benchmark
     assert '"llama.use_compile": 1.0' in optimized_init
-    assert '"llama.use_flex_attention": 1.0' in optimized_init
-    assert '"llama.use_fp8": 1.0 if self.use_fp8 else 0.0' in optimized_init
+    assert '"llama.attention.preferred_sdpa": 1.0' in optimized_init
+    assert '"llama.fp32_residual": 1.0' in optimized_init
+    assert '"llama.stable_rms_norm": 1.0' in optimized_init
+    assert "use_flex_attention" not in optimized_init
+    assert "use_fp8" not in optimized_init
     assert "return self._last_metrics" in optimized_metrics
     assert "self._last_metrics.copy()" not in optimized_metrics
 

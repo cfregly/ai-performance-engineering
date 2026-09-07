@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Optimized: Llama 3.1 8B with all Blackwell optimizations.
+"""Optimized: compiled Llama 3.1 8B SDPA execution.
 
-Enables torch.compile, FlexAttention, and optional FP8 for maximum performance.
+The comparison isolates max-autotune ``torch.compile`` while preserving the
+baseline's preferred SDPA, FP32 residual, and stable RMSNorm implementation.
 """
 
 from __future__ import annotations
-
-from typing import Optional
 
 import torch
 
@@ -19,41 +18,30 @@ from labs.real_world_models.llama_3_1_8b_optimization import (
 
 
 class OptimizedLlama31_8B(VerificationPayloadMixin, BaseBenchmark):
-    """Optimized Llama 3.1 8B - torch.compile + FlexAttention + optional FP8.
-    
-    Optimizations:
-    - torch.compile with max-autotune
-    - FlexAttention for efficient attention
-    - Optional FP8 precision (2x throughput on Blackwell)
-    """
+    """Max-autotune compiled arm for the compile-only comparison."""
 
-    def __init__(self, batch_size: int = 1, seq_length: int = 2048, use_fp8: bool = False):
+    def __init__(self, batch_size: int = 1, seq_length: int = 2048):
         super().__init__()
         self.batch_size = batch_size
         self.seq_length = seq_length
-        self.use_fp8 = use_fp8
         self.model_wrapper = None
-        self.output: Optional[torch.Tensor] = None
+        self.output: torch.Tensor | None = None
         self.parameter_count = 0
         self._last_metrics: dict[str, float] = {
             "llama.use_compile": 1.0,
-            "llama.use_flex_attention": 1.0,
-            "llama.use_fp8": 1.0 if self.use_fp8 else 0.0,
+            "llama.attention.preferred_sdpa": 1.0,
+            "llama.fp32_residual": 1.0,
+            "llama.stable_rms_norm": 1.0,
             "llama.emulate_precision_casts": 1.0,
         }
         self.register_workload_metadata(requests_per_iteration=float(batch_size))
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.model_wrapper = Llama31_8B_Optimization(
             batch_size=self.batch_size,
             seq_length=self.seq_length,
-            use_compile=True,         # Enable torch.compile
-            use_fp8=self.use_fp8,     # Optional FP8
-            use_flex_attention=True,  # Enable FlexAttention
-            prefer_sdpa=True,
+            use_compile=True,
+            attention_mode="preferred_sdpa",
         )
         self.model_wrapper.setup()
         self.parameter_count = sum(p.numel() for p in self.model_wrapper.layers.parameters())
@@ -67,6 +55,8 @@ class OptimizedLlama31_8B(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() did not produce output")
 
     def capture_verification_payload(self) -> None:
+        if self.model_wrapper is None or self.output is None:
+            raise RuntimeError("benchmark_fn() must run before verification capture")
         self._set_verification_payload(
             inputs={"input": self.model_wrapper.input.detach()},
             output=self.output,
@@ -75,7 +65,7 @@ class OptimizedLlama31_8B(VerificationPayloadMixin, BaseBenchmark):
             precision_flags={
                 "bf16": True,
                 "fp16": False,
-                "fp8": bool(self.use_fp8),
+                "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
             output_tolerance=LLAMA_BF16_OUTPUT_TOLERANCE,
@@ -85,6 +75,8 @@ class OptimizedLlama31_8B(VerificationPayloadMixin, BaseBenchmark):
         if self.model_wrapper:
             self.model_wrapper.teardown()
         self.model_wrapper = None
+        self.output = None
+        self._verification_payload = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
