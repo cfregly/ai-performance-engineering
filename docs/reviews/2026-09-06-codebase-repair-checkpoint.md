@@ -1626,3 +1626,46 @@ All changed files parsed, and real setup tests confirmed repeatability and
 changed-input behavior. Later alignment reseeds and private generators are being
 reviewed separately. Llama's explicit compile-only source and the router's real
 integer prompt-input contract are implemented; their new B200 runs are next.
+
+### Wave44: full Llama/quantization checks and additional gate fixes
+
+All eleven direct stages on `05086530b` drained. The actual default 32-layer,
+2,048-token Llama pair passed its full-output gate and normal harness comparison
+at the unchanged 0.02/0.02 tolerance. The normal baseline measured 32.589 ms and
+the compiled candidate measured a 1.0859x ratio. Repeated interleaved source
+measurements and profiling are still pending; the earlier private diagnostic
+measurement remains separate from this source result.
+
+Both TorchAO variants and the FP8 padded MLP/matmul passed their gates after
+expanding their public payloads to complete outputs. The explicit compiled
+TorchAO normal command reported an informational entry, without a timing run;
+its successful exit is not timing evidence. The router commands likewise did
+not execute the model: their supplied model argument was lost before worker
+setup, and both were recorded as skipped. That argument-delivery defect is
+under repair.
+
+The focused GPU tests produced 84 passes and two failures in a CPU fake-vLLM
+fixture whose two-device model inherited one-device visibility from its GPU
+test shard. The fixture now declares matching visibility; all 18 fixture tests
+pass under an outer one-device environment. This is test control-flow coverage,
+not real vLLM GPU execution.
+
+The memory-bound gate exposed missing pre-setup workload metadata in the
+optimized implementation. It now exposes the same metadata as its baseline,
+releases its compiled callable during teardown, and both implementations retain
+all 16,777,216 output values instead of the first 4,096. A focused regression
+changes a value beyond the former crop and checks the complete live payload.
+The combined local regression batch passed 24 tests, with the production CUDA
+compile-path test explicitly skipped until its B200 rerun.
+
+The next seed sweep reviewed another 142 source files: it removed 274 fixed
+global resets and rebound 16 intentional alignment resets to the active harness
+seed. All changed files parsed. Four real CPU setup tests preserve legacy seed-42
+model/input/output identity and demonstrate seed-1042 sensitivity. Five private
+CUDA generator controls remain intact. Thirty worker resets across 15 files
+need explicit parent-to-worker seed transport and are being repaired separately.
+
+Compact Wave44 receipts are retained under
+`/Users/admin/.codex/artifacts/ai-perf-remaining-20260906/wave44-validation-20260907T074913Z`.
+These remain practical portable B200 checks; they do not qualify unavailable
+hardware or supply canonical locked-clock performance evidence.
