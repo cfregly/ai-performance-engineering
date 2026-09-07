@@ -1,18 +1,14 @@
 from __future__ import annotations
 
-from pathlib import Path
-
+import pytest
 import torch
 
-from labs.nanochat_fullstack import optimized_nanochat_inference as optimized_module
 from labs.nanochat_fullstack.baseline_nanochat_inference import (
     BaselineNanochatInferenceBenchmark,
 )
 from labs.nanochat_fullstack.optimized_nanochat_inference import (
     OptimizedNanochatInferenceBenchmark,
 )
-
-REPO_CODE = Path(__file__).resolve().parents[1]
 
 
 def test_nanochat_pair_rejects_degenerate_logits() -> None:
@@ -27,81 +23,63 @@ def test_nanochat_pair_rejects_degenerate_logits() -> None:
         assert benchmark.validate_result() is None
 
 
-def test_nanochat_pair_reinitializes_zeroed_training_projections() -> None:
-    for filename in (
-        "baseline_nanochat_inference.py",
-        "optimized_nanochat_inference.py",
-    ):
-        source = (REPO_CODE / "labs" / "nanochat_fullstack" / filename).read_text(
-            encoding="utf-8"
-        )
-        assert "model.init_weights()" in source
-        assert "model.apply(model._init_weights)" in source
-
-
-def test_nanochat_compiles_only_the_fixed_prefill_shape(monkeypatch) -> None:
-    model = object()
-    compiled = object()
-    compile_call = {}
-
-    def capture_compile(target, **kwargs):
-        compile_call["target"] = target
-        compile_call["kwargs"] = kwargs
-        return compiled
-
-    monkeypatch.setattr(torch, "compile", capture_compile)
-
-    assert optimized_module._compile_prefill(model) is compiled
-    assert compile_call == {
-        "target": model,
-        "kwargs": {
-            "mode": "max-autotune-no-cudagraphs",
-            "fullgraph": False,
-            "dynamic": False,
-        },
-    }
-
-
-def test_nanochat_uses_compiled_prefill_and_eager_decode() -> None:
-    class FakeCache:
-        def __init__(self) -> None:
-            self.reset_count = 0
-
-        def reset(self) -> None:
-            self.reset_count += 1
-
-    class Recorder:
-        def __init__(self) -> None:
-            self.inputs: list[torch.Tensor] = []
-
-        def __call__(self, token_ids, *, kv_cache):
-            self.inputs.append(token_ids)
-            return token_ids.float()
-
+def test_nanochat_requires_setup_before_replay() -> None:
     benchmark = OptimizedNanochatInferenceBenchmark()
-    benchmark.prompt = torch.tensor([[1, 2, 3], [4, 5, 6]])
-    benchmark.decode_tokens = torch.tensor([[7, 8], [9, 10]])
-    benchmark.decode_len = benchmark.decode_tokens.size(1)
-    benchmark.decode_token_steps = tuple(
-        benchmark.decode_tokens[:, step : step + 1]
-        for step in range(benchmark.decode_len)
-    )
-    benchmark.kv_cache = FakeCache()
-    benchmark.prefill_model = Recorder()
-    benchmark.model = Recorder()
+    with pytest.raises(RuntimeError, match=r"setup\(\) must run"):
+        benchmark.benchmark_fn()
 
-    benchmark.benchmark_fn()
 
-    assert benchmark.kv_cache.reset_count == 1
-    assert len(benchmark.prefill_model.inputs) == 1
-    assert benchmark.prefill_model.inputs[0] is benchmark.prompt
-    assert len(benchmark.model.inputs) == benchmark.decode_len
-    assert all(
-        actual is expected
-        for actual, expected in zip(
-            benchmark.model.inputs,
-            benchmark.decode_token_steps,
-            strict=True,
-        )
-    )
-    assert torch.equal(benchmark.output, benchmark.decode_token_steps[-1].float())
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA graph execution requires CUDA")
+@pytest.mark.parametrize("seed", [42, 1042])
+def test_nanochat_graph_replays_complete_requests_with_changed_inputs(seed: int) -> None:
+    baseline = BaselineNanochatInferenceBenchmark()
+    optimized = OptimizedNanochatInferenceBenchmark()
+    try:
+        for benchmark in (baseline, optimized):
+            benchmark.batch_size = 2
+            benchmark.prompt_len = 16
+            benchmark.decode_len = 4
+            benchmark.vocab_size = 64
+            benchmark.n_layer = 2
+            benchmark.n_head = benchmark.n_kv_head = 2
+            benchmark.n_embd = 64
+            torch.manual_seed(seed)
+            benchmark.setup()
+            assert torch.initial_seed() == seed
+        assert torch.equal(baseline.prompt, optimized.prompt)
+        assert torch.equal(baseline.decode_tokens, optimized.decode_tokens)
+        for original, captured in zip(
+            baseline.model.parameters(), optimized.model.parameters(), strict=True
+        ):
+            assert torch.equal(original, captured)
+
+        prompt = baseline.prompt.clone()
+        decode = baseline.decode_tokens.clone()
+        original_output = None
+        output_pointer = None
+        for case in ("original", "changed_prompt", "early_decode", "original_again"):
+            for benchmark in (baseline, optimized):
+                benchmark.prompt.copy_(prompt)
+                benchmark.decode_tokens.copy_(decode)
+                if case == "changed_prompt":
+                    benchmark.prompt.add_(1).remainder_(benchmark.vocab_size)
+                elif case == "early_decode":
+                    benchmark.decode_tokens[:, 0].add_(1).remainder_(benchmark.vocab_size)
+                benchmark.benchmark_fn()
+                benchmark.capture_verification_payload()
+                assert benchmark.validate_result() is None
+                assert torch.equal(benchmark.output, benchmark._verify_output_buffer)
+            assert torch.equal(baseline.output, optimized.output)
+            assert optimized.output.numel() == 128
+            if original_output is None:
+                original_output = optimized.output.clone()
+                output_pointer = optimized.output.data_ptr()
+            elif case == "original_again":
+                assert torch.equal(original_output, optimized.output)
+            else:
+                assert not torch.equal(original_output, optimized.output)
+            assert optimized.output.data_ptr() == output_pointer
+        assert optimized.capture_ms > 0
+    finally:
+        optimized.teardown()
+        baseline.teardown()

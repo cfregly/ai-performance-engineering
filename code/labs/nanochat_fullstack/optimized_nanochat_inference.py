@@ -1,30 +1,17 @@
 #!/usr/bin/env python3
-"""Optimized: NanoChat inference with compiled prefill and eager KV-cache decode."""
+"""Optimized: replay the complete fixed-shape NanoChat request in a CUDA graph."""
 
 from __future__ import annotations
 
-from typing import Optional
+import time
 
 import torch
 
 from core.benchmark.verification import PrecisionFlags, simple_signature
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
-
 from labs.nanochat_fullstack.nanochat.engine import KVCache
 from labs.nanochat_fullstack.nanochat.gpt import GPT, GPTConfig
-
-
-def _compile_prefill(model: GPT) -> torch.nn.Module:
-    """Compile the fixed prompt shape without wrapping the token-by-token decoder."""
-    if not hasattr(torch, "compile"):
-        raise RuntimeError("SKIPPED: torch.compile not available for nanochat inference optimization")
-    return torch.compile(  # type: ignore[attr-defined]
-        model,
-        mode="max-autotune-no-cudagraphs",
-        fullgraph=False,
-        dynamic=False,
-    )
 
 
 class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -41,14 +28,17 @@ class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.n_kv_head = 8
         self.n_embd = 512
 
-        self.model: Optional[GPT] = None
-        self.prefill_model: Optional[torch.nn.Module] = None
-        self.kv_cache: Optional[KVCache] = None
-        self.prompt: Optional[torch.Tensor] = None
-        self.decode_tokens: Optional[torch.Tensor] = None
+        self.model: GPT | None = None
+        self._request_graph: torch.cuda.CUDAGraph | None = None
+        self._graph_output: torch.Tensor | None = None
+        self.capture_warmup_ms = 0.0
+        self.capture_ms = 0.0
+        self.kv_cache: KVCache | None = None
+        self.prompt: torch.Tensor | None = None
+        self.decode_tokens: torch.Tensor | None = None
         self.decode_token_steps: tuple[torch.Tensor, ...] = ()
-        self.output: Optional[torch.Tensor] = None
-        self._verify_output_buffer: Optional[torch.Tensor] = None
+        self.output: torch.Tensor | None = None
+        self._verify_output_buffer: torch.Tensor | None = None
         self._payload_parameter_count = 0
 
         self.register_workload_metadata(
@@ -60,9 +50,6 @@ class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmar
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: nanochat inference benchmark requires CUDA")
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
-
         cfg = GPTConfig(
             sequence_len=1024,
             vocab_size=self.vocab_size,
@@ -70,12 +57,10 @@ class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmar
             n_head=self.n_head,
             n_kv_head=self.n_kv_head,
             n_embd=self.n_embd,
-            # Match the baseline attention path while specializing fixed-shape prefill.
+            # Match the baseline attention kernels and cache layout exactly.
             use_flash_sdp=False,
             use_flash3=False,
             use_cta_clustering=False,
-            # Keep KV cache layout aligned with the baseline so the comparison isolates
-            # compilation/runtime-overhead changes.
             kv_block_size=None,
             kv_page_size=None,
         )
@@ -89,10 +74,6 @@ class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmar
         model = model.to(dtype=torch.bfloat16)
         model.eval()
         self.model = model
-        # The prompt has one fixed shape and benefits from specialization. The
-        # KV-cache position and visible key length change at every decode step;
-        # wrapping that loop in a dynamic compiled model adds dispatch overhead.
-        self.prefill_model = _compile_prefill(model)
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
 
         self.prompt = torch.randint(
@@ -130,33 +111,56 @@ class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmar
             dtype=torch.float32,
         )
 
-        # Warmup both prompt and decode shapes so compilation happens before timing.
-        self.kv_cache.reset()
-        with torch.inference_mode():
-            _ = self.prefill_model(self.prompt, kv_cache=self.kv_cache)
-            for step_ids in self.decode_token_steps[: min(4, self.decode_len)]:
-                _ = self.model(step_ids, kv_cache=self.kv_cache)
+        # Materialize the lazy KV cache and all kernel workspaces on a side stream.
+        # Setup is excluded from steady-state replay timing; retain its costs.
+        capture_stream = torch.cuda.Stream(device=self.device)
+        capture_stream.wait_stream(torch.cuda.current_stream(self.device))
+        started = time.perf_counter()
+        with torch.cuda.stream(capture_stream), torch.inference_mode():
+            for _ in range(3):
+                self.kv_cache.reset()
+                self._run_request()
+        capture_stream.synchronize()
+        self.capture_warmup_ms = (time.perf_counter() - started) * 1000.0
 
-    def benchmark_fn(self) -> None:
+        # Capture unrolls the host cache positions for the entire request. Replay
+        # overwrites the prompt and every decode position in order, so it neither
+        # reads stale KV entries nor depends on resetting the Python position.
+        self.kv_cache.reset()
+        self._request_graph = torch.cuda.CUDAGraph()
+        started = time.perf_counter()
+        with torch.inference_mode(), torch.cuda.graph(
+            self._request_graph, stream=capture_stream
+        ):
+            self._graph_output = self._run_request()
+        capture_stream.synchronize()
+        self.capture_ms = (time.perf_counter() - started) * 1000.0
+        if self.kv_cache.get_pos() != self.prompt_len + self.decode_len:
+            raise RuntimeError("CUDA graph did not capture the complete request")
+
+    def _run_request(self) -> torch.Tensor:
         if (
             self.model is None
-            or self.prefill_model is None
             or self.kv_cache is None
             or self.prompt is None
             or self.decode_tokens is None
             or not self.decode_token_steps
         ):
-            raise RuntimeError("setup() must run before benchmark_fn()")
+            raise RuntimeError("Request tensors must be initialized before capture")
 
-        self.kv_cache.reset()
-        with torch.inference_mode():
-            self.prefill_model(self.prompt, kv_cache=self.kv_cache)
-            logits = None
-            for step_ids in self.decode_token_steps:
-                logits = self.model(step_ids, kv_cache=self.kv_cache)
-            if logits is None:
-                raise RuntimeError("decode loop did not execute")
-            self.output = logits
+        self.model(self.prompt, kv_cache=self.kv_cache)
+        logits = None
+        for step_ids in self.decode_token_steps:
+            logits = self.model(step_ids, kv_cache=self.kv_cache)
+        if logits is None:
+            raise RuntimeError("decode loop did not execute")
+        return logits
+
+    def benchmark_fn(self) -> None:
+        if self._request_graph is None or self._graph_output is None:
+            raise RuntimeError("setup() must run before benchmark_fn()")
+        self._request_graph.replay()
+        self.output = self._graph_output
 
     def capture_verification_payload(self) -> None:
         if (
@@ -192,7 +196,7 @@ class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmar
             precision_flags=PrecisionFlags(bf16=True, tf32=False),
         ).to_dict()
 
-    def validate_result(self) -> Optional[str]:
+    def validate_result(self) -> str | None:
         if self.output is None:
             return "benchmark_fn() did not produce output"
         if not bool(torch.isfinite(self.output).all()):
@@ -202,8 +206,11 @@ class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmar
         return None
 
     def teardown(self) -> None:
+        if self._request_graph is not None:
+            torch.cuda.synchronize(self.device)
+        self._request_graph = None
+        self._graph_output = None
         self.model = None
-        self.prefill_model = None
         self.kv_cache = None
         self.prompt = None
         self.decode_tokens = None
@@ -214,6 +221,12 @@ class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmar
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(iterations=10, warmup=5)
+
+    def get_custom_metrics(self) -> dict[str, float]:
+        return {
+            "setup.graph_warmup_ms": self.capture_warmup_ms,
+            "setup.graph_capture_ms": self.capture_ms,
+        }
 
 
 def get_benchmark() -> BaseBenchmark:

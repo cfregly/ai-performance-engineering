@@ -1438,3 +1438,30 @@ KV-cache pair, both piece-graph paths, and both inference-full paths. Real CPU
 checks confirm different requested seeds produce different inputs/weights and
 that the inference-full pair passes fresh-input and sensitivity checks without
 warnings. Seventeen focused checks passed; target-host reruns remain pending.
+
+### Wave36: graph replay and numerical localization
+
+All four direct B200 stages completed and drained at source `a48ab0207`.
+The private NanoChat whole-request graph prototype matched all 40,000 final
+logits bitwise for the original inputs, two changed prompts, and an early
+decode-token perturbation. Twelve interleaved observations per arm measured
+median eager latency of 48.354 ms and graph latency of 24.035 ms (2.012x).
+This is diagnostic evidence: it precedes the repository implementation and
+profiler attribution and is not a published performance qualification.
+
+The repository candidate now captures the identical prefill and all 64 decode
+steps in one CUDA graph. Setup retains warmup and capture costs separately;
+timed replay overwrites every consumed KV position. Both arms preserve the
+caller's seed. New CUDA regressions compare complete outputs after changed
+prompts, an early decode change, and a repeated original request. Focused
+local checks passed 14 tests; two CUDA cases were skipped on the CPU host.
+Lint and generated README checks passed. Actual B200 source execution,
+interleaved measurements, and Nsight capture are the next acceptance steps.
+
+A separate full-size Llama diagnostic using one shared RMSNorm kernel made
+eager and compiled SDPA bitwise equal across 8,388,608 values. The math-attention
+reference still exceeded the existing tolerance at 12 values, maximum absolute
+difference 0.03235; that numerical failure remains open. Exact TorchAO and
+pipeline traces both identify a stale static-input pointer assertion in the
+legacy Inductor CUDA graph runner during repeated setup. A targeted cache
+lifetime control is prepared; no compiler mode has been reduced to bypass it.

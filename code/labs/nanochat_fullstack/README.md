@@ -1,7 +1,7 @@
 # Lab - NanoChat Fullstack
 
 ## Summary
-Provides a harness-comparable NanoChat inference pair for a fixed prefill-plus-decode workload. The baseline uses the eager model for both phases; the optimized path compiles only the fixed-shape prefill and keeps KV-cache decode eager.
+Provides a harness-comparable NanoChat inference pair for a fixed prefill-plus-decode workload. The baseline launches the eager model for both phases; the optimized path replays the complete request in one CUDA graph.
 
 ## Problem
 Full-stack LLM comparisons can look successful while checking degenerate outputs or timing different execution scopes. This lab holds the model, inputs, attention settings, KV-cache layout, and decode work constant, then verifies the final decode logits from both paths.
@@ -13,11 +13,11 @@ Full-stack LLM comparisons can look successful while checking degenerate outputs
 
 ## Optimized Path
 - Runs the same model configuration, inputs, attention path, KV cache, and decode loop as the baseline.
-- Applies `torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False)` only to the fixed 512-token prefill.
-- Keeps the changing token-by-token decode shapes eager and warms the compiled prefill during setup, before timed iterations.
+- Captures the fixed 512-token prefill and all 64 ordered decode steps in one CUDA graph, preserving the baseline kernels and supplied decode tokens.
+- Warms and captures during setup; reports those costs separately from steady-state replay. Inputs remain mutable in place, and each replay overwrites the complete request's KV-cache state.
 
 ## Historical Delta
-No current performance delta is published. Earlier README timings and the retained expectation files were produced by older benchmark source. The current pair reinitializes projections that the training initializer leaves at zero, rejects all-zero or non-finite logits, and limits compilation to fixed-shape prefill. Prior numbers therefore do not establish the performance of this workload.
+No current performance delta is published. Earlier README timings and the retained expectation files were produced by older benchmark source. The current pair reinitializes projections that the training initializer leaves at zero, rejects all-zero or non-finite logits, and captures the complete request for replay. Prior numbers therefore do not establish the performance of this workload.
 
 Publish a new delta only from the current source after output verification, repeated interleaved baseline/optimized measurements on the target hardware, noise reporting, and profiler evidence.
 
@@ -27,7 +27,7 @@ cd code
 python -m cli.aisp bench run -t labs/nanochat_fullstack:nanochat_inference --profile deep_dive --single-gpu
 ```
 
-Use this path to collect Nsight evidence for the fixed-prefill/eager-decode comparison. A successful correctness run alone does not establish a performance win. Keep the `speedrun.sh` workflow separate from this harness pair; they exercise different scopes.
+Use this path to compare eager kernel launches with whole-request CUDA graph replay. A successful correctness run alone does not establish a performance win. Keep the `speedrun.sh` workflow separate from this harness pair; they exercise different scopes.
 
 ## Repro Commands
 ```bash
@@ -39,13 +39,13 @@ python -m cli.aisp bench run -t labs/nanochat_fullstack:nanochat_inference --pro
 
 ## Learning Goals
 - Keep a full-stack LLM workload in the benchmark suite rather than reducing the comparison to one kernel.
-- Isolate fixed-shape prefill compilation while preserving the same eager decode work.
+- Reduce host launch overhead while preserving the complete prefill and decode work.
 - Require meaningful final logits before interpreting timing or profiler results.
 
 ## Directory Layout
 | Path | Description |
 | --- | --- |
-| `baseline_nanochat_inference.py`, `optimized_nanochat_inference.py` | Harness pair for eager prefill/decode versus compiled prefill with eager decode. |
+| `baseline_nanochat_inference.py`, `optimized_nanochat_inference.py` | Harness pair for eager prefill/decode versus whole-request CUDA graph replay. |
 | `benchmark_incremental_optimizations.py` | Incremental benchmarking helper inside the NanoChat tree. |
 | `speedrun.sh`, `run1000.sh`, `README_FAST.md` | Broader NanoChat quick-start and end-to-end project entrypoints. |
 | `nanochat/`, `scripts/`, `tasks/`, `tests/` | Core NanoChat project tree and operational helpers. |
