@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
 import pytest
 import torch
 import torch._inductor.config as inductor_config
@@ -169,13 +175,48 @@ def test_eager_sdpa_full_output_changes_with_input_and_caller_seed(monkeypatch) 
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="Actual CUDA compile path required")
-def test_cuda_compiled_sdpa_matches_eager_for_two_full_changed_outputs(monkeypatch) -> None:
+def test_cuda_compiled_sdpa_matches_eager_for_two_full_changed_outputs(tmp_path) -> None:
+    # Other tests load compiler backends and change process-global compiler
+    # state. Run the unchanged numerical workload in a fresh interpreter, as
+    # the benchmark harness does, and contain native compiler workers on error.
+    from core.harness.benchmark_harness import _terminate_process_group
+
+    report = tmp_path / "cuda-numerics.json"
+    stdout_path = tmp_path / "cuda-numerics.stdout.log"
+    stderr_path = tmp_path / "cuda-numerics.stderr.log"
+    with stdout_path.open("w") as stdout, stderr_path.open("w") as stderr:
+        process = subprocess.Popen(
+            [sys.executable, "-m", "tests.test_llama_3_1_8b_numerics", str(report)],
+            cwd=Path(__file__).resolve().parents[1],
+            env=os.environ.copy(),
+            stdout=stdout,
+            stderr=stderr,
+            start_new_session=True,
+        )
+        try:
+            process.wait(timeout=570)  # Leave cleanup time inside the suite's 600-second limit.
+        except BaseException:
+            _terminate_process_group(process, process.pid)
+            raise
+        if process.returncode:
+            _terminate_process_group(process, process.pid)
+    assert process.returncode == 0, (
+        stdout_path.read_text()[-4000:] + "\n" + stderr_path.read_text()[-8000:]
+    )
+    checks = json.loads(report.read_text())
+    assert [check["seed"] for check in checks] == [20_000, 20_001]
+    assert all(check["shape"] == [1, 8, 128] for check in checks)
+
+
+def _check_cuda_compiled_sdpa_outputs(monkeypatch) -> list[dict]:
+    assert torch.cuda.is_available(), "The isolated numerical worker requires CUDA"
     monkeypatch.setattr(Llama31_8B_Optimization, "HIDDEN_SIZE", 128)
     monkeypatch.setattr(Llama31_8B_Optimization, "NUM_HEADS", 4)
     monkeypatch.setattr(Llama31_8B_Optimization, "NUM_LAYERS", 2)
     monkeypatch.setattr(Llama31_8B_Optimization, "INTERMEDIATE_SIZE", 256)
     device = torch.device("cuda")
     wrappers: list[Llama31_8B_Optimization] = []
+    checks: list[dict] = []
     torch.compiler.reset()
 
     try:
@@ -225,6 +266,14 @@ def test_cuda_compiled_sdpa_matches_eager_for_two_full_changed_outputs(monkeypat
 
             rtol, atol = LLAMA_BF16_OUTPUT_TOLERANCE
             torch.testing.assert_close(outputs[1], outputs[0], rtol=rtol, atol=atol)
+            checks.append({
+                "seed": input_seed,
+                "shape": list(outputs[1].shape),
+                "elements": outputs[1].numel(),
+                "max_abs": float((outputs[1] - outputs[0]).abs().max()),
+                "rtol": rtol,
+                "atol": atol,
+            })
             if previous_outputs is not None:
                 assert not torch.equal(outputs[0], previous_outputs[0])
                 assert not torch.equal(outputs[1], previous_outputs[1])
@@ -233,3 +282,10 @@ def test_cuda_compiled_sdpa_matches_eager_for_two_full_changed_outputs(monkeypat
         for wrapper in wrappers:
             wrapper.teardown()
         torch.compiler.reset()
+    return checks
+
+
+if __name__ == "__main__":
+    with pytest.MonkeyPatch.context() as worker_patch:
+        worker_checks = _check_cuda_compiled_sdpa_outputs(worker_patch)
+    Path(sys.argv[1]).write_text(json.dumps(worker_checks, indent=2) + "\n")

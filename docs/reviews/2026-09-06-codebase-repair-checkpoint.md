@@ -2006,3 +2006,37 @@ the code root and deliberately excludes inherited `PYTHONPATH`. This changes the
 test bootstrap, not the optimizer arithmetic or its strict comparisons. Its
 fresh validation and final CI outcome are tracked in
 [PR #21](https://github.com/cfregly/ai-performance-engineering/pull/21).
+
+### Wave58 and final CI: distributed bootstrap passes, fixes merged
+
+On `d77181e28`, all eight distributed optimizer worker cases passed on B200 in
+31.27 seconds: manual and Torch optimizers, one and two ranks, CPU and CUDA.
+The stage exited zero and drained. Final hosted benchmark validation then passed
+with 5,310 tests passed, 535 skipped, and no failures or errors; static analysis,
+dashboard checks, and dual-architecture CUDA builds also passed.
+
+PR #21 merged into `main` as `8148660617a145ae87f5a42b7c5d765243e08915`;
+PR #20 is also merged. The merge tree is identical to tested `d77181e28`.
+After the preceding GPU stages drained, the direct checkout was fast-forwarded
+to that merge. Wave59 collected all 5,845 tests and started a fresh full GPU
+suite with both B200s visible. Its final test and process-cleanup outcomes remain
+pending; the merge itself does not close that validation step.
+
+### Wave59: full merged-source run, one repeated compiler timeout
+
+All 5,845 cases completed on `814866061`: 5,766 passed, 78 skipped, and one
+failed in 41 minutes 52 seconds. The remaining failure was the Llama CUDA
+numerical test's 600-second autotune limit. Live process inspection showed
+continuing native CUTLASS template builds. After the complete XML was retained,
+pytest shutdown still awaited compiler work; the owned supervisor was signaled,
+drained its children, and returned 143. That process disposition is separate
+from the test counts. The XML SHA-256 is
+`16c72d1b262ac3de6d7eaeb9d2bb0b2f98b91daf19332facf79d1560627b5299`.
+
+A repair now places the unchanged two-input numerical workload in a fresh
+interpreter and scopes native worker cleanup to that process group. Five CPU
+tests passed and the CUDA case skipped locally; GPU acceptance is pending.
+Wave60 first repeats the unmodified isolated CUDA case, then runs the supported
+opt-in ZeRO, distributed Blackwell, and local-model routing checks, followed by
+full-workload memory/cache ABBA measurements and profiler inspection. Other
+hardening skips remain explicit where production detectors do not exist.

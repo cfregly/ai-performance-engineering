@@ -14,11 +14,13 @@ that are unavailable on this host.
 | Benchmark contract scan | 932 entrypoints; zero errors and warnings |
 | Repository-wide Ruff correctness checks | Passed |
 | Latest focused GPU regressions | 813 passed; all six isolated Llama tests also passed on `9d342cc79` |
-| Integrated GPU suite | 5,722 passed, 78 skipped, 30 failed; affected files passed after repairs in the focused rerun |
+| Latest integrated GPU suite | 5,766 passed, 78 skipped, one Llama compilation timeout on merged `814866061` |
 | Standalone MoE entrypoint | Level 0 completed its normal 436.5M-parameter workload |
 | Normal dual-pool vLLM runs | Exact tokens passed twice; speed target failed twice |
 | Gradient-fusion NCU | Complete five-metric baseline and optimized reports inspected; repeated baseline replay remains intermittent |
-| Hosted CI and main delivery | Final checks and merge status are tracked in [PR #21](https://github.com/cfregly/ai-performance-engineering/pull/21) |
+| Hosted CI | 5,310 CPU tests passed, 535 skipped; static analysis, dashboard and dual-architecture CUDA builds passed on `d77181e28` |
+| Main delivery | [PR #21](https://github.com/cfregly/ai-performance-engineering/pull/21) merged as `814866061`; its tree matches the tested code. PR #20 is also merged |
+| Remaining GPU validation | Llama compiler-process isolation, explicit opt-in distributed/model tests, and repeated memory/cache measurements are in progress |
 
 The original broad inventory included 441 zero exits, 44 exits with code 1, and
 one native crash. Zero exits include skips and informational results. Later
@@ -32,6 +34,19 @@ passed the subsequent B200 rerun; this is a full diagnostic run followed by
 focused repair validation, not a single passing integrated run. Pytest shutdown
 needed scoped cleanup of surviving compiler work after the original report was
 written. Both the test counts and cleanup receipt are preserved.
+
+The final distributed bootstrap repair passed all eight CPU/CUDA worker tests
+on B200, including one- and two-rank execution. Both final hosted workflows
+then passed: [benchmark validation](https://github.com/cfregly/ai-performance-engineering/actions/runs/34143112135)
+and [dual-architecture builds](https://github.com/cfregly/ai-performance-engineering/actions/runs/34143112148).
+The fresh integrated GPU rerun used merged `main` with the same tested code tree.
+It completed all 5,845 cases in 41 minutes 52 seconds and retained one repeated
+Llama autotune timeout. Native CUTLASS compilation was still active; pytest
+shutdown again needed scoped cleanup after its complete XML report was saved.
+The numerical test is being isolated in a fresh interpreter with owned compiler
+cleanup. That repair still requires GPU validation; no full integrated pass is
+claimed. Some skipped hardening tests also document detectors that are not yet
+implemented, rather than demonstrating those protections.
 
 The profiler builders now request exactly the five validated metrics for
 application-range replay, without adding a section set. All 67 profiler checks
