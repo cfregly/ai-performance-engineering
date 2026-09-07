@@ -16,14 +16,23 @@ Microbenchmarks are useful, but they can hide whether the repo's optimizations s
 - topology-aware and memory-aware configuration choices
 - the same benchmark harness contract as the lower-level labs
 
-## Current Llama Evidence Boundary
-The Wave 40 private B200 design probe used identical 32-layer,
-7,784,890,368-parameter models at batch one and 2,048 tokens. All
-8,388,608 outputs matched bitwise for eight distinct inputs. Its
-CUDA-event medians were `30.481 ms` eager and `28.233 ms` compiled
-(`1.080x`). This supports the compile-only source design; it does
-not qualify the subsequently changed factories or replace a normal
-harness and profiler run.
+## Measured Delta (portable B200 observations)
+Wave 46 ran the actual factories with identical 32-layer,
+7,784,890,368-parameter models at batch one and 2,048 tokens. Four
+ABBA blocks covered eight fresh inputs and eight observations per
+arm. Every complete 8,388,608-element output matched bitwise.
+CUDA-event medians were `30.3838 ms` eager and `28.1446 ms` compiled
+(`1.07956x`); sample standard deviations were `0.3793 ms` and
+`0.4166 ms`, with block ratios from `1.0639x` to `1.0970x`.
+
+Separate Nsight Systems captures observed three steady-state
+requests per arm: 1,731 eager kernels versus 1,443 compiled kernels
+and exactly three CUDA graph launches. Complete final outputs
+remained bitwise equal. These portable observations support the
+compilation mechanism for this workload, not a cross-machine or
+locked-clock performance guarantee. See the repository's
+[repair checkpoint](../../../docs/reviews/2026-09-06-codebase-repair-checkpoint.md)
+for the retained attempt history and evidence boundaries.
 
 The retained materialized-attention comparisons exceeded the
 unchanged `rtol=0.02`, `atol=0.02` gate. That path remains available

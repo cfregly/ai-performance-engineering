@@ -13,14 +13,24 @@ from ch19.optimized_dynamic_quantized_cache import get_benchmark as get_optimize
 from ch19.optimized_dynamic_quantized_cache_coalesced import (
     get_benchmark as get_coalesced_optimized_benchmark,
 )
+from tests.protection_test_utils import preserve_rng_state
+
+
+@pytest.fixture(autouse=True)
+def _restore_rng_after_test():
+    with preserve_rng_state():
+        yield
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for dynamic_quantized_cache benchmarks")
-def test_dynamic_quantized_cache_pair_outputs_match_within_contract_tolerance() -> None:
+@pytest.mark.parametrize("seed", [42, 1042])
+def test_dynamic_quantized_cache_pair_outputs_match_within_contract_tolerance(seed: int) -> None:
     baseline = get_baseline_benchmark()
     optimized = get_optimized_benchmark()
     try:
+        torch.manual_seed(seed)
         baseline.setup()
+        torch.manual_seed(seed)
         optimized.setup()
         baseline.benchmark_fn()
         optimized.benchmark_fn()
@@ -52,13 +62,16 @@ def test_dynamic_quantized_cache_pair_outputs_match_within_contract_tolerance() 
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for dynamic_quantized_cache benchmarks")
-def test_dynamic_quantized_cache_coalesced_pair_outputs_match_within_contract_tolerance() -> None:
+@pytest.mark.parametrize("seed", [42, 1042])
+def test_dynamic_quantized_cache_coalesced_pair_outputs_match_within_contract_tolerance(seed: int) -> None:
     baseline = get_coalesced_baseline_benchmark()
     optimized = get_coalesced_optimized_benchmark()
     try:
         assert baseline._refresh_schedule_bits == baseline.schedule_bits
         assert optimized._refresh_schedule_bits == [8, 6, 4]
+        torch.manual_seed(seed)
         baseline.setup()
+        torch.manual_seed(seed)
         optimized.setup()
         baseline.benchmark_fn()
         optimized.benchmark_fn()

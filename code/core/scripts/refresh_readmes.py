@@ -851,7 +851,30 @@ ENTRIES["README.md"] = Entry(
         "`pytest tests/integration` succeeds to confirm harness discovery and CLI plumbing.",
         "`python core/benchmark/benchmark_peak.py` reports TFLOP/s, bandwidth, and NVLink numbers close to the published ceilings.",
     ],
-    extra_sections=[WALL_OF_SHAME],
+    extra_sections=[
+        dedent(r"""
+            ## Optional vLLM and FlashAttention 4 compatibility
+
+            For the qualified FlashAttention 4 (`flash-attn-4==4.0.0b19`) environment on
+            Linux x86_64, backport the merged vLLM rotary-import fix into the pinned wheel:
+            ```bash
+            mkdir -p third_party/wheels/vllm-upstream
+            python -m pip download --no-deps --only-binary=:all: \
+              --index-url https://wheels.vllm.ai/0.16.0/cu130 \
+              --dest third_party/wheels/vllm-upstream 'vllm==0.16.0+cu130'
+            python scripts/build_vllm_fa4_compat_wheel.py \
+              --input-wheel third_party/wheels/vllm-upstream/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl \
+              --output-dir third_party/wheels/vllm-fa4-backport \
+              --install-python "$VIRTUAL_ENV/bin/python"
+            ```
+            The tool accepts only the qualified wheel hash, preserves the Torch and FA4
+            versions, installs with `--no-deps`, and writes a provenance manifest. Retire
+            the backport after `vllm_no_deps.pin` advances to a wheel containing
+            [vLLM PR #42679](https://github.com/vllm-project/vllm/pull/42679) and that wheel
+            passes the same FA4 import and full-model gates.
+        """),
+        WALL_OF_SHAME,
+    ],
     notes=[
         "`core/scripts/profile_all_workloads.sh` and `ncu_template.ini` capture Nsight traces with consistent metric sets.",
         "`artifacts/runs/` holds run outputs (results/profiles/reports/logs); clean via `python cleanup.py` when rotating hardware.",
@@ -6844,16 +6867,25 @@ ENTRIES["labs/real_world_models"] = lab_entry(
             ),
         ),
         MarkdownSection(
-            "Current Llama Evidence Boundary",
+            "Measured Delta (portable B200 observations)",
             dedent(
                 """\
-                The Wave 40 private B200 design probe used identical 32-layer,
-                7,784,890,368-parameter models at batch one and 2,048 tokens. All
-                8,388,608 outputs matched bitwise for eight distinct inputs. Its
-                CUDA-event medians were `30.481 ms` eager and `28.233 ms` compiled
-                (`1.080x`). This supports the compile-only source design; it does
-                not qualify the subsequently changed factories or replace a normal
-                harness and profiler run.
+                Wave 46 ran the actual factories with identical 32-layer,
+                7,784,890,368-parameter models at batch one and 2,048 tokens. Four
+                ABBA blocks covered eight fresh inputs and eight observations per
+                arm. Every complete 8,388,608-element output matched bitwise.
+                CUDA-event medians were `30.3838 ms` eager and `28.1446 ms` compiled
+                (`1.07956x`); sample standard deviations were `0.3793 ms` and
+                `0.4166 ms`, with block ratios from `1.0639x` to `1.0970x`.
+
+                Separate Nsight Systems captures observed three steady-state
+                requests per arm: 1,731 eager kernels versus 1,443 compiled kernels
+                and exactly three CUDA graph launches. Complete final outputs
+                remained bitwise equal. These portable observations support the
+                compilation mechanism for this workload, not a cross-machine or
+                locked-clock performance guarantee. See the repository's
+                [repair checkpoint](../../../docs/reviews/2026-09-06-codebase-repair-checkpoint.md)
+                for the retained attempt history and evidence boundaries.
 
                 The retained materialized-attention comparisons exceeded the
                 unchanged `rtol=0.02`, `atol=0.02` gate. That path remains available

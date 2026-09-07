@@ -12,6 +12,13 @@ from labs.kv_optimization.optimized_kv_standard import (
     get_benchmark,
     run_benchmark,
 )
+from tests.protection_test_utils import preserve_rng_state
+
+
+@pytest.fixture(autouse=True)
+def _restore_rng_after_test():
+    with preserve_rng_state():
+        yield
 
 
 def test_canonical_factory_selects_graph_and_eager_remains_explicit() -> None:
@@ -43,7 +50,8 @@ def test_graph_replay_has_no_eager_exception_fallback() -> None:
     not torch.cuda.is_available() or not hasattr(torch, "float8_e4m3fn"),
     reason="CUDA with torch.float8_e4m3fn required for graph replay parity",
 )
-def test_cuda_graph_replay_matches_the_full_eager_fp8_body() -> None:
+@pytest.mark.parametrize("seed", [42, 1042])
+def test_cuda_graph_replay_matches_the_full_eager_fp8_body(seed: int) -> None:
     common = {
         "batch_size": 2,
         "num_layers": 3,
@@ -55,9 +63,11 @@ def test_cuda_graph_replay_matches_the_full_eager_fp8_body() -> None:
     }
     eager = OptimizedKVFP8Compressed(**common, use_cuda_graph=False)
     graph = OptimizedKVFP8Compressed(**common, use_cuda_graph=True)
-    eager.setup()
-    graph.setup()
     try:
+        torch.manual_seed(seed)
+        eager.setup()
+        torch.manual_seed(seed)
+        graph.setup()
         torch.testing.assert_close(eager._generated_k_steps, graph._generated_k_steps)
         torch.testing.assert_close(eager._generated_v_steps, graph._generated_v_steps)
 

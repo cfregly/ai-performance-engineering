@@ -1930,4 +1930,32 @@ The baseline gradient-fusion one-metric NCU diagnostic completed in 26 seconds
 and emitted a report over the full 2,048-tensor iteration. This is partial
 profiler evidence, not the still-required five-metric report. Wave53b collected
 5,830 tests and started the final integrated GPU suite on the same frozen source.
-Its final result and hosted CI remain pending.
+The integrated run completed all 5,830 cases: 5,722 passed, 78 skipped, and
+30 failed in 42m52s. Its JUnit report is retained. After the summary was written,
+pytest shutdown waited on surviving compiler work from a timed-out test. The
+owned stage supervisor received SIGTERM and drained its process tree; its
+process exit is therefore 143, distinct from the completed test counts.
+
+### Wave53b failure repairs and Wave54 profiler control
+
+The failures identified additional tests that assumed setup would silently reset
+seed 42. Paired and repeated fixtures now seed each setup explicitly, exercise
+42 and 1042, and restore the caller's RNG state. Complete output checks and
+numerical tolerances remain intact. Eight hygiene assertions were updated for
+full verification buffers and the current graph lifecycle. Other stale assertions
+now recognize the explicit distributed seed adapter, the isolated compiled-model
+wrapper, and separate eager/fused memory-traffic models. Focused CPU batches
+passed 553 tests with one skip, 82 tests with eight skips, and 10 tests with nine
+skips; the latest GPU fixture rerun remains pending.
+
+README generation now preserves the explicit vLLM/FA4 backport instructions and
+the actual Wave46 Llama measurements. All 12 README checks passed. The integrated
+Llama compile test exceeded its 600-second limit while awaiting autotune
+compilation; its isolated rerun remains pending, separate from the earlier
+successful full-model execution.
+
+Wave54 requested all five minimal NCU metrics without adding `--set basic` on
+the unchanged full 2,048-tensor, two-GPU baseline. It advanced to replay pass four
+but hit its three-minute bound. Cleanup succeeded; replay/kernel-count diagnostics
+were retained. This is an incomplete capture and does not establish that removing
+the section set fixes the profiler. Hosted CI and main merges remain pending.

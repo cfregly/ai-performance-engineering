@@ -1,12 +1,21 @@
 """Execute both inference phases; verification must retain every phase output."""
 
 import torch
+import pytest
 
 from ch04.baseline_disaggregated import BaselineDisaggregatedBenchmark
 from ch04.optimized_disaggregated import OptimizedDisaggregatedBenchmark
+from tests.protection_test_utils import preserve_rng_state
 
 
-def test_full_prefill_and_decode_outputs_match_and_refresh(monkeypatch):
+@pytest.fixture(autouse=True)
+def _restore_rng_after_test():
+    with preserve_rng_state():
+        yield
+
+
+@pytest.mark.parametrize("seed", [42, 1042])
+def test_full_prefill_and_decode_outputs_match_and_refresh(monkeypatch, seed):
     monkeypatch.setattr(torch.cuda, "synchronize", lambda *args, **kwargs: None)
     benchmarks = [BaselineDisaggregatedBenchmark(), OptimizedDisaggregatedBenchmark()]
     try:
@@ -14,6 +23,7 @@ def test_full_prefill_and_decode_outputs_match_and_refresh(monkeypatch):
             benchmark.device = torch.device("cpu")
             benchmark.batch_size = 1
             benchmark.prefill_len = 3
+            torch.manual_seed(seed)
             benchmark.setup()
             benchmark.benchmark_fn()
             benchmark.capture_verification_payload()

@@ -161,6 +161,19 @@ python -m cli.aisp bench list-targets --chapter ch01
 python -m cli.aisp bench run --targets ch01 --profile minimal
 python -m cli.aisp bench run-tier1 --single-gpu --profile minimal
 ```
+- `setup.sh` installs system prerequisites (drivers, CUDA, Nsight) and should be rerun after driver upgrades.
+- Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited hosts.
+- Use `python -m cli.aisp bench expectations --hardware b200 --min-speedup 1.05` to report expectation entries below a target threshold.
+- Repeat `--targets` for multi-scope runs, for example `python -m cli.aisp bench run --targets ch01 --targets ch02 --profile minimal`; use `python -m cli.aisp bench run-tier1 --single-gpu --profile minimal` for the canonical regression suite.
+- Portable runs do not update expectation files unless `--allow-portable-expectations-update` is supplied.
+- `python core/analysis/analyze_expectations.py --artifacts-dir artifacts` compares new runs to stored thresholds.
+
+## Validation Checklist
+- `pytest tests/integration` succeeds to confirm harness discovery and CLI plumbing.
+- `python core/benchmark/benchmark_peak.py` reports TFLOP/s, bandwidth, and NVLink numbers close to the published ceilings.
+
+## Optional vLLM and FlashAttention 4 compatibility
+
 For the qualified FlashAttention 4 (`flash-attn-4==4.0.0b19`) environment on
 Linux x86_64, backport the merged vLLM rotary-import fix into the pinned wheel:
 ```bash
@@ -178,16 +191,6 @@ versions, installs with `--no-deps`, and writes a provenance manifest. Retire
 the backport after `vllm_no_deps.pin` advances to a wheel containing
 [vLLM PR #42679](https://github.com/vllm-project/vllm/pull/42679) and that wheel
 passes the same FA4 import and full-model gates.
-- `setup.sh` installs system prerequisites (drivers, CUDA, Nsight) and should be rerun after driver upgrades.
-- Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited hosts.
-- Use `python -m cli.aisp bench expectations --hardware b200 --min-speedup 1.05` to report expectation entries below a target threshold.
-- Repeat `--targets` for multi-scope runs, for example `python -m cli.aisp bench run --targets ch01 --targets ch02 --profile minimal`; use `python -m cli.aisp bench run-tier1 --single-gpu --profile minimal` for the canonical regression suite.
-- Portable runs do not update expectation files unless `--allow-portable-expectations-update` is supplied.
-- `python core/analysis/analyze_expectations.py --artifacts-dir artifacts` compares new runs to stored thresholds.
-
-## Validation Checklist
-- `pytest tests/integration` succeeds to confirm harness discovery and CLI plumbing.
-- `python core/benchmark/benchmark_peak.py` reports TFLOP/s, bandwidth, and NVLink numbers close to the published ceilings.
 
 ## Wall of Shame
 The benchmark harness includes a strict set of correctness and validity checks to prevent misleading speedups.

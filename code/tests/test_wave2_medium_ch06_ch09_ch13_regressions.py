@@ -85,7 +85,12 @@ def test_memory_bound_roofline_metrics_include_every_repeat(
         metrics = benchmark.get_custom_metrics()
         assert metrics is not None
         assert metrics["total_flops"] == 17 * 2 * 64
-        assert metrics["total_bytes"] == 17 * torch.float32.itemsize * 2 * 64
+        # Eager materializes multiply and add separately on every repeat;
+        # compilation fuses the chain into one read and one write.
+        expected_bytes = 17 * torch.float32.itemsize * (
+            4 * 64 if benchmark_type is BaselineMemoryBoundBenchmark else 2
+        )
+        assert metrics["total_bytes"] == expected_bytes
         assert metrics["elapsed_ms"] == 2.5
 
     b200_expectations = json.loads(
