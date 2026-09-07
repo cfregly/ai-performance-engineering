@@ -2598,6 +2598,11 @@ class BenchmarkHarness:
         getter = getattr(benchmark, "get_torchrun_spec", None)
         if not callable(getter):
             raise TypeError("A torchrun benchmark must expose a callable get_torchrun_spec()")
+        # Launch specs may prepare the parent's numerical reference. Seed that
+        # construction before it consumes RNG, using the same seed sent to the
+        # child worker below.
+        if self._seed_info is None:
+            self._ensure_runtime_initialized()
         # A declared spec may reject unsupported verification or an invalid
         # configuration. Preserve that failure before constructing any launcher.
         spec: Optional[TorchrunLaunchSpec] = getter(config)
@@ -2714,8 +2719,6 @@ class BenchmarkHarness:
         script_args.extend(_config_args_from_map())
         script_args.extend(extra_args)
 
-        if self._seed_info is None:
-            self._ensure_runtime_initialized()
         expected_torch_seed = getattr(self, "_seed_info", {}).get("torch_seed")
         if expected_torch_seed is None:
             raise RuntimeError("Missing expected torch seed for torchrun enforcement")
