@@ -28,6 +28,7 @@ from core.harness.benchmark_harness import (
     WorkloadMetadata,
 )
 from core.profiling.nvtx_helper import nvtx_range
+from core.utils.worker_seed import apply_worker_seed
 from labs.cache_aware_disagg_inference.cache_aware_disagg_multigpu_result import (
     CACHE_AWARE_METRICS_PATH_ENV,
     CACHE_AWARE_RESULT_CALLBACK,
@@ -413,6 +414,7 @@ def _run_torchrun_worker(
     label: str,
     iters: int,
     warmup: int,
+    seed: int,
 ) -> None:
     if not torch.cuda.is_available():
         raise RuntimeError("SKIPPED: CUDA required for cache-aware disaggregated inference")
@@ -435,8 +437,7 @@ def _run_torchrun_worker(
     if rank == 0:
         _emit_split_advice(prefill_ranks, decode_ranks)
 
-    torch.manual_seed(42)
-    torch.cuda.manual_seed_all(42)
+    apply_worker_seed(seed)
     model = TinyPrefillDecode(cfg.hidden_size, cfg.num_layers, device, cfg.dtype).eval()
 
     prompts: Optional[torch.Tensor] = None
@@ -1037,9 +1038,6 @@ class CacheAwareDisaggMultiGPUBenchmark(
         )
         self._decode_token_divisor = float(max(self.cfg.decode_tokens, 1))
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
-
         reference_state = _build_reference_state(self.cfg)
         self._prefill_models = {}
         self._decode_models = {}
@@ -1490,6 +1488,7 @@ class CacheAwareDisaggMultiGPUBenchmark(
             config_arg_map={
                 "iterations": "--iters",
                 "warmup": "--warmup",
+                "seed": "--seed",
             },
             result_callback=CACHE_AWARE_RESULT_CALLBACK,
             timing_source="rank0_time_per_iter_ms",
@@ -1580,6 +1579,7 @@ def _parse_args(
     add_shared_args(parser)
     parser.add_argument("--iters", type=int, default=4)
     parser.add_argument("--warmup", type=int, default=3)
+    parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args(argv)
 
 
@@ -1602,4 +1602,5 @@ def run_cli(
         ),
         iters=int(args.iters),
         warmup=int(args.warmup),
+        seed=args.seed,
     )
