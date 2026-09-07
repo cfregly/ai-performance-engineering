@@ -215,10 +215,8 @@ def test_ch10_and_priority_labs_render_custom_evidence_sections() -> None:
     assert "AISP_KV_CACHE_ACCURACY_POLICY" in kv_cache_compression_markdown
 
 
-def test_priority_readmes_match_generated_content() -> None:
-    slugs = ("README.md",) + PRIORITY_EVIDENCE_DOCS + GENERATED_SPECIAL_DOCS
-
-    for slug in slugs:
+def test_all_generator_readmes_match_generated_content() -> None:
+    for slug in ENTRIES:
         expected = _format_markdown(ENTRIES[slug]).rstrip() + "\n"
         actual = _output_path(slug).read_text(encoding="utf-8")
         assert actual == expected, f"{slug} is out of sync with core/scripts/refresh_readmes.py"
