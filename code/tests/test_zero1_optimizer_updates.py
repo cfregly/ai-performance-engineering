@@ -107,7 +107,9 @@ def test_zero1_accumulated_clipped_updates_match_adamw(
         pytest.skip(f"requires {world_size} CUDA devices")
     env = {
         key: value for key, value in os.environ.items()
-        if key not in {"RANK", "WORLD_SIZE", "LOCAL_RANK", "MASTER_ADDR", "MASTER_PORT"}
+        if key not in {
+            "RANK", "WORLD_SIZE", "LOCAL_RANK", "MASTER_ADDR", "MASTER_PORT", "PYTHONPATH"
+        }
     }
     env["OMP_NUM_THREADS"] = "1"
     with socket.socket() as listener:
@@ -116,9 +118,10 @@ def test_zero1_accumulated_clipped_updates_match_adamw(
     done = subprocess.run(
         [sys.executable, "-m", "torch.distributed.run", "--nnodes=1",
          "--rdzv-backend=static", f"--rdzv-endpoint={endpoint}",
-         f"--nproc-per-node={world_size}", str(Path(__file__).resolve()),
+         f"--nproc-per-node={world_size}", "--module", "tests.test_zero1_optimizer_updates",
          "--output-dir", str(tmp_path), "--device-kind", device_kind,
          "--implementation", implementation],
+        cwd=Path(__file__).resolve().parents[1],
         env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         timeout=90,
     )

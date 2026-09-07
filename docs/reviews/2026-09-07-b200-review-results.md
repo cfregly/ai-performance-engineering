@@ -17,8 +17,8 @@ that are unavailable on this host.
 | Integrated GPU suite | 5,722 passed, 78 skipped, 30 failed; affected files passed after repairs in the focused rerun |
 | Standalone MoE entrypoint | Level 0 completed its normal 436.5M-parameter workload |
 | Normal dual-pool vLLM runs | Exact tokens passed twice; speed target failed twice |
-| Baseline gradient-fusion NCU | Full-workload one-metric report captured; three-minute five-metric attempt incomplete; longer bounded probe pending |
-| Hosted CI and remaining main merges | Pending final GPU validation |
+| Gradient-fusion NCU | Complete five-metric baseline and optimized reports inspected; repeated baseline replay remains intermittent |
+| Hosted CI and main delivery | Final checks and merge status are tracked in [PR #21](https://github.com/cfregly/ai-performance-engineering/pull/21) |
 
 The original broad inventory included 441 zero exits, 44 exits with code 1, and
 one native crash. Zero exits include skips and informational results. Later
@@ -32,6 +32,13 @@ passed the subsequent B200 rerun; this is a full diagnostic run followed by
 focused repair validation, not a single passing integrated run. Pytest shutdown
 needed scoped cleanup of surviving compiler work after the original report was
 written. Both the test counts and cleanup receipt are preserved.
+
+The profiler builders now request exactly the five validated metrics for
+application-range replay, without adding a section set. All 67 profiler checks
+passed on CPU and B200. One complete full-workload baseline capture and the
+repository-generated optimized capture passed strict report inspection. A later
+baseline repeat timed out after ten minutes, so stable Nsight/NCCL replay remains
+unproven on this stack. Both successful and incomplete attempts are retained.
 
 ## Measured outcomes
 

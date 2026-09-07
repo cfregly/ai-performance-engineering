@@ -1976,3 +1976,33 @@ survive regeneration, and the regression checks every generator-owned README.
 All twelve README tests passed. A final ten-minute, full-workload five-metric
 NCU control is running separately; no profiler command-builder change is claimed
 from an incomplete capture.
+
+### Waves56–57: exact profiler metrics and retained replay intermittency
+
+The longer ten-minute control completed the unchanged full 2,048-tensor baseline
+and passed strict report inspection. Its 134,453,562-byte report contains the
+selected range and all five minimal metrics, with SHA-256
+`a44b04d359a252f7a292326b227cc29be29ef5a4a31d5a347042fea3c7f6cb46`.
+The earlier three-minute timeout remains an incomplete attempt.
+
+Commit `d6aee0cfe` fixes both NCU builders to omit the extra section set only in
+application-range mode. Other replay modes retain their existing policy. All
+67 controls passed on CPU and again on B200. The real standalone builder's
+optimized capture also passed strict inspection, with report SHA-256
+`9b42ecb806a7add12750c2adc0c17d0b88aab90097765aca03ad8d64ee9087bc`.
+The real harness builder's baseline repeat reached replay pass six but timed out
+after ten minutes and drained successfully. The profiler binary and requested
+metrics matched the successful control. Removing surplus metrics is correct,
+but stable baseline replay is not established; the intermittent Nsight/NCCL
+limitation is retained explicitly.
+
+### Final CI bootstrap repair
+
+The first completed final CI run on `d6aee0cfe` reported 5,306 passed, 535 skipped,
+and four failed tests. All four failures were the same test-launcher import
+defect: a directly executed distributed test script could not import `core`
+without an inherited `PYTHONPATH`. The launcher now uses module execution from
+the code root and deliberately excludes inherited `PYTHONPATH`. This changes the
+test bootstrap, not the optimizer arithmetic or its strict comparisons. Its
+fresh validation and final CI outcome are tracked in
+[PR #21](https://github.com/cfregly/ai-performance-engineering/pull/21).
