@@ -42,6 +42,7 @@ class _FakeEngineArgs:
         gpu_memory_utilization: float,
         enable_prefix_caching: bool,
         enforce_eager: bool,
+        attention_backend: str | None = None,
     ) -> None:
         self.model = model
         self.tensor_parallel_size = tensor_parallel_size
@@ -49,6 +50,7 @@ class _FakeEngineArgs:
         self.gpu_memory_utilization = gpu_memory_utilization
         self.enable_prefix_caching = enable_prefix_caching
         self.enforce_eager = enforce_eager
+        self.attention_backend = attention_backend
         self.created.append(self)
 
     def create_engine_config(self) -> SimpleNamespace:
@@ -181,6 +183,18 @@ def test_wrapper_uses_vllm_016_engine_and_request_signatures(vllm_016_api: None)
         }
     ]
     assert _FakeLLMEngine.created[0].pending["req-0"][1].ignore_eos is True
+
+
+def test_explicit_attention_backend_reaches_engine_config(vllm_016_api: None) -> None:
+    vllm_runner._VllmWrapper("gpu0", 0, "/models/local-test-model", attention_backend="TRITON_ATTN")
+    assert _FakeEngineArgs.created[-1].attention_backend == "TRITON_ATTN"
+
+
+def test_attention_backend_cli_is_explicit(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(vllm_runner.sys, "argv", ["router", "--attention-backend", "TRITON_ATTN"])
+    assert vllm_runner._parse_cli_args().attention_backend == "TRITON_ATTN"
+    monkeypatch.setattr(vllm_runner.sys, "argv", ["router"])
+    assert vllm_runner._parse_cli_args().attention_backend is None
 
 
 def test_pinned_api_mismatch_fails_explicitly_without_fallback(

@@ -127,6 +127,10 @@ def _assert_vllm_runtime_ready() -> None:
 def _parse_cli_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--model", type=str, help="Local HF model path/id for vLLM.")
+    parser.add_argument(
+        "--attention-backend", type=str, default=None,
+        help="Explicit vLLM attention backend; use TRITON_ATTN with VLLM_BATCH_INVARIANT=1 for exact dual-pool comparisons.",
+    )
     parser.add_argument("--prefill-gpus", type=str, default=None, help="Comma list of GPU ids for prefill pool.")
     parser.add_argument("--decode-gpus", type=str, default=None, help="Comma list of GPU ids for decode pool.")
     parser.add_argument("--req-count", type=int, default=16, help="Number of requests for routing demo.")
@@ -266,7 +270,7 @@ class _RoutingTelemetry:
         }
 
 
-def _build_vllm_engine(engine_cls, model_id: str, device_index: int):
+def _build_vllm_engine(engine_cls, model_id: str, device_index: int, *, attention_backend: str | None = None):
     """Build a pinned-vLLM engine on one logical CUDA device.
 
     vLLM 0.16 removed ``device`` from ``EngineArgs``. Its single-process
@@ -286,6 +290,7 @@ def _build_vllm_engine(engine_cls, model_id: str, device_index: int):
         # the full prefill length on every request.
         enable_prefix_caching=False,
         enforce_eager=True,
+        attention_backend=attention_backend,
     )
     create_engine_config = getattr(engine_args, "create_engine_config", None)
     from_vllm_config = getattr(engine_cls, "from_vllm_config", None)
@@ -309,7 +314,7 @@ def _build_vllm_engine(engine_cls, model_id: str, device_index: int):
 class _VllmWrapper:
     """Minimal wrapper around LLMEngine for metrics and request tracking."""
 
-    def __init__(self, gpu_id: str, device_index: int, model_id: str) -> None:
+    def __init__(self, gpu_id: str, device_index: int, model_id: str, *, attention_backend: str | None = None) -> None:
         _assert_vllm_runtime_ready()
         if EngineArgs is None or LLMEngine is None or SamplingParams is None:
             _skip(_format_vllm_import_error(_IMPORT_ERROR or RuntimeError("unknown vLLM import failure")))
@@ -318,7 +323,7 @@ class _VllmWrapper:
         self.device_index = device_index
         buf = io.StringIO()
         with redirect_stdout(buf):
-            self.engine = _build_vllm_engine(LLMEngine, model_id, device_index)
+            self.engine = _build_vllm_engine(LLMEngine, model_id, device_index, attention_backend=attention_backend)
         captured = buf.getvalue().strip()
         if captured:
             try:
@@ -455,7 +460,7 @@ class _VllmV1Wrapper(_VllmWrapper):
     so we can access ``engine_core.step_fn()`` and surface the executed flag.
     """
 
-    def __init__(self, gpu_id: str, device_index: int, model_id: str) -> None:
+    def __init__(self, gpu_id: str, device_index: int, model_id: str, *, attention_backend: str | None = None) -> None:
         _assert_vllm_runtime_ready()
         if EngineArgs is None or SamplingParams is None:
             _skip(f"vLLM import failed: {_IMPORT_ERROR}")
@@ -471,7 +476,7 @@ class _VllmV1Wrapper(_VllmWrapper):
         # Keep EngineCore in-process so we can drive step_fn() directly.
         buf = io.StringIO()
         with redirect_stdout(buf):
-            self.engine = _build_vllm_engine(V1LLMEngine, model_id, device_index)
+            self.engine = _build_vllm_engine(V1LLMEngine, model_id, device_index, attention_backend=attention_backend)
         captured = buf.getvalue().strip()
         if captured:
             try:
@@ -672,7 +677,10 @@ def run_vllm_routing_with_topology(
     decode_ids = _parse_device_list(args.decode_gpus, "0,1", torch.cuda.device_count())
     if not decode_ids:
         decode_ids = list(range(min(2, torch.cuda.device_count())))
-    engines = {f"gpu{idx}": _VllmWrapper(f"gpu{idx}", idx, model_id) for idx in decode_ids}
+    engines = {
+        f"gpu{idx}": _VllmWrapper(f"gpu{idx}", idx, model_id, attention_backend=getattr(args, "attention_backend", None))
+        for idx in decode_ids
+    }
 
     # Router selection
     router = Router() if mode == "optimized" else None
@@ -845,7 +853,10 @@ def run_dual_pool_vllm_with_topology(
         _skip("No usable GPUs after parsing pool assignments.")
 
     wrapper_cls = _VllmV1Wrapper if getattr(args, "use_v1_core_loop", False) else _VllmWrapper
-    engines = {h.gpu_id: wrapper_cls(h.gpu_id, h.device_index, model_id) for h in handles}
+    engines = {
+        h.gpu_id: wrapper_cls(h.gpu_id, h.device_index, model_id, attention_backend=getattr(args, "attention_backend", None))
+        for h in handles
+    }
 
     router = Router()
     for h in handles:
