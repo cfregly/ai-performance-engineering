@@ -30,6 +30,7 @@ from core.harness.benchmark_harness import (
 )
 from core.profiling.nvtx_helper import nvtx_range
 from core.utils.logger import get_logger
+from core.utils.worker_seed import apply_worker_seed
 
 logger = get_logger(__name__)
 
@@ -165,6 +166,7 @@ def _run_worker(
     hidden: int,
     num_layers: Optional[int],
     num_micro_batches: Optional[int],
+    seed: int,
 ) -> None:
     require_min_gpus(2, "baseline_pipeline_parallel.py")
     rank, world_size, local_rank = _init_distributed()
@@ -173,8 +175,7 @@ def _run_worker(
     num_layers = _resolve_num_layers(num_layers, world_size)
     batch_size, num_micro_batches = _resolve_batch_config(batch_size, num_micro_batches, world_size)
 
-    torch.manual_seed(42)
-    torch.cuda.manual_seed_all(42)
+    apply_worker_seed(seed)
 
     device = torch.device(f"cuda:{local_rank}")
     layers_per_stage = num_layers // world_size
@@ -269,6 +270,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Baseline pipeline parallel benchmark")
     parser.add_argument("--iters", type=int, default=3)
     parser.add_argument("--warmup", type=int, default=5)
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--batch-size",
         type=int,
@@ -298,6 +300,7 @@ def main() -> None:
         args.hidden_size,
         args.num_layers,
         args.micro_batches,
+        seed=args.seed,
     )
 
 
@@ -422,6 +425,7 @@ class BaselinePipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark)
             config_arg_map={
                 "iterations": "--iters",
                 "warmup": "--warmup",
+                "seed": "--seed",
             },
             timing_source="rank0_time_per_iter_ms",
             timing_iterations_per_sample=int(effective_config.iterations),

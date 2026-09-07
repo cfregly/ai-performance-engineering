@@ -25,6 +25,7 @@ from core.harness.benchmark_harness import (
 )
 from core.profiling.nvtx_helper import nvtx_range
 from core.utils.logger import get_logger
+from core.utils.worker_seed import apply_worker_seed
 
 logger = get_logger(__name__)
 
@@ -69,14 +70,13 @@ def _build_block(hidden: int, device: torch.device) -> nn.Module:
     return BufferedTorchcommsBlock(hidden).to(device).eval()
 
 
-def _run_worker(iters: int, warmup: int, batch: int, hidden: int) -> None:
+def _run_worker(iters: int, warmup: int, batch: int, hidden: int, seed: int) -> None:
     _require_torchcomms()
     rank, world_size, local_rank = _init_distributed()
     if world_size < 1:
         raise RuntimeError("optimized_torchcomms requires >=1 GPU.")
 
-    torch.manual_seed(42)
-    torch.cuda.manual_seed_all(42)
+    apply_worker_seed(seed)
 
     device = torch.device(f"cuda:{local_rank}")
     comm_block = _build_block(hidden, device)
@@ -131,10 +131,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Optimized torchcomms benchmark")
     parser.add_argument("--iters", type=int, default=50)
     parser.add_argument("--warmup", type=int, default=5)
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--batch", type=int, default=_DEFAULT_BATCH)
     parser.add_argument("--hidden", type=int, default=_DEFAULT_HIDDEN)
     args = parser.parse_args()
-    _run_worker(args.iters, args.warmup, args.batch, args.hidden)
+    _run_worker(args.iters, args.warmup, args.batch, args.hidden, seed=args.seed)
 
 
 class OptimizedTorchcommsBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -242,6 +243,7 @@ class OptimizedTorchcommsBenchmark(VerificationPayloadMixin, BaseBenchmark):
             config_arg_map={
                 "iterations": "--iters",
                 "warmup": "--warmup",
+                "seed": "--seed",
             },
         )
 

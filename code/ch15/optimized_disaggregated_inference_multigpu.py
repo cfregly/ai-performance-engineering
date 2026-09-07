@@ -53,6 +53,7 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--iters", type=int, default=4)
     parser.add_argument("--warmup", type=int, default=5)
+    parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
 
 
@@ -65,4 +66,5 @@ def main() -> None:
         iters=int(args.iters),
         warmup=int(args.warmup),
         profile_nvtx_range=OPTIMIZED_PROFILE_NVTX_RANGE,
+        seed=args.seed,
     )
