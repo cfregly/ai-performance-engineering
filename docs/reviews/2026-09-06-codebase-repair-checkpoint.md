@@ -5,7 +5,7 @@ distributed launch behavior, and environment diagnostics. It is a validated
 repair checkpoint, not a claim that every example is maximally fast or that the
 complete hardware matrix has passed.
 
-The latest completed follow-up is [Waves49c–51](#waves49c51-correctness-closure-and-reproducible-router-runtime).
+The latest follow-up is [Waves52–53](#waves5253-normal-router-runs-and-the-final-integrated-suite).
 Earlier pending statements below record the state of those attempts; the later
 entries resolve them where fresh execution is available. Final integrated GPU
 tests, hosted CI, and the remaining merges are still pending.
@@ -1899,3 +1899,35 @@ baseline NCU requirement. A bounded one-metric diagnostic is separate from the
 required five-metric report. Precision-policy cases, unavailable model engines,
 and hardware requirements beyond this two-GPU host retain their prior explicit
 dispositions.
+
+### Waves52–53: normal router runs and the final integrated suite
+
+The corrected fresh-seed GPU batch passed 25 checks. Two normal dual-pool runs
+using the repository-built vLLM wheel passed exact token verification, with
+baseline/optimized latencies of 29,912.564/31,365.920 ms and
+30,035.969/30,947.939 ms. Their 0.95366x and 0.97053x outcomes remain
+`failed_no_speedup`. Engine startup is included in those measurements.
+
+The final contract scan found prompt creation still reachable from the timed
+router helper. Default creation now belongs to the standalone entrypoint;
+topology-aware benchmark calls require the live input prepared during setup.
+CPU-to-Python token-list conversion is an explicit part of vLLM admission, with
+non-CPU inputs rejected before conversion. Explicit zero request-group overrides
+also remain zero instead of restoring default work. All 23 focused CPU router
+controls passed. The complete contract scan then passed 932 benchmark entrypoints
+with no errors or warnings; repository-wide Ruff correctness checks passed.
+
+The Wave52b driver stopped at a stage boundary after the second comparison and
+all its children drained, preserving the existing results and a separate boundary
+receipt. This allowed the final suite to use the latest source without changing
+a running GPU workload. On frozen `5a4798260`, Wave53 passed 28 focused GPU checks
+and both actual router factories; their complete 1,734-element outputs matched
+exactly. A private comparison command initially had a quoting error; the
+standalone reconciliation reused the retained outputs successfully in Wave53b.
+That orchestration failure remains recorded separately from model correctness.
+
+The baseline gradient-fusion one-metric NCU diagnostic completed in 26 seconds
+and emitted a report over the full 2,048-tensor iteration. This is partial
+profiler evidence, not the still-required five-metric report. Wave53b collected
+5,830 tests and started the final integrated GPU suite on the same frozen source.
+Its final result and hosted CI remain pending.
