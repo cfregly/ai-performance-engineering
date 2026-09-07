@@ -32,8 +32,6 @@ class OptimizedDep2ParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA required for DEP2 parallelism")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.workload = Dep2Workload(self.cfg, self.device)
 
         def _run() -> torch.Tensor:

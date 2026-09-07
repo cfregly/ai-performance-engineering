@@ -114,7 +114,6 @@ class OptimizedNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not TE_AVAILABLE:
             raise RuntimeError(f"Transformer Engine not available: {TE_IMPORT_ERROR}")
 
-        torch.manual_seed(42)
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
 

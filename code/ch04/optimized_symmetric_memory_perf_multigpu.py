@@ -121,8 +121,6 @@ class OptimizedSymmetricMemoryPerfBenchmark(
             raise RuntimeError("SKIPPED: SymmetricMemory peer-put requires world_size >= 2")
 
         device = torch.device("cuda", device_id)
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.local_tensor = make_rank_distinct_input(self.numel, device, self.rank)
 
         # Create symmetric memory handle for direct peer access.

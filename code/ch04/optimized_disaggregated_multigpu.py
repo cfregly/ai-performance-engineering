@@ -90,8 +90,6 @@ class OptimizedDisaggregatedBenchmark(
             self.rank = dist.get_rank()
             self.world_size = dist.get_world_size()
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         
         # Separate model/storage paths for prefill and decode. Both models are
         # replicated across the same WORLD group and execute on every rank.

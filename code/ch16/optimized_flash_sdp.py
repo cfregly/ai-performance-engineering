@@ -103,9 +103,6 @@ class OptimizedFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         ensure_flash_sdp_available()
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
         # Optimized: Flash SDP with fused kernel

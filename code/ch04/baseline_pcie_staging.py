@@ -50,8 +50,6 @@ class BaselinePcieStagingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Setup: Initialize tensors."""
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: requires CUDA")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.data_gpu0 = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self.data_gpu1 = torch.empty_like(self.data_gpu0)
         self.host_buffer = torch.empty(self.N, device="cpu", dtype=torch.float32)

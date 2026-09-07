@@ -89,9 +89,6 @@ class BaselineTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         _load_te_linear()
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         model = TEFP16MLP(hidden_dim=self.hidden_dim).to(self.device).train().half()
         self.model = model
         self.parameter_count = sum(p.numel() for p in self.model.parameters())

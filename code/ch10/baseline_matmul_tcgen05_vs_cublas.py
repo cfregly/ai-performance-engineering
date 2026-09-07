@@ -51,8 +51,6 @@ class BaselineMatmulTCGen05Benchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError(self._skip_reason)
         if self.module is None:
             self.module = load_matmul_tcgen05_module()
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         dtype = torch.float16
         self.A = torch.randn(self.size, self.size, device=self.device, dtype=dtype)
         self.B = torch.randn(self.size, self.size, device=self.device, dtype=dtype)

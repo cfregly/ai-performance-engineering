@@ -148,8 +148,6 @@ class BaselineTorchcommsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         require_min_gpus(2, "baseline_torchcomms_multigpu.py")
         self._world_size = torch.cuda.device_count()
         self._aux_pass_range = range(_AUX_PASSES)
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self._comm_block = _build_block(_DEFAULT_HIDDEN, self.device)
         self._aux_block = _build_block(_DEFAULT_HIDDEN, self.device)
         self._payload_parameter_count = sum(p.numel() for p in self._comm_block.parameters())

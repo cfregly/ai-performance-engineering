@@ -143,8 +143,6 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._maybe_log_missing_te()
         if not arch_config.USE_TE_FP8:
             raise RuntimeError("SKIPPED: MXFP8 path disabled via arch_config.USE_TE_FP8.")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.inputs = torch.randn(

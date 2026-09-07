@@ -654,8 +654,6 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
                 f"SKIPPED: requires >= {self.world_size} GPUs (found {torch.cuda.device_count()})"
             )
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         moe_cfg = _build_moe_config(self.cfg)
         self._pairs = []

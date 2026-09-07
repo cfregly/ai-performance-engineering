@@ -67,8 +67,6 @@ class OptimizedNVSHMEMTrainingPatternsMultiGPU(
                 "SKIPPED: nvshmem_training_patterns requires NVSHMEM or SymmetricMemory support"
             )
         _configure_blackwell_nccl()
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self._benchmark_ready = True
 
     def benchmark_fn(self) -> None:

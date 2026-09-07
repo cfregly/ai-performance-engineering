@@ -56,7 +56,6 @@ class OptimizedKernelFusionDedicatedStreamBenchmark(VerificationPayloadMixin, Ba
             self._stream = torch.cuda.Stream(device=self.device, priority=0)
 
         # Initialize deterministic input on the device.
-        torch.manual_seed(42)
         self.data = torch.arange(self.N, dtype=torch.float32, device=self.device)
         self._prefetch_touch = torch.empty((), device=self.device, dtype=self.data.dtype)
         self._verify_input = self.data.detach().clone()
@@ -71,7 +70,6 @@ class OptimizedKernelFusionDedicatedStreamBenchmark(VerificationPayloadMixin, Ba
         self._stream.synchronize()
 
         # Reset data so benchmark iterations always start from same values.
-        torch.manual_seed(42)
         self.data = torch.arange(self.N, dtype=torch.float32, device=self.device)
         self._verify_output_buffer = torch.empty_like(self.data)
 

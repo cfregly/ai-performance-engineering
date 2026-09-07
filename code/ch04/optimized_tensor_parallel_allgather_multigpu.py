@@ -219,8 +219,6 @@ class OptimizedTensorParallelAllGatherBenchmark(VerificationPayloadMixin, BaseBe
         self._world_size = torch.cuda.device_count()
         self._hidden = _resolve_hidden(None, self._world_size)
         self._hidden_per_rank = self._hidden // self._world_size
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self._shard_layers, self._proj_layers, self._aux_layers = _build_layers(
             self._hidden,
             self._hidden_per_rank,

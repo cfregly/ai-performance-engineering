@@ -77,7 +77,6 @@ class OptimizedDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: requires CUDA")
-        torch.manual_seed(42)
 
         # Direct model on GPU - no DataParallel wrapper
         # Use same precision as baseline (float32) for fair verification comparison

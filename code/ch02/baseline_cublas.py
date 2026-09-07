@@ -42,9 +42,7 @@ class BaselineCublasBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Allocate FP32 matrices, disable TF32, and warm cuBLAS identically."""
         if self.device.type != "cuda":
             raise RuntimeError("SKIPPED: cuBLAS benchmark requires CUDA")
-        # Seed FIRST for deterministic verification
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
+        # Inputs follow the harness-provided seed for deterministic verification.
         
         self.A = torch.randn(self.m, self.k, device=self.device, dtype=torch.float32)
         self.B = torch.randn(self.k, self.n, device=self.device, dtype=torch.float32)

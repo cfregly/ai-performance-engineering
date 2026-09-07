@@ -74,8 +74,6 @@ class BaselineMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         require_blackwell("ch19 baseline_mxfp8_moe")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.inputs = torch.randn(

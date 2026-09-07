@@ -67,8 +67,6 @@ class OptimizedReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.rank = dist.get_rank()
         self.world_size = dist.get_world_size()
         self.device = torch.device(f"cuda:{self.local_rank}")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         # Intentionally tiny payload: this benchmark isolates communicator reuse vs reinit,
         # not bandwidth. Larger tensors would dilute the init/destroy cost.
         self.input_tensor = torch.randn(1, 1, device=self.device, dtype=torch.float32)

@@ -47,8 +47,6 @@ class OptimizedAttentionILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         """Build attention-shaped score terms and the CUDA ILP buffers."""
         self._extension = load_ilp_extension()
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         query = torch.randn(
             self.batch,
             self.tokens,

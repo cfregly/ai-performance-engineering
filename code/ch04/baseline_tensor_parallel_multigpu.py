@@ -225,8 +225,6 @@ class BaselineTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._hidden_per_rank = self._hidden // self._world_size
         self._layer_range = range(_DEFAULT_LAYERS)
         self._aux_pass_range = range(_AUX_PASSES)
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self._shard_layers, self._proj_layers, self._aux_layers = _build_layers(
             self._hidden,
             self._hidden_per_rank,

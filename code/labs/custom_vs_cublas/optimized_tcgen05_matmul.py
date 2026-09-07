@@ -59,8 +59,6 @@ class OptimizedTcgen05MatmulBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._module = load_tcgen05_cluster_module()
             self._kernel_fn = self._module.matmul_tcgen05_cluster
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         dtype = torch.float16
         self.a = torch.randn((self.size, self.size), device=self.device, dtype=dtype)

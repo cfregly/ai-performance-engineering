@@ -86,8 +86,6 @@ class BaselineMoeOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA required for MoE overlap benchmark")
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         self.shared_expert = ExpertMLP(
             self.hidden_size,

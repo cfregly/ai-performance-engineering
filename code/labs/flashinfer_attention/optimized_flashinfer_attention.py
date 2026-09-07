@@ -59,9 +59,6 @@ class OptimizedFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         if flashinfer is None:
             raise RuntimeError(f"SKIPPED: flashinfer not available ({_FLASHINFER_IMPORT_ERROR})")
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.q = torch.randn(self.seq_len, self.heads, self.head_dim, device=self.device, dtype=torch.float16)
         self.k = torch.randn(self.seq_len, self.heads, self.head_dim, device=self.device, dtype=torch.float16)
         self.v = torch.randn(self.seq_len, self.heads, self.head_dim, device=self.device, dtype=torch.float16)

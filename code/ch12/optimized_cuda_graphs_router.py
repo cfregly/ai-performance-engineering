@@ -34,14 +34,10 @@ class CUDAGraphRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA required for graph capture")
         self._extension = load_cuda_graphs_extension()
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
         # Warmup capture inside the extension
         self._extension.graph_replay(self.data, self.iterations)
         torch.cuda.synchronize(self.device)
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
         self._verify_input = self.data.detach().clone()
         self._verify_output_buffer = torch.empty_like(self.data)

@@ -52,8 +52,6 @@ class OptimizedMatmulTCGen05Benchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         if not self._tcgen05_available:
             raise RuntimeError(self._skip_reason)
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.A = torch.randn(self.size, self.size, device=self.device, dtype=self.dtype)
         self.B = torch.randn(self.size, self.size, device=self.device, dtype=self.dtype)
         self._B_t = self.B.transpose(0, 1)

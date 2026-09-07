@@ -42,8 +42,6 @@ class OptimizedElementwiseILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Initialize tensors and load CUDA extension."""
         self._extension = load_ilp_extension()
         
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         # Keep magnitudes small so the dependent square chain remains finite.
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float32) * 0.1
         self._buf0 = torch.empty(self.N, device=self.device, dtype=torch.float32)

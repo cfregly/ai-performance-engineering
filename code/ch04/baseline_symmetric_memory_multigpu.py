@@ -37,8 +37,6 @@ class SymmetricMemoryMultiGPU(
     def setup(self) -> None:
         if torch.cuda.device_count() < 2:
             raise RuntimeError("SKIPPED: symmetric_memory requires >=2 GPUs")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self._benchmark_ready = True
 
     def benchmark_fn(self) -> None:

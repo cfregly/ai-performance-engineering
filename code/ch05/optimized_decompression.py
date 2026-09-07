@@ -32,7 +32,6 @@ class GPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA required for GPU decompression demo")
-        torch.manual_seed(42)
         total_len = 1024 * 1024
         run_len = 256
         if total_len % run_len != 0:

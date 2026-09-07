@@ -84,8 +84,6 @@ class OptimizedMoERouterTopologyBenchmark(VerificationPayloadMixin, BaseBenchmar
         if self.num_experts != self.num_islands * self.experts_per_island:
             raise ValueError("num_experts must equal num_islands * experts_per_island")
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         self.expert = ExpertMLP(self.hidden_size, self.ffn_size, device=self.device, dtype=self.dtype).eval()
         self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())

@@ -98,8 +98,6 @@ class OptimizedPinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.output = None
         self._payload_inputs = None
         self._payload_targets = None
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         log_allocator_guidance("ch03/optimized_pinned_prefetch_mlp", optimized=True)
         # Use same model architecture as baseline for fair comparison
         self.model = nn.Sequential(

@@ -34,8 +34,6 @@ class OptimizedDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         skip_if_insufficient_gpus(2)
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         self.device_ids = list(range(torch.cuda.device_count()))
         self.data = [

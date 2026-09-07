@@ -56,9 +56,6 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
 
-        # Use same seed as baseline for deterministic verification
-        torch.manual_seed(42)
-        
         # Build model with same architecture as baseline for fair comparison.
         self.model = ReusableReductionMlp(self.hidden_dim, self.inner_dim).to(self.device).eval()
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())

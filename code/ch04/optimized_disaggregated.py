@@ -63,8 +63,6 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.rank = dist.get_rank()
             self.world_size = dist.get_world_size()
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         
         # This one-GPU example separates phase state and replays fixed shapes.
         # Actual placement on different ranks is covered by the distributed labs.

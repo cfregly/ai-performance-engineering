@@ -54,8 +54,6 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not torch.cuda.is_available():
             raise RuntimeError("labs.moe_cuda decode attention requires CUDA")
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.q = torch.randn(self.batch, self.num_heads, 1, self.head_dim, device=self.device, dtype=torch.float32)

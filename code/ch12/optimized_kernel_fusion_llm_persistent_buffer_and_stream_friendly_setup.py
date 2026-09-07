@@ -52,8 +52,6 @@ class OptimizedKernelFusionPersistentBufferBenchmark(VerificationPayloadMixin, B
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
 
         # Allocate data once and reuse it across benchmark iterations.
-        # Keep the seed fixed so verification remains deterministic.
-        torch.manual_seed(42)
         self.data = torch.arange(self.N, dtype=torch.float32, device=self.device)
         self._verify_input = self.data.detach().clone()
 
@@ -63,7 +61,6 @@ class OptimizedKernelFusionPersistentBufferBenchmark(VerificationPayloadMixin, B
         torch.cuda.synchronize(self.device)
 
         # Reset data contents to the canonical initial state without reallocating.
-        torch.manual_seed(42)
         self.data.copy_(torch.arange(self.N, dtype=torch.float32, device=self.device))
         self._verify_output_buffer = torch.empty_like(self.data)
         torch.cuda.synchronize(self.device)

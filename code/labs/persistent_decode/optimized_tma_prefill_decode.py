@@ -327,9 +327,6 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
 
     def setup(self) -> None:
         ensure_blackwell_tma_supported("optimized_tma_prefill_decode")
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.inputs = build_inputs(self.device)
         self._output_view = self.inputs.out
         # Skip on GPUs without TMA support to avoid false regressions.

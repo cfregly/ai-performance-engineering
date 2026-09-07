@@ -58,8 +58,6 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: requires CUDA")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.model = nn.MultiheadAttention(self.hidden, self.heads, batch_first=True).to(self.device).eval()
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self._query_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)

@@ -105,9 +105,6 @@ class OptimizedDataloaderTunedBenchmark(VerificationPayloadMixin, BaseBenchmark)
         # oversubscription. Set the same in the main process so baseline and
         # optimized variants see identical preprocessing math.
         torch.set_num_threads(1)
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         
         self.model = SimpleModel(input_dim=self.feature_dim).to(self.device)
         

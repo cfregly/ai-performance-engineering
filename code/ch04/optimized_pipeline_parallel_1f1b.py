@@ -341,8 +341,6 @@ class OptimizedPipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._num_layers = _resolve_num_layers(None, self._world_size)
         self._batch_size, self._micro_batches = _resolve_batch_config(None, None, self._world_size)
         self._layers_per_stage = self._num_layers // self._world_size
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self._fwd_layers, self._bwd_layers = _build_stage_layers(
             _DEFAULT_HIDDEN,
             self._layers_per_stage,

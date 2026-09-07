@@ -33,12 +33,10 @@ class OptimizedLaunchBoundsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Initialize tensors and load CUDA extension."""
         self._extension = load_launch_bounds_extension()
         
-        torch.manual_seed(42)
         self.input_data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
         self.output_data = torch.empty(self.N, dtype=torch.float32, device=self.device)
         self._extension.launch_bounds_optimized(self.input_data, self.output_data, 8)
         self._synchronize()
-        torch.manual_seed(42)
         self.input_data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
         self.output_data = torch.empty(self.N, dtype=torch.float32, device=self.device)
         self._synchronize()

@@ -47,8 +47,6 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: requires CUDA")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.tensor = torch.randn(self.numel, device=self.device, dtype=torch.float32)
         self._verify_input, self._verify_numel = build_square_verification_probe(self.tensor)
         self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)

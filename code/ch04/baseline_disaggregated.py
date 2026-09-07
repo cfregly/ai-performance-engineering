@@ -63,8 +63,6 @@ class BaselineDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.rank = dist.get_rank()
             self.world_size = dist.get_world_size()
         
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         # One model processes both phases sequentially on the selected GPU.
         self.model = nn.Sequential(
             nn.Linear(256, 512),

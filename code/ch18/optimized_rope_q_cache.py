@@ -48,8 +48,6 @@ class OptimizedRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA required for RoPE fusion benchmark")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.inputs = torch.randn(
             self.cfg.steps,
             self.cfg.batch_size,
