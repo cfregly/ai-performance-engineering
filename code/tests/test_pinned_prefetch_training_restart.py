@@ -5,6 +5,13 @@ import torch
 
 from ch03.baseline_pinned_prefetch_mlp import BaselinePinnedPrefetchMLPBenchmark
 from ch03.optimized_pinned_prefetch_mlp import OptimizedPinnedPrefetchMLPBenchmark
+from tests.protection_test_utils import preserve_rng_state
+
+
+@pytest.fixture(autouse=True)
+def _restore_rng_after_test():
+    with preserve_rng_state():
+        yield
 
 
 def _small(benchmark, device):
@@ -26,17 +33,20 @@ def test_paired_training_uses_identical_fixed_update_counts():
     assert not optimized.adaptive_iterations
 
 
-def test_baseline_restarts_training_from_first_batch(monkeypatch):
+@pytest.mark.parametrize("seed", [42, 1042])
+def test_baseline_restarts_training_from_first_batch(monkeypatch, seed):
     # Only suppress CUDA lifecycle hooks for this actual CPU tensor execution.
     monkeypatch.setattr(torch.cuda, "synchronize", lambda *args, **kwargs: None)
     benchmark = _small(BaselinePinnedPrefetchMLPBenchmark(), "cpu")
     try:
+        torch.manual_seed(seed)
         benchmark.setup()
         benchmark.benchmark_fn()
         original_input = benchmark._payload_x.clone()
         original_output = benchmark.output.clone()
         benchmark.benchmark_fn()
         benchmark.teardown()
+        torch.manual_seed(seed)
         benchmark.setup()
         benchmark.benchmark_fn()
         torch.testing.assert_close(benchmark._payload_x, original_input, rtol=0, atol=0)
@@ -47,12 +57,15 @@ def test_baseline_restarts_training_from_first_batch(monkeypatch):
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="Real CUDA prefetch required")
-def test_real_cuda_prefetch_matches_blocking_training_across_restarts():
+@pytest.mark.parametrize("seed", [42, 1042])
+def test_real_cuda_prefetch_matches_blocking_training_across_restarts(seed):
     baseline = _small(BaselinePinnedPrefetchMLPBenchmark(), "cuda")
     optimized = _small(OptimizedPinnedPrefetchMLPBenchmark(), "cuda")
     try:
         for steps in (2, 5):
+            torch.manual_seed(seed)
             baseline.setup()
+            torch.manual_seed(seed)
             optimized.setup()
             for _ in range(steps):
                 baseline.benchmark_fn()
