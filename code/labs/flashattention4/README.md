@@ -47,10 +47,26 @@ pins are in [colfax_upstream.json](colfax_upstream.json); benchmark workloads an
 the performance hypothesis are in [colfax_workload_spec.yaml](colfax_workload_spec.yaml)
 and [colfax_performance_intake.yaml](colfax_performance_intake.yaml).
 
-These new pairs have **no local GPU measurements or expectations yet**. Run the
-opt-in correctness tests and retain harness clock/provenance, interleaved repeat,
-Nsight Systems, and Nsight Compute evidence before claiming a win. The older
-results below apply only to their named forward/provider targets.
+Direct B200 validation on 2026-09-07 used source `356490bd1` and the full
+default workloads. Both normal deep-dive runs passed, including complete
+output verification and Nsight Systems, Nsight Compute, and PyTorch capture.
+Each opt-in GPU suite passed all 32 cases, including setup detection,
+output poisoning, and changed-input replay on the same graph.
+
+| Pair | ABBA baseline median | ABBA optimized median | Ratio | Standard deviation, baseline / optimized |
+| --- | ---: | ---: | ---: | ---: |
+| Decode | 1.056113 ms | 0.900269 ms | 1.173108x | 0.000819 / 0.000216 ms |
+| Backward | 30.557050 ms | 28.269385 ms | 1.080924x | 0.398677 / 0.072006 ms |
+
+Each pair used four fresh seeds and eight observations per arm, with 20
+replays per observation. All 32,768 decode outputs and all 402,653,184
+backward gradient elements matched exactly in every full-output comparison;
+the configured tolerances were unchanged. All eight Nsight reports passed
+inspection, including all five requested NCU metrics. These are portable
+current-host observations, not canonical hardware expectations. The traces
+and counters accompany the source ablation; they do not directly visualize
+the internal TMEM/barrier schedule. Earlier forward/provider results below
+apply only to their named targets.
 
 Local validation on 2026-09-07 (macOS, Python 3.12, CPU PyTorch 2.14.0):
 

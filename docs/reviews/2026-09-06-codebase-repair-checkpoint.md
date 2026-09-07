@@ -2088,3 +2088,34 @@ graph and checks fresh outputs against an independent reference before restoring
 the input. The local focused batch passed 48 tests with two CUDA skips. These
 newer Colfax repairs still need their own GPU execution; the integrated suite
 above used the preceding source revision.
+
+### Waves62–63: Colfax execution repair and complete paired validation
+
+Wave62 passed all 32 opt-in GPU tests in each pinned environment. Full-default
+ABBA comparisons passed, but the normal decode harness rejected output exposed
+during graph capture as setup pre-computation. Backward's tuple output did not
+trigger that detector. The fix keeps graph-owned storage private until a real
+replay publishes the output; it preserves capture, workload, and tolerances.
+The GPU regression now runs the actual setup detector before poisoning output
+buffers and checking changed inputs on the same graph.
+
+On repaired `356490bd1`, Wave63 completed all seven stages with zero exits and
+normal process drain. Both 32-case GPU suites passed with no skips. Both normal
+deep-dive harness runs passed full verification and all three profiler captures.
+Normal speed ratios were 1.170342x decode and 1.094264x backward.
+
+The four-seed ABBA repeats produced eight observations per arm. Decode medians
+were 1.056113/0.900269 ms (1.173108x), with standard deviations
+0.000819/0.000216 ms. Backward medians were 30.557050/28.269385 ms (1.080924x),
+with standard deviations 0.398677/0.072006 ms. Every complete 32,768-element
+decode and 402,653,184-element gradient comparison matched exactly, before and
+after timing in every block. All eight Nsight reports passed inspection,
+including the five requested NCU metrics. The inspection receipt SHA-256 is
+`c997356673c44cf699a4aa6f24e32fb49cb14511b8ddb2834b8c4d5b760c2f04`.
+These portable current-host measurements do not establish canonical hardware
+expectations or directly trace internal TMEM/barrier ordering. The original
+Wave62 failure remains retained.
+
+The refreshed repository-wide scan checked 936 entrypoints with zero errors or
+warnings; Ruff correctness checks passed. Final hosted CI and delivery of these
+last repairs remain pending.

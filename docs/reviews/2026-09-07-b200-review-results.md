@@ -11,9 +11,9 @@ that are unavailable on this host.
 | Check | Current result |
 | --- | --- |
 | Broad target execution | 486 targets attempted; unsupported and informational outcomes remain separate from passes |
-| Benchmark contract scan | 932 entrypoints; zero errors and warnings |
+| Benchmark contract scan | 936 entrypoints; zero errors and warnings |
 | Repository-wide Ruff correctness checks | Passed |
-| Latest focused GPU regressions | 813 passed; all six isolated Llama tests also passed on `9d342cc79` |
+| Focused GPU regressions | Earlier 813 affected-file tests and six isolated Llama tests passed; latest Colfax suites passed 32 cases in each pinned environment |
 | Latest integrated GPU suite | **5,795 passed, 79 skipped, zero failures or errors** on `46ba89929`; normal exit and complete process drain |
 | Standalone MoE entrypoint | Level 0 completed its normal 436.5M-parameter workload |
 | Normal dual-pool vLLM runs | Exact tokens passed twice; speed target failed twice |
@@ -21,7 +21,7 @@ that are unavailable on this host.
 | Hosted CI | 5,310 CPU tests passed, 535 skipped; static analysis, dashboard and dual-architecture CUDA builds passed on `d77181e28` |
 | Main delivery | [PR #21](https://github.com/cfregly/ai-performance-engineering/pull/21) merged as `814866061`; its tree matches the tested code. PR #20 is also merged |
 | Explicit opt-in GPU tests | ZeRO2 passed; two Blackwell tests passed on each of two ranks; local-model vLLM passed |
-| Remaining GPU validation | New Colfax decode/backward source and input-freshness repairs require their opt-in GPU tests, profiling and repeated timing runs |
+| New Colfax GPU validation | Both full-workload deep-dive runs, both ABBA repeats, 64 opt-in cases and eight Nsight report inspections passed on `356490bd1` |
 
 The original broad inventory included 441 zero exits, 44 exits with code 1, and
 one native crash. Zero exits include skips and informational results. Later
@@ -64,6 +64,8 @@ unproven on this stack. Both successful and incomplete attempts are retained.
 | Llama | Approximately 1.07956x; complete 8,388,608-element bitwise outputs, fresh inputs, repeated measurements and CUDA graph trace evidence |
 | Memory-bound compilation | 31.74309x repeated ABBA observation; all 16,777,216 outputs passed at 1e-5 relative/2e-5 absolute tolerance; Nsight confirmed 128 kernels fused into one |
 | Two-GPU cache-aware inference | Full 2,048-element outputs matched exactly; repeated ABBA measured 0.988428x, so the earlier single-run 1.64306x did not reproduce |
+| Colfax FA4 decode | 1.173108x repeated ABBA; all 32,768 outputs matched exactly; normal deep-dive run and profiler inspection passed |
+| Colfax FA4 backward | 1.080924x repeated ABBA; all 402,653,184 gradient elements matched exactly; normal deep-dive run and profiler inspection passed |
 | One-/two-GPU DDP | Exact outputs passed, including partial accumulation groups; no qualifying speedup |
 | Two-GPU disaggregated inference | Exact output passed; 1.00818x remained below the 1.05x speed requirement |
 | Dual-pool vLLM | Exact tokens passed with batch-invariant Triton; 0.95366x and 0.97053x in normal runs including engine startup |
@@ -79,6 +81,14 @@ Complete outputs were compared before and after timing in every block. Both
 memory Nsight Systems and five-metric Nsight Compute reports were inspected;
 both cache-aware arms also retained Systems traces. The two-GPU topology has
 only one decode rank, so it cannot establish an affinity-migration benefit.
+
+The Colfax repeats used four fresh seeds and eight observations per arm at the
+unchanged default shapes. Decode medians were 1.056113/0.900269 ms, with standard
+deviations 0.000819/0.000216 ms. Backward medians were 30.557050/28.269385 ms,
+with standard deviations 0.398677/0.072006 ms. Both source revisions are checked
+against every runtime Python file and installed Git provenance. The traces and
+counters support the measured ablation; internal TMEM/barrier ordering was not
+directly traced. See the [lab](../../code/labs/flashattention4/README.md).
 
 ## Improvements to prioritize
 
