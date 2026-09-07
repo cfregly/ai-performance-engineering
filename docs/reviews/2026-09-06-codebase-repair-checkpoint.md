@@ -1669,3 +1669,38 @@ Compact Wave44 receipts are retained under
 `/Users/admin/.codex/artifacts/ai-perf-remaining-20260906/wave44-validation-20260907T074913Z`.
 These remain practical portable B200 checks; they do not qualify unavailable
 hardware or supply canonical locked-clock performance evidence.
+
+### Wave45: DDP optimizer attribution and manual ZeRO-1 repairs
+
+The real two-B200 factorial held each rank's complete input sequence fixed and
+varied the DDP bucket configuration and AdamW fusion independently. Both loader
+profiles produced identical batches. With the optimizer held fixed, the bucket
+change preserved every training loss and complete final logits exactly, at both
+two steps and all 32 available batches from a request for 100. Changing BF16
+AdamW from unfused to fused changed final logits by up to 4.3828125 on rank 0
+and 5.0546875 on rank 1. Both fused arms matched one another. The baseline now
+uses the same fused optimizer as its candidate, preserving an exact 0/0 output
+comparison while isolating the communication and loading changes.
+
+The first diagnostic attempt failed after executing the baseline arm because
+its tensor-hash helper attempted a byte view of a scalar loss. Flattening before
+the byte view fixed that private receipt bug. Scalar, vector, and BF16 controls
+passed, and both diagnostic stages then completed and drained. All attempts
+remain retained; the normal DDP pair still needs its new-source rerun.
+
+Source review also found that the manual ZeRO-1 sharder cleared only gradients
+owned by the local optimizer partition. Nonlocal replicated gradients survived
+into later steps. The shared implementation now clears every replicated
+gradient and broadcasts initial weights before averaging gradients. Real one-
+and two-rank CPU tests start ranks with different weights, train with distinct
+inputs, compare every parameter against ordinary AdamW after each step, and
+verify replica agreement. All four manual/library CPU cases passed; four CUDA
+cases are queued. The examples' memory demonstrations remain distinct from
+qualified baseline/candidate training comparisons.
+
+The isolated benchmark worker now receives the selected target arguments before
+importing its module, fixing import-time CLI consumers such as the vLLM router.
+A real subprocess regression computes different output from the supplied flag.
+The combined argument and DDP regression set passed 53 tests. These changes,
+the manual ZeRO-1 repair, and the DDP arithmetic alignment are pushed through
+`892fab17b`; the next direct GPU batch uses that frozen commit.
