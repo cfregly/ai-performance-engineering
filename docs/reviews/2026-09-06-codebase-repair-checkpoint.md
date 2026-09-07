@@ -1586,3 +1586,43 @@ parameter against ordinary AdamW for three accumulated, clipped steps and verify
 replica agreement. Both passed; GPU versions remain pending. The first local
 test attempt timed out in standalone rendezvous; an explicit loopback rendezvous
 fixed the test launch. All attempts are retained.
+
+### Waves42–43: real communicator/ZeRO execution and full DDP results
+
+All seven Wave42 stages on `4d29473ac` completed and drained. Eleven focused
+tests passed, including real one- and two-B200 ZeRO-1 weight-update comparisons.
+The repaired communicator pair passed both ranks' full results. Its synchronized
+host times were 819.781 ms per reinitialization iteration and 0.061581 ms for
+communicator reuse; this is a deliberately tiny one-float setup-overhead example.
+Both optimized ZeRO-1 direct commands completed their configured 100 steps at
+hidden size 10,000 and batch 16, on one and two GPUs respectively.
+
+The normal precision harness runs also passed their configured comparisons:
+
+| Target | Baseline ms | Optimized ms | Ratio | Reported memory change |
+| --- | ---: | ---: | ---: | ---: |
+| TorchAO int8 | 8.915 | 3.239 | 2.752x | 7.99% increase |
+| FP8 padded MLP | 17.118 | 3.541 | 4.835x | 13.56% increase |
+| FP8 padded matmul | 17.242 | 2.063 | 8.357x | 32.80% increase |
+
+These are individual portable harness runs. Their public verification payloads
+still used the existing crop; separate earlier full-output probes remain distinct.
+The next source repair expands all six baseline/optimized payloads to complete
+outputs. It also removes unmeasured zero accuracy claims and labels precision
+storage ratios as theoretical, since measured total memory increased here.
+
+Wave43 on `193403499` passed all 50 focused target-host child-result tests.
+Single-GPU DDP passed an exact comparison of complete final-batch outputs after
+training, with a 1.0066x ratio below its 1.05x speed target. Two-GPU DDP executed
+both children but failed final-output comparison with maximum difference 4.375.
+That failure remains open; the optimizer and communication differences are being
+isolated without relaxing tolerance. Every rank now exports its actual full
+final batch and logits, preserves the active seed, and reports completed steps
+accurately when the loader exhausts before the requested maximum.
+
+The setup-seed sweep removed only leading fixed-seed calls from 178 examples.
+Default harness seed 42 is unchanged; seed 1042 can now reach those setups.
+All changed files parsed, and real setup tests confirmed repeatability and
+changed-input behavior. Later alignment reseeds and private generators are being
+reviewed separately. Llama's explicit compile-only source and the router's real
+integer prompt-input contract are implemented; their new B200 runs are next.

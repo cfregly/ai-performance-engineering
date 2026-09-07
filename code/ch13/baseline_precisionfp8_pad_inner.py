@@ -68,8 +68,8 @@ class BaselinePrecisionFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchm
         self.inputs = torch.randn(self.batch_size, self.input_dim, device=self.device, dtype=torch.float32)
         self._verify_input = self.inputs
         self._verify_output_buffer = torch.empty(
-            min(128, self.batch_size),
-            min(256, self.output_dim),
+            self.batch_size,
+            self.output_dim,
             device=self.device,
             dtype=torch.float32,
         )
@@ -93,11 +93,7 @@ class BaselinePrecisionFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchm
     def capture_verification_payload(self) -> None:
         if self._verify_input is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        output_slice = self.output[
-            : self._verify_output_buffer.shape[0],
-            : self._verify_output_buffer.shape[1],
-        ]
-        self._verify_output_buffer.copy_(output_slice)
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self._verify_input},
             output=self._verify_output_buffer,
@@ -133,7 +129,7 @@ class BaselinePrecisionFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchm
         return compute_precision_metrics(
             fp32_time_ms=getattr(self, '_last_elapsed_ms', None),
             reduced_precision_time_ms=None,
-            precision_type="fp8",
+            precision_type="fp32",
         )
 
     def validate_result(self) -> Optional[str]:

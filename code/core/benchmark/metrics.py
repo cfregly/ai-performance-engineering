@@ -588,16 +588,16 @@ def compute_precision_metrics(
     fp32_time_ms: Optional[float],
     reduced_precision_time_ms: Optional[float],
     precision_type: str,  # "fp32", "fp16", "bf16", "fp8", "fp4", "int8", "int4"
-    accuracy_delta: float = 0.0,  # Accuracy loss (if measured)
+    accuracy_delta: Optional[float] = None,  # Omit when accuracy was not measured.
 ) -> Dict[str, float]:
     """Compute metrics for precision optimization benchmarks (ch13, ch19).
     
     Args:
         fp32_time_ms: Baseline FP32 execution time
         reduced_precision_time_ms: Reduced precision execution time
-        precision_type: Precision mode for this path. Memory reduction factors
-            are interpreted relative to FP32 storage.
-        accuracy_delta: Change in accuracy (negative = loss)
+        precision_type: Precision mode for this path. The storage ratio is a
+            theoretical per-element ratio to FP32, not measured process memory.
+        accuracy_delta: Measured change in accuracy (negative = loss), or None.
     
     Returns:
         Dict with precision tradeoff metrics
@@ -615,9 +615,10 @@ def compute_precision_metrics(
     reduction_factor = memory_reduction.get(precision_type, 1.0)
     
     metrics = {
-        "precision.memory_reduction_factor": reduction_factor,
-        "precision.accuracy_delta": accuracy_delta,
+        "precision.theoretical_storage_reduction_factor": reduction_factor,
     }
+    if accuracy_delta is not None:
+        metrics["precision.accuracy_delta"] = float(accuracy_delta)
     if fp32_time_ms is not None:
         metrics["precision.fp32_ms"] = float(fp32_time_ms)
     if reduced_precision_time_ms is not None:

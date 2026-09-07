@@ -6,6 +6,7 @@ import pytest
 import torch
 
 from ch13.baseline_precisionfp8_pad_inner import BaselinePrecisionFP8PadInnerBenchmark
+from ch13.baseline_precisionfp8_pad_inner_matmul import BaselinePrecisionFP8PadInnerMatmulBenchmark
 from ch13.baseline_torchao_quantization import BaselineTorchAOQuantizationBenchmark
 from ch13.optimized_precisionfp8_pad_inner import (
     TORCHAO_IMPORT_ERROR as FP8_IMPORT_ERROR,
@@ -17,13 +18,34 @@ from ch13.optimized_torchao_quantization import (
 from ch13.optimized_torchao_quantization import OptimizedTorchAOQuantizationBenchmark
 
 
+def test_matmul_payload_covers_rows_and_columns_beyond_old_crop() -> None:
+    benchmark = BaselinePrecisionFP8PadInnerMatmulBenchmark()
+    benchmark.device = torch.device("cpu")
+    benchmark.m, benchmark.k, benchmark.n = 129, 24, 257
+    torch.manual_seed(1042)
+    benchmark.setup()
+    try:
+        assert torch.initial_seed() == 1042
+        benchmark.benchmark_fn()
+        benchmark.capture_verification_payload()
+        output = benchmark.get_verify_output()
+        assert output.shape == (129, 257)
+        torch.testing.assert_close(output, benchmark.a @ benchmark.b, rtol=0, atol=0)
+        assert torch.equal(output[-1], benchmark.output[-1])
+    finally:
+        benchmark.teardown()
+
+
 def _small_workload(benchmark) -> None:
-    benchmark.batch_size = 32
+    # Cross both former verification crop boundaries (128 rows, 256 columns).
+    benchmark.batch_size = 144
     if isinstance(benchmark, BaselinePrecisionFP8PadInnerBenchmark | OptimizedFP8PadInnerBenchmark):
         benchmark.input_dim = 40  # Exercise actual inner-dimension padding.
-        benchmark.hidden_dim = benchmark.output_dim = 64
+        benchmark.hidden_dim = 64
+        benchmark.output_dim = 272
     else:
-        benchmark.in_features = benchmark.hidden_features = benchmark.out_features = 64
+        benchmark.in_features = benchmark.hidden_features = 64
+        benchmark.out_features = 272
 
 
 def _check_live_forward(benchmark, *, seed: int) -> torch.Tensor:
@@ -43,6 +65,7 @@ def _check_live_forward(benchmark, *, seed: int) -> torch.Tensor:
         benchmark.capture_verification_payload()
         assert not torch.equal(original_output, benchmark.output)
         assert torch.equal(benchmark.output.float(), benchmark._verify_output_buffer)
+        assert benchmark.get_verify_output().shape == (144, 272)
         if isinstance(benchmark, OptimizedFP8PadInnerBenchmark):
             assert torch.equal(benchmark.inputs_fp16, declared.half())
         declared.copy_(original_input)
