@@ -2040,3 +2040,40 @@ Wave60 first repeats the unmodified isolated CUDA case, then runs the supported
 opt-in ZeRO, distributed Blackwell, and local-model routing checks, followed by
 full-workload memory/cache ABBA measurements and profiler inspection. Other
 hardening skips remain explicit where production detectors do not exist.
+
+### Wave60: opt-in coverage and repeated performance evidence
+
+On unchanged `814866061`, the isolated Llama case passed in 2.755 seconds,
+the real two-rank ZeRO2 case passed, both Blackwell tests passed on each rank,
+and local-model vLLM passed in 30.893 seconds. All stages drained.
+
+Full-workload memory ABBA measured 31.74309x from eight observations per arm
+across four fresh seeds. Baseline/optimized medians were 2.387228/0.075205 ms,
+with standard deviations 0.006990/0.010427 ms. Every full 16,777,216-element
+comparison passed the existing tolerances; maximum absolute error was
+0.00001144409. Both Nsight Systems and five-metric Nsight Compute captures
+completed. The first private inspection script assumed a long-form CSV and
+failed on NCU's wide format; the corrected inspector verified all requested
+columns, finite values, units, report hashes and the 128-to-one kernel reduction.
+The original inspection failure remains retained alongside the successful check.
+
+Cache-aware two-GPU ABBA passed all full 2,048-element comparisons exactly but
+measured **0.988428x**, with medians 14.331648/14.499441 ms and standard deviations
+0.470046/0.517233 ms. Four fresh seeds, eight observations per arm and both-arm
+Nsight Systems traces are retained. The earlier single-run 1.64306x was not
+reproduced. These are portable unlocked observations; the single decode rank
+cannot qualify migration improvements between decode ranks.
+
+### Wave61: compiler isolation and newly merged lab coverage
+
+After all prior stages drained, the checkout advanced to `46ba89929`, including
+the compiler-process repair and the newly merged Colfax lab additions. The
+Llama CUDA case passed with full-suite collection, then passed again in 5.625
+seconds inside the integrated suite. The full run is still in progress.
+
+The new Colfax README additions initially failed the generator synchronization
+check. Their content now survives regeneration; the focused local batch passed
+45 tests with two CUDA skips. Decode and backward dependencies were installed
+in separate copies of the task environment, retaining PyTorch 2.9.1+cu130 and
+verifying the donor was unchanged. Package installation and source pin checks
+are preflight only; real Colfax GPU validation is next.

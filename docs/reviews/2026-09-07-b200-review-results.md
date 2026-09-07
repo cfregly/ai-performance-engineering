@@ -20,7 +20,8 @@ that are unavailable on this host.
 | Gradient-fusion NCU | Complete five-metric baseline and optimized reports inspected; repeated baseline replay remains intermittent |
 | Hosted CI | 5,310 CPU tests passed, 535 skipped; static analysis, dashboard and dual-architecture CUDA builds passed on `d77181e28` |
 | Main delivery | [PR #21](https://github.com/cfregly/ai-performance-engineering/pull/21) merged as `814866061`; its tree matches the tested code. PR #20 is also merged |
-| Remaining GPU validation | Llama compiler-process isolation, explicit opt-in distributed/model tests, and repeated memory/cache measurements are in progress |
+| Explicit opt-in GPU tests | ZeRO2 passed; two Blackwell tests passed on each of two ranks; local-model vLLM passed |
+| Remaining GPU validation | The isolated Llama test passed with full collection and inside the ongoing integrated run; new Colfax decode/backward labs are next |
 
 The original broad inventory included 441 zero exits, 44 exits with code 1, and
 one native crash. Zero exits include skips and informational results. Later
@@ -43,8 +44,9 @@ The fresh integrated GPU rerun used merged `main` with the same tested code tree
 It completed all 5,845 cases in 41 minutes 52 seconds and retained one repeated
 Llama autotune timeout. Native CUTLASS compilation was still active; pytest
 shutdown again needed scoped cleanup after its complete XML report was saved.
-The numerical test is being isolated in a fresh interpreter with owned compiler
-cleanup. That repair still requires GPU validation; no full integrated pass is
+The unchanged numerical workload now runs in a fresh interpreter with owned
+compiler cleanup. It passed with full collection and again inside the next
+integrated run; that run is still in progress, so no full integrated pass is
 claimed. Some skipped hardening tests also document detectors that are not yet
 implemented, rather than demonstrating those protections.
 
@@ -62,14 +64,23 @@ unproven on this stack. Both successful and incomplete attempts are retained.
 | NanoChat | Approximately 2.00409x; repeated equivalent-workload measurements, complete bitwise outputs and Nsight Systems evidence |
 | Chapter 2 transfer | Approximately 26.60845x for the full 100 MiB transfer; repeated interleaved measurements and peer-transfer trace evidence |
 | Llama | Approximately 1.07956x; complete 8,388,608-element bitwise outputs, fresh inputs, repeated measurements and CUDA graph trace evidence |
-| Memory-bound compilation | Full output passed at 1e-5 relative/2e-5 absolute tolerance; 26.7x observed in one normal run, with repeated performance validation still needed |
-| Two-GPU cache-aware inference | Full verification passed; 1.64306x observed in one normal run, with repeated performance validation still needed |
+| Memory-bound compilation | 31.74309x repeated ABBA observation; all 16,777,216 outputs passed at 1e-5 relative/2e-5 absolute tolerance; Nsight confirmed 128 kernels fused into one |
+| Two-GPU cache-aware inference | Full 2,048-element outputs matched exactly; repeated ABBA measured 0.988428x, so the earlier single-run 1.64306x did not reproduce |
 | One-/two-GPU DDP | Exact outputs passed, including partial accumulation groups; no qualifying speedup |
 | Two-GPU disaggregated inference | Exact output passed; 1.00818x remained below the 1.05x speed requirement |
 | Dual-pool vLLM | Exact tokens passed with batch-invariant Triton; 0.95366x and 0.97053x in normal runs including engine startup |
 
 These are portable observations from the retained runtime. Memory regressions,
 default-backend token mismatches, and no-speedup results remain visible.
+
+The latest memory and cache-aware measurements used four fresh seeds and eight
+observations per arm. Memory medians were 2.387228 ms baseline and 0.075205 ms
+optimized, with standard deviations 0.006990 and 0.010427 ms. Cache-aware medians
+were 14.331648 and 14.499441 ms, with standard deviations 0.470046 and 0.517233 ms.
+Complete outputs were compared before and after timing in every block. Both
+memory Nsight Systems and five-metric Nsight Compute reports were inspected;
+both cache-aware arms also retained Systems traces. The two-GPU topology has
+only one decode rank, so it cannot establish an affinity-migration benefit.
 
 ## Improvements to prioritize
 
