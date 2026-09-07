@@ -2119,3 +2119,61 @@ Wave62 failure remains retained.
 The refreshed repository-wide scan checked 936 entrypoints with zero errors or
 warnings; Ruff correctness checks passed. Final hosted CI and delivery of these
 last repairs remain pending.
+
+### Wave64: retained distributed profiler driver failure
+
+On final PR source `568c9102c`, the 67 focused profiler regressions passed.
+The unchanged two-B200 baseline then requested all five metrics through the
+repository application-range command builder under a 900-second bound. NCU
+reported a driver `UnknownError`. After the error and process identity were
+preserved, the owned supervisor received SIGTERM; all owned workers drained
+and the stage returned 143. No complete report was accepted from this attempt.
+This retains the earlier successful captures and failed repeat without claiming
+stable replay or attributing an unproven defect to the benchmark source.
+
+The final skip reconciliation found 58 tests explicitly naming unimplemented
+production protections and one additional skipped test that rejects test-name
+counts as behavioral coverage. Other skips include CPU-only negative controls,
+unavailable resources and opt-in cases executed separately. These counts do
+not turn missing protections into passing hardening evidence.
+
+### Wave65: execute the version-specific FP8 template
+
+The remaining FP8 template test intentionally targets Transformer Engine 2.18;
+earlier TE 2.9 coverage exercised a different autocast API. Its first isolated
+build failed because optional NCCL expert parallelism referenced a header absent
+from PyTorch 2.9. The second isolated build used NVIDIA's explicit
+[`NVTE_WITH_NCCL_EP=0` build option](https://github.com/NVIDIA/TransformerEngine/blob/v2.18/build_tools/pytorch.py#L82-L90).
+It retained PyTorch 2.9.1+cu130 and left all donor environments unchanged. This
+build covers the FP8 Linear template and does not qualify expert parallelism.
+
+On source `568c9102c`, the runtime identity check confirmed TE 2.18.0 and B200
+SM100. The exact CUDA test
+`tests/test_audit_wave1_tooling_regressions.py::test_fp8_template_executes_real_transformer_engine_linear`
+passed with no skip, retaining its original full-output numerical smoke check.
+Both stages exited zero and drained normally. The failed installation, successful
+build, package versions, explicit build scope, test XML and cleanup receipts are
+retained separately.
+
+### Final CI and source delivery
+
+All final checks passed on PR head `568c9102c891cdc14eba5fe956cc03d702fb176e`.
+[Benchmark validation](https://github.com/cfregly/ai-performance-engineering/actions/runs/34157897194)
+completed with 5,341 CPU tests passed, 536 skipped and zero failures or errors
+across 5,877 cases in 1,411.663 seconds. Static analysis and dashboard checks
+passed. [Dual-architecture compare builds](https://github.com/cfregly/ai-performance-engineering/actions/runs/34157897282)
+also passed for all configured CUDA targets. The retained CPU XML SHA-256 is
+`a8574cf6bd4365e47b56a9acff23fccf1838f6b0c78c7255bde1e220abd3c629`.
+
+[PR #23](https://github.com/cfregly/ai-performance-engineering/pull/23) merged
+normally as `a8e0b5b21388ed3e3545301b2a84fca8a6a8d864` on September 7, 2026.
+Its tree matches the CI-tested head. This includes the previously committed
+local repairs; earlier repair PRs #20 and #21 are also merged. This final
+documentation update records the later profiler failure, TE 2.18 execution,
+skip reconciliation and CI results without changing executable source.
+
+Available one- and two-B200 execution is complete and all owned processes have
+drained. Missing hardware/model assets, independent approximate-kernel accuracy
+budgets, explicitly unimplemented protections and the distributed NCU driver
+failure remain documented limitations. No-speedup measurements remain valid
+negative results, and no universal fastest-performance claim is made.

@@ -17,10 +17,11 @@ that are unavailable on this host.
 | Latest integrated GPU suite | **5,795 passed, 79 skipped, zero failures or errors** on `46ba89929`; normal exit and complete process drain |
 | Standalone MoE entrypoint | Level 0 completed its normal 436.5M-parameter workload |
 | Normal dual-pool vLLM runs | Exact tokens passed twice; speed target failed twice |
-| Gradient-fusion NCU | Complete five-metric baseline and optimized reports inspected; repeated baseline replay remains intermittent |
-| Hosted CI | 5,310 CPU tests passed, 535 skipped; static analysis, dashboard and dual-architecture CUDA builds passed on `d77181e28` |
-| Main delivery | [PR #21](https://github.com/cfregly/ai-performance-engineering/pull/21) merged as `814866061`; its tree matches the tested code. PR #20 is also merged |
+| Gradient-fusion NCU | Complete five-metric reports inspected; later repeats timed out or reported driver `UnknownError`, so replay remains intermittent |
+| Hosted CI | **5,341 CPU tests passed, 536 skipped, zero failures or errors**; static analysis, dashboard and all configured CUDA architecture builds passed on `568c9102c` |
+| Main delivery | [PR #23](https://github.com/cfregly/ai-performance-engineering/pull/23) merged as `a8e0b5b21`; its tree matches the tested head. Earlier repair PRs #20 and #21 are also merged |
 | Explicit opt-in GPU tests | ZeRO2 passed; two Blackwell tests passed on each of two ranks; local-model vLLM passed |
+| Version-specific FP8 template | The actual TE 2.18 CUDA template passed in a separate environment; one executed case, no skip |
 | New Colfax GPU validation | Both full-workload deep-dive runs, both ABBA repeats, 64 opt-in cases and eight Nsight report inspections passed on `356490bd1` |
 
 The original broad inventory included 441 zero exits, 44 exits with code 1, and
@@ -35,6 +36,13 @@ receipts remain preserved. After the repairs, the latest integrated suite ran
 all 5,874 collected cases successfully, with 79 explicit skips, in 31 minutes
 29 seconds. It exited normally and drained all owned processes.
 
+The final hosted CPU suite subsequently collected 5,877 cases and finished in
+23 minutes 32 seconds. [Benchmark validation](https://github.com/cfregly/ai-performance-engineering/actions/runs/34157897194)
+and [CUDA architecture builds](https://github.com/cfregly/ai-performance-engineering/actions/runs/34157897282)
+both passed. The later Colfax changes were also exercised in both dedicated
+B200 environments, as recorded above; the integrated GPU suite retains its
+own source revision rather than claiming a rerun on the final merge.
+
 The final distributed bootstrap repair passed all eight CPU/CUDA worker tests
 on B200, including one- and two-rank execution. Both final hosted workflows
 then passed: [benchmark validation](https://github.com/cfregly/ai-performance-engineering/actions/runs/34143112135)
@@ -46,14 +54,19 @@ shutdown again needed scoped cleanup after its complete XML report was saved.
 The unchanged numerical workload now runs in a fresh interpreter with owned
 compiler cleanup. It passed with full collection and again inside the completed
 passing integrated run. Some skipped hardening tests also document detectors that are not yet
-implemented, rather than demonstrating those protections.
+implemented, rather than demonstrating those protections: 58 cases explicitly
+name missing detectors, and one further skip rejects test-name counts as proof
+of protection coverage. CPU-only negative controls and supported opt-in cases
+are separate; the distributed, model and Colfax opt-ins were executed later.
 
 The profiler builders now request exactly the five validated metrics for
 application-range replay, without adding a section set. All 67 profiler checks
 passed on CPU and B200. One complete full-workload baseline capture and the
 repository-generated optimized capture passed strict report inspection. A later
-baseline repeat timed out after ten minutes, so stable Nsight/NCCL replay remains
-unproven on this stack. Both successful and incomplete attempts are retained.
+baseline repeat timed out after ten minutes. The last full-workload repeat on
+`568c9102c` reported a driver `UnknownError`; its owned profiler was stopped and
+drained after preserving the error. Stable Nsight/NCCL replay remains unproven
+on this stack. Both successful and incomplete attempts are retained.
 
 ## Measured outcomes
 
@@ -106,10 +119,16 @@ directly traced. See the [lab](../../code/labs/flashattention4/README.md).
 4. **Keep runtime combinations explicit.** The repository-built vLLM 0.16/FA4
    backport is reproducible and hash-checked. Use the documented matching
    environment and attention backend for exact router comparisons; revalidate
-   after changing a model, compiler, or serving backend.
+   after changing a model, compiler, or serving backend. The TE 2.18 FP8 template
+   was also tested separately from TE 2.9; its isolated build excluded optional
+   NCCL expert parallelism because PyTorch 2.9 lacks the required headers.
 5. **Finish the wider hardware matrix when those resources are available.**
    Grace/GB10, four-or-more GPUs, multi-node communication, and the missing
    Phi3.5/TensorRT-LLM model engine remain outside this host's coverage.
+6. **Implement the explicitly missing benchmark protections before claiming them.**
+   Dataset/holdout provenance, execution placement, managed-memory events and
+   related skipped detectors remain engineering work. Passing arithmetic or
+   test-name counts cannot establish these protections.
 
 Ordinary examples support Python and local `torchrun`; Slurm is optional.
 See the [router lab](../../code/labs/dynamic_router/README.md) for the tested
