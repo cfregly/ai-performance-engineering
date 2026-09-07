@@ -33,7 +33,7 @@ class BaselineMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         self.tensor = torch.randn(self.N, device=self.device, dtype=torch.float32)
-        self._verify_output_buffer = torch.empty(4096, device=self.device, dtype=torch.float32)
+        self._verify_output_buffer = torch.empty_like(self.tensor)
 
     def benchmark_fn(self) -> None:
         with torch.inference_mode(), self._nvtx_range("baseline_memory_bound"):
@@ -47,11 +47,7 @@ class BaselineMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.output is None or self.tensor is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must be called before verification")
-        # Keep verification lightweight: slice the large output tensor.
-        # This avoids serializing ~64MB outputs in subprocess mode while still
-        # validating correctness on representative data.
-        output_slice = self.output[: self._verify_output_buffer.numel()].detach()
-        self._verify_output_buffer.copy_(output_slice)
+        self._verify_output_buffer.copy_(self.output.detach())
         self._set_verification_payload(
             inputs={"tensor": self.tensor},
             output=self._verify_output_buffer,

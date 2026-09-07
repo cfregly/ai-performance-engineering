@@ -41,7 +41,7 @@ class OptimizedMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Setup: Initialize tensors."""
         self.data = torch.randn(self.N, dtype=torch.float32, device=self.device)
         self.output_buffer = torch.empty_like(self.data)
-        self._verify_output_buffer = torch.empty(4096, device=self.device, dtype=torch.float32)
+        self._verify_output_buffer = torch.empty_like(self.data)
         self.register_workload_metadata(
             requests_per_iteration=self._workload.requests_per_iteration,
             tokens_per_iteration=self._workload.tokens_per_iteration,
@@ -75,9 +75,7 @@ class OptimizedMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.output is None or self.data is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must be called before verification")
-        # Keep verification lightweight: slice the large output tensor.
-        output_slice = self.output[: self._verify_output_buffer.numel()].detach()
-        self._verify_output_buffer.copy_(output_slice)
+        self._verify_output_buffer.copy_(self.output.detach())
         self._set_verification_payload(
             inputs={"tensor": self.data},
             output=self._verify_output_buffer,
@@ -99,7 +97,11 @@ class OptimizedMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = None
         self.output_buffer = None
         self._verify_output_buffer = None
+        self._compiled_run = None
         super().teardown()
+
+    def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
+        return self._workload
     
     def get_config(self) -> BenchmarkConfig:
         """Return benchmark configuration."""

@@ -111,6 +111,9 @@ class _FakeLLMEngine:
 
 @pytest.fixture
 def vllm_016_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    # This CPU fake models two devices. Match its visibility contract even when
+    # the surrounding real-GPU test shard was launched with a single device.
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1")
     _FakeEngineArgs.created.clear()
     _FakeLLMEngine.created.clear()
     monkeypatch.setattr(vllm_runner, "EngineArgs", _FakeEngineArgs)
