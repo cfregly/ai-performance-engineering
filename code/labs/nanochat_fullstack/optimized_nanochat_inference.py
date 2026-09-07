@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Optimized: NanoChat inference loop with compile-driven decode overhead reduction."""
+"""Optimized: NanoChat inference with compiled prefill and eager KV-cache decode."""
 
 from __future__ import annotations
 
@@ -13,6 +13,18 @@ from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
 from labs.nanochat_fullstack.nanochat.engine import KVCache
 from labs.nanochat_fullstack.nanochat.gpt import GPT, GPTConfig
+
+
+def _compile_prefill(model: GPT) -> torch.nn.Module:
+    """Compile the fixed prompt shape without wrapping the token-by-token decoder."""
+    if not hasattr(torch, "compile"):
+        raise RuntimeError("SKIPPED: torch.compile not available for nanochat inference optimization")
+    return torch.compile(  # type: ignore[attr-defined]
+        model,
+        mode="max-autotune-no-cudagraphs",
+        fullgraph=False,
+        dynamic=False,
+    )
 
 
 class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -30,6 +42,7 @@ class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.n_embd = 512
 
         self.model: Optional[GPT] = None
+        self.prefill_model: Optional[torch.nn.Module] = None
         self.kv_cache: Optional[KVCache] = None
         self.prompt: Optional[torch.Tensor] = None
         self.decode_tokens: Optional[torch.Tensor] = None
@@ -72,19 +85,15 @@ class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmar
             model = GPT(cfg)
         model.to_empty(device=self.device)
         model.init_weights()
+        # Match the baseline's non-degenerate synthetic inference weights.
+        model.apply(model._init_weights)
         model = model.to(dtype=torch.bfloat16)
         model.eval()
-        if not hasattr(torch, "compile"):
-            raise RuntimeError("SKIPPED: torch.compile not available for nanochat inference optimization")
-
-        # Compile in setup; benchmark_fn measures steady-state execution.
-        # Keep dynamic=True because the model sees both prompt_len and decode_len=1 shapes.
-        self.model = torch.compile(  # type: ignore[attr-defined]
-            model,
-            mode="max-autotune-no-cudagraphs",
-            fullgraph=False,
-            dynamic=True,
-        )
+        self.model = model
+        # The prompt has one fixed shape and benefits from specialization. The
+        # KV-cache position and visible key length change at every decode step;
+        # wrapping that loop in a dynamic compiled model adds dispatch overhead.
+        self.prefill_model = _compile_prefill(model)
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
 
         self.prompt = torch.randint(
@@ -125,13 +134,14 @@ class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmar
         # Warmup both prompt and decode shapes so compilation happens before timing.
         self.kv_cache.reset()
         with torch.inference_mode():
-            _ = self.model(self.prompt, kv_cache=self.kv_cache)
+            _ = self.prefill_model(self.prompt, kv_cache=self.kv_cache)
             for step_ids in self.decode_token_steps[: min(4, self.decode_len)]:
                 _ = self.model(step_ids, kv_cache=self.kv_cache)
 
     def benchmark_fn(self) -> None:
         if (
             self.model is None
+            or self.prefill_model is None
             or self.kv_cache is None
             or self.prompt is None
             or self.decode_tokens is None
@@ -141,7 +151,7 @@ class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmar
 
         self.kv_cache.reset()
         with torch.inference_mode():
-            self.model(self.prompt, kv_cache=self.kv_cache)
+            self.prefill_model(self.prompt, kv_cache=self.kv_cache)
             logits = None
             for step_ids in self.decode_token_steps:
                 logits = self.model(step_ids, kv_cache=self.kv_cache)
@@ -186,10 +196,15 @@ class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmar
     def validate_result(self) -> Optional[str]:
         if self.output is None:
             return "benchmark_fn() did not produce output"
+        if not bool(torch.isfinite(self.output).all()):
+            return "benchmark_fn() produced non-finite logits"
+        if not bool(torch.count_nonzero(self.output)):
+            return "benchmark_fn() produced degenerate all-zero logits"
         return None
 
     def teardown(self) -> None:
         self.model = None
+        self.prefill_model = None
         self.kv_cache = None
         self.prompt = None
         self.decode_tokens = None

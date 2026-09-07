@@ -86,6 +86,28 @@ def _parse_version_tuple(version: str) -> tuple:
             parts.append(0)
     return tuple(parts)
 
+def _inductor_cutlass_root(configured_root: Optional[str], *, repo_root: Path) -> Optional[str]:
+    """Locate CUTLASS C++ sources and generators, preserving a usable config.
+
+    The CuTe DSL's ``cutlass`` Python package is a different distribution;
+    its package directory is not an Inductor CUTLASS source checkout.
+    """
+    candidates = [configured_root, os.environ.get("CUTLASS_PATH"), repo_root / "third_party" / "cutlass"]
+    required = (
+        "include/cutlass/cutlass.h",
+        "python/cutlass_library/generator.py",
+        "python/cutlass_library/library.py",
+        "python/cutlass_library/manifest.py",
+    )
+    for candidate in candidates:
+        if candidate is None or not str(candidate).strip():
+            continue
+        root = Path(candidate).expanduser().resolve()
+        if all((root / relative).is_file() for relative in required):
+            return str(root)
+    return None
+
+
 class ArchitectureConfig:
     """Provide configuration details for NVIDIA Blackwell GPUs."""
 
@@ -228,15 +250,16 @@ class ArchitectureConfig:
             except ImportError:
                 triton = None
 
-            # Configure CUTLASS for torch.compile backend
-            # Fix the cutlass_dir path to point to nvidia-cutlass-dsl installation
+            # Inductor needs the CUTLASS source tree, not the CuTe DSL package.
             if hasattr(cfg, "cuda") and hasattr(cfg.cuda, "cutlass_dir"):
+                cutlass_root = _inductor_cutlass_root(
+                    cfg.cuda.cutlass_dir,
+                    repo_root=Path(__file__).resolve().parents[2],
+                )
+                if cutlass_root is not None:
+                    cfg.cuda.cutlass_dir = cutlass_root
                 try:
-                    import cutlass
-                    # Get the nvidia_cutlass_dsl root directory
-                    cutlass_module_path = os.path.dirname(cutlass.__file__)
-                    nvidia_cutlass_root = os.path.dirname(os.path.dirname(cutlass_module_path))
-                    cfg.cuda.cutlass_dir = nvidia_cutlass_root
+                    import cutlass  # noqa: F401 - retain optional DSL availability detection
                     try:
                         cutlass_pkg_version = importlib_metadata.version("nvidia-cutlass-dsl")
                         self.cutlass_version = cutlass_pkg_version

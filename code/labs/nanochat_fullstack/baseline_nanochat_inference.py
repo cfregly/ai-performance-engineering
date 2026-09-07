@@ -72,6 +72,9 @@ class BaselineNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark
             model = GPT(cfg)
         model.to_empty(device=self.device)
         model.init_weights()
+        # Training initialization zeros the residual projections and lm_head.
+        # Reinitialize them so inference verification observes nonzero logits.
+        model.apply(model._init_weights)
         model = model.to(dtype=torch.bfloat16)
         model.eval()
 
@@ -170,6 +173,10 @@ class BaselineNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark
     def validate_result(self) -> Optional[str]:
         if self.output is None:
             return "benchmark_fn() did not produce output"
+        if not bool(torch.isfinite(self.output).all()):
+            return "benchmark_fn() produced non-finite logits"
+        if not bool(torch.count_nonzero(self.output)):
+            return "benchmark_fn() produced degenerate all-zero logits"
         return None
 
     def teardown(self) -> None:

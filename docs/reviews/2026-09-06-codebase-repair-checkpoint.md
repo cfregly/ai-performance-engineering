@@ -1249,3 +1249,52 @@ CPython's specialized attribute load; Python frames and native traces are
 retained. This identifies the crash site, not the source of the memory
 corruption. The installed runtime has not been changed, and the native
 failure remains open.
+
+### Wave 32 and the next source repairs
+
+All 18 stages on `555713f38` drained. A private, explicitly transformed Llama
+probe used FP32 residual accumulation and normalization in both arms while
+retaining BF16 model weights and attention/MLP inputs. It reduced full-output
+violations to 28 for materialized versus eager SDPA, two for eager versus
+compiled SDPA, and 23 for materialized versus compiled SDPA. These remain
+failures at the unchanged tolerance, and this diagnostic transform is not
+the checked-in model implementation.
+
+Level 4 progressed past pinned-memory allocation and exposed another cached
+tensor created inside a CUDA graph: routing token IDs were later overwritten
+by a subsequent replay. Persistent workspace ownership is being repaired
+without disabling graph compilation. The fused MoE run under Python's debug
+allocator completed its full normal benchmark successfully; GDB then returned
+an error because its post-exit commands had no stack. This control did not
+reproduce the crash and does not establish its cause or resolution.
+
+The 15 informational verification commands covering 17 identities used an
+incorrect interpreter: the private driver resolved the virtualenv executable
+symlink to system Python. Those results are retained as diagnostics and do
+not count as validation on the prepared stack. The driver now preserves the
+virtualenv path and verifies its actual interpreter prefix. The attempts also
+exposed rowwise FP8 payload conversion errors; the corrected environment and
+complete-output probes will be rerun separately from timing-jitter gates.
+
+Three further repairs are prepared for B200 validation:
+
+- The two-GPU transfer pair now checks all 104,857,600 FP32 destination
+  elements from the same binary invocation that reported timing. It initializes
+  nontrivial deterministic data and rejects truncated dumps or corruption in
+  the final element. Source/destination devices, transfer algorithms, bytes,
+  and 100 inner iterations are unchanged; validation occurs after timing.
+- NanoChat's inference pair previously inherited training initialization that
+  zeroed the final projection, making its output comparison degenerate. Both
+  arms now use deterministic nonzero synthetic inference weights and reject
+  all-zero/nonfinite logits. The candidate specializes the fixed prefill
+  shape while running mutable-cache decode through the same eager model;
+  complete B200 correctness and interleaved measurements remain required.
+- Architecture setup no longer overwrites Inductor's CUTLASS source directory
+  with the unrelated CuTe DSL package root. It preserves a valid configured
+  source tree or selects a complete explicit/vendored checkout. Focused file
+  layout tests reject DSL-only and headers-only directories. Actual backend
+  import and kernel selection still require a target-host check.
+
+Focused CPU checks for the source-directory, architecture and transfer changes
+passed (`22 passed, 1 skipped`); four NanoChat checks also passed. No shared
+Python installation, driver, permissions, or scheduler configuration changed.
