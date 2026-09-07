@@ -87,7 +87,9 @@ def main():
             bucket_cap_mb=1,
         )
 
-    optimizer = make_ddp_adamw(ddp_model.parameters(), args.learning_rate, prefer_fused=False)
+    # BF16 fused and unfused AdamW round updates differently. Keep optimizer
+    # arithmetic shared so the pair isolates DDP communication and input loading.
+    optimizer = make_ddp_adamw(ddp_model.parameters(), args.learning_rate, prefer_fused=True)
 
     num_steps = min(args.steps, len(dataloader))
     start = perf_counter()
