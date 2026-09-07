@@ -233,9 +233,6 @@ class GPT4ArchitectureOptimizationBenchmark(VerificationPayloadMixin, BaseBenchm
     def setup(self) -> None:
         if self.device.type != "cuda":
             raise RuntimeError("SKIPPED: GPT-4 architecture benchmark requires CUDA")
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.model_wrapper = GPT4ArchitectureOptimization()
         self.model_wrapper.setup()
         self.parameter_count = sum(p.numel() for p in self.model_wrapper.layers.parameters())
