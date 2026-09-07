@@ -17564,17 +17564,20 @@ def test_ch13_precisionfp8_defers_verification_forwards_and_casts_outside_hot_lo
             "def get_config", maxsplit=1
         )[0]
 
-        assert "verify_out = self.model(self._verify_input_fp16)" not in benchmark_section
+        assert "_verify_input_fp16" not in source
+        assert "manual_seed" not in setup_section
         assert ".detach().float().clone()" not in benchmark_section
-        assert "verify_out = self.model(self._verify_input_fp16)" in capture_section
-        assert "with torch.inference_mode():" in capture_section
-        assert "with torch.no_grad():" not in capture_section
+        assert ".to(dtype=torch.float16)" not in benchmark_section
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
         assert "self._verify_output_buffer = torch.empty(" in setup_section
         assert "min(128, self.batch_size)" in setup_section
         assert "min(256, self.hidden_dim)" in setup_section
-        assert "output_slice = verify_out[" in capture_section
-        assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+        if name == "baseline_precisionfp8.py":
+            assert "verify_input_fp16 = self._verify_input.to(dtype=torch.float16)" in capture_section
+            assert "verify_out = self.model(verify_input_fp16)" in capture_section
+        else:
+            assert "_capture_fp8_verification_output(" in capture_section
+            assert "self._verify_input," in capture_section
         assert "output=self._verify_output_buffer" in capture_section
         assert "output=self.output.detach().float().clone()" not in capture_section
         assert "self._verify_output_buffer = None" in teardown_section

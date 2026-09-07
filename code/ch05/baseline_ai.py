@@ -29,6 +29,8 @@ class BaselineAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         super().__init__()
         self.block: Optional[nn.Module] = None
         self.inputs_path: Optional[str] = None
+        self._input_mapping: Optional[np.memmap] = None
+        self._verify_input: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._last_input: Optional[torch.Tensor] = None
         self._device_batch_buffer: Optional[torch.Tensor] = None
@@ -44,12 +46,11 @@ class BaselineAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
+        input_seed = torch.initial_seed()
         self.block = TinyBlock(self.hidden).to(self.device).eval()
         self.parameter_count = sum(p.numel() for p in self.block.parameters())
 
-        host_batches = np.random.default_rng(42).standard_normal(
+        host_batches = np.random.default_rng(input_seed).standard_normal(
             (self.num_blocks, self.batch, self.hidden),
             dtype=np.float32,
         )
@@ -57,6 +58,10 @@ class BaselineAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs_path = f.name
         f.close()
         np.save(self.inputs_path, host_batches)
+        # The final output comes from the final storage-backed batch. Expose
+        # that source, so verification changes survive the timed reload.
+        self._input_mapping = np.load(self.inputs_path, mmap_mode="r+")
+        self._verify_input = torch.from_numpy(self._input_mapping[-1])
         self._block_range = range(self.num_blocks)
         self._device_batch_buffer = torch.empty(
             (self.batch, self.hidden),
@@ -88,8 +93,10 @@ class BaselineAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = out
 
     def capture_verification_payload(self) -> None:
+        if self._verify_input is None or self.output is None:
+            raise RuntimeError("setup() and benchmark_fn() must run before capture")
         self._set_verification_payload(
-            inputs={"inputs": self._last_input},
+            inputs={"inputs": self._verify_input},
             output=self.output,
             batch_size=self.batch,
             parameter_count=self.parameter_count,
@@ -106,6 +113,8 @@ class BaselineAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.block = None
         self.output = None
         self._last_input = None
+        self._verify_input = None
+        self._input_mapping = None
         self._device_batch_buffer = None
         if self.inputs_path and os.path.exists(self.inputs_path):
             os.unlink(self.inputs_path)

@@ -1368,3 +1368,51 @@ instead of launching a second checksum-only verification executable. Five
 focused CPU/source checks passed; native compilation and B200 execution remain
 pending. NanoChat's generated README now describes fixed-prefill compilation
 and eager decode, with obsolete timings and guaranteed-win language removed.
+
+### Verification lifecycle and live-input corrections
+
+Wave33 finished all 33 scheduled stages. Its remaining sensitivity failures
+exposed a shared lifecycle defect: `VerifyRunner` tore down the optimized
+benchmark before asking it to rerun with perturbed input. The retained payload
+still exposed tensors, but models and buffers had already been cleared. The
+runner now performs sensitivity checking inside an initialized lifecycle and
+guarantees teardown afterward, including failure paths. The real Chapter 5
+CPU pair passes fresh-input and sensitivity checks without advisory warnings;
+an exception control verifies restored input and exactly one cleanup. Focused
+lifecycle/anti-cheat checks passed (`14 passed`), as did four CLI tests and five
+additional protection checks.
+
+Separate input-binding defects were repaired:
+
+- Chapter 5 now exposes the writable storage-backed final input batch. A
+  perturbation therefore survives the next timed disk/memmap read. Both arms
+  also respect the harness seed when creating model parameters and storage
+  inputs; their I/O and overlapping copy algorithms remain unchanged.
+- The naive/Flash blockwise KV-cache pair now exposes the live final request
+  consumed by the timed output, rather than a detached copy of request zero.
+- The FP8 family converts its current declared verification input at capture
+  time, removing stale setup-time FP16 copies, and respects the harness seed.
+  Training updates, workload sizes, and tolerances are unchanged. The three
+  optimized recipes share the verified conversion/dequantization helper.
+
+Real CPU binding tests passed (`15 passed, 6 optional-dependency skips`), and
+the actual torchao 0.15 emulated recipes passed all 14 focused checks. Combined
+target-host gate execution is the next acceptance step.
+
+Wave34 separately passed full B200 output comparisons for all three FP8
+recipes: 67,108,864 elements each, maximum absolute differences `0.06714`
+(tensorwise) and `0.07087` (both rowwise recipes). Compiled TorchAO passed all
+33,554,432 elements, maximum absolute difference `0.01836`. These use the
+existing declared tolerances; they do not calibrate those tolerances. The
+task-private environment gained the repository-pinned torchao 0.15 CUDA 13
+wheel only; its PyTorch version remained 2.9.1+cu130 and no distributions were
+removed. Nine target-host focused tests passed.
+
+The attempted Chapter 12 `bench run` was classified informational and did not
+execute the pair; its zero exit code is not GPU validation. The next explicit
+verification gate will execute the native pair. The Llama full-size diagnostic
+still failed: an FP32-residual/math-attention reference had 13 differing
+elements outside tolerance versus compiled SDPA, and eager versus compiled
+SDPA had two. NanoChat passed all 40,000 nonzero output logits but showed no
+speedup in eight interleaved observations per arm (`46.566` versus `47.801` ms).
+Both negative results are retained and remain open.

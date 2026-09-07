@@ -18,7 +18,7 @@ except Exception as exc:  # pragma: no cover
 else:
     TORCHAO_IMPORT_ERROR = None
 
-from ch13.optimized_precisionfp8_rowwise import _capture_rowwise_verification_output
+from ch13.optimized_precisionfp8 import _capture_fp8_verification_output
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -59,7 +59,6 @@ class OptimizedFP8RowwiseGWHpBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.criterion: Optional[nn.Module] = None
         self.output: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
-        self._verify_input_fp16: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         self.batch_size = 8192
@@ -79,10 +78,6 @@ class OptimizedFP8RowwiseGWHpBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError(
                 f"SKIPPED: torchao is required for {self.__class__.__name__}: {TORCHAO_IMPORT_ERROR}"
             )
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
-
         model = SimpleModel(hidden_dim=self.hidden_dim).to(self.device).half().train()
         fp8_config = Float8LinearConfig.from_recipe_name(Float8LinearRecipeName.ROWWISE_WITH_GW_HP)
         model = convert_to_float8_training(model, config=fp8_config)
@@ -100,7 +95,6 @@ class OptimizedFP8RowwiseGWHpBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=torch.float32,
         )
         self._verify_input = self.inputs.detach().clone()
-        self._verify_input_fp16 = self._verify_input.to(torch.float16)
         self._verify_output_buffer = torch.empty(
             min(128, self.batch_size),
             min(256, self.hidden_dim),
@@ -135,18 +129,18 @@ class OptimizedFP8RowwiseGWHpBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimizer.step()
 
     def benchmark_fn(self) -> None:
-        if self._verify_input is None or self._verify_input_fp16 is None:
+        if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
         with self._nvtx_range("optimized_precisionfp8_rowwise_gw_hp"):
             self._train_step()
             self.output = None
 
     def capture_verification_payload(self) -> None:
-        if self.model is None or self._verify_input is None or self._verify_input_fp16 is None or self._verify_output_buffer is None:
+        if self.model is None or self._verify_input is None or self._verify_output_buffer is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
-        self.output = _capture_rowwise_verification_output(
+        self.output = _capture_fp8_verification_output(
             self.model,
-            self._verify_input_fp16,
+            self._verify_input,
             self._verify_output_buffer,
         )
         self._set_verification_payload(
@@ -173,7 +167,6 @@ class OptimizedFP8RowwiseGWHpBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.criterion = None
         self.output = None
         self._verify_input = None
-        self._verify_input_fp16 = None
         self._verify_output_buffer = None
         super().teardown()
 

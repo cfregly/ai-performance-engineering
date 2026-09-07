@@ -194,7 +194,10 @@ class BaselineKVCacheNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=torch.float32,
         )
         if self.inputs:
-            self._verify_input = self.inputs[0].detach().clone()
+            # The timed output is the final token from the final request. Keep
+            # verification bound to that request's live storage so perturbing
+            # the declared input also updates the precomputed token views.
+            self._verify_input = self.inputs[-1]
         self._synchronize()
     
     def benchmark_fn(self) -> None:

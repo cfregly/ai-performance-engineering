@@ -800,6 +800,8 @@ class VerifyRunner:
         self,
         benchmark: Any,
         seed: int,
+        *,
+        live_check: Callable[[Any, InputSignature], None] | None = None,
     ) -> Tuple[
         Dict[str, torch.Tensor],
         Dict[str, float],
@@ -812,6 +814,9 @@ class VerifyRunner:
         Args:
             benchmark: The benchmark instance
             seed: Random seed to use
+            live_check: Optional check that must run after output capture while
+                the benchmark is still initialized. The benchmark is torn down
+                exactly once after this callback returns or raises.
         
         Returns:
             Tuple of (outputs, workload_metrics, seed_info, inputs_used, input_signature)
@@ -955,7 +960,10 @@ class VerifyRunner:
                         "STREAM TIMING VIOLATION (verification): " + " | ".join(issues)
                     )
 
-            # Check for seed mutation
+            if live_check is not None:
+                live_check(benchmark, signature)
+
+            # Check for seed mutation, including any live check rerun.
             if detect_seed_mutation(seed_info):
                 raise RuntimeError("Benchmark mutated RNG seeds during execution")
 
@@ -1297,6 +1305,42 @@ class VerifyRunner:
             if perturbation_started or restore_error:
                 return False, f"Jitter check failed due to error: {e}.{restore_error or ''}".rstrip()
             return True, f"Jitter check skipped due to error: {e}.{restore_error or ''}".rstrip()
+
+    def _run_live_jitter_check(
+        self,
+        benchmark: Any,
+        config: VerifyConfig,
+    ) -> tuple[bool, str | None]:
+        """Run jitter inside a complete, independently owned benchmark lifecycle."""
+        if config.skip_jitter_check:
+            return True, None
+
+        jitter_result: tuple[bool, str | None] | None = None
+
+        def check_initialized_benchmark(
+            initialized_benchmark: Any,
+            input_signature: InputSignature,
+        ) -> None:
+            nonlocal jitter_result
+            jitter_result = self._run_jitter_check(
+                initialized_benchmark,
+                input_signature,
+                config,
+            )
+
+        try:
+            self._run_with_seed(
+                benchmark,
+                config.seed,
+                live_check=check_initialized_benchmark,
+            )
+        except Exception as exc:
+            detail = str(exc) or type(exc).__name__
+            return False, f"Jitter check failed during live execution: {detail}"
+
+        if jitter_result is None:
+            return False, "Jitter check failed during live execution: check did not run"
+        return jitter_result
     
     def verify_baseline(
         self,
@@ -1633,8 +1677,8 @@ class VerifyRunner:
             fresh_passed, fresh_msg = self._run_fresh_input_check(
                 optimized, outputs, config
             )
-            jitter_passed, jitter_msg = self._run_jitter_check(
-                optimized, signature, config
+            jitter_passed, jitter_msg = self._run_live_jitter_check(
+                optimized, config
             )
             
             if not fresh_passed:
