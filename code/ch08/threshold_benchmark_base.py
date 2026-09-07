@@ -45,7 +45,6 @@ class ThresholdBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
             extra_cuda_cflags=["-O3", "--use_fast_math", "-lineinfo"],
         )
 
-        torch.manual_seed(42)
         device_inputs = self._generate_inputs()
         self.inputs = device_inputs.contiguous()
         self.host_inputs = self.inputs.cpu().pin_memory()

@@ -41,8 +41,6 @@ class Tcgen05CustomVsCublasBase(VerificationPayloadMixin, BaseBenchmark):
         raise RuntimeError("CUDA required for ch08 tcgen05 custom vs cuBLAS benchmark")
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.matrix_a = torch.randn(
             self.matrix_rows,
             self.shared_dim,

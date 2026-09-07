@@ -45,7 +45,6 @@ class HBMBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
             cuda_source_file=str(Path(__file__).with_name("hbm_kernels.cu")),
             extra_cuda_cflags=["-O3", "--use_fast_math", "-lineinfo"],
         )
-        torch.manual_seed(42)
         host_row = torch.randn(
             self.rows,
             self.cols,
