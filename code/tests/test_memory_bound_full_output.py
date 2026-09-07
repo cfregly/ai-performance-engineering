@@ -1,10 +1,26 @@
 """Memory-bound gates expose metadata before setup and verify the full result."""
 
+from types import SimpleNamespace
+
 import pytest
 import torch
 
 from ch09.baseline_memory_bound import BaselineMemoryBoundBenchmark
 from ch09.optimized_memory_bound import OptimizedMemoryBoundBenchmark
+
+
+def test_architecture_policy_keeps_modern_cudagraph_ownership() -> None:
+    from core.harness.arch_config import _configure_triton_compile_policy
+
+    triton_config = SimpleNamespace(
+        unique_kernel_names=False,
+        cudagraphs=True,
+        cudagraph_trees=False,
+    )
+    _configure_triton_compile_policy(triton_config)
+    assert triton_config.unique_kernel_names is True
+    assert triton_config.cudagraphs is False
+    assert triton_config.cudagraph_trees is True
 
 
 def test_memory_bound_metadata_is_available_before_setup() -> None:
@@ -18,6 +34,15 @@ def test_memory_bound_metadata_is_available_before_setup() -> None:
 def test_memory_bound_captures_live_tail_beyond_old_crop(optimized: bool) -> None:
     if optimized and not torch.cuda.is_available():
         pytest.skip("The production compiled memory-bound path requires CUDA")
+    if optimized:
+        # Exercise the same process-global policy loaded by the benchmark CLI.
+        # The policy must disable implicit graph wrapping while retaining the
+        # tree owner used when reduce-overhead explicitly enables graphs.
+        import core.harness.arch_config  # noqa: F401
+
+        triton_config = torch._inductor.config.triton
+        assert triton_config.cudagraphs is False
+        assert triton_config.cudagraph_trees is True
     benchmark = OptimizedMemoryBoundBenchmark() if optimized else BaselineMemoryBoundBenchmark()
     benchmark.device = torch.device("cuda" if optimized else "cpu")
     benchmark.N = 8193

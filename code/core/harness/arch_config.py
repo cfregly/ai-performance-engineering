@@ -46,6 +46,19 @@ def _default_sdpa_backends() -> List[Any]:
 _PREFERRED_SDPA_BACKENDS: List[Any] = _default_sdpa_backends()
 
 
+def _configure_triton_compile_policy(triton_cfg: Any) -> None:
+    """Configure graph activation and graph ownership as distinct controls."""
+    if hasattr(triton_cfg, "unique_kernel_names"):
+        triton_cfg.unique_kernel_names = True
+    # Individual compiles may explicitly enable graphs (for example through
+    # ``mode="reduce-overhead"``). Keep their modern lifetime manager enabled.
+    if hasattr(triton_cfg, "cudagraph_trees"):
+        triton_cfg.cudagraph_trees = True
+    # Do not wrap every compiled graph merely because architecture defaults ran.
+    if hasattr(triton_cfg, "cudagraphs"):
+        triton_cfg.cudagraphs = False
+
+
 def prefer_sdpa_backends(order: Optional[List[Any]] = None):
     """
     Return a context manager that routes scaled_dot_product_attention to preferred backends.
@@ -222,13 +235,7 @@ class ArchitectureConfig:
             # Enable PyTorch 2.10 features
             if hasattr(cfg, "triton"):
                 triton_cfg = cfg.triton
-                if hasattr(triton_cfg, "unique_kernel_names"):
-                    triton_cfg.unique_kernel_names = True
-                # Avoid automatic cudagraph wrapping to prevent RNG capture issues in setup code.
-                if hasattr(triton_cfg, "cudagraph_trees"):
-                    triton_cfg.cudagraph_trees = False
-                if hasattr(triton_cfg, "cudagraphs"):
-                    triton_cfg.cudagraphs = False
+                _configure_triton_compile_policy(triton_cfg)
             
             # Enable max-autotune GEMM backends (PyTorch 2.10)
             # CUTLASS provides optimized GEMM kernels for NVIDIA GPUs
