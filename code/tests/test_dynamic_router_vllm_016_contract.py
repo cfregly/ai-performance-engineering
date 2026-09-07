@@ -259,6 +259,30 @@ def test_all_four_benchmark_call_paths_use_current_vllm_api(
     assert sum(len(engine.add_calls) for engine in _FakeLLMEngine.created) == expected_requests
 
 
+def test_explicit_zero_request_groups_do_not_restore_default_work() -> None:
+    args = _args()
+    assert vllm_runner.dual_pool_prompt_lengths(
+        args, prefill_burst=0, decode_requests=1, continue_requests=0,
+        short_prompt_tokens=2,
+    ) == [2]
+    with pytest.raises(ValueError, match="at least one request"):
+        vllm_runner.dual_pool_prompt_lengths(args, prefill_burst=0, decode_requests=0, continue_requests=0)
+    with pytest.raises(ValueError, match="req_count must be positive"):
+        vllm_runner.routing_prompt_lengths(args, req_count=0)
+    with pytest.raises(ValueError, match="prompt token counts must be positive"):
+        vllm_runner.dual_pool_prompt_lengths(args, long_prompt_tokens=0)
+
+
+def test_zero_request_groups_reach_actual_admission_loop(vllm_016_api: None) -> None:
+    summary = vllm_runner.run_dual_pool_vllm(
+        "shared", cli_args=_args(), topology_snapshot=_topology(),
+        prefill_burst=0, decode_requests=1, continue_requests=0,
+        short_prompt_tokens=2, max_tokens=1,
+    )
+    assert summary["requests"] == summary["completed"] == 1
+    assert sum(len(engine.add_calls) for engine in _FakeLLMEngine.created) == 1
+
+
 def test_prompt_token_ids_preserve_default_prompts_and_are_live() -> None:
     prompt_lengths = [4, 2]
     prompt_token_ids = vllm_runner.build_prompt_token_ids(prompt_lengths)

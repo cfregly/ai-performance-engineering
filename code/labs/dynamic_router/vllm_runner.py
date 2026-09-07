@@ -158,7 +158,7 @@ def routing_prompt_lengths(
     req_count: Optional[int] = None,
 ) -> List[int]:
     """Return the exact per-request prompt lengths for the routing workload."""
-    count = req_count or cli_args.req_count
+    count = cli_args.req_count if req_count is None else req_count
     if count <= 0:
         raise ValueError("req_count must be positive")
     return [64] * count
@@ -174,11 +174,11 @@ def dual_pool_prompt_lengths(
     continue_requests: Optional[int] = None,
 ) -> List[int]:
     """Return the exact request order and prompt lengths for the dual-pool workload."""
-    long_tokens = long_prompt_tokens or cli_args.long_prompt_tokens
-    short_tokens = short_prompt_tokens or cli_args.short_prompt_tokens
-    prefill_count = prefill_burst or cli_args.prefill_burst
-    decode_count = decode_requests or cli_args.decode_requests
-    continue_count = continue_requests or cli_args.continue_requests
+    long_tokens = cli_args.long_prompt_tokens if long_prompt_tokens is None else long_prompt_tokens
+    short_tokens = cli_args.short_prompt_tokens if short_prompt_tokens is None else short_prompt_tokens
+    prefill_count = cli_args.prefill_burst if prefill_burst is None else prefill_burst
+    decode_count = cli_args.decode_requests if decode_requests is None else decode_requests
+    continue_count = cli_args.continue_requests if continue_requests is None else continue_requests
     if long_tokens <= 0 or short_tokens <= 0:
         raise ValueError("prompt token counts must be positive")
     if prefill_count < 0 or decode_count < 0 or continue_count < 0:
@@ -666,7 +666,7 @@ def run_vllm_routing_with_topology(
 
     prompt_lengths = routing_prompt_lengths(args, req_count=req_count)
     req_count_val = len(prompt_lengths)
-    max_tokens_val = max_tokens or args.max_tokens
+    max_tokens_val = args.max_tokens if max_tokens is None else max_tokens
     if max_tokens_val <= 0:
         raise ValueError("max_tokens must be positive")
     request_prompt_token_ids = _split_prompt_token_ids(prompt_token_ids, prompt_lengths)
@@ -810,14 +810,16 @@ def run_dual_pool_vllm_with_topology(
     else:
         normalized_mode = "shared"
 
-    long_prompt_tokens = long_prompt_tokens or args.long_prompt_tokens
-    short_prompt_tokens = short_prompt_tokens or args.short_prompt_tokens
-    prefill_burst = prefill_burst or args.prefill_burst
-    decode_requests = decode_requests or args.decode_requests
-    continue_requests = continue_requests or args.continue_requests
-    max_tokens = max_tokens or args.max_tokens
-    prefill_ctx_thresh = prefill_ctx_thresh or args.prefill_ctx_thresh
-    max_tokens_val = max(1, max_tokens)
+    long_prompt_tokens = args.long_prompt_tokens if long_prompt_tokens is None else long_prompt_tokens
+    short_prompt_tokens = args.short_prompt_tokens if short_prompt_tokens is None else short_prompt_tokens
+    prefill_burst = args.prefill_burst if prefill_burst is None else prefill_burst
+    decode_requests = args.decode_requests if decode_requests is None else decode_requests
+    continue_requests = args.continue_requests if continue_requests is None else continue_requests
+    max_tokens = args.max_tokens if max_tokens is None else max_tokens
+    prefill_ctx_thresh = args.prefill_ctx_thresh if prefill_ctx_thresh is None else prefill_ctx_thresh
+    max_tokens_val = max_tokens
+    if max_tokens_val <= 0:
+        raise ValueError("max_tokens must be positive")
     prompt_lengths = dual_pool_prompt_lengths(
         args,
         long_prompt_tokens=long_prompt_tokens,
