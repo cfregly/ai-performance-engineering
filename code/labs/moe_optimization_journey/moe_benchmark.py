@@ -267,8 +267,10 @@ class MoEJourneyBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
 
 
-def run_level(level: int) -> None:
-    """Run a specific level benchmark."""
+def run_level(level: int) -> float:
+    """Run one standalone level with the demo's reproducible default seed."""
+    # The standalone entrypoint owns its default; setup preserves harness seeds.
+    torch.manual_seed(42)
     class LevelBenchmark(MoEJourneyBenchmark):
         LEVEL = level
     
