@@ -114,14 +114,21 @@ class OptimizedMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
     
     def get_custom_metrics(self) -> Optional[dict]:
-        """Return domain-specific metrics using standardized helper."""
+        """Model one global read/write pass for the fused elementwise chain.
+
+        These are algorithmic traffic estimates, not measured HBM counters.
+        The repeats perform register arithmetic inside the compiled kernel.
+        """
         from core.benchmark.metrics import compute_roofline_metrics
-        return compute_roofline_metrics(
+        modeled_bytes = float(self.N * torch.float32.itemsize * 2)
+        metrics = compute_roofline_metrics(
             total_flops=float(self.N * 2 * self.repeats),
-            total_bytes=float(self.N * torch.float32.itemsize * 2 * self.repeats),
+            total_bytes=modeled_bytes,
             elapsed_ms=getattr(self, "_last_elapsed_ms", None),
             precision="fp32",
         )
+        metrics["memory_bound.modeled_global_bytes"] = modeled_bytes
+        return metrics
 
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""
