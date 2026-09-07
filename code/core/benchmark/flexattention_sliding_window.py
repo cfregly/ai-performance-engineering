@@ -58,9 +58,6 @@ class SlidingWindowAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.use_flex and not HAS_FLEX:
             raise RuntimeError("SKIPPED: FlexAttention not available on this build.")
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
-
         self.q = torch.randn(
             self.cfg.batch_size,
             self.cfg.num_heads,

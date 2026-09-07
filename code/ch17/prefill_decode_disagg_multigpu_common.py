@@ -814,9 +814,6 @@ class _PrefillDecodeMultiGPUBenchmark(
                 f"SKIPPED: requires >= {self.world_size} GPUs (found {torch.cuda.device_count()})"
             )
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
-
         self._pairs = []
         total_params = 0
         reference = TinyPrefillDecode(

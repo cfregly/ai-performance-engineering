@@ -39,8 +39,6 @@ class Tcgen05MatmulBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.register_workload_metadata(bytes_per_iteration=float(bytes_per_iter))
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.matrix_a = torch.randn(
             self.matrix_rows,
             self.shared_dim,
