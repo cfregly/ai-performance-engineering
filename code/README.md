@@ -161,6 +161,23 @@ python -m cli.aisp bench list-targets --chapter ch01
 python -m cli.aisp bench run --targets ch01 --profile minimal
 python -m cli.aisp bench run-tier1 --single-gpu --profile minimal
 ```
+For the qualified FlashAttention 4 (`flash-attn-4==4.0.0b19`) environment on
+Linux x86_64, backport the merged vLLM rotary-import fix into the pinned wheel:
+```bash
+mkdir -p third_party/wheels/vllm-upstream
+python -m pip download --no-deps --only-binary=:all: \
+  --index-url https://wheels.vllm.ai/0.16.0/cu130 \
+  --dest third_party/wheels/vllm-upstream 'vllm==0.16.0+cu130'
+python scripts/build_vllm_fa4_compat_wheel.py \
+  --input-wheel third_party/wheels/vllm-upstream/vllm-0.16.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl \
+  --output-dir third_party/wheels/vllm-fa4-backport \
+  --install-python "$VIRTUAL_ENV/bin/python"
+```
+The tool accepts only the qualified wheel hash, preserves the Torch and FA4
+versions, installs with `--no-deps`, and writes a provenance manifest. Retire
+the backport after `vllm_no_deps.pin` advances to a wheel containing
+[vLLM PR #42679](https://github.com/vllm-project/vllm/pull/42679) and that wheel
+passes the same FA4 import and full-model gates.
 - `setup.sh` installs system prerequisites (drivers, CUDA, Nsight) and should be rerun after driver upgrades.
 - Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited hosts.
 - Use `python -m cli.aisp bench expectations --hardware b200 --min-speedup 1.05` to report expectation entries below a target threshold.
