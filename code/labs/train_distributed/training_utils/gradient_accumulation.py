@@ -24,6 +24,21 @@ def validate_gradient_accumulation(total_microbatches: int, grad_accum: int) -> 
         raise ValueError("grad_accum must be positive")
 
 
+def ddp_static_graph_enabled(grad_accum: int) -> bool:
+    """Use DDP's static reducer only when every backward synchronizes.
+
+    In the pinned PyTorch 2.9.1 runtime, entering ``no_sync`` on the first
+    static-graph backward leaves the reducer's autograd-hook state inconsistent
+    (pytorch/pytorch#143580). The default no-accumulation path retains the
+    optimization. Re-enable it for accumulation after an upgraded runtime passes
+    the first-no-sync, partial-group, and dense-reference regression cases.
+    """
+
+    if grad_accum <= 0:
+        raise ValueError("grad_accum must be positive")
+    return grad_accum == 1
+
+
 def build_gradient_accumulation_plan(
     total_microbatches: int,
     grad_accum: int,
@@ -60,6 +75,7 @@ def gradient_sync_context(
 __all__ = [
     "GradientAccumulationStep",
     "build_gradient_accumulation_plan",
+    "ddp_static_graph_enabled",
     "gradient_sync_context",
     "validate_gradient_accumulation",
 ]

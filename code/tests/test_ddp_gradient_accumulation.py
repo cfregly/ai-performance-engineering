@@ -19,6 +19,7 @@ from torch.nn.parallel import DistributedDataParallel
 
 from labs.train_distributed.training_utils.gradient_accumulation import (
     build_gradient_accumulation_plan,
+    ddp_static_graph_enabled,
     gradient_sync_context,
 )
 
@@ -85,7 +86,13 @@ def _run_case(
     microbatches: int,
     grad_accum: int,
 ) -> dict[str, object]:
-    model = DistributedDataParallel(_model())
+    static_graph = ddp_static_graph_enabled(grad_accum)
+    model = DistributedDataParallel(
+        _model(),
+        static_graph=static_graph,
+        bucket_cap_mb=50,
+        gradient_as_bucket_view=True,
+    )
     comm_state = _CommState(dist.group.WORLD)
     model.register_comm_hook(comm_state, _counted_allreduce)
     optimizer = torch.optim.SGD(model.parameters(), lr=1.0 / 64.0)
@@ -124,6 +131,7 @@ def _run_case(
         "grad_accum": grad_accum,
         "optimizer_updates": updates,
         "allreduce_calls": comm_state.calls,
+        "static_graph": static_graph,
         "parameters": parameters.tolist(),
     }
 
@@ -198,6 +206,8 @@ def test_partial_accumulation_plan_uses_actual_group_size() -> None:
         (1, True),
         (1, True),
     ]
+    assert ddp_static_graph_enabled(1) is True
+    assert ddp_static_graph_enabled(3) is False
 
 
 @pytest.mark.parametrize(
@@ -243,3 +253,4 @@ def test_real_cpu_ddp_partial_accumulation_matches_grouped_reference(
     for report in reports:
         assert [case["optimizer_updates"] for case in report["cases"]] == [2, 1, 5]
         assert [case["allreduce_calls"] for case in report["cases"]] == [2, 1, 5]
+        assert [case["static_graph"] for case in report["cases"]] == [False, False, True]

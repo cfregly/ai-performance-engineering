@@ -22,6 +22,7 @@ from labs.train_distributed.training_utils.ddp_child_result import (
 )
 from labs.train_distributed.training_utils.gradient_accumulation import (
     build_gradient_accumulation_plan,
+    ddp_static_graph_enabled,
     gradient_sync_context,
     validate_gradient_accumulation,
 )
@@ -94,7 +95,7 @@ def main():
         ddp_model = DistributedModel(
             model,
             device_ids=[local_rank],
-            static_graph=True,
+            static_graph=ddp_static_graph_enabled(args.grad_accum),
             bucket_cap_mb=50,
             gradient_as_bucket_view=True,
         )
