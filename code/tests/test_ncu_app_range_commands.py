@@ -22,6 +22,7 @@ def _assert_full_range(command: list[str]) -> None:
     assert command.count("--nvtx-include") == 1
     assert command[command.index("--nvtx-include") + 1] == RANGE_NAME
     assert command[command.index("--metrics") + 1].split(",") == MINIMAL_METRICS
+    assert "--set" not in command
     assert command[command.index("--target-processes") + 1] == "all"
     assert "--nvtx" in command
     assert not set(command).intersection(
@@ -47,6 +48,7 @@ def test_existing_lower_level_replay_policies(mode: str, honor: bool, expected: 
     config = ProfilerConfig(ncu_replay_mode=mode, honor_replay_mode_in_minimal=honor)
     command = config.get_ncu_command_for_target("out", ["program"], nvtx_includes=[RANGE_NAME])
     assert command[command.index("--replay-mode") + 1] == expected
+    assert command[command.index("--set") + 1] == "basic"
 
 
 @pytest.mark.parametrize("mode", NCU_REPLAY_MODES)
