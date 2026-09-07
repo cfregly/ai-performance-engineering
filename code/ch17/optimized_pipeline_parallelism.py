@@ -18,6 +18,26 @@ from core.harness.benchmark_harness import (
 )
 
 
+class _PipelineCompiledModule(nn.Module):
+    """Give the single-GPU path a Dynamo cache entry owned by this target."""
+
+    def __init__(self, module: nn.Module) -> None:
+        super().__init__()
+        self.module = module
+
+    def forward(self, value: torch.Tensor) -> torch.Tensor:
+        return self.module(value)
+
+
+def _compile_pipeline_module(module: nn.Module) -> nn.Module:
+    return torch.compile(_PipelineCompiledModule(module), mode="reduce-overhead")
+
+
+def _release_pipeline_compiled_cache() -> None:
+    """Release only the Dynamo entry owned by this compiled benchmark."""
+    torch._dynamo.eval_frame.remove_from_cache(_PipelineCompiledModule.forward)
+
+
 class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Optimized: Pipeline parallelism with layers split across GPUs.
     
@@ -110,7 +130,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
 
             # Compile for kernel fusion and optimization. Run once in setup so
             # verification stream-auditing sees steady-state execution only.
-            self._compiled_model = torch.compile(model, mode="reduce-overhead")
+            self._compiled_model = _compile_pipeline_module(model)
             with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
                 _ = self._compiled_model(self._input_data)
             self._last_stage_durations_ms = [0.0]
@@ -424,6 +444,9 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         return self.stage_streams
 
     def teardown(self) -> None:
+        had_compiled_model = self._compiled_model is not None
+        self.output = None
+        self._verification_payload = None
         self.pipeline_stages = []
         self._pipeline_stage_groups = []
         self.microbatch_inputs = None
@@ -449,6 +472,8 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         self._compiled_model = None
         self._input_data = None
         self._last_final_outputs = None
+        if had_compiled_model:
+            _release_pipeline_compiled_cache()
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:

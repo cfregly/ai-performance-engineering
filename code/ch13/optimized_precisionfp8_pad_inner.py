@@ -55,7 +55,6 @@ class OptimizedFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs_fp16: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
-        self._verify_input_fp16: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         self.batch_size = 4096
@@ -77,9 +76,6 @@ class OptimizedFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError(
                 f"SKIPPED: torchao is required for {self.__class__.__name__}: {TORCHAO_IMPORT_ERROR}"
             )
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
 
         model = SimpleModel(
             input_dim=self.input_dim,
@@ -96,8 +92,7 @@ class OptimizedFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.float32,
         )
-        self._verify_input = self.inputs.detach().clone()
-        self._verify_input_fp16 = self._verify_input.to(torch.float16)
+        self._verify_input = self.inputs
         self._verify_output_buffer = torch.empty(
             min(128, self.batch_size),
             min(256, self.output_dim),
@@ -115,10 +110,13 @@ class OptimizedFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def benchmark_fn(self) -> None:
-        if self.model is None or self.inputs_fp16 is None or self._verify_input is None or self._verify_input_fp16 is None:
+        if self.model is None or self.inputs_fp16 is None or self.inputs is None:
             raise RuntimeError("Verification input not initialized")
         with self._nvtx_range("optimized_precisionfp8_pad_inner"):
             with torch.inference_mode():
+                # Convert the current request, including live verification
+                # perturbations. Reuse storage but never cache request values.
+                self.inputs_fp16.copy_(self.inputs)
                 benchmark_out = self.model(self.inputs_fp16)
                 self.output = benchmark_out
         if self.output is None:
@@ -152,7 +150,6 @@ class OptimizedFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs_fp16 = None
         self.output = None
         self._verify_input = None
-        self._verify_input_fp16 = None
         self._verify_output_buffer = None
         super().teardown()
 

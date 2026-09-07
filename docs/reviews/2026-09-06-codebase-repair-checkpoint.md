@@ -1465,3 +1465,46 @@ difference 0.03235; that numerical failure remains open. Exact TorchAO and
 pipeline traces both identify a stale static-input pointer assertion in the
 legacy Inductor CUDA graph runner during repeated setup. A targeted cache
 lifetime control is prepared; no compiler mode has been reduced to bypass it.
+
+### Waves37–38: actual NanoChat replay and remaining execution repairs
+
+At source `6f1f686b3`, the normal NanoChat harness run passed with one successful
+pair and no skips. All 26 focused B200 regressions passed, including both new
+changed-input graph cases. The actual default factories then matched all
+40,000 logits bitwise for four input cases and every interleaved observation.
+Twelve observations per arm gave medians of 48.372 ms eager and 24.137 ms graph
+(2.004x). Separate three-request Nsight Systems captures passed with identical
+full outputs. These remain current-host, noncanonical measurements; setup
+warmup and capture costs are reported separately.
+
+The two-B200 transfer pair passed all 104,857,600 destination values on each
+invocation. Eight observations per arm measured median synchronized host time
+per inner copy of 14.592 ms baseline and 0.5484 ms peer transfer (26.608x).
+Both retained 400 MiB destination dumps are bitwise equal. The private profiler
+first hit a SQLite export issue and then found the ordinary binaries lacked
+NVTX instrumentation. Those failed attempts remain retained; an explicitly
+instrumented profiling build is next. No failed profiler is counted as passing.
+
+The piece-graph, inference-full, and corrected KV-cache seed gates passed.
+The two dynamic-router invocations exited successfully; their structured
+execution coverage still needs readback. FP8 padded matmul passed its gate.
+The forward-only FP8 padded MLP and uncompiled TorchAO paths exposed detached
+verification inputs. Their payload inputs now alias the actual request; the
+FP8 path refreshes its reusable FP16 input buffer inside the timed request.
+Both pairs also preserve the caller's seed. Four real CUDA regressions are
+added; they are explicitly skipped on the CPU host pending the B200 rerun.
+
+The pipeline cache control passed only after a full compiler reset; clearing
+the generated Python-module cache alone did not help. The production repair
+gives TorchAO compiled and pipeline parallelism separate module wrappers whose
+Dynamo entries are released during teardown. It keeps their existing compiler
+modes and avoids a global reset. Twelve focused real CPU compilation/lifecycle
+tests passed; exact B200 repeated-setup acceptance remains pending.
+
+The communicator-reinitialization multi-GPU entry also needs a real torchrun
+worker and child-result transport: its previous default launcher imported
+class-only files, then the parent correctly rejected the missing payload.
+The full Llama FP32-attention diagnostic still had seven out-of-tolerance
+values; eager and compiled SDPA remained bitwise equal. These are open work,
+along with the distributed-training result contracts and runtime-specific
+CUTLASS generator/DSL namespace incompatibility.

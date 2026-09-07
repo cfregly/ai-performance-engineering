@@ -51,9 +51,6 @@ class OptimizedTorchAOQuantizationBenchmark(VerificationPayloadMixin, BaseBenchm
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         if not torch.cuda.is_available():
             raise RuntimeError("CUDA required for torchao quantization benchmark")
         if TORCHAO_IMPORT_ERROR is not None or quantize_ is None or Int8DynamicActivationInt8WeightConfig is None:
@@ -80,7 +77,7 @@ class OptimizedTorchAOQuantizationBenchmark(VerificationPayloadMixin, BaseBenchm
             device=self.device,
             dtype=torch.float32,
         )
-        self._verify_input = self.data.detach().clone()
+        self._verify_input = self.data
         self._verify_output_buffer = torch.empty(
             min(128, self.batch_size),
             min(256, self.out_features),

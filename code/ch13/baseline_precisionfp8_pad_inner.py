@@ -59,9 +59,6 @@ class BaselinePrecisionFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchm
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
 
         self.model = SimpleModel(
             input_dim=self.input_dim,
@@ -69,7 +66,7 @@ class BaselinePrecisionFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchm
             output_dim=self.output_dim,
         ).to(self.device).train()
         self.inputs = torch.randn(self.batch_size, self.input_dim, device=self.device, dtype=torch.float32)
-        self._verify_input = self.inputs.detach().clone()
+        self._verify_input = self.inputs
         self._verify_output_buffer = torch.empty(
             min(128, self.batch_size),
             min(256, self.output_dim),
