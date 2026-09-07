@@ -1959,3 +1959,20 @@ the unchanged full 2,048-tensor, two-GPU baseline. It advanced to replay pass fo
 but hit its three-minute bound. Cleanup succeeded; replay/kernel-count diagnostics
 were retained. This is an incomplete capture and does not establish that removing
 the section set fixes the profiler. Hosted CI and main merges remain pending.
+
+### Wave55: all affected GPU files and standalone MoE pass
+
+On frozen `9d342cc79`, all 813 tests across the thirteen affected files passed
+in 49.32 seconds. All six tests in the separately executed Llama file passed in
+2.90 seconds, including the real CUDA compilation case. The standalone MoE
+level-zero entrypoint then completed its normal 436.5M-parameter, 512-token
+workload and five measured iterations. All three stages exited zero and drained.
+These results close the thirty diagnostic failures through focused validation;
+the original integrated run remains recorded with its original failures.
+
+The all-target README check found two additional generator omissions in the
+router and cache-aware labs. Their tested commands and topology limitations now
+survive regeneration, and the regression checks every generator-owned README.
+All twelve README tests passed. A final ten-minute, full-workload five-metric
+NCU control is running separately; no profiler command-builder change is claimed
+from an incomplete capture.
