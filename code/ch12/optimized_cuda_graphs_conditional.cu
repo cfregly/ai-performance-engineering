@@ -4,6 +4,8 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <vector>
 
 #include "../core/common/headers/cuda_verify.cuh"
@@ -57,8 +59,31 @@ __global__ void conditional_dispatch_kernel(
         : cheap_path(val, cheap_scale);
 }
 
-int main() {
+static void write_output_dump(const char* path, const std::vector<float>& output) {
+    std::FILE* file = std::fopen(path, "wb");
+    if (file == nullptr) {
+        std::fprintf(stderr, "Failed to open dump path: %s\n", path);
+        std::exit(2);
+    }
+    const size_t written = std::fwrite(output.data(), sizeof(float), output.size(), file);
+    const int close_status = std::fclose(file);
+    if (written != output.size() || close_status != 0) {
+        std::fprintf(stderr, "Failed to write complete output dump: %s\n", path);
+        std::exit(2);
+    }
+    std::printf("OUTPUT_DUMPED: %zu\n", output.size());
+}
+
+int main(int argc, char** argv) {
     NVTX_RANGE("main");
+    const char* dump_path = nullptr;
+    if (argc != 1) {
+        if (argc != 3 || std::strcmp(argv[1], "--dump-output") != 0) {
+            std::fprintf(stderr, "Usage: %s [--dump-output <path>]\n", argv[0]);
+            return 2;
+        }
+        dump_path = argv[2];
+    }
     cudaDeviceProp prop;
     CUDA_CHECK(cudaGetDeviceProperties(&prop, 0));
     std::printf(
@@ -130,8 +155,15 @@ int main() {
         ms,
         ms / ITERS);
 
+    if (dump_path != nullptr) {
+        CUDA_CHECK(cudaMemcpy(h_data.data(), d_data, bytes, cudaMemcpyDeviceToHost));
+        write_output_dump(dump_path, h_data);
+    }
+
 #ifdef VERIFY
-    CUDA_CHECK(cudaMemcpy(h_data.data(), d_data, bytes, cudaMemcpyDeviceToHost));
+    if (dump_path == nullptr) {
+        CUDA_CHECK(cudaMemcpy(h_data.data(), d_data, bytes, cudaMemcpyDeviceToHost));
+    }
     double checksum = 0.0;
     for (float v : h_data) {
         checksum += std::abs(v);

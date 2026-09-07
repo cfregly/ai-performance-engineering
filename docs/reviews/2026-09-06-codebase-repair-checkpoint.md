@@ -1334,3 +1334,37 @@ dependency cases. Direct B200 follow-up includes those checks, complete
 outputs, two-GPU destination validation, and the corrected informational
 runner using the prepared virtualenv executable without resolving its symlink.
 CI remains deferred until the end at the user's request.
+
+### Direct B200 follow-up at `e46514f45` (September 7 UTC)
+
+The first stages of Wave33 passed:
+
+- Focused target-host tests: `29 passed, 2 skipped`. The two optional torchao
+  recipe tests were skipped because torchao is absent from the prepared
+  virtualenv; that dependency gap is recorded separately from code validation.
+- Fused and Triton MoE each completed two normal, fresh-process harness runs
+  with distinct empty compiler-cache directories and no native crash. All four
+  full configured output comparisons passed at the unchanged declared tolerance
+  (`rtol=0.1`, `atol=1.0`), with maximum absolute difference `0.0078125`.
+- Level4's real default factory passed two different 512-token input arrays.
+  Both full 16,384,000-logit payloads exactly copied the actual model output and
+  matched an independent model loaded with identical weights (maximum absolute
+  difference `0.015625`). CUDA graph workspace reuse no longer failed.
+- The Chapter 2 native two-GPU transfer pair ran with the ordinary Python
+  launcher and verified all 104,857,600 destination elements from the timed
+  invocation. Both native and wrapper validation passed. This establishes
+  complete destination correctness on two B200s; the individual harness timing
+  is not a repeated interleaved performance result.
+
+The remaining informational examples and full-output probes continue under
+the same frozen source. Output-sensitivity failures are being investigated as
+input binding or computation issues, not dismissed as timing noise.
+
+The Chapter 12 conditional-graph wrappers are also repaired for the next GPU
+batch: their workload now describes the actual 65,536 elements, 1,024 inner
+kernel steps, and 5,000 iterations. Both native paths dump all 65,536 final
+values after timing; wrappers validate the complete file from that invocation
+instead of launching a second checksum-only verification executable. Five
+focused CPU/source checks passed; native compilation and B200 execution remain
+pending. NanoChat's generated README now describes fixed-prefill compilation
+and eager decode, with obsolete timings and guaranteed-win language removed.

@@ -5041,45 +5041,41 @@ ENTRIES["labs/nanochat_fullstack"] = lab_entry(
     title="Lab - NanoChat Fullstack",
     summary=dedent(
         """\
-        Wraps the NanoChat full-stack tree with a clean harness benchmark pair so the repo can talk about a real end-to-end inference stack with measured baseline vs optimized deltas, not just kernels."""
+        Provides a harness-comparable NanoChat inference pair for a fixed prefill-plus-decode workload. The baseline uses the eager model for both phases; the optimized path compiles only the fixed-shape prefill and keeps KV-cache decode eager."""
     ),
     lead_sections=[
         MarkdownSection(
             "Problem",
             dedent(
                 """\
-                Full-stack LLM projects are easy to describe in product terms and hard to benchmark cleanly. This lab keeps a narrow baseline/optimized inference pair inside the larger NanoChat tree so the performance story stays measurable."""
+                Full-stack LLM comparisons can look successful while checking degenerate outputs or timing different execution scopes. This lab holds the model, inputs, attention settings, KV-cache layout, and decode work constant, then verifies the final decode logits from both paths."""
             ),
         ),
         MarkdownSection(
             "Baseline Path",
             dedent(
                 """\
-                - slower NanoChat inference path
-                - end-to-end reference inside the same full-stack project
-                - useful for checking whether the optimized path is buying real latency reduction"""
+                - Runs a batch of 4 with a 512-token prefill followed by 64 one-token decode steps.
+                - Uses the eager NanoChat GPT model for prefill and decode.
+                - Captures the final decode logits as the verification output."""
             ),
         ),
         MarkdownSection(
             "Optimized Path",
             dedent(
                 """\
-                - optimized NanoChat inference path
-                - same harness contract and verification expectations
-                - intended to represent the practical serving-side improvements, not just a kernel microbench"""
+                - Runs the same model configuration, inputs, attention path, KV cache, and decode loop as the baseline.
+                - Applies `torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False)` only to the fixed 512-token prefill.
+                - Keeps the changing token-by-token decode shapes eager and warms the compiled prefill during setup, before timed iterations."""
             ),
         ),
         MarkdownSection(
-            "Measured Delta",
+            "Historical Delta",
             dedent(
                 """\
-                Representative strict result from `artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/`:
+                No current performance delta is published. Earlier README timings and the retained expectation files were produced by older benchmark source. The current pair reinitializes projections that the training initializer leaves at zero, rejects all-zero or non-finite logits, and limits compilation to fixed-shape prefill. Prior numbers therefore do not establish the performance of this workload.
 
-                | Target | Baseline | Optimized | Measured delta |
-                | --- | ---: | ---: | ---: |
-                | `nanochat_inference` | `122.975 ms` | `67.621 ms` | `1.82x` |
-
-                That is the useful local story: NanoChat is still a full-stack project, but the repo now has a concrete measured inference delta for it instead of leaving the performance claim buried in a much larger README."""
+                Publish a new delta only from the current source after output verification, repeated interleaved baseline/optimized measurements on the target hardware, noise reporting, and profiler evidence."""
             ),
         ),
         MarkdownSection(
@@ -5087,10 +5083,11 @@ ENTRIES["labs/nanochat_fullstack"] = lab_entry(
             dedent(
                 """\
                 ```bash
-                python -m cli.aisp bench run --targets labs/nanochat_fullstack:nanochat_inference --profile deep_dive --single-gpu
+                cd code
+                python -m cli.aisp bench run -t labs/nanochat_fullstack:nanochat_inference --profile deep_dive --single-gpu
                 ```
 
-                Use the deep-dive path when you want Nsight evidence for the inference stack. Keep the `speedrun.sh` story separate from the benchmark pair; they answer different questions."""
+                Use this path to collect Nsight evidence for the fixed-prefill/eager-decode comparison. A successful correctness run alone does not establish a performance win. Keep the `speedrun.sh` workflow separate from this harness pair; they exercise different scopes."""
             ),
         ),
         MarkdownSection(
@@ -5098,37 +5095,50 @@ ENTRIES["labs/nanochat_fullstack"] = lab_entry(
             dedent(
                 """\
                 ```bash
+                cd code
                 python -m cli.aisp bench list-targets --chapter labs/nanochat_fullstack
-                python -m cli.aisp bench run --targets labs/nanochat_fullstack:nanochat_inference --profile minimal
                 python -m cli.aisp bench verify -t labs/nanochat_fullstack:nanochat_inference
+                python -m cli.aisp bench run -t labs/nanochat_fullstack:nanochat_inference --profile minimal --single-gpu
                 ```"""
             ),
         ),
     ],
     goals=[
-        "Keep a real full-stack LLM project in the benchmark story, not just microkernels.",
-        "Benchmark NanoChat inference as a clean baseline/optimized pair inside the larger tree.",
-        "Point readers at the broader project context without losing the measured harness story.",
+        "Keep a full-stack LLM workload in the benchmark suite rather than reducing the comparison to one kernel.",
+        "Isolate fixed-shape prefill compilation while preserving the same eager decode work.",
+        "Require meaningful final logits before interpreting timing or profiler results.",
     ],
     contents=[
-        ("`baseline_nanochat_inference.py`, `optimized_nanochat_inference.py`", "Harness benchmark pair for NanoChat inference."),
+        ("`baseline_nanochat_inference.py`, `optimized_nanochat_inference.py`", "Harness pair for eager prefill/decode versus compiled prefill with eager decode."),
         ("`benchmark_incremental_optimizations.py`", "Incremental benchmarking helper inside the NanoChat tree."),
         ("`speedrun.sh`, `run1000.sh`, `README_FAST.md`", "Broader NanoChat quick-start and end-to-end project entrypoints."),
         ("`nanochat/`, `scripts/`, `tasks/`, `tests/`", "Core NanoChat project tree and operational helpers."),
     ],
+    run=RunSection(
+        commands=[
+            "cd code",
+            "python -m cli.aisp bench list-targets --chapter labs/nanochat_fullstack",
+            "python -m cli.aisp bench run -t labs/nanochat_fullstack:nanochat_inference --profile minimal --single-gpu",
+        ],
+        notes=[
+            "The benchmark requires CUDA and uses one visible GPU with `--single-gpu`.",
+            "Benchmark validity defaults to `strict`; use `portable` only when its documented compatibility tradeoffs are acceptable.",
+            "Treat the retained expectation files as historical until current-source measurements pass the verification and evidence gates above.",
+        ],
+    ),
     validation=[
-        "`python -m cli.aisp bench run --targets labs/nanochat_fullstack:nanochat_inference --profile minimal` should keep the optimized path ahead under the harness contract.",
-        "`python -m cli.aisp bench verify -t labs/nanochat_fullstack:nanochat_inference` should stay green before any performance claim is accepted.",
+        "`python -m cli.aisp bench verify -t labs/nanochat_fullstack:nanochat_inference` must compare finite, nonzero final decode logits before timing is interpreted.",
+        "Do not require or claim that the optimized path wins until a current-source, equivalent-workload run supplies repeated measurements and profiler attribution.",
     ],
     notes=[
-        "This README focuses on the repo's benchmarked NanoChat story. Use `README_FAST.md` and the project scripts when you want the broader training/serving walkthrough.",
+        "This README covers the harness pair. Use `README_FAST.md` and the project scripts for the broader training and serving walkthrough.",
         "The decode microbenchmarks live separately in `labs/decode_optimization`; this lab is the broader inference-stack companion.",
     ],
     extra_sections=[
         dedent(
             """\
             ## Project Context
-            NanoChat is intentionally bigger than a single benchmark pair. The point of this lab entry is to give the repo one clean performance anchor inside that tree, not to replace the broader NanoChat project documentation.
+            NanoChat is intentionally bigger than a single benchmark pair. This lab entry provides one narrow, auditable inference comparison inside that tree; it does not replace the broader NanoChat project documentation.
 
             - Use [README_FAST.md](README_FAST.md) for the faster end-to-end project walkthrough.
             - Use [speedrun.sh](speedrun.sh) when you want the broader "train and talk to a small model" experience.

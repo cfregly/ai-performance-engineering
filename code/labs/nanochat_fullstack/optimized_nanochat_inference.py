@@ -70,8 +70,7 @@ class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmar
             n_head=self.n_head,
             n_kv_head=self.n_kv_head,
             n_embd=self.n_embd,
-            # Keep the model path aligned with the baseline. The optimization here
-            # is the compiled steady-state decode path, not a different attention backend.
+            # Match the baseline attention path while specializing fixed-shape prefill.
             use_flash_sdp=False,
             use_flash3=False,
             use_cta_clustering=False,
