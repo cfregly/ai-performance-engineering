@@ -49,9 +49,6 @@ class NvlinkOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.register_workload_metadata(requests_per_iteration=1.0)
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         shape = (
             self.cfg.num_layers,
             2,  # k/v

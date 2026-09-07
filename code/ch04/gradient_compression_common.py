@@ -93,8 +93,6 @@ class GradientCompressionBenchmark(
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         if self.multi_gpu:
             self.world_size = torch.cuda.device_count()
             if self.world_size < 2:

@@ -79,6 +79,7 @@ class MoEJourneyBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
     
     def setup(self) -> None:
+        setup_seed = int(torch.initial_seed())
         import gc
         
         # Clean up CUDA graph state from previous benchmarks
@@ -99,7 +100,7 @@ class MoEJourneyBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 device_idx = torch.cuda.current_device()
                 gen = torch.cuda.default_generators[device_idx]
                 gen.set_offset(0)
-                gen.manual_seed(42)
+                gen.manual_seed(setup_seed)
             except Exception:
                 pass
             
@@ -132,9 +133,6 @@ class MoEJourneyBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 print(f"    Level {l}: {opt_desc}")
         print()
         
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         # Create model with optimizations up to this level
         self.model, self.opts = create_model(
             level=level,

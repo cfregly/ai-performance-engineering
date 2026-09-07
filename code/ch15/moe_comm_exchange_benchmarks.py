@@ -82,8 +82,6 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.logical_world_size % self.ranks_per_group != 0:
             raise ValueError("logical_world_size must be divisible by ranks_per_group")
 
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         self.expert = ExpertMLP(self.hidden_size, self.ffn_size, device=self.device, dtype=self.dtype).eval()
         self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())

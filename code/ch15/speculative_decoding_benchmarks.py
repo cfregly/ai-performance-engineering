@@ -92,8 +92,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         wl = self.workload
         self.target_model = TokenMLP(

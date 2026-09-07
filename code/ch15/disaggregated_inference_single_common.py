@@ -143,8 +143,6 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA required for disaggregated inference")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         config = _build_moe_config(self.cfg)
         self.prefill_model = SimpleMoEGPT(config, device=self.device).eval()
         self.decode_model = SimpleMoEGPT(config, device=self.device).eval()

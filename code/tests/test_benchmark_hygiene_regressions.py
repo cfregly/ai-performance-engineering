@@ -24306,8 +24306,8 @@ def test_iteration_seed_and_clone_fixes_for_reviewed_pairs_remain_applied() -> N
     assert "self.output = result" in optimized_gluon
     assert "self.output = result.detach()" not in optimized_gluon
 
-    assert "torch.manual_seed(42)" in blackwell
-    assert "torch.cuda.manual_seed_all(42)" in blackwell
+    assert "torch.manual_seed(42)" not in blackwell
+    assert "torch.cuda.manual_seed_all(42)" not in blackwell
     assert "with torch.inference_mode():" in blackwell
     assert "with torch.no_grad():" not in blackwell
     assert "with torch.inference_mode():" in blackwell_tcgen05

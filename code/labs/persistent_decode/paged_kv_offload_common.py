@@ -329,9 +329,6 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     record_event.record(torch.cuda.current_stream())
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.runtime_dtype = self._select_runtime_dtype()
         self.enable_flash = _supports_fused_fp8_attention() or self.runtime_dtype in (torch.float16, torch.bfloat16)
 

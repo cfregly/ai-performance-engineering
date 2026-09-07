@@ -177,9 +177,6 @@ class TritonMatmulProtonBenchmark(VerificationPayloadMixin, BaseBenchmark):
         device = torch.device("cuda")
         _ensure_inductor_env()
 
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self._a = torch.randn((self._size_m, self._size_k), dtype=self._dtype, device=device)
         self._b = torch.randn((self._size_k, self._size_n), dtype=self._dtype, device=device)
         self._scratch = torch.empty((self._size_m, self._size_n), dtype=self._dtype, device=device)

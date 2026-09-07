@@ -105,8 +105,6 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         if not self._cuda_available:
             raise RuntimeError("SKIPPED: MoE inference benchmark requires CUDA")
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         cfg = self.config
         self.model = SimpleMoEGPT(cfg, device=self.device).eval()
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
