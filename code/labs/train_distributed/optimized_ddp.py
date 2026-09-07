@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import os
-from contextlib import nullcontext
 from pathlib import Path
 from time import perf_counter
 
@@ -20,6 +19,11 @@ from labs.train_distributed.training_utils.ddp_child_result import (
     make_ddp_adamw,
     make_ddp_child_result_contract,
     publish_ddp_child_result,
+)
+from labs.train_distributed.training_utils.gradient_accumulation import (
+    build_gradient_accumulation_plan,
+    gradient_sync_context,
+    validate_gradient_accumulation,
 )
 from labs.train_distributed.training_utils.torchrun_harness import TorchrunScriptBenchmark
 from labs.train_distributed.training_utils.utils import (
@@ -43,6 +47,7 @@ def parse_args():
 
 def main():
     args = parse_args()
+    validate_gradient_accumulation(args.steps, args.grad_accum)
     local_rank = resolve_local_rank()
     if not torch.cuda.is_available():
         raise RuntimeError("DDP optimized run requires CUDA GPUs.")
@@ -96,6 +101,7 @@ def main():
 
     optimizer = make_ddp_adamw(ddp_model.parameters(), args.learning_rate, prefer_fused=True)
     num_steps = min(args.steps, len(dataloader))
+    accumulation_plan = build_gradient_accumulation_plan(num_steps, args.grad_accum)
     total_tokens = 0
     start_time = perf_counter()
     loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)
@@ -106,20 +112,20 @@ def main():
         if step >= num_steps:
             break
 
-        micro_step = step % args.grad_accum
-        sync_ctx = (
-            ddp_model.no_sync()
-            if use_ddp and args.grad_accum > 1 and micro_step != args.grad_accum - 1
-            else nullcontext()
+        accumulation = accumulation_plan[step]
+        sync_ctx = gradient_sync_context(
+            ddp_model,
+            accumulation,
+            distributed=use_ddp,
         )
         with sync_ctx:
             batch = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
             batch["labels"] = make_causal_lm_labels(batch["input_ids"], batch["attention_mask"])
             outputs = ddp_model(**batch)
-            loss = outputs.loss / args.grad_accum
-        loss.backward()
+            loss = outputs.loss / accumulation.group_size
+            loss.backward()
 
-        if micro_step == args.grad_accum - 1:
+        if accumulation.should_step:
             optimizer.step()
             optimizer.zero_grad(set_to_none=True)
         completed_steps += 1
