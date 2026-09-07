@@ -1704,3 +1704,47 @@ A real subprocess regression computes different output from the supplied flag.
 The combined argument and DDP regression set passed 53 tests. These changes,
 the manual ZeRO-1 repair, and the DDP arithmetic alignment are pushed through
 `892fab17b`; the next direct GPU batch uses that frozen commit.
+
+### Wave46: measured Llama compilation and exact two-GPU DDP closure
+
+All eleven stages on `892fab17b` completed and drained. The actual Llama
+factories ran four ABBA blocks over eight fresh full-size inputs, with eight
+observations per arm. All parameters were identical and every complete
+8,388,608-element output was bitwise equal. Both implementations responded to
+changed inputs. Median CUDA-event times were 30.3838 ms eager and 28.1446 ms
+compiled, a 1.07956x ratio. Sample standard deviations were 0.3793 and 0.4166 ms;
+individual block ratios ranged from 1.0639x to 1.0970x.
+
+Separate Nsight Systems captures used three steady-state requests per arm.
+The eager path launched 1,731 kernels; the compiled path launched 1,443 kernels
+through exactly three CUDA graph launches, with no graph construction inside
+the measured window. The profile's complete final outputs were also bitwise
+equal. This supports the compilation mechanism for this portable B200 workload;
+it is not a locked-clock cross-machine performance guarantee.
+
+The normal two-GPU DDP comparison now passes exact full-output verification.
+It measured 84.9184 ms baseline and 84.0438 ms optimized, a 1.0104x ratio below
+the configured 1.05x speed target. Its disposition is `failed_no_speedup`, with
+the former numerical failure closed. The reported 12.7675 tokens/s remains
+under investigation and is not used to characterize this workload's throughput.
+
+The actual compiled TorchAO harness API run completed: baseline mean 8.9105 ms
+and compound INT8/compiled mean 0.4590 ms. These are individual harness timings;
+the earlier full-output gate remains separate and no quantization-only or
+repeated-measurement claim is made. cuBLAS, static routing, and DataLoader seed
+representative gates all passed.
+
+The focused batch passed 53 tests, including all four CUDA ZeRO-1 update cases,
+and exposed one new failure: changing the tail of the optimized memory-bound
+input did not change its CUDA output. The complete normal gate also failed
+output comparison. Its CPU compiled control follows all six input mutations
+exactly; warm- and cold-cache CUDA diagnostics are queued. This is an open
+correctness defect, not a tolerance adjustment.
+
+Both router commands now receive their arguments and attempt real engine
+initialization, which fails before the model workload runs. An unredirected
+source invocation is queued to retain the engine's underlying diagnostic.
+Neither failed router attempt counts as execution coverage. Compact reports
+and logs are retained under
+`/Users/admin/.codex/artifacts/ai-perf-remaining-20260906/wave46`;
+large tensor and profiler captures remain on the B200 host.
