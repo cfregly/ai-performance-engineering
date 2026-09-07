@@ -42,8 +42,6 @@ class OptimizedQuantizationILPBenchmark(VerificationPayloadMixin, BaseBenchmark)
     
     def setup(self) -> None:
         """Setup: Initialize FP16 tensors with contiguous memory layout."""
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         # Keep external inputs identical to baseline (FP32), but pre-cast a FP16 view
         # outside the timed region to model reduced bandwidth in the hot path.
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float32).contiguous()

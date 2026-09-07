@@ -69,9 +69,6 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._cached_request_groups: List[tuple[int, Request]] = []
 
     def setup(self) -> None:
-        random.seed(42)
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         now = time.time()
         for idx in range(4):
             self.router.prefill_workers[f"prefill-{idx}"] = self._make_metrics(queue=idx, now=now)

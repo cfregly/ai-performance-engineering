@@ -38,7 +38,6 @@ class BaselineStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: materialize a deterministic tensor to on-disk storage."""
-        torch.manual_seed(42)
         self._host_template = np.random.default_rng(42).standard_normal(self.size, dtype=np.float32)
         
         f = tempfile.NamedTemporaryFile(suffix=".npy", delete=False)

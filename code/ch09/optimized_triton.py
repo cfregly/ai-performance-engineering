@@ -73,7 +73,6 @@ class OptimizedTritonBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: Initialize tensors."""
-        torch.manual_seed(42)
         if not TRITON_AVAILABLE:
             raise RuntimeError("Triton is required for optimized_triton benchmark.")
 

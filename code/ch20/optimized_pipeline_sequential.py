@@ -74,8 +74,6 @@ class OptimizedPipelineOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._payload_parameter_count = 0
     
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         
         self.stages = nn.ModuleList(
             [SimpleStage(self.hidden_dim).to(self.device).half() for _ in range(self.num_stages)]

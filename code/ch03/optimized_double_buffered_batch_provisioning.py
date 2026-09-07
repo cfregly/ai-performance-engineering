@@ -62,8 +62,6 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
             self.copy_events[slot].record(self.copy_stream)
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         # Same model as baseline for fair comparison
         self.model = nn.Sequential(
             nn.Linear(1024, 1024),

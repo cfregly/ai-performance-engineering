@@ -126,9 +126,6 @@ class OptimizedMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
     
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.model = BufferedGeluMlp(self.input_dim, HIDDEN_DIM).to(self.device, dtype=torch.float32).eval()
         self.model.cache_weight_views()
         

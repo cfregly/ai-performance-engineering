@@ -32,7 +32,6 @@ class BaselineVectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: Initialize data."""
-        torch.manual_seed(42)
         self.data = torch.randn(self.N, device=self.device)
         self._output_buffer = torch.empty(1, device=self.device)
         self._chunk_sum_buffer = torch.empty_like(self._output_buffer)

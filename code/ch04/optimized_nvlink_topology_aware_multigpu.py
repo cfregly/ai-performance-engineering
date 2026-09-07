@@ -56,8 +56,6 @@ class OptimizedNvlinkTopologyAwareBenchmark(VerificationPayloadMixin, BaseBenchm
         return pairs
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         require_min_gpus(2, "optimized_nvlink_topology_aware_multigpu.py")
 
         self.device_ids = list(range(torch.cuda.device_count()))

@@ -60,9 +60,6 @@ class OptimizedRuntimeSchedulerBenchmark(VerificationPayloadMixin, BaseBenchmark
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         torch.set_num_threads(1)
         self.workload = RuntimeSchedulerWorkload(self.device, self.scenarios)
         config = getattr(self, "_config", None) or self.get_config()

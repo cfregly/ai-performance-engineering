@@ -121,8 +121,6 @@ class GraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         # Seed FIRST for deterministic verification
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         self._impl.setup()
         self._verify_output_buffer = torch.empty_like(self._impl.cpu_data[:1000])

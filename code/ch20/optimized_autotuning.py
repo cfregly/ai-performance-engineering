@@ -39,8 +39,6 @@ class OptimizedAutotuningBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._payload_parameter_count = 0
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         model = AutotuneModel(self.hidden_dim).to(self.device, dtype=torch.bfloat16).eval()
         # Compile once in setup; benchmark_fn measures steady-state execution.
         self.model = compile_model(

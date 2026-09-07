@@ -36,8 +36,6 @@ class BaselineMemoryStandardBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
     
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.data = torch.randn(self.num_elements, device=self.device, dtype=torch.float32)
         self.tmp1 = torch.zeros_like(self.data)
         self.tmp2 = torch.zeros_like(self.data)

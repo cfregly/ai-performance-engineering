@@ -381,9 +381,6 @@ class OptimizedFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark)
     
     def setup(self) -> None:
         """Setup optimized FA3 model with compilation."""
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         
         self.model = FA3PipelinedAttention(
             hidden_dim=self.hidden_dim,

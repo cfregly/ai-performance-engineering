@@ -161,9 +161,6 @@ class BaselineFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup baseline attention model."""
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         
         self.model = BaselineFlashAttention3(
             hidden_dim=self.hidden_dim,

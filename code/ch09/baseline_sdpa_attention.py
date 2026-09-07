@@ -83,9 +83,6 @@ class BaselineSDPAAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         
         # Create Q, K, V tensors in attention shape [B, H, S, D]
         shape = (self.batch_size, self.num_heads, self.seq_len, self.head_dim)

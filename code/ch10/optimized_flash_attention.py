@@ -478,9 +478,6 @@ class OptimizedFlashAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: Initialize tiled attention model."""
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         
         # Use FP16 for tensor core acceleration
         self.model = TiledAttentionModule(

@@ -87,8 +87,6 @@ class OptimizedComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: initialize model, inputs, and capture a CUDA graph replay."""
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.model = BufferedVectorMlp(self.N, self.N * 2).to(self.device, dtype=torch.float16).eval()
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float16)
         self._verify_output_buffer = torch.empty_like(self.input)

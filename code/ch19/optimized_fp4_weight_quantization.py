@@ -439,7 +439,6 @@ class OptimizedFP4WeightQuantizationBenchmark(VerificationPayloadMixin, BaseBenc
     
     def setup(self) -> None:
         """Setup optimized model (efficient FP16/BF16)."""
-        torch.manual_seed(42)
         
         dtype = torch.float16
         if torch.cuda.is_available() and torch.cuda.is_bf16_supported():

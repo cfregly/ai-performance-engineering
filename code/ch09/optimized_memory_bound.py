@@ -39,8 +39,6 @@ class OptimizedMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: Initialize tensors."""
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.data = torch.randn(self.N, dtype=torch.float32, device=self.device)
         self.output_buffer = torch.empty_like(self.data)
         self._verify_output_buffer = torch.empty(4096, device=self.device, dtype=torch.float32)

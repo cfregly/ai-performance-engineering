@@ -56,9 +56,6 @@ class BaselineRoutingStaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
-        random.seed(42)
 
         self.model = LargeModel(self.hidden_dim, self.num_layers).to(self.device)
         if self.device.type == "cuda":

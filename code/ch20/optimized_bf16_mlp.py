@@ -72,8 +72,6 @@ class OptimizedBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verification_payload = None
     
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         
         # Optimization 1: BF16 for tensor cores
         self._verification_payload = None

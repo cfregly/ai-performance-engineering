@@ -34,8 +34,6 @@ class OptimizedMemoryTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         """Setup: Initialize pinned host memory and the device output buffer."""
         # Seed FIRST for deterministic verification
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         
         self.host_data = torch.randn(self.N, dtype=torch.float32, pin_memory=True)
         self.device_data = torch.empty(self.N, dtype=torch.float32, device=self.device)

@@ -79,8 +79,6 @@ class OptimizedRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
             pass
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.nic_plan, primary_nic, target_cpus, snippet = _compute_topology(
             reserve=self.reserve_cores,
             nic_names=self.preferred_nics,

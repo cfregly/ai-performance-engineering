@@ -64,9 +64,6 @@ class OptimizedNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBen
         self._verify_prefill_view: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.inputs = build_inputs(self.device)
         self._output_view = self.inputs.out
         self.prefill_src = torch.randn(

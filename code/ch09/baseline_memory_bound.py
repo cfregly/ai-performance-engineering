@@ -32,9 +32,6 @@ class BaselineMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.tensor = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self._verify_output_buffer = torch.empty(4096, device=self.device, dtype=torch.float32)
 

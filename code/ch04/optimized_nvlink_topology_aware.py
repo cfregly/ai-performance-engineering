@@ -37,8 +37,6 @@ class OptimizedNvlinkTopologyAwareBenchmark(VerificationPayloadMixin, BaseBenchm
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: requires CUDA")
         self.src_id = _resolve_device_index(self.device)

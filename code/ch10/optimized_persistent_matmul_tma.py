@@ -243,8 +243,6 @@ class PersistentMatmulTMABenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         """Setup: Initialize matrices and warmup TMA kernel."""
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         
         # Initialize CUDA context first - CRITICAL: must happen before Triton allocator
         torch.cuda.init()

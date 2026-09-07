@@ -67,9 +67,6 @@ class OptimizedFlexAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         self.device = resolve_device()
         torch._inductor.config.triton.cudagraphs = True
         torch._inductor.config.max_autotune = True

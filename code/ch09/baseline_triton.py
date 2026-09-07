@@ -46,7 +46,6 @@ class BaselineTritonBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self._output_buffer = torch.empty(self.N, device=self.device, dtype=torch.float32)
         self._verify_output_buffer = torch.empty_like(self._output_buffer)

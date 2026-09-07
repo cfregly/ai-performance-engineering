@@ -103,8 +103,6 @@ class OptimizedContextParallelMultigpuBenchmark(VerificationPayloadMixin, BaseBe
         self._payload_parameter_count = 0
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self._layers = build_layers(self._cp_config, self.device)
         self._payload_parameter_count = sum(
             p.numel()

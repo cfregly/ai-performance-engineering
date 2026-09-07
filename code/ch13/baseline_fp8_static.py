@@ -53,9 +53,6 @@ class BaselineFP8StaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
 
         self.static_linear = StaticFP8Linear(self.dim, self.dim, device=self.device)
         self.parameter_count = sum(p.numel() for p in self.static_linear.parameters())

@@ -63,7 +63,6 @@ class BaselineAttentionStandardBenchmark(VerificationPayloadMixin, BaseBenchmark
         )
     
     def setup(self) -> None:
-        torch.manual_seed(42)
         self.q = torch.randn(
             self.batch_size,
             self.num_heads,

@@ -50,8 +50,6 @@ class BaselineTrainingSingleBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._payload_parameter_count = 0
     
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.model = SimpleModel(hidden_dim=self.hidden_dim).to(self.device).float().train()
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self.inputs = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float32)

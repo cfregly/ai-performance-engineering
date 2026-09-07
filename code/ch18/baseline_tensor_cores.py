@@ -44,9 +44,6 @@ class BaselineTensorCoresBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: Initialize matrices in FP32."""
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         # Baseline: FP32 operations without tensor cores
         # Tensor cores accelerate FP16/BF16 matrix operations
         # This baseline uses FP32 which doesn't use tensor cores

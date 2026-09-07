@@ -73,8 +73,6 @@ class BaselineWarpSpecializationTrainingBenchmark(VerificationPayloadMixin, Base
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.x = torch.randn(self.rows, self.cols, device=self.device, dtype=self.dtype)
         # Keep parameters small (broadcast-friendly) but resident on GPU.
         self.scale0 = torch.tensor(0.9, device=self.device, dtype=self.dtype)

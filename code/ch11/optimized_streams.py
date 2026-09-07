@@ -70,9 +70,6 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: Initialize streams, pinned memory, and device buffers."""
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         
         # Create streams for pipelining
         self.stream_h2d = torch.cuda.Stream()

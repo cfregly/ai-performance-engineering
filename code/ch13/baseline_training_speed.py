@@ -40,8 +40,6 @@ class BaselineTrainingSpeedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
 
         self.model = TrainingSpeedModel(self.cfg).to(self.device).train()
         self.input_ids, self.targets = make_training_batch(self.cfg, self.device)

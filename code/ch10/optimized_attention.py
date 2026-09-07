@@ -43,9 +43,6 @@ class OptimizedAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_output_buffer: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
 
         # Use FP16 for tensor core optimization
         # Create Q, K, V tensors in the format expected by SDPA

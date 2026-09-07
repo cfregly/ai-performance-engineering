@@ -167,7 +167,6 @@ class OptimizedSlidingWindowBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         """Setup: Initialize optimized attention model."""
-        torch.manual_seed(42)
 
         self.model = OptimizedAttentionModule(
             self.embed_dim, self.num_heads, self.window_size

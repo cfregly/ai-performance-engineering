@@ -31,8 +31,6 @@ class BaselineWarpDivergenceILPBenchmark(VerificationPayloadMixin, BaseBenchmark
     
     def setup(self) -> None:
         """Setup: Initialize tensors."""
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self.output = None  # Will be set by benchmark_fn
         self._output_buffer = torch.empty_like(self.input)

@@ -29,8 +29,6 @@ class BaselineNvlinkTopologyAwareBenchmark(VerificationPayloadMixin, BaseBenchma
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         n = self.numel
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: requires CUDA")

@@ -64,9 +64,6 @@ class BaselineBandwidthNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: Initialize large tensors."""
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         
         # Large tensors for bandwidth measurement
         self.A = torch.randn(self.size, device=self.device, dtype=torch.float32)

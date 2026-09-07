@@ -134,8 +134,6 @@ class BaselineTorchcommsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._payload_parameter_count = 0
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self._comm_block = _build_block(_DEFAULT_HIDDEN, self.device)
         self._aux_block = _build_block(_DEFAULT_HIDDEN, self.device)
         self._payload_parameter_count = sum(p.numel() for p in self._comm_block.parameters())

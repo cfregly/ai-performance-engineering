@@ -27,7 +27,6 @@ class CPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._workload = WorkloadMetadata(bytes_per_iteration=float(1024 * 1024 * 4))
 
     def setup(self) -> None:
-        torch.manual_seed(42)
         total_len = 1024 * 1024
         run_len = 256
         if total_len % run_len != 0:

@@ -56,7 +56,6 @@ class BaselineCublasVsCutlassBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def setup(self) -> None:
         """Setup: Initialize matrices and bind the explicit cuBLAS helper."""
-        torch.manual_seed(42)
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.A = torch.randn(self.m, self.k, device=self.device, dtype=torch.float16)

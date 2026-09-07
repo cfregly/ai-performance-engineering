@@ -42,9 +42,6 @@ class BaselineArithmeticIntensityBenchmark(VerificationPayloadMixin, BaseBenchma
     
     def setup(self) -> None:
         """Setup: Initialize large tensors."""
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         
         # Allocate matrices for chunked matmul accumulation.
         self.A = torch.randn(self.M, self.K, device=self.device, dtype=torch.float32)

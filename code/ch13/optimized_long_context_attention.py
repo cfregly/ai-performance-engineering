@@ -41,7 +41,6 @@ class OptimizedLongContextAttentionBenchmark(VerificationPayloadMixin, BaseBench
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
         dtype = torch.bfloat16
         self.q = torch.randn(
             self.batch_size,

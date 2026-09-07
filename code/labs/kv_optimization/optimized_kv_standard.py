@@ -121,9 +121,6 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._estimated_memory_gb = total_memory_gb
 
     def setup(self):
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         """Initialize compressed KV cache."""
         # Pre-allocate KV cache in compressed format
         self.kv_cache = torch.empty(

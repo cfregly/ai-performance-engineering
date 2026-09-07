@@ -96,9 +96,6 @@ class BaselineFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         """Setup: Initialize per-tensor FP8 model."""
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
 
         # Create model with per-tensor FP8
         self.model = FP8PerTensorLinear(

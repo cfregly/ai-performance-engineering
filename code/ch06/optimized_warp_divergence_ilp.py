@@ -109,8 +109,6 @@ class OptimizedWarpDivergenceILPBenchmark(VerificationPayloadMixin, BaseBenchmar
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self.routing_logits = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self.output = None  # Will be set by benchmark_fn

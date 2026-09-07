@@ -125,8 +125,6 @@ class BaselineIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark
     
     def setup(self) -> None:
         """Setup: Initialize baseline model with naive KV cache."""
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         dtype = torch.float16
         
         layers = []

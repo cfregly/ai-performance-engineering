@@ -39,8 +39,6 @@ class OptimizedInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchm
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.model = SimpleLLM(vocab_size=10000, hidden_dim=512, num_layers=8).to(self.device).to(torch.bfloat16).eval()
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self.prompt = (torch.arange(self.prefill_seq, device=self.device, dtype=torch.int64) % 10000).unsqueeze(0)

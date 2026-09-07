@@ -40,8 +40,6 @@ class BaselineRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         self.nic_snapshot = discover_nics()
         self.host_batch = torch.randn(self.seq_len, self.hidden_size, dtype=torch.float32)
         self.device_batch = torch.empty_like(self.host_batch, device=self.device)

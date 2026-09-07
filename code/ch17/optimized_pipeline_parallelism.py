@@ -102,9 +102,6 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         )
 
     def setup(self) -> None:
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(42)
         
         # Use single-GPU optimized path when only 1 GPU available
         self._single_gpu_mode = (self.num_gpus == 1)

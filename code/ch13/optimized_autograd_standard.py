@@ -59,8 +59,6 @@ class OptimizedAutogradCompiledBenchmark(VerificationPayloadMixin, BaseBenchmark
     
     def setup(self) -> None:
         """Setup training step, capture it with CUDA graphs."""
-        torch.manual_seed(42)
-        torch.cuda.manual_seed_all(42)
         
         self.model = SimpleModel(hidden_dim=self.hidden_dim).to(self.device).half().train()
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.01)

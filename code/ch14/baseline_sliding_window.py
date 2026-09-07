@@ -112,7 +112,6 @@ class BaselineSlidingWindowBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         """Setup: Initialize naive attention model."""
-        torch.manual_seed(42)
         
         self.model = NaiveAttentionModule(
             self.embed_dim, self.num_heads
