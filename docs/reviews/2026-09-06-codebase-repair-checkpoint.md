@@ -2069,7 +2069,10 @@ cannot qualify migration improvements between decode ranks.
 After all prior stages drained, the checkout advanced to `46ba89929`, including
 the compiler-process repair and the newly merged Colfax lab additions. The
 Llama CUDA case passed with full-suite collection, then passed again in 5.625
-seconds inside the integrated suite. The full run is still in progress.
+seconds inside the integrated suite. The completed run passed **5,795 tests**,
+with **79 skips and zero failures or errors**, in 1,888.955 seconds. Both stages
+exited zero and drained normally. Its complete XML SHA-256 is
+`94638463093ee4a2d7983fa6dbaacef4e74f360c9447e20fa6512652e7f9c0c2`.
 
 The new Colfax README additions initially failed the generator synchronization
 check. Their content now survives regeneration; the focused local batch passed
@@ -2077,3 +2080,11 @@ check. Their content now survives regeneration; the focused local batch passed
 in separate copies of the task environment, retaining PyTorch 2.9.1+cu130 and
 verifying the donor was unchanged. Package installation and source pin checks
 are preflight only; real Colfax GPU validation is next.
+
+The subsequent Colfax source review extended verification from selected files
+to all 52 runtime Python files plus the installed VCS repository, exact commit,
+and package subdirectory. The GPU test now changes Q or dO in place on the same
+graph and checks fresh outputs against an independent reference before restoring
+the input. The local focused batch passed 48 tests with two CUDA skips. These
+newer Colfax repairs still need their own GPU execution; the integrated suite
+above used the preceding source revision.

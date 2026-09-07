@@ -14,14 +14,14 @@ that are unavailable on this host.
 | Benchmark contract scan | 932 entrypoints; zero errors and warnings |
 | Repository-wide Ruff correctness checks | Passed |
 | Latest focused GPU regressions | 813 passed; all six isolated Llama tests also passed on `9d342cc79` |
-| Latest integrated GPU suite | 5,766 passed, 78 skipped, one Llama compilation timeout on merged `814866061` |
+| Latest integrated GPU suite | **5,795 passed, 79 skipped, zero failures or errors** on `46ba89929`; normal exit and complete process drain |
 | Standalone MoE entrypoint | Level 0 completed its normal 436.5M-parameter workload |
 | Normal dual-pool vLLM runs | Exact tokens passed twice; speed target failed twice |
 | Gradient-fusion NCU | Complete five-metric baseline and optimized reports inspected; repeated baseline replay remains intermittent |
 | Hosted CI | 5,310 CPU tests passed, 535 skipped; static analysis, dashboard and dual-architecture CUDA builds passed on `d77181e28` |
 | Main delivery | [PR #21](https://github.com/cfregly/ai-performance-engineering/pull/21) merged as `814866061`; its tree matches the tested code. PR #20 is also merged |
 | Explicit opt-in GPU tests | ZeRO2 passed; two Blackwell tests passed on each of two ranks; local-model vLLM passed |
-| Remaining GPU validation | The isolated Llama test passed with full collection and inside the ongoing integrated run; new Colfax decode/backward labs are next |
+| Remaining GPU validation | New Colfax decode/backward source and input-freshness repairs require their opt-in GPU tests, profiling and repeated timing runs |
 
 The original broad inventory included 441 zero exits, 44 exits with code 1, and
 one native crash. Zero exits include skips and informational results. Later
@@ -29,12 +29,11 @@ targeted runs repaired the executable and verification defects; the complete
 attempt history and remaining dispositions are in the
 [repair checkpoint](2026-09-06-codebase-repair-checkpoint.md).
 
-The integrated suite ran every collected case. Its failures exposed outdated
-fixtures and assertions plus an autotune compilation timeout. All affected files
-passed the subsequent B200 rerun; this is a full diagnostic run followed by
-focused repair validation, not a single passing integrated run. Pytest shutdown
-needed scoped cleanup of surviving compiler work after the original report was
-written. Both the test counts and cleanup receipt are preserved.
+Earlier integrated suites exposed outdated fixtures and assertions plus an
+autotune compilation timeout. Those original failures and compiler cleanup
+receipts remain preserved. After the repairs, the latest integrated suite ran
+all 5,874 collected cases successfully, with 79 explicit skips, in 31 minutes
+29 seconds. It exited normally and drained all owned processes.
 
 The final distributed bootstrap repair passed all eight CPU/CUDA worker tests
 on B200, including one- and two-rank execution. Both final hosted workflows
@@ -45,9 +44,8 @@ It completed all 5,845 cases in 41 minutes 52 seconds and retained one repeated
 Llama autotune timeout. Native CUTLASS compilation was still active; pytest
 shutdown again needed scoped cleanup after its complete XML report was saved.
 The unchanged numerical workload now runs in a fresh interpreter with owned
-compiler cleanup. It passed with full collection and again inside the next
-integrated run; that run is still in progress, so no full integrated pass is
-claimed. Some skipped hardening tests also document detectors that are not yet
+compiler cleanup. It passed with full collection and again inside the completed
+passing integrated run. Some skipped hardening tests also document detectors that are not yet
 implemented, rather than demonstrating those protections.
 
 The profiler builders now request exactly the five validated metrics for
