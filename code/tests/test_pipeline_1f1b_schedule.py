@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 import torch
 import torch.distributed as dist
+
 from ch04.pipeline_parallel_common import (
     CONTRACT_ENV,
     ITERATIONS_ENV,
@@ -418,6 +419,23 @@ def test_post_timing_reference_rejects_a_wrong_actual_microbatch() -> None:
             forward_stages=[lambda value: value + 1, lambda value: value + 2],
             backward_stages=[lambda value: value + 10, lambda value: value + 20],
             tolerance=(0.0, 0.0),
+        )
+
+
+def test_default_reference_tolerance_rejects_a_small_bf16_output_error() -> None:
+    capture = PipelineIterationCapture.create(1)
+    capture.forward_inputs[:] = [torch.ones((1, 2), dtype=torch.bfloat16)]
+    capture.backward_inputs[:] = [torch.ones((1, 2), dtype=torch.bfloat16)]
+    capture.backward_outputs[:] = [torch.ones((1, 2), dtype=torch.bfloat16)]
+    stages = [lambda value: value, lambda value: value]
+    _, actual = verify_and_concatenate_pipeline_capture(
+        rank=1, capture=capture, forward_stages=stages, backward_stages=stages,
+    )
+    torch.testing.assert_close(actual, torch.ones_like(actual), rtol=0, atol=0)
+    capture.backward_outputs[0][0, 0] += 0.125
+    with pytest.raises(AssertionError):
+        verify_and_concatenate_pipeline_capture(
+            rank=1, capture=capture, forward_stages=stages, backward_stages=stages,
         )
 
 

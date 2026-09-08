@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import torch
 import torch.distributed as dist
+
 from core.benchmark.verification import InputSignature, PrecisionFlags
 from labs.train_distributed.training_utils.child_result import (
     CONTRACT_ENV,
@@ -41,7 +42,9 @@ PIPELINE_RESULT_VARIANT_ENV = "AISP_PIPELINE_RESULT_VARIANT"
 PIPELINE_RESULT_SCHEDULE_ENV = "AISP_PIPELINE_RESULT_SCHEDULE"
 PIPELINE_RESULT_SHAPE_ENV = "AISP_PIPELINE_RESULT_SHAPE"
 PIPELINE_RESULT_LAYERS_ENV = "AISP_PIPELINE_RESULT_LAYERS"
-PIPELINE_OUTPUT_TOLERANCE = (0.1, 1.0)
+# Both schedules perform the same per-microbatch BF16 operations. Full-shape
+# two-B200 repeats across four seeds produced bitwise-equal worker outputs.
+PIPELINE_OUTPUT_TOLERANCE = (0.0, 0.0)
 
 _MAX_RAW_RANK_BYTES = 1024 * 1024 * 1024
 _SERIALIZATION_OVERHEAD_BYTES = 1024 * 1024
