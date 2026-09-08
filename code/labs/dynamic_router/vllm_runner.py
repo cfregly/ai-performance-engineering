@@ -16,6 +16,7 @@ import sys
 import time
 from contextlib import redirect_stdout
 from dataclasses import dataclass
+from functools import wraps
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 import torch
@@ -49,6 +50,8 @@ _PINNED_SERVING_STACK = _SERVING_STACK_PINS.pinned_stack_str
 _EXPECTED_TORCH_VERSION = _SERVING_STACK_PINS.torch_version
 _EXPECTED_VLLM_DIST_VERSION = _SERVING_STACK_PINS.vllm_version
 _EXPECTED_FLASHINFER_DIST_VERSION = _SERVING_STACK_PINS.flashinfer_version
+WARMUP_ITERATIONS = 5
+STEADY_STATE_ITERATIONS = 3
 
 
 def _is_vllm_abi_mismatch_error(exc: BaseException) -> bool:
@@ -335,6 +338,7 @@ class _VllmWrapper:
                 print(captured, file=sys.stderr)
         self._inflight: Dict[str, _RequestRuntime] = {}
         self._completed_output_token_ids: Dict[str, Tuple[int, ...]] = {}
+        self._closed = False
 
     def add_request(
         self,
@@ -434,6 +438,50 @@ class _VllmWrapper:
     def queue_depth(self) -> int:
         return self.engine.get_num_unfinished_requests()
 
+    def reset_request_state(self) -> None:
+        """Prepare an idle engine for another exact-output workload."""
+        if self._closed:
+            raise RuntimeError(f"vLLM engine {self.gpu_id} is already closed")
+        unfinished = self.engine.get_num_unfinished_requests()
+        if unfinished or self._inflight:
+            raise RuntimeError(
+                f"Cannot reuse vLLM engine {self.gpu_id} with unfinished requests: "
+                f"engine={unfinished}, tracked={len(self._inflight)}"
+            )
+        self._completed_output_token_ids.clear()
+
+    def close(self, *, force: bool = False) -> None:
+        """Shut down the pinned vLLM EngineCore after all requests drain."""
+        if self._closed:
+            return
+        unfinished = self.engine.get_num_unfinished_requests()
+        if unfinished or self._inflight:
+            if not force:
+                raise RuntimeError(
+                    f"Cannot close vLLM engine {self.gpu_id} with unfinished requests: "
+                    f"engine={unfinished}, tracked={len(self._inflight)}"
+                )
+        errors: List[str] = []
+        if force and self._inflight:
+            abort_request = getattr(self.engine, "abort_request", None)
+            if callable(abort_request):
+                request_ids = list(self._inflight)
+                try:
+                    abort_request(request_ids)
+                except Exception as exc:
+                    errors.append(f"abort {request_ids}: {exc}")
+            self._inflight.clear()
+        core_client = getattr(self.engine, "engine_core", None)
+        shutdown = getattr(core_client, "shutdown", None)
+        if callable(shutdown):
+            try:
+                shutdown()
+            except Exception as exc:
+                errors.append(f"EngineCore shutdown: {exc}")
+        self._closed = True
+        if errors:
+            raise RuntimeError("; ".join(errors))
+
     def snapshot_metrics(self, ttft_ema: Optional[float], tpot_ema: float) -> Dict[str, float]:
         mem_free_gb = 0.0
         if torch.cuda.is_available():
@@ -494,6 +542,7 @@ class _VllmV1Wrapper(_VllmWrapper):
             _skip("EngineCore.step_fn is unavailable; update vLLM to V1 or disable --use-v1-core-loop.")
         self._inflight: Dict[str, _RequestRuntime] = {}
         self._completed_output_token_ids: Dict[str, Tuple[int, ...]] = {}
+        self._closed = False
 
     def step(self, now: Optional[float] = None) -> Tuple[List[str], List[Tuple[str, float]], int]:
         outputs_dict, executed = self._core.step_fn()
@@ -539,6 +588,246 @@ class _GPUHandle:
     is_prefill: bool
     is_decode: bool
     numa_node: Optional[int] = None
+
+
+class VllmEngineSession:
+    """Own reusable vLLM engines and retain their full lifecycle timings."""
+
+    def __init__(
+        self,
+        *,
+        workload_kind: str,
+        mode: str,
+        handles: Sequence[_GPUHandle],
+        model_id: str,
+        attention_backend: Optional[str],
+        wrapper_cls: type[_VllmWrapper],
+        warmup_runs: int,
+    ) -> None:
+        if warmup_runs < 0:
+            raise ValueError("warmup_runs must be non-negative")
+        self.workload_kind = workload_kind
+        self.mode = mode
+        self.handles = tuple(handles)
+        self.model_id = model_id
+        self.attention_backend = attention_backend
+        self.warmup_runs = int(warmup_runs)
+        self._created_at = time.perf_counter()
+        self._closed = False
+        self._run_count = 0
+        self._active_run: Optional[Tuple[str, float]] = None
+        self._phase_durations_ms: Dict[str, List[float]] = {
+            "warmup": [],
+            "steady_state": [],
+        }
+        self._failed_runs: List[Dict[str, object]] = []
+        self._primary_failure: Optional[BaseException] = None
+        self._teardown_ms: Optional[float] = None
+        self._end_to_end_ms: Optional[float] = None
+        self.engine_startup_ms = 0.0
+        self.engines: Dict[str, _VllmWrapper] = {}
+
+        startup_start = time.perf_counter()
+        try:
+            for handle in self.handles:
+                self.engines[handle.gpu_id] = wrapper_cls(
+                    handle.gpu_id,
+                    handle.device_index,
+                    model_id,
+                    attention_backend=attention_backend,
+                )
+        except BaseException as exc:
+            self.engine_startup_ms = (time.perf_counter() - startup_start) * 1000.0
+            self._primary_failure = exc
+            cleanup_start = time.perf_counter()
+            cleanup_errors: List[str] = []
+            for engine in self.engines.values():
+                try:
+                    engine.close(force=True)
+                except Exception as cleanup_exc:
+                    cleanup_errors.append(f"{engine.gpu_id}: {cleanup_exc}")
+            self._teardown_ms = (time.perf_counter() - cleanup_start) * 1000.0
+            self._end_to_end_ms = (time.perf_counter() - self._created_at) * 1000.0
+            self._closed = True
+            self._emit_lifecycle("startup_failed", cleanup_errors)
+            if cleanup_errors and hasattr(exc, "add_note"):
+                exc.add_note(
+                    "vLLM partial-startup cleanup errors: " + "; ".join(cleanup_errors)
+                )
+            raise
+        self.engine_startup_ms = (time.perf_counter() - startup_start) * 1000.0
+
+    def validate_layout(
+        self,
+        *,
+        workload_kind: str,
+        mode: str,
+        handles: Sequence[_GPUHandle],
+        model_id: str,
+        attention_backend: Optional[str],
+    ) -> None:
+        if self._closed:
+            raise RuntimeError("vLLM engine session is closed")
+        expected = (
+            workload_kind,
+            mode,
+            tuple(handles),
+            model_id,
+            attention_backend,
+        )
+        actual = (
+            self.workload_kind,
+            self.mode,
+            self.handles,
+            self.model_id,
+            self.attention_backend,
+        )
+        if actual != expected:
+            raise RuntimeError(
+                "Reusable vLLM engine session does not match the requested workload layout"
+            )
+
+    def begin_run(self) -> Tuple[str, str]:
+        if self._active_run is not None:
+            raise RuntimeError("vLLM engine session already has an active run")
+        for engine in self.engines.values():
+            engine.reset_request_state()
+        phase = "warmup" if self._run_count < self.warmup_runs else "steady_state"
+        request_prefix = f"session-{self._run_count:04d}-"
+        self._active_run = (phase, time.perf_counter())
+        return phase, request_prefix
+
+    def finish_run(self, phase: str) -> None:
+        active = self._active_run
+        if active is None or active[0] != phase:
+            raise RuntimeError("vLLM engine session run phase is inconsistent")
+        elapsed_ms = (time.perf_counter() - active[1]) * 1000.0
+        self._phase_durations_ms[phase].append(elapsed_ms)
+        self._run_count += 1
+        self._active_run = None
+
+    def abort_run(
+        self,
+        exc: BaseException,
+        *,
+        retain_inactive_failure: bool = False,
+    ) -> None:
+        """Release an active run lease while retaining its primary failure."""
+        active = self._active_run
+        if active is None:
+            if retain_inactive_failure and self._primary_failure is None:
+                self._primary_failure = exc
+            return
+        if self._primary_failure is None:
+            self._primary_failure = exc
+        self._failed_runs.append(
+            {
+                "phase": active[0],
+                "elapsed_ms": (time.perf_counter() - active[1]) * 1000.0,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
+        )
+        self._active_run = None
+
+    def lifecycle_metrics(self) -> Dict[str, float]:
+        warmup_samples = self._phase_durations_ms["warmup"]
+        steady_samples = self._phase_durations_ms["steady_state"]
+        metrics = {
+            "lifecycle.setup_engine_startup_ms": self.engine_startup_ms,
+            "lifecycle.engine_startup_ms": self.engine_startup_ms,
+            "lifecycle.engine_count": float(len(self.engines)),
+            "lifecycle.warmup_runs": float(len(warmup_samples)),
+            "lifecycle.warmup_request_processing_ms_total": float(sum(warmup_samples)),
+            "lifecycle.warmup_request_processing_ms_mean": (
+                float(sum(warmup_samples) / len(warmup_samples)) if warmup_samples else 0.0
+            ),
+            "lifecycle.steady_state_runs": float(len(steady_samples)),
+            "lifecycle.steady_state_request_processing_ms_total": float(sum(steady_samples)),
+            "lifecycle.steady_state_request_processing_ms_mean": (
+                float(sum(steady_samples) / len(steady_samples)) if steady_samples else 0.0
+            ),
+            "lifecycle.steady_state_request_processing_ms_last": (
+                float(steady_samples[-1]) if steady_samples else 0.0
+            ),
+            "lifecycle.engine_reuse_count": float(max(self._run_count - 1, 0)),
+            "lifecycle.failed_runs": float(len(self._failed_runs)),
+            "lifecycle.elapsed_before_teardown_ms": (
+                time.perf_counter() - self._created_at
+            )
+            * 1000.0,
+        }
+        if self._teardown_ms is not None:
+            metrics["lifecycle.engine_teardown_ms"] = self._teardown_ms
+        if self._end_to_end_ms is not None:
+            metrics["lifecycle.end_to_end_ms"] = self._end_to_end_ms
+        return metrics
+
+    def _emit_lifecycle(self, disposition: str, errors: Sequence[str]) -> None:
+        failure = self._primary_failure
+        print(
+            json.dumps(
+                {
+                    "event": "vllm_engine_lifecycle",
+                    "disposition": disposition,
+                    "workload_kind": self.workload_kind,
+                    "mode": self.mode,
+                    "setup_engine_startup_ms": self.engine_startup_ms,
+                    "engine_startup_ms": self.engine_startup_ms,
+                    "warmup_request_processing_ms": self._phase_durations_ms["warmup"],
+                    "steady_state_request_processing_ms": self._phase_durations_ms[
+                        "steady_state"
+                    ],
+                    "failed_runs": self._failed_runs,
+                    "engine_teardown_ms": self._teardown_ms,
+                    "end_to_end_ms": self._end_to_end_ms,
+                    "request_state_reset_per_run": True,
+                    "primary_failure": (
+                        {"type": type(failure).__name__, "message": str(failure)}
+                        if failure is not None
+                        else None
+                    ),
+                    "shutdown_errors": list(errors),
+                },
+                sort_keys=True,
+            ),
+            file=sys.stderr,
+            flush=True,
+        )
+
+    def close(self, *, preserve_primary_error: bool = False) -> List[str]:
+        if self._closed:
+            return []
+        if self._active_run is not None:
+            if self._primary_failure is None:
+                raise RuntimeError("Cannot close vLLM engine session during an active run")
+            self.abort_run(self._primary_failure)
+        teardown_start = time.perf_counter()
+        errors: List[str] = []
+        for engine in self.engines.values():
+            try:
+                engine.close(force=self._primary_failure is not None)
+            except Exception as exc:
+                errors.append(f"{engine.gpu_id}: {exc}")
+        self._teardown_ms = (time.perf_counter() - teardown_start) * 1000.0
+        self._end_to_end_ms = (time.perf_counter() - self._created_at) * 1000.0
+        self._closed = True
+        if self._primary_failure is not None:
+            disposition = "failed_run"
+        else:
+            disposition = "completed"
+        if errors:
+            disposition += "_with_teardown_errors"
+        self._emit_lifecycle(disposition, errors)
+        if errors and self._primary_failure is not None and hasattr(
+            self._primary_failure, "add_note"
+        ):
+            self._primary_failure.add_note(
+                "vLLM engine teardown errors: " + "; ".join(errors)
+            )
+        if errors and not preserve_primary_error and self._primary_failure is None:
+            raise RuntimeError("vLLM engine teardown failed: " + "; ".join(errors))
+        return errors
 
 
 def _parse_device_list(raw: Optional[str], default: str, max_device: int) -> List[int]:
@@ -613,6 +902,199 @@ def _build_handles(
     return handles
 
 
+def _require_vllm_host(*, workload_label: str, minimum_gpus: int) -> int:
+    if not torch.cuda.is_available():
+        _skip(f"CUDA is required for {workload_label}.")
+    total_gpus = torch.cuda.device_count()
+    if total_gpus < minimum_gpus:
+        _skip(f"{workload_label} requires at least {minimum_gpus} GPUs.")
+    return total_gpus
+
+
+def _routing_session_layout(
+    *,
+    mode: str,
+    topology_snapshot: TopologySnapshot,
+    cli_args: argparse.Namespace,
+) -> Tuple[str, List[_GPUHandle], str, Optional[str], type[_VllmWrapper]]:
+    total_gpus = _require_vllm_host(
+        workload_label="vLLM routing demo",
+        minimum_gpus=2,
+    )
+    model_id = cli_args.model
+    if not model_id:
+        _skip("Pass --model <local HF path/id> to run vLLM demo.")
+    _assert_vllm_runtime_ready()
+    decode_ids = _parse_device_list(cli_args.decode_gpus, "0,1", total_gpus)
+    if not decode_ids:
+        decode_ids = list(range(min(2, total_gpus)))
+    handles = _build_handles(
+        "shared",
+        decode_ids,
+        decode_ids,
+        gpu_numa=topology_snapshot.gpu_numa,
+    )
+    return (
+        mode,
+        handles,
+        model_id,
+        getattr(cli_args, "attention_backend", None),
+        _VllmWrapper,
+    )
+
+
+def _dual_pool_session_layout(
+    *,
+    mode: str,
+    topology_snapshot: TopologySnapshot,
+    cli_args: argparse.Namespace,
+) -> Tuple[str, List[_GPUHandle], str, Optional[str], type[_VllmWrapper]]:
+    total_gpus = _require_vllm_host(
+        workload_label="Dual-pool demo",
+        minimum_gpus=2,
+    )
+    model_id = cli_args.model
+    if not model_id:
+        _skip("Pass --model <local HF path/id> to run vLLM dual-pool demo.")
+    _assert_vllm_runtime_ready()
+
+    normalized_mode = mode.lower()
+    if normalized_mode in {"dual", "dual_pool", "optimized"}:
+        normalized_mode = "dual"
+    else:
+        normalized_mode = "shared"
+
+    prefill_ids = _parse_device_list(cli_args.prefill_gpus, "0", total_gpus)
+    decode_default = "1" if total_gpus > 1 else "0"
+    decode_ids = _parse_device_list(cli_args.decode_gpus, decode_default, total_gpus)
+    if not prefill_ids:
+        prefill_ids = [0]
+    if not decode_ids:
+        decode_ids = [1] if total_gpus > 1 else [0]
+    if normalized_mode == "dual":
+        if not prefill_ids:
+            _skip("Dual mode needs at least one prefill GPU.")
+        if not decode_ids:
+            _skip("Dual mode needs at least one decode GPU.")
+        if not (set(prefill_ids) - set(decode_ids)) or not (
+            set(decode_ids) - set(prefill_ids)
+        ):
+            _skip(
+                "Dual mode needs at least one GPU dedicated to prefill and one to decode. "
+                "Adjust VLLM_PREFILL_GPUS/VLLM_DECODE_GPUS."
+            )
+
+    handles = _build_handles(
+        normalized_mode,
+        prefill_ids,
+        decode_ids,
+        gpu_numa=topology_snapshot.gpu_numa,
+    )
+    wrapper_cls = (
+        _VllmV1Wrapper
+        if getattr(cli_args, "use_v1_core_loop", False)
+        else _VllmWrapper
+    )
+    return (
+        normalized_mode,
+        handles,
+        model_id,
+        getattr(cli_args, "attention_backend", None),
+        wrapper_cls,
+    )
+
+
+def create_vllm_routing_session(
+    mode: str,
+    *,
+    topology_snapshot: TopologySnapshot,
+    cli_args: Optional[argparse.Namespace] = None,
+    warmup_runs: int = 0,
+) -> VllmEngineSession:
+    """Construct routing engines once so request processing can be timed separately."""
+    args = cli_args or _CLI_ARGS
+    normalized_mode, handles, model_id, attention_backend, wrapper_cls = (
+        _routing_session_layout(
+            mode=mode,
+            topology_snapshot=topology_snapshot,
+            cli_args=args,
+        )
+    )
+    return VllmEngineSession(
+        workload_kind="dynamic_router",
+        mode=normalized_mode,
+        handles=handles,
+        model_id=model_id,
+        attention_backend=attention_backend,
+        wrapper_cls=wrapper_cls,
+        warmup_runs=warmup_runs,
+    )
+
+
+def create_dual_pool_vllm_session(
+    mode: str,
+    *,
+    topology_snapshot: TopologySnapshot,
+    cli_args: Optional[argparse.Namespace] = None,
+    warmup_runs: int = 0,
+) -> VllmEngineSession:
+    """Construct shared or dual-pool engines once for steady-state replay."""
+    args = cli_args or _CLI_ARGS
+    normalized_mode, handles, model_id, attention_backend, wrapper_cls = (
+        _dual_pool_session_layout(
+            mode=mode,
+            topology_snapshot=topology_snapshot,
+            cli_args=args,
+        )
+    )
+    return VllmEngineSession(
+        workload_kind="dual_pool",
+        mode=normalized_mode,
+        handles=handles,
+        model_id=model_id,
+        attention_backend=attention_backend,
+        wrapper_cls=wrapper_cls,
+        warmup_runs=warmup_runs,
+    )
+
+
+def _manage_engine_session(session_factory):
+    """Close call-owned sessions on success or failure without masking failures."""
+
+    def decorate(run_fn):
+        @wraps(run_fn)
+        def managed(mode, *args, **kwargs):
+            session = kwargs.get("engine_session")
+            owns_session = session is None
+            if owns_session:
+                topology_snapshot = kwargs.get("topology_snapshot")
+                if topology_snapshot is None:
+                    raise TypeError("topology_snapshot must be passed by keyword")
+                session = session_factory(
+                    mode,
+                    topology_snapshot=topology_snapshot,
+                    cli_args=kwargs.get("cli_args"),
+                    warmup_runs=0,
+                )
+                kwargs["engine_session"] = session
+            try:
+                summary = run_fn(mode, *args, **kwargs)
+            except BaseException as exc:
+                session.abort_run(exc, retain_inactive_failure=owns_session)
+                if owns_session:
+                    session.close(preserve_primary_error=True)
+                raise
+            if owns_session:
+                session.close()
+                if isinstance(summary, dict):
+                    summary.update(session.lifecycle_metrics())
+            return summary
+
+        return managed
+
+    return decorate
+
+
 def _collect_verification_output_token_ids(
     engines: Dict[str, _VllmWrapper], request_ids: List[str]
 ) -> List[int]:
@@ -643,6 +1125,7 @@ def _collect_verification_output_token_ids(
     return framed
 
 
+@_manage_engine_session(create_vllm_routing_session)
 def run_vllm_routing_with_topology(
     mode: str,
     *,
@@ -651,18 +1134,29 @@ def run_vllm_routing_with_topology(
     max_tokens: Optional[int] = None,
     cli_args: Optional[argparse.Namespace] = None,
     prompt_token_ids: torch.Tensor,
+    engine_session: Optional[VllmEngineSession] = None,
 ) -> Dict[str, float]:
     """Run a small vLLM-backed routing demo with a precomputed topology snapshot."""
-    if not torch.cuda.is_available():
-        _skip("CUDA is required for vLLM routing demo.")
-    if torch.cuda.device_count() < 2:
-        _skip("vLLM routing demo requires at least 2 GPUs.")
-
     args = cli_args or _CLI_ARGS
-    model_id = args.model
-    if not model_id:
-        _skip("Pass --model <local HF path/id> to run vLLM demo.")
-    _assert_vllm_runtime_ready()
+    normalized_mode, handles, model_id, attention_backend, wrapper_cls = (
+        _routing_session_layout(
+            mode=mode,
+            topology_snapshot=topology_snapshot,
+            cli_args=args,
+        )
+    )
+    if engine_session is None:
+        raise RuntimeError("managed vLLM routing call did not receive an engine session")
+    session = engine_session
+    session.validate_layout(
+        workload_kind="dynamic_router",
+        mode=normalized_mode,
+        handles=handles,
+        model_id=model_id,
+        attention_backend=attention_backend,
+    )
+    run_phase, request_prefix = session.begin_run()
+    engines = session.engines
 
     prompt_lengths = routing_prompt_lengths(args, req_count=req_count)
     req_count_val = len(prompt_lengths)
@@ -673,14 +1167,6 @@ def run_vllm_routing_with_topology(
 
     topo = topology_snapshot
     gpu_numa = topo.gpu_numa
-
-    decode_ids = _parse_device_list(args.decode_gpus, "0,1", torch.cuda.device_count())
-    if not decode_ids:
-        decode_ids = list(range(min(2, torch.cuda.device_count())))
-    engines = {
-        f"gpu{idx}": _VllmWrapper(f"gpu{idx}", idx, model_id, attention_backend=getattr(args, "attention_backend", None))
-        for idx in decode_ids
-    }
 
     # Router selection
     router = Router() if mode == "optimized" else None
@@ -702,7 +1188,7 @@ def run_vllm_routing_with_topology(
 
     # Submit all requests up front
     for i in range(req_count_val):
-        rid = f"req-{i}"
+        rid = f"{request_prefix}req-{i}"
         request_ids.append(rid)
         req = Request(
             req_id=rid,
@@ -750,6 +1236,8 @@ def run_vllm_routing_with_topology(
     summary[VERIFICATION_OUTPUT_KEY] = _collect_verification_output_token_ids(
         engines, request_ids
     )
+    session.finish_run(run_phase)
+    summary.update(session.lifecycle_metrics())
     return summary
 
 
@@ -774,6 +1262,7 @@ def run_vllm_routing(
     )
 
 
+@_manage_engine_session(create_dual_pool_vllm_session)
 def run_dual_pool_vllm_with_topology(
     mode: str,
     *,
@@ -787,28 +1276,20 @@ def run_dual_pool_vllm_with_topology(
     prefill_ctx_thresh: Optional[int] = None,
     cli_args: Optional[argparse.Namespace] = None,
     prompt_token_ids: torch.Tensor,
+    engine_session: Optional[VllmEngineSession] = None,
 ) -> Dict[str, float]:
     """
     Dual-pool vLLM experiment: compare shared-pool vs disaggregated prefill/decode.
     """
-    if not torch.cuda.is_available():
-        _skip("CUDA is required for vLLM dual-pool demo.")
-
-    total_gpus = torch.cuda.device_count()
-    if total_gpus < 2:
-        _skip("Dual-pool demo requires at least 2 GPUs.")
-
     args = cli_args or _CLI_ARGS
-    model_id = args.model
-    if not model_id:
-        _skip("Pass --model <local HF path/id> to run vLLM dual-pool demo.")
-    _assert_vllm_runtime_ready()
-
-    normalized_mode = mode.lower()
-    if normalized_mode in {"dual", "dual_pool", "optimized"}:
-        normalized_mode = "dual"
-    else:
-        normalized_mode = "shared"
+    normalized_mode, handles, model_id, attention_backend, wrapper_cls = (
+        _dual_pool_session_layout(
+            mode=mode,
+            topology_snapshot=topology_snapshot,
+            cli_args=args,
+        )
+    )
+    total_gpus = torch.cuda.device_count()
 
     long_prompt_tokens = args.long_prompt_tokens if long_prompt_tokens is None else long_prompt_tokens
     short_prompt_tokens = args.short_prompt_tokens if short_prompt_tokens is None else short_prompt_tokens
@@ -839,26 +1320,22 @@ def run_dual_pool_vllm_with_topology(
     if not decode_ids:
         decode_ids = [1] if total_gpus > 1 else [0]
 
-    if normalized_mode == "dual":
-        if not set(prefill_ids):
-            _skip("Dual mode needs at least one prefill GPU.")
-        if not set(decode_ids):
-            _skip("Dual mode needs at least one decode GPU.")
-        if not (set(prefill_ids) - set(decode_ids)) or not (set(decode_ids) - set(prefill_ids)):
-            _skip("Dual mode needs at least one GPU dedicated to prefill and one to decode. Adjust VLLM_PREFILL_GPUS/VLLM_DECODE_GPUS.")
-
-    topo = topology_snapshot
-    handles = _build_handles(normalized_mode, prefill_ids, decode_ids, gpu_numa=topo.gpu_numa)
     prefill_handles = [h for h in handles if h.is_prefill]
     decode_handles = [h for h in handles if h.is_decode]
     if not prefill_handles or not decode_handles:
         _skip("No usable GPUs after parsing pool assignments.")
-
-    wrapper_cls = _VllmV1Wrapper if getattr(args, "use_v1_core_loop", False) else _VllmWrapper
-    engines = {
-        h.gpu_id: wrapper_cls(h.gpu_id, h.device_index, model_id, attention_backend=getattr(args, "attention_backend", None))
-        for h in handles
-    }
+    if engine_session is None:
+        raise RuntimeError("managed dual-pool call did not receive an engine session")
+    session = engine_session
+    session.validate_layout(
+        workload_kind="dual_pool",
+        mode=normalized_mode,
+        handles=handles,
+        model_id=model_id,
+        attention_backend=attention_backend,
+    )
+    run_phase, request_prefix = session.begin_run()
+    engines = session.engines
 
     router = Router()
     for h in handles:
@@ -875,7 +1352,7 @@ def run_dual_pool_vllm_with_topology(
     def _enqueue(n: int, prompt_tokens: int, hint: str) -> None:
         nonlocal next_id
         for _ in range(n):
-            rid = f"req-{next_id}"
+            rid = f"{request_prefix}req-{next_id}"
             next_id += 1
             workload.append(
                 (
@@ -1004,6 +1481,8 @@ def run_dual_pool_vllm_with_topology(
     summary[VERIFICATION_OUTPUT_KEY] = _collect_verification_output_token_ids(
         engines, list(req_roles)
     )
+    session.finish_run(run_phase)
+    summary.update(session.lifecycle_metrics())
     return summary
 
 

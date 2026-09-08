@@ -42,6 +42,7 @@ class OptimizedDualPoolVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
             vllm_runner._CLI_ARGS
         )
         self._topology = None
+        self._engine_session: Optional[vllm_runner.VllmEngineSession] = None
         self._summary_ready = False
         request_count = len(self._prompt_lengths)
         self.register_workload_metadata(
@@ -58,17 +59,26 @@ class OptimizedDualPoolVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._prompt_lengths
         )
         self._topology = detect_topology(max_gpus=torch.cuda.device_count())
+        self._engine_session = vllm_runner.create_dual_pool_vllm_session(
+            "dual",
+            topology_snapshot=self._topology,
+            cli_args=vllm_runner._CLI_ARGS,
+            warmup_runs=vllm_runner.WARMUP_ITERATIONS,
+        )
 
     def benchmark_fn(self) -> None:
         if self._mode_input is None or int(self._mode_input[0]) != 1:
             raise RuntimeError("setup() must initialize dual-pool routing mode")
         if self._prompt_token_ids is None:
             raise RuntimeError("setup() must initialize live prompt-token input")
+        if self._engine_session is None:
+            raise RuntimeError("setup() must initialize reusable vLLM engines")
         self._summary = run_dual_pool_vllm_with_topology(
             "dual",
             topology_snapshot=self._topology,
             cli_args=vllm_runner._CLI_ARGS,
             prompt_token_ids=self._prompt_token_ids,
+            engine_session=self._engine_session,
         )
         self._summary_ready = True
 
@@ -94,6 +104,9 @@ class OptimizedDualPoolVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def teardown(self) -> None:
+        if self._engine_session is not None:
+            self._engine_session.close()
+            self._engine_session = None
         self.output = None
         self._metric_values = None
         self._metric_output_buffer = None
@@ -104,7 +117,13 @@ class OptimizedDualPoolVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         super().teardown()
 
     def get_config(self) -> Optional[BenchmarkConfig]:
-        return BenchmarkConfig(iterations=1, warmup=5, multi_gpu_required=True)
+        return BenchmarkConfig(
+            iterations=vllm_runner.STEADY_STATE_ITERATIONS,
+            warmup=vllm_runner.WARMUP_ITERATIONS,
+            adaptive_iterations=False,
+            timing_method="wall_clock",
+            multi_gpu_required=True,
+        )
 
     def get_custom_metrics(self) -> Optional[Dict[str, float]]:
         return self._summary or None

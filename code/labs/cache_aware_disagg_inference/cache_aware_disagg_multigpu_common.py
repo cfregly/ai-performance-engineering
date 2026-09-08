@@ -235,6 +235,62 @@ def _choose_decode_rank(
     return prefill_ranks + ((plan.global_request_idx + stage_idx) % decode_ranks)
 
 
+def _affinity_opportunity_count(
+    plans: Sequence[DistributedRequestPlan],
+    *,
+    prefill_ranks: int,
+    decode_ranks: int,
+) -> int:
+    """Count placements where sticky and round-robin select different ranks."""
+    count = 0
+    for plan in plans:
+        for stage_idx in range(plan.warm_chunks, plan.total_chunks + 1):
+            baseline_rank = _choose_decode_rank(
+                plan,
+                stage_idx,
+                affinity_mode=DecodeAffinityMode.ROUND_ROBIN,
+                prefill_ranks=prefill_ranks,
+                decode_ranks=decode_ranks,
+            )
+            sticky_rank = _choose_decode_rank(
+                plan,
+                stage_idx,
+                affinity_mode=DecodeAffinityMode.STICKY,
+                prefill_ranks=prefill_ranks,
+                decode_ranks=decode_ranks,
+            )
+            count += int(baseline_rank != sticky_rank)
+    return count
+
+
+def _use_direct_1p1d_sync_fast_path(
+    *,
+    affinity_mode: DecodeAffinityMode,
+    world_size: int,
+    prefill_ranks: int,
+    decode_ranks: int,
+) -> bool:
+    """Use blocking point-to-point ordering instead of redundant global barriers."""
+    return (
+        affinity_mode == DecodeAffinityMode.STICKY
+        and world_size == 2
+        and prefill_ranks == 1
+        and decode_ranks == 1
+    )
+
+
+def _direct_1p1d_barriers_avoided_per_request(
+    plans: Sequence[DistributedRequestPlan],
+) -> float:
+    if not plans:
+        return 0.0
+    barriers = sum(
+        (2 * (plan.total_chunks - plan.warm_chunks)) + 1
+        for plan in plans
+    )
+    return float(barriers) / float(len(plans))
+
+
 def _build_request_plans(
     cfg: CacheAwareDisaggMultiGPUConfig,
     *,
@@ -470,6 +526,17 @@ def _run_torchrun_worker(
         }
 
     plans = _build_request_plans(cfg, prefill_ranks=prefill_ranks)
+    affinity_opportunities = _affinity_opportunity_count(
+        plans,
+        prefill_ranks=prefill_ranks,
+        decode_ranks=decode_ranks,
+    )
+    direct_1p1d_sync_fast_path = _use_direct_1p1d_sync_fast_path(
+        affinity_mode=affinity_mode,
+        world_size=world_size,
+        prefill_ranks=prefill_ranks,
+        decode_ranks=decode_ranks,
+    )
     warm_cache_store: Dict[int, torch.Tensor] = {}
     prefill_seed_store: Dict[int, torch.Tensor] = {}
 
@@ -595,7 +662,8 @@ def _run_torchrun_worker(
                     active_caches=active_caches,
                     metrics=local_metrics,
                 )
-                _sync_and_barrier(device)
+                if not direct_1p1d_sync_fast_path:
+                    _sync_and_barrier(device)
 
                 if rank == plan.prefill_rank:
                     chunk_kv, seed = model.prefill(chunks[chunk_idx])
@@ -615,7 +683,8 @@ def _run_torchrun_worker(
                         kv_buffers=kv_buffers,
                         allow_allocation=False,
                     )
-                _sync_and_barrier(device)
+                if not direct_1p1d_sync_fast_path:
+                    _sync_and_barrier(device)
 
                 current_owner = target_rank
                 current_cache_len += _chunk_length(cfg, chunk_idx)
@@ -644,7 +713,8 @@ def _run_torchrun_worker(
                 active_caches=active_caches,
                 metrics=local_metrics,
             )
-            _sync_and_barrier(device)
+            if not direct_1p1d_sync_fast_path:
+                _sync_and_barrier(device)
 
             if rank == plan.prefill_rank:
                 if seed is None:
@@ -764,6 +834,19 @@ def _run_torchrun_worker(
             "cache_aware.time_per_iter_ms": (elapsed_s / int(iters)) * 1000.0,
             "cache_aware.wall_tokens_per_second": (
                 total_generated_tokens * (int(iters) / elapsed_s)
+            ),
+            "cache_aware.decode_rank_count": float(decode_ranks),
+            "cache_aware.affinity_opportunity_count": float(affinity_opportunities),
+            "cache_aware.affinity_placement_distinguishable": float(
+                affinity_opportunities > 0
+            ),
+            "cache_aware.direct_1p1d_sync_fast_path": float(
+                direct_1p1d_sync_fast_path
+            ),
+            "cache_aware.global_barriers_avoided_per_request": (
+                _direct_1p1d_barriers_avoided_per_request(plans)
+                if direct_1p1d_sync_fast_path
+                else 0.0
             ),
         }
         _write_metrics_sidecar(
@@ -1350,6 +1433,22 @@ class CacheAwareDisaggMultiGPUBenchmark(
         )
         custom_metrics["cache_aware.peer_handoffs"] = metrics["peer_handoffs"]
         custom_metrics["cache_aware.shared_reload_mb"] = metrics["shared_reload_bytes"] / 1e6
+        affinity_opportunities = _affinity_opportunity_count(
+            self._request_plans,
+            prefill_ranks=self._resolved_prefill_ranks,
+            decode_ranks=self._resolved_decode_ranks,
+        )
+        custom_metrics["cache_aware.decode_rank_count"] = float(
+            self._resolved_decode_ranks
+        )
+        custom_metrics["cache_aware.affinity_opportunity_count"] = float(
+            affinity_opportunities
+        )
+        custom_metrics["cache_aware.affinity_placement_distinguishable"] = float(
+            affinity_opportunities > 0
+        )
+        custom_metrics["cache_aware.direct_1p1d_sync_fast_path"] = 0.0
+        custom_metrics["cache_aware.global_barriers_avoided_per_request"] = 0.0
 
     def capture_verification_payload(self) -> None:
         if not self._outputs_ready or self._verify_prompt is None:
@@ -1439,6 +1538,16 @@ class CacheAwareDisaggMultiGPUBenchmark(
             ncu_replay_mode="app-range",
             ncu_replay_mode_override=True,
         )
+
+    def get_optimization_goal(self) -> str:
+        """Treat a one-decode-rank run as a topology/control comparison."""
+        world_size = self._resolved_world_size or _world_size_hint()
+        prefill_ranks = self._resolved_prefill_ranks or _hint_prefill_ranks(
+            world_size,
+            self.cfg.prefill_ranks,
+        )
+        decode_ranks = world_size - prefill_ranks
+        return "comparison" if decode_ranks < 2 else "speed"
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload_metadata
