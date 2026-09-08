@@ -8,15 +8,18 @@ opt-in harness hook: if vLLM or the model is unavailable, it raises SKIPPED.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib
 import importlib.metadata
 import io
 import json
+import os
 import sys
 import time
 from contextlib import redirect_stdout
 from dataclasses import dataclass
 from functools import wraps
+from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 import torch
@@ -52,6 +55,100 @@ _EXPECTED_VLLM_DIST_VERSION = _SERVING_STACK_PINS.vllm_version
 _EXPECTED_FLASHINFER_DIST_VERSION = _SERVING_STACK_PINS.flashinfer_version
 WARMUP_ITERATIONS = 5
 STEADY_STATE_ITERATIONS = 3
+VLLM_PROFILE_RECEIPT_DIR_ENV = "AISP_VLLM_PROFILE_RECEIPT_DIR"
+VLLM_PROFILE_RUNTIME_SCHEMA = "aisp.dynamic-router-vllm-profile-runtime.v1"
+VLLM_PROFILE_OUTPUT_SCHEMA = "aisp.dynamic-router-vllm-profile-output.v1"
+VLLM_PROFILE_LIFECYCLE_SCHEMA = "aisp.dynamic-router-vllm-profile-lifecycle.v1"
+
+
+def _profile_receipt_dir() -> Optional[Path]:
+    raw = os.environ.get(VLLM_PROFILE_RECEIPT_DIR_ENV, "").strip()
+    if not raw:
+        return None
+    path = Path(raw).resolve()
+    if not path.is_dir():
+        raise RuntimeError(
+            f"{VLLM_PROFILE_RECEIPT_DIR_ENV} must name an existing directory: {path}"
+        )
+    return path
+
+
+def _write_profile_receipt(filename: str, payload: Dict[str, object]) -> None:
+    directory = _profile_receipt_dir()
+    if directory is None:
+        return
+    destination = directory / filename
+    temporary = directory / f".{filename}.{os.getpid()}.tmp"
+    temporary.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    os.replace(temporary, destination)
+
+
+def emit_vllm_profile_runtime_receipt(
+    benchmark_name: str,
+    cli_args: argparse.Namespace,
+) -> None:
+    """Retain provenance from the process that creates the profiled engines."""
+    if _profile_receipt_dir() is None:
+        return
+    from core.benchmark.run_manifest import capture_runtime_provenance
+
+    runtime = capture_runtime_provenance()
+    devices = []
+    for index in range(torch.cuda.device_count()):
+        properties = torch.cuda.get_device_properties(index)
+        devices.append(
+            {
+                "logical_index": index,
+                "name": properties.name,
+                "uuid": str(getattr(properties, "uuid", "")) or None,
+                "compute_capability": f"{properties.major}.{properties.minor}",
+            }
+        )
+    _write_profile_receipt(
+        "runtime-provenance.json",
+        {
+            "schema": VLLM_PROFILE_RUNTIME_SCHEMA,
+            "benchmark": benchmark_name,
+            "cli_args": vars(cli_args),
+            "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+            "vllm_batch_invariant": os.environ.get("VLLM_BATCH_INVARIANT"),
+            "devices": devices,
+            "runtime_provenance": runtime.model_dump(mode="json"),
+        },
+    )
+
+
+def emit_vllm_profile_output_receipt(
+    benchmark_name: str,
+    cli_args: argparse.Namespace,
+    summary: Dict[str, object],
+) -> None:
+    """Retain the full profiled-call model output after the measured range closes."""
+    if _profile_receipt_dir() is None:
+        return
+    output = summary.get(VERIFICATION_OUTPUT_KEY)
+    if not isinstance(output, (list, tuple)) or not output:
+        raise RuntimeError("profile output receipt requires framed generated token ids")
+    token_ids = [int(value) for value in output]
+    encoded = json.dumps(token_ids, separators=(",", ":")).encode("utf-8")
+    scalar_metrics = {
+        key: value
+        for key, value in summary.items()
+        if key != VERIFICATION_OUTPUT_KEY and isinstance(value, (bool, int, float, str))
+    }
+    _write_profile_receipt(
+        "profile-output.json",
+        {
+            "schema": VLLM_PROFILE_OUTPUT_SCHEMA,
+            "benchmark": benchmark_name,
+            "cli_args": vars(cli_args),
+            "scalar_metrics": scalar_metrics,
+            "framed_token_ids": token_ids,
+            "framed_token_ids_sha256": hashlib.sha256(encoded).hexdigest(),
+        },
+    )
 
 
 def _is_vllm_abi_mismatch_error(exc: BaseException) -> bool:
@@ -127,8 +224,8 @@ def _assert_vllm_runtime_ready() -> None:
         _skip(_format_vllm_import_error(exc))
 
 
-def _parse_cli_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(add_help=False)
+def _build_cli_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(add_help=False, exit_on_error=False)
     parser.add_argument("--model", type=str, help="Local HF model path/id for vLLM.")
     parser.add_argument(
         "--attention-backend", type=str, default=None,
@@ -149,7 +246,60 @@ def _parse_cli_args() -> argparse.Namespace:
         action="store_true",
         help="Drive vLLM V1 EngineCore directly with the optimized polling loop (Inproc only).",
     )
-    return parser.parse_known_args()[0]
+    return parser
+
+
+def _validate_cli_args(args: argparse.Namespace) -> argparse.Namespace:
+    positive_fields = (
+        "req_count",
+        "max_tokens",
+        "long_prompt_tokens",
+        "short_prompt_tokens",
+        "prefill_ctx_thresh",
+    )
+    for field in positive_fields:
+        value = getattr(args, field)
+        if value <= 0:
+            raise ValueError(f"--{field.replace('_', '-')} must be positive")
+    request_mix_fields = ("prefill_burst", "decode_requests", "continue_requests")
+    for field in request_mix_fields:
+        if getattr(args, field) < 0:
+            raise ValueError(f"--{field.replace('_', '-')} must be non-negative")
+    if not any(getattr(args, field) > 0 for field in request_mix_fields):
+        raise ValueError("dual-pool request mix must contain at least one request")
+    for field in ("prefill_gpus", "decode_gpus"):
+        raw = getattr(args, field)
+        if raw is None:
+            continue
+        parts = [part.strip() for part in raw.split(",")]
+        if not parts or any(not part.isdigit() for part in parts):
+            raise ValueError(
+                f"--{field.replace('_', '-')} must be a comma-separated list of non-negative GPU ids"
+            )
+        if len(set(parts)) != len(parts):
+            raise ValueError(f"--{field.replace('_', '-')} must not contain duplicate GPU ids")
+    return args
+
+
+def _parse_cli_args(
+    argv: Optional[Sequence[str]] = None,
+    *,
+    reject_unknown: bool = False,
+) -> argparse.Namespace:
+    parser = _build_cli_parser()
+    try:
+        args, unknown = parser.parse_known_args(argv)
+    except argparse.ArgumentError as exc:
+        raise ValueError(str(exc)) from exc
+    if reject_unknown and unknown:
+        raise ValueError(f"Unrecognized vLLM target arguments: {unknown}")
+    return _validate_cli_args(args)
+
+
+def parse_vllm_target_overrides(argv: Sequence[str]) -> argparse.Namespace:
+    """Parse one harness target override vector without mutating module globals."""
+
+    return _parse_cli_args(list(argv), reject_unknown=True)
 
 
 _CLI_ARGS = _parse_cli_args()
@@ -765,35 +915,42 @@ class VllmEngineSession:
 
     def _emit_lifecycle(self, disposition: str, errors: Sequence[str]) -> None:
         failure = self._primary_failure
-        print(
-            json.dumps(
-                {
-                    "event": "vllm_engine_lifecycle",
-                    "disposition": disposition,
-                    "workload_kind": self.workload_kind,
-                    "mode": self.mode,
-                    "setup_engine_startup_ms": self.engine_startup_ms,
-                    "engine_startup_ms": self.engine_startup_ms,
-                    "warmup_request_processing_ms": self._phase_durations_ms["warmup"],
-                    "steady_state_request_processing_ms": self._phase_durations_ms[
-                        "steady_state"
-                    ],
-                    "failed_runs": self._failed_runs,
-                    "engine_teardown_ms": self._teardown_ms,
-                    "end_to_end_ms": self._end_to_end_ms,
-                    "request_state_reset_per_run": True,
-                    "primary_failure": (
-                        {"type": type(failure).__name__, "message": str(failure)}
-                        if failure is not None
-                        else None
-                    ),
-                    "shutdown_errors": list(errors),
-                },
-                sort_keys=True,
+        payload = {
+            "schema": VLLM_PROFILE_LIFECYCLE_SCHEMA,
+            "event": "vllm_engine_lifecycle",
+            "disposition": disposition,
+            "workload_kind": self.workload_kind,
+            "mode": self.mode,
+            "setup_engine_startup_ms": self.engine_startup_ms,
+            "engine_startup_ms": self.engine_startup_ms,
+            "warmup_request_processing_ms": self._phase_durations_ms["warmup"],
+            "steady_state_request_processing_ms": self._phase_durations_ms[
+                "steady_state"
+            ],
+            "failed_runs": self._failed_runs,
+            "engine_teardown_ms": self._teardown_ms,
+            "end_to_end_ms": self._end_to_end_ms,
+            "request_state_reset_per_run": True,
+            "primary_failure": (
+                {"type": type(failure).__name__, "message": str(failure)}
+                if failure is not None
+                else None
             ),
+            "shutdown_errors": list(errors),
+        }
+        print(
+            json.dumps(payload, sort_keys=True),
             file=sys.stderr,
             flush=True,
         )
+        try:
+            _write_profile_receipt("lifecycle.json", payload)
+        except Exception as exc:
+            print(
+                f"[profile_warning] Failed to retain vLLM lifecycle receipt: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
 
     def close(self, *, preserve_primary_error: bool = False) -> List[str]:
         if self._closed:

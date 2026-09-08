@@ -29,6 +29,7 @@ class BaselineDualPoolVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
     multi_gpu_required = True
     _is_deterministic = True
     input_jitter_bounds = {"prompt_token_ids": (0, 2)}
+    profile_require_teardown = True
 
     def __init__(self) -> None:
         super().__init__()
@@ -38,31 +39,53 @@ class BaselineDualPoolVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._metric_output_buffer: Optional[torch.Tensor] = None
         self._mode_input: Optional[torch.Tensor] = None
         self._prompt_token_ids: Optional[torch.Tensor] = None
-        self._prompt_lengths = vllm_runner.dual_pool_prompt_lengths(
-            vllm_runner._CLI_ARGS
-        )
+        self._cli_args = vllm_runner._CLI_ARGS
+        self._target_override_error: Optional[str] = None
+        self._prompt_lengths: list[int] = []
         self._topology = None
         self._engine_session: Optional[vllm_runner.VllmEngineSession] = None
         self._summary_ready = False
+        self._configure_cli_args(self._cli_args)
+
+    def _configure_cli_args(self, cli_args) -> None:
+        self._cli_args = cli_args
+        self._prompt_lengths = vllm_runner.dual_pool_prompt_lengths(cli_args)
         request_count = len(self._prompt_lengths)
         self.register_workload_metadata(
             requests_per_iteration=float(request_count),
             tokens_per_iteration=float(
                 sum(self._prompt_lengths)
-                + request_count * max(1, vllm_runner._CLI_ARGS.max_tokens)
+                + request_count * max(1, cli_args.max_tokens)
             ),
         )
 
+    def apply_target_overrides(self, argv: list[str]) -> None:
+        """Apply one exact ``--target-extra-arg`` vector before setup."""
+        if self._engine_session is not None:
+            raise RuntimeError("vLLM target overrides must be applied before setup()")
+        try:
+            cli_args = vllm_runner.parse_vllm_target_overrides(argv)
+        except ValueError as exc:
+            self._target_override_error = str(exc)
+            raise
+        self._target_override_error = None
+        self._configure_cli_args(cli_args)
+
     def setup(self) -> None:
+        if self._target_override_error is not None:
+            raise ValueError(f"Invalid target override: {self._target_override_error}")
         self._mode_input = scalar_int_buffer(self, "_mode_input", 0)
         self._prompt_token_ids = vllm_runner.build_prompt_token_ids(
             self._prompt_lengths
         )
         self._topology = detect_topology(max_gpus=torch.cuda.device_count())
+        vllm_runner.emit_vllm_profile_runtime_receipt(
+            type(self).__name__, self._cli_args
+        )
         self._engine_session = vllm_runner.create_dual_pool_vllm_session(
             "shared",
             topology_snapshot=self._topology,
-            cli_args=vllm_runner._CLI_ARGS,
+            cli_args=self._cli_args,
             warmup_runs=vllm_runner.WARMUP_ITERATIONS,
         )
 
@@ -76,7 +99,7 @@ class BaselineDualPoolVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._summary = run_dual_pool_vllm_with_topology(
             "shared",
             topology_snapshot=self._topology,
-            cli_args=vllm_runner._CLI_ARGS,
+            cli_args=self._cli_args,
             prompt_token_ids=self._prompt_token_ids,
             engine_session=self._engine_session,
         )
@@ -104,6 +127,14 @@ class BaselineDualPoolVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def teardown(self) -> None:
+        receipt_error: Optional[Exception] = None
+        if self._summary_ready:
+            try:
+                vllm_runner.emit_vllm_profile_output_receipt(
+                    type(self).__name__, self._cli_args, self._summary
+                )
+            except Exception as exc:
+                receipt_error = exc
         if self._engine_session is not None:
             self._engine_session.close()
             self._engine_session = None
@@ -115,6 +146,8 @@ class BaselineDualPoolVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._topology = None
         self._summary_ready = False
         super().teardown()
+        if receipt_error is not None:
+            raise receipt_error
 
     def get_config(self) -> Optional[BenchmarkConfig]:
         return BenchmarkConfig(
