@@ -528,7 +528,7 @@ def test_adapter_cleans_success_artifacts_after_retaining_validated_diagnostics(
 
 def test_harness_invokes_only_the_explicit_zero2_result_callback(tmp_path, monkeypatch):
     target = tmp_path / "zero2_callback_control.py"
-    target.write_text("print('unused fake child')\n")
+    target.write_text("print('ZERO2_CALLBACK_CONTROL')\n")
     benchmark = Zero2TorchrunBenchmark(
         mode="baseline",
         variant="single",
@@ -537,6 +537,7 @@ def test_harness_invokes_only_the_explicit_zero2_result_callback(tmp_path, monke
         multi_gpu_required=False,
         default_nproc_per_node=1,
         name="zero2_callback_control",
+        env={"CUDA_VISIBLE_DEVICES": ""},
     )
     observed = {}
 
@@ -544,20 +545,20 @@ def test_harness_invokes_only_the_explicit_zero2_result_callback(tmp_path, monke
         observed.update(kwargs)
 
     benchmark.consume_zero2_child_results = callback
+    real_popen = subprocess.Popen
 
-    class FakeProcess:
-        returncode = 0
-        pid = os.getpid()
-
-        def communicate(self, timeout=None):
-            return "ZERO2_CALLBACK_CONTROL\n", ""
-
-    def fake_popen(command, **kwargs):
+    def observing_popen(command, **kwargs):
         observed["command"] = command
         observed["env"] = kwargs["env"]
-        return FakeProcess()
+        return real_popen(command, **kwargs)
 
-    monkeypatch.setattr("core.harness.benchmark_harness.subprocess.Popen", fake_popen)
+    monkeypatch.setattr(
+        "core.harness.benchmark_harness.subprocess.Popen",
+        observing_popen,
+    )
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as rendezvous_socket:
+        rendezvous_socket.bind(("127.0.0.1", 0))
+        rendezvous_endpoint = f"127.0.0.1:{rendezvous_socket.getsockname()[1]}"
     config = BenchmarkConfig(
         device=torch.device("cpu"),
         iterations=1,
@@ -572,10 +573,12 @@ def test_harness_invokes_only_the_explicit_zero2_result_callback(tmp_path, monke
         measurement_timeout_seconds=30,
         nnodes="1",
         rdzv_backend="static",
-        rdzv_endpoint="127.0.0.1:1",
+        rdzv_endpoint=rendezvous_endpoint,
     )
     result = BenchmarkHarness(config=config)._benchmark_with_torchrun(benchmark, config)
     assert not result.errors
+    assert result.execution_process_ids[0] != os.getpid()
+    assert "ZERO2_CALLBACK_CONTROL" in observed["stdout"]
     assert observed["returncode"] == 0
     assert observed["launch_wall_ns"] <= observed["finish_wall_ns"]
     assert observed["launch_monotonic_ns"] <= observed["finish_monotonic_ns"]

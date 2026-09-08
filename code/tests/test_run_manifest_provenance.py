@@ -48,8 +48,11 @@ def test_benchmark_with_manifest_records_collection_warning_when_patch_fails(mon
 
     real_create = RunManifest.create.__func__
 
-    def _create_with_bad_hardware(cls, config=None, start_time=None):
-        manifest = real_create(cls, config=config, start_time=start_time)
+    def _create_with_bad_hardware(cls, config=None, start_time=None, *, capture_execution_runtime=True):
+        manifest = real_create(
+            cls, config=config, start_time=start_time,
+            capture_execution_runtime=capture_execution_runtime,
+        )
         manifest.hardware = _BadHardware()
         return manifest
 

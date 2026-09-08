@@ -41,6 +41,7 @@ from core.benchmark.verification import (
     ComparisonDetails,
     EnforcementPhase,
     InputSignature,
+    OutputToleranceMap,
     PrecisionFlags,
     SignatureEquivalenceSpec,
     QuarantineReason,
@@ -52,8 +53,13 @@ from core.benchmark.verification import (
     get_enforcement_phase,
     get_signature_equivalence_spec,
     get_output_tolerance,
+    get_output_tolerances,
     is_verification_enabled,
     get_tolerance_for_dtype,
+    normalize_output_tolerances,
+    output_tolerances_from_dict,
+    output_tolerances_to_dict,
+    resolve_output_tolerances,
     select_jitter_dimension,
     signature_cache_key,
     signature_workload_dict,
@@ -118,6 +124,7 @@ class GoldenOutput:
     created_at: datetime
     seed: int
     tolerance: Optional["ToleranceSpec"] = None
+    output_tolerances: Optional[OutputToleranceMap] = None
     
     def compute_checksum(self) -> str:
         """Compute checksum of outputs for integrity verification."""
@@ -197,6 +204,10 @@ class GoldenOutputCache:
                 created_at=datetime.fromisoformat(data["created_at"]),
                 seed=data["seed"],
                 tolerance=self._load_tolerance(data),
+                output_tolerances=output_tolerances_from_dict(
+                    data.get("output_tolerances"),
+                    source="golden output cache output_tolerances",
+                ),
             )
         except Exception:
             return None
@@ -219,6 +230,7 @@ class GoldenOutputCache:
             "seed": golden.seed,
             "cache_salt": self.cache_salt,
             "tolerance": self._dump_tolerance(golden.tolerance),
+            "output_tolerances": output_tolerances_to_dict(golden.output_tolerances),
         }
         with open(path, "wb") as f:
             pickle.dump(data, f)
@@ -299,6 +311,7 @@ class _OutputToleranceSnapshot:
     """Tolerance metadata captured before benchmark teardown."""
 
     value: Optional[ToleranceSpec]
+    output_tolerances: Optional[OutputToleranceMap]
     error: Optional[str]
 
 
@@ -479,8 +492,17 @@ class VerifyRunner:
             outputs["output"] = out.detach().clone()
         elif isinstance(out, dict):
             for k, v in out.items():
-                if isinstance(v, torch.Tensor):
-                    outputs[k] = v.detach().clone()
+                if not isinstance(k, str) or not k:
+                    raise TypeError(
+                        f"{benchmark.__class__.__name__}.get_verify_output() dictionary "
+                        "keys must be non-empty strings"
+                    )
+                if not isinstance(v, torch.Tensor):
+                    raise TypeError(
+                        f"{benchmark.__class__.__name__}.get_verify_output()[{k!r}] "
+                        f"must be a torch.Tensor, got {type(v)}"
+                    )
+                outputs[k] = v.detach().clone()
             if not outputs:
                 raise ValueError(
                     f"{benchmark.__class__.__name__}.get_verify_output() returned dict "
@@ -665,19 +687,38 @@ class VerifyRunner:
         expected: Dict[str, torch.Tensor],
         actual: Dict[str, torch.Tensor],
         tolerance: Optional[ToleranceSpec] = None,
+        output_tolerances: Optional[OutputToleranceMap] = None,
     ) -> ComparisonDetails:
         """Compare expected and actual outputs.
         
         Args:
             expected: Expected output tensors (from baseline)
             actual: Actual output tensors (from optimized)
-            tolerance: Optional custom tolerance override
+            tolerance: Optional global tolerance override
+            output_tolerances: Optional exact-keyed per-output tolerances
             
         Returns:
             ComparisonDetails with comparison results
         """
-        if set(expected.keys()) != set(actual.keys()):
+        expected_names = set(expected)
+        actual_names = set(actual)
+        if output_tolerances is not None:
+            tolerance_names = set(output_tolerances)
+            if tolerance_names != expected_names or tolerance_names != actual_names:
+                raise ValueError(
+                    "output_tolerances must exactly cover baseline and optimized output keys"
+                )
+
+        def _details(**kwargs: Any) -> ComparisonDetails:
             return ComparisonDetails(
+                output_tolerances=(
+                    dict(output_tolerances) if output_tolerances is not None else None
+                ),
+                **kwargs,
+            )
+
+        if expected_names != actual_names:
+            return _details(
                 passed=False,
                 max_diff=None,
                 location=None,
@@ -699,26 +740,30 @@ class VerifyRunner:
             
             # Check shapes match
             if exp_tensor.shape != act_tensor.shape:
-                return ComparisonDetails(
+                return _details(
                     passed=False,
                     max_diff=float('inf'),
                     location=None,
                 )
             
             # Get tolerance for dtype
-            tol = tolerance or get_tolerance_for_dtype(exp_tensor.dtype)
+            if output_tolerances is not None:
+                per_output = output_tolerances[name]
+                tol = ToleranceSpec(rtol=per_output[0], atol=per_output[1])
+            else:
+                tol = tolerance or get_tolerance_for_dtype(exp_tensor.dtype)
             
             # Custom comparator takes precedence
             if tol.comparator_fn is not None:
                 try:
                     if not tol.comparator_fn(exp_tensor, act_tensor):
-                        return ComparisonDetails(
+                        return _details(
                             passed=False,
                             tolerance_used=tol,
                         )
                     continue
                 except Exception:
-                    return ComparisonDetails(passed=False, tolerance_used=tol)
+                    return _details(passed=False, tolerance_used=tol)
             
             # Standard numeric comparison
             if exp_tensor.is_floating_point():
@@ -727,7 +772,7 @@ class VerifyRunner:
                 # precedence, but avoid max()/argmax() on an empty tensor.
                 if exp_tensor.numel() == 0:
                     if not torch.allclose(exp_tensor, act_tensor, rtol=tol.rtol, atol=tol.atol):
-                        return ComparisonDetails(passed=False, tolerance_used=tol)
+                        return _details(passed=False, tolerance_used=tol)
                     continue
                 # Use allclose with tolerances
                 diff = torch.abs(exp_tensor - act_tensor)
@@ -744,7 +789,7 @@ class VerifyRunner:
                 
                 # Check if passes tolerance
                 if not torch.allclose(exp_tensor, act_tensor, rtol=tol.rtol, atol=tol.atol):
-                    return ComparisonDetails(
+                    return _details(
                         passed=False,
                         max_diff=max_diff_overall,
                         location=worst_location,
@@ -759,7 +804,7 @@ class VerifyRunner:
                     max_idx = diff.int().argmax()
                     flat_idx = max_idx.item()
                     worst_location = tuple(int(x) for x in np.unravel_index(flat_idx, diff.shape))
-                    return ComparisonDetails(
+                    return _details(
                         passed=False,
                         max_diff=float('inf'),
                         location=worst_location,
@@ -768,23 +813,23 @@ class VerifyRunner:
                         tolerance_used=tol,
                     )
         
-        return ComparisonDetails(
+        return _details(
             passed=True,
             max_diff=max_diff_overall if max_diff_overall > 0 else None,
-            tolerance_used=tolerance,
+            tolerance_used=tolerance if output_tolerances is None else None,
         )
 
     def compare_perf_outputs(
         self,
         baseline_output: Union[torch.Tensor, Dict[str, torch.Tensor]],
         optimized_output: Union[torch.Tensor, Dict[str, torch.Tensor]],
-        tolerance: Tuple[float, float],
+        tolerance: Union[Tuple[float, float], OutputToleranceMap],
     ) -> ComparisonDetails:
         """Compare already-captured perf-run outputs strictly.
 
         This is used for post-timing verification. Callers MUST supply an
-        explicit tolerance from the baseline benchmark; no fallbacks or
-        auto-inference are permitted.
+        explicit global tuple or exact-keyed per-output tolerance map from the
+        benchmark pair; no fallbacks or auto-inference are permitted.
         """
         def _coerce(out: Union[torch.Tensor, Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
             if isinstance(out, torch.Tensor):
@@ -802,7 +847,19 @@ class VerifyRunner:
 
         expected = _coerce(baseline_output)
         actual = _coerce(optimized_output)
-        tol_spec = ToleranceSpec(rtol=float(tolerance[0]), atol=float(tolerance[1]))
+        if isinstance(tolerance, dict):
+            output_tolerances = normalize_output_tolerances(
+                tolerance,
+                source="compare_perf_outputs tolerance map",
+            )
+            if output_tolerances is None:  # pragma: no cover - normalized dict cannot be None
+                raise ValueError("compare_perf_outputs tolerance map is missing")
+            return self._compare_outputs(
+                expected,
+                actual,
+                output_tolerances=output_tolerances,
+            )
+        tol_spec = ToleranceSpec(rtol=tolerance[0], atol=tolerance[1])
         return self._compare_outputs(expected, actual, tol_spec)
     
     def _run_with_seed(
@@ -834,6 +891,16 @@ class VerifyRunner:
             Tuple of (outputs, workload_metrics, seed_info, inputs_used,
             input_signature, output_tolerance_snapshot)
         """
+        # A direct verification execution must not consume verification receipts
+        # left on an instance by an earlier subprocess harness dispatch.
+        for transport_attr in (
+            "_subprocess_verify_output",
+            "_subprocess_output_tolerance",
+            "_subprocess_output_tolerances",
+            "_subprocess_input_signature",
+        ):
+            vars(benchmark).pop(transport_attr, None)
+
         # Set deterministic seeds BEFORE setup and capture seed_info
         # NOTE: We do NOT re-seed after setup. This ensures inputs created
         # in setup() are deterministic - both baseline and optimized get
@@ -945,13 +1012,23 @@ class VerifyRunner:
                 # during teardown. Preserve only normalized tolerance metadata (or
                 # its read error) while the payload is still live.
                 try:
+                    output_tolerances = get_output_tolerances(benchmark)
+                    if output_tolerances is not None and set(output_tolerances) != set(outputs):
+                        missing = sorted(set(outputs) - set(output_tolerances))
+                        extra = sorted(set(output_tolerances) - set(outputs))
+                        raise ValueError(
+                            "get_output_tolerances() must exactly cover captured output keys "
+                            f"(missing={missing}, extra={extra})"
+                        )
                     tolerance_snapshot = _OutputToleranceSnapshot(
                         value=get_output_tolerance(benchmark),
+                        output_tolerances=output_tolerances,
                         error=None,
                     )
                 except Exception as exc:
                     tolerance_snapshot = _OutputToleranceSnapshot(
                         value=None,
+                        output_tolerances=None,
                         error=str(exc),
                     )
 
@@ -1542,6 +1619,7 @@ class VerifyRunner:
                 created_at=datetime.now(),
                 seed=config.seed,
                 tolerance=baseline_tol,
+                output_tolerances=tolerance_snapshot.output_tolerances,
             )
             golden.checksum = golden.compute_checksum()
             self.cache.put(golden)
@@ -1605,7 +1683,9 @@ class VerifyRunner:
             outputs, metrics, seed_info, inputs, signature, tolerance_snapshot = self._run_with_seed(
                 optimized,
                 config.seed,
-                capture_output_tolerance=config.tolerance_override is None,
+                # Per-output policy is benchmark-owned and must still be
+                # captured when a legacy global override is supplied.
+                capture_output_tolerance=True,
             )
             evaluation_provenance = self._last_evaluation_provenance
             if not getattr(optimized, "parameter_signature_only", False):
@@ -1752,12 +1832,29 @@ class VerifyRunner:
                     atol=min(tolerance.atol, baseline_tol.atol),
                     justification=tolerance.justification or baseline_tol.justification,
                 )
+
+            try:
+                output_tolerances = resolve_output_tolerances(
+                    golden.output_tolerances,
+                    tolerance_snapshot.output_tolerances if tolerance_snapshot is not None else None,
+                    baseline_output_names=golden.outputs,
+                    optimized_output_names=outputs,
+                )
+            except (TypeError, ValueError) as exc:
+                return VerifyResult(
+                    passed=False,
+                    reason=QuarantineReason.MISSING_OUTPUT_TOLERANCE.value,
+                    signature_hash=sig_hash,
+                    details={"error": str(exc)},
+                    timestamp=datetime.now(),
+                )
             
             # Compare outputs
             comparison = self._compare_outputs(
                 golden.outputs,
                 outputs,
                 tolerance,
+                output_tolerances=output_tolerances,
             )
             
             if not comparison.passed:

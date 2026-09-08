@@ -5,6 +5,7 @@ The mixin provides a single `_set_verification_payload()` call that wires up:
 - get_verify_output()
 - get_input_signature()
 - get_output_tolerance()
+- get_output_tolerances() when an exact-keyed policy is supplied
 
 CRITICAL: `_set_verification_payload()` must be called from
 `BaseBenchmark.capture_verification_payload()` (post-timing) to keep the timed
@@ -14,18 +15,20 @@ measurement, and VerifyRunner calls it after verify runs.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import inspect
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
 from core.benchmark.verification import (
     InputSignature,
+    OutputToleranceMap,
     PrecisionFlags,
     ToleranceSpec,
     coerce_input_signature,
     get_tolerance_for_dtype,
+    normalize_output_tolerances,
     simple_signature,
 )
 
@@ -39,6 +42,7 @@ class VerificationPayload:
     parameter_count: int
     precision_flags: PrecisionFlags
     output_tolerance: Optional[ToleranceSpec] = None
+    output_tolerances: Optional[OutputToleranceMap] = None
     signature_overrides: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -149,6 +153,7 @@ class VerificationPayloadMixin:
         parameter_count: int = 0,
         precision_flags: Optional[Dict[str, bool] | PrecisionFlags] = None,
         output_tolerance: Optional[Union[ToleranceSpec, Tuple[float, float]]] = None,
+        output_tolerances: Optional[Dict[str, Tuple[float, float]]] = None,
         signature_overrides: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Populate verification payload in a single call."""
@@ -169,6 +174,10 @@ class VerificationPayloadMixin:
 
         flags = self._normalize_precision_flags(precision_flags)
         tolerance_spec = self._coerce_tolerance(output_tolerance, output)
+        tolerance_map = normalize_output_tolerances(
+            output_tolerances,
+            source="output_tolerances",
+        )
         signature_overrides_normalized = self._normalize_signature_overrides(signature_overrides)
 
         self._verification_payload = VerificationPayload(
@@ -178,6 +187,7 @@ class VerificationPayloadMixin:
             parameter_count=int(parameter_count),
             precision_flags=flags,
             output_tolerance=tolerance_spec,
+            output_tolerances=tolerance_map,
             signature_overrides=signature_overrides_normalized,
         )
 
@@ -218,6 +228,17 @@ class VerificationPayloadMixin:
         payload = self._require_payload()
         tol = payload.output_tolerance or get_tolerance_for_dtype(payload.output.dtype)
         return (tol.rtol, tol.atol)
+
+    def get_output_tolerances(self) -> Optional[OutputToleranceMap]:
+        # This hook is optional. Coordinator processes may hold transported
+        # output and global-tolerance receipts without ever creating a local
+        # verification payload, so absence means no per-output policy.
+        payload = getattr(self, "_verification_payload", None)
+        if payload is None:
+            return None
+        if payload.output_tolerances is None:
+            return None
+        return dict(payload.output_tolerances)
 
 
 __all__ = [

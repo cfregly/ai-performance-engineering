@@ -6,6 +6,8 @@ multi-process benchmarks.
 Currently enforced:
 - RNG seed immutability: benchmarks must not reseed away from the harness-
   configured seeds (default seed=42).
+- Optional per-rank runtime provenance, captured only after successful target
+  execution and seed validation.
 
 The harness launches torchrun with this wrapper as the entrypoint and passes the
 original benchmark script path + args through unchanged.
@@ -19,12 +21,12 @@ import random
 import runpy
 import sys
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import torch
 
 from core.harness.backend_policy import BackendPolicyName, apply_backend_policy
+from core.harness.torchrun_runtime_provenance import emit_torchrun_runtime_provenance
 from core.utils.python_entrypoints import temporary_sys_path
 
 
@@ -40,7 +42,7 @@ def _set_seeds(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-def _parse_int_env(name: str) -> Optional[int]:
+def _parse_int_env(name: str) -> int | None:
     value = os.environ.get(name)
     if value is None or value == "":
         return None
@@ -83,7 +85,7 @@ def _run_target_module(module_name: str, argv: list[str]) -> None:
 
 
 def _run_profiled_target(
-    script_path: Optional[Path], module_name: Optional[str], argv: list[str]
+    script_path: Path | None, module_name: str | None, argv: list[str]
 ) -> None:
     def run_target() -> None:
         try:
@@ -119,7 +121,7 @@ def _run_profiled_target(
     profiler.export_chrome_trace(str(trace_path))
 
 
-def main(argv: Optional[list[str]] = None) -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument(
         "--aisp-target-script",
@@ -148,15 +150,18 @@ def main(argv: Optional[list[str]] = None) -> None:
         action="store_true",
         help="Enable deterministic algorithms (mirrors harness deterministic mode).",
     )
+    parser.add_argument(
+        "--aisp-emit-runtime-provenance",
+        action="store_true",
+        help="Emit one atomic runtime-provenance receipt after successful execution.",
+    )
     args, remainder = parser.parse_known_args(argv)
 
     if bool(args.aisp_target_script) == bool(args.aisp_target_module):
-        raise RuntimeError(
-            "Specify exactly one of --aisp-target-script or --aisp-target-module."
-        )
+        raise RuntimeError("Specify exactly one of --aisp-target-script or --aisp-target-module.")
 
-    script_path: Optional[Path] = None
-    module_name: Optional[str] = None
+    script_path: Path | None = None
+    module_name: str | None = None
     if args.aisp_target_script:
         script_path = Path(args.aisp_target_script).resolve()
         if not script_path.exists():
@@ -168,7 +173,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     _set_seeds(int(args.aisp_expected_torch_seed))
 
     expected_torch_seed = int(args.aisp_expected_torch_seed)
-    expected_cuda_seed: Optional[int] = args.aisp_expected_cuda_seed
+    expected_cuda_seed: int | None = args.aisp_expected_cuda_seed
 
     lock_requested = os.environ.get("AISP_LOCK_GPU_CLOCKS") == "1"
     ramp_requested = os.environ.get("AISP_RAMP_GPU_CLOCKS", "1") == "1"
@@ -212,6 +217,9 @@ def main(argv: Optional[list[str]] = None) -> None:
                 f"Expected torch.cuda.initial_seed()={int(expected_cuda_seed)}, got {current_cuda_seed}. "
                 "Benchmarks MUST NOT reseed; rely on harness-configured seeds."
             )
+
+    if args.aisp_emit_runtime_provenance:
+        emit_torchrun_runtime_provenance(local_rank=local_rank)
 
 
 if __name__ == "__main__":

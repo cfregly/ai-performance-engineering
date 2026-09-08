@@ -8,7 +8,10 @@ import torch
 import torch.nn as nn
 from torch.optim import Optimizer
 
-from ch13.te_runtime_common import ensure_te_runtime_initialized
+from ch13.te_runtime_common import (
+    ensure_te_runtime_initialized,
+    get_te_precision_output_tolerances,
+)
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -87,6 +90,7 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.target_pool: List[torch.Tensor] = []
         self.output_buffer: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._verify_output: Optional[dict[str, torch.Tensor]] = None
         tokens = self.batch_size * self.hidden_dim
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -94,6 +98,7 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self.output = None
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_target: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         self.register_workload_metadata(
             requests_per_iteration=1.0,
@@ -131,7 +136,11 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         # benchmark pair instead of being folded into this precision comparison.
         self.output_buffer = torch.empty_like(self.input_pool[0])
         self._verify_output_buffer = torch.empty_like(self.output_buffer)
-        self._verify_input = self.input_pool[0].detach().clone()
+        # Keep live references so verification jitter reaches the tensors used
+        # by the training step. Teardown retains CPU snapshots for comparison.
+        self._verify_input = self.input_pool[0]
+        self._verify_target = self.target_pool[0]
+        self._verify_output = None
         self.register_workload_metadata(
             requests_per_iteration=self._workload.requests_per_iteration,
             tokens_per_iteration=self._workload.tokens_per_iteration,
@@ -177,11 +186,27 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Verification input/output not initialized")
 
     def capture_verification_payload(self) -> None:
-        if self.output is None or self._verify_output_buffer is None:
+        if (
+            self._verify_input is None
+            or self._verify_target is None
+            or self.output is None
+            or self._verify_output_buffer is None
+            or self.model is None
+        ):
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        self._verify_output_buffer.copy_(self.output)
+        with torch.inference_mode():
+            self._verify_output_buffer.copy_(self.output)
+            self._verify_output = {
+                "prediction": self._verify_output_buffer.detach().to(device="cpu", copy=True)
+            }
+            self._verify_output.update(
+                {
+                    f"parameter.{name}": parameter.detach().to(device="cpu", copy=True)
+                    for name, parameter in self.model.named_parameters()
+                }
+            )
         self._set_verification_payload(
-            inputs={"input": self._verify_input},
+            inputs={"input": self._verify_input, "target": self._verify_target},
             output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
@@ -191,16 +216,40 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
                 "fp8": True,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
-            output_tolerance=(0.5, 5.0),
+            output_tolerance=(0.4, 1.0),
+            output_tolerances=self.get_output_tolerances(),
         )
 
+    def get_verify_inputs(self) -> dict[str, torch.Tensor]:
+        if self._verify_input is not None and self._verify_target is not None:
+            return {"input": self._verify_input, "target": self._verify_target}
+        return super().get_verify_inputs()
+
+    def get_verify_output(self) -> dict[str, torch.Tensor]:
+        if self._verify_output is None:
+            raise RuntimeError("capture_verification_payload() must run before get_verify_output()")
+        return {name: tensor.detach().clone() for name, tensor in self._verify_output.items()}
+
+    def get_output_tolerances(self) -> dict[str, tuple[float, float]]:
+        return get_te_precision_output_tolerances()
+
     def teardown(self) -> None:
+        payload = getattr(self, "_verification_payload", None)
+        if payload is not None:
+            payload.inputs = {
+                name: tensor.detach().to(device="cpu", copy=True)
+                for name, tensor in payload.inputs.items()
+            }
+            if self._verify_output is not None:
+                payload.output = self._verify_output["prediction"]
         self.model = None
         self.optimizer = None
         self.criterion = None
         self.output_buffer = None
         self.output = None
         self._verify_output_buffer = None
+        self._verify_input = None
+        self._verify_target = None
         self.input_pool = []
         self.target_pool = []
         super().teardown()

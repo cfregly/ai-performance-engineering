@@ -18,6 +18,7 @@ import json
 import math
 import os
 import random
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -25,7 +26,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-
 
 # =============================================================================
 # Precision Configuration
@@ -478,6 +478,135 @@ class ToleranceSpec:
         )
 
 
+OutputToleranceMap = Dict[str, Tuple[float, float]]
+
+
+def normalize_output_tolerances(
+    value: Any,
+    *,
+    source: str = "get_output_tolerances()",
+) -> Optional[OutputToleranceMap]:
+    """Normalize an optional full-output numeric tolerance map.
+
+    The public benchmark hook is intentionally limited to a dictionary whose
+    values are ``(rtol, atol)`` tuples.  This keeps the policy serializable and
+    rules out output transforms or custom comparators.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise TypeError(f"{source} must return dict[str, tuple[float, float]] or None")
+    if not value:
+        raise ValueError(f"{source} must not return an empty dictionary")
+
+    normalized: OutputToleranceMap = {}
+    for name, raw_tolerance in value.items():
+        if not isinstance(name, str) or not name:
+            raise TypeError(f"{source} keys must be non-empty strings")
+        if not isinstance(raw_tolerance, tuple) or len(raw_tolerance) != 2:
+            raise TypeError(
+                f"{source}[{name!r}] must be an (rtol, atol) tuple"
+            )
+        tolerance = ToleranceSpec(
+            rtol=raw_tolerance[0],
+            atol=raw_tolerance[1],
+        )
+        normalized[name] = (tolerance.rtol, tolerance.atol)
+    return normalized
+
+
+def get_output_tolerances(benchmark: Any) -> Optional[OutputToleranceMap]:
+    """Return a benchmark's optional per-output numeric tolerance policy."""
+    if hasattr(benchmark, "_subprocess_output_tolerances"):
+        transported = getattr(benchmark, "_subprocess_output_tolerances")
+        return normalize_output_tolerances(
+            transported,
+            source=f"{benchmark.__class__.__name__} subprocess output tolerances",
+        )
+
+    getter = getattr(benchmark, "get_output_tolerances", None)
+    if getter is None:
+        return None
+    if not callable(getter):
+        raise TypeError(
+            f"{benchmark.__class__.__name__}.get_output_tolerances must be callable"
+        )
+    return normalize_output_tolerances(
+        getter(),
+        source=f"{benchmark.__class__.__name__}.get_output_tolerances()",
+    )
+
+
+def output_tolerances_to_dict(
+    tolerances: Optional[OutputToleranceMap],
+) -> Optional[Dict[str, Dict[str, float]]]:
+    """Serialize a normalized tolerance map for result and transport receipts."""
+    if tolerances is None:
+        return None
+    return {
+        name: {"rtol": float(values[0]), "atol": float(values[1])}
+        for name, values in sorted(tolerances.items())
+    }
+
+
+def output_tolerances_from_dict(
+    value: Any,
+    *,
+    source: str = "serialized output tolerances",
+) -> Optional[OutputToleranceMap]:
+    """Deserialize the JSON representation emitted by output_tolerances_to_dict."""
+    if value is None:
+        return None
+    if not isinstance(value, dict) or not value:
+        raise TypeError(f"{source} must be a non-empty dictionary")
+    tuple_map: OutputToleranceMap = {}
+    for name, raw_tolerance in value.items():
+        if not isinstance(raw_tolerance, dict):
+            raise TypeError(f"{source}[{name!r}] must contain rtol and atol")
+        tuple_map[name] = (raw_tolerance.get("rtol"), raw_tolerance.get("atol"))  # type: ignore[assignment]
+    return normalize_output_tolerances(tuple_map, source=source)
+
+
+def resolve_output_tolerances(
+    baseline: Optional[OutputToleranceMap],
+    optimized: Optional[OutputToleranceMap],
+    *,
+    baseline_output_names: Iterable[str],
+    optimized_output_names: Iterable[str],
+) -> Optional[OutputToleranceMap]:
+    """Validate opt-in parity and exact output-key coverage for a pair."""
+    if baseline is None and optimized is None:
+        return None
+    if baseline is None or optimized is None:
+        raise ValueError(
+            "baseline and optimized benchmarks must both declare get_output_tolerances()"
+        )
+
+    baseline_names = set(baseline_output_names)
+    optimized_names = set(optimized_output_names)
+    baseline_policy_names = set(baseline)
+    optimized_policy_names = set(optimized)
+    if baseline_policy_names != baseline_names:
+        missing = sorted(baseline_names - baseline_policy_names)
+        extra = sorted(baseline_policy_names - baseline_names)
+        raise ValueError(
+            "baseline get_output_tolerances() must exactly cover captured output keys "
+            f"(missing={missing}, extra={extra})"
+        )
+    if optimized_policy_names != optimized_names:
+        missing = sorted(optimized_names - optimized_policy_names)
+        extra = sorted(optimized_policy_names - optimized_names)
+        raise ValueError(
+            "optimized get_output_tolerances() must exactly cover captured output keys "
+            f"(missing={missing}, extra={extra})"
+        )
+    if baseline != optimized:
+        raise ValueError(
+            "baseline and optimized get_output_tolerances() maps must be identical"
+        )
+    return dict(baseline)
+
+
 # Default tolerances by dtype - these are the canonical tolerances used throughout
 DEFAULT_TOLERANCES: Dict[torch.dtype, ToleranceSpec] = {
     torch.float32: ToleranceSpec(rtol=1e-5, atol=1e-8),
@@ -809,6 +938,7 @@ class ComparisonDetails:
     expected_sample: Optional[float] = None
     actual_sample: Optional[float] = None
     tolerance_used: Optional[ToleranceSpec] = None
+    output_tolerances: Optional[OutputToleranceMap] = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dictionary."""
@@ -826,6 +956,8 @@ class ComparisonDetails:
             result["actual_sample"] = self.actual_sample
         if self.tolerance_used is not None:
             result["tolerance_used"] = self.tolerance_used.to_dict()
+        if self.output_tolerances is not None:
+            result["output_tolerances"] = output_tolerances_to_dict(self.output_tolerances)
         return result
 
 
@@ -1368,12 +1500,16 @@ def get_output_tolerance(benchmark: Any) -> Optional[ToleranceSpec]:
     Returns:
         ToleranceSpec if benchmark provides custom tolerance, None otherwise
     """
-    if not hasattr(benchmark, "get_output_tolerance") or not callable(getattr(benchmark, "get_output_tolerance")):
+    if hasattr(benchmark, "_subprocess_output_tolerance"):
+        result = getattr(benchmark, "_subprocess_output_tolerance")
+        if result is None:
+            raise ValueError("transported subprocess output tolerance is missing")
+    elif not hasattr(benchmark, "get_output_tolerance") or not callable(getattr(benchmark, "get_output_tolerance")):
         raise NotImplementedError(
             f"{benchmark.__class__.__name__} must implement get_output_tolerance()"
         )
-    
-    result = benchmark.get_output_tolerance()
+    else:
+        result = benchmark.get_output_tolerance()
     if result is None:
         raise ValueError(f"{benchmark.__class__.__name__}.get_output_tolerance() returned None")
     

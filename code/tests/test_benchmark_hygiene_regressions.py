@@ -4126,9 +4126,30 @@ def test_pipeline_and_demo_activation_paths_use_inplace_relu() -> None:
         assert expected in source
         assert ".item()" not in source
 
+    # The repaired pair delegates its timed schedules to the common module.
+    # Keep the allocation check at that execution boundary; its separate real
+    # Gloo test verifies complete microbatch communication and outputs.
+    common_tree = ast.parse(
+        (REPO_ROOT / "ch04/pipeline_parallel_common.py").read_text(encoding="utf-8")
+    )
+    schedules = {
+        node.name: node
+        for node in common_tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name in {"run_gpipe_iteration", "run_1f1b_iteration"}
+    }
+    assert len(schedules) == 2
+    for schedule in schedules.values():
+        allocations = [
+            node
+            for node in ast.walk(schedule)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"empty", "empty_like", "zeros", "zeros_like", "new_empty"}
+        ]
+        assert not allocations, f"Timed tensor allocation in {schedule.name}"
+
     for relative in (
-        "ch04/baseline_pipeline_parallel.py",
-        "ch04/optimized_pipeline_parallel_1f1b.py",
         "ch04/baseline_pipeline_parallel_multigpu.py",
         "ch04/optimized_pipeline_parallel_multigpu_1f1b.py",
     ):
@@ -4153,7 +4174,6 @@ def test_pipeline_and_demo_activation_paths_use_inplace_relu() -> None:
         assert "torch.no_grad()" not in worker_section
 
     for relative in (
-        "ch04/optimized_pipeline_parallel_1f1b.py",
         "ch04/optimized_pipeline_parallel_multigpu_1f1b.py",
     ):
         source = (REPO_ROOT / relative).read_text(encoding="utf-8")

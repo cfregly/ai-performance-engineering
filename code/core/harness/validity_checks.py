@@ -21,6 +21,7 @@ import statistics
 import sys
 import time
 import warnings
+from collections.abc import Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field, fields
 from datetime import datetime, timezone
@@ -1135,6 +1136,8 @@ def validate_environment(
     probe: Optional[EnvironmentProbe] = None,
     allow_virtualization: bool = False,
     allow_foreign_gpu_processes: bool = False,
+    expected_device_uuid: str | None = None,
+    expected_compute_capability: str | Sequence[int] | None = None,
 ) -> EnvironmentValidationResult:
     """Validate benchmark environment is suitable (fail-fast on known invalid states)."""
     probe = probe or EnvironmentProbe()
@@ -1145,6 +1148,38 @@ def validate_environment(
     details: Dict[str, Any] = {
         "platform": sys.platform,
     }
+
+    identity_expectation = None
+    identity_expectation_requested = (
+        expected_device_uuid is not None or expected_compute_capability is not None
+    )
+    if identity_expectation_requested:
+        try:
+            from core.harness.device_identity_contract import (
+                build_device_identity_expectation,
+            )
+
+            identity_expectation = build_device_identity_expectation(
+                expected_device_uuid,
+                expected_compute_capability,
+            )
+        except Exception as exc:
+            errors.append(f"Expected GPU identity contract is invalid: {exc}.")
+        else:
+            if identity_expectation is None:
+                errors.append("Expected GPU identity contract was requested but no expectation was built.")
+            else:
+                details.update(
+                    {
+                        "expected_device_uuid": identity_expectation.expected_uuid,
+                        "expected_compute_capability": (
+                            identity_expectation.expected_compute_capability
+                        ),
+                        "observed_device_uuid": None,
+                        "observed_cuda_device_uuid": None,
+                        "observed_compute_capability": None,
+                    }
+                )
 
     if not sys.platform.startswith("linux"):
         errors.append(f"Non-Linux platform '{sys.platform}' is not supported for benchmark validity checks.")
@@ -1169,6 +1204,10 @@ def validate_environment(
     if device.type == "cuda":
         if torch is None or not torch.cuda.is_available():
             errors.append("CUDA device requested but CUDA is not available (missing /dev/nvidia* or driver issue).")
+            if identity_expectation is not None:
+                errors.append(
+                    "Expected GPU identity/capability is unavailable because CUDA is not available."
+                )
         else:
             gpu_count = torch.cuda.device_count()
             details["gpu_count"] = gpu_count
@@ -1178,6 +1217,43 @@ def validate_environment(
                 )
             device_index = int(device.index) if device.index is not None else int(torch.cuda.current_device())
             details["gpu_device_index"] = device_index
+            if identity_expectation is not None:
+                from core.harness.device_identity_contract import (
+                    DeviceIdentityContract,
+                    observe_cuda_device_identity,
+                    validate_device_identity,
+                )
+
+                identity_contract = DeviceIdentityContract(device, identity_expectation)
+                try:
+                    identity_contract.establish_configured_device()
+                    identity_observation = observe_cuda_device_identity(device)
+                    details.update(
+                        {
+                            "observed_device_uuid": identity_observation.nvml_uuid,
+                            "observed_cuda_device_uuid": identity_observation.cuda_uuid,
+                            "observed_compute_capability": (
+                                identity_observation.compute_capability
+                            ),
+                        }
+                    )
+                    validate_device_identity(
+                        identity_expectation,
+                        identity_observation,
+                        "environment_validation",
+                    )
+                except Exception as exc:
+                    errors.append(
+                        f"Expected GPU identity/capability validation failed: {exc}"
+                    )
+                finally:
+                    try:
+                        identity_contract.restore_entry_device()
+                    except Exception as exc:
+                        errors.append(
+                            "Failed to restore the CUDA device after expected GPU identity "
+                            f"validation: {exc}"
+                        )
             # Only perform live process checks against the real host filesystem.
             if probe.root.resolve() == Path("/"):
                 details["allow_foreign_gpu_processes"] = bool(allow_foreign_gpu_processes)
@@ -1275,6 +1351,11 @@ def validate_environment(
                             errors.append(msg)
             else:
                 details["foreign_cuda_compute_processes"] = []
+    elif identity_expectation is not None:
+        errors.append(
+            "Expected GPU identity/capability cannot be observed for configured "
+            f"device type {device.type!r}; configure a CUDA device."
+        )
 
     # Swap interference (Memory category)
     swaps = _read_optional(probe, "/proc/swaps")

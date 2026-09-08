@@ -2339,7 +2339,17 @@ ENTRIES["ch13"] = chapter_entry(
 
                 This chapter is one of the easiest places to fool yourself with framework overhead. That is why the benchmark contract and side-by-side baseline/optimized structure matter here more than almost anywhere else.
 
-                The prior `precisionfp8_te` number compared eager FP16 with CUDA-graph-replayed FP8, so it is retired. The pair now runs both sides eagerly to isolate Transformer Engine FP8; publish a new speed result only after a fresh B200 correctness and timing run."""
+                The prior `precisionfp8_te` number compared eager FP16 with CUDA-graph-replayed FP8, so it is retired. The pair now runs both sides eagerly to isolate Transformer Engine FP8; publish a new speed result only after a fresh B200 correctness and timing run.
+
+                The TE 2.18 pair now verifies its captured prediction and every post-step parameter with a calibrated per-output policy. Previously, all outputs inherited the global `(rtol=0.5, atol=5.0)` threshold. B200 calibration of the unchanged batch-256, hidden-4096 training step selected these stricter budgets across seed 44 and fixed holdouts 45, 1044, and 1045:
+
+                | Captured outputs | Calibrated `(rtol, atol)` | Largest observed absolute error |
+                | --- | --- | --- |
+                | Prediction | `(0.4, 1.0)` | `0.5949707` |
+                | Both weight tensors | `(0.001, 0.00075)` | `0.000534058` |
+                | Both bias tensors | `(0.001, 0.00005)` | `0.000041008` |
+
+                The frozen map passed all holdouts and independently rejected zeroed and localized corrupted copies of all five outputs. These bounds apply to this TE 2.18 workload and establish numerical verification only; they do not establish a speedup."""
             ),
         ),
         MarkdownSection(

@@ -58,7 +58,10 @@ def main():
 
     if not dist.is_initialized():
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
-            dist.init_process_group(backend="nccl", device_id=local_rank)
+            if int(os.environ["WORLD_SIZE"]) > 1:
+                dist.init_process_group(backend="nccl", device_id=local_rank)
+            else:
+                dist.init_process_group(backend="nccl")
         else:
             raise RuntimeError(
                 "DDP optimized run requires torch.distributed process group to be initialized."
@@ -69,7 +72,9 @@ def main():
     is_main = rank == 0
     active_seed = initialize_ddp_seed()
     configure_training_matmul_policy()
-    use_ddp = dist.is_initialized()
+    # One rank has no peer gradients to reduce. Keep the distributed sampler
+    # below so removing the reducer does not change seeded input order.
+    use_ddp = world_size > 1
     tokenizer = build_tokenizer()
     dataset = get_dataset()["train"]
 
@@ -79,7 +84,7 @@ def main():
         batch_size=args.batch_size,
         shuffle=True,
         drop_last=True,
-        distributed=use_ddp,
+        distributed=True,
         num_workers=4,
         prefetch_factor=4,
         pin_memory=True,

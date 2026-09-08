@@ -9,10 +9,13 @@ import os
 import subprocess
 import sys
 from datetime import datetime, timezone
+from importlib import metadata as importlib_metadata
 from pathlib import Path
-from typing import Any, Dict, Optional, TypedDict
+from typing import Any, Dict, Literal, Optional, TypedDict
 
 import torch
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
+
 from core.benchmark.evaluation_provenance import (
     EvaluationContract,
     EvaluationFailure,
@@ -37,10 +40,60 @@ try:
 except ImportError:
     TRITON_VERSION = None
 
-from pydantic import BaseModel, Field, ConfigDict, field_serializer
-
 PROJECT_ROOT = Path(__file__).parents[2]
 SCHEMA_VERSION = "1.0"
+
+# Keep this inventory limited to libraries that can materially change numerical
+# behavior, generated kernels, or benchmark execution. Distribution names are
+# normalized with the same ``[-_.]`` equivalence used by Python packaging.
+_RELEVANT_LIBRARY_NAMES = frozenset(
+    {
+        "bitsandbytes",
+        "deepspeed",
+        "jax",
+        "jaxlib",
+        "numpy",
+        "onnxruntime",
+        "scipy",
+        "sglang",
+        "tensorrt",
+        "transformers",
+        "vllm",
+        "xformers",
+    }
+)
+_RELEVANT_LIBRARY_PREFIXES = (
+    "cupy-",
+    "flash-attn",
+    "flashinfer-",
+    "nvidia-",
+    "pytorch-triton",
+    "torch",
+    "transformer-engine",
+    "triton",
+)
+
+RuntimeParityTarget = Literal["cpu", "cuda"]
+CPU_RUNTIME_PARITY_FIELDS = (
+    "torch_version",
+    "python_version",
+    "os",
+    "library_versions",
+)
+CUDA_RUNTIME_PARITY_FIELDS = (
+    "cuda_available",
+    "driver_version",
+    "torch_version",
+    "cuda_version",
+    "cudnn_version",
+    "python_version",
+    "os",
+    "library_versions",
+)
+RUNTIME_PARITY_FIELDS_BY_TARGET: Dict[RuntimeParityTarget, tuple[str, ...]] = {
+    "cpu": CPU_RUNTIME_PARITY_FIELDS,
+    "cuda": CUDA_RUNTIME_PARITY_FIELDS,
+}
 
 
 class GitStatusDict(TypedDict):
@@ -404,6 +457,289 @@ class SoftwareInfo(BaseModel):
     schemaVersion: str = Field(SCHEMA_VERSION, description="Schema version for forward compatibility")
 
 
+class RuntimeProvenance(BaseModel):
+    """Runtime versions captured inside the process that executes a benchmark."""
+
+    cuda_available: bool = Field(
+        ...,
+        description="Whether CUDA was available in the executing process",
+    )
+    driver_version: Optional[str] = Field(
+        None,
+        description="NVIDIA driver version visible to the process",
+    )
+    torch_version: str = Field(..., description="Imported PyTorch runtime version")
+    cuda_version: Optional[str] = Field(
+        None,
+        description="CUDA version reported by the imported PyTorch runtime",
+    )
+    cudnn_version: Optional[str] = Field(
+        None,
+        description="cuDNN version reported by the imported PyTorch runtime",
+    )
+    python_version: str = Field(..., description="Executing Python version")
+    os: str = Field(..., description="Executing operating-system identifier")
+    python_executable: str = Field(
+        ...,
+        description="Python executable used by the benchmark process",
+    )
+    process_id: int = Field(..., description="Process that captured this runtime provenance")
+    captured_at: str = Field(..., description="UTC timestamp when runtime provenance was captured")
+    library_versions: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Normalized versions of installed performance-relevant Python distributions",
+    )
+    library_versions_complete: bool = Field(
+        False,
+        description="Whether relevant installed-library enumeration completed without ambiguity",
+    )
+    shadowed_library_versions: Dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="Relevant distribution versions hidden by earlier sys.path entries",
+    )
+    collection_warnings: list[str] = Field(
+        default_factory=list,
+        description="Runtime provenance fields that could not be captured reliably",
+    )
+
+    schemaVersion: str = Field(
+        SCHEMA_VERSION,
+        description="Schema version for forward compatibility",
+    )
+
+
+RuntimeFieldParityStatus = Literal["match", "mismatch", "unknown"]
+
+
+class RuntimeProvenanceFieldParity(BaseModel):
+    """One required field in a cross-run runtime provenance comparison."""
+
+    status: RuntimeFieldParityStatus
+    reference: Any = None
+    candidate: Any = None
+    detail: Optional[str] = None
+
+    schemaVersion: str = Field(
+        SCHEMA_VERSION,
+        description="Schema version for forward compatibility",
+    )
+
+
+class RuntimeProvenanceParity(BaseModel):
+    """Fail-closed runtime parity verdict for two benchmark run manifests."""
+
+    target: RuntimeParityTarget
+    matches: bool
+    required_fields: list[str]
+    fields: Dict[str, RuntimeProvenanceFieldParity]
+    mismatched_fields: list[str] = Field(default_factory=list)
+    unknown_fields: list[str] = Field(default_factory=list)
+
+    schemaVersion: str = Field(
+        SCHEMA_VERSION,
+        description="Schema version for forward compatibility",
+    )
+
+
+class RuntimeProvenanceParityError(RuntimeError):
+    """Raised when required cross-run runtime provenance does not match."""
+
+    def __init__(self, comparison: RuntimeProvenanceParity) -> None:
+        self.comparison = comparison
+        details: list[str] = []
+        if comparison.mismatched_fields:
+            details.append(f"mismatched={','.join(comparison.mismatched_fields)}")
+        if comparison.unknown_fields:
+            details.append(f"unknown={','.join(comparison.unknown_fields)}")
+        suffix = "; ".join(details) or "required runtime provenance did not match"
+        super().__init__(
+            f"RUNTIME PROVENANCE PARITY FAILED for target={comparison.target}: {suffix}"
+        )
+
+
+def _normalize_distribution_name(name: str) -> str:
+    normalized = name.strip().casefold().replace("_", "-").replace(".", "-")
+    while "--" in normalized:
+        normalized = normalized.replace("--", "-")
+    return normalized
+
+
+def _is_relevant_library(name: str) -> bool:
+    return name in _RELEVANT_LIBRARY_NAMES or name.startswith(_RELEVANT_LIBRARY_PREFIXES)
+
+
+def _distribution_sys_path_index(distribution: Any) -> Optional[int]:
+    """Return the sys.path precedence index for a distribution's metadata root."""
+
+    distribution_root = Path(distribution.locate_file("")).resolve()
+    for index, entry in enumerate(sys.path):
+        search_root = Path(entry or os.getcwd()).resolve()
+        if distribution_root == search_root:
+            return index
+    return None
+
+
+def _collect_relevant_library_versions(
+    collection_warnings: list[str],
+) -> tuple[Dict[str, str], Dict[str, list[str]], bool]:
+    """Capture relevant distribution versions without treating partial data as complete."""
+
+    try:
+        distributions = list(importlib_metadata.distributions())
+    except Exception as exc:
+        _append_collection_warning(
+            collection_warnings,
+            f"Failed to enumerate installed runtime libraries: {exc}",
+        )
+        return {}, {}, False
+
+    observed: Dict[str, list[tuple[Optional[int], str]]] = {}
+    complete = True
+    for distribution in distributions:
+        try:
+            raw_name = distribution.metadata.get("Name")
+        except Exception as exc:
+            _append_collection_warning(
+                collection_warnings,
+                f"Failed to read installed distribution metadata: {exc}",
+            )
+            complete = False
+            continue
+        if not raw_name:
+            _append_collection_warning(
+                collection_warnings,
+                "Installed distribution metadata omitted its Name field; "
+                "library provenance is incomplete.",
+            )
+            complete = False
+            continue
+
+        name = _normalize_distribution_name(str(raw_name))
+        if not _is_relevant_library(name):
+            continue
+        try:
+            version = str(distribution.version).strip()
+        except Exception as exc:
+            _append_collection_warning(
+                collection_warnings,
+                f"Failed to read installed runtime library version for {name}: {exc}",
+            )
+            complete = False
+            continue
+        if not version:
+            _append_collection_warning(
+                collection_warnings,
+                f"Installed runtime library {name} has no version; "
+                "library provenance is incomplete.",
+            )
+            complete = False
+            continue
+        try:
+            path_index = _distribution_sys_path_index(distribution)
+        except Exception as exc:
+            _append_collection_warning(
+                collection_warnings,
+                f"Failed to determine sys.path precedence for runtime library {name}: {exc}",
+            )
+            complete = False
+            path_index = None
+        observed.setdefault(name, []).append((path_index, version))
+
+    versions: Dict[str, str] = {}
+    shadowed_versions: Dict[str, list[str]] = {}
+    for name, records in sorted(observed.items()):
+        known_indices = [path_index for path_index, _ in records if path_index is not None]
+        active_index = min(known_indices) if known_indices else None
+        active_records = [
+            version
+            for path_index, version in records
+            if path_index == active_index
+        ]
+        active_versions = sorted(set(active_records))
+        if len(active_versions) > 1:
+            joined_versions = ", ".join(active_versions)
+            _append_collection_warning(
+                collection_warnings,
+                f"Runtime library {name} has conflicting active distribution versions at the "
+                f"same sys.path precedence ({joined_versions}); library provenance is ambiguous.",
+            )
+            complete = False
+        versions[name] = " | ".join(active_versions)
+
+        shadows = sorted(
+            {
+                version
+                for path_index, version in records
+                if path_index != active_index
+            }
+        )
+        if shadows:
+            shadowed_versions[name] = shadows
+
+    return versions, shadowed_versions, complete
+
+
+def capture_runtime_provenance() -> RuntimeProvenance:
+    """Capture provenance in the current benchmark-executing process."""
+
+    collection_warnings: list[str] = []
+    cuda_available = bool(torch.cuda.is_available())
+    cuda_info = get_cuda_info()
+
+    cudnn_version: Optional[str] = None
+    try:
+        cudnn_backend = getattr(torch.backends, "cudnn", None)
+        raw_cudnn_version = cudnn_backend.version() if cudnn_backend is not None else None
+        if raw_cudnn_version is not None:
+            cudnn_version = str(raw_cudnn_version)
+    except Exception as exc:
+        _append_collection_warning(
+            collection_warnings,
+            f"Failed to capture cuDNN runtime version: {exc}",
+        )
+
+    (
+        library_versions,
+        shadowed_library_versions,
+        library_versions_complete,
+    ) = _collect_relevant_library_versions(collection_warnings)
+
+    if cuda_available:
+        missing_cuda_fields = [
+            field_name
+            for field_name, value in (
+                ("driver_version", cuda_info.get("driver_version")),
+                ("cuda_version", cuda_info.get("version")),
+                ("cudnn_version", cudnn_version),
+            )
+            if not value
+        ]
+        if missing_cuda_fields:
+            _append_collection_warning(
+                collection_warnings,
+                "CUDA runtime provenance unavailable for fields: "
+                f"{', '.join(missing_cuda_fields)}; CUDA cross-run parity is incomplete.",
+            )
+
+    return RuntimeProvenance(
+        cuda_available=cuda_available,
+        driver_version=cuda_info.get("driver_version"),
+        torch_version=str(torch.__version__),
+        cuda_version=cuda_info.get("version"),
+        cudnn_version=cudnn_version,
+        python_version=sys.version.split()[0],
+        os=sys.platform,
+        python_executable=sys.executable,
+        process_id=os.getpid(),
+        captured_at=datetime.now(timezone.utc).isoformat(),
+        library_versions=library_versions,
+        library_versions_complete=library_versions_complete,
+        shadowed_library_versions=shadowed_library_versions,
+        collection_warnings=collection_warnings,
+        schemaVersion=SCHEMA_VERSION,
+    )
+
+
 class EnvironmentInfo(BaseModel):
     """Environment variable information."""
     
@@ -558,6 +894,14 @@ class RunManifest(BaseModel):
     
     # Software information
     software: SoftwareInfo = Field(..., description="Software versions")
+
+    # Runtime parity authority. In subprocess mode this must be supplied by the
+    # process that executed the benchmark; coordinator hardware/software fields
+    # are informational and are never used by the parity comparator.
+    runtime_provenance: Optional[RuntimeProvenance] = Field(
+        None,
+        description="Runtime and installed-library provenance from the benchmark-executing process",
+    )
     
     # Environment information
     environment: EnvironmentInfo = Field(..., description="Environment variables")
@@ -600,12 +944,20 @@ class RunManifest(BaseModel):
     schemaVersion: str = Field(SCHEMA_VERSION, description="Schema version for forward compatibility")
     
     @classmethod
-    def create(cls, config: Optional[Dict] = None, start_time: Optional[datetime] = None) -> RunManifest:
+    def create(
+        cls,
+        config: Optional[Dict] = None,
+        start_time: Optional[datetime] = None,
+        *,
+        capture_execution_runtime: bool = True,
+    ) -> RunManifest:
         """Create a RunManifest with current environment state.
         
         Args:
             config: Optional serialized BenchmarkConfig dictionary
             start_time: Optional start time (defaults to now)
+            capture_execution_runtime: Capture runtime identity in this process.
+                Benchmark coordinators disable this and attach the worker receipt later.
         
         Returns:
             RunManifest instance with current environment captured
@@ -616,8 +968,26 @@ class RunManifest(BaseModel):
         collection_warnings: list[str] = []
         runtime_capability_limitations = _collect_runtime_capability_limitations(collection_warnings)
 
+        execution_mode = str((config or {}).get("execution_mode", "")).strip().casefold()
+        subprocess_coordinator = execution_mode == "subprocess"
+        runtime_provenance = (
+            capture_runtime_provenance()
+            if capture_execution_runtime and not subprocess_coordinator
+            else None
+        )
+        if runtime_provenance is not None:
+            for warning in runtime_provenance.collection_warnings:
+                _append_collection_warning(collection_warnings, warning)
+
         # Get hardware info
-        cuda_info = get_cuda_info()
+        cuda_info: CudaInfoDict = (
+            {
+                "version": runtime_provenance.cuda_version,
+                "driver_version": runtime_provenance.driver_version,
+            }
+            if runtime_provenance is not None
+            else get_cuda_info()
+        )
         gpu_info = get_gpu_info()
         validity_profile = str((config or {}).get("validity_profile", "strict")).strip().lower()
         gpu_state = get_gpu_state(allow_telemetry_failures=validity_profile == "portable")
@@ -712,6 +1082,7 @@ class RunManifest(BaseModel):
         return cls(
             hardware=hardware,
             software=software,
+            runtime_provenance=runtime_provenance,
             environment=environment,
             git=git,
             seeds=seeds,
@@ -811,6 +1182,28 @@ class RunManifest(BaseModel):
                     "os": "linux",
                     "schemaVersion": "1.0"
                 },
+                "runtime_provenance": {
+                    "cuda_available": True,
+                    "driver_version": "580.126.09",
+                    "torch_version": "2.9.1+cu130",
+                    "cuda_version": "13.0",
+                    "cudnn_version": "91300",
+                    "python_version": "3.12.0",
+                    "os": "linux",
+                    "python_executable": "/usr/bin/python3",
+                    "process_id": 12345,
+                    "captured_at": "2024-01-01T12:00:00+00:00",
+                    "library_versions": {
+                        "numpy": "2.1.2",
+                        "nvidia-cublas-cu13": "13.0.0",
+                        "torch": "2.9.1+cu130",
+                        "triton": "3.5.0"
+                    },
+                    "library_versions_complete": True,
+                    "shadowed_library_versions": {},
+                    "collection_warnings": [],
+                    "schemaVersion": "1.0"
+                },
                 "environment": {
                     "cuda_visible_devices": "0",
                     "relevant_env_vars": {},
@@ -838,3 +1231,154 @@ class RunManifest(BaseModel):
         except AttributeError:
             # Some pydantic versions pass SerializationInfo unexpectedly
             return None
+
+
+def compare_runtime_provenance(
+    reference: RunManifest,
+    candidate: RunManifest,
+    *,
+    target: RuntimeParityTarget,
+) -> RuntimeProvenanceParity:
+    """Compare executor runtime provenance using the canonical target field set.
+
+    ``target`` is mandatory so a CPU comparison cannot be reused as CUDA
+    qualification. Missing or partially collected provenance is ``unknown`` and
+    therefore never produces a matching verdict.
+    """
+
+    if target not in RUNTIME_PARITY_FIELDS_BY_TARGET:
+        allowed = ", ".join(sorted(RUNTIME_PARITY_FIELDS_BY_TARGET))
+        raise ValueError(
+            f"Unsupported runtime parity target {target!r}; expected one of: {allowed}"
+        )
+
+    reference_runtime = reference.runtime_provenance
+    candidate_runtime = candidate.runtime_provenance
+    required_fields = RUNTIME_PARITY_FIELDS_BY_TARGET[target]
+    fields: Dict[str, RuntimeProvenanceFieldParity] = {}
+
+    for field_name in required_fields:
+        reference_value = (
+            getattr(reference_runtime, field_name)
+            if reference_runtime is not None
+            else None
+        )
+        candidate_value = (
+            getattr(candidate_runtime, field_name)
+            if candidate_runtime is not None
+            else None
+        )
+
+        if field_name == "library_versions":
+            reference_complete = bool(
+                reference_runtime is not None
+                and reference_runtime.library_versions_complete
+            )
+            candidate_complete = bool(
+                candidate_runtime is not None
+                and candidate_runtime.library_versions_complete
+            )
+            if not reference_complete or not candidate_complete:
+                fields[field_name] = RuntimeProvenanceFieldParity(
+                    status="unknown",
+                    reference=reference_value,
+                    candidate=candidate_value,
+                    detail=(
+                        "Relevant installed-library collection must be complete in both "
+                        "benchmark-executing processes."
+                    ),
+                )
+            elif reference_value == candidate_value:
+                fields[field_name] = RuntimeProvenanceFieldParity(
+                    status="match",
+                    reference=reference_value,
+                    candidate=candidate_value,
+                )
+            else:
+                fields[field_name] = RuntimeProvenanceFieldParity(
+                    status="mismatch",
+                    reference=reference_value,
+                    candidate=candidate_value,
+                    detail="Relevant installed-library versions differ between runs.",
+                )
+            continue
+
+        if field_name == "cuda_available":
+            if reference_value is None or candidate_value is None:
+                fields[field_name] = RuntimeProvenanceFieldParity(
+                    status="unknown",
+                    reference=reference_value,
+                    candidate=candidate_value,
+                    detail="CUDA availability was not captured in both executing processes.",
+                )
+            elif reference_value is True and candidate_value is True:
+                fields[field_name] = RuntimeProvenanceFieldParity(
+                    status="match",
+                    reference=reference_value,
+                    candidate=candidate_value,
+                )
+            else:
+                fields[field_name] = RuntimeProvenanceFieldParity(
+                    status="mismatch",
+                    reference=reference_value,
+                    candidate=candidate_value,
+                    detail="CUDA parity requires CUDA to be available in both executing processes.",
+                )
+            continue
+
+        reference_known = reference_value is not None and reference_value != ""
+        candidate_known = candidate_value is not None and candidate_value != ""
+        if not reference_known or not candidate_known:
+            fields[field_name] = RuntimeProvenanceFieldParity(
+                status="unknown",
+                reference=reference_value,
+                candidate=candidate_value,
+                detail=f"{field_name} must be known in both benchmark-executing processes.",
+            )
+        elif reference_value == candidate_value:
+            fields[field_name] = RuntimeProvenanceFieldParity(
+                status="match",
+                reference=reference_value,
+                candidate=candidate_value,
+            )
+        else:
+            fields[field_name] = RuntimeProvenanceFieldParity(
+                status="mismatch",
+                reference=reference_value,
+                candidate=candidate_value,
+                detail=f"{field_name} differs between runs.",
+            )
+
+    mismatched_fields = [
+        field_name
+        for field_name in required_fields
+        if fields[field_name].status == "mismatch"
+    ]
+    unknown_fields = [
+        field_name
+        for field_name in required_fields
+        if fields[field_name].status == "unknown"
+    ]
+    return RuntimeProvenanceParity(
+        target=target,
+        matches=not mismatched_fields and not unknown_fields,
+        required_fields=list(required_fields),
+        fields=fields,
+        mismatched_fields=mismatched_fields,
+        unknown_fields=unknown_fields,
+        schemaVersion=SCHEMA_VERSION,
+    )
+
+
+def require_runtime_provenance_parity(
+    reference: RunManifest,
+    candidate: RunManifest,
+    *,
+    target: RuntimeParityTarget,
+) -> RuntimeProvenanceParity:
+    """Return a matching parity receipt or raise with structured failure details."""
+
+    comparison = compare_runtime_provenance(reference, candidate, target=target)
+    if not comparison.matches:
+        raise RuntimeProvenanceParityError(comparison)
+    return comparison

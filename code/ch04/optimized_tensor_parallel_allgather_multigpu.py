@@ -194,8 +194,6 @@ def main() -> None:
 
 
 class OptimizedTensorParallelAllGatherBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    preferred_ncu_replay_mode = "app-range"
-
     """Harness entry that launches this module via torchrun."""
     multi_gpu_required = True
     preferred_ncu_replay_mode = "kernel"  # Application replay is unstable for torchrun collectives.

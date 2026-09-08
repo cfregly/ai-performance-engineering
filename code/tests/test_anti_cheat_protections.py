@@ -4,8 +4,8 @@
 CPU detector tests run without CUDA. GPU integration/smoke tests require actual
 hardware and do not count as passed on CPU. A diagnostic state or timing fixture
 is not a GPU measurement. Legacy statistical names check reporting fidelity,
-not an unimplemented outlier/cherry-picking classifier. Missing dataset
-provenance protections are explicit skips, not passing conceptual assertions.
+not an unimplemented outlier/cherry-picking classifier. Dataset checks exercise
+the explicit evaluation contract; semantic contamination inference is not claimed.
 The number of test functions does not establish coverage of every README claim.
 """
 
@@ -19,11 +19,13 @@ from contextlib import contextmanager
 
 import pytest
 import torch
+from tests.evaluation_contract_test_utils import assert_evaluation_contract_controls
 
 from tests.protection_test_utils import (
     TensorWork, assert_comparison_controls, assert_compile_cache_reset,
     assert_compile_guard_counts, assert_cuda_timing_cross_validation,
     assert_environment_controls, assert_gpu_state_controls,
+    assert_expected_cuda_identity_controls,
     assert_materialization_diagnostic, assert_signature_controls,
     assert_stream_audit_controls, audit_cuda_work, check_fresh_input, check_jitter, compare_tensors,
     cpu_harness, make_runner, preserve_rng_state,
@@ -668,7 +670,7 @@ class TestEnvironmentProtections:
     """Tests for environment-related anti-cheat protections."""
 
     def test_device_mismatch_validation(self):
-        pytest.skip('Missing production protection: validate_environment does not compare expected and observed GPU identities')
+        assert_expected_cuda_identity_controls('device_uuid')
 
     def test_frequency_boost_clock_locking(self):
         """Observe real requested application clocks before and after CUDA work."""
@@ -829,8 +831,8 @@ class TestEvaluationProtections:
     def test_timeout_manipulation_immutability(self):
         _check_config_mutation('timeout_seconds', 999)
 
-    def test_test_data_leakage_contamination_check(self):
-        pytest.skip("Missing protection: no dataset provenance/holdout-overlap detector is implemented; set arithmetic is not detector coverage")
+    def test_test_data_leakage_contamination_check(self, tmp_path):
+        assert_evaluation_contract_controls(tmp_path, 'holdout_overlap')
 
     def test_benchmark_overfitting_jitter_fresh(self, runner):
         _check_jitter_controls(runner)
@@ -1004,8 +1006,8 @@ class TestWorkloadProtectionsExtended:
         assert baseline.matches(baseline)
         assert not baseline.matches(optimized)
 
-    def test_train_test_overlap_detection(self):
-        pytest.skip("Missing protection: no dataset provenance/holdout-overlap detector is implemented; set arithmetic is not detector coverage")
+    def test_train_test_overlap_detection(self, tmp_path):
+        assert_evaluation_contract_controls(tmp_path, 'train_test_overlap')
 
     def test_batch_shrinking_detection(self):
         """Test that batch shrinking is detected.
@@ -1382,11 +1384,13 @@ class TestEnvironmentProtectionsExtended:
             result = harness._benchmark_with_threading(bench, config)
             assert any("ENVIRONMENT INVALID" in err and "CPU governor mismatch" in err for err in result.errors), result.errors
 
-    def test_driver_version_mismatch_detection(self):
-        pytest.skip('Missing production protection: RunManifest records a driver version but no cross-run driver-version lock is enforced')
+    def test_driver_version_mismatch_detection(self, tmp_path):
+        from tests.runtime_version_test_utils import assert_runtime_version_controls
+        assert_runtime_version_controls(tmp_path, "driver_version")
 
-    def test_library_version_mismatch_detection(self):
-        pytest.skip('Missing production protection: RunManifest does not record cuDNN/cuBLAS version parity or enforce a cross-run library lock')
+    def test_library_version_mismatch_detection(self, tmp_path):
+        from tests.runtime_version_test_utils import assert_runtime_version_controls
+        assert_runtime_version_controls(tmp_path, "library_versions")
 
     def test_container_resource_limits_handling(self, tmp_path, monkeypatch):
         assert_environment_controls(tmp_path, monkeypatch, 'cpu_quota')
@@ -1458,8 +1462,8 @@ class TestEvaluationProtectionsExtended:
         """Reject cached results; allocating an output buffer is not itself cheating."""
         _check_fresh_controls(runner)
 
-    def test_missing_holdout_sets_handling(self):
-        pytest.skip("Missing protection: no dataset provenance/holdout-overlap detector is implemented; set arithmetic is not detector coverage")
+    def test_missing_holdout_sets_handling(self, tmp_path):
+        assert_evaluation_contract_controls(tmp_path, 'missing_holdout')
 
 
 # =============================================================================
@@ -1469,8 +1473,9 @@ class TestEvaluationProtectionsExtended:
 class TestReproducibilityProtections:
     """Tests for reproducibility protections."""
 
-    def test_version_locking_in_manifest(self):
-        pytest.skip('Missing production protection: version provenance capture does not enforce version locking')
+    def test_version_locking_in_manifest(self, tmp_path):
+        from tests.runtime_version_test_utils import assert_runtime_version_controls
+        assert_runtime_version_controls(tmp_path, "torch_version")
 
     def test_seed_determinism(self, runner):
         work = TensorWork()

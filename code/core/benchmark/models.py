@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from core.benchmark.evaluation_provenance import EvaluationProvenance
-from core.benchmark.run_manifest import RunManifest
+from core.benchmark.run_manifest import RunManifest, RuntimeProvenance
 
 
 class MemoryStats(BaseModel):
@@ -371,6 +371,9 @@ class BenchmarkResult(BaseModel):
     mode: Optional[str] = Field(None, description="Benchmark mode (e.g., 'triton', 'pytorch', 'custom')")
     launch_via: Optional[str] = Field(None, description="Launcher used for execution (python or torchrun)")
     world_size: Optional[int] = Field(None, description="World size used when launching distributed benchmarks")
+    local_world_size: Optional[int] = Field(
+        None, strict=True, gt=0, description="Local worker count passed to the execution launcher"
+    )
     multi_gpu: Optional[bool] = Field(None, description="Whether multiple GPUs were used")
     multi_gpu_required: Optional[bool] = Field(None, description="Benchmark declared multi-GPU requirement")
     seeds: Optional[Dict[str, Any]] = Field(None, description="Seeds applied for reproducibility (random, numpy, torch, cuda)")
@@ -382,6 +385,18 @@ class BenchmarkResult(BaseModel):
     runtime_env: Dict[str, str] = Field(
         default_factory=dict,
         description="Runtime environment overrides applied during benchmark execution",
+    )
+    runtime_provenance: Optional[RuntimeProvenance] = Field(
+        None,
+        description="Runtime/library identity captured in the process executing the benchmark",
+    )
+    runtime_provenance_by_local_rank: Dict[int, RuntimeProvenance] = Field(
+        default_factory=dict,
+        description="Validated runtime snapshots for every local torchrun worker",
+    )
+    execution_process_ids: Dict[int, int] = Field(
+        default_factory=dict,
+        description="Worker PIDs independently retained by the execution transport, keyed by local rank",
     )
     gpu_metrics: Optional[Dict[str, Optional[float | str]]] = Field(
         None,
