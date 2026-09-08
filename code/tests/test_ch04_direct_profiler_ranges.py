@@ -168,19 +168,77 @@ def test_target_range_encloses_only_the_post_warmup_timed_loop(
         for keyword in range_call.keywords
     )
 
-    warmup_loops = [
-        node
-        for node in ast.walk(worker)
-        if isinstance(node, ast.For) and ast.unparse(node.iter) == "range(max(warmup, 0))"
-    ]
-    timed_loops = [
-        node
-        for node in ast.walk(profile_range)
-        if isinstance(node, ast.For) and ast.unparse(node.iter) == "range(max(iters, 1))"
-    ]
-    assert len(warmup_loops) == 1
-    assert len(timed_loops) == 1
-    assert warmup_loops[0].end_lineno < profile_range.lineno < timed_loops[0].lineno
+    if module_name == "ch04.optimized_pipeline_parallel_1f1b":
+        iteration_assignments = [
+            (target.id, node)
+            for node in ast.walk(worker)
+            if isinstance(node, ast.Assign)
+            for target in node.targets
+            if isinstance(target, ast.Name)
+            and target.id in {"warmup_iterations", "measured_iterations"}
+        ]
+        assert len(iteration_assignments) == 2
+        assignments = dict(iteration_assignments)
+        assert set(assignments) == {"warmup_iterations", "measured_iterations"}
+        assert ast.unparse(assignments["warmup_iterations"].value) == "max(warmup, 0)"
+        assert ast.unparse(assignments["measured_iterations"].value) == "max(iters, 1)"
+
+        iteration_calls = [
+            node
+            for node in ast.walk(worker)
+            if isinstance(node, ast.Call)
+            and _call_name(node) == "_run_contiguous_iterations"
+        ]
+        assert len(iteration_calls) == 2
+        warmup_calls = [
+            node
+            for node in iteration_calls
+            if node.args and ast.unparse(node.args[0]) == "warmup_iterations"
+        ]
+        measured_calls = [
+            node
+            for node in iteration_calls
+            if node.args and ast.unparse(node.args[0]) == "measured_iterations"
+        ]
+        assert len(warmup_calls) == 1
+        assert len(measured_calls) == 1
+
+        warmup_guards = [
+            node
+            for node in ast.walk(worker)
+            if isinstance(node, ast.If)
+            and isinstance(node.test, ast.Name)
+            and node.test.id == "warmup_iterations"
+            and warmup_calls[0] in ast.walk(node)
+        ]
+        assert len(warmup_guards) == 1
+        profile_node_ids = {id(node) for node in ast.walk(profile_range)}
+        assert id(warmup_calls[0]) not in profile_node_ids
+        assert id(measured_calls[0]) in profile_node_ids
+        assert (
+            assignments["warmup_iterations"].lineno
+            < warmup_guards[0].lineno
+            < warmup_calls[0].lineno
+            < profile_range.lineno
+            < assignments["measured_iterations"].lineno
+            < measured_calls[0].lineno
+        )
+    else:
+        warmup_loops = [
+            node
+            for node in ast.walk(worker)
+            if isinstance(node, ast.For)
+            and ast.unparse(node.iter) == "range(max(warmup, 0))"
+        ]
+        timed_loops = [
+            node
+            for node in ast.walk(profile_range)
+            if isinstance(node, ast.For)
+            and ast.unparse(node.iter) == "range(max(iters, 1))"
+        ]
+        assert len(warmup_loops) == 1
+        assert len(timed_loops) == 1
+        assert warmup_loops[0].end_lineno < profile_range.lineno < timed_loops[0].lineno
 
     range_calls = {
         _call_name(node)

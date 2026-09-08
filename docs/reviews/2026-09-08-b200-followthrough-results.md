@@ -268,7 +268,7 @@ The selected-kernel path is recovered; full-range replay remains unresolved.
 - Earlier B200 execution guards and deferred-progress behavior: 23 passed, no skips.
 - Late-source B200 audits: 27 passed with no skips, and the real vectorization CLI passes at `f10a5b755`.
 - Retained B200 arithmetic matrix: 20 of 20 cases pass; fresh KV and Ozaki ordinary-harness correctness passes with no qualified speedup.
-- Syntax passes for all 48 changed Python files. Full-file Ruff has the same 75 diagnostics as the base commit and no new diagnostics; focused changed-implementation lint passes.
+- Syntax passes for all 49 changed Python files. Full-file Ruff has the same 75 diagnostics as the base commit and no new diagnostics; focused changed-implementation lint passes.
 - All target runs are finished and their owned processes drained; artifact hash verification passes.
 
 The first hosted CPU validation attempt reached 98% before its 30-minute job
@@ -276,6 +276,15 @@ budget expired. Its cancelled result is retained. The workflow now allows 35
 minutes, preserving the entire test suite and all final audits. A prior run had
 also exhausted 30 minutes after its full suite and linter passed; the added
 margin addresses observed hosted-runner variability rather than skipping work.
+The cancelled log also contained a failing profiler-range contract test. A focused
+reproducer identified its obsolete assumption that the optimized 1F1B worker must
+use per-iteration `for` loops. The test now checks the contiguous schedule's exact
+warmup and measured counts and their positions outside and inside the NVTX range,
+respectively. Timer and synchronization checks remain in place; the benchmark
+implementation is unchanged from the B200 profile captures.
+The corrected profiler-range module passes all 42 tests, the broader pipeline
+regression set passes 48 tests with six hardware skips, and all 24 workflow
+configuration tests pass.
 
 Full collective NCU replay still needs a working tool/runtime combination; the
 bounded selected-kernel captures and matched Nsys traces provide the usable
