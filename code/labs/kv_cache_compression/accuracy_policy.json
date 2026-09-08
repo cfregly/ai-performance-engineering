@@ -19,18 +19,22 @@
       "operand_format": "E4M3 forward operands with delayed per-tensor scaling",
       "relative_l2": 0.0625,
       "normalized_max_abs": 0.0625,
-      "pairwise_rtol": 0.25,
-      "pairwise_atol": 0.0625,
       "rationale": "The independent full-cache aggregate and global-maximum ceilings are one E4M3 half-ULP at a normal binade (2^-4)."
     },
     "nvfp4": {
       "operand_format": "E2M1 values with per-16-element E4M3 block scale and FP32 tensor scale",
       "relative_l2": 0.25,
       "normalized_max_abs": 0.25,
-      "pairwise_rtol": 0.25,
-      "pairwise_atol": 0.0625,
       "rationale": "The independent full-cache aggregate and global-maximum ceilings are one E2M1 half-ULP at a normal binade (2^-2); finite and overflow checks remain mandatory."
     }
+  },
+  "pairwise_envelope": {
+    "method": "shared-reference-max-triangle-envelope-v1",
+    "reference_id": "pytorch-unquantized-bf16-full-cache-v1",
+    "variants": ["fp8", "nvfp4"],
+    "coefficient": "sum_variant_normalized_max_abs",
+    "output_rtol": 0.0,
+    "description": "After both independent full-cache gates pass, compare the raw FP8 and NVFP4 caches with atol=max_abs(shared BF16 reference)*(0.0625+0.25)."
   },
   "qualification": {
     "required_receipts": [

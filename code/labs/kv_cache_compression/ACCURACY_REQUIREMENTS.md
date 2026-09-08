@@ -9,10 +9,10 @@ storage-alias, relative-L2, and maximum-error checks all remain mandatory.
 
 The source ceilings are:
 
-| Variant | Full-cache relative L2 | Maximum error / maximum reference | Pairwise rtol | Pairwise atol |
-| --- | ---: | ---: | ---: | ---: |
-| Delayed-scaling FP8 E4M3 | `0.0625` (`2^-4`) | `0.0625` (`2^-4`) | `0.25` | `0.0625` |
-| NVFP4 E2M1 | `0.25` (`2^-2`) | `0.25` (`2^-2`) | `0.25` | `0.0625` |
+| Variant | Full-cache relative L2 | Maximum error / maximum reference |
+| --- | ---: | ---: |
+| Delayed-scaling FP8 E4M3 | `0.0625` (`2^-4`) | `0.0625` (`2^-4`) |
+| NVFP4 E2M1 | `0.25` (`2^-2`) | `0.25` (`2^-2`) |
 
 E4M3 stores three fraction bits, making half the spacing within a normal binade
 `2^-4`; E2M1 stores one fraction bit, making the analogous quantity `2^-2`.
@@ -20,7 +20,24 @@ Those representation-scale quantities define the independent full-cache engineer
 ceilings. NVFP4 also uses a per-16-element E4M3 block scale and a global FP32 scale,
 as described in the [Transformer Engine NVFP4 documentation](https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/features/low_precision_training/nvfp4/nvfp4.html).
 The pairwise allowance is secondary: each arm must first pass its own full-cache
-reference check.
+reference check. It is a shared-reference envelope rather than a raw
+`torch.allclose(rtol=0.25, atol=0.0625)` call. For the common BF16 reference `R`,
+the FP8 cache `B`, the NVFP4 cache `O`, and `M = max(abs(R))`, the two unchanged
+maximum-error requirements and the triangle inequality give:
+
+```text
+max(abs(B - O))
+  <= max(abs(B - R)) + max(abs(O - R))
+  <= (0.0625 + 0.25) * M
+```
+
+The ordinary pair therefore transports the complete raw K/V arrays and uses an
+exact-keyed output policy with `rtol=0` and
+`atol=(0.0625 + 0.25) * max(abs(R))`. Both arms must derive an identical policy
+from their independent reference pass or the harness rejects the comparison.
+The coefficient `0.3125` is fixed by the two declared format ceilings; it is not
+calibrated or fitted to an observed pairwise difference. A zero reference yields
+zero absolute tolerance and admits only exact zero outputs.
 
 These limits were fixed from the declared formats before the new candidate runs.
 Prior calibration errors remain diagnostics and were not used to widen a bound.
