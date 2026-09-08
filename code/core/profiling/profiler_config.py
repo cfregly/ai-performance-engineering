@@ -585,9 +585,12 @@ class ProfilerConfig:
             "--clock-control",
             "none",
         ]
-        # Section sets add metrics to --metrics. Application-range replay must
-        # collect exactly its validated five metrics, avoiding extra NCCL passes.
-        if requested_replay_mode != "app-range":
+        # Section sets add metrics to --metrics. Minimal captures must retain
+        # their requested small list, rather than silently adding basic sections.
+        explicit_minimal_metrics = metric_set_norm == "minimal" or (
+            metric_set_norm == "auto" and ncu_set == "basic"
+        )
+        if requested_replay_mode != "app-range" and not explicit_minimal_metrics:
             cmd.extend(["--set", ncu_set])
         cmd.extend(["--metrics", ",".join(metrics)])
 

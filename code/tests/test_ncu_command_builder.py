@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from core.profiling.nsight_automation import NsightAutomation
+from core.profiling.profiler_config import MINIMAL_METRICS
 
 
 def _build_cmd(**kwargs) -> list[str]:
@@ -14,10 +15,16 @@ def _build_cmd(**kwargs) -> list[str]:
     )
 
 
-def test_ncu_command_minimal_uses_supported_lightweight_set():
-    cmd = _build_cmd(metric_set="minimal")
-    set_idx = cmd.index("--set")
-    assert cmd[set_idx + 1] in {"speed-of-light", "basic"}
+@pytest.mark.parametrize("replay_mode", ["kernel", "application"])
+def test_ncu_command_minimal_uses_exact_metrics_without_extra_sections(replay_mode):
+    cmd = _build_cmd(metric_set="minimal", replay_mode=replay_mode)
+    assert "--set" not in cmd
+    assert cmd[cmd.index("--metrics") + 1].split(",") == MINIMAL_METRICS
+
+
+def test_explicit_basic_still_selects_nvidia_sections():
+    cmd = _build_cmd(metric_set="basic")
+    assert cmd[cmd.index("--set") + 1] in {"basic", "speed-of-light"}
     assert "--metrics" not in cmd
 
 

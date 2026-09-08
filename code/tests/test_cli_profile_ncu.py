@@ -36,7 +36,7 @@ class DummyNsightAutomation:
         type(self).calls.append(kwargs)
         output_name = str(kwargs.get("output_name", "profile_ncu"))
         metric_set = str(kwargs.get("metric_set", "full"))
-        resolved_metric_set = "basic" if metric_set == "minimal" else metric_set
+        resolved_metric_set = metric_set
         output_path = self.output_root / f"{output_name}.ncu-rep"
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text("fake ncu report", encoding="utf-8")
@@ -107,7 +107,7 @@ def test_cli_profile_ncu_minimal_metric_set(fake_binary: Path, tmp_path: Path) -
     assert call["metric_set"] == "minimal"
     assert call["timeout_seconds"] == 60
     assert "NCU report:" in result.stdout
-    assert "Metric set: minimal (resolved: basic)" in result.stdout
+    assert "Metric set: minimal (resolved: minimal)" in result.stdout
 
 
 def test_cli_profile_ncu_launch_limiting(fake_binary: Path, tmp_path: Path) -> None:

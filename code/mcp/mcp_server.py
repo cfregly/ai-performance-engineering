@@ -7415,7 +7415,7 @@ def tool_profile_nsys(params: Dict[str, Any]) -> Dict[str, Any]:
     "metric_set selects the NCU --set; workload_type picks custom metrics (only when metric_set=full). "
     "workload_type: memory_bound (default, fast), compute_bound, tensor_core. "
     "🕐 SLOW (varies). WORKFLOW: profile_kernels → profile_ncu. NOT FOR: Timeline (use profile_nsys). "
-    "DEFAULTS: metric_set='full' by default; use metric_set='minimal' (auto-resolves to speed-of-light/basic by Nsight version) for routine baseline/optimized compares; "
+    "DEFAULTS: metric_set='full' by default; use metric_set='minimal' (exactly five metrics without additional NVIDIA sections) for routine baseline/optimized compares; "
     "use metric_set='roofline' for bound analysis; use metric_set='full' for deep dives. "
     "COMPARE: compare_ncu auto-pairs baseline/optimized across subdirectories; pass pair if multiple pairs exist. "
     "Use launch_skip/launch_count to limit captures on many-launch benchmarks (e.g., 4096 batches). "
