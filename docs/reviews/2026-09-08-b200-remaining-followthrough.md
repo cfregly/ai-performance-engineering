@@ -321,6 +321,18 @@ in `pipeline-nccl-d8/`, inventory SHA-256
 Further improvement must address the remaining rank-one communication exposure
 and measurement spread without reducing work or weakening exact verification.
 
+The repaired public `core.profiling.ncu_torchrun_capture` entrypoint also passes
+fresh two-rank captures at the same source, using Nsight Compute 2026.2.1.
+Baseline captures contain 129 selected NCCL kernels per rank; optimized captures
+contain 67 per rank. All four reports contain the five required finite counters
+for every selected kernel, with rank/device/process and runtime checks passing.
+Both captures drain naturally, without forced cleanup or timeouts; capture
+durations of 119.076 and 68.009 seconds are instrumentation overhead, not speed
+measurements. The selected scope includes all matching NCCL kernels and excludes
+non-NCCL compute. All 31 retained files (541,915,451 bytes) are hash-verified in
+`pipeline-public-ncu-d8/`, inventory SHA-256
+`4d2f876e51ccd5ec85ad2b8c087af6a6ea69194725627df78d0c71111413e17c`.
+
 KV commit `32030e6cf31b6058f868988b13a317b5f96af3dc` refreshes packed projection
 weights on the first group of each complete iteration and reuses them for the
 remaining 129 groups. Both FP8 and NVFP4 arms use the same caching policy. Every
@@ -437,9 +449,19 @@ with an asynchronous device fill of the same `-1` flag. The reset and native
 fallback check remain in place; arithmetic, mantissa settings, and error limits
 are unchanged. CUDA documents possible staging synchronization for pageable
 copies. Removing that possibility is the motivation, not a measured speedup.
-The 19 focused policy/parser tests pass; target compilation, a real-CUDA
-sentinel/full-GEMM regression probe, and the complete accuracy and timing checks
-are pending. [CUDA synchronization behavior](https://docs.nvidia.com/cuda/cuda-runtime-api/api-sync-behavior.html).
+The 19 focused policy/parser tests pass. Source
+`5b5fb4cad48482541b271ad2297de4818a89e1ba` now compiles on B200 with CUDA 13.0.88
+and cuBLAS 13.1.1.3, passes the real-CUDA sentinel/full-GEMM probe, and passes all
+ten existing independent arithmetic qualification cases without changing limits.
+Three Compute Sanitizer 2025.3.1 memcheck runs report zero errors: the sentinel
+probe and dynamic/fixed rectangular edge cases. These checks do not establish
+memory safety for every shape or application-level numerical quality. All 17
+execution records and their log hashes pass local re-audit. All 23 files
+(1,045,530 bytes) are retained in `ozaki-sentinel-accuracy-v2-5b5/`, inventory
+SHA-256 `cda72dfd9bc7107fc10ab6f23518a1ca00b5fe92de08bf02b1abe8580450ddad`.
+Old/new timing and a separate 64/256 MiB workspace experiment are running; the
+default workspace and previous no-speedup disposition remain unchanged.
+[CUDA synchronization behavior](https://docs.nvidia.com/cuda/cuda-runtime-api/api-sync-behavior.html).
 
 PR #28 is back in draft; broad CI and publication are deferred while this work
 continues.
