@@ -163,11 +163,11 @@ def _launch_neighbor_exchange(
             dist.P2POp(dist.isend, send_tensor, peer),
         ]
     requests = dist.batch_isend_irecv(operations)
-    if len(requests) != len(operations):
-        _wait_for_p2p(requests)
+    # NCCL may coalesce both operations into one Work. Gloo returns one Work
+    # per operation; in either case all returned handles must be completed.
+    if not requests:
         raise RuntimeError(
-            "Pipeline P2P exchange returned an incomplete request group: "
-            f"expected {len(operations)}, got {len(requests)}"
+            "Pipeline P2P exchange returned no completion requests"
         )
     return requests
 

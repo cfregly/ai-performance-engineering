@@ -49,8 +49,18 @@ class _FakeWork:
         return True
 
 
+class _FakeCoalescedWork:
+    def __init__(self, works: list[_FakeWork]) -> None:
+        self.works = works
+
+    def wait(self) -> bool:
+        pipeline._wait_for_p2p(self.works)
+        return True
+
+
 class _FakeTransport:
-    def __init__(self) -> None:
+    def __init__(self, *, coalesced: bool = False) -> None:
+        self.coalesced = coalesced
         self.events: list[str] = []
         self.groups: list[list[_FakeWork]] = []
         self.wait_failures: set[tuple[int, int]] = set()
@@ -72,7 +82,7 @@ class _FakeTransport:
             raise AssertionError("unexpected P2P operation")
         return _FakeP2POp(kind=kind, tensor=tensor, peer=peer)
 
-    def batch(self, operations: list[_FakeP2POp]) -> list[_FakeWork]:
+    def batch(self, operations: list[_FakeP2POp]) -> list[Any]:
         group_index = len(self.groups)
         self.events.append(
             f"batch:{group_index}:" + ",".join(operation.kind for operation in operations)
@@ -82,6 +92,8 @@ class _FakeTransport:
             for operation_index, operation in enumerate(operations)
         ]
         self.groups.append(works)
+        if self.coalesced:
+            return [_FakeCoalescedWork(works)]
         return works
 
 
@@ -143,10 +155,12 @@ def _run_rank_zero(
     return forward_indices, backward_values, capture
 
 
+@pytest.mark.parametrize("coalesced", [False, True])
 def test_rank_zero_lookahead_precedes_wait_and_drains_the_tail(
     monkeypatch: pytest.MonkeyPatch,
+    coalesced: bool,
 ) -> None:
-    transport = _FakeTransport()
+    transport = _FakeTransport(coalesced=coalesced)
     _install_fake_transport(monkeypatch, transport)
 
     forward_indices, backward_values, capture = _run_rank_zero(transport)
@@ -181,10 +195,12 @@ def test_rank_zero_lookahead_precedes_wait_and_drains_the_tail(
     )
 
 
+@pytest.mark.parametrize("coalesced", [False, True])
 def test_lookahead_failure_still_drains_every_posted_exchange_work(
     monkeypatch: pytest.MonkeyPatch,
+    coalesced: bool,
 ) -> None:
-    transport = _FakeTransport()
+    transport = _FakeTransport(coalesced=coalesced)
     _install_fake_transport(monkeypatch, transport)
 
     with pytest.raises(RuntimeError, match="injected forward failure"):
@@ -194,10 +210,12 @@ def test_lookahead_failure_still_drains_every_posted_exchange_work(
     assert all(work.wait_calls == 1 for work in transport.groups[-1])
 
 
+@pytest.mark.parametrize("coalesced", [False, True])
 def test_wait_failure_does_not_abandon_the_other_exchange_work(
     monkeypatch: pytest.MonkeyPatch,
+    coalesced: bool,
 ) -> None:
-    transport = _FakeTransport()
+    transport = _FakeTransport(coalesced=coalesced)
     transport.wait_failures.add((1, 0))
     _install_fake_transport(monkeypatch, transport)
 
@@ -206,3 +224,15 @@ def test_wait_failure_does_not_abandon_the_other_exchange_work(
 
     assert len(transport.groups) == 2
     assert [work.wait_calls for work in transport.groups[-1]] == [1, 1]
+
+
+def test_exchange_rejects_missing_completion_requests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = _FakeTransport()
+    _install_fake_transport(monkeypatch, transport)
+    monkeypatch.setattr(pipeline.dist, "batch_isend_irecv", lambda _operations: [])
+    with pytest.raises(RuntimeError, match="no completion requests"):
+        pipeline._exchange_neighbor(
+            rank=0, peer=1, send_tensor=torch.ones(1), recv_tensor=torch.empty(1)
+        )

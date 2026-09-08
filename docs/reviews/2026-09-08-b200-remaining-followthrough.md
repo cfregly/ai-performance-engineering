@@ -291,7 +291,16 @@ queues one independent rank-zero forward microbatch before waiting for paired
 transfers. Its baseline GPipe function is byte-identical. All 88 focused CPU
 checks pass, including real two-rank output comparisons; a separate three-rank
 Gloo comparison also passes. Actual NCCL overlap and a repeated two-B200 speedup
-remain unmeasured.
+remain unmeasured. The first two-B200 attempt passed baseline execution and then
+failed in optimized warmup: a new check incorrectly required one completion
+handle per P2P operation, while NCCL coalesces the pair into one handle. The fix
+accepts the coalesced handle and still waits every returned handle, rejecting an
+empty group. All 21 focused scheduling/protocol checks pass, including real
+two-rank CPU output comparisons and separate coalesced/uncoalesced control-flow
+cases. The failed GPU attempt drained naturally; eight files (63,976 bytes) are
+retained in `pipeline-c9-failure/`, with inventory SHA-256
+`8b4dda593d35ee1e8d59190df5f81690878eabe4cb4db801a03e754622e248d6`.
+The corrected two-B200 rerun is pending; this is not a speedup claim.
 
 KV commit `32030e6cf31b6058f868988b13a317b5f96af3dc` refreshes packed projection
 weights on the first group of each complete iteration and reuses them for the
