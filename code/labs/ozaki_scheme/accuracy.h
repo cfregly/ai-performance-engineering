@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
+#include <vector>
 
 namespace ozaki_scheme {
 struct AccuracyMetrics {
@@ -15,6 +16,41 @@ struct AccuracyMetrics {
     double relative_l2 = 0;
     double normalized_max_abs = 0;
 };
+
+inline std::vector<double> reference_gemm_long_double(
+    const double* a,
+    const double* b,
+    std::size_t m,
+    std::size_t n,
+    std::size_t k) {
+    if (!a || !b || !m || !n || !k ||
+        m > std::numeric_limits<std::size_t>::max() / k ||
+        k > std::numeric_limits<std::size_t>::max() / n ||
+        m > std::numeric_limits<std::size_t>::max() / n) {
+        throw std::runtime_error("CPU long-double reference requires valid nonempty matrix dimensions");
+    }
+    if (std::numeric_limits<long double>::digits <= std::numeric_limits<double>::digits) {
+        throw std::runtime_error("CPU long-double reference requires precision wider than FP64");
+    }
+    constexpr std::size_t kMaxReferenceFmas = 50'000'000;
+    if (m > kMaxReferenceFmas / n || m * n > kMaxReferenceFmas / k) {
+        throw std::runtime_error("CPU long-double reference is limited to 50,000,000 FMAs");
+    }
+    std::vector<double> result(m * n);
+    for (std::size_t row = 0; row < m; ++row) {
+        for (std::size_t column = 0; column < n; ++column) {
+            long double sum = 0;
+            for (std::size_t inner = 0; inner < k; ++inner) {
+                sum = std::fma(
+                    static_cast<long double>(a[row * k + inner]),
+                    static_cast<long double>(b[inner * n + column]),
+                    sum);
+            }
+            result[row * n + column] = static_cast<double>(sum);
+        }
+    }
+    return result;
+}
 
 inline AccuracyMetrics measure_accuracy(const double* actual, const double* reference, std::size_t count) {
     if (!count || !actual || !reference || count > std::numeric_limits<std::size_t>::max() / sizeof(double)) {

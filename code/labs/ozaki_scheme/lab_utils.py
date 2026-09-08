@@ -19,6 +19,21 @@ MetricValue = int | float | str
 
 _METRIC_PATTERNS: Final[dict[str, re.Pattern[str]]] = {
     "variant": re.compile(r"VARIANT:\s*(\S+)"),
+    "m": re.compile(r"M:\s*(\d+)"),
+    "n": re.compile(r"N:\s*(\d+)"),
+    "k": re.compile(r"K:\s*(\d+)"),
+    "seed": re.compile(r"SEED:\s*(-?\d+)"),
+    "input_scale": re.compile(r"INPUT_SCALE:\s*([0-9.eE+-]+)"),
+    "input_pattern": re.compile(r"INPUT_PATTERN:\s*(\S+)"),
+    "reference_mode": re.compile(r"REFERENCE_MODE:\s*(\S+)"),
+    "gpu_name": re.compile(r"GPU_NAME:\s*(.+)"),
+    "compute_capability": re.compile(r"COMPUTE_CAPABILITY:\s*(\S+)"),
+    "cuda_runtime_version": re.compile(r"CUDA_RUNTIME_VERSION:\s*(\d+)"),
+    "cublas_version": re.compile(r"CUBLAS_VERSION:\s*(\d+)"),
+    "accuracy_status": re.compile(r"ACCURACY_STATUS:\s*(\S+)"),
+    "dynamic_max_bits": re.compile(r"DYNAMIC_MAX_BITS:\s*(\d+)"),
+    "dynamic_offset": re.compile(r"DYNAMIC_OFFSET:\s*(-?\d+)"),
+    "fixed_bits": re.compile(r"FIXED_BITS:\s*(\d+)"),
     "time_ms": re.compile(r"TIME_MS:\s*([0-9.eE+-]+)"),
     "tflops": re.compile(r"TFLOPS:\s*([0-9.eE+-]+)"),
     "retained_bits": re.compile(r"RETAINED_BITS:\s*(-?\d+)"),
@@ -43,9 +58,12 @@ def parse_metrics(stdout: str) -> dict[str, MetricValue]:
         if not match:
             continue
         value = match.group(1)
-        if key in {"variant", "emulation_strategy"}:
+        if key in {"variant", "emulation_strategy", "input_pattern", "reference_mode", "accuracy_status",
+                   "gpu_name", "compute_capability"}:
             metrics[key] = value
-        elif key in {"retained_bits", "emulation_used"}:
+        elif key in {"m", "n", "k", "seed", "dynamic_max_bits", "dynamic_offset", "fixed_bits",
+                     "cuda_runtime_version", "cublas_version",
+                     "retained_bits", "emulation_used"}:
             metrics[key] = int(value)
         else:
             metrics[key] = float(value)

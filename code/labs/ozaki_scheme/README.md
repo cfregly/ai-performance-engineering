@@ -9,7 +9,8 @@ The implemented runtime paths are:
 - Ozaki-I style dynamic retained-bit control through cuBLAS FP64 emulation
 - Ozaki-I style fixed retained-bit control through cuBLAS FP64 emulation
 
-The lab includes narrative-check drivers, but their optimized runs require an explicitly reviewed accuracy policy. The following claims remain target-validation gates:
+The lab includes narrative-check drivers and a checked-in, source-bounded arithmetic
+policy. The following claims still require fresh target qualification:
 
 - controllable accuracy
 - adaptive retained-bit behavior
@@ -43,21 +44,34 @@ These earlier numbers predate the full-array verifier. The old signed-checksum c
 
 The dynamic path's reported `3e-6` maximum error is material relative to this small output scale. The old tolerance does not establish FP64-equivalent accuracy.
 
-## Accuracy gate: target calibration pending
+## Accuracy gate: requirements defined, target qualification pending
 
-The CUDA executable now checks every element against a separately allocated native FP64 reference before returning an accepted timing. The host comparator in `accuracy.h` rejects non-finite values and aliased reference storage and reports relative L2 and maximum absolute error normalized by the largest reference magnitude. Both accuracy limits must be explicitly configured, finite, and in `[0,1)`. The Python checksum comparison is secondary and defaults to exact equality; it cannot replace the full-array check.
+The CUDA executable checks every element against a separately executed native FP64
+reference before returning an accepted timing. Small edge cohorts can instead use the
+CPU long-double GEMM in `accuracy.h`, which fails closed when `long double` is not wider
+than FP64. The comparator rejects non-finite values and overlapping reference storage,
+then reports relative L2 and maximum absolute error normalized by the largest reference
+magnitude. The Python checksum comparison remains secondary and cannot replace the
+full-array check.
 
-No numerical threshold has been calibrated or approved here. Without limits, optimized binaries fail before GPU allocation. Python wrappers and runners accept `AISP_OZAKI_ACCURACY_POLICY`, a JSON file with `schema_version: 1` and separate `dynamic`/`fixed` objects containing `relative_l2`, `normalized_max_abs`, `checksum_rtol`, and `checksum_atol`. The first three fields must be finite and in `[0,1)`; the last must be finite and nonnegative. A configured policy is not measured accuracy evidence.
+[`ACCURACY_REQUIREMENTS.md`](ACCURACY_REQUIREMENTS.md) records the predeclared policy,
+rationale, nominal and holdout seeds, independent-reference edge cohorts, exact B200
+commands, and claim boundary. The dynamic path is capped at relative L2 `2^-5` and
+normalized maximum error `2^-4`; fixed-12 is capped at `2^-12` and `2^-11`. These are
+lab arithmetic requirements, not FP64-equivalence or application-quality guarantees.
+`accuracy_policy.py` rejects any configured limit above the checked-in source ceiling.
 
-After compiling on the target, collect errors without accepting a benchmark result (binary suffix depends on the target):
+Select the checked-in policy for ordinary accepted runs:
 
 ```bash
-make -C labs/ozaki_scheme all
-labs/ozaki_scheme/optimized_ozaki_scheme_dynamic_sm100 --m 4096 --n 4096 --k 4096 --seed 2026 --input-scale 0.001 --dynamic-max-bits 16 --dynamic-offset -56 --accuracy-measure-only
-labs/ozaki_scheme/optimized_ozaki_scheme_fixed_sm100 --m 4096 --n 4096 --k 4096 --seed 2026 --input-scale 0.001 --fixed-bits 12 --accuracy-measure-only
+AISP_OZAKI_ACCURACY_POLICY="$PWD/labs/ozaki_scheme/accuracy_policy.json" \
+  python -m cli.aisp bench run --targets labs/ozaki_scheme --profile minimal
 ```
 
-Measurement-only runs exit **2** with `ACCURACY_STATUS: MEASUREMENT_ONLY_NOT_ACCEPTED`; they omit `TIME_MS`, TFLOPS and the verifier checksum. Sweep seeds, retained-bit settings, and input scales before selecting workload-specific bounds. Repeated controlled GPU runs, numerical calibration and performance acceptance remain open gates.
+This command is acceptable only after the required measurement-only matrix qualifies.
+Those runs still exit **2** with `ACCURACY_STATUS: MEASUREMENT_ONLY_NOT_ACCEPTED` and
+remain retained evidence if a cohort fails. Fresh B200 qualification and repeated
+performance acceptance remain open gates.
 
 ## Why This Lab Exists
 The motivating story from the slides is that low-precision tensor-core hardware keeps getting faster while native FP64 throughput improves much more slowly, so accurate FP64-equivalent matrix multiplication increasingly wants an emulation story instead of a brute-force FP64 story.

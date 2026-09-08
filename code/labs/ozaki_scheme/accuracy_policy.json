@@ -1,0 +1,44 @@
+{
+  "schema_version": 2,
+  "policy_id": "ozaki-fp64-emulation-arithmetic-ceilings-v1",
+  "reference": {
+    "id": "native-fp64-full-plus-cpu-long-double-edge-v1",
+    "description": "Every production output is compared with a separate native-FP64 cuBLAS result; small rectangular, cancellation, and dynamic-range cohorts are also compared with a CPU long-double dot-product implementation."
+  },
+  "workload": {
+    "m": 4096,
+    "n": 4096,
+    "k": 4096,
+    "input_scale": 0.001,
+    "emulation_strategy": "eager",
+    "dynamic_max_bits": 16,
+    "dynamic_offset": -56,
+    "fixed_bits": 12
+  },
+  "variants": {
+    "dynamic": {
+      "relative_l2": 0.03125,
+      "normalized_max_abs": 0.0625,
+      "checksum_rtol": 0.0,
+      "checksum_atol": 2147.483648,
+      "rationale": "The -56 offset deliberately gives up the native-FP64 accuracy guarantee. Require at least a five-bit aggregate output-quality floor (2^-5) and a four-bit worst-output floor (2^-4). These are engineering acceptance limits, not a theorem about arbitrary matrices."
+    },
+    "fixed": {
+      "relative_l2": 0.000244140625,
+      "normalized_max_abs": 0.00048828125,
+      "checksum_rtol": 0.0,
+      "checksum_atol": 16.777216,
+      "rationale": "Fixed-12 must stay within one 2^-12 input-grid step in aggregate and two steps at the worst output. These are engineering acceptance limits, not a forward-error guarantee for ill-conditioned products."
+    }
+  },
+  "qualification": {
+    "required_receipts": [
+      {"cohort": "nominal", "seeds": [2026], "m": 4096, "n": 4096, "k": 4096, "input_scale": 0.001, "input_pattern": "uniform", "reference_mode": "native_fp64"},
+      {"cohort": "holdout", "seeds": [2027, 2029], "m": 4096, "n": 4096, "k": 4096, "input_scale": 0.001, "input_pattern": "uniform", "reference_mode": "native_fp64"},
+      {"cohort": "alternating_edge", "seeds": [2039], "m": 17, "n": 19, "k": 23, "input_scale": 1.0, "input_pattern": "alternating", "reference_mode": "cpu_long_double"},
+      {"cohort": "dynamic_range_edge", "seeds": [2053], "m": 31, "n": 29, "k": 37, "input_scale": 1.0, "input_pattern": "dynamic_range", "reference_mode": "cpu_long_double"}
+    ],
+    "variants": ["dynamic", "fixed"],
+    "claim_boundary": "Passing establishes this lab's arithmetic GEMM gate on the recorded stack and cohorts. It does not establish application, solver, or model quality for arbitrary matrices."
+  }
+}
