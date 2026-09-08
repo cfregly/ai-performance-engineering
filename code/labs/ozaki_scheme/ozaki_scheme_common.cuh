@@ -34,6 +34,17 @@ enum class EmulationStrategy {
     kEager,
 };
 
+enum class ReferenceMode {
+    kNativeFp64,
+    kCpuLongDouble,
+};
+
+enum class InputPattern {
+    kUniform,
+    kAlternating,
+    kDynamicRange,
+};
+
 struct Options {
     int m = 4096;
     int n = 4096;
@@ -50,6 +61,8 @@ struct Options {
     bool accuracy_measure_only = false;
     std::size_t workspace_bytes = 64ull << 20;
     EmulationStrategy emulation_strategy = EmulationStrategy::kEager;
+    ReferenceMode reference_mode = ReferenceMode::kNativeFp64;
+    InputPattern input_pattern = InputPattern::kUniform;
 };
 
 struct Metrics {
@@ -62,6 +75,11 @@ struct Metrics {
     double normalized_max_abs_error = 0.0;
     int retained_bits = -1;
     int emulation_used = 0;
+    int cuda_runtime_version = 0;
+    int cublas_version = 0;
+    int compute_capability_major = 0;
+    int compute_capability_minor = 0;
+    std::string gpu_name;
 };
 
 inline const char* variant_name(Variant variant) {
@@ -84,6 +102,28 @@ inline const char* emulation_strategy_name(EmulationStrategy strategy) {
             return "performant";
         case EmulationStrategy::kEager:
             return "eager";
+    }
+    return "unknown";
+}
+
+inline const char* reference_mode_name(ReferenceMode mode) {
+    switch (mode) {
+        case ReferenceMode::kNativeFp64:
+            return "native_fp64";
+        case ReferenceMode::kCpuLongDouble:
+            return "cpu_long_double";
+    }
+    return "unknown";
+}
+
+inline const char* input_pattern_name(InputPattern pattern) {
+    switch (pattern) {
+        case InputPattern::kUniform:
+            return "uniform";
+        case InputPattern::kAlternating:
+            return "alternating";
+        case InputPattern::kDynamicRange:
+            return "dynamic_range";
     }
     return "unknown";
 }
@@ -147,6 +187,8 @@ inline void print_usage(const char* program) {
         << "  --iters <int>                Timed matmuls averaged into TIME_MS (default 10)\n"
         << "  --seed <int>                 RNG seed for deterministic inputs (default 2026)\n"
         << "  --input-scale <float>        Uniform input scale (default 0.001)\n"
+        << "  --input-pattern <str>        uniform|alternating|dynamic_range (default uniform)\n"
+        << "  --reference-mode <str>       native_fp64|cpu_long_double (default native_fp64)\n"
         << "  --dynamic-max-bits <int>     Max retained bits for dynamic Ozaki (default 16)\n"
         << "  --dynamic-offset <int>       Dynamic mantissa bias (default -56)\n"
         << "  --fixed-bits <int>           Retained bits for fixed Ozaki (default 12)\n"
@@ -170,6 +212,31 @@ inline EmulationStrategy parse_emulation_strategy(const std::string& raw) {
     }
     throw std::runtime_error(std::string("Invalid value for --emulation-strategy: ") + raw +
         " (expected default|performant|eager)");
+}
+
+inline ReferenceMode parse_reference_mode(const std::string& raw) {
+    if (raw == "native_fp64") {
+        return ReferenceMode::kNativeFp64;
+    }
+    if (raw == "cpu_long_double") {
+        return ReferenceMode::kCpuLongDouble;
+    }
+    throw std::runtime_error(std::string("Invalid value for --reference-mode: ") + raw +
+        " (expected native_fp64|cpu_long_double)");
+}
+
+inline InputPattern parse_input_pattern(const std::string& raw) {
+    if (raw == "uniform") {
+        return InputPattern::kUniform;
+    }
+    if (raw == "alternating") {
+        return InputPattern::kAlternating;
+    }
+    if (raw == "dynamic_range") {
+        return InputPattern::kDynamicRange;
+    }
+    throw std::runtime_error(std::string("Invalid value for --input-pattern: ") + raw +
+        " (expected uniform|alternating|dynamic_range)");
 }
 
 inline Options parse_args(int argc, char** argv) {
@@ -208,6 +275,10 @@ inline Options parse_args(int argc, char** argv) {
             parse_numeric_arg(value, &options.fixed_bits, "--fixed-bits");
         } else if (arg == "--emulation-strategy") {
             options.emulation_strategy = parse_emulation_strategy(value);
+        } else if (arg == "--reference-mode") {
+            options.reference_mode = parse_reference_mode(value);
+        } else if (arg == "--input-pattern") {
+            options.input_pattern = parse_input_pattern(value);
         } else if (arg == "--input-scale") {
             parse_numeric_arg(value, &options.input_scale, "--input-scale");
         } else if (arg == "--relative-l2-limit") {
@@ -368,11 +439,39 @@ inline void launch_matmul(
         CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 }
 
-inline void fill_host_matrix(std::vector<double>* data, int seed, double scale) {
+inline void fill_host_matrix(
+    std::vector<double>* data,
+    std::size_t rows,
+    std::size_t columns,
+    int seed,
+    double scale,
+    InputPattern pattern,
+    bool right_operand) {
+    if (data->size() != rows * columns) {
+        throw std::runtime_error("Input pattern shape does not match allocated matrix");
+    }
     std::mt19937_64 rng(static_cast<std::uint64_t>(seed));
     std::uniform_real_distribution<double> dist(-scale, scale);
-    for (double& value : *data) {
-        value = dist(rng);
+    if (pattern == InputPattern::kUniform) {
+        for (double& value : *data) {
+            value = dist(rng);
+        }
+        return;
+    }
+    for (std::size_t row = 0; row < rows; ++row) {
+        for (std::size_t column = 0; column < columns; ++column) {
+            const std::size_t index = row * columns + column;
+            const bool negative = ((row + column + static_cast<std::size_t>(seed) +
+                                    (right_operand ? 1u : 0u)) & 1u) != 0;
+            double magnitude = scale;
+            if (pattern == InputPattern::kAlternating) {
+                magnitude *= 1.0 - static_cast<double>((index + static_cast<std::size_t>(seed)) % 17) / 64.0;
+            } else {
+                const int exponent = -static_cast<int>((index + static_cast<std::size_t>(seed)) % 13);
+                magnitude = std::ldexp(scale, exponent);
+            }
+            (*data)[index] = negative ? -magnitude : magnitude;
+        }
     }
 }
 
@@ -399,8 +498,10 @@ inline Metrics benchmark_variant(Variant variant, const Options& options) {
 
     std::vector<double> h_a(a_elements);
     std::vector<double> h_b(b_elements);
-    fill_host_matrix(&h_a, options.seed, options.input_scale);
-    fill_host_matrix(&h_b, options.seed + 17, options.input_scale);
+    fill_host_matrix(&h_a, options.m, options.k, options.seed, options.input_scale,
+                     options.input_pattern, false);
+    fill_host_matrix(&h_b, options.k, options.n, options.seed + 17, options.input_scale,
+                     options.input_pattern, true);
 
     double* d_a = nullptr;
     double* d_b = nullptr;
@@ -426,7 +527,7 @@ inline Metrics benchmark_variant(Variant variant, const Options& options) {
 
         state = create_handle_state(variant, options, stream, workspace);
 
-        if (variant != Variant::kNative) {
+        if (variant != Variant::kNative && options.reference_mode == ReferenceMode::kNativeFp64) {
             OZAKI_CHECK_CUDA(cudaMalloc(&d_ref, c_bytes));
             ref_state = create_handle_state(Variant::kNative, options, stream, workspace);
             launch_matmul(
@@ -457,6 +558,11 @@ inline Metrics benchmark_variant(Variant variant, const Options& options) {
         OZAKI_CHECK_CUDA(cudaEventElapsedTime(&elapsed_ms, start, stop));
 
         Metrics metrics;
+        metrics.gpu_name = props.name;
+        metrics.compute_capability_major = props.major;
+        metrics.compute_capability_minor = props.minor;
+        OZAKI_CHECK_CUDA(cudaRuntimeGetVersion(&metrics.cuda_runtime_version));
+        OZAKI_CHECK_CUBLAS(cublasGetVersion(state.handle, &metrics.cublas_version));
         metrics.time_ms = static_cast<double>(elapsed_ms) / static_cast<double>(options.iters);
         metrics.tflops = (2.0 * static_cast<double>(options.m) * options.n * options.k) /
             (metrics.time_ms * 1.0e9);
@@ -474,8 +580,14 @@ inline Metrics benchmark_variant(Variant variant, const Options& options) {
         }
 
         if (variant != Variant::kNative) {
-            std::vector<double> h_ref(c_elements);
-            OZAKI_CHECK_CUDA(cudaMemcpy(h_ref.data(), d_ref, c_bytes, cudaMemcpyDeviceToHost));
+            std::vector<double> h_ref;
+            if (options.reference_mode == ReferenceMode::kNativeFp64) {
+                h_ref.resize(c_elements);
+                OZAKI_CHECK_CUDA(cudaMemcpy(h_ref.data(), d_ref, c_bytes, cudaMemcpyDeviceToHost));
+            } else {
+                h_ref = reference_gemm_long_double(
+                    h_a.data(), h_b.data(), options.m, options.n, options.k);
+            }
             const AccuracyMetrics accuracy = measure_accuracy(h_c.data(), h_ref.data(), c_elements);
             metrics.max_abs_error = accuracy.max_abs_error;
             metrics.mean_abs_error = accuracy.mean_abs_error;
@@ -513,6 +625,15 @@ inline void print_metrics(Variant variant, const Options& options, const Metrics
     std::cout << "K: " << options.k << "\n";
     std::cout << "WARMUP: " << options.warmup << "\n";
     std::cout << "ITERS: " << options.iters << "\n";
+    std::cout << "SEED: " << options.seed << "\n";
+    std::cout << "INPUT_SCALE: " << options.input_scale << "\n";
+    std::cout << "INPUT_PATTERN: " << input_pattern_name(options.input_pattern) << "\n";
+    std::cout << "REFERENCE_MODE: " << reference_mode_name(options.reference_mode) << "\n";
+    std::cout << "GPU_NAME: " << metrics.gpu_name << "\n";
+    std::cout << "COMPUTE_CAPABILITY: " << metrics.compute_capability_major << "."
+              << metrics.compute_capability_minor << "\n";
+    std::cout << "CUDA_RUNTIME_VERSION: " << metrics.cuda_runtime_version << "\n";
+    std::cout << "CUBLAS_VERSION: " << metrics.cublas_version << "\n";
     if (variant == Variant::kDynamic) {
         std::cout << "DYNAMIC_MAX_BITS: " << options.dynamic_max_bits << "\n";
         std::cout << "DYNAMIC_OFFSET: " << options.dynamic_offset << "\n";

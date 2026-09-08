@@ -16,6 +16,13 @@ import torch
 
 from core.benchmark.verification import InputSignature, PrecisionFlags, ToleranceSpec
 from core.benchmark.verify_runner import VerifyConfig
+from core.harness.execution_audit import audit_callable_once
+from tests.distributed_protection_receipt_test_utils import (
+    assert_async_completion_receipt_controls,
+    assert_barrier_completion_receipt_controls,
+    assert_collective_algorithm_declaration_controls,
+    assert_gradient_bucket_declaration_controls,
+)
 from tests.evaluation_contract_test_utils import assert_evaluation_contract_controls
 from tests.protection_test_utils import (
     TensorWork, assert_comparison_controls, assert_compile_cache_reset,
@@ -307,12 +314,37 @@ class TestWorkloadEdgeCases:
 
 class TestLocationEdgeCases:
     def test_cpu_spillover_single_op_on_cpu(self):
-        'Requirement remains open; this retained test ID is not passing coverage.'
-        pytest.skip('Missing production protection: no per-operation CPU spillover detector is implemented; wall-time measurement alone does not identify execution placement')
+        """A real CPU tensor op is visible when the audited invocation expects CUDA."""
+        value = torch.arange(12, dtype=torch.float32).reshape(3, 4)
+        result = audit_callable_once(lambda: value.square(), expected_device="cuda")
+        assert not result.passed
+        assert result.placement.operations_seen == 1
+        violation = result.placement.violation_evidence[0]
+        assert violation.operator == "aten.pow.Tensor_Scalar"
+        assert {tensor.device for tensor in violation.tensors} == {"cpu"}
+        assert {tensor.shape for tensor in violation.tensors} == {(3, 4)}
+        assert {tensor.numel for tensor in violation.tensors} == {12}
 
     def test_cpu_spillover_data_dependent_branch(self):
-        'Requirement remains open; this retained test ID is not passing coverage.'
-        pytest.skip('Missing production protection: no per-operation CPU spillover detector is implemented; wall-time measurement alone does not identify execution placement')
+        """Placement evidence rejects both no execution and a CPU-only branch."""
+        cpu_value = torch.arange(8, dtype=torch.float32)
+
+        def execute_branch(use_cpu: bool) -> None:
+            if use_cpu:
+                torch.relu(cpu_value)
+
+        no_execution = audit_callable_once(lambda: execute_branch(False), expected_device="cuda")
+        assert not no_execution.passed
+        assert no_execution.placement.operations_seen == 0
+        assert no_execution.placement.failure_reasons == (
+            "no dispatcher-visible tensor operations were observed",
+        )
+
+        violation = audit_callable_once(lambda: execute_branch(True), expected_device="cuda")
+        assert not violation.passed
+        evidence = violation.placement.violation_evidence[0]
+        assert evidence.operator == "aten.relu.default"
+        assert any(tensor.shape == (8,) and tensor.device == "cpu" for tensor in evidence.tensors)
 
     def test_setup_precomputation_cached_result(self, runner):
         assert check_jitter(runner, 'real') == (True, None)
@@ -533,20 +565,20 @@ class TestDistributedEdgeCases:
         assert_comparison_controls(runner, expected, torch.tensor([1.0]))
 
     def test_topology_mismatch_ring_vs_tree(self):
-        'Requirement remains open; this retained test ID is not passing coverage.'
-        pytest.skip('Missing production protection: DistributedTopology does not encode ring versus tree algorithm, so it cannot enforce this claimed policy')
+        """Declared algorithm parity is enforced; runtime selection still needs profiling."""
+        assert_collective_algorithm_declaration_controls()
 
     def test_barrier_timing_straggler(self):
-        'Requirement remains open; this retained test ID is not passing coverage.'
-        pytest.skip('Missing production protection: no rank barrier timing detector is implemented')
+        """Registered receipts reject a final barrier completing after timed close."""
+        assert_barrier_completion_receipt_controls()
 
     def test_gradient_bucketing_different_sizes(self):
-        'Requirement remains open; this retained test ID is not passing coverage.'
-        pytest.skip('Missing production protection: no gradient bucket-size parity field or detector is implemented')
+        """Declared and observed receipt bucket bytes must match."""
+        assert_gradient_bucket_declaration_controls()
 
     def test_async_gradient_overlap(self):
-        'Requirement remains open; this retained test ID is not passing coverage.'
-        pytest.skip('Missing production protection: no async gradient completion timing detector is implemented')
+        """Registered async work must complete before the final barrier."""
+        assert_async_completion_receipt_controls()
 
     def test_pipeline_bubble_microbatch_count(self):
         'Declared per-rank workload comparison, not timing or detecting pipeline bubbles.'

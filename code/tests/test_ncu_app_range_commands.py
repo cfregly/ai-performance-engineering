@@ -48,7 +48,8 @@ def test_existing_lower_level_replay_policies(mode: str, honor: bool, expected: 
     config = ProfilerConfig(ncu_replay_mode=mode, honor_replay_mode_in_minimal=honor)
     command = config.get_ncu_command_for_target("out", ["program"], nvtx_includes=[RANGE_NAME])
     assert command[command.index("--replay-mode") + 1] == expected
-    assert command[command.index("--set") + 1] == "basic"
+    assert "--set" not in command
+    assert command[command.index("--metrics") + 1].split(",") == MINIMAL_METRICS
 
 
 @pytest.mark.parametrize("mode", NCU_REPLAY_MODES)

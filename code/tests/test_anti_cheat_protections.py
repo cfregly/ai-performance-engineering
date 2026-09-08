@@ -19,6 +19,11 @@ from contextlib import contextmanager
 
 import pytest
 import torch
+from tests.distributed_protection_receipt_test_utils import (
+    assert_async_completion_receipt_controls,
+    assert_barrier_completion_receipt_controls,
+    assert_gradient_bucket_declaration_controls,
+)
 from tests.evaluation_contract_test_utils import assert_evaluation_contract_controls
 
 from tests.protection_test_utils import (
@@ -1224,13 +1229,16 @@ class TestDistributedProtectionsExtended:
         assert result.error_message == "RANK SKIPPING: Missing outputs from ranks [1]"
 
     def test_barrier_timing_protection(self):
-        pytest.skip('Missing production protection: no rank-barrier timing detector')
+        """Registered receipts require final-barrier completion before timed close."""
+        assert_barrier_completion_receipt_controls()
 
     def test_gradient_bucketing_mismatch_detection(self):
-        pytest.skip('Missing production protection: no gradient bucket-size parity field or detector')
+        """Declared and observed receipt bucket bytes must match."""
+        assert_gradient_bucket_declaration_controls()
 
     def test_async_gradient_timing(self):
-        pytest.skip('Missing production protection: no asynchronous gradient completion timing detector')
+        """Registered async work must complete before the final barrier."""
+        assert_async_completion_receipt_controls()
 
     @requires_cuda
     def test_pipeline_bubble_tracking(self):

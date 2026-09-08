@@ -168,11 +168,18 @@ Profiling with Nsight Systems, Nsight Compute, and torch.profiler.
 
 **MCP profiling captures include metrics JSON:** `profile_nsys` returns `nsys_metrics`, `profile_ncu` returns `ncu_metrics`, `profile_torch` returns `torch_metrics` (and `report` alias), and `profile_hta` includes `nsys_metrics`. Use these payloads to analyze regressions and bottleneck shifts.
 
-**Targeted NCU capture (CLI + MCP):** `profile_ncu` supports kernel scoping (`kernel_filter`, optional `kernel_name_base`) plus NVTX gating (`nvtx_include`, `profile_from_start='off'`) to isolate specific kernels and avoid setup-noise captures. Captures now fail loudly when NCU profiles zero kernels or collects zero metrics, and `metric_set='minimal'` auto-resolves to `speed-of-light` or `basic` depending on Nsight Compute version. `compare_ncu` flags rank-only kernel symbol alignment as low-confidence for tuning (advisory), applies kernel-family alias matching, and returns a concrete `staged_pair_dir` for stable follow-up diffs.
+**Targeted NCU capture (CLI + MCP):** `profile_ncu` supports kernel scoping (`kernel_filter`, optional `kernel_name_base`) plus NVTX gating (`nvtx_include`, `profile_from_start='off'`) to isolate specific kernels and avoid setup-noise captures. Captures fail loudly when NCU profiles zero kernels or collects zero metrics. `metric_set='minimal'` requests exactly the repository's five metrics without an additional NVIDIA section set, keeping replay overhead bounded; choose `basic` explicitly for NVIDIA's broader basic sections. `compare_ncu` flags rank-only kernel symbol alignment as low-confidence for tuning (advisory), applies kernel-family alias matching, and returns a concrete `staged_pair_dir` for stable follow-up diffs.
 
 **Pair-health + manifests (CLI + MCP):** profile comparisons now emit `pair_health` metadata (presence/absence of baseline/optimized NSYS/NCU pairs), and comparison staging writes `pair_manifest.json` so downstream automation can consume deterministic pair context without re-discovering files.
 
 **NSYS timeout hardening (CLI + MCP + harness):** all NSYS entrypoints now route through `NsightAutomation.profile_nsys`, default to the safer `preset='light'`, support `wait_mode` (`primary`/`all`), and use a graceful timeout finalization window (`finalize_grace_seconds`) before hard termination. `profile_nsys` also supports `sanitize_python_startup=true` to prefix a safe `sitecustomize` shim for profiler subprocesses.
+
+The Python benchmark Nsys wrapper honors explicit `BenchmarkConfig.profiling_warmup`
+and `profiling_iterations`: warmups run before capture, and measured calls run
+inside the profile range. If unset, this wrapper retains one warmup and one
+measured call. Counts must be integers, with nonnegative warmups and positive
+measured iterations. Reused serving engines can therefore warm up completely
+before a steady-state mechanism capture.
 
 **Python API:**
 ```python
@@ -356,6 +363,24 @@ engine.benchmark.speed_test()                   # Quick GEMM/attention test
 - Use `--only-cuda` / `only_cuda=true` to run only CUDA binary wrappers, or `--only-python` / `only_python=true` to skip them.
 
 **Note:** `aisp benchmark ...` commands are diagnostic microbenchmarks (`hw_*` tools) and do not use the harness.
+
+**Explicit execution audit:** from `code/`, run one fresh setup and callback outside
+benchmark timing, then emit a JSON placement and destination-write receipt:
+
+```bash
+python -m core.harness.execution_audit ch05/optimized_vectorization.py \
+  --expected-device cuda:0 --destination _output_buffer
+```
+
+Repeat `--destination ATTRIBUTE` for additional preallocated contiguous floating-point
+or complex outputs. The audit poisons those exact tensors and rejects incomplete writes
+or replaced destination identities. Placement checks cover PyTorch dispatcher-visible
+operations on the current thread and require at least one operation touching the
+expected device. No-op and host-only callbacks cannot pass a CUDA execution audit.
+These checks do not inspect arbitrary extension internals,
+other processes, or general uninitialized-memory provenance. An intentional host tensor
+can be allowed for one exact operator with `--allow-host-tensor ATTRIBUTE=aten.operator.overload`.
+This standalone audit produces correctness evidence, not performance measurements.
 
 ---
 

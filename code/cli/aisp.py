@@ -696,7 +696,7 @@ if typer and profile_app is not None:
         metric_set: str = typer.Option(
             "full",
             "--metric-set",
-            help="NCU set: full, roofline, minimal, speed-of-light, basic",
+            help="NCU metrics: minimal selects exactly five; full, roofline, speed-of-light, basic select NVIDIA sections",
             show_default=True,
         ),
         replay_mode: str = typer.Option(

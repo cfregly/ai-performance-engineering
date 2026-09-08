@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import os
 import time
+from collections.abc import Callable, Sequence
 from typing import Optional
 
 import torch
@@ -135,6 +136,54 @@ def _run_rank_stage_inplace(
     return _run_stage_inplace(stages[rank], x)
 
 
+def _run_contiguous_1f1b_iterations(
+    *,
+    rank: int,
+    world_size: int,
+    micro_batches_per_iteration: int,
+    iteration_count: int,
+    get_rank0_microbatch: Callable[[int], torch.Tensor],
+    recv_forward_buffers: Sequence[torch.Tensor],
+    recv_backward_buffers: Sequence[torch.Tensor],
+    forward_step: Callable[[torch.Tensor], torch.Tensor],
+    backward_step: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
+    activation_slots: list[Optional[tuple[int, torch.Tensor]]],
+    capture: Optional[PipelineIterationCapture] = None,
+) -> None:
+    """Amortize boundaries across fixed-state iterations with no intervening update.
+
+    This is valid for this benchmark's fixed weights and repeated input batch. A
+    training loop that updates parameters between iterations must drain before
+    each update instead of using this helper across that boundary.
+    """
+
+    if iteration_count <= 0:
+        raise ValueError("iteration_count must be positive")
+    if micro_batches_per_iteration <= 0:
+        raise ValueError("micro_batches_per_iteration must be positive")
+    if micro_batches_per_iteration < world_size:
+        raise ValueError("Each logical iteration needs at least one microbatch per stage")
+    scheduled_micro_batches = micro_batches_per_iteration * iteration_count
+
+    def get_repeated_rank0_microbatch(index: int) -> torch.Tensor:
+        return get_rank0_microbatch(index % micro_batches_per_iteration)
+
+    run_1f1b_iteration(
+        rank=rank,
+        world_size=world_size,
+        num_micro_batches=scheduled_micro_batches,
+        get_rank0_microbatch=get_repeated_rank0_microbatch,
+        # Only references are repeated. The same fixed tensor slots are safe to
+        # receive into after their prior microbatch has completed its stage.
+        recv_forward_buffers=list(recv_forward_buffers) * iteration_count,
+        recv_backward_buffers=list(recv_backward_buffers) * iteration_count,
+        forward_step=forward_step,
+        backward_step=backward_step,
+        activation_slots=activation_slots,
+        capture=capture,
+    )
+
+
 def _run_worker(
     iters: int,
     warmup: int,
@@ -209,11 +258,15 @@ def _run_worker(
         warmup_steps, 1
     )
 
-    def _run_iteration(capture: Optional[PipelineIterationCapture] = None) -> None:
-        run_1f1b_iteration(
+    def _run_contiguous_iterations(
+        iteration_count: int,
+        capture: Optional[PipelineIterationCapture] = None,
+    ) -> None:
+        _run_contiguous_1f1b_iterations(
             rank=rank,
             world_size=world_size,
-            num_micro_batches=num_micro_batches,
+            micro_batches_per_iteration=num_micro_batches,
+            iteration_count=iteration_count,
             get_rank0_microbatch=_get_rank0_microbatch,
             recv_forward_buffers=recv_micro_batches,
             recv_backward_buffers=recv_grads,
@@ -226,22 +279,21 @@ def _run_worker(
     result_requested = pipeline_child_result_requested()
     captured_iteration: Optional[PipelineIterationCapture] = None
     with torch.inference_mode():
-        for _ in range(max(warmup, 0)):
-            _run_iteration()
+        warmup_iterations = max(warmup, 0)
+        if warmup_iterations:
+            _run_contiguous_iterations(warmup_iterations)
         torch.cuda.synchronize(device)
 
         with nvtx_range(PROFILE_NVTX_RANGE, enable=True):
             start = time.perf_counter()
             measured_iterations = max(iters, 1)
-            for iteration in range(max(iters, 1)):
-                capture = (
-                    PipelineIterationCapture.create(num_micro_batches)
-                    if result_requested and iteration == measured_iterations - 1
-                    else None
+            if result_requested:
+                captured_iteration = PipelineIterationCapture.create(
+                    num_micro_batches,
+                    first_microbatch_index=(measured_iterations - 1)
+                    * num_micro_batches,
                 )
-                _run_iteration(capture)
-                if capture is not None:
-                    captured_iteration = capture
+            _run_contiguous_iterations(measured_iterations, captured_iteration)
             torch.cuda.synchronize(device)
             elapsed = time.perf_counter() - start
 

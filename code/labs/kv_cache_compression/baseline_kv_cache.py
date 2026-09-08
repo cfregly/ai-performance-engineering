@@ -13,7 +13,12 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.env import apply_env_defaults
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from labs.kv_cache_compression.accuracy import (
-    assert_cache_accuracy, cache_accuracy, load_accuracy_limits, reference_cache,
+    PairwiseEnvelope,
+    assert_cache_accuracy_evidence,
+    cache_accuracy_evidence,
+    load_accuracy_contract,
+    pairwise_absolute_tolerance,
+    reference_cache,
 )
 from labs.kv_cache_compression.kv_cache_common import (
     KVCache,
@@ -94,6 +99,9 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self._accuracy_variant = "fp8"
         self._accuracy_limits = None
+        self._pairwise_envelope: Optional[PairwiseEnvelope] = None
+        self._pairwise_reference_max_abs: Optional[float] = None
+        self._pairwise_absolute_tolerance: Optional[float] = None
         self._accuracy_metrics: dict[str, float] = {}
 
     def _resolve_device(self) -> torch.device:
@@ -106,8 +114,13 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not TE_AVAILABLE or recipe is None:
             raise RuntimeError(f"SKIPPED: Transformer Engine not available: {TE_IMPORT_ERROR}")
 
-        self._accuracy_limits = (load_accuracy_limits(self._accuracy_variant)
-                                 if require_accuracy_policy else None)
+        if require_accuracy_policy:
+            self._accuracy_limits, self._pairwise_envelope = load_accuracy_contract(
+                self._accuracy_variant
+            )
+        else:
+            self._accuracy_limits = None
+            self._pairwise_envelope = None
         self.device = self._resolve_device()
         # Preserve common BF16 weights for an independent unquantized reference.
         # TE autocast still selects FP8/NVFP4 GEMMs during the benchmark.
@@ -211,8 +224,15 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must run before accuracy measurement")
         reference = reference_cache(self.model, self._prefill_groups + self._decode_groups, self.cache)
         if self._accuracy_limits is None:
-            return cache_accuracy(self.cache, reference)
-        return assert_cache_accuracy(self.cache, reference, self._accuracy_limits)
+            evidence = cache_accuracy_evidence(self.cache, reference)
+        else:
+            evidence = assert_cache_accuracy_evidence(
+                self.cache,
+                reference,
+                self._accuracy_limits,
+            )
+        self._pairwise_reference_max_abs = evidence.reference_max_abs
+        return evidence.metrics
 
     def _build_verification_output(self) -> torch.Tensor:
         if self.cache is None or not self._cache_output_ready:
@@ -227,6 +247,24 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = self._build_verification_output()
         if self._batch_size_tensor is None or self._seq_meta_tensor is None:
             raise RuntimeError("setup() must initialize verification metadata tensors")
+        if self._pairwise_reference_max_abs is None:
+            raise RuntimeError("independent full-cache reference gate must run before pair mapping")
+        if self._accuracy_limits is None:
+            raise RuntimeError("KV accuracy limits must be available before pair mapping")
+        if (
+            self._accuracy_limits.pairwise_rtol != 0
+            or self._accuracy_limits.pairwise_atol != 0
+        ):
+            raise RuntimeError("obsolete raw allclose pairwise fields must remain zero")
+        envelope = self._pairwise_envelope
+        if envelope is None:
+            if self._accuracy_limits.relative_l2 != 0 or self._accuracy_limits.normalized_max_abs != 0:
+                raise RuntimeError("pairwise reference envelope is missing")
+            envelope = PairwiseEnvelope(normalized_max_abs=0.0)
+        self._pairwise_absolute_tolerance = pairwise_absolute_tolerance(
+            envelope,
+            self._pairwise_reference_max_abs,
+        )
         self._set_verification_payload(
             inputs={
                 "batch_size": self._batch_size_tensor,
@@ -246,7 +284,13 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "bf16": self.tensor_dtype == torch.bfloat16,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
-            output_tolerance=(self._accuracy_limits.pairwise_rtol, self._accuracy_limits.pairwise_atol),
+            output_tolerance=(0.0, 0.0),
+            output_tolerances={
+                "output": (
+                    envelope.output_rtol,
+                    self._pairwise_absolute_tolerance,
+                )
+            },
         )
 
     def teardown(self) -> None:
@@ -261,6 +305,9 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._seq_meta_tensor = None
         self._verify_output_buffer = None
         self._cache_output_ready = False
+        self._pairwise_envelope = None
+        self._pairwise_reference_max_abs = None
+        self._pairwise_absolute_tolerance = None
         self._accuracy_metrics = {}
         torch.cuda.empty_cache()
 
@@ -289,11 +336,37 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         tensors = (self.cache.cache_k, self.cache.cache_v)
         storage_bytes = sum(t.numel() * t.element_size() for t in tensors)
         bf16_bytes = sum(t.numel() * 2 for t in tensors)
+        pairwise_metrics = {}
+        pairwise_envelope = getattr(self, "_pairwise_envelope", None)
+        pairwise_reference_max_abs = getattr(
+            self, "_pairwise_reference_max_abs", None
+        )
+        pairwise_absolute_tolerance = getattr(
+            self, "_pairwise_absolute_tolerance", None
+        )
+        if (
+            pairwise_envelope is not None
+            and pairwise_reference_max_abs is not None
+            and pairwise_absolute_tolerance is not None
+        ):
+            pairwise_metrics = {
+                "kv_cache.accuracy.pairwise_reference_max_abs": (
+                    pairwise_reference_max_abs
+                ),
+                "kv_cache.accuracy.pairwise_normalized_max_abs": (
+                    pairwise_envelope.normalized_max_abs
+                ),
+                "kv_cache.accuracy.pairwise_absolute_tolerance": (
+                    pairwise_absolute_tolerance
+                ),
+                "kv_cache.accuracy.pairwise_output_rtol": pairwise_envelope.output_rtol,
+            }
         return {
             "kv_cache.storage_bytes": float(storage_bytes),
             "kv_cache.storage_bits_per_element": float(8 * storage_bytes / sum(t.numel() for t in tensors)),
             "kv_cache.compression_ratio": float(bf16_bytes / storage_bytes),
             **{f"kv_cache.accuracy.{k}": v for k, v in self._accuracy_metrics.items()},
+            **pairwise_metrics,
             "kv_cache.batch_size": float(self.batch_size),
             "kv_cache.seq_len": float(total_tokens),
             "kv_cache.hidden_dim": float(self.hidden_dim),

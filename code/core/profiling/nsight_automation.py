@@ -189,16 +189,18 @@ class NsightAutomation:
             return set()
 
     def _resolve_ncu_set(self, metric_set: str) -> str:
-        """Resolve user-facing metric-set aliases to an installed NCU --set value."""
+        """Resolve section aliases, or the exact repository minimal metric list."""
         metric_set_norm = str(metric_set or "").strip().lower()
+        if metric_set_norm == "minimal":
+            # A section set adds hundreds of counters on recent NCU releases,
+            # even when --metrics is also supplied. Minimal means five metrics.
+            self._last_resolved_ncu_set = "minimal"
+            return "minimal"
         alias_candidates = {
             "full": ["full"],
             "roofline": ["roofline"],
             # Nsight versions vary: some expose speed-of-light, others expose basic.
             "speed-of-light": ["speed-of-light", "basic"],
-            # Prefer `basic` first for minimal runs; it is substantially lower
-            # overhead while still providing SpeedOfLight-derived signals.
-            "minimal": ["basic", "speed-of-light"],
             "basic": ["basic", "speed-of-light"],
         }
         if metric_set_norm not in alias_candidates:
@@ -772,6 +774,8 @@ class NsightAutomation:
             raise ValueError(f"Unsupported workload_type: {workload_type}")
         metrics = self.METRIC_SETS[workload_type]
         ncu_set = self._resolve_ncu_set(metric_set)
+        if ncu_set == 'minimal':
+            metrics = MINIMAL_METRICS
         replay_mode = validate_ncu_replay_mode(replay_mode)
         nvtx_filters = (
             list(dict.fromkeys(str(tag).strip() for tag in nvtx_includes or [] if str(tag).strip()))
@@ -779,7 +783,7 @@ class NsightAutomation:
             else self._normalize_nvtx_includes(nvtx_includes)
         )
         if replay_mode == 'app-range':
-            if ncu_set != 'basic':
+            if ncu_set not in {'minimal', 'basic'}:
                 raise ValueError("app-range requires metric_set='minimal' or 'basic'.")
             metrics = MINIMAL_METRICS
             validate_ncu_app_range_capture(
@@ -792,9 +796,9 @@ class NsightAutomation:
                 profile_from_start=profile_from_start,
             )
         ncu_cmd = ['ncu']
-        # --set adds section metrics beyond --metrics. Keep app-range at its
-        # exact validated metric list so collectives do not need extra replays.
-        if replay_mode != 'app-range':
+        # --set adds section metrics beyond --metrics. Keep minimal and
+        # app-range at the exact requested list to bound replay overhead.
+        if replay_mode != 'app-range' and ncu_set != 'minimal':
             ncu_cmd.extend(['--set', ncu_set])
         ncu_cmd.extend([
             '--target-processes', 'all',
@@ -804,7 +808,7 @@ class NsightAutomation:
         if replay_mode:
             ncu_cmd.extend(['--replay-mode', replay_mode])
         # Only add custom metrics when using the full set; other sets bring their own.
-        if metrics and (ncu_set == 'full' or replay_mode == 'app-range'):
+        if metrics and (ncu_set in {'full', 'minimal'} or replay_mode == 'app-range'):
             ncu_cmd.extend(['--metrics', ",".join(metrics)])
         if kernel_filter:
             if kernel_name_base:

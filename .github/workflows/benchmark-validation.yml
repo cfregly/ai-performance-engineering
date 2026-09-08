@@ -55,7 +55,9 @@ defaults:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Full CPU validation can approach 30 minutes on slower hosted runners.
+    # Keep the complete suite and leave time for the final audits and artifacts.
+    timeout-minutes: 35
 
     steps:
       - name: Checkout repository

@@ -2339,7 +2339,15 @@ ENTRIES["ch13"] = chapter_entry(
 
                 This chapter is one of the easiest places to fool yourself with framework overhead. That is why the benchmark contract and side-by-side baseline/optimized structure matter here more than almost anywhere else.
 
-                The prior `precisionfp8_te` number compared eager FP16 with CUDA-graph-replayed FP8, so it is retired. The pair now runs both sides eagerly to isolate Transformer Engine FP8; publish a new speed result only after a fresh B200 correctness and timing run.
+                The prior `precisionfp8_te` number compared eager FP16 with CUDA-graph-replayed FP8, so it is retired. The pair now runs both sides eagerly to isolate Transformer Engine FP8. A fresh direct-B200 sweep with Transformer Engine 2.18 measured the full training update after five setup and ten warmup updates:
+
+                | Matched batch | Eager FP16 median | Eager TE FP8 median | FP16 / FP8 | Disposition |
+                | ---: | ---: | ---: | ---: | --- |
+                | 256 | `0.4786 ms` | `0.6662 ms` | `0.7183x` | no measured speedup |
+                | 1,024 | `0.5483 ms` | `0.6644 ms` | `0.8252x` | no measured speedup |
+                | 4,096 | `1.2303 ms` | `0.9616 ms` | `1.2795x` | candidate speedup for this workload |
+
+                The 24 observations cover two seeds, two repeats, both arms, and all three batches. Every observation compared the actual prediction and all 67,121,152 post-step parameters and passed the frozen output policy. Batch 256 remains the default, so the batch-4,096 result establishes a workload-specific crossover rather than a general default-workload speedup. Whole-call cost is retained separately from the CUDA-event update timing.
 
                 The TE 2.18 pair now verifies its captured prediction and every post-step parameter with a calibrated per-output policy. Previously, all outputs inherited the global `(rtol=0.5, atol=5.0)` threshold. B200 calibration of the unchanged batch-256, hidden-4096 training step selected these stricter budgets across seed 44 and fixed holdouts 45, 1044, and 1045:
 
@@ -2350,6 +2358,26 @@ ENTRIES["ch13"] = chapter_entry(
                 | Both bias tensors | `(0.001, 0.00005)` | `0.000041008` |
 
                 The frozen map passed all holdouts and independently rejected zeroed and localized corrupted copies of all five outputs. These bounds apply to this TE 2.18 workload and establish numerical verification only; they do not establish a speedup."""
+            ),
+        ),
+        MarkdownSection(
+            "Matched Batch Controls",
+            dedent(
+                """\
+                `precisionfp8_te` keeps batch size 256 as its default workload. Omitting a target override preserves that default for both the eager FP16 baseline and eager Transformer Engine FP8 candidate:
+
+                ```bash
+                python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive --single-gpu
+                ```
+
+                To test optional larger matched controls, pass one pair-wide override through the harness. This sends the requested batch to both arms and updates their workload metadata consistently:
+
+                ```bash
+                python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive --single-gpu --target-extra-arg 'ch13:precisionfp8_te=--batch-size 1024'
+                python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive --single-gpu --target-extra-arg 'ch13:precisionfp8_te=--batch-size 4096'
+                ```
+
+                Compare results only when both arms report the same requested batch size and workload signature. Fresh B200 checks pass at 256, 1,024, and 4,096 with the frozen policy. The first two batches are slower under FP8; the observed 1.2795x result applies only to the matched batch-4,096 workload and does not change the default."""
             ),
         ),
         MarkdownSection(
@@ -2369,6 +2397,8 @@ ENTRIES["ch13"] = chapter_entry(
                 - `autograd_standard`: framework/compile overhead
                 - `precisionfp8_te`: lower-precision execution with real library support
 
+                Matched batch-4,096 Nsys captures pass for both `precisionfp8_te` arms. The FP8 trace shows shorter main GEMMs alongside quantization and scale-update work. Each trace contains one profiled update after setup and one profiler warmup, so trace durations are diagnostic; the repeated sweep above remains the timing authority.
+
                 The torchao FP8 recipe demos (`precisionfp8`, `precisionfp8_rowwise`, `precisionfp8_rowwise_gw_hp`) remain useful implementation references, but they are treated as informational examples rather than canonical speed-claim surfaces."""
             ),
         ),
@@ -2381,6 +2411,8 @@ ENTRIES["ch13"] = chapter_entry(
                 python -m cli.aisp bench list-targets --chapter ch13
                 python -m cli.aisp bench run --targets ch13 --profile minimal
                 python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive --single-gpu
+                python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive --single-gpu --target-extra-arg 'ch13:precisionfp8_te=--batch-size 1024'
+                python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive --single-gpu --target-extra-arg 'ch13:precisionfp8_te=--batch-size 4096'
                 ```"""
             ),
         ),
@@ -2406,11 +2438,13 @@ ENTRIES["ch13"] = chapter_entry(
     validation=[
         "`python -m ch13.compare --examples training_standard` shows optimized training runs producing higher goodput with identical metrics.",
         "`python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile minimal` confirms Transformer Engine calibration plus NVFP8 execution with max error tolerances enforced.",
+        "Matched B200 `precisionfp8_te` checks at batches 256, 1,024, and 4,096 pass the full-output policy; only batch 4,096 shows a measured candidate speedup (`1.2795x`) for this exact workload.",
         "`python -m ch13.memory_profiling --dump` and the optimized variant demonstrate allocator fragmentation dropping after applying the recommended knobs, with memory reduction treated as the primary benchmark outcome.",
     ],
     notes=[
         "`custom_allocator.py` contains a standalone torch allocator shim that can be re-used in other chapters when debugging fragmentation.",
         "`compiled_autograd.py` doubles as a tutorial on partial graph capture; the README here references it directly.",
+        "`precisionfp8_te` defaults to batch 256. Larger `--batch-size` values are explicit pair-wide workload overrides; the B200 crossover appeared at batch 4,096 and does not change the default.",
         "`torchao_quantization_compiled`, `kv_cache_naive_flash_blockwise`, `precisionfp8`, `precisionfp8_rowwise`, and `precisionfp8_rowwise_gw_hp` remain informational variants.",
         "`kv_cache_naive` and `memory_profiling` are memory-goal benchmarks; they are expected to reduce memory pressure even when the timed path is not faster.",
     ],
@@ -3701,7 +3735,7 @@ ENTRIES["labs/dynamic_router"] = lab_entry(
     ],
     notes=[
         "The dual-pool policies produce different batch shapes. On the pinned vLLM 0.16 stack with GPT-OSS-20B, the default backend produced different greedy tokens for identical prompts, including across repeated optimized runs. The explicit batch-invariant Triton configuration above matched all 1,734 output elements on 2×B200. Apply the same backend and environment to both arms; the option does not change the default backend for other workloads. Other models and stacks still require their own correctness check.",
-        "Harness latency includes constructing both model engines on every benchmark invocation. Treat it as startup plus request processing, rather than steady-state routing throughput. Prefix caching is disabled so every request processes its full declared prompt.",
+        "The vLLM benchmarks construct each model engine once in `setup()`, execute the harness-required five full-workload warmups, and reuse the idle engines for exactly three steady-state iterations. Every invocation clears completed-request bookkeeping, uses a fresh request-id generation, and still verifies every generated token. Custom metrics report engine startup, warmup request processing, and steady-state request processing separately. Teardown emits a `vllm_engine_lifecycle` JSON record with teardown and end-to-end wall time, so moving engine construction outside the steady-state timer cannot be presented as an end-to-end speedup. Prefix caching remains disabled so every request processes its full declared prompt.",
         "The harness prepares live CPU prompt IDs during setup. The topology-aware runner requires this input; standalone entrypoints create default prompts before calling it. Conversion to the Python token lists required by vLLM remains part of request admission, and GPU-resident prompt inputs fail explicitly before conversion.",
         "`driver.py` accepts knobs such as `--prefill-gpus`, `--decode-gpus`, and `--migration-budget` to stress different regimes.",
         "vLLM integration now takes flags (`--model`, `--prefill-gpus`, `--decode-gpus`, etc.) plus locally available tokenizer/model weights.",
@@ -3758,6 +3792,7 @@ ENTRIES["labs/cache_aware_disagg_inference"] = lab_entry(
     ],
     notes=[
         "With two GPUs, the distributed target has one prefill and one decode rank. Both placement policies select the same decode rank, so this topology cannot demonstrate a reduction in migrations between decode ranks. September 7, 2026 repeated ABBA measurements on two B200s passed every full 2,048-element output comparison but found no speedup: median 14.331648 ms baseline and 14.499441 ms optimized (0.988428x; eight observations per arm, four fresh seeds). Standard deviations were 0.470046 and 0.517233 ms. These portable, unlocked observations did not reproduce the earlier single live-input run's 1.64306x. Both-arm Nsight traces are retained. Use at least two decode ranks to investigate migration benefits; this topology cannot establish that mechanism.",
+        "Multi-GPU results now expose `cache_aware.decode_rank_count`, `cache_aware.affinity_opportunity_count`, and `cache_aware.affinity_placement_distinguishable`. A direct 1P1D run is classified as a comparison surface. The optimized 1P1D path removes redundant global barriers between blocking point-to-point transfers while preserving the final per-request drain; `cache_aware.direct_1p1d_sync_fast_path` and `cache_aware.global_barriers_avoided_per_request` identify that separate synchronization mechanism. Its performance effect remains unmeasured until a repeated B200 rerun with full-output checks and retained traces.",
         "This lab is intentionally a logical reproduction of the scheduler/caching story, not a full serving engine.",
         "Treat single-GPU `cache_aware_disagg` as a locality-comparison benchmark with a local comparison contract. The stable value on one GPU is the cache hit rate, KV transfer volume, and worker affinity improvement; the timed delta is recorded, but it is not a trustworthy headline speed gate on this host.",
         "Judge the single-GPU target by cache hit rate, KV transfer volume, and worker affinity before raw wall-clock speedup.",
@@ -4982,49 +5017,50 @@ ENTRIES["labs/kv_cache_compression"] = lab_entry(
             ),
         ),
         MarkdownSection(
-            'Accuracy gate: target calibration pending',
+            'Accuracy gate: requirements defined, target qualification pending',
             dedent(
                 """\
                 Every token, head, and channel in both K and V is checked against an independent PyTorch BF16 projection reference using the original weights and inputs. The reference bypasses Transformer Engine's GEMMs and packing. Checks reject shape mismatches, non-finite values and aliased reference storage; relative L2 and maximum error normalized by reference magnitude avoid signed-checksum cancellation. Verification then snapshots the full cache for the harness pair comparison.
 
-                No workload accuracy bound has been calibrated. An accepted benchmark run requires `AISP_KV_CACHE_ACCURACY_POLICY` pointing to a JSON file with `schema_version: 1`, separate `fp8` and `nvfp4` objects, and the fields `relative_l2`, `normalized_max_abs`, `pairwise_rtol`, `pairwise_atol`. The first three must be finite and in `[0,1)`; the last must be finite and nonnegative. Bounds are deliberately not supplied here. Configuring bounds is not evidence that they are appropriate or that this workload passes them.
+                [`ACCURACY_REQUIREMENTS.md`](ACCURACY_REQUIREMENTS.md) records the reviewed, predeclared arithmetic policy and exact B200 qualification matrix. Full-cache relative-L2 and normalized-maximum ceilings are `2^-4` for E4M3 FP8 and `2^-2` for E2M1 NVFP4. These are format-scale engineering limits, not attention, model, task, or application-quality guarantees. `accuracy.py` rejects any configured limit above the checked-in source ceiling.
 
-                Collect measurements on the actual CUDA/Transformer Engine host before reviewing a policy:
-
-                ```bash
-                python -m labs.kv_cache_compression.calibrate_accuracy --variant fp8 --seed 42 --output /tmp/kv-fp8-seed42.json
-                python -m labs.kv_cache_compression.calibrate_accuracy --variant nvfp4 --seed 42 --output /tmp/kv-nvfp4-seed42.json
-                ```
-
-                Repeat with other fixed seeds and preserve the hardware, software and workload metadata. These commands collect error metrics only; they do not accept output or claim a speedup. After independent accuracy review, run:
+                The policy requires nominal, unseen holdout, alternating-sign, and sparse-outlier receipts for both variants. Collect each on the actual CUDA/Transformer Engine host without accepting a benchmark result:
 
                 ```bash
-                AISP_KV_CACHE_ACCURACY_POLICY=/absolute/path/reviewed-policy.json python -m cli.aisp bench run --targets labs/kv_cache_compression:kv_cache --profile minimal
+                python -m labs.kv_cache_compression.calibrate_accuracy --variant fp8 --cohort nominal --seed 2026 --output /tmp/kv-fp8-nominal-2026.json
+                python -m labs.kv_cache_compression.calibrate_accuracy --variant nvfp4 --cohort nominal --seed 2026 --output /tmp/kv-nvfp4-nominal-2026.json
                 ```
 
-                The historical 6066.040/5897.083 ms measurements used the old permissive verifier and are not evidence for the revised accuracy contract or cache compression. Fresh GPU accuracy, memory and performance measurements remain pending.
+                `qualify_accuracy.py` requires the complete matrix and retains every failure reason. These commands collect error metrics only; they do not accept output or claim a speedup. After the matrix passes, select the same policy for the ordinary pair:
+
+                ```bash
+                AISP_KV_CACHE_ACCURACY_POLICY="$PWD/labs/kv_cache_compression/accuracy_policy.json" python -m cli.aisp bench run --targets labs/kv_cache_compression:kv_cache --profile minimal
+                ```
+
+                Historical calibration and timing receipts remain diagnostics; they were not used to widen these ceilings and do not establish qualification or cache compression. Fresh B200 accuracy and performance measurements remain pending.
                 """
             ),
         ),
     ],
     goals=[
         'Compare FP8 and NVFP4 projection GEMMs with the same BF16 KV cache storage.',
-        'Measure full-cache numerical error before reviewing any accuracy policy.',
+        'Qualify predeclared format-scale arithmetic ceilings across nominal, holdout, and edge cohorts.',
         'Keep allocated storage bytes separate from compute precision and latency.',
     ],
     contents=[
         ('`baseline_kv_cache.py`, `optimized_kv_cache_nvfp4.py`', 'FP8/NVFP4 compute benchmark pair with BF16 cache storage.'),
         ('`kv_cache_common.py`', 'Shared attention workload and cache allocation.'),
-        ('`accuracy.py`, `calibrate_accuracy.py`', 'Independent full-cache reference, explicit policy, and measurement-only driver.'),
+        ('`accuracy.py`, `accuracy_policy.json`, `calibrate_accuracy.py`, `qualify_accuracy.py`', 'Independent full-cache reference, source-bounded policy, measurement-only driver, and retained-receipt qualifier.'),
+        ('`ACCURACY_REQUIREMENTS.md`', 'Threshold rationale, claim boundary, and exact serial B200 qualification plan.'),
     ],
     run=RunSection(
-        commands=['python -m labs.kv_cache_compression.calibrate_accuracy --variant fp8 --seed 42 --output /tmp/kv-fp8-seed42.json', 'python -m labs.kv_cache_compression.calibrate_accuracy --variant nvfp4 --seed 42 --output /tmp/kv-nvfp4-seed42.json'],
-        notes=['These collect error metrics without accepting an accuracy threshold. Accepted benchmark runs require the separately reviewed policy described above.'],
+        commands=['python -m labs.kv_cache_compression.calibrate_accuracy --variant fp8 --cohort nominal --seed 2026 --output /tmp/kv-fp8-nominal-2026.json', 'python -m labs.kv_cache_compression.calibrate_accuracy --variant nvfp4 --cohort nominal --seed 2026 --output /tmp/kv-nvfp4-nominal-2026.json'],
+        notes=['These collect measurement-only errors. Run the complete matrix in `ACCURACY_REQUIREMENTS.md` and pass `qualify_accuracy.py` before selecting the checked-in policy for an accepted benchmark.'],
     ),
     run_heading='Collecting Accuracy Measurements',
     run_intro='Run on the actual CUDA/Transformer Engine host, preserving target and workload metadata.',
     validation=[
-        'Require an independently reviewed accuracy policy and full-output comparisons before accepting timing.',
+        'Require the checked-in source-bounded policy, complete nominal/holdout/edge receipt matrix, and full-output comparisons before accepting timing.',
         'Reject zeros, corruption, non-finite values, aliasing, and shape mismatches using the independent reference.',
         'Verify allocated cache storage bytes and the BF16-relative compression ratio of 1.0.',
     ],

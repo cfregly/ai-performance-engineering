@@ -9,8 +9,10 @@ import torch.nn as nn
 from torch.optim import Optimizer
 
 from ch13.te_runtime_common import (
+    TE_PRECISION_DEFAULT_BATCH_SIZE,
     ensure_te_runtime_initialized,
     get_te_precision_output_tolerances,
+    parse_te_precision_batch_size,
 )
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
@@ -83,8 +85,9 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimizer: Optional[Optimizer] = None
         self.criterion: Optional[nn.Module] = None
         self.fp8_recipe: Optional[object] = None
-        self.batch_size = 256
+        self.batch_size = TE_PRECISION_DEFAULT_BATCH_SIZE
         self.hidden_dim = 4096
+        self._target_override_error: str | None = None
         self.compute_dtype = torch.float16
         self.input_pool: List[torch.Tensor] = []
         self.target_pool: List[torch.Tensor] = []
@@ -105,7 +108,33 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
             tokens_per_iteration=float(tokens),
         )
 
+    def _set_batch_size(self, batch_size: int) -> None:
+        self.batch_size = batch_size
+        tokens = self.batch_size * self.hidden_dim
+        self._workload = WorkloadMetadata(
+            requests_per_iteration=1.0,
+            tokens_per_iteration=float(tokens),
+        )
+        self.register_workload_metadata(
+            requests_per_iteration=1.0,
+            tokens_per_iteration=float(tokens),
+        )
+
+    def apply_target_overrides(self, argv: list[str]) -> None:
+        """Apply ``aisp bench --target-extra-arg`` batch configuration."""
+        try:
+            batch_size = parse_te_precision_batch_size(argv, default=self.batch_size)
+        except ValueError as exc:
+            # The harness logs and suppresses override-hook exceptions. Retain
+            # the error so setup still rejects an invalid requested workload.
+            self._target_override_error = str(exc)
+            raise
+        self._target_override_error = None
+        self._set_batch_size(batch_size)
+
     def setup(self) -> None:
+        if self._target_override_error is not None:
+            raise ValueError(f"Invalid target override: {self._target_override_error}")
         _, _, te_recipe_module = _load_transformer_engine()
         # Transformer Engine 2.x defaults to HYBRID format (E4M3 forward,
         # E5M2 backward); keep a long amax history and the standard max policy.

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+
+import pytest
+
 from labs.ozaki_scheme.lab_utils import (
     format_result_row,
     parse_float_csv,
@@ -7,6 +11,45 @@ from labs.ozaki_scheme.lab_utils import (
     parse_metrics,
     summarize_reproducibility,
 )
+
+
+def test_ozaki_reference_exposes_declared_secondary_pair_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    from labs.ozaki_scheme.accuracy_policy import (
+        DEFAULT_POLICY_PATH,
+        configured_accuracy,
+    )
+    from labs.ozaki_scheme.baseline_ozaki_scheme import BaselineOzakiSchemeBenchmark
+    from labs.ozaki_scheme.optimized_ozaki_scheme_dynamic import (
+        OptimizedOzakiSchemeDynamicBenchmark,
+    )
+    from labs.ozaki_scheme.optimized_ozaki_scheme_fixed import (
+        OptimizedOzakiSchemeFixedBenchmark,
+    )
+
+    monkeypatch.setenv("AISP_OZAKI_ACCURACY_POLICY", str(DEFAULT_POLICY_PATH))
+    policy = json.loads(DEFAULT_POLICY_PATH.read_text())
+    reference = BaselineOzakiSchemeBenchmark()
+    expected = (0.0, max(item["checksum_atol"] for item in policy["variants"].values()))
+    assert reference.get_output_tolerance() == expected
+    assert expected[1] > 0.0
+    for variant, benchmark_type in (
+        ("dynamic", OptimizedOzakiSchemeDynamicBenchmark),
+        ("fixed", OptimizedOzakiSchemeFixedBenchmark),
+    ):
+        candidate = benchmark_type()
+        native_gate_args, tolerance = configured_accuracy(variant)
+        assert candidate.get_output_tolerance() == tolerance
+        assert tolerance[1] <= reference.get_output_tolerance()[1]
+        for index in range(0, len(native_gate_args), 2):
+            flag, value = native_gate_args[index:index + 2]
+            assert candidate._run_args[candidate._run_args.index(flag) + 1] == value
+
+
+def test_ozaki_reference_stays_exact_without_an_accuracy_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+    from labs.ozaki_scheme.baseline_ozaki_scheme import BaselineOzakiSchemeBenchmark
+
+    monkeypatch.delenv("AISP_OZAKI_ACCURACY_POLICY", raising=False)
+    assert BaselineOzakiSchemeBenchmark().get_output_tolerance() == (0.0, 0.0)
 
 
 def test_ozaki_lab_parse_metrics_captures_strategy_and_checksum() -> None:

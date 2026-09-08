@@ -1,0 +1,49 @@
+{
+  "schema_version": 2,
+  "policy_id": "kv-cache-projection-format-ceilings-v1",
+  "reference": {
+    "id": "pytorch-unquantized-bf16-full-cache-v1",
+    "description": "Original BF16 inputs and weights through PyTorch layer_norm and linear, bypassing Transformer Engine quantization and packing; every stored K/V element is compared."
+  },
+  "workload": {
+    "batch_size": 8,
+    "hidden_dim": 16384,
+    "num_heads": 64,
+    "prefill_seq": 4096,
+    "decode_seq": 128,
+    "decode_steps": 128,
+    "storage_dtype": "bfloat16"
+  },
+  "variants": {
+    "fp8": {
+      "operand_format": "E4M3 forward operands with delayed per-tensor scaling",
+      "relative_l2": 0.0625,
+      "normalized_max_abs": 0.0625,
+      "rationale": "The independent full-cache aggregate and global-maximum ceilings are one E4M3 half-ULP at a normal binade (2^-4)."
+    },
+    "nvfp4": {
+      "operand_format": "E2M1 values with per-16-element E4M3 block scale and FP32 tensor scale",
+      "relative_l2": 0.25,
+      "normalized_max_abs": 0.25,
+      "rationale": "The independent full-cache aggregate and global-maximum ceilings are one E2M1 half-ULP at a normal binade (2^-2); finite and overflow checks remain mandatory."
+    }
+  },
+  "pairwise_envelope": {
+    "method": "shared-reference-max-triangle-envelope-v1",
+    "reference_id": "pytorch-unquantized-bf16-full-cache-v1",
+    "variants": ["fp8", "nvfp4"],
+    "coefficient": "sum_variant_normalized_max_abs",
+    "output_rtol": 0.0,
+    "description": "After both independent full-cache gates pass, compare the raw FP8 and NVFP4 caches with atol=max_abs(shared BF16 reference)*(0.0625+0.25)."
+  },
+  "qualification": {
+    "required_receipts": [
+      {"cohort": "nominal", "seeds": [2026]},
+      {"cohort": "holdout", "seeds": [2027, 2029]},
+      {"cohort": "alternating", "seeds": [2039]},
+      {"cohort": "sparse_outlier", "seeds": [2053]}
+    ],
+    "variants": ["fp8", "nvfp4"],
+    "claim_boundary": "Passing establishes this lab's arithmetic full-cache gate on the recorded stack. It does not establish attention, model, task, or application quality."
+  }
+}

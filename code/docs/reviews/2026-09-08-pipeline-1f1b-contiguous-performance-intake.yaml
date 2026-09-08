@@ -1,0 +1,127 @@
+objective:
+  primary_kpi: rank0_time_per_iter_ms
+  secondary_kpis: [p2p_kernel_instances, exact_full_output]
+
+benchmark:
+  layer: component
+  grade: publication
+  variable_under_test: scheduler_path
+
+workload:
+  type: inference
+  model: "toy BF16 pipeline: 8 forward and 8 backward bias-free Linear+ReLU layers"
+  prompt_or_seq_len:
+    p50: 2048
+    p95: 2048
+    max: 2048
+  batch_shape:
+    p50: [32, 2048, 4096]
+    p95: [32, 2048, 4096]
+    max: [32, 2048, 4096]
+  constraints:
+    - 2 pipeline stages on 2 NVIDIA B200 GPUs
+    - 8 microbatches and 3 measured iterations after 5 warmup iterations
+    - preserve every forward step, backward step, and P2P payload transfer
+    - preserve the full [32, 2048, 4096] output from each rank
+    - require exact full-output equality for candidate qualification
+    - fixed weights and fixed seeded inputs with no optimizer update between logical iterations
+
+slos:
+  latency_ms:
+    p50: null
+    p95: null
+    p99: null
+  availability: null
+  cost_budget: "none; bounded reuse of the existing 2-B200 validation host"
+
+environment:
+  hardware:
+    gpu: ["NVIDIA B200", 2, "unknown in retained receipt"]
+    cpu: "not recorded in retained receipt"
+    ram_gb: null
+    storage: "not material to timed worker interval"
+    interconnect: ["GPU P2P; exact NVLink/NVSwitch topology not recorded"]
+    topology: "two visible GPUs, CUDA_VISIBLE_DEVICES=0,1"
+  software:
+    os: "linux"
+    kernel: "not recorded"
+    driver: "580.173.02"
+    cuda: "13.0"
+    pytorch: "2.9.1+cu130"
+    triton: "3.5.1"
+    frameworks: []
+    nccl: "2.27.7"
+    container_orchestrator: "not recorded"
+  data_pipeline: ["fixed seeded device input reused for each measured iteration"]
+
+current_baseline:
+  time_to_train_hours: null
+  mfu_pct: null
+  scaling_efficiency_pct: null
+  tokens_per_second: null
+  ttft_ms: null
+  p50_ms: 15.9415460075
+  p99_ms: null
+  jitter_cv_pct: null
+  gpu_util_percent: null
+  mem_bw_percent: null
+  nic_gbps: null
+  goodput_percent: null
+  cost_per_token_usd: null
+  cost_per_request_usd: null
+  notes:
+    - "Retained four-block ABBA median: baseline 15.9415460075 ms, optimized 15.7822739955 ms, 1.0100918291x. This was near parity and predates this candidate."
+    - "The retained ABBA receipt reports exact full-output equality, but its declared tolerance was [0.1, 1.0]; the new candidate still requires a fresh exact comparison."
+
+hot_path_model:
+  path: "ch04.optimized_pipeline_parallel_1f1b:_run_worker -> _run_contiguous_1f1b_iterations -> run_1f1b_iteration"
+  phase: steady_state
+  invocation_frequency: per_rank
+  invocations_per_primary_unit: 1
+  estimated_costs:
+    bytes_read: null
+    bytes_written: null
+    host_device_bytes: 0
+    allocations_or_materializations: "fixed 8 forward/8 backward receive tensor slots per applicable rank; repeated Python references only"
+    kernel_launches: "retained measured range: 768 compute + 54 P2P kernels across both ranks"
+    synchronizations_or_locks: "one schedule fill and drain plus blocking waits required by each 1F1B dependency"
+    api_process_or_rpc_crossings: "two torchrun ranks"
+    storage_or_network_operations: "48 logical 64 MiB tensor transfers across the link for 3 measured iterations"
+  operation_cost_source: "retained Wave72 Nsys cuda_gpu_kern_sum.csv and nvtx_gpu_proj_sum.csv"
+  expected_dominant_cost: "GEMM: 157.749088 ms/1024 kernels; P2P: 54.699815 ms/144 kernels; ReLU: 22.735644 ms/1024 kernels over setup, warmup, and measured work"
+  best_case_primary_kpi_improvement_pct: null
+
+evidence:
+  baseline_artifact: "<retained-artifacts>/ai-perf-remaining-20260906/wave72/wave72-validation-20260908T055519Z/pipeline-abba-results/receipt.json"
+  profile_artifacts:
+    - "<retained-artifacts>/ai-perf-remaining-20260906/wave72/wave72-validation-20260908T055519Z/pipeline-nsys-baseline-results/exports-v2"
+    - "<retained-artifacts>/ai-perf-remaining-20260906/wave72/wave72-validation-20260908T055519Z/pipeline-nsys-optimized-results/exports-v2"
+  allocation_or_memory_profile: "none"
+  hardware_counter_artifacts: []
+  static_review_findings:
+    - "The retained measured optimized range has 822 GPU operations: 384 GEMMs, 384 ReLUs, and 54 P2P kernels across two ranks."
+    - "Three separate 8-microbatch schedules require 54 P2P kernels; one continuous 24-microbatch schedule is expected to require 50 while preserving 48 logical tensor transfers."
+    - "Across five warmup plus three measured iterations, the trace has 144 P2P kernels; batching warmup and measured phases separately predicts 132."
+
+candidate_optimizations:
+  - type: api_shape
+    change: "run repeated warmup and measured iterations as two continuous 1F1B schedules"
+    mechanism: "amortize repeated fill/drain boundaries without changing compute or P2P payload work"
+    expected_measured_p2p_kernel_instances: 50
+    expected_total_trace_p2p_kernel_instances: 132
+    status: "implemented; CPU/Gloo correctness verified; B200 timing and profile unmeasured"
+
+known_issues_or_hypotheses:
+  - "The predicted four-kernel measured reduction is only 0.49% of retained measured GPU operations, so a wall-time gain may be below run variance."
+  - "Boundary P2P kernels have a long tail in the retained trace, but a fresh candidate trace is required to determine whether continuity reduces that tail."
+  - "Candidate profile capture is absent; no performance gain is claimed."
+  - "Continuity is valid for this fixed-state toy worker only; a training loop must drain before an optimizer update and cannot reuse this helper across update boundaries."
+
+risk_guardrails:
+  correctness_tests:
+    - "tests/test_pipeline_1f1b_contiguous_repeats.py"
+    - "tests/test_pipeline_1f1b_schedule.py"
+    - "tests/test_pipeline_stage_execution.py"
+    - "fresh B200 ABBA with exact full-output comparison"
+  change_windows:
+    - "run only through the root-owned serial B200 queue"

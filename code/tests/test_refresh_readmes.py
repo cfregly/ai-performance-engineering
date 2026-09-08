@@ -210,9 +210,12 @@ def test_ch10_and_priority_labs_render_custom_evidence_sections() -> None:
         _assert_evidence_sections(markdown)
 
     assert "## Storage and workload" in kv_cache_compression_markdown
-    assert "## Accuracy gate: target calibration pending" in kv_cache_compression_markdown
+    assert "## Accuracy gate: requirements defined, target qualification pending" in kv_cache_compression_markdown
     assert "neither path compresses the KV cache" in kv_cache_compression_markdown
     assert "AISP_KV_CACHE_ACCURACY_POLICY" in kv_cache_compression_markdown
+    assert "2^-4" in kv_cache_compression_markdown
+    assert "2^-2" in kv_cache_compression_markdown
+    assert "ACCURACY_REQUIREMENTS.md" in kv_cache_compression_markdown
 
 
 def test_all_generator_readmes_match_generated_content() -> None:

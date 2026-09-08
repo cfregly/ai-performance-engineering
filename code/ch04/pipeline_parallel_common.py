@@ -58,20 +58,29 @@ MicrobatchGetter = Callable[[int], torch.Tensor]
 
 @dataclass
 class PipelineIterationCapture:
-    """References to one measured iteration, indexed by original microbatch."""
+    """References to a contiguous microbatch window from a measured schedule."""
 
     forward_inputs: list[torch.Tensor | None]
     backward_inputs: list[torch.Tensor | None]
     backward_outputs: list[torch.Tensor | None]
+    first_microbatch_index: int = 0
 
     @classmethod
-    def create(cls, num_micro_batches: int) -> PipelineIterationCapture:
+    def create(
+        cls,
+        num_micro_batches: int,
+        *,
+        first_microbatch_index: int = 0,
+    ) -> PipelineIterationCapture:
         if num_micro_batches <= 0:
             raise ValueError("num_micro_batches must be positive")
+        if first_microbatch_index < 0:
+            raise ValueError("first_microbatch_index must be non-negative")
         return cls(
             forward_inputs=[None] * num_micro_batches,
             backward_inputs=[None] * num_micro_batches,
             backward_outputs=[None] * num_micro_batches,
+            first_microbatch_index=first_microbatch_index,
         )
 
     def concatenate(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -114,7 +123,10 @@ def _record(
     tensor: torch.Tensor,
 ) -> None:
     if capture is not None:
-        getattr(capture, collection)[microbatch_index] = tensor
+        capture_index = microbatch_index - capture.first_microbatch_index
+        values = getattr(capture, collection)
+        if 0 <= capture_index < len(values):
+            values[capture_index] = tensor
 
 
 def _exchange_neighbor(
