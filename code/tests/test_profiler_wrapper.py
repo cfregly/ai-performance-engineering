@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from core.harness.benchmark_harness import BenchmarkConfig
 from core.profiling.profiler_wrapper import (
     _resolve_wrapper_loop_budget,
@@ -29,6 +31,31 @@ def test_wrapper_loop_budget_honors_profiling_specific_overrides() -> None:
         profiling_iterations=1,
     )
     assert _resolve_wrapper_loop_budget(config) == (0, 1)
+
+
+def test_nsys_loop_budget_preserves_one_plus_one_when_unset() -> None:
+    config = BenchmarkConfig(iterations=20, warmup=5)
+    assert _resolve_wrapper_loop_budget(
+        config, default_warmup=1, default_iterations=1
+    ) == (1, 1)
+
+
+@pytest.mark.parametrize(
+    "field,value,error",
+    [
+        ("profiling_warmup", -1, "non-negative integer"),
+        ("profiling_warmup", True, "non-negative integer"),
+        ("profiling_iterations", 0, "positive integer"),
+        ("profiling_iterations", 1.5, "positive integer"),
+    ],
+)
+def test_wrapper_loop_budget_rejects_invalid_explicit_counts(
+    field: str, value: object, error: str
+) -> None:
+    config = BenchmarkConfig()
+    setattr(config, field, value)
+    with pytest.raises(ValueError, match=error):
+        _resolve_wrapper_loop_budget(config)
 
 
 def test_temporary_python_profile_wrapper_cleans_up_file() -> None:
@@ -64,9 +91,30 @@ def test_render_nsys_wrapper_contains_expected_config() -> None:
     assert "_apply_overrides(list(_target_override_argv))" in wrapper
     assert "target_extra_args={_target_label: list(_target_override_argv)}" in wrapper
     assert 'with nvtx_range("compute_kernel:profile", enable=True):' in wrapper
+    assert "for _ in range(1):" in wrapper
     assert 'if getattr(benchmark, "profile_require_teardown", False):' in wrapper
     assert "_os._exit(0)" in wrapper
     assert "raise SystemExit(0)" not in wrapper
+
+
+def test_render_nsys_wrapper_honors_explicit_loop_budget() -> None:
+    wrapper = render_nsys_python_profile_wrapper(
+        benchmark_path=Path("/tmp/example.py"),
+        nvtx_includes=["compute_kernel:profile/"],
+        target_label=None,
+        target_override_argv=None,
+        validity_profile="portable",
+        lock_gpu_clocks_flag=False,
+        gpu_sm_clock_mhz=None,
+        gpu_mem_clock_mhz=None,
+        profiling_warmup=5,
+        profiling_iterations=3,
+    )
+
+    assert "profiling_warmup=5" in wrapper
+    assert "profiling_iterations=3" in wrapper
+    assert "for _ in range(5):" in wrapper
+    assert "for _ in range(3):" in wrapper
 
 
 def test_render_ncu_wrapper_contains_expected_config() -> None:

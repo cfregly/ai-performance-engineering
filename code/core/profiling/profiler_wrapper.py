@@ -5,8 +5,8 @@ Generates wrapper scripts for nsys/ncu profiling that import and run benchmarks.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator, Optional
 
@@ -17,17 +17,46 @@ else:
     BenchmarkConfig = Any  # type: ignore[assignment,misc]
 
 
-def _resolve_wrapper_loop_budget(config: BenchmarkConfig) -> tuple[int, int]:
+def _resolve_wrapper_loop_budget(
+    config: BenchmarkConfig,
+    *,
+    default_warmup: Optional[int] = None,
+    default_iterations: Optional[int] = None,
+) -> tuple[int, int]:
     """Resolve warmup and profiled iteration counts for wrapper-based captures."""
 
     profiling_warmup = getattr(config, "profiling_warmup", None)
     if profiling_warmup is None:
-        profiling_warmup = getattr(config, "warmup", 0)
+        profiling_warmup = (
+            getattr(config, "warmup", 0)
+            if default_warmup is None
+            else default_warmup
+        )
     profiling_iterations = getattr(config, "profiling_iterations", None)
     if profiling_iterations is None:
-        profiling_iterations = min(getattr(config, "iterations", 1), 10)
+        profiling_iterations = (
+            min(getattr(config, "iterations", 1), 10)
+            if default_iterations is None
+            else default_iterations
+        )
 
-    return max(int(profiling_warmup), 0), max(int(profiling_iterations), 1)
+    return _validate_wrapper_loop_budget(profiling_warmup, profiling_iterations)
+
+
+def _validate_wrapper_loop_budget(
+    profiling_warmup: object, profiling_iterations: object
+) -> tuple[int, int]:
+    if isinstance(profiling_warmup, bool) or not isinstance(profiling_warmup, int):
+        raise ValueError("profiling_warmup must be a non-negative integer")
+    if profiling_warmup < 0:
+        raise ValueError("profiling_warmup must be a non-negative integer")
+    if isinstance(profiling_iterations, bool) or not isinstance(
+        profiling_iterations, int
+    ):
+        raise ValueError("profiling_iterations must be a positive integer")
+    if profiling_iterations < 1:
+        raise ValueError("profiling_iterations must be a positive integer")
+    return profiling_warmup, profiling_iterations
 
 
 @contextmanager
@@ -59,8 +88,13 @@ def render_nsys_python_profile_wrapper(
     lock_gpu_clocks_flag: bool,
     gpu_sm_clock_mhz: Optional[int],
     gpu_mem_clock_mhz: Optional[int],
+    profiling_warmup: int = 1,
+    profiling_iterations: int = 1,
 ) -> str:
     """Render the nsys-specific Python benchmark wrapper."""
+    profiling_warmup, profiling_iterations = _validate_wrapper_loop_budget(
+        profiling_warmup, profiling_iterations
+    )
 
     return f"""
 from pathlib import Path
@@ -99,6 +133,8 @@ def _run_profile() -> None:
         lock_gpu_clocks={lock_gpu_clocks_flag!r},
         gpu_sm_clock_mhz={gpu_sm_clock_mhz!r},
         gpu_mem_clock_mhz={gpu_mem_clock_mhz!r},
+        profiling_warmup={profiling_warmup!r},
+        profiling_iterations={profiling_iterations!r},
     )
     benchmark._config = ReadOnlyBenchmarkConfigView.from_config(_profiling_config)
     lock_ctx = (
@@ -118,10 +154,11 @@ def _run_profile() -> None:
             print(f"[profile_warning] Failed to ramp GPU clocks before nsys capture: {{exc}}", file=sys.stderr)
         benchmark.setup()
 
-        # Warmup (keep short; profiling is not a timing run)
-        benchmark.benchmark_fn()
+        # Warmup stays outside the measured NVTX range.
+        for _ in range({profiling_warmup}):
+            benchmark.benchmark_fn()
 
-        # Profile exactly one execution. Nsight Systems defers CUDA activity
+        # Profile the configured steady-state executions. Nsight Systems defers CUDA activity
         # buffer flushing until cudaProfilerStop(); calling it explicitly is
         # required before the successful hard exit below.
         import torch
@@ -142,7 +179,8 @@ def _run_profile() -> None:
                 _profiler_started = True
 
             with nvtx_range("compute_kernel:profile", enable=True):
-                benchmark.benchmark_fn()
+                for _ in range({profiling_iterations}):
+                    benchmark.benchmark_fn()
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
         except BaseException as exc:

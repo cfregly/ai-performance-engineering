@@ -96,6 +96,7 @@ from core.profiling.profiler_config import (
 )
 from core.profiling.metrics_extractor import inspect_ncu_app_range_report
 from core.profiling.profiler_wrapper import (
+    _resolve_wrapper_loop_budget,
     render_ncu_python_profile_wrapper,
     render_nsys_python_profile_wrapper,
     render_torch_python_profile_wrapper,
@@ -3203,6 +3204,14 @@ def profile_python_benchmark(
     gpu_mem_clock_mhz = validity_view.gpu_mem_clock_mhz if validity_view else None
     target_label = getattr(bench_config, "target_label", None) if bench_config else None
     target_override_argv = _resolve_target_override_argv(bench_config)
+    if bench_config is not None:
+        profiling_warmup, profiling_iterations = _resolve_wrapper_loop_budget(
+            bench_config,
+            default_warmup=1,
+            default_iterations=1,
+        )
+    else:
+        profiling_warmup, profiling_iterations = (1, 1)
     # chapter_dir points to e.g. <repo>/ch10 or <repo>/labs/<lab>; use global
     # repository root for package imports like `labs.*` and `core.*`.
     repo_root = Path(__file__).resolve().parents[2]
@@ -3254,6 +3263,8 @@ def profile_python_benchmark(
                     lock_gpu_clocks_flag=lock_gpu_clocks_flag,
                     gpu_sm_clock_mhz=gpu_sm_clock_mhz,
                     gpu_mem_clock_mhz=gpu_mem_clock_mhz,
+                    profiling_warmup=profiling_warmup,
+                    profiling_iterations=profiling_iterations,
                 )
                 _wrapper_path, target_command, env, use_torchrun = stack.enter_context(
                     _temporary_python_profile_launch(
