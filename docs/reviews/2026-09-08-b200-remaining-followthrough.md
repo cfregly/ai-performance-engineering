@@ -26,7 +26,7 @@ The retained targeted measurements illustrate the remaining speed gaps:
 | Dynamic serving routing | 0.996x | Parity; below the speed goal |
 | Fair dedicated versus shared serving pools | 0.815x | Lower total throughput; short-request TTFT improves |
 | KV-cache NVFP4 compute, cached weights | 1.106x | All eight cached comparisons across four A/B/B/A blocks exceed 1.05x; full profiled pair also passes |
-| Ozaki dynamic / fixed versus native FP64 | Earlier ratios invalid | Shared timing parser dropped scientific-notation exponents; corrected public execution pending |
+| Ozaki dynamic / fixed versus native FP64 | 5.789x / 7.715x | Corrected public timings and correctness pass; NCU capture remains incomplete |
 
 These ratios retain the source, workload, timing, and qualification limits of
 their individual receipts; they are not a new uniform benchmark run. The
@@ -474,10 +474,19 @@ Native FP64 timings had exponent zero and escaped this tenfold error. A fresh
 public CLI reproduction reports native 5.132640 ms, dynamic 8.864288 ms, and
 fixed 6.634400 ms, reproducing the false no-speedup classification. The patch
 parses complete scientific-notation tokens in every supported time unit and
-rejects malformed/non-finite tokens. All **35 focused timing tests pass**;
-corrected B200 CLI execution and profiling are the next acceptance checks.
+rejects malformed/non-finite default tokens. All **35 focused timing tests pass**,
+and the shared parser agrees with all 80 retained CUDA-event timing logs.
+Corrected source `d949f215aeacd086930f88594e1d2113fc36cea1` now reports native
+**5.125280 ms**, dynamic **0.885309 ms (5.789257x)**, and fixed
+**0.664301 ms (7.715300x)** through the actual public CLI on B200. All correctness
+and runtime gates pass. The overall result remains **`failed_profiler`**:
+Nsight Systems and the host-side PyTorch captures complete, but NCU captures no
+kernels because its selected NVTX range belongs to the Python parent while the
+CUDA operations run in compiled child processes. A parent PyTorch trace also
+does not establish visibility into those child CUDA kernels. The batch drains
+naturally; fixing explicit child-process NCU range selection remains open.
 
-The direct CUDA-event screen at 64 MiB measures dynamic/native and fixed/native
+The direct CUDA-event screen at 64 MiB measures native-over-dynamic and native-over-fixed
 speedup geometric means of **5.797175x / 7.738416x**, with all numerical limits
 passing. These are timing-screen results, not a benefit from the sentinel patch
 or a substitute for corrected public harness/profiler validation. All 85 files

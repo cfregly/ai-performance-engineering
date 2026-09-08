@@ -70,8 +70,17 @@ AISP_OZAKI_ACCURACY_POLICY="$PWD/labs/ozaki_scheme/accuracy_policy.json" \
 
 This command is acceptable only after the required measurement-only matrix qualifies.
 Those runs still exit **2** with `ACCURACY_STATUS: MEASUREMENT_ONLY_NOT_ACCEPTED` and
-remain retained evidence if a cohort fails. Fresh B200 qualification and repeated
-performance acceptance remain open gates.
+remain retained evidence if a cohort fails. The [September 8 B200 report](../../../docs/reviews/2026-09-08-b200-remaining-followthrough.md#further-optimization-work)
+records all ten arithmetic cases passing on CUDA 13.0 / cuBLAS 13.1.1.3, plus
+three focused Compute Sanitizer memory checks. These checks cover the recorded
+shapes and stack, not arbitrary application accuracy or memory safety.
+
+The same review found and fixed a shared timing-parser bug that dropped
+scientific-notation exponents. The corrected public benchmark reports 5.79x
+dynamic and 7.72x fixed speedups at the recorded workload and clocks. Its NCU
+capture remains incomplete because the Python parent range does not select CUDA
+work in the compiled child. Preserve that profiler failure until child-process
+range selection is fixed; host-side PyTorch traces do not validate child kernels.
 
 ## Why This Lab Exists
 The motivating story from the slides is that low-precision tensor-core hardware keeps getting faster while native FP64 throughput improves much more slowly, so accurate FP64-equivalent matrix multiplication increasingly wants an emulation story instead of a brute-force FP64 story.
