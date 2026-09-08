@@ -1,58 +1,220 @@
-# Remaining B200 follow-through
+# B200 follow-through: fair serving, training fixes, and NCCL capture
 
-This pass starts from merged source `0299307facf77bc883b9d27b4fb175ce27e50ab4`
-and extends the [previous report](2026-09-08-b200-followthrough-results.md).
-The earlier captures, failures, numerical requirements, and no-win results remain
-retained. This document records new work separately.
+The remaining targeted B200 execution is complete. Real-data training checks
+pass on one and two B200s, the supported NCCL profiling path completes, and the
+serving comparison now uses both GPUs fairly. Dedicated pools are **22.71%
+slower** on total completion time for this workload, while improving short-request
+time to first token. That tradeoff replaces the earlier biased speedup claim.
 
-## Changes under validation
+This pass extends the [previous results](2026-09-08-b200-followthrough-results.md).
+It preserves their numerical requirements, successes, no-win results, and failed
+attempts. It does not establish that every repository example is faster.
 
-- DDP workers construct one tokenizer and pass that same tokenizer to dataset
-  preparation. The baseline and optimized workers both use this lifecycle.
-  Dataset preparation still constructs its own tokenizer when none is supplied.
-  This removes redundant startup work; it does not change training arithmetic.
-- Dynamic routing records each successful admission before choosing a GPU for
-  the next request. Previously all 16 requests saw empty queue metrics and went
-  to the first GPU. Metrics collected after the final admission could not affect
-  any placement decision, so that polling is removed from this workload.
-- Routing and dual-pool loops stop adding a fixed 10 ms sleep after each blocking
-  engine step. Both baseline and optimized variants use the same loop behavior.
-  The direct engine wrapper retains its existing yield when execution is deferred.
-- Four stale missing-protection declarations become behavioral tests of existing
-  cross-device execution and current-device boundary checks. The remaining 29
-  declarations are an inventory, not 29 distinct confirmed bugs.
+## Source and execution scope
 
-## Profiler investigation
+The base is merged commit `0299307facf77bc883b9d27b4fb175ce27e50ab4`.
+The regular DDP and initial routing measurements use `d289e873e`; the fair serving
+and public NCCL captures use `e864b377c`. Final real-MRPC training and deferred-loss
+CUDA tests use `e1f4f7e7516f58bb693ab2949a966e25d008a6be`. Later report-only
+changes do not alter those source checkpoints.
 
-Nsight Compute 2026.2.1, the latest release listed in NVIDIA's
-[release notes](https://docs.nvidia.com/nsight-compute/ReleaseNotes/index.html),
-is already installed in an isolated task directory. The
-system profiler, CUDA, PyTorch, driver, permissions, and credentials are unchanged.
-The new probe uses one profiler per rank with TCP coordination. Its lockstep
-filters select the `NCCL` domain's `ncclGroupEnd` and `ncclAllReduce` ranges seen
-in the retained Nsight Systems trace. Compute launches are not globally matched
-between asymmetric pipeline ranks.
+Runs execute directly on one or two B200s, without Slurm. The host reports
+virtualization, so results are portable development evidence rather than
+canonical bare-metal qualification. GPU work is serialized through owned process
+supervisors. All final stages drain naturally. No unrelated processes were
+interrupted or other tasks contacted.
 
-This is a new diagnosis of collective replay, with a bounded owned process group;
-it is not a performance comparison. The earlier successful selected-GEMM capture
-does not establish full collective replay success. The launch follows the
-[documented concurrent-kernel options](https://docs.nvidia.com/nsight-compute/NsightComputeCli/index.html#mandatory-concurrent-kernels)
-and the installed 2026.2.1 CLI help.
+The normal CUDA 13.0, Torch 2.9.1+cu130, driver 580.173.02, permissions, and
+credentials remain unchanged. Real MRPC and FlashAttention 2 dependencies are in
+an isolated task overlay. Nsight Compute 2026.2.1 is also task-local; the system
+profiler is unchanged.
 
-The first launch was refused because an unrelated workload occupied a GPU.
-Its subsequent 15-minute capacity wait ended without launching any GPU work.
-No unrelated processes were interrupted or other tasks contacted.
+## Fixes and validation
 
-## Validation status
+| Change | Result |
+| --- | --- |
+| Reuse one tokenizer in regular, FlashAttention, and compression workers | Removes a redundant construction on every rank; default dataset preparation still works without a supplied tokenizer |
+| Use the existing accumulation helper in both optimized FlashAttention mains | Backward stays inside `no_sync`; partial groups use their actual divisor and perform their optimizer update |
+| Avoid static-graph/no-sync incompatibility in the pinned PyTorch version | Two-rank partial accumulation completes with the expected synchronization sequence |
+| Truncate real tokens before fixed-length collation | Real MRPC sequences longer than 128 tokens no longer cause mismatched tensor shapes; padding/truncation sides and aligned token fields are preserved |
+| Log the original loss in four optimized DDP paths | Reported loss no longer changes merely because the accumulation divisor changes |
+| Count successful admissions before choosing the next serving GPU | Shared serving distributes 102 requests 51/51; dynamic routing distributes 16 requests 8/8 |
+| Remove polling that occurs only after all admissions and the fixed 10 ms serving-loop sleep | Removes unnecessary host work from both comparison arms; deferred engine execution still yields |
+| Add the coordinated `core.profiling.ncu_torchrun_capture` CLI | Baseline and optimized two-rank NCCL captures complete with finite counters and natural cleanup |
+| Replace four stale missing-protection declarations with behavioral tests | All four pass on actual B200s; the remaining 29 declarations are an inventory, not 29 distinct confirmed bugs |
 
-The combined local regression check passed 245 tests and skipped 84 on macOS,
-covering execution audits, both anti-cheat inventories, tokenizer reuse, and the
-vLLM API/control-flow contracts. The
-four new tests require two visible CUDA devices and remain unqualified until
-they pass on the target. Dispatcher checks cover visible PyTorch operations on
-the current thread; they do not cover arbitrary native/background execution.
-Device identity checks detect drift present at a checked boundary, not a
-switch-and-restore between boundaries.
+### Actual training entrypoints and partial accumulation
 
-New direct B200 timing, full-output verification, and profiler results are pending.
-No new performance win or completed GPU validation is claimed by this draft.
+All five remaining mains pass with a real TinyLlama model, the real cached
+GLUE/MRPC dataset, one reused tokenizer per rank, finite losses, and the intended
+eager or FlashAttention 2 implementation. These checks do not use the synthetic
+dataset fallback.
+
+| Entry point | GPUs | Native microbatches | Result |
+| --- | ---: | ---: | --- |
+| `baseline_ddp_flash` | 1 | 2 | PASS |
+| `optimized_ddp_flash` | 1 | 2 | PASS |
+| `baseline_ddp_flash_multigpu` | 2 | 2 per rank | PASS |
+| `optimized_ddp_flash_multigpu` | 2 | 2 per rank | PASS |
+| `ddp_compression` with compression disabled | 2 | 2 per rank | PASS |
+| Optimized FlashAttention partial group | 1 | 3, accumulation 2 | PASS; 2 optimizer updates |
+| Optimized FlashAttention partial group | 2 | 3 per rank, accumulation 2 | PASS; 2 optimizer updates per rank |
+
+The two-rank partial-group run records backward synchronization as
+`[false, true, true]`, one `no_sync` enter/exit pair, and static graph disabled.
+Each selected-scope receipt retains its original pending-counterpart label;
+the aggregate final audit checks the union of all five mains and both partial-group
+runs at the same source. These are functional smokes, not a full training
+convergence or throughput qualification.
+
+Focused verification includes 26 collator tests with real offline Hugging Face
+tokenizers, seven real CPU Gloo/reference accumulation tests, and eight real-Torch
+loss-logging cases. Final deferred-metric tests pass **3/3 on B200**, including the
+CUDA test: loss values stay on device until the single final host transfer.
+The earlier combined regression run passed 245 tests with 84 macOS skips. These
+are separate, potentially overlapping test selections, not additive unique totals.
+
+Earlier failures remain retained: missing FA2 metadata, an overly strict private
+overlay preflight that stopped before GPU launch, and the real-MRPC 131-versus-128
+collation failure. The final runs use the corrected overlay, driver, and source.
+The overlay preserves the normal environment and checks the core runtime identity;
+FA2 intentionally supplies its overlapping module namespace only within that overlay.
+
+### Regular DDP startup versus training
+
+Sixteen ABBA observations across two seeds and one/two B200s passed 12 full-output
+comparisons plus tokenizer diagnostics. Construction count falls from two to one
+per rank. Training-loop control/candidate median ratios are **0.9982x / 0.9948x**:
+no iteration-throughput win. Whole-process median ratios are **1.0080x / 1.0358x**.
+The latter include setup and teardown, so they are not pure tokenizer timings.
+
+Both two-GPU seed-balanced blocks favor the candidate process by about 619–694 ms,
+and all four adjacent two-GPU comparisons favor it. One-GPU observations include
+an adjacent reversal and an effect smaller than their scatter. Another independent
+batch would be needed to establish a stable startup benefit of a particular size.
+Those regular-DDP logs explicitly use the documented synthetic dataset fallback;
+the separate real-MRPC checks above establish execution, not real-MRPC speed.
+
+## Fair serving performance
+
+Engines are constructed once and reused. Startup, five warmup batches, three
+steady-state measurements, and teardown remain separate. Both layouts run the
+same six long prompts of 4096 tokens and 96 short prompts of 128 tokens, generating
+16 tokens per request. Full input/output, runtime, admissions, and lifecycle checks
+pass in every pair.
+
+| Repeat | Shared completion ms | Dedicated completion ms | Shared / dedicated |
+| --- | ---: | ---: | ---: |
+| 1 | 1032.122 | 1249.224 | 0.826210x |
+| 2 | 1022.758 | 1256.390 | 0.814045x |
+| 3 | 1024.442 | 1257.126 | 0.814908x |
+
+The median paired ratio is **0.814908x**. Median throughput is **99.566 versus
+81.185 requests/s**. Each raw CLI exit remains 1 for its failed speed goal;
+reviewed disposition is `VALID_NO_WIN`, with correctness and runtime checks passing.
+The earlier 1.4753x result used a shared baseline with all 102 requests on GPU 0.
+It remains a historical measurement and is superseded for fair speedup claims.
+
+Dedicated pools make a latency tradeoff:
+
+| Request class | Shared TTFT ms | Dedicated TTFT ms | Change |
+| --- | ---: | ---: | ---: |
+| Short p50 | 698.669 | 357.932 | -48.77% |
+| Short p95 | 776.118 | 619.340 | -20.20% |
+| Long p50 | 450.276 | 718.068 | +59.47% |
+| Long p95 | 624.475 | 1068.294 | +71.07% |
+
+These are medians of three reported per-run percentiles, not pooled percentiles.
+Request classes are comparable across layouts. TTFT is observed after each engine
+step; per-class full-completion distributions are not available. The legacy
+`tpot_tok_per_step_gpuN` metric is tokens per poll step, not time per output token;
+the generic token-throughput field includes prompt and generated tokens.
+
+Matched Nsight Systems captures identify the imbalance. Shared GPUs receive 51
+mixed requests each and finish their last kernels 2.142 ms apart. Dedicated GPU 0
+receives six long requests and continues **525.224 ms after GPU 1's last kernel**,
+including 461.668 ms of additional GPU 0 kernel activity. Simultaneous GPU kernel
+activity falls from 936.685 to 708.019 ms. BMM dominates both traces; dedicated
+attention work is 203.702 ms on GPU 0 versus 15.352 ms on GPU 1.
+
+Fixed long/short eligibility therefore leaves one GPU unable to help with the
+long-request tail. This mechanism is inferred from one trace pair; ordinary runs
+above establish the slowdown. Trace ranges exclude startup, and their CPU-only
+SQLite export preserves both original report hashes.
+
+Dynamic routing separately passes three full-output/runtime/lifecycle pairs with
+8/8 admissions and a **0.995772x** median ratio. Its homogeneous upfront batch
+provides no live-feedback placement advantage. Both Nsight Systems captures pass;
+this remains parity and a failed 1.05x speed goal.
+
+## Profiler recovery and limits
+
+The checked-in [coordinated CLI](../tooling-and-profiling.md) runs one Nsight Compute
+2026.2.1 process per rank with TCP coordination and kernel replay. It selects the
+observed lockstep `NCCL@ncclGroupEnd/` and `NCCL@ncclAllReduce/` ranges. With
+`--all-matching-kernels`, both public-entrypoint captures pass at `e864b377c`:
+
+| Arm | Send/receive per rank | All-reduce per rank | Total launches, both ranks | Finite requested counter cells |
+| --- | ---: | ---: | ---: | ---: |
+| Baseline | 128 | 1 | 258 | 1290/1290 |
+| Optimized | 66 | 1 | 134 | 670/670 |
+
+All 392 launches have the expected rank/device/kernel identities and all five
+requested finite counters. Source, commands, helpers, tools, reports, and runtime
+are bound by retained receipts. Linux ownership tracking spans detached rank
+sessions; forced or unverified cleanup cannot pass. All 18 helper tests pass on
+Linux, and both actual captures complete with no surviving owned processes.
+
+Wrapper durations of 118.187 and 67.234 seconds include instrumentation/replay and
+are not performance speedups. The capture excludes non-NCCL compute. Older
+180-second application/range replay timeouts remain failures; the narrower supported
+route now supplies the requested NCCL evidence. Unbatched-P2P initialization
+warnings remain in both arms.
+
+The NCU commands use `--clock-control none`; retained logs warn about unmodified
+GPU clocks. The reviewed receipts do not establish applied application-clock
+telemetry. These results qualify capture, counters, and runtime parity, not
+publish-grade timing or clock control.
+
+## Remaining guidance and evidence
+
+Use shared serving for this workload's throughput goal. Choose dedicated pools
+only with an explicit short-request latency objective and the measured long-request
+cost. A future placement experiment could allow both GPUs to take long requests;
+its benefit is unmeasured. Do not add KV migration based on this trace alone.
+
+The previous pass's independently checked results remain: cache-aware 1P1D
+synchronization removal measures **1.574x**; FP8 crosses over at batch 4096
+(**1.279x**) while smaller batches lose; pipeline timing has no robust win.
+Keep the default FP8 batch unchanged and select workload sizes explicitly.
+KV compression and Ozaki retain their independent numerical ceilings and passing
+reference checks, with no speedup claimed. See the previous report for the exact
+budgets, shapes, reference definitions, scatter, and receipt names.
+
+Hardening coverage is deliberately specific. Current-thread dispatcher checks see
+visible PyTorch operations, not arbitrary native/background execution. Device
+identity checks detect drift at a boundary, not a switch-and-restore between
+boundaries. Prioritize unexecuted paths and material memory-write gaps from the
+remaining inventory rather than treating every skipped declaration as a bug.
+
+Raw timing results, full outputs, profiler binaries, failed attempts, supervision,
+source/tool manifests, and reviewed analyses are retained privately in
+`/Users/admin/.codex/artifacts/ai-perf-followthrough2-20260908/`.
+The final remote transfer verification covers **399 files / 1,179,540,870 bytes**
+with zero size or SHA-256 mismatches; inventory digest is
+`28ff674a32e882756f6877535cee1afcf4ffc759b83aa81a444d06edaf9c616a`.
+The separate initial 208-file snapshot remains byte-exact and immutable.
+`final-evidence-inventory.json` inventories the complete materialized package,
+including review support; `final-transfer-verification.json` records remote custody.
+
+Receipts are grouped under `validation/` for serving, profiling, and supervisors;
+`training-validation/` for actual mains and partial groups; `training-provisioning/`
+for isolated dependency evidence; and `review-support/` for reproducible readers,
+plans, validators, and the aggregate `final-training-audit/` closure. Executed
+DDP ABBA driver identity is retained separately from its unexecuted draft.
+
+CI is reserved for the completed implementation, GPU validation, and report.
+Read final CI status and the exact tested commit from
+[PR #28](https://github.com/cfregly/ai-performance-engineering/pull/28); this GPU
+evidence does not substitute for that integration check. The earlier CI run was cancelled as superseded when more
+callers were found; its disposition remains retained.
