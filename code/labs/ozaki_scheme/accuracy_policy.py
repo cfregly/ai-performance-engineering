@@ -5,7 +5,6 @@ import math
 import os
 from pathlib import Path
 
-
 POLICY_ID = "ozaki-fp64-emulation-arithmetic-ceilings-v1"
 REFERENCE_ID = "native-fp64-full-plus-cpu-long-double-edge-v1"
 DEFAULT_POLICY_PATH = Path(__file__).with_name("accuracy_policy.json")
@@ -122,3 +121,22 @@ def configured_accuracy(variant: str) -> tuple[list[str], tuple[float, float]]:
     return (["--relative-l2-limit", str(relative_arg),
              "--normalized-max-abs-limit", str(normalized_arg)],
             (limits["checksum_rtol"], limits["checksum_atol"]))
+
+
+def configured_reference_tolerance() -> tuple[float, float]:
+    """Expose the declared candidate envelope on the shared native reference.
+
+    The ordinary pair runner uses the baseline's secondary checksum tolerance.
+    Each candidate still gates its complete array against its own, potentially
+    stricter, native-FP64 error limits before emitting an accepted checksum.
+    """
+    path = os.environ.get("AISP_OZAKI_ACCURACY_POLICY")
+    if not path:
+        return (0.0, 0.0)
+    policy = load_accuracy_policy(Path(path))
+    variants = policy if policy["schema_version"] == 1 else policy["variants"]
+    limits = [_limits_from_item(variants[name]) for name in QUALIFICATION_VARIANTS if name in variants]
+    return (
+        max((item["checksum_rtol"] for item in limits), default=0.0),
+        max((item["checksum_atol"] for item in limits), default=0.0),
+    )

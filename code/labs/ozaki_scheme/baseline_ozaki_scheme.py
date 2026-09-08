@@ -8,12 +8,14 @@ from typing import Optional
 from core.benchmark.cuda_binary_benchmark import CudaBinaryBenchmark
 from core.benchmark.verification import simple_signature
 from core.harness.benchmark_harness import BaseBenchmark
+from labs.ozaki_scheme.accuracy_policy import configured_reference_tolerance
 
 
 class BaselineOzakiSchemeBenchmark(CudaBinaryBenchmark):
     """Native FP64 accuracy anchor for the Ozaki scheme lab."""
 
     def __init__(self) -> None:
+        self._checksum_tolerance = configured_reference_tolerance()
         self._shape = (4096, 4096, 4096)
         self._run_args = [
             "--m", str(self._shape[0]),
@@ -68,7 +70,9 @@ class BaselineOzakiSchemeBenchmark(CudaBinaryBenchmark):
         return None
 
     def get_output_tolerance(self) -> tuple[float, float]:
-        return (0.0, 0.0)
+        # The shared reference advertises the already-declared pair envelope;
+        # candidate binaries retain their independent full-array gates.
+        return self._checksum_tolerance
 
 
 def get_benchmark() -> BaseBenchmark:
