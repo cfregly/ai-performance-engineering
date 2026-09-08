@@ -388,5 +388,15 @@ DDP optimizer/backward overlap remains a static hypothesis requiring a fresh
 trace and exact update/output checks. Existing DDP, pipeline, serving, and
 Ozaki no-win dispositions remain in force until new measurements supersede them.
 The earlier KV 1.025x result retains its original runtime-specific disposition.
+
+An additional Ozaki candidate replaces the per-GEMM pageable-host sentinel copy
+with an asynchronous device fill of the same `-1` flag. The reset and native
+fallback check remain in place; arithmetic, mantissa settings, and error limits
+are unchanged. CUDA documents possible staging synchronization for pageable
+copies. Removing that possibility is the motivation, not a measured speedup.
+The 19 focused policy/parser tests pass; target compilation, a real-CUDA
+sentinel/full-GEMM regression probe, and the complete accuracy and timing checks
+are pending. [CUDA synchronization behavior](https://docs.nvidia.com/cuda/cuda-runtime-api/api-sync-behavior.html).
+
 PR #28 is back in draft; broad CI and publication are deferred while this work
 continues.

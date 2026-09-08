@@ -407,12 +407,13 @@ inline void launch_matmul(
     const double alpha = 1.0;
     const double beta = 0.0;
     if (state.retained_bits_device != nullptr) {
-        const int sentinel = -1;
-        OZAKI_CHECK_CUDA(cudaMemcpyAsync(
+        // Keep the sentinel reset on the GEMM stream. A copy from pageable
+        // host memory may synchronize while staging even with the Async API.
+        // Filling every byte with 0xff produces the same int32 -1 sentinel.
+        OZAKI_CHECK_CUDA(cudaMemsetAsync(
             state.retained_bits_device,
-            &sentinel,
+            0xff,
             sizeof(int),
-            cudaMemcpyHostToDevice,
             stream));
     }
     const cublasComputeType_t compute_type =
