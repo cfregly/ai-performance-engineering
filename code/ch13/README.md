@@ -39,6 +39,21 @@ The TE 2.18 pair now verifies its captured prediction and every post-step parame
 
 The frozen map passed all holdouts and independently rejected zeroed and localized corrupted copies of all five outputs. These bounds apply to this TE 2.18 workload and establish numerical verification only; they do not establish a speedup.
 
+## Matched Batch Controls
+`precisionfp8_te` keeps batch size 256 as its default workload. Omitting a target override preserves that default for both the eager FP16 baseline and eager Transformer Engine FP8 candidate:
+
+```bash
+python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive --single-gpu
+```
+
+To test an optional larger matched control, pass one pair-wide override through the harness. This sends batch size 1024 to both arms and updates their workload metadata consistently:
+
+```bash
+python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive --single-gpu --target-extra-arg 'ch13:precisionfp8_te=--batch-size 1024'
+```
+
+Compare results only when both arms report the same requested batch size and workload signature. The calibrated output policy above was established at batch 256. Batch 1024 keeps that policy but needs a fresh correctness and B200 timing run; it does not inherit the batch-256 evidence or establish a performance gain by itself.
+
 ## Profiler Evidence
 Use deep-dive runs when you want to see whether the gain came from framework overhead reduction, memory behavior, or the lower-precision path itself:
 
@@ -61,6 +76,7 @@ python -m ch13.compare
 python -m cli.aisp bench list-targets --chapter ch13
 python -m cli.aisp bench run --targets ch13 --profile minimal
 python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive --single-gpu
+python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive --single-gpu --target-extra-arg 'ch13:precisionfp8_te=--batch-size 1024'
 ```
 
 ## Learning Goals
@@ -97,10 +113,12 @@ python -m cli.aisp bench run --targets ch13 --profile minimal
 ## Validation Checklist
 - `python -m ch13.compare --examples training_standard` shows optimized training runs producing higher goodput with identical metrics.
 - `python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile minimal` confirms Transformer Engine calibration plus NVFP8 execution with max error tolerances enforced.
+- `python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile minimal --single-gpu --target-extra-arg 'ch13:precisionfp8_te=--batch-size 1024'` exercises the optional matched batch control; accept its timing only after both arms report batch 1024 and pass fresh output verification.
 - `python -m ch13.memory_profiling --dump` and the optimized variant demonstrate allocator fragmentation dropping after applying the recommended knobs, with memory reduction treated as the primary benchmark outcome.
 
 ## Notes
 - `custom_allocator.py` contains a standalone torch allocator shim that can be re-used in other chapters when debugging fragmentation.
 - `compiled_autograd.py` doubles as a tutorial on partial graph capture; the README here references it directly.
+- `precisionfp8_te` defaults to batch 256. `--batch-size 1024` is an explicit pair-wide workload override, not a new default or a qualified speed claim.
 - `torchao_quantization_compiled`, `kv_cache_naive_flash_blockwise`, `precisionfp8`, `precisionfp8_rowwise`, and `precisionfp8_rowwise_gw_hp` remain informational variants.
 - `kv_cache_naive` and `memory_profiling` are memory-goal benchmarks; they are expected to reduce memory pressure even when the timed path is not faster.

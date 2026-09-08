@@ -357,6 +357,24 @@ engine.benchmark.speed_test()                   # Quick GEMM/attention test
 
 **Note:** `aisp benchmark ...` commands are diagnostic microbenchmarks (`hw_*` tools) and do not use the harness.
 
+**Explicit execution audit:** from `code/`, run one fresh setup and callback outside
+benchmark timing, then emit a JSON placement and destination-write receipt:
+
+```bash
+python -m core.harness.execution_audit ch05/optimized_vectorization.py \
+  --expected-device cuda:0 --destination _output_buffer
+```
+
+Repeat `--destination ATTRIBUTE` for additional preallocated contiguous floating-point
+or complex outputs. The audit poisons those exact tensors and rejects incomplete writes
+or replaced destination identities. Placement checks cover PyTorch dispatcher-visible
+operations on the current thread and require at least one operation touching the
+expected device. No-op and host-only callbacks cannot pass a CUDA execution audit.
+These checks do not inspect arbitrary extension internals,
+other processes, or general uninitialized-memory provenance. An intentional host tensor
+can be allowed for one exact operator with `--allow-host-tensor ATTRIBUTE=aten.operator.overload`.
+This standalone audit produces correctness evidence, not performance measurements.
+
 ---
 
 ### 9. AI Domain

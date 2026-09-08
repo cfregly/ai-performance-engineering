@@ -2353,6 +2353,25 @@ ENTRIES["ch13"] = chapter_entry(
             ),
         ),
         MarkdownSection(
+            "Matched Batch Controls",
+            dedent(
+                """\
+                `precisionfp8_te` keeps batch size 256 as its default workload. Omitting a target override preserves that default for both the eager FP16 baseline and eager Transformer Engine FP8 candidate:
+
+                ```bash
+                python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive --single-gpu
+                ```
+
+                To test an optional larger matched control, pass one pair-wide override through the harness. This sends batch size 1024 to both arms and updates their workload metadata consistently:
+
+                ```bash
+                python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive --single-gpu --target-extra-arg 'ch13:precisionfp8_te=--batch-size 1024'
+                ```
+
+                Compare results only when both arms report the same requested batch size and workload signature. The calibrated output policy above was established at batch 256. Batch 1024 keeps that policy but needs a fresh correctness and B200 timing run; it does not inherit the batch-256 evidence or establish a performance gain by itself."""
+            ),
+        ),
+        MarkdownSection(
             "Profiler Evidence",
             dedent(
                 """\
@@ -2381,6 +2400,7 @@ ENTRIES["ch13"] = chapter_entry(
                 python -m cli.aisp bench list-targets --chapter ch13
                 python -m cli.aisp bench run --targets ch13 --profile minimal
                 python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive --single-gpu
+                python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive --single-gpu --target-extra-arg 'ch13:precisionfp8_te=--batch-size 1024'
                 ```"""
             ),
         ),
@@ -2406,11 +2426,13 @@ ENTRIES["ch13"] = chapter_entry(
     validation=[
         "`python -m ch13.compare --examples training_standard` shows optimized training runs producing higher goodput with identical metrics.",
         "`python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile minimal` confirms Transformer Engine calibration plus NVFP8 execution with max error tolerances enforced.",
+        "`python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile minimal --single-gpu --target-extra-arg 'ch13:precisionfp8_te=--batch-size 1024'` exercises the optional matched batch control; accept its timing only after both arms report batch 1024 and pass fresh output verification.",
         "`python -m ch13.memory_profiling --dump` and the optimized variant demonstrate allocator fragmentation dropping after applying the recommended knobs, with memory reduction treated as the primary benchmark outcome.",
     ],
     notes=[
         "`custom_allocator.py` contains a standalone torch allocator shim that can be re-used in other chapters when debugging fragmentation.",
         "`compiled_autograd.py` doubles as a tutorial on partial graph capture; the README here references it directly.",
+        "`precisionfp8_te` defaults to batch 256. `--batch-size 1024` is an explicit pair-wide workload override, not a new default or a qualified speed claim.",
         "`torchao_quantization_compiled`, `kv_cache_naive_flash_blockwise`, `precisionfp8`, `precisionfp8_rowwise`, and `precisionfp8_rowwise_gw_hp` remain informational variants.",
         "`kv_cache_naive` and `memory_profiling` are memory-goal benchmarks; they are expected to reduce memory pressure even when the timed path is not faster.",
     ],
@@ -3701,7 +3723,7 @@ ENTRIES["labs/dynamic_router"] = lab_entry(
     ],
     notes=[
         "The dual-pool policies produce different batch shapes. On the pinned vLLM 0.16 stack with GPT-OSS-20B, the default backend produced different greedy tokens for identical prompts, including across repeated optimized runs. The explicit batch-invariant Triton configuration above matched all 1,734 output elements on 2×B200. Apply the same backend and environment to both arms; the option does not change the default backend for other workloads. Other models and stacks still require their own correctness check.",
-        "Harness latency includes constructing both model engines on every benchmark invocation. Treat it as startup plus request processing, rather than steady-state routing throughput. Prefix caching is disabled so every request processes its full declared prompt.",
+        "The vLLM benchmarks construct each model engine once in `setup()`, execute the harness-required five full-workload warmups, and reuse the idle engines for exactly three steady-state iterations. Every invocation clears completed-request bookkeeping, uses a fresh request-id generation, and still verifies every generated token. Custom metrics report engine startup, warmup request processing, and steady-state request processing separately. Teardown emits a `vllm_engine_lifecycle` JSON record with teardown and end-to-end wall time, so moving engine construction outside the steady-state timer cannot be presented as an end-to-end speedup. Prefix caching remains disabled so every request processes its full declared prompt.",
         "The harness prepares live CPU prompt IDs during setup. The topology-aware runner requires this input; standalone entrypoints create default prompts before calling it. Conversion to the Python token lists required by vLLM remains part of request admission, and GPU-resident prompt inputs fail explicitly before conversion.",
         "`driver.py` accepts knobs such as `--prefill-gpus`, `--decode-gpus`, and `--migration-budget` to stress different regimes.",
         "vLLM integration now takes flags (`--model`, `--prefill-gpus`, `--decode-gpus`, etc.) plus locally available tokenizer/model weights.",
@@ -3758,6 +3780,7 @@ ENTRIES["labs/cache_aware_disagg_inference"] = lab_entry(
     ],
     notes=[
         "With two GPUs, the distributed target has one prefill and one decode rank. Both placement policies select the same decode rank, so this topology cannot demonstrate a reduction in migrations between decode ranks. September 7, 2026 repeated ABBA measurements on two B200s passed every full 2,048-element output comparison but found no speedup: median 14.331648 ms baseline and 14.499441 ms optimized (0.988428x; eight observations per arm, four fresh seeds). Standard deviations were 0.470046 and 0.517233 ms. These portable, unlocked observations did not reproduce the earlier single live-input run's 1.64306x. Both-arm Nsight traces are retained. Use at least two decode ranks to investigate migration benefits; this topology cannot establish that mechanism.",
+        "Multi-GPU results now expose `cache_aware.decode_rank_count`, `cache_aware.affinity_opportunity_count`, and `cache_aware.affinity_placement_distinguishable`. A direct 1P1D run is classified as a comparison surface. The optimized 1P1D path removes redundant global barriers between blocking point-to-point transfers while preserving the final per-request drain; `cache_aware.direct_1p1d_sync_fast_path` and `cache_aware.global_barriers_avoided_per_request` identify that separate synchronization mechanism. Its performance effect remains unmeasured until a repeated B200 rerun with full-output checks and retained traces.",
         "This lab is intentionally a logical reproduction of the scheduler/caching story, not a full serving engine.",
         "Treat single-GPU `cache_aware_disagg` as a locality-comparison benchmark with a local comparison contract. The stable value on one GPU is the cache hit rate, KV transfer volume, and worker affinity improvement; the timed delta is recorded, but it is not a trustworthy headline speed gate on this host.",
         "Judge the single-GPU target by cache hit rate, KV transfer volume, and worker affinity before raw wall-clock speedup.",
