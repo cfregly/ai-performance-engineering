@@ -25,14 +25,14 @@ The retained targeted measurements illustrate the remaining speed gaps:
 | Pipeline parallelism | 1.024x | Below 1.05x, with inconsistent seed-block results |
 | Dynamic serving routing | 0.996x | Parity; below the speed goal |
 | Fair dedicated versus shared serving pools | 0.815x | Lower total throughput; short-request TTFT improves |
-| KV-cache NVFP4 compute, cached weights | 1.106x | One complete profiled pair; repeated comparisons pending |
+| KV-cache NVFP4 compute, cached weights | 1.106x | Two cached repetitions in an A/B/B/A screen; full profiled pair also passes |
 | Ozaki dynamic / fixed versus native FP64 | 0.545x / 0.724x | Both slower despite passing numerical checks |
 
 These ratios retain the source, workload, timing, and qualification limits of
 their individual receipts; they are not a new uniform benchmark run. The
 pipeline lookahead change has no measured GPU result yet. The newer KV result
 uses a different Transformer Engine version from the earlier 1.025x result;
-fresh old/new comparisons on the same runtime are required to isolate the cache
+the fresh old/new comparisons below use the same runtime to isolate the cache
 change. Broad CI remains paused during this work.
 
 Static discovery at `bc0ed66cd317d9d3cc3be982fe22d333ebdf68e0` finds 488 logical
@@ -313,9 +313,57 @@ FP8 versus 490.734 ms NVFP4, or 1.106445x**, with 20 timed iterations and five
 warmups, harness application clocks of 1500/3996 MHz, and the explicit portable
 validity profile. Full inputs, full outputs, runtime parity, and all Nsight
 Systems, Nsight Compute, and PyTorch captures pass. This is one pair on one
-isolated B200; interleaved old/new repetitions are still pending. The 35 retained
+isolated B200; separate unprofiled repetitions are reported below. The 35 retained
 files / 100,745,932 bytes match their remote SHA-256 inventory in
 `ai-perf-followthrough2-20260908-final-integration/kv-pair-app-range-r2-32030e6/`.
+
+The fresh unprofiled A/B/B/A screen compares uncached `e1f4f7e75` against cached
+`32030e6` on that same Torch/Transformer Engine stack, seed 42, workload,
+20-iteration/five-warmup policy, UUID-selected device, and application clocks:
+
+| Order | Source | FP8 ms | NVFP4 ms | FP8 / NVFP4 |
+| --- | --- | ---: | ---: | ---: |
+| A1 | Uncached | 606.933 | 620.311 | 0.978433x |
+| B1 | Cached | 542.835 | 490.726 | 1.106186x |
+| B2 | Cached | 543.036 | 490.814 | 1.106399x |
+| A2 | Uncached | 607.026 | 620.519 | 0.978255x |
+
+Both mirrored cache comparisons exceed 1.05x in each precision. Their geometric
+means are **1.117958x for FP8** and **1.264166x for NVFP4**. The two cached
+FP8/NVFP4 ratios average **1.106293x**. Every full-output, independent error,
+input, runtime, source, storage, and clock gate passes. Both uncached benchmark
+exits retain `failed_no_speedup`; they are valid measurements, not speed passes.
+The complete four-process batch drained naturally. All 47 files / 625,329 bytes
+match their remote inventory, and a local re-read independently reapplies the
+validators and recalculates the comparisons. Evidence is in
+`ai-perf-followthrough2-20260908-final-integration/kv-abba-v4-32030e6/`.
+
+This is one seed and two mirrored comparisons, the initial repeated screen. The
+remaining three blocks of the original four-block performance plan are running.
+The older 1.025x ratio from Transformer Engine 2.18 is excluded from the
+cache-effect calculation.
+
+Matched Nsight Systems captures now confirm the cache mechanism on the same
+runtime. Every kernel is attributed through its CUDA launch correlation to the
+single `compute_kernel:profile` range:
+
+| Per complete iteration | Uncached | Cached |
+| --- | ---: | ---: |
+| Linear forwards / GEMMs, each arm | 260 / 260 | 260 / 260 |
+| Attention / normalization kernels, each arm | 130 / 130 | 130 / 130 |
+| Quantization ranges, each arm | 520 | 262 |
+| FP8 cast kernels | 520 | 262 |
+| NVFP4 weight amax / transpose / zero-amax kernels, each | 260 | 2 |
+| Total FP8 kernels | 1,560 | 1,302 |
+| Total NVFP4 kernels | 3,380 | 2,606 |
+
+All other kernel-family launch counts stay unchanged. This confirms removal of
+redundant weight preparation while retaining the compute workload. It is one
+matched trace per arm; instrumented durations are not used for the timing claim.
+The uncached control also passes all three profilers while retaining its
+`failed_no_speedup` benchmark disposition. Its 38 files / 102,232,691 bytes,
+including the completed profiler-batch supervision receipt, are verified in
+`ai-perf-followthrough2-20260908-final-integration/kv-uncached-profile-e1f4f7e75/`.
 
 The first attempt measured 1.106112x but both kernel-replay captures hit their
 150-second limits, so its disposition remains `failed_profiler`. Its 35 files /
@@ -325,7 +373,16 @@ for both arms. These counters cover the aggregate range; they do not enumerate
 individual kernels, and replay duration is not an ordinary latency measurement.
 The lab now prefers this replay mode while preserving an explicit CLI override.
 Its selection tests pass for both variants and explicit/default modes; the full
-focused file passes 30 tests. A fresh invocation using this default is pending.
+focused file passes 30 tests. A fresh ordinary CLI invocation at `2f5bef154`,
+without a replay-mode override, passes full correctness/runtime gates and all
+three profilers in both arms, measuring 542.973 / 490.717 ms (1.106489x).
+Both NCU reports contain all five finite counters over the complete selected
+range, with no launch-count or kernel filter. The 34 files / 100,741,698 bytes
+are verified in
+`ai-perf-followthrough2-20260908-final-integration/kv-default-profile-2f5bef154/`.
+All baseline function ASTs and the other workload/accuracy files are unchanged
+from the arithmetic-qualified `32030e6` source. The profiler batch drained
+naturally without forced cleanup.
 
 DDP optimizer/backward overlap remains a static hypothesis requiring a fresh
 trace and exact update/output checks. Existing DDP, pipeline, serving, and
