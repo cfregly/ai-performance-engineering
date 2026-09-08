@@ -371,6 +371,9 @@ class BenchmarkResult(BaseModel):
     mode: Optional[str] = Field(None, description="Benchmark mode (e.g., 'triton', 'pytorch', 'custom')")
     launch_via: Optional[str] = Field(None, description="Launcher used for execution (python or torchrun)")
     world_size: Optional[int] = Field(None, description="World size used when launching distributed benchmarks")
+    local_world_size: Optional[int] = Field(
+        None, strict=True, gt=0, description="Local worker count passed to the execution launcher"
+    )
     multi_gpu: Optional[bool] = Field(None, description="Whether multiple GPUs were used")
     multi_gpu_required: Optional[bool] = Field(None, description="Benchmark declared multi-GPU requirement")
     seeds: Optional[Dict[str, Any]] = Field(None, description="Seeds applied for reproducibility (random, numpy, torch, cuda)")

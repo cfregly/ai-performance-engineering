@@ -1473,8 +1473,9 @@ class TestEvaluationProtectionsExtended:
 class TestReproducibilityProtections:
     """Tests for reproducibility protections."""
 
-    def test_version_locking_in_manifest(self):
-        pytest.skip('Missing production protection: version provenance capture does not enforce version locking')
+    def test_version_locking_in_manifest(self, tmp_path):
+        from tests.runtime_version_test_utils import assert_runtime_version_controls
+        assert_runtime_version_controls(tmp_path, "torch_version")
 
     def test_seed_determinism(self, runner):
         work = TensorWork()

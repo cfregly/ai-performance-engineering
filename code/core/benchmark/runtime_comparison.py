@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from core.benchmark.models import BenchmarkRun
 from core.benchmark.run_manifest import (
+    RunManifest,
     RuntimeParityTarget,
     RuntimeProvenance,
     RuntimeProvenanceParity,
@@ -25,6 +26,7 @@ class RuntimeIntegrityFailure(BaseModel):
     code: str
     detail: str
     run: RunSide | None = None
+    local_rank: int | None = None
     schemaVersion: str = "1.0"  # noqa: N815 - repository schema convention
 
 
@@ -66,8 +68,22 @@ def _failure(
     detail: str,
     *,
     run: RunSide | None = None,
+    local_rank: int | None = None,
 ) -> None:
-    failures.append(RuntimeIntegrityFailure(code=code, detail=detail, run=run))
+    failures.append(
+        RuntimeIntegrityFailure(
+            code=code,
+            detail=detail,
+            run=run,
+            local_rank=local_rank,
+        )
+    )
+
+
+def _render_rank_keys(ranks: set[Any]) -> str:
+    """Render possibly-invalid rank keys deterministically without comparing unlike types."""
+
+    return "[" + ", ".join(sorted(repr(rank) for rank in ranks)) + "]"
 
 
 def _validated_target(
@@ -183,6 +199,7 @@ def _runtime_receipt_failures(
     run: BenchmarkRun,
     *,
     side: RunSide,
+    target: RuntimeParityTarget | None,
     failures: list[RuntimeIntegrityFailure],
 ) -> None:
     manifest_runtime = run.manifest.runtime_provenance if run.manifest is not None else None
@@ -221,6 +238,29 @@ def _runtime_receipt_failures(
             run=side,
         )
 
+    local_world_size = getattr(run.result, "local_world_size", None)
+    expected_local_ranks: set[int] | None = None
+    if local_world_size is None:
+        _failure(
+            failures,
+            "local_world_size_missing",
+            "The benchmark result did not retain the local worker count passed to the launcher.",
+            run=side,
+        )
+    elif (
+        isinstance(local_world_size, bool)
+        or not isinstance(local_world_size, int)
+        or local_world_size <= 0
+    ):
+        _failure(
+            failures,
+            "local_world_size_invalid",
+            f"The retained local worker count must be a positive integer, got {local_world_size!r}.",
+            run=side,
+        )
+    else:
+        expected_local_ranks = set(range(local_world_size))
+
     execution_process_ids = getattr(run.result, "execution_process_ids", None)
     if not isinstance(execution_process_ids, dict) or not execution_process_ids:
         _failure(
@@ -229,7 +269,7 @@ def _runtime_receipt_failures(
             "No independently observed execution-process IDs were retained.",
             run=side,
         )
-        return
+        execution_process_ids = {}
 
     invalid_execution_ids = {
         rank: process_id
@@ -246,6 +286,17 @@ def _runtime_receipt_failures(
             failures,
             "execution_process_ids_invalid",
             f"Execution-process IDs contain invalid rank/PID entries: {invalid_execution_ids!r}.",
+            run=side,
+        )
+
+    execution_ranks = set(execution_process_ids)
+    if expected_local_ranks is not None and execution_ranks != expected_local_ranks:
+        _failure(
+            failures,
+            "execution_process_ids_incomplete",
+            "Execution-process ID ranks differ from the retained local worker count "
+            f"(expected={_render_rank_keys(expected_local_ranks)}, "
+            f"observed={_render_rank_keys(execution_ranks)}).",
             run=side,
         )
 
@@ -267,18 +318,28 @@ def _runtime_receipt_failures(
         )
 
     per_rank = run.result.runtime_provenance_by_local_rank
+    observed_ranks = set(per_rank)
     if len(execution_process_ids) > 1 or per_rank:
-        expected_ranks = set(execution_process_ids)
-        observed_ranks = set(per_rank)
-        if observed_ranks != expected_ranks:
+        if observed_ranks != execution_ranks:
             _failure(
                 failures,
                 "runtime_rank_receipts_incomplete",
                 "Per-rank runtime receipt ranks differ from independently observed execution "
-                f"ranks (runtime={sorted(observed_ranks)}, execution={sorted(expected_ranks)}).",
+                f"ranks (runtime={_render_rank_keys(observed_ranks)}, "
+                f"execution={_render_rank_keys(execution_ranks)}).",
                 run=side,
             )
-        for rank in sorted(observed_ranks & expected_ranks):
+        valid_execution_ranks = {
+            rank
+            for rank in execution_ranks
+            if not isinstance(rank, bool) and isinstance(rank, int) and rank >= 0
+        }
+        valid_observed_ranks = {
+            rank
+            for rank in observed_ranks
+            if not isinstance(rank, bool) and isinstance(rank, int) and rank >= 0
+        }
+        for rank in sorted(valid_observed_ranks & valid_execution_ranks):
             runtime_pid = per_rank[rank].process_id
             execution_pid = execution_process_ids[rank]
             if runtime_pid != execution_pid:
@@ -288,6 +349,7 @@ def _runtime_receipt_failures(
                     f"Local rank {rank} runtime snapshot PID does not match its independently "
                     f"observed execution PID ({runtime_pid} != {execution_pid}).",
                     run=side,
+                    local_rank=rank,
                 )
         rank_zero_runtime: RuntimeProvenance | None = per_rank.get(0)
         if (
@@ -300,7 +362,41 @@ def _runtime_receipt_failures(
                 "primary_rank_zero_runtime_mismatch",
                 "The primary runtime snapshot differs from the local-rank-0 runtime receipt.",
                 run=side,
+                local_rank=0,
             )
+
+        if result_runtime is not None and target is not None:
+            primary_manifest = RunManifest.model_construct(
+                runtime_provenance=result_runtime,
+            )
+            for rank in sorted(valid_observed_ranks):
+                rank_manifest = RunManifest.model_construct(
+                    runtime_provenance=per_rank[rank],
+                )
+                parity = compare_runtime_provenance(
+                    primary_manifest,
+                    rank_manifest,
+                    target=target,
+                )
+                if parity.mismatched_fields:
+                    _failure(
+                        failures,
+                        "runtime_rank_provenance_mismatch",
+                        f"Local rank {rank} runtime provenance differs from the primary "
+                        f"runtime for required {target} fields: "
+                        f"{', '.join(parity.mismatched_fields)}.",
+                        run=side,
+                        local_rank=rank,
+                    )
+                if parity.unknown_fields:
+                    _failure(
+                        failures,
+                        "runtime_rank_provenance_unknown",
+                        f"Local rank {rank} runtime provenance is incomplete for required "
+                        f"{target} fields: {', '.join(parity.unknown_fields)}.",
+                        run=side,
+                        local_rank=rank,
+                    )
 
 
 def compare_executed_runtime_provenance(
@@ -312,8 +408,6 @@ def compare_executed_runtime_provenance(
     failures: list[RuntimeIntegrityFailure] = []
     _timing_failures(reference, side="reference", failures=failures)
     _timing_failures(candidate, side="candidate", failures=failures)
-    _runtime_receipt_failures(reference, side="reference", failures=failures)
-    _runtime_receipt_failures(candidate, side="candidate", failures=failures)
 
     reference_target = _validated_target(
         reference.result.device,
@@ -323,6 +417,18 @@ def compare_executed_runtime_provenance(
     candidate_target = _validated_target(
         candidate.result.device,
         run="candidate",
+        failures=failures,
+    )
+    _runtime_receipt_failures(
+        reference,
+        side="reference",
+        target=reference_target,
+        failures=failures,
+    )
+    _runtime_receipt_failures(
+        candidate,
+        side="candidate",
+        target=candidate_target,
         failures=failures,
     )
     target: RuntimeParityTarget | None = None

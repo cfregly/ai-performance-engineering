@@ -14,7 +14,9 @@ import pytest
 import torch
 
 import core.harness.torchrun_runtime_provenance as runtime_transport
+from core.benchmark.models import BenchmarkRun
 from core.benchmark.run_manifest import RuntimeProvenance, capture_runtime_provenance
+from core.benchmark.runtime_comparison import compare_executed_runtime_provenance
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -443,6 +445,10 @@ def test_benchmark_with_manifest_uses_actual_torchrun_worker_receipts(tmp_path: 
     )
     assert raw_receipts.execution_process_ids == run.result.execution_process_ids
     assert raw_receipts.snapshots_by_local_rank == run.result.runtime_provenance_by_local_rank
+    assert run.result.local_world_size == 2
+
+    round_tripped = BenchmarkRun.model_validate_json(run.model_dump_json())
+    assert round_tripped.result.local_world_size == 2
 
     assert run.result.validation_message is not None
     assert run.result.validation_message.count("all_reduce=3") == 2
@@ -453,6 +459,70 @@ def test_benchmark_with_manifest_uses_actual_torchrun_worker_receipts(tmp_path: 
         assert datetime.fromisoformat(runtime.captured_at) >= datetime.fromisoformat(
             marker["target_finished_at"]
         )
+
+    clean_comparison = compare_executed_runtime_provenance(
+        run,
+        round_tripped,
+    )
+    assert clean_comparison.matches
+    assert clean_comparison.integrity_failures == []
+
+    truncated = round_tripped.model_copy(deep=True)
+    truncated.result.execution_process_ids.pop(1)
+    truncated.result.runtime_provenance_by_local_rank.pop(1)
+    rejected = compare_executed_runtime_provenance(run, truncated)
+    assert not rejected.matches
+    truncation_codes = {
+        failure.code
+        for failure in rejected.integrity_failures
+        if failure.run == "candidate"
+    }
+    assert "execution_process_ids_incomplete" in truncation_codes
+
+    missing_count = round_tripped.model_copy(deep=True)
+    missing_count.result.local_world_size = None
+    rejected = compare_executed_runtime_provenance(run, missing_count)
+    assert not rejected.matches
+    assert any(
+        failure.code == "local_world_size_missing" and failure.run == "candidate"
+        for failure in rejected.integrity_failures
+    )
+
+    invalid_count = round_tripped.model_copy(deep=True)
+    invalid_count.result.local_world_size = True
+    rejected = compare_executed_runtime_provenance(run, invalid_count)
+    assert not rejected.matches
+    assert any(
+        failure.code == "local_world_size_invalid" and failure.run == "candidate"
+        for failure in rejected.integrity_failures
+    )
+
+    corrupted = run.model_copy(deep=True)
+    corrupted.result.runtime_provenance_by_local_rank[1].torch_version += "+corrupt-rank1"
+    rejected = compare_executed_runtime_provenance(run, corrupted)
+    assert not rejected.matches
+    rank_failures = [
+        failure
+        for failure in rejected.integrity_failures
+        if failure.code == "runtime_rank_provenance_mismatch"
+    ]
+    assert len(rank_failures) == 1
+    assert rank_failures[0].run == "candidate"
+    assert rank_failures[0].local_rank == 1
+    assert "torch_version" in rank_failures[0].detail
+
+    incomplete = run.model_copy(deep=True)
+    incomplete.result.runtime_provenance_by_local_rank[1].library_versions_complete = False
+    rejected = compare_executed_runtime_provenance(run, incomplete)
+    unknown_failures = [
+        failure
+        for failure in rejected.integrity_failures
+        if failure.code == "runtime_rank_provenance_unknown"
+    ]
+    assert len(unknown_failures) == 1
+    assert unknown_failures[0].run == "candidate"
+    assert unknown_failures[0].local_rank == 1
+    assert "library_versions" in unknown_failures[0].detail
 
 
 @pytest.mark.parametrize(

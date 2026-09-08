@@ -6,6 +6,7 @@ import subprocess
 import time
 
 import pytest
+from pydantic import ValidationError
 
 from core.benchmark.models import BenchmarkRun
 from core.benchmark.run_manifest import require_runtime_provenance_parity
@@ -21,6 +22,7 @@ def test_harness_result_and_manifest_retain_execution_process(tmp_path, subproce
     runtime = run.result.runtime_provenance
     assert runtime is not None
     assert run.result.execution_process_ids == {0: runtime.process_id}
+    assert run.result.local_world_size == 1
     assert run.result.device == "cpu"
     if subprocess_mode:
         assert runtime.process_id != os.getpid()
@@ -29,8 +31,14 @@ def test_harness_result_and_manifest_retain_execution_process(tmp_path, subproce
     assert run.manifest is not None
     assert run.manifest.runtime_provenance == runtime
     restored = BenchmarkRun.model_validate_json(run.model_dump_json())
+    assert restored.result.local_world_size == 1
     assert restored.manifest.runtime_provenance == runtime
     assert require_runtime_provenance_parity(run.manifest, restored.manifest, target="cpu").matches
+    for invalid_count in (True, 0, -1, "1", 1.5):
+        corrupted = run.model_dump(mode="json")
+        corrupted["result"]["local_world_size"] = invalid_count
+        with pytest.raises(ValidationError, match="local_world_size"):
+            BenchmarkRun.model_validate_json(json.dumps(corrupted))
 
 
 def test_pair_gate_uses_real_worker_snapshot_and_rejects_drift(tmp_path):

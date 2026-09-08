@@ -2918,6 +2918,7 @@ class BenchmarkHarness:
                 for rank, snapshot in worker_runtime_receipts.snapshots_by_local_rank.items()
             }
             result.execution_process_ids = dict(worker_runtime_receipts.execution_process_ids)
+        result.local_world_size = int(nproc_per_node)
         if reported_iteration_mean:
             # The worker emitted one aggregate mean. Do not invent percentiles
             # or a distribution from the iterations represented by that mean.
@@ -4084,6 +4085,7 @@ class BenchmarkHarness:
             if child_runtime_provenance is not None:
                 result.runtime_provenance = child_runtime_provenance.model_copy(deep=True)
             result.execution_process_ids = dict(execution_process_ids)
+            result.local_world_size = 1
             result.device = child_device
             return result
         
@@ -4105,6 +4107,7 @@ class BenchmarkHarness:
         if child_runtime_provenance is not None:
             result.runtime_provenance = child_runtime_provenance.model_copy(deep=True)
         result.execution_process_ids = dict(execution_process_ids)
+        result.local_world_size = 1
         result.device = child_device
         if child_custom_metrics is not None:
             result.custom_metrics = child_custom_metrics
@@ -4328,6 +4331,7 @@ class BenchmarkHarness:
             if worker_runtime_provenance is not None:
                 result.runtime_provenance = worker_runtime_provenance.model_copy(deep=True)
             result.execution_process_ids = {0: os.getpid()}
+            result.local_world_size = 1
             if evaluation_provenance is not None:
                 receipt = evaluation_provenance.model_copy(deep=True)
                 if receipt.finalized_at is None:
