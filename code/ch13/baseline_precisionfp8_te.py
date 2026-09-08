@@ -13,8 +13,10 @@ import torch
 import torch.nn as nn
 
 from ch13.te_runtime_common import (
+    TE_PRECISION_DEFAULT_BATCH_SIZE,
     ensure_te_runtime_initialized,
     get_te_precision_output_tolerances,
+    parse_te_precision_batch_size,
 )
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
@@ -73,8 +75,9 @@ class BaselineTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.targets: Optional[torch.Tensor] = None
         self.optimizer: Optional[torch.optim.Optimizer] = None
         self.criterion: Optional[nn.Module] = None
-        self.batch_size = 256
+        self.batch_size = TE_PRECISION_DEFAULT_BATCH_SIZE
         self.hidden_dim = 4096
+        self._target_override_error: str | None = None
         tokens = self.batch_size * self.hidden_dim
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -92,7 +95,33 @@ class BaselineTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_input: Optional[torch.Tensor] = None
         self._verify_target: Optional[torch.Tensor] = None
 
+    def _set_batch_size(self, batch_size: int) -> None:
+        self.batch_size = batch_size
+        tokens = self.batch_size * self.hidden_dim
+        self._workload = WorkloadMetadata(
+            requests_per_iteration=1.0,
+            tokens_per_iteration=float(tokens),
+        )
+        self.register_workload_metadata(
+            requests_per_iteration=1.0,
+            tokens_per_iteration=float(tokens),
+        )
+
+    def apply_target_overrides(self, argv: list[str]) -> None:
+        """Apply ``aisp bench --target-extra-arg`` batch configuration."""
+        try:
+            batch_size = parse_te_precision_batch_size(argv, default=self.batch_size)
+        except ValueError as exc:
+            # The harness logs and suppresses override-hook exceptions. Retain
+            # the error so setup still rejects an invalid requested workload.
+            self._target_override_error = str(exc)
+            raise
+        self._target_override_error = None
+        self._set_batch_size(batch_size)
+
     def setup(self) -> None:
+        if self._target_override_error is not None:
+            raise ValueError(f"Invalid target override: {self._target_override_error}")
         _load_te_linear()
         model = TEFP16MLP(hidden_dim=self.hidden_dim).to(self.device).train().half()
         self.model = model

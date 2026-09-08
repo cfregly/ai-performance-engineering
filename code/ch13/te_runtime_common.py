@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import argparse
 import ctypes
+from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
 
@@ -24,6 +26,29 @@ _TE_PRECISION_OUTPUT_TOLERANCES: dict[str, tuple[float, float]] = {
     "parameter.fc2.weight": (0.001, 0.00075),
     "parameter.fc2.bias": (0.001, 0.00005),
 }
+
+TE_PRECISION_DEFAULT_BATCH_SIZE = 256
+
+
+def parse_te_precision_batch_size(
+    argv: Iterable[str],
+    *,
+    default: int = TE_PRECISION_DEFAULT_BATCH_SIZE,
+) -> int:
+    """Parse the shared batch override used by both TE precision arms."""
+    parser = argparse.ArgumentParser(
+        add_help=False,
+        allow_abbrev=False,
+        exit_on_error=False,
+    )
+    parser.add_argument("--batch-size", type=int, default=default)
+    try:
+        args, _ = parser.parse_known_args(list(argv))
+    except (argparse.ArgumentError, SystemExit) as exc:
+        raise ValueError("--batch-size must be a positive integer") from exc
+    if args.batch_size <= 0:
+        raise ValueError("--batch-size must be a positive integer")
+    return int(args.batch_size)
 
 
 def get_te_precision_output_tolerances() -> dict[str, tuple[float, float]]:
