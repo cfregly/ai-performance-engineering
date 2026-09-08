@@ -26,6 +26,7 @@ from labs.train_distributed.training_utils.gradient_accumulation import (
     gradient_sync_context,
     validate_gradient_accumulation,
 )
+from labs.train_distributed.training_utils.deferred_metrics import DeferredTrainingProgress
 from labs.train_distributed.training_utils.torchrun_harness import TorchrunScriptBenchmark
 from labs.train_distributed.training_utils.utils import (
     build_dataloader,
@@ -109,8 +110,12 @@ def main():
     num_steps = min(args.steps, len(dataloader))
     accumulation_plan = build_gradient_accumulation_plan(num_steps, args.grad_accum)
     total_tokens = 0
+    progress = (
+        DeferredTrainingProgress(num_steps=num_steps, interval=10, device=device)
+        if is_main and num_steps > 0
+        else None
+    )
     start_time = perf_counter()
-    loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)
 
     completed_steps = 0
     final_batch = None
@@ -140,19 +145,22 @@ def main():
         total_tokens += batch["input_ids"].numel()
 
         if step % 10 == 0 and is_main:
-            loss_value_buffer[0].copy_(loss.detach())
-            loss_value = float(loss_value_buffer.detach().cpu()[0])
-            print(
-                f"[optimized-ddp] step {step}/{num_steps} "
-                f"loss={loss_value:.4f} "
-                f"tokens/step={batch['input_ids'].numel():,}"
-            )
+            if progress is None:
+                raise RuntimeError("Training progress buffer was not initialized")
+            progress.record(step=step, loss=loss, tokens=batch["input_ids"].numel())
 
     torch.cuda.synchronize(device)
     total_time = perf_counter() - start_time
     if completed_steps <= 0:
         raise RuntimeError("DDP training completed no optimization steps")
     if is_main:
+        if progress is None:
+            raise RuntimeError("Training progress buffer was not initialized")
+        for sample in progress.read():
+            print(
+                f"[optimized-ddp] step {sample.step}/{num_steps} "
+                f"loss={sample.loss:.4f} tokens/step={sample.tokens:,}"
+            )
         toks_sec = total_tokens / total_time if total_time > 0 else 0.0
         effective_bs = args.batch_size * args.grad_accum * world_size
         print(
