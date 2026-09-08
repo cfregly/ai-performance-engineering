@@ -80,12 +80,14 @@ class BaselineTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self.output_buffer: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._verify_output: Optional[dict[str, torch.Tensor]] = None
         self.parameter_count = 0
         self.register_workload_metadata(
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
         )
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_target: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         _load_te_linear()
@@ -103,7 +105,11 @@ class BaselineTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.criterion = nn.MSELoss()
         self.output_buffer = torch.empty_like(self.inputs)
         self._verify_output_buffer = torch.empty_like(self.output_buffer)
-        self._verify_input = self.inputs.detach().clone()
+        # Keep live references so verification jitter reaches the tensors used
+        # by the training step. Teardown retains CPU snapshots for comparison.
+        self._verify_input = self.inputs
+        self._verify_target = self.targets
+        self._verify_output = None
 
         for _ in range(5):
             self._train_step(capture_output=False)
@@ -135,11 +141,27 @@ class BaselineTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Verification input/output not initialized")
 
     def capture_verification_payload(self) -> None:
-        if self._verify_input is None or self.output is None or self._verify_output_buffer is None:
+        if (
+            self._verify_input is None
+            or self._verify_target is None
+            or self.output is None
+            or self._verify_output_buffer is None
+            or self.model is None
+        ):
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        self._verify_output_buffer.copy_(self.output)
+        with torch.inference_mode():
+            self._verify_output_buffer.copy_(self.output)
+            self._verify_output = {
+                "prediction": self._verify_output_buffer.detach().to(device="cpu", copy=True)
+            }
+            self._verify_output.update(
+                {
+                    f"parameter.{name}": parameter.detach().to(device="cpu", copy=True)
+                    for name, parameter in self.model.named_parameters()
+                }
+            )
         self._set_verification_payload(
-            inputs={"input": self._verify_input},
+            inputs={"input": self._verify_input, "target": self._verify_target},
             output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
@@ -149,10 +171,30 @@ class BaselineTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
                 "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
+            # Keep the historical threshold until repeated B200 full-output
+            # receipts can calibrate prediction and parameter error bounds.
             output_tolerance=(0.5, 5.0),
         )
 
+    def get_verify_inputs(self) -> dict[str, torch.Tensor]:
+        if self._verify_input is not None and self._verify_target is not None:
+            return {"input": self._verify_input, "target": self._verify_target}
+        return super().get_verify_inputs()
+
+    def get_verify_output(self) -> dict[str, torch.Tensor]:
+        if self._verify_output is None:
+            raise RuntimeError("capture_verification_payload() must run before get_verify_output()")
+        return {name: tensor.detach().clone() for name, tensor in self._verify_output.items()}
+
     def teardown(self) -> None:
+        payload = getattr(self, "_verification_payload", None)
+        if payload is not None:
+            payload.inputs = {
+                name: tensor.detach().to(device="cpu", copy=True)
+                for name, tensor in payload.inputs.items()
+            }
+            if self._verify_output is not None:
+                payload.output = self._verify_output["prediction"]
         self.model = None
         self.inputs = None
         self.targets = None
@@ -162,6 +204,7 @@ class BaselineTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output_buffer = None
         self._verify_output_buffer = None
         self._verify_input = None
+        self._verify_target = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
@@ -169,12 +212,12 @@ class BaselineTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         return BenchmarkConfig(adaptive_iterations=False, iterations=50, warmup=10, backend_policy="fp32_strict")
 
     def get_custom_metrics(self) -> Optional[dict]:
-        """Return truthful precision metrics for the current FP32 TE run."""
+        """Return truthful precision metrics for the current FP16 TE run."""
         from core.benchmark.metrics import compute_precision_metrics
         return compute_precision_metrics(
-            fp32_time_ms=getattr(self, "_last_elapsed_ms", None),
-            reduced_precision_time_ms=None,
-            precision_type="fp8",
+            fp32_time_ms=None,
+            reduced_precision_time_ms=getattr(self, "_last_elapsed_ms", None),
+            precision_type="fp16",
         )
 
     def validate_result(self) -> Optional[str]:
