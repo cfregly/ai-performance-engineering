@@ -1,6 +1,11 @@
 # B200 follow-through: fair serving, training fixes, and NCCL capture
 
-The remaining targeted B200 execution is complete. Real-data training checks
+**Repository-wide speed target: not met.** A minimum 1.05x improvement has not
+been established for every chapter, lab, or baseline/optimized pair. Several
+measured pairs below remain below that threshold. Correctness and CI results
+are separate from performance acceptance.
+
+The targeted B200 measurements in this pass are complete. Real-data training checks
 pass on one and two B200s, the supported NCCL profiling path completes, and the
 serving comparison now uses both GPUs fairly. Dedicated pools are **22.71%
 slower** on total completion time for this workload, while improving short-request
@@ -15,8 +20,8 @@ attempts. It does not establish that every repository example is faster.
 The base is merged commit `0299307facf77bc883b9d27b4fb175ce27e50ab4`.
 The regular DDP and initial routing measurements use `d289e873e`; the fair serving
 and public NCCL captures use `e864b377c`. Final real-MRPC training and deferred-loss
-CUDA tests use `e1f4f7e7516f58bb693ab2949a966e25d008a6be`. Later report-only
-changes do not alter those source checkpoints.
+CUDA tests use `e1f4f7e7516f58bb693ab2949a966e25d008a6be`. Subsequent CI repairs are recorded below;
+serving and training workload source remains unchanged.
 
 Runs execute directly on one or two B200s, without Slurm. The host reports
 virtualization, so results are portable development evidence rather than
@@ -67,8 +72,8 @@ the aggregate final audit checks the union of all five mains and both partial-gr
 runs at the same source. These are functional smokes, not a full training
 convergence or throughput qualification.
 
-Focused verification includes 26 collator tests with real offline Hugging Face
-tokenizers, seven real CPU Gloo/reference accumulation tests, and eight real-Torch
+Focused verification includes 26 collator/training tests with real offline
+Hugging Face tokenizers, seven real CPU Gloo/reference accumulation tests, and eight real-Torch
 loss-logging cases. Final deferred-metric tests pass **3/3 on B200**, including the
 CUDA test: loss values stay on device until the single final host transfer.
 The earlier combined regression run passed 245 tests with 84 macOS skips. These
@@ -218,3 +223,33 @@ Read final CI status and the exact tested commit from
 [PR #28](https://github.com/cfregly/ai-performance-engineering/pull/28); this GPU
 evidence does not substitute for that integration check. The earlier CI run was cancelled as superseded when more
 callers were found; its disposition remains retained.
+
+## Repairs from the first final-integration attempt
+
+The first integration run on `94bf95104` completed with **5,561 passed, 527
+skipped, and nine failures**. Static analysis, dashboard checks, core contracts,
+and all four configured CUDA architecture builds passed. The failures map to
+four causes: one stale loss-logging assertion, three process-cleanup assertions,
+one generated-README mismatch, and four missing-Transformers import failures.
+
+The repairs preserve the new unscaled-loss behavior, add the pinned real
+Transformers dependency to CPU CI, and synchronize the README generator with
+the documented routing and accumulation behavior. All 61 generated READMEs now
+match their canonical generator. The real-HF collator selection passes 14 tests,
+the related Transformer selection passes 21, and repository configuration
+passes 24. These are overlapping focused selections.
+
+Profiler cleanup now snapshots PID/start-time identities before launch. It
+ignores an unreadable process only when that exact identity predates the capture.
+Owned, newborn, or PID-reused unreadable identities remain unverified and are
+not directly signaled. This avoids rejecting captures because of an unrelated
+pre-existing process while retaining conservative ownership checks. The repaired
+helper passes 21 Linux CPU tests, including real detached-process cleanup. The
+public receipt schema and profiler command construction are unchanged. The B200
+NCU captures above remain evidence for their recorded `e864b377c` source; a fresh
+GPU capture of this cleanup repair has not been claimed.
+
+The failed integration receipt and focused repair checks are retained separately
+in `ai-perf-followthrough2-20260908-final-integration/`, alongside the original
+sealed GPU package. No successful full-suite rerun of these repairs is asserted
+here; use the PR's actual run results.

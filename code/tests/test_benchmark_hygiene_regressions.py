@@ -15320,13 +15320,31 @@ def test_train_distributed_optimized_wrappers_log_detached_loss_values() -> None
         assert "float(loss.detach())" not in source
         if relative in ("optimized_ddp.py", "optimized_ddp_multigpu.py"):
             assert "DeferredTrainingProgress(num_steps=num_steps, interval=10, device=device)" in source
-            assert "progress.record(step=step, loss=loss, tokens=batch[\"input_ids\"].numel())" in source
+            assert (
+                'progress.record(step=step, loss=outputs.loss.detach(), tokens=batch["input_ids"].numel())'
+                in source
+            )
+            assert (
+                'progress.record(step=step, loss=loss, tokens=batch["input_ids"].numel())'
+                not in source
+            )
             assert "for sample in progress.read():" in source
             assert "loss={sample.loss:.4f}" in source
             assert source.index("total_time =") < source.index("for sample in progress.read():")
+            timed_section = source.split("start_time = perf_counter()", maxsplit=1)[1].split(
+                "total_time =", maxsplit=1
+            )[0]
+            assert ".cpu()" not in timed_section
             continue
         assert "loss_value_buffer = torch.empty(1, dtype=torch.float64" in source
-        assert "loss_value_buffer[0].copy_(loss.detach())" in source
+        expected_loss = (
+            "outputs.loss.detach()"
+            if relative.startswith("optimized_ddp_flash")
+            else "loss.detach()"
+        )
+        assert f"loss_value_buffer[0].copy_({expected_loss})" in source
+        if relative.startswith("optimized_ddp_flash"):
+            assert "loss_value_buffer[0].copy_(loss.detach())" not in source
         assert "loss_value = float(loss_value_buffer.detach().cpu()[0])" in source
         assert "loss={loss_value:.4f}" in source
 

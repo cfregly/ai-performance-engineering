@@ -46,6 +46,7 @@ _TORCHRUN_MODULE = "torch.distributed.run"
 _WRAPPER_MODULE = "core.harness.torchrun_wrapper"
 _CAPTURE_OWNER_ENV = "AISP_NCU_TORCHRUN_CAPTURE_ID"
 _PROC_ROOT = Path("/proc")
+_ProcIdentity = tuple[int, int]
 
 
 def _rank(value: int) -> int:
@@ -460,8 +461,53 @@ def _proc_cleanup_supported(proc_root: Path = _PROC_ROOT) -> bool:
     return sys.platform.startswith("linux") and proc_root.is_dir()
 
 
-def _marked_pids(marker: str, proc_root: Path = _PROC_ROOT) -> tuple[set[int], str | None]:
-    """Find live processes carrying this launch's exact inherited marker."""
+def _proc_identity(entry: Path) -> _ProcIdentity:
+    """Return a PID/start-time identity that is stable across PID reuse."""
+
+    stat = (entry / "stat").read_bytes()
+    fields_after_comm = stat.rsplit(b")", 1)[1].split()
+    return int(entry.name), int(fields_after_comm[19])
+
+
+def _snapshot_proc_identities(proc_root: Path = _PROC_ROOT) -> frozenset[_ProcIdentity]:
+    """Snapshot identities that are proven to exist before capture launch."""
+
+    try:
+        entries = tuple(proc_root.iterdir())
+    except OSError:
+        return frozenset()
+    identities: set[_ProcIdentity] = set()
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            identities.add(_proc_identity(entry))
+        except (
+            FileNotFoundError,
+            ProcessLookupError,
+            PermissionError,
+            OSError,
+            ValueError,
+            IndexError,
+        ):
+            continue
+    return frozenset(identities)
+
+
+def _marked_pids(
+    marker: str,
+    proc_root: Path = _PROC_ROOT,
+    *,
+    owned_candidates: set[int] | frozenset[int] = frozenset(),
+    preexisting_identities: frozenset[_ProcIdentity] = frozenset(),
+) -> tuple[set[int], str | None]:
+    """Find live processes carrying this launch's exact inherited marker.
+
+    An unreadable environment is ignored only when its PID/start-time identity
+    was observed before capture launch. The launcher, a previously marked PID,
+    or any unclassified post-snapshot process fails closed without being
+    signaled.
+    """
 
     token = f"{_CAPTURE_OWNER_ENV}={marker}".encode()
     try:
@@ -477,16 +523,28 @@ def _marked_pids(marker: str, proc_root: Path = _PROC_ROOT) -> tuple[set[int], s
         except (FileNotFoundError, ProcessLookupError):
             continue
         except (PermissionError, OSError) as exc:
-            try:
-                same_user = entry.stat().st_uid == os.geteuid()
-            except (FileNotFoundError, ProcessLookupError, PermissionError, OSError):
-                same_user = False
-            if same_user:
+            pid = int(entry.name)
+            if pid in owned_candidates:
                 return (
                     found,
-                    f"process-tree inspection failed for same-user pid {entry.name}: {exc}",
+                    f"process-tree inspection failed for owned candidate pid {pid}: {exc}",
                 )
-            continue
+            try:
+                identity = _proc_identity(entry)
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+            except (PermissionError, OSError, ValueError, IndexError) as identity_exc:
+                return (
+                    found,
+                    f"process-tree identity inspection failed for unclassified pid {pid}: "
+                    f"{identity_exc}; environment error: {exc}",
+                )
+            if identity in preexisting_identities:
+                continue
+            return (
+                found,
+                f"process-tree inspection failed for unclassified post-snapshot pid {pid}: {exc}",
+            )
         if token in environment.split(b"\0"):
             pid = int(entry.name)
             if pid != os.getpid():
@@ -499,13 +557,21 @@ def _wait_marked_processes(
     marker: str,
     timeout: float,
     proc_root: Path,
+    owned_candidates: set[int],
+    preexisting_identities: frozenset[_ProcIdentity],
 ) -> tuple[set[int], set[int], str | None]:
     observed: set[int] = set()
     deadline = time.monotonic() + timeout
     while True:
         launcher_returncode = process.poll()  # Reap a zombie before scanning.
-        remaining, error = _marked_pids(marker, proc_root)
+        remaining, error = _marked_pids(
+            marker,
+            proc_root,
+            owned_candidates=owned_candidates,
+            preexisting_identities=preexisting_identities,
+        )
         observed.update(remaining)
+        owned_candidates.update(remaining)
         if error is None and launcher_returncode is None and process.pid not in remaining:
             error = f"live launcher {process.pid} owner marker is unreadable or absent"
         if error or not remaining or time.monotonic() >= deadline:
@@ -544,6 +610,7 @@ def _cleanup_capture_processes(
     *,
     proc_root: Path = _PROC_ROOT,
     grace_seconds: float = 2.0,
+    preexisting_identities: frozenset[_ProcIdentity] = frozenset(),
 ) -> _CleanupResult:
     """Drain all marked launch processes, including detached torchrun ranks.
 
@@ -569,8 +636,14 @@ def _cleanup_capture_processes(
             tuple(errors),
         )
 
+    owned_candidates = {process.pid}
     remaining, observed, scan_error = _wait_marked_processes(
-        process, marker, grace_seconds, proc_root
+        process,
+        marker,
+        grace_seconds,
+        proc_root,
+        owned_candidates,
+        preexisting_identities,
     )
     errors = [scan_error] if scan_error else []
     events: list[dict[str, Any]] = []
@@ -584,7 +657,12 @@ def _cleanup_capture_processes(
             events.append({"signal": sig.name, "pids": signaled})
         errors.extend(signal_errors)
         remaining, newly_observed, scan_error = _wait_marked_processes(
-            process, marker, wait, proc_root
+            process,
+            marker,
+            wait,
+            proc_root,
+            owned_candidates,
+            preexisting_identities,
         )
         observed.update(newly_observed)
         if scan_error:
@@ -602,7 +680,14 @@ def _cleanup_capture_processes(
         process.wait(timeout=max(grace_seconds, 0.1))
     except subprocess.TimeoutExpired:
         errors.append(f"launcher {process.pid} could not be reaped")
-    remaining, newly_observed, scan_error = _wait_marked_processes(process, marker, 0.0, proc_root)
+    remaining, newly_observed, scan_error = _wait_marked_processes(
+        process,
+        marker,
+        0.0,
+        proc_root,
+        owned_candidates,
+        preexisting_identities,
+    )
     observed.update(newly_observed)
     if scan_error:
         errors.append(scan_error)
@@ -699,6 +784,9 @@ def run_capture(
         **preflight,
     }
     _write_json(plan.receipt_path, receipt)
+    preexisting_identities = (
+        _snapshot_proc_identities() if _proc_cleanup_supported() else frozenset()
+    )
     start_ns, process = time.time_ns(), None
     timed_out = False
     try:
@@ -720,7 +808,11 @@ def run_capture(
                 timed_out = True
     except BaseException as exc:
         cleanup = (
-            _cleanup_capture_processes(process, capture_marker)
+            _cleanup_capture_processes(
+                process,
+                capture_marker,
+                preexisting_identities=preexisting_identities,
+            )
             if process
             else _CleanupResult("not-started", True, True, True, (), (), (), (), ())
         )
@@ -734,7 +826,11 @@ def run_capture(
         _write_json(plan.receipt_path, receipt)
         raise
     assert process is not None
-    cleanup = _cleanup_capture_processes(process, capture_marker)
+    cleanup = _cleanup_capture_processes(
+        process,
+        capture_marker,
+        preexisting_identities=preexisting_identities,
+    )
     artifacts, artifact_errors = _artifacts(plan, start_ns)
     if not cleanup.supported:
         status = "CLEANUP_UNVERIFIED"

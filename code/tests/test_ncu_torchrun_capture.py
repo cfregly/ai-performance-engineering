@@ -6,6 +6,7 @@ receipts. These tests do not represent a GPU or profiler capture.
 
 from __future__ import annotations
 
+import errno
 import json
 import math
 import os
@@ -25,6 +26,7 @@ from core.profiling.ncu_torchrun_capture import (
     _drain_owned_process_group,
     _marked_pids,
     _proc_cleanup_supported,
+    _snapshot_proc_identities,
     build_capture_plan,
 )
 from core.profiling.ncu_torchrun_rank import (
@@ -384,12 +386,110 @@ def test_marker_scan_matches_only_the_exact_capture_owner(tmp_path: Path) -> Non
     assert error is None
 
 
+def test_marker_scan_ignores_unreadable_unrelated_same_user_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    proc_root = tmp_path / "proc"
+    owned_process = proc_root / "4242"
+    owned_process.mkdir(parents=True)
+    (owned_process / "environ").write_bytes(
+        b"PATH=/bin\0" + f"{_CAPTURE_OWNER_ENV}=owned".encode() + b"\0"
+    )
+    unrelated_process = proc_root / "4243"
+    unrelated_process.mkdir()
+    unrelated_environment = unrelated_process / "environ"
+    unrelated_environment.write_bytes(b"PATH=/bin\0")
+    stat_fields = ["S", *(["0"] * 18), "100"]
+    (unrelated_process / "stat").write_text(
+        f"4243 (unrelated) {' '.join(stat_fields)}\n", encoding="utf-8"
+    )
+    assert unrelated_process.stat().st_uid == os.geteuid()
+
+    original_read_bytes = Path.read_bytes
+
+    def read_bytes(path: Path) -> bytes:
+        if path == unrelated_environment:
+            raise PermissionError(errno.EACCES, "Permission denied", str(path))
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+
+    pids, error = _marked_pids(
+        "owned",
+        proc_root,
+        owned_candidates={4242},
+        preexisting_identities=frozenset({(4243, 100)}),
+    )
+
+    assert pids == {4242}
+    assert error is None
+
+
+def test_marker_scan_fails_closed_for_unreadable_owned_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    proc_root = tmp_path / "proc"
+    owned_process = proc_root / "4242"
+    owned_process.mkdir(parents=True)
+    owned_environment = owned_process / "environ"
+    owned_environment.write_bytes(b"PATH=/bin\0" + f"{_CAPTURE_OWNER_ENV}=owned".encode() + b"\0")
+    original_read_bytes = Path.read_bytes
+
+    def read_bytes(path: Path) -> bytes:
+        if path == owned_environment:
+            raise PermissionError(errno.EACCES, "Permission denied", str(path))
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+
+    pids, error = _marked_pids("owned", proc_root, owned_candidates={4242})
+
+    assert pids == set()
+    assert error is not None
+    assert "owned candidate pid 4242" in error
+    assert "Permission denied" in error
+
+
+def test_marker_scan_fails_closed_for_unreadable_new_marked_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    proc_root = tmp_path / "proc"
+    child_process = proc_root / "4243"
+    child_process.mkdir(parents=True)
+    child_environment = child_process / "environ"
+    child_environment.write_bytes(b"PATH=/bin\0" + f"{_CAPTURE_OWNER_ENV}=owned".encode() + b"\0")
+    stat_fields = ["S", *(["0"] * 18), "200"]
+    (child_process / "stat").write_text(
+        f"4243 (new-child) {' '.join(stat_fields)}\n", encoding="utf-8"
+    )
+    original_read_bytes = Path.read_bytes
+
+    def read_bytes(path: Path) -> bytes:
+        if path == child_environment:
+            raise PermissionError(errno.EACCES, "Permission denied", str(path))
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+
+    pids, error = _marked_pids(
+        "owned",
+        proc_root,
+        preexisting_identities=frozenset({(4243, 100)}),
+    )
+
+    assert pids == set()
+    assert error is not None
+    assert "unclassified post-snapshot pid 4243" in error
+    assert "Permission denied" in error
+
+
 @pytest.mark.skipif(
     not _proc_cleanup_supported(),
     reason="detached-session process-tree cleanup requires Linux procfs",
 )
 def test_marker_cleanup_drains_detached_child_that_ignores_sigterm(tmp_path: Path) -> None:
     marker = "detached-child-test"
+    preexisting_identities = _snapshot_proc_identities()
     child_pid_path = tmp_path / "detached.pid"
     child_code = (
         "import os,signal,time\n"
@@ -419,7 +519,12 @@ def test_marker_cleanup_drains_detached_child_that_ignores_sigterm(tmp_path: Pat
         assert child_pid_path.is_file()
         child_pid = int(child_pid_path.read_text())
 
-        cleanup = _cleanup_capture_processes(parent, marker, grace_seconds=0.1)
+        cleanup = _cleanup_capture_processes(
+            parent,
+            marker,
+            grace_seconds=0.1,
+            preexisting_identities=preexisting_identities,
+        )
 
         assert cleanup.supported is True
         assert cleanup.natural is False
