@@ -26,7 +26,7 @@ The retained targeted measurements illustrate the remaining speed gaps:
 | Dynamic serving routing | 0.996x | Parity; below the speed goal |
 | Fair dedicated versus shared serving pools | 0.815x | Lower total throughput; short-request TTFT improves |
 | KV-cache NVFP4 compute, cached weights | 1.106x | All eight cached comparisons across four A/B/B/A blocks exceed 1.05x; full profiled pair also passes |
-| Ozaki dynamic / fixed versus native FP64 | 0.545x / 0.724x | Both slower despite passing numerical checks |
+| Ozaki dynamic / fixed versus native FP64 | Earlier ratios invalid | Shared timing parser dropped scientific-notation exponents; corrected public execution pending |
 
 These ratios retain the source, workload, timing, and qualification limits of
 their individual receipts; they are not a new uniform benchmark run. The
@@ -440,8 +440,9 @@ from the arithmetic-qualified `32030e6` source. The profiler batch drained
 naturally without forced cleanup.
 
 DDP optimizer/backward overlap remains a static hypothesis requiring a fresh
-trace and exact update/output checks. Existing DDP, pipeline, serving, and
-Ozaki no-win dispositions remain in force until new measurements supersede them.
+trace and exact update/output checks. Existing DDP, pipeline, and serving
+limitations remain. Earlier Ozaki no-speedup classifications are invalidated by
+the timing-parser defect below; their original receipts remain preserved.
 The earlier KV 1.025x result retains its original runtime-specific disposition.
 
 An additional Ozaki candidate replaces the per-GEMM pageable-host sentinel copy
@@ -459,9 +460,29 @@ memory safety for every shape or application-level numerical quality. All 17
 execution records and their log hashes pass local re-audit. All 23 files
 (1,045,530 bytes) are retained in `ozaki-sentinel-accuracy-v2-5b5/`, inventory
 SHA-256 `cda72dfd9bc7107fc10ab6f23518a1ca00b5fe92de08bf02b1abe8580450ddad`.
-Old/new timing and a separate 64/256 MiB workspace experiment are running; the
-default workspace and previous no-speedup disposition remain unchanged.
+All 80 old/new timing executions and the separate 64/256 MiB workspace screen
+complete. The sentinel change is timing-neutral: matched geometric means at
+64 MiB are **1.000088x dynamic / 1.000489x fixed**. Raising workspace to 256 MiB
+improves candidate timings by **1.029788x / 1.033635x**, below 1.05x and using
+192 MiB more workspace. The default remains 64 MiB.
 [CUDA synchronization behavior](https://docs.nvidia.com/cuda/cuda-runtime-api/api-sync-behavior.html).
+
+The screen exposed a separate **shared timing-parser defect**. The C++ lab emits
+scientific notation, but `parse_kernel_time_ms()` truncated the exponent:
+`TIME_MS: 8.84707164764404252e-01` became 8.847 ms instead of 0.8847 ms.
+Native FP64 timings had exponent zero and escaped this tenfold error. A fresh
+public CLI reproduction reports native 5.132640 ms, dynamic 8.864288 ms, and
+fixed 6.634400 ms, reproducing the false no-speedup classification. The patch
+parses complete scientific-notation tokens in every supported time unit and
+rejects malformed/non-finite tokens. All **35 focused timing tests pass**;
+corrected B200 CLI execution and profiling are the next acceptance checks.
+
+The direct CUDA-event screen at 64 MiB measures dynamic/native and fixed/native
+speedup geometric means of **5.797175x / 7.738416x**, with all numerical limits
+passing. These are timing-screen results, not a benefit from the sentinel patch
+or a substitute for corrected public harness/profiler validation. All 85 files
+(242,072 bytes) are hash-verified in `ozaki-sentinel-abba-5b5/`, inventory SHA-256
+`f3e38ee1840b6c8291ce0434fa2250b9d62ba188a3f846aa738e796b84f0e0b4`.
 
 PR #28 is back in draft; broad CI and publication are deferred while this work
 continues.
