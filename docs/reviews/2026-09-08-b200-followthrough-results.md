@@ -268,7 +268,7 @@ The selected-kernel path is recovered; full-range replay remains unresolved.
 - Earlier B200 execution guards and deferred-progress behavior: 23 passed, no skips.
 - Late-source B200 audits: 27 passed with no skips, and the real vectorization CLI passes at `f10a5b755`.
 - Retained B200 arithmetic matrix: 20 of 20 cases pass; fresh KV and Ozaki ordinary-harness correctness passes with no qualified speedup.
-- Syntax passes for all 49 changed Python files. Full-file Ruff has the same 75 diagnostics as the base commit and no new diagnostics; focused changed-implementation lint passes.
+- Syntax passes for all 50 changed Python files. Changed-file Ruff `F` checks have the same 75 diagnostics as the base commit and no new `F` diagnostics; the repository-wide CI correctness rules pass.
 - All target runs are finished and their owned processes drained; artifact hash verification passes.
 
 The first hosted CPU validation attempt reached 98% before its 30-minute job
@@ -285,6 +285,16 @@ implementation is unchanged from the B200 profile captures.
 The corrected profiler-range module passes all 42 tests, the broader pipeline
 regression set passes 48 tests with six hardware skips, and all 24 workflow
 configuration tests pass.
+
+The next completed hosted CPU suite reported 5,528 passed, 527 skipped, and one
+failing documentation assertion. That assertion still expected the README to ask
+for a fresh B200 FP8 run, although the matched sweep is now completed and reported.
+The corrected test retains eager-execution and default-expectation guards while
+checking the documented batch-256 no-speedup result and workload-specific
+batch-4,096 crossover. Its focused TE regression set passes 23 tests with four
+hardware skips. The remaining hosted post-suite checks also pass locally: five
+shell entrypoints, zero silent-fallback findings, and 936 benchmark files with
+zero contract errors or warnings. The failed hosted receipt remains retained.
 
 Full collective NCU replay still needs a working tool/runtime combination; the
 bounded selected-kernel captures and matched Nsys traces provide the usable

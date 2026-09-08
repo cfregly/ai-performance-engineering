@@ -150,7 +150,16 @@ def test_transformer_engine_precision_pair_keeps_optimized_path_eager() -> None:
 
     readme = (CODE_ROOT / "ch13" / "README.md").read_text(encoding="utf-8")
     assert "compared eager FP16 with CUDA-graph-replayed FP8" in readme
-    assert "publish a new speed result only after a fresh B200" in readme
+    assert "`precisionfp8_te` keeps batch size 256 as its default workload" in readme
+    assert (
+        "| 256 | `0.4786 ms` | `0.6662 ms` | `0.7183x` | no measured speedup |"
+        in readme
+    )
+    assert (
+        "batch-4,096 result establishes a workload-specific crossover rather than "
+        "a general default-workload speedup"
+        in readme
+    )
 
 
 def test_transformer_engine_eager_benchmark_runs_one_fp8_training_step() -> None:
