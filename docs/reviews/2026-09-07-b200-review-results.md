@@ -8,6 +8,32 @@ that are unavailable on this host.
 
 ## Validation status
 
+The renewed completion pass starts from `6b98beed1`. It adds worker-bound
+runtime receipts, expected GPU identity checks, active PyTorch profiler guards,
+and real evaluation-contract tests in place of stale skips. It also tests
+removing the DDP reducer for one-rank training while retaining the distributed
+sampler and input order. These changes are undergoing validation; the retained
+suite totals and performance measurements below describe their stated earlier
+source revisions.
+
+The first expanded CPU check passed 344 cases and skipped 100, with nine
+transport fixtures rejected because they omitted the child device. After
+adding that explicit fixture identity, all 29 tests in the affected transport
+file passed. Actual child-receipt corruption tests separately confirm that a
+wrong PID or device is rejected. Runtime collection now follows measured work
+and has a separate bounded grace period. New one-/two-B200 results will be
+recorded after execution; no DDP speedup is claimed from this source change.
+
+The retained test files now contain 43 explicit missing-protection declarations,
+down from 58. This is a source inventory, not a claim that 15 independent
+protections were qualified: several labels duplicated existing evaluation
+contracts, and the new CUDA version and identity cases still require their
+target run. Version admission covers observed driver, CUDA, cuDNN, Python,
+PyTorch and relevant installed-package versions. Installed cuBLAS package
+metadata does not identify the native library actually loaded. The profiler
+guard covers an enclosing PyTorch profiler; it does not detect an external
+Nsight session or a profiler started and stopped entirely inside a workload.
+
 | Check | Current result |
 | --- | --- |
 | Broad target execution | 486 targets attempted; unsupported and informational outcomes remain separate from passes |

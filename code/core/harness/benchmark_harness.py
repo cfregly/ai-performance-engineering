@@ -722,6 +722,7 @@ _configure_quick_wins()
 
 _VERIFY_OUTPUT_MAX_BYTES = 64 * 1024 * 1024
 """Maximum verify_output payload size (bytes) before spilling to file."""
+_RUNTIME_PROVENANCE_TIMEOUT_SECONDS = 15.0
 
 
 def _extract_skip_reason_from_messages(messages: Sequence[str]) -> Optional[str]:
@@ -2569,6 +2570,7 @@ class BenchmarkHarness:
     def _benchmark_with_torchrun(self, benchmark: BaseBenchmark, config: BenchmarkConfig) -> PydanticBenchmarkResult:
         """Launch benchmark via torchrun for multi-GPU targets."""
         import inspect
+        from core.harness.torchrun_runtime_provenance import parse_torchrun_runtime_provenance_stdout
         print("[harness] _benchmark_with_torchrun start", flush=True)
 
         def _filter_logs(lines: List[str], dedupe: bool = True) -> List[str]:
@@ -2726,6 +2728,7 @@ class BenchmarkHarness:
         wrapper_args: List[str] = [
             "--aisp-expected-torch-seed",
             str(int(expected_torch_seed)),
+            "--aisp-emit-runtime-provenance",
         ]
         if script_path is not None:
             wrapper_args[0:0] = ["--aisp-target-script", str(script_path)]
@@ -2774,6 +2777,7 @@ class BenchmarkHarness:
 
         stdout = ""
         stderr = ""
+        worker_runtime_receipts = None
         elapsed = 0.0
         reported_time_per_iter_ms: Optional[float] = None
         timeout_limit = config.get_effective_timeout("measurement")
@@ -2859,6 +2863,14 @@ class BenchmarkHarness:
                     if tail:
                         errors.append("stderr_tail: " + " | ".join(tail))
             else:
+                worker_runtime_receipts = parse_torchrun_runtime_provenance_stdout(
+                    stdout,
+                    expected_local_ranks=range(int(nproc_per_node)),
+                    target=self.device.type,
+                )
+                # Raw stdout was retained above; protocol records must not
+                # contaminate human logs, throughput parsing or callbacks.
+                stdout = worker_runtime_receipts.clean_stdout
                 if spec.timing_source == "rank0_time_per_iter_ms":
                     reported_time_per_iter_ms = self._extract_rank0_time_per_iter_ms(
                         stdout.splitlines()
@@ -2899,6 +2911,13 @@ class BenchmarkHarness:
                 iterations_per_sample=1,
             )
         result = self._compute_stats(times_ms, config)
+        if worker_runtime_receipts is not None:
+            result.runtime_provenance = worker_runtime_receipts.primary_snapshot.model_copy(deep=True)
+            result.runtime_provenance_by_local_rank = {
+                rank: snapshot.model_copy(deep=True)
+                for rank, snapshot in worker_runtime_receipts.snapshots_by_local_rank.items()
+            }
+            result.execution_process_ids = dict(worker_runtime_receipts.execution_process_ids)
         if reported_iteration_mean:
             # The worker emitted one aggregate mean. Do not invent percentiles
             # or a distribution from the iterations represented by that mean.
@@ -3008,6 +3027,8 @@ class BenchmarkHarness:
         Uses subprocess isolation (if enabled) or threading timeout to prevent hangs.
         Default timeout is 15 seconds.
         """
+        from core.harness.profiler_guard import assert_no_active_profiler
+        assert_no_active_profiler()
         callable_wrapped = False
         # Support callable benchmarks by wrapping in a minimal BaseBenchmark
         if not isinstance(benchmark, BaseBenchmark):
@@ -3159,6 +3180,8 @@ class BenchmarkHarness:
             probe=self._environment_probe,
             allow_virtualization=bool(getattr(config, "allow_virtualization", False)),
             allow_foreign_gpu_processes=bool(getattr(config, "allow_foreign_gpu_processes", False)),
+            expected_device_uuid=config.expected_device_uuid if self.device.type == "cuda" else None,
+            expected_compute_capability=config.expected_compute_capability if self.device.type == "cuda" else None,
         )
         if LOGGER_AVAILABLE:
             if env_result.details:
@@ -3297,7 +3320,9 @@ class BenchmarkHarness:
             )
 
         config_dict = {k: _serialize_manifest_value(v) for k, v in self.config.__dict__.items()}
-        manifest = RunManifest.create(config=config_dict, start_time=start_time)
+        manifest = RunManifest.create(
+            config=config_dict, start_time=start_time, capture_execution_runtime=False,
+        )
 
         def _append_manifest_warning(message: str) -> None:
             if message not in manifest.collection_warnings:
@@ -3334,6 +3359,13 @@ class BenchmarkHarness:
         worker_evaluation = getattr(result, "evaluation", None)
         if worker_evaluation is not None:
             manifest.evaluation = worker_evaluation.model_copy(deep=True)
+
+        # Qualification must use the execution process, never substitute the
+        # coordinator's package inventory when a worker receipt is missing.
+        worker_runtime = result.runtime_provenance
+        manifest.runtime_provenance = (
+            worker_runtime.model_copy(deep=True) if worker_runtime is not None else None
+        )
 
         result_seed_info = _seed_info_to_manifest(getattr(result, "seeds", None))
         if result_seed_info is not None:
@@ -3520,6 +3552,8 @@ class BenchmarkHarness:
         """Run benchmark in subprocess for reliable timeout cancellation."""
         import json
         import inspect
+        import torch
+        from core.benchmark.run_manifest import RuntimeProvenance
         
         errors: List[str] = []
         memory_peak_mb: Optional[float] = None
@@ -3536,6 +3570,9 @@ class BenchmarkHarness:
         child_runtime_env: Optional[Dict[str, str]] = None
         child_gpu_metrics: Optional[Dict[str, Optional[float | str]]] = None
         child_evaluation: Optional[EvaluationProvenance] = None
+        child_runtime_provenance: Optional[RuntimeProvenance] = None
+        child_device: Optional[str] = None
+        execution_process_ids: Dict[int, int] = {}
         stage_watchdog: Dict[str, Dict[str, Any]] = {
             "setup": {"status": "pending"},
             "warmup": {"status": "pending"},
@@ -3691,6 +3728,7 @@ class BenchmarkHarness:
                 preexec_fn=_benchmark_child_preexec,
             )
             child_pgid = process.pid  # _benchmark_child_preexec() starts a fresh session.
+            execution_process_ids = {0: process.pid}
             if LOGGER_AVAILABLE:
                 logger.info(
                     "SUBPROCESS DISPATCH: coordinator_pid=%s worker_pid=%s owner_run_id=%s owner_pid=%s",
@@ -3704,7 +3742,10 @@ class BenchmarkHarness:
             input_json = json.dumps(input_data)
             subprocess_failed = False
             try:
-                stdout, stderr = process.communicate(input=input_json, timeout=measurement_timeout)
+                stdout, stderr = process.communicate(
+                    input=input_json,
+                    timeout=measurement_timeout + _RUNTIME_PROVENANCE_TIMEOUT_SECONDS,
+                )
             except BrokenPipeError as exc:
                 subprocess_failed = True
                 errors.append(f"Subprocess stdin closed early: {exc}")
@@ -3773,6 +3814,14 @@ class BenchmarkHarness:
                     )
                     if benchmark_result is not None and benchmark_result.evaluation is not None:
                         child_evaluation = benchmark_result.evaluation.model_copy(deep=True)
+                    if benchmark_result is not None and benchmark_result.runtime_provenance is not None:
+                        child_runtime_provenance = benchmark_result.runtime_provenance.model_copy(deep=True)
+                        if child_runtime_provenance.process_id != process.pid:
+                            raise ValueError("Runtime provenance PID does not match the launched benchmark worker")
+                    if benchmark_result is not None:
+                        child_device = benchmark_result.device
+                        if child_device is None or torch.device(child_device) != torch.device(input_data["device"]):
+                            raise ValueError("Executed child device does not match the dispatched benchmark device")
                     if result_success and benchmark_result is not None:
                         # Deserialize Pydantic BenchmarkResult from JSON
                         child_gpu_metrics = getattr(benchmark_result, "gpu_metrics", None)
@@ -4032,6 +4081,10 @@ class BenchmarkHarness:
             )
             if child_evaluation is not None:
                 result.evaluation = child_evaluation.model_copy(deep=True)
+            if child_runtime_provenance is not None:
+                result.runtime_provenance = child_runtime_provenance.model_copy(deep=True)
+            result.execution_process_ids = dict(execution_process_ids)
+            result.device = child_device
             return result
         
         # Compute statistics only from actual samples. Summary-only children
@@ -4049,6 +4102,10 @@ class BenchmarkHarness:
             result.gpu_metrics = child_gpu_metrics
         if child_evaluation is not None:
             result.evaluation = child_evaluation.model_copy(deep=True)
+        if child_runtime_provenance is not None:
+            result.runtime_provenance = child_runtime_provenance.model_copy(deep=True)
+        result.execution_process_ids = dict(execution_process_ids)
+        result.device = child_device
         if child_custom_metrics is not None:
             result.custom_metrics = child_custom_metrics
         else:
@@ -4151,6 +4208,7 @@ class BenchmarkHarness:
         """Run benchmark using threading (alternative to subprocess method)."""
         self._ensure_runtime_initialized()
         import inspect
+        from core.benchmark.run_manifest import RuntimeProvenance, capture_runtime_provenance
         
         errors = []
         memory_peak_mb = None
@@ -4165,6 +4223,7 @@ class BenchmarkHarness:
         locked_gpu_metrics: Optional[Dict[str, Optional[float | str]]] = None
         captured_custom_metrics: Optional[Dict[str, float]] = None
         evaluation_provenance: Optional[EvaluationProvenance] = None
+        worker_runtime_provenance: Optional[RuntimeProvenance] = None
         
         # Get benchmark name for error messages (same as subprocess path)
         benchmark_class = benchmark.__class__.__name__
@@ -4178,6 +4237,8 @@ class BenchmarkHarness:
             probe=self._environment_probe,
             allow_virtualization=bool(getattr(config, "allow_virtualization", False)),
             allow_foreign_gpu_processes=bool(getattr(config, "allow_foreign_gpu_processes", False)),
+            expected_device_uuid=config.expected_device_uuid if self.device.type == "cuda" else None,
+            expected_compute_capability=config.expected_compute_capability if self.device.type == "cuda" else None,
         )
         if LOGGER_AVAILABLE:
             for warning in env_result.warnings:
@@ -4231,6 +4292,8 @@ class BenchmarkHarness:
         # Use a lock to prevent teardown from running while benchmark is executing
         execution_lock = threading.Lock()
         execution_complete = threading.Event()
+        provenance_started = threading.Event()
+        provenance_start_time: List[float] = []
         teardown_called = threading.Event()  # Track if teardown has been called
         
         # Store timeout result if one occurs (needs to be accessible from outer scope)
@@ -4240,6 +4303,7 @@ class BenchmarkHarness:
             'warmup': {'status': 'pending', 'duration': 0.0},
             'measurement': {'status': 'pending', 'duration': 0.0},
             'profiling': {'status': 'pending', 'duration': 0.0},
+            'runtime_provenance': {'status': 'pending', 'duration': 0.0},
         }
         stage_start_times: Dict[str, float] = {}
 
@@ -4261,6 +4325,9 @@ class BenchmarkHarness:
             """Attach a stable worker receipt to every result path."""
 
             result.errors = list(errors)
+            if worker_runtime_provenance is not None:
+                result.runtime_provenance = worker_runtime_provenance.model_copy(deep=True)
+            result.execution_process_ids = {0: os.getpid()}
             if evaluation_provenance is not None:
                 receipt = evaluation_provenance.model_copy(deep=True)
                 if receipt.finalized_at is None:
@@ -4271,6 +4338,7 @@ class BenchmarkHarness:
         def run_benchmark_internal():
             """Internal benchmark execution function."""
             nonlocal times_ms, memory_peak_mb, memory_allocated_mb, profiling_outputs, errors, nsys_metrics, ncu_metrics, timeout_result_storage, inference_timing_data, locked_gpu_metrics, captured_custom_metrics, evaluation_provenance
+            nonlocal worker_runtime_provenance
             validity_profile = str(getattr(config, "validity_profile", "strict")).strip().lower()
             portable_mode = validity_profile == "portable"
             clock_lock_active = False
@@ -4669,6 +4737,19 @@ class BenchmarkHarness:
                     
                     if stage_watchdog['measurement']['status'] == 'running':
                         finish_stage('measurement')
+                    # Collect versions after timed work so metadata enumeration
+                    # and runtime queries cannot pre-warm the measured workload.
+                    # A separate bounded grace period covers this receipt stage.
+                    start_stage('runtime_provenance')
+                    provenance_start_time.append(time.monotonic())
+                    provenance_started.set()
+                    worker_runtime_provenance = capture_runtime_provenance()
+                    if time.monotonic() - provenance_start_time[0] > _RUNTIME_PROVENANCE_TIMEOUT_SECONDS:
+                        raise TimeoutError(
+                            "Runtime provenance collection exceeded its separate "
+                            f"{_RUNTIME_PROVENANCE_TIMEOUT_SECONDS:g} second budget"
+                        )
+                    finish_stage('runtime_provenance')
                 
                 except Exception as e:
                     error_msg = str(e) or repr(e)
@@ -4681,6 +4762,8 @@ class BenchmarkHarness:
                     times_ms = cast(List[float], [])
                     if stage_watchdog['measurement']['status'] == 'running':
                         finish_stage('measurement', status='error')
+                    if stage_watchdog['runtime_provenance']['status'] == 'running':
+                        finish_stage('runtime_provenance', status='error')
                 finally:
                     # Mark execution as complete before teardown
                     execution_complete.set()
@@ -4776,12 +4859,32 @@ class BenchmarkHarness:
         future = self._thread_executor.submit(run_benchmark_internal)
         timeout_result: Optional[PydanticBenchmarkResult] = None
         try:
-            future.result(timeout=measurement_timeout)
+            try:
+                future.result(timeout=measurement_timeout)
+            except _FuturesTimeoutError:
+                if not provenance_started.is_set():
+                    raise
+                remaining = _RUNTIME_PROVENANCE_TIMEOUT_SECONDS - (
+                    time.monotonic() - provenance_start_time[0]
+                )
+                future.result(timeout=max(0.0, remaining))
             elapsed_time = time.time() - thread_start_time
         except _FuturesTimeoutError:
             elapsed_time = time.time() - thread_start_time
             future.cancel()
-            finish_stage('measurement', status='timeout')
+            timeout_stage = 'measurement'
+            if provenance_started.is_set():
+                timeout_stage = (
+                    'runtime_provenance'
+                    if stage_watchdog['runtime_provenance']['status'] == 'running'
+                    else 'finalization'
+                )
+            timeout_limit = _RUNTIME_PROVENANCE_TIMEOUT_SECONDS if provenance_started.is_set() else measurement_timeout
+            timeout_duration = (
+                time.monotonic() - provenance_start_time[0]
+                if provenance_started.is_set() else elapsed_time
+            )
+            finish_stage(timeout_stage, status='timeout')
 
             if timeout_result_storage[0] is not None:
                 timeout_result = timeout_result_storage[0]
@@ -4790,8 +4893,8 @@ class BenchmarkHarness:
                 logger.error("TIMEOUT: Benchmark execution exceeded timeout limit")
                 logger.error("=" * 80)
                 logger.error(f"   Benchmark: {benchmark_name}")
-                logger.error(f"   Stage: measurement (benchmark iterations)")
-                logger.error(f"   Timeout limit: {measurement_timeout} seconds")
+                logger.error(f"   Stage: {timeout_stage}")
+                logger.error(f"   Timeout limit: {timeout_limit} seconds")
                 logger.error(f"   Elapsed time: {elapsed_time:.2f} seconds")
                 logger.error(f"   Config: iterations={config.iterations}, warmup={config.warmup}")
                 logger.error(f"   Status: Benchmark did not complete within timeout period")
@@ -4813,8 +4916,8 @@ class BenchmarkHarness:
                 logger.error("=" * 80)
                 
                 timeout_error_msg = (
-                    f"TIMEOUT: Benchmark measurement stage exceeded timeout of {measurement_timeout} seconds "
-                    f"(ran for {elapsed_time:.2f}s). "
+                    f"TIMEOUT: Benchmark {timeout_stage} stage exceeded timeout of {timeout_limit} seconds "
+                    f"(ran for {timeout_duration:.2f}s). "
                     f"Consider increasing measurement_timeout_seconds or using timeout_multiplier. "
                     f"Thread-mode cannot force-stop hung CUDA kernels - consider subprocess mode for stricter isolation."
                 )
@@ -4828,9 +4931,9 @@ class BenchmarkHarness:
                 gc.collect()
                 
                 timeout_result = self._create_timeout_result(
-                    stage="measurement",
-                    duration=elapsed_time,
-                    limit=measurement_timeout,
+                    stage=timeout_stage,
+                    duration=timeout_duration,
+                    limit=timeout_limit,
                     errors=errors,
                     benchmark_name=benchmark_name,
                     config=config,
@@ -5016,6 +5119,8 @@ class BenchmarkHarness:
         self, fn: Callable, config: BenchmarkConfig
     ) -> tuple[List[float], Dict[str, str]]:
         """Benchmark with profiling enabled."""
+        from core.harness.profiler_guard import assert_no_active_profiler
+        assert_no_active_profiler()
         self._ensure_runtime_initialized()
         profiling_outputs = {}
         
@@ -5054,6 +5159,10 @@ class BenchmarkHarness:
                     "with_flops": False,
                     "schedule": torch.profiler.schedule(wait=1, warmup=1, active=1, repeat=1),
                 }
+            if self.device.type == "cpu":
+                # Profiling activity follows the explicitly configured workload
+                # device. A CUDA-only preset cannot record a CPU benchmark.
+                torch_profiler_kwargs["activities"] = [torch.profiler.ProfilerActivity.CPU]
             
             # Run benchmark with PyTorch profiler
             with torch.profiler.profile(**torch_profiler_kwargs) as prof:
@@ -5120,6 +5229,8 @@ class BenchmarkHarness:
     
     def _benchmark_triton(self, fn: Callable, config: BenchmarkConfig) -> List[float]:
         """Use Triton's do_bench (returns single value per call)."""
+        from core.harness.profiler_guard import assert_no_active_profiler
+        assert_no_active_profiler()
         try:
             import triton.testing as tt
             times_ms = cast(List[float], [])
@@ -5138,6 +5249,8 @@ class BenchmarkHarness:
         Timer chooses its block size/count using min_run_time_ms. The result's
         iterations field counts measured blocks, not config.iterations calls.
         """
+        from core.harness.profiler_guard import assert_no_active_profiler
+        assert_no_active_profiler()
         try:
             from torch.utils.benchmark import Timer
             
@@ -5176,6 +5289,8 @@ class BenchmarkHarness:
             Tuple of (times_ms, inference_timing_data) where inference_timing_data is None
             or a dict with 'ttft_times_ms' and 'tpot_times_ms' keys
         """
+        from core.harness.profiler_guard import assert_no_active_profiler
+        assert_no_active_profiler()
         self._ensure_runtime_initialized()
         times_ms: List[float] = []
         inference_timing_data: Optional[Dict[str, List[float]]] = None
@@ -5208,6 +5323,8 @@ class BenchmarkHarness:
             probe=self._environment_probe,
             allow_virtualization=bool(getattr(config, "allow_virtualization", False)),
             allow_foreign_gpu_processes=bool(getattr(config, "allow_foreign_gpu_processes", False)),
+            expected_device_uuid=config.expected_device_uuid if self.device.type == "cuda" else None,
+            expected_compute_capability=config.expected_compute_capability if self.device.type == "cuda" else None,
         )
         for warning in env_result.warnings:
             import warnings as warn_module
@@ -6377,42 +6494,14 @@ def compare_benchmarks(
     if harness is None:
         harness = BenchmarkHarness()
     
-    baseline_result = harness.benchmark(baseline)
-    optimized_result = harness.benchmark(optimized)
-    
-    baseline_mean = baseline_result.timing.mean_ms if baseline_result.timing else 0.0
-    optimized_mean = optimized_result.timing.mean_ms if optimized_result.timing else 0.0
-    speedup = baseline_mean / optimized_mean if optimized_mean > 0 else 1.0
-    
-    # Detect regression: optimized is slower by threshold
-    regression = False
-    regression_pct = None
-    if speedup < 1.0:
-        regression_pct = (1.0 - speedup) * 100
-        regression = regression_pct >= regression_threshold_pct
-    
-    return {
-        "name": name,
-        "baseline": {
-            "mean_ms": baseline_result.timing.mean_ms if baseline_result.timing else 0.0,
-            "median_ms": baseline_result.timing.median_ms if baseline_result.timing else 0.0,
-            "std_ms": baseline_result.timing.std_ms if baseline_result.timing else 0.0,
-            "min_ms": baseline_result.timing.min_ms if baseline_result.timing else 0.0,
-            "max_ms": baseline_result.timing.max_ms if baseline_result.timing else 0.0,
-        },
-        "optimized": {
-            "mean_ms": optimized_result.timing.mean_ms if optimized_result.timing else 0.0,
-            "median_ms": optimized_result.timing.median_ms if optimized_result.timing else 0.0,
-            "std_ms": optimized_result.timing.std_ms if optimized_result.timing else 0.0,
-            "min_ms": optimized_result.timing.min_ms if optimized_result.timing else 0.0,
-            "max_ms": optimized_result.timing.max_ms if optimized_result.timing else 0.0,
-        },
-        "speedup": speedup,
-        "regression": regression,
-        "regression_pct": regression_pct,
-        "baseline_result": baseline_result,
-        "optimized_result": optimized_result,
-    }
+    from core.benchmark.verified_comparison import compare_verified_benchmark_runs
+
+    baseline_run = harness.benchmark_with_manifest(baseline)
+    optimized_run = harness.benchmark_with_manifest(optimized)
+    return compare_verified_benchmark_runs(
+        baseline, optimized, baseline_run, optimized_run,
+        name=name, regression_threshold_pct=regression_threshold_pct,
+    )
 
 
 def benchmark_main(

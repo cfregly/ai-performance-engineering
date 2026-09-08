@@ -170,7 +170,7 @@ def _summary_payload():
         iterations=100, warmup_iterations=7, p99_ms=24.0,
         percentiles={99.0: 24.0}, raw_times_ms=None,
     )
-    return {"success": True, "result_json": BenchmarkResult(timing=timing).model_dump_json()}
+    return {"success": True, "result_json": BenchmarkResult(timing=timing, device="cpu").model_dump_json()}
 
 
 def _transport_fixture(monkeypatch, payload, tmp_path):
@@ -214,7 +214,7 @@ def test_block_mean_child_transport_preserves_measurement_scope(monkeypatch, tmp
         iterations=2, warmup_iterations=7, raw_times_ms=[2.0, 5.0],
         sample_scope="block_mean", iterations_per_sample=4,
     )
-    payload = {"success": True, "result_json": BenchmarkResult(timing=timing).model_dump_json()}
+    payload = {"success": True, "result_json": BenchmarkResult(timing=timing, device="cpu").model_dump_json()}
     result = _transport_fixture(monkeypatch, payload, tmp_path)
     assert not result.errors, result.errors
     assert result.timing.raw_times_ms == [2.0, 5.0]

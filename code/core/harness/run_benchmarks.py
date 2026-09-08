@@ -83,6 +83,10 @@ from core.benchmark.defaults import BenchmarkDefaults, set_defaults, get_default
 from core.benchmark.informational_benchmarks import INFORMATIONAL_BENCHMARKS, is_informational_example
 from core.benchmark.run_manifest import get_gpu_state
 from core.benchmark.run_manifest import reset_gpu_state, get_git_info
+from core.benchmark.runtime_comparison import (
+    compare_executed_runtime_provenance,
+    ExecutedRuntimeComparisonError,
+)
 from core.profiling.gpu_telemetry import format_gpu_telemetry, query_gpu_telemetry
 from core.harness.serving_stack import get_serving_stack_pins
 from core.profiling.profiler_config import (
@@ -7061,6 +7065,13 @@ def _test_chapter_impl(
                         target_label=f"{chapter_name}:{example_name}",
                         technique=technique,
                     )
+                    runtime_parity = compare_executed_runtime_provenance(baseline_run, optimized_run)
+                    result_entry.setdefault("runtime_provenance_checks", []).append({
+                        "optimized_file": opt_name,
+                        "comparison": runtime_parity.model_dump(mode="json"),
+                    })
+                    if not runtime_parity.matches:
+                        raise ExecutedRuntimeComparisonError(runtime_parity)
                     optimized_timing = optimized_result.timing
                     optimized_memory = optimized_result.memory
                     optimized_custom_metrics = getattr(optimized_result, "custom_metrics", None) or {}

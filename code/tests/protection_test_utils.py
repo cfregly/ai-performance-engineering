@@ -120,6 +120,39 @@ def cpu_harness(**kwargs):
     return BenchmarkHarness(config=config), config
 
 
+def assert_expected_cuda_identity_controls(mismatch):
+    """Use live CUDA/NVML identity and the real host environment validator."""
+    from core.harness.device_identity_contract import observe_cuda_device_identity
+    from core.harness.validity_checks import validate_environment
+
+    if not torch.cuda.is_available():
+        pytest.skip("real CUDA expected-identity protection requires a device")
+    device = torch.device("cuda", torch.cuda.current_device())
+    observed = observe_cuda_device_identity(device)
+    kwargs = dict(
+        device=device,
+        allow_virtualization=True,
+        expected_device_uuid=observed.nvml_uuid,
+        expected_compute_capability=observed.compute_capability,
+    )
+    clean = validate_environment(**kwargs)
+    assert clean.is_valid, clean.errors
+    if mismatch == "compute_capability":
+        kwargs["expected_compute_capability"] = "9.0" if observed.compute_capability != "9.0" else "10.0"
+        expected_message = "Expected compute capability mismatch"
+    elif mismatch == "device_uuid":
+        wrong = "GPU-12345678-1234-5678-1234-567812345678"
+        if wrong == observed.nvml_uuid:
+            wrong = "GPU-87654321-4321-8765-4321-876543218765"
+        kwargs["expected_device_uuid"] = wrong
+        expected_message = "Expected GPU UUID mismatch"
+    else:
+        raise ValueError(f"unknown identity violation {mismatch}")
+    rejected = validate_environment(**kwargs)
+    assert not rejected.is_valid
+    assert any(expected_message in error for error in rejected.errors), rejected.errors
+
+
 def compare_tensors(runner, expected, actual, tolerance=None):
     return runner._compare_outputs({"output": expected}, {"output": actual}, tolerance)
 

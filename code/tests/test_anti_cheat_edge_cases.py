@@ -16,9 +16,11 @@ import torch
 
 from core.benchmark.verification import InputSignature, PrecisionFlags, ToleranceSpec
 from core.benchmark.verify_runner import VerifyConfig
+from tests.evaluation_contract_test_utils import assert_evaluation_contract_controls
 from tests.protection_test_utils import (
     TensorWork, assert_comparison_controls, assert_compile_cache_reset,
     assert_compile_guard_counts, assert_config_immutability, assert_environment_controls,
+    assert_expected_cuda_identity_controls,
     assert_gpu_state_controls, assert_materialization_diagnostic,
     assert_memory_pattern_controls, assert_signature_controls,
     assert_stream_audit_controls, check_jitter, compare_tensors, cpu_harness,
@@ -133,8 +135,19 @@ class TestTimingEdgeCases:
         assert_gpu_state_controls(clock_mhz=800)
 
     def test_profiler_overhead_nested_profilers(self):
-        'Requirement remains open; this retained test ID is not passing coverage.'
-        pytest.skip('Missing production protection: no nested-profiler rejection guard is implemented; a single profiler context did not test nesting')
+        'An actual enclosing profiler must be rejected before timing begins.'
+        harness, config = cpu_harness()
+        outputs = []
+        def work():
+            outputs.append(torch.ones(8) + 1)
+        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]):
+            with pytest.raises(RuntimeError, match='Active PyTorch profiler'):
+                harness._benchmark_custom(work, config)
+        assert not outputs
+        times, _ = harness._benchmark_custom(work, config)
+        assert len(times) == len(outputs) == config.iterations
+        for output in outputs:
+            torch.testing.assert_close(output, torch.full((8,), 2.0), rtol=0, atol=0)
 
 
 
@@ -287,9 +300,8 @@ class TestWorkloadEdgeCases:
         'Production signature equivalence rejects changed workload metadata, including zero batch versus nonzero.'
         assert_signature_controls(shapes={'input': (4, 7)})
 
-    def test_train_test_overlap_single_sample(self):
-        'Requirement remains open; this retained test ID is not passing coverage.'
-        pytest.skip('Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented')
+    def test_train_test_overlap_single_sample(self, tmp_path):
+        assert_evaluation_contract_controls(tmp_path, 'train_test_overlap')
 
 
 
@@ -548,8 +560,7 @@ class TestDistributedEdgeCases:
 
 class TestEnvironmentEdgeCases:
     def test_device_mismatch_compute_capability(self):
-        'Requirement remains open; this retained test ID is not passing coverage.'
-        pytest.skip('Missing production protection: no expected-versus-observed compute-capability comparison is performed by validate_environment')
+        assert_expected_cuda_identity_controls('compute_capability')
 
     def test_frequency_boost_detection(self):
         'Exercise clock-change diagnostics without claiming a live GPU clock lock.'
@@ -613,9 +624,9 @@ class TestEnvironmentEdgeCases:
         assert observed['driver_version'] == actual_driver
         assert observed['version'] == torch.version.cuda
 
-    def test_library_version_cudnn(self):
-        'Requirement remains open; this retained test ID is not passing coverage.'
-        pytest.skip('Missing production protection: RunManifest does not record cuDNN version or compare baseline/optimized library versions')
+    def test_library_version_cudnn(self, tmp_path):
+        from tests.runtime_version_test_utils import assert_runtime_version_controls
+        assert_runtime_version_controls(tmp_path, "cudnn_version")
 
     def test_container_cgroup_limits(self, tmp_path, monkeypatch):
         assert_environment_controls(tmp_path, monkeypatch, 'memory_limit')
@@ -721,21 +732,17 @@ class TestEvaluationEdgeCases:
     def test_timeout_manipulation_extend(self):
         assert_config_immutability('timeout_seconds', 999)
 
-    def test_metric_gaming_threshold_tuning(self):
-        'Requirement remains open; this retained test ID is not passing coverage.'
-        pytest.skip('Missing production protection: no evaluation-threshold policy or dataset evaluator contract is implemented')
+    def test_metric_gaming_threshold_tuning(self, tmp_path):
+        assert_evaluation_contract_controls(tmp_path, 'threshold')
 
-    def test_data_leakage_feature_from_label(self):
-        'Requirement remains open; this retained test ID is not passing coverage.'
-        pytest.skip('Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented')
+    def test_data_leakage_feature_from_label(self, tmp_path):
+        assert_evaluation_contract_controls(tmp_path, 'feature_label')
 
-    def test_overfitting_train_on_test(self):
-        'Requirement remains open; this retained test ID is not passing coverage.'
-        pytest.skip('Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented')
+    def test_overfitting_train_on_test(self, tmp_path):
+        assert_evaluation_contract_controls(tmp_path, 'train_test_overlap')
 
-    def test_self_modifying_immutable_test(self):
-        'Requirement remains open; this retained test ID is not passing coverage.'
-        pytest.skip('Missing production protection: no test-source immutability guard is implemented in the benchmark protection path')
+    def test_self_modifying_immutable_test(self, tmp_path):
+        assert_evaluation_contract_controls(tmp_path, 'source')
 
     def test_memorization_hash_detection(self, runner):
         assert check_jitter(runner, 'real') == (True, None)
@@ -743,9 +750,9 @@ class TestEvaluationEdgeCases:
         assert not passed
         assert 'output unchanged' in reason
 
-    def test_missing_holdout_temporal_split(self):
-        'Requirement remains open; this retained test ID is not passing coverage.'
-        pytest.skip('Missing production protection: no dataset provenance, feature-label leakage or holdout-overlap detector is implemented')
+    def test_missing_holdout_temporal_split(self, tmp_path):
+        assert_evaluation_contract_controls(tmp_path, 'missing_holdout')
+        assert_evaluation_contract_controls(tmp_path, 'temporal_overlap')
 
 
 
