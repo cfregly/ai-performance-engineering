@@ -106,6 +106,7 @@ class OperationPlacementResult:
 
     expected_device: str
     operations_seen: int
+    expected_device_operations_seen: int
     operator_counts: tuple[tuple[str, int], ...]
     operation_evidence: tuple[OperationEvidence, ...]
     operation_evidence_truncated: bool
@@ -115,7 +116,28 @@ class OperationPlacementResult:
 
     @property
     def passed(self) -> bool:
-        return self.violations_seen == 0
+        return self.violations_seen == 0 and self.expected_device_operations_seen > 0
+
+    @property
+    def execution_observed(self) -> bool:
+        """Whether at least one operation touched a tensor on the expected device."""
+
+        return self.expected_device_operations_seen > 0
+
+    @property
+    def failure_reasons(self) -> tuple[str, ...]:
+        reasons: list[str] = []
+        if not self.execution_observed:
+            if self.operations_seen == 0:
+                reasons.append("no dispatcher-visible tensor operations were observed")
+            else:
+                reasons.append(
+                    "no dispatcher-visible tensor operation touched the expected device "
+                    f"{self.expected_device}"
+                )
+        if self.violations_seen:
+            reasons.append(f"{self.violations_seen} operation placement violation(s)")
+        return tuple(reasons)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -123,6 +145,9 @@ class OperationPlacementResult:
             "scope": PLACEMENT_SCOPE,
             "expected_device": self.expected_device,
             "operations_seen": self.operations_seen,
+            "expected_device_operations_seen": self.expected_device_operations_seen,
+            "execution_observed": self.execution_observed,
+            "failure_reasons": list(self.failure_reasons),
             "operator_counts": dict(self.operator_counts),
             "operation_evidence": [item.to_dict() for item in self.operation_evidence],
             "operation_evidence_truncated": self.operation_evidence_truncated,
@@ -169,6 +194,7 @@ class TensorOperationPlacementAudit(TorchDispatchMode):
                 allowance.operations
             )
         self._operations_seen = 0
+        self._expected_device_operations_seen = 0
         self._operator_counts: Counter[str] = Counter()
         self._operation_evidence: list[OperationEvidence] = []
         self._violations_seen = 0
@@ -226,6 +252,8 @@ class TensorOperationPlacementAudit(TorchDispatchMode):
             *self._collect_tensor_evidence(actual_kwargs, "kwargs", operator),
             *self._collect_tensor_evidence(result, "output", operator),
         ]
+        if any(item.matches_expected_device for item in observed):
+            self._expected_device_operations_seen += 1
         mismatched_paths = tuple(
             item.path
             for item in observed
@@ -261,6 +289,7 @@ class TensorOperationPlacementAudit(TorchDispatchMode):
         return OperationPlacementResult(
             expected_device=str(self.expected_device),
             operations_seen=self._operations_seen,
+            expected_device_operations_seen=self._expected_device_operations_seen,
             operator_counts=tuple(sorted(self._operator_counts.items())),
             operation_evidence=tuple(self._operation_evidence),
             operation_evidence_truncated=self._operations_seen > len(self._operation_evidence),
@@ -412,7 +441,9 @@ class ExecutionAuditResult:
         if self.passed:
             return
         diagnostics: list[str] = []
-        if not self.placement.passed:
+        if not self.placement.execution_observed:
+            diagnostics.append(self.placement.failure_reasons[0])
+        if self.placement.violation_evidence:
             first = self.placement.violation_evidence[0]
             diagnostics.append(
                 f"{self.placement.violations_seen} operation placement violation(s); "
@@ -557,6 +588,7 @@ def _audit_fresh_benchmark(args: argparse.Namespace) -> tuple[ExecutionAuditResu
 
     original_argv = sys.argv
     benchmark = None
+    primary_error: Exception | None = None
     teardown_error: Exception | None = None
     try:
         sys.argv = [str(benchmark_path), *args.target_arg]
@@ -599,6 +631,9 @@ def _audit_fresh_benchmark(args: argparse.Namespace) -> tuple[ExecutionAuditResu
             "normal_timing_lifecycle_modified": False,
         }
         return result, metadata
+    except Exception as error:
+        primary_error = error
+        raise
     finally:
         if benchmark is not None and callable(getattr(benchmark, "teardown", None)):
             try:
@@ -607,10 +642,14 @@ def _audit_fresh_benchmark(args: argparse.Namespace) -> tuple[ExecutionAuditResu
                 teardown_error = error
         sys.argv = original_argv
         if teardown_error is not None:
-            raise RuntimeError(
+            detail = (
                 f"fresh benchmark teardown failed: {type(teardown_error).__name__}: "
                 f"{teardown_error}"
-            ) from teardown_error
+            )
+            if primary_error is not None:
+                primary_error.add_note(detail)
+            else:
+                raise RuntimeError(detail) from teardown_error
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -620,15 +659,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         result, metadata = _audit_fresh_benchmark(args)
     except Exception as error:
+        payload = {
+            "schema": "aisp.execution-audit.v1",
+            "passed": False,
+            "error": f"{type(error).__name__}: {error}",
+        }
+        error_notes = [str(note) for note in getattr(error, "__notes__", ())]
+        if error_notes:
+            payload["error_notes"] = error_notes
         print(
-            json.dumps(
-                {
-                    "schema": "aisp.execution-audit.v1",
-                    "passed": False,
-                    "error": f"{type(error).__name__}: {error}",
-                },
-                sort_keys=True,
-            )
+            json.dumps(payload, sort_keys=True)
         )
         return 1
     payload = result.to_dict()

@@ -326,16 +326,19 @@ class TestLocationEdgeCases:
         assert {tensor.numel for tensor in violation.tensors} == {12}
 
     def test_cpu_spillover_data_dependent_branch(self):
-        """Placement evidence follows the branch that actually executes."""
+        """Placement evidence rejects both no execution and a CPU-only branch."""
         cpu_value = torch.arange(8, dtype=torch.float32)
 
         def execute_branch(use_cpu: bool) -> None:
             if use_cpu:
                 torch.relu(cpu_value)
 
-        clean = audit_callable_once(lambda: execute_branch(False), expected_device="cuda")
-        assert clean.passed
-        assert clean.placement.operations_seen == 0
+        no_execution = audit_callable_once(lambda: execute_branch(False), expected_device="cuda")
+        assert not no_execution.passed
+        assert no_execution.placement.operations_seen == 0
+        assert no_execution.placement.failure_reasons == (
+            "no dispatcher-visible tensor operations were observed",
+        )
 
         violation = audit_callable_once(lambda: execute_branch(True), expected_device="cuda")
         assert not violation.passed

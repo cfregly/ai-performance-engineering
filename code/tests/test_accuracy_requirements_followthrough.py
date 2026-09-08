@@ -134,13 +134,45 @@ def test_kv_qualification_requires_all_holdouts_and_retains_failure() -> None:
 
     policy = load_accuracy_policy(DEFAULT_POLICY_PATH)
     receipts = _kv_receipts(policy)
-    assert assess_receipts(policy, receipts)["status"] == "qualified_arithmetic_gate"
+    passing = assess_receipts(policy, receipts)
+    assert passing["status"] == "qualified_arithmetic_gate"
+    assert passing["declared_provenance"] == {
+        "git_commit": "0123456789abcdef",
+        "torch": "2.9.1",
+        "cuda": "13.0",
+        "transformer_engine": "2.18.0",
+        "gpu": "NVIDIA B200",
+        "compute_capability": [10, 0],
+    }
+    assert passing["binding"] == (
+        "receipt_consistency_only; execution/source identity requires companion receipts"
+    )
 
     damaged = deepcopy(receipts)
     damaged[-1]["metrics"]["cache_v.normalized_max_abs"] = 0.5
     result = assess_receipts(policy, damaged)
     assert result["status"] == "failed_arithmetic_gate"
     assert any("cache_v.normalized_max_abs" in failure for failure in result["failures"])
+
+
+@pytest.mark.parametrize("invalid_error", [False, -0.01])
+def test_kv_qualification_rejects_boolean_and_negative_error_metrics(
+    invalid_error: bool | float,
+) -> None:
+    from labs.kv_cache_compression.accuracy import DEFAULT_POLICY_PATH, load_accuracy_policy
+    from labs.kv_cache_compression.qualify_accuracy import assess_receipts
+
+    policy = load_accuracy_policy(DEFAULT_POLICY_PATH)
+    receipts = _kv_receipts(policy)
+    receipts[0]["metrics"]["cache_k.relative_l2"] = invalid_error
+
+    result = assess_receipts(policy, receipts)
+
+    assert result["status"] == "failed_arithmetic_gate"
+    assert any(
+        "cache_k.relative_l2 is missing, boolean, negative, or non-finite" in failure
+        for failure in result["failures"]
+    )
 
 
 def test_ozaki_checked_in_policy_rejects_widening(tmp_path: Path) -> None:
@@ -252,9 +284,37 @@ def test_ozaki_qualification_requires_independent_edges_and_rejects_corruption()
     policy = load_accuracy_policy(DEFAULT_POLICY_PATH)
     cases = list(_required_cases(policy).values())
     logs = [_ozaki_log(case) for case in cases]
-    assert assess_logs(policy, logs)["status"] == "qualified_arithmetic_gate"
+    passing = assess_logs(policy, logs)
+    assert passing["status"] == "qualified_arithmetic_gate"
+    assert passing["declared_provenance"] == {
+        "gpu_name": "NVIDIA B200",
+        "compute_capability": "10.0",
+        "cuda_runtime_version": 13000,
+        "cublas_version": 130000,
+    }
+    assert passing["binding"] == (
+        "receipt_consistency_only; execution/source identity requires companion receipts"
+    )
 
     logs[-1] = _ozaki_log(cases[-1], relative_l2=0.1)
     result = assess_logs(policy, logs)
     assert result["status"] == "failed_arithmetic_gate"
     assert any("relative_l2_error" in failure for failure in result["failures"])
+
+
+def test_ozaki_qualification_rejects_negative_error_metric() -> None:
+    from labs.ozaki_scheme.accuracy_policy import DEFAULT_POLICY_PATH, load_accuracy_policy
+    from labs.ozaki_scheme.qualify_accuracy import _required_cases, assess_logs
+
+    policy = load_accuracy_policy(DEFAULT_POLICY_PATH)
+    cases = list(_required_cases(policy).values())
+    logs = [_ozaki_log(case) for case in cases]
+    logs[0] = _ozaki_log(cases[0], relative_l2=-0.01)
+
+    result = assess_logs(policy, logs)
+
+    assert result["status"] == "failed_arithmetic_gate"
+    assert any(
+        "relative_l2_error is missing, boolean, negative, or non-finite" in failure
+        for failure in result["failures"]
+    )

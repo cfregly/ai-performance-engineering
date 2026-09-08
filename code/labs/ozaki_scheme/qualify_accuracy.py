@@ -20,6 +20,16 @@ from labs.ozaki_scheme.accuracy_policy import (
 )
 from labs.ozaki_scheme.lab_utils import parse_metrics
 
+PROVENANCE_FIELDS = (
+    "gpu_name",
+    "compute_capability",
+    "cuda_runtime_version",
+    "cublas_version",
+)
+RECEIPT_BINDING = (
+    "receipt_consistency_only; execution/source identity requires companion receipts"
+)
+
 
 def _required_cases(policy: dict) -> dict[tuple[str, str, int], dict]:
     cases = {}
@@ -49,6 +59,7 @@ def assess_logs(policy: dict, log_texts: list[str]) -> dict:
     failures: list[str] = []
     results: list[dict] = []
     expected_provenance: tuple | None = None
+    provenance_consistent = True
 
     for index, text in enumerate(log_texts):
         metrics = parse_metrics(text)
@@ -62,15 +73,15 @@ def assess_logs(policy: dict, log_texts: list[str]) -> dict:
             reasons.append("log is not retained measurement-only evidence")
         if metrics.get("emulation_used") != 1 or int(metrics.get("retained_bits", -1)) < 0:
             reasons.append("cuBLAS did not report active fixed-point emulation")
-        provenance = tuple(metrics.get(name) for name in (
-            "gpu_name", "compute_capability", "cuda_runtime_version", "cublas_version"
-        ))
+        provenance = tuple(metrics.get(name) for name in PROVENANCE_FIELDS)
         if any(value in (None, "") for value in provenance):
             reasons.append("GPU/CUDA/cuBLAS provenance is incomplete")
+            provenance_consistent = False
         elif expected_provenance is None:
             expected_provenance = provenance
         elif provenance != expected_provenance:
             reasons.append("GPU/CUDA/cuBLAS provenance differs across logs")
+            provenance_consistent = False
         variant = str(metrics.get("variant", "")).removeprefix("ozaki_")
         if variant in policy["variants"]:
             limits = _limits_from_item(policy["variants"][variant])
@@ -79,8 +90,15 @@ def assess_logs(policy: dict, log_texts: list[str]) -> dict:
                 ("normalized_max_abs_error", "normalized_max_abs"),
             ):
                 value = metrics.get(metric_name)
-                if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
-                    reasons.append(f"{metric_name} is missing or non-finite")
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, int | float)
+                    or not math.isfinite(float(value))
+                    or float(value) < 0
+                ):
+                    reasons.append(
+                        f"{metric_name} is missing, boolean, negative, or non-finite"
+                    )
                 elif float(value) > limits[limit_name]:
                     reasons.append(f"{metric_name}={float(value):.8g} exceeds {limits[limit_name]:.8g}")
             if variant == "dynamic" and (
@@ -103,6 +121,11 @@ def assess_logs(policy: dict, log_texts: list[str]) -> dict:
 
     for key in sorted(set(required) - seen):
         failures.append(f"missing required log: {key}")
+    declared_provenance = (
+        dict(zip(PROVENANCE_FIELDS, expected_provenance, strict=True))
+        if expected_provenance is not None and provenance_consistent
+        else None
+    )
     return {
         "schema_version": 1,
         "policy_id": policy["policy_id"],
@@ -111,6 +134,8 @@ def assess_logs(policy: dict, log_texts: list[str]) -> dict:
         "passing_case_count": sum(item["passed"] for item in results),
         "failures": failures,
         "logs": results,
+        "declared_provenance": declared_provenance,
+        "binding": RECEIPT_BINDING,
         "claim_boundary": policy["qualification"]["claim_boundary"],
     }
 

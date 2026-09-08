@@ -20,6 +20,18 @@ from labs.kv_cache_compression.accuracy import (
     load_accuracy_policy,
 )
 
+PROVENANCE_FIELDS = (
+    "git_commit",
+    "torch",
+    "cuda",
+    "transformer_engine",
+    "gpu",
+    "compute_capability",
+)
+RECEIPT_BINDING = (
+    "receipt_consistency_only; execution/source identity requires companion receipts"
+)
+
 
 def required_cases(policy: dict) -> set[tuple[str, str, int]]:
     cases: set[tuple[str, str, int]] = set()
@@ -38,6 +50,7 @@ def assess_receipts(policy: dict, receipts: list[dict]) -> dict:
     failures: list[str] = []
     receipt_results: list[dict] = []
     expected_provenance: tuple | None = None
+    provenance_consistent = True
     variants = policy["variants"]
     expected_workload = {key: value for key, value in WORKLOAD.items() if key != "storage_dtype"}
 
@@ -60,15 +73,15 @@ def assess_receipts(policy: dict, receipts: list[dict]) -> dict:
             reasons.append("reference identity mismatch")
         if receipt.get("workload") != expected_workload:
             reasons.append("workload mismatch")
-        provenance = tuple(receipt.get(name) for name in (
-            "git_commit", "torch", "cuda", "transformer_engine", "gpu", "compute_capability"
-        ))
+        provenance = tuple(receipt.get(name) for name in PROVENANCE_FIELDS)
         if any(value in (None, "", []) for value in provenance):
             reasons.append("hardware/software provenance is incomplete")
+            provenance_consistent = False
         elif expected_provenance is None:
             expected_provenance = provenance
         elif provenance != expected_provenance:
             reasons.append("hardware/software provenance differs across receipts")
+            provenance_consistent = False
         metrics = receipt.get("metrics")
         if key[0] in variants and isinstance(metrics, dict):
             limits = _limits_from_item(variants[key[0]])
@@ -77,8 +90,13 @@ def assess_receipts(policy: dict, receipts: list[dict]) -> dict:
                     name = f"{tensor}.{metric_name}"
                     value = metrics.get(name)
                     limit = getattr(limits, metric_name)
-                    if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
-                        reasons.append(f"{name} is missing or non-finite")
+                    if (
+                        isinstance(value, bool)
+                        or not isinstance(value, int | float)
+                        or not math.isfinite(float(value))
+                        or float(value) < 0
+                    ):
+                        reasons.append(f"{name} is missing, boolean, negative, or non-finite")
                     elif float(value) > limit:
                         reasons.append(f"{name}={float(value):.8g} exceeds {limit:.8g}")
         else:
@@ -91,6 +109,11 @@ def assess_receipts(policy: dict, receipts: list[dict]) -> dict:
 
     for key in sorted(required - seen):
         failures.append(f"missing required receipt: {key}")
+    declared_provenance = (
+        dict(zip(PROVENANCE_FIELDS, expected_provenance, strict=True))
+        if expected_provenance is not None and provenance_consistent
+        else None
+    )
     return {
         "schema_version": 1,
         "policy_id": policy["policy_id"],
@@ -99,6 +122,8 @@ def assess_receipts(policy: dict, receipts: list[dict]) -> dict:
         "passing_case_count": sum(item["passed"] for item in receipt_results),
         "failures": failures,
         "receipts": receipt_results,
+        "declared_provenance": declared_provenance,
+        "binding": RECEIPT_BINDING,
         "claim_boundary": policy["qualification"]["claim_boundary"],
     }
 

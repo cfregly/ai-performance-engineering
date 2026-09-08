@@ -29,6 +29,9 @@ def test_cpu_operation_audit_retains_positive_and_negative_extent_evidence() -> 
     clean = audit_callable_once(lambda: value.square(), expected_device="cpu")
     assert clean.passed
     assert clean.placement.operations_seen == 1
+    assert clean.placement.expected_device_operations_seen == 1
+    assert clean.placement.execution_observed
+    assert clean.placement.failure_reasons == ()
     clean_record = clean.placement.operation_evidence[0]
     assert clean_record.operator == "aten.pow.Tensor_Scalar"
     assert clean_record.mismatched_paths == ()
@@ -38,6 +41,8 @@ def test_cpu_operation_audit_retains_positive_and_negative_extent_evidence() -> 
 
     violation = audit_callable_once(lambda: value.square(), expected_device="cuda")
     assert not violation.passed
+    assert violation.placement.expected_device_operations_seen == 0
+    assert not violation.placement.execution_observed
     assert violation.placement.violations_seen == 1
     violation_record = violation.placement.violation_evidence[0]
     assert violation_record.operator == "aten.pow.Tensor_Scalar"
@@ -58,14 +63,19 @@ def test_host_tensor_allowance_requires_exact_identity_and_operator_scope() -> N
         operations=("aten._local_scalar_dense.default",),
     )
 
-    clean = audit_callable_once(
+    allowed_host_only = audit_callable_once(
         declared_scalar.item,
         expected_device="cuda",
         allowed_host_tensors=(allowance,),
     )
-    assert clean.passed
-    assert clean.placement.operations_seen == 1
-    tensor_evidence = clean.placement.operation_evidence[0].tensors
+    assert not allowed_host_only.passed
+    assert allowed_host_only.placement.operations_seen == 1
+    assert allowed_host_only.placement.violations_seen == 0
+    assert allowed_host_only.placement.expected_device_operations_seen == 0
+    assert allowed_host_only.placement.failure_reasons == (
+        "no dispatcher-visible tensor operation touched the expected device cuda",
+    )
+    tensor_evidence = allowed_host_only.placement.operation_evidence[0].tensors
     assert len(tensor_evidence) == 1
     assert tensor_evidence[0].allowed_host_tensor
 
@@ -84,6 +94,20 @@ def test_host_tensor_allowance_requires_exact_identity_and_operator_scope() -> N
     )
     assert not wrong_operator.passed
     assert wrong_operator.placement.violation_evidence[0].operator == "aten.neg.default"
+
+
+def test_noop_audit_fails_closed_without_scanning_bounded_evidence() -> None:
+    result = audit_callable_once(lambda: None, expected_device="cuda:0", evidence_limit=1)
+
+    assert not result.passed
+    assert result.placement.operations_seen == 0
+    assert result.placement.expected_device_operations_seen == 0
+    assert not result.placement.execution_observed
+    assert result.placement.failure_reasons == (
+        "no dispatcher-visible tensor operations were observed",
+    )
+    with pytest.raises(RuntimeError, match="no dispatcher-visible tensor operations"):
+        result.raise_for_failure()
 
 
 def test_declared_destination_write_coverage_accepts_full_write_and_rejects_partial_write() -> None:
@@ -135,6 +159,7 @@ def test_destination_write_coverage_refuses_unprovable_tensor_contracts(
 
 def _write_cli_benchmark(path: Path, *, mode: str) -> None:
     write_statement = {
+        "noop": "pass",
         "full": "torch.mul(self.input, 2, out=self.output)",
         "partial": "self.output[:3].copy_(self.input[:3] * 2)",
         "reassigned": (
@@ -218,6 +243,102 @@ def test_fresh_benchmark_cli_runs_real_out_of_timing_audit(
     assert payload["passed"] is (mode == "full")
 
 
+def test_fresh_benchmark_cli_rejects_noop_without_declared_destination(tmp_path: Path) -> None:
+    benchmark_path = tmp_path / "noop_cpu_benchmark.py"
+    _write_cli_benchmark(benchmark_path, mode="noop")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "core.harness.execution_audit",
+            str(benchmark_path),
+            "--expected-device",
+            "cuda:0",
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 2, completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["passed"] is False
+    assert payload["placement"]["operations_seen"] == 0
+    assert payload["placement"]["expected_device_operations_seen"] == 0
+    assert payload["placement"]["execution_observed"] is False
+    assert payload["placement"]["failure_reasons"] == [
+        "no dispatcher-visible tensor operations were observed"
+    ]
+
+
+@pytest.mark.parametrize("primary_failure", [False, True])
+def test_fresh_benchmark_cli_preserves_primary_failure_when_teardown_also_fails(
+    tmp_path: Path,
+    primary_failure: bool,
+) -> None:
+    benchmark_path = tmp_path / "failing_lifecycle_cpu_benchmark.py"
+    primary_statement = (
+        'raise ValueError("primary execution failure")' if primary_failure else "pass"
+    )
+    benchmark_path.write_text(
+        textwrap.dedent(
+            f"""
+            import torch
+
+            class FailingLifecycleCpuBenchmark:
+                def setup(self):
+                    self.input = torch.arange(6, dtype=torch.float32)
+
+                def benchmark_fn(self):
+                    self.input.square()
+                    {primary_statement}
+
+                def teardown(self):
+                    raise RuntimeError("secondary teardown failure")
+
+            def get_benchmark():
+                return FailingLifecycleCpuBenchmark()
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "core.harness.execution_audit",
+            str(benchmark_path),
+            "--expected-device",
+            "cpu",
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 1, completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["passed"] is False
+    if primary_failure:
+        assert payload["error"] == "ValueError: primary execution failure"
+        assert payload["error_notes"] == [
+            "fresh benchmark teardown failed: RuntimeError: secondary teardown failure"
+        ]
+    else:
+        assert payload["error"] == (
+            "RuntimeError: fresh benchmark teardown failed: RuntimeError: "
+            "secondary teardown failure"
+        )
+        assert "error_notes" not in payload
+
+
 @requires_cuda
 def test_cuda_operation_audit_detects_real_cpu_spillover() -> None:
     device = torch.device("cuda", torch.cuda.current_device())
@@ -227,6 +348,7 @@ def test_cuda_operation_audit_detects_real_cpu_spillover() -> None:
     clean = audit_callable_once(lambda: cuda_value.square(), expected_device=device)
     assert clean.passed
     assert clean.placement.operations_seen == 1
+    assert clean.placement.expected_device_operations_seen == 1
     assert {item.device for item in clean.placement.operation_evidence[0].tensors} == {str(device)}
 
     def spill_to_cpu() -> None:
@@ -236,6 +358,7 @@ def test_cuda_operation_audit_detects_real_cpu_spillover() -> None:
     violation = audit_callable_once(spill_to_cpu, expected_device=device)
     assert not violation.passed
     assert violation.placement.operations_seen == 2
+    assert violation.placement.expected_device_operations_seen == 1
     assert violation.placement.violations_seen == 1
     record = violation.placement.violation_evidence[0]
     assert record.operator == "aten.pow.Tensor_Scalar"
