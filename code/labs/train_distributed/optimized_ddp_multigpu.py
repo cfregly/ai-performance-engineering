@@ -163,7 +163,7 @@ def main():
         if step % 10 == 0 and is_main:
             if progress is None:
                 raise RuntimeError("Training progress buffer was not initialized")
-            progress.record(step=step, loss=loss, tokens=batch["input_ids"].numel())
+            progress.record(step=step, loss=outputs.loss.detach(), tokens=batch["input_ids"].numel())
 
     torch.cuda.synchronize(device)
     total_time = perf_counter() - start_time
