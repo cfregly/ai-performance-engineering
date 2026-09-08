@@ -25,7 +25,7 @@ The retained targeted measurements illustrate the remaining speed gaps:
 | Pipeline parallelism | 1.024x | Below 1.05x, with inconsistent seed-block results |
 | Dynamic serving routing | 0.996x | Parity; below the speed goal |
 | Fair dedicated versus shared serving pools | 0.815x | Lower total throughput; short-request TTFT improves |
-| KV-cache NVFP4 compute, cached weights | 1.106x | Two cached repetitions in an A/B/B/A screen; full profiled pair also passes |
+| KV-cache NVFP4 compute, cached weights | 1.106x | All eight cached comparisons across four A/B/B/A blocks exceed 1.05x; full profiled pair also passes |
 | Ozaki dynamic / fixed versus native FP64 | 0.545x / 0.724x | Both slower despite passing numerical checks |
 
 These ratios retain the source, workload, timing, and qualification limits of
@@ -347,10 +347,25 @@ match their remote inventory, and a local re-read independently reapplies the
 validators and recalculates the comparisons. Evidence is in
 `ai-perf-followthrough2-20260908-final-integration/kv-abba-v4-32030e6/`.
 
-This is one seed and two mirrored comparisons, the initial repeated screen. The
-remaining three blocks of the original four-block performance plan are running.
-The older 1.025x ratio from Transformer Engine 2.18 is excluded from the
-cache-effect calculation.
+All four planned A/B/B/A blocks have now completed, for **16 process runs and
+eight mirrored comparisons**, using seed 42 on the same B200 and runtime.
+Every accuracy, full-output, source, runtime, storage, and clock check passes
+when reapplied to the retained JSON. The eight cached ratios are 1.106186,
+1.106399, 1.106124, 1.106006, 1.106293, 1.106128, 1.106340, and 1.106174x.
+All exceed 1.05x; their mean is **1.106206x**, range **1.106006–1.106399x**,
+and sample standard deviation **0.0001295x**. The matched old/new cache-effect
+geometric means are **1.117964x for FP8** and **1.264127x for NVFP4**, with
+every mirrored comparison above 1.05x. The uncached FP8/NVFP4 ratios remain
+0.978168–0.978466x and retain their no-speedup disposition.
+
+The final three blocks drained naturally without forced cleanup. All 141 files
+(1,891,292 bytes) were copied and hash-verified in
+`ai-perf-followthrough2-20260908-final-integration/kv-abba-blocks234-32030e6/`;
+inventory SHA-256 is
+`cd3df5dfe20d49135c2d8e5939a7acd8556cc438721031ed119fc301c369df10`.
+These repeats cover one seed, device, and software environment. The older
+1.025x result from Transformer Engine 2.18 is excluded from the cache-effect
+calculation, and arithmetic qualification does not establish application quality.
 
 Matched Nsight Systems captures now confirm the cache mechanism on the same
 runtime. Every kernel is attributed through its CUDA launch correlation to the
