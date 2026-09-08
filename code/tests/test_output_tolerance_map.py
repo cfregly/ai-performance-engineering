@@ -305,6 +305,20 @@ class DeclaredChildBenchmark(ChildBenchmark):
     assert not payload_only_result.errors
     assert get_output_tolerances(payload_only_benchmark) == _OUTPUT_TOLERANCES
 
+    # Torchrun coordinators receive actual child output and the required global
+    # tolerance but do not execute capture_verification_payload() locally. An
+    # absent optional map receipt must therefore remain a legitimate None.
+    transported_parent = module.ChildBenchmark()
+    transported_parent.use_map = False
+    transported_parent_result = harness.benchmark(transported_parent)
+    assert not transported_parent_result.errors
+    assert transported_parent._verification_payload is None
+    assert isinstance(transported_parent._subprocess_verify_output, dict)
+    assert transported_parent._subprocess_output_tolerance == (0.5, 5.0)
+    assert transported_parent._subprocess_output_tolerances is None
+    vars(transported_parent).pop("_subprocess_output_tolerances")
+    assert get_output_tolerances(transported_parent) is None
+
     benchmark = module.DeclaredChildBenchmark()
     result = harness.benchmark(benchmark)
 

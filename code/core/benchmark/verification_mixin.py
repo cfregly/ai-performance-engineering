@@ -230,7 +230,12 @@ class VerificationPayloadMixin:
         return (tol.rtol, tol.atol)
 
     def get_output_tolerances(self) -> Optional[OutputToleranceMap]:
-        payload = self._require_payload()
+        # This hook is optional. Coordinator processes may hold transported
+        # output and global-tolerance receipts without ever creating a local
+        # verification payload, so absence means no per-output policy.
+        payload = getattr(self, "_verification_payload", None)
+        if payload is None:
+            return None
         if payload.output_tolerances is None:
             return None
         return dict(payload.output_tolerances)
