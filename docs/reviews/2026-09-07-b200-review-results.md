@@ -12,9 +12,13 @@ The renewed completion pass starts from `6b98beed1`. It adds worker-bound
 runtime receipts, expected GPU identity checks, active PyTorch profiler guards,
 and real evaluation-contract tests in place of stale skips. It also tests
 removing the DDP reducer for one-rank training while retaining the distributed
-sampler and input order. B200 execution and the final failure regressions are
-complete; hosted CI and merge are the remaining delivery checks. Each retained
-suite total and measurement below identifies its source revision.
+sampler and input order. B200 execution, the final failure regressions and
+hosted CI are complete. [PR #25](https://github.com/cfregly/ai-performance-engineering/pull/25)
+merged as `4b584671eb54d6aff639d39aa436cecb29f8522f`; its tree exactly matches
+the CI-tested head `f32a3d012`. This completes the feasible validation and
+repair pass on the available host; the limits and suggested improvements below
+remain explicit. Each retained suite total and measurement identifies its
+source revision.
 
 The first expanded CPU check passed 344 cases and skipped 100, with nine
 transport fixtures rejected because they omitted the child device. After
@@ -123,7 +127,7 @@ timed out after 180 seconds and drained; the paired candidate was not launched.
 The incomplete report and exact command are retained. Compute replay therefore
 remains unresolved for this pipeline on the current host.
 
-The latest exploratory pipeline run on `b1169c0a9` measured 15.64706 ms
+The earlier exploratory pipeline run on `b1169c0a9` measured 15.64706 ms
 baseline and 23.32224 ms optimized (0.670907x). Both Nsight Systems reports
 and their kernel, API and NVTX summaries were retained. Neither Nsight
 Compute attempt produced a complete report; the run ended `failed_profiler`
@@ -216,7 +220,12 @@ dependency is installed; it does not indicate a failed installed runtime.
 The retained test files now contain 42 explicit missing-protection declarations,
 down from 58. This is a source inventory, not a claim that 16 independent
 protections were qualified: several labels duplicated existing evaluation
-contracts. The new CUDA version and identity cases passed on B200; one final
+contracts. Seven retained distributed labels also overlap existing declared
+policy checks: collective algorithm, gradient-bucket bytes, barrier policy and
+async-completion policy are compared, and registered workloads validate
+completion and barrier receipts. Those checks do not provide general runtime
+algorithm detection or instrumentation for arbitrary distributed workloads.
+The new CUDA version and identity cases passed on B200; one final
 duplicate version-lock test label was also replaced and passed its target
 rerun. Version admission covers observed driver, CUDA, cuDNN, Python,
 PyTorch and relevant installed-package versions. Installed cuBLAS package
@@ -234,8 +243,8 @@ Nsight session or a profiler started and stopped entirely inside a workload.
 | Standalone MoE entrypoint | Level 0 completed its normal 436.5M-parameter workload |
 | Normal dual-pool vLLM runs | Exact tokens passed twice; speed target failed twice |
 | Gradient-fusion NCU | Complete five-metric reports inspected; later repeats timed out or reported driver `UnknownError`, so replay remains intermittent |
-| Hosted CI | Prior retained run: **5,341 CPU tests passed, 536 skipped, zero failures or errors**; static analysis, dashboard and configured CUDA architecture builds passed on `568c9102c`. Renewed delivery checks remain pending. |
-| Main delivery | [PR #23](https://github.com/cfregly/ai-performance-engineering/pull/23) merged as `a8e0b5b21`; its tree matches the tested head. Earlier repair PRs #20 and #21 are also merged |
+| Hosted CI | [Benchmark validation](https://github.com/cfregly/ai-performance-engineering/actions/runs/34202021120) passed on `f32a3d012`: **5,442 CPU tests passed, 533 skipped, zero failures or errors** in 22 minutes 54 seconds. Static analysis, all 936 benchmark contracts, and dashboard audit/lint/build plus 21 tests passed. [Configured CUDA architecture builds](https://github.com/cfregly/ai-performance-engineering/actions/runs/34202021092) passed on the same head. |
+| Main delivery | [PR #25](https://github.com/cfregly/ai-performance-engineering/pull/25) merged as `4b584671e`; its tree exactly matches the CI-tested head `f32a3d012`. It builds on [PR #24](https://github.com/cfregly/ai-performance-engineering/pull/24), merged as `6b98beed1`. Earlier repair PRs #20, #21 and #23 are also merged. |
 | Explicit opt-in GPU tests | ZeRO2 passed; two Blackwell tests passed on each of two ranks; local-model vLLM passed |
 | Version-specific FP8 template | The actual TE 2.18 CUDA template passed in a separate environment; one executed case, no skip |
 | New Colfax GPU validation | Both full-workload deep-dive runs, both ABBA repeats, 64 opt-in cases and eight Nsight report inspections passed on `356490bd1` |
@@ -248,29 +257,30 @@ attempt history and remaining dispositions are in the
 
 Earlier integrated suites exposed outdated fixtures and assertions plus an
 autotune compilation timeout. Those original failures and compiler cleanup
-receipts remain preserved. After the repairs, the latest integrated suite ran
-all 5,874 collected cases successfully, with 79 explicit skips, in 31 minutes
-29 seconds. It exited normally and drained all owned processes.
+receipts remain preserved. That earlier repair cycle's integrated suite completed
+5,874 collected cases: 5,795 passed, 79 skipped and zero failures or errors, in
+31 minutes 29 seconds. It exited normally and drained all owned processes.
 
-The final hosted CPU suite subsequently collected 5,877 cases and finished in
-23 minutes 32 seconds. [Benchmark validation](https://github.com/cfregly/ai-performance-engineering/actions/runs/34157897194)
+That earlier hosted CPU suite collected 5,877 cases: 5,341 passed, 536 skipped
+and zero failures or errors in 23 minutes 32 seconds.
+[Benchmark validation](https://github.com/cfregly/ai-performance-engineering/actions/runs/34157897194)
 and [CUDA architecture builds](https://github.com/cfregly/ai-performance-engineering/actions/runs/34157897282)
 both passed. The later Colfax changes were also exercised in both dedicated
 B200 environments, as recorded above; the integrated GPU suite retains its
 own source revision rather than claiming a rerun on the final merge.
 
-The final distributed bootstrap repair passed all eight CPU/CUDA worker tests
-on B200, including one- and two-rank execution. Both final hosted workflows
+An earlier distributed bootstrap repair passed all eight CPU/CUDA worker tests
+on B200, including one- and two-rank execution. Its two hosted workflows
 then passed: [benchmark validation](https://github.com/cfregly/ai-performance-engineering/actions/runs/34143112135)
 and [dual-architecture builds](https://github.com/cfregly/ai-performance-engineering/actions/runs/34143112148).
-The fresh integrated GPU rerun used merged `main` with the same tested code tree.
+That repair's integrated GPU rerun used merged `main` with the same tested code tree.
 It completed all 5,845 cases in 41 minutes 52 seconds and retained one repeated
 Llama autotune timeout. Native CUTLASS compilation was still active; pytest
 shutdown again needed scoped cleanup after its complete XML report was saved.
 The unchanged numerical workload now runs in a fresh interpreter with owned
 compiler cleanup. It passed with full collection and again inside the completed
-passing integrated run. Some skipped hardening tests also document detectors that are not yet
-implemented, rather than demonstrating those protections: 58 cases explicitly
+passing integrated run. At that earlier revision, skipped hardening tests documented
+detectors that were not implemented: 58 cases explicitly
 name missing detectors, and one further skip rejects test-name counts as proof
 of protection coverage. CPU-only negative controls and supported opt-in cases
 are separate; the distributed, model and Colfax opt-ins were executed later.
