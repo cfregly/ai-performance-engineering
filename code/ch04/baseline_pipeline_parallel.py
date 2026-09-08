@@ -6,22 +6,19 @@ Sequential micro-batches (all forward, then all backward). Launched via torchrun
 
 from __future__ import annotations
 
-
 import argparse
 import os
-
-from core.common.device_utils import resolve_local_rank
 import time
 from collections import deque
 from typing import Optional
 
 import torch
-import torch.nn as nn
 import torch.distributed as dist
-
+import torch.nn as nn
 from core.benchmark.gpu_requirements import require_min_gpus
 from core.benchmark.verification import PrecisionFlags
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.common.device_utils import resolve_local_rank
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -32,9 +29,22 @@ from core.profiling.nvtx_helper import nvtx_range
 from core.utils.logger import get_logger
 from core.utils.worker_seed import apply_worker_seed
 
+from ch04.pipeline_parallel_common import (
+    PIPELINE_RESULT_CALLBACK,
+    PipelineIterationCapture,
+    PipelineParallelChildResultMixin,
+    pipeline_child_result_requested,
+    run_gpipe_iteration,
+    verify_and_concatenate_pipeline_capture,
+    write_pipeline_child_result,
+)
+
 logger = get_logger(__name__)
 
 PROFILE_NVTX_RANGE = "compute_kernel:pipeline_parallel_gpipe"
+PIPELINE_SOURCE = "ch04.baseline_pipeline_parallel"
+PIPELINE_VARIANT = "baseline"
+PIPELINE_SCHEDULE = "gpipe"
 
 _DEFAULT_BATCH = 32
 _DEFAULT_SEQ = 2048
@@ -187,65 +197,61 @@ def _run_worker(
         inputs = torch.randn(batch_size, seq_length, hidden, device=device, dtype=torch.bfloat16)
     else:
         inputs = None
+    recv_micro_batches: list[torch.Tensor] = []
     recv_micro_batch: Optional[torch.Tensor] = None
     if rank > 0:
-        recv_micro_batch = torch.empty(
-            micro_batch_size,
-            seq_length,
-            hidden,
-            device=device,
-            dtype=torch.bfloat16,
-        )
+        for _ in range(num_micro_batches):
+            recv_micro_batch = torch.empty(
+                micro_batch_size,
+                seq_length,
+                hidden,
+                device=device,
+                dtype=torch.bfloat16,
+            )
+            recv_micro_batches.append(recv_micro_batch)
+    recv_grads: list[torch.Tensor] = []
     recv_grad: Optional[torch.Tensor] = None
     if rank < world_size - 1:
-        recv_grad = torch.empty(
-            micro_batch_size,
-            seq_length,
-            hidden,
-            device=device,
-            dtype=torch.bfloat16,
-        )
+        for _ in range(num_micro_batches):
+            recv_grad = torch.empty(
+                micro_batch_size,
+                seq_length,
+                hidden,
+                device=device,
+                dtype=torch.bfloat16,
+            )
+            recv_grads.append(recv_grad)
 
     def _forward(micro_batch: torch.Tensor) -> torch.Tensor:
         return _run_rank_stage(fwd_layers, rank, micro_batch)
 
-    def _backward(grad_in: torch.Tensor) -> torch.Tensor:
+    def _backward(_activation: torch.Tensor, grad_in: torch.Tensor) -> torch.Tensor:
         return _run_rank_stage(bwd_layers, rank, grad_in)
 
-    def _run_iteration() -> None:
-        activations: deque[torch.Tensor] = deque()
+    if rank == 0 and inputs is None:
+        raise RuntimeError("rank zero pipeline input is missing")
 
-        for micro_idx in range(num_micro_batches):
-            if rank == 0:
-                start_idx = micro_idx * micro_batch_size
-                end_idx = start_idx + micro_batch_size
-                micro_batch = inputs[start_idx:end_idx]
-            else:
-                if recv_micro_batch is None:
-                    raise RuntimeError("recv microbatch buffer missing")
-                micro_batch = recv_micro_batch
-                dist.recv(micro_batch, src=rank - 1)
+    def _get_rank0_microbatch(micro_idx: int) -> torch.Tensor:
+        if inputs is None:
+            raise RuntimeError("Only rank zero owns pipeline input microbatches")
+        start_idx = micro_idx * micro_batch_size
+        return inputs.narrow(0, start_idx, micro_batch_size)
 
-            out = _forward(micro_batch)
-            activations.append(out)
+    def _run_iteration(capture: Optional[PipelineIterationCapture] = None) -> None:
+        run_gpipe_iteration(
+            rank=rank,
+            world_size=world_size,
+            num_micro_batches=num_micro_batches,
+            get_rank0_microbatch=_get_rank0_microbatch,
+            recv_forward_buffers=recv_micro_batches,
+            recv_backward_buffers=recv_grads,
+            forward_step=_forward,
+            backward_step=_backward,
+            capture=capture,
+        )
 
-            if rank < world_size - 1:
-                dist.send(out, dst=rank + 1)
-
-        for _ in range(num_micro_batches):
-            activation = activations.pop()
-            if rank < world_size - 1:
-                if recv_grad is None:
-                    raise RuntimeError("recv grad buffer missing")
-                grad_in = recv_grad
-                dist.recv(grad_in, src=rank + 1)
-            else:
-                grad_in = activation
-
-            grad = _backward(grad_in)
-            if rank > 0:
-                dist.send(grad, dst=rank - 1)
-
+    result_requested = pipeline_child_result_requested()
+    captured_iteration: Optional[PipelineIterationCapture] = None
     with torch.inference_mode():
         for _ in range(max(warmup, 0)):
             _run_iteration()
@@ -253,13 +259,47 @@ def _run_worker(
 
         with nvtx_range(PROFILE_NVTX_RANGE, enable=True):
             start = time.perf_counter()
-            for _ in range(max(iters, 1)):
-                _run_iteration()
+            measured_iterations = max(iters, 1)
+            for iteration in range(max(iters, 1)):
+                capture = (
+                    PipelineIterationCapture.create(num_micro_batches)
+                    if result_requested and iteration == measured_iterations - 1
+                    else None
+                )
+                _run_iteration(capture)
+                if capture is not None:
+                    captured_iteration = capture
             torch.cuda.synchronize(device)
             elapsed = time.perf_counter() - start
 
+        time_per_iter_ms = (elapsed / measured_iterations) * 1000.0
+        if result_requested:
+            if captured_iteration is None:
+                raise RuntimeError("Pipeline timed iteration did not retain its actual outputs")
+            forward_stages = [
+                (lambda value, stage=stage: _run_stage(stage, value))
+                for stage in fwd_layers
+            ]
+            backward_stages = [
+                (lambda value, stage=stage: _run_stage(stage, value))
+                for stage in bwd_layers
+            ]
+            verify_input, verify_output = verify_and_concatenate_pipeline_capture(
+                rank=rank,
+                capture=captured_iteration,
+                forward_stages=forward_stages,
+                backward_stages=backward_stages,
+            )
+            if not write_pipeline_child_result(
+                verify_input=verify_input,
+                verify_output=verify_output,
+                completed_iterations=measured_iterations,
+                time_per_iter_ms=time_per_iter_ms,
+                reference_verified=True,
+            ):
+                raise RuntimeError("Pipeline child-result request disappeared before publication")
+
     if rank == 0:
-        time_per_iter_ms = (elapsed / max(iters, 1)) * 1000.0
         print(f"rank0 time_per_iter_ms: {time_per_iter_ms:.9f}", flush=True)
 
     dist.barrier()
@@ -304,7 +344,11 @@ def main() -> None:
     )
 
 
-class BaselinePipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
+class BaselinePipelineParallelBenchmark(
+    PipelineParallelChildResultMixin,
+    VerificationPayloadMixin,
+    BaseBenchmark,
+):
     preferred_ncu_replay_mode = "app-range"
 
     """Harness entry that launches this module via torchrun."""
@@ -376,30 +420,13 @@ class BaselinePipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark)
             },
         )
 
-    def _prepare_verification_payload(self) -> None:
-        if hasattr(self, "_subprocess_verify_output"):
-            return
-        self.setup()
-        try:
-            self.benchmark_fn()
-            self.capture_verification_payload()
-            self._subprocess_verify_output = self.get_verify_output()
-            self._subprocess_output_tolerance = self.get_output_tolerance()
-            self._subprocess_input_signature = self.get_input_signature()
-        finally:
-            self.teardown()
-
     def teardown(self) -> None:
+        self.retain_failed_pipeline_child_result()
         self._fwd_layers = None
         self._bwd_layers = None
         self._input = None
         self._output = None
         torch.cuda.empty_cache()
-
-    def validate_result(self) -> Optional[str]:
-        if self._output is None:
-            return "No output captured"
-        return None
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(
@@ -415,13 +442,27 @@ class BaselinePipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark)
         )
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
-        self._prepare_verification_payload()
         effective_config = config or self.get_config()
+        world_size = int(effective_config.nproc_per_node or max(torch.cuda.device_count(), 1))
+        num_layers = _resolve_num_layers(None, world_size)
+        result_env = self.prepare_pipeline_child_result(
+            source=PIPELINE_SOURCE,
+            variant=PIPELINE_VARIANT,
+            schedule=PIPELINE_SCHEDULE,
+            world_size=world_size,
+            iterations=int(effective_config.iterations),
+            batch_size=_DEFAULT_BATCH,
+            seq_length=_DEFAULT_SEQ,
+            hidden=_DEFAULT_HIDDEN,
+            num_layers=num_layers,
+        )
         return TorchrunLaunchSpec(
             module_name="core.harness.benchmark_worker",
             script_args=["--module", "ch04.baseline_pipeline_parallel", "--callable", "main", "--"],
+            env=result_env,
             multi_gpu_required=True,
             name="baseline_pipeline_parallel",
+            result_callback=PIPELINE_RESULT_CALLBACK,
             config_arg_map={
                 "iterations": "--iters",
                 "warmup": "--warmup",
