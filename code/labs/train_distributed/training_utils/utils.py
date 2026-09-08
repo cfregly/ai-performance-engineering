@@ -155,9 +155,10 @@ def get(key, dm: dist.device_mesh.DeviceMesh | None = None):
     raise ValueError(f"Invalid string: {key}")
 
 
-def get_dataset():
-    """Tokenize a tiny MRPC slice for quick training/debug cycles."""
-    tokenizer = build_tokenizer()
+def get_dataset(*, tokenizer=None):
+    """Tokenize a tiny MRPC slice, reusing a caller-owned tokenizer when supplied."""
+    if tokenizer is None:
+        tokenizer = build_tokenizer()
     try:
         from datasets import load_dataset
         load_err = None

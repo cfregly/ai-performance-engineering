@@ -259,6 +259,89 @@ def test_all_four_benchmark_call_paths_use_current_vllm_api(
     assert sum(len(engine.add_calls) for engine in _FakeLLMEngine.created) == expected_requests
 
 
+def test_optimized_routing_uses_run_local_admission_depth_without_cuda_polling(
+    vllm_016_api: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    synchronize_calls: list[int] = []
+    monkeypatch.setattr(
+        vllm_runner.torch.cuda,
+        "synchronize",
+        lambda index: synchronize_calls.append(index),
+    )
+    args = _args()
+    args.req_count = 4
+
+    for _ in range(2):
+        first_new_engine = len(_FakeLLMEngine.created)
+        summary = vllm_runner.run_vllm_routing_with_topology(
+            "optimized",
+            topology_snapshot=_topology(),
+            cli_args=args,
+            prompt_token_ids=vllm_runner.build_prompt_token_ids([64] * args.req_count),
+        )
+        new_engines = _FakeLLMEngine.created[first_new_engine:]
+        requests_by_device = {
+            str(engine.config.device_config.device): [
+                call["request_id"] for call in engine.add_calls
+            ]
+            for engine in new_engines
+        }
+
+        assert requests_by_device == {
+            "cuda:0": ["session-0000-req-0", "session-0000-req-2"],
+            "cuda:1": ["session-0000-req-1", "session-0000-req-3"],
+        }
+        assert summary["requests"] == summary["completed"] == 4
+        assert summary["requests_admitted_gpu0"] == 2
+        assert summary["requests_admitted_gpu1"] == 2
+        assert len(summary[vllm_runner.VERIFICATION_OUTPUT_KEY]) == 8
+
+    assert synchronize_calls == []
+
+
+@pytest.mark.parametrize(
+    ("call_path", "mode"),
+    [
+        ("dynamic", "baseline"),
+        ("dynamic", "optimized"),
+        ("dual_pool", "shared"),
+        ("dual_pool", "dual"),
+    ],
+)
+def test_blocking_vllm_loops_do_not_add_poll_delay(
+    vllm_016_api: None,
+    monkeypatch: pytest.MonkeyPatch,
+    call_path: str,
+    mode: str,
+) -> None:
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(
+        vllm_runner.time,
+        "sleep",
+        lambda seconds: sleep_calls.append(seconds),
+    )
+    args = _args()
+    if call_path == "dynamic":
+        vllm_runner.run_vllm_routing_with_topology(
+            mode,
+            topology_snapshot=_topology(),
+            cli_args=args,
+            prompt_token_ids=vllm_runner.build_prompt_token_ids([64, 64]),
+        )
+    else:
+        if mode == "dual":
+            args.decode_gpus = "1"
+        vllm_runner.run_dual_pool_vllm_with_topology(
+            mode,
+            topology_snapshot=_topology(),
+            cli_args=args,
+            prompt_token_ids=vllm_runner.build_prompt_token_ids([4, 2, 2]),
+        )
+
+    assert sleep_calls == []
+
+
 def test_explicit_zero_request_groups_do_not_restore_default_work() -> None:
     args = _args()
     assert vllm_runner.dual_pool_prompt_lengths(
@@ -471,8 +554,16 @@ def test_full_vllm_pair_verification_uses_live_generated_outputs(
     assert result.passed, result.reason
 
 
-def test_v1_direct_loop_completes_required_engine_post_step() -> None:
+def test_v1_direct_loop_completes_required_engine_post_step(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     post_steps: list[bool] = []
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(
+        vllm_runner.time,
+        "sleep",
+        lambda seconds: sleep_calls.append(seconds),
+    )
     wrapper = vllm_runner._VllmV1Wrapper.__new__(vllm_runner._VllmV1Wrapper)
     wrapper._core = SimpleNamespace(
         step_fn=lambda: ({}, False),
@@ -482,6 +573,7 @@ def test_v1_direct_loop_completes_required_engine_post_step() -> None:
 
     assert wrapper.step() == ([], [], 0)
     assert post_steps == [False]
+    assert sleep_calls == [0.0]
 
 
 def test_finished_request_cannot_verify_without_declared_model_output() -> None:

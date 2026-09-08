@@ -81,7 +81,7 @@ def main():
     is_main = rank == 0
     active_seed = initialize_ddp_seed()
     tokenizer = build_tokenizer()
-    dataset = get_dataset()["train"]
+    dataset = get_dataset(tokenizer=tokenizer)["train"]
 
     dataloader = build_dataloader(
         dataset,

@@ -1341,7 +1341,17 @@ def run_vllm_routing_with_topology(
     completed = 0
     telemetry = {gid: _RoutingTelemetry() for gid in engines}
     engine_ids = tuple(engines)
+    admitted_by_gpu = {gid: 0 for gid in engine_ids}
     request_ids: List[str] = []
+
+    # Every request is admitted before the first engine step, so TTFT/TPOT
+    # feedback cannot inform placement in this workload. Seed the router with
+    # the exact empty-session depths and update only the chosen GPU after each
+    # successful admission. This keeps the admission contract intact while
+    # making each subsequent decision observe current, run-local queue state.
+    if router:
+        for gid in engine_ids:
+            router.update_metrics(gid, {"queue_depth": 0.0})
 
     # Submit all requests up front
     for i in range(req_count_val):
@@ -1360,6 +1370,12 @@ def run_vllm_routing_with_topology(
             gid = engine_ids[i % len(engine_ids)]
         rt = _RequestRuntime(req=req, gpu_id=gid, admitted_at=admitted)
         engines[gid].add_request(rt, request_prompt_token_ids[i])
+        admitted_by_gpu[gid] += 1
+        if router:
+            router.update_metrics(
+                gid,
+                {"queue_depth": float(admitted_by_gpu[gid])},
+            )
 
     active = True
     while active:
@@ -1374,10 +1390,6 @@ def run_vllm_routing_with_topology(
                     ttft_samples.append(sample)
                     ttft_total_ms += sample
             telemetry[gid].observe(ttft_new, tokens)
-            # Push metrics into router
-            if router:
-                router.update_metrics(gid, eng.snapshot_metrics(**telemetry[gid].snapshot_args()))
-        time.sleep(0.01)
         if completed >= req_count_val:
             break
 
@@ -1390,6 +1402,7 @@ def run_vllm_routing_with_topology(
     summary["ttft_ms_p50"], summary["ttft_ms_p95"] = _percentiles(ttft_samples, (50.0, 95.0))
     for gid in engines:
         summary[f"tpot_tok_per_step_{gid}"] = telemetry[gid].tokens_per_step.get()
+        summary[f"requests_admitted_{gid}"] = admitted_by_gpu[gid]
     summary[VERIFICATION_OUTPUT_KEY] = _collect_verification_output_token_ids(
         engines, request_ids
     )
@@ -1595,7 +1608,6 @@ def run_dual_pool_vllm_with_topology(
                 queue_depth_counts["decode"] += 1
             for rid in finished_ids:
                 completed.add(rid)
-        time.sleep(0.01)
         if len(completed) >= len(req_roles):
             break
 
