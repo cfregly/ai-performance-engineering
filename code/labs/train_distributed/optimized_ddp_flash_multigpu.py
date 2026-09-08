@@ -4,17 +4,22 @@ from __future__ import annotations
 
 import argparse
 import os
-
-from core.common.device_utils import resolve_local_rank
-from time import perf_counter
-from contextlib import nullcontext
 from pathlib import Path
+from time import perf_counter
 
 import torch
 import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.nn.parallel import DistributedDataParallel as DistributedModel
 
 from core.benchmark.gpu_requirements import require_min_gpus
+from core.common.device_utils import resolve_local_rank
+from labs.train_distributed.training_utils.gradient_accumulation import (
+    build_gradient_accumulation_plan,
+    ddp_static_graph_enabled,
+    gradient_sync_context,
+    validate_gradient_accumulation,
+)
+from labs.train_distributed.training_utils.torchrun_harness import TorchrunScriptBenchmark
 from labs.train_distributed.training_utils.utils import (
     build_dataloader,
     build_text_model_flash,
@@ -22,7 +27,6 @@ from labs.train_distributed.training_utils.utils import (
     get_dataset,
     make_causal_lm_labels,
 )
-from labs.train_distributed.training_utils.torchrun_harness import TorchrunScriptBenchmark
 
 
 def parse_args():
@@ -57,6 +61,7 @@ def _maybe_fused_adamw(params, lr):
 def main():
     require_min_gpus(2, script_name="optimized_ddp_flash_multigpu.py")
     args = parse_args()
+    validate_gradient_accumulation(args.steps, args.grad_accum)
     local_rank = resolve_local_rank()
     if not torch.cuda.is_available():
         raise RuntimeError("DDP optimized run requires CUDA GPUs.")
@@ -93,10 +98,10 @@ def main():
     model.to(device)
     model.train()
 
-    ddp_model = DDP(
+    ddp_model = DistributedModel(
         model,
         device_ids=[local_rank],
-        static_graph=True,
+        static_graph=ddp_static_graph_enabled(args.grad_accum),
         bucket_cap_mb=50,
         gradient_as_bucket_view=True,
     )
@@ -106,6 +111,7 @@ def main():
 
     optimizer = _maybe_fused_adamw(ddp_model.parameters(), args.learning_rate)
     num_steps = min(args.steps, len(dataloader))
+    accumulation_plan = build_gradient_accumulation_plan(num_steps, args.grad_accum)
     total_tokens = 0
     start_time = perf_counter()
     loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)
@@ -114,22 +120,23 @@ def main():
         if step >= num_steps:
             break
 
-        micro_step = step % args.grad_accum
-        sync_ctx = (
-            ddp_model.no_sync()
-            if args.grad_accum > 1 and micro_step != args.grad_accum - 1
-            else nullcontext()
+        accumulation = accumulation_plan[step]
+        sync_ctx = gradient_sync_context(
+            ddp_model,
+            accumulation,
+            distributed=True,
         )
-        with torch.cuda.amp.autocast(dtype=torch.bfloat16), sync_ctx:
-            batch = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
-            batch["labels"] = make_causal_lm_labels(
-                batch["input_ids"], batch["attention_mask"]
-            )
-            outputs = ddp_model(**batch)
-            loss = outputs.loss / args.grad_accum
-        loss.backward()
+        with sync_ctx:
+            with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+                batch = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
+                batch["labels"] = make_causal_lm_labels(
+                    batch["input_ids"], batch["attention_mask"]
+                )
+                outputs = ddp_model(**batch)
+                loss = outputs.loss / accumulation.group_size
+            loss.backward()
 
-        if micro_step == args.grad_accum - 1:
+        if accumulation.should_step:
             optimizer.step()
             optimizer.zero_grad(set_to_none=True)
 
