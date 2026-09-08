@@ -129,14 +129,28 @@ def _record(
             values[capture_index] = tensor
 
 
-def _exchange_neighbor(
+def _wait_for_p2p(requests: Sequence[Any]) -> None:
+    """Wait every posted P2P request, even when an earlier wait fails."""
+
+    first_error: BaseException | None = None
+    for request in requests:
+        try:
+            request.wait()
+        except BaseException as exc:  # Drain peers before preserving the first failure.
+            if first_error is None:
+                first_error = exc
+    if first_error is not None:
+        raise first_error
+
+
+def _launch_neighbor_exchange(
     *,
     rank: int,
     peer: int,
     send_tensor: torch.Tensor,
     recv_tensor: torch.Tensor,
-) -> None:
-    """Pair opposite-direction transfers and wait before either buffer is reused."""
+) -> list[Any]:
+    """Post opposite-direction transfers while retaining both tensor owners."""
 
     if rank < peer:
         operations = [
@@ -149,8 +163,57 @@ def _exchange_neighbor(
             dist.P2POp(dist.isend, send_tensor, peer),
         ]
     requests = dist.batch_isend_irecv(operations)
-    for request in requests:
-        request.wait()
+    if len(requests) != len(operations):
+        _wait_for_p2p(requests)
+        raise RuntimeError(
+            "Pipeline P2P exchange returned an incomplete request group: "
+            f"expected {len(operations)}, got {len(requests)}"
+        )
+    return requests
+
+
+def _exchange_neighbor(
+    *,
+    rank: int,
+    peer: int,
+    send_tensor: torch.Tensor,
+    recv_tensor: torch.Tensor,
+) -> None:
+    """Pair opposite-direction transfers and wait before either buffer is reused."""
+
+    requests = _launch_neighbor_exchange(
+        rank=rank,
+        peer=peer,
+        send_tensor=send_tensor,
+        recv_tensor=recv_tensor,
+    )
+    _wait_for_p2p(requests)
+
+
+def _send_neighbor(tensor: torch.Tensor, *, peer: int) -> None:
+    """Send through the batched P2P API; GPU traces must confirm its behavior."""
+
+    requests = dist.batch_isend_irecv([dist.P2POp(dist.isend, tensor, peer)])
+    if len(requests) != 1:
+        _wait_for_p2p(requests)
+        raise RuntimeError(
+            "Pipeline P2P send returned an incomplete request group: "
+            f"expected 1, got {len(requests)}"
+        )
+    _wait_for_p2p(requests)
+
+
+def _recv_neighbor(tensor: torch.Tensor, *, peer: int) -> None:
+    """Receive through the batched P2P API and wait before consuming the buffer."""
+
+    requests = dist.batch_isend_irecv([dist.P2POp(dist.irecv, tensor, peer)])
+    if len(requests) != 1:
+        _wait_for_p2p(requests)
+        raise RuntimeError(
+            "Pipeline P2P receive returned an incomplete request group: "
+            f"expected 1, got {len(requests)}"
+        )
+    _wait_for_p2p(requests)
 
 
 def run_gpipe_iteration(
@@ -214,7 +277,7 @@ def run_1f1b_iteration(
     activation_slots: list[tuple[int, torch.Tensor] | None],
     capture: PipelineIterationCapture | None = None,
 ) -> None:
-    """Run rank-staggered 1F1B with paired bidirectional P2P transitions."""
+    """Run rank-staggered 1F1B with paired, one-step-ahead P2P transitions."""
 
     _validate_schedule_inputs(
         rank=rank,
@@ -259,7 +322,7 @@ def run_1f1b_iteration(
         if rank == 0:
             return get_rank0_microbatch(microbatch_index)
         tensor = recv_forward_buffers[microbatch_index]
-        dist.recv(tensor, src=rank - 1)
+        _recv_neighbor(tensor, peer=rank - 1)
         return tensor
 
     for microbatch_index in range(warmup_steps):
@@ -267,16 +330,28 @@ def run_1f1b_iteration(
         _record(capture, "forward_inputs", microbatch_index, microbatch)
         output = forward_step(microbatch)
         push(microbatch_index, output)
-        dist.send(output, dst=rank + 1)
+        _send_neighbor(output, peer=rank + 1)
 
     remaining_steps = num_micro_batches - warmup_steps
     current_input = receive_forward(warmup_steps) if remaining_steps else None
+    prefetched_forward: tuple[int, torch.Tensor] | None = None
     for steady_index in range(remaining_steps):
         current_microbatch = warmup_steps + steady_index
-        if current_input is None:
-            raise RuntimeError("Pipeline steady state is missing its forward input")
-        _record(capture, "forward_inputs", current_microbatch, current_input)
-        current_output = forward_step(current_input)
+        if prefetched_forward is None:
+            if current_input is None:
+                raise RuntimeError("Pipeline steady state is missing its forward input")
+            _record(capture, "forward_inputs", current_microbatch, current_input)
+            current_output = forward_step(current_input)
+        else:
+            prefetched_microbatch, current_output = prefetched_forward
+            prefetched_forward = None
+            if prefetched_microbatch != current_microbatch:
+                raise RuntimeError(
+                    "Pipeline forward lookahead order mismatch: "
+                    f"expected {current_microbatch}, got {prefetched_microbatch}"
+                )
+
+        has_next_forward = steady_index + 1 < remaining_steps
 
         if rank == world_size - 1:
             backward_microbatch = current_microbatch
@@ -285,23 +360,37 @@ def run_1f1b_iteration(
         else:
             backward_microbatch, activation = pop()
             backward_input = recv_backward_buffers[backward_microbatch]
-            _exchange_neighbor(
+            requests = _launch_neighbor_exchange(
                 rank=rank,
                 peer=rank + 1,
                 send_tensor=current_output,
                 recv_tensor=backward_input,
             )
+            try:
+                # Rank zero owns its next input already. Enqueue one forward stage
+                # before waiting to create an opportunity for NCCL/compute overlap;
+                # a target-GPU trace must establish that overlap. The produced
+                # tensor and all Work handles stay live through the wait calls.
+                if rank == 0 and has_next_forward:
+                    next_microbatch = current_microbatch + 1
+                    next_input = get_rank0_microbatch(next_microbatch)
+                    _record(capture, "forward_inputs", next_microbatch, next_input)
+                    prefetched_forward = (
+                        next_microbatch,
+                        forward_step(next_input),
+                    )
+            finally:
+                _wait_for_p2p(requests)
         _record(capture, "backward_inputs", backward_microbatch, backward_input)
         backward_output = backward_step(activation, backward_input)
         _record(capture, "backward_outputs", backward_microbatch, backward_output)
         if rank < world_size - 1:
             push(current_microbatch, current_output)
 
-        has_next_forward = steady_index + 1 < remaining_steps
         if rank == 0:
             current_input = (
                 get_rank0_microbatch(current_microbatch + 1)
-                if has_next_forward
+                if has_next_forward and prefetched_forward is None
                 else None
             )
         elif has_next_forward:
@@ -313,7 +402,7 @@ def run_1f1b_iteration(
                 recv_tensor=current_input,
             )
         else:
-            dist.send(backward_output, dst=rank - 1)
+            _send_neighbor(backward_output, peer=rank - 1)
             current_input = None
 
     while activation_count:
@@ -321,12 +410,12 @@ def run_1f1b_iteration(
         if rank >= world_size - 1:
             raise RuntimeError("Last pipeline stage retained an unexpected activation")
         backward_input = recv_backward_buffers[microbatch_index]
-        dist.recv(backward_input, src=rank + 1)
+        _recv_neighbor(backward_input, peer=rank + 1)
         _record(capture, "backward_inputs", microbatch_index, backward_input)
         backward_output = backward_step(activation, backward_input)
         _record(capture, "backward_outputs", microbatch_index, backward_output)
         if rank > 0:
-            dist.send(backward_output, dst=rank - 1)
+            _send_neighbor(backward_output, peer=rank - 1)
 
 
 def verify_and_concatenate_pipeline_capture(
