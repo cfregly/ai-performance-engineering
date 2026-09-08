@@ -5,7 +5,7 @@ been established for every chapter, lab, or baseline/optimized pair. Several
 measured pairs below remain below that threshold. Correctness and CI results
 are separate from performance acceptance.
 
-The targeted B200 measurements in this pass are complete. Real-data training checks
+The earlier targeted B200 pass completed. Real-data training checks
 pass on one and two B200s, the supported NCCL profiling path completes, and the
 serving comparison now uses both GPUs fairly. Dedicated pools are **22.71%
 slower** on total completion time for this workload, while improving short-request
@@ -53,7 +53,7 @@ serving and training workload source remains unchanged.
 Runs execute directly on one or two B200s, without Slurm. The host reports
 virtualization, so results are portable development evidence rather than
 canonical bare-metal qualification. GPU work is serialized through owned process
-supervisors. All final stages drain naturally. No unrelated processes were
+supervisors. The completed stages drained naturally. No unrelated processes were
 interrupted or other tasks contacted.
 
 The normal CUDA 13.0, Torch 2.9.1+cu130, driver 580.173.02, permissions, and
@@ -280,3 +280,34 @@ The failed integration receipt and focused repair checks are retained separately
 in `ai-perf-followthrough2-20260908-final-integration/`, alongside the original
 sealed GPU package. No successful full-suite rerun of these repairs is asserted
 here; use the PR's actual run results.
+
+## Further optimization work
+
+The renewed review has produced two candidates without changing workload sizes
+or accuracy limits. Pipeline commit `7dc0133d84ebbf1e2abd7d7486a109d942bee86a`
+queues one independent rank-zero forward microbatch before waiting for paired
+transfers. Its baseline GPipe function is byte-identical. All 88 focused CPU
+checks pass, including real two-rank output comparisons; a separate three-rank
+Gloo comparison also passes. Actual NCCL overlap and a repeated two-B200 speedup
+remain unmeasured.
+
+KV commit `32030e6cf31b6058f868988b13a317b5f96af3dc` refreshes packed projection
+weights on the first group of each complete iteration and reuses them for the
+remaining 129 groups. Both FP8 and NVFP4 arms use the same caching policy. Every
+forward, activation quantization, attention operation, and full-cache write is
+retained. Focused checks pass 81 tests with one existing skip.
+
+The new KV source also passes **all ten existing B200 arithmetic qualification
+cases**, with the unchanged independent limits and full-cache reference checks.
+The run used Torch 2.9.1+cu130 and Transformer Engine 2.9.0+70f5366 on one isolated
+B200, while an unrelated workload occupied the other device. It drained naturally
+without forced cleanup. All 27 transferred files / 24,953 bytes match their
+remote SHA-256 inventory. These results establish this lab's arithmetic gate;
+they do not establish attention/model/task quality or a speedup. Evidence is in
+`ai-perf-followthrough2-20260908-final-integration/kv-weight-cache-32030e6/`.
+
+DDP optimizer/backward overlap remains a static hypothesis requiring a fresh
+trace and exact update/output checks. Existing DDP, pipeline, serving, KV, and
+Ozaki no-win dispositions remain in force until new measurements supersede them.
+PR #28 is back in draft; broad CI and publication are deferred while this work
+continues.
