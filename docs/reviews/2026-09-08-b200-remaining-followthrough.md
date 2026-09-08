@@ -22,7 +22,7 @@ The retained targeted measurements illustrate the remaining speed gaps:
 | Cache-aware 1P1D | 1.574x | Measured improvement for the recorded workload |
 | FP8 training, batch 4096 | 1.279x | Improvement at this batch; smaller batches lose |
 | Regular DDP training loop | Approximately 1.00x | No measured training-loop improvement |
-| Pipeline parallelism | 1.024x | Below 1.05x, with inconsistent seed-block results |
+| Pipeline parallelism, forward lookahead | 1.057x median ratio | Two of four blocks remain below 1.05x; process duration does not improve |
 | Dynamic serving routing | 0.996x | Parity; below the speed goal |
 | Fair dedicated versus shared serving pools | 0.815x | Lower total throughput; short-request TTFT improves |
 | KV-cache NVFP4 compute, cached weights | 1.106x | All eight cached comparisons across four A/B/B/A blocks exceed 1.05x; full profiled pair also passes |
@@ -30,7 +30,7 @@ The retained targeted measurements illustrate the remaining speed gaps:
 
 These ratios retain the source, workload, timing, and qualification limits of
 their individual receipts; they are not a new uniform benchmark run. The
-pipeline lookahead change has no measured GPU result yet. The newer KV result
+pipeline lookahead change has mixed repeated GPU results, detailed below. The newer KV result
 uses a different Transformer Engine version from the earlier 1.025x result;
 the fresh old/new comparisons below use the same runtime to isolate the cache
 change. Broad CI remains paused during this work.
@@ -300,7 +300,26 @@ two-rank CPU output comparisons and separate coalesced/uncoalesced control-flow
 cases. The failed GPU attempt drained naturally; eight files (63,976 bytes) are
 retained in `pipeline-c9-failure/`, with inventory SHA-256
 `8b4dda593d35ee1e8d59190df5f81690878eabe4cb4db801a03e754622e248d6`.
-The corrected two-B200 rerun is pending; this is not a speedup claim.
+Corrected source `d8a533ff00e215c19dae41fdcb6be0e7bfdf6b1f` now completes
+**all 16 two-B200 executions and all eight exact full-output comparisons**.
+Baseline/optimized median rank-zero iteration times are **15.7713 / 14.9237 ms**
+(**1.056794x**); sample standard deviations are 0.3125 / 0.4499 ms. The four
+block ratios are **1.058926, 1.019520, 1.063420, and 1.021559x**, so only two
+blocks exceed 1.05x. Median whole-process ratio is **0.985690x**. Preserve these
+mixed results instead of treating the aggregate as universal success.
+
+Both Nsight Systems captures pass the unchanged mechanism checks: 1,024 GEMMs,
+1,024 ReLU kernels, and 128 send/receive calls per arm; P2P kernels decrease
+from 256 to 132. Within the measured ranges, both devices retain 192 GEMMs each.
+CUDA-launch attribution shows **12.7686 ms of rank-zero GEMM/P2P overlap** for
+the optimized run versus zero for GPipe; rank one still has no such overlap.
+These are instrumented interval measurements, not ordinary benchmark timings.
+The driver uses harness-managed clock locking for both devices, and the batch
+drains naturally. All 57 files (26,422,116 bytes) were copied and hash-verified
+in `pipeline-nccl-d8/`, inventory SHA-256
+`4ba3415a9e098986dafe648687890855b22b1efab775dca4505d651a284db43d`.
+Further improvement must address the remaining rank-one communication exposure
+and measurement spread without reducing work or weakening exact verification.
 
 KV commit `32030e6cf31b6058f868988b13a317b5f96af3dc` refreshes packed projection
 weights on the first group of each complete iteration and reuses them for the
