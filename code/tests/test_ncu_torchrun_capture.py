@@ -340,12 +340,23 @@ def test_cleanup_drains_child_that_outlives_parent_and_ignores_sigterm(tmp_path:
         os.kill(child_pid, 0)
 
 
-def test_process_group_cleanup_reaps_running_timed_out_leader_after_kill() -> None:
+def test_process_group_cleanup_reaps_running_timed_out_leader_after_kill(
+    tmp_path: Path,
+) -> None:
+    ready = tmp_path / "leader-ready"
     code = (
-        "import signal,time\n" "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n" "time.sleep(60)\n"
+        "import signal,time\n"
+        "from pathlib import Path\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        f"Path({str(ready)!r}).write_text('ready\\n')\n"
+        "time.sleep(60)\n"
     )
     process = subprocess.Popen([sys.executable, "-c", code], start_new_session=True)
     try:
+        deadline = time.monotonic() + 10
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert ready.is_file()
         signals_sent, drained, errors = _drain_owned_process_group(process, grace_seconds=0.1)
     finally:
         if process.poll() is None:
