@@ -271,6 +271,12 @@ The selected-kernel path is recovered; full-range replay remains unresolved.
 - Syntax passes for all 48 changed Python files. Full-file Ruff has the same 75 diagnostics as the base commit and no new diagnostics; focused changed-implementation lint passes.
 - All target runs are finished and their owned processes drained; artifact hash verification passes.
 
+The first hosted CPU validation attempt reached 98% before its 30-minute job
+budget expired. Its cancelled result is retained. The workflow now allows 35
+minutes, preserving the entire test suite and all final audits. A prior run had
+also exhausted 30 minutes after its full suite and linter passed; the added
+margin addresses observed hosted-runner variability rather than skipping work.
+
 Full collective NCU replay still needs a working tool/runtime combination; the
 bounded selected-kernel captures and matched Nsys traces provide the usable
 profiling paths on this stack. DDP and pipeline need a repeatable measured gain
