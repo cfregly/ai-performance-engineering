@@ -174,6 +174,13 @@ Profiling with Nsight Systems, Nsight Compute, and torch.profiler.
 
 **NSYS timeout hardening (CLI + MCP + harness):** all NSYS entrypoints now route through `NsightAutomation.profile_nsys`, default to the safer `preset='light'`, support `wait_mode` (`primary`/`all`), and use a graceful timeout finalization window (`finalize_grace_seconds`) before hard termination. `profile_nsys` also supports `sanitize_python_startup=true` to prefix a safe `sitecustomize` shim for profiler subprocesses.
 
+The Python benchmark Nsys wrapper honors explicit `BenchmarkConfig.profiling_warmup`
+and `profiling_iterations`: warmups run before capture, and measured calls run
+inside the profile range. If unset, this wrapper retains one warmup and one
+measured call. Counts must be integers, with nonnegative warmups and positive
+measured iterations. Reused serving engines can therefore warm up completely
+before a steady-state mechanism capture.
+
 **Python API:**
 ```python
 engine.profile.flame_graph()      # Flame graph data
