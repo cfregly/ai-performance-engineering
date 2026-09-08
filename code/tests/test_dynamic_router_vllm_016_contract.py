@@ -301,6 +301,86 @@ def test_optimized_routing_uses_run_local_admission_depth_without_cuda_polling(
 
 
 @pytest.mark.parametrize(
+    ("mode", "decode_gpus", "expected_counts", "expected_pool_counts"),
+    [
+        ("shared", "0,1", {"cuda:0": 51, "cuda:1": 51}, (2, 2)),
+        ("dual", "1", {"cuda:0": 6, "cuda:1": 96}, (1, 1)),
+    ],
+)
+def test_dual_pool_uses_run_local_admission_depth_across_reused_runs(
+    vllm_016_api: None,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    decode_gpus: str,
+    expected_counts: dict[str, int],
+    expected_pool_counts: tuple[int, int],
+) -> None:
+    args = _args()
+    args.decode_gpus = decode_gpus
+    args.long_prompt_tokens = 4096
+    args.short_prompt_tokens = 128
+    args.prefill_burst = 6
+    args.decode_requests = 48
+    args.continue_requests = 48
+    args.prefill_ctx_thresh = 2048
+    prompt_lengths = vllm_runner.dual_pool_prompt_lengths(args)
+    prompt_token_ids = vllm_runner.build_prompt_token_ids(prompt_lengths)
+    session = vllm_runner.create_dual_pool_vllm_session(
+        mode,
+        topology_snapshot=_topology(),
+        cli_args=args,
+        warmup_runs=1,
+    )
+    for wrapper in session.engines.values():
+        monkeypatch.setattr(
+            wrapper,
+            "snapshot_metrics",
+            lambda **_kwargs: pytest.fail("post-admission snapshot must not run"),
+        )
+
+    try:
+        previous_add_counts = {
+            gpu_id: len(wrapper.engine.add_calls)
+            for gpu_id, wrapper in session.engines.items()
+        }
+        for run_index in range(2):
+            summary = vllm_runner.run_dual_pool_vllm_with_topology(
+                mode,
+                topology_snapshot=_topology(),
+                cli_args=args,
+                prompt_token_ids=prompt_token_ids,
+                engine_session=session,
+            )
+            observed_counts = {}
+            for gpu_id, wrapper in session.engines.items():
+                current = len(wrapper.engine.add_calls)
+                observed_counts[f"cuda:{wrapper.device_index}"] = (
+                    current - previous_add_counts[gpu_id]
+                )
+                new_request_ids = [
+                    call["request_id"]
+                    for call in wrapper.engine.add_calls[previous_add_counts[gpu_id] : current]
+                ]
+                assert all(
+                    request_id.startswith(f"session-{run_index:04d}-")
+                    for request_id in new_request_ids
+                )
+                previous_add_counts[gpu_id] = current
+
+            assert observed_counts == expected_counts
+            assert summary["requests"] == summary["completed"] == 102
+            assert summary["requests_admitted_gpu0"] == expected_counts["cuda:0"]
+            assert summary["requests_admitted_gpu1"] == expected_counts["cuda:1"]
+            assert (
+                summary["prefill_gpu_count"],
+                summary["decode_gpu_count"],
+            ) == expected_pool_counts
+            assert len(summary[vllm_runner.VERIFICATION_OUTPUT_KEY]) == 204
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize(
     ("call_path", "mode"),
     [
         ("dynamic", "baseline"),

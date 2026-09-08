@@ -1546,6 +1546,11 @@ def run_dual_pool_vllm_with_topology(
 
     requests: Dict[str, _RequestRuntime] = {}
     req_roles: Dict[str, str] = {}
+    # Admission completes before the drain loop, so seed and update run-local
+    # depths here; drain-time TTFT/TPOT cannot inform these placements.
+    admitted_by_gpu = {handle.gpu_id: 0 for handle in handles}
+    for handle in handles:
+        router.update_metrics(handle.gpu_id, {"queue_depth": 0.0})
     if len(workload) != len(request_prompt_token_ids):
         raise RuntimeError("prompt input request count does not match the routed workload")
     for request_index, (req, hint) in enumerate(workload):
@@ -1571,6 +1576,11 @@ def run_dual_pool_vllm_with_topology(
             _skip("No GPU available for routed request.")
         rt = _RequestRuntime(req=req, gpu_id=target, admitted_at=time.time(), role=route)
         engines[target].add_request(rt, request_prompt_token_ids[request_index])
+        admitted_by_gpu[target] += 1
+        router.update_metrics(
+            target,
+            {"queue_depth": float(admitted_by_gpu[target])},
+        )
         requests[req.req_id] = rt
         req_roles[req.req_id] = route
 
@@ -1595,10 +1605,6 @@ def run_dual_pool_vllm_with_topology(
                 if role in pool_ttft:
                     pool_ttft[role].append(ttft_ms)
             telemetry[handle.gpu_id].observe(ttft_new, tokens)
-            router.update_metrics(
-                handle.gpu_id,
-                eng.snapshot_metrics(**telemetry[handle.gpu_id].snapshot_args()),
-            )
             qd = eng.queue_depth()
             if handle.is_prefill:
                 queue_depth_totals["prefill"] += float(qd)
@@ -1619,8 +1625,8 @@ def run_dual_pool_vllm_with_topology(
         "mode": normalized_mode,
         "requests": len(req_roles),
         "completed": len(completed),
-        "prefill_gpu_count": len(prefill_ids),
-        "decode_gpu_count": len(decode_ids),
+        "prefill_gpu_count": len(prefill_handles),
+        "decode_gpu_count": len(decode_handles),
         "ttft_ms_p50": ttft_p50,
         "ttft_ms_p95": ttft_p95,
         "prefill_ttft_ms_p50": prefill_ttft_p50,
@@ -1647,6 +1653,7 @@ def run_dual_pool_vllm_with_topology(
     }
     for gid in engines:
         summary[f"tpot_tok_per_step_{gid}"] = telemetry[gid].tokens_per_step.get()
+        summary[f"requests_admitted_{gid}"] = admitted_by_gpu[gid]
     summary[VERIFICATION_OUTPUT_KEY] = _collect_verification_output_token_ids(
         engines, list(req_roles)
     )
