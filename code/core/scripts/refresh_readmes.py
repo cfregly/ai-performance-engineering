@@ -2339,7 +2339,15 @@ ENTRIES["ch13"] = chapter_entry(
 
                 This chapter is one of the easiest places to fool yourself with framework overhead. That is why the benchmark contract and side-by-side baseline/optimized structure matter here more than almost anywhere else.
 
-                The prior `precisionfp8_te` number compared eager FP16 with CUDA-graph-replayed FP8, so it is retired. The pair now runs both sides eagerly to isolate Transformer Engine FP8; publish a new speed result only after a fresh B200 correctness and timing run.
+                The prior `precisionfp8_te` number compared eager FP16 with CUDA-graph-replayed FP8, so it is retired. The pair now runs both sides eagerly to isolate Transformer Engine FP8. A fresh direct-B200 sweep with Transformer Engine 2.18 measured the full training update after five setup and ten warmup updates:
+
+                | Matched batch | Eager FP16 median | Eager TE FP8 median | FP16 / FP8 | Disposition |
+                | ---: | ---: | ---: | ---: | --- |
+                | 256 | `0.4786 ms` | `0.6662 ms` | `0.7183x` | no measured speedup |
+                | 1,024 | `0.5483 ms` | `0.6644 ms` | `0.8252x` | no measured speedup |
+                | 4,096 | `1.2303 ms` | `0.9616 ms` | `1.2795x` | candidate speedup for this workload |
+
+                The 24 observations cover two seeds, two repeats, both arms, and all three batches. Every observation compared the actual prediction and all 67,121,152 post-step parameters and passed the frozen output policy. Batch 256 remains the default, so the batch-4,096 result establishes a workload-specific crossover rather than a general default-workload speedup. Whole-call cost is retained separately from the CUDA-event update timing.
 
                 The TE 2.18 pair now verifies its captured prediction and every post-step parameter with a calibrated per-output policy. Previously, all outputs inherited the global `(rtol=0.5, atol=5.0)` threshold. B200 calibration of the unchanged batch-256, hidden-4096 training step selected these stricter budgets across seed 44 and fixed holdouts 45, 1044, and 1045:
 
@@ -2362,13 +2370,14 @@ ENTRIES["ch13"] = chapter_entry(
                 python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive --single-gpu
                 ```
 
-                To test an optional larger matched control, pass one pair-wide override through the harness. This sends batch size 1024 to both arms and updates their workload metadata consistently:
+                To test optional larger matched controls, pass one pair-wide override through the harness. This sends the requested batch to both arms and updates their workload metadata consistently:
 
                 ```bash
                 python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive --single-gpu --target-extra-arg 'ch13:precisionfp8_te=--batch-size 1024'
+                python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive --single-gpu --target-extra-arg 'ch13:precisionfp8_te=--batch-size 4096'
                 ```
 
-                Compare results only when both arms report the same requested batch size and workload signature. The calibrated output policy above was established at batch 256. Batch 1024 keeps that policy but needs a fresh correctness and B200 timing run; it does not inherit the batch-256 evidence or establish a performance gain by itself."""
+                Compare results only when both arms report the same requested batch size and workload signature. Fresh B200 checks pass at 256, 1,024, and 4,096 with the frozen policy. The first two batches are slower under FP8; the observed 1.2795x result applies only to the matched batch-4,096 workload and does not change the default."""
             ),
         ),
         MarkdownSection(
@@ -2388,6 +2397,8 @@ ENTRIES["ch13"] = chapter_entry(
                 - `autograd_standard`: framework/compile overhead
                 - `precisionfp8_te`: lower-precision execution with real library support
 
+                Matched batch-4,096 Nsys captures pass for both `precisionfp8_te` arms. The FP8 trace shows shorter main GEMMs alongside quantization and scale-update work. Each trace contains one profiled update after setup and one profiler warmup, so trace durations are diagnostic; the repeated sweep above remains the timing authority.
+
                 The torchao FP8 recipe demos (`precisionfp8`, `precisionfp8_rowwise`, `precisionfp8_rowwise_gw_hp`) remain useful implementation references, but they are treated as informational examples rather than canonical speed-claim surfaces."""
             ),
         ),
@@ -2401,6 +2412,7 @@ ENTRIES["ch13"] = chapter_entry(
                 python -m cli.aisp bench run --targets ch13 --profile minimal
                 python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive --single-gpu
                 python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive --single-gpu --target-extra-arg 'ch13:precisionfp8_te=--batch-size 1024'
+                python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile deep_dive --single-gpu --target-extra-arg 'ch13:precisionfp8_te=--batch-size 4096'
                 ```"""
             ),
         ),
@@ -2426,13 +2438,13 @@ ENTRIES["ch13"] = chapter_entry(
     validation=[
         "`python -m ch13.compare --examples training_standard` shows optimized training runs producing higher goodput with identical metrics.",
         "`python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile minimal` confirms Transformer Engine calibration plus NVFP8 execution with max error tolerances enforced.",
-        "`python -m cli.aisp bench run --targets ch13:precisionfp8_te --profile minimal --single-gpu --target-extra-arg 'ch13:precisionfp8_te=--batch-size 1024'` exercises the optional matched batch control; accept its timing only after both arms report batch 1024 and pass fresh output verification.",
+        "Matched B200 `precisionfp8_te` checks at batches 256, 1,024, and 4,096 pass the full-output policy; only batch 4,096 shows a measured candidate speedup (`1.2795x`) for this exact workload.",
         "`python -m ch13.memory_profiling --dump` and the optimized variant demonstrate allocator fragmentation dropping after applying the recommended knobs, with memory reduction treated as the primary benchmark outcome.",
     ],
     notes=[
         "`custom_allocator.py` contains a standalone torch allocator shim that can be re-used in other chapters when debugging fragmentation.",
         "`compiled_autograd.py` doubles as a tutorial on partial graph capture; the README here references it directly.",
-        "`precisionfp8_te` defaults to batch 256. `--batch-size 1024` is an explicit pair-wide workload override, not a new default or a qualified speed claim.",
+        "`precisionfp8_te` defaults to batch 256. Larger `--batch-size` values are explicit pair-wide workload overrides; the B200 crossover appeared at batch 4,096 and does not change the default.",
         "`torchao_quantization_compiled`, `kv_cache_naive_flash_blockwise`, `precisionfp8`, `precisionfp8_rowwise`, and `precisionfp8_rowwise_gw_hp` remain informational variants.",
         "`kv_cache_naive` and `memory_profiling` are memory-goal benchmarks; they are expected to reduce memory pressure even when the timed path is not faster.",
     ],
