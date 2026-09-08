@@ -58,6 +58,12 @@ from core.benchmark.evaluation_provenance import (
     finalize_evaluation as finalize_evaluation_provenance,
     start_evaluation,
 )
+from core.benchmark.verification import (
+    OutputToleranceMap,
+    get_output_tolerances,
+    output_tolerances_from_dict,
+    output_tolerances_to_dict,
+)
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.backend_policy import apply_backend_policy, normalize_backend_policy, restore_backend_policy
 from core.harness.device_identity_contract import (
@@ -176,6 +182,34 @@ _NCU_FIRST_CLASS_METRIC_PREFIXES = (
     "ncu_l2_throughput_pct",
     "ncu_occupancy_pct",
 )
+
+
+def _parse_subprocess_output_tolerances(
+    result_dict: Dict[str, Any],
+    *,
+    declared_output_tolerances: Optional[OutputToleranceMap],
+) -> Tuple[bool, Optional[OutputToleranceMap]]:
+    """Read a child policy receipt and bind it to any pre-dispatch declaration."""
+    if "output_tolerances" not in result_dict:
+        if declared_output_tolerances is not None:
+            raise ValueError(
+                "Subprocess omitted output_tolerances required by the benchmark's "
+                "pre-dispatch declaration"
+            )
+        return False, None
+
+    captured = output_tolerances_from_dict(
+        result_dict["output_tolerances"],
+        source="subprocess output_tolerances",
+    )
+    if declared_output_tolerances is not None and captured != declared_output_tolerances:
+        raise ValueError(
+            "Subprocess output_tolerances do not match the benchmark's pre-dispatch "
+            "declaration "
+            f"(declared={output_tolerances_to_dict(declared_output_tolerances)!r}, "
+            f"captured={output_tolerances_to_dict(captured)!r})"
+        )
+    return True, captured
 
 
 def _ncu_metrics_from_flat(ncu_metrics: Dict[str, Any]) -> NcuMetrics:
@@ -1928,6 +1962,12 @@ class BaseBenchmark:
             "tolerance via _set_verification_payload() from capture_verification_payload() (post-timing)."
         )
 
+    def get_output_tolerances(self) -> Optional[Dict[str, Tuple[float, float]]]:
+        """Return an optional exact-keyed per-output tolerance policy."""
+        if isinstance(self, VerificationPayloadMixin):
+            return VerificationPayloadMixin.get_output_tolerances(self)
+        return None
+
     def get_custom_streams(self) -> List["torch.cuda.Stream"]:
         """Return any non-default streams used by this benchmark."""
         return []
@@ -3055,6 +3095,17 @@ class BenchmarkHarness:
         elif name and getattr(benchmark, "name", None) is None:
             # Preserve provided name if the benchmark did not set one
             benchmark.name = name
+
+        # Subprocess verification artifacts belong to exactly one completed
+        # dispatch. Reusing a benchmark instance must never admit a later run
+        # with output, tolerance, or signature data from an earlier child.
+        for transport_attr in (
+            "_subprocess_verify_output",
+            "_subprocess_output_tolerance",
+            "_subprocess_output_tolerances",
+            "_subprocess_input_signature",
+        ):
+            vars(benchmark).pop(transport_attr, None)
         
         print("[harness] benchmark() start", flush=True)
         # Clone config to avoid mutating shared instance; deepcopy prevents
@@ -3171,6 +3222,18 @@ class BenchmarkHarness:
         # Benchmarks read this via get_config() / self._config.
         benchmark._config = ReadOnlyBenchmarkConfigView.from_config(config)  # type: ignore[attr-defined]
 
+        # A benchmark-level override is a declaration made before execution and
+        # must survive subprocess transport unchanged. Payload-only mixins are
+        # populated after measurement, so they intentionally have no pre-dispatch
+        # declaration to bind here.
+        declared_output_tolerances: Optional[OutputToleranceMap] = None
+        output_tolerances_impl = getattr(type(benchmark), "get_output_tolerances", None)
+        if output_tolerances_impl not in (
+            BaseBenchmark.get_output_tolerances,
+            VerificationPayloadMixin.get_output_tolerances,
+        ):
+            declared_output_tolerances = get_output_tolerances(benchmark)
+
         # Environment validity gate (loud warning on virtualization).
         # Note: validate_environment() also runs inside the timed harness path; this early check ensures
         # the message is visible even when using subprocess isolation.
@@ -3263,6 +3326,12 @@ class BenchmarkHarness:
                 return self._benchmark_with_torchrun(benchmark, config)
             if config.execution_mode == ExecutionMode.SUBPROCESS:
                 print("[harness] dispatch subprocess", flush=True)
+                if declared_output_tolerances is not None:
+                    return self._benchmark_with_subprocess(
+                        benchmark,
+                        config,
+                        declared_output_tolerances=declared_output_tolerances,
+                    )
                 return self._benchmark_with_subprocess(benchmark, config)
             print("[harness] dispatch threading (direct)", flush=True)
             return self._benchmark_with_threading(benchmark, config)
@@ -3549,7 +3618,13 @@ class BenchmarkHarness:
         runner = VerifyRunner()
         return runner.gate_perf(benchmark_path)
     
-    def _benchmark_with_subprocess(self, benchmark: BaseBenchmark, config: BenchmarkConfig) -> PydanticBenchmarkResult:
+    def _benchmark_with_subprocess(
+        self,
+        benchmark: BaseBenchmark,
+        config: BenchmarkConfig,
+        *,
+        declared_output_tolerances: Optional[OutputToleranceMap] = None,
+    ) -> PydanticBenchmarkResult:
         """Run benchmark in subprocess for reliable timeout cancellation."""
         import json
         import inspect
@@ -3927,6 +4002,21 @@ class BenchmarkHarness:
                             except Exception as e:
                                 errors.append(f"Failed to parse output_tolerance from subprocess: {e}")
                                 raise
+
+                        try:
+                            has_output_tolerances, output_tolerances = (
+                                _parse_subprocess_output_tolerances(
+                                    result_dict,
+                                    declared_output_tolerances=declared_output_tolerances,
+                                )
+                            )
+                            if has_output_tolerances:
+                                benchmark._subprocess_output_tolerances = output_tolerances
+                        except Exception as e:
+                            errors.append(
+                                f"Failed to parse output_tolerances from subprocess: {e}"
+                            )
+                            raise
 
                         sig_data = result_dict.get("input_signature")
                         if sig_data is not None:

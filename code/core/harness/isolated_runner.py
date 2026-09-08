@@ -336,6 +336,7 @@ def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
                 "error": None,
                 "verify_output": None,
                 "output_tolerance": None,
+                "output_tolerances": None,
                 "input_signature": None,
             }
 
@@ -347,6 +348,9 @@ def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
                 try:
                     verify_output_obj = benchmark.get_verify_output()
                     output_tol_obj = benchmark.get_output_tolerance()
+                    from core.benchmark.verification import get_output_tolerances
+
+                    output_tolerances_obj = get_output_tolerances(benchmark)
                     signature_obj = benchmark.get_input_signature()
 
                     import torch  # local import after module load
@@ -368,10 +372,27 @@ def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
                             f"got {type(verify_output_obj)}"
                         )
 
+                    output_names = (
+                        {"output"}
+                        if isinstance(verify_output_obj, torch.Tensor)
+                        else set(verify_output_obj)
+                    )
+                    if (
+                        output_tolerances_obj is not None
+                        and set(output_tolerances_obj) != output_names
+                    ):
+                        missing = sorted(output_names - set(output_tolerances_obj))
+                        extra = sorted(set(output_tolerances_obj) - output_names)
+                        raise ValueError(
+                            "get_output_tolerances() must exactly cover captured output keys "
+                            f"(missing={missing}, extra={extra})"
+                        )
+
                     capture_state["output_tolerance"] = (
                         float(output_tol_obj[0]),
                         float(output_tol_obj[1]),
                     )
+                    capture_state["output_tolerances"] = output_tolerances_obj
                     capture_state["input_signature"] = (
                         signature_obj.to_dict()
                         if hasattr(signature_obj, "to_dict")
@@ -408,6 +429,7 @@ def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
             # Strictly extract verification artifacts captured from the timing run
             verify_output = capture_state["verify_output"]
             output_tol = capture_state["output_tolerance"]
+            output_tolerances = capture_state["output_tolerances"]
             signature = capture_state["input_signature"]
             import torch  # local import after module load
 
@@ -455,6 +477,14 @@ def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
                 "result_json": bench_result.model_dump_json(),
                 "verify_output": verify_output_data,
                 "output_tolerance": {"rtol": float(output_tol[0]), "atol": float(output_tol[1])},
+                "output_tolerances": (
+                    {
+                        name: {"rtol": values[0], "atol": values[1]}
+                        for name, values in sorted(output_tolerances.items())
+                    }
+                    if output_tolerances is not None
+                    else None
+                ),
                 "input_signature": signature,
                 "errors": bench_result.errors or [],
             }

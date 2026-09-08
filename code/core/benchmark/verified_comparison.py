@@ -14,10 +14,14 @@ from core.benchmark.runtime_comparison import (
 )
 from core.benchmark.verification import (
     InputSignature,
+    OutputToleranceMap,
     ToleranceSpec,
     coerce_input_signature,
     get_output_tolerance,
+    get_output_tolerances,
     get_signature_equivalence_spec,
+    output_tolerances_to_dict,
+    resolve_output_tolerances,
     signature_workload_dict,
 )
 from core.benchmark.verify_runner import VerifyRunner
@@ -180,14 +184,22 @@ def _require_tolerance(benchmark: Any, *, side: str) -> ToleranceSpec:
 
 
 def _require_captured_output(benchmark: Any, *, side: str) -> torch.Tensor | dict[str, torch.Tensor]:
-    getter = getattr(benchmark, "get_verify_output", None)
-    if not callable(getter):
-        raise VerifiedComparisonError(
-            f"{side}_verify_output_missing",
-            f"{side.title()} benchmark must expose get_verify_output().",
-        )
+    getter = None
+    if not hasattr(benchmark, "_subprocess_verify_output"):
+        getter = getattr(benchmark, "get_verify_output", None)
+        if not callable(getter):
+            raise VerifiedComparisonError(
+                f"{side}_verify_output_missing",
+                f"{side.title()} benchmark must expose get_verify_output().",
+            )
     try:
-        output = getter()
+        if hasattr(benchmark, "_subprocess_verify_output"):
+            output = getattr(benchmark, "_subprocess_verify_output")
+            if output is None:
+                raise ValueError("transported subprocess verify output is missing")
+        else:
+            assert getter is not None
+            output = getter()
     except Exception as exc:
         raise VerifiedComparisonError(
             f"{side}_verify_output_invalid",
@@ -230,6 +242,24 @@ def _require_captured_output(benchmark: Any, *, side: str) -> torch.Tensor | dic
     return output
 
 
+def _require_output_tolerances(
+    benchmark: Any,
+    *,
+    side: str,
+) -> OutputToleranceMap | None:
+    try:
+        return get_output_tolerances(benchmark)
+    except Exception as exc:
+        raise VerifiedComparisonError(
+            f"{side}_output_tolerances_invalid",
+            f"{side.title()} per-output tolerances are invalid: {exc}",
+        ) from exc
+
+
+def _output_names(output: torch.Tensor | dict[str, torch.Tensor]) -> set[str]:
+    return {"output"} if isinstance(output, torch.Tensor) else set(output)
+
+
 def _compare_outputs(baseline: Any, optimized: Any) -> dict[str, Any]:
     baseline_tolerance = _require_tolerance(baseline, side="baseline")
     optimized_tolerance = _require_tolerance(optimized, side="optimized")
@@ -251,10 +281,30 @@ def _compare_outputs(baseline: Any, optimized: Any) -> dict[str, Any]:
     )
     baseline_output = _require_captured_output(baseline, side="baseline")
     optimized_output = _require_captured_output(optimized, side="optimized")
+    baseline_output_tolerances = _require_output_tolerances(baseline, side="baseline")
+    optimized_output_tolerances = _require_output_tolerances(optimized, side="optimized")
+    try:
+        output_tolerances = resolve_output_tolerances(
+            baseline_output_tolerances,
+            optimized_output_tolerances,
+            baseline_output_names=_output_names(baseline_output),
+            optimized_output_names=_output_names(optimized_output),
+        )
+    except (TypeError, ValueError) as exc:
+        raise VerifiedComparisonError(
+            "output_tolerances_mismatch",
+            str(exc),
+            evidence={
+                "baseline": output_tolerances_to_dict(baseline_output_tolerances),
+                "optimized": output_tolerances_to_dict(optimized_output_tolerances),
+            },
+        ) from exc
     comparison = VerifyRunner().compare_perf_outputs(
         baseline_output,
         optimized_output,
-        (effective_tolerance.rtol, effective_tolerance.atol),
+        output_tolerances
+        if output_tolerances is not None
+        else (effective_tolerance.rtol, effective_tolerance.atol),
     )
     comparison_receipt = comparison.to_dict()
     comparison_receipt.update(
@@ -263,6 +313,7 @@ def _compare_outputs(baseline: Any, optimized: Any) -> dict[str, Any]:
             "atol": effective_tolerance.atol,
             "baseline_tolerance": baseline_tolerance.to_dict(),
             "optimized_tolerance": optimized_tolerance.to_dict(),
+            "output_tolerances": output_tolerances_to_dict(output_tolerances),
         }
     )
     if not comparison.passed:

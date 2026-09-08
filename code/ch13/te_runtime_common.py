@@ -17,6 +17,19 @@ _TORCH_CUDA_LIBS = (
     "libc10_cuda.so",
 )
 
+_TE_PRECISION_OUTPUT_TOLERANCES: dict[str, tuple[float, float]] = {
+    "prediction": (0.4, 1.0),
+    "parameter.fc1.weight": (0.001, 0.00075),
+    "parameter.fc1.bias": (0.001, 0.00005),
+    "parameter.fc2.weight": (0.001, 0.00075),
+    "parameter.fc2.bias": (0.001, 0.00005),
+}
+
+
+def get_te_precision_output_tolerances() -> dict[str, tuple[float, float]]:
+    """Return the calibrated full-output policy for the TE2.18 precision pair."""
+    return dict(_TE_PRECISION_OUTPUT_TOLERANCES)
+
 
 @lru_cache(maxsize=1)
 def ensure_te_runtime_initialized() -> None:

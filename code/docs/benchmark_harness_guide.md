@@ -381,6 +381,25 @@ result = compare_benchmarks(
 - Full statistics for both benchmarks
 - Complete `BenchmarkResult` objects for further analysis
 
+Benchmarks whose verification output contains tensors with different numeric
+scales can opt into exact-keyed tolerances:
+
+```python
+def get_output_tolerances(self) -> dict[str, tuple[float, float]]:
+    return {
+        "prediction": (0.4, 1.0),
+        "parameter.weight": (1e-3, 7.5e-4),
+        "parameter.bias": (1e-3, 5e-5),
+    }
+```
+
+The map must cover every key returned by `get_verify_output()`. Baseline and
+optimized maps must be identical, and every `rtol` and `atol` must be finite
+and nonnegative. The existing `get_output_tolerance()` tuple remains required
+as global compatibility metadata. When the per-output hook is present, numeric
+comparison uses the keyed map and records it under
+`verification.output_tolerances`.
+
 **Use case**: Automatic performance regression detection in CI/CD.
 
 ---

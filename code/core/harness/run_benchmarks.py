@@ -135,6 +135,10 @@ try:
         VerifyResult,
         coerce_input_signature,
         get_signature_equivalence_spec,
+        get_output_tolerance,
+        get_output_tolerances,
+        output_tolerances_to_dict,
+        resolve_output_tolerances,
         signature_workload_dict,
     )
     from core.benchmark.quarantine import QuarantineManager
@@ -5845,12 +5849,23 @@ def _test_chapter_impl(
         return bench.get_verify_output()
 
     def _get_perf_tolerance(bench: Any) -> tuple[float, float]:
-        if hasattr(bench, "_subprocess_output_tolerance"):
-            tol = getattr(bench, "_subprocess_output_tolerance")
-            if tol is None:
-                raise RuntimeError("Missing subprocess output_tolerance")
-            return tol
-        return bench.get_output_tolerance()
+        tolerance = get_output_tolerance(bench)
+        if tolerance is None:
+            raise RuntimeError("Missing output_tolerance")
+        return (tolerance.rtol, tolerance.atol)
+
+    def _get_perf_output_tolerances(bench: Any):
+        return get_output_tolerances(bench)
+
+    def _perf_output_names(output: Any) -> set[str]:
+        if isinstance(output, torch.Tensor):
+            return {"output"}
+        if isinstance(output, dict):
+            return set(output)
+        raise TypeError(
+            "verify_output must be torch.Tensor or Dict[str, torch.Tensor], "
+            f"got {type(output)}"
+        )
 
     def _get_perf_signature(bench: Any):
         if hasattr(bench, "_subprocess_input_signature"):
@@ -6068,6 +6083,7 @@ def _test_chapter_impl(
             baseline_equivalence = None
             baseline_verify_output = None
             baseline_verify_tolerance = None
+            baseline_verify_output_tolerances = None
         
             # Check if this is a distributed benchmark and we have only 1 GPU
             is_distributed = is_distributed_benchmark(baseline_path)
@@ -6388,6 +6404,9 @@ def _test_chapter_impl(
                         if verify_output:
                             baseline_verify_output = _get_perf_output(baseline_benchmark)
                             baseline_verify_tolerance = _get_perf_tolerance(baseline_benchmark)
+                            baseline_verify_output_tolerances = _get_perf_output_tolerances(
+                                baseline_benchmark
+                            )
                     except Exception as exc:
                         logger.error("    ✗ BASELINE VERIFICATION SETUP FAILED: %s", exc)
                         result_entry["status"] = "failed_verification"
@@ -7265,10 +7284,21 @@ def _test_chapter_impl(
                             if baseline_verify_output is None or baseline_verify_tolerance is None:
                                 raise RuntimeError("Baseline verify_output/tolerance missing")
                             optimized_verify_output = _get_perf_output(optimized_benchmark)
+                            optimized_verify_output_tolerances = _get_perf_output_tolerances(
+                                optimized_benchmark
+                            )
+                            output_tolerances = resolve_output_tolerances(
+                                baseline_verify_output_tolerances,
+                                optimized_verify_output_tolerances,
+                                baseline_output_names=_perf_output_names(baseline_verify_output),
+                                optimized_output_names=_perf_output_names(optimized_verify_output),
+                            )
                             comparison = perf_compare_runner.compare_perf_outputs(
                                 baseline_verify_output,
                                 optimized_verify_output,
-                                baseline_verify_tolerance,
+                                output_tolerances
+                                if output_tolerances is not None
+                                else baseline_verify_tolerance,
                             )
                             opt_result["verification"] = {
                                 "passed": comparison.passed,
@@ -7276,6 +7306,9 @@ def _test_chapter_impl(
                                 "location": comparison.location,
                                 "rtol": baseline_verify_tolerance[0],
                                 "atol": baseline_verify_tolerance[1],
+                                "output_tolerances": output_tolerances_to_dict(
+                                    output_tolerances
+                                ),
                             }
                             if not comparison.passed:
                                 reason = "Output mismatch"

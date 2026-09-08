@@ -10,7 +10,45 @@ import torch.nn as nn
 
 from ch13.baseline_precisionfp8_te import BaselineTEFP8Benchmark
 from ch13.optimized_precisionfp8_te import OptimizedTEFP8Benchmark
+from core.benchmark.verification import get_output_tolerances
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.benchmark.verify_runner import VerifyRunner
+
+EXPECTED_OUTPUT_TOLERANCES = {
+    "prediction": (0.4, 1.0),
+    "parameter.fc1.weight": (0.001, 0.00075),
+    "parameter.fc1.bias": (0.001, 0.00005),
+    "parameter.fc2.weight": (0.001, 0.00075),
+    "parameter.fc2.bias": (0.001, 0.00005),
+}
+
+
+def _assert_calibrated_output_policy(benchmark, output) -> None:
+    tolerances = get_output_tolerances(benchmark)
+    assert benchmark.get_output_tolerance() == (0.4, 1.0)
+    assert tolerances == EXPECTED_OUTPUT_TOLERANCES
+    assert VerificationPayloadMixin.get_output_tolerances(benchmark) == tolerances
+    assert set(tolerances) == set(output)
+    runner = VerifyRunner()
+    assert runner.compare_perf_outputs(output, output, tolerances).passed
+
+    for name, expected in output.items():
+        tolerance = {name: tolerances[name]}
+        zeroed = expected.clone()
+        zeroed.zero_()
+        assert not runner.compare_perf_outputs(
+            {name: expected}, {name: zeroed}, tolerance
+        ).passed
+
+        perturbed = expected.clone()
+        index = int(torch.argmax(expected.reshape(-1).abs()))
+        reference = float(expected.reshape(-1)[index])
+        rtol, atol = tolerances[name]
+        perturbation = 2.0 * (atol + rtol * abs(reference))
+        perturbed.reshape(-1)[index].add_(perturbation)
+        assert not runner.compare_perf_outputs(
+            {name: expected}, {name: perturbed}, tolerance
+        ).passed
 
 
 @pytest.mark.parametrize(
@@ -32,6 +70,9 @@ def test_training_payload_contains_target_prediction_and_every_named_parameter(
     )
     verify_input = torch.arange(6, dtype=torch.float32).reshape(2, 3)
     verify_target = torch.arange(4, dtype=torch.float32).reshape(2, 2) + 100
+    with torch.no_grad():
+        for parameter in benchmark.model.parameters():
+            parameter.fill_(0.25)
     prediction = benchmark.model(verify_input).detach()
     benchmark._verify_input = verify_input
     benchmark._verify_target = verify_target
@@ -64,6 +105,7 @@ def test_training_payload_contains_target_prediction_and_every_named_parameter(
     assert all(tensor.device.type == "cpu" for tensor in output.values())
     for name, expected in parameter_snapshots.items():
         torch.testing.assert_close(output[f"parameter.{name}"], expected)
+    _assert_calibrated_output_policy(benchmark, output)
     corrupted = {name: tensor.clone() for name, tensor in output.items()}
     corrupted[next(name for name in corrupted if name.startswith("parameter."))].add_(1)
     assert not VerifyRunner().compare_perf_outputs(output, corrupted, (0.0, 0.0)).passed
@@ -116,32 +158,32 @@ def _require_real_te218_cuda() -> None:
 def test_real_te218_cuda_harness_retains_full_training_output(benchmark_type) -> None:
     _require_real_te218_cuda()
     from core.harness.benchmark_harness import (
-        BenchmarkConfig,
         BenchmarkHarness,
         BenchmarkMode,
         ExecutionMode,
     )
 
     benchmark = benchmark_type()
-    config = BenchmarkConfig(
-        device=torch.device("cuda"),
-        iterations=1,
-        warmup=0,
-        use_subprocess=False,
-        execution_mode=ExecutionMode.THREAD,
-        enable_profiling=False,
-        enable_memory_tracking=False,
-        enforce_environment_validation=False,
-        allow_virtualization=True,
-        clear_l2_cache=False,
-        monitor_gpu_state=False,
-        track_memory_allocations=False,
-        single_gpu=True,
-    )
+    config = benchmark.get_config()
+    config.device = torch.device("cuda")
+    config.use_subprocess = False
+    config.execution_mode = ExecutionMode.THREAD
+    config.enable_profiling = False
+    config.enable_memory_tracking = False
+    config.enforce_environment_validation = False
+    config.allow_virtualization = True
+    config.clear_l2_cache = False
+    config.monitor_gpu_state = False
+    config.track_memory_allocations = False
+    config.single_gpu = True
+    assert config.backend_policy == "fp32_strict"
+    assert config.iterations == 50
+    assert config.warmup == 10
     result = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=config).benchmark(benchmark)
 
     assert not result.errors, result.errors
-    assert result.timing.iterations == 1
+    assert result.timing.iterations == 50
+    assert result.timing.warmup_iterations == 10
     output = benchmark.get_verify_output()
     assert "prediction" in output
     parameter_outputs = {
@@ -152,6 +194,7 @@ def test_real_te218_cuda_harness_retains_full_training_output(benchmark_type) ->
     assert parameter_outputs
     assert sum(tensor.numel() for tensor in parameter_outputs.values()) == benchmark.parameter_count
     assert all(torch.isfinite(tensor).all() for tensor in output.values())
+    _assert_calibrated_output_policy(benchmark, output)
     retained_inputs = benchmark.get_verify_inputs()
     assert set(retained_inputs) == {"input", "target"}
     assert all(tensor.device.type == "cpu" for tensor in retained_inputs.values())

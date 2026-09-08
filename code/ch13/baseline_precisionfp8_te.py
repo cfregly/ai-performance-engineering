@@ -12,7 +12,10 @@ from typing import Any, Optional
 import torch
 import torch.nn as nn
 
-from ch13.te_runtime_common import ensure_te_runtime_initialized
+from ch13.te_runtime_common import (
+    ensure_te_runtime_initialized,
+    get_te_precision_output_tolerances,
+)
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -171,9 +174,8 @@ class BaselineTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
                 "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
-            # Keep the historical threshold until repeated B200 full-output
-            # receipts can calibrate prediction and parameter error bounds.
-            output_tolerance=(0.5, 5.0),
+            output_tolerance=(0.4, 1.0),
+            output_tolerances=self.get_output_tolerances(),
         )
 
     def get_verify_inputs(self) -> dict[str, torch.Tensor]:
@@ -185,6 +187,9 @@ class BaselineTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         if self._verify_output is None:
             raise RuntimeError("capture_verification_payload() must run before get_verify_output()")
         return {name: tensor.detach().clone() for name, tensor in self._verify_output.items()}
+
+    def get_output_tolerances(self) -> dict[str, tuple[float, float]]:
+        return get_te_precision_output_tolerances()
 
     def teardown(self) -> None:
         payload = getattr(self, "_verification_payload", None)
