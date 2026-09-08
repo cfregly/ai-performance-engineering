@@ -25,13 +25,15 @@ The retained targeted measurements illustrate the remaining speed gaps:
 | Pipeline parallelism | 1.024x | Below 1.05x, with inconsistent seed-block results |
 | Dynamic serving routing | 0.996x | Parity; below the speed goal |
 | Fair dedicated versus shared serving pools | 0.815x | Lower total throughput; short-request TTFT improves |
-| KV-cache NVFP4 compute | 1.025x | Below the speed goal |
+| KV-cache NVFP4 compute, cached weights | 1.106x | One complete profiled pair; repeated comparisons pending |
 | Ozaki dynamic / fixed versus native FP64 | 0.545x / 0.724x | Both slower despite passing numerical checks |
 
 These ratios retain the source, workload, timing, and qualification limits of
 their individual receipts; they are not a new uniform benchmark run. The
-pipeline lookahead and symmetric FP8/NVFP4 weight-cache changes under review
-have no measured GPU result yet. Broad CI remains paused during this work.
+pipeline lookahead change has no measured GPU result yet. The newer KV result
+uses a different Transformer Engine version from the earlier 1.025x result;
+fresh old/new comparisons on the same runtime are required to isolate the cache
+change. Broad CI remains paused during this work.
 
 Static discovery at `bc0ed66cd317d9d3cc3be982fe22d333ebdf68e0` finds 488 logical
 baseline targets and 543 optimized entries, representing 466 unique file pairs.
@@ -306,8 +308,28 @@ remote SHA-256 inventory. These results establish this lab's arithmetic gate;
 they do not establish attention/model/task quality or a speedup. Evidence is in
 `ai-perf-followthrough2-20260908-final-integration/kv-weight-cache-32030e6/`.
 
+An ordinary harness pair at the same KV source and runtime measures **542.969 ms
+FP8 versus 490.734 ms NVFP4, or 1.106445x**, with 20 timed iterations and five
+warmups, harness application clocks of 1500/3996 MHz, and the explicit portable
+validity profile. Full inputs, full outputs, runtime parity, and all Nsight
+Systems, Nsight Compute, and PyTorch captures pass. This is one pair on one
+isolated B200; interleaved old/new repetitions are still pending. The 35 retained
+files / 100,745,932 bytes match their remote SHA-256 inventory in
+`ai-perf-followthrough2-20260908-final-integration/kv-pair-app-range-r2-32030e6/`.
+
+The first attempt measured 1.106112x but both kernel-replay captures hit their
+150-second limits, so its disposition remains `failed_profiler`. Its 35 files /
+109,934,731 bytes are retained separately. Replaying the full selected NVTX range
+with `app-range` resolves those timeouts and collects all five minimal metrics
+for both arms. These counters cover the aggregate range; they do not enumerate
+individual kernels, and replay duration is not an ordinary latency measurement.
+The lab now prefers this replay mode while preserving an explicit CLI override.
+Its selection tests pass for both variants and explicit/default modes; the full
+focused file passes 30 tests. A fresh invocation using this default is pending.
+
 DDP optimizer/backward overlap remains a static hypothesis requiring a fresh
-trace and exact update/output checks. Existing DDP, pipeline, serving, KV, and
+trace and exact update/output checks. Existing DDP, pipeline, serving, and
 Ozaki no-win dispositions remain in force until new measurements supersede them.
+The earlier KV 1.025x result retains its original runtime-specific disposition.
 PR #28 is back in draft; broad CI and publication are deferred while this work
 continues.

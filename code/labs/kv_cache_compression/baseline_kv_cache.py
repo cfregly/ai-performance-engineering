@@ -69,6 +69,11 @@ except Exception as exc:  # pragma: no cover
 class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """FP8 compute benchmark (prefill + decode); the cache itself remains BF16."""
 
+    # Kernel replay times out on this large stateful TE workload. Profile the
+    # complete NVTX range by replaying the application;
+    # an explicit CLI replay-mode selection still takes precedence.
+    preferred_ncu_replay_mode = "app-range"
+
     def __init__(self) -> None:
         super().__init__()
         self.device = None

@@ -8,7 +8,8 @@ import pytest
 import torch
 import torch.nn as nn
 
-from core.harness.benchmark_harness import ExecutionMode
+from core.harness.benchmark_harness import BenchmarkConfig, ExecutionMode
+from core.harness.run_benchmarks import _apply_preferred_ncu_profile_overrides
 from labs.kv_cache_compression import kv_cache_common
 from labs.kv_cache_compression.baseline_kv_cache import BaselineKVCacheBenchmark
 from labs.kv_cache_compression.kv_cache_common import (
@@ -56,6 +57,26 @@ def test_kv_cache_benchmark_defaults_keep_single_gpu_shape_bounded() -> None:
     assert bench.prefill_seq == 4096
     assert bench.decode_seq == 128
     assert bench.decode_steps == 128
+
+
+@pytest.mark.parametrize("benchmark_cls", [BaselineKVCacheBenchmark, OptimizedKVCacheNVFP4Benchmark])
+@pytest.mark.parametrize("explicit_replay", [False, True])
+def test_kv_cache_full_range_profiling_preserves_explicit_replay_selection(
+    benchmark_cls, explicit_replay: bool,
+) -> None:
+    config = BenchmarkConfig(
+        ncu_replay_mode="kernel",
+        ncu_replay_mode_override=explicit_replay,
+        ncu_metric_set="minimal",
+    )
+
+    selected = _apply_preferred_ncu_profile_overrides(config, benchmark_cls())
+
+    assert selected.ncu_replay_mode == ("kernel" if explicit_replay else "app-range")
+    assert selected.ncu_replay_mode_override is True
+    assert selected.ncu_metric_set == "minimal"
+    assert config.ncu_replay_mode == "kernel"
+    assert config.ncu_replay_mode_override is explicit_replay
 
 
 def test_kv_cache_compression_benchmarks_overwrite_without_full_cache_reset() -> None:

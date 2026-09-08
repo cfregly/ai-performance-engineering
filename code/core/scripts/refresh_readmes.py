@@ -5014,12 +5014,12 @@ ENTRIES["labs/kv_cache_compression"] = lab_entry(
                 """\
                 Both variants use batch 8, hidden dimension 16384, 64 heads, 4096 prefill tokens, and 128 decode steps of 128 tokens. The two cache tensors contain 5,368,709,120 elements and occupy 10,737,418,240 bytes at BF16. `kv_cache.storage_bytes`, `storage_bits_per_element`, and `compression_ratio` are calculated from the allocated tensors. The compression ratio relative to BF16 is 1.0, and the optimization goal is compute speed.
 
-                The FP8 recipe is `DelayedScaling`; it is not MXFP8 block scaling. The NVFP4 recipe uses supported `NVFP4BlockScaling()` defaults. Both retain identical unquantized BF16 parameter representations while Transformer Engine autocast chooses the low-precision GEMMs.
+                The FP8 recipe is `DelayedScaling`; it is not MXFP8 block scaling. The NVFP4 recipe uses supported `NVFP4BlockScaling()` defaults. Both retain identical unquantized BF16 parameter representations while Transformer Engine autocast chooses the low-precision GEMMs. Both refresh packed projection weights on the first token group of each complete iteration and reuse them for its remaining 129 groups; all forward operations and full-cache writes remain timed.
                 """
             ),
         ),
         MarkdownSection(
-            'Accuracy gate: requirements defined, target qualification pending',
+            'Accuracy gate and measured B200 scope',
             dedent(
                 """\
                 Every token, head, and channel in both K and V is checked against an independent PyTorch BF16 projection reference using the original weights and inputs. The reference bypasses Transformer Engine's GEMMs and packing. Checks reject shape mismatches, non-finite values and aliased reference storage; relative L2 and maximum error normalized by reference magnitude avoid signed-checksum cancellation. Verification then snapshots the full cache for the harness pair comparison.
@@ -5039,7 +5039,9 @@ ENTRIES["labs/kv_cache_compression"] = lab_entry(
                 AISP_KV_CACHE_ACCURACY_POLICY="$PWD/labs/kv_cache_compression/accuracy_policy.json" python -m cli.aisp bench run --targets labs/kv_cache_compression:kv_cache --profile minimal
                 ```
 
-                Historical calibration and timing receipts remain diagnostics; they were not used to widen these ceilings and do not establish qualification or cache compression. Fresh B200 accuracy and performance measurements remain pending.
+                The [September 8 B200 report](../../../docs/reviews/2026-09-08-b200-remaining-followthrough.md#further-optimization-work) records all ten arithmetic cases passing at source `32030e6`, with unchanged limits, and one complete profiled pair at 1.106x on Torch 2.9.1+cu130 / Transformer Engine 2.9.0+70f5366. Repeated old/new comparisons remain pending. These are measurements for the recorded source and runtime, not qualification of another installation or application quality. Historical receipts were not used to widen the ceilings.
+
+                Minimal Nsight Compute profiling defaults to `app-range` for both arms: it collects the five minimal metrics over the complete selected NVTX range. The result is aggregate range counters, not per-kernel counters or an ordinary latency sample. Kernel replay timed out for both arms on this workload; an explicit `--ncu-replay-mode kernel` still overrides the lab preference. For other metric sets, select a compatible replay mode explicitly.
                 """
             ),
         ),
