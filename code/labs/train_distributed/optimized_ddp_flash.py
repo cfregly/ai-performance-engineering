@@ -74,7 +74,7 @@ def main():
     use_ddp = world_size > 1
 
     tokenizer = build_tokenizer()
-    dataset = get_dataset()["train"]
+    dataset = get_dataset(tokenizer=tokenizer)["train"]
 
     dataloader = build_dataloader(
         dataset,
