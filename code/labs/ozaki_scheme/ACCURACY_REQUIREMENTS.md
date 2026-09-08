@@ -50,7 +50,7 @@ From `code/labs/ozaki_scheme/` on the requested B200, build once:
 
 ```bash
 make ARCH=sm_100 all
-accuracy_out=/tmp/ai-perf-followthrough-20260908-private/accuracy
+accuracy_out="${TMPDIR:-/tmp}/ai-perf-accuracy"
 mkdir -p "$accuracy_out"
 ```
 
@@ -109,8 +109,8 @@ Qualify the complete set from `code/`:
 ```bash
 python -m labs.ozaki_scheme.qualify_accuracy \
   --policy labs/ozaki_scheme/accuracy_policy.json \
-  --output /tmp/ai-perf-followthrough-20260908-private/accuracy/ozaki-qualification.json \
-  /tmp/ai-perf-followthrough-20260908-private/accuracy/ozaki-*.log
+  --output "$accuracy_out/ozaki-qualification.json" \
+  "$accuracy_out"/ozaki-*.log
 ```
 
 Only after the summary says `qualified_arithmetic_gate`, run the ordinary pair with

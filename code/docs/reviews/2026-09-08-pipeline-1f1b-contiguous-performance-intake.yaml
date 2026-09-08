@@ -92,10 +92,10 @@ hot_path_model:
   best_case_primary_kpi_improvement_pct: null
 
 evidence:
-  baseline_artifact: "/Users/admin/.codex/artifacts/ai-perf-remaining-20260906/wave72/wave72-validation-20260908T055519Z/pipeline-abba-results/receipt.json"
+  baseline_artifact: "<retained-artifacts>/ai-perf-remaining-20260906/wave72/wave72-validation-20260908T055519Z/pipeline-abba-results/receipt.json"
   profile_artifacts:
-    - "/Users/admin/.codex/artifacts/ai-perf-remaining-20260906/wave72/wave72-validation-20260908T055519Z/pipeline-nsys-baseline-results/exports-v2"
-    - "/Users/admin/.codex/artifacts/ai-perf-remaining-20260906/wave72/wave72-validation-20260908T055519Z/pipeline-nsys-optimized-results/exports-v2"
+    - "<retained-artifacts>/ai-perf-remaining-20260906/wave72/wave72-validation-20260908T055519Z/pipeline-nsys-baseline-results/exports-v2"
+    - "<retained-artifacts>/ai-perf-remaining-20260906/wave72/wave72-validation-20260908T055519Z/pipeline-nsys-optimized-results/exports-v2"
   allocation_or_memory_profile: "none"
   hardware_counter_artifacts: []
   static_review_findings:

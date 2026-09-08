@@ -56,7 +56,7 @@ reason in its summary.
 Run these commands serially on the requested B200 from `code/`:
 
 ```bash
-accuracy_out=/tmp/ai-perf-followthrough-20260908-private/accuracy
+accuracy_out="${TMPDIR:-/tmp}/ai-perf-accuracy"
 mkdir -p "$accuracy_out"
 
 for variant in fp8 nvfp4; do
