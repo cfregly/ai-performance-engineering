@@ -15,6 +15,33 @@ This pass extends the [previous results](2026-09-08-b200-followthrough-results.m
 It preserves their numerical requirements, successes, no-win results, and failed
 attempts. It does not establish that every repository example is faster.
 
+The retained targeted measurements illustrate the remaining speed gaps:
+
+| Comparison | Recorded ratio | Disposition |
+| --- | ---: | --- |
+| Cache-aware 1P1D | 1.574x | Measured improvement for the recorded workload |
+| FP8 training, batch 4096 | 1.279x | Improvement at this batch; smaller batches lose |
+| Regular DDP training loop | Approximately 1.00x | No measured training-loop improvement |
+| Pipeline parallelism | 1.024x | Below 1.05x, with inconsistent seed-block results |
+| Dynamic serving routing | 0.996x | Parity; below the speed goal |
+| Fair dedicated versus shared serving pools | 0.815x | Lower total throughput; short-request TTFT improves |
+| KV-cache NVFP4 compute | 1.025x | Below the speed goal |
+| Ozaki dynamic / fixed versus native FP64 | 0.545x / 0.724x | Both slower despite passing numerical checks |
+
+These ratios retain the source, workload, timing, and qualification limits of
+their individual receipts; they are not a new uniform benchmark run. The
+pipeline lookahead and symmetric FP8/NVFP4 weight-cache changes under review
+have no measured GPU result yet. Broad CI remains paused during this work.
+
+Static discovery at `bc0ed66cd317d9d3cc3be982fe22d333ebdf68e0` finds 488 logical
+baseline targets and 543 optimized entries, representing 466 unique file pairs.
+Aliases can share source files while selecting different workloads. Discovery
+counts do not establish execution or performance coverage, and a target's best
+variant succeeding does not establish that every variant succeeds. Memory-goal
+pairs also require their declared memory-saving gate; passing that gate does
+not imply a 1.05x speedup. The private `performance-gap-inventory/` preserves
+the source inventory and a separately scoped historical-result audit.
+
 ## Source and execution scope
 
 The base is merged commit `0299307facf77bc883b9d27b4fb175ce27e50ab4`.
