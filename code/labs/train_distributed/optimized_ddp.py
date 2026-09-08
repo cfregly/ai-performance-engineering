@@ -40,7 +40,7 @@ from labs.train_distributed.training_utils.utils import (
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--steps", type=int, default=50, help="Number of optimization steps.")
+    parser.add_argument("--steps", type=int, default=50, help="Maximum number of training microbatches.")
     parser.add_argument("--batch-size", type=int, default=16, help="Per-rank microbatch size.")
     parser.add_argument("--grad-accum", type=int, default=1, help="Gradient accumulation steps.")
     parser.add_argument("--learning-rate", type=float, default=2e-4, help="AdamW learning rate.")

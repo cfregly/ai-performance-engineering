@@ -29,6 +29,13 @@ benchmarks. See the [dated validation checkpoint](../../../docs/reviews/2026-09-
 for the source identity, retained failures and execution limits. Direct
 `torchrun` commands work without Slurm.
 
+## DDP accumulation
+In the optimized DDP and FlashAttention DDP entrypoints, `--steps` caps consumed
+microbatches, up to the available data. `--grad-accum` groups them into optimizer
+updates. A final partial group uses its actual size and still updates the model;
+for example, `--steps 3 --grad-accum 2` performs two optimizer updates. Both
+forward and backward stay inside the same gradient synchronization context.
+
 ## Problem
 Distributed training has too many "optimized" labels that mean different things. This lab is here to keep DDP compression, pipeline schedules, and symmetric-memory training as separate benchmarked choices so you can see what actually helps on the current stack.
 
