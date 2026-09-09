@@ -57,11 +57,12 @@ policy also keeps buffers in FP32. Rounding inverse frequencies to BF16 before
 the rotary calculation introduces position-dependent errors that grow with
 sequence length.
 
-The FSDP2 entrypoints report synchronized milliseconds per optimizer update on
-rank 0, using the slowest rank's complete training interval. This includes data
-loading, transfers, forward, backward, optimizer updates, and training logging;
-it excludes model startup and teardown. The optimized paths retain their
-FlashAttention, resharding, FP8, and fused AdamW behavior where supported.
+The FSDP and FSDP2 entrypoints report synchronized milliseconds per optimizer
+update on rank 0, using the slowest rank's complete training interval. This
+includes data loading, transfers, forward, backward, optimizer updates, and
+training logging; it excludes model startup and teardown. The optimized paths
+retain their FlashAttention, resharding, FP8, and fused AdamW behavior where
+supported.
 
 For reproducible FlashAttention 2 training checks, explicitly set
 `FLASH_ATTENTION_DETERMINISTIC=1` for both compared runs. A fixed model/data seed

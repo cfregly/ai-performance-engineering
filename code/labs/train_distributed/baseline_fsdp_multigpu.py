@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import time
 from functools import partial
 from pathlib import Path
 
@@ -244,6 +245,10 @@ def main():
     epoch = 0
     loss_value_buffer = torch.empty(1, dtype=torch.float64, device=f"cuda:{local_rank}")
 
+    dist.barrier()
+    torch.cuda.synchronize(local_rank)
+    training_start = time.perf_counter()
+
     while optimizer_step < total_updates:
         sampler.set_epoch(epoch)
         for batch in dataloader:
@@ -281,9 +286,16 @@ def main():
 
         epoch += 1
 
+    torch.cuda.synchronize(local_rank)
+    training_ms = (time.perf_counter() - training_start) * 1000.0
+    elapsed = torch.tensor(training_ms, dtype=torch.float64, device=f"cuda:{local_rank}")
+    dist.all_reduce(elapsed, op=dist.ReduceOp.MAX)
+    if is_main:
+        print(f"rank0 time_per_iter_ms: {elapsed.item() / optimizer_step:.9f}", flush=True)
+        print(f"completed_optimizer_steps: {optimizer_step}; completed_microbatches: {micro_step}", flush=True)
+
     dist.barrier()
     if is_main:
-        print(f"completed_optimizer_steps: {optimizer_step}; completed_microbatches: {micro_step}", flush=True)
         print("[baseline_fsdp_multigpu] training completed", flush=True)
 
     dist.destroy_process_group()
