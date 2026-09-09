@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 from functools import partial
 from types import SimpleNamespace
 
@@ -210,6 +211,60 @@ def test_long_spillover_cli_is_bounded_opt_in() -> None:
         vllm_runner.parse_vllm_target_overrides(
             ["--long-spillover-limit", "-1"]
         )
+
+
+def test_uuid_cuda_visibility_fails_before_cuda_or_engine_construction(
+    vllm_016_api: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    visible = (
+        "GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd,"
+        "GPU-b4de3d1a-a4fd-27e2-688b-dd8bfb31bfbb"
+    )
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", visible)
+    monkeypatch.setattr(
+        vllm_runner.torch.cuda,
+        "is_available",
+        lambda: pytest.fail("UUID visibility must fail before CUDA inspection"),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"Pinned vLLM .* does not accept GPU UUID tokens.*"
+            r"same UUIDs to numeric physical indices.*same order"
+        ),
+    ):
+        vllm_runner.create_dual_pool_vllm_session(
+            "dual",
+            topology_snapshot=_topology(),
+            cli_args=_args(),
+        )
+
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == visible
+    assert _FakeEngineArgs.created == []
+    assert _FakeLLMEngine.created == []
+
+
+@pytest.mark.parametrize("visible", [None, "0", "0,1", "7,3"])
+def test_numeric_or_unset_cuda_visibility_is_preserved(
+    monkeypatch: pytest.MonkeyPatch,
+    visible: str | None,
+) -> None:
+    if visible is None:
+        monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    else:
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", visible)
+    monkeypatch.setattr(vllm_runner.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(vllm_runner.torch.cuda, "device_count", lambda: 2)
+
+    assert (
+        vllm_runner._require_vllm_host(
+            workload_label="vLLM visibility contract", minimum_gpus=2
+        )
+        == 2
+    )
+    assert os.environ.get("CUDA_VISIBLE_DEVICES") == visible
 
 
 def test_pinned_api_mismatch_fails_explicitly_without_fallback(

@@ -1038,9 +1038,10 @@ benefit is a modest training-loop improvement. This is a different implementatio
 from the one-GPU stream-overlap candidate, which still rejects distributed use.
 The bucket-overlap candidate remains private pending a decision on whether the
 extra implementation complexity merits that benefit. The exact gate is verified
-locally in `ddp-base-overlap-world2-exact-v1`; full ABBA outputs are retained
-remotely in `ddp_base_overlap_world2_abba_v2_20260908` and their local transfer
-is being completed.
+locally in `ddp-base-overlap-world2-exact-v1`. All full ABBA rank outputs are
+also hash-verified locally in `ddp-base-overlap-world2-abba-v2`: 43 files /
+4,458,251,114 bytes, inventory SHA-256
+`bd0132316318e8714f45126321474e10939fc08f68ade80d65dda8f3fbac11ab`.
 
 Source `a4750384994e320a87c84925a11595cee207b172` adds an opt-in
 `--long-spillover-limit` to the serving example. Zero preserves dedicated-pool
@@ -1049,3 +1050,17 @@ All 33 focused routing tests pass. A six-pair B200 experiment is running with
 fixed clocks, unchanged request mix, reused engines, and separate startup,
 steady-state completion, and short/long TTFT measurements. No GPU performance
 claim is made for this change before those results are checked.
+
+
+The first serving collection attempt stopped before engine startup because
+vLLM 0.16's device parser requires numeric `CUDA_VISIBLE_DEVICES` entries and
+received the guard's GPU UUIDs. The next preflight correctly stopped on an
+identity-string formatting mismatch: Torch returns the UUID without the `GPU-`
+prefix. Both failures are retained; neither produced serving measurements.
+The corrected private launcher resolves only the two authorized UUIDs to
+numeric IDs and checks the child CUDA device UUIDs in order after canonical
+UUID parsing. It does not change GPU allocation, model, requests, or timing.
+The two failed attempts are verified in `serving-flex-placement-v2` (11 files /
+79,729 bytes, inventory `4fb14b9204d0e68a9ae768f7a54405e5f546894ebc532d9883009cc228abff66`)
+and `serving-flex-placement-v3` (three files / 2,436 bytes, inventory
+`2af3f792df90905b3f58a5a90b966e72fb0d1921687449ecc84d0eb26a047ae3`).

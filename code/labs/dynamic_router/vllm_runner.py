@@ -224,6 +224,27 @@ def _assert_vllm_runtime_ready() -> None:
         _skip(_format_vllm_import_error(exc))
 
 
+def _assert_pinned_vllm_cuda_visibility() -> None:
+    """Reject UUID visibility that pinned vLLM parses as integer device ids."""
+
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if visible is None:
+        return
+    tokens = [token.strip() for token in visible.split(",") if token.strip()]
+    uuid_tokens = [
+        token for token in tokens if token.startswith(("GPU-", "MIG-"))
+    ]
+    if uuid_tokens:
+        raise ValueError(
+            f"Pinned vLLM {_EXPECTED_VLLM_DIST_VERSION} does not accept GPU UUID "
+            "tokens in CUDA_VISIBLE_DEVICES. Preserve the assigned GPUs, resolve "
+            "those same UUIDs to numeric physical indices, and export the numeric "
+            "indices in the same order before launch (for example, "
+            "CUDA_VISIBLE_DEVICES=0,1). "
+            f"Received CUDA_VISIBLE_DEVICES={visible!r}."
+        )
+
+
 def _build_cli_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=False, exit_on_error=False)
     parser.add_argument("--model", type=str, help="Local HF model path/id for vLLM.")
@@ -1068,6 +1089,7 @@ def _build_handles(
 
 
 def _require_vllm_host(*, workload_label: str, minimum_gpus: int) -> int:
+    _assert_pinned_vllm_cuda_visibility()
     if not torch.cuda.is_available():
         _skip(f"CUDA is required for {workload_label}.")
     total_gpus = torch.cuda.device_count()
