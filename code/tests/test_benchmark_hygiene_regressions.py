@@ -12154,7 +12154,8 @@ def test_persistent_decode_tma_buffers_avoid_zero_fill_before_overwrite() -> Non
         decode_graph_section = source.split("def _decode_graph", maxsplit=1)[1].split(
             "def benchmark_fn", maxsplit=1
         )[0]
-        assert "self.graph_out = torch.empty_like(self.inputs.out)" in source
+        assert "self.graph_out = self.inputs.out" in source
+        assert "self.inputs.out.copy_(self.graph_out)" not in source
         assert "self.graph_out.zero_()" not in decode_graph_section
 
 

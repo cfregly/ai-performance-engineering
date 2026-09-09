@@ -1167,5 +1167,22 @@ local evidence copy verifies 87 files / 22,403,743 bytes, inventory SHA-256
 A separate memory diagnostic now runs all seven persistent-decode/TMA
 producers under both Compute Sanitizer `memcheck` and `initcheck`. It retains
 one complete default-shape invocation, all inputs and actual outputs, and
-independently computed references per producer and tool. These 14 checks are
-in progress; no memory-clean claim is made before their terminal receipts.
+independently computed references per producer and tool. All seven `memcheck`
+cases pass. Four `initcheck` cases pass; the full/piecewise graph alias, graph
+producer, and optimized descriptor-TMA producer each report 32 uninitialized
+reads at graph-replay memcpy sources. Thus 11 of 14 cases pass, with three
+retained failures. This is not yet an upstream-tool attribution or proof that
+the reported reads are harmless. The local copy verifies 70 files / 22,593,241
+bytes, inventory SHA-256
+`85d78da186a8a5555f04fe9ab95c9668903bff594a9903d9ba33c655352335f7`.
+
+
+The graph prefill reduction now writes directly into its stable output,
+removing the temporary reduction-result copy from both capture modes. Both
+descriptor-TMA and thread-scope-copy decode graphs also write directly into
+the benchmark output instead of allocating a second output and copying it
+back. Arithmetic, input refresh, graph replay, and prefill mechanisms remain
+the same. This removes unnecessary copies rather than zero-filling their
+sources or suppressing initcheck. Five real GPU regression cases require
+zero initcheck errors, full output checks, and changed inputs plus poisoned
+outputs across two replays; their B200 results remain pending.
