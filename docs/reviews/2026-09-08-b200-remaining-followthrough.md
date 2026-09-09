@@ -57,9 +57,11 @@ The two-GPU bucket-overlap candidate now has exact-update and two-seed timing ev
 For serving, compare shared and dedicated placement using both aggregate
 throughput and short/long-request latency. The dedicated-pool tail imbalance is
 a concrete next experiment; a latency benefit must retain its throughput cost.
-Dynamic routing needs variable arrivals or load imbalance to assess its intended
-benefit, while preserving the existing homogeneous parity result. Reuse engines
-and report startup separately from steady-state requests.
+Dynamic routing now also has a measured delayed-arrival, imbalanced workload.
+Its immediate queue-counter correction passes complete-output checks, but
+does not establish a useful latency or throughput win over round robin.
+Retain both that result and the homogeneous parity result. Engines are reused
+and startup is reported separately from steady-state requests.
 
 For FP8, retain the small-batch regressions and the measured large-batch win as a
 size-dependent crossover. Do not change the default or hide slower cases to
@@ -1292,6 +1294,8 @@ Its partial outputs and successful owned-process drain are retained; they are
 not accepted timing results. A separate, completed timing screen is recorded
 below; the correctness runs themselves do not establish a speed improvement.
 
+### Delayed-arrival routing results
+
 The opt-in `--routing-arrival-profile two-wave-imbalance` now exercises actual
 feedback routing at `0862b770b7dbbd04e0fdd381a358ca378a278710`. Both arms
 receive identical fixed background work; delayed foreground requests arrive
@@ -1319,20 +1323,37 @@ routing produces 2/6 or 0/8 placement across the steady calls. This is a
 correctly executed no-win result for the controlled workload, with no
 universal speedup requirement.
 
-The next bounded candidate at `15978d45efb6c11b731ed3aae1074f35ad5910ec`
+The bounded candidate at `15978d45efb6c11b731ed3aae1074f35ad5910ec`
 updates exact queue counters immediately instead of smoothing new admissions
 with alpha 0.3. Latency and token-activity smoothing remain unchanged, as do
 default sampled-telemetry routing and the all-upfront workload. Sixty-two
-focused CPU tests pass. The unchanged two-B200 workload will determine whether
-this counter correction improves the observed burst behavior; its performance
-is not yet measured.
+focused CPU tests pass. The unchanged two-B200 workload now completes all six
+arms and 48 invocations, again with exact complete inputs and all 272 output
+values per invocation. Source/runtime/clock/lifecycle checks pass and the stage
+drains naturally. Its verified evidence contains 40 files / 1,332,601 bytes,
+inventory SHA-256
+`3bc2c402713b7d2551790b2a9de01bb807f9f7fcaa4656ae6915c95241d74cbc`.
+
+The new run measures 1,283.833 ms for round robin and 1,285.304 ms for routing.
+Its three paired ratios are 0.99530, 0.99409, and 1.00113x. The median of the
+nine foreground p50 values is 58.872 versus 69.480 ms; p95 is 70.612 versus
+69.794 ms. The routing p50 values range from 39.763 to 81.481 ms and p95 from
+57.893 to 81.749 ms, so the small median p95 advantage is not a stable latency
+win. Foreground placement varies among 3/5, 1/7, and 0/8 despite the same 3/0
+arrival gate; round robin remains 4/4. Immediate queue accounting fixes the
+hidden-reservation behavior in its focused control, but the existing weighted
+score still allows historical latency and token activity to dominate live
+queue depth. This workload remains a no-win comparison. The two source runs
+were not interleaved with one another, so their difference is not accepted as
+a measured speedup for the counter change. An independent local readback
+matches every input and every output across all 96 invocations in both runs.
 
 The first reviewed serving Nsight launch was blocked by another workload on
 the first B200; that workload was untouched. After both devices became free,
 the two-GPU clock reruns and all three serving Nsight captures completed, as
-recorded above. The first two-wave routing measurement also completes with
-the no-win result above. The queue-counter candidate is staged for a fresh
-comparison after the completed copy-removal timing screen.
+recorded above. Both two-wave routing measurements and the copy-removal timing
+screen also complete. Their no-win results and modest gains remain explicit;
+none is tuned further merely to cross a universal 1.05x threshold.
 
 ### Copy-removal timing screen
 
