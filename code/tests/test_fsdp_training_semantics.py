@@ -9,10 +9,10 @@ import torch
 from torch.nn import functional
 
 from labs.train_distributed.training_utils.child_result import RESULT_DIR_ENV
-from labs.train_distributed.training_utils.fsdp2_training import (
-    fsdp2_causal_lm_loss,
-    initialize_fsdp2_seed,
-    validate_fsdp2_training_args,
+from labs.train_distributed.training_utils.fsdp_training import (
+    initialize_fsdp_seed,
+    shifted_causal_lm_loss,
+    validate_fsdp_training_args,
 )
 
 
@@ -41,7 +41,7 @@ def _tiny_causal_model() -> _TinyCausalLM:
 
 
 @pytest.mark.parametrize("with_attention_mask", [False, True])
-def test_fsdp2_loss_uses_already_shifted_targets_once_and_backpropagates(
+def test_fsdp_loss_uses_already_shifted_targets_once_and_backpropagates(
     with_attention_mask: bool,
 ) -> None:
     torch.manual_seed(17)
@@ -69,7 +69,7 @@ def test_fsdp2_loss_uses_already_shifted_targets_once_and_backpropagates(
             ignore_index=-100,
         )
 
-    loss = fsdp2_causal_lm_loss(model, batch)
+    loss = shifted_causal_lm_loss(model, batch)
 
     assert loss.shape == ()
     assert loss.dtype == torch.float32
@@ -82,7 +82,7 @@ def test_fsdp2_loss_uses_already_shifted_targets_once_and_backpropagates(
     assert torch.count_nonzero(gradient).item() > 0
 
 
-def test_initialize_fsdp2_seed_preserves_harness_state_and_seeds_direct_execution(
+def test_initialize_fsdp_seed_preserves_harness_state_and_seeds_direct_execution(
     tmp_path, monkeypatch
 ) -> None:
     monkeypatch.setenv(RESULT_DIR_ENV, str(tmp_path))
@@ -93,7 +93,7 @@ def test_initialize_fsdp2_seed_preserves_harness_state_and_seeds_direct_executio
     numpy_state = np.random.get_state()
     torch_state = torch.random.get_rng_state().clone()
 
-    assert initialize_fsdp2_seed() == 1042
+    assert initialize_fsdp_seed() == 1042
     assert random.getstate() == python_state
     current_numpy_state = np.random.get_state()
     assert current_numpy_state[0] == numpy_state[0]
@@ -102,13 +102,13 @@ def test_initialize_fsdp2_seed_preserves_harness_state_and_seeds_direct_executio
     assert torch.equal(torch.random.get_rng_state(), torch_state)
 
     monkeypatch.delenv(RESULT_DIR_ENV)
-    assert initialize_fsdp2_seed(fallback=73) == 73
+    assert initialize_fsdp_seed(fallback=73) == 73
     first = (random.random(), float(np.random.random()), torch.rand(3))
 
     random.seed(999)
     np.random.seed(999)
     torch.manual_seed(999)
-    assert initialize_fsdp2_seed(fallback=73) == 73
+    assert initialize_fsdp_seed(fallback=73) == 73
     second = (random.random(), float(np.random.random()), torch.rand(3))
 
     assert first[:2] == second[:2]
@@ -125,11 +125,11 @@ def _valid_args() -> SimpleNamespace:
     )
 
 
-def test_validate_fsdp2_training_args_preserves_optimizer_update_count() -> None:
+def test_validate_fsdp_training_args_preserves_optimizer_update_count() -> None:
     args = _valid_args()
     original = vars(args).copy()
 
-    assert validate_fsdp2_training_args(args) is None
+    assert validate_fsdp_training_args(args) is None
     assert vars(args) == original
     assert args.steps == 3
 
@@ -146,7 +146,7 @@ def test_validate_fsdp2_training_args_preserves_optimizer_update_count() -> None
         ("micro_batch_size", 1.5),
     ],
 )
-def test_validate_fsdp2_training_args_rejects_nonpositive_or_noninteger_counts(
+def test_validate_fsdp_training_args_rejects_nonpositive_or_noninteger_counts(
     name: str,
     value: object,
 ) -> None:
@@ -154,18 +154,18 @@ def test_validate_fsdp2_training_args_rejects_nonpositive_or_noninteger_counts(
     setattr(args, name, value)
 
     with pytest.raises(ValueError, match=rf"{name} must be a positive integer"):
-        validate_fsdp2_training_args(args)
+        validate_fsdp_training_args(args)
 
 
 @pytest.mark.parametrize(
     "learning_rate",
     [0.0, -1e-4, float("nan"), float("inf"), float("-inf"), True, "1e-4"],
 )
-def test_validate_fsdp2_training_args_rejects_invalid_learning_rate(
+def test_validate_fsdp_training_args_rejects_invalid_learning_rate(
     learning_rate: object,
 ) -> None:
     args = _valid_args()
     args.learning_rate = learning_rate
 
     with pytest.raises(ValueError, match="learning_rate must be finite and positive"):
-        validate_fsdp2_training_args(args)
+        validate_fsdp_training_args(args)

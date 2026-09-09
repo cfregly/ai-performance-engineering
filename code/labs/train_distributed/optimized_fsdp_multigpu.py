@@ -4,22 +4,24 @@ from __future__ import annotations
 
 import argparse
 import os
-
-from core.common.device_utils import resolve_local_rank
+from contextlib import nullcontext
 from functools import partial
 from pathlib import Path
-from contextlib import nullcontext
 
 import torch
 import torch.distributed as dist
 from torch.distributed.fsdp import (
     BackwardPrefetch,
-    FullyShardedDataParallel as FSDP,
     MixedPrecision,
     ShardingStrategy,
 )
+from torch.distributed.fsdp import (
+    FullyShardedDataParallel as FSDP,
+)
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 from torch.utils.data import DataLoader, DistributedSampler
+
+from core.common.device_utils import resolve_local_rank
 
 try:
     from arch_config import prefer_sdpa_backends  # type: ignore
@@ -27,14 +29,19 @@ except Exception:  # pragma: no cover - defensive import
     prefer_sdpa_backends = None  # type: ignore
 
 from core.benchmark.gpu_requirements import require_min_gpus
+from labs.train_distributed.training_utils.fsdp_training import (
+    initialize_fsdp_seed,
+    shifted_causal_lm_loss,
+    validate_fsdp_training_args,
+)
 from labs.train_distributed.training_utils.torchrun_harness import TorchrunScriptBenchmark
 from labs.train_distributed.utils import (
     ThroughputTracker,
     create_collate_fn,
     get_model_flops_per_token,
     gpu_memory_usage,
-    load_tinystories_packed,
     load_tinystories,
+    load_tinystories_packed,
     setup_tokenizer,
 )
 
@@ -80,13 +87,20 @@ def _build_dataloader(
     *,
     steps: int,
     grad_accum: int,
+    seed: int = 42,
 ):
     fast_mode = os.getenv("AISP_FSDP_FAST") == "1"
     if fast_mode:
         vocab_size = int(os.getenv("AISP_TINYSTORIES_VOCAB", "32000"))
         num_samples = max(steps * grad_accum * micro_batch * world_size, 256)
-        input_ids = torch.randint(0, vocab_size, (num_samples, seq_len), dtype=torch.long)
-        labels = input_ids.clone()
+        tokens = torch.randint(
+            0,
+            vocab_size,
+            (num_samples, seq_len + 1),
+            dtype=torch.long,
+            generator=torch.Generator().manual_seed(seed),
+        )
+        input_ids, labels = tokens[:, :-1], tokens[:, 1:]
 
         class SyntheticTokenDataset(torch.utils.data.Dataset):
             def __init__(self, input_ids: torch.Tensor, labels: torch.Tensor):
@@ -100,14 +114,22 @@ def _build_dataloader(
                 return {"input_ids": self._input_ids[idx], "labels": self._labels[idx]}
 
         dataset = SyntheticTokenDataset(input_ids, labels)
-        sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=True)
+        sampler = DistributedSampler(
+            dataset,
+            num_replicas=world_size,
+            rank=rank,
+            shuffle=True,
+            drop_last=True,
+            seed=seed,
+        )
         dataloader = DataLoader(
             dataset,
             batch_size=micro_batch,
             sampler=sampler,
+            generator=torch.Generator().manual_seed(seed),
             num_workers=0,
             pin_memory=True,
-            drop_last=False,
+            drop_last=True,
         )
         return dataloader, sampler
 
@@ -117,14 +139,22 @@ def _build_dataloader(
     else:
         tokenizer = setup_tokenizer(MODEL_ID)
         dataset = load_tinystories(tokenizer, seq_len, is_main_process=rank == 0)
-    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=True)
+    sampler = DistributedSampler(
+        dataset,
+        num_replicas=world_size,
+        rank=rank,
+        shuffle=True,
+        drop_last=True,
+        seed=seed,
+    )
     dataloader = DataLoader(
         dataset,
         batch_size=micro_batch,
         sampler=sampler,
+        generator=torch.Generator().manual_seed(seed),
         num_workers=0,
         pin_memory=True,
-        drop_last=False,
+        drop_last=True,
         collate_fn=create_collate_fn(),
     )
     return dataloader, sampler
@@ -183,6 +213,8 @@ def main():
         raise RuntimeError("optimized_fsdp_multigpu requires the `transformers` package") from exc
 
     args = parse_args()
+    validate_fsdp_training_args(args)
+    active_seed = initialize_fsdp_seed()
     fp8_enabled = os.getenv("AISP_FSDP_DISABLE_FP8") != "1"
     if fp8_enabled:
         _assert_torchao_available()
@@ -196,7 +228,11 @@ def main():
         world_size,
         steps=args.steps,
         grad_accum=args.grad_accum,
+        seed=active_seed,
     )
+    if len(dataloader) == 0:
+        dist.destroy_process_group()
+        raise ValueError("FSDP requires at least one full per-rank microbatch")
     if rank == 0:
         print("[optimized_fsdp_multigpu] dataloader ready", flush=True)
 
@@ -276,8 +312,7 @@ def main():
             batch = {k: v.cuda(non_blocking=True) for k, v in batch.items()}
             sdpa_ctx = prefer_sdpa_backends() if prefer_sdpa_backends is not None else nullcontext()
             with sdpa_ctx, torch.cuda.amp.autocast(dtype=torch.bfloat16):
-                outputs = fsdp_model(**batch)
-                loss = outputs.loss / args.grad_accum
+                loss = shifted_causal_lm_loss(fsdp_model, batch) / args.grad_accum
 
             loss.backward()
             micro_step += 1
@@ -311,6 +346,7 @@ def main():
 
     dist.barrier()
     if is_main:
+        print(f"completed_optimizer_steps: {optimizer_step}; completed_microbatches: {micro_step}", flush=True)
         print("[optimized_fsdp_multigpu] training completed", flush=True)
 
     dist.destroy_process_group()

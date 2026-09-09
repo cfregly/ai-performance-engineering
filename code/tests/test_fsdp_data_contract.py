@@ -1,4 +1,4 @@
-"""Exercise the actual FSDP2 data producers without launching CUDA training."""
+"""Exercise the actual FSDP data producers without launching CUDA training."""
 
 import importlib
 import json
@@ -6,8 +6,11 @@ import json
 import pytest
 import torch
 
-
 PRODUCERS = [
+    "baseline_fsdp",
+    "optimized_fsdp",
+    "baseline_fsdp_multigpu",
+    "optimized_fsdp_multigpu",
     "baseline_fsdp2",
     "optimized_fsdp2",
     "baseline_fsdp2_multigpu",
@@ -52,7 +55,7 @@ def test_packed_batches_preserve_next_token_targets_and_sampler_seed(name, tmp_p
             torch.testing.assert_close(batch["labels"], batch["input_ids"] + 1, rtol=0, atol=0)
 
 
-@pytest.mark.parametrize("name", PRODUCERS[2:])
+@pytest.mark.parametrize("name", [name for name in PRODUCERS if name.endswith("_multigpu")])
 def test_synthetic_generation_is_shifted_seeded_and_does_not_change_model_rng(name, monkeypatch):
     module = importlib.import_module(f"labs.train_distributed.{name}")
     monkeypatch.setenv("AISP_FSDP_FAST", "1")

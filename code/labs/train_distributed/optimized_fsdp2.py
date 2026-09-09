@@ -5,8 +5,6 @@ from __future__ import annotations
 import argparse
 import os
 import time
-
-from core.common.device_utils import resolve_local_rank
 from contextlib import nullcontext
 from pathlib import Path
 
@@ -16,24 +14,26 @@ from torch.distributed._composable.fsdp import MixedPrecisionPolicy, fully_shard
 from torch.distributed.device_mesh import init_device_mesh
 from torch.utils.data import DataLoader, DistributedSampler
 
+from core.common.device_utils import resolve_local_rank
+
 try:
     from arch_config import prefer_sdpa_backends  # type: ignore
 except Exception:  # pragma: no cover - defensive import
     prefer_sdpa_backends = None  # type: ignore
 
-from labs.train_distributed.training_utils.torchrun_harness import TorchrunScriptBenchmark
-from labs.train_distributed.training_utils.fsdp2_training import (
-    fsdp2_causal_lm_loss,
-    initialize_fsdp2_seed,
-    validate_fsdp2_training_args,
+from labs.train_distributed.training_utils.fsdp_training import (
+    initialize_fsdp_seed,
+    shifted_causal_lm_loss,
+    validate_fsdp_training_args,
 )
+from labs.train_distributed.training_utils.torchrun_harness import TorchrunScriptBenchmark
 from labs.train_distributed.utils import (
     ThroughputTracker,
     create_collate_fn,
     get_model_flops_per_token,
     gpu_memory_usage,
-    load_tinystories_packed,
     load_tinystories,
+    load_tinystories_packed,
     setup_tokenizer,
 )
 
@@ -142,8 +142,8 @@ def main():
         raise RuntimeError("optimized_fsdp2 requires the `transformers` package") from exc
 
     args = parse_args()
-    validate_fsdp2_training_args(args)
-    active_seed = initialize_fsdp2_seed()
+    validate_fsdp_training_args(args)
+    active_seed = initialize_fsdp_seed()
     fp8_enabled = os.getenv("AISP_FSDP_DISABLE_FP8") != "1"
     if fp8_enabled:
         _assert_torchao_available()
@@ -223,7 +223,7 @@ def main():
             batch = {k: v.cuda(non_blocking=True) for k, v in batch.items()}
             sdpa_ctx = prefer_sdpa_backends() if prefer_sdpa_backends is not None else nullcontext()
             with sdpa_ctx, torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                loss = fsdp2_causal_lm_loss(model, batch) / args.grad_accum
+                loss = shifted_causal_lm_loss(model, batch) / args.grad_accum
 
             loss.backward()
             micro_step += 1

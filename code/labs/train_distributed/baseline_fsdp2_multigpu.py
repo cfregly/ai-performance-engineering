@@ -5,8 +5,6 @@ from __future__ import annotations
 import argparse
 import os
 import time
-
-from core.common.device_utils import resolve_local_rank
 from pathlib import Path
 
 import torch
@@ -16,19 +14,20 @@ from torch.distributed.device_mesh import init_device_mesh
 from torch.utils.data import DataLoader, DistributedSampler
 
 from core.benchmark.gpu_requirements import require_min_gpus
-from labs.train_distributed.training_utils.torchrun_harness import TorchrunScriptBenchmark
-from labs.train_distributed.training_utils.fsdp2_training import (
-    fsdp2_causal_lm_loss,
-    initialize_fsdp2_seed,
-    validate_fsdp2_training_args,
+from core.common.device_utils import resolve_local_rank
+from labs.train_distributed.training_utils.fsdp_training import (
+    initialize_fsdp_seed,
+    shifted_causal_lm_loss,
+    validate_fsdp_training_args,
 )
+from labs.train_distributed.training_utils.torchrun_harness import TorchrunScriptBenchmark
 from labs.train_distributed.utils import (
     ThroughputTracker,
     create_collate_fn,
     get_model_flops_per_token,
     gpu_memory_usage,
-    load_tinystories_packed,
     load_tinystories,
+    load_tinystories_packed,
     setup_tokenizer,
 )
 
@@ -147,8 +146,8 @@ def main():
         raise RuntimeError("baseline_fsdp2_multigpu requires the `transformers` package") from exc
 
     args = parse_args()
-    validate_fsdp2_training_args(args)
-    active_seed = initialize_fsdp2_seed()
+    validate_fsdp_training_args(args)
+    active_seed = initialize_fsdp_seed()
     rank, world_size, local_rank = _init_distributed()
 
     dataloader, sampler = _build_dataloader(
@@ -233,7 +232,7 @@ def main():
         for batch in dataloader:
             batch = {k: v.cuda(non_blocking=True) for k, v in batch.items()}
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                loss = fsdp2_causal_lm_loss(model, batch) / args.grad_accum
+                loss = shifted_causal_lm_loss(model, batch) / args.grad_accum
 
             loss.backward()
             micro_step += 1

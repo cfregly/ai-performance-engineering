@@ -36,26 +36,29 @@ updates. A final partial group uses its actual size and still updates the model;
 for example, `--steps 3 --grad-accum 2` performs two optimizer updates. Both
 forward and backward stay inside the same gradient synchronization context.
 
-## FSDP2 training semantics
+## FSDP training semantics
 
-In the four FSDP2 entrypoints, `--steps` counts optimizer updates. Each update
-consumes `--grad-accum` full per-rank microbatches, continuing into another data
-epoch when necessary. For example, `--steps 3 --grad-accum 2` consumes six
-microbatches and performs three updates. Empty per-rank loaders fail explicitly.
+In the FSDP and FSDP2 entrypoints, `--steps` counts optimizer updates. Each
+update consumes `--grad-accum` full per-rank microbatches, continuing into
+another data epoch when necessary. For example, `--steps 3 --grad-accum 2`
+consumes six microbatches and performs three updates. Empty per-rank loaders fail
+explicitly.
 
-Packed and synthetic FSDP2 labels already contain the next token at each input
-position. The training helper computes cross-entropy against these targets
-directly, avoiding a second causal shift inside the model. Direct runs seed
-model initialization and data order with 42; harness-owned seeds are preserved.
-Synthetic data uses a separate generator so data creation does not change model
-initialization.
+Packed and synthetic labels already contain the next token at each input
+position. The shared training helper computes cross-entropy against these
+targets directly, avoiding a second causal shift inside the model. Direct runs
+seed model initialization and data order with 42; harness-owned seeds are
+preserved. Synthetic data uses a separate generator so data creation does not
+change model initialization.
 
-Rank 0 reports synchronized milliseconds per optimizer update, using the slowest
-rank's complete training interval. This includes data loading, transfers, forward,
-backward, optimizer updates, and training logging; it excludes model startup and
-teardown. The optimized path retains FlashAttention, its resharding policy, and
-fused AdamW where supported. These direct-run diagnostics do not yet enable the
-generic wrapper's missing child-result verification.
+The FSDP2 entrypoints report synchronized milliseconds per optimizer update on
+rank 0, using the slowest rank's complete training interval. This includes data
+loading, transfers, forward, backward, optimizer updates, and training logging;
+it excludes model startup and teardown. The optimized paths retain their
+FlashAttention, resharding, FP8, and fused AdamW behavior where supported.
+These direct-run diagnostics do not enable the generic wrapper's child-result
+verification for either FSDP family; the wrappers remain fail-closed until they
+publish actual trained outputs and an independent reference.
 
 ## Problem
 Distributed training has too many "optimized" labels that mean different things. This lab is here to keep DDP compression, pipeline schedules, and symmetric-memory training as separate benchmarked choices so you can see what actually helps on the current stack.
