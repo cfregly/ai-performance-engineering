@@ -754,3 +754,21 @@ passing memory check. The cause remains under investigation.
 Both sanitizer attempts, including the full failed report and cleanup receipt,
 are preserved in `fsdp2-memory-v2/`: nine files / 854,287 bytes, inventory SHA-256
 `02c8da5a35fd4fbd24ce37c5a31d9574e2b9b62ca4fbb60271273d01521e8fb2`.
+
+The independent one-B200 training diagnostic passes the baseline exactly after
+two optimizer updates. It compares all **483,428,352 model values** across 75
+tensors, **966,856,779 optimizer-state values** across 225 tensors, all
+**65,536,000 final logits**, the final loss, and all four training losses against
+a separately instantiated and trained unsharded eager reference. Both models
+remain BF16, and every checked value is finite. This validates the recorded
+baseline workload; it does not establish optimized or two-GPU equivalence.
+
+The optimized arm of that first diagnostic exceeds its 300-second timeout before
+producing a final comparison receipt. Its failure and owned-process cleanup are
+retained alongside the baseline pass in `fsdp2-exact-world1-v1/`: six files /
+41,403 bytes, inventory SHA-256
+`d3cf95ca20e548d1c9c075f274539a9af70a70f8e0d300aa2f48d1159290dbc1`.
+A separate verifier revision preserves the full checks while avoiding redundant
+error calculations for equal finite chunks and adding progress markers. CPU
+comparison confirms identical verifier results across ten targeted cases. The
+optimized arm is being rerun with that revision; no tolerance is relaxed.
