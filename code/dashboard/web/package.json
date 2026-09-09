@@ -15,7 +15,7 @@
   "dependencies": {
     "clsx": "2.1.1",
     "lucide-react": "1.31.0",
-    "next": "16.3.1",
+    "next": "16.3.3",
     "prism-react-renderer": "2.4.1",
     "react": "19.2.8",
     "react-diff-viewer-continued": "4.4.0",
@@ -36,7 +36,7 @@
     "autoprefixer": "10.5.4",
     "concurrently": "10.0.5",
     "eslint": "9.39.5",
-    "eslint-config-next": "16.3.1",
+    "eslint-config-next": "16.3.3",
     "identity-obj-proxy": "3.0.0",
     "jest": "30.4.2",
     "jest-environment-jsdom": "30.4.1",
