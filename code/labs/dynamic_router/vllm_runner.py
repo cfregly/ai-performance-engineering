@@ -481,21 +481,22 @@ def _split_prompt_token_ids(
 class _RequestRuntime:
     req: Request
     gpu_id: str
-    admitted_at: float
+    admitted_at: float  # Wall-clock arrival required by the vLLM request API.
+    admitted_monotonic: float  # Local duration clock used for TTFT.
     ttft_ms: Optional[float] = None
     finished: bool = False
     role: str = "shared"
     observed_output_tokens: int = 0
 
     def observe_cumulative_tokens(self, total: int, observed_at: float) -> Tuple[int, Optional[float]]:
-        """Consume one cumulative request output, returning delta and new TTFT."""
+        """Consume cumulative output observed on the monotonic duration clock."""
         if total < self.observed_output_tokens:
             raise RuntimeError("Cumulative vLLM output token count decreased")
         delta = total - self.observed_output_tokens
         self.observed_output_tokens = total
         first_ttft = None
         if self.ttft_ms is None and delta > 0:
-            self.ttft_ms = (observed_at - self.admitted_at) * 1000.0
+            self.ttft_ms = (observed_at - self.admitted_monotonic) * 1000.0
             first_ttft = self.ttft_ms
         return delta, first_ttft
 
@@ -645,7 +646,7 @@ class _VllmWrapper:
         outputs = self.engine.step()
         # A pre-step caller timestamp omits the engine work that emits the first
         # token. Retain the argument for compatibility, but observe after step.
-        return self._consume_request_outputs(outputs, time.time())
+        return self._consume_request_outputs(outputs, time.perf_counter())
 
     def _consume_request_outputs(self, outputs, observed_at: float) -> Tuple[List[str], List[Tuple[str, float]], int]:
         """Parse cumulative vLLM output payloads without timing or engine mocks."""
@@ -819,7 +820,7 @@ class _VllmV1Wrapper(_VllmWrapper):
                 self.engine.output_processor.update_scheduler_stats(engine_core_outputs.scheduler_stats)
 
                 finished_ids, ttft_samples, tokens_emitted = self._consume_request_outputs(
-                    processed.request_outputs, time.time(),
+                    processed.request_outputs, time.perf_counter(),
                 )
 
         # Keep polling if scheduler deferred execution this step.
@@ -1476,6 +1477,7 @@ def _run_vllm_two_wave_imbalance(
             req=request,
             gpu_id=gid,
             admitted_at=time.time(),
+            admitted_monotonic=time.perf_counter(),
             role=cohort,
         )
         engines[gid].add_request(runtime, request_prompt_token_ids[index])
@@ -1718,12 +1720,18 @@ def run_vllm_routing_with_topology(
             expected_new_tokens=max_tokens_val,
         )
         admitted = time.time()
+        admitted_monotonic = time.perf_counter()
         if router:
             # Round-trip through Router for placement
             gid = router.choose_prefill_gpu() or "gpu0"
         else:
             gid = engine_ids[i % len(engine_ids)]
-        rt = _RequestRuntime(req=req, gpu_id=gid, admitted_at=admitted)
+        rt = _RequestRuntime(
+            req=req,
+            gpu_id=gid,
+            admitted_at=admitted,
+            admitted_monotonic=admitted_monotonic,
+        )
         engines[gid].add_request(rt, request_prompt_token_ids[i])
         admitted_by_gpu[gid] += 1
         if router:
@@ -1949,7 +1957,13 @@ def run_dual_pool_vllm_with_topology(
             target = _choose_decode_target(req)
         if target is None:
             _skip("No GPU available for routed request.")
-        rt = _RequestRuntime(req=req, gpu_id=target, admitted_at=time.time(), role=route)
+        rt = _RequestRuntime(
+            req=req,
+            gpu_id=target,
+            admitted_at=time.time(),
+            admitted_monotonic=time.perf_counter(),
+            role=route,
+        )
         engines[target].add_request(rt, request_prompt_token_ids[request_index])
         admitted_by_gpu[target] += 1
         admitted_by_role_gpu[route][target] += 1

@@ -11006,7 +11006,7 @@ def test_dynamic_router_vllm_runner_caches_engine_ids() -> None:
     assert "total_tokens = sum(len(o.token_ids) for o in ro.outputs)" not in wrapper_section
     assert wrapper_section.count("sum(len(o.token_ids) for o in ro.outputs)") == 1
     assert "finished_ids, ttft_samples, tokens_emitted = self._consume_request_outputs(" in v1_wrapper_section
-    assert "processed.request_outputs, time.time()," in v1_wrapper_section
+    assert "processed.request_outputs, time.perf_counter()," in v1_wrapper_section
     assert "tokens_emitted += output_token_count" not in v1_wrapper_section
 
 

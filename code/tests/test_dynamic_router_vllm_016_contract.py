@@ -169,7 +169,9 @@ def _topology() -> TopologySnapshot:
 def test_wrapper_uses_vllm_016_engine_and_request_signatures(vllm_016_api: None) -> None:
     wrapper = vllm_runner._VllmWrapper("gpu1", 1, "/models/local-test-model")
     request = vllm_runner.Request(req_id="req-0", prompt_tokens=4, expected_new_tokens=2)
-    runtime = vllm_runner._RequestRuntime(request, "gpu1", admitted_at=10.0)
+    runtime = vllm_runner._RequestRuntime(
+        request, "gpu1", admitted_at=10.0, admitted_monotonic=100.0,
+    )
 
     wrapper.add_request(runtime)
 
@@ -849,6 +851,7 @@ def test_finished_request_cannot_verify_without_declared_model_output() -> None:
             request,
             "gpu0",
             admitted_at=10.0,
+            admitted_monotonic=10.0,
         )
     }
     wrapper._completed_output_token_ids = {}
