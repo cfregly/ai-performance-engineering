@@ -23,7 +23,7 @@ The retained targeted measurements illustrate the remaining speed gaps:
 | --- | ---: | --- |
 | Cache-aware 1P1D | 1.574x | Measured improvement for the recorded workload |
 | FP8 training, batch 4096 | 1.279x | Improvement at this batch; smaller batches lose |
-| Regular DDP training loop | Private one-GPU stream candidate 1.035–1.038x; separate two-GPU bucket-overlap candidate 1.0236x | Exact checks pass in the recorded configurations; process timing is mixed; candidates not promoted |
+| Regular DDP training loop | Private one-GPU stream candidate 1.035–1.038x; separate two-GPU bucket-overlap candidate 1.0236x | Two-GPU bucket overlap is now opt-in and public correctness checks pass; process timing is mixed; the one-GPU candidate remains private |
 | Pipeline parallelism, forward lookahead | 1.057x median ratio | Two of four blocks remain below 1.05x; process duration does not improve |
 | Dynamic serving routing | 0.996x | Parity on the homogeneous workload; no throughput benefit established |
 | Fair dedicated versus shared serving pools | 0.815x | Lower total throughput; short-request TTFT improves |
@@ -49,14 +49,16 @@ the source inventory and a separately scoped historical-result audit.
 
 ## Current improvement priorities
 
-Continue bounded DDP and pipeline tuning where traces identify removable work,
-then retain the measured result even if it is modest. Additional implementation
-complexity must be justified by repeatable benefits on the intended workload.
-The two-GPU bucket-overlap candidate now has exact-update and two-seed timing evidence; the separate one-GPU stream candidate does not establish distributed performance.
+The bounded DDP and pipeline improvements now retain their measured modest or
+mixed results. Two-GPU bucket overlap is opt-in, with exact-update and two-seed
+timing evidence plus a passing public three-update correctness check. That short
+public run is slower (0.929x), so the default remains synchronous. The separate
+one-GPU stream candidate does not establish distributed performance.
 
 For serving, compare shared and dedicated placement using both aggregate
-throughput and short/long-request latency. The dedicated-pool tail imbalance is
-a concrete next experiment; a latency benefit must retain its throughput cost.
+throughput and short/long-request latency. The dedicated-pool tail experiment is complete: one-long-request spillover
+improves completion time over dedicated placement while increasing short-request
+latency. That tradeoff remains explicit.
 Dynamic routing now also has a measured delayed-arrival, imbalanced workload.
 Its immediate queue-counter correction passes complete-output checks, but
 does not establish a useful latency or throughput win over round robin.
@@ -1434,7 +1436,18 @@ shapes, dtypes, values, parent-side checks, and the 1 GiB bound are retained.
 Tolerance-close references and different signed zeros are not deduplicated.
 Size failures now report the actual and allowed byte counts. Six focused
 real serialization/validation tests and nine existing DDP checks pass; syntax
-and Ruff checks pass. The fresh two-B200 public rerun is still required.
+and Ruff checks pass.
+
+The unchanged public two-B200, batch-32, three-update pair now passes at
+`8a698d73f22cc80c50b1e72e57eb230509f3f760`. Both arms execute, full inputs
+match, and full outputs pass at exact tolerance. Runtime/source checks pass,
+application clocks restore to their entry state, and the stage drains naturally.
+The public benchmark retains `failed_no_speedup`: baseline 241.900 ms versus
+optimized 260.262 ms, or 0.929x for this short integration run. This does not
+replace the earlier full-epoch A/B/B/A measurements or claim an independent
+optimizer-state check. The verified rerun contains 12 files / 132,196 bytes,
+inventory SHA-256
+`0137f32f5dfff782b84eb148071a2fc657412197aadfc0a29e5c2c8ecc785e24`.
 
 
 ### Projected-K initcheck: complete bounded control
@@ -1478,3 +1491,21 @@ The verified diagnostic contains 15 files / 35,462,623 bytes, inventory SHA-256
 `8e0ae78ca9660919e8186a74afebfc56a55b5afc56436e53db627b7fbb48fbae`.
 The bounded diagnostic no longer times out. The projected-K memory finding
 remains unresolved and is not relabeled as a passing memory check.
+
+
+### Final implementation checkpoint
+
+The bounded follow-through implementation is ready for final integration
+checks. The DDP opt-in and full-output transport now pass the public two-B200
+correctness check. The serving, pipeline, cache, FP8, KV, Ozaki, execution, and
+memory results above retain their actual improvements, regressions, and scope.
+All eight FSDP/FSDP2 mains executed; their generic wrappers remain intentionally
+unsupported. The projected-K finding has no justified production patch and
+still prevents an all-initcheck-clean claim.
+
+Four generated README entries were synchronized with the reviewed runtime and
+accuracy documentation, preserving every nonblank content line. A stale test
+heading that still called the KV accuracy qualification pending was corrected.
+All 12 README tests pass, including exact generation matches for all 61 entries.
+Focused checks are complete; the final broad CI run is the next integration
+step. No successful final CI or merge is asserted by this checkpoint.

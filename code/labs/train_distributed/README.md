@@ -53,6 +53,11 @@ storage; distinct values, including signed zeros, keep their own storage. The
 1 GiB per-rank file limit remains enforced. This avoids redundant full-logit
 files without reducing the batch, output coverage, or accuracy requirements.
 
+The public two-B200 three-update comparison passes full input/output checks
+with this transport. Its short-run ratio is 0.929x, so it is a correctness
+integration check, not a new speedup claim. The synchronous path remains the
+default. See the [retained result](../../../docs/reviews/2026-09-08-b200-remaining-followthrough.md#ddp-public-integration-bounded-full-output-transport).
+
 For this target, the harness maps `--iterations 3` to child `--steps 3`; the
 fixed `--grad-accum 1` therefore performs three optimizer updates per rank. Run
 the public integration check with:
@@ -65,7 +70,6 @@ python -m cli.aisp bench run --targets labs/train_distributed:ddp_multigpu \
 ```
 
 ## FSDP training semantics
-
 In the FSDP and FSDP2 entrypoints, `--steps` counts optimizer updates. Each
 update consumes `--grad-accum` full per-rank microbatches, continuing into
 another data epoch when necessary. For example, `--steps 3 --grad-accum 2`
