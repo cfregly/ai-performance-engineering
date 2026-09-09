@@ -36,6 +36,28 @@ updates. A final partial group uses its actual size and still updates the model;
 for example, `--steps 3 --grad-accum 2` performs two optimizer updates. Both
 forward and backward stay inside the same gradient synchronization context.
 
+The plain optimized multi-GPU DDP path also accepts the explicit
+`--overlap-optimizer` experiment. It updates fused AdamW parameter buckets on a
+dedicated CUDA stream after each DDP all-reduce. The synchronous optimizer stays
+the default. The opt-in requires exactly two ranks, `--grad-accum 1`, and no
+`--compile`; requesting it outside that scope fails before model construction.
+The paired baseline remains synchronous. A three-update exact gate matched all
+parameters and AdamW state. The retained two-B200, full-epoch, two-seed A/B/B/A
+screen matched complete inputs, logits, and losses, while training-loop speedup
+was `1.023626x` geometric mean. Whole-process ratios were mixed, so this is a
+scoped loop result rather than an end-to-end speedup claim.
+
+For this target, the harness maps `--iterations 3` to child `--steps 3`; the
+fixed `--grad-accum 1` therefore performs three optimizer updates per rank. Run
+the public integration check with:
+
+```bash
+python -m cli.aisp bench run --targets labs/train_distributed:ddp_multigpu \
+  --launch-via torchrun --nproc-per-node 2 --iterations 3 --warmup 0 \
+  --profile none --validity-profile portable \
+  --target-extra-arg 'labs/train_distributed:ddp_multigpu=--overlap-optimizer'
+```
+
 ## FSDP training semantics
 
 In the FSDP and FSDP2 entrypoints, `--steps` counts optimizer updates. Each
