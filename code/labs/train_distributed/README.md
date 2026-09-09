@@ -1,10 +1,10 @@
 # Lab - Distributed Training Playbook
 
 ## Summary
-Collects distributed-training recipes: DDP, FSDP, ZeRO-1/2/3, symmetric memory and flash-attention-aware all-reduce handling. Direct training scripts remain available; generic torchrun-wrapper benchmark qualification is currently unsupported.
+Collects distributed-training recipes: DDP, FSDP, ZeRO-1/2/3, symmetric memory and flash-attention-aware all-reduce handling. Direct training scripts remain available. Plain DDP and ZeRO-2 have dedicated child-result contracts; wrappers without a contract remain unsupported.
 
 ## Generic wrapper verification unavailable
-The shared `training_utils/torchrun_harness.py` wrapper formerly verified an unrelated parent-side Linear model before launching the real child. That surrogate has been removed. Its factories and configuration remain discoverable, but harness execution and verification now stop explicitly before launch until child-produced training results and an independent reference are implemented. A failed launch-spec getter is propagated rather than replaced with a fallback script. Direct training entrypoints are unchanged; executing them alone is not correctness or performance acceptance. The separate ZeRO training tests do not supply a verification protocol for other wrappers.
+The shared `training_utils/torchrun_harness.py` wrapper formerly verified an unrelated parent-side Linear model before launching the real child. That surrogate has been removed. Factories without a dedicated child-result contract remain discoverable, but their harness execution and verification stop explicitly before launch. Plain DDP publishes complete post-training logits and loss from the actual final batch and a changed input, with separately executed forwards through the same unwrapped trained weights. That checks the forward wrapper; it is not independent proof of the optimizer updates. ZeRO-2 has a separate result adapter. A failed launch-spec getter is propagated rather than replaced with a fallback script. Direct training entrypoints are unchanged; executing them alone is not correctness or performance acceptance. The separate ZeRO training tests do not supply a verification protocol for other wrappers.
 
 ## Training runtime prerequisites
 The Hugging Face examples need `datasets` and `accelerate` in the Python
@@ -46,6 +46,12 @@ parameters and AdamW state. The retained two-B200, full-epoch, two-seed A/B/B/A
 screen matched complete inputs, logits, and losses, while training-loop speedup
 was `1.023626x` geometric mean. Whole-process ratios were mixed, so this is a
 scoped loop result rather than an end-to-end speedup claim.
+
+The DDP result transport retains all four full output/reference mappings.
+After full reference checks, byte-identical references share serialized tensor
+storage; distinct values, including signed zeros, keep their own storage. The
+1 GiB per-rank file limit remains enforced. This avoids redundant full-logit
+files without reducing the batch, output coverage, or accuracy requirements.
 
 For this target, the harness maps `--iterations 3` to child `--steps 3`; the
 fixed `--grad-accum 1` therefore performs three optimizer updates per rank. Run

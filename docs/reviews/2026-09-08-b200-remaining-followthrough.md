@@ -1413,3 +1413,25 @@ retain `failed_no_speedup` because their optimized path is slower than their
 baseline; all eight still pass execution and output checks. The old source's
 sanitizer failures also remain failures. Neither no-win result is relabeled
 to satisfy a universal ratio.
+
+
+### DDP public integration: bounded full-output transport
+
+The first public two-B200 opt-in run at
+`a017962cc649fd96b6beea923cf1e139fdd6aba6` completed the baseline's three
+training updates, then failed while publishing its four full logit tensors.
+The rank payload exceeded the existing 1 GiB file limit, so the optimized
+arm did not execute. The failed run is retained, with 11 files / 56,092 bytes
+and inventory SHA-256
+`cb851b4ace64f11da74a45b68a9fbef4a0dca3afb42c9fbb348f9ed5529c4545`.
+Its owned supervisor drained successfully. This failure does not invalidate
+the earlier private optimizer-state comparisons, but it prevents claiming
+that the new public opt-in integration passed.
+
+The transport now performs all full reference and changed-input checks before
+sharing storage for byte-identical output/reference tensors. All tensor names,
+shapes, dtypes, values, parent-side checks, and the 1 GiB bound are retained.
+Tolerance-close references and different signed zeros are not deduplicated.
+Size failures now report the actual and allowed byte counts. Six focused
+real serialization/validation tests and nine existing DDP checks pass; syntax
+and Ruff checks pass. The fresh two-B200 public rerun is still required.
