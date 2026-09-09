@@ -33,6 +33,13 @@ SANITIZER = shutil.which("compute-sanitizer")
 def test_prefill_graph_replay_has_no_uninitialized_copy(producer, mode, tmp_path):
     if producer != "graphs" and torch.cuda.get_device_capability()[0] < 10:
         pytest.skip("TMA examples require Blackwell")
+    if producer == "tma":
+        # Resolve real hardware/compiler prerequisites before instrumentation.
+        # A cold cache otherwise starts unrelated cluster capability probes
+        # inside the initcheck child, rather than testing this producer alone.
+        from core.benchmark.blackwell_requirements import ensure_blackwell_tma_supported
+
+        ensure_blackwell_tma_supported("persistent decode initcheck prerequisites")
     # Each case needs its own process because initcheck must observe graph
     # creation as well as the first replay. Poison outputs and change inputs
     # after capture so stale setup values cannot satisfy correctness checks.
