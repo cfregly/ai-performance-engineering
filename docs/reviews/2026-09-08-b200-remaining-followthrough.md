@@ -1355,6 +1355,33 @@ recorded above. Both two-wave routing measurements and the copy-removal timing
 screen also complete. Their no-win results and modest gains remain explicit;
 none is tuned further merely to cross a universal 1.05x threshold.
 
+### Monotonic serving latency
+
+`a346b111bb5c7111cb4336295040c8035da90709` fixes a separate timing defect:
+request TTFT subtracted wall-clock timestamps, allowing clock adjustments to
+distort elapsed latency and routing feedback. Admission now retains both the
+wall-clock timestamp required by vLLM and a monotonic timestamp for this lab's
+duration measurements. Both output-consumption paths sample the monotonic
+clock after engine work completes. Startup and steady-state boundaries remain
+separate.
+
+Fifty-three focused checks pass, including four clock/control tests covering
+forward and backward wall-clock jumps across the two output-consumption paths.
+One existing live-model test is skipped locally; syntax and focused Ruff checks
+pass. Separate actual two-B200 public runs pass all four configurations:
+all-upfront routing, delayed-arrival routing, dedicated dual pools, and the
+one-long-request spillover variant. All eight arms retain five warmups, three
+steady calls, engine reuse, complete request counts, finite latency metrics,
+exact pair-output verification, and matched runtime/source checks. The outer
+clock context is preserved across children and restores its entry state; the
+stage drains naturally.
+
+All four public pairs retain their `failed_no_speedup` outcome. This is a
+timing-correctness repair, not a speedup claim or proof that the experimental
+V1 core-loop option ran on the GPU. The verified evidence contains 47 files /
+878,402 bytes, inventory SHA-256
+`90d4cd1476450ad7f20534ce266d241a55dc137848b6bea95a14f5e16a43306f`.
+
 ### Copy-removal timing screen
 
 The fresh one-B200 screen compares `4118f256c5eef3c7d78bd3fa8ebcdfb4a5d5d7b6`
