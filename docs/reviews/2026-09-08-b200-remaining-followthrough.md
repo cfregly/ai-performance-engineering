@@ -738,8 +738,8 @@ driver, CPU log, and GPU artifacts are retained under `fsdp2-source-v1/` and
 The latter transfer verifies 15 files / 5,225,973 bytes, inventory SHA-256
 `267812afad750871422a7dadb783c069ac198d098bd2d54ed69c56fc8aa26fb5`.
 
-Independent full trained-state/output checks, two-B200 execution, Nsight Compute
-coverage, and the real child-result contract remain pending. Generic FSDP2
+Independent optimized full trained-state/output acceptance, two-B200 execution,
+Nsight Compute coverage, and the real child-result contract remain pending. Generic FSDP2
 wrapper execution therefore stays explicitly unavailable; direct-script success
 is not substituted for that missing contract.
 
@@ -771,4 +771,33 @@ retained alongside the baseline pass in `fsdp2-exact-world1-v1/`: six files /
 A separate verifier revision preserves the full checks while avoiding redundant
 error calculations for equal finite chunks and adding progress markers. CPU
 comparison confirms identical verifier results across ten targeted cases. The
-optimized arm is being rerun with that revision; no tolerance is relaxed.
+optimized arm also times out with that revision, during CPU state comparison;
+its failure and cleanup receipt are retained in
+`fsdp2-exact-world1-optimized-v2/`: four files / 32,176 bytes, inventory SHA-256
+`b5bb297eb2f41807ffa777d90bd14eb523d140477f803ce9bdac5f7b6fce5976`.
+
+A third verifier revision uses equivalent NumPy operations for plain CPU
+floating-point tensor comparisons. It completes the optimized diagnostic in
+**45.446 seconds**, with natural process drainage and no timeout. It retains
+the zero-tolerance comparison and reports **FAIL** against the eager reference:
+
+| Full comparison | Unequal values / checked values | Maximum absolute difference |
+| --- | ---: | ---: |
+| Final logits | 53,405,106 / 65,536,000 | 0.076171875 |
+| Model parameters | 15,660,689 / 483,428,352 | 0.00048828125 |
+| Optimizer state | 713,540,355 / 966,856,779 | 0.000244140625 |
+
+The final loss differs by 0.0032787323 (0.03539% relative); all four training
+losses differ, with maximum absolute difference 0.0005578995. Every compared
+value is finite, and no shape, dtype, device, or state-structure mismatch is
+reported. The candidate uses FlashAttention 2, while the unsharded reference
+uses eager attention; both use the intended fused optimizer. This establishes
+failure of bitwise equivalence, not by itself an implementation defect or an
+accepted numerical error budget. Matched-attention isolation and independent
+accuracy acceptance remain necessary before claiming a correctness or speed
+pass for optimized FSDP2.
+
+The complete numerical failure is preserved in
+`fsdp2-exact-world1-optimized-v3/`: five files / 32,514 bytes, inventory SHA-256
+`0e648bf313a9683d3aae7f1f27cf2d059445fed8adb048bf62a366c601b30c0f`.
+The frozen driver and runner are retained in `fsdp2-exact-v3-driver/`.
