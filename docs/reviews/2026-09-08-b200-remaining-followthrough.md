@@ -742,3 +742,15 @@ Independent full trained-state/output checks, two-B200 execution, Nsight Compute
 coverage, and the real child-result contract remain pending. Generic FSDP2
 wrapper execution therefore stays explicitly unavailable; direct-script success
 is not substituted for that missing contract.
+
+Compute Sanitizer `memcheck` subsequently completes both real entrypoints with
+**zero errors** at the same source and workload. The `initcheck` baseline attempt
+reports 100 uninitialized two-byte global reads in BF16 multiplication reached
+from `apply_rotary_pos_emb`, then exceeds its 300-second child timeout. The
+optimized initcheck arm is not reached. The supervisor drains five remaining
+owned processes with SIGTERM; this is a failed, interrupted validation, not a
+passing memory check. The cause remains under investigation.
+
+Both sanitizer attempts, including the full failed report and cleanup receipt,
+are preserved in `fsdp2-memory-v2/`: nine files / 854,287 bytes, inventory SHA-256
+`02c8da5a35fd4fbd24ce37c5a31d9574e2b9b62ca4fbb60271273d01521e8fb2`.
