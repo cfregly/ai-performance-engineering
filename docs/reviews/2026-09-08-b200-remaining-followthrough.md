@@ -700,3 +700,45 @@ file/receipt pointers and public commands are retained in
 
 PR #28 is back in draft; broad CI and publication are deferred while this work
 continues.
+
+## FSDP2 training repair and direct B200 execution
+
+Source `1a2a11fb40d6455af4abd6face5bfd7eaa1f64d8` repairs all four FSDP2
+producers. Packed data already supplies next-token targets; passing those targets
+as ordinary model labels shifted them a second time. A shared loss helper now
+computes FP32 cross-entropy directly against the supplied targets. All 50 bundled
+1024-token rows and all 255 bundled 128-token rows have the expected shifted
+layout. Synthetic FSDP2 data now uses the same target convention.
+
+Direct runs initialize a common seed, samplers use the active seed, and private
+data generators avoid changing model initialization. Both variants consume full
+per-rank batches and reject an empty loader instead of looping forever. The fast
+configuration respects an explicit layer override. Positive argument validation,
+matched throughput-report warmup, and synchronized maximum-rank training timing
+are added; a duplicate FP8 setting is removed. `--steps` continues to mean
+optimizer updates, and the intended fused optimizer remains enabled in the
+optimized BF16 path.
+
+The helper's loss, gradient, seed, and argument tests pass **18 checks**. A
+separate focused run passes **66 loader, lab, and child-wrapper checks**. These
+are targeted source/CPU checks, not broad CI.
+
+On one B200, both actual entrypoints complete two optimizer updates from four
+microbatches, using eight TinyLlama layers, sequence length 1024, per-rank batch
+size two, accumulation two, and BF16 with FP8 disabled. Recorded training
+diagnostics are **252.483 ms/update baseline** and **191.276 ms/update optimized**;
+process durations are 14.742 and 14.887 seconds. This short execution check does
+not establish a repeatable speedup or full training equivalence.
+
+Both corresponding Nsight Systems runs also exit successfully. The exported
+reports contain **5,346 baseline GPU kernels** and **4,539 optimized GPU kernels**.
+Both direct and profiled stages drain without forced cleanup. The source bundle,
+driver, CPU log, and GPU artifacts are retained under `fsdp2-source-v1/` and
+`fsdp2-direct-nsys-v1/` in the final-integration artifact directory.
+The latter transfer verifies 15 files / 5,225,973 bytes, inventory SHA-256
+`267812afad750871422a7dadb783c069ac198d098bd2d54ed69c56fc8aa26fb5`.
+
+Independent full trained-state/output checks, two-B200 execution, Nsight Compute
+coverage, and the real child-result contract remain pending. Generic FSDP2
+wrapper execution therefore stays explicitly unavailable; direct-script success
+is not substituted for that missing contract.
