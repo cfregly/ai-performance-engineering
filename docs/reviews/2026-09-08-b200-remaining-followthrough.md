@@ -1217,6 +1217,9 @@ check. The private runner enters the public harness clock context, verifies
 that the drained child preserves its settings, and verifies restoration of
 the pre-stage application-clock and persistence state. The two affected
 two-B200 targets still require reruns.
+The verified local single-GPU receipt contains 12 files / 128,256 bytes,
+inventory SHA-256
+`a52f823b46a8485dfa7a813b4538171111c1ae36691272144fd60104ddea5f86`.
 The original six-target collection had no execution or output-verification
 failures; three manifests were rejected for the post-child clock mismatch.
 
@@ -1242,6 +1245,22 @@ The original three graph-copy failures remain retained; this rerun validates
 the corrected source for the recorded workload. All producers drain naturally.
 The local copy verifies 94 files / 36,348,922 bytes, inventory SHA-256
 `6de0ac2162fffa311a5c57e57b7f644e5a04f4d1038a02bb627013b07679c244`.
+
+`604146c16116dd88e0a407d13432f7ac0da87276` additionally replaces the loose
+FP32 decode acceptance check with an independent FP64 reference and a bound
+derived from FP32 dot-product and multiply rounding. The bound scales with
+`sum(abs(q*k)) * abs(v)` so it handles cancellation; it is not selected from
+observed candidate errors. A 0.25 corruption in the last output element passes
+the former 10%-plus-1.0 tolerance and fails the new guard. FP16/fake-int4 retain
+their previous policy and are not covered by this new FP32 accuracy claim.
+All nine actual medium-FP32 producers pass the guard and zero-error initcheck
+on one B200. The local copy verifies 67 files / 26,976,719 bytes, inventory
+SHA-256 `74e2673261c792968dfd92c940fb2e30e35439cf859032bfcc90e1acfe258a96`.
+All 47 focused tests pass on that host, including seven real CUDA workers
+with three complete changed-input, full-output, and corruption-rejection checks
+each. Both stages drain naturally. A separate before/after public-pair timing
+screen is prepared to measure the copy removals; no speed improvement is
+claimed from these correctness runs.
 
 The opt-in `--routing-arrival-profile two-wave-imbalance` now exercises actual
 feedback routing at `0862b770b7dbbd04e0fdd381a358ca378a278710`. Both arms
