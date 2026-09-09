@@ -23,7 +23,7 @@ The retained targeted measurements illustrate the remaining speed gaps:
 | --- | ---: | --- |
 | Cache-aware 1P1D | 1.574x | Measured improvement for the recorded workload |
 | FP8 training, batch 4096 | 1.279x | Improvement at this batch; smaller batches lose |
-| Regular DDP training loop | Approximately 1.00x; latest private one-GPU candidate 1.035–1.038x | Modest candidate improvement; not promoted; two-GPU candidate validation pending |
+| Regular DDP training loop | Private one-GPU stream candidate 1.035–1.038x; separate two-GPU bucket-overlap candidate 1.0236x | Exact checks pass in the recorded configurations; process timing is mixed; candidates not promoted |
 | Pipeline parallelism, forward lookahead | 1.057x median ratio | Two of four blocks remain below 1.05x; process duration does not improve |
 | Dynamic serving routing | 0.996x | Parity on the homogeneous workload; no throughput benefit established |
 | Fair dedicated versus shared serving pools | 0.815x | Lower total throughput; short-request TTFT improves |
@@ -51,7 +51,7 @@ the source inventory and a separately scoped historical-result audit.
 Continue bounded DDP and pipeline tuning where traces identify removable work,
 then retain the measured result even if it is modest. Additional implementation
 complexity must be justified by repeatable benefits on the intended workload.
-One-GPU optimizer experiments do not replace the outstanding two-GPU checks.
+The two-GPU bucket-overlap candidate now has exact-update and two-seed timing evidence; the separate one-GPU stream candidate does not establish distributed performance.
 
 For serving, compare shared and dedicated placement using both aggregate
 throughput and short/long-request latency. The dedicated-pool tail imbalance is
@@ -975,7 +975,77 @@ The correction preserves existing dtypes during device placement and uses FP32
 FSDP1 buffers, while keeping model parameters and reductions in BF16. Two real
 Hugging Face rotary regressions and 30 related training-semantics/data checks
 pass. The placement reproduction preserves the complete original cosine/sine
-outputs exactly. GPU validation of this correction is pending. Earlier full-
+outputs exactly. GPU validation of this correction now passes as detailed below. Earlier full-
 state equivalence passes compare models using the same rounded frequencies;
 they do not establish correct positional frequencies or validate this new fix.
 The uninitialized-read report remains a separate unresolved finding.
+
+
+## September 9: fixed rotary precision and two-GPU DDP measurements
+
+Source `4118f256c5eef3c7d78bd3fa8ebcdfb4a5d5d7b6` passes all eight
+public FSDP/FSDP2 variants after preserving FP32 rotary buffers. Both FSDP1
+multi-GPU arms complete 200 optimizer updates / 400 microsteps with 12 layers;
+both FSDP2 multi-GPU arms complete the same update counts with eight layers.
+The single-GPU FSDP1 arms complete their full 22-layer, microbatch-16 defaults
+of 10 updates / 20 microsteps, and single-GPU FSDP2 completes 200 / 400 with
+eight layers and microbatch two. All recorded losses are finite. This verifies
+those public workloads; it is not a repeated performance comparison.
+
+The separate real-wrapper probe passes forward, backward, and an AdamW update
+through all eight producers on one or two B200s. Model parameters stay BF16;
+rotary frequencies stay FP32, agree with an independent analytic reference,
+and remain unchanged after training. Cosine/sine values at positions 512–1023
+pass the predeclared output bound. This is a small correctness diagnostic.
+
+A new full FSDP2 diagnostic closes the nonpersistent-buffer blind spot in the
+earlier state comparisons. Baseline and optimized arms each pass on both one
+and two B200s at the fixed source. For the two-GPU workload, each arm compares
+483,428,352 model values, 966,856,779 optimizer-state values, 131,072,000 logits,
+eight training losses, and two final losses with zero mismatches. The workload
+uses eight layers, sequence length 1024, per-rank microbatch two, and two
+optimizer updates. The optimized reference uses the same FA2 backend with its
+outer deterministic option enabled. Independently calculated frequencies are
+at most one FP32 ULP from the model values, within the predeclared four-ULP
+budget; per-rank buffer hashes are unchanged across wrapping and training.
+This does not establish equality between eager attention and default FA2 or
+qualify the still-disabled generic FSDP child-result wrapper.
+
+Verified evidence under `ai-perf-followthrough2-20260908-final-integration/`:
+
+| Directory | Files / bytes | Inventory SHA-256 |
+| --- | ---: | --- |
+| `fsdp-rotary-fixed-public-v1` | 19 / 81,086 | `cd92aae89673cd9683a73fdb7ecc826639f559508322db052cb5235378f80ec5` |
+| `fsdp-rotary-gpu-probe-v1` | 11 / 77,556 | `babe338de30760adaeb6f92349a4c9cf657d85000e39e4168a973ae069a3d757` |
+| `fsdp2-rotary-exact-world1-v1` | 7 / 82,598 | `ec6b20f2355e05044ba281ae00238344272f5b744b30adfe5167991d288520a6` |
+| `fsdp2-rotary-exact-world2-v1` | 7 / 125,671 | `7330d1db985550281e1f86a7b19abb04363411af6b78695388e37cc03ebdc8c8` |
+
+All four stages terminate successfully and drain naturally. The separate
+projected-K initcheck report remains unresolved; fixing rotary precision does
+not dismiss that memory finding.
+
+The private two-GPU DDP bucket-overlap candidate at source `5be3ae28d09b`
+passes the three-update exact model/optimizer-state gate on both ranks, then
+passes the complete MRPC epoch in two seed-balanced A/B/B/A blocks. The public
+`--steps 100` argument is a cap: 1,834 samples per rank with batch size 32 and
+`drop_last` produce 57 completed updates in every arm. Inputs, full logits,
+and losses match exactly across each seed's repeated control/candidate runs.
+
+The four control/candidate training-loop ratios are 1.02535, 1.02194, 1.02085,
+and 1.02638, for a **1.02363x geometric mean**. Both GPUs use 1500/3996 MHz
+application clocks. Whole-process ratios span 0.97183–1.03583, so the scoped
+benefit is a modest training-loop improvement. This is a different implementation
+from the one-GPU stream-overlap candidate, which still rejects distributed use.
+The bucket-overlap candidate remains private pending a decision on whether the
+extra implementation complexity merits that benefit. The exact gate is verified
+locally in `ddp-base-overlap-world2-exact-v1`; full ABBA outputs are retained
+remotely in `ddp_base_overlap_world2_abba_v2_20260908` and their local transfer
+is being completed.
+
+Source `a4750384994e320a87c84925a11595cee207b172` adds an opt-in
+`--long-spillover-limit` to the serving example. Zero preserves dedicated-pool
+placement; one moves at most one long request onto the existing decode GPU.
+All 33 focused routing tests pass. A six-pair B200 experiment is running with
+fixed clocks, unchanged request mix, reused engines, and separate startup,
+steady-state completion, and short/long TTFT measurements. No GPU performance
+claim is made for this change before those results are checked.
