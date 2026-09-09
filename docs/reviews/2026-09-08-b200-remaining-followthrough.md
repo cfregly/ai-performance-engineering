@@ -1141,7 +1141,27 @@ latency metrics, exact comparisons, and the two failed preflights are retained.
 The successful collection drains naturally and its local copy verifies all
 71 files / 1,419,112 bytes in `serving-flex-placement-v4`, inventory SHA-256
 `d5469421ce807b10dec79f24d2fac75418ab6f7765f7544cc8f69e2f071fde8d`.
-Fresh Nsight mechanism captures for the spillover path remain pending.
+Three fresh Nsight Systems mechanism captures now pass at that same source:
+shared placement, dedicated pools, and one-long-request spillover. Each
+contains one complete steady-state range after five reused-engine warmups.
+All 1,734 framed output values match exactly across the captures. Both-GPU
+1500/3996 MHz settings, runtime, source, lifecycle, and cleanup checks pass.
+The verified local copy contains 42 files / 45,714,098 bytes, inventory SHA-256
+`90639e52833f59cf39db8c155f3fddc0ddf36a720cf7c24948d19fde474363a8`.
+
+| Placement | GPU 0 / GPU 1 kernels | Gap between final kernels | Simultaneous two-GPU kernel activity |
+| --- | ---: | ---: | ---: |
+| Shared | 13,840 / 13,840 | 0.021 ms | 93.31% |
+| Dedicated | 15,550 / 12,132 | 679.223 ms | 57.40% |
+| One-long-request spillover | 14,376 / 13,352 | 170.076 ms | 86.00% |
+
+The overlap fraction uses time with a kernel active on at least one GPU as
+its denominator. Moving one long request shifts activity to the second GPU
+and reduces the completion imbalance, consistent with the independently
+measured throughput benefit. The shared layout remains the most balanced.
+These are kernel-only, instrumented intervals; they exclude memory-copy
+activity and are not accepted speed ratios or proof of CPU overhead. The
+short-request latency cost remains in the ordinary measurements above.
 
 
 ### Additional public execution and memory coverage
@@ -1284,7 +1304,6 @@ is no universal speedup requirement.
 
 The first reviewed serving Nsight launch was blocked by another workload on
 the first B200; that workload was untouched. After both devices became free,
-the two-GPU clock reruns above completed and the three-capture serving Nsight
-stage launched. The two-wave routing measurement is queued after it. Serving
-profiles and routing performance remain pending until their actual completion
-and validation receipts are inspected.
+the two-GPU clock reruns and all three serving Nsight captures completed, as
+recorded above. The two-wave routing measurement is running; its performance
+remains pending until completion and validation receipts are inspected.
