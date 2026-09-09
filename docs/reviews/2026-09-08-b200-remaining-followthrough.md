@@ -1211,7 +1211,12 @@ that change clocks or persistence restore their exact queryable entry state.
 Cleanup verifies restoration and fails clearly on drift or restore failure.
 The harness no longer uses unqueryable hard-lock fallback/reset operations.
 Five new ownership tests and the related torchrun provenance tests pass
-(19 total); the three affected public GPU targets still require reruns.
+(19 total). The single-B200 hybrid-EP rerun now passes execution, full input
+and output verification, runtime parity, and the exact 1500/3996 MHz manifest
+check. The private runner enters the public harness clock context, verifies
+that the drained child preserves its settings, and verifies restoration of
+the pre-stage application-clock and persistence state. The two affected
+two-B200 targets still require reruns.
 The original six-target collection had no execution or output-verification
 failures; three manifests were rejected for the post-child clock mismatch.
 
@@ -1219,7 +1224,34 @@ The MoE exchange comparison now captures all 4,194,304 BF16 output values
 instead of a 1,024-value sample, along with all token and expert-route inputs.
 It retains exact comparison and validates complete shape and finiteness.
 Thirty-two focused tests pass, including corruption outside the former sample.
-Public execution of this expanded verification remains pending.
+Public B200 execution at `d03fd19516cae424f4af17eaebc28b2fbdb82e8f` also
+passes for both hierarchical and overlap variants with exact full-output
+comparison. Native async-copy prefill/decode passes execution in the same
+batch. These targets retain their performance-only no-win outcomes. The local
+copy verifies 34 files / 73,159,028 bytes, inventory SHA-256
+`58e66351d1e20981b4fcfabf2c91330669ce9cc7951b6a7bb2000b0017759ab2`.
+
+The expanded memory rerun at that same source passes **all 18 cases**: all
+nine persistent-decode, descriptor-TMA, and native async-copy producers under
+both `memcheck` and `initcheck`. Every sanitizer summary is zero. All 21
+full-output pair and cross-tool comparisons pass; the largest pair difference
+is `1.52587890625e-5`, and outputs are identical across tools. Every prefill
+value is checked exactly. The run uses the public medium FP32 shape and
+regenerates the real TMA hardware/compiler prerequisite before instrumentation.
+The original three graph-copy failures remain retained; this rerun validates
+the corrected source for the recorded workload. All producers drain naturally.
+The local copy verifies 94 files / 36,348,922 bytes, inventory SHA-256
+`6de0ac2162fffa311a5c57e57b7f644e5a04f4d1038a02bb627013b07679c244`.
+
+The opt-in `--routing-arrival-profile two-wave-imbalance` now exercises actual
+feedback routing at `0862b770b7dbbd04e0fdd381a358ca378a278710`. Both arms
+receive identical fixed background work; delayed foreground requests arrive
+only after a real engine-step sweep observes one empty queue and one busy
+queue. The optimized arm consumes observed queue depth, TTFT, and token
+activity. The default all-upfront workload is unchanged. Fifty-nine focused
+tests cover full-token ordering, reused-engine reset, argument validation,
+and prerequisite failure. Its two-B200 performance remains unmeasured; there
+is no universal speedup requirement.
 
 The reviewed three-capture serving Nsight recipe is prepared but has not
 launched: its two-GPU guard found another workload on the first B200. That
