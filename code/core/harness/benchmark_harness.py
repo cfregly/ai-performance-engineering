@@ -442,6 +442,17 @@ def _resolve_physical_device_index(device_index: int) -> int:
 _SUDO_NONINTERACTIVE_OK: Optional[bool] = None
 
 
+@dataclass(frozen=True)
+class _GpuClockControlState:
+    """NVML state that the application-clock context can query and restore."""
+
+    application_sm_mhz: int
+    application_memory_mhz: int
+    current_sm_mhz: int
+    current_memory_mhz: int
+    persistence_enabled: bool
+
+
 def _sudo_noninteractive_ok() -> bool:
     """Return True if `sudo -n` is available for this process.
 
@@ -494,34 +505,20 @@ def ramp_gpu_clocks(device: int = 0, duration_ms: float = 50.0, max_iters: int =
 
 @contextmanager
 def lock_gpu_clocks(device: int = 0, sm_clock_mhz: Optional[int] = None, mem_clock_mhz: Optional[int] = None):
-    """Lock GPU clocks for consistent benchmarking.
-    
-    Based on Triton's set_gpu_clock context manager:
-    https://github.com/triton-lang/triton/blob/main/python/triton/testing.py
-    
-    Args:
-        device: GPU device index (default 0)
-        sm_clock_mhz: Target SM clock rate in MHz (None = auto-detect max)
-        mem_clock_mhz: Target memory clock rate in MHz (None = auto-detect max)
-    
-    Yields:
-        Tuple of (theoretical_tflops, theoretical_gbps) at the locked clocks
-    
-    Example:
-        with lock_gpu_clocks(device=0, sm_clock_mhz=1350, mem_clock_mhz=1215):
-            benchmark.run()
-    
-    Note:
-        - Requires nvidia-smi and sudo/root permissions
-        - Clocks are automatically reset when context exits
-        - Raises RuntimeError if nvidia-smi fails
+    """Hold verified application clocks while preserving an enclosing lock.
+
+    Matching nested contexts borrow the application-clock state. A context that
+    changes application clocks or persistence mode restores the exact queryable
+    entry state when it exits. Hard-clock commands are deliberately not used:
+    their prior ranges cannot be queried here and therefore cannot be restored.
     """
     if not torch.cuda.is_available():
         raise RuntimeError("lock_gpu_clocks requires CUDA")
     props = torch.cuda.get_device_properties(device)
     physical_index = _resolve_physical_device_index(device)
-    def _query_nvml_clocks() -> tuple[int, int, int, int]:
-        """Return (app_sm, app_mem, cur_sm, cur_mem) for the physical GPU index."""
+
+    def _query_nvml_state() -> _GpuClockControlState:
+        """Return the application-clock and persistence state visible via NVML."""
         try:
             import pynvml
         except ImportError as exc:
@@ -533,105 +530,86 @@ def lock_gpu_clocks(device: int = 0, sm_clock_mhz: Optional[int] = None, mem_clo
             app_mem = int(pynvml.nvmlDeviceGetApplicationsClock(handle, pynvml.NVML_CLOCK_MEM))
             cur_sm = int(pynvml.nvmlDeviceGetClockInfo(handle, pynvml.NVML_CLOCK_SM))
             cur_mem = int(pynvml.nvmlDeviceGetClockInfo(handle, pynvml.NVML_CLOCK_MEM))
-            return app_sm, app_mem, cur_sm, cur_mem
+            persistence = int(pynvml.nvmlDeviceGetPersistenceMode(handle))
+            enabled = int(getattr(pynvml, "NVML_FEATURE_ENABLED", 1))
+            disabled = int(getattr(pynvml, "NVML_FEATURE_DISABLED", 0))
+            if persistence not in {enabled, disabled}:
+                raise RuntimeError(f"NVML returned invalid persistence mode {persistence}")
+            return _GpuClockControlState(
+                application_sm_mhz=app_sm,
+                application_memory_mhz=app_mem,
+                current_sm_mhz=cur_sm,
+                current_memory_mhz=cur_mem,
+                persistence_enabled=persistence == enabled,
+            )
         except Exception as exc:
-            raise RuntimeError(f"Failed to query NVML clocks: {exc}") from exc
+            if isinstance(exc, RuntimeError) and str(exc).startswith("NVML returned invalid"):
+                raise
+            raise RuntimeError(f"Failed to query NVML clock control state: {exc}") from exc
         finally:
             try:
                 pynvml.nvmlShutdown()
             except Exception as exc:
                 _emit_harness_warning(
-                    "Failed to shut down NVML after querying application clocks",
+                    "Failed to shut down NVML after querying GPU clock control state",
                     exc=exc,
                 )
 
-    def _apply_clock_lock(target_sm: int, target_mem: int, *, retry_attempts: int = 1) -> tuple[int, int, int, int]:
-        """Best-effort lock using application clocks, then hard locks as fallback.
+    def _set_persistence(enabled: bool) -> None:
+        try:
+            _nvidia_smi(["-i", str(physical_index), "-pm", "1" if enabled else "0"])
+        except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+            raise RuntimeError(
+                f"Failed to set GPU {physical_index} persistence mode to {int(enabled)}: {exc}"
+            ) from exc
 
-        Returns the NVML-observed clocks after locking (app_sm, app_mem, cur_sm, cur_mem).
-        Raises RuntimeError if the application clocks do not match the requested target.
-        """
-        lock_error: Optional[Exception] = None
-        last_exc: Optional[BaseException] = None
-        for _attempt in range(max(1, int(retry_attempts))):
-            lock_error = None
-            try:
-                _nvidia_smi(
-                    [
-                        "-i",
-                        str(physical_index),
-                        f"--applications-clocks={target_mem},{target_sm}",
-                    ]
-                )
-            except subprocess.CalledProcessError as exc:
-                # Fallback to hard locks for platforms that do not support applications clocks.
-                lock_error = exc
-                try:
-                    _nvidia_smi(
-                        [
-                            "-i",
-                            str(physical_index),
-                            f"--lock-gpu-clocks={target_sm},{target_sm}",
-                        ]
-                    )
-                    _nvidia_smi(
-                        [
-                            "-i",
-                            str(physical_index),
-                            f"--lock-memory-clocks={target_mem},{target_mem}",
-                        ]
-                    )
-                    lock_error = None
-                except subprocess.CalledProcessError as exc2:
-                    lock_error = exc2
-
-            app_sm, app_mem, cur_sm, cur_mem = _query_nvml_clocks()
-            if abs(app_sm - target_sm) <= 50 and abs(app_mem - target_mem) <= 50:
-                if lock_error is not None and LOGGER_AVAILABLE:
-                    logger.warning(
-                        "GPU clock lock command failed (%s) but application clocks already match target; proceeding.",
-                        lock_error,
-                    )
-                if LOGGER_AVAILABLE and (abs(cur_sm - target_sm) > 50 or abs(cur_mem - target_mem) > 50):
-                    logger.info(
-                        "GPU current clocks below locked target (idle/throttled): "
-                        "current SM=%dMHz Mem=%dMHz, target SM=%dMHz Mem=%dMHz",
-                        cur_sm,
-                        cur_mem,
-                        target_sm,
-                        target_mem,
-                    )
-                return app_sm, app_mem, cur_sm, cur_mem
-
-            last_exc = RuntimeError(
-                f"GPU clock lock mismatch: requested SM={target_sm}MHz Mem={target_mem}MHz, "
-                f"applications SM={app_sm}MHz Mem={app_mem}MHz"
-                + (f" (lock error: {lock_error})" if lock_error is not None else "")
+    def _set_application_clocks(target_sm: int, target_mem: int, *, action: str) -> None:
+        try:
+            _nvidia_smi(
+                [
+                    "-i",
+                    str(physical_index),
+                    f"--applications-clocks={target_mem},{target_sm}",
+                ]
             )
-            # Brief pause and retry. This helps when another process flips app clocks
-            # while the harness is between targets.
-            time.sleep(0.15)
+        except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+            raise RuntimeError(
+                f"Failed to {action} GPU {physical_index} application clocks to "
+                f"SM={target_sm}MHz Mem={target_mem}MHz; hard-clock fallback is not "
+                "restorable and is unsupported"
+            ) from exc
 
-        if last_exc is None:
-            raise RuntimeError("GPU clock lock failed without a captured verification error")
-        raise last_exc
+    def _application_clocks_match(state: _GpuClockControlState, target_sm: int, target_mem: int) -> bool:
+        return (
+            state.application_sm_mhz == target_sm
+            and state.application_memory_mhz == target_mem
+        )
 
-    def _reassert_clock_lock(config_sm: Optional[int], config_mem: Optional[int]) -> tuple[int, int, int, int]:
-        """Re-apply requested application clocks and verify they stick.
+    def _verify_target(state: _GpuClockControlState, target_sm: int, target_mem: int) -> None:
+        if not state.persistence_enabled:
+            raise RuntimeError("GPU persistence mode is disabled after clock-lock setup")
+        if not _application_clocks_match(state, target_sm, target_mem):
+            raise RuntimeError(
+                f"GPU clock lock mismatch: requested SM={target_sm}MHz Mem={target_mem}MHz, "
+                f"applications SM={state.application_sm_mhz}MHz "
+                f"Mem={state.application_memory_mhz}MHz"
+            )
+        if LOGGER_AVAILABLE and (
+            abs(state.current_sm_mhz - target_sm) > 50
+            or abs(state.current_memory_mhz - target_mem) > 50
+        ):
+            logger.info(
+                "GPU current clocks below locked target (idle/throttled): "
+                "current SM=%dMHz Mem=%dMHz, target SM=%dMHz Mem=%dMHz",
+                state.current_sm_mhz,
+                state.current_memory_mhz,
+                target_sm,
+                target_mem,
+            )
 
-        This is intentionally called right before measurement. We have observed rare cases
-        where application clocks drift (or are reset) between targets, which invalidates
-        baseline-vs-optimized comparisons. Reasserting here keeps the manifest + telemetry honest.
-        """
-        if config_sm is None or config_mem is None:
-            return _query_nvml_clocks()
-        return _apply_clock_lock(int(config_sm), int(config_mem), retry_attempts=3)
-    try:
-        # Enable persistence mode
-        _nvidia_smi(["-i", str(physical_index), "-pm", "1"])
-        
-        # Get max clocks if not specified
-        if sm_clock_mhz is None or mem_clock_mhz is None:
+    # Resolve targets before taking ownership of any device state.
+    if sm_clock_mhz is None or mem_clock_mhz is None:
+        try:
             out = _nvidia_smi(
                 [
                     "-i",
@@ -640,28 +618,59 @@ def lock_gpu_clocks(device: int = 0, sm_clock_mhz: Optional[int] = None, mem_clo
                     "--format=csv,noheader,nounits",
                 ]
             )
-            max_sm, max_mem = [int(x.strip()) for x in out.decode().split(',')]
-            sm_clock_mhz = sm_clock_mhz or max_sm
-            mem_clock_mhz = mem_clock_mhz or max_mem
-        
-        if sm_clock_mhz is None or mem_clock_mhz is None:
-            raise RuntimeError("Unable to determine target SM/memory clocks for lock_gpu_clocks")
-        
-        # Apply and verify. Use a couple retries to guard against rare clock drift between targets.
-        app_sm, app_mem, cur_sm, cur_mem = _reassert_clock_lock(sm_clock_mhz, mem_clock_mhz)
-        
+            max_sm, max_mem = [int(x.strip()) for x in out.decode().split(",")]
+        except (subprocess.CalledProcessError, FileNotFoundError, UnicodeDecodeError, ValueError) as exc:
+            raise RuntimeError(f"Failed to resolve maximum GPU clocks: {exc}") from exc
+        if sm_clock_mhz is None:
+            sm_clock_mhz = max_sm
+        if mem_clock_mhz is None:
+            mem_clock_mhz = max_mem
+
+    target_sm = int(sm_clock_mhz)
+    target_mem = int(mem_clock_mhz)
+    if target_sm <= 0 or target_mem <= 0:
+        raise RuntimeError(
+            f"GPU application clocks must be positive, got SM={target_sm}MHz Mem={target_mem}MHz"
+        )
+
+    entry_state = _query_nvml_state()
+    persistence_mutation_attempted = False
+    clock_mutation_attempted = False
+    primary_error: BaseException | None = None
+
+    try:
+        if not entry_state.persistence_enabled:
+            persistence_mutation_attempted = True
+            _set_persistence(True)
+
+        active_state = _query_nvml_state()
+        if not _application_clocks_match(active_state, target_sm, target_mem):
+            # Mark ownership before the command because nvidia-smi can change the
+            # state and still report an error. Cleanup must cover that case.
+            clock_mutation_attempted = True
+            _set_application_clocks(target_sm, target_mem, action="set")
+            active_state = _query_nvml_state()
+
+        _verify_target(active_state, target_sm, target_mem)
+
         # Calculate theoretical performance at these clocks using device properties
         sm_count = props.multi_processor_count
         # memory_clock_rate is reported in kHz, memory_bus_width in bits
         mem_clock_hz = getattr(props, "memory_clock_rate", 0) * 1000
         bus_width_bits = getattr(props, "memory_bus_width", 0)
-        theoretical_tflops = 1e-6 * 2 * sm_count * 4 * 256 * sm_clock_mhz
+        theoretical_tflops = 1e-6 * 2 * sm_count * 4 * 256 * target_sm
         theoretical_gbps = 0.0
         if mem_clock_hz > 0 and bus_width_bits > 0:
             # DDR: multiply by 2
             theoretical_gbps = mem_clock_hz * (bus_width_bits / 8) * 2 / 1e9
-        
-        logger.info(f"GPU clocks locked: SM={int(sm_clock_mhz)}MHz, Mem={int(mem_clock_mhz)}MHz")
+
+        ownership = "owned" if clock_mutation_attempted else "borrowed"
+        logger.info(
+            "GPU application clocks %s: SM=%dMHz, Mem=%dMHz",
+            ownership,
+            target_sm,
+            target_mem,
+        )
         if theoretical_tflops > 0:
             logger.info(
                 "Theoretical peak: %.1f TFLOPS (FP16), %.0f GB/s (bus=%dbit)",
@@ -669,21 +678,103 @@ def lock_gpu_clocks(device: int = 0, sm_clock_mhz: Optional[int] = None, mem_clo
                 theoretical_gbps,
                 bus_width_bits,
             )
-        
+
         yield theoretical_tflops, theoretical_gbps
-        
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        raise RuntimeError(f"Failed to lock GPU clocks: {e}")
+
+    except BaseException as exc:
+        primary_error = exc
+        raise
     finally:
-        # Reset clocks
+        cleanup_errors: list[str] = []
+        observed: _GpuClockControlState | None = None
         try:
-            _nvidia_smi(["-i", str(physical_index), "-rgc"])
-            _nvidia_smi(["-i", str(physical_index), "-rmc"])
-            _nvidia_smi(["-i", str(physical_index), "-rac"])
-            _nvidia_smi(["-i", str(physical_index), "-pm", "0"])
-            logger.info("GPU clocks reset to default")
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            pass  # Best effort cleanup
+            observed = _query_nvml_state()
+        except Exception as exc:
+            cleanup_errors.append(f"could not query exit state: {exc}")
+
+        if clock_mutation_attempted:
+            if observed is None or not _application_clocks_match(
+                observed,
+                entry_state.application_sm_mhz,
+                entry_state.application_memory_mhz,
+            ):
+                try:
+                    _set_application_clocks(
+                        entry_state.application_sm_mhz,
+                        entry_state.application_memory_mhz,
+                        action="restore",
+                    )
+                except Exception as exc:
+                    cleanup_errors.append(str(exc))
+        elif observed is not None and not _application_clocks_match(
+            observed,
+            entry_state.application_sm_mhz,
+            entry_state.application_memory_mhz,
+        ):
+            cleanup_errors.append(
+                "borrowed GPU application clocks changed while the context was active: "
+                f"entry SM={entry_state.application_sm_mhz}MHz "
+                f"Mem={entry_state.application_memory_mhz}MHz, "
+                f"exit SM={observed.application_sm_mhz}MHz "
+                f"Mem={observed.application_memory_mhz}MHz"
+            )
+
+        try:
+            observed = _query_nvml_state()
+        except Exception as exc:
+            cleanup_errors.append(f"could not query state before persistence restore: {exc}")
+            observed = None
+
+        if persistence_mutation_attempted:
+            if observed is None or observed.persistence_enabled != entry_state.persistence_enabled:
+                try:
+                    _set_persistence(entry_state.persistence_enabled)
+                except Exception as exc:
+                    cleanup_errors.append(str(exc))
+        elif observed is not None and observed.persistence_enabled != entry_state.persistence_enabled:
+            cleanup_errors.append(
+                "borrowed GPU persistence mode changed while the context was active: "
+                f"entry={int(entry_state.persistence_enabled)} "
+                f"exit={int(observed.persistence_enabled)}"
+            )
+
+        try:
+            restored = _query_nvml_state()
+            if not _application_clocks_match(
+                restored,
+                entry_state.application_sm_mhz,
+                entry_state.application_memory_mhz,
+            ):
+                cleanup_errors.append(
+                    "application-clock restore mismatch: "
+                    f"expected SM={entry_state.application_sm_mhz}MHz "
+                    f"Mem={entry_state.application_memory_mhz}MHz, "
+                    f"observed SM={restored.application_sm_mhz}MHz "
+                    f"Mem={restored.application_memory_mhz}MHz"
+                )
+            if restored.persistence_enabled != entry_state.persistence_enabled:
+                cleanup_errors.append(
+                    "persistence restore mismatch: "
+                    f"expected={int(entry_state.persistence_enabled)} "
+                    f"observed={int(restored.persistence_enabled)}"
+                )
+        except Exception as exc:
+            cleanup_errors.append(f"could not verify restored GPU clock state: {exc}")
+
+        if cleanup_errors:
+            cleanup_error = RuntimeError("GPU clock state cleanup failed: " + " | ".join(cleanup_errors))
+            if primary_error is None:
+                raise cleanup_error
+            primary_error.add_note(str(cleanup_error))
+            if LOGGER_AVAILABLE:
+                logger.warning("GPU clock cleanup failed while handling another error: %s", cleanup_error)
+        elif clock_mutation_attempted or persistence_mutation_attempted:
+            logger.info(
+                "GPU clock control state restored: application SM=%dMHz Mem=%dMHz, persistence=%d",
+                entry_state.application_sm_mhz,
+                entry_state.application_memory_mhz,
+                int(entry_state.persistence_enabled),
+            )
 
 
 def _configure_quick_wins() -> None:
