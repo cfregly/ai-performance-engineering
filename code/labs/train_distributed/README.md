@@ -36,6 +36,27 @@ updates. A final partial group uses its actual size and still updates the model;
 for example, `--steps 3 --grad-accum 2` performs two optimizer updates. Both
 forward and backward stay inside the same gradient synchronization context.
 
+## FSDP2 training semantics
+
+In the four FSDP2 entrypoints, `--steps` counts optimizer updates. Each update
+consumes `--grad-accum` full per-rank microbatches, continuing into another data
+epoch when necessary. For example, `--steps 3 --grad-accum 2` consumes six
+microbatches and performs three updates. Empty per-rank loaders fail explicitly.
+
+Packed and synthetic FSDP2 labels already contain the next token at each input
+position. The training helper computes cross-entropy against these targets
+directly, avoiding a second causal shift inside the model. Direct runs seed
+model initialization and data order with 42; harness-owned seeds are preserved.
+Synthetic data uses a separate generator so data creation does not change model
+initialization.
+
+Rank 0 reports synchronized milliseconds per optimizer update, using the slowest
+rank's complete training interval. This includes data loading, transfers, forward,
+backward, optimizer updates, and training logging; it excludes model startup and
+teardown. The optimized path retains FlashAttention, its resharding policy, and
+fused AdamW where supported. These direct-run diagnostics do not yet enable the
+generic wrapper's missing child-result verification.
+
 ## Problem
 Distributed training has too many "optimized" labels that mean different things. This lab is here to keep DDP compression, pipeline schedules, and symmetric-memory training as separate benchmarked choices so you can see what actually helps on the current stack.
 
@@ -117,7 +138,7 @@ python -m pytest -q tests/test_audit_wave1_zero2_parity.py tests/test_audit_wave
 
 ## Notes
 - Inspect `python -m cli.aisp bench run --help` and `training_utils/torchrun_harness.py` for the supported launcher configuration; use the allocated topology and preserve launcher arguments with results.
-- FSDP/FSDP2 benchmarks default to `labs/train_distributed/data/tinystories_packed_seq128.jsonl` plus `labs/train_distributed/data/tinyllama_config.json`, with `AISP_TINYSTORIES_LAYERS=4` to keep the model small. Override with `AISP_TINYSTORIES_PACKED_PATH`, `AISP_TINYSTORIES_LOCAL_PATH`, `AISP_TINYSTORIES_CONFIG_PATH`, or `AISP_TINYSTORIES_LAYERS`.
+- FSDP and FSDP2 wrappers select `labs/train_distributed/data/tinystories_packed_seq1024.jsonl` and `labs/train_distributed/data/tinyllama_config.json`. FSDP selects 22 layers for single-GPU and 12 for multi-GPU; FSDP2 selects eight layers, per-rank microbatch size two, and accumulation two. Override direct-run inputs with `AISP_TINYSTORIES_PACKED_PATH`, `AISP_TINYSTORIES_LOCAL_PATH`, `AISP_TINYSTORIES_CONFIG_PATH`, or `AISP_TINYSTORIES_LAYERS`.
 - Scale up by increasing `AISP_TINYSTORIES_LAYERS` or swapping to a larger config and pairing it with a packed dataset that matches the new sequence length.
 - Set `AISP_FSDP_DISABLE_FP8=1` to keep the minimal BF16 path; unset it when you want to exercise the FP8 conversion on larger workloads.
 - The generic `fsdp2` wrapper retains metadata but rejects harness execution. Direct script execution is not a substitute for a child-result contract or multi-GPU correctness evidence.

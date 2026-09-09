@@ -657,8 +657,10 @@ A further annotated Nsight capture confirms that caching group state lists
 reduces host optimizer-group ranges from 3.145919 to 1.923718 ms per steady
 update. The non-CUDA remainder falls by about 1.199 ms, but the optimizer still
 launches 107 kernels and has about 0.953 ms of GPU activity after backward.
-The measured training interval does not materially improve. Removing host work
-alone therefore does not close this workload's remaining gap.
+The cached candidate's unprofiled ratios are 1.035345x / 1.036996x, compared with
+the original candidate's 1.036344x / 1.033969x. These separate cohorts do not
+establish a significant difference; both remain below 1.05x. Removing this host
+work therefore does not close the recorded workload's remaining gap.
 
 The separate event-reuse candidate retains gradient stream-lifetime tracking
 and the original optimizer math. Its three-step exact check covers all 201
