@@ -1299,11 +1299,37 @@ only after a real engine-step sweep observes one empty queue and one busy
 queue. The optimized arm consumes observed queue depth, TTFT, and token
 activity. The default all-upfront workload is unchanged. Fifty-nine focused
 tests cover full-token ordering, reused-engine reset, argument validation,
-and prerequisite failure. Its two-B200 performance remains unmeasured; there
-is no universal speedup requirement.
+and prerequisite failure.
+
+The repeated two-B200 experiment now completes all six arms in
+baseline/optimized/optimized/baseline/baseline/optimized order. Every arm
+reuses two engines for five warmups and three steady calls. All 48 invocations
+match all 272 framed generated-token values exactly, with complete identical
+17,920-token inputs. Both-GPU clock settings, runtime, source, lifecycle,
+and teardown checks pass. The local copy verifies 40 files / 1,339,316 bytes,
+inventory SHA-256
+`160aa5df8f208248ae47c5355ae63e953cda3d4bccb27cd0b19e153e44175aac`.
+
+Round robin has a 1,285.579 ms median completion time; feedback routing has
+1,294.967 ms. The three paired ratios are 0.99211, 0.99096, and 0.99275x.
+The median of the nine steady-call foreground p50 values worsens from
+58.973 to 75.897 ms; the corresponding p95 summary worsens from 70.645 to
+76.185 ms. Round robin admits the eight foreground requests 4/4. Feedback
+routing produces 2/6 or 0/8 placement across the steady calls. This is a
+correctly executed no-win result for the controlled workload, with no
+universal speedup requirement.
+
+The next bounded candidate at `15978d45efb6c11b731ed3aae1074f35ad5910ec`
+updates exact queue counters immediately instead of smoothing new admissions
+with alpha 0.3. Latency and token-activity smoothing remain unchanged, as do
+default sampled-telemetry routing and the all-upfront workload. Sixty-two
+focused CPU tests pass. The unchanged two-B200 workload will determine whether
+this counter correction improves the observed burst behavior; its performance
+is not yet measured.
 
 The first reviewed serving Nsight launch was blocked by another workload on
 the first B200; that workload was untouched. After both devices became free,
 the two-GPU clock reruns and all three serving Nsight captures completed, as
-recorded above. The two-wave routing measurement is running; its performance
-remains pending until completion and validation receipts are inspected.
+recorded above. The first two-wave routing measurement also completes with
+the no-win result above. The queue-counter candidate is staged for a fresh
+comparison after the active copy-removal timing screen finishes.
