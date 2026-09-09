@@ -8181,8 +8181,20 @@ def _test_chapter_impl(
                                     error=ncu_error,
                                 )
 
-                            # PyTorch profiler
-                            if TORCH_PROFILER_AVAILABLE:
+                            # Minimal mode profiles only the selected optimized
+                            # variant, but has the same child-process boundary.
+                            torch_not_applicable = _torch_profiler_not_applicable_reason(optimized_benchmark)
+                            if torch_not_applicable:
+                                best_opt["optimized_profiler_not_applicable"] = {"torch": torch_not_applicable}
+                                logger.info(f"PyTorch profiler not applicable: {torch_not_applicable}")
+                                emit_event(
+                                    event_logger, logger, "profiler_end",
+                                    chapter=chapter_name, example=example_name,
+                                    example_type=example_type, variant="optimized", profiler="torch",
+                                    technique=best_key, status="not_applicable",
+                                    output_path=None, metrics=None, error=torch_not_applicable,
+                                )
+                            elif TORCH_PROFILER_AVAILABLE:
                                 emit_progress(
                                     "optimized_torch",
                                     step=f"{chapter_name}:{example_name}",
