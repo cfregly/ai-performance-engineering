@@ -1289,8 +1289,8 @@ SHA-256 `33e295d4f7d355e03ec30c619e79ad0ec3adf6a1475873064a0d533ba2aa5373`.
 Both stages drain naturally. A separate before/after public-pair timing screen
 was interrupted when both B200s became available for queued multi-GPU work.
 Its partial outputs and successful owned-process drain are retained; they are
-not accepted timing results. A fresh timing screen remains pending, and no
-speed improvement is claimed from these correctness runs.
+not accepted timing results. A separate, completed timing screen is recorded
+below; the correctness runs themselves do not establish a speed improvement.
 
 The opt-in `--routing-arrival-profile two-wave-imbalance` now exercises actual
 feedback routing at `0862b770b7dbbd04e0fdd381a358ca378a278710`. Both arms
@@ -1332,4 +1332,36 @@ the first B200; that workload was untouched. After both devices became free,
 the two-GPU clock reruns and all three serving Nsight captures completed, as
 recorded above. The first two-wave routing measurement also completes with
 the no-win result above. The queue-counter candidate is staged for a fresh
-comparison after the active copy-removal timing screen finishes.
+comparison after the completed copy-removal timing screen.
+
+### Copy-removal timing screen
+
+The fresh one-B200 screen compares `4118f256c5eef3c7d78bd3fa8ebcdfb4a5d5d7b6`
+with `604146c16116dd88e0a407d13432f7ac0da87276` in before/after/after/before
+order for each of three public targets. All 12 public invocations pass
+execution, input, and output checks, covering all six optimized variants.
+Shapes, warmups, iterations, runtime, and 1500/3996 MHz application clocks
+are matched. Each invocation restores its entry clock and persistence state.
+The stage drains naturally. The verified evidence contains 159 files /
+67,627,251 bytes, inventory SHA-256
+`c4b40942b85dd04aa69ffcbb5b0bcc4bb272d54cd631637669267f97ff6a7130`.
+
+| Optimized variant | Before median ms | After median ms | Before / after |
+| --- | ---: | ---: | ---: |
+| Persistent CUDA | 0.067891 | 0.068157 | 0.9961x |
+| Full and piecewise graphs | 0.064115 | 0.062505 | 1.0258x |
+| Persistent graphs | 0.064116 | 0.062500 | 1.0258x |
+| Persistent Triton | 0.066374 | 0.066453 | 0.9988x |
+| Descriptor-TMA prefill/decode | 0.752386 | 0.751104 | 1.0017x |
+| Thread-scope-copy prefill/decode | 0.459071 | 0.455192 | 1.0085x |
+
+The baseline controls change by at most 0.103% between source medians.
+The two graph variants improve by about 2.6%, consistent with the removed
+temporary reduction and copy. Their within-source sample spans are at most
+0.65%. This is one ABBA block with two public timing aggregates per source,
+not a confidence interval or a canonical profiler-qualified result. The other
+changes are small and remain reported as measured. Eight public invocations
+retain `failed_no_speedup` because their optimized path is slower than their
+baseline; all eight still pass execution and output checks. The old source's
+sanitizer failures also remain failures. Neither no-win result is relabeled
+to satisfy a universal ratio.

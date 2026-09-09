@@ -10,6 +10,8 @@ At source `d03fd19516cae424f4af17eaebc28b2fbdb82e8f`, all nine producers pass bo
 
 The FP32 validator now uses an FP64 oracle and a per-element roundoff bound, `gamma_(2D+2) * sum(abs(q*k)) * abs(v)`, plus an underflow allowance. Here `gamma_n = n*u/(1-n*u)` and `u = 2^-24`. This detects errors that the older 10%-plus-1.0 comparison accepted while allowing legitimate accumulation-order differences, including cancellation. This check precedes harness payload acceptance; the pair tolerance does not bypass it. At `604146c16116dd88e0a407d13432f7ac0da87276`, all nine medium-FP32 producers pass the new guard and zero-error initcheck on a B200. All 47 focused tests also pass there, including seven actual CUDA cases with three changed-input runs and corruption checks each. FP16 and fake-int4 retain their existing numerical policy and need separate accuracy requirements.
 
+A subsequent public before/after timing screen on one B200 measures about 2.5% lower latency in both persistent graph variants after removing temporary reduction/copy work. The CUDA and Triton controls are nearly unchanged; descriptor-TMA and thread-scope-copy improvements are only 0.17% and 0.85%. All 12 invocations pass execution and output checks. These are two timing aggregates per source in one ABBA block, with matched shapes and clocks; the [timing report](../../../docs/reviews/2026-09-08-b200-remaining-followthrough.md#copy-removal-timing-screen) retains every variant, baseline controls, and the prefill/decode no-win results.
+
 ## Problem
 Decode and prefill paths often die by launch overhead, staging overhead, or both. This lab exists to show which of those costs persistent kernels, CUDA Graphs, and TMA actually remove on the same logical workload.
 
