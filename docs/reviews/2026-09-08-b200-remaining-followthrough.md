@@ -1079,15 +1079,26 @@ Topology discovery previously treated NVML physical indices as CUDA logical
 indices and kept an eight-digit PCI domain when sysfs requires four digits.
 It now resolves real CUDA device UUIDs first, preserves unknown locality when
 identity cannot be resolved, and honors empty/restricted/reordered visibility.
-All 25 focused CPU regressions pass. Actual B200 identity/NUMA readback remains
-pending; unknown NUMA data is not converted into a claimed locality map.
+All 25 focused CPU regressions pass. The subsequent B200 readback at
+`f2f8f6172ff253b05b930189803061a724cb67f1` passes all six visibility cases:
+normal and reversed numeric ordering, numeric and UUID single-GPU masks, and
+empty/`-1` masks. Real NVML calls resolve the exact CUDA UUID order, and PCI
+bus identity remains stable across cases. NUMA information is unavailable on
+this host and remains explicitly unknown; this does not establish NUMA-aware
+placement performance.
 
 All four FSDP1 entrypoints now emit the same synchronized slowest-rank
 `time_per_iter_ms` marker as FSDP2, divided by completed optimizer updates.
 The interval includes the full training loop and excludes model startup and
-teardown. Forty-five focused CPU tests pass; B200 validation of this new timing
-marker is pending. This fixes a missing timing output but does not enable the
-generic FSDP child-result wrappers, which still need their dedicated adapter.
+teardown. Forty-five focused CPU tests pass. At
+`f2f8f6172ff253b05b930189803061a724cb67f1`, all four public FSDP1 arms also
+pass direct B200 validation: single-GPU baseline/optimized retain 22 layers,
+microbatch 16, and 10 updates / 20 microbatches; two-GPU baseline/optimized
+retain 12 layers, microbatch 2 per rank, and 200 updates / 400 microbatches.
+Every arm emits exactly one positive timing marker and finite printed losses,
+with both application-clock settings verified at 1500/3996 MHz. These single
+invocations validate timing output and execution, not a repeated speed claim.
+The generic FSDP child-result wrappers still need their dedicated adapter.
 
 
 ### Repeated serving spillover result
@@ -1131,3 +1142,30 @@ The successful collection drains naturally and its local copy verifies all
 71 files / 1,419,112 bytes in `serving-flex-placement-v4`, inventory SHA-256
 `d5469421ce807b10dec79f24d2fac75418ab6f7765f7544cc8f69e2f071fde8d`.
 Fresh Nsight mechanism captures for the spillover path remain pending.
+
+
+### Additional public execution and memory coverage
+
+A six-target public execution batch at
+`4118f256c5eef3c7d78bd3fa8ebcdfb4a5d5d7b6` retains all baseline and optimized
+results. The persistent-decode aggregate (all four optimized variants),
+descriptor-based TMA prefill/decode, and FA4 ALiBi pass runtime, input, output,
+and 1500/3996 MHz manifest checks. The TMA result is a performance-only
+`failed_no_speedup` outcome (0.588x in this invocation); it remains visible
+as a no-win at the public default shape. These executions are coverage
+evidence, not new repeated or profiler-qualified speed claims.
+
+Single- and two-GPU hybrid expert parallelism and two-GPU sequence parallelism
+complete their public commands, but the private validator rejects all three
+because their manifests report 1965 MHz instead of the requested 1500 MHz.
+The original receipts remain failed while that clock propagation/recording
+path is investigated. The two-GPU hybrid EP command also reports a
+performance-only no-speedup outcome. All producers drain naturally. The
+local evidence copy verifies 87 files / 22,403,743 bytes, inventory SHA-256
+`d50c4fd569aa9737d44c4da47857014b4068ba039f2bb2e643e8c2c50f56e11e`.
+
+A separate memory diagnostic now runs all seven persistent-decode/TMA
+producers under both Compute Sanitizer `memcheck` and `initcheck`. It retains
+one complete default-shape invocation, all inputs and actual outputs, and
+independently computed references per producer and tool. These 14 checks are
+in progress; no memory-clean claim is made before their terminal receipts.
