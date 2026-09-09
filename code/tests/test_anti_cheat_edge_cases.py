@@ -35,6 +35,10 @@ from tests.protection_test_utils import (
 )
 
 requires_cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason="real CUDA protection integration requires a device")
+requires_two_cuda = pytest.mark.skipif(
+    not torch.cuda.is_available() or torch.cuda.device_count() < 2,
+    reason="two visible CUDA devices required for cross-device protection tests",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -486,13 +490,61 @@ class TestCudaEdgeCases:
         'Requirement remains open; this retained test ID is not passing coverage.'
         pytest.skip('Missing production protection: no persistent kernel lifetime detector is implemented')
 
+    @requires_two_cuda
     def test_undeclared_multi_gpu_single_declared(self):
-        'Requirement remains open; this retained test ID is not passing coverage.'
-        pytest.skip('Missing production protection: no undeclared GPU execution detector is implemented')
+        """Reject dispatcher-visible work on a second logical CUDA device."""
+        declared_index = int(torch.cuda.current_device())
+        undeclared_index = next(
+            index for index in range(torch.cuda.device_count()) if index != declared_index
+        )
+        declared_device = torch.device("cuda", declared_index)
+        undeclared_device = torch.device("cuda", undeclared_index)
+        declared_value = torch.ones(8, device=declared_device)
+        undeclared_value = torch.ones(8, device=undeclared_device)
+        torch.cuda.synchronize(declared_device)
+        torch.cuda.synchronize(undeclared_device)
 
+        result = audit_callable_once(
+            lambda: (declared_value.add(1), undeclared_value.add(1)),
+            expected_device=declared_device,
+        )
+        torch.cuda.synchronize(declared_device)
+        torch.cuda.synchronize(undeclared_device)
+
+        assert not result.passed
+        assert result.placement.operations_seen == 2
+        assert result.placement.expected_device_operations_seen == 1
+        assert result.placement.violations_seen == 1
+        violation = result.placement.violation_evidence[0]
+        assert violation.mismatched_paths
+        assert {tensor.device for tensor in violation.tensors} == {str(undeclared_device)}
+
+    @requires_two_cuda
     def test_context_switch_device_change(self):
-        'Requirement remains open; this retained test ID is not passing coverage.'
-        pytest.skip('Missing production protection: no CUDA context switch enforcement detector is implemented')
+        """Reject current-device drift that remains present at a harness boundary."""
+        from core.harness.device_identity_contract import (
+            DeviceIdentityContract,
+            DeviceIdentityError,
+        )
+
+        pytest.importorskip("pynvml", reason="live CUDA context contract requires pynvml")
+        declared_index = int(torch.cuda.current_device())
+        switched_index = next(
+            index for index in range(torch.cuda.device_count()) if index != declared_index
+        )
+        contract = DeviceIdentityContract(torch.device("cuda", declared_index))
+        contract.establish_configured_device()
+        try:
+            contract.check("before_context_switch_edge_case")
+            torch.cuda.set_device(switched_index)
+            with pytest.raises(
+                DeviceIdentityError,
+                match="CUDA current-device drift at after_context_switch_edge_case",
+            ):
+                contract.check("after_context_switch_edge_case")
+        finally:
+            contract.restore_entry_device()
+        assert torch.cuda.current_device() == declared_index
 
     def test_driver_overhead_many_small_kernels(self):
         'Requirement remains open; this retained test ID is not passing coverage.'

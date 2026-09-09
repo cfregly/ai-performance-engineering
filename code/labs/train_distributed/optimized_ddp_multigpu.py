@@ -29,12 +29,13 @@ from labs.train_distributed.training_utils.ddp_child_result import (
     make_ddp_child_result_contract,
     publish_ddp_child_result,
 )
+from labs.train_distributed.training_utils.deferred_metrics import DeferredTrainingProgress
 from labs.train_distributed.training_utils.gradient_accumulation import (
     build_gradient_accumulation_plan,
     gradient_sync_context,
     validate_gradient_accumulation,
 )
-from labs.train_distributed.training_utils.deferred_metrics import DeferredTrainingProgress
+from labs.train_distributed.training_utils.overlap_adamw import OverlappedAdamW
 from labs.train_distributed.training_utils.torchrun_harness import TorchrunScriptBenchmark
 from labs.train_distributed.training_utils.utils import (
     build_dataloader,
@@ -45,21 +46,76 @@ from labs.train_distributed.training_utils.utils import (
     make_causal_lm_labels,
 )
 
+DDP_BUCKET_CAP_MB = 50
+DDP_BUCKET_BYTES = DDP_BUCKET_CAP_MB * 1024 * 1024
 
-def parse_args():
+
+def parse_args(argv=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--steps", type=int, default=200, help="Number of optimization steps.")
+    parser.add_argument("--steps", type=int, default=200, help="Maximum number of training microbatches.")
     parser.add_argument("--batch-size", type=int, default=16, help="Per-rank microbatch size.")
     parser.add_argument("--grad-accum", type=int, default=1, help="Gradient accumulation steps.")
     parser.add_argument("--learning-rate", type=float, default=2e-4, help="AdamW learning rate.")
     parser.add_argument("--compile", action="store_true", help="Enable torch.compile on the model.")
-    return parser.parse_args()
+    parser.add_argument(
+        "--overlap-optimizer",
+        action="store_true",
+        help="Overlap fused AdamW bucket updates with backward on exactly two ranks.",
+    )
+    return parser.parse_args(argv)
+
+
+def _validate_overlap_optimizer_request(args, *, world_size: int) -> None:
+    if not args.overlap_optimizer:
+        return
+    if world_size != 2 or args.grad_accum != 1 or args.compile:
+        raise ValueError(
+            "--overlap-optimizer requires exactly two ranks, --grad-accum 1, "
+            "and compile disabled; "
+            f"got world_size={world_size}, grad_accum={args.grad_accum}, "
+            f"compile={args.compile}"
+        )
+
+
+def _overlap_world_size_before_init() -> int:
+    if dist.is_initialized():
+        return dist.get_world_size()
+    encoded = os.environ.get("WORLD_SIZE")
+    if encoded is None:
+        raise ValueError(
+            "--overlap-optimizer requires torchrun with WORLD_SIZE=2; WORLD_SIZE is unset"
+        )
+    try:
+        world_size = int(encoded)
+    except ValueError as exc:
+        raise ValueError(
+            "--overlap-optimizer requires an integer WORLD_SIZE=2; "
+            f"got WORLD_SIZE={encoded!r}"
+        ) from exc
+    return world_size
+
+
+def _build_optimizer(model, ddp_model, args):
+    if args.overlap_optimizer:
+        return OverlappedAdamW(
+            model,
+            make_ddp_adamw,
+            args.learning_rate,
+            ddp=ddp_model,
+            bucket_bytes=DDP_BUCKET_BYTES,
+        )
+    return make_ddp_adamw(ddp_model.parameters(), args.learning_rate, prefer_fused=True)
 
 
 def main():
-    require_min_gpus(2, script_name="optimized_ddp_multigpu.py")
     args = parse_args()
     validate_gradient_accumulation(args.steps, args.grad_accum)
+    if args.overlap_optimizer:
+        _validate_overlap_optimizer_request(
+            args,
+            world_size=_overlap_world_size_before_init(),
+        )
+    require_min_gpus(2, script_name="optimized_ddp_multigpu.py")
     local_rank = resolve_local_rank()
     if not torch.cuda.is_available():
         raise RuntimeError("DDP optimized run requires CUDA GPUs.")
@@ -81,7 +137,7 @@ def main():
     is_main = rank == 0
     active_seed = initialize_ddp_seed()
     tokenizer = build_tokenizer()
-    dataset = get_dataset()["train"]
+    dataset = get_dataset(tokenizer=tokenizer)["train"]
 
     dataloader = build_dataloader(
         dataset,
@@ -103,7 +159,7 @@ def main():
     ddp_model = DistributedModel(
         model,
         device_ids=[local_rank],
-        bucket_cap_mb=50,
+        bucket_cap_mb=DDP_BUCKET_CAP_MB,
         gradient_as_bucket_view=True,
     )
 
@@ -117,7 +173,7 @@ def main():
             dynamic=False,
         )
 
-    optimizer = make_ddp_adamw(ddp_model.parameters(), args.learning_rate, prefer_fused=True)
+    optimizer = _build_optimizer(model, ddp_model, args)
 
     num_steps = min(args.steps, len(dataloader))
     accumulation_plan = build_gradient_accumulation_plan(num_steps, args.grad_accum)
@@ -163,7 +219,7 @@ def main():
         if step % 10 == 0 and is_main:
             if progress is None:
                 raise RuntimeError("Training progress buffer was not initialized")
-            progress.record(step=step, loss=loss, tokens=batch["input_ids"].numel())
+            progress.record(step=step, loss=outputs.loss.detach(), tokens=batch["input_ids"].numel())
 
     torch.cuda.synchronize(device)
     total_time = perf_counter() - start_time

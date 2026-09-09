@@ -2643,22 +2643,23 @@ ENTRIES["ch15"] = chapter_entry(
         "Serve MoE models efficiently by pairing routing with optimized communication.",
     ],
     contents=[
-        ("`baseline_inference_monolithic.py`, `optimized_inference_monolithic.py`", "Single-box inference loops that establish the baseline before disaggregation."),
-        ("`disaggregated_inference_multigpu.py`", "Disaggregated inference demo that layers speculative decoding on top of prefill/decode pools."),
-        ("`baseline_single_gpu_kv_handoff.py`, `optimized_single_gpu_kv_handoff.py`, `baseline_disaggregated_inference_multigpu.py`, `optimized_disaggregated_inference_multigpu.py`, `baseline_prefill_decode_disagg.py`, `optimized_prefill_decode_disagg.py`, `baseline_prefill_decode_disagg_multigpu.py`, `optimized_prefill_decode_disagg_multigpu.py`, `disaggregated_inference_single_common.py`", "Disaggregated pipelines modeling remote prefills, decode overlap, and NVLink pooling (multi-GPU), plus a supplementary single-GPU KV-handoff comparison pair."),
-        ("`baseline_kv_cache_management.py`, `optimized_kv_cache_management.py`, `kv_cache_management_math.py`, `baseline_kv_cache_nvlink_pool.py`, `optimized_kv_cache_nvlink_pool.py`, `baseline_kv_cache_nvlink_pool_multigpu.py`, `optimized_kv_cache_nvlink_pool_multigpu.py`", "KV-cache orchestration utilities with local-only, math-only, and NVLink-pooled variants."),
-        ("`baseline_continuous_batching.py`, `optimized_continuous_batching.py`", "Single-GPU continuous batching scheduler for TTFT-aware queueing."),
-        ("`baseline_continuous_batching_multigpu.py`, `optimized_continuous_batching_multigpu.py`", "Multi-GPU continuous batching scheduler for scaled queueing throughput."),
-        ("`baseline_greedy_sampler.py`, `optimized_greedy_sampler.py`, `greedy_sampler_common.py`", "Greedy decode sampler comparison showing that positive-temperature argmax can skip full-vocab softmax materialization."),
-        ("`baseline_moe_inference.py`, `optimized_moe_inference.py`", "Inference-specific MoE workloads that pair router load with communication control."),
-        ("`baseline_moe_overlap.py`, `optimized_moe_overlap_shared_expert.py`, `baseline_moe_overlap_local_route.py`, `optimized_moe_overlap_local_route.py`, `moe_overlap_local_route_common.py`, `baseline_wide_ep.py`, `optimized_wide_ep.py`, `baseline_moe_dispatch.py`, `optimized_moe_dispatch.py`, `baseline_moe_routing_topology_aware.py`, `optimized_moe_routing_topology_aware.py`", "MoE expert-parallel microbenchmarks that now split dispatch-path optimization, direct local routed placement, and topology-aware routing locality so attribution stays clean."),
-        ("`compare.py`, `requirements.txt`, `expectations_{hardware_key}.json`, `Makefile`", "Harness entry and dependencies for inference-focused validation."),
+        ('`baseline_inference_monolithic.py`, `optimized_inference_monolithic.py`', 'Single-box inference loops that establish the baseline before disaggregation.'),
+        ('`disaggregated_inference_multigpu.py`', 'Disaggregated inference demo that layers speculative decoding on top of prefill/decode pools.'),
+        ('`baseline_single_gpu_kv_handoff.py`, `optimized_single_gpu_kv_handoff.py`, `baseline_disaggregated_inference_multigpu.py`, `optimized_disaggregated_inference_multigpu.py`, `baseline_prefill_decode_disagg.py`, `optimized_prefill_decode_disagg.py`, `baseline_prefill_decode_disagg_multigpu.py`, `optimized_prefill_decode_disagg_multigpu.py`, `disaggregated_inference_single_common.py`', 'Disaggregated pipelines modeling remote prefills, decode overlap, and NVLink pooling (multi-GPU), plus a supplementary single-GPU KV-handoff comparison pair.'),
+        ('`baseline_kv_cache_management.py`, `optimized_kv_cache_management.py`, `kv_cache_management_math.py`, `baseline_kv_cache_nvlink_pool.py`, `optimized_kv_cache_nvlink_pool.py`, `baseline_kv_cache_nvlink_pool_multigpu.py`, `optimized_kv_cache_nvlink_pool_multigpu.py`', 'KV-cache orchestration utilities with local-only, math-only, and NVLink-pooled variants.'),
+        ('`baseline_continuous_batching.py`, `optimized_continuous_batching.py`', 'Single-GPU continuous batching scheduler for TTFT-aware queueing.'),
+        ('`baseline_continuous_batching_multigpu.py`, `optimized_continuous_batching_multigpu.py`', 'Multi-GPU continuous batching scheduler for scaled queueing throughput.'),
+        ('`baseline_greedy_sampler.py`, `optimized_greedy_sampler.py`, `greedy_sampler_common.py`', 'Greedy decode sampler comparison showing that positive-temperature argmax can skip full-vocab softmax materialization.'),
+        ('`baseline_moe_inference.py`, `optimized_moe_inference.py`', 'Inference-specific MoE workloads that pair router load with communication control.'),
+        ('`baseline_moe_comm_exchange.py`, `optimized_moe_comm_exchange_overlap.py`, `optimized_moe_comm_exchange_hierarchical.py`, `moe_comm_exchange_benchmarks.py`, `baseline_moe_overlap.py`, `optimized_moe_overlap_shared_expert.py`, `baseline_moe_overlap_local_route.py`, `optimized_moe_overlap_local_route.py`, `moe_overlap_local_route_common.py`, `baseline_wide_ep.py`, `optimized_wide_ep.py`, `baseline_moe_dispatch.py`, `optimized_moe_dispatch.py`, `baseline_moe_routing_topology_aware.py`, `optimized_moe_routing_topology_aware.py`', 'MoE expert-parallel microbenchmarks that split exchange overlap and hierarchy, dispatch-path optimization, direct local routed placement, and topology-aware routing locality so attribution stays clean.'),
+        ('`compare.py`, `requirements.txt`, `expectations_{hardware_key}.json`, `Makefile`', 'Harness entry and dependencies for inference-focused validation.'),
     ],
     validation=[
-        "`python -m cli.aisp bench run --targets ch15:disaggregated_inference_multigpu --profile minimal --ncu-replay-mode kernel` shows reduced fabric stalls compared to the baseline while maintaining accuracy parity (kernel replay avoids NCU application-replay stalls on this workload).",
-        "`python optimized_kv_cache_management.py --validate` confirms eviction + promotion policies keep decode latency within the budget.",
-        "`python compare.py --examples continuous_batching` (single GPU) and `python compare.py --examples continuous_batching_multigpu` (multi-GPU) show optimized scheduling increases tokens/sec vs naive queue draining.",
-        "`python -m cli.aisp bench run --targets ch15:greedy_sampler --profile minimal --single-gpu` verifies the direct-logit argmax path matches the full-probability baseline exactly.",
+        '`python -m cli.aisp bench run --targets ch15:disaggregated_inference_multigpu --profile minimal --ncu-replay-mode kernel` shows reduced fabric stalls compared to the baseline while maintaining accuracy parity (kernel replay avoids NCU application-replay stalls on this workload).',
+        '`python optimized_kv_cache_management.py --validate` confirms eviction + promotion policies keep decode latency within the budget.',
+        '`python compare.py --examples continuous_batching` (single GPU) and `python compare.py --examples continuous_batching_multigpu` (multi-GPU) show optimized scheduling increases tokens/sec vs naive queue draining.',
+        '`python -m cli.aisp bench run --targets ch15:greedy_sampler --profile minimal --single-gpu` verifies the direct-logit argmax path matches the full-probability baseline exactly.',
+        '`python -m cli.aisp bench run --targets ch15:moe_comm_exchange --profile minimal --single-gpu` compares the complete timed output and every token/route input at exact tolerance across the flat, overlap, and hierarchical single-GPU logical-rank paths. Rerun this GPU path after verification changes before treating existing receipts as current-source evidence.',
     ],
     notes=[
         "`disaggregated_inference_multigpu.py` can run purely in simulation mode; set `--simulate-network` when hardware isn't wired for NVLink pooling.",
@@ -3727,19 +3728,30 @@ ENTRIES["labs/dynamic_router"] = lab_entry(
         ("`topology.py`, `topology_probe.py`", "NUMA-aware GPU mapping helpers and a target that emits topology JSON under `artifacts/topology/` for routing hints."),
     ],
     validation=[
-        "`python labs/dynamic_router/driver.py --mode baseline` vs `--mode optimized` shows lower TTFT variance and higher TPOT for the optimized policy.",
-        "`python -m cli.aisp bench run --targets labs/dynamic_router --profile minimal` records artifacts comparing baseline/optimized harness runs.",
-        "`python -m cli.aisp bench run --targets labs/dynamic_router:dynamic_router_vllm --target-extra-arg labs/dynamic_router:dynamic_router_vllm=\"--model /path/to/model --decode-gpus 0,1\"` succeeds on hosts with at least two GPUs and a local model copy.",
-        "`VLLM_BATCH_INVARIANT=1 python -m cli.aisp bench run --targets labs/dynamic_router:dual_pool_vllm --launch-via python --target-extra-arg labs/dynamic_router:dual_pool_vllm=\"--model /path/to/model --prefill-gpus 0 --decode-gpus 1 --attention-backend TRITON_ATTN\"` contrasts shared versus dual pools with exact token verification and emits per-pool TTFT and queue depth.",
-        "`python -m cli.aisp bench run --targets labs/dynamic_router:topology_probe` captures GPU↔NUMA mappings and distance matrices for consumption by the router.",
+        '`python labs/dynamic_router/driver.py --mode baseline` vs `--mode optimized` shows lower TTFT variance and higher TPOT for the optimized policy.',
+        '`python -m cli.aisp bench run --targets labs/dynamic_router --profile minimal` records artifacts comparing baseline/optimized harness runs.',
+        '`python -m cli.aisp bench run --targets labs/dynamic_router:dynamic_router_vllm --target-extra-arg labs/dynamic_router:dynamic_router_vllm="--model /path/to/model --decode-gpus 0,1"` succeeds on hosts with at least two GPUs and a local model copy.',
+        '`VLLM_BATCH_INVARIANT=1 python -m cli.aisp bench run --targets labs/dynamic_router:dynamic_router_vllm --target-extra-arg labs/dynamic_router:dynamic_router_vllm="--model /path/to/model --decode-gpus 0,1 --attention-backend TRITON_ATTN --routing-arrival-profile two-wave-imbalance --req-count 16 --long-prompt-tokens 4096 --short-prompt-tokens 128 --prefill-burst 4 --decode-requests 4 --continue-requests 8 --max-tokens 16"` runs the opt-in delayed-arrival comparison. Use the same model, GPU visibility and order, clocks, attention backend, warmups, and steady-state iterations for both arms.',
+        '`VLLM_BATCH_INVARIANT=1 python -m cli.aisp bench run --targets labs/dynamic_router:dual_pool_vllm --launch-via python --target-extra-arg labs/dynamic_router:dual_pool_vllm="--model /path/to/model --prefill-gpus 0 --decode-gpus 1 --attention-backend TRITON_ATTN"` contrasts shared versus dual pools with exact token verification and emits per-pool TTFT, queue depth, and per-GPU admission counts.',
+        '`python -m cli.aisp bench run --targets labs/dynamic_router:topology_probe` captures GPU↔NUMA mappings and distance matrices for consumption by the router.',
     ],
     notes=[
-        "The dual-pool policies produce different batch shapes. On the pinned vLLM 0.16 stack with GPT-OSS-20B, the default backend produced different greedy tokens for identical prompts, including across repeated optimized runs. The explicit batch-invariant Triton configuration above matched all 1,734 output elements on 2×B200. Apply the same backend and environment to both arms; the option does not change the default backend for other workloads. Other models and stacks still require their own correctness check.",
-        "The vLLM benchmarks construct each model engine once in `setup()`, execute the harness-required five full-workload warmups, and reuse the idle engines for exactly three steady-state iterations. Every invocation clears completed-request bookkeeping, uses a fresh request-id generation, and still verifies every generated token. Custom metrics report engine startup, warmup request processing, and steady-state request processing separately. Teardown emits a `vllm_engine_lifecycle` JSON record with teardown and end-to-end wall time, so moving engine construction outside the steady-state timer cannot be presented as an end-to-end speedup. Prefix caching remains disabled so every request processes its full declared prompt.",
-        "The harness prepares live CPU prompt IDs during setup. The topology-aware runner requires this input; standalone entrypoints create default prompts before calling it. Conversion to the Python token lists required by vLLM remains part of request admission, and GPU-resident prompt inputs fail explicitly before conversion.",
-        "`driver.py` accepts knobs such as `--prefill-gpus`, `--decode-gpus`, and `--migration-budget` to stress different regimes.",
-        "vLLM integration now takes flags (`--model`, `--prefill-gpus`, `--decode-gpus`, etc.) plus locally available tokenizer/model weights.",
-        "Router scoring incorporates pinned-host KV slab availability and NUMA-locality bias; feed it real topology via `topology_probe.py` or NVML when available.",
+        'The dual-pool policies produce different batch shapes. On the pinned vLLM 0.16 stack with GPT-OSS-20B, the default backend produced different greedy tokens for identical prompts, including across repeated optimized runs. The explicit batch-invariant Triton configuration above matched all 1,734 output elements on 2×B200. Apply the same backend and environment to both arms; the option does not change the default backend for other workloads. Other models and stacks still require their own correctness check.',
+        'The pinned vLLM 0.16 engine path accepts an unset `CUDA_VISIBLE_DEVICES` or numeric physical indices such as `0,1`; whole-GPU UUID tokens such as `GPU-...` raise a launch-configuration error before engine construction. An allocation launcher that receives whole-GPU UUIDs must resolve those exact assigned devices to numeric physical indices and preserve their order when exporting `CUDA_VISIBLE_DEVICES`; it must not substitute different GPUs. This lab does not support `MIG-...` UUID visibility: keep a MIG allocation unchanged and do not replace it with its parent GPU; obtain a supported whole-GPU allocation before running the lab.',
+        'The vLLM benchmarks construct each model engine once in `setup()`, execute the harness-required five full-workload warmups, and reuse the idle engines for exactly three steady-state iterations. Every invocation clears completed-request bookkeeping, uses a fresh request-id generation, and still verifies every generated token. Custom metrics report engine startup, warmup request processing, and steady-state request processing separately. Teardown emits a `vllm_engine_lifecycle` JSON record with teardown and end-to-end wall time, so moving engine construction outside the steady-state timer cannot be presented as an end-to-end speedup. Prefix caching remains disabled so every request processes its full declared prompt.',
+        "Request TTFT uses a monotonic duration clock sampled at admission and after the engine returns output. vLLM still receives the separate wall-clock arrival timestamp required by its API. A system-clock adjustment therefore cannot change this lab's elapsed request latency or its latency-based routing feedback.",
+        "`dynamic_router_vllm` keeps `--routing-arrival-profile all-upfront` as its default: it admits the complete request set before the first engine step. Its optimized arm feeds exact run-local admission counts into the policy's existing smoothed queue-depth metric before each subsequent placement. TTFT and tokens-per-step are retained as output diagnostics; they cannot affect requests that were already admitted. Use the synthetic simulator for continuous arrivals, migration, and KV-locality policy experiments.",
+        '`--routing-arrival-profile two-wave-imbalance` is a controlled two-GPU experiment. Both arms first place `--prefill-burst` long background requests on the first shared GPU and `--decode-requests` short background requests on the second. The runner steps both real engines in stable order until it observes the second engine at queue depth zero while the first remains busy, then admits `--continue-requests` short foreground requests. Baseline uses round robin starting on the loaded GPU; optimized uses the existing Router with the queue depth, TTFT, and output tokens observed from those engine steps. The runner does not sleep to create the arrival state and fails if the required state never occurs. It exports the observed gate depths, per-cohort TTFT, and per-cohort GPU admissions, and still retains every generated token in request order across both waves.',
+        'The fixed background placement is identical in baseline and optimized so only foreground placement differs. The opt-in runner updates exact queue counts immediately after each admission while keeping latency and token-activity smoothing; the all-upfront and sampled-telemetry defaults are unchanged. This workload may trade foreground latency against background completion or total throughput. Treat the comparison as measured only after both arms pass exact-token verification on the same runtime; the opt-in workload does not imply an improvement or a universal acceptance ratio.',
+        "The repeated 2×B200 delayed-arrival run at `15978d45efb6c11b731ed3aae1074f35ad5910ec` passes all 48 full-output checks but shows no useful win over round robin: median completion is 1,285.304 versus 1,283.833 ms, and foreground p50 is 69.480 versus 58.872 ms. Routing foreground p95 varies from 57.893 to 81.749 ms; its 69.794 ms median does not establish a stable improvement over round robin's 70.612 ms. The policy's weighted historical feedback can still send most or all new requests to one engine. Treat this as a measured policy limitation, not an optimized serving recommendation. See the [complete routing evidence](../../../docs/reviews/2026-09-08-b200-remaining-followthrough.md#delayed-arrival-routing-results) for workload, repetitions, exact-output checks, and retained earlier results.",
+        '`dual_pool_vllm` also admits its complete workload before the first engine step. Both arms update run-local queue depth after every successful admission. With the default 102-request workload and `--long-spillover-limit 0`, the shared two-GPU pool admits 51 requests per GPU, while the dedicated layout admits six long-prefill requests to the prefill GPU and 96 short requests to the decode GPU. A positive spillover limit lets the dedicated layout admit at most that many long-prefill requests to a decode-only GPU; requested and actual spillover plus per-class, per-GPU admission counts are exported. This may trade tail balance against short-request TTFT and throughput, so compare the same GPUs and workload with exact token verification and separate engine startup, warmup, and steady-state timings. All counts reset on every reused-engine invocation.',
+        'The harness prepares live CPU prompt IDs during setup. The topology-aware runner requires this input; standalone entrypoints create default prompts before calling it. Conversion to the Python token lists required by vLLM remains part of request admission, and GPU-resident prompt inputs fail explicitly before conversion.',
+        '`driver.py` accepts knobs such as `--prefill-gpus`, `--decode-gpus`, and `--migration-budget` to stress different regimes.',
+        'vLLM integration now takes flags (`--model`, `--prefill-gpus`, `--decode-gpus`, etc.) plus locally available tokenizer/model weights.',
+        'Router scoring incorporates pinned-host KV slab availability and NUMA-locality bias; feed it real topology via `topology_probe.py` or NVML when available.',
+    ],
+    extra_sections=[
+        '## B200 placement tradeoff\n\nA six-pair run with GPT-OSS-20B, batch-invariant Triton attention, two B200s\nat 1500/3996 MHz, and the default 102-request mix measured these medians.\nEngine startup is excluded; each arm reuses its two engines after five warmups.\n\n| Placement | Completion | Short-request TTFT p50 | Long-request TTFT p50 |\n| --- | ---: | ---: | ---: |\n| Shared | 1330 ms | 921 ms | 592 ms |\n| Dedicated (default) | 1633 ms | 474 ms | 947 ms |\n| Dedicated, `--long-spillover-limit 1` | 1395 ms | 710 ms | 710 ms |\n\nOne long spillover raises throughput about 17% over dedicated placement and\npreserves exact generated tokens in this run. It increases short-request\nlatency, so it is opt-in. Choose shared placement for aggregate throughput,\ndedicated placement for the lowest short-request latency, or test spillover\nwhen both matter. Other workloads need their own measurements. The full\n[validation report](../../../docs/reviews/2026-09-08-b200-remaining-followthrough.md)\nretains p95 latency, source/runtime details, and all six outcomes.',
     ],
 )
 
@@ -5012,12 +5024,12 @@ ENTRIES["labs/kv_cache_compression"] = lab_entry(
                 """\
                 Both variants use batch 8, hidden dimension 16384, 64 heads, 4096 prefill tokens, and 128 decode steps of 128 tokens. The two cache tensors contain 5,368,709,120 elements and occupy 10,737,418,240 bytes at BF16. `kv_cache.storage_bytes`, `storage_bits_per_element`, and `compression_ratio` are calculated from the allocated tensors. The compression ratio relative to BF16 is 1.0, and the optimization goal is compute speed.
 
-                The FP8 recipe is `DelayedScaling`; it is not MXFP8 block scaling. The NVFP4 recipe uses supported `NVFP4BlockScaling()` defaults. Both retain identical unquantized BF16 parameter representations while Transformer Engine autocast chooses the low-precision GEMMs.
+                The FP8 recipe is `DelayedScaling`; it is not MXFP8 block scaling. The NVFP4 recipe uses supported `NVFP4BlockScaling()` defaults. Both retain identical unquantized BF16 parameter representations while Transformer Engine autocast chooses the low-precision GEMMs. Both refresh packed projection weights on the first token group of each complete iteration and reuse them for its remaining 129 groups; all forward operations and full-cache writes remain timed.
                 """
             ),
         ),
         MarkdownSection(
-            'Accuracy gate: requirements defined, target qualification pending',
+            'Accuracy gate and measured B200 scope',
             dedent(
                 """\
                 Every token, head, and channel in both K and V is checked against an independent PyTorch BF16 projection reference using the original weights and inputs. The reference bypasses Transformer Engine's GEMMs and packing. Checks reject shape mismatches, non-finite values and aliased reference storage; relative L2 and maximum error normalized by reference magnitude avoid signed-checksum cancellation. Verification then snapshots the full cache for the harness pair comparison.
@@ -5037,7 +5049,9 @@ ENTRIES["labs/kv_cache_compression"] = lab_entry(
                 AISP_KV_CACHE_ACCURACY_POLICY="$PWD/labs/kv_cache_compression/accuracy_policy.json" python -m cli.aisp bench run --targets labs/kv_cache_compression:kv_cache --profile minimal
                 ```
 
-                Historical calibration and timing receipts remain diagnostics; they were not used to widen these ceilings and do not establish qualification or cache compression. Fresh B200 accuracy and performance measurements remain pending.
+                The [September 8 B200 report](../../../docs/reviews/2026-09-08-b200-remaining-followthrough.md#further-optimization-work) records all ten arithmetic cases passing at source `32030e6`, with unchanged limits, and one complete profiled pair at 1.106x on Torch 2.9.1+cu130 / Transformer Engine 2.9.0+70f5366. Four unprofiled old/new A/B/B/A blocks on that same runtime give eight cached FP8/NVFP4 ratios from 1.1060x to 1.1064x (mean 1.106206x, sample standard deviation 0.0001295x). All accuracy and runtime checks pass; these repeats cover one seed and one device. These are measurements for the recorded source and runtime, not qualification of another installation or application quality. Historical receipts were not used to widen the ceilings.
+
+                Minimal Nsight Compute profiling defaults to `app-range` for both arms: it collects the five minimal metrics over the complete selected NVTX range. The result is aggregate range counters, not per-kernel counters or an ordinary latency sample. Kernel replay timed out for both arms on this workload; an explicit `--ncu-replay-mode kernel` still overrides the lab preference. For other metric sets, select a compatible replay mode explicitly.
                 """
             ),
         ),
@@ -6760,11 +6774,11 @@ ENTRIES["labs/speculative_decode"] = lab_entry(
 ENTRIES["labs/persistent_decode"] = lab_entry(
     slug="labs/persistent_decode",
     title='Lab - Persistent Decode & TMA Prefill',
-    summary='Demonstrates Blackwell-friendly persistent decode kernels and TMA-powered prefill paths, with Python harnesses and CUDA/Triton implementations. Revised synchronization and full-output checks still require target GPU validation.',
+    summary='Demonstrates Blackwell-friendly persistent decode kernels and TMA-powered prefill paths, with Python harnesses and CUDA/Triton implementations.',
     lead_sections=[
         MarkdownSection(
             'Verification status after the audit',
-            'All four prefill/decode wrappers now capture every decode element and the complete prefill destination, with the prefill source included in the input signature. Both peers perform the same copy-only prefill workload. Independent decode checks and exact prefill-copy checks run outside timing; graph replay refreshes its inputs and side streams wait for caller input writes. CPU payload controls pass, but actual CUDA/TMA/graph runs, sanitizer checks and numerical-budget calibration remain pending. The inherited decode tolerance is not a newly calibrated accuracy policy.',
+            'All four prefill/decode wrappers capture every decode element and the complete prefill destination, with the prefill source included in the input signature. Both peers perform the same copy-only prefill workload. Independent decode checks and exact prefill-copy checks run outside timing; graph replay refreshes its inputs and side streams wait for caller input writes.\n\nAt source `d03fd19516cae424f4af17eaebc28b2fbdb82e8f`, all nine producers pass both memcheck and initcheck on one B200 at the medium FP32 shape. All 21 complete-output pair and cross-tool comparisons pass. Five separate graph regressions also pass zero-error initcheck with changed inputs, poisoned destinations, and independent CPU references across two replays. The [retained validation report](../../../docs/reviews/2026-09-08-b200-remaining-followthrough.md#nested-clock-ownership-and-complete-moe-verification) records exact scope and evidence; these results do not qualify every shape or establish a new speedup.\n\nThe FP32 validator now uses an FP64 oracle and a per-element roundoff bound, `gamma_(2D+2) * sum(abs(q*k)) * abs(v)`, plus an underflow allowance. Here `gamma_n = n*u/(1-n*u)` and `u = 2^-24`. This detects errors that the older 10%-plus-1.0 comparison accepted while allowing legitimate accumulation-order differences, including cancellation. This check precedes harness payload acceptance; the pair tolerance does not bypass it. At `604146c16116dd88e0a407d13432f7ac0da87276`, all nine medium-FP32 producers pass the new guard and zero-error initcheck on a B200. All 47 focused tests also pass there, including seven actual CUDA cases with three changed-input runs and corruption checks each. FP16 and fake-int4 retain their existing numerical policy and need separate accuracy requirements.\n\nA subsequent public before/after timing screen on one B200 measures about 2.5% lower latency in both persistent graph variants after removing temporary reduction/copy work. The CUDA and Triton controls are nearly unchanged; descriptor-TMA and thread-scope-copy improvements are only 0.17% and 0.85%. All 12 invocations pass execution and output checks. These are two timing aggregates per source in one ABBA block, with matched shapes and clocks; the [timing report](../../../docs/reviews/2026-09-08-b200-remaining-followthrough.md#copy-removal-timing-screen) retains every variant, baseline controls, and the prefill/decode no-win results.',
         ),
         MarkdownSection(
             'Problem',
@@ -6772,65 +6786,23 @@ ENTRIES["labs/persistent_decode"] = lab_entry(
         ),
         MarkdownSection(
             'Baseline Path',
-            dedent(
-                """\
-                - naive decode loops and non-persistent prefill paths
-                - higher launch overhead
-                - less efficient staging into shared memory
-                """
-            ),
+            '- naive decode loops and non-persistent prefill paths\n- higher launch overhead\n- less efficient staging into shared memory',
         ),
         MarkdownSection(
             'Optimized Path',
-            dedent(
-                """\
-                - persistent decode kernels
-                - CUDA Graph replay where it helps
-                - TMA-powered prefill variants for lower staging cost
-                """
-            ),
+            '- persistent decode kernels\n- CUDA Graph replay where it helps\n- TMA-powered prefill variants for lower staging cost',
         ),
         MarkdownSection(
             'Historical Delta (target revalidation pending)',
-            dedent(
-                """\
-                Historical results preserved from `artifacts/runs/20260302_full_strict_all_singlegpu/`:
-
-                | Target | Baseline | Optimized | Measured delta | Best optimization |
-                | --- | ---: | ---: | ---: | --- |
-                | `persistent_decode` | `1.411 ms` | `0.118 ms` | `11.94x` | `graphs` |
-                | `tma_prefill_decode` | `1.588 ms` | `0.931 ms` | `1.71x` | `optimized_tma_prefill_decode` |
-
-                These stored timings predate the complete-output checks and matching copy-only prefill workload. They do not establish a speedup for the repaired revision. Rerun correctness, numerical-budget and timing gates on the exact target before making a new performance claim.
-
-                The direct transport swaps stay visible as a transport-comparison benchmark on `nvlink_offload` and as `paged_kv_offload` as a real speed benchmark with a small local contract. The canonical KV-offload overlap claim stays on `paged_kv_offload_prefetch`, where async prefetch materially changes the overlap story instead of only swapping host-transport mechanics.
-                """
-            ),
+            'Historical results preserved from `artifacts/runs/20260302_full_strict_all_singlegpu/`:\n\n| Target | Baseline | Optimized | Measured delta | Best optimization |\n| --- | ---: | ---: | ---: | --- |\n| `persistent_decode` | `1.411 ms` | `0.118 ms` | `11.94x` | `graphs` |\n| `tma_prefill_decode` | `1.588 ms` | `0.931 ms` | `1.71x` | `optimized_tma_prefill_decode` |\n\nThese stored timings predate the complete-output checks and matching copy-only prefill workload. They do not establish a speedup for the repaired revision. Rerun correctness, numerical-budget and timing gates on the exact target before making a new performance claim.\n\nThe direct transport swaps stay visible as a transport-comparison benchmark on `nvlink_offload` and as `paged_kv_offload` as a real speed benchmark with a small local contract. The canonical KV-offload overlap claim stays on `paged_kv_offload_prefetch`, where async prefetch materially changes the overlap story instead of only swapping host-transport mechanics.',
         ),
         MarkdownSection(
             'Profiler Evidence',
-            dedent(
-                """\
-                Use deep-dive runs when you want to see launch count and staging behavior instead of only the wall-clock delta:
-
-                ```bash
-                python -m cli.aisp bench run --targets labs/persistent_decode:persistent_decode --profile deep_dive --single-gpu
-                python -m cli.aisp bench run --targets labs/persistent_decode:tma_prefill_decode --profile deep_dive --single-gpu
-                ```
-                """
-            ),
+            'Use deep-dive runs when you want to see launch count and staging behavior instead of only the wall-clock delta:\n\n```bash\npython -m cli.aisp bench run --targets labs/persistent_decode:persistent_decode --profile deep_dive --single-gpu\npython -m cli.aisp bench run --targets labs/persistent_decode:tma_prefill_decode --profile deep_dive --single-gpu\n```',
         ),
         MarkdownSection(
             'Repro Commands',
-            dedent(
-                """\
-                ```bash
-                python -m cli.aisp bench list-targets --chapter labs/persistent_decode
-                python -m cli.aisp bench run --targets labs/persistent_decode --profile minimal
-                python labs/persistent_decode/optimized_persistent_decode_graphs.py --iterations 50
-                ```
-                """
-            ),
+            '```bash\npython -m cli.aisp bench list-targets --chapter labs/persistent_decode\npython -m cli.aisp bench run --targets labs/persistent_decode --profile minimal\npython labs/persistent_decode/optimized_persistent_decode_graphs.py --iterations 50\n```',
         ),
     ],
     goals=[
@@ -7085,118 +7057,51 @@ ENTRIES["labs/real_world_models"] = lab_entry(
 ENTRIES["labs/train_distributed"] = lab_entry(
     slug="labs/train_distributed",
     title="Lab - Distributed Training Playbook",
-    summary=dedent(
-        """\
-        Collects distributed-training recipes: DDP, FSDP, ZeRO-1/2/3, symmetric memory and flash-attention-aware all-reduce handling. Direct training scripts remain available; generic torchrun-wrapper benchmark qualification is currently unsupported."""
-    ),
+    summary='Collects distributed-training recipes: DDP, FSDP, ZeRO-1/2/3, symmetric memory and flash-attention-aware all-reduce handling. Direct training scripts remain available. Plain DDP and ZeRO-2 have dedicated child-result contracts; wrappers without a contract remain unsupported.',
     lead_sections=[
         MarkdownSection(
-            "Generic wrapper verification unavailable",
-            "The shared `training_utils/torchrun_harness.py` wrapper formerly verified an unrelated parent-side Linear model before launching the real child. That surrogate has been removed. Its factories and configuration remain discoverable, but harness execution and verification now stop explicitly before launch until child-produced training results and an independent reference are implemented. A failed launch-spec getter is propagated rather than replaced with a fallback script. Direct training entrypoints are unchanged; executing them alone is not correctness or performance acceptance. The separate ZeRO training tests do not supply a verification protocol for other wrappers.",
+            'Generic wrapper verification unavailable',
+            'The shared `training_utils/torchrun_harness.py` wrapper formerly verified an unrelated parent-side Linear model before launching the real child. That surrogate has been removed. Factories without a dedicated child-result contract remain discoverable, but their harness execution and verification stop explicitly before launch. Plain DDP publishes complete post-training logits and loss from the actual final batch and a changed input, with separately executed forwards through the same unwrapped trained weights. That checks the forward wrapper; it is not independent proof of the optimizer updates. ZeRO-2 has a separate result adapter. A failed launch-spec getter is propagated rather than replaced with a fallback script. Direct training entrypoints are unchanged; executing them alone is not correctness or performance acceptance. The separate ZeRO training tests do not supply a verification protocol for other wrappers.',
         ),
         MarkdownSection(
-            "Training runtime prerequisites",
-            dedent(
-                """\
-                The Hugging Face examples need `datasets` and `accelerate` in the Python
-                environment that launches the workers. The optimized FlashAttention training
-                paths use the **FlashAttention-2** distribution and its public `flash_attn`
-                APIs. A FlashAttention-4 namespace import alone does not satisfy that
-                requirement. Keep these environments separate when their packages overlap;
-                installing a training dependency must not replace another workload's PyTorch
-                or attention runtime.
-
-                Check the selected training interpreter before launching:
-
-                ```bash
-                python -c 'import torch, datasets, accelerate; from flash_attn import flash_attn_func, flash_attn_varlen_func; print(torch.__version__, torch.version.cuda)'
-                ```
-
-                The September 2026 direct B200 pass exercised all 61 discovered training
-                variants (27 one-rank and 34 two-rank runs) with Torch 2.9.1+cu130 and the
-                matching FlashAttention 2.8.3 CUDA 13/Torch 2.9/CXX11 ABI wheel. All scripts
-                exited successfully; this does not make their generic wrappers qualified
-                benchmarks. See the [dated validation checkpoint](../../../docs/reviews/2026-09-06-codebase-repair-checkpoint.md)
-                for the source identity, retained failures and execution limits. Direct
-                `torchrun` commands work without Slurm.
-                """
-            ),
+            'Training runtime prerequisites',
+            "The Hugging Face examples need `datasets` and `accelerate` in the Python\nenvironment that launches the workers. The optimized FlashAttention training\npaths use the **FlashAttention-2** distribution and its public `flash_attn`\nAPIs. A FlashAttention-4 namespace import alone does not satisfy that\nrequirement. Keep these environments separate when their packages overlap;\ninstalling a training dependency must not replace another workload's PyTorch\nor attention runtime.\n\nCheck the selected training interpreter before launching:\n\n```bash\npython -c 'import torch, datasets, accelerate; from flash_attn import flash_attn_func, flash_attn_varlen_func; print(torch.__version__, torch.version.cuda)'\n```\n\nThe September 2026 direct B200 pass exercised all 61 discovered training\nvariants (27 one-rank and 34 two-rank runs) with Torch 2.9.1+cu130 and the\nmatching FlashAttention 2.8.3 CUDA 13/Torch 2.9/CXX11 ABI wheel. All scripts\nexited successfully; this does not make their generic wrappers qualified\nbenchmarks. See the [dated validation checkpoint](../../../docs/reviews/2026-09-06-codebase-repair-checkpoint.md)\nfor the source identity, retained failures and execution limits. Direct\n`torchrun` commands work without Slurm.",
         ),
         MarkdownSection(
-            "Problem",
-            dedent(
-                """\
-                Distributed training has too many "optimized" labels that mean different things. This lab is here to keep DDP compression, pipeline schedules, and symmetric-memory training as separate benchmarked choices so you can see what actually helps on the current stack."""
-            ),
+            'DDP accumulation',
+            "In the optimized DDP and FlashAttention DDP entrypoints, `--steps` caps consumed\nmicrobatches, up to the available data. `--grad-accum` groups them into optimizer\nupdates. A final partial group uses its actual size and still updates the model;\nfor example, `--steps 3 --grad-accum 2` performs two optimizer updates. Both\nforward and backward stay inside the same gradient synchronization context.\n\nThe plain optimized multi-GPU DDP path also accepts the explicit\n`--overlap-optimizer` experiment. It updates fused AdamW parameter buckets on a\ndedicated CUDA stream after each DDP all-reduce. The synchronous optimizer stays\nthe default. The opt-in requires exactly two ranks, `--grad-accum 1`, and no\n`--compile`; requesting it outside that scope fails before model construction.\nThe paired baseline remains synchronous. A three-update exact gate matched all\nparameters and AdamW state. The retained two-B200, full-epoch, two-seed A/B/B/A\nscreen matched complete inputs, logits, and losses, while training-loop speedup\nwas `1.023626x` geometric mean. Whole-process ratios were mixed, so this is a\nscoped loop result rather than an end-to-end speedup claim.\n\nThe DDP result transport retains all four full output/reference mappings.\nAfter full reference checks, byte-identical references share serialized tensor\nstorage; distinct values, including signed zeros, keep their own storage. The\n1 GiB per-rank file limit remains enforced. This avoids redundant full-logit\nfiles without reducing the batch, output coverage, or accuracy requirements.\n\nThe public two-B200 three-update comparison passes full input/output checks\nwith this transport. Its short-run ratio is 0.929x, so it is a correctness\nintegration check, not a new speedup claim. The synchronous path remains the\ndefault. See the [retained result](../../../docs/reviews/2026-09-08-b200-remaining-followthrough.md#ddp-public-integration-bounded-full-output-transport).\n\nFor this target, the harness maps `--iterations 3` to child `--steps 3`; the\nfixed `--grad-accum 1` therefore performs three optimizer updates per rank. Run\nthe public integration check with:\n\n```bash\npython -m cli.aisp bench run --targets labs/train_distributed:ddp_multigpu \\\n  --launch-via torchrun --nproc-per-node 2 --iterations 3 --warmup 0 \\\n  --profile none --validity-profile portable \\\n  --target-extra-arg 'labs/train_distributed:ddp_multigpu=--overlap-optimizer'\n```",
         ),
         MarkdownSection(
-            "ZeRO comparison validity",
-            dedent(
-                """\
-                The ZeRO-2 named pair uses a shared seven-linear-layer GELU model, FP32 model parameters, BF16 CUDA autocast, identical rank-specific inputs, accumulation, AdamW settings, clipping, one warmup update and the same measured training loop. The optional communication payload is BF16 in both variants. The optimized path shards optimizer state and uses reduce-scatter/all-gather to restore complete gradients; it does not overlap optimizer updates or keep gradients sharded through the optimizer step.
-
-                The original single baseline used ReLU and executed two training runs, while its optimized peer used GELU and one run. Other precision, clipping and timing differences also invalidated that comparison. Historical ZeRO timings are not accepted evidence for the repaired pair. The generic torchrun wrapper's small signature model has been withdrawn because it did not verify child-process training. Acceptance requires the separate full training tests, including actual two-GPU NCCL/BF16 checks, before any new speed or memory claim.
-
-                Inner training throughput counts batch rows as samples, not hidden-vector elements as tokens. Harness process-wall timing includes startup and warmup and must remain labeled separately."""
-            ),
+            'FSDP training semantics',
+            "In the FSDP and FSDP2 entrypoints, `--steps` counts optimizer updates. Each\nupdate consumes `--grad-accum` full per-rank microbatches, continuing into\nanother data epoch when necessary. For example, `--steps 3 --grad-accum 2`\nconsumes six microbatches and performs three updates. Empty per-rank loaders fail\nexplicitly.\n\nPacked and synthetic labels already contain the next token at each input\nposition. The shared training helper computes cross-entropy against these\ntargets directly, avoiding a second causal shift inside the model. Direct runs\nseed model initialization and data order with 42; harness-owned seeds are\npreserved. Synthetic data uses a separate generator so data creation does not\nchange model initialization.\n\nModel weights use BF16 while rotary-position frequency buffers stay in FP32.\nDevice placement preserves those buffer dtypes, and FSDP1's mixed-precision\npolicy also keeps buffers in FP32. Rounding inverse frequencies to BF16 before\nthe rotary calculation introduces position-dependent errors that grow with\nsequence length.\n\nThe FSDP and FSDP2 entrypoints report synchronized milliseconds per optimizer\nupdate on rank 0, using the slowest rank's complete training interval. This\nincludes data loading, transfers, forward, backward, optimizer updates, and\ntraining logging; it excludes model startup and teardown. The optimized paths\nretain their FlashAttention, resharding, FP8, and fused AdamW behavior where\nsupported.\n\nFor reproducible FlashAttention 2 training checks, explicitly set\n`FLASH_ATTENTION_DETERMINISTIC=1` for both compared runs. A fixed model/data seed\nalone does not make the default FlashAttention backward pass bitwise repeatable.\nKeep this setting consistent across compared runs and record it with timings.\nMatching an independent model with the same attention backend does not establish\nbitwise equality with eager attention or an application-level accuracy budget.\nThese direct-run diagnostics do not enable the generic wrapper's child-result\nverification for either FSDP family; the wrappers remain fail-closed until they\npublish actual trained outputs and an independent reference.",
         ),
         MarkdownSection(
-            "Baseline Path",
-            dedent(
-                """\
-                - conservative DDP, pipeline, and symmetric-memory paths
-                - useful for correctness and topology sanity
-                - enough communication overhead to make overlap/compression visible"""
-            ),
+            'Problem',
+            'Distributed training has too many "optimized" labels that mean different things. This lab is here to keep DDP compression, pipeline schedules, and symmetric-memory training as separate benchmarked choices so you can see what actually helps on the current stack.',
         ),
         MarkdownSection(
-            "Optimized Path",
-            dedent(
-                """\
-                - overlap-aware pipeline schedules
-                - compression-aware DDP variants
-                - direct symmetric-memory and sharding scripts; generic harness qualification is unavailable"""
-            ),
+            'ZeRO comparison validity',
+            "The ZeRO-2 named pair uses a shared seven-linear-layer GELU model, FP32 model parameters, BF16 CUDA autocast, identical rank-specific inputs, accumulation, AdamW settings, clipping, one warmup update and the same measured training loop. The optional communication payload is BF16 in both variants. The optimized path shards optimizer state and uses reduce-scatter/all-gather to restore complete gradients; it does not overlap optimizer updates or keep gradients sharded through the optimizer step.\n\nThe original single baseline used ReLU and executed two training runs, while its optimized peer used GELU and one run. Other precision, clipping and timing differences also invalidated that comparison. Historical ZeRO timings are not accepted evidence for the repaired pair. The generic torchrun wrapper's small signature model has been withdrawn because it did not verify child-process training. Acceptance requires the separate full training tests, including actual two-GPU NCCL/BF16 checks, before any new speed or memory claim.\n\nInner training throughput counts batch rows as samples, not hidden-vector elements as tokens. Harness process-wall timing includes startup and warmup and must remain labeled separately.",
         ),
         MarkdownSection(
-            "Historical Delta (not requalified by this audit)",
-            dedent(
-                """\
-                Stored historical results from `artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/`; this audit does not requalify their original verification or timing contracts:
-
-                | Target | Baseline | Optimized | Measured delta |
-                | --- | ---: | ---: | ---: |
-                | `ddp_compression` | `1135.768 ms` | `408.656 ms` (`powersgd`) | `2.78x` |
-                | `pipeline_1f1b` | `159.060 ms` | `105.125 ms` | `1.51x` |
-                | `pipeline_dualpipe` | `154.106 ms` | `105.111 ms` | `1.47x` |
-                | `symmem_training` | `177.269 ms` | `167.167 ms` | `1.06x` |
-
-                These records remain available for lineage. Fresh source, workload, actual-output and timing evidence is required before repeating their performance claims; generic wrapper metadata is not child-training evidence.
-
-                FSDP2 wrapper execution is also unavailable until actual child training is verified. Future FSDP2 qualification must distinguish single-GPU behavior from real multi-GPU sharding; old labels do not certify either."""
-            ),
+            'Baseline Path',
+            '- conservative DDP, pipeline, and symmetric-memory paths\n- useful for correctness and topology sanity\n- enough communication overhead to make overlap/compression visible',
         ),
         MarkdownSection(
-            "Profiler workflow status",
-            dedent(
-                """\
-                ```bash
-                python -m cli.aisp profile torch --help
-                python -m cli.aisp bench run --help
-                ```
-
-                These commands inspect options only. Generic training wrappers cannot currently produce a qualified harness profile or comparison. Profile a direct script only on an allocated, authorized target, and retain actual training verification separately."""
-            ),
+            'Optimized Path',
+            '- overlap-aware pipeline schedules\n- compression-aware DDP variants\n- direct symmetric-memory and sharding scripts; generic harness qualification is unavailable',
         ),
         MarkdownSection(
-            "Repro Commands",
-            dedent(
-                """\
-                ```bash
-                python -m cli.aisp bench list-targets --chapter labs/train_distributed
-                python -m pytest -q tests/test_audit_wave1_zero2_parity.py tests/test_audit_wave1_torchrun_verification.py
-                ```"""
-            ),
+            'Historical Delta (not requalified by this audit)',
+            'Stored historical results from `artifacts/runs/20260302_full_strict_chapter_lab_singlegpu_v2/`; this audit does not requalify their original verification or timing contracts:\n\n| Target | Baseline | Optimized | Measured delta |\n| --- | ---: | ---: | ---: |\n| `ddp_compression` | `1135.768 ms` | `408.656 ms` (`powersgd`) | `2.78x` |\n| `pipeline_1f1b` | `159.060 ms` | `105.125 ms` | `1.51x` |\n| `pipeline_dualpipe` | `154.106 ms` | `105.111 ms` | `1.47x` |\n| `symmem_training` | `177.269 ms` | `167.167 ms` | `1.06x` |\n\nThese records remain available for lineage. Fresh source, workload, actual-output and timing evidence is required before repeating their performance claims; generic wrapper metadata is not child-training evidence.\n\nFSDP2 wrapper execution is also unavailable until actual child training is verified. Future FSDP2 qualification must distinguish single-GPU behavior from real multi-GPU sharding; old labels do not certify either.',
+        ),
+        MarkdownSection(
+            'Profiler workflow status',
+            '```bash\npython -m cli.aisp profile torch --help\npython -m cli.aisp bench run --help\n```\n\nThese commands inspect options only. Generic training wrappers cannot currently produce a qualified harness profile or comparison. Profile a direct script only on an allocated, authorized target, and retain actual training verification separately.',
+        ),
+        MarkdownSection(
+            'Repro Commands',
+            '```bash\npython -m cli.aisp bench list-targets --chapter labs/train_distributed\npython -m pytest -q tests/test_audit_wave1_zero2_parity.py tests/test_audit_wave1_torchrun_verification.py\n```',
         ),
     ],
     goals=[
@@ -7232,11 +7137,11 @@ ENTRIES["labs/train_distributed"] = lab_entry(
         "Use `python -m cli.aisp bench list-targets --chapter labs/train_distributed` to inspect registered workload names before selecting a run. A successful launch alone does not verify child training.",
     ],
     notes=[
-        "Inspect `python -m cli.aisp bench run --help` and `training_utils/torchrun_harness.py` for the supported launcher configuration; use the allocated topology and preserve launcher arguments with results.",
-        "FSDP/FSDP2 benchmarks default to `labs/train_distributed/data/tinystories_packed_seq128.jsonl` plus `labs/train_distributed/data/tinyllama_config.json`, with `AISP_TINYSTORIES_LAYERS=4` to keep the model small. Override with `AISP_TINYSTORIES_PACKED_PATH`, `AISP_TINYSTORIES_LOCAL_PATH`, `AISP_TINYSTORIES_CONFIG_PATH`, or `AISP_TINYSTORIES_LAYERS`.",
-        "Scale up by increasing `AISP_TINYSTORIES_LAYERS` or swapping to a larger config and pairing it with a packed dataset that matches the new sequence length.",
-        "Set `AISP_FSDP_DISABLE_FP8=1` to keep the minimal BF16 path; unset it when you want to exercise the FP8 conversion on larger workloads.",
-        "The generic `fsdp2` wrapper retains metadata but rejects harness execution. Direct script execution is not a substitute for a child-result contract or multi-GPU correctness evidence.",
+        'Inspect `python -m cli.aisp bench run --help` and `training_utils/torchrun_harness.py` for the supported launcher configuration; use the allocated topology and preserve launcher arguments with results.',
+        'FSDP and FSDP2 wrappers select `labs/train_distributed/data/tinystories_packed_seq1024.jsonl` and `labs/train_distributed/data/tinyllama_config.json`. FSDP selects 22 layers for single-GPU and 12 for multi-GPU; FSDP2 selects eight layers, per-rank microbatch size two, and accumulation two. Override direct-run inputs with `AISP_TINYSTORIES_PACKED_PATH`, `AISP_TINYSTORIES_LOCAL_PATH`, `AISP_TINYSTORIES_CONFIG_PATH`, or `AISP_TINYSTORIES_LAYERS`.',
+        'Scale up by increasing `AISP_TINYSTORIES_LAYERS` or swapping to a larger config and pairing it with a packed dataset that matches the new sequence length.',
+        'Set `AISP_FSDP_DISABLE_FP8=1` to keep the minimal BF16 path; unset it when you want to exercise the FP8 conversion on larger workloads.',
+        'The generic `fsdp2` wrapper retains metadata but rejects harness execution. Direct script execution is not a substitute for a child-result contract or multi-GPU correctness evidence.',
     ],
 )
 

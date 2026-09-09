@@ -84,7 +84,11 @@ def test_dynamic_router_topology_uses_nvml_numa_node_api(monkeypatch: pytest.Mon
         nvmlShutdown=lambda: shutdown_calls.append(True),
     )
 
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
     monkeypatch.setitem(__import__("sys").modules, "pynvml", fake_pynvml)
+    monkeypatch.setattr(
+        dynamic_router_topology, "_cuda_logical_device_uuids", lambda max_gpus: None
+    )
 
     assert dynamic_router_topology._nvml_gpu_bus_and_numa(max_gpus=1) == {
         0: {"bus_id": "00000000:17:00.0", "numa_node": 4}
@@ -105,13 +109,176 @@ def test_dynamic_router_topology_shuts_down_nvml_once_for_multiple_gpus(
         nvmlShutdown=lambda: shutdown_calls.append(True),
     )
 
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
     monkeypatch.setitem(__import__("sys").modules, "pynvml", fake_pynvml)
+    monkeypatch.setattr(
+        dynamic_router_topology, "_cuda_logical_device_uuids", lambda max_gpus: None
+    )
 
     assert dynamic_router_topology._nvml_gpu_bus_and_numa(max_gpus=2) == {
         0: {"bus_id": "00000000:17:00.0", "numa_node": None},
         1: {"bus_id": "00000000:18:00.0", "numa_node": None},
     }
     assert shutdown_calls == [True]
+
+
+def test_dynamic_router_normalizes_nvml_extended_pci_domain_for_sysfs() -> None:
+    assert dynamic_router_topology._normalized_bus_id("00000000:17:00.0") == "0000:17:00.0"
+
+
+def test_dynamic_router_reads_uuid_in_cuda_logical_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    uuids = ["logical-zero", "logical-one"]
+    monkeypatch.setattr(bind_numa_affinity.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(bind_numa_affinity.torch.cuda, "device_count", lambda: 2)
+    monkeypatch.setattr(
+        bind_numa_affinity.torch.cuda,
+        "get_device_properties",
+        lambda logical_idx: SimpleNamespace(uuid=uuids[logical_idx]),
+    )
+
+    assert dynamic_router_topology._cuda_logical_device_uuids(max_gpus=2) == uuids
+
+
+def test_dynamic_router_topology_prefers_cuda_uuid_for_reordered_visible_devices(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    uuid_for_physical_3 = "33333333-3333-4333-8333-333333333333"
+    uuid_for_physical_1 = "11111111-1111-4111-8111-111111111111"
+    handles = {
+        f"GPU-{uuid_for_physical_3}": "physical3",
+        f"GPU-{uuid_for_physical_1}": "physical1",
+    }
+    uuid_calls: list[str] = []
+    index_calls: list[int] = []
+    fake_pynvml = SimpleNamespace(
+        nvmlInit=lambda: None,
+        nvmlDeviceGetHandleByUUID=lambda uuid: uuid_calls.append(uuid) or handles[uuid],
+        nvmlDeviceGetHandleByIndex=lambda idx: index_calls.append(idx) or f"physical{idx}",
+        nvmlDeviceGetPciInfo=lambda handle: SimpleNamespace(
+            busId={"physical3": b"00000000:83:00.0", "physical1": b"00000000:41:00.0"}[handle]
+        ),
+        nvmlDeviceGetNumaNodeId=lambda handle: {"physical3": 3, "physical1": 1}[handle],
+        nvmlShutdown=lambda: None,
+    )
+
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "3,1")
+    monkeypatch.setitem(__import__("sys").modules, "pynvml", fake_pynvml)
+    monkeypatch.setattr(
+        dynamic_router_topology,
+        "_cuda_logical_device_uuids",
+        lambda max_gpus: [uuid_for_physical_3, uuid_for_physical_1],
+    )
+
+    assert dynamic_router_topology._nvml_gpu_bus_and_numa(max_gpus=2) == {
+        0: {"bus_id": "00000000:83:00.0", "numa_node": 3},
+        1: {"bus_id": "00000000:41:00.0", "numa_node": 1},
+    }
+    assert uuid_calls == [f"GPU-{uuid_for_physical_3}", f"GPU-{uuid_for_physical_1}"]
+    assert index_calls == []
+
+
+def test_dynamic_router_topology_keeps_numeric_visibility_unknown_without_cuda_uuid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    index_calls: list[int] = []
+    fake_pynvml = SimpleNamespace(
+        nvmlInit=lambda: None,
+        nvmlDeviceGetHandleByIndex=lambda idx: index_calls.append(idx) or f"physical{idx}",
+        nvmlShutdown=lambda: None,
+    )
+
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "3,1")
+    monkeypatch.setenv("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+    monkeypatch.setitem(__import__("sys").modules, "pynvml", fake_pynvml)
+    monkeypatch.setattr(
+        dynamic_router_topology,
+        "_cuda_logical_device_uuids",
+        lambda max_gpus: [None, None],
+    )
+
+    assert dynamic_router_topology._nvml_gpu_bus_and_numa(max_gpus=2) == {
+        0: {"bus_id": None, "numa_node": None},
+        1: {"bus_id": None, "numa_node": None},
+    }
+    assert index_calls == []
+
+
+def test_dynamic_router_topology_preserves_explicit_mig_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mig_uuid = "MIG-GPU-example/1/0"
+    uuid_calls: list[str] = []
+    fake_pynvml = SimpleNamespace(
+        nvmlInit=lambda: None,
+        nvmlDeviceGetHandleByUUID=lambda uuid: uuid_calls.append(uuid) or "mig-handle",
+        nvmlDeviceGetPciInfo=lambda handle: SimpleNamespace(busId=b"00000000:83:00.0"),
+        nvmlDeviceGetNumaNodeId=lambda handle: 3,
+        nvmlShutdown=lambda: None,
+    )
+
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", mig_uuid)
+    monkeypatch.setitem(__import__("sys").modules, "pynvml", fake_pynvml)
+    monkeypatch.setattr(
+        dynamic_router_topology,
+        "_cuda_logical_device_uuids",
+        lambda max_gpus: [None],
+    )
+
+    assert dynamic_router_topology._nvml_gpu_bus_and_numa(max_gpus=1) == {
+        0: {"bus_id": "00000000:83:00.0", "numa_node": 3}
+    }
+    assert uuid_calls == [mig_uuid]
+
+
+def test_dynamic_router_topology_keeps_unresolved_logical_device_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    index_calls: list[int] = []
+    fake_pynvml = SimpleNamespace(
+        nvmlInit=lambda: None,
+        nvmlDeviceGetHandleByIndex=lambda idx: index_calls.append(idx) or f"physical{idx}",
+        nvmlShutdown=lambda: None,
+    )
+
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    monkeypatch.setitem(__import__("sys").modules, "pynvml", fake_pynvml)
+    monkeypatch.setattr(
+        dynamic_router_topology,
+        "_cuda_logical_device_uuids",
+        lambda max_gpus: [""],
+    )
+
+    assert dynamic_router_topology._nvml_gpu_bus_and_numa(max_gpus=1) == {
+        0: {"bus_id": None, "numa_node": None}
+    }
+    assert index_calls == []
+
+
+def test_dynamic_router_topology_does_not_enumerate_explicitly_hidden_devices(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    count_calls: list[bool] = []
+    index_calls: list[int] = []
+    fake_pynvml = SimpleNamespace(
+        nvmlInit=lambda: None,
+        nvmlDeviceGetCount=lambda: count_calls.append(True) or 4,
+        nvmlDeviceGetHandleByIndex=lambda idx: index_calls.append(idx) or f"physical{idx}",
+        nvmlShutdown=lambda: None,
+    )
+
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
+    monkeypatch.setitem(__import__("sys").modules, "pynvml", fake_pynvml)
+    monkeypatch.setattr(
+        dynamic_router_topology,
+        "_cuda_logical_device_uuids",
+        lambda max_gpus: None,
+    )
+
+    assert dynamic_router_topology._nvml_gpu_bus_and_numa() == {}
+    assert count_calls == []
+    assert index_calls == []
 
 
 def test_dynamic_router_read_int_normalizes_negative_numa_to_none(tmp_path: Path) -> None:
@@ -130,6 +297,21 @@ def test_dynamic_router_detect_topology_preserves_gpu_slots_without_nvml(
     snapshot = dynamic_router_topology.detect_topology(max_gpus=2)
 
     assert snapshot.gpu_numa == {0: None, 1: None}
+    assert snapshot.gpu_numa_status == "unknown"
+
+
+@pytest.mark.parametrize("visible", ["", "-1"])
+def test_dynamic_router_detect_topology_does_not_restore_explicitly_hidden_slots(
+    monkeypatch: pytest.MonkeyPatch,
+    visible: str,
+) -> None:
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", visible)
+    monkeypatch.setattr(dynamic_router_topology, "_nvml_gpu_bus_and_numa", lambda max_gpus=None: {})
+    monkeypatch.setattr(dynamic_router_topology, "_distance_matrix", lambda: {})
+
+    snapshot = dynamic_router_topology.detect_topology(max_gpus=2)
+
+    assert snapshot.gpu_numa == {}
     assert snapshot.gpu_numa_status == "unknown"
 
 

@@ -89,7 +89,7 @@ def main():
     x.normal_()
     y.normal_()
     optimizer.zero_grad(set_to_none=True)
-    with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
         warm_loss = nn.functional.mse_loss(fsdp_model(x), y)
     warm_loss.backward()
     optimizer.step()
@@ -107,7 +107,7 @@ def main():
         for _ in range(args.grad_accum):
             x.normal_()
             y.normal_()
-            with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 loss = nn.functional.mse_loss(fsdp_model(x), y) / args.grad_accum
             loss.backward()
             total_tokens += x.numel()

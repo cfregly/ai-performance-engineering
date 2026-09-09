@@ -11,6 +11,7 @@ CUDA_SOURCES = \
 BASE_TARGETS = $(CUDA_SOURCES:.cu=)
 TARGETS = $(addsuffix $(TARGET_SUFFIX), $(BASE_TARGETS))
 VERIFY_TARGETS = $(addsuffix _verify$(TARGET_SUFFIX), $(BASE_TARGETS))
+PROFILE_TARGETS = $(addsuffix _profile$(TARGET_SUFFIX), $(BASE_TARGETS))
 
 .PHONY: all clean b200
 
@@ -24,6 +25,12 @@ $(addsuffix $(TARGET_SUFFIX), $(BASE_TARGETS)): %$(TARGET_SUFFIX): %.cu ozaki_sc
 $(VERIFY_TARGETS): %_verify$(TARGET_SUFFIX): %.cu ozaki_scheme_common.cuh accuracy.h $(CUDA_NVTX_DEPS)
 	@echo "Building $@ (verify)..."
 	$(NVCC) $(NVCC_FLAGS) -DVERIFY=1 -lcublas -lcublasLt -lcuda -o $@ $< $(CUDA_NVTX_LDFLAGS)
+
+# Kept separate from ordinary timing binaries so profile instrumentation cannot
+# silently replace a cached timing build. The harness supplies NVTX_ENABLED=1.
+$(PROFILE_TARGETS): %_profile$(TARGET_SUFFIX): %.cu ozaki_scheme_common.cuh accuracy.h ../../core/common/nvtx_utils.cuh $(CUDA_NVTX_DEPS)
+	@test "$(NVTX_ENABLED)" = "1" || (echo "Profiling builds require NVTX_ENABLED=1"; exit 1)
+	$(NVCC) $(NVCC_FLAGS) -lcublas -lcublasLt -lcuda -o $@ $< $(CUDA_NVTX_LDFLAGS)
 
 b200:
 	$(MAKE) ARCH=sm_100 all

@@ -59,6 +59,8 @@ VLLM_PROFILE_RECEIPT_DIR_ENV = "AISP_VLLM_PROFILE_RECEIPT_DIR"
 VLLM_PROFILE_RUNTIME_SCHEMA = "aisp.dynamic-router-vllm-profile-runtime.v1"
 VLLM_PROFILE_OUTPUT_SCHEMA = "aisp.dynamic-router-vllm-profile-output.v1"
 VLLM_PROFILE_LIFECYCLE_SCHEMA = "aisp.dynamic-router-vllm-profile-lifecycle.v1"
+ROUTING_ARRIVAL_ALL_UPFRONT = "all-upfront"
+ROUTING_ARRIVAL_TWO_WAVE_IMBALANCE = "two-wave-imbalance"
 
 
 def _profile_receipt_dir() -> Optional[Path]:
@@ -224,6 +226,34 @@ def _assert_vllm_runtime_ready() -> None:
         _skip(_format_vllm_import_error(exc))
 
 
+def _assert_pinned_vllm_cuda_visibility() -> None:
+    """Reject UUID visibility that pinned vLLM parses as integer device ids."""
+
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if visible is None:
+        return
+    tokens = [token.strip() for token in visible.split(",") if token.strip()]
+    mig_tokens = [token for token in tokens if token.startswith("MIG-")]
+    if mig_tokens:
+        raise ValueError(
+            f"Pinned vLLM {_EXPECTED_VLLM_DIST_VERSION} in this lab does not "
+            "support MIG UUID tokens in CUDA_VISIBLE_DEVICES. Keep the MIG "
+            "allocation unchanged and do not replace it with the parent GPU; "
+            "run this lab only after obtaining a supported whole-GPU allocation. "
+            f"Received CUDA_VISIBLE_DEVICES={visible!r}."
+        )
+    gpu_uuid_tokens = [token for token in tokens if token.startswith("GPU-")]
+    if gpu_uuid_tokens:
+        raise ValueError(
+            f"Pinned vLLM {_EXPECTED_VLLM_DIST_VERSION} does not accept GPU UUID "
+            "tokens in CUDA_VISIBLE_DEVICES. Preserve the assigned GPUs, resolve "
+            "those same UUIDs to numeric physical indices, and export the numeric "
+            "indices in the same order before launch (for example, "
+            "CUDA_VISIBLE_DEVICES=0,1). "
+            f"Received CUDA_VISIBLE_DEVICES={visible!r}."
+        )
+
+
 def _build_cli_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=False, exit_on_error=False)
     parser.add_argument("--model", type=str, help="Local HF model path/id for vLLM.")
@@ -240,13 +270,64 @@ def _build_cli_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prefill-burst", type=int, default=6, help="Number of long prompts to inject for prefill load.")
     parser.add_argument("--decode-requests", type=int, default=48, help="Decode-style requests for dual-pool demo.")
     parser.add_argument("--continue-requests", type=int, default=48, help="Continuation requests for dual-pool demo.")
+    parser.add_argument(
+        "--routing-arrival-profile",
+        choices=(ROUTING_ARRIVAL_ALL_UPFRONT, ROUTING_ARRIVAL_TWO_WAVE_IMBALANCE),
+        default=ROUTING_ARRIVAL_ALL_UPFRONT,
+        help=(
+            "Dynamic-router arrival schedule. The opt-in two-wave profile uses "
+            "prefill-burst long requests, decode-requests short requests, and "
+            "continue-requests delayed short requests."
+        ),
+    )
     parser.add_argument("--prefill-ctx-thresh", type=int, default=2048, help="Threshold to route to prefill pool.")
+    parser.add_argument(
+        "--long-spillover-limit",
+        type=int,
+        default=0,
+        help="In dual mode, admit at most this many long requests to a decode-only GPU.",
+    )
     parser.add_argument(
         "--use-v1-core-loop",
         action="store_true",
         help="Drive vLLM V1 EngineCore directly with the optimized polling loop (Inproc only).",
     )
     return parser
+
+
+def _routing_arrival_profile(cli_args: argparse.Namespace) -> str:
+    """Read the new profile while preserving old programmatic arg namespaces."""
+    profile = getattr(cli_args, "routing_arrival_profile", ROUTING_ARRIVAL_ALL_UPFRONT)
+    if profile not in {
+        ROUTING_ARRIVAL_ALL_UPFRONT,
+        ROUTING_ARRIVAL_TWO_WAVE_IMBALANCE,
+    }:
+        raise ValueError(f"Unsupported routing arrival profile: {profile!r}")
+    return str(profile)
+
+
+def _validate_two_wave_imbalance_args(cli_args: argparse.Namespace) -> None:
+    """Validate the fixed-background, delayed-foreground workload contract."""
+    background_long = int(cli_args.prefill_burst)
+    background_short = int(cli_args.decode_requests)
+    foreground_short = int(cli_args.continue_requests)
+    if min(background_long, background_short, foreground_short) <= 0:
+        raise ValueError(
+            "--routing-arrival-profile two-wave-imbalance requires positive "
+            "--prefill-burst, --decode-requests, and --continue-requests"
+        )
+    if int(cli_args.long_prompt_tokens) <= int(cli_args.short_prompt_tokens):
+        raise ValueError(
+            "--routing-arrival-profile two-wave-imbalance requires "
+            "--long-prompt-tokens greater than --short-prompt-tokens"
+        )
+    expected_requests = background_long + background_short + foreground_short
+    if int(cli_args.req_count) != expected_requests:
+        raise ValueError(
+            "--req-count must equal --prefill-burst + --decode-requests + "
+            "--continue-requests for --routing-arrival-profile "
+            f"two-wave-imbalance (expected {expected_requests})"
+        )
 
 
 def _validate_cli_args(args: argparse.Namespace) -> argparse.Namespace:
@@ -267,6 +348,10 @@ def _validate_cli_args(args: argparse.Namespace) -> argparse.Namespace:
             raise ValueError(f"--{field.replace('_', '-')} must be non-negative")
     if not any(getattr(args, field) > 0 for field in request_mix_fields):
         raise ValueError("dual-pool request mix must contain at least one request")
+    if args.long_spillover_limit < 0:
+        raise ValueError("--long-spillover-limit must be non-negative")
+    if args.routing_arrival_profile == ROUTING_ARRIVAL_TWO_WAVE_IMBALANCE:
+        _validate_two_wave_imbalance_args(args)
     for field in ("prefill_gpus", "decode_gpus"):
         raw = getattr(args, field)
         if raw is None:
@@ -311,6 +396,19 @@ def routing_prompt_lengths(
     req_count: Optional[int] = None,
 ) -> List[int]:
     """Return the exact per-request prompt lengths for the routing workload."""
+    if _routing_arrival_profile(cli_args) == ROUTING_ARRIVAL_TWO_WAVE_IMBALANCE:
+        _validate_two_wave_imbalance_args(cli_args)
+        if req_count is not None and int(req_count) != int(cli_args.req_count):
+            raise ValueError(
+                "req_count override must match cli_args.req_count for the "
+                "two-wave-imbalance workload"
+            )
+        lengths = [int(cli_args.long_prompt_tokens)] * int(cli_args.prefill_burst)
+        lengths.extend(
+            [int(cli_args.short_prompt_tokens)]
+            * (int(cli_args.decode_requests) + int(cli_args.continue_requests))
+        )
+        return lengths
     count = cli_args.req_count if req_count is None else req_count
     if count <= 0:
         raise ValueError("req_count must be positive")
@@ -383,21 +481,22 @@ def _split_prompt_token_ids(
 class _RequestRuntime:
     req: Request
     gpu_id: str
-    admitted_at: float
+    admitted_at: float  # Wall-clock arrival required by the vLLM request API.
+    admitted_monotonic: float  # Local duration clock used for TTFT.
     ttft_ms: Optional[float] = None
     finished: bool = False
     role: str = "shared"
     observed_output_tokens: int = 0
 
     def observe_cumulative_tokens(self, total: int, observed_at: float) -> Tuple[int, Optional[float]]:
-        """Consume one cumulative request output, returning delta and new TTFT."""
+        """Consume cumulative output observed on the monotonic duration clock."""
         if total < self.observed_output_tokens:
             raise RuntimeError("Cumulative vLLM output token count decreased")
         delta = total - self.observed_output_tokens
         self.observed_output_tokens = total
         first_ttft = None
         if self.ttft_ms is None and delta > 0:
-            self.ttft_ms = (observed_at - self.admitted_at) * 1000.0
+            self.ttft_ms = (observed_at - self.admitted_monotonic) * 1000.0
             first_ttft = self.ttft_ms
         return delta, first_ttft
 
@@ -547,7 +646,7 @@ class _VllmWrapper:
         outputs = self.engine.step()
         # A pre-step caller timestamp omits the engine work that emits the first
         # token. Retain the argument for compatibility, but observe after step.
-        return self._consume_request_outputs(outputs, time.time())
+        return self._consume_request_outputs(outputs, time.perf_counter())
 
     def _consume_request_outputs(self, outputs, observed_at: float) -> Tuple[List[str], List[Tuple[str, float]], int]:
         """Parse cumulative vLLM output payloads without timing or engine mocks."""
@@ -721,7 +820,7 @@ class _VllmV1Wrapper(_VllmWrapper):
                 self.engine.output_processor.update_scheduler_stats(engine_core_outputs.scheduler_stats)
 
                 finished_ids, ttft_samples, tokens_emitted = self._consume_request_outputs(
-                    processed.request_outputs, time.time(),
+                    processed.request_outputs, time.perf_counter(),
                 )
 
         # Keep polling if scheduler deferred execution this step.
@@ -1060,6 +1159,7 @@ def _build_handles(
 
 
 def _require_vllm_host(*, workload_label: str, minimum_gpus: int) -> int:
+    _assert_pinned_vllm_cuda_visibility()
     if not torch.cuda.is_available():
         _skip(f"CUDA is required for {workload_label}.")
     total_gpus = torch.cuda.device_count()
@@ -1074,6 +1174,9 @@ def _routing_session_layout(
     topology_snapshot: TopologySnapshot,
     cli_args: argparse.Namespace,
 ) -> Tuple[str, List[_GPUHandle], str, Optional[str], type[_VllmWrapper]]:
+    arrival_profile = _routing_arrival_profile(cli_args)
+    if arrival_profile == ROUTING_ARRIVAL_TWO_WAVE_IMBALANCE:
+        _validate_two_wave_imbalance_args(cli_args)
     total_gpus = _require_vllm_host(
         workload_label="vLLM routing demo",
         minimum_gpus=2,
@@ -1085,6 +1188,14 @@ def _routing_session_layout(
     decode_ids = _parse_device_list(cli_args.decode_gpus, "0,1", total_gpus)
     if not decode_ids:
         decode_ids = list(range(min(2, total_gpus)))
+    if (
+        arrival_profile == ROUTING_ARRIVAL_TWO_WAVE_IMBALANCE
+        and len(decode_ids) != 2
+    ):
+        raise ValueError(
+            "--routing-arrival-profile two-wave-imbalance requires exactly two "
+            "--decode-gpus"
+        )
     handles = _build_handles(
         "shared",
         decode_ids,
@@ -1282,6 +1393,239 @@ def _collect_verification_output_token_ids(
     return framed
 
 
+def _run_vllm_two_wave_imbalance(
+    mode: str,
+    *,
+    topology_snapshot: TopologySnapshot,
+    cli_args: argparse.Namespace,
+    prompt_token_ids: torch.Tensor,
+    req_count: Optional[int],
+    max_tokens: Optional[int],
+    session: VllmEngineSession,
+) -> Dict[str, float]:
+    """Run a fixed background wave, then route a delayed foreground wave."""
+    _validate_two_wave_imbalance_args(cli_args)
+    if req_count is not None and int(req_count) != int(cli_args.req_count):
+        raise ValueError(
+            "req_count override must match cli_args.req_count for the "
+            "two-wave-imbalance workload"
+        )
+    if max_tokens is not None and int(max_tokens) != int(cli_args.max_tokens):
+        raise ValueError(
+            "max_tokens override must match cli_args.max_tokens for the "
+            "two-wave-imbalance workload"
+        )
+
+    prompt_lengths = routing_prompt_lengths(cli_args, req_count=req_count)
+    max_tokens_val = int(cli_args.max_tokens)
+    if max_tokens_val <= 0:
+        raise ValueError("max_tokens must be positive")
+    request_prompt_token_ids = _split_prompt_token_ids(
+        prompt_token_ids, prompt_lengths
+    )
+
+    engines = session.engines
+    engine_ids = tuple(engines)
+    if len(engine_ids) != 2:
+        raise ValueError(
+            "two-wave-imbalance requires exactly two routing engines"
+        )
+
+    run_phase, request_prefix = session.begin_run()
+    loaded_gpu, idle_gpu = engine_ids
+    # These are exact engine counters, refreshed after every admission. Smoothing
+    # the counter hides new reservations and can overload the initially idle GPU.
+    router = Router(queue_depth_alpha=1.0) if mode == "optimized" else None
+    if router is not None:
+        for gid in engine_ids:
+            router.register_gpu(
+                gid,
+                is_prefill=True,
+                is_decode=True,
+                numa_node=topology_snapshot.gpu_numa.get(
+                    int(gid.replace("gpu", ""))
+                ),
+            )
+
+    cohort_names = (
+        "background_long",
+        "background_short",
+        "foreground_short",
+    )
+    cohort_ttft = {cohort: [] for cohort in cohort_names}
+    cohort_admitted = {
+        cohort: {gid: 0 for gid in engine_ids} for cohort in cohort_names
+    }
+    admitted_by_gpu = {gid: 0 for gid in engine_ids}
+    telemetry = {gid: _RoutingTelemetry() for gid in engine_ids}
+    request_ids: List[str] = []
+    request_cohort: Dict[str, str] = {}
+    completed_ids: Set[str] = set()
+    ttft_samples: List[float] = []
+    ttft_total_ms = 0.0
+
+    def admit_request(index: int, gid: str, cohort: str) -> None:
+        rid = f"{request_prefix}req-{index}"
+        request_ids.append(rid)
+        request_cohort[rid] = cohort
+        request = Request(
+            req_id=rid,
+            prompt_tokens=prompt_lengths[index],
+            expected_new_tokens=max_tokens_val,
+        )
+        runtime = _RequestRuntime(
+            req=request,
+            gpu_id=gid,
+            admitted_at=time.time(),
+            admitted_monotonic=time.perf_counter(),
+            role=cohort,
+        )
+        engines[gid].add_request(runtime, request_prompt_token_ids[index])
+        admitted_by_gpu[gid] += 1
+        cohort_admitted[cohort][gid] += 1
+
+    def update_router_from_engine(
+        gid: str, *, include_step_feedback: bool = False
+    ) -> None:
+        if router is None:
+            return
+        observed_metrics = {
+            "queue_depth": float(engines[gid].queue_depth()),
+        }
+        if include_step_feedback:
+            snapshot = telemetry[gid].snapshot_args()
+            observed_metrics["tpot"] = float(snapshot["tpot_ema"] or 0.0)
+            if snapshot["ttft_ema"] is not None:
+                observed_metrics["ttft_ms"] = float(snapshot["ttft_ema"])
+        router.update_metrics(gid, observed_metrics)
+
+    def step_engines() -> bool:
+        nonlocal ttft_total_ms
+        active = False
+        for gid in engine_ids:
+            engine = engines[gid]
+            finished_ids, ttft_new, tokens = engine.step()
+            duplicate = completed_ids.intersection(finished_ids)
+            if duplicate:
+                raise RuntimeError(
+                    f"Engine reported requests complete more than once: {sorted(duplicate)}"
+                )
+            completed_ids.update(finished_ids)
+            for rid, sample in ttft_new:
+                cohort = request_cohort.get(rid)
+                if cohort is None:
+                    raise RuntimeError(f"Engine reported unknown request {rid}")
+                ttft_samples.append(sample)
+                cohort_ttft[cohort].append(sample)
+                ttft_total_ms += sample
+            telemetry[gid].observe(ttft_new, tokens)
+            update_router_from_engine(gid, include_step_feedback=True)
+            if finished_ids or tokens > 0 or engine.queue_depth() > 0:
+                active = True
+        return active
+
+    background_long = int(cli_args.prefill_burst)
+    background_short = int(cli_args.decode_requests)
+    foreground_short = int(cli_args.continue_requests)
+    background_end = background_long + background_short
+
+    # Both arms receive the identical controlled background: long work on the
+    # first engine and short work on the second. Placement policy is exercised
+    # only by the delayed foreground wave.
+    for index in range(background_long):
+        admit_request(index, loaded_gpu, "background_long")
+    for index in range(background_long, background_end):
+        admit_request(index, idle_gpu, "background_short")
+    for gid in engine_ids:
+        update_router_from_engine(gid)
+
+    arrival_gate_steps = 0
+    gate_loaded_depth = 0
+    gate_idle_depth = 0
+    while True:
+        active = step_engines()
+        arrival_gate_steps += 1
+        gate_loaded_depth = engines[loaded_gpu].queue_depth()
+        gate_idle_depth = engines[idle_gpu].queue_depth()
+        if gate_loaded_depth > 0 and gate_idle_depth == 0:
+            break
+        if gate_loaded_depth == 0 and gate_idle_depth == 0:
+            raise RuntimeError(
+                "two-wave-imbalance prerequisite was not observed: both "
+                "background queues drained before the second GPU became idle "
+                "while the first GPU remained busy"
+            )
+        if not active:
+            raise RuntimeError(
+                "two-wave-imbalance background ended before the required "
+                "loaded/idle queue state was observed"
+            )
+
+    first_foreground_gpu: Optional[str] = None
+    for offset, index in enumerate(range(background_end, len(prompt_lengths))):
+        if router is None:
+            gid = engine_ids[offset % len(engine_ids)]
+        else:
+            chosen = router.choose_prefill_gpu()
+            if chosen not in engines:
+                raise RuntimeError(
+                    "Routing policy returned no valid GPU for the delayed "
+                    "foreground wave"
+                )
+            gid = chosen
+        if first_foreground_gpu is None:
+            first_foreground_gpu = gid
+        admit_request(index, gid, "foreground_short")
+        update_router_from_engine(gid)
+
+    while len(completed_ids) < len(prompt_lengths):
+        if not step_engines():
+            raise RuntimeError(
+                "two-wave-imbalance engine run ended early: completed "
+                f"{len(completed_ids)} of {len(prompt_lengths)} requests"
+            )
+
+    summary: Dict[str, float] = {
+        "mode": mode,
+        "routing_arrival_profile": ROUTING_ARRIVAL_TWO_WAVE_IMBALANCE,
+        "requests": len(prompt_lengths),
+        "completed": len(completed_ids),
+        "ttft_ms_mean": (
+            float(ttft_total_ms / len(ttft_samples)) if ttft_samples else 0.0
+        ),
+        "arrival_gate_steps": arrival_gate_steps,
+        "arrival_gate_loaded_queue_depth": gate_loaded_depth,
+        "arrival_gate_idle_queue_depth": gate_idle_depth,
+        "fixed_background_placement": 1.0,
+        "foreground_first_to_idle_gpu": float(first_foreground_gpu == idle_gpu),
+        "background_long_requests": background_long,
+        "background_short_requests": background_short,
+        "foreground_short_requests": foreground_short,
+    }
+    summary["ttft_ms_p50"], summary["ttft_ms_p95"] = _percentiles(
+        ttft_samples, (50.0, 95.0)
+    )
+    for cohort in cohort_names:
+        p50, p95 = _percentiles(cohort_ttft[cohort], (50.0, 95.0))
+        summary[f"ttft_ms_p50_{cohort}"] = p50
+        summary[f"ttft_ms_p95_{cohort}"] = p95
+    for gid in engine_ids:
+        summary[f"tpot_tok_per_step_{gid}"] = telemetry[
+            gid
+        ].tokens_per_step.get()
+        summary[f"requests_admitted_{gid}"] = admitted_by_gpu[gid]
+        for cohort in cohort_names:
+            summary[f"requests_admitted_{cohort}_{gid}"] = cohort_admitted[
+                cohort
+            ][gid]
+    summary[VERIFICATION_OUTPUT_KEY] = _collect_verification_output_token_ids(
+        engines, request_ids
+    )
+    session.finish_run(run_phase)
+    summary.update(session.lifecycle_metrics())
+    return summary
+
+
 @_manage_engine_session(create_vllm_routing_session)
 def run_vllm_routing_with_topology(
     mode: str,
@@ -1312,6 +1656,19 @@ def run_vllm_routing_with_topology(
         model_id=model_id,
         attention_backend=attention_backend,
     )
+    if (
+        _routing_arrival_profile(args)
+        == ROUTING_ARRIVAL_TWO_WAVE_IMBALANCE
+    ):
+        return _run_vllm_two_wave_imbalance(
+            mode,
+            topology_snapshot=topology_snapshot,
+            cli_args=args,
+            prompt_token_ids=prompt_token_ids,
+            req_count=req_count,
+            max_tokens=max_tokens,
+            session=session,
+        )
     run_phase, request_prefix = session.begin_run()
     engines = session.engines
 
@@ -1341,7 +1698,17 @@ def run_vllm_routing_with_topology(
     completed = 0
     telemetry = {gid: _RoutingTelemetry() for gid in engines}
     engine_ids = tuple(engines)
+    admitted_by_gpu = {gid: 0 for gid in engine_ids}
     request_ids: List[str] = []
+
+    # Every request is admitted before the first engine step, so TTFT/TPOT
+    # feedback cannot inform placement in this workload. Seed the router with
+    # the exact empty-session depths and update only the chosen GPU after each
+    # successful admission. This keeps the admission contract intact while
+    # making each subsequent decision observe current, run-local queue state.
+    if router:
+        for gid in engine_ids:
+            router.update_metrics(gid, {"queue_depth": 0.0})
 
     # Submit all requests up front
     for i in range(req_count_val):
@@ -1353,13 +1720,25 @@ def run_vllm_routing_with_topology(
             expected_new_tokens=max_tokens_val,
         )
         admitted = time.time()
+        admitted_monotonic = time.perf_counter()
         if router:
             # Round-trip through Router for placement
             gid = router.choose_prefill_gpu() or "gpu0"
         else:
             gid = engine_ids[i % len(engine_ids)]
-        rt = _RequestRuntime(req=req, gpu_id=gid, admitted_at=admitted)
+        rt = _RequestRuntime(
+            req=req,
+            gpu_id=gid,
+            admitted_at=admitted,
+            admitted_monotonic=admitted_monotonic,
+        )
         engines[gid].add_request(rt, request_prompt_token_ids[i])
+        admitted_by_gpu[gid] += 1
+        if router:
+            router.update_metrics(
+                gid,
+                {"queue_depth": float(admitted_by_gpu[gid])},
+            )
 
     active = True
     while active:
@@ -1374,10 +1753,6 @@ def run_vllm_routing_with_topology(
                     ttft_samples.append(sample)
                     ttft_total_ms += sample
             telemetry[gid].observe(ttft_new, tokens)
-            # Push metrics into router
-            if router:
-                router.update_metrics(gid, eng.snapshot_metrics(**telemetry[gid].snapshot_args()))
-        time.sleep(0.01)
         if completed >= req_count_val:
             break
 
@@ -1390,6 +1765,7 @@ def run_vllm_routing_with_topology(
     summary["ttft_ms_p50"], summary["ttft_ms_p95"] = _percentiles(ttft_samples, (50.0, 95.0))
     for gid in engines:
         summary[f"tpot_tok_per_step_{gid}"] = telemetry[gid].tokens_per_step.get()
+        summary[f"requests_admitted_{gid}"] = admitted_by_gpu[gid]
     summary[VERIFICATION_OUTPUT_KEY] = _collect_verification_output_token_ids(
         engines, request_ids
     )
@@ -1455,6 +1831,9 @@ def run_dual_pool_vllm_with_topology(
     continue_requests = args.continue_requests if continue_requests is None else continue_requests
     max_tokens = args.max_tokens if max_tokens is None else max_tokens
     prefill_ctx_thresh = args.prefill_ctx_thresh if prefill_ctx_thresh is None else prefill_ctx_thresh
+    long_spillover_limit = int(getattr(args, "long_spillover_limit", 0))
+    if long_spillover_limit < 0:
+        raise ValueError("long_spillover_limit must be non-negative")
     max_tokens_val = max_tokens
     if max_tokens_val <= 0:
         raise ValueError("max_tokens must be positive")
@@ -1533,31 +1912,65 @@ def run_dual_pool_vllm_with_topology(
 
     requests: Dict[str, _RequestRuntime] = {}
     req_roles: Dict[str, str] = {}
+    # Admission completes before the drain loop, so seed and update run-local
+    # depths here; drain-time TTFT/TPOT cannot inform these placements.
+    admitted_by_gpu = {handle.gpu_id: 0 for handle in handles}
+    admitted_by_role_gpu = {
+        role: {handle.gpu_id: 0 for handle in handles}
+        for role in ("prefill", "decode")
+    }
+    long_spillover_requests = 0
+    for handle in handles:
+        router.update_metrics(handle.gpu_id, {"queue_depth": 0.0})
     if len(workload) != len(request_prompt_token_ids):
         raise RuntimeError("prompt input request count does not match the routed workload")
+
+    def _choose_decode_target(req: Request) -> Optional[str]:
+        seq = SequenceInfo(
+            seq_id=req.req_id,
+            current_gpu="",
+            kv_gpus=set(),
+            expected_tokens_remaining=req.expected_new_tokens,
+            priority=req.priority,
+            numa_node=decode_numa_hint,
+        )
+        target = router.choose_decode_gpu(seq)
+        if target is None:
+            if decode_pool_ids:
+                target = decode_pool_ids[0]
+            elif prefill_pool_ids:
+                target = prefill_pool_ids[0]
+        return target
+
     for request_index, (req, hint) in enumerate(workload):
         route = "prefill" if hint == "prefill" or req.prompt_tokens >= prefill_ctx_thresh else "decode"
+        target = None
         if route == "prefill":
-            target = router.choose_prefill_gpu() or (prefill_pool_ids[0] if prefill_pool_ids else None)
-        else:
-            seq = SequenceInfo(
-                seq_id=req.req_id,
-                current_gpu="",
-                kv_gpus=set(),
-                expected_tokens_remaining=req.expected_new_tokens,
-                priority=req.priority,
-                numa_node=decode_numa_hint,
-            )
-            target = router.choose_decode_gpu(seq)
+            if normalized_mode == "dual" and long_spillover_requests < long_spillover_limit:
+                spillover_target = _choose_decode_target(req)
+                if spillover_target is not None and spillover_target not in prefill_pool_ids:
+                    target = spillover_target
+                    long_spillover_requests += 1
             if target is None:
-                if decode_pool_ids:
-                    target = decode_pool_ids[0]
-                elif prefill_pool_ids:
-                    target = prefill_pool_ids[0]
+                target = router.choose_prefill_gpu() or (prefill_pool_ids[0] if prefill_pool_ids else None)
+        else:
+            target = _choose_decode_target(req)
         if target is None:
             _skip("No GPU available for routed request.")
-        rt = _RequestRuntime(req=req, gpu_id=target, admitted_at=time.time(), role=route)
+        rt = _RequestRuntime(
+            req=req,
+            gpu_id=target,
+            admitted_at=time.time(),
+            admitted_monotonic=time.perf_counter(),
+            role=route,
+        )
         engines[target].add_request(rt, request_prompt_token_ids[request_index])
+        admitted_by_gpu[target] += 1
+        admitted_by_role_gpu[route][target] += 1
+        router.update_metrics(
+            target,
+            {"queue_depth": float(admitted_by_gpu[target])},
+        )
         requests[req.req_id] = rt
         req_roles[req.req_id] = route
 
@@ -1582,10 +1995,6 @@ def run_dual_pool_vllm_with_topology(
                 if role in pool_ttft:
                     pool_ttft[role].append(ttft_ms)
             telemetry[handle.gpu_id].observe(ttft_new, tokens)
-            router.update_metrics(
-                handle.gpu_id,
-                eng.snapshot_metrics(**telemetry[handle.gpu_id].snapshot_args()),
-            )
             qd = eng.queue_depth()
             if handle.is_prefill:
                 queue_depth_totals["prefill"] += float(qd)
@@ -1595,7 +2004,6 @@ def run_dual_pool_vllm_with_topology(
                 queue_depth_counts["decode"] += 1
             for rid in finished_ids:
                 completed.add(rid)
-        time.sleep(0.01)
         if len(completed) >= len(req_roles):
             break
 
@@ -1607,8 +2015,8 @@ def run_dual_pool_vllm_with_topology(
         "mode": normalized_mode,
         "requests": len(req_roles),
         "completed": len(completed),
-        "prefill_gpu_count": len(prefill_ids),
-        "decode_gpu_count": len(decode_ids),
+        "prefill_gpu_count": len(prefill_handles),
+        "decode_gpu_count": len(decode_handles),
         "ttft_ms_p50": ttft_p50,
         "ttft_ms_p95": ttft_p95,
         "prefill_ttft_ms_p50": prefill_ttft_p50,
@@ -1632,9 +2040,14 @@ def run_dual_pool_vllm_with_topology(
         "continue_requests": float(continue_requests),
         "prefill_ctx_thresh": float(prefill_ctx_thresh),
         "max_tokens": float(max_tokens_val),
+        "long_spillover_limit": float(long_spillover_limit),
+        "long_spillover_requests": float(long_spillover_requests),
     }
     for gid in engines:
         summary[f"tpot_tok_per_step_{gid}"] = telemetry[gid].tokens_per_step.get()
+        summary[f"requests_admitted_{gid}"] = admitted_by_gpu[gid]
+        summary[f"prefill_requests_admitted_{gid}"] = admitted_by_role_gpu["prefill"][gid]
+        summary[f"decode_requests_admitted_{gid}"] = admitted_by_role_gpu["decode"][gid]
     summary[VERIFICATION_OUTPUT_KEY] = _collect_verification_output_token_ids(
         engines, list(req_roles)
     )

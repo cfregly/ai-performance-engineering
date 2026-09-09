@@ -11006,7 +11006,7 @@ def test_dynamic_router_vllm_runner_caches_engine_ids() -> None:
     assert "total_tokens = sum(len(o.token_ids) for o in ro.outputs)" not in wrapper_section
     assert wrapper_section.count("sum(len(o.token_ids) for o in ro.outputs)") == 1
     assert "finished_ids, ttft_samples, tokens_emitted = self._consume_request_outputs(" in v1_wrapper_section
-    assert "processed.request_outputs, time.time()," in v1_wrapper_section
+    assert "processed.request_outputs, time.perf_counter()," in v1_wrapper_section
     assert "tokens_emitted += output_token_count" not in v1_wrapper_section
 
 
@@ -12154,7 +12154,8 @@ def test_persistent_decode_tma_buffers_avoid_zero_fill_before_overwrite() -> Non
         decode_graph_section = source.split("def _decode_graph", maxsplit=1)[1].split(
             "def benchmark_fn", maxsplit=1
         )[0]
-        assert "self.graph_out = torch.empty_like(self.inputs.out)" in source
+        assert "self.graph_out = self.inputs.out" in source
+        assert "self.inputs.out.copy_(self.graph_out)" not in source
         assert "self.graph_out.zero_()" not in decode_graph_section
 
 
@@ -15320,13 +15321,31 @@ def test_train_distributed_optimized_wrappers_log_detached_loss_values() -> None
         assert "float(loss.detach())" not in source
         if relative in ("optimized_ddp.py", "optimized_ddp_multigpu.py"):
             assert "DeferredTrainingProgress(num_steps=num_steps, interval=10, device=device)" in source
-            assert "progress.record(step=step, loss=loss, tokens=batch[\"input_ids\"].numel())" in source
+            assert (
+                'progress.record(step=step, loss=outputs.loss.detach(), tokens=batch["input_ids"].numel())'
+                in source
+            )
+            assert (
+                'progress.record(step=step, loss=loss, tokens=batch["input_ids"].numel())'
+                not in source
+            )
             assert "for sample in progress.read():" in source
             assert "loss={sample.loss:.4f}" in source
             assert source.index("total_time =") < source.index("for sample in progress.read():")
+            timed_section = source.split("start_time = perf_counter()", maxsplit=1)[1].split(
+                "total_time =", maxsplit=1
+            )[0]
+            assert ".cpu()" not in timed_section
             continue
         assert "loss_value_buffer = torch.empty(1, dtype=torch.float64" in source
-        assert "loss_value_buffer[0].copy_(loss.detach())" in source
+        expected_loss = (
+            "outputs.loss.detach()"
+            if relative.startswith("optimized_ddp_flash")
+            else "loss.detach()"
+        )
+        assert f"loss_value_buffer[0].copy_({expected_loss})" in source
+        if relative.startswith("optimized_ddp_flash"):
+            assert "loss_value_buffer[0].copy_(loss.detach())" not in source
         assert "loss_value = float(loss_value_buffer.detach().cpu()[0])" in source
         assert "loss={loss_value:.4f}" in source
 
@@ -21786,11 +21805,9 @@ def test_ch15_moe_comm_exchange_reuses_static_pack_buffers() -> None:
     assert "self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())" in setup_section
     assert "param_count = sum(" not in capture_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
-    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
-    assert "probe_cols = min(256, self.hidden_size)" in setup_section
-    assert "self._verify_probe = torch.empty((1, 1, probe_cols), dtype=self.inputs.dtype, pin_memory=True)" in setup_section
-    assert "self._verify_probe.copy_(" in setup_section
-    assert "self.inputs[:1, :1, :probe_cols]" in setup_section
+    assert "self._verify_output_buffer" not in source
+    assert "self._verify_probe" not in source
+    assert "self._verify_meta" not in source
     setup_without_staging = setup_section.replace(
         "self._remote_cpu_sorted = flat.index_select(0, self._remote_perm).detach().cpu().pin_memory()",
         "",
@@ -21802,13 +21819,11 @@ def test_ch15_moe_comm_exchange_reuses_static_pack_buffers() -> None:
         "",
     )
     assert ".detach().cpu()" not in setup_without_staging
-    assert "self._verify_output_buffer = torch.empty((2, 2, 256), dtype=torch.float32)" in setup_section
-    assert "self._verify_output_buffer.copy_(output_slice, non_blocking=False)" in capture_section
-    assert "output=self._verify_output_buffer" in capture_section
-    assert ".detach().cpu().float().clone()" not in capture_section
-    assert "self._verify_probe = None" in teardown_section
-    assert "self._verify_meta = None" in teardown_section
-    assert "self._verify_output_buffer = None" in teardown_section
+    assert '"tokens": self.inputs.detach()' in capture_section
+    assert '"expert_ids": self.expert_ids.detach()' in capture_section
+    assert "output=self.output.detach()" in capture_section
+    assert "output_slice" not in capture_section
+    assert ".detach().cpu()" not in capture_section
     assert "self._flat_inputs: Optional[torch.Tensor] = None" in source
     assert "self._flat_inputs = self.inputs.view(-1, self.hidden_size)" in setup_section
     assert "flat = self._flat_inputs" in baseline_section

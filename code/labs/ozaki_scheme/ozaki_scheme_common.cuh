@@ -18,9 +18,19 @@
 #include <vector>
 
 #include "../../core/common/headers/cuda_verify.cuh"
+#include "../../core/common/nvtx_utils.cuh"
 #include "accuracy.h"
 
 namespace ozaki_scheme {
+
+// Only the dedicated profiling build enables this start/end range. It covers
+// the same complete GEMM loop as TIME_MS, excluding warmup and reference work.
+struct MatmulProfileRange {
+#if AISP_NVTX_ENABLED
+    nvtxRangeId_t id = nvtxRangeStartA("compute_kernel:profile");
+    ~MatmulProfileRange() { nvtxRangeEnd(id); }
+#endif
+};
 
 enum class Variant {
     kNative,
@@ -407,12 +417,13 @@ inline void launch_matmul(
     const double alpha = 1.0;
     const double beta = 0.0;
     if (state.retained_bits_device != nullptr) {
-        const int sentinel = -1;
-        OZAKI_CHECK_CUDA(cudaMemcpyAsync(
+        // Keep the sentinel reset on the GEMM stream. A copy from pageable
+        // host memory may synchronize while staging even with the Async API.
+        // Filling every byte with 0xff produces the same int32 -1 sentinel.
+        OZAKI_CHECK_CUDA(cudaMemsetAsync(
             state.retained_bits_device,
-            &sentinel,
+            0xff,
             sizeof(int),
-            cudaMemcpyHostToDevice,
             stream));
     }
     const cublasComputeType_t compute_type =
@@ -547,12 +558,15 @@ inline Metrics benchmark_variant(Variant variant, const Options& options) {
         }
         OZAKI_CHECK_CUDA(cudaStreamSynchronize(stream));
 
-        OZAKI_CHECK_CUDA(cudaEventRecord(start, stream));
-        for (int i = 0; i < options.iters; ++i) {
-            launch_matmul(state, variant, options, d_a, d_b, d_c, stream);
+        {
+            MatmulProfileRange profile_range;
+            OZAKI_CHECK_CUDA(cudaEventRecord(start, stream));
+            for (int i = 0; i < options.iters; ++i) {
+                launch_matmul(state, variant, options, d_a, d_b, d_c, stream);
+            }
+            OZAKI_CHECK_CUDA(cudaEventRecord(stop, stream));
+            OZAKI_CHECK_CUDA(cudaEventSynchronize(stop));
         }
-        OZAKI_CHECK_CUDA(cudaEventRecord(stop, stream));
-        OZAKI_CHECK_CUDA(cudaEventSynchronize(stop));
 
         float elapsed_ms = 0.0f;
         OZAKI_CHECK_CUDA(cudaEventElapsedTime(&elapsed_ms, start, stop));

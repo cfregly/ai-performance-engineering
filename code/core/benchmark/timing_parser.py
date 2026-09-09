@@ -12,20 +12,26 @@ CUDA executables typically print timing like:
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Optional, List, Tuple
+
+# Match the complete numeric token: truncating an exponent changes the timing
+# by orders of magnitude (e.g. Ozaki prints TIME_MS in scientific notation).
+_TIME_NUMBER = r"(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?"
+_TIME_TOKEN = rf"(?<![\w.+-])({_TIME_NUMBER})"
 
 # Regex patterns to parse timing from stdout (supports ms, us, s units)
 # Each tuple: (compiled_pattern, multiplier_to_ms)
 _TIME_PATTERNS: List[Tuple[re.Pattern, float]] = [
     # TIME_MS format: "TIME_MS: 0.9026" or "TIME_MS:0.9026" (common in CUDA benchmarks)
-    (re.compile(r'TIME_MS:\s*(\d+\.?\d*)', re.IGNORECASE), 1.0),
+    (re.compile(rf'TIME_MS:\s*({_TIME_NUMBER})(?![\w.+-])', re.IGNORECASE), 1.0),
     # Milliseconds: "2.3074 ms", "0.008 ms"
-    (re.compile(r'(\d+\.?\d*)\s*ms\b', re.IGNORECASE), 1.0),
+    (re.compile(rf'{_TIME_TOKEN}\s*ms\b', re.IGNORECASE), 1.0),
     # Microseconds: "1234 us", "500 μs"
-    (re.compile(r'(\d+\.?\d*)\s*[uμ]s\b', re.IGNORECASE), 0.001),
+    (re.compile(rf'{_TIME_TOKEN}\s*[uμ]s\b', re.IGNORECASE), 0.001),
     # Seconds: "1.5 s" (but not "ms" or "us" - negative lookbehind)
-    (re.compile(r'(\d+\.?\d*)\s*s\b(?![uμm])', re.IGNORECASE), 1000.0),
+    (re.compile(rf'{_TIME_TOKEN}\s*s\b(?![uμm])', re.IGNORECASE), 1000.0),
 ]
 
 
@@ -72,6 +78,8 @@ def parse_kernel_time_ms(stdout: str, custom_regex: Optional[str] = None) -> Opt
             try:
                 value = float(match.group(1))
                 time_ms = value * multiplier
+                if not math.isfinite(time_ms):
+                    continue
                 matches.append((match.start(), time_ms))
             except (ValueError, IndexError):
                 continue

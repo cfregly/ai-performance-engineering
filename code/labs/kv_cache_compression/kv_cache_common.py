@@ -133,13 +133,23 @@ class KVCacheAttention(nn.Module):
         except TypeError as exc:
             raise TypeError("linear_cls must accept params_dtype and device") from exc
 
-    def forward(self, tokens: torch.Tensor, cache: KVCache, start_offset: int) -> torch.Tensor:
+    def forward(
+        self,
+        tokens: torch.Tensor,
+        cache: KVCache,
+        start_offset: int,
+        *,
+        is_first_microbatch: Optional[bool] = None,
+    ) -> torch.Tensor:
         """Compute attention for tokens and append K/V into cache."""
         if tokens.dim() != 3:
             raise ValueError(f"tokens must have shape [batch, seq, hidden], got {tuple(tokens.shape)}")
         batch, seq_len, _ = tokens.shape
         x = self.ln(tokens)
-        qkv = self.qkv(x)
+        if is_first_microbatch is None:
+            qkv = self.qkv(x)
+        else:
+            qkv = self.qkv(x, is_first_microbatch=is_first_microbatch)
         qkv = qkv.view(batch, seq_len, 3, self.num_heads, self.head_dim)
         q, k, v = qkv.unbind(dim=2)
 
@@ -166,7 +176,9 @@ class KVCacheAttention(nn.Module):
                 scale=self.scale,
             )
         out = out.transpose(1, 2).contiguous().reshape(batch, seq_len, self.hidden_dim)
-        return self.proj(out)
+        if is_first_microbatch is None:
+            return self.proj(out)
+        return self.proj(out, is_first_microbatch=is_first_microbatch)
 
 
 def _linear_weight_bias(module: nn.Module) -> tuple[torch.Tensor, Optional[torch.Tensor]]:

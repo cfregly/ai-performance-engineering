@@ -59,15 +59,15 @@ accepts only that explicit disposition:
 
 ```bash
 measure_only() {
-  output=$1
+  local measure_output=$1
   shift
-  set +e
-  "$@" >"$output" 2>&1
-  status=$?
-  set -e
-  if [ "$status" -ne 2 ]; then
-    return "$status"
+  local measure_status=0
+  "$@" >"$measure_output" 2>&1 || measure_status=$?
+  if [ "$measure_status" -ne 2 ]; then
+    printf 'Expected measurement-only exit 2; received %s\n' "$measure_status" >&2
+    return 1
   fi
+  return 0
 }
 ```
 

@@ -40,6 +40,10 @@ requires_cuda = pytest.mark.skipif(
     not torch.cuda.is_available(),
     reason="CUDA required for anti-cheat protection tests"
 )
+requires_two_cuda = pytest.mark.skipif(
+    not torch.cuda.is_available() or torch.cuda.device_count() < 2,
+    reason="two visible CUDA devices required for cross-device protection tests",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -463,11 +467,61 @@ class TestCUDAProtections:
     def test_async_memcpy_sync(self):
         assert_stream_audit_controls(pinned=True)
 
+    @requires_two_cuda
     def test_undeclared_multi_gpu_detection(self):
-        pytest.skip('Missing production protection: no undeclared-GPU execution detector; environment inventory only warns that multiple devices exist')
+        """Reject dispatcher-visible work on an undeclared logical CUDA device."""
+        from core.harness.execution_audit import audit_callable_once
 
+        expected_index = int(torch.cuda.current_device())
+        undeclared_index = next(
+            index for index in range(torch.cuda.device_count()) if index != expected_index
+        )
+        expected_device = torch.device("cuda", expected_index)
+        undeclared_device = torch.device("cuda", undeclared_index)
+        declared_value = torch.arange(16, dtype=torch.float32, device=expected_device)
+        undeclared_value = torch.arange(16, dtype=torch.float32, device=undeclared_device)
+        torch.cuda.synchronize(expected_device)
+        torch.cuda.synchronize(undeclared_device)
+
+        result = audit_callable_once(
+            lambda: (declared_value.square(), undeclared_value.square()),
+            expected_device=expected_device,
+        )
+        torch.cuda.synchronize(expected_device)
+        torch.cuda.synchronize(undeclared_device)
+
+        assert not result.passed
+        assert result.placement.expected_device_operations_seen == 1
+        assert result.placement.violations_seen == 1
+        violation = result.placement.violation_evidence[0]
+        assert {tensor.device for tensor in violation.tensors} == {str(undeclared_device)}
+
+    @requires_two_cuda
     def test_context_switch_handling(self):
-        pytest.skip('Missing production protection: no CUDA context-switch enforcement detector')
+        """Reject current-device drift that remains present at a harness boundary."""
+        from core.harness.device_identity_contract import (
+            DeviceIdentityContract,
+            DeviceIdentityError,
+        )
+
+        pytest.importorskip("pynvml", reason="live CUDA context contract requires pynvml")
+        expected_index = int(torch.cuda.current_device())
+        switched_index = next(
+            index for index in range(torch.cuda.device_count()) if index != expected_index
+        )
+        contract = DeviceIdentityContract(torch.device("cuda", expected_index))
+        contract.establish_configured_device()
+        try:
+            contract.check("before_context_switch_test")
+            torch.cuda.set_device(switched_index)
+            with pytest.raises(
+                DeviceIdentityError,
+                match="CUDA current-device drift at after_context_switch_test",
+            ):
+                contract.check("after_context_switch_test")
+        finally:
+            contract.restore_entry_device()
+        assert torch.cuda.current_device() == expected_index
 
 
 # =============================================================================
