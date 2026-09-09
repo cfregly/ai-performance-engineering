@@ -56,6 +56,13 @@ rank 0, using the slowest rank's complete training interval. This includes data
 loading, transfers, forward, backward, optimizer updates, and training logging;
 it excludes model startup and teardown. The optimized paths retain their
 FlashAttention, resharding, FP8, and fused AdamW behavior where supported.
+
+For reproducible FlashAttention 2 training checks, explicitly set
+`FLASH_ATTENTION_DETERMINISTIC=1` for both compared runs. A fixed model/data seed
+alone does not make the default FlashAttention backward pass bitwise repeatable.
+Keep this setting consistent across compared runs and record it with timings.
+Matching an independent model with the same attention backend does not establish
+bitwise equality with eager attention or an application-level accuracy budget.
 These direct-run diagnostics do not enable the generic wrapper's child-result
 verification for either FSDP family; the wrappers remain fail-closed until they
 publish actual trained outputs and an independent reference.

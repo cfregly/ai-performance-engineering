@@ -70,7 +70,7 @@ def main():
     x.normal_()
     y.normal_()
     optimizer.zero_grad(set_to_none=True)
-    with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
         warmup_loss = ddp_model(x)
         warmup_loss = nn.functional.mse_loss(warmup_loss, y)
     warmup_loss.backward()
@@ -85,7 +85,7 @@ def main():
         for micro in range(args.grad_accum):
             x.normal_()
             y.normal_()
-            with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 out = ddp_model(x)
                 loss = nn.functional.mse_loss(out, y) / args.grad_accum
             loss.backward()

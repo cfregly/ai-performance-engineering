@@ -842,3 +842,55 @@ or numerical acceptance. The reports, CSV exports, counter check, and supervisor
 receipt are retained in `fsdp2-ncu-world1-v4/`: ten files / 352,754 bytes,
 inventory SHA-256
 `ed0fc9d8a01670f55835a28060da2558b200b7653cad046e11657649543cd9ad`.
+
+The reduced initcheck ladder narrows the failure further. A full q projection
+followed by BF16 multiplication passes with zero errors, as does the isolated
+rotary operation with initialized q/k inputs. One ordinary unsharded
+`LlamaAttention` reproduces the uninitialized BF16 reads during rotary embedding,
+then reaches its 180-second timeout. FSDP is therefore unnecessary to reproduce
+the finding. All processes drain naturally. The ladder is preserved in
+`fsdp2-initcheck-isolation-v1/`: 12 files / 1,106,485 bytes, inventory SHA-256
+`5da608bff145de0e1349b6b783400ff0e175f3bad3b5411cdb2bccf878f33894`.
+
+An additional full-state control makes both candidate and unsharded reference
+use FlashAttention 2 with fused AdamW. With the default attention settings it
+still differs after training: two of four training losses differ, final loss
+absolute difference is 0.0012531281, and final-logit maximum absolute difference
+is 0.068359375. All values are finite. This failure is preserved in
+`fsdp2-exact-matched-attention-v4/`: five files / 32,747 bytes, inventory SHA-256
+`0cc5119c23553e66ed80f58fec02debd60748061c9635dda1bf292bb2fdaaf5d`.
+
+Repeating that matched-backend control with the explicit setting
+`FLASH_ATTENTION_DETERMINISTIC=1` passes **every full comparison exactly**:
+483,428,352 model values, 966,856,779 optimizer-state values, 65,536,000 logits,
+the final loss, and all four training losses. It completes in 41.776 seconds and
+drains naturally. This supports backward nondeterminism as the cause of the
+matched-backend differences; it establishes the recorded FSDP2/fused-optimizer
+equivalence in deterministic mode. It does not waive the separate FA2-versus-eager
+accuracy question or convert default-mode timings into deterministic-mode results.
+The pass is retained in `fsdp2-exact-deterministic-fa2-v5/`: five files /
+21,216 bytes, inventory SHA-256
+`dca7cc1f931c92abaed42e164e169a7b3ae41718b9598ffcf41f3beac2233c5d`.
+
+## FSDP1 training repair and direct execution
+
+Source `ddd7c8d7d63d4ad7cf3910338a0b39657ee8ca34` fixes the same second target
+shift in all four FSDP1 producers, using a shared FSDP/FSDP2 loss implementation.
+Synthetic targets now use the same next-token convention; data generation uses
+a private RNG, direct runs bind the seed, and rank loaders reject empty work and
+use full microbatches. The 50-row/two-rank/batch-two case now produces 12 full
+microbatches per rank rather than overweighting a one-sample tail. Optimizer-update
+step semantics and intended optimizer/attention/FP8 choices are preserved.
+
+Thirty focused loss/data tests and 60 lab/wrapper integration tests pass. The
+actual baseline and optimized single-GPU entrypoints then complete on a B200
+with the full 22-layer configuration, packed sequence length 1024, microbatch
+two, accumulation two, FP8 disabled, and two optimizer updates/four microbatches.
+These are direct execution checks, not full training-equivalence or performance
+qualification; the benchmark wrapper's larger default batch and two-GPU variant
+still need their own runs.
+
+Both source-clean runs drain naturally. Artifacts are preserved in
+`fsdp1-direct-world1-v1/`: five files / 8,435 bytes, inventory SHA-256
+`c2b12a07a10913696081d392d07473c240fdee3af7faa2c460635fffc0f0ff84`.
+The source bundle, driver, and integration log are in `fsdp1-source-v1/`.

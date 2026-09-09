@@ -235,7 +235,7 @@ def main():
         for batch in dataloader:
             batch = {k: v.cuda(non_blocking=True) for k, v in batch.items()}
             sdpa_ctx = prefer_sdpa_backends() if prefer_sdpa_backends is not None else nullcontext()
-            with sdpa_ctx, torch.cuda.amp.autocast(dtype=torch.bfloat16):
+            with sdpa_ctx, torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 loss = shifted_causal_lm_loss(fsdp_model, batch) / args.grad_accum
 
             loss.backward()

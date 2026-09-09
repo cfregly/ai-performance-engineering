@@ -131,7 +131,7 @@ def main():
             distributed=use_ddp,
         )
         with sync_ctx:
-            with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 batch = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
                 batch["labels"] = make_causal_lm_labels(
                     batch["input_ids"], batch["attention_mask"]
