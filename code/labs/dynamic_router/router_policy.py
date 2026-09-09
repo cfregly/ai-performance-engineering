@@ -177,6 +177,7 @@ class Router:
         kv_locality_boost: float = 0.3,
         queue_urgency: float = 1.0,
         decode_cost_penalty: float = 0.0,
+        queue_depth_alpha: Optional[float] = None,
     ) -> None:
         self._gpus: Dict[str, GPUState] = {}
         self._scoring_fn_prefill = scoring_fn_prefill
@@ -189,6 +190,9 @@ class Router:
         self._migration_times: Deque[float] = deque()
 
         self._ewma_alpha = ewma_alpha
+        # Exact admission counters should react immediately to reservations;
+        # sampled queue telemetry can retain the default smoothing policy.
+        self._queue_depth_alpha = ewma_alpha if queue_depth_alpha is None else queue_depth_alpha
         self._kv_locality_boost = kv_locality_boost
         self._queue_urgency = queue_urgency
         self._decode_cost_penalty = decode_cost_penalty
@@ -215,7 +219,7 @@ class Router:
         metrics = GPUMetrics(
             ttft_ms=EWMA(self._ewma_alpha),
             tpot=EWMA(self._ewma_alpha),
-            queue_depth=EWMA(self._ewma_alpha),
+            queue_depth=EWMA(self._queue_depth_alpha),
             mem_free_gb=EWMA(self._ewma_alpha),
             kv_hit_rate=EWMA(self._ewma_alpha),
         )

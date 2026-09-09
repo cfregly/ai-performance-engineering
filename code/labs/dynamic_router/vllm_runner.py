@@ -1432,7 +1432,9 @@ def _run_vllm_two_wave_imbalance(
 
     run_phase, request_prefix = session.begin_run()
     loaded_gpu, idle_gpu = engine_ids
-    router = Router() if mode == "optimized" else None
+    # These are exact engine counters, refreshed after every admission. Smoothing
+    # the counter hides new reservations and can overload the initially idle GPU.
+    router = Router(queue_depth_alpha=1.0) if mode == "optimized" else None
     if router is not None:
         for gid in engine_ids:
             router.register_gpu(
