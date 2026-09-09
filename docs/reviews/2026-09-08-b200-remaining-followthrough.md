@@ -484,7 +484,15 @@ Nsight Systems and the host-side PyTorch captures complete, but NCU captures no
 kernels because its selected NVTX range belongs to the Python parent while the
 CUDA operations run in compiled child processes. A parent PyTorch trace also
 does not establish visibility into those child CUDA kernels. The batch drains
-naturally; fixing explicit child-process NCU range selection remains open.
+naturally; that receipt remains an incomplete profiler run.
+
+The next source candidate builds a separate NVTX-enabled Ozaki executable and
+selects its complete ten-GEMM timed loop directly in Nsight Compute. Startup,
+warmup, and reference checks are outside the selected range. Ordinary timing
+binaries remain separate. Compiled-child benchmarks now report PyTorch profiling
+as not applicable, with an explicit reason, instead of treating a parent-only
+trace as GPU coverage. The build/dispatch/error paths pass 47 focused CPU tests;
+real B200 capture of this candidate is still pending. No CI or push was run.
 
 The direct CUDA-event screen at 64 MiB measures native-over-dynamic and native-over-fixed
 speedup geometric means of **5.797175x / 7.738416x**, with all numerical limits

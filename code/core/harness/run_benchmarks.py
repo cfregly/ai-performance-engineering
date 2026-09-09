@@ -4485,6 +4485,26 @@ def profile_python_benchmark_ncu(
                     benchmark=benchmark,
                 )
                 use_torchrun = _command_uses_external_torchrun(target_command)
+            elif is_cuda_binary:
+                # The CUDA kernels belong to the executable, not to the Python
+                # wrapper's NVTX range. Require a marked child-workload contract.
+                target_command, binary_nvtx_include = benchmark.get_ncu_profile_command()
+                nvtx_includes = [binary_nvtx_include]
+                has_target_launch_spec = True
+                use_torchrun = False
+                env = _apply_profile_env_overrides(
+                    _harden_profile_env(None, repo_root=repo_root, chapter_dir=chapter_dir),
+                    config=config,
+                    benchmark=benchmark,
+                )
+                if validity_view.lock_gpu_clocks:
+                    from core.harness.benchmark_harness import lock_gpu_clocks
+
+                    stack.enter_context(lock_gpu_clocks(
+                        device=torch.cuda.current_device(),
+                        sm_clock_mhz=gpu_sm_clock_mhz,
+                        mem_clock_mhz=gpu_mem_clock_mhz,
+                    ))
             else:
                 if ncu_filter_disabled:
                     detail = (
@@ -4891,6 +4911,18 @@ def profile_cuda_executable_ncu(
         return None
 
 
+def _torch_profiler_not_applicable_reason(benchmark: Any) -> Optional[str]:
+    """A parent-process Torch trace cannot observe a compiled child's GPU work."""
+    from core.benchmark.cuda_binary_benchmark import CudaBinaryBenchmark
+
+    if isinstance(benchmark, CudaBinaryBenchmark):
+        return (
+            "GPU work executes in a compiled child process; use Nsight Systems "
+            "and Nsight Compute. PyTorch profiler cannot capture that work."
+        )
+    return None
+
+
 def profile_python_benchmark_torch(
     benchmark: Any,  # Benchmark instance
     benchmark_path: Path,
@@ -4911,9 +4943,13 @@ def profile_python_benchmark_torch(
     Returns:
         Path to generated torch trace JSON file, or None if failed
     """
+    _set_profile_failure_detail("torch", None)
+    not_applicable = _torch_profiler_not_applicable_reason(benchmark)
+    if not_applicable:
+        _set_profile_failure_detail("torch", not_applicable)
+        return None
     if not TORCH_PROFILER_AVAILABLE:
         return None
-    _set_profile_failure_detail("torch", None)
 
     output_dir = _resolve_profile_output_dir(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -6665,8 +6701,19 @@ def _test_chapter_impl(
                             error=ncu_error,
                         )
                     
-                    # PyTorch profiler
-                    if TORCH_PROFILER_AVAILABLE:
+                    # PyTorch cannot observe CUDA work in a compiled child.
+                    torch_not_applicable = _torch_profiler_not_applicable_reason(baseline_benchmark)
+                    if torch_not_applicable:
+                        result_entry["baseline_profiler_not_applicable"] = {"torch": torch_not_applicable}
+                        logger.info(f"PyTorch profiler not applicable: {torch_not_applicable}")
+                        emit_event(
+                            event_logger, logger, "profiler_end",
+                            chapter=chapter_name, example=example_name,
+                            example_type=example_type, variant="baseline", profiler="torch",
+                            status="not_applicable", output_path=None, metrics=None,
+                            error=torch_not_applicable,
+                        )
+                    elif TORCH_PROFILER_AVAILABLE:
                         emit_progress(
                             "baseline_torch",
                             step=f"{chapter_name}:{example_name}",
@@ -7605,8 +7652,19 @@ def _test_chapter_impl(
                                 error=ncu_error,
                             )
                         
-                        # PyTorch profiler
-                        if TORCH_PROFILER_AVAILABLE:
+                        # PyTorch cannot observe CUDA work in a compiled child.
+                        torch_not_applicable = _torch_profiler_not_applicable_reason(optimized_benchmark)
+                        if torch_not_applicable:
+                            opt_result["optimized_profiler_not_applicable"] = {"torch": torch_not_applicable}
+                            logger.info(f"PyTorch profiler not applicable: {torch_not_applicable}")
+                            emit_event(
+                                event_logger, logger, "profiler_end",
+                                chapter=chapter_name, example=example_name,
+                                example_type=example_type, variant="optimized", profiler="torch",
+                                technique=technique, status="not_applicable",
+                                output_path=None, metrics=None, error=torch_not_applicable,
+                            )
+                        elif TORCH_PROFILER_AVAILABLE:
                             emit_progress(
                                 "optimized_torch",
                                 step=f"{chapter_name}:{example_name}",

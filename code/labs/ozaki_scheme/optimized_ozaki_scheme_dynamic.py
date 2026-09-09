@@ -25,6 +25,8 @@ _FLOAT_PATTERNS = {
 class OptimizedOzakiSchemeDynamicBenchmark(CudaBinaryBenchmark):
     """Dynamic retained-bit variant using cuBLAS floating-point emulation."""
 
+    ncu_profile_nvtx_include = "compute_kernel:profile"
+
     def __init__(self) -> None:
         self._shape = (4096, 4096, 4096)
         self._parsed_metrics: Optional[dict[str, float]] = None
