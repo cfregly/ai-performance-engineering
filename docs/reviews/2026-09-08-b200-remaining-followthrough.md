@@ -1064,3 +1064,25 @@ The two failed attempts are verified in `serving-flex-placement-v2` (11 files /
 79,729 bytes, inventory `4fb14b9204d0e68a9ae768f7a54405e5f546894ebc532d9883009cc228abff66`)
 and `serving-flex-placement-v3` (three files / 2,436 bytes, inventory
 `2af3f792df90905b3f58a5a90b966e72fb0d1921687449ecc84d0eb26a047ae3`).
+
+
+Two additional usability/correctness fixes are committed locally. The serving
+example now rejects UUID-form visibility before CUDA or engine construction
+with a clear launch-configuration error; numeric visibility is preserved, and
+MIG allocation errors explicitly forbid substituting the parent GPU. The full
+focused contract file passes 38 tests, with six affected visibility checks
+passing after the separate MIG case was added.
+
+Topology discovery previously treated NVML physical indices as CUDA logical
+indices and kept an eight-digit PCI domain when sysfs requires four digits.
+It now resolves real CUDA device UUIDs first, preserves unknown locality when
+identity cannot be resolved, and honors empty/restricted/reordered visibility.
+All 25 focused CPU regressions pass. Actual B200 identity/NUMA readback remains
+pending; unknown NUMA data is not converted into a claimed locality map.
+
+All four FSDP1 entrypoints now emit the same synchronized slowest-rank
+`time_per_iter_ms` marker as FSDP2, divided by completed optimizer updates.
+The interval includes the full training loop and excludes model startup and
+teardown. Forty-five focused CPU tests pass; B200 validation of this new timing
+marker is pending. This fixes a missing timing output but does not enable the
+generic FSDP child-result wrappers, which still need their dedicated adapter.
