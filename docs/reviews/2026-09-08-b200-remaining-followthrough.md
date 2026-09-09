@@ -21,7 +21,7 @@ The retained targeted measurements illustrate the remaining speed gaps:
 | --- | ---: | --- |
 | Cache-aware 1P1D | 1.574x | Measured improvement for the recorded workload |
 | FP8 training, batch 4096 | 1.279x | Improvement at this batch; smaller batches lose |
-| Regular DDP training loop | Approximately 1.00x | No measured training-loop improvement |
+| Regular DDP training loop | Approximately 1.00x; private one-GPU candidate 1.034–1.036x | Candidate screen remains below 1.05x; two-GPU candidate validation pending |
 | Pipeline parallelism, forward lookahead | 1.057x median ratio | Two of four blocks remain below 1.05x; process duration does not improve |
 | Dynamic serving routing | 0.996x | Parity; below the speed goal |
 | Fair dedicated versus shared serving pools | 0.815x | Lower total throughput; short-request TTFT improves |
@@ -441,9 +441,10 @@ All baseline function ASTs and the other workload/accuracy files are unchanged
 from the arithmetic-qualified `32030e6` source. The profiler batch drained
 naturally without forced cleanup.
 
-DDP optimizer/backward overlap remains a static hypothesis requiring a fresh
-trace and exact update/output checks. Existing DDP, pipeline, and serving
-limitations remain. Earlier Ozaki no-speedup classifications are invalidated by
+The private DDP optimizer/backward overlap candidate now passes exact one-GPU
+update/output checks, but its initial timing screen remains below 1.05x, as
+detailed below. Fresh mechanism traces and two-GPU candidate checks remain
+pending. Existing DDP, pipeline, and serving limitations remain. Earlier Ozaki no-speedup classifications are invalidated by
 the timing-parser defect below; their original receipts remain preserved.
 The earlier KV 1.025x result retains its original runtime-specific disposition.
 
@@ -550,6 +551,55 @@ passing. These are timing-screen results, not a benefit from the sentinel patch
 or a substitute for corrected public harness/profiler validation. All 85 files
 (242,072 bytes) are hash-verified in `ozaki-sentinel-abba-5b5/`, inventory SHA-256
 `f3e38ee1840b6c8291ce0434fa2250b9d62ba188a3f846aa738e796b84f0e0b4`.
+
+## Private DDP optimizer-overlap screen
+
+The next candidate groups the same fused AdamW parameter updates on a dedicated
+CUDA stream after their gradients become ready. Repository runtime source stays
+at `5be3ae28d09b71c63cf38fdecf44693d63ac593c`; the experimental helper is kept
+outside the repository, SHA-256
+`c14386a15df57b0f443480e0cfb5d7819312002c414e33e34b75d71717e0f310`.
+Its independent source review finds no static correctness blocker for this
+single-stream workload, without qualifying broader optimizer or DDP modes.
+
+The three-step, one-B200 exact gate starts from identical TinyLlama weights and
+uses actual MRPC data. Every step matches the synchronous fused AdamW control:
+full training logits and loss, all 201 parameter tensors, all 603 optimizer-state
+tensors, and full post-update logits. Every parameter receives one update per
+logical step. The original probe's zero-worker prefetch configuration error is
+preserved; its corrected probes pass. Eight receipt/log files (11,986 bytes) are
+hash-verified in `ddp-overlap-exact-world1-v1-v3/`, inventory SHA-256
+`aacad773a3dfd57ba55770b2238c2fd36600e1af50115ce665308d0ca06349b6`.
+
+An A/B/B/A screen then invokes the actual `optimized_ddp.main` training loop with
+100 steps, batch 16, accumulation 1, seed 42, real MRPC, and the same fused AdamW
+settings. Both arms use the same wrappers and unchanged timer boundaries; only
+the optimizer substitution differs. All four runs complete 100 updates for
+every parameter. Their complete final inputs and logits match exactly. Real
+MRPC produces padded sequence length 136 for the retained final batch; the
+older synthetic-data timing cohort is a separate workload.
+
+| Order | Optimizer | Training iteration (ms) | Whole process (ms) |
+| --- | --- | ---: | ---: |
+| A1 | Synchronous fused AdamW | 59.107510 | 12485.117 |
+| B1 | Grouped overlap candidate | 57.034617 | 12230.208 |
+| B2 | Grouped overlap candidate | 57.246815 | 12080.219 |
+| A2 | Synchronous fused AdamW | 59.191430 | 12286.542 |
+
+The mirrored training-loop ratios are **1.036344x and 1.033969x**, both below
+1.05x. Whole-process ratios are **1.020843x and 1.017079x**; that boundary also
+includes startup and the symmetric post-training output checks. These results
+are an initial component screen, not an accepted baseline/optimized-pair win.
+The harness manages 1500/3996 MHz clocks on the selected B200. Another workload
+occupies the other GPU, so these results retain their shared-host scope. The
+two-GPU occupancy guard rejects that launch before execution; no unrelated
+process is interrupted. Fresh traces, a second timing seed, and exact two-GPU
+checks remain pending. Accumulation, optional compilation, and other unsupported
+optimizer modes require their existing synchronous paths until separately
+validated. No candidate runtime change has been promoted. All 15 timing-screen
+files (557,294,104 bytes), including the complete final tensors, are hash-verified
+in `ddp-overlap-abba-world1-seed42-v1/`, inventory SHA-256
+`bceba3519f782922320b28ee0fa57d18399770d09ba9f2ab8222aebb15814917`.
 
 PR #28 is back in draft; broad CI and publication are deferred while this work
 continues.
