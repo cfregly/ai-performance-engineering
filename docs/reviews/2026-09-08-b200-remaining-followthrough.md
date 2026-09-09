@@ -1,9 +1,11 @@
 # B200 follow-through: fair serving, training fixes, and NCCL capture
 
-**Repository-wide speed target: not met.** A minimum 1.05x improvement has not
-been established for every chapter, lab, or baseline/optimized pair. Several
-measured pairs below remain below that threshold. Correctness and CI results
-are separate from performance acceptance.
+**Repository-wide validation remains incomplete.** The current objective is to
+improve every identified area and validate each supported example against its
+purpose: throughput, latency, memory savings, or scaling. Following the user's
+updated direction, a universal minimum 1.05x speedup is no longer a completion
+requirement. Measured tradeoffs and no-win results remain explicit; correctness,
+execution coverage, and material memory/profiler failures still require work.
 
 The earlier targeted B200 pass completed. Real-data training checks
 pass on one and two B200s, the supported NCCL profiling path completes, and the
@@ -21,9 +23,9 @@ The retained targeted measurements illustrate the remaining speed gaps:
 | --- | ---: | --- |
 | Cache-aware 1P1D | 1.574x | Measured improvement for the recorded workload |
 | FP8 training, batch 4096 | 1.279x | Improvement at this batch; smaller batches lose |
-| Regular DDP training loop | Approximately 1.00x; latest private one-GPU candidate 1.035–1.038x | Candidate screen remains below 1.05x; two-GPU candidate validation pending |
+| Regular DDP training loop | Approximately 1.00x; latest private one-GPU candidate 1.035–1.038x | Modest candidate improvement; not promoted; two-GPU candidate validation pending |
 | Pipeline parallelism, forward lookahead | 1.057x median ratio | Two of four blocks remain below 1.05x; process duration does not improve |
-| Dynamic serving routing | 0.996x | Parity; below the speed goal |
+| Dynamic serving routing | 0.996x | Parity on the homogeneous workload; no throughput benefit established |
 | Fair dedicated versus shared serving pools | 0.815x | Lower total throughput; short-request TTFT improves |
 | KV-cache NVFP4 compute, cached weights | 1.106x | All eight cached comparisons across four A/B/B/A blocks exceed 1.05x; full profiled pair also passes |
 | Ozaki dynamic / fixed versus native FP64 | 5.793x / 7.762x | Corrected public timings, independent arithmetic gates, and all-variant Nsight captures pass; scoped to the recorded workload |
@@ -43,6 +45,31 @@ variant succeeding does not establish that every variant succeeds. Memory-goal
 pairs also require their declared memory-saving gate; passing that gate does
 not imply a 1.05x speedup. The private `performance-gap-inventory/` preserves
 the source inventory and a separately scoped historical-result audit.
+
+## Current improvement priorities
+
+Continue bounded DDP and pipeline tuning where traces identify removable work,
+then retain the measured result even if it is modest. Additional implementation
+complexity must be justified by repeatable benefits on the intended workload.
+One-GPU optimizer experiments do not replace the outstanding two-GPU checks.
+
+For serving, compare shared and dedicated placement using both aggregate
+throughput and short/long-request latency. The dedicated-pool tail imbalance is
+a concrete next experiment; a latency benefit must retain its throughput cost.
+Dynamic routing needs variable arrivals or load imbalance to assess its intended
+benefit, while preserving the existing homogeneous parity result. Reuse engines
+and report startup separately from steady-state requests.
+
+For FP8, retain the small-batch regressions and the measured large-batch win as a
+size-dependent crossover. Do not change the default or hide slower cases to
+manufacture a universal gain. Preserve the existing cache-aware, KV-compression,
+and Ozaki improvements with their workload and independent accuracy limits.
+
+Do not waive incorrect training objectives, unresolved numerical acceptance,
+uninitialized-memory reports, or missing supported-path execution. Historical
+references below to the 1.05x requirement describe the original experiment goal;
+they are not the current repository-wide completion gate. Broad CI remains
+deferred until the implementation and runtime work is finished.
 
 ## Source and execution scope
 
@@ -739,7 +766,7 @@ The latter transfer verifies 15 files / 5,225,973 bytes, inventory SHA-256
 `267812afad750871422a7dadb783c069ac198d098bd2d54ed69c56fc8aa26fb5`.
 
 Independent optimized full trained-state/output acceptance, two-B200 execution,
-Nsight Compute coverage, and the real child-result contract remain pending. Generic FSDP2
+broader Nsight Compute coverage, and the real child-result contract remain pending. Generic FSDP2
 wrapper execution therefore stays explicitly unavailable; direct-script success
 is not substituted for that missing contract.
 
@@ -801,3 +828,17 @@ The complete numerical failure is preserved in
 `fsdp2-exact-world1-optimized-v3/`: five files / 32,514 bytes, inventory SHA-256
 `0e648bf313a9683d3aae7f1f27cf2d059445fed8adb048bf62a366c601b30c0f`.
 The frozen driver and runner are retained in `fsdp2-exact-v3-driver/`.
+
+Nsight Compute 2026.2.1 subsequently completes both actual FSDP2 entrypoints
+with kernel replay, selecting the first `nvjet_tst` GEMM in each arm. Both
+captures contain `nvjet_tst_128x256_64x4_4x1_v_bz_TNT` on compute capability
+10.0, with **211 finite performance-counter values per arm** in the inspected
+counter families. Both training processes complete two optimizer updates and
+drain naturally, without timeout or forced cleanup. Clock control stays with
+the harness; Nsight Compute uses `--clock-control none`.
+
+This closes the selected-kernel replay check, not whole-model counter coverage
+or numerical acceptance. The reports, CSV exports, counter check, and supervisor
+receipt are retained in `fsdp2-ncu-world1-v4/`: ten files / 352,754 bytes,
+inventory SHA-256
+`ed0fc9d8a01670f55835a28060da2558b200b7653cad046e11657649543cd9ad`.
