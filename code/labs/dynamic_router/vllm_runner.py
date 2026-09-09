@@ -242,6 +242,12 @@ def _build_cli_parser() -> argparse.ArgumentParser:
     parser.add_argument("--continue-requests", type=int, default=48, help="Continuation requests for dual-pool demo.")
     parser.add_argument("--prefill-ctx-thresh", type=int, default=2048, help="Threshold to route to prefill pool.")
     parser.add_argument(
+        "--long-spillover-limit",
+        type=int,
+        default=0,
+        help="In dual mode, admit at most this many long requests to a decode-only GPU.",
+    )
+    parser.add_argument(
         "--use-v1-core-loop",
         action="store_true",
         help="Drive vLLM V1 EngineCore directly with the optimized polling loop (Inproc only).",
@@ -267,6 +273,8 @@ def _validate_cli_args(args: argparse.Namespace) -> argparse.Namespace:
             raise ValueError(f"--{field.replace('_', '-')} must be non-negative")
     if not any(getattr(args, field) > 0 for field in request_mix_fields):
         raise ValueError("dual-pool request mix must contain at least one request")
+    if args.long_spillover_limit < 0:
+        raise ValueError("--long-spillover-limit must be non-negative")
     for field in ("prefill_gpus", "decode_gpus"):
         raw = getattr(args, field)
         if raw is None:
@@ -1468,6 +1476,9 @@ def run_dual_pool_vllm_with_topology(
     continue_requests = args.continue_requests if continue_requests is None else continue_requests
     max_tokens = args.max_tokens if max_tokens is None else max_tokens
     prefill_ctx_thresh = args.prefill_ctx_thresh if prefill_ctx_thresh is None else prefill_ctx_thresh
+    long_spillover_limit = int(getattr(args, "long_spillover_limit", 0))
+    if long_spillover_limit < 0:
+        raise ValueError("long_spillover_limit must be non-negative")
     max_tokens_val = max_tokens
     if max_tokens_val <= 0:
         raise ValueError("max_tokens must be positive")
@@ -1549,34 +1560,52 @@ def run_dual_pool_vllm_with_topology(
     # Admission completes before the drain loop, so seed and update run-local
     # depths here; drain-time TTFT/TPOT cannot inform these placements.
     admitted_by_gpu = {handle.gpu_id: 0 for handle in handles}
+    admitted_by_role_gpu = {
+        role: {handle.gpu_id: 0 for handle in handles}
+        for role in ("prefill", "decode")
+    }
+    long_spillover_requests = 0
     for handle in handles:
         router.update_metrics(handle.gpu_id, {"queue_depth": 0.0})
     if len(workload) != len(request_prompt_token_ids):
         raise RuntimeError("prompt input request count does not match the routed workload")
+
+    def _choose_decode_target(req: Request) -> Optional[str]:
+        seq = SequenceInfo(
+            seq_id=req.req_id,
+            current_gpu="",
+            kv_gpus=set(),
+            expected_tokens_remaining=req.expected_new_tokens,
+            priority=req.priority,
+            numa_node=decode_numa_hint,
+        )
+        target = router.choose_decode_gpu(seq)
+        if target is None:
+            if decode_pool_ids:
+                target = decode_pool_ids[0]
+            elif prefill_pool_ids:
+                target = prefill_pool_ids[0]
+        return target
+
     for request_index, (req, hint) in enumerate(workload):
         route = "prefill" if hint == "prefill" or req.prompt_tokens >= prefill_ctx_thresh else "decode"
+        target = None
         if route == "prefill":
-            target = router.choose_prefill_gpu() or (prefill_pool_ids[0] if prefill_pool_ids else None)
-        else:
-            seq = SequenceInfo(
-                seq_id=req.req_id,
-                current_gpu="",
-                kv_gpus=set(),
-                expected_tokens_remaining=req.expected_new_tokens,
-                priority=req.priority,
-                numa_node=decode_numa_hint,
-            )
-            target = router.choose_decode_gpu(seq)
+            if normalized_mode == "dual" and long_spillover_requests < long_spillover_limit:
+                spillover_target = _choose_decode_target(req)
+                if spillover_target is not None and spillover_target not in prefill_pool_ids:
+                    target = spillover_target
+                    long_spillover_requests += 1
             if target is None:
-                if decode_pool_ids:
-                    target = decode_pool_ids[0]
-                elif prefill_pool_ids:
-                    target = prefill_pool_ids[0]
+                target = router.choose_prefill_gpu() or (prefill_pool_ids[0] if prefill_pool_ids else None)
+        else:
+            target = _choose_decode_target(req)
         if target is None:
             _skip("No GPU available for routed request.")
         rt = _RequestRuntime(req=req, gpu_id=target, admitted_at=time.time(), role=route)
         engines[target].add_request(rt, request_prompt_token_ids[request_index])
         admitted_by_gpu[target] += 1
+        admitted_by_role_gpu[route][target] += 1
         router.update_metrics(
             target,
             {"queue_depth": float(admitted_by_gpu[target])},
@@ -1650,10 +1679,14 @@ def run_dual_pool_vllm_with_topology(
         "continue_requests": float(continue_requests),
         "prefill_ctx_thresh": float(prefill_ctx_thresh),
         "max_tokens": float(max_tokens_val),
+        "long_spillover_limit": float(long_spillover_limit),
+        "long_spillover_requests": float(long_spillover_requests),
     }
     for gid in engines:
         summary[f"tpot_tok_per_step_{gid}"] = telemetry[gid].tokens_per_step.get()
         summary[f"requests_admitted_{gid}"] = admitted_by_gpu[gid]
+        summary[f"prefill_requests_admitted_{gid}"] = admitted_by_role_gpu["prefill"][gid]
+        summary[f"decode_requests_admitted_{gid}"] = admitted_by_role_gpu["decode"][gid]
     summary[VERIFICATION_OUTPUT_KEY] = _collect_verification_output_token_ids(
         engines, list(req_roles)
     )

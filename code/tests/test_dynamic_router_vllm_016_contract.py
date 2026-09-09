@@ -151,6 +151,7 @@ def _args() -> SimpleNamespace:
         decode_requests=1,
         continue_requests=1,
         prefill_ctx_thresh=3,
+        long_spillover_limit=0,
         use_v1_core_loop=False,
     )
 
@@ -195,6 +196,20 @@ def test_attention_backend_cli_is_explicit(monkeypatch: pytest.MonkeyPatch) -> N
     assert vllm_runner._parse_cli_args().attention_backend == "TRITON_ATTN"
     monkeypatch.setattr(vllm_runner.sys, "argv", ["router"])
     assert vllm_runner._parse_cli_args().attention_backend is None
+
+
+def test_long_spillover_cli_is_bounded_opt_in() -> None:
+    assert vllm_runner.parse_vllm_target_overrides([]).long_spillover_limit == 0
+    assert (
+        vllm_runner.parse_vllm_target_overrides(
+            ["--long-spillover-limit", "1"]
+        ).long_spillover_limit
+        == 1
+    )
+    with pytest.raises(ValueError, match="long-spillover-limit must be non-negative"):
+        vllm_runner.parse_vllm_target_overrides(
+            ["--long-spillover-limit", "-1"]
+        )
 
 
 def test_pinned_api_mismatch_fails_explicitly_without_fallback(
@@ -301,10 +316,57 @@ def test_optimized_routing_uses_run_local_admission_depth_without_cuda_polling(
 
 
 @pytest.mark.parametrize(
-    ("mode", "decode_gpus", "expected_counts", "expected_pool_counts"),
+    (
+        "mode",
+        "decode_gpus",
+        "spillover_limit",
+        "expected_counts",
+        "expected_prefill_counts",
+        "expected_decode_counts",
+        "expected_pool_counts",
+        "expected_actual_spillover",
+    ),
     [
-        ("shared", "0,1", {"cuda:0": 51, "cuda:1": 51}, (2, 2)),
-        ("dual", "1", {"cuda:0": 6, "cuda:1": 96}, (1, 1)),
+        (
+            "shared",
+            "0,1",
+            0,
+            {"cuda:0": 51, "cuda:1": 51},
+            {"cuda:0": 3, "cuda:1": 3},
+            {"cuda:0": 48, "cuda:1": 48},
+            (2, 2),
+            0,
+        ),
+        (
+            "shared",
+            "0,1",
+            1,
+            {"cuda:0": 51, "cuda:1": 51},
+            {"cuda:0": 3, "cuda:1": 3},
+            {"cuda:0": 48, "cuda:1": 48},
+            (2, 2),
+            0,
+        ),
+        (
+            "dual",
+            "1",
+            0,
+            {"cuda:0": 6, "cuda:1": 96},
+            {"cuda:0": 6, "cuda:1": 0},
+            {"cuda:0": 0, "cuda:1": 96},
+            (1, 1),
+            0,
+        ),
+        (
+            "dual",
+            "1",
+            1,
+            {"cuda:0": 5, "cuda:1": 97},
+            {"cuda:0": 5, "cuda:1": 1},
+            {"cuda:0": 0, "cuda:1": 96},
+            (1, 1),
+            1,
+        ),
     ],
 )
 def test_dual_pool_uses_run_local_admission_depth_across_reused_runs(
@@ -312,11 +374,16 @@ def test_dual_pool_uses_run_local_admission_depth_across_reused_runs(
     monkeypatch: pytest.MonkeyPatch,
     mode: str,
     decode_gpus: str,
+    spillover_limit: int,
     expected_counts: dict[str, int],
+    expected_prefill_counts: dict[str, int],
+    expected_decode_counts: dict[str, int],
     expected_pool_counts: tuple[int, int],
+    expected_actual_spillover: int,
 ) -> None:
     args = _args()
     args.decode_gpus = decode_gpus
+    args.long_spillover_limit = spillover_limit
     args.long_prompt_tokens = 4096
     args.short_prompt_tokens = 128
     args.prefill_burst = 6
@@ -352,14 +419,26 @@ def test_dual_pool_uses_run_local_admission_depth_across_reused_runs(
                 engine_session=session,
             )
             observed_counts = {}
+            observed_prefill_counts = {}
+            observed_decode_counts = {}
             for gpu_id, wrapper in session.engines.items():
                 current = len(wrapper.engine.add_calls)
-                observed_counts[f"cuda:{wrapper.device_index}"] = (
-                    current - previous_add_counts[gpu_id]
+                device = f"cuda:{wrapper.device_index}"
+                new_calls = wrapper.engine.add_calls[
+                    previous_add_counts[gpu_id] : current
+                ]
+                observed_counts[device] = len(new_calls)
+                observed_prefill_counts[device] = sum(
+                    len(call["prompt"]) == args.long_prompt_tokens
+                    for call in new_calls
+                )
+                observed_decode_counts[device] = sum(
+                    len(call["prompt"]) == args.short_prompt_tokens
+                    for call in new_calls
                 )
                 new_request_ids = [
                     call["request_id"]
-                    for call in wrapper.engine.add_calls[previous_add_counts[gpu_id] : current]
+                    for call in new_calls
                 ]
                 assert all(
                     request_id.startswith(f"session-{run_index:04d}-")
@@ -368,14 +447,31 @@ def test_dual_pool_uses_run_local_admission_depth_across_reused_runs(
                 previous_add_counts[gpu_id] = current
 
             assert observed_counts == expected_counts
+            assert observed_prefill_counts == expected_prefill_counts
+            assert observed_decode_counts == expected_decode_counts
             assert summary["requests"] == summary["completed"] == 102
-            assert summary["requests_admitted_gpu0"] == expected_counts["cuda:0"]
-            assert summary["requests_admitted_gpu1"] == expected_counts["cuda:1"]
+            for gpu_index in (0, 1):
+                device = f"cuda:{gpu_index}"
+                gpu_id = f"gpu{gpu_index}"
+                assert summary[f"requests_admitted_{gpu_id}"] == expected_counts[device]
+                assert (
+                    summary[f"prefill_requests_admitted_{gpu_id}"]
+                    == expected_prefill_counts[device]
+                )
+                assert (
+                    summary[f"decode_requests_admitted_{gpu_id}"]
+                    == expected_decode_counts[device]
+                )
             assert (
                 summary["prefill_gpu_count"],
                 summary["decode_gpu_count"],
             ) == expected_pool_counts
-            assert len(summary[vllm_runner.VERIFICATION_OUTPUT_KEY]) == 204
+            assert summary["long_spillover_limit"] == spillover_limit
+            assert summary["long_spillover_requests"] == expected_actual_spillover
+            expected_outputs = []
+            for prompt_length in prompt_lengths:
+                expected_outputs.extend((1, prompt_length))
+            assert summary[vllm_runner.VERIFICATION_OUTPUT_KEY] == expected_outputs
     finally:
         session.close()
 
