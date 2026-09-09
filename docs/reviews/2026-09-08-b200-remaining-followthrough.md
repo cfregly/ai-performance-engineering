@@ -1215,8 +1215,14 @@ Five new ownership tests and the related torchrun provenance tests pass
 and output verification, runtime parity, and the exact 1500/3996 MHz manifest
 check. The private runner enters the public harness clock context, verifies
 that the drained child preserves its settings, and verifies restoration of
-the pre-stage application-clock and persistence state. The two affected
-two-B200 targets still require reruns.
+the pre-stage application-clock and persistence state. Both two-B200 reruns
+also pass: hybrid expert parallelism and sequence parallelism preserve the
+parent's 1500/3996 MHz settings on both GPUs, then restore each device's exact
+entry state. The hybrid-EP result retains its performance-only no-win outcome;
+sequence parallelism succeeds. All three clock-provenance failures are now
+resolved for these recorded reruns. The two-GPU evidence contains 21 files /
+273,119 bytes, inventory SHA-256
+`56a15098b577b953eca3be2c28deace2abe9f8c610f7a816351df939fb726c9b`.
 The verified local single-GPU receipt contains 12 files / 128,256 bytes,
 inventory SHA-256
 `a52f823b46a8485dfa7a813b4538171111c1ae36691272144fd60104ddea5f86`.
@@ -1258,9 +1264,13 @@ on one B200. The local copy verifies 67 files / 26,976,719 bytes, inventory
 SHA-256 `74e2673261c792968dfd92c940fb2e30e35439cf859032bfcc90e1acfe258a96`.
 All 47 focused tests pass on that host, including seven real CUDA workers
 with three complete changed-input, full-output, and corruption-rejection checks
-each. Both stages drain naturally. A separate before/after public-pair timing
-screen is prepared to measure the copy removals; no speed improvement is
-claimed from these correctness runs.
+each. The regression evidence contains 61 files / 2,317,767 bytes, inventory
+SHA-256 `33e295d4f7d355e03ec30c619e79ad0ec3adf6a1475873064a0d533ba2aa5373`.
+Both stages drain naturally. A separate before/after public-pair timing screen
+was interrupted when both B200s became available for queued multi-GPU work.
+Its partial outputs and successful owned-process drain are retained; they are
+not accepted timing results. A fresh timing screen remains pending, and no
+speed improvement is claimed from these correctness runs.
 
 The opt-in `--routing-arrival-profile two-wave-imbalance` now exercises actual
 feedback routing at `0862b770b7dbbd04e0fdd381a358ca378a278710`. Both arms
@@ -1272,7 +1282,9 @@ tests cover full-token ordering, reused-engine reset, argument validation,
 and prerequisite failure. Its two-B200 performance remains unmeasured; there
 is no universal speedup requirement.
 
-The reviewed three-capture serving Nsight recipe is prepared but has not
-launched: its two-GPU guard found another workload on the first B200. That
-workload is untouched. Single-GPU correctness work continues on the second
-B200; no serving trace or two-GPU result is claimed for this blocked launch.
+The first reviewed serving Nsight launch was blocked by another workload on
+the first B200; that workload was untouched. After both devices became free,
+the two-GPU clock reruns above completed and the three-capture serving Nsight
+stage launched. The two-wave routing measurement is queued after it. Serving
+profiles and routing performance remain pending until their actual completion
+and validation receipts are inspected.
