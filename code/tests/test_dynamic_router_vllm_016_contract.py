@@ -246,6 +246,36 @@ def test_uuid_cuda_visibility_fails_before_cuda_or_engine_construction(
     assert _FakeLLMEngine.created == []
 
 
+def test_mig_cuda_visibility_rejects_parent_gpu_substitution(
+    vllm_016_api: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    visible = "MIG-GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd/1/0"
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", visible)
+    monkeypatch.setattr(
+        vllm_runner.torch.cuda,
+        "is_available",
+        lambda: pytest.fail("MIG visibility must fail before CUDA inspection"),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"Pinned vLLM .* does not support MIG UUID tokens.*"
+            r"Keep the MIG allocation unchanged.*do not replace it with the parent GPU"
+        ),
+    ):
+        vllm_runner.create_dual_pool_vllm_session(
+            "dual",
+            topology_snapshot=_topology(),
+            cli_args=_args(),
+        )
+
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == visible
+    assert _FakeEngineArgs.created == []
+    assert _FakeLLMEngine.created == []
+
+
 @pytest.mark.parametrize("visible", [None, "0", "0,1", "7,3"])
 def test_numeric_or_unset_cuda_visibility_is_preserved(
     monkeypatch: pytest.MonkeyPatch,

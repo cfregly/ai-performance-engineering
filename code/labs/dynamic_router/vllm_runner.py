@@ -231,10 +231,17 @@ def _assert_pinned_vllm_cuda_visibility() -> None:
     if visible is None:
         return
     tokens = [token.strip() for token in visible.split(",") if token.strip()]
-    uuid_tokens = [
-        token for token in tokens if token.startswith(("GPU-", "MIG-"))
-    ]
-    if uuid_tokens:
+    mig_tokens = [token for token in tokens if token.startswith("MIG-")]
+    if mig_tokens:
+        raise ValueError(
+            f"Pinned vLLM {_EXPECTED_VLLM_DIST_VERSION} in this lab does not "
+            "support MIG UUID tokens in CUDA_VISIBLE_DEVICES. Keep the MIG "
+            "allocation unchanged and do not replace it with the parent GPU; "
+            "run this lab only after obtaining a supported whole-GPU allocation. "
+            f"Received CUDA_VISIBLE_DEVICES={visible!r}."
+        )
+    gpu_uuid_tokens = [token for token in tokens if token.startswith("GPU-")]
+    if gpu_uuid_tokens:
         raise ValueError(
             f"Pinned vLLM {_EXPECTED_VLLM_DIST_VERSION} does not accept GPU UUID "
             "tokens in CUDA_VISIBLE_DEVICES. Preserve the assigned GPUs, resolve "
