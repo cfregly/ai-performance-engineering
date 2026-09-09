@@ -21,7 +21,7 @@ The retained targeted measurements illustrate the remaining speed gaps:
 | --- | ---: | --- |
 | Cache-aware 1P1D | 1.574x | Measured improvement for the recorded workload |
 | FP8 training, batch 4096 | 1.279x | Improvement at this batch; smaller batches lose |
-| Regular DDP training loop | Approximately 1.00x; private one-GPU candidate 1.034–1.036x | Candidate screen remains below 1.05x; two-GPU candidate validation pending |
+| Regular DDP training loop | Approximately 1.00x; latest private one-GPU candidate 1.035–1.038x | Candidate screen remains below 1.05x; two-GPU candidate validation pending |
 | Pipeline parallelism, forward lookahead | 1.057x median ratio | Two of four blocks remain below 1.05x; process duration does not improve |
 | Dynamic serving routing | 0.996x | Parity; below the speed goal |
 | Fair dedicated versus shared serving pools | 0.815x | Lower total throughput; short-request TTFT improves |
@@ -600,6 +600,101 @@ validated. No candidate runtime change has been promoted. All 15 timing-screen
 files (557,294,104 bytes), including the complete final tensors, are hash-verified
 in `ddp-overlap-abba-world1-seed42-v1/`, inventory SHA-256
 `bceba3519f782922320b28ee0fa57d18399770d09ba9f2ab8222aebb15814917`.
+
+### DDP overlap mechanism and rejected follow-ups
+
+Two paired Nsight Systems captures complete with exact final outputs. The second
+adds explicit forward/backward markers, allowing CUDA runtime correlations to
+separate optimizer kernels from backward kernels. Analysis below excludes the
+first state-initializing update and averages the remaining 99 updates; the
+ordinary timing comparisons still include all 100 updates.
+
+| Diagnostic per steady update | Synchronous control | 50 MiB overlap |
+| --- | ---: | ---: |
+| Optimizer group calls | 1 | 34 |
+| Host optimizer-group ranges (ms) | 0.910480 | 3.145919 |
+| Range time outside CUDA runtime calls (ms) | 0.762602 | 2.780272 |
+| Optimizer kernels | 55 | 107 |
+| Optimizer GPU activity (ms) | 8.359493 | 9.932461 |
+| Direct overlap with backward kernels (ms) | 0 | 4.826535 |
+| Optimizer GPU activity after backward ends (ms) | 8.359493 | 0.953174 |
+
+Overlap reduces the exposed optimizer tail, while smaller updates add launch
+overhead and GPU activity. The non-CUDA range remainder includes interpreter and
+scheduling time; it is an upper bound on possible savings, not time proven
+removable from the critical path. These profiler durations explain the mechanism
+and are not accepted speed ratios. The original and annotated captures are
+hash-verified in `ddp-overlap-nsys-world1-seed42-v1/` and
+`ddp-overlap-nsys-world1-annotated-v2/`, respectively: 11 files / 326,362,894 bytes
+and 11 files / 326,343,085 bytes. Their inventory SHA-256 values are
+`bf0242cf2274fd2c3cc64cd638cc420f21d9a2fdbf8345d9e94d406af18159e4`
+and `da1333b86181819db6689554caf0e572ef178705889bd71768a4f8610224596d`.
+The SQL, correlation script, per-iteration metrics, and report are retained in
+`ddp-overlap-trace-analysis-v2/`.
+
+Three subsequent experiments keep the same model, real data, update count, and
+original timer boundaries. Each passes the three-step exact parameter/state/output
+gate and all complete final-output comparisons in its four-run A/B/B/A screen.
+
+| Experimental change | Group calls per update | Mirrored training ratios | Mirrored process ratios |
+| --- | ---: | --- | --- |
+| Increase capacity to 100 MiB | 19 | 1.032193x / 1.030991x | 1.016393x / 1.012292x |
+| Cache 50 MiB group state lists and use functional fused AdamW | 34 | 1.035345x / 1.036996x | 1.007940x / 1.003995x |
+| Reuse 50 MiB group readiness events and check the current stream directly | 34 | 1.038407x / 1.035032x | 1.024765x / 0.999778x |
+
+None closes the 1.05x gap. The separate cohorts do not establish a significant
+difference between these candidates and the original overlap helper. The cached
+candidate preserves first-use state initialization and performs exactly 34
+original optimizer calls followed by 3,366 cached functional calls over 100
+updates. Its independent exact probe confirms that later updates exercise the
+new path without changing full parameters, moments, step counters, or logits.
+No runtime candidate is promoted. All 36 files / 1,114,604,750 bytes from these
+exact gates and timing screens, including full final tensors, are hash-verified
+in `ddp-group100-cached-screens/`, inventory SHA-256
+`1f82bf5bea4601a9c6ec83e3e7789b58b976b995d8c365a33ba70b3be28f022d`.
+
+A further annotated Nsight capture confirms that caching group state lists
+reduces host optimizer-group ranges from 3.145919 to 1.923718 ms per steady
+update. The non-CUDA remainder falls by about 1.199 ms, but the optimizer still
+launches 107 kernels and has about 0.953 ms of GPU activity after backward.
+The measured training interval does not materially improve. Removing host work
+alone therefore does not close this workload's remaining gap.
+
+The separate event-reuse candidate retains gradient stream-lifetime tracking
+and the original optimizer math. Its three-step exact check covers all 201
+parameters, 603 optimizer-state tensors, and complete pre/post-update outputs.
+Each timed candidate run performs 100 updates, reusing 34 readiness events for
+3,400 event records. Full final inputs and logits match across all four timed
+runs. Its receipt's `PASS` records execution and correctness; both training
+ratios remain below the 1.05x performance requirement. This candidate has no
+separate Nsight capture or two-GPU qualification and is not promoted.
+
+The cached-profile and event-reuse evidence is hash-verified in
+`ddp-cached-profile-stream-screens/`: 29 files / 883,747,736 bytes, inventory
+SHA-256 `87732319b6490b0cee0fc09f7766bcc5044c94a3532934fa647cefcc122f7dfa`.
+All three stages exit successfully and drain without forced cleanup.
+The helper, exact-check driver, timing
+drivers, and experiment specification are retained in
+`ddp-stream-candidate-v6-drivers/`. Cached-profile analysis is preserved separately
+in `ddp-cached-profile-analysis-v3/`.
+
+The benchmark interpreter was rechecked and remains Torch 2.9.1+cu130 with CUDA
+13.0. The host's default Python reports a different Torch version; it is not the
+interpreter used for these runs. No package or shared-environment change was
+made. These are still one-B200 component experiments on a shared host; the
+candidate's two-B200 and public-harness qualification remain pending.
+
+### Execution coverage priorities
+
+A bounded reconciliation of the 543 logical optimized entries against one
+historical snapshot maps 165 entries and leaves 378 unmapped. **Unmapped does
+not mean unexecuted:** the retained ledgers span multiple sources, aliases, skips,
+and later targeted reruns. This comparison cannot establish current-source
+execution coverage. The next concrete gaps include FSDP2 child-produced
+verification, hybrid expert parallelism, repaired persistent-decode/TMA paths,
+the FA4 ALiBi provider fix, and repeated sequence-parallel validation. The ranked
+file/receipt pointers and public commands are retained in
+`execution-gap-priorities-422bc001a/`.
 
 PR #28 is back in draft; broad CI and publication are deferred while this work
 continues.
