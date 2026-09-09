@@ -852,6 +852,21 @@ the finding. All processes drain naturally. The ladder is preserved in
 `fsdp2-initcheck-isolation-v1/`: 12 files / 1,106,485 bytes, inventory SHA-256
 `5da608bff145de0e1349b6b783400ff0e175f3bad3b5411cdb2bccf878f33894`.
 
+Repeating the unchanged unsharded diagnostic with task-local Compute Sanitizer
+2026.2.1 reproduces the same BF16 read reports and 180-second timeout. The newer
+tool does not resolve this finding. Its processes also drain naturally; the
+system toolkit, driver, and PyTorch installation are unchanged. The failure is
+retained in `fsdp2-initcheck-isolation-v2/`: six files / 1,092,393 bytes,
+inventory SHA-256
+`75b5c555302ad68772f54ab31099c7bb1e368a5dbf1889bd028318d87e88af72`.
+
+The reported host frame is the key branch of `apply_rotary_pos_emb` in the
+loaded Transformers 4.56 implementation. The earlier clean projection control
+covered the wider query projection, so it does not clear the key projection.
+The next isolation compares the actual key-projection output with initialized
+key inputs of identical shape and strides. A sanitizer instrumentation limitation
+remains a hypothesis, not an accepted explanation or a memory-check pass.
+
 An additional full-state control makes both candidate and unsharded reference
 use FlashAttention 2 with fused AdamW. With the default attention settings it
 still differs after training: two of four training losses differ, final loss
@@ -872,6 +887,24 @@ The pass is retained in `fsdp2-exact-deterministic-fa2-v5/`: five files /
 21,216 bytes, inventory SHA-256
 `dca7cc1f931c92abaed42e164e169a7b3ae41718b9598ffcf41f3beac2233c5d`.
 
+The same independent diagnostic subsequently passes on **two B200s**, using
+the optimized multigpu FSDP2 implementation at the same source and deterministic
+FA2 setting. Both ranks match exactly: 131,072,000 final logits, eight training
+losses, and two final losses, plus the full 483,428,352 model values and
+966,856,779 optimizer-state values. All compared values are finite. The
+unsharded reference averages the losses for both ranks before backward; fused
+AdamW remains enabled in both models. The diagnostic completes in 26.602 seconds
+and drains naturally.
+
+This is two-GPU full-state equivalence for the recorded two-update workload,
+not the public main's full default run or a serving/training speed result.
+Artifacts are in `fsdp2-exact-world2-v2/`: five files / 26,421 bytes, inventory
+SHA-256 `fc5dceec16367268102a851fe897d96c623f3229e3a0f3251cdf781c60cc1e60`.
+The first world-two attempt stopped before GPU execution because the private
+runner pointed to an unstaged helper path. Its failure is retained separately
+in `fsdp2-exact-world2-v1/`; correcting that path leaves the comparison driver
+and its zero-tolerance checks unchanged.
+
 ## FSDP1 training repair and direct execution
 
 Source `ddd7c8d7d63d4ad7cf3910338a0b39657ee8ca34` fixes the same second target
@@ -887,10 +920,23 @@ actual baseline and optimized single-GPU entrypoints then complete on a B200
 with the full 22-layer configuration, packed sequence length 1024, microbatch
 two, accumulation two, FP8 disabled, and two optimizer updates/four microbatches.
 These are direct execution checks, not full training-equivalence or performance
-qualification; the benchmark wrapper's larger default batch and two-GPU variant
-still need their own runs.
+qualification; the benchmark wrapper's larger single-GPU default batch still
+needs its own run.
 
 Both source-clean runs drain naturally. Artifacts are preserved in
 `fsdp1-direct-world1-v1/`: five files / 8,435 bytes, inventory SHA-256
 `c2b12a07a10913696081d392d07473c240fdee3af7faa2c460635fffc0f0ff84`.
 The source bundle, driver, and integration log are in `fsdp1-source-v1/`.
+
+At source `ae140243323bb74e0301486d263790fee289b6d2`, both public multigpu
+variants complete **200 optimizer updates / 400 microbatches per rank** on two
+B200s. This uses the 12-layer configuration, packed length 1024, microbatch two
+per rank, accumulation two, and FP8 disabled. All printed losses are finite;
+both processes exit successfully and drain naturally. Application clocks are
+recorded for both GPUs. This establishes the recorded public execution path,
+not an independent accuracy gate or repeated speed measurement.
+
+The two-GPU results are retained in `fsdp1-direct-world2-v1/`: five files /
+22,863 bytes, inventory SHA-256
+`352c95d773ef6beb29eb9d38b38633722ae628caef0220c48dfa3f2b72592391`.
+The driver and source update are in `fsdp1-world2-v1-driver/`.
