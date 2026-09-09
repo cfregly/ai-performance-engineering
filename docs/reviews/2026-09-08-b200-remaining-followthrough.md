@@ -1185,4 +1185,43 @@ back. Arithmetic, input refresh, graph replay, and prefill mechanisms remain
 the same. This removes unnecessary copies rather than zero-filling their
 sources or suppressing initcheck. Five real GPU regression cases require
 zero initcheck errors, full output checks, and changed inputs plus poisoned
-outputs across two replays; their B200 results remain pending.
+outputs across two replays. All five pass on one B200 at
+`0a8e68ae55dcea9cade0bcca5c5b1d88139ba519`: persistent graph full/piecewise,
+descriptor-TMA full/piecewise, and native async-copy decode. Prefill copies
+remain exact; all decode values and graph-prefill reductions are checked
+against an independent CPU calculation at `rtol=1e-5, atol=5e-5`. No benchmark
+tolerance was relaxed. Every initcheck summary is zero; the stage drains
+naturally. This validates the removed-copy paths, without attributing the
+original reports to an upstream bug or claiming a speed improvement.
+
+
+The first attempt at these five regressions retains three passing cases and
+two prerequisite failures: a cold hardware-capability cache launched its
+unrelated DSMEM probe inside the instrumented child and reached a 60-second
+timeout before descriptor-TMA setup. The revised test runs the real
+hardware/compiler prerequisite before initcheck; its generated capability
+receipt is retained. No capability result is fabricated or copied from a
+different host.
+
+### Nested clock ownership and complete MoE verification
+
+`d03fd19516cae424f4af17eaebc28b2fbdb82e8f` fixes the torchrun clock
+provenance failure: matching contexts borrow application clocks, and contexts
+that change clocks or persistence restore their exact queryable entry state.
+Cleanup verifies restoration and fails clearly on drift or restore failure.
+The harness no longer uses unqueryable hard-lock fallback/reset operations.
+Five new ownership tests and the related torchrun provenance tests pass
+(19 total); the three affected public GPU targets still require reruns.
+The original six-target collection had no execution or output-verification
+failures; three manifests were rejected for the post-child clock mismatch.
+
+The MoE exchange comparison now captures all 4,194,304 BF16 output values
+instead of a 1,024-value sample, along with all token and expert-route inputs.
+It retains exact comparison and validates complete shape and finiteness.
+Thirty-two focused tests pass, including corruption outside the former sample.
+Public execution of this expanded verification remains pending.
+
+The reviewed three-capture serving Nsight recipe is prepared but has not
+launched: its two-GPU guard found another workload on the first B200. That
+workload is untouched. Single-GPU correctness work continues on the second
+B200; no serving trace or two-GPU result is claimed for this blocked launch.
