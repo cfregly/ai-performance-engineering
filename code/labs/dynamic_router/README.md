@@ -45,3 +45,24 @@ python -m cli.aisp bench run --targets labs/dynamic_router --profile minimal
 - `driver.py` accepts knobs such as `--prefill-gpus`, `--decode-gpus`, and `--migration-budget` to stress different regimes.
 - vLLM integration now takes flags (`--model`, `--prefill-gpus`, `--decode-gpus`, etc.) plus locally available tokenizer/model weights.
 - Router scoring incorporates pinned-host KV slab availability and NUMA-locality bias; feed it real topology via `topology_probe.py` or NVML when available.
+
+
+## B200 placement tradeoff
+
+A six-pair run with GPT-OSS-20B, batch-invariant Triton attention, two B200s
+at 1500/3996 MHz, and the default 102-request mix measured these medians.
+Engine startup is excluded; each arm reuses its two engines after five warmups.
+
+| Placement | Completion | Short-request TTFT p50 | Long-request TTFT p50 |
+| --- | ---: | ---: | ---: |
+| Shared | 1330 ms | 921 ms | 592 ms |
+| Dedicated (default) | 1633 ms | 474 ms | 947 ms |
+| Dedicated, `--long-spillover-limit 1` | 1395 ms | 710 ms | 710 ms |
+
+One long spillover raises throughput about 17% over dedicated placement and
+preserves exact generated tokens in this run. It increases short-request
+latency, so it is opt-in. Choose shared placement for aggregate throughput,
+dedicated placement for the lowest short-request latency, or test spillover
+when both matter. Other workloads need their own measurements. The full
+[validation report](../../../docs/reviews/2026-09-08-b200-remaining-followthrough.md)
+retains p95 latency, source/runtime details, and all six outcomes.

@@ -27,6 +27,7 @@ The retained targeted measurements illustrate the remaining speed gaps:
 | Pipeline parallelism, forward lookahead | 1.057x median ratio | Two of four blocks remain below 1.05x; process duration does not improve |
 | Dynamic serving routing | 0.996x | Parity on the homogeneous workload; no throughput benefit established |
 | Fair dedicated versus shared serving pools | 0.815x | Lower total throughput; short-request TTFT improves |
+| One-long-request spillover versus dedicated pools | 1.171x throughput | Three repeated comparisons improve completion time; short-request TTFT increases; opt-in |
 | KV-cache NVFP4 compute, cached weights | 1.106x | All eight cached comparisons across four A/B/B/A blocks exceed 1.05x; full profiled pair also passes |
 | Ozaki dynamic / fixed versus native FP64 | 5.793x / 7.762x | Corrected public timings, independent arithmetic gates, and all-variant Nsight captures pass; scoped to the recorded workload |
 
@@ -241,8 +242,10 @@ publish-grade timing or clock control.
 
 Use shared serving for this workload's throughput goal. Choose dedicated pools
 only with an explicit short-request latency objective and the measured long-request
-cost. A future placement experiment could allow both GPUs to take long requests;
-its benefit is unmeasured. Do not add KV migration based on this trace alone.
+cost. The new opt-in one-long-request spillover improves dedicated-pool
+throughput by 17.1% in the repeated experiment below, while increasing
+short-request TTFT. It remains slower than shared placement for total completion.
+Do not add KV migration based on this trace alone.
 
 The previous pass's independently checked results remain: cache-aware 1P1D
 synchronization removal measures **1.574x**; FP8 crosses over at batch 4096
@@ -1046,10 +1049,9 @@ also hash-verified locally in `ddp-base-overlap-world2-abba-v2`: 43 files /
 Source `a4750384994e320a87c84925a11595cee207b172` adds an opt-in
 `--long-spillover-limit` to the serving example. Zero preserves dedicated-pool
 placement; one moves at most one long request onto the existing decode GPU.
-All 33 focused routing tests pass. A six-pair B200 experiment is running with
-fixed clocks, unchanged request mix, reused engines, and separate startup,
-steady-state completion, and short/long TTFT measurements. No GPU performance
-claim is made for this change before those results are checked.
+All 33 focused routing tests pass. The six-pair B200 experiment now completes
+with fixed clocks, unchanged request mix, reused engines, and separate startup,
+steady-state completion, and short/long TTFT measurements, as detailed below.
 
 
 The first serving collection attempt stopped before engine startup because
@@ -1086,3 +1088,46 @@ The interval includes the full training loop and excludes model startup and
 teardown. Forty-five focused CPU tests pass; B200 validation of this new timing
 marker is pending. This fixes a missing timing output but does not enable the
 generic FSDP child-result wrappers, which still need their dedicated adapter.
+
+
+### Repeated serving spillover result
+
+All six public comparisons at `a4750384994e320a87c84925a11595cee207b172`
+complete and pass exact generated-token comparison, live input verification,
+runtime parity, source identity, both-GPU clock checks, and engine-lifecycle
+checks. Each arm constructs two engines once, performs five full-workload
+warmups, and reuses them for three steady-state measurements. The order is
+dedicated, spillover, spillover, dedicated, dedicated, spillover. Both B200s
+use 1500/3996 MHz application clocks and the same pinned Torch 2.9.1+cu130,
+vLLM 0.16, local GPT-OSS-20B, batch-invariant Triton attention, and 102-request
+workload (six 4096-token prompts, 96 128-token prompts, 16 generated tokens each).
+
+The following are medians across the three dedicated and three spillover
+comparisons; the shared baseline is the median of all six reference runs.
+Times are milliseconds; TTFT is time to first token.
+
+| Placement | Completion | Long TTFT p50 / p95 | Short TTFT p50 / p95 |
+| --- | ---: | ---: | ---: |
+| Shared | 1329.918 | 592.120 / 822.278 | 920.560 / 1022.207 |
+| Dedicated | 1633.429 | 947.239 / 1409.746 | 473.545 / 820.667 |
+| Dedicated with one long spillover | 1395.233 | 710.084 / 1170.940 | 709.838 / 946.250 |
+
+Spillover reduces dedicated-pool completion time by **14.58%**, raising
+throughput from 62.45 to 73.11 requests/second (**1.17072x**). Every spillover
+repeat finishes in 1391.033–1396.659 ms, below every dedicated repeat at
+1629.797–1634.368 ms. Long-request TTFT improves 25.0% at p50 and 16.9% at
+p95. Short-request TTFT increases 49.9% at p50 and 15.3% at p95 compared with
+dedicated placement, while remaining below the shared baseline's short-request
+latency. Shared placement still has the best aggregate throughput here.
+Consequently `--long-spillover-limit 1` stays opt-in; zero retains the stronger
+short-request latency benefit. All six harness outcomes retain
+`failed_no_speedup` against their shared baselines, despite passing execution
+and correctness checks. This is useful tradeoff data, not a hidden speed win.
+
+Startup remains outside these steady-state values (about 28 seconds per arm
+in the first comparison). Full startup, warmup, reuse, per-class admissions,
+latency metrics, exact comparisons, and the two failed preflights are retained.
+The successful collection drains naturally and its local copy verifies all
+71 files / 1,419,112 bytes in `serving-flex-placement-v4`, inventory SHA-256
+`d5469421ce807b10dec79f24d2fac75418ab6f7765f7544cc8f69e2f071fde8d`.
+Fresh Nsight mechanism captures for the spillover path remain pending.
