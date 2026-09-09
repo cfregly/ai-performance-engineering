@@ -26,7 +26,7 @@ The retained targeted measurements illustrate the remaining speed gaps:
 | Dynamic serving routing | 0.996x | Parity; below the speed goal |
 | Fair dedicated versus shared serving pools | 0.815x | Lower total throughput; short-request TTFT improves |
 | KV-cache NVFP4 compute, cached weights | 1.106x | All eight cached comparisons across four A/B/B/A blocks exceed 1.05x; full profiled pair also passes |
-| Ozaki dynamic / fixed versus native FP64 | 5.789x / 7.715x | Corrected public timings and correctness pass; NCU capture remains incomplete |
+| Ozaki dynamic / fixed versus native FP64 | 5.793x / 7.762x | Corrected public timings, independent arithmetic gates, and all-variant Nsight captures pass; scoped to the recorded workload |
 
 These ratios retain the source, workload, timing, and qualification limits of
 their individual receipts; they are not a new uniform benchmark run. The
@@ -221,9 +221,11 @@ The previous pass's independently checked results remain: cache-aware 1P1D
 synchronization removal measures **1.574x**; FP8 crosses over at batch 4096
 (**1.279x**) while smaller batches lose; pipeline timing has no robust win.
 Keep the default FP8 batch unchanged and select workload sizes explicitly.
-KV compression and Ozaki retain their independent numerical ceilings and passing
-reference checks, with no speedup claimed. See the previous report for the exact
-budgets, shapes, reference definitions, scatter, and receipt names.
+KV compression and Ozaki retain their independent numerical ceilings. Their
+newer repeated timings and completed profiler captures are recorded below;
+the earlier no-win and failed-profile receipts remain preserved with their
+original dispositions. The Ozaki parser correction reveals an existing speedup;
+it does not accelerate the CUDA kernels.
 
 Hardening coverage is deliberately specific. Current-thread dispatcher checks see
 visible PyTorch operations, not arbitrary native/background execution. Device
@@ -486,13 +488,61 @@ CUDA operations run in compiled child processes. A parent PyTorch trace also
 does not establish visibility into those child CUDA kernels. The batch drains
 naturally; that receipt remains an incomplete profiler run.
 
-The next source candidate builds a separate NVTX-enabled Ozaki executable and
+Source `2c9f9e06f6b83d5cfd65f0df41061332a5c3cb87` builds a separate NVTX-enabled Ozaki executable and
 selects its complete ten-GEMM timed loop directly in Nsight Compute. Startup,
 warmup, and reference checks are outside the selected range. Ordinary timing
-binaries remain separate. Compiled-child benchmarks now report PyTorch profiling
-as not applicable, with an explicit reason, instead of treating a parent-only
-trace as GPU coverage. The build/dispatch/error paths pass 47 focused CPU tests;
-real B200 capture of this candidate is still pending. No CI or push was run.
+binaries remain separate. Its first B200 run captures all ten native kernels and
+40 fixed-variant kernels, with five finite counters per kernel. The run still
+returns `failed_profiler` because the minimal-mode winner branch incorrectly
+counts an inapplicable PyTorch profiler as failed. All 28 files (8,405,275 bytes)
+of that failed run are hash-verified in `ozaki-cli-child-2c9/`.
+
+The follow-up at `0361e22d406e4fa2922daedc886511fa05fcf4cd` applies the same
+PyTorch applicability rule to baseline, all-variant, and minimal-winner profiling.
+Compiled-child execution reports the explicit reason in
+`*_profiler_not_applicable`; it neither emits a misleading parent trace nor
+records PyTorch as a successful required GPU profiler. All 47 focused CPU
+build/dispatch/error checks pass. The actual public CLI now exits **0** in both
+minimal and roofline modes, and both stages drain naturally without interruption.
+Minimal profiles the winning fixed variant; roofline profiles both variants.
+
+| Ordinary timing / capture | Native | Dynamic | Fixed |
+| --- | ---: | ---: | ---: |
+| Minimal run latency (ms) | 5.137859 | 0.889360 | 0.664954 |
+| Minimal run speedup | 1.000x | 5.777030x | 7.726643x |
+| Roofline run latency (ms) | 5.137805 | 0.886848 | 0.661939 |
+| Roofline run speedup | 1.000x | 5.793332x | 7.761747x |
+| Roofline selected NCU kernels | 10 | 80 | 40 |
+
+These timings come from the separate ordinary executable runs, not profiler
+durations. The workload remains 4096 cubed, seed 2026, scale 0.001, three warmups,
+ten measured GEMMs, 64 MiB workspace, and the same frozen error budgets. The
+harness requests 1500/3996 MHz clocks on the same portable B200 environment.
+Every captured kernel carries the selected child NVTX range, and all five
+required counters are finite. No kernel-name or launch-count filter narrows
+the loop. The five reports across both modes contain 180 kernels and 900 finite
+required counter cells. Both Nsight profilers succeed for every requested arm.
+Dynamic additionally captures min/max and auxiliary GEMM/epilogue kernels;
+that extra work is visible in the 80-versus-40 kernel count.
+All 59 files (22,874,361 bytes) are hash-verified in `ozaki-cli-child-0361/`,
+inventory SHA-256
+`7b3aea1027a530425b0bc8712773ec7b11292f0778c80cfaaa05025c4b73b021`.
+
+Compute Sanitizer 2025.3.1 then executes **12 full-size checks**: memcheck and
+initcheck for native, dynamic, and fixed, each in both the ordinary and dedicated
+profile build. Every command uses the unchanged default workload and accuracy
+arguments, returns zero, and reports zero errors. This checks these actual
+executables and inputs; it does not create a repository-wide uninitialized-memory
+detector or close all remaining hardening declarations.
+All 14 files (23,159 bytes) are hash-verified in `ozaki-child-memory-0361/`,
+inventory SHA-256
+`3d4a771ac3235a17fb6a3dfe296be44f09062ebdfd4a73b6959ae99b04de6eb9`.
+
+The documented measurement-only shell helper also now rejects every exit code
+except 2. Previously an unexpected zero exit returned success. Six real shell
+checks cover child exits 0, 2, and 99 under both Bash and Zsh; all pass. Historical
+README timings and process-wide trace totals are labeled separately from current
+qualified evidence. No CI or push was run.
 
 The direct CUDA-event screen at 64 MiB measures native-over-dynamic and native-over-fixed
 speedup geometric means of **5.797175x / 7.738416x**, with all numerical limits

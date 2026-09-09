@@ -44,7 +44,7 @@ These earlier numbers predate the full-array verifier. The old signed-checksum c
 
 The dynamic path's reported `3e-6` maximum error is material relative to this small output scale. The old tolerance does not establish FP64-equivalent accuracy.
 
-## Accuracy gate: requirements defined, target qualification pending
+## Accuracy gate: qualified on the recorded B200 workload
 
 The CUDA executable checks every element against a separately executed native FP64
 reference before returning an accepted timing. Small edge cohorts can instead use the
@@ -75,12 +75,19 @@ records all ten arithmetic cases passing on CUDA 13.0 / cuBLAS 13.1.1.3, plus
 three focused Compute Sanitizer memory checks. These checks cover the recorded
 shapes and stack, not arbitrary application accuracy or memory safety.
 
-The same review found and fixed a shared timing-parser bug that dropped
-scientific-notation exponents. The corrected public benchmark reports 5.79x
-dynamic and 7.72x fixed speedups at the recorded workload and clocks. Its NCU
-capture remains incomplete because the Python parent range does not select CUDA
-work in the compiled child. Preserve that profiler failure until child-process
-range selection is fixed; host-side PyTorch traces do not validate child kernels.
+The same review fixed a timing-parser bug that dropped scientific-notation
+exponents and a profiler bug that selected the Python parent's NVTX range instead
+of the compiled child's work. Source `0361e22d4` passes the public CLI in minimal
+and roofline modes. The ordinary timings measure **5.777–5.793x dynamic** and
+**7.727–7.762x fixed** at the recorded workload and clocks. These speeds use the
+predeclared arithmetic budgets above; they do not establish FP64 equivalence.
+
+NCU selects the complete ten-GEMM loop in a separate NVTX-enabled build: ten
+native, 80 dynamic, and 40 fixed kernels, all with the required finite counters.
+PyTorch profiling is explicitly inapplicable to compiled-child GPU work. Nsight
+Systems captures the full executable. Twelve additional full-size memcheck and
+initcheck runs pass with zero errors across the three ordinary and three profile
+binaries. The report retains the earlier failed captures and the exact scope.
 
 ## Why This Lab Exists
 The motivating story from the slides is that low-precision tensor-core hardware keeps getting faster while native FP64 throughput improves much more slowly, so accurate FP64-equivalent matrix multiplication increasingly wants an emulation story instead of a brute-force FP64 story.
@@ -257,10 +264,12 @@ python -m cli.aisp bench run --targets labs/ozaki_scheme:ozaki_scheme_dynamic --
 python -m cli.aisp bench run --targets labs/ozaki_scheme:ozaki_scheme_fixed --profile minimal
 ```
 
-The canonical expectation file for this host is `labs/ozaki_scheme/expectations_b200.json`, generated from a strict `--profile none --update-expectations` run.
+The older `labs/ozaki_scheme/expectations_b200.json` file predates the current
+full-array accuracy qualification. It is not evidence for the newly qualified run.
 
-## Exact Repro
-These are the commands behind the numbers quoted above:
+## Historical Reproduction Commands
+These commands produced the March timing table above, before the full-array
+accuracy gate. They do not reproduce the September qualified result:
 
 ```bash
 python -m cli.aisp bench run --targets labs/ozaki_scheme --profile none --update-expectations
@@ -272,18 +281,19 @@ python labs/ozaki_scheme/narrative_checks.py --section all --skip-build
 
 The timing table in this README comes from run `20260318_183903__bench__profile_none_targets_labs_ozaki_scheme`.
 
-The generic `--profile minimal` run captures full-lab profiling for the best optimized path (`fixed`) under run `20260318_184813__bench__profile_minimal_targets_labs_ozaki_scheme`.
+The historical `--profile minimal` run selected the best optimized path (`fixed`)
+under run `20260318_184813__bench__profile_minimal_targets_labs_ozaki_scheme`.
+Minimal mode does not profile every optimized variant; `--profile roofline` does.
 
 The dynamic-path explanation below comes from the dedicated profiled pair run `20260318_185200__bench__profile_minimal_targets_labs_ozaki_scheme_ozaki_scheme_dynamic`.
 
-## Why Dynamic Wins Here
-The profiled `ozaki_scheme_dynamic` pair on the tuned default scenario points to a reduction in emulation work, not a bandwidth-driven win:
-
-- strict timing run (`20260318_183903__bench__profile_none_targets_labs_ozaki_scheme`) measured native FP64 at `6.714 ms` and dynamic Ozaki at `1.130 ms`
-- profiled dynamic pair run (`20260318_185200__bench__profile_minimal_targets_labs_ozaki_scheme_ozaki_scheme_dynamic`) kept the same verification-clean result while showing baseline `nsys total_gpu_time_ms ~= 258.4` versus dynamic `~= 157.0`
-- the minimal NCU pass did not expose a dramatically different bandwidth signature, and the sampled kernel counters stayed close run-to-run
-
-The strongest signal is therefore the large end-to-end `nsys` reduction, together with the stable numerical result: the dynamic controller appears to be collapsing the amount of fixed-point emulation work needed for this low-range input distribution, rather than benefiting from a memory-system optimization.
+## Interpreting the Profiles
+The old March trace totals (258.4 ms native versus 157.0 ms dynamic) include a
+different execution scope and predate the independent accuracy gate. They cannot
+establish current correctness or explain the current speedup. Use the September
+report's ordinary CUDA-event timings and separately captured child-kernel counters.
+Nsight Systems process totals include startup, warmup, and reference work; they
+are not the ten-GEMM steady-state latency reported by `TIME_MS`.
 
 ## Papers and Code
 The screenshots cite a broader Ozaki literature trail than the original README did. These are the most relevant anchors for this lab.
