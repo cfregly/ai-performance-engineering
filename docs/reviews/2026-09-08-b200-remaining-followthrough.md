@@ -940,3 +940,42 @@ The two-GPU results are retained in `fsdp1-direct-world2-v1/`: five files /
 22,863 bytes, inventory SHA-256
 `352c95d773ef6beb29eb9d38b38633722ae628caef0220c48dfa3f2b72592391`.
 The driver and source update are in `fsdp1-world2-v1-driver/`.
+
+Both FSDP2 public multigpu variants also complete 200 updates / 400 microbatches
+per rank at `ae140243...`, using eight layers and the same sequence, microbatch,
+and accumulation settings. Both FSDP1 single-GPU defaults complete ten updates /
+20 microbatches with 22 layers and microbatch 16. All reported losses are finite
+and all processes drain naturally. The respective evidence inventories are
+`fsdp2-public-world2-v1/` (five files / 23,101 bytes, SHA-256
+`3feddc856ac7bee560ff7fbb917e521d0cd44acb7d5a8aded043197fe006ec5a`)
+and `fsdp1-public-single-default-v2/` (five files / 8,971 bytes, SHA-256
+`5bbee7653cb42493e097df5718e25b3480849d09ab92fb10789eee46960ce98d`).
+
+## Rotary-frequency precision correction
+
+The smaller key-projection diagnostic finishes without a timeout. Compute
+Sanitizer reports **524,288 uninitialized reads** for projected keys multiplied
+by cosine, while initialized keys with identical shape and strides pass with
+zero errors. Both numerical outputs are finite. The full raw summary contains
+the total; the private stage parser mistakenly selected the following suppressed-
+error count of 524,188. That counting error does not change the failed
+disposition. Evidence is retained in `fsdp2-initcheck-isolation-v3/`: nine files /
+893,337 bytes, inventory SHA-256
+`ed01df9ca42ddd4fabc8c384b325b105822ca0a06d7625b5fc41b1c9de87b91b`.
+
+The independent rotary calculations expose a separate confirmed accuracy bug.
+Transformers creates BF16 parameters with FP32 inverse-frequency buffers, but
+six model-placement calls cast the whole model to BF16. All four FSDP1 wrappers
+also request BF16 buffers. Once rounded, the inverse frequencies cannot be
+recovered by converting them back to FP32 inside the rotary calculation.
+A real Transformers 4.56 / Torch 2.9.1 reproduction changes cosine values by up
+to **0.4423828** and sine values by **0.4375** over sequence length 1024.
+
+The correction preserves existing dtypes during device placement and uses FP32
+FSDP1 buffers, while keeping model parameters and reductions in BF16. Two real
+Hugging Face rotary regressions and 30 related training-semantics/data checks
+pass. The placement reproduction preserves the complete original cosine/sine
+outputs exactly. GPU validation of this correction is pending. Earlier full-
+state equivalence passes compare models using the same rounded frequencies;
+they do not establish correct positional frequencies or validate this new fix.
+The uninitialized-read report remains a separate unresolved finding.

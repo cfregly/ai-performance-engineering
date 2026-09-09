@@ -11,7 +11,6 @@ import torch
 import torch.distributed as dist
 from torch.distributed.fsdp import (
     BackwardPrefetch,
-    MixedPrecision,
     ShardingStrategy,
 )
 from torch.distributed.fsdp import (
@@ -23,6 +22,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 from core.benchmark.gpu_requirements import require_min_gpus
 from core.common.device_utils import resolve_local_rank
 from labs.train_distributed.training_utils.fsdp_training import (
+    fsdp1_mixed_precision_policy,
     initialize_fsdp_seed,
     shifted_causal_lm_loss,
     validate_fsdp_training_args,
@@ -149,7 +149,7 @@ def _wrap_fsdp(model: torch.nn.Module) -> FSDP:
     except ImportError as exc:
         raise RuntimeError("_wrap_fsdp() requires the `transformers` package") from exc
     auto_wrap = partial(transformer_auto_wrap_policy, transformer_layer_cls={LlamaDecoderLayer})
-    mp_policy = MixedPrecision(param_dtype=torch.bfloat16, reduce_dtype=torch.bfloat16, buffer_dtype=torch.bfloat16)
+    mp_policy = fsdp1_mixed_precision_policy()
     return FSDP(
         model,
         auto_wrap_policy=auto_wrap,

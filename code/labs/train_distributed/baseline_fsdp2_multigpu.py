@@ -17,6 +17,7 @@ from core.benchmark.gpu_requirements import require_min_gpus
 from core.common.device_utils import resolve_local_rank
 from labs.train_distributed.training_utils.fsdp_training import (
     initialize_fsdp_seed,
+    move_fsdp_model_to_device,
     shifted_causal_lm_loss,
     validate_fsdp_training_args,
 )
@@ -203,7 +204,7 @@ def main():
     if rank == 0:
         print("[baseline_fsdp2_multigpu] model instantiated", flush=True)
 
-    model = model.to(torch.cuda.current_device(), dtype=torch.bfloat16)
+    model = move_fsdp_model_to_device(model, torch.cuda.current_device())
     mesh = init_device_mesh("cuda", (world_size,))
     model = _apply_fsdp2(model, mesh)
 

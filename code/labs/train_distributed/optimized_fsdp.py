@@ -12,7 +12,6 @@ import torch
 import torch.distributed as dist
 from torch.distributed.fsdp import (
     BackwardPrefetch,
-    MixedPrecision,
     ShardingStrategy,
 )
 from torch.distributed.fsdp import (
@@ -29,7 +28,9 @@ except Exception:  # pragma: no cover - defensive import
     prefer_sdpa_backends = None  # type: ignore
 
 from labs.train_distributed.training_utils.fsdp_training import (
+    fsdp1_mixed_precision_policy,
     initialize_fsdp_seed,
+    move_fsdp_model_to_device,
     shifted_causal_lm_loss,
     validate_fsdp_training_args,
 )
@@ -121,7 +122,7 @@ def _wrap_fsdp(model: torch.nn.Module) -> FSDP:
     except ImportError as exc:
         raise RuntimeError("_wrap_fsdp() requires the `transformers` package") from exc
     auto_wrap = partial(transformer_auto_wrap_policy, transformer_layer_cls={LlamaDecoderLayer})
-    mp_policy = MixedPrecision(param_dtype=torch.bfloat16, reduce_dtype=torch.bfloat16, buffer_dtype=torch.bfloat16)
+    mp_policy = fsdp1_mixed_precision_policy()
     return FSDP(
         model,
         auto_wrap_policy=auto_wrap,
@@ -210,7 +211,7 @@ def main():
         attn_implementation="flash_attention_2",
     )
 
-    model = model.to(torch.cuda.current_device(), dtype=torch.bfloat16)
+    model = move_fsdp_model_to_device(model, torch.cuda.current_device())
     if fp8_enabled:
         fp8_recipe = Float8LinearConfig(enable_fsdp_float8_all_gather=True)
         model = convert_to_float8_training(model, config=fp8_recipe)

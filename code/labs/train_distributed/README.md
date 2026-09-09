@@ -51,6 +51,12 @@ seed model initialization and data order with 42; harness-owned seeds are
 preserved. Synthetic data uses a separate generator so data creation does not
 change model initialization.
 
+Model weights use BF16 while rotary-position frequency buffers stay in FP32.
+Device placement preserves those buffer dtypes, and FSDP1's mixed-precision
+policy also keeps buffers in FP32. Rounding inverse frequencies to BF16 before
+the rotary calculation introduces position-dependent errors that grow with
+sequence length.
+
 The FSDP2 entrypoints report synchronized milliseconds per optimizer update on
 rank 0, using the slowest rank's complete training interval. This includes data
 loading, transfers, forward, backward, optimizer updates, and training logging;

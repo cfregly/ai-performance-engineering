@@ -5,13 +5,16 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from numbers import Real
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import torch
 from torch.nn import functional
 
 from labs.train_distributed.training_utils.child_result import child_result_requested
 from labs.train_distributed.training_utils.utils import set_seed
+
+if TYPE_CHECKING:
+    from torch.distributed.fsdp import MixedPrecision
 
 
 def initialize_fsdp_seed(*, fallback: int = 42) -> int:
@@ -20,6 +23,31 @@ def initialize_fsdp_seed(*, fallback: int = 42) -> int:
     if not child_result_requested():
         set_seed(fallback)
     return int(torch.initial_seed())
+
+
+def move_fsdp_model_to_device(
+    model: torch.nn.Module, device: torch.device | str | int
+) -> torch.nn.Module:
+    """Move already-typed parameters without rounding FP32 rotary buffers.
+
+    Transformers constructs BF16 parameters and FP32 inverse frequencies.
+    Casting the entire model to BF16 rounds those frequencies before RoPE's
+    FP32 arithmetic, so the position-dependent error cannot be recovered there.
+    """
+
+    return model.to(device=device)
+
+
+def fsdp1_mixed_precision_policy() -> MixedPrecision:
+    """Keep position-frequency buffers in FP32 through FSDP1's forward cast."""
+
+    from torch.distributed.fsdp import MixedPrecision
+
+    return MixedPrecision(
+        param_dtype=torch.bfloat16,
+        reduce_dtype=torch.bfloat16,
+        buffer_dtype=torch.float32,
+    )
 
 
 def shifted_causal_lm_loss(
@@ -85,6 +113,8 @@ def validate_fsdp_training_args(args: Any) -> None:
 
 __all__ = [
     "initialize_fsdp_seed",
+    "move_fsdp_model_to_device",
+    "fsdp1_mixed_precision_policy",
     "shifted_causal_lm_loss",
     "validate_fsdp_training_args",
 ]
