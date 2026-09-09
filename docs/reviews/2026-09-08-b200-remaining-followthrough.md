@@ -1435,3 +1435,46 @@ Tolerance-close references and different signed zeros are not deduplicated.
 Size failures now report the actual and allowed byte counts. Six focused
 real serialization/validation tests and nine existing DDP checks pass; syntax
 and Ruff checks pass. The fresh two-B200 public rerun is still required.
+
+
+### Projected-K initcheck: complete bounded control
+
+The first output-buffer control timed out during instrumented host capture,
+after its projection and `key * cos` stages completed. Its incomplete outcome
+and logs are retained. The revised diagnostic separates ordinary full-tensor
+capture from three initcheck processes that stop after the same producer and
+consumer. All six children finish naturally in a 78-second supervised stage,
+with no forced cleanup and exact restoration of application clocks.
+
+The three ordinary captures retain complete normalized inputs, projection
+weights, rotary cosines, projected keys, and consumer outputs. All 15 full
+tensor comparisons across the three mode pairs are byte-identical and finite.
+The instrumented outcomes remain separate:
+
+| Producer mode | Initcheck total | Unprinted reports | Exit code | Outcome |
+| --- | ---: | ---: | ---: | --- |
+| Linear projection | 262,144 | 262,140 | 86 | Finding retained |
+| `mm` with empty output buffer | 262,144 | 262,140 | 86 | Finding retained |
+| `mm` with prefilled output buffer | 0 | 0 | 0 | This diagnostic control is clear |
+
+The prefilled buffer is a diagnostic control only. No production prefill or
+suppression was added. Identical ordinary values and the prefilled control
+narrow the investigation toward initialization tracking, but do not establish
+the actual native kernel dispatch or clear the original finding. The frozen
+probe deliberately retains its old BF16 rotary cast to hold operands fixed;
+this is not an accuracy qualification for that cast.
+
+The private driver initially misclassified the two nonzero results because its
+summary regex also matched the informational `errors were not printed` footer.
+The original failed receipt is preserved. Separate analysis of hash-verified
+raw logs uses complete summary lines and retains the totals above. A similar
+regex in the repository's graph-initcheck test was corrected, including
+singular `1 error` support. Its nonzero-exit, pass-marker, and zero-total gates
+remain unchanged. Five focused CPU parser tests pass. Replay of eight retained
+GPU logs preserves six zero totals and both nonzero totals; this is parser
+validation, not a fresh GPU run.
+
+The verified diagnostic contains 15 files / 35,462,623 bytes, inventory SHA-256
+`8e0ae78ca9660919e8186a74afebfc56a55b5afc56436e53db627b7fbb48fbae`.
+The bounded diagnostic no longer times out. The projected-K memory finding
+remains unresolved and is not relabeled as a passing memory check.

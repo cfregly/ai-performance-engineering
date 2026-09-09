@@ -16,6 +16,35 @@ CODE_ROOT = Path(__file__).resolve().parents[1]
 SANITIZER = shutil.which("compute-sanitizer")
 
 
+def _initcheck_error_totals(output):
+    # The separate "errors were not printed" footer is not another total.
+    return [
+        int(count)
+        for count in re.findall(
+            r"^========= ERROR SUMMARY: ([0-9]+) errors?\r?$", output, re.MULTILINE
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "output,expected",
+    [
+        ("========= ERROR SUMMARY: 0 errors\n", [0]),
+        ("========= ERROR SUMMARY: 1 error\r\n", [1]),
+        (
+            "========= ERROR SUMMARY: 262144 errors\n"
+            "========= ERROR SUMMARY: 262140 errors were not printed. "
+            "Use --print-limit option to adjust the number of printed errors\n",
+            [262144],
+        ),
+        ("========= ERROR SUMMARY: 0 errors were not printed.\n", []),
+        ("no sanitizer summary\n", []),
+    ],
+)
+def test_initcheck_error_totals_preserve_findings(output, expected):
+    assert _initcheck_error_totals(output) == expected
+
+
 @pytest.mark.skipif(
     not torch.cuda.is_available() or SANITIZER is None,
     reason="requires CUDA and Compute Sanitizer",
@@ -127,5 +156,5 @@ finally:
     (tmp_path / "initcheck.log").write_text(output)
     assert process.returncode == 0, output[-12000:]
     assert output.count("PREFILL_GRAPH_REPLAY_PASS") == 1
-    summaries = re.findall(r"^========= ERROR SUMMARY: (\d+) errors", output, re.MULTILINE)
-    assert summaries and all(int(count) == 0 for count in summaries), output[-12000:]
+    summaries = _initcheck_error_totals(output)
+    assert summaries and all(count == 0 for count in summaries), output[-12000:]
