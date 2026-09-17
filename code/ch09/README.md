@@ -50,7 +50,6 @@ python -m cli.aisp bench run --targets ch09:cutlass_gemm --profile deep_dive --s
 ```
 
 ## Online softmax normalization
-
 `online_softmax` isolates the running maximum and normalizer already used in
 attention kernels such as [Chapter 18's FlashMLA](../ch18/flashmla_kernel.cu).
 [baseline_online_softmax.py](baseline_online_softmax.py) materializes subtract,

@@ -56,7 +56,6 @@ python -m cli.aisp bench run --targets ch16:flash_sdp --profile deep_dive --sing
 ```
 
 ## Token-fair scheduling and serving traces
-
 [fair_scheduler.py](fair_scheduler.py) adds Virtual Token Counter admission to
 the scheduling material: counter lift on client re-entry, input-token charges,
 and charges for output tokens actually produced. `peek()` allows memory admission

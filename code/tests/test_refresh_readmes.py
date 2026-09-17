@@ -209,9 +209,10 @@ def test_ch10_and_priority_labs_render_custom_evidence_sections() -> None:
     ):
         _assert_evidence_sections(markdown)
 
-    assert "## Storage and workload" in kv_cache_compression_markdown
+    assert "## Projection pair storage and workload" in kv_cache_compression_markdown
+    assert "## KIVI storage pair" in kv_cache_compression_markdown
     assert "## Accuracy gate and measured B200 scope" in kv_cache_compression_markdown
-    assert "neither path compresses the KV cache" in kv_cache_compression_markdown
+    assert "Both projection paths store K and V as BF16; neither compresses the cache" in kv_cache_compression_markdown
     assert "AISP_KV_CACHE_ACCURACY_POLICY" in kv_cache_compression_markdown
     assert "2^-4" in kv_cache_compression_markdown
     assert "2^-2" in kv_cache_compression_markdown
@@ -223,6 +224,19 @@ def test_all_generator_readmes_match_generated_content() -> None:
         expected = _format_markdown(ENTRIES[slug]).rstrip() + "\n"
         actual = _output_path(slug).read_text(encoding="utf-8")
         assert actual == expected, f"{slug} is out of sync with core/scripts/refresh_readmes.py"
+
+
+def test_concept_and_recompilation_guidance_survives_regeneration() -> None:
+    expected = {
+        "ch09": "## Online softmax normalization",
+        "ch14": "[recompilation guide](recompilation.md)",
+        "ch16": "## Token-fair scheduling and serving traces",
+        "labs/decode_optimization": "## Grammar-derived candidate masks",
+        "labs/kv_cache_compression": "## KIVI storage pair",
+        "labs/README.md": "`labs/nvfp4_quantization/`",
+    }
+    for slug, required_content in expected.items():
+        assert required_content in _format_markdown(ENTRIES[slug]), slug
 
 
 def test_generator_owned_readme_does_not_read_ignored_history_at_import(tmp_path: Path) -> None:

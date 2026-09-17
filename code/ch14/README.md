@@ -50,8 +50,7 @@ python -m cli.aisp bench run --targets ch14:triton_persistent --profile deep_div
 ```
 
 ## Learning Goals
-- Control recompilation and guard misses in real-time inference; see the
-  [recompilation guide](recompilation.md), including credit to Chaim Rand's article.
+- Control recompilation and guard misses in real-time inference; see the [recompilation guide](recompilation.md), including credit to Chaim Rand's article.
 - Adopt `torch.compile` modes for large models while tracking compile-time and steady-state gains.
 - Author Triton kernels (including TMA schedules) that rival custom CUDA.
 - Profile FlexAttention and regional compilation strategies end-to-end.

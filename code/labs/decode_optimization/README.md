@@ -61,7 +61,6 @@ python -m cli.aisp demos labs-decode-multigpu --nproc-per-node 4 -- --iters 4 --
 ```
 
 ## Grammar-derived candidate masks
-
 The existing `decode_candidate_logits` pair starts with a known legal candidate
 set. [token_grammar.py](token_grammar.py) computes that set from a byte DFA and the
 tokenizer's vocabulary bytes. Tokens may span grammar edges or split UTF-8;

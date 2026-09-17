@@ -973,6 +973,8 @@ ENTRIES["labs/README.md"] = Entry(
 
             | Lab | Summary | Suggested Chapters |
             | --- | --- | --- |
+            | `labs/prefix_scan/` | Inclusive scan with hierarchical and decoupled-look-back variants | ch06, ch07, ch09 |
+            | `labs/nvfp4_quantization/` | Three fused quantization operation pairs with six workload configurations and shared NVFP4 scale layout | ch09, ch19 |
             | `labs/nvfp4_gemv/` | GPUMODE `nvfp4_gemv` challenge workspace | ch06, ch10 |
             | `labs/nvfp4_gemm/` | GPUMODE `nvfp4_gemm` challenge workspace | ch06, ch09, ch10 |
             | `labs/async_input_pipeline/` | Async CPU->GPU input overlap | ch02, ch05, ch11 |
@@ -1966,6 +1968,28 @@ ENTRIES["ch09"] = chapter_entry(
                 ```"""
             ),
         ),
+        MarkdownSection(
+            'Online softmax normalization',
+            dedent(
+                """\
+                `online_softmax` isolates the running maximum and normalizer already used in
+                attention kernels such as [Chapter 18's FlashMLA](../ch18/flashmla_kernel.cu).
+                [baseline_online_softmax.py](baseline_online_softmax.py) materializes subtract,
+                exp, and reduction intermediates; [optimized_online_softmax.py](optimized_online_softmax.py)
+                fuses row normalization in Triton. [online_softmax_common.py](online_softmax_common.py)
+                contains the CPU recurrence and full-output verification against FP64 PyTorch softmax.
+
+                ```bash
+                python -m cli.aisp bench run --targets ch09:online_softmax --profile minimal
+                python -m pytest tests/test_parallel_primitives.py -q
+                ```
+
+                The pair uses 128 × 8193 FP32 values. Tests include masked initial tiles and ragged
+                widths. CUDA/Triton validation remains required; CPU tests are source correctness
+                evidence. Source: [online normalizer](https://arxiv.org/abs/1805.02867).
+                """
+            ),
+        ),
     ],
     goals=[
         "Separate compute-bound vs memory-bound behaviors and adjust kernels accordingly.",
@@ -2554,6 +2578,7 @@ ENTRIES["ch14"] = chapter_entry(
         ),
     ],
     goals=[
+        "Control recompilation and guard misses in real-time inference; see the [recompilation guide](recompilation.md), including credit to Chaim Rand's article.",
         "Adopt `torch.compile` modes for large models while tracking compile-time and steady-state gains.",
         "Author Triton kernels (including TMA schedules) that rival custom CUDA.",
         "Profile FlexAttention and regional compilation strategies end-to-end.",
@@ -2696,10 +2721,7 @@ ENTRIES["ch15"] = chapter_entry(
 ENTRIES["ch16"] = chapter_entry(
     slug="ch16",
     title="Chapter 16 - Production Inference Optimization",
-    summary=dedent(
-        """\
-        Focuses on real-world inference services: paged attention, Flash SDP, FP8 serving, telemetry hooks, schedulers, and Blackwell-friendly load-test harnesses."""
-    ),
+    summary='Focuses on real-world inference services: paged attention, Flash SDP, FP8 serving, telemetry hooks, schedulers, and Blackwell-friendly load-test harnesses.\n\nFor compiled serving, use the [Chapter 14 recompilation guide](../ch14/recompilation.md)\nto define warmup coverage and guard-miss policy before measuring service tail latency.',
     lead_sections=[
         MarkdownSection(
             "Problem",
@@ -2772,6 +2794,32 @@ ENTRIES["ch16"] = chapter_entry(
                 python -m cli.aisp bench run --targets ch16 --profile minimal
                 python -m cli.aisp bench run --targets ch16:flash_sdp --profile deep_dive --single-gpu
                 ```"""
+            ),
+        ),
+        MarkdownSection(
+            'Token-fair scheduling and serving traces',
+            dedent(
+                """\
+                [fair_scheduler.py](fair_scheduler.py) adds Virtual Token Counter admission to
+                the scheduling material: counter lift on client re-entry, input-token charges,
+                and charges for output tokens actually produced. `peek()` allows memory admission
+                before queue mutation; the caller supplies decode feedback and completion.
+                `fair_scheduler` compares linear and heap selection over identical complete
+                admission sequences. It measures CPU policy work, without claiming LLM execution.
+
+                ```bash
+                python -m cli.aisp bench run --targets ch16:fair_scheduler --profile minimal
+                python -m pytest tests/test_serving_policies.py tests/test_serving_trace.py -q
+                python -m cli.aisp tools serving-trace -- --trace requests.jsonl --ttft-ms 250 --tpot-ms 50 --output metrics.json
+                ```
+
+                The CPU policy is usable without CUDA; the main benchmark CLI still skips chapters
+                without CUDA, and strict timing validity requires Linux. Existing runtime scheduler
+                and vLLM monitoring measurements keep their own event/Prometheus definitions.
+                [Serving trace analysis](../core/analysis/serving_trace.md) computes request SLOs from
+                observed timestamps and preserves failure details and partial outputs.
+                Source: [Virtual Token Counter](https://arxiv.org/abs/2401.00588).
+                """
             ),
         ),
     ],
@@ -3966,7 +4014,7 @@ ENTRIES["labs/nccl_nixl_nvshmem"] = lab_entry(
 ENTRIES["labs/decode_optimization"] = lab_entry(
     slug="labs/decode_optimization",
     title='Lab - Decode Optimization',
-    summary='Decode-focused microbenchmarks that isolate serving-side wins such as pinned memory, streams, compile/graphs, FP8/FP4, decode-only CUDA Graph replay, and HuggingFace cache policy changes without dragging full attention stacks into every comparison.',
+    summary='Decode-focused microbenchmarks that isolate serving-side wins such as pinned memory, streams, compile/graphs, FP8/FP4, decode-only CUDA Graph replay, and HuggingFace cache policy changes without dragging full attention stacks into every comparison.\n\nThese fixed-workload comparisons do not establish variable-request serving latency.\nSee the [Chapter 14 recompilation guide](../../ch14/recompilation.md) for input\ncoverage, guard misses, and explicit eager fallback policy.',
     lead_sections=[
         MarkdownSection(
             'Problem',
@@ -4045,6 +4093,31 @@ ENTRIES["labs/decode_optimization"] = lab_entry(
                 python -m cli.aisp bench run --targets labs/decode_optimization --profile none
                 python -m cli.aisp demos labs-decode-multigpu --nproc-per-node 4 -- --iters 4 --warmup 1
                 ```
+                """
+            ),
+        ),
+        MarkdownSection(
+            'Grammar-derived candidate masks',
+            dedent(
+                """\
+                The existing `decode_candidate_logits` pair starts with a known legal candidate
+                set. [token_grammar.py](token_grammar.py) computes that set from a byte DFA and the
+                tokenizer's vocabulary bytes. Tokens may span grammar edges or split UTF-8;
+                EOS is legal only at accepting states. `mask_logits()` applies the result to
+                actual PyTorch logits while preserving allowed odds.
+
+                The `grammar_mask` pair compares uncached vocabulary traversal with precompiled
+                state masks. Full masks must match; compilation time is exposed separately.
+                This covers finite-state constraints and finite alternatives, with general
+                context-free parsing outside its contract.
+
+                ```bash
+                python -m cli.aisp bench run --targets labs/decode_optimization:grammar_mask --profile minimal
+                python -m pytest tests/test_serving_policies.py -q
+                ```
+
+                The comparison runs CPU policy work; strict benchmark measurements still require
+                a supported Linux host. Source: [constrained decoding](https://proceedings.mlr.press/v235/beurer-kellner24a.html).
                 """
             ),
         ),
@@ -5040,11 +5113,41 @@ ENTRIES["labs/flashattention_gluon"] = lab_entry(
 
 ENTRIES["labs/kv_cache_compression"] = lab_entry(
     slug="labs/kv_cache_compression",
-    title='Lab - Quantized Projection Compute with BF16 KV Cache',
-    summary='This lab compares per-tensor delayed-scaling FP8 projection GEMMs with NVFP4 projection GEMMs. Both paths store K and V as BF16. The directory name is retained for compatibility; neither path compresses the KV cache.',
+    title='Lab - Quantized Projection Compute and KIVI Cache Storage',
+    summary='The original projection pair compares per-tensor delayed-scaling FP8 projection GEMMs with NVFP4 projection GEMMs. Both projection paths store K and V as BF16; neither compresses the cache. The separate `kivi` pair implements asymmetric two-bit cache storage and compares unpacked versus packed codes.',
     lead_sections=[
         MarkdownSection(
-            'Storage and workload',
+            'KIVI storage pair',
+            dedent(
+                """\
+                [kivi_cache.py](kivi_cache.py) groups keys across tokens per channel and values
+                across channels per token, retaining a recent-token tail at BF16/FP16 precision.
+                The tail owns its storage so a small view does not retain the entire input cache.
+
+                `baseline_kivi.py` stores each two-bit code in one byte; `optimized_kivi.py` packs
+                four codes per byte. Their quantization, group metadata, residual tail, and decoded
+                outputs are identical. The optimization goal is **memory**, with actual retained
+                buffer sizes exposed as `retained_cache_bytes`; GPU peak memory also includes
+                encoding temporaries and must be measured independently. No model-quality
+                equivalence to the original unquantized cache is claimed.
+
+                From `code/`:
+
+                ```bash
+                python -m cli.aisp bench list-targets --chapter labs/kv_cache_compression
+                python -m cli.aisp bench run --targets labs/kv_cache_compression:kivi --profile minimal
+                python -m pytest tests/test_kivi_cache.py -q
+                ```
+
+                CPU tests exercise the actual codec, asymmetric grouping, tail ownership, storage
+                size, and attention using the decoded cache. GPU tests run both benchmark arms
+                and verify the complete decoded K/V buffers. Source:
+                [KIVI](https://proceedings.mlr.press/v235/liu24bz.html).
+                """
+            ),
+        ),
+        MarkdownSection(
+            'Projection pair storage and workload',
             dedent(
                 """\
                 Both variants use batch 8, hidden dimension 16384, 64 heads, 4096 prefill tokens, and 128 decode steps of 128 tokens. The two cache tensors contain 5,368,709,120 elements and occupy 10,737,418,240 bytes at BF16. `kv_cache.storage_bytes`, `storage_bits_per_element`, and `compression_ratio` are calculated from the allocated tensors. The compression ratio relative to BF16 is 1.0, and the optimization goal is compute speed.

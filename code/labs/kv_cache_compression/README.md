@@ -4,7 +4,6 @@
 The original projection pair compares per-tensor delayed-scaling FP8 projection GEMMs with NVFP4 projection GEMMs. Both projection paths store K and V as BF16; neither compresses the cache. The separate `kivi` pair implements asymmetric two-bit cache storage and compares unpacked versus packed codes.
 
 ## KIVI storage pair
-
 [kivi_cache.py](kivi_cache.py) groups keys across tokens per channel and values
 across channels per token, retaining a recent-token tail at BF16/FP16 precision.
 The tail owns its storage so a small view does not retain the entire input cache.
