@@ -104,7 +104,10 @@ def apply_rotary_emb(x, cos, sin, out=None):
     assert x.ndim == 4  # multihead attention
     d = x.shape[3] // 2
     x1, x2 = x[..., :d], x[..., d:] # split up last time into two halves
-    if not torch.is_grad_enabled() or not x.requires_grad:
+    # Dynamo rejects the non-contiguous half views as ``out=`` tensors. Use
+    # functional rotary operations during compilation so Inductor owns fusion
+    # and storage. Eager inference keeps the reusable output buffer.
+    if not torch.compiler.is_compiling() and (not torch.is_grad_enabled() or not x.requires_grad):
         if out is None:
             out = torch.empty_like(x)
         torch.mul(x1, cos, out=out[..., :d])
@@ -114,6 +117,8 @@ def apply_rotary_emb(x, cos, sin, out=None):
         return out
     y1 = x1 * cos + x2 * sin # rotate pairs of dims
     y2 = x1 * (-sin) + x2 * cos
+    if torch.compiler.is_compiling():
+        return torch.cat((y1, y2), dim=-1)
     out = torch.empty_like(x)
     out[..., :d] = y1
     out[..., d:] = y2
@@ -379,7 +384,11 @@ class CausalSelfAttention(nn.Module):
 
         # Apply Rotary Embeddings to queries and keys to get relative positional encoding
         cos, sin = cos_sin
-        if not graph_decode and (not torch.is_grad_enabled() or not q.requires_grad):
+        if (
+            not torch.compiler.is_compiling()
+            and not graph_decode
+            and (not torch.is_grad_enabled() or not q.requires_grad)
+        ):
             q = apply_rotary_emb(q, cos, sin, out=self._rotary_buffer("_rotary_q_cache", q))
             k = apply_rotary_emb(k, cos, sin, out=self._rotary_buffer("_rotary_k_cache", k))
         else:

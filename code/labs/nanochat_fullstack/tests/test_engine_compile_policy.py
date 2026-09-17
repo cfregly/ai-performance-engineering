@@ -14,7 +14,7 @@ from nanochat.gpt import GPT, GPTConfig
 
 
 def _small_model(*, device: torch.device | str = "cpu", **config_overrides) -> GPT:
-    config = GPTConfig(
+    config_kwargs = dict(
         sequence_len=32,
         vocab_size=64,
         n_layer=1,
@@ -24,8 +24,9 @@ def _small_model(*, device: torch.device | str = "cpu", **config_overrides) -> G
         use_flash_sdp=False,
         use_flash3=False,
         use_cta_clustering=False,
-        **config_overrides,
     )
+    config_kwargs.update(config_overrides)
+    config = GPTConfig(**config_kwargs)
     model = GPT(config).to(device).eval()
     if torch.device(device).type == "cuda":
         model = model.to(dtype=torch.bfloat16)
@@ -34,6 +35,26 @@ def _small_model(*, device: torch.device | str = "cpu", **config_overrides) -> G
 
 def _cache(engine: Engine, *, batch_size: int = 1, seq_len: int = 16) -> KVCache:
     return KVCache(**engine._kv_cache_params(batch_size=batch_size, seq_len=seq_len))
+
+
+def _assert_cache_prefix_matches(
+    eager_cache: KVCache,
+    compiled_cache: KVCache,
+    *,
+    expected_pos: int,
+    expected_data_ptrs: tuple[int, int] | None = None,
+) -> tuple[int, int]:
+    assert eager_cache.pos == compiled_cache.pos == expected_pos
+    assert eager_cache.kv_cache is not None
+    assert compiled_cache.kv_cache is not None
+    data_ptrs = (eager_cache.kv_cache.data_ptr(), compiled_cache.kv_cache.data_ptr())
+    if expected_data_ptrs is not None:
+        assert data_ptrs == expected_data_ptrs
+    eager_prefix = eager_cache.kv_cache[..., :expected_pos, :]
+    compiled_prefix = compiled_cache.kv_cache[..., :expected_pos, :]
+    assert torch.isfinite(compiled_prefix).all()
+    torch.testing.assert_close(compiled_prefix, eager_prefix, atol=2e-2, rtol=2e-2)
+    return data_ptrs
 
 
 def test_cpu_engine_reports_compile_as_unsupported_and_still_runs_decode(monkeypatch) -> None:
@@ -116,7 +137,7 @@ def test_lazy_compile_failure_is_reported_without_eager_fallback() -> None:
     engine._compile_graph_count_at_config = engine._read_dynamo_unique_graphs()
     engine._set_compile_status(
         "configured",
-        "test wrapper created; compiled execution has not yet been observed",
+        "test wrapper created. Compiled execution has not yet been observed",
     )
 
     with pytest.raises(RuntimeError, match="failed during runtime execution"):
@@ -170,33 +191,101 @@ def _require_opt_in_blackwell() -> torch.device:
     return device
 
 
-def test_blackwell_compiled_multitoken_decode_matches_eager_and_reports_graphs(monkeypatch) -> None:
+def test_cpu_fullgraph_model_uses_functional_rotary_without_eager_cache_mutation() -> None:
+    torch.compiler.reset()
+    eager_model = _small_model()
+    compiled_source = _small_model()
+    compiled_source.load_state_dict(eager_model.state_dict())
+    compiled_model = torch.compile(
+        compiled_source,
+        backend="eager",
+        fullgraph=True,
+        dynamic=True,
+    )
+    prompt = torch.tensor([[1, 2, 3]])
+
+    try:
+        with torch.inference_mode():
+            expected = eager_model(prompt)
+            actual = compiled_model(prompt)
+
+        torch.testing.assert_close(actual, expected)
+        eager_attention = eager_model.transformer.h[0].attn
+        compiled_attention = compiled_source.transformer.h[0].attn
+        assert eager_attention._rotary_q_cache is not None
+        assert eager_attention._rotary_k_cache is not None
+        assert compiled_attention._rotary_q_cache is None
+        assert compiled_attention._rotary_k_cache is None
+    finally:
+        torch.compiler.reset()
+
+
+@pytest.mark.parametrize("n_layer", (1, 2))
+def test_blackwell_compiled_multitoken_decode_matches_eager_and_reports_graphs(
+    monkeypatch,
+    n_layer,
+) -> None:
     device = _require_opt_in_blackwell()
     monkeypatch.delenv("NANOCHAT_DISABLE_COMPILE", raising=False)
     torch.compiler.reset()
     torch._dynamo.utils.counters.clear()
+    try:
+        eager_model = _small_model(device=device, n_layer=n_layer)
+        compiled_source = _small_model(device=device, n_layer=n_layer)
+        compiled_source.load_state_dict(eager_model.state_dict())
+        engine = Engine(compiled_source, tokenizer=None)
+        assert engine.compile_status == "configured"
 
-    eager_model = _small_model(device=device)
-    compiled_source = _small_model(device=device)
-    compiled_source.load_state_dict(eager_model.state_dict())
-    engine = Engine(compiled_source, tokenizer=None)
-    assert engine.compile_status == "configured"
+        eager_cache = KVCache(**engine._kv_cache_params(batch_size=1, seq_len=16))
+        compiled_cache = _cache(engine)
+        prompt = torch.tensor([[1, 2, 3]], device=device)
+        first_decode = torch.tensor([[4]], device=device)
+        stable_decode_steps = [
+            torch.tensor([[token]], device=device) for token in range(5, 11)
+        ]
 
-    eager_cache = KVCache(**engine._kv_cache_params(batch_size=1, seq_len=16))
-    compiled_cache = _cache(engine)
-    prompt = torch.tensor([[1, 2, 3]], device=device)
-    decode_steps = [torch.tensor([[token]], device=device) for token in (4, 5, 6)]
+        with torch.inference_mode():
+            with torch.compiler.set_stance("default"):
+                expected = eager_model(prompt, kv_cache=eager_cache)
+                actual = engine._model_forward(prompt, kv_cache=compiled_cache)
+                torch.testing.assert_close(actual, expected, atol=2e-2, rtol=2e-2)
+                cache_data_ptrs = _assert_cache_prefix_matches(
+                    eager_cache,
+                    compiled_cache,
+                    expected_pos=3,
+                )
 
-    with torch.inference_mode():
-        expected = eager_model(prompt, kv_cache=eager_cache)
-        actual = engine._model_forward(prompt, kv_cache=compiled_cache)
-        torch.testing.assert_close(actual, expected, atol=2e-2, rtol=2e-2)
-        for step in decode_steps:
-            expected = eager_model(step, kv_cache=eager_cache)
-            actual = engine._execute_decode(step, compiled_cache)
-            torch.testing.assert_close(actual, expected, atol=2e-2, rtol=2e-2)
+                expected = eager_model(first_decode, kv_cache=eager_cache)
+                actual = engine._execute_decode(first_decode, compiled_cache)
+                torch.testing.assert_close(actual, expected, atol=2e-2, rtol=2e-2)
+                _assert_cache_prefix_matches(
+                    eager_cache,
+                    compiled_cache,
+                    expected_pos=4,
+                    expected_data_ptrs=cache_data_ptrs,
+                )
 
-    diagnostics = engine.get_compile_diagnostics()
-    assert diagnostics["status"] == "runtime_observed"
-    assert diagnostics["dynamo_process_unique_graphs_since_config"] is not None
-    assert diagnostics["dynamo_process_unique_graphs_since_config"] >= 1
+            warmed_graphs = engine.get_compile_diagnostics()[
+                "dynamo_process_unique_graphs_since_config"
+            ]
+            assert warmed_graphs is not None
+            assert warmed_graphs >= 2
+
+            with torch.compiler.set_stance("fail_on_recompile"):
+                for expected_pos, step in enumerate(stable_decode_steps, start=5):
+                    expected = eager_model(step, kv_cache=eager_cache)
+                    actual = engine._execute_decode(step, compiled_cache)
+                    torch.testing.assert_close(actual, expected, atol=2e-2, rtol=2e-2)
+                    _assert_cache_prefix_matches(
+                        eager_cache,
+                        compiled_cache,
+                        expected_pos=expected_pos,
+                        expected_data_ptrs=cache_data_ptrs,
+                    )
+
+        diagnostics = engine.get_compile_diagnostics()
+        assert diagnostics["status"] == "runtime_observed"
+        assert diagnostics["dynamo_process_unique_graphs_since_config"] == warmed_graphs
+    finally:
+        torch.compiler.reset()
+        torch._dynamo.utils.counters.clear()

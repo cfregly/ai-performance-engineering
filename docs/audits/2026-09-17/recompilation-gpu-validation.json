@@ -1,0 +1,1241 @@
+{
+  "schema": "recompilation-gpu-validation.v1",
+  "date_utc": "2026-09-17",
+  "classification": "user_approved_noncanonical_virtualized_diagnostic",
+  "source": {
+    "diagnostic_commit": "b7a09066e73e9b159755ef1ea695d26977468928",
+    "diagnostic_script_sha256": "e455f27efc3dba95ba559757049dceefd196876f650b167b6bddfa2b6b60d514",
+    "gpu_tested_gpt_sha256": "788945a46cf2fa278400a6212d2685512d12b4266a742b8b74b43f49083136c8",
+    "published_gpt_sha256": "5c9980ba7d306023f0b54253e91f2d42b19ffa478066c106a00fca000d0ec992",
+    "gpt_difference_after_gpu_run": "Comment wording only",
+    "policy_test_snapshot_on_gpu_host_sha256": "7017f4a2547c3733c4e634129be3fad2698fe8eefc1e63ae7d888a72c8b27425",
+    "published_policy_test_sha256": "8f4921f17ebb022f7249078ffeb3e693a6d307a5557497e27f389326a4beb84f",
+    "policy_test_snapshot_difference": "Punctuation in a diagnostic string only",
+    "gpu_execution_boundary": "Initial pytest used the original opt-in regression. After the native abort, standalone probes exercised the corrected rotary and full-model paths. The expanded policy regression was CPU-tested and uploaded, but was not rerun through GPU pytest.",
+    "gpu_source_snapshot_commit": "2d1f69614f4ad50938a45f7e5f0413e34e3e4144",
+    "gpu_source_snapshot_boundary": "Committed after measurements to preserve the exact GPU-host source contents. Diagnostic commit and per-file hashes identify what was executed."
+  },
+  "environment": {
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "gpu_name": "NVIDIA B200",
+    "gpu_count": 2,
+    "compute_capability": [
+      10,
+      0
+    ],
+    "driver": "580.173.02",
+    "virtualization": "kvm",
+    "ncu": "NVIDIA (R) Nsight Compute Command Line Profiler\nCopyright (c) 2018-2025 NVIDIA Corporation\nVersion 2025.3.1.0 (build 36398880) (public-release)",
+    "nsys": "NVIDIA Nsight Systems version 2025.3.2.474-253236389321v0",
+    "triton_imported_version": "3.7.1",
+    "package_metadata_warning": "The system installation has conflicting active distribution metadata. Diagnostic results are observations of the imported runtime. The matched transformer harness rejects this installation with runtime_unknown:library_versions.",
+    "entry_application_clocks_mhz": {
+      "sm": 1965,
+      "memory": 3996
+    },
+    "entry_persistence_mode": 0,
+    "preflight_active_compute_process_count": 0
+  },
+  "method": {
+    "repetitions_per_policy": 3,
+    "schedule_iterations_per_repetition": 50,
+    "requests_per_repetition": 300,
+    "cases_per_iteration": [
+      "batch0_contiguous",
+      "batch1_contiguous",
+      "batch2_contiguous",
+      "batch4_contiguous",
+      "batch2_strided",
+      "batch3_strided_late"
+    ],
+    "order": [
+      [
+        "default",
+        "strict",
+        "hybrid"
+      ],
+      [
+        "hybrid",
+        "default",
+        "strict"
+      ],
+      [
+        "strict",
+        "hybrid",
+        "default"
+      ]
+    ],
+    "fresh_inductor_triton_cuda_cache_directories_per_worker": true,
+    "cache_boundary": "Fresh task cache directories. System and driver caches are not claimed cold.",
+    "host_wall_clock_with_cuda_sync": true,
+    "all_attempts_included": true,
+    "output_reference": "Same deterministic eager model and complete outputs",
+    "slo_threshold_ms": null,
+    "speedup_claim": null,
+    "workload": "FP32 linear plus sigmoid, eight input features and four output features",
+    "service_load_test": false
+  },
+  "measurement_manifest": {
+    "classification": "noncanonical_virtualized_diagnostic",
+    "virtualization": "kvm",
+    "source_commit": "b7a09066e73e9b159755ef1ea695d26977468928",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "gpu": "NVIDIA B200",
+    "gpu_count_used": 1,
+    "entry_clocks": {
+      "sm_mhz": 1965,
+      "memory_mhz": 3996,
+      "persistence": 0
+    },
+    "locked_clocks": {
+      "sm_mhz": 1500,
+      "memory_mhz": 3996,
+      "persistence": 1
+    },
+    "exit_clocks": {
+      "sm_mhz": 1965,
+      "memory_mhz": 3996,
+      "persistence": 0
+    },
+    "runs": [
+      {
+        "label": "default-r1",
+        "start": "2026-09-17T01:50:17.520854+00:00",
+        "end": "2026-09-17T01:50:23.571277+00:00",
+        "exit_code": 0,
+        "application_clocks": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "application_clocks_end": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "fresh_process": true,
+        "fresh_cache": true
+      },
+      {
+        "label": "strict-r1",
+        "start": "2026-09-17T01:50:23.580633+00:00",
+        "end": "2026-09-17T01:50:29.626238+00:00",
+        "exit_code": 0,
+        "application_clocks": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "application_clocks_end": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "fresh_process": true,
+        "fresh_cache": true
+      },
+      {
+        "label": "hybrid-r1",
+        "start": "2026-09-17T01:50:29.635789+00:00",
+        "end": "2026-09-17T01:50:35.685980+00:00",
+        "exit_code": 0,
+        "application_clocks": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "application_clocks_end": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "fresh_process": true,
+        "fresh_cache": true
+      },
+      {
+        "label": "hybrid-r2",
+        "start": "2026-09-17T01:50:35.695841+00:00",
+        "end": "2026-09-17T01:50:41.739793+00:00",
+        "exit_code": 0,
+        "application_clocks": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "application_clocks_end": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "fresh_process": true,
+        "fresh_cache": true
+      },
+      {
+        "label": "default-r2",
+        "start": "2026-09-17T01:50:41.749089+00:00",
+        "end": "2026-09-17T01:50:47.792209+00:00",
+        "exit_code": 0,
+        "application_clocks": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "application_clocks_end": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "fresh_process": true,
+        "fresh_cache": true
+      },
+      {
+        "label": "strict-r2",
+        "start": "2026-09-17T01:50:47.802180+00:00",
+        "end": "2026-09-17T01:50:53.851570+00:00",
+        "exit_code": 0,
+        "application_clocks": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "application_clocks_end": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "fresh_process": true,
+        "fresh_cache": true
+      },
+      {
+        "label": "strict-r3",
+        "start": "2026-09-17T01:50:53.860969+00:00",
+        "end": "2026-09-17T01:50:59.907407+00:00",
+        "exit_code": 0,
+        "application_clocks": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "application_clocks_end": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "fresh_process": true,
+        "fresh_cache": true
+      },
+      {
+        "label": "hybrid-r3",
+        "start": "2026-09-17T01:50:59.916752+00:00",
+        "end": "2026-09-17T01:51:05.964781+00:00",
+        "exit_code": 0,
+        "application_clocks": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "application_clocks_end": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "fresh_process": true,
+        "fresh_cache": true
+      },
+      {
+        "label": "default-r3",
+        "start": "2026-09-17T01:51:05.973256+00:00",
+        "end": "2026-09-17T01:51:12.021230+00:00",
+        "exit_code": 0,
+        "application_clocks": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "application_clocks_end": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "fresh_process": true,
+        "fresh_cache": true
+      },
+      {
+        "label": "nsys-strict",
+        "start": "2026-09-17T01:51:12.030931+00:00",
+        "end": "2026-09-17T01:51:23.113302+00:00",
+        "exit_code": 0,
+        "application_clocks": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "application_clocks_end": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "fresh_process": true,
+        "fresh_cache": true
+      },
+      {
+        "label": "ncu-strict",
+        "start": "2026-09-17T01:51:23.124036+00:00",
+        "end": "2026-09-17T01:51:37.247998+00:00",
+        "exit_code": 0,
+        "application_clocks": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "application_clocks_end": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "fresh_process": true,
+        "fresh_cache": true
+      }
+    ]
+  },
+  "ncu_confirmation_manifest": {
+    "classification": "noncanonical_virtualized_diagnostic",
+    "virtualization": "kvm",
+    "source_commit": "b7a09066e73e9b159755ef1ea695d26977468928",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "gpu": "NVIDIA B200",
+    "gpu_count_used": 1,
+    "entry_clocks": {
+      "sm_mhz": 1965,
+      "memory_mhz": 3996,
+      "persistence": 0
+    },
+    "locked_clocks": {
+      "sm_mhz": 1500,
+      "memory_mhz": 3996,
+      "persistence": 1
+    },
+    "exit_clocks": {
+      "sm_mhz": 1965,
+      "memory_mhz": 3996,
+      "persistence": 0
+    },
+    "runs": [
+      {
+        "label": "ncu-strict",
+        "start": "2026-09-17T01:55:05.458219+00:00",
+        "end": "2026-09-17T01:55:18.579870+00:00",
+        "exit_code": 0,
+        "application_clocks": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "application_clocks_end": {
+          "sm_mhz": 1500,
+          "memory_mhz": 3996,
+          "persistence": 1
+        },
+        "fresh_process": true,
+        "fresh_cache": true
+      }
+    ]
+  },
+  "runs": [
+    {
+      "run": "default-r1",
+      "raw_sha256": "9428d495935a224a1d2c29d48a26ec8e75479ea829782fb5fd676d0ec4cc934f",
+      "timing": {
+        "clock": "time.perf_counter_ns host wall clock",
+        "cuda_synchronization": true,
+        "serving": {
+          "count": 300,
+          "max_ms": 807.113775,
+          "p50_ms": 0.065889,
+          "p95_ms": 0.088796,
+          "p99_ms": 136.304493
+        },
+        "serving_includes_every_attempt": true,
+        "serving_includes_rejections_and_fallbacks": true,
+        "slo_assertion": {
+          "status": "not_configured",
+          "threshold_ms": null,
+          "violation_count": null
+        },
+        "warmup": {
+          "count": 0,
+          "max_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "p99_ms": null
+        }
+      },
+      "warmup_total_ms": 0,
+      "backend_counts": {
+        "compile_submissions": {
+          "serving": 6,
+          "total": 6,
+          "warmup": 0
+        },
+        "compiled_executions": {
+          "serving": 300,
+          "total": 300,
+          "warmup": 0
+        },
+        "observed_eager_fallback_requests": 0
+      },
+      "output_validation": {
+        "all_successful_outputs_correct": true,
+        "max_abs_error": 5.960464477539063e-08,
+        "rejected_serving_requests": 0,
+        "successful_outputs_checked_against_eager": 300,
+        "successful_serving_requests": 300
+      }
+    },
+    {
+      "run": "default-r2",
+      "raw_sha256": "a92626772cb04a8a455e17a64dface8e26edae523b4e1ef1f9a0e58ef08cd6f9",
+      "timing": {
+        "clock": "time.perf_counter_ns host wall clock",
+        "cuda_synchronization": true,
+        "serving": {
+          "count": 300,
+          "max_ms": 809.991238,
+          "p50_ms": 0.064204,
+          "p95_ms": 0.082435,
+          "p99_ms": 136.111017
+        },
+        "serving_includes_every_attempt": true,
+        "serving_includes_rejections_and_fallbacks": true,
+        "slo_assertion": {
+          "status": "not_configured",
+          "threshold_ms": null,
+          "violation_count": null
+        },
+        "warmup": {
+          "count": 0,
+          "max_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "p99_ms": null
+        }
+      },
+      "warmup_total_ms": 0,
+      "backend_counts": {
+        "compile_submissions": {
+          "serving": 6,
+          "total": 6,
+          "warmup": 0
+        },
+        "compiled_executions": {
+          "serving": 300,
+          "total": 300,
+          "warmup": 0
+        },
+        "observed_eager_fallback_requests": 0
+      },
+      "output_validation": {
+        "all_successful_outputs_correct": true,
+        "max_abs_error": 5.960464477539063e-08,
+        "rejected_serving_requests": 0,
+        "successful_outputs_checked_against_eager": 300,
+        "successful_serving_requests": 300
+      }
+    },
+    {
+      "run": "default-r3",
+      "raw_sha256": "a219712ab0cdb2125a41e40f95b9378e71187a63ec83286d7f287d3a0ec72125",
+      "timing": {
+        "clock": "time.perf_counter_ns host wall clock",
+        "cuda_synchronization": true,
+        "serving": {
+          "count": 300,
+          "max_ms": 819.947987,
+          "p50_ms": 0.064149,
+          "p95_ms": 0.086451,
+          "p99_ms": 133.813624
+        },
+        "serving_includes_every_attempt": true,
+        "serving_includes_rejections_and_fallbacks": true,
+        "slo_assertion": {
+          "status": "not_configured",
+          "threshold_ms": null,
+          "violation_count": null
+        },
+        "warmup": {
+          "count": 0,
+          "max_ms": null,
+          "p50_ms": null,
+          "p95_ms": null,
+          "p99_ms": null
+        }
+      },
+      "warmup_total_ms": 0,
+      "backend_counts": {
+        "compile_submissions": {
+          "serving": 6,
+          "total": 6,
+          "warmup": 0
+        },
+        "compiled_executions": {
+          "serving": 300,
+          "total": 300,
+          "warmup": 0
+        },
+        "observed_eager_fallback_requests": 0
+      },
+      "output_validation": {
+        "all_successful_outputs_correct": true,
+        "max_abs_error": 5.960464477539063e-08,
+        "rejected_serving_requests": 0,
+        "successful_outputs_checked_against_eager": 300,
+        "successful_serving_requests": 300
+      }
+    },
+    {
+      "run": "hybrid-r1",
+      "raw_sha256": "f4147eb9bd31782d1ef9e3b4887d111a75cd90e31607eae4b26f211460698207",
+      "timing": {
+        "clock": "time.perf_counter_ns host wall clock",
+        "cuda_synchronization": true,
+        "serving": {
+          "count": 300,
+          "max_ms": 0.153358,
+          "p50_ms": 0.062554,
+          "p95_ms": 0.07527,
+          "p99_ms": 0.113218
+        },
+        "serving_includes_every_attempt": true,
+        "serving_includes_rejections_and_fallbacks": true,
+        "slo_assertion": {
+          "status": "not_configured",
+          "threshold_ms": null,
+          "violation_count": null
+        },
+        "warmup": {
+          "count": 5,
+          "max_ms": 814.253452,
+          "p50_ms": 142.312435,
+          "p95_ms": 719.705742,
+          "p99_ms": 795.34391
+        }
+      },
+      "warmup_total_ms": 1526.486216,
+      "backend_counts": {
+        "compile_submissions": {
+          "serving": 0,
+          "total": 5,
+          "warmup": 5
+        },
+        "compiled_executions": {
+          "serving": 250,
+          "total": 255,
+          "warmup": 5
+        },
+        "observed_eager_fallback_requests": 50
+      },
+      "output_validation": {
+        "all_successful_outputs_correct": true,
+        "max_abs_error": 5.960464477539063e-08,
+        "rejected_serving_requests": 0,
+        "successful_outputs_checked_against_eager": 300,
+        "successful_serving_requests": 300
+      }
+    },
+    {
+      "run": "hybrid-r2",
+      "raw_sha256": "2ded914fb739c6a43b5439b8136035eb73e101e0e08de20e2cefca35f0922227",
+      "timing": {
+        "clock": "time.perf_counter_ns host wall clock",
+        "cuda_synchronization": true,
+        "serving": {
+          "count": 300,
+          "max_ms": 0.126899,
+          "p50_ms": 0.061134,
+          "p95_ms": 0.075758,
+          "p99_ms": 0.111507
+        },
+        "serving_includes_every_attempt": true,
+        "serving_includes_rejections_and_fallbacks": true,
+        "slo_assertion": {
+          "status": "not_configured",
+          "threshold_ms": null,
+          "violation_count": null
+        },
+        "warmup": {
+          "count": 5,
+          "max_ms": 813.095566,
+          "p50_ms": 139.340414,
+          "p95_ms": 713.791062,
+          "p99_ms": 793.234665
+        }
+      },
+      "warmup_total_ms": 1487.419123,
+      "backend_counts": {
+        "compile_submissions": {
+          "serving": 0,
+          "total": 5,
+          "warmup": 5
+        },
+        "compiled_executions": {
+          "serving": 250,
+          "total": 255,
+          "warmup": 5
+        },
+        "observed_eager_fallback_requests": 50
+      },
+      "output_validation": {
+        "all_successful_outputs_correct": true,
+        "max_abs_error": 5.960464477539063e-08,
+        "rejected_serving_requests": 0,
+        "successful_outputs_checked_against_eager": 300,
+        "successful_serving_requests": 300
+      }
+    },
+    {
+      "run": "hybrid-r3",
+      "raw_sha256": "c7518e51eb6e99a560d238aa3750b0dd8c459fcfc012ad7374a4a095c4031116",
+      "timing": {
+        "clock": "time.perf_counter_ns host wall clock",
+        "cuda_synchronization": true,
+        "serving": {
+          "count": 300,
+          "max_ms": 0.141309,
+          "p50_ms": 0.062804,
+          "p95_ms": 0.077535,
+          "p99_ms": 0.107957
+        },
+        "serving_includes_every_attempt": true,
+        "serving_includes_rejections_and_fallbacks": true,
+        "slo_assertion": {
+          "status": "not_configured",
+          "threshold_ms": null,
+          "violation_count": null
+        },
+        "warmup": {
+          "count": 5,
+          "max_ms": 805.972058,
+          "p50_ms": 141.788511,
+          "p95_ms": 707.485911,
+          "p99_ms": 786.274829
+        }
+      },
+      "warmup_total_ms": 1483.523012,
+      "backend_counts": {
+        "compile_submissions": {
+          "serving": 0,
+          "total": 5,
+          "warmup": 5
+        },
+        "compiled_executions": {
+          "serving": 250,
+          "total": 255,
+          "warmup": 5
+        },
+        "observed_eager_fallback_requests": 50
+      },
+      "output_validation": {
+        "all_successful_outputs_correct": true,
+        "max_abs_error": 5.960464477539063e-08,
+        "rejected_serving_requests": 0,
+        "successful_outputs_checked_against_eager": 300,
+        "successful_serving_requests": 300
+      }
+    },
+    {
+      "run": "strict-r1",
+      "raw_sha256": "580b16fc9c89f2f9970ce4b1193f1873bc72faedf32918ade648bfbb19e98326",
+      "timing": {
+        "clock": "time.perf_counter_ns host wall clock",
+        "cuda_synchronization": true,
+        "serving": {
+          "count": 300,
+          "max_ms": 0.345566,
+          "p50_ms": 0.068889,
+          "p95_ms": 0.149982,
+          "p99_ms": 0.166135
+        },
+        "serving_includes_every_attempt": true,
+        "serving_includes_rejections_and_fallbacks": true,
+        "slo_assertion": {
+          "status": "not_configured",
+          "threshold_ms": null,
+          "violation_count": null
+        },
+        "warmup": {
+          "count": 5,
+          "max_ms": 859.385057,
+          "p50_ms": 142.536661,
+          "p95_ms": 769.975684,
+          "p99_ms": 841.503182
+        }
+      },
+      "warmup_total_ms": 1636.396971,
+      "backend_counts": {
+        "compile_submissions": {
+          "serving": 0,
+          "total": 5,
+          "warmup": 5
+        },
+        "compiled_executions": {
+          "serving": 250,
+          "total": 255,
+          "warmup": 5
+        },
+        "observed_eager_fallback_requests": 0
+      },
+      "output_validation": {
+        "all_successful_outputs_correct": true,
+        "max_abs_error": 5.960464477539063e-08,
+        "rejected_serving_requests": 50,
+        "successful_outputs_checked_against_eager": 250,
+        "successful_serving_requests": 250
+      }
+    },
+    {
+      "run": "strict-r2",
+      "raw_sha256": "db43da57a9370a1dab86462a7e3087217cc8aacc417bb178d425b24ce9de96b6",
+      "timing": {
+        "clock": "time.perf_counter_ns host wall clock",
+        "cuda_synchronization": true,
+        "serving": {
+          "count": 300,
+          "max_ms": 0.335076,
+          "p50_ms": 0.068063,
+          "p95_ms": 0.145623,
+          "p99_ms": 0.16404
+        },
+        "serving_includes_every_attempt": true,
+        "serving_includes_rejections_and_fallbacks": true,
+        "slo_assertion": {
+          "status": "not_configured",
+          "threshold_ms": null,
+          "violation_count": null
+        },
+        "warmup": {
+          "count": 5,
+          "max_ms": 811.986292,
+          "p50_ms": 139.955675,
+          "p95_ms": 713.799267,
+          "p99_ms": 792.348887
+        }
+      },
+      "warmup_total_ms": 1496.754932,
+      "backend_counts": {
+        "compile_submissions": {
+          "serving": 0,
+          "total": 5,
+          "warmup": 5
+        },
+        "compiled_executions": {
+          "serving": 250,
+          "total": 255,
+          "warmup": 5
+        },
+        "observed_eager_fallback_requests": 0
+      },
+      "output_validation": {
+        "all_successful_outputs_correct": true,
+        "max_abs_error": 5.960464477539063e-08,
+        "rejected_serving_requests": 50,
+        "successful_outputs_checked_against_eager": 250,
+        "successful_serving_requests": 250
+      }
+    },
+    {
+      "run": "strict-r3",
+      "raw_sha256": "d9ea1961de7d201c2bd34693429dfdf865bfff9865da8410efebdc2374341c87",
+      "timing": {
+        "clock": "time.perf_counter_ns host wall clock",
+        "cuda_synchronization": true,
+        "serving": {
+          "count": 300,
+          "max_ms": 0.325026,
+          "p50_ms": 0.068339,
+          "p95_ms": 0.148173,
+          "p99_ms": 0.159704
+        },
+        "serving_includes_every_attempt": true,
+        "serving_includes_rejections_and_fallbacks": true,
+        "slo_assertion": {
+          "status": "not_configured",
+          "threshold_ms": null,
+          "violation_count": null
+        },
+        "warmup": {
+          "count": 5,
+          "max_ms": 815.286948,
+          "p50_ms": 139.913665,
+          "p95_ms": 716.201513,
+          "p99_ms": 795.469861
+        }
+      },
+      "warmup_total_ms": 1494.744756,
+      "backend_counts": {
+        "compile_submissions": {
+          "serving": 0,
+          "total": 5,
+          "warmup": 5
+        },
+        "compiled_executions": {
+          "serving": 250,
+          "total": 255,
+          "warmup": 5
+        },
+        "observed_eager_fallback_requests": 0
+      },
+      "output_validation": {
+        "all_successful_outputs_correct": true,
+        "max_abs_error": 5.960464477539063e-08,
+        "rejected_serving_requests": 50,
+        "successful_outputs_checked_against_eager": 250,
+        "successful_serving_requests": 250
+      }
+    }
+  ],
+  "request_csv": {
+    "file": "recompilation-requests.csv",
+    "rows": 2730,
+    "sha256": "166b2eceb31be7bde464ecfb1e14b0547c31afe2b3e08b37969f92f60c1b92c5"
+  },
+  "nanochat": {
+    "initial_exact_main_tests": {
+      "passed": 7,
+      "failed": 1,
+      "failure": "Dynamo rejects non-contiguous rotary out= tensor"
+    },
+    "fix": "Functional compiled rotary operations with no eager buffer caching while tracing",
+    "standalone_cuda_rotary": {
+      "result": "PASS",
+      "sequence_lengths": [
+        3,
+        1,
+        4
+      ],
+      "mode": "max-autotune",
+      "fullgraph": true,
+      "dynamic": true
+    },
+    "full_model_default_runtime": {
+      "result": "FAILED",
+      "layers": [
+        1,
+        2
+      ],
+      "phase": "first compiled decode after correct eager and compiled prefill",
+      "failure": "Native segmentation fault in static_triton_launcher during Inductor autotuning",
+      "vanilla_isolation": {
+        "fresh_caches": true,
+        "repository_compiler_patches": false,
+        "pytest_imported": false,
+        "compiler_config_mutated": false
+      }
+    },
+    "launcher_counterfactual": {
+      "result": "FAILED",
+      "layers": 2,
+      "change": "use_static_cuda_launcher=False in a diagnostic process only",
+      "failure": "Pointer argument must be either uint64 or have data_ptr method",
+      "adopted_in_repository": false
+    },
+    "root_cause_attribution": "Unresolved. Reproduction without local transforms does not establish an upstream cause.",
+    "compiled_serving_qualified": false
+  },
+  "local_tests": {
+    "command": "cd code && python -m pytest --noconftest labs/nanochat_fullstack/tests/test_engine_compile_policy.py labs/nanochat_fullstack/tests/test_engine.py -q -k \"compile_policy or rotary\"",
+    "passed": 10,
+    "skipped_blackwell_cases": 2,
+    "deselected": 28,
+    "normal_local_conftest_blocker": "Existing macOS rustbpe linker failure",
+    "ruff": "E9,F63,F7,F82,B006,B023 passed",
+    "full_suite_run": false
+  },
+  "raw_log_digests": {
+    "correctness-initial.log": "070c2431bc8a46fc952a6c18159332bff27983c670b9c2aca7b7c9b5219f0861",
+    "correctness-rotary-fix.log": "d4c73bb5bdca3586cf0a85ea45a4d6f2a005cb4daa5bb91664b058714f273b82",
+    "isolation-engine1.log": "59330cad8d6ffb5af21d5d7c4965817e87371b3db2a1354b19c1c1050aa15e13",
+    "isolation-engine2.log": "1fba14827a6257fd6fbefedd9aa2d0a46c2875e38a07be08618e54ec203533cb",
+    "final-rotary.log": "095d998af47d36e5d2e8ac431d4d0b3c46e8d3e551b26b30c25fc0821d1b70e2",
+    "final-engine1.log": "2160636b517a7549cd01f8326220f55c6faa3852514c6650c6d077bb5560c28a",
+    "final-launcher2.log": "677ff0a66e5093ac35fc8cc565349b8233a2413962ae60e8b12a5fc5ec6e4f89"
+  },
+  "matched_transformer_system_runtime": {
+    "status": "rejected",
+    "accepted_speedup": null,
+    "reason": "ExecutedRuntimeComparisonError: runtime_unknown:library_versions",
+    "clock_state_restored": {
+      "sm_mhz": 1965,
+      "memory_mhz": 3996,
+      "persistence": 0
+    },
+    "installed_versions_ambiguous": [
+      "torch",
+      "triton",
+      "numpy",
+      "CUDA libraries"
+    ],
+    "shared_installation_modified": false
+  },
+  "matched_transformer_isolated_runtime": {
+    "source_commit": "b7a09066e73e9b159755ef1ea695d26977468928",
+    "runs": [
+      {
+        "run_id": "recompilation-transformer-isolated-r1-20260917",
+        "timestamp": "2026-09-17T02:05:40",
+        "status": "failed_no_speedup",
+        "error": "Best speedup 1.02x below required 1.05x threshold for speed-goal benchmark",
+        "eager_ms": 5.786756467819214,
+        "compiled_ms": 5.671475200653076,
+        "speedup": 1.0203265046725167,
+        "eager_percentiles_ms": {
+          "25.0": 5.765920162200928,
+          "50.0": 5.776991844177246,
+          "75.0": 5.785024166107178,
+          "99.0": 5.822527885437012
+        },
+        "compiled_p75_ms": 5.675136089324951,
+        "verification": {
+          "passed": true,
+          "max_diff": null,
+          "location": null,
+          "rtol": 0.5,
+          "atol": 5.0,
+          "output_tolerances": null
+        },
+        "input_verification": {
+          "passed": true,
+          "mismatches": [],
+          "equivalence": {
+            "group": "ch14_model_compile_reduced_precision",
+            "ignore_fields": [
+              "precision_flags"
+            ]
+          }
+        },
+        "runtime_match": true,
+        "baseline_profiler_statuses": {},
+        "optimized_profiler_statuses": null,
+        "baseline_application_clocks": {
+          "applications_clock_sm_mhz": 1500.0,
+          "applications_clock_memory_mhz": 3996.0
+        },
+        "optimized_application_clocks": {
+          "applications_clock_sm_mhz": 1500.0,
+          "applications_clock_memory_mhz": 3996.0
+        },
+        "raw_result_sha256": "df2b5bc19af88327706b5f4aa4b9eef92605ef35b2fdde70353a09e95a0eacdd"
+      },
+      {
+        "run_id": "recompilation-transformer-isolated-r2-retry-20260917",
+        "timestamp": "2026-09-17T02:15:48",
+        "status": "failed_no_speedup",
+        "error": "Best speedup 1.02x below required 1.05x threshold for speed-goal benchmark",
+        "eager_ms": 5.788307876586914,
+        "compiled_ms": 5.669835557937622,
+        "speedup": 1.020895194832138,
+        "eager_percentiles_ms": {
+          "25.0": 5.764959812164307,
+          "50.0": 5.776127815246582,
+          "75.0": 5.78326416015625,
+          "99.0": 5.841504096984863
+        },
+        "compiled_p75_ms": 5.6736321449279785,
+        "verification": {
+          "passed": true,
+          "max_diff": null,
+          "location": null,
+          "rtol": 0.5,
+          "atol": 5.0,
+          "output_tolerances": null
+        },
+        "input_verification": {
+          "passed": true,
+          "mismatches": [],
+          "equivalence": {
+            "group": "ch14_model_compile_reduced_precision",
+            "ignore_fields": [
+              "precision_flags"
+            ]
+          }
+        },
+        "runtime_match": true,
+        "baseline_profiler_statuses": {},
+        "optimized_profiler_statuses": null,
+        "baseline_application_clocks": {
+          "applications_clock_sm_mhz": 1500.0,
+          "applications_clock_memory_mhz": 3996.0
+        },
+        "optimized_application_clocks": {
+          "applications_clock_sm_mhz": 1500.0,
+          "applications_clock_memory_mhz": 3996.0
+        },
+        "raw_result_sha256": "f07326d76ea19dea846d94c32af959f25caaa129fb0c5a3d6fe4dc1214b2c4b3"
+      },
+      {
+        "run_id": "recompilation-transformer-isolated-r3-retry-20260917",
+        "timestamp": "2026-09-17T02:16:16",
+        "status": "failed_no_speedup",
+        "error": "Best speedup 1.02x below required 1.05x threshold for speed-goal benchmark",
+        "eager_ms": 5.788769283294678,
+        "compiled_ms": 5.676020469665527,
+        "speedup": 1.0198640604331355,
+        "eager_percentiles_ms": {
+          "25.0": 5.767903804779053,
+          "50.0": 5.78000020980835,
+          "75.0": 5.785920143127441,
+          "99.0": 5.8085761070251465
+        },
+        "compiled_p75_ms": 5.67471981048584,
+        "verification": {
+          "passed": true,
+          "max_diff": null,
+          "location": null,
+          "rtol": 0.5,
+          "atol": 5.0,
+          "output_tolerances": null
+        },
+        "input_verification": {
+          "passed": true,
+          "mismatches": [],
+          "equivalence": {
+            "group": "ch14_model_compile_reduced_precision",
+            "ignore_fields": [
+              "precision_flags"
+            ]
+          }
+        },
+        "runtime_match": true,
+        "baseline_profiler_statuses": {},
+        "optimized_profiler_statuses": null,
+        "baseline_application_clocks": {
+          "applications_clock_sm_mhz": 1500.0,
+          "applications_clock_memory_mhz": 3996.0
+        },
+        "optimized_application_clocks": {
+          "applications_clock_sm_mhz": 1500.0,
+          "applications_clock_memory_mhz": 3996.0
+        },
+        "raw_result_sha256": "9b57ddfab9ddcefd2ac38f9993794ed46d0971eb61ec5a08728f7d3485924548"
+      }
+    ],
+    "source_files_sha256": {
+      "code/ch14/baseline_model_compile_reduced_precision.py": "c5f31622a0cbc173cb4f0ae7632013db1933c3607313c253ddd349ad6743729c",
+      "code/ch14/optimized_model_compile_reduced_precision.py": "b69aa65e7e21b50b7e62e8854725567f26d3803fd8c85c6214702977438214ea",
+      "code/ch14/model_eager_common.py": "508e9b69d8b356b3b3c5efc7405210ae536ec5e5b0bcfbc69691d43524887983"
+    },
+    "classification": "user_approved_noncanonical_virtualized_matched_comparison",
+    "target": "ch14:model_compile_reduced_precision",
+    "runtime": {
+      "torch": "2.11.0+cu130",
+      "triton": "3.6.0",
+      "cuda": "13.0",
+      "python": "3.12.3",
+      "isolated_virtual_environment": true,
+      "system_site_packages": false,
+      "packages_modified": false
+    },
+    "workload": {
+      "batch_size": 24,
+      "sequence_length": 1536,
+      "dtype": "bfloat16",
+      "parameter_count": 30212880,
+      "baseline": "eager",
+      "candidate": "max-autotune compile, fullgraph=False, dynamic=False"
+    },
+    "method": {
+      "iterations_per_variant": 50,
+      "harness_warmup_iterations": 15,
+      "setup_eager_warmup_iterations": 20,
+      "setup_compiled_warmup_iterations": 70,
+      "order": "eager then compiled, repeated three times",
+      "fresh_process_and_task_cache_directories_per_pair": true,
+      "same_input_and_runtime_checks_passed": true,
+      "timing_scope": "steady state after setup and warmup",
+      "clock_lock": {
+        "sm_mhz": 1500,
+        "memory_mhz": 3996
+      },
+      "validity_profile": "portable"
+    },
+    "assessment": {
+      "result": "below_required_speedup",
+      "required_ratio": 1.05,
+      "ratio_geomean": 1.020361832839912,
+      "ratio_sample_stddev": 0.0005164786734857351,
+      "ratio_min": 1.0198640604331355,
+      "ratio_max": 1.020895194832138,
+      "accepted_performance_win": false,
+      "correctness_boundary": "Passed existing complete-output comparison at rtol=0.5, atol=5.0. These permissive tolerances do not establish tighter numerical parity.",
+      "measurement_boundary": "Three fixed-shape paired runs on a virtualized host. Not a service-tail or NanoChat measurement."
+    },
+    "interrupted_attempt": {
+      "run_id": "recompilation-transformer-isolated-r2-20260917",
+      "accepted": false,
+      "reason": "Queue reported foreign_gpu_work and terminated its owned process group. No result was produced.",
+      "monitor_correction": "Snapshot GPU PIDs before descendants and recognize the owned process group to avoid mistaking newly spawned workers for foreign processes. The original interrupt did not record enough evidence to establish process ownership.",
+      "entry_state_restored": true
+    },
+    "profiler_capture": {
+      "run_id": "recompilation-transformer-isolated-profile-retry-20260917",
+      "timestamp": "2026-09-17T02:18:26",
+      "timings_excluded_from_primary_comparison": true,
+      "baseline_profiler_statuses": {
+        "nsys": "succeeded",
+        "ncu": "succeeded",
+        "torch": "succeeded"
+      },
+      "optimized_profiler_statuses": {
+        "nsys": "succeeded",
+        "ncu": "succeeded",
+        "torch": "succeeded"
+      },
+      "status": "failed_no_speedup",
+      "verification": {
+        "passed": true,
+        "max_diff": null,
+        "location": null,
+        "rtol": 0.5,
+        "atol": 5.0,
+        "output_tolerances": null
+      },
+      "profiles": [
+        {
+          "variant": "baseline",
+          "tool": "nsys",
+          "bytes": 242678,
+          "sha256": "8d02b79f7aa6bb876870e2884fda1e7d575221d95d364de781c1d30926b97c6c"
+        },
+        {
+          "variant": "baseline",
+          "tool": "ncu",
+          "bytes": 14682452,
+          "sha256": "191553cea0e3299d8fa39c747c5c52ede8826730b058a2af3a7bff5fcda0c9b8"
+        },
+        {
+          "variant": "optimized",
+          "tool": "nsys",
+          "bytes": 1096397,
+          "sha256": "e0cf43fd4c982386f06ee0d0a8cd71e6685d543979b3487da0cfac1f9ae9eb51"
+        },
+        {
+          "variant": "optimized",
+          "tool": "ncu",
+          "bytes": 21544105,
+          "sha256": "45b3ebc1bfbc0ab40575da2fb175baa4dae441c12b9751d65e52875ea9a495f6"
+        }
+      ],
+      "raw_results_sha256": "732abde1f33cc0f273ef1e4e75b9a2f2ce866c9e0ee6160d8dc2093e3008dec8",
+      "final_clock_readback": {
+        "timestamp_utc": "2026-09-17T02:21:07.253305+00:00",
+        "devices": [
+          {
+            "index": 0,
+            "application_sm_mhz": 1965,
+            "application_memory_mhz": 3996,
+            "persistence": 0,
+            "compute_process_count": 0
+          },
+          {
+            "index": 1,
+            "application_sm_mhz": 1965,
+            "application_memory_mhz": 3996,
+            "persistence": 1,
+            "compute_process_count": 1
+          }
+        ],
+        "scope": "This task used GPU0. GPU1 was in use by another task at the final readback and was left untouched."
+      },
+      "gpu1_readback_boundary": "Another task was using GPU1 at the readback. This task did not change its settings."
+    },
+    "retry_queue_manifest": {
+      "entry_clocks": {
+        "sm_mhz": 1965,
+        "memory_mhz": 3996,
+        "persistence": 0
+      },
+      "locked_clocks": {
+        "sm_mhz": 1500,
+        "memory_mhz": 3996,
+        "persistence": 1
+      },
+      "exit_clocks": {
+        "sm_mhz": 1965,
+        "memory_mhz": 3996,
+        "persistence": 0
+      },
+      "runs": [
+        {
+          "label": "pair-r2",
+          "start": "2026-09-17T02:15:22.212100+00:00",
+          "end": "2026-09-17T02:15:49.806194+00:00",
+          "exit_code": 1,
+          "application_clocks": {
+            "sm_mhz": 1500,
+            "memory_mhz": 3996,
+            "persistence": 1
+          },
+          "application_clocks_end": {
+            "sm_mhz": 1500,
+            "memory_mhz": 3996,
+            "persistence": 1
+          }
+        },
+        {
+          "label": "pair-r3",
+          "start": "2026-09-17T02:15:49.823140+00:00",
+          "end": "2026-09-17T02:16:17.609612+00:00",
+          "exit_code": 1,
+          "application_clocks": {
+            "sm_mhz": 1500,
+            "memory_mhz": 3996,
+            "persistence": 1
+          },
+          "application_clocks_end": {
+            "sm_mhz": 1500,
+            "memory_mhz": 3996,
+            "persistence": 1
+          }
+        },
+        {
+          "label": "pair-profile",
+          "start": "2026-09-17T02:16:17.620370+00:00",
+          "end": "2026-09-17T02:18:27.477347+00:00",
+          "exit_code": 1,
+          "application_clocks": {
+            "sm_mhz": 1500,
+            "memory_mhz": 3996,
+            "persistence": 1
+          },
+          "application_clocks_end": {
+            "sm_mhz": 1500,
+            "memory_mhz": 3996,
+            "persistence": 1
+          }
+        }
+      ]
+    }
+  },
+  "final_clock_readback": {
+    "timestamp_utc": "2026-09-17T02:21:07.253305+00:00",
+    "devices": [
+      {
+        "index": 0,
+        "application_sm_mhz": 1965,
+        "application_memory_mhz": 3996,
+        "persistence": 0,
+        "compute_process_count": 0
+      },
+      {
+        "index": 1,
+        "application_sm_mhz": 1965,
+        "application_memory_mhz": 3996,
+        "persistence": 1,
+        "compute_process_count": 1
+      }
+    ],
+    "scope": "This task used GPU0. GPU1 was in use by another task at the final readback and was left untouched."
+  }
+}
