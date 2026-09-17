@@ -19,6 +19,7 @@ from labs.fast_cu.nvfp4 import (
     DEFAULT_N,
     DEFAULT_RUNG,
     Nvfp4Workload,
+    load_nvfp4_extension,
     require_nvfp4_runtime,
     validate_rung,
     workload_bytes,
@@ -141,7 +142,7 @@ def test_native_source_preserves_the_equivalent_workload_contract() -> None:
 def test_native_source_uses_current_stream_and_rejects_r9_degradation() -> None:
     source = NATIVE_SOURCE.read_text(encoding="utf-8")
 
-    assert "at::cuda::getCurrentCUDAStream(device)" in source
+    assert "c10::cuda::getCurrentCUDAStream(device)" in source
     assert "cublasLtMatmul(" in source and "stream)," in source
     assert "<<<grid_, nvfp4::TB_SIZE, sizeof(nvfp4::SmemCD), stream>>>" in source
     assert "strict_setup_r9_schedule" in source
@@ -202,6 +203,8 @@ def test_real_sm103_native_pair_matches_full_output_on_current_stream() -> None:
             with torch.cuda.stream(stream):
                 baseline.setup()
                 optimized.setup()
+            r0_module = load_nvfp4_extension(0)
+            assert hasattr(r0_module, "Nvfp4Context")
             assert baseline.output is None and optimized.output is None
             assert baseline._setup_gate_passed and optimized._setup_gate_passed
             with pytest.raises(RuntimeError, match=r"benchmark_fn\(\) must run"):

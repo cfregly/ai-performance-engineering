@@ -1,7 +1,7 @@
 #include <torch/extension.h>
 
-#include <ATen/cuda/CUDAContext.h>
 #include <c10/cuda/CUDAGuard.h>
+#include <c10/cuda/CUDAStream.h>
 
 #include <cublasLt.h>
 #include <cuda.h>
@@ -82,7 +82,7 @@ cudaStream_t current_stream(int device) {
         device,
         " but current device is ",
         current_device);
-    return at::cuda::getCurrentCUDAStream(device);
+    return c10::cuda::getCurrentCUDAStream(device);
 }
 
 void require_exact_runtime(cudaDeviceProp* properties, int* device) {
@@ -322,8 +322,9 @@ public:
         TORCH_CHECK(fast_prepared_, "fast.cu kernel was not prepared for this context");
         c10::cuda::CUDAGuard guard(device_);
 #if NVFP4_HAS_SCHEDULE
+        const std::array<int, 3> context_shape{M_, N_, K_};
         TORCH_CHECK(
-            scheduled_device == device_ && scheduled_shape == std::array<int, 3>{M_, N_, K_},
+            scheduled_device == device_ && scheduled_shape == context_shape,
             "fast.cu r9 schedule no longer matches this context");
 #endif
         cudaStream_t stream = current_stream(device_);
@@ -555,7 +556,7 @@ private:
 }  // namespace
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, module) {
-    py::class_<Nvfp4Context>(module, "Nvfp4Context")
+    py::class_<Nvfp4Context>(module, "Nvfp4Context", py::module_local())
         .def(py::init<int, int, int, uint64_t, bool>())
         .def("launch_cublaslt", &Nvfp4Context::launch_cublaslt)
         .def("launch_fast", &Nvfp4Context::launch_fast)

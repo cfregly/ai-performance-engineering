@@ -43,14 +43,19 @@ B200, and **63 tests with 5 expected hardware skips** on the local CPU host.
   build-cache identity, explicit hardware/toolkit contracts, target discovery,
   output lifecycle, and selectable NVFP4 rungs.
 - All four targets are discoverable through `aisp bench list-targets`.
+- All 12 README-generator tests pass, and the lab index plus four chapter
+  READMEs match their generator definitions.
 - Repository-wide benchmark lint checked 944 entrypoints with zero errors and
   zero warnings. Focused Ruff, formatting, syntax, YAML, and local-link checks
   also passed.
 - The H100 adapter compiled and linked for `sm_90a` with CUDA 13.0. No H100
   kernel was executed; numerical and performance qualification still needs H100.
-- The SM103 adapter retains its CUDA 13.1+ requirement. Its independent host
-  oracle, poisoned-output, guard, determinism, and placement checks are part of
-  the adapter, but SM103 execution remains unqualified without B300/GB300.
+- Every SM103 rung, r0-r9, compiled, linked, and imported together in one Python
+  process with CUDA compiler 13.1.80 and `compute_103a,sm_103a`. This isolated
+  compile-only check used PyTorch 2.9.1+cu130, cuBLAS 13.0.0.19 headers/library,
+  and CUDA 13.1.80 runtime headers/library, with no GPU visible and no kernel launches. The production adapter still requires CUDA runtime and toolkit 13.1+
+  on exact SM103 hardware. Its independent host oracle, poisoned-output, guard,
+  determinism, and placement checks remain unqualified without B300/GB300.
 
 ## Failures caught and corrected
 
@@ -70,6 +75,15 @@ B200, and **63 tests with 5 expected hardware skips** on the local CPU host.
 6. The host's system Python reported conflicting installed-library versions.
    The harness correctly rejected that comparison; reported results use an
    isolated environment with unambiguous package metadata.
+7. The final documentation audit caught links added only to generated READMEs.
+   Their definitions now live in the README generator, so regeneration preserves
+   the chapter mappings.
+8. Compiling with CUDA 13.1 exposed an overly broad PyTorch include and a macro
+   argument containing a template comma. The adapter now includes only the CUDA
+   stream API it uses and gives the schedule shape a named local variable.
+9. Importing multiple compiled NVFP4 rungs exposed a Pybind global-type collision.
+   Each module now registers its context type locally. The all-rung import check
+   passed, and the opt-in SM103 test also imports r0 after setting up r9.
 
 ## Reproduce
 
