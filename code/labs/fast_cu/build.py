@@ -51,6 +51,7 @@ def load_cuda_extension(
     extra_cuda_cflags: list[str],
     extra_ldflags: list[str],
     minimum_cuda: tuple[int, int],
+    dependencies: list[Path] | None = None,
 ):
     """Build before timing without installing dependencies or changing global flags."""
     manifest = verify_upstream()
@@ -72,7 +73,7 @@ def load_cuda_extension(
         )
     module_name = extension_name(
         name,
-        sources,
+        sources + (dependencies or []),
         extra_cuda_cflags,
         extra_ldflags,
         manifest,

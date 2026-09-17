@@ -10,8 +10,8 @@ The [optimization guide](optimization_guide.md) maps the examples and lessons to
 existing chapters and labs. The [source manifest](upstream_manifest.json) pins
 base revision `2dfe5e26aecfd9e5f27bf9d5837deea01acda24b`, the SHA256 of every
 included file, and three fixes to the older H100 reduction and scheduler examples.
-The proposed upstream patches fix those `h100/` files. The newer `gb300/nvfp4`
-r0-r9 kernels are unchanged.
+The newer `gb300/nvfp4` r0-r9 kernels are unchanged. A separate
+[B200 K64 port](nvfp4_sm100.cuh) adapts the r5 GEMM to SM100.
 The upstream MIT license is preserved in [upstream/LICENSE](upstream/LICENSE).
 
 ## Benchmark pairs
@@ -22,10 +22,15 @@ The upstream MIT license is preserved in [upstream/LICENSE](upstream/LICENSE).
 | `int32_reduction` | CUB sum | Corrected vectorized warp reduction | H100 SM90/CUDA 12+ or B200 SM100/CUDA 12.8+ |
 | `b200_epilogue` | Two 128-bit stores per thread | One 256-bit store per thread | B200, SM100, CUDA 12.9+ |
 | `nvfp4_gemm` | cuBLASLt NVFP4 GEMM | fast.cu r9 NVFP4 GEMM | B300/GB300, SM103, CUDA 13.1+ |
+| `nvfp4_sm100` | cuBLASLt NVFP4 GEMM | K64 port of fast.cu r5 | B200, SM100, CUDA 13.0+ |
 
-The NVFP4 kernel requires SM103 K=96 MMA instructions. A B200 port would need
-a K=64 loop and different scale loading. The B200 epilogue experiment applies
-the article's wide stores to FP32-to-FP16 conversion. It measures only that step.
+The original NVFP4 kernels require SM103 K96 instructions. The B200 port uses
+K64 instructions and matching scale loading for the complete GEMM. It retains
+the two-CTA pipeline, separate operand and scale queues, two accumulator buffers,
+and 256-bit FP16 stores. See the [B200 results](sm100_validation.md).
+
+The `b200_epilogue` pair remains a separate experiment that measures store width
+in the FP32-to-FP16 conversion step.
 
 ## Run with the repository harness
 
@@ -36,6 +41,7 @@ matching local CUDA toolkit, Ninja, Nsight Compute and Nsight Systems):
 python -m cli.aisp bench list-targets --chapter labs/fast_cu
 
 # B200
+python -m cli.aisp bench run --targets labs/fast_cu:nvfp4_sm100 --profile deep_dive --single-gpu
 python -m cli.aisp bench run --targets labs/fast_cu:int32_reduction --profile deep_dive --single-gpu
 python -m cli.aisp bench run --targets labs/fast_cu:b200_epilogue --profile deep_dive --single-gpu
 
@@ -67,7 +73,10 @@ the source integrity check.
 - The NVFP4 pair reuses one set of GPU buffers. The article rotates inputs,
   alternates kernel order, and cools down between five timing rounds. Those
   differences prevent a direct comparison with the article's speedup.
-- The unchanged NVFP4 r0-r9 kernels compiled, linked, and imported with CUDA
+- The B200 port is checked against an independent CPU calculation on small and
+  partial tiles, with output guards, poisoned buffers, and repeated runs. The
+  full 8192³ result also matches cuBLASLt.
+- The unchanged SM103 NVFP4 r0-r9 kernels compiled, linked, and imported with CUDA
   13.1.80 for `sm_103a`. No SM103 GPU was available, so runtime correctness and
   performance remain untested.
 - [Validation](validation.md) records the tests and measurements completed so far.
@@ -81,3 +90,6 @@ python -m core.scripts.linting.check_benchmarks labs/fast_cu --fail-on-warnings
 
 See [performance_intake.yaml](performance_intake.yaml) and
 [workload_spec.yaml](workload_spec.yaml) for estimated costs and workload definitions.
+
+The B200 port has its own [workload](nvfp4_sm100_workload_spec.yaml) and
+[cost model](nvfp4_sm100_performance_intake.yaml).

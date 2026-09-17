@@ -1,0 +1,126 @@
+run_metadata:
+  benchmark_layer: component
+  benchmark_grade: realism
+  use_case: engineering_debug
+  owner: "AI Systems Performance Engineering"
+  ticket_or_epic: "fast.cu B200 K64 NVFP4 port"
+
+comparison_axis:
+  variable_under_test: kernel_implementation
+  control: "cuBLASLt first usable NVFP4 algorithm"
+  candidate: "K64 port of fast.cu r5"
+  constants_locked:
+    - shape_8192x8192x8192
+    - packed_e2m1_inputs
+    - vec16_ue4m3_scales
+    - fp32_accumulation_policy
+    - fp16_full_output
+    - caller_seed
+    - current_cuda_stream
+
+workload:
+  type: inference
+  name: "fast.cu B200 NVFP4 GEMM"
+  model:
+    name: "dense matrix multiplication"
+    parameter_count_b: null
+    precision: nvfp4_e2m1_vec16_ue4m3_to_fp16
+    weights_source: "fast.cu@2dfe5e26aecfd9e5f27bf9d5837deea01acda24b"
+  input_distribution:
+    sequence_length_mix: {p50: null, p95: null, max: null}
+    prompt_tokens: {p50: null, p95: null, max: null}
+    completion_tokens: {p50: null, p95: null, max: null}
+  batching_policy:
+    mode: static
+    max_batch_size: 1
+    max_num_seqs: 1
+    max_tokens_in_batch: null
+  concurrency_model:
+    mode: closed_loop
+    values: [1]
+  serving_contract:
+    stack_under_test: "native PyTorch CUDA extension"
+    protocol: "in-process benchmark_fn"
+    deployment_model: "single exact-SM100 GPU"
+    fairness_constraints:
+      protocol_fixed_across_candidates: true
+      deployment_model_fixed_across_candidates: true
+      api_behavior_fixed_across_candidates: true
+  quality_constraints:
+    correctness_suite:
+      - "full output torch.allclose rtol=0.002 atol=0.5"
+      - "finite FP16 output"
+      - "independent CPU reference on small and partial tiles"
+      - "poisoned output overwrite, guard preservation, and determinism"
+    max_accuracy_delta_pct: 0.0
+    allowed_quality_exceptions: []
+
+execution:
+  image: "record in run manifest"
+  runtime_versions:
+    driver: "record in run manifest"
+    cuda: ">=13.0"
+    nccl: "not used"
+    pytorch: "record in run manifest"
+    runtime_or_server: "pinned native extension"
+  hardware_tier:
+    gpu_model: "B200"
+    gpu_count: 1
+    cpu_model: "record in run manifest"
+    ram_gb: null
+    network_fabric: "not used"
+    storage_tier: "not used during timing"
+  topology:
+    gpu_to_gpu: "single GPU"
+    gpu_to_nic_affinity: "not applicable"
+    numa_layout: "record in run manifest"
+    pcie_layout: "record in run manifest"
+  scheduler_path:
+    platform: virtual_machine
+    queue_or_scheduler: "repository benchmark queue"
+    placement_policy: "exclusive exact-SM100 GPU"
+    control_plane_path: "aisp bench run"
+
+measurement_policy:
+  trials: 5
+  warmup_trials: 5
+  report_statistics: [median, mean, stddev, p95, p99, cv_pct]
+  outlier_policy:
+    method: tukey_iqr_and_mad
+    keep_raw_samples: true
+    auto_flag_only: true
+    discard_requires_written_reason: true
+  confidence_policy:
+    method: bootstrap_95_ci
+    min_effect_size_pct: 5.0
+  environment_controls:
+    gpu_clocks_locked: true
+    app_clocks_recorded: true
+    topology_recorded: true
+    background_load_recorded: true
+
+metrics:
+  primary: median_launch_latency_us
+  secondary: [p95_launch_latency_us, effective_pflops]
+
+diagnosis_policy:
+  bottleneck_classes: [compute_bound, memory_bound, launch_bound]
+  required_signals: [gpu_counters, nsys_trace, correctness_receipt]
+  distributed:
+    rank_level_visibility: false
+    isolate_suspected_straggler_node: false
+    cordon_on_repeated_failure: false
+
+artifacts:
+  artifact_root: "artifacts/runs/<run_id>"
+  raw_artifacts_immutable: true
+  require_manifest: true
+  require_profiler_artifacts: true
+  require_sha256: true
+  provenance_signing:
+    required: true
+    status: gap_in_current_repo
+  publication_packet:
+    include_methodology_writeup: true
+    include_comparison_report: true
+    include_audit_ledger: true

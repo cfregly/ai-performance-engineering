@@ -1,0 +1,339 @@
+{
+  "schema_version": 1,
+  "date_utc": "2026-09-17",
+  "source": {
+    "upstream_repository": "https://github.com/pranjalssh/fast.cu",
+    "upstream_revision": "2dfe5e26aecfd9e5f27bf9d5837deea01acda24b",
+    "article": "https://cudaforfun.substack.com/p/outperforming-cublas-on-nvfp4",
+    "origin_rung": 5,
+    "tested_code_commit": "21ba7efa47a90daa3b8cede27169f3aea62861e9",
+    "files_sha256": {
+      "build.py": "266d6958678cf5d381c2bac0fa9015b924564fb501674a54e4fac743f9ff8aeb",
+      "nvfp4.py": "130ebc4dbd3ac3950701b01eff57936a0bcbd2e51c9a4c897f668d27f0116f62",
+      "nvfp4_native.cu": "0e0714bb65063316bfef5be9a622b73e3cffb4335ebad6cf7e36833ab6cd7564",
+      "nvfp4_sm100.cuh": "5ad15cfe3367d8eb4cbbf21e33456016d53951dcb6b44e33906a889208e7c304",
+      "nvfp4_sm100.py": "44c43852d842190f1bdf2e1c065d7467d5689ccb00efa7bf5d0cc09e9450c56e",
+      "baseline_nvfp4_sm100.py": "ff131148bd86aeb8737adf2c83080000f6c4d8a36893e7c720073dfa75b1d1fb",
+      "optimized_nvfp4_sm100.py": "7c3e6032f79e5c4945cad64532cc9996256a02f0716db78c8ca20118cda9f4a1",
+      "checks/measure_nvfp4_sm100.py": "0d2cfe5eaa2cbf62c3963d640adc2d1223fbb18a277e2f335f0d043aafa2300d"
+    }
+  },
+  "environment": {
+    "gpu": "NVIDIA B200",
+    "gpu_count": 1,
+    "compute_capability": [
+      10,
+      0
+    ],
+    "driver": "580.173.02",
+    "cuda_toolkit": "13.0.88",
+    "torch": "2.9.1+cu130",
+    "cublas": "13.0.0.19",
+    "evidence_grade": "virtualized exploratory",
+    "application_clocks_mhz": {
+      "sm": 1965,
+      "memory": 3996
+    },
+    "paired_clock_observations": {
+      "start": {
+        "app_sm_mhz": 1965,
+        "app_mem_mhz": 3996,
+        "cur_sm_mhz": 1965,
+        "cur_mem_mhz": 3996
+      },
+      "end": {
+        "app_sm_mhz": 1965,
+        "app_mem_mhz": 3996,
+        "cur_sm_mhz": 1312,
+        "cur_mem_mhz": 3996
+      }
+    },
+    "task_final_device_state": {
+      "sm_mhz": 1965,
+      "memory_mhz": 3996,
+      "persistence": 0
+    }
+  },
+  "correctness": {
+    "cpu": {
+      "passed": 66,
+      "skipped": 12
+    },
+    "b200_small": {
+      "passed": 9,
+      "skipped": 1
+    },
+    "b200_full": {
+      "passed": 1,
+      "deselected": 9
+    },
+    "standalone_full": {
+      "shape": [
+        8192,
+        8192,
+        8192
+      ],
+      "output_elements": 67108864,
+      "mismatches": 0,
+      "nonfinite": 0,
+      "max_abs_difference": 0.0,
+      "deterministic": true
+    },
+    "compute_sanitizer": {
+      "errors": 0,
+      "shapes": [
+        [
+          129,
+          257,
+          1136
+        ],
+        [
+          259,
+          513,
+          160
+        ]
+      ]
+    },
+    "benchmark_lint": {
+      "files": 10,
+      "errors": 0,
+      "warnings": 0
+    },
+    "sm103_regression": {
+      "cuda_toolkit": "13.1.80",
+      "target": "sm_103a",
+      "rungs": [
+        0,
+        9
+      ],
+      "compile_link_import": "passed",
+      "gpu_execution": "not run"
+    }
+  },
+  "harness": {
+    "run_id": "nvfp4_sm100_owned_20260916",
+    "validity_profile": "strict",
+    "iterations": 20,
+    "warmups": 5,
+    "baseline_ms": 0.19742327402446866,
+    "candidate_ms": 0.19139193884501265,
+    "speedup": 1.0315130052804373,
+    "baseline_percentiles_ms": {
+      "25.0": 0.18192000687122345,
+      "50.0": 0.20716799795627594,
+      "75.0": 0.20873600244522095,
+      "99.0": 0.21347199380397797
+    },
+    "candidate_p75_ms": 0.20310400426387787,
+    "status": "failed_no_speedup",
+    "minimum_required_speedup": null,
+    "input_verification_passed": true,
+    "output_verification_passed": true,
+    "runtime_provenance_matched": true,
+    "baseline_profiler_statuses": {
+      "nsys": "succeeded",
+      "ncu": "succeeded",
+      "torch": "succeeded"
+    },
+    "candidate_profiler_statuses": {
+      "nsys": "succeeded",
+      "ncu": "succeeded",
+      "torch": "succeeded"
+    },
+    "baseline_profiler_metrics": {
+      "nsys": {
+        "total_gpu_time_ms": 0.178976
+      },
+      "ncu": {
+        "kernel_time_ms": 0.17955000000000002,
+        "sm_throughput_percent": 85.94,
+        "dram_throughput_percent": 14.82,
+        "l2_throughput_percent": 44.83,
+        "occupancy": 9.85
+      }
+    },
+    "candidate_profiler_metrics": {
+      "nsys": {
+        "total_gpu_time_ms": 0.173184
+      },
+      "ncu": {
+        "kernel_time_ms": 0.17648,
+        "sm_throughput_percent": 86.59,
+        "dram_throughput_percent": 14.38,
+        "l2_throughput_percent": 51.07,
+        "occupancy": 10.11
+      }
+    }
+  },
+  "paired_measurement": {
+    "timer": "CUDA events",
+    "graph_capture": "one native launch per arm",
+    "warmups_per_arm": 10,
+    "paired_rounds": 5,
+    "replays_per_arm_per_round": 1000,
+    "rounds": [
+      {
+        "round": 1,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline_ms_per_launch": 0.21046786499023437,
+        "candidate_ms_per_launch": 0.21059280395507812,
+        "baseline_over_candidate": 0.9994067272836616
+      },
+      {
+        "round": 2,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate_ms_per_launch": 0.21659234619140624,
+        "baseline_ms_per_launch": 0.220198974609375,
+        "baseline_over_candidate": 1.0166516891357809
+      },
+      {
+        "round": 3,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline_ms_per_launch": 0.22070233154296875,
+        "candidate_ms_per_launch": 0.2139331512451172,
+        "baseline_over_candidate": 1.0316415677441952
+      },
+      {
+        "round": 4,
+        "order": [
+          "candidate",
+          "baseline"
+        ],
+        "candidate_ms_per_launch": 0.2148059844970703,
+        "baseline_ms_per_launch": 0.22123536682128905,
+        "baseline_over_candidate": 1.02993111360129
+      },
+      {
+        "round": 5,
+        "order": [
+          "baseline",
+          "candidate"
+        ],
+        "baseline_ms_per_launch": 0.2207323455810547,
+        "candidate_ms_per_launch": 0.21434323120117188,
+        "baseline_over_candidate": 1.0298078663089962
+      }
+    ],
+    "baseline_ms_per_launch": {
+      "mean": 0.21866737670898437,
+      "median": 0.22070233154296875,
+      "sample_stdev": 0.00459830119148012
+    },
+    "candidate_ms_per_launch": {
+      "mean": 0.21405350341796875,
+      "median": 0.21434323120117188,
+      "sample_stdev": 0.0021844231509121
+    },
+    "baseline_over_candidate": {
+      "mean": 1.0214877928147847,
+      "median": 1.0298078663089962,
+      "sample_stdev": 0.013734753255463552
+    }
+  },
+  "queue": {
+    "started_utc": "2026-09-17T02:27:03.272227+00:00",
+    "ended_utc": "2026-09-17T02:28:45.782439+00:00",
+    "foreign_overlap_count": 0,
+    "batch_entry_state": {
+      "sm_mhz": 1965,
+      "memory_mhz": 3996,
+      "persistence": 1
+    },
+    "batch_exit_state": {
+      "sm_mhz": 1965,
+      "memory_mhz": 3996,
+      "persistence": 1
+    },
+    "batch_state_restored": true,
+    "original_persistence_restored_after_batch": true
+  },
+  "boundaries": [
+    "One resident operand set at 8192x8192x8192. This is not the article's rotating-input protocol.",
+    "The first paired round is essentially tied. Keep all five raw rounds.",
+    "Application clocks were held at 1965/3996. The final idle current-SM read was 1312 MHz, so continuous active-clock residency is not established.",
+    "Below the unchanged 1.05x speed-goal threshold. No bare-metal or cross-shape performance qualification.",
+    "r6-r9 changes remain in the preserved SM103 examples. The B200 port is based on r5.",
+    "Raw profiler files and logs are retained outside the public repository. Digests identify them."
+  ],
+  "artifact_digests": {
+    "cpu-code-final.log": {
+      "sha256": "4f464e4818a0168cccdc2941f72b8bd4bd464fc041a381cfcdeca9f2fd1502d7",
+      "bytes": 794
+    },
+    "gpu-small-fixed.log": {
+      "sha256": "bb94f6de3b04b03bc2cc4e0a34433a13f96abf220fa30e4bb0b014d293651c60",
+      "bytes": 1439
+    },
+    "gpu-full.log": {
+      "sha256": "4f9d17d4e0528b2d2d9ca54a0928399f74a2ab5df773f04ea4bd228e06648158",
+      "bytes": 1007
+    },
+    "standalone-full.log": {
+      "sha256": "2e2941901190bc297b1b9c4c8614f04431dfda894ca1ad9c061a28793e763b87",
+      "bytes": 1400
+    },
+    "fixed-memcheck.log": {
+      "sha256": "368853d777377467bfd29c1028f3094c187f8e050798fcacc5551d885abb1f85",
+      "bytes": 313
+    },
+    "benchmark-lint.log": {
+      "sha256": "e1e212a1f8dc4e450d34d3a70be364deff3b4fee60b7f916a7878693baa4d744",
+      "bytes": 276
+    },
+    "sm103-regression-compile.log": {
+      "sha256": "8c462a14a6eda827f5c89af790ca5d0d7c5829e2626a41fd5c6a9c6aa5315da2",
+      "bytes": 283
+    },
+    "final-harness-results.json": {
+      "sha256": "096d55505f554cd5f7b864aff56ccd41bc96fc47a97c75cb48e7de7b142233f4",
+      "bytes": 35575
+    },
+    "nvfp4_sm100_owned_20260916_paired.json": {
+      "sha256": "a534a7efe0fdc9370d43376d91186093a2ab71c272d5af6c82676e0c01981c2a",
+      "bytes": 3599
+    },
+    "nvfp4_sm100_owned_20260916_queue.json": {
+      "sha256": "0a639c2ea9cebf741d4df2db3592dd4bc7fa3e88fa7943766be01b1b6b5b7c80",
+      "bytes": 779
+    },
+    "final-device-cleanup.json": {
+      "sha256": "2358da3ceede8b950e1bfcd350dd110d91b14257b946843a378336d9e5bdb0ef",
+      "bytes": 429
+    }
+  },
+  "profile_digests": {
+    "baseline_nsys": {
+      "sha256": "a69b1ab6f43cdab2a88c78dd7a88b5d1ad78dac172ec67e0c54c595087e671be",
+      "bytes": 222025
+    },
+    "baseline_ncu": {
+      "sha256": "ac3e9dad387987647858f7531efbc78d0cf7a7fec9381b9e5bedddd8e3dce5a7",
+      "bytes": 4374435
+    },
+    "baseline_torch": {
+      "sha256": "780feda14f08cc62104907a7323cf8f846b839b612f7491cf46e46095daaa7bb",
+      "bytes": 8767
+    },
+    "candidate_nsys": {
+      "sha256": "5ed27dd3060904bccb15b365bc9fcf3f84ad176bdaf0ad3a6ebccae2b4b2e6d6",
+      "bytes": 225225
+    },
+    "candidate_ncu": {
+      "sha256": "666d71a30982f989d802c194d2c93e61da6f3ca2780e1425a447255a1e465ff0",
+      "bytes": 98022
+    },
+    "candidate_torch": {
+      "sha256": "fd308586c7bdd534edf24977f5dc6c8f1f6fc81ea5a85e9507950488ba5f7567",
+      "bytes": 8787
+    }
+  }
+}

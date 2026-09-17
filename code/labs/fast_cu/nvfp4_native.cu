@@ -16,7 +16,9 @@
 #include <string>
 #include <vector>
 
-#ifndef FAST_CU_NVFP4_RUNG
+#if defined(FAST_CU_NVFP4_SM100)
+#define NVFP4_GEMM_HEADER "nvfp4_sm100.cuh"
+#elif !defined(FAST_CU_NVFP4_RUNG)
 #error "FAST_CU_NVFP4_RUNG must select one upstream optimization rung"
 #elif FAST_CU_NVFP4_RUNG == 0
 #define NVFP4_GEMM_HEADER "gemm0.cuh"
@@ -88,6 +90,19 @@ cudaStream_t current_stream(int device) {
 void require_exact_runtime(cudaDeviceProp* properties, int* device) {
     int runtime_version = 0;
     check_cuda(cudaRuntimeGetVersion(&runtime_version), "cudaRuntimeGetVersion");
+#if defined(FAST_CU_NVFP4_SM100)
+    TORCH_CHECK(
+        runtime_version >= 13000,
+        "SKIPPED: fast.cu SM100 NVFP4 requires CUDA runtime 13.0 or newer. Found ",
+        runtime_version);
+    check_cuda(cudaGetDevice(device), "cudaGetDevice");
+    check_cuda(cudaGetDeviceProperties(properties, *device), "cudaGetDeviceProperties");
+    TORCH_CHECK(
+        properties->major == 10 && properties->minor == 0,
+        "SKIPPED: fast.cu SM100 NVFP4 requires B200. Found sm_",
+        properties->major,
+        properties->minor);
+#else
     TORCH_CHECK(
         runtime_version >= 13010,
         "SKIPPED: fast.cu NVFP4 requires CUDA runtime 13.1 or newer. Found ",
@@ -101,6 +116,7 @@ void require_exact_runtime(cudaDeviceProp* properties, int* device) {
         properties->minor,
         " on ",
         properties->name);
+#endif
     TORCH_CHECK(
         properties->multiProcessorCount > 0 && properties->multiProcessorCount % 2 == 0,
         "fast.cu NVFP4 requires a positive even SM count for two-CTA clusters. Found ",
@@ -369,6 +385,25 @@ public:
 #endif
     }
 
+    torch::Tensor host_reference() const {
+        TORCH_CHECK(
+            int64_t(M_) * N_ <= 512000000 / K_,
+            "The CPU reference is limited to 512 million multiply-adds");
+        const auto fixture = host::make_fixture(M_, N_, K_, seed_, /*keep_deq=*/true);
+        auto result = torch::zeros(
+            {M_, N_}, torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
+        float* values = result.data_ptr<float>();
+        for (int m = 0; m < M_; ++m) {
+            for (int k = 0; k < K_; ++k) {
+                const float a = fixture.A_deq[size_t(m) * K_ + k];
+                for (int n = 0; n < N_; ++n) {
+                    values[size_t(m) * N_ + n] += a * fixture.B_deq[size_t(n) * K_ + k];
+                }
+            }
+        }
+        return result;
+    }
+
     torch::Tensor a_packed() const { return a_; }
     torch::Tensor b_packed() const { return b_; }
     torch::Tensor sfa_packed() const { return sfa_; }
@@ -556,11 +591,35 @@ private:
 }  // namespace
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, module) {
+#if defined(FAST_CU_NVFP4_SM100)
+    module.def("validate_against_host", [](int m, int n, int k, uint64_t seed) {
+        TORCH_CHECK(m > 0 && n > 0 && k > 0 && k % 16 == 0,
+                    "Reference checks require positive dimensions and K divisible by 16");
+        TORCH_CHECK(int64_t(m) * n <= 512000000 / k,
+                    "The CPU reference is limited to 512 million multiply-adds");
+        cudaDeviceProp properties{};
+        int device = 0;
+        require_exact_runtime(&properties, &device);
+        bench::g.sms = properties.multiProcessorCount;
+        bench::g.clusters = bench::g.sms / 2;
+        bench::g.l2_bytes = properties.l2CacheSize;
+        bench::g.grid = nvfp4::launch_grid(bench::g.clusters);
+        check_cuda(cudaFuncSetAttribute(
+            nvfp4::nvfp4_gemm_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
+            int(sizeof(nvfp4::SmemCD))), "configure SM100 reference kernel");
+        host::Fixture fixture;
+        std::vector<float> reference;
+        std::vector<uint16_t> output;
+        return bench::small_gate_ours(
+            m, n, k, seed, "SM100", &fixture, &reference, &output);
+    });
+#endif
     py::class_<Nvfp4Context>(module, "Nvfp4Context", py::module_local())
         .def(py::init<int, int, int, uint64_t, bool>())
         .def("launch_cublaslt", &Nvfp4Context::launch_cublaslt)
         .def("launch_fast", &Nvfp4Context::launch_fast)
         .def("validate_schedule", &Nvfp4Context::validate_schedule)
+        .def("host_reference", &Nvfp4Context::host_reference)
         .def_property_readonly("a_packed", &Nvfp4Context::a_packed)
         .def_property_readonly("b_packed", &Nvfp4Context::b_packed)
         .def_property_readonly("sfa_packed", &Nvfp4Context::sfa_packed)

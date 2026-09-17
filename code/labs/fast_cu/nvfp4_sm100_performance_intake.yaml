@@ -1,0 +1,99 @@
+objective:
+  primary_kpi: median_launch_latency_us
+  secondary_kpis: [p95_launch_latency_us, effective_pflops]
+
+benchmark:
+  layer: component
+  grade: realism
+  variable_under_test: kernel_implementation
+
+workload:
+  type: gemm
+  model: "8192x8192x8192 NVFP4 E2M1 GEMM, UE4M3 VEC16 scales, FP16 output"
+  batch_shape:
+    p50: [8192, 8192, 8192]
+    p95: [8192, 8192, 8192]
+    max: [8192, 8192, 8192]
+  constraints:
+    - identical packed input bytes and scale buffers for both arms
+    - full FP16 output compared with rtol 0.002 and atol 0.5
+    - exact SM100 B200 and CUDA 13.0 or newer
+    - native K64 tensor-core arithmetic with no alternate-precision substitution
+
+slos:
+  latency_ms: {p50: null, p95: null, p99: null}
+  availability: null
+  cost_budget: null
+
+environment:
+  hardware:
+    gpu: ["B200 SM100", 1, null]
+    cpu: "recorded by harness provenance"
+    ram_gb: null
+    storage: null
+    interconnect: ["single GPU"]
+    topology: "single exact-SM100 device"
+  software:
+    os: "recorded by harness provenance"
+    kernel: "recorded by harness provenance"
+    driver: "recorded by harness provenance"
+    cuda: "13.0 or newer. Extension compiled only for sm_100a"
+    pytorch: "recorded by harness provenance"
+    triton: "not used"
+    frameworks: ["CUDA C++", "cuBLASLt", "PyTorch extension"]
+    nccl: "not used"
+    container_orchestrator: "recorded by harness provenance"
+  data_pipeline:
+    - caller seed is passed to the pinned upstream host quantizer during setup
+    - packed E2M1 values and UE4M3 VEC16 scales remain device resident
+
+current_baseline:
+  p50_ms: 0.20716799795627594
+  p99_ms: 0.21347199380397797
+  gpu_util_percent: null
+  mem_bw_percent: null
+  goodput_percent: null
+
+hot_path_model:
+  path: "labs.fast_cu.baseline_nvfp4_sm100 vs labs.fast_cu.optimized_nvfp4_sm100"
+  phase: steady_state
+  invocation_frequency: per_request
+  invocations_per_primary_unit: 1
+  estimated_costs:
+    bytes_read: 75497472
+    bytes_written: 134217728
+    host_device_bytes: 0
+    allocations_or_materializations: 0
+    kernel_launches: 1
+    synchronizations_or_locks: 0
+    api_process_or_rpc_crossings: 1
+    storage_or_network_operations: 0
+  operation_cost_source: "Analytical counts from the pinned 8192^3 packed layouts. Measured timings and counters are in sm100_validation.json"
+  expected_dominant_cost: "NVFP4 tensor-core GEMM plus FP16 output traffic"
+  best_case_primary_kpi_improvement_pct: null
+
+evidence:
+  baseline_artifact: "sm100_validation.json"
+  profile_artifacts: ["sm100_validation.json#profile_digests"]
+  allocation_or_memory_profile: "setup-only allocations enforced by adapter structure"
+  hardware_counter_artifacts: ["sm100_validation.json#harness"]
+  static_review_findings:
+    - "K64 arithmetic needs different operand descriptors and scale loading from K96"
+    - "the port retains two-CTA GEMM, TMA queues, double accumulators, and wide stores"
+    - "both cuBLASLt and fast.cu launch on the active PyTorch CUDA stream"
+
+candidate_optimizations:
+  - "K64 port of the r5 pipeline for B200"
+  - "256-bit FP16 stores with identical cache hints to r5"
+
+known_issues_or_hypotheses:
+  - "B200 correctness passed. The measured median paired ratio was 1.030x at 8192 cubed, below the 1.05x acceptance threshold"
+  - "This native pair uses one resident operand set and does not reproduce the upstream rotating five-round headline protocol"
+
+risk_guardrails:
+  correctness_tests:
+    - "full FP16 cuBLASLt-versus-fast.cu output comparison"
+    - "same packed A/B/SFA/SFB bytes from the caller seed"
+    - "independent host reference, partial tiles, poisoned output, guards, and determinism"
+  change_windows:
+    - "promote performance claims only after locked-clock repeated comparison plus NCU and NSYS evidence"

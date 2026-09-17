@@ -13,7 +13,7 @@ and [NVFP4 article](https://cudaforfun.substack.com/p/outperforming-cublas-on-nv
 | Warp reductions and bandwidth | [ch10 atomic/DSMEM reduction](../../ch10/README.md), [memory_bandwidth_patterns](../memory_bandwidth_patterns/README.md) | CUB versus a safe adaptation of fast.cu's vectorized int32 reduction, including B200 execution |
 | Stream ordering and overlap | [ch11](../../ch11/README.md) | Adapters that launch and reset outputs on the caller's CUDA stream |
 | Compiler-sensitive instruction selection | [ch14](../../ch14/README.md) | `%laneid`, exact block geometry, wide stores, and an isolated B200 epilogue experiment |
-| B200 block-scaled FP4 GEMM | [nvfp4_gemm](../nvfp4_gemm/README.md) | GB300 SM103/K96 implementation alongside the existing SM100 path |
+| B200 block-scaled FP4 GEMM | [nvfp4_gemm](../nvfp4_gemm/README.md) | Complete [K64 port of fast.cu r5](nvfp4_sm100.cuh), alongside the original GB300 SM103/K96 examples |
 
 Start with the chapter examples for individual techniques. Use this lab to
 follow the complete kernel progression and run the benchmark comparisons.
@@ -34,8 +34,8 @@ follow the complete kernel progression and run the benchmark comparisons.
   r0-r9 kernels are unchanged from upstream. They compiled and imported with
   CUDA 13.1.80, but no SM103 GPU was available for runtime validation.
 
-The proposed upstream patches address defects found in the older H100 reduction
-and scheduler examples. They do not change the newer GB300 NVFP4 kernels.
+The H100 copies include reduction and scheduler fixes. The new B200 port is
+separate from those fixes and from the unchanged GB300 headers.
 
 ## NVFP4 ladder and what transfers to B200
 
@@ -43,21 +43,23 @@ NVFP4 stores E2M1 values with an FP8 scale for each group of 16 along K. Values
 and scales have different layouts and traffic patterns. The source uses TMA
 queues for both, FP32 accumulators in TMEM, and FP16 output. Correctness depends
 on descriptor layout, queue lifetime, barrier phase, and output coverage together.
-The B200 epilogue experiment changes only FP32-to-FP16 store width. It is not a
-port of the full NVFP4 GEMM to B200.
+The B200 port implements the full GEMM with K64 instructions. Its K512 groups use
+two A/B windows and four scale slots. Each scale slot holds two SFA tiles and four
+SFB tiles, with 6144 expected bytes across the cluster. TMA zero fill handles the
+last partial K512 group. The separate epilogue experiment isolates store width.
 
 | Rung | Local source | Mechanism | B200 interpretation |
 | --- | --- | --- | --- |
-| r0 | [gemm0.cuh](upstream/gb300/nvfp4/gemm0.cuh) | Working two-CTA NVFP4 pipeline with K192 feed | K96 instructions require SM103. Use the existing SM100 GEMM for K64 |
-| r1 | [gemm1.cuh](upstream/gb300/nvfp4/gemm1.cuh) | Direct `%laneid` for single-lane work | Inspect uniform-register and convergence code generation. Do not assume a speedup |
-| r2 | [gemm2.cuh](upstream/gb300/nvfp4/gemm2.cuh) | K256 TMA windows with independently released buffers | Queue/barrier design transfers. The K96/K256 decomposition does not transfer unchanged |
-| r3 | [gemm3.cuh](upstream/gb300/nvfp4/gemm3.cuh) | Overlap two TMEM accumulator buffers | Relates to ch10 ping-pong pipelines. Check TMEM capacity and accumulator lifetime |
-| r4 | [gemm4.cuh](upstream/gb300/nvfp4/gemm4.cuh) | 256-bit output stores | Implemented as the native `b200_epilogue` store-width pair |
-| r5 | [gemm5.cuh](upstream/gb300/nvfp4/gemm5.cuh) | Avoid L1 allocation and favor early L2 eviction for output | Both B200 epilogue arms use the same policy to isolate width. This does not measure the policy's effect |
-| r6 | [gemm6.cuh](upstream/gb300/nvfp4/gemm6.cuh) | Exact block shape improves compiler knowledge | Exact launch geometry must remain true and requires suitable compiler support |
-| r7 | [gemm7.cuh](upstream/gb300/nvfp4/gemm7.cuh) | Remove dead tail work | Transfer only after proving coverage for the actual tile/K decomposition |
-| r8 | [gemm8.cuh](upstream/gb300/nvfp4/gemm8.cuh) | Fold compatible tails into K64 MMAs | K64 is supported on SM100. The mixed K96/K64 schedule remains SM103-specific |
-| r9 | [gemm9.cuh](upstream/gb300/nvfp4/gemm9.cuh) | L2-side ownership and shape-dependent visit order | Measure actual topology. GB300 cluster placement may differ from B200 |
+| r0 | [gemm0.cuh](upstream/gb300/nvfp4/gemm0.cuh) | Working two-CTA NVFP4 pipeline with K192 feed | The new SM100 port uses K64 throughout |
+| r1 | [gemm1.cuh](upstream/gb300/nvfp4/gemm1.cuh) | Direct `%laneid` for single-lane work | Retained in the SM100 port |
+| r2 | [gemm2.cuh](upstream/gb300/nvfp4/gemm2.cuh) | K256 TMA windows with independently released buffers | Retained with K512 groups and K64-compatible scale loading |
+| r3 | [gemm3.cuh](upstream/gb300/nvfp4/gemm3.cuh) | Overlap two TMEM accumulator buffers | Retained in the SM100 port, including the shared-edge drain before buffer reuse |
+| r4 | [gemm4.cuh](upstream/gb300/nvfp4/gemm4.cuh) | 256-bit output stores | Retained in the full SM100 port and isolated by the `b200_epilogue` pair |
+| r5 | [gemm5.cuh](upstream/gb300/nvfp4/gemm5.cuh) | Avoid L1 allocation and favor early L2 eviction for output | Retained in the full port. Both isolated epilogue variants also use the same policy |
+| r6 | [gemm6.cuh](upstream/gb300/nvfp4/gemm6.cuh) | Exact block shape improves compiler knowledge | The port keeps the CUDA 13.0-compatible r5 launch declaration |
+| r7 | [gemm7.cuh](upstream/gb300/nvfp4/gemm7.cuh) | Remove dead tail work | The port currently zero-fills the last K512 group |
+| r8 | [gemm8.cuh](upstream/gb300/nvfp4/gemm8.cuh) | Fold compatible tails into K64 MMAs | The port uses K64 for every MMA, so it needs no mixed K96/K64 schedule |
+| r9 | [gemm9.cuh](upstream/gb300/nvfp4/gemm9.cuh) | L2-side ownership and shape-dependent visit order | Not included in the port. B200 topology needs its own measurements |
 
 The r9 scheduling lesson has two parts: decide which cluster population reuses a
 row, then place those reuses close together in visitation order. A tiled or Hilbert
