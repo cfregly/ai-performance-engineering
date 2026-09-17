@@ -160,4 +160,3 @@ measurement_contract:
   fallbacks: eager fallbacks remain in serving latency and request counts
   process_isolation: one fresh child process per scenario
   speedup_claim: none
-
