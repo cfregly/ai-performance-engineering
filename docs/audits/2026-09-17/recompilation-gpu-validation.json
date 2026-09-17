@@ -799,7 +799,7 @@
   "request_csv": {
     "file": "recompilation-requests.csv",
     "rows": 2730,
-    "sha256": "166b2eceb31be7bde464ecfb1e14b0547c31afe2b3e08b37969f92f60c1b92c5"
+    "sha256": "d49504059b8561e11be9c5c6c3db4fc39156c2712205aa78d1adffa64bf4178a"
   },
   "nanochat": {
     "initial_exact_main_tests": {
