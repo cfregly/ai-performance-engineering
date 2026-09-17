@@ -74,6 +74,27 @@ preserves compiler policy during configuration, explicitly warms up under the
 default stance, and measures under a scoped `fail_on_recompile` stance. It exposes
 warmup wall time and uses the same inference/attention context in both phases.
 
+The NanoChat serving `Engine` also used an unsupported compile mode and swallowed
+construction errors. It now uses the supported `max-autotune` mode, checks the
+model's actual device, reports explicit eligibility/configuration/runtime status,
+and propagates constructor and lazy execution failures. Call
+`engine.get_compile_diagnostics()` outside the request hot path to inspect status
+and process-wide Dynamo graph counts. A completed call is only `runtime_observed`;
+it does not establish that later cache positions avoid recompilation.
+
+NanoChat's Python KV-cache position still changes during decode. Its compiled
+serving path needs real Blackwell multi-token validation; the fixed-input inference
+benchmark pair does not exercise that engine contract. The opt-in test is:
+
+```bash
+NANOCHAT_RUN_BLACKWELL_COMPILE_TESTS=1 python -m pytest labs/nanochat_fullstack/tests/test_engine_compile_policy.py -q
+```
+
+The general harness also does not enforce zero compilation across every target's
+measurement phase. Use the scoped strict example and the diagnostic to establish
+that property for a workload; do not interpret a harness pass alone as proof of
+recompilation-free serving.
+
 The new diagnostic exercises real Dynamo guards with correctness checks. An
 `eager` backend tests compiler routing without generating optimized kernels; use
 the explicit `inductor` backend for code-generation experiments. Neither mode

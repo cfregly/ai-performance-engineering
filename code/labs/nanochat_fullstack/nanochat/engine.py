@@ -398,6 +398,11 @@ class RowState:
 
 class Engine:
 
+    _COMPILE_MODE = "max-autotune"
+    _COMPILE_BACKEND = None
+    _COMPILE_FULLGRAPH = True
+    _COMPILE_DYNAMIC = True
+
     def __init__(self, model, tokenizer, reuse_ids_buffer=True, enable_batch_decode=False):
         self.model = model
         self.tokenizer = tokenizer # needed for tool use
@@ -410,6 +415,12 @@ class Engine:
         self._kernel_stub_fallback = bool(getattr(self.model.config, "allow_kernel_stub_fallback", False))
         self._persistent_decode_impl = getattr(self.model.config, "persistent_decode_impl", None)
         self._compile_error = None
+        self._compile_active = False
+        self.compile_status = "not_evaluated"
+        self.compile_status_reason = "compile eligibility has not been evaluated"
+        self.compile_mode = None
+        self.compile_device = str(self.model.get_device())
+        self._compile_graph_count_at_config = None
         self._graph_cache_gen = None  # cache generation tied to current capture
         self._attention_positions = None
         self._attention_mask = None
@@ -476,21 +487,135 @@ class Engine:
         # Manual graph capture owns replay/state; nested compiler-managed graphs
         # have a separate lifetime contract and are not supported in this mode.
         if self.use_cuda_graphs:
+            self._set_compile_status(
+                "manual_graphs",
+                "manual CUDA graph capture owns replay and state",
+            )
             return
         if os.getenv("NANOCHAT_DISABLE_COMPILE", "0") == "1":
+            self._set_compile_status(
+                "disabled",
+                "NANOCHAT_DISABLE_COMPILE=1",
+            )
             return
-        if not torch.cuda.is_available() or not hasattr(torch, "compile"):
+        if not hasattr(torch, "compile"):
+            self._set_compile_status(
+                "unavailable",
+                "torch.compile is unavailable in this PyTorch build",
+            )
             return
-        cc_major, _ = torch.cuda.get_device_capability()
+
+        model_device = torch.device(self.model.get_device())
+        self.compile_device = str(model_device)
+        if model_device.type != "cuda" or not torch.cuda.is_available():
+            self._set_compile_status(
+                "unsupported_hardware",
+                f"model device {model_device} is not an available CUDA device",
+            )
+            return
+
+        cc_major, cc_minor = torch.cuda.get_device_capability(model_device)
         if cc_major < 10:
+            self._set_compile_status(
+                "unsupported_hardware",
+                f"model device {model_device} has compute capability {cc_major}.{cc_minor}; Blackwell or newer is required",
+            )
             return
-        compile_kwargs = dict(mode="max-autotune-tiny", fullgraph=True, dynamic=True)
-        if self.use_cuda_graphs:
-            compile_kwargs["options"] = {"triton.cudagraphs": True}
+
+        self._configure_compiled_model()
+
+    @staticmethod
+    def _read_dynamo_unique_graphs():
+        """Return the process-cumulative Dynamo graph count when available."""
         try:
-            self.model = torch.compile(self.model, **compile_kwargs)  # type: ignore[attr-defined]
-        except Exception as exc:  # pragma: no cover - defensive
-            self._compile_error = str(exc)
+            counters = torch._dynamo.utils.counters
+            return int(counters.get("stats", {}).get("unique_graphs", 0))
+        except Exception:
+            return None
+
+    def _set_compile_status(self, status, reason, *, error=None):
+        self.compile_status = status
+        self.compile_status_reason = reason
+        self._compile_error = None if error is None else str(error)
+
+    def _configure_compiled_model(self):
+        """Create the lazy compiled wrapper and fail visibly on configuration errors."""
+        self.compile_mode = self._COMPILE_MODE
+        compile_kwargs = {
+            "mode": self.compile_mode,
+            "fullgraph": self._COMPILE_FULLGRAPH,
+            "dynamic": self._COMPILE_DYNAMIC,
+        }
+        if self._COMPILE_BACKEND is not None:
+            compile_kwargs["backend"] = self._COMPILE_BACKEND
+        try:
+            compiled_model = torch.compile(self.model, **compile_kwargs)
+        except Exception as exc:
+            self._compile_active = False
+            self._set_compile_status(
+                "configuration_failed",
+                f"torch.compile wrapper creation failed in mode={self.compile_mode}",
+                error=exc,
+            )
+            raise RuntimeError(
+                "NanoChat torch.compile configuration failed "
+                f"(mode={self.compile_mode}, device={self.compile_device}): {exc}"
+            ) from exc
+
+        self.model = compiled_model
+        self._compile_active = True
+        self._compile_graph_count_at_config = self._read_dynamo_unique_graphs()
+        self._set_compile_status(
+            "configured",
+            "torch.compile wrapper created; compiled execution has not yet been observed",
+        )
+
+    def _model_forward(self, *args, **kwargs):
+        """Run the model while preserving lazy-compile outcome evidence."""
+        try:
+            result = self.model.forward(*args, **kwargs)
+        except Exception as exc:
+            if not self._compile_active:
+                raise
+            self._set_compile_status(
+                "runtime_failed",
+                "compiled model execution failed; no eager fallback was used",
+                error=exc,
+            )
+            raise RuntimeError(
+                "NanoChat torch.compile failed during runtime execution "
+                f"(mode={self.compile_mode}, device={self.compile_device}): {exc}"
+            ) from exc
+
+        if self._compile_active:
+            if self.compile_status == "configured":
+                self._set_compile_status(
+                    "runtime_observed",
+                    "at least one compiled model call completed; guard stability is not established",
+                )
+        return result
+
+    def _compile_graph_count_delta(self, current_count):
+        if self._compile_graph_count_at_config is None or current_count is None:
+            return None
+        return current_count - self._compile_graph_count_at_config
+
+    def get_compile_diagnostics(self):
+        """Sample process-wide compile evidence without claiming guard stability."""
+        current_graph_count = self._read_dynamo_unique_graphs()
+        return {
+            "status": self.compile_status,
+            "reason": self.compile_status_reason,
+            "mode": self.compile_mode,
+            "device": self.compile_device,
+            "fullgraph": self._COMPILE_FULLGRAPH if self._compile_active else None,
+            "dynamic": self._COMPILE_DYNAMIC if self._compile_active else None,
+            "runtime_observed": self.compile_status == "runtime_observed",
+            "dynamo_process_unique_graphs_since_config": self._compile_graph_count_delta(
+                current_graph_count
+            ),
+            "error": self._compile_error,
+        }
 
     def _expand_param(self, value, batch_size, default=None):
         if isinstance(value, (list, tuple)):
@@ -515,7 +640,13 @@ class Engine:
     def _decode_forward_step(self, ids, kv_cache, attention_mask=None, token_mask=None):
         """Decode forward path with optional persistent/graph gating."""
         if self.use_persistent_decode_kernel and self._persistent_decode_kernel is not None:
-            logits = self._persistent_decode_kernel(self.model, ids, kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+            logits = self._persistent_decode_kernel(
+                self.model,
+                ids,
+                kv_cache,
+                attention_mask=attention_mask,
+                token_mask=token_mask,
+            )
             self.decode_execution_mode = "custom_kernel_or_explicit_stub"
             return logits
         if self.enable_persistent_decode and self._persistent_stream is not None:
@@ -525,7 +656,12 @@ class Engine:
                 if tensor is not None and tensor.is_cuda:
                     tensor.record_stream(self._persistent_stream)
             with torch.cuda.stream(self._persistent_stream):
-                logits = self.model.forward(ids, kv_cache=kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+                logits = self._model_forward(
+                    ids,
+                    kv_cache=kv_cache,
+                    attention_mask=attention_mask,
+                    token_mask=token_mask,
+                )
             caller.wait_stream(self._persistent_stream)
             logits.record_stream(caller)
             if kv_cache.kv_cache is not None:
@@ -534,7 +670,12 @@ class Engine:
             return logits
         else:
             self.decode_execution_mode = "eager"
-            return self.model.forward(ids, kv_cache=kv_cache, attention_mask=attention_mask, token_mask=token_mask)
+            return self._model_forward(
+                ids,
+                kv_cache=kv_cache,
+                attention_mask=attention_mask,
+                token_mask=token_mask,
+            )
 
     def _reset_decode_graph(self):
         self._decode_graph = None
@@ -615,11 +756,11 @@ class Engine:
         with torch.cuda.stream(self._graph_stream):
             for _ in range(3):
                 kv_cache.graph_position.fill_(initial_pos)
-                self.model.forward(self._graph_static_ids, kv_cache=kv_cache)
+                self._model_forward(self._graph_static_ids, kv_cache=kv_cache)
         caller.wait_stream(self._graph_stream)
         kv_cache.graph_position.fill_(initial_pos)
         with torch.cuda.graph(self._decode_graph, stream=self._graph_stream):
-            self._graph_output = self.model.forward(self._graph_static_ids, kv_cache=kv_cache)
+            self._graph_output = self._model_forward(self._graph_static_ids, kv_cache=kv_cache)
         caller.wait_stream(self._graph_stream)
         kv_cache.graph_position.fill_(initial_pos)
         kv_cache.kv_cache[..., initial_pos:, :].zero_()
@@ -1088,7 +1229,7 @@ class Engine:
         # 1) Run a batch 1 prefill of the prompt tokens
         kv_cache_prefill = KVCache(**self._kv_cache_params(batch_size=1, seq_len=len(tokens)))
         ids = self._single_prompt_ids(tokens, device)
-        logits = self.model.forward(ids, kv_cache=kv_cache_prefill)
+        logits = self._model_forward(ids, kv_cache=kv_cache_prefill)
         logits = logits[:, -1, :]
         next_ids = sample_next_token(
             logits,
@@ -1242,7 +1383,12 @@ class Engine:
 
         kv_length_hint = max_prompt_len + int(max(row_max_tokens)) if row_max_tokens else max_prompt_len
         kv_cache_prefill = KVCache(**self._kv_cache_params(batch_size=batch_size, seq_len=max_prompt_len))
-        logits = self.model.forward(ids, kv_cache=kv_cache_prefill, attention_mask=attention_mask, token_mask=attention_mask)
+        logits = self._model_forward(
+            ids,
+            kv_cache=kv_cache_prefill,
+            attention_mask=attention_mask,
+            token_mask=attention_mask,
+        )
         last_indices = (lengths - 1).clamp(min=0)
         batch_rows = self._batch_row_index_buffer(batch_size, device)
         logits = logits[batch_rows, last_indices, :]
