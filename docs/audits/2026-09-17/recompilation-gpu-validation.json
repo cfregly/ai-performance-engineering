@@ -1218,7 +1218,7 @@
       ]
     }
   },
-  "final_clock_readback": {
+  "post_measurement_clock_readback": {
     "timestamp_utc": "2026-09-17T02:21:07.253305+00:00",
     "devices": [
       {
@@ -1237,5 +1237,25 @@
       }
     ],
     "scope": "This task used GPU0. GPU1 was in use by another task at the final readback and was left untouched."
+  },
+  "final_clock_readback": {
+    "timestamp_utc": "2026-09-17T02:32:14.399472+00:00",
+    "devices": [
+      {
+        "index": 0,
+        "application_sm_mhz": 1965,
+        "application_memory_mhz": 3996,
+        "persistence": 0,
+        "compute_process_count": 0
+      },
+      {
+        "index": 1,
+        "application_sm_mhz": 1965,
+        "application_memory_mhz": 3996,
+        "persistence": 0,
+        "compute_process_count": 0
+      }
+    ],
+    "scope": "Read-only verification after both task owners completed GPU work. Both GPUs match their original application clocks and disabled persistence mode."
   }
 }

@@ -143,6 +143,10 @@ and persistence disabled. A separate readback at `2026-09-17T02:21:07Z` confirme
 those settings and no compute processes on GPU 0. GPU 1 was then in use by the
 B200-port task. Its settings were left under that task's control.
 
+After that task finished its cleanup, an independent readback at
+`2026-09-17T02:32:14Z` verified both GPUs at 1,965/3,996 MHz with persistence
+disabled and no active compute processes.
+
 ## Reproduction and evidence
 
 From `code/`, the GPU regression is:
