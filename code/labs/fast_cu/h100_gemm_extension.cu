@@ -1,6 +1,6 @@
 // Repository adapter for pranjalssh/fast.cu's latest Hopper BF16 GEMM.
 //
-// The vendored matmul_12 kernel is included unchanged. This translation unit
+// The matmul_12 source includes local scheduler assertion fixes. This translation unit
 // supplies strict tensor validation, setup-only TMA/schedule construction,
 // cuBLAS parity, and current-PyTorch-stream launches.
 
@@ -46,10 +46,9 @@ void checked_cuda(cudaError_t status, const char* file, int line) {
 
 #define cudaCheck(error) checked_cuda((error), __FILE__, __LINE__)
 
-// Upstream revision 2dfe5e26aecfd9e5f27bf9d5837deea01acda24b.
-// NDEBUG is intentionally supplied by h100_common.py because the pinned header
-// contains an upstream-only debug assert with an undeclared identifier. Every
-// launch precondition hidden by that release-mode build is checked below.
+// Based on upstream revision 2dfe5e26aecfd9e5f27bf9d5837deea01acda24b.
+// The local scheduler assertions also compile in debug builds. The benchmark
+// uses release flags; its launch preconditions are checked below.
 #include "upstream/h100/matmul/matmul_12.cuh"
 
 namespace {
