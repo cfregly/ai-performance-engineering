@@ -2,6 +2,20 @@
   "schema_version": 1,
   "repository": "https://github.com/pranjalssh/fast.cu",
   "revision": "2dfe5e26aecfd9e5f27bf9d5837deea01acda24b",
+  "local_changes": {
+    "h100/sum.cu": {
+      "upstream_sha256": "7aaed0a7952f925ba6f72f6b6026851ea478eede64e19ffe5cea27865122f207",
+      "reason": "Reset before each grid; use bounded int32 inputs and an int64 oracle; fail on CUDA errors or mismatches."
+    },
+    "h100/matmul/matmul_11.cuh": {
+      "upstream_sha256": "3c1699e96f4664c55cbc74520bdee3f3fe23e1348387b2a910118fbfcedc5872",
+      "reason": "Fix the undeclared debug assertion and check schedule capacity."
+    },
+    "h100/matmul/matmul_12.cuh": {
+      "upstream_sha256": "f6c40cf385f7bd4a566c989cb98e04df30680ed6bea434461fce799e987ced4b",
+      "reason": "Fix the undeclared debug assertion and check schedule capacity."
+    }
+  },
   "license": "MIT",
   "license_file": "LICENSE",
   "hardware": {
@@ -107,8 +121,8 @@
     "h100/matmul/cublaslt_matmul.cu": "34eec28f850b3512ec64125ce3adf44bd847834be2a0d6aae44340f3f14178e2",
     "h100/matmul/matmul_1.cuh": "d5987339865a7a7c982c3ea333c86ecea90929513f33533fe9efe1238e77c9b6",
     "h100/matmul/matmul_10.cuh": "ce6965431164d6c7f5f2be20932f75e4547db5ceaa764955da6a392edb0c673f",
-    "h100/matmul/matmul_11.cuh": "3c1699e96f4664c55cbc74520bdee3f3fe23e1348387b2a910118fbfcedc5872",
-    "h100/matmul/matmul_12.cuh": "f6c40cf385f7bd4a566c989cb98e04df30680ed6bea434461fce799e987ced4b",
+    "h100/matmul/matmul_11.cuh": "0e9d5f76674a1335927558b011af374c067c958c5aaba1b99b8cb90617a46fe9",
+    "h100/matmul/matmul_12.cuh": "a6ba5315e414a32460bbf8cfcc5b7190b2a4935c42ae6c46420f00ffd030920d",
     "h100/matmul/matmul_2.cuh": "09dafdef86a55d9b59ef6b61f9794f92bc1d7829df39e39e1709fe98b48a10dd",
     "h100/matmul/matmul_3.cuh": "920c06c9aa74228c544b10a508ff72e1e01a51c438384ab7a9cfb3055f48671d",
     "h100/matmul/matmul_4.cuh": "1cf4ed06360d8dfbbd2ef62c6918459dad46af9fe86ea7f29a5779ed2cea4137",
@@ -118,6 +132,6 @@
     "h100/matmul/matmul_8.cuh": "d4353ad5b4608d43e9565d4b71dafc75e18e076d632a81e98e54859f73478f01",
     "h100/matmul/matmul_9.cuh": "3185afad674ed624ef97b8994669884ceac176cbf554523af9ef746153577069",
     "h100/matmul/pingpong_experimental.cuh": "9b7e44221b7eb37158e60587b6767c8d3baefceaf649325cca2b6771b86f161b",
-    "h100/sum.cu": "7aaed0a7952f925ba6f72f6b6026851ea478eede64e19ffe5cea27865122f207"
+    "h100/sum.cu": "149b5cc520c3f6f4313857d1bee303b52699b35c6b60576f3d16f0dc6d839a40"
   }
 }

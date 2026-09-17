@@ -563,7 +563,7 @@ void createHilbert(int M, int N, int CORES, int *space) {
         int x, y;
         d2xy(dim, i, x, y);
         if (x < M && y < N) {
-            assert(loc < SPACE_LEN);
+            assert(pos[core].size() < SPACE_LEN);
             assert(v[x][y] == '.');
             v[x][y] = '*';
             ++total;
@@ -575,12 +575,14 @@ void createHilbert(int M, int N, int CORES, int *space) {
     core = FCORES;
     for (int i = 0; i < FCORES; ++i) {
         if (pos.back().size() >= pos[0].size()-1) break;
+        assert(pos[core].size() < SPACE_LEN);
         pos[core].push_back(pos[i].back());
         pos[i].pop_back();
         ++core;
         if (core == CORES) {core = FCORES;}
     }
     for (int i = 0; i < CORES; ++i) {
+        assert(pos[i].size() <= SPACE_LEN);
         for (int j = 0; j < pos[i].size(); ++j) {
             space[i*SPACE_LEN + j] = pos[i][j];
         }
