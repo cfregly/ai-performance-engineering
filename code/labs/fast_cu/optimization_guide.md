@@ -3,8 +3,6 @@
 The source is [fast.cu](https://github.com/pranjalssh/fast.cu) and its accompanying
 [H100 worklog](https://cudaforfun.substack.com/p/outperforming-cublas-on-h100-a-worklog)
 and [NVFP4 article](https://cudaforfun.substack.com/p/outperforming-cublas-on-nvfp4).
-The supplied PDF of the NVFP4 article was consulted, including its optimization
-ladder figure and measurement protocol. The PDF itself is not redistributed.
 
 ## Existing coverage and the added experiments
 

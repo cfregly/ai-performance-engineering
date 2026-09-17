@@ -59,6 +59,10 @@ B200, and **63 tests with 5 expected hardware skips** on the local CPU host.
 
 ## Failures caught and corrected
 
+The pinned upstream files remain unchanged. The reduction reset race below is
+an upstream issue; the other corrections concern this repository's adapters,
+verification lifecycle, build integration, documentation, or test environment.
+
 1. The original reduction resets a shared output from inside one CTA while other
    CTAs can already update it. The adaptation resets before the grid on the
    current stream and uses bounded int32 inputs.
