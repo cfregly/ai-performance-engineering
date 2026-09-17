@@ -1,31 +1,33 @@
 # Code instruction router
 
-This router applies recursively to `code/`. Keep it short. The former instruction file and subsequent policy updates live in [the detailed authority](docs/agent-instructions-authority.md); its rules remain authoritative for the scopes routed below. Before changing a routed scope, read the linked section and any directly nested subsections. For an unlisted specialized task, search the authority's headings and load the matching section before editing.
+This router applies recursively to `code/`. Keep it short. The former instruction file and subsequent policy updates live in [the detailed authority](docs/agent-instructions-authority.md). Its rules remain authoritative for the scopes routed below. Before changing a routed scope, read the linked section and any directly nested subsections. For an unlisted specialized task, search the authority's headings and load the matching section before editing.
 
 The authority was originally moved without rewriting its text. Resolve relative paths written inside it as if the file were still `code/AGENTS.md`. In particular, its performance-review skill link means [`../.agents/skills/dean-performance-review/SKILL.md`](../.agents/skills/dean-performance-review/SKILL.md), and its audit evidence links start at repository root `docs/`.
 
 ## Always-loaded rules
 
+Apply the [repository writing rules](../AGENTS.md#writing) to all comments, documentation, messages, and PR text.
+
 ### Work efficiently and follow the repository
 
 - Ask at a material decision point only when the requested outcome and existing evidence do not determine the choice. Inspect neighboring chapters, shared helpers, runtime/profiling harnesses, and established launch flows before introducing a pattern.
 - Match existing conventions unless the task requires a deliberate correction. Report any intentional convention change and why the old convention was insufficient.
-- Prefer explicit flags and parameters. Do not change a global default without the user's direction or a clearly authorized cross-surface fix; when a default changes, update every affected interface and its documentation together.
+- Prefer explicit flags and parameters. Do not change a global default without the user's direction or a clearly authorized cross-surface fix. When a default changes, update every affected interface and its documentation together.
 - Make the long-term change. Keep benchmark-specific semantics local. Move repeated shared logic with at least two call sites into `core/`, and change the harness only for a cross-cutting infrastructure defect or repeated safe abstraction.
 
 ### Safety and repository state
 
 - Do not run destructive Git operations, including `git restore`, `git checkout`, `git reset --hard`, or `git revert`, unless the user explicitly requests the exact operation. Never restore a file to a prior revision on your own.
 - Do not delete tracked, untracked, or modified files without explicit user direction. Preserve unexpected local state, report it, and avoid overwriting another owner's work. A file already being edited may be changed only as needed for the task while retaining its existing changes.
-- Prefer materialized benchmark and profiler artifacts. Do not introduce symlink-dependent profile pairing; copy a symlinked input to a real, clearly named baseline or candidate artifact before comparison.
-- Agents may interrupt or terminate this task's `ncu`/`nsys` profilers whenever necessary, without asking for permission. This includes direct runs and scheduler jobs. Confirm run ownership, preserve artifacts, log the reason and job/process identifiers, and mark interrupted validation incomplete; follow [Queueing & Monitoring](docs/agent-instructions-authority.md#queueing--monitoring-critical).
+- Prefer materialized benchmark and profiler artifacts. Do not introduce symlink-dependent profile pairing. Copy a symlinked input to a real, clearly named baseline or candidate artifact before comparison.
+- Agents may interrupt or terminate this task's `ncu`/`nsys` profilers whenever necessary, without asking for permission. This includes direct runs and scheduler jobs. Confirm run ownership, preserve artifacts, log the reason and job/process identifiers, and mark interrupted validation incomplete. Follow [Queueing & Monitoring](docs/agent-instructions-authority.md#queueing--monitoring-critical).
 - The Amazon book URL in `README.md` is an allowlisted automated-link-check failure caused by bot protection.
 
 ### Correctness, verification, and performance claims
 
 - Dogfood every changed reachable path with a real repository invocation when feasible. Each fix needs focused regression coverage, syntax/import validation, and a realistic execution path appropriate to its risk. Record exact commands and outcomes.
 - Use the smallest sufficient verification loop while fixing. Run a broad suite only when requested, required by release/CI, or needed to bound a cross-cutting change. Never describe focused checks as a full-suite pass.
-- Benchmark-truth tests MUST execute real repo code paths end-to-end. Do not mock successful benchmark execution, profiler capture, correctness, GPU capability, or runtime validity. Narrow control-plane/orchestration tests MAY use `monkeypatch`/`patch` for environment, subprocess, clock, filesystem, process, and external-tool seams when the assertion concerns control flow; retain a real-path test for the surface.
+- Benchmark-truth tests MUST execute real repo code paths end-to-end. Do not mock successful benchmark execution, profiler capture, correctness, GPU capability, or runtime validity. Narrow control-plane/orchestration tests MAY use `monkeypatch`/`patch` for environment, subprocess, clock, filesystem, process, and external-tool seams when the assertion concerns control flow. Retain a real-path test for the surface.
 - Treat static performance review as hypothesis generation. Claim a win only after representative equivalent-workload baselines, correctness gates, repeated interleaved control/candidate measurements, noise reporting, and profiler or counter evidence for the mechanism.
 - Never use checksums, constants, stale setup outputs, hidden work reduction, or extra timed work to make verification pass. Prefer `VerificationPayloadMixin` and capture the actual timed output. Fail clearly when required verification data is absent.
 - Fail fast. Do not add silent fallback, auto-inference, broad exception swallowing, or degraded behavior under the same benchmark name. Fix the root cause or emit an explicit hard diagnostic.
@@ -44,7 +46,7 @@ This repository is public. Never commit live pod names, Kubernetes namespaces or
 
 ### API and lifecycle discipline
 
-- Remove deprecated entrypoints, shims, aliases, flags, docs, and tests in one change; update all references to the current API.
+- Remove deprecated entrypoints, shims, aliases, flags, docs, and tests in one change. Update all references to the current API.
 - Keep CLI, MCP, dashboard behavior, defaults, help, and docs synchronized. The dashboard API exposes only UI-used behavior unless expansion is explicitly requested. Regenerate MCP docs and update the API reference when tool metadata changes.
 - Keep secrets in the repository-root `.env` or `.env.local` only for local integrations. Never print, copy into artifacts, or commit credentials.
 
@@ -63,4 +65,4 @@ This repository is public. Never commit live pod names, Kubernetes namespaces or
 | NVFP4 grouped GEMM routing, kernels, Popcorn, ABAB, or TMEM | [NVFP4 Grouped GEMM Perf Playbook](docs/agent-instructions-authority.md#nvfp4-grouped-gemm-perf-playbook-critical), [NVFP4 Group GEMM V2 Learnings](docs/agent-instructions-authority.md#nvfp4-group-gemm-v2-learnings-2026-02-16), and [UTCCP64 + TMEM findings](docs/agent-instructions-authority.md#update-2026-02-18-utccp64--tmem-scale-layout-sm100a-findings) |
 | Fresh all-stage `run-e2e` sweep | [Full Sweep Playbook](docs/agent-instructions-authority.md#full-sweep-playbook) and [`code/FULL_SWEEP.md`](FULL_SWEEP.md) |
 
-The detailed authority also contains the full historical validity inventory, real-world incident references, concrete verification patterns, current tuning decisions, negative results, and retirement conditions. Those details are evidence, not automatically current runtime proof; revalidate drift-prone state before making or publishing a claim.
+The detailed authority also contains the full historical validity inventory, real-world incident references, concrete verification patterns, current tuning decisions, negative results, and retirement conditions. Those details are evidence, not automatically current runtime proof. Revalidate drift-prone state before making or publishing a claim.

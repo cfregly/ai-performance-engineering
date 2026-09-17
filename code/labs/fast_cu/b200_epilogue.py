@@ -46,14 +46,14 @@ def ensure_b200_capability_supported(capability: tuple[int, int]) -> None:
     if capability != EXPECTED_COMPUTE_CAPABILITY:
         raise RuntimeError(
             "SKIPPED: fast.cu B200 epilogue requires exact SM100 "
-            f"(compute capability 10.0); found {capability[0]}.{capability[1]}"
+            f"(compute capability 10.0). Found {capability[0]}.{capability[1]}"
         )
 
 
 def ensure_cuda_build_supported(cuda_build: tuple[int, int]) -> None:
     if cuda_build < MINIMUM_CUDA:
         raise RuntimeError(
-            "SKIPPED: st.global.v8.b32 requires a CUDA 12.9+ PyTorch build; "
+            "SKIPPED: st.global.v8.b32 requires a CUDA 12.9+ PyTorch build. "
             f"found {cuda_build[0]}.{cuda_build[1]}"
         )
 

@@ -1,4 +1,4 @@
-// Negative tests for the copied source; see checks/README.md.
+// Negative tests for the copied source. See checks/README.md.
 #define main fast_cu_sum_benchmark_main
 #include "sum.cu"
 #undef main

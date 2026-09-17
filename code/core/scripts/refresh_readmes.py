@@ -673,10 +673,10 @@ FAST_CU_RELATED_SECTION = dedent(
     """\
     ## Related fast.cu experiments
 
-    The [fast.cu lab](../labs/fast_cu/README.md) preserves the complete H100 and GB300
-    source progressions and adds native harness pairs, including B200 adaptations.
-    See its [chapter mapping and optimization guide](../labs/fast_cu/optimization_guide.md)
-    for the overlap with this chapter and the SM100 versus SM103 hardware boundaries.
+    The [fast.cu lab](../labs/fast_cu/README.md) includes every H100 and GB300 example
+    and adds benchmark pairs for this repository, including B200 adaptations.
+    Its [optimization guide](../labs/fast_cu/optimization_guide.md) maps the examples
+    to this chapter and explains which require SM100 or SM103.
     """
 )
 
@@ -987,7 +987,7 @@ ENTRIES["labs/README.md"] = Entry(
             | `labs/cutlass_profiler_kernel_selector/` | CUTLASS profiler-based kernel selection | ch06, ch09 |
             | `labs/decode_optimization/` | Decoder hot-path optimization | ch18, ch19 |
             | `labs/dynamic_router/` | Dynamic prefill/decode routing | ch17, ch19 |
-            | `labs/fast_cu/` | Pinned fast.cu H100 GEMM, B200 reduction and wide-store epilogue adaptations, and the complete GB300 NVFP4 ladder; see the [chapter mapping](fast_cu/optimization_guide.md) | ch09, ch10, ch11, ch14 |
+            | `labs/fast_cu/` | H100 GEMM, B200 reduction and epilogue experiments, and all GB300 NVFP4 examples. See the [chapter mapping](fast_cu/optimization_guide.md) | ch09, ch10, ch11, ch14 |
             | `labs/flashattention4/` | FlashAttention-4 pipeline co-design, including a [Colfax diary guide](flashattention4/colfax_optimization_diaries.md) to decode S/P ping-pong and backward hdim-64 TMEM de-aliasing | ch10, ch11, ch18 |
             | `labs/flashattention_gluon/` | FlashAttention experimentation | ch18 |
             | `labs/flashinfer_attention/` | FlashInfer block-sparse attention lab | ch16 |

@@ -148,7 +148,7 @@ def test_native_source_uses_current_stream_and_rejects_r9_degradation() -> None:
     assert "strict_setup_r9_schedule" in source
     assert "sched::build_schedule" in source
     assert "table.empty()" in source
-    assert "raster fallback is forbidden" in source
+    assert "Raster fallback is forbidden" in source
     assert "l2a_placement_errors" in source
     assert "bench::small_correctness_gates()" in source
     assert "small host-reference, guard, or determinism gate failed" in source

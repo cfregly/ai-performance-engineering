@@ -90,20 +90,20 @@ void require_exact_runtime(cudaDeviceProp* properties, int* device) {
     check_cuda(cudaRuntimeGetVersion(&runtime_version), "cudaRuntimeGetVersion");
     TORCH_CHECK(
         runtime_version >= 13010,
-        "SKIPPED: fast.cu NVFP4 requires CUDA runtime 13.1 or newer; found ",
+        "SKIPPED: fast.cu NVFP4 requires CUDA runtime 13.1 or newer. Found ",
         runtime_version);
     check_cuda(cudaGetDevice(device), "cudaGetDevice");
     check_cuda(cudaGetDeviceProperties(properties, *device), "cudaGetDeviceProperties");
     TORCH_CHECK(
         properties->major == 10 && properties->minor == 3,
-        "SKIPPED: fast.cu NVFP4 requires exact SM103 GB300/B300; found sm_",
+        "SKIPPED: fast.cu NVFP4 requires exact SM103 GB300/B300. Found sm_",
         properties->major,
         properties->minor,
         " on ",
         properties->name);
     TORCH_CHECK(
         properties->multiProcessorCount > 0 && properties->multiProcessorCount % 2 == 0,
-        "fast.cu NVFP4 requires a positive even SM count for two-CTA clusters; found ",
+        "fast.cu NVFP4 requires a positive even SM count for two-CTA clusters. Found ",
         properties->multiProcessorCount);
 }
 
@@ -200,7 +200,7 @@ void strict_setup_r9_schedule(
         !table.empty(),
         "fast.cu r9 could not build a strict L2-owned schedule for ",
         M, "x", N, "x", K,
-        "; raster fallback is forbidden");
+        ". Raster fallback is forbidden");
     sched::upload_table(table, bench::MAIN_TABLE);
     scheduled_device = device;
     scheduled_shape = {M, N, K};
@@ -214,7 +214,7 @@ public:
         TORCH_CHECK(M > 0 && N > 0 && K > 0, "M, N, and K must be positive");
         TORCH_CHECK(
             K % 32 == 0,
-            "cuBLASLt NVFP4 comparison requires K divisible by 32; found ",
+            "cuBLASLt NVFP4 comparison requires K divisible by 32. Found ",
             K);
 
         cudaDeviceProp properties{};
@@ -363,7 +363,7 @@ public:
             placement_errors == 0,
             "fast.cu r9 placement audit found ",
             placement_errors,
-            " cluster/L2 ownership mismatches; result is invalid");
+            " cluster/L2 ownership mismatches. Result is invalid");
 #else
         TORCH_CHECK(fast_prepared_, "fast.cu kernel was not prepared");
 #endif
@@ -498,7 +498,7 @@ private:
             active_clusters == clusters_,
             "fast.cu r9 requires all ",
             clusters_,
-            " two-CTA clusters resident; occupancy reports ",
+            " two-CTA clusters resident. Occupancy reports ",
             active_clusters);
         strict_setup_r9_schedule(
             device_, properties, grid_, clusters_, M_, N_, K_, operand_read_bytes);

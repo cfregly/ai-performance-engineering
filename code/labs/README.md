@@ -68,7 +68,7 @@ python -m cli.aisp bench list-targets --chapter labs/moe_cuda
 | `labs/cutlass_profiler_kernel_selector/` | CUTLASS profiler-based kernel selection | ch06, ch09 |
 | `labs/decode_optimization/` | Decoder hot-path optimization | ch18, ch19 |
 | `labs/dynamic_router/` | Dynamic prefill/decode routing | ch17, ch19 |
-| `labs/fast_cu/` | Pinned fast.cu H100 GEMM, B200 reduction and wide-store epilogue adaptations, and the complete GB300 NVFP4 ladder; see the [chapter mapping](fast_cu/optimization_guide.md) | ch09, ch10, ch11, ch14 |
+| `labs/fast_cu/` | H100 GEMM, B200 reduction and epilogue experiments, and all GB300 NVFP4 examples. See the [chapter mapping](fast_cu/optimization_guide.md) | ch09, ch10, ch11, ch14 |
 | `labs/flashattention4/` | FlashAttention-4 pipeline co-design, including a [Colfax diary guide](flashattention4/colfax_optimization_diaries.md) to decode S/P ping-pong and backward hdim-64 TMEM de-aliasing | ch10, ch11, ch18 |
 | `labs/flashattention_gluon/` | FlashAttention experimentation | ch18 |
 | `labs/flashinfer_attention/` | FlashInfer block-sparse attention lab | ch16 |

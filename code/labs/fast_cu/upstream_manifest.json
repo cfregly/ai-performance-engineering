@@ -5,7 +5,7 @@
   "local_changes": {
     "h100/sum.cu": {
       "upstream_sha256": "7aaed0a7952f925ba6f72f6b6026851ea478eede64e19ffe5cea27865122f207",
-      "reason": "Reset before each grid; use bounded int32 inputs and an int64 oracle; fail on CUDA errors or mismatches."
+      "reason": "Reset output before each grid. Use bounded int32 inputs and an int64 reference. Fail on CUDA errors or mismatches."
     },
     "h100/matmul/matmul_11.cuh": {
       "upstream_sha256": "3c1699e96f4664c55cbc74520bdee3f3fe23e1348387b2a910118fbfcedc5872",
@@ -24,7 +24,7 @@
       "compute_capability": [9, 0],
       "architecture": "sm_90a",
       "minimum_cuda": "12.0",
-      "minimum_cuda_basis": "Inferred from the compute_90a build, WGMMA, TMA, and CUtensorMap APIs; upstream does not state an exact minimum.",
+      "minimum_cuda_basis": "Inferred from the compute_90a build, WGMMA, TMA, and CUtensorMap APIs. Upstream does not state an exact minimum.",
       "libraries": ["CUDA Runtime", "CUDA Driver", "cuBLAS", "CUB"]
     },
     "nvfp4": {
@@ -32,7 +32,7 @@
       "compute_capability": [10, 3],
       "architecture": "sm_103a",
       "minimum_cuda": "13.1",
-      "minimum_cuda_basis": "Declared by the upstream README; the toolkit must support the required architecture-specific tcgen05 forms.",
+      "minimum_cuda_basis": "Declared by the upstream README. The toolkit must support the required architecture-specific tcgen05 forms.",
       "libraries": ["CUDA Runtime", "CUDA Driver", "cuBLASLt"]
     }
   },

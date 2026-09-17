@@ -7,7 +7,7 @@ from labs.fast_cu.nvfp4 import DEFAULT_RUNG, FastCuNvfp4Benchmark, Nvfp4Workload
 
 
 class FastCuNvfp4KernelBenchmark(FastCuNvfp4Benchmark):
-    """Native fast.cu r0-r9 kernel; r9 is the explicit default."""
+    """Run fast.cu r0-r9, with r9 as the default."""
 
     def __init__(
         self,

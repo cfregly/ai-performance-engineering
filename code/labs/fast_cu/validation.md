@@ -1,10 +1,12 @@
 # Integration validation - 2026-09-16
 
-The [machine-readable receipt](validation.json) records the B200 experiment,
-native CUDA source hashes, and digests of the original result reports. The
+The [validation record](validation.json) contains the B200 results and hashes
+of the CUDA source and reports used for those runs. The
 34 included files are based on the pinned upstream revision. The current file
 hashes and three local source fixes are recorded in
-[upstream_manifest.json](upstream_manifest.json).
+[upstream_manifest.json](upstream_manifest.json). Those fixes address defects in
+the older H100 reduction and scheduler examples. The newer GB300 NVFP4 r0-r9
+kernels are unchanged.
 
 ## B200 results
 
@@ -21,14 +23,13 @@ of both comparisons. Input equivalence and full-output verification passed.
 | `b200_epilogue` | 0.051687 ms | 0.048537 ms | 1.0649x | Passed the speed threshold in this run |
 
 These are **exploratory, non-canonical measurements on a virtualized host**.
-They are one fixed-resident-buffer harness run, not the blog's rotating-input,
-alternating-round protocol. No expectation file or published speedup baseline
-was created. Repeat interleaved measurements on the intended deployment hardware
-before treating either ratio as a durable improvement.
+Each comparison reused fixed GPU buffers in one harness run. The blog rotates
+inputs and alternates kernel order. No expectation file or published speedup
+baseline was created. Repeat measurements with alternating kernel order on the
+intended hardware before treating either result as a lasting improvement.
 
-The reduction is not marked as a passing optimization merely because it was
-slightly faster. The 256-bit epilogue result applies to that isolated conversion
-and store workload, not to a full B200 NVFP4 GEMM.
+The reduction missed the required speed threshold. The epilogue result measures
+only FP32-to-FP16 conversion and stores. It does not measure a full NVFP4 GEMM.
 
 ## Correctness and integration checks
 
@@ -50,13 +51,14 @@ B200, and **63 tests with 5 expected hardware skips** on the local CPU host.
   zero warnings. Focused Ruff, formatting, syntax, YAML, and local-link checks
   also passed.
 - The H100 adapter compiled and linked for `sm_90a` with CUDA 13.0. No H100
-  kernel was executed; numerical and performance qualification still needs H100.
-- Every SM103 rung, r0-r9, compiled, linked, and imported together in one Python
-  process with CUDA compiler 13.1.80 and `compute_103a,sm_103a`. This isolated
-  compile-only check used PyTorch 2.9.1+cu130, cuBLAS 13.0.0.19 headers/library,
-  and CUDA 13.1.80 runtime headers/library, with no GPU visible and no kernel launches. The production adapter still requires CUDA runtime and toolkit 13.1+
-  on exact SM103 hardware. Its independent host oracle, poisoned-output, guard,
-  determinism, and placement checks remain unqualified without B300/GB300.
+  kernel was executed. Correctness and performance still need testing on H100.
+- Every unchanged upstream SM103 rung, r0-r9, compiled, linked, and imported
+  together in one Python process with CUDA compiler 13.1.80 and
+  `compute_103a,sm_103a`. This compile-only check used PyTorch 2.9.1+cu130, cuBLAS 13.0.0.19 headers/library,
+  and CUDA 13.1.80 runtime headers/library. No GPU was visible and no kernels ran.
+  The adapter requires CUDA runtime and toolkit 13.1+ on SM103 hardware. Its host
+  reference, poisoned-output, guard, determinism, and placement checks still
+  need to run on B300/GB300.
 
 ## Copied-source fixes tested on B200
 
@@ -67,15 +69,15 @@ errors or mismatches. On B200/SM100 with CUDA 13.0.88, the original
 `536860779`. Twenty-four additional launches with poisoned outputs and two
 input patterns passed. Deliberate kernel/CUB mismatches, invalid dimensions,
 an invalid kernel number, and unavailable CUDA all returned exit code 1.
-These are correctness checks; the driver's printed timings are not new
+These are correctness checks. The driver's printed timings are not new
 performance claims.
 
 The copied `matmul_11.cuh` and `matmul_12.cuh` now assert the actual schedule
 queue size instead of the undeclared `loc`. The original debug build failed
-on `loc`; the patched full driver compiled in both debug and release modes
+on `loc`. The patched full driver compiled in both debug and release modes
 for SM90a. Host-only schedule tests passed six shapes for both headers in
 both builds, including exact queue capacity. No H100 GPU kernel was launched.
-Reproducible tests live in [checks/](checks/README.md); the proposed upstream
+Reproducible tests live in [checks/](checks/README.md). The proposed upstream
 patches remain limited to the three source files.
 
 ## Failures caught and corrected
@@ -89,17 +91,17 @@ lifecycle, build integration, documentation, or test environment.
    CTAs can already update it. The adaptation resets before the grid on the
    current stream and uses bounded int32 inputs.
 2. The first B200 epilogue conversion swapped adjacent FP16 lanes. The full-output
-   GPU oracle rejected it; the PTX operands were corrected and the test passed.
+   comparison caught it. Correcting the PTX operands fixed the output.
 3. Publishing an uninitialized epilogue output during setup triggered the
-   harness's precomputation check. Setup now retains only a private allocation;
-   the public output is assigned by the timed invocation.
+   harness's precomputation check. Setup now retains only a private allocation.
+   The public output is assigned by the timed invocation.
 4. Verification payloads retained previous GPU inputs across teardown. Setup and
    teardown now release those payloads in every adapter.
 5. PyTorch's extension flags disabled the BF16 conversion used by the original
    Hopper header. The H100 adapter explicitly restores that conversion when
    compiling, without modifying the pinned source.
 6. The host's system Python reported conflicting installed-library versions.
-   The harness correctly rejected that comparison; reported results use an
+   The harness rejected that comparison. Reported results use an
    isolated environment with unambiguous package metadata.
 7. The final documentation audit caught links added only to generated READMEs.
    Their definitions now live in the README generator, so regeneration preserves
@@ -128,7 +130,7 @@ CUDA 13.1+:
 AISP_RUN_FAST_CU_NVFP4_GPU_TEST=1 python -m pytest tests/test_fast_cu_nvfp4.py -q -ra
 ```
 
-The native default is r9; construct `FastCuNvfp4KernelBenchmark(rung=N)` to
+The native default is r9. Construct `FastCuNvfp4KernelBenchmark(rung=N)` to
 select another snapshot. Every rung must pass its own target-host checks before
-its results can be used. Retained upstream logs and article figures are source
-evidence, not measurements from this integration.
+its results can be used. Upstream logs and article figures describe the author's
+runs. This validation record describes our runs.

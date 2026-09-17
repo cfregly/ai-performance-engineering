@@ -1,4 +1,4 @@
-"""Content-keyed, setup-only CUDA extension builds for the fast.cu lab."""
+"""Build fast.cu CUDA extensions during setup and cache them by source hash."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ def load_cuda_extension(
     extra_ldflags: list[str],
     minimum_cuda: tuple[int, int],
 ):
-    """Build outside timing; never install dependencies or change global flags."""
+    """Build before timing without installing dependencies or changing global flags."""
     manifest = verify_upstream()
     from torch.utils.cpp_extension import CUDA_HOME, load
 
@@ -68,7 +68,7 @@ def load_cuda_extension(
     if version < minimum_cuda:
         required = ".".join(map(str, minimum_cuda))
         raise RuntimeError(
-            f"SKIPPED: fast.cu requires CUDA toolkit {required} or newer; found {version}"
+            f"SKIPPED: fast.cu requires CUDA toolkit {required} or newer. Found {version}"
         )
     module_name = extension_name(
         name,

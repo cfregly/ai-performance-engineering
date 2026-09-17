@@ -125,7 +125,7 @@ void check_tensor_contract(
   TORCH_CHECK(count > 0, "fast.cu B200 epilogue count must be positive");
   TORCH_CHECK(
       count % kElementsPerThread == 0,
-      "fast.cu B200 epilogue count must be divisible by 16; found ",
+      "fast.cu B200 epilogue count must be divisible by 16. Found ",
       count);
   TORCH_CHECK(
       reinterpret_cast<uintptr_t>(output.data_ptr()) % kWideStoreAlignment == 0,
@@ -175,7 +175,7 @@ void require_exact_sm100() {
   AT_CUDA_CHECK(cudaGetDeviceProperties(&properties, device));
   TORCH_CHECK(
       properties.major == 10 && properties.minor == 0,
-      "fast.cu B200 epilogue requires exact SM100 (compute capability 10.0); found ",
+      "fast.cu B200 epilogue requires exact SM100 (compute capability 10.0). Found ",
       properties.major,
       ".",
       properties.minor);
