@@ -27,8 +27,8 @@ hot_path_model:
     nvfp4_output_bytes: 134217728
     host_device_bytes: 0
     storage_or_network_operations: 0
-  operation_cost_source: tensor shapes and scalar formats; not measured hardware costs
-  expected_dominant_cost: tensor-core feed and epilogue for GEMM; input bandwidth and atomics for reduction; load/convert/store instruction and memory throughput for epilogue
+  operation_cost_source: analytical counts from tensor shapes and scalar formats
+  expected_dominant_cost: tensor-core feed and epilogue for GEMM, input bandwidth and atomics for reduction, and load/convert/store instruction and memory throughput for epilogue
   best_case_primary_kpi_improvement_pct: null
 evidence:
   baseline_artifact: null

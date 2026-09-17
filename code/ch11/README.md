@@ -89,7 +89,7 @@ python -m cli.aisp bench run --targets ch11 --profile minimal
 
 ## Related fast.cu experiments
 
-The [fast.cu lab](../labs/fast_cu/README.md) preserves the complete H100 and GB300
-source progressions and adds native harness pairs, including B200 adaptations.
-See its [chapter mapping and optimization guide](../labs/fast_cu/optimization_guide.md)
-for the overlap with this chapter and the SM100 versus SM103 hardware boundaries.
+The [fast.cu lab](../labs/fast_cu/README.md) includes every H100 and GB300 example
+and adds benchmark pairs for this repository, including B200 adaptations.
+Its [optimization guide](../labs/fast_cu/optimization_guide.md) maps the examples
+to this chapter and explains which require SM100 or SM103.

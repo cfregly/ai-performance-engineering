@@ -37,7 +37,7 @@ environment:
     os: "recorded by harness provenance"
     kernel: "recorded by harness provenance"
     driver: "recorded by harness provenance"
-    cuda: "13.1 or newer; extension compiled only for sm_103a"
+    cuda: "13.1 or newer. Extension compiled only for sm_103a"
     pytorch: "recorded by harness provenance"
     triton: "not used"
     frameworks: ["CUDA C++", "cuBLASLt", "PyTorch extension"]
@@ -68,7 +68,7 @@ hot_path_model:
     synchronizations_or_locks: 0
     api_process_or_rpc_crossings: 1
     storage_or_network_operations: 0
-  operation_cost_source: "Analytical counts from the pinned 8192^3 packed layouts; runtime cost unmeasured"
+  operation_cost_source: "Analytical counts from the pinned 8192^3 packed layouts. Runtime cost is unmeasured"
   expected_dominant_cost: "NVFP4 tensor-core GEMM plus FP16 output traffic"
   best_case_primary_kpi_improvement_pct: null
 

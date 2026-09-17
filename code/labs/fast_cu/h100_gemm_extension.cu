@@ -1,8 +1,8 @@
 // Repository adapter for pranjalssh/fast.cu's latest Hopper BF16 GEMM.
 //
-// The matmul_12 source includes local scheduler assertion fixes. This translation unit
-// supplies strict tensor validation, setup-only TMA/schedule construction,
-// cuBLAS parity, and current-PyTorch-stream launches.
+// matmul_12 includes local scheduler assertion fixes. This adapter checks tensors,
+// prepares TMA descriptors and schedules before timing, compares against cuBLAS,
+// and launches on the current PyTorch stream.
 
 #include <ATen/cuda/CUDAContext.h>
 #include <c10/cuda/CUDAGuard.h>
@@ -48,7 +48,7 @@ void checked_cuda(cudaError_t status, const char* file, int line) {
 
 // Based on upstream revision 2dfe5e26aecfd9e5f27bf9d5837deea01acda24b.
 // The local scheduler assertions also compile in debug builds. The benchmark
-// uses release flags; its launch preconditions are checked below.
+// uses release flags. The checks below enforce its launch requirements.
 #include "upstream/h100/matmul/matmul_12.cuh"
 
 namespace {
@@ -77,7 +77,7 @@ void check_exact_h100(int device) {
   C10_CUDA_CHECK(cudaGetDeviceProperties(&properties, device));
   TORCH_CHECK(
       properties.major == 9 && properties.minor == 0,
-      "fast.cu H100 BF16 GEMM requires exact SM 9.0 (sm_90a); got SM ",
+      "fast.cu H100 BF16 GEMM requires exact SM 9.0 (sm_90a). Found SM ",
       properties.major,
       ".",
       properties.minor);
@@ -107,7 +107,7 @@ void check_gemm_tensors(
       "GEMM dimensions exceed the upstream int32 ABI");
   TORCH_CHECK(
       physical_output.size(0) == n && physical_output.size(1) == m,
-      "physical output must have transposed [N,M] layout; expected [",
+      "physical output must have transposed [N,M] layout. Expected [",
       n,
       ",",
       m,
@@ -335,7 +335,7 @@ void run_upstream_gemm(
       g_upstream.a_pointer == a.data_ptr() &&
           g_upstream.b_pointer == b.data_ptr() &&
           g_upstream.output_pointer == physical_output.data_ptr(),
-      "prepared GEMM storage changed; call prepare_upstream_gemm() again");
+      "prepared GEMM storage changed. Call prepare_upstream_gemm() again");
 
   auto* kernel = M12::matmulKernel12<
       kBlockM,

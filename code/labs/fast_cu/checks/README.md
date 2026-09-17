@@ -3,6 +3,8 @@
 These tests execute the corrected source in `../upstream`. They are separate
 from the proposed upstream patches. Run from `code/labs/fast_cu` with CUDA 13.0+.
 The B200 runs below check correctness, not comparative performance.
+They cover fixes to the older H100 reduction and scheduler examples. The newer
+GB300 NVFP4 r0-r9 kernels are unchanged and are not exercised here.
 
 ```bash
 mkdir -p /tmp/fast-cu-checks

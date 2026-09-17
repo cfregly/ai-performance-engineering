@@ -87,13 +87,13 @@ def require_nvfp4_runtime() -> int:
     if runtime is None or runtime < CUDA_VERSION:
         found = torch.version.cuda if torch.version.cuda is not None else "none"
         raise RuntimeError(
-            f"SKIPPED: fast.cu NVFP4 requires CUDA runtime 13.1 or newer; found {found}"
+            f"SKIPPED: fast.cu NVFP4 requires CUDA runtime 13.1 or newer. Found {found}"
         )
     device = torch.cuda.current_device()
     capability = torch.cuda.get_device_capability(device)
     if capability != COMPUTE_CAPABILITY:
         raise RuntimeError(
-            "SKIPPED: fast.cu NVFP4 requires exact SM103 GB300/B300; "
+            "SKIPPED: fast.cu NVFP4 requires exact SM103 GB300/B300. "
             f"found sm_{capability[0]}{capability[1]} on "
             f"{torch.cuda.get_device_name(device)}"
         )
@@ -101,7 +101,7 @@ def require_nvfp4_runtime() -> int:
 
 
 def require_nvfp4_toolkit() -> Path:
-    """Require nvcc 13.1+ before starting the content-keyed JIT build."""
+    """Require nvcc 13.1+ before building the extension."""
     from torch.utils.cpp_extension import CUDA_HOME
 
     if CUDA_HOME is None:
@@ -118,14 +118,14 @@ def require_nvfp4_toolkit() -> Path:
     version = parse_nvcc_release(completed.stdout)
     if version < CUDA_VERSION:
         raise RuntimeError(
-            "SKIPPED: fast.cu NVFP4 requires CUDA toolkit 13.1 or newer; "
+            "SKIPPED: fast.cu NVFP4 requires CUDA toolkit 13.1 or newer. "
             f"found {version[0]}.{version[1]}"
         )
     return nvcc
 
 
 def load_nvfp4_extension(rung: int = DEFAULT_RUNG):
-    """Verify provenance and runtime gates, then compile one explicit rung."""
+    """Check source hashes and hardware support, then compile the selected rung."""
     rung = validate_rung(rung)
     manifest = verify_upstream()
     hardware = manifest.get("hardware", {}).get("nvfp4", {})
@@ -222,7 +222,7 @@ class FastCuNvfp4Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self._run_untimed_arm_gate()
 
     def _run_untimed_arm_gate(self) -> None:
-        """Prove full overwrite and determinism on separately poisoned outputs."""
+        """Check that repeated runs overwrite every output and produce the same result."""
         if self._native_context is None:
             raise RuntimeError("native context is unavailable for setup validation")
         m, n = self.workload.m, self.workload.n

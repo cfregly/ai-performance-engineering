@@ -8,7 +8,7 @@ run_metadata:
 comparison_axis:
   variable_under_test: kernel_implementation
   control: "cuBLASLt first usable NVFP4 algorithm"
-  candidate: "pinned fast.cu rung; r9 by default"
+  candidate: "pinned fast.cu rung, r9 by default"
   constants_locked:
     - shape_8192x8192x8192
     - packed_e2m1_inputs

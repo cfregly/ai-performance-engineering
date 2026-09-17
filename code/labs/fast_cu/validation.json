@@ -19,7 +19,7 @@
     "validity_profile": "strict",
     "requested_iterations": 20,
     "requested_warmup": 5,
-    "protocol": "repository harness fixed resident buffers; not source blog rotating paired-round protocol"
+    "protocol": "repository harness with fixed resident buffers. The blog rotates inputs and alternates kernel order."
   },
   "native_sources_sha256": {
     "h100_reduction_kernels.cu": "a8d786df751482c5a431b22b279548adbed09600621a167ca578d701e44aed48",
@@ -48,7 +48,7 @@
         "torch": "succeeded"
       },
       "source_result_sha256": "b8cec133bd9b886311f8784d938783b46f91a0a4726c90c61fa4129a38f501f2",
-      "speedup_threshold_source": "repository harness default; raw expectation override was null"
+      "speedup_threshold_source": "repository harness default. The raw expectation override was null"
     },
     {
       "target": "labs/fast_cu:b200_epilogue",
@@ -70,7 +70,7 @@
         "torch": "succeeded"
       },
       "source_result_sha256": "6a63865270a5fdfbb5a652e028bce169a68f565855caf427b2fb181fe01be4ec",
-      "speedup_threshold_source": "repository harness default; raw expectation override was null"
+      "speedup_threshold_source": "repository harness default. The raw expectation override was null"
     }
   ],
   "limitations": [

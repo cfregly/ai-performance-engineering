@@ -32,7 +32,7 @@ def ensure_h100_capability_supported(
         return
     major, minor = capability
     raise RuntimeError(
-        f"SKIPPED: {module_name} requires exact SM 9.0 (sm_90a); got SM {major}.{minor}."
+        f"SKIPPED: {module_name} requires exact SM 9.0 (sm_90a). Found SM {major}.{minor}."
     )
 
 
@@ -44,8 +44,8 @@ def ensure_reduction_capability_supported(
         return
     major, minor = capability
     raise RuntimeError(
-        f"SKIPPED: {module_name} supports exact SM 9.0 (H100) and SM 10.0 (B200); "
-        f"got SM {major}.{minor}."
+        f"SKIPPED: {module_name} supports exact SM 9.0 (H100) and SM 10.0 (B200). "
+        f"Found SM {major}.{minor}."
     )
 
 
@@ -133,14 +133,13 @@ def load_int32_reduction_extension() -> ModuleType:
 
 
 class H100Bf16GemmBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
-    """Common full-output contract for A[M,K] @ B[N,K].T."""
+    """Shared setup and output checks for A[M,K] @ B[N,K].T."""
 
     allow_cpu = False
     matrix_rows = GEMM_M
     matrix_cols = GEMM_N
     shared_dim = GEMM_K
-    # Upstream's own full-matrix check uses an absolute 0.1 bound. Retain that
-    # bound here; target-H100 qualification must establish any future change.
+    # Keep upstream's absolute tolerance of 0.1 until H100 tests support a change.
     output_tolerance = (1e-2, 1e-1)
 
     def __init__(self) -> None:
@@ -253,7 +252,7 @@ class H100Bf16GemmBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
 
 
 class Int32ReductionBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
-    """Common overflow-safe input and full scalar-output reduction contract."""
+    """Shared input setup and result checks for int32 reductions without overflow."""
 
     allow_cpu = False
     element_count = REDUCTION_ELEMENTS
@@ -284,8 +283,7 @@ class Int32ReductionBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self._clear_runtime_state()
         ensure_int32_reduction_supported()
         self.extension = load_int32_reduction_extension()
-        # Caller-owned RNG, with a bounded domain: every possible sum fits int32,
-        # so both CUB and the upstream-derived atomic tree have defined arithmetic.
+        # Use the caller's RNG. Keep every possible sum within int32 range.
         self.input = torch.randint(
             -1,
             2,

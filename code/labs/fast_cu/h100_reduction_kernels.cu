@@ -32,7 +32,7 @@ void check_supported_device(int device) {
       (properties.major == 10 && properties.minor == 0);
   TORCH_CHECK(
       supported,
-      "fast.cu int32 reduction supports exact SM 9.0 (H100) and SM 10.0 (B200); got SM ",
+      "fast.cu int32 reduction supports exact SM 9.0 (H100) and SM 10.0 (B200). Found SM ",
       properties.major,
       ".",
       properties.minor);
@@ -66,9 +66,8 @@ __device__ __forceinline__ int warp_reduce_sum(int value) {
   return value;
 }
 
-// Derived from upstream sumKernel2<1024, 16>. The only semantic change inside
-// the kernel is removal of `if (i == 0) *d_out = 0`; reset ordering belongs to
-// the host launch sequence below, where it cannot race another CTA.
+// Derived from upstream sumKernel2<1024, 16>. Reset the output on the host
+// before launch so one CTA cannot erase another CTA's partial sum.
 __global__ __launch_bounds__(kBlockSize) void safe_vectorized_sum_kernel(
     const int4* input, int* output, int vector_count) {
   __shared__ __align__(16) int warp_sums[kWarpSize];

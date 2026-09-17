@@ -9,7 +9,7 @@ from labs.fast_cu.h100_common import H100Bf16GemmBenchmarkBase
 
 
 class OptimizedH100Bf16GemmBenchmark(H100Bf16GemmBenchmarkBase):
-    """Run upstream matmul_12 with repository timing and verification semantics."""
+    """Run matmul_12 with the repository benchmark harness."""
 
     nvtx_label = "fast_cu_optimized_h100_bf16_gemm"
 
