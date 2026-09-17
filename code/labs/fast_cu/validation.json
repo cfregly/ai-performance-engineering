@@ -23,7 +23,7 @@
   },
   "native_sources_sha256": {
     "h100_reduction_kernels.cu": "a8d786df751482c5a431b22b279548adbed09600621a167ca578d701e44aed48",
-    "h100_gemm_extension.cu": "e0442d4dfc4910ba981034d1c2544dcdaebabb464d62c115e2f755f4c272174c",
+    "h100_gemm_extension.cu": "a6bcfd722a6f8aef626e907cba03481b954894cb1b19bd8e88cea99ac3918467",
     "nvfp4_native.cu": "2ae5c0b8bb5b8a6e60adae4e28ab5541e072c269144aea62d3eb89d405f066be",
     "b200_epilogue.cu": "806f6226b44b6f1cd99a8e944650ae58571ee4647fb3b1b1d5163e2bb283d920"
   },
@@ -111,7 +111,56 @@
       "cuda_compiler": "13.0.88",
       "cuda_architecture": "compute_90a,sm_90a",
       "compiled_and_linked": true,
-      "kernels_executed": false
+      "kernels_executed": false,
+      "source_log_sha256": "ef5df84edf243e7d4c22265433267a2357348016f36b10c4030135f04ffbf89b",
+      "includes_local_schedule_assertion_fixes": true
+    }
+  },
+  "local_source_patch_validation": {
+    "upstream_base": "2dfe5e26aecfd9e5f27bf9d5837deea01acda24b",
+    "gpu": "NVIDIA B200",
+    "compute_capability": "10.0",
+    "cuda_compiler": "13.0.88",
+    "reduction_default_elements": 1073741824,
+    "reduction_iterations_per_variant": 100,
+    "reduction_variants": 5,
+    "reference_and_all_results": 536860779,
+    "poisoned_output_regression_launches": 24,
+    "negative_cases_expected_exit_code": 1,
+    "negative_cases": [
+      "kernel_mismatch",
+      "cub_mismatch",
+      "invalid_length",
+      "invalid_kernel",
+      "no_cuda"
+    ],
+    "h100_debug_and_release_compile": "passed_sm_90a",
+    "scheduler_host_checks": {
+      "headers": 2,
+      "shapes": 6,
+      "build_modes": 2,
+      "status": "passed"
+    },
+    "h100_gpu_kernels_executed": false,
+    "source_sha256": {
+      "h100/sum.cu": "149b5cc520c3f6f4313857d1bee303b52699b35c6b60576f3d16f0dc6d839a40",
+      "h100/matmul/matmul_11.cuh": "0e9d5f76674a1335927558b011af374c067c958c5aaba1b99b8cb90617a46fe9",
+      "h100/matmul/matmul_12.cuh": "a6ba5315e414a32460bbf8cfcc5b7190b2a4935c42ae6c46420f00ffd030920d"
+    },
+    "evidence_log_sha256": {
+      "b200-reduction.log": "ca1997e8ddc3d03ab310aa85cefc9e4901e203919b99b77b45ba5dd1760bd71e",
+      "h100-scheduler-checks.log": "ec5cdc7605b5434f96163228233b93069f2c8e55aff292470cca91c38ff178c1",
+      "negative-reduction-tests.log": "eac8d4c642b00b28ba241fe37d336587ce2090a40400e350bb97a6d1f4e5e9c9",
+      "no-gpu-failure.log": "a67bc2b60d12e1225cc7e15d3fcfd5acca69e8e0fa0f5e5d350312d86abc039d",
+      "upstream-debug-negative-control.log": "8ba1b0e43388b0bde7cd8dac8448a53ab47a8a5bfb4599ed93713b0a5cba361b"
+    },
+    "integration_b200_tests": {
+      "passed": 66,
+      "skipped": 2
+    },
+    "integration_cpu_tests": {
+      "passed": 63,
+      "skipped": 5
     }
   }
 }

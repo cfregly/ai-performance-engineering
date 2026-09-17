@@ -27,8 +27,9 @@ together so that an unfamiliar reader can inspect the complete examples locally.
   persistent scheduling. The supplementary `cublaslt_matmul.cu` and
   `pingpong_experimental.cuh` are also retained as upstream reference experiments.
 - [Hopper reduction](upstream/h100/sum.cu) preserves all four source variants and
-  its CUB comparison. The native adapter uses a corrected variant; the original
-  program has a grid-wide output-reset race and weak correctness handling.
+  its CUB comparison. Both the copied source and the native adapter fix the
+  original grid-wide output-reset race. The copied driver now uses bounded
+  inputs and checks each result against an independent int64 reference.
 - [GB300 driver](upstream/gb300/nvfp4/main.cu) and the ten headers below preserve
   the entire NVFP4 progression, scheduler controls, and correctness runner.
 

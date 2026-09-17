@@ -77,7 +77,7 @@ def _gemm_cuda_flags(capability: tuple[int, int]) -> list[str]:
         # torch cpp_extension disables this conversion by default, but pinned
         # matmul_12.cuh converts FP32 accumulators to BF16 at its store epilogue.
         # Extra CUDA flags follow torch's defaults, so this narrowly restores
-        # the constructor without changing the unchanged upstream header.
+        # the constructor used by the upstream conversion code.
         "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
         "-gencode=arch=compute_90a,code=sm_90a",
         f"-I{_LAB_DIR}",

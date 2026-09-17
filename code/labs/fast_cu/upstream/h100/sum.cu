@@ -1,36 +1,23 @@
 /**
-make sum && ./sum
+make sum && ./out/sum
 
-N = 1<<30, GPU = H100:
-<---------------| kernel1 |--------------->
-Bandwidth: 3232.76 GB/s
-Time taken: 1.32858 ms
-Sum: 1609549285
-
-<---------------| kernel2 |--------------->
-Bandwidth: 3239.69 GB/s
-Time taken: 1.32573 ms
-Sum: 1609549285
-
-<---------------| kernel3 |--------------->
-Bandwidth: 3240.11 GB/s
-Time taken: 1.32556 ms
-Sum: 1609549285
-
-<---------------| kernel4 |--------------->
-Bandwidth: 3241.47 GB/s
-Time taken: 1.32501 ms
-Sum: 1609549285
-
-<---------------| cub |--------------->
-Bandwidth: 3193.36 GB/s
-Time taken: 1.34497 ms
-Sum: 1609549285
+The default workload remains N = 1<<30. Inputs are 0 or 1 so the exact sum is
+provably within the int32 range used by the kernels.
 */
 
 #include <cuda_runtime.h>
 #include <cub/cub.cuh>
+#include <cstdint>
+#include <cstdlib>
 #include <iostream>
+#include <limits>
+
+void checkCuda(cudaError_t status, const char *operation) {
+    if (status != cudaSuccess) {
+        std::cerr << operation << " failed: " << cudaGetErrorString(status) << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
+}
 
 const int WARP_SIZE = 32;
 
@@ -52,9 +39,6 @@ __global__ void sumKernel1(int *d_in, int *d_out, int n) {
 
     unsigned int tid = threadIdx.x;
     unsigned int i = blockIdx.x*BlockSize*Batch + tid;
-
-    // Set output to 0
-    if (i == 0) *d_out = 0;
 
     // Read Batch elements(strided)
     float value = i < n ? d_in[i] : 0;
@@ -96,10 +80,6 @@ __global__ void sumKernel2(int4 *d_in, int *d_out, int n) {
 
     unsigned int tid = threadIdx.x;
     unsigned int i = blockIdx.x*BlockSize*Batch + tid;
-    if (i == 0) {
-        *d_out = 0;
-    }
-
     int4 value = i < n ? d_in[i] : make_int4(0, 0, 0, 0);
     int sum = value.x + value.y + value.z + value.w;
     #pragma unroll
@@ -131,7 +111,6 @@ __global__ void sumKernel3(int4 *d_in, int *d_out, int n) {
     unsigned int tid = threadIdx.x;
     unsigned int i = blockIdx.x*BlockSize*Batch + tid;
 
-    if (i == 0) *d_out = 0;
     if (tid == 0) sdata[0] = 0;
 
     int4 value = i < n ? d_in[i] : make_int4(0, 0, 0, 0);
@@ -170,7 +149,6 @@ __global__ void sumKernel4(int4 *d_in, int *d_out, int n) {
     unsigned int tid = threadIdx.x;
     unsigned int i = blockIdx.x*BlockSize*Batch + tid;
 
-    if (i == 0) *d_out = 0;
     if (tid == 0) sdata[0] = 0;
 
     int4 value = i < n ? __ldcg(&d_in[i]) : make_int4(0, 0, 0, 0);
@@ -199,7 +177,16 @@ const int NUM_KERNEL_RUNS = 100;
 const int NUM_STD_RUNS = NUM_KERNEL_RUNS;
 
 void kernelDispatch(int kernelNum, int *d_in, int *d_out, int *h_out, int N) {
-    assert(N % 4 == 0);
+    // N counts scalar ints. The int4 kernels require at least four values and
+    // a multiple-of-four length.
+    if (N < 4 || N % 4 != 0) {
+        std::cerr << "N must be at least 4 and divisible by 4; got " << N << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
+
+    // The reset must be ordered before every cross-CTA atomic reduction.
+    // Keeping it in dispatch also keeps the reset inside the timed region.
+    checkCuda(cudaMemsetAsync(d_out, 0, sizeof(int), 0), "reset reduction output");
     switch (kernelNum) {
         case 1:
             sumKernel1<512, 20><<<ceilDiv(N, 512*20), 512>>>(d_in, d_out, N);
@@ -213,7 +200,11 @@ void kernelDispatch(int kernelNum, int *d_in, int *d_out, int *h_out, int N) {
         case 4:
             sumKernel4<1024, 16><<<ceilDiv(N, 1024*4*16), 1024>>>(reinterpret_cast<int4*>(d_in), d_out, N/4);
             break;
+        default:
+            std::cerr << "kernel number must be in [1, 4]; got " << kernelNum << std::endl;
+            std::exit(EXIT_FAILURE);
     }
+    checkCuda(cudaGetLastError(), "launch reduction kernel");
 }
 
 void printDetails(std::string info, float timeMs, int N, int sum) {
@@ -224,71 +215,89 @@ void printDetails(std::string info, float timeMs, int N, int sum) {
     std::cout << "Sum: " << sum << std::endl << std::endl;
 }
 
-void sumKernelCall(int kernelNum, int *d_in, int *d_out, int *h_out, int N, int times) {
+bool sumKernelCall(
+    int kernelNum, int *d_in, int *d_out, int *h_out, int N, int times, int64_t expected) {
     cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start);
+    checkCuda(cudaEventCreate(&start), "create start event");
+    checkCuda(cudaEventCreate(&stop), "create stop event");
+    checkCuda(cudaEventRecord(start), "record start event");
 
     for (int i = 0; i < times; ++i) kernelDispatch(kernelNum, d_in, d_out, h_out, N);
 
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
+    checkCuda(cudaEventRecord(stop), "record stop event");
+    checkCuda(cudaEventSynchronize(stop), "synchronize stop event");
 
     float elapsedTime;
-    cudaEventElapsedTime(&elapsedTime, start, stop);
+    checkCuda(cudaEventElapsedTime(&elapsedTime, start, stop), "measure elapsed time");
 
-    cudaMemcpy(h_out, d_out, sizeof(int), cudaMemcpyDeviceToHost);
-    cudaDeviceSynchronize();
+    checkCuda(cudaMemcpy(h_out, d_out, sizeof(int), cudaMemcpyDeviceToHost), "copy kernel output");
+
+    checkCuda(cudaEventDestroy(start), "destroy start event");
+    checkCuda(cudaEventDestroy(stop), "destroy stop event");
+
+    if (static_cast<int64_t>(*h_out) != expected) {
+        std::cerr << "kernel" << kernelNum << " mismatch: expected " << expected
+                  << ", got " << *h_out << std::endl;
+        return false;
+    }
     printDetails(std::string("kernel") + std::to_string(kernelNum), elapsedTime / times, N, *h_out);
-
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
+    return true;
 }
 
-void sumCubCall(int *d_in, int *d_out, int *h_out, int N, int times) {
+bool sumCubCall(int *d_in, int *d_out, int *h_out, int N, int times, int64_t expected) {
     void* d_temp = nullptr;
     size_t temp_storage = 0;
 
     // First call to determine temporary storage size
-    cub::DeviceReduce::Sum(d_temp, temp_storage, d_in, d_out, N);
+    checkCuda(
+        cub::DeviceReduce::Sum(d_temp, temp_storage, d_in, d_out, N),
+        "query CUB temporary storage");
     
     // Allocate temporary storage
-    assert(temp_storage > 0);
-    cudaMalloc(&d_temp, temp_storage);
+    if (temp_storage == 0) {
+        std::cerr << "CUB requested zero bytes of temporary storage" << std::endl;
+        return false;
+    }
+    checkCuda(cudaMalloc(&d_temp, temp_storage), "allocate CUB temporary storage");
 
     cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
+    checkCuda(cudaEventCreate(&start), "create CUB start event");
+    checkCuda(cudaEventCreate(&stop), "create CUB stop event");
 
-    cudaEventRecord(start);
+    checkCuda(cudaEventRecord(start), "record CUB start event");
 
-    for (int i = 0; i < times; ++i) cub::DeviceReduce::Sum(d_temp, temp_storage, d_in, d_out, N);
+    for (int i = 0; i < times; ++i) {
+        checkCuda(
+            cub::DeviceReduce::Sum(d_temp, temp_storage, d_in, d_out, N),
+            "launch CUB reduction");
+    }
 
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
+    checkCuda(cudaEventRecord(stop), "record CUB stop event");
+    checkCuda(cudaEventSynchronize(stop), "synchronize CUB stop event");
 
-    cudaMemcpy(h_out, d_out, sizeof(int), cudaMemcpyDeviceToHost);
+    checkCuda(cudaMemcpy(h_out, d_out, sizeof(int), cudaMemcpyDeviceToHost), "copy CUB output");
 
     float elapsedTime;
-    cudaEventElapsedTime(&elapsedTime, start, stop);
+    checkCuda(cudaEventElapsedTime(&elapsedTime, start, stop), "measure CUB elapsed time");
 
+    checkCuda(cudaFree(d_temp), "free CUB temporary storage");
+    checkCuda(cudaEventDestroy(start), "destroy CUB start event");
+    checkCuda(cudaEventDestroy(stop), "destroy CUB stop event");
+
+    if (static_cast<int64_t>(*h_out) != expected) {
+        std::cerr << "CUB mismatch: expected " << expected << ", got " << *h_out << std::endl;
+        return false;
+    }
     printDetails("cub", elapsedTime / times, N, *h_out);
-
-    cudaFree(d_temp);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
+    return true;
 }
 
-void sumCpuCall(int *h_in, int *h_out, int N) {
-    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-    int value = 0;
+int64_t sumCpu(const int *h_in, int N) {
+    int64_t value = 0;
     for (int i = 0; i < N; ++i) {
         value += h_in[i];
     }
-    *h_out = value;
-    float timeTaken = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - begin).count()/1e6f;
-    printDetails("cpu", timeTaken, N, value);
+    return value;
 }
 
 __global__ void warmupKernel() {
@@ -297,36 +306,50 @@ __global__ void warmupKernel() {
 
 int main() {
     warmupKernel<<<1024, 1024, 1024*sizeof(int)>>>();
-    cudaDeviceSynchronize();
+    checkCuda(cudaGetLastError(), "launch warmup kernel");
+    checkCuda(cudaDeviceSynchronize(), "synchronize warmup kernel");
 
     const int N = 1 << 30;
     size_t size = N * sizeof(int);
 
     // Allocate host memory
     int* h_in = new int[N];
-    int h_out = 0.0f;
+    int h_out = 0;
 
     srand(42);
     for (int i = 0; i < N; ++i) {
-        h_in[i] = rand() % 100;
+        h_in[i] = rand() % 2;
+    }
+    const int64_t expected = sumCpu(h_in, N);
+    if (expected < std::numeric_limits<int>::min()
+        || expected > std::numeric_limits<int>::max()) {
+        std::cerr << "input sum exceeds the int32 output range: " << expected << std::endl;
+        delete[] h_in;
+        return EXIT_FAILURE;
     }
 
     // Allocate device memory
     int* d_in;
     int* d_out;
-    cudaMalloc(&d_in, size);
-    cudaMalloc(&d_out, sizeof(int));
+    checkCuda(cudaMalloc(&d_in, size), "allocate input");
+    checkCuda(cudaMalloc(&d_out, sizeof(int)), "allocate output");
 
     // Copy input data from host to device
-    cudaMemcpy(d_in, h_in, size, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_out, &h_out, sizeof(int), cudaMemcpyHostToDevice);
+    checkCuda(cudaMemcpy(d_in, h_in, size, cudaMemcpyHostToDevice), "copy input");
 
-    for (int i = 1; i <= NUM_KERNELS; ++i) sumKernelCall(i, d_in, d_out, &h_out, N, NUM_KERNEL_RUNS);
-    sumCubCall(d_in, d_out, &h_out, N, NUM_STD_RUNS);
+    bool passed = true;
+    for (int i = 1; i <= NUM_KERNELS; ++i) {
+        if (!sumKernelCall(i, d_in, d_out, &h_out, N, NUM_KERNEL_RUNS, expected)) {
+            passed = false;
+        }
+    }
+    if (!sumCubCall(d_in, d_out, &h_out, N, NUM_STD_RUNS, expected)) {
+        passed = false;
+    }
 
     // Free memory
-    cudaFree(d_in);
-    cudaFree(d_out);
+    checkCuda(cudaFree(d_in), "free input");
+    checkCuda(cudaFree(d_out), "free output");
     delete[] h_in;
-    return 0;
+    return passed ? EXIT_SUCCESS : EXIT_FAILURE;
 }

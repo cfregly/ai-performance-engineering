@@ -8,8 +8,8 @@ execution, caller-owned random inputs, and full output verification.
 
 The [optimization guide](optimization_guide.md) maps the examples and lessons to
 existing chapters and labs. The [source manifest](upstream_manifest.json) pins
-revision `2dfe5e26aecfd9e5f27bf9d5837deea01acda24b` and the SHA256 of every upstream
-file. The upstream MIT license is preserved in [upstream/LICENSE](upstream/LICENSE).
+base revision `2dfe5e26aecfd9e5f27bf9d5837deea01acda24b`, the SHA256 of every
+included file, and local correctness fixes to the reduction and H100 scheduler. The upstream MIT license is preserved in [upstream/LICENSE](upstream/LICENSE).
 
 ## Native benchmark pairs
 

@@ -2,8 +2,9 @@
 
 The [machine-readable receipt](validation.json) records the B200 experiment,
 native CUDA source hashes, and digests of the original result reports. The
-vendored source remains byte-for-byte identical to the revision and 34 file
-hashes in [upstream_manifest.json](upstream_manifest.json).
+34 included files are based on the pinned upstream revision. The current file
+hashes and three local source fixes are recorded in
+[upstream_manifest.json](upstream_manifest.json).
 
 ## B200 results
 
@@ -57,11 +58,32 @@ B200, and **63 tests with 5 expected hardware skips** on the local CPU host.
   on exact SM103 hardware. Its independent host oracle, poisoned-output, guard,
   determinism, and placement checks remain unqualified without B300/GB300.
 
+## Copied-source fixes tested on B200
+
+The copied `h100/sum.cu` now resets output before each grid, uses 0/1 inputs,
+checks all four kernels and CUB against an int64 CPU sum, and fails on CUDA
+errors or mismatches. On B200/SM100 with CUDA 13.0.88, the original
+`N = 1 << 30` and 100-iteration driver passed: all five paths returned
+`536860779`. Twenty-four additional launches with poisoned outputs and two
+input patterns passed. Deliberate kernel/CUB mismatches, invalid dimensions,
+an invalid kernel number, and unavailable CUDA all returned exit code 1.
+These are correctness checks; the driver's printed timings are not new
+performance claims.
+
+The copied `matmul_11.cuh` and `matmul_12.cuh` now assert the actual schedule
+queue size instead of the undeclared `loc`. The original debug build failed
+on `loc`; the patched full driver compiled in both debug and release modes
+for SM90a. Host-only schedule tests passed six shapes for both headers in
+both builds, including exact queue capacity. No H100 GPU kernel was launched.
+Reproducible tests live in [checks/](checks/README.md); the proposed upstream
+patches remain limited to the three source files.
+
 ## Failures caught and corrected
 
-The pinned upstream files remain unchanged. The reduction reset race below is
-an upstream issue; the other corrections concern this repository's adapters,
-verification lifecycle, build integration, documentation, or test environment.
+The copied reduction and H100 scheduler source files now include local fixes.
+The reduction reset race below is an upstream issue, fixed in both the copied
+program and our adapter. Other entries concern our adapters, verification
+lifecycle, build integration, documentation, or test environment.
 
 1. The original reduction resets a shared output from inside one CTA while other
    CTAs can already update it. The adaptation resets before the grid on the
