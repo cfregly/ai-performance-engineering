@@ -20,6 +20,21 @@ from core.benchmark import bench_commands, e2e_sweep
 TEST_GIT_COMMIT = "a" * 40
 
 
+def _wait_for_progress_step(progress_path: Path, expected_step: str) -> dict[str, object]:
+    """Wait for the real mirror write without assuming thread scheduling latency."""
+    deadline = time.monotonic() + 5.0
+    while True:
+        payload = json.loads(progress_path.read_text(encoding="utf-8"))
+        current_step = payload["current"]["step"]
+        if current_step == expected_step:
+            return payload
+        if time.monotonic() >= deadline:
+            pytest.fail(
+                f"Timed out waiting for progress step {expected_step!r}, observed {current_step!r}"
+            )
+        time.sleep(0.01)
+
+
 @pytest.fixture(autouse=True)
 def _clean_git_provenance(monkeypatch) -> None:
     git = {"commit": TEST_GIT_COMMIT, "branch": "test", "dirty": False}
@@ -2241,11 +2256,9 @@ def test_run_benchmark_e2e_sweep_mirrors_cluster_stage_progress(
                 percent_complete=20.0,
             )
         )
-        time.sleep(0.05)
-        observed["payload"] = json.loads(
-            (e2e_sweep.e2e_run_dir("e2e_cluster_progress", tmp_path) / "progress.json").read_text(
-                encoding="utf-8"
-            )
+        observed["payload"] = _wait_for_progress_step(
+            e2e_sweep.e2e_run_dir("e2e_cluster_progress", tmp_path) / "progress.json",
+            "cluster:vllm_serve_sweep",
         )
         return {
             "success": True,
@@ -2407,11 +2420,9 @@ def test_run_benchmark_e2e_sweep_mirrors_fabric_stage_progress(tmp_path: Path, m
                 percent_complete=33.3333,
             )
         )
-        time.sleep(0.05)
-        observed["payload"] = json.loads(
-            (e2e_sweep.e2e_run_dir("e2e_fabric_progress", tmp_path) / "progress.json").read_text(
-                encoding="utf-8"
-            )
+        observed["payload"] = _wait_for_progress_step(
+            e2e_sweep.e2e_run_dir("e2e_fabric_progress", tmp_path) / "progress.json",
+            "fabric:build_fabric_eval",
         )
         return {
             "success": True,
