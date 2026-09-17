@@ -1,0 +1,29 @@
+objective:
+  primary_kpi: cpu_policy_latency_ms
+benchmark:
+  layer: component
+  grade: source study; target performance unmeasured
+  variable_under_test: linear versus heap VTC selection
+workload:
+  shape: 1024 requests across up to 128 clients
+environment:
+  hardware: CPU explicitly selected; this is not LLM execution
+current_baseline:
+  timing_artifact: null
+  status: no accepted target-host timing
+hot_path_model:
+  path: code/ch16/fair_scheduler_benchmarks.py
+  phase: end-to-end CPU policy operations
+  invocation_frequency: once per policy decision
+  estimated_costs: Linear admission searches active clients; heap selection is logarithmic but token feedback
+    also maintains heap entries. Queue construction and all policy operations are timed.
+  operation_cost_source: source-level operation counts; no hardware latency assumed
+phases:
+  setup: input generation, scratch allocation, optional compilation; grammar precompile time exposed
+  warmup: owned by repository harness
+  steady_state: actual kernel/policy/codec; full output retained
+  verification: independent reference and complete output check after timing
+evidence:
+  correctness_test: tests/test_serving_policies.py
+  gpu_execution: not executed on development Mac
+  speedup_claim: false

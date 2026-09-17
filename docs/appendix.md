@@ -684,7 +684,9 @@ Spin up lightweight validation jobs (lower-frequency eval datasets, gradient-nor
 
 ## Plan for dynamic shapes
 
-If your input sizes vary, use torch._dynamo.mark_dynamic() to annotate dynamic dimensions or export shape-polymorphic graphs with torch.export(), and then compile. Control recompilation behavior with torch.com piler.set_stance() using "fail_on_recompile" to surface problematic shape churn in testing and CI. Use static shapes where possible to enable CUDA Graphs to reduce per-iteration CPU overhead. Leverage Triton kernels using torch.compile If PyTorch doesn’t fuse an operation well, consider writing a custom GPU kernel in Triton and integrating it. PyTorch makes it easy to register a custom GPU kernel with torch.library.triton_op.
+If your input sizes vary, annotate dynamic dimensions with `torch._dynamo.mark_dynamic()` before compilation, or export with an explicit shape contract using `torch.export()`. Warm up representative inputs, then use a scoped `torch.compiler.set_stance("fail_on_recompile")` to surface unexpected guard misses in testing and CI. Dynamic shapes still have guards, including constraints on layout and Python values. For serving policy and request-latency measurement, see the [Chapter 14 recompilation guide](../code/ch14/recompilation.md).
+
+Use static shapes where appropriate for CUDA Graph replay. If PyTorch does not fuse an operation well, consider a custom Triton kernel integrated through `torch.library.triton_op` and validate it with `torch.compile`.
 
 ## Capture CUDA Graphs with static buffers
 

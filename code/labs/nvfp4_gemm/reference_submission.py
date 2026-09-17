@@ -1,4 +1,5 @@
 import torch
+from core.utils.nvfp4_layout import to_blocked
 from task import input_t, output_t
 from utils import make_match_reference
 
@@ -8,21 +9,6 @@ sf_vec_size = 16
 # Helper function for ceiling division
 def ceil_div(a, b):
     return (a + b - 1) // b
-
-# Helper function to convert scale factor tensor to blocked format
-def to_blocked(input_matrix):
-    rows, cols = input_matrix.shape
-
-    # Please ensure rows and cols are multiples of 128 and 4 respectively
-    n_row_blocks = ceil_div(rows, 128)
-    n_col_blocks = ceil_div(cols, 4)
-
-    padded = input_matrix
-    blocks = padded.view(n_row_blocks, 128, n_col_blocks, 4).permute(0, 2, 1, 3)
-    rearranged = blocks.reshape(-1, 4, 32, 4).transpose(1, 2).reshape(-1, 32, 16)
-
-    return rearranged.flatten()
-
 
 def ref_kernel(
     data: input_t,

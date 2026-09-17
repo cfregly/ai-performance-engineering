@@ -1,0 +1,29 @@
+objective:
+  primary_kpi: retained_cache_bytes
+benchmark:
+  layer: component
+  grade: source study; target performance unmeasured
+  variable_under_test: unpacked versus four-per-byte two-bit codes
+workload:
+  shape: BF16 KV [2,8,2048,128], group 32, residual tail at least 32
+environment:
+  hardware: CUDA required for benchmark; CPU codec tests supported
+current_baseline:
+  timing_artifact: null
+  status: no accepted target-host timing
+hot_path_model:
+  path: code/labs/kv_cache_compression
+  phase: steady-state kernel replay or end-to-end CPU policy operations
+  invocation_frequency: once per cache encoding
+  estimated_costs: Identical affine two-bit groups and tail; packed representation removes three of four
+    code bytes. Metadata and tail remain; transient GPU peak is a separate metric.
+  operation_cost_source: source-level operation counts; no hardware latency assumed
+phases:
+  setup: input generation, scratch allocation, optional compilation; grammar precompile time exposed
+  warmup: owned by repository harness
+  steady_state: actual kernel/policy/codec; full output retained
+  verification: independent reference and complete output check after timing
+evidence:
+  correctness_test: tests/test_kivi_cache.py
+  gpu_execution: not executed on development Mac
+  speedup_claim: false

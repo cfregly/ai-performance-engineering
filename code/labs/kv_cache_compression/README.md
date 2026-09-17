@@ -1,9 +1,35 @@
-# Lab - Quantized Projection Compute with BF16 KV Cache
+# Lab - Quantized Projection Compute and KIVI Cache Storage
 
 ## Summary
-This lab compares per-tensor delayed-scaling FP8 projection GEMMs with NVFP4 projection GEMMs. Both paths store K and V as BF16. The directory name is retained for compatibility; neither path compresses the KV cache.
+The original projection pair compares per-tensor delayed-scaling FP8 projection GEMMs with NVFP4 projection GEMMs. Both projection paths store K and V as BF16; neither compresses the cache. The separate `kivi` pair implements asymmetric two-bit cache storage and compares unpacked versus packed codes.
 
-## Storage and workload
+## KIVI storage pair
+
+[kivi_cache.py](kivi_cache.py) groups keys across tokens per channel and values
+across channels per token, retaining a recent-token tail at BF16/FP16 precision.
+The tail owns its storage so a small view does not retain the entire input cache.
+
+`baseline_kivi.py` stores each two-bit code in one byte; `optimized_kivi.py` packs
+four codes per byte. Their quantization, group metadata, residual tail, and decoded
+outputs are identical. The optimization goal is **memory**, with actual retained
+buffer sizes exposed as `retained_cache_bytes`; GPU peak memory also includes
+encoding temporaries and must be measured independently. No model-quality
+equivalence to the original unquantized cache is claimed.
+
+From `code/`:
+
+```bash
+python -m cli.aisp bench list-targets --chapter labs/kv_cache_compression
+python -m cli.aisp bench run --targets labs/kv_cache_compression:kivi --profile minimal
+python -m pytest tests/test_kivi_cache.py -q
+```
+
+CPU tests exercise the actual codec, asymmetric grouping, tail ownership, storage
+size, and attention using the decoded cache. GPU tests run both benchmark arms
+and verify the complete decoded K/V buffers. Source:
+[KIVI](https://proceedings.mlr.press/v235/liu24bz.html).
+
+## Projection pair storage and workload
 Both variants use batch 8, hidden dimension 16384, 64 heads, 4096 prefill tokens, and 128 decode steps of 128 tokens. The two cache tensors contain 5,368,709,120 elements and occupy 10,737,418,240 bytes at BF16. `kv_cache.storage_bytes`, `storage_bits_per_element`, and `compression_ratio` are calculated from the allocated tensors. The compression ratio relative to BF16 is 1.0, and the optimization goal is compute speed.
 
 The FP8 recipe is `DelayedScaling`; it is not MXFP8 block scaling. The NVFP4 recipe uses supported `NVFP4BlockScaling()` defaults. Both retain identical unquantized BF16 parameter representations while Transformer Engine autocast chooses the low-precision GEMMs.
