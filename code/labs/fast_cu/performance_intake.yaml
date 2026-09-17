@@ -1,0 +1,49 @@
+objective:
+  primary_kpi: latency_ms
+  secondary_kpis: [effective_gbps, gemm_tflops]
+benchmark:
+  layer: component
+  grade: realism
+  variable_under_test: kernel_implementation_or_output_store_width
+workload:
+  h100_bf16_gemm: {m: 8192, n: 8192, k: 8192, input: bf16, output: bf16}
+  int32_reduction: {elements: 268435456, input: int32, output: int32, input_values: [-1, 0, 1]}
+  b200_epilogue: {elements: 16777216, input: fp32, output: fp16, values_per_thread: 16}
+  nvfp4_gemm: {m: 8192, n: 8192, k: 8192, input: nvfp4, output: fp16, default_rung: 9}
+  constraints: [same_inputs_per_pair, full_output_verification, current_cuda_stream, no_architecture_fallback]
+hot_path_model:
+  phase: steady_state
+  invocation_frequency: per_batch
+  invocations_per_primary_unit: 1
+  estimated_costs:
+    h100_gemm_flops: 1099511627776
+    h100_gemm_minimum_bytes: 402653184
+    reduction_input_bytes: 1073741824
+    reduction_output_bytes: 4
+    epilogue_input_bytes: 67108864
+    epilogue_output_bytes: 33554432
+    nvfp4_gemm_flops: 1099511627776
+    nvfp4_operand_and_scale_bytes: 75497472
+    nvfp4_output_bytes: 134217728
+    host_device_bytes: 0
+    storage_or_network_operations: 0
+  operation_cost_source: tensor shapes and scalar formats; not measured hardware costs
+  expected_dominant_cost: tensor-core feed and epilogue for GEMM; input bandwidth and atomics for reduction; load/convert/store instruction and memory throughput for epilogue
+  best_case_primary_kpi_improvement_pct: null
+evidence:
+  baseline_artifact: null
+  profile_artifacts: []
+  hardware_counter_artifacts: []
+  static_review_findings:
+    - Exact SM103 K96 instructions do not execute on SM100.
+    - Vectorized reduction requires output reset before the grid and bounded sums.
+    - Wide-store epilogue isolates 256-bit versus 128-bit stores with identical cache hints.
+    - NVFP4 single-buffer measurements differ from upstream rotating-buffer headline results.
+candidate_optimizations:
+  - H100 kernel12 versus cuBLAS at equal BF16 precision and shape.
+  - Vectorized warp sum versus CUB with identical int32 inputs.
+  - B200 output store width with fixed conversions, launch geometry, and cache policy.
+  - GB300 r9 versus cuBLASLt using identical packed NVFP4 inputs and FP16 outputs.
+risk_guardrails:
+  correctness_tests: [tests/test_fast_cu_source.py, tests/test_fast_cu_build.py, tests/test_fast_cu_h100.py, tests/test_fast_cu_b200_epilogue.py, tests/test_fast_cu_nvfp4.py]
+  publication_boundary: CPU/source checks and noncanonical GPU correctness tests do not establish a performance win.

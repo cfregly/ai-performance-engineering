@@ -86,3 +86,10 @@ python -m cli.aisp bench run --targets ch11 --profile minimal
 - The README calls out the legacy target names explicitly so book-facing labels still point at the actual copy+elementwise overlap workload and runtime-adaptive scheduling pairs.
 - `warp_specialized_triton.py` provides a Triton analogue for the CUDA concurrency demos so you can compare compiler-generated schedules.
 - `kv_prefetch_pipeline_enhanced_demo.cu` builds on the DSMEM kernels bundled in this directory so you can study the entire pipeline locally.
+
+## Related fast.cu experiments
+
+The [fast.cu lab](../labs/fast_cu/README.md) preserves the complete H100 and GB300
+source progressions and adds native harness pairs, including B200 adaptations.
+See its [chapter mapping and optimization guide](../labs/fast_cu/optimization_guide.md)
+for the overlap with this chapter and the SM100 versus SM103 hardware boundaries.

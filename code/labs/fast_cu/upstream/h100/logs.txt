@@ -1,0 +1,8 @@
+nvcc -std=c++17 -O3 -DNDEBUG --expt-relaxed-constexpr --expt-extended-lambda --use_fast_math -Xcompiler=-fPIE -Xcompiler=-Wno-psabi -Xcompiler=-fno-strict-aliasing --generate-code arch=compute_90a,code=[compute_90a,sm_90a] -lcublas -lcuda -lineinfo -I/usr/local/cuda-12.6/include  matmul.cu -o out/matmul
+examples/matmul/matmul_8.cuh(488): error: identifier "c" is undefined
+              init_barrier(&fullB[c], 0, 1);
+                                  ^
+
+1 error detected in the compilation of "matmul.cu".
+make: *** [Makefile:32: matmul] Error 2
+Build failed.

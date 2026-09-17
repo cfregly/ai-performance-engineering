@@ -86,3 +86,10 @@ python -m cli.aisp bench run --targets ch14 --profile minimal
 - `requirements.txt` includes the shared `requirements_latest.txt` pins for stable PyTorch and Triton wheels aligned with the CUDA 13 toolchain.
 - For repo-native supporting examples that fill the training hot-path gaps without changing this chapter's primary compile narrative, see `labs/training_hotpath`.
 - `cublas_vs_cutlass` is a supplementary comparison pair. Chapter-native performance claims stay anchored on `model_compile_reduced_precision`, `regional_triton`, and `triton_persistent`.
+
+## Related fast.cu experiments
+
+The [fast.cu lab](../labs/fast_cu/README.md) preserves the complete H100 and GB300
+source progressions and adds native harness pairs, including B200 adaptations.
+See its [chapter mapping and optimization guide](../labs/fast_cu/optimization_guide.md)
+for the overlap with this chapter and the SM100 versus SM103 hardware boundaries.

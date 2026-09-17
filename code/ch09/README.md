@@ -87,3 +87,10 @@ python -m cli.aisp bench run --targets ch09 --profile minimal
 - `inline_ptx_example.cu` demonstrates how to wrap tcgen05 intrinsics safely with architecture guards.
 - `requirements.txt` includes the shared `requirements_latest.txt` pins for PyTorch 2.9.1 and its compatible Triton release.
 - `optimized_cublaslt_gemm_fp4` is intentionally capability-gated: if cuBLASLt cannot provide the native block-scaled NVFP4 heuristic, the benchmark reports a clean skip instead of silently falling back to a different FP4 mode.
+
+## Related fast.cu experiments
+
+The [fast.cu lab](../labs/fast_cu/README.md) preserves the complete H100 and GB300
+source progressions and adds native harness pairs, including B200 adaptations.
+See its [chapter mapping and optimization guide](../labs/fast_cu/optimization_guide.md)
+for the overlap with this chapter and the SM100 versus SM103 hardware boundaries.

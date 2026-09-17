@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/pranjalssh/fast.cu",
+  "revision": "2dfe5e26aecfd9e5f27bf9d5837deea01acda24b",
+  "license": "MIT",
+  "license_file": "LICENSE",
+  "hardware": {
+    "h100": {
+      "gpu_family": "NVIDIA Hopper H100",
+      "compute_capability": [9, 0],
+      "architecture": "sm_90a",
+      "minimum_cuda": "12.0",
+      "minimum_cuda_basis": "Inferred from the compute_90a build, WGMMA, TMA, and CUtensorMap APIs; upstream does not state an exact minimum.",
+      "libraries": ["CUDA Runtime", "CUDA Driver", "cuBLAS", "CUB"]
+    },
+    "nvfp4": {
+      "gpu_family": "NVIDIA Blackwell GB300/B300",
+      "compute_capability": [10, 3],
+      "architecture": "sm_103a",
+      "minimum_cuda": "13.1",
+      "minimum_cuda_basis": "Declared by the upstream README; the toolkit must support the required architecture-specific tcgen05 forms.",
+      "libraries": ["CUDA Runtime", "CUDA Driver", "cuBLASLt"]
+    }
+  },
+  "families": {
+    "h100_bf16_matmul": {
+      "hardware": "h100",
+      "entrypoint": "h100/matmul.cu",
+      "build_target": "matmul",
+      "binary": "out/matmul",
+      "kernel_snapshots": [
+        "h100/matmul/matmul_1.cuh",
+        "h100/matmul/matmul_2.cuh",
+        "h100/matmul/matmul_3.cuh",
+        "h100/matmul/matmul_4.cuh",
+        "h100/matmul/matmul_5.cuh",
+        "h100/matmul/matmul_6.cuh",
+        "h100/matmul/matmul_7.cuh",
+        "h100/matmul/matmul_8.cuh",
+        "h100/matmul/matmul_9.cuh",
+        "h100/matmul/matmul_10.cuh",
+        "h100/matmul/matmul_11.cuh",
+        "h100/matmul/matmul_12.cuh"
+      ],
+      "fixed_shape": [8192, 8192, 8192]
+    },
+    "h100_sum_reduction": {
+      "hardware": "h100",
+      "entrypoint": "h100/sum.cu",
+      "build_target": "sum",
+      "binary": "out/sum",
+      "fixed_elements": 1073741824
+    },
+    "gb300_nvfp4_matmul": {
+      "hardware": "nvfp4",
+      "entrypoint": "gb300/nvfp4/main.cu",
+      "build_targets": [
+        "nvfp4",
+        "nvfp4-r0",
+        "nvfp4-r1",
+        "nvfp4-r2",
+        "nvfp4-r3",
+        "nvfp4-r4",
+        "nvfp4-r5",
+        "nvfp4-r6",
+        "nvfp4-r7",
+        "nvfp4-r8",
+        "nvfp4-r9",
+        "nvfp4-ladder"
+      ],
+      "default_binary": "out/nvfp4",
+      "kernel_snapshots": [
+        "gb300/nvfp4/gemm0.cuh",
+        "gb300/nvfp4/gemm1.cuh",
+        "gb300/nvfp4/gemm2.cuh",
+        "gb300/nvfp4/gemm3.cuh",
+        "gb300/nvfp4/gemm4.cuh",
+        "gb300/nvfp4/gemm5.cuh",
+        "gb300/nvfp4/gemm6.cuh",
+        "gb300/nvfp4/gemm7.cuh",
+        "gb300/nvfp4/gemm8.cuh",
+        "gb300/nvfp4/gemm9.cuh"
+      ],
+      "upstream_runner": "gb300/nvfp4/run_bench_modes.sh"
+    }
+  },
+  "files": {
+    ".gitignore": "a888b9df89402a815bdb15d30c5280b090be11655ab4cc2299ce748d44cd6ed4",
+    "LICENSE": "076fb1df0d5125f25033dc51498629925fac3b705e86f8bf9808f5eec9d41785",
+    "Makefile": "54d8599fd3b11cef68fc15b0c848d3d058d3ec83bf0d1cbd40d72983a1c10f0e",
+    "README.md": "63e4e285b216a913d071993d95f55f64740d23abaa430efece99b9d05337946d",
+    "gb300/nvfp4/README.md": "c195cd506d7d1cdf5fda122a0f637cbf00039a8b35097249b588f575087e0449",
+    "gb300/nvfp4/gemm0.cuh": "dd4475b68d5ac1c358073e5dbc8f2b6f3c8f5b8e000bfbb9c643441c4576c131",
+    "gb300/nvfp4/gemm1.cuh": "02d22dc7ef843626bebe67e5a99c728cf2c9a5fec643bb5c4f5f0f183db6cb57",
+    "gb300/nvfp4/gemm2.cuh": "2a4bd066b522ad63056e30452c67846a98db5175bd9b126b80d1f1614ec4394a",
+    "gb300/nvfp4/gemm3.cuh": "1dca64c9d44ac00c2d00f770f7859f08b52ddcf2923864479087c5f0226c1a9d",
+    "gb300/nvfp4/gemm4.cuh": "4f6c92015b4ef4ec71f89e974725d86e2f40a44d3ef32b0ea9c9dbd542552389",
+    "gb300/nvfp4/gemm5.cuh": "f3de02a730648a96cd8e694e6d650d180558706dfd37a96ef860bebf8708f6f9",
+    "gb300/nvfp4/gemm6.cuh": "2eb4bdb07adac774bffcd55d7a130576f17ac3af2f1a06c8b97e01c7f8562c72",
+    "gb300/nvfp4/gemm7.cuh": "73ce3cb9687468ba107525200c4a3bc6f8614041a09ab0ba5ba4ab6a8b976cf8",
+    "gb300/nvfp4/gemm8.cuh": "28ead4f7c56e95026331a28af9b70e71ba0f5b6ab0af45d112b0f68dd723f1d2",
+    "gb300/nvfp4/gemm9.cuh": "b9ec1b3f07ed934728499421b7a90bb7f31cbc179960fd2707ecefbf2ec8606c",
+    "gb300/nvfp4/main.cu": "175bdd8b09265f5f012ba3594159ba669364cd20da949b3d40a8135fabcc4d92",
+    "gb300/nvfp4/run_bench_modes.sh": "474fc1c2f6662539c8d7e2209fe2010b27d4fdd9736e5a8f2bad37696ae537d9",
+    "h100/logs.txt": "f99566db425eb41e2dad76c926195a9a77963b36c1ecb21671881167ab180fc6",
+    "h100/matmul.cu": "d6029098a62ea95093e8415464dfe0714a371703f558a5ea2087b3c9f2e8aa36",
+    "h100/matmul/cublaslt_matmul.cu": "34eec28f850b3512ec64125ce3adf44bd847834be2a0d6aae44340f3f14178e2",
+    "h100/matmul/matmul_1.cuh": "d5987339865a7a7c982c3ea333c86ecea90929513f33533fe9efe1238e77c9b6",
+    "h100/matmul/matmul_10.cuh": "ce6965431164d6c7f5f2be20932f75e4547db5ceaa764955da6a392edb0c673f",
+    "h100/matmul/matmul_11.cuh": "3c1699e96f4664c55cbc74520bdee3f3fe23e1348387b2a910118fbfcedc5872",
+    "h100/matmul/matmul_12.cuh": "f6c40cf385f7bd4a566c989cb98e04df30680ed6bea434461fce799e987ced4b",
+    "h100/matmul/matmul_2.cuh": "09dafdef86a55d9b59ef6b61f9794f92bc1d7829df39e39e1709fe98b48a10dd",
+    "h100/matmul/matmul_3.cuh": "920c06c9aa74228c544b10a508ff72e1e01a51c438384ab7a9cfb3055f48671d",
+    "h100/matmul/matmul_4.cuh": "1cf4ed06360d8dfbbd2ef62c6918459dad46af9fe86ea7f29a5779ed2cea4137",
+    "h100/matmul/matmul_5.cuh": "606b3b849e02530884c7fc9d8c784fa846cd5b4505ef0bf39039de4925494933",
+    "h100/matmul/matmul_6.cuh": "0c916956b957ea6fcbf38f282ce99c29478874d8deae970db7c6ed9cad69dcb3",
+    "h100/matmul/matmul_7.cuh": "d8b4d046427a1c2462cf074fccd2171c9cc81c0a3b92ddac6b90bf80169f4c82",
+    "h100/matmul/matmul_8.cuh": "d4353ad5b4608d43e9565d4b71dafc75e18e076d632a81e98e54859f73478f01",
+    "h100/matmul/matmul_9.cuh": "3185afad674ed624ef97b8994669884ceac176cbf554523af9ef746153577069",
+    "h100/matmul/pingpong_experimental.cuh": "9b7e44221b7eb37158e60587b6767c8d3baefceaf649325cca2b6771b86f161b",
+    "h100/sum.cu": "7aaed0a7952f925ba6f72f6b6026851ea478eede64e19ffe5cea27865122f207"
+  }
+}
