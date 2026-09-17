@@ -88,3 +88,10 @@ python -m cli.aisp bench run --targets ch10 --profile minimal
 - `cufile_gds_example.py` demonstrates integrating GPUDirect Storage into tensor-core pipelines for IO-heavy training loops.
 - `requirements_cufile.txt` holds the optional `cufile` wheel; install it only on hosts with GPUDirect Storage enabled.
 - The CUTLASS-style warp-specialization pair provides a reference implementation aligned with `sm100_mma_array_warpspecialized` for performance comparison.
+
+## Related fast.cu experiments
+
+The [fast.cu lab](../labs/fast_cu/README.md) preserves the complete H100 and GB300
+source progressions and adds native harness pairs, including B200 adaptations.
+See its [chapter mapping and optimization guide](../labs/fast_cu/optimization_guide.md)
+for the overlap with this chapter and the SM100 versus SM103 hardware boundaries.

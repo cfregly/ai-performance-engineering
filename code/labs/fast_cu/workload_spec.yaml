@@ -1,0 +1,47 @@
+run_metadata:
+  benchmark_layer: component
+  benchmark_grade: realism
+  use_case: engineering_debug
+comparison_axis:
+  variable_under_test: kernel_implementation_or_store_width
+  constants_locked: [shape, input_bits, dtype, output_layout, caller_seed, selected_device, stream, cache_protocol]
+workload:
+  h100_bf16_gemm:
+    control: cublas
+    candidate: upstream_matmul_12
+    shape: [8192, 8192, 8192]
+    input_dtype: bf16
+    accumulation: fp32
+    output_dtype: bf16
+  int32_reduction:
+    control: cub
+    candidate: safe_vectorized_warp_reduction
+    elements: 268435456
+    input_values: [-1, 0, 1]
+    dtype: int32
+  b200_epilogue:
+    control: two_128bit_stores
+    candidate: one_256bit_store
+    elements: 16777216
+    input_dtype: fp32
+    output_dtype: fp16
+    shared_cache_policy: L1_no_allocate_L2_evict_first
+  nvfp4_gemm:
+    control: cublaslt
+    candidate: upstream_r9
+    shape: [8192, 8192, 8192]
+    packed_dtype: e2m1
+    scale_dtype: ue4m3
+    scale_vector_size: 16
+    output_dtype: fp16
+measurement:
+  timing_scope: steady_state_benchmark_invocation
+  excluded_setup: [jit_compile, allocations, random_inputs, descriptors, workspace_selection, schedule_preparation]
+  verification: full_actual_output_after_execution
+  input_cache_protocol: fixed_resident_buffers
+  canonical_profile: strict
+  required_profilers: [ncu, nsys]
+  expected_speedup: null
+source:
+  manifest: upstream_manifest.json
+  revision: 2dfe5e26aecfd9e5f27bf9d5837deea01acda24b

@@ -1,0 +1,99 @@
+objective:
+  primary_kpi: median_launch_latency_us
+  secondary_kpis: [p95_launch_latency_us, effective_pflops]
+
+benchmark:
+  layer: component
+  grade: realism
+  variable_under_test: kernel_implementation
+
+workload:
+  type: gemm
+  model: "8192x8192x8192 NVFP4 E2M1 GEMM, UE4M3 VEC16 scales, FP16 output"
+  batch_shape:
+    p50: [8192, 8192, 8192]
+    p95: [8192, 8192, 8192]
+    max: [8192, 8192, 8192]
+  constraints:
+    - identical packed input bytes and scale buffers for both arms
+    - full FP16 output compared with rtol 0.002 and atol 0.5
+    - exact SM103 GB300/B300 and CUDA 13.1 or newer
+    - no B200 or alternate-precision substitution
+
+slos:
+  latency_ms: {p50: null, p95: null, p99: null}
+  availability: null
+  cost_budget: null
+
+environment:
+  hardware:
+    gpu: ["GB300/B300 SM103", 1, null]
+    cpu: "recorded by harness provenance"
+    ram_gb: null
+    storage: null
+    interconnect: ["single GPU"]
+    topology: "single exact-SM103 device"
+  software:
+    os: "recorded by harness provenance"
+    kernel: "recorded by harness provenance"
+    driver: "recorded by harness provenance"
+    cuda: "13.1 or newer; extension compiled only for sm_103a"
+    pytorch: "recorded by harness provenance"
+    triton: "not used"
+    frameworks: ["CUDA C++", "cuBLASLt", "PyTorch extension"]
+    nccl: "not used"
+    container_orchestrator: "recorded by harness provenance"
+  data_pipeline:
+    - caller seed is passed to the pinned upstream host quantizer during setup
+    - packed E2M1 values and UE4M3 VEC16 scales remain device resident
+
+current_baseline:
+  p50_ms: null
+  p99_ms: null
+  gpu_util_percent: null
+  mem_bw_percent: null
+  goodput_percent: null
+
+hot_path_model:
+  path: "labs.fast_cu.baseline_nvfp4_gemm vs labs.fast_cu.optimized_nvfp4_gemm"
+  phase: steady_state
+  invocation_frequency: per_request
+  invocations_per_primary_unit: 1
+  estimated_costs:
+    bytes_read: 75497472
+    bytes_written: 134217728
+    host_device_bytes: 0
+    allocations_or_materializations: 0
+    kernel_launches: 1
+    synchronizations_or_locks: 0
+    api_process_or_rpc_crossings: 1
+    storage_or_network_operations: 0
+  operation_cost_source: "Analytical counts from the pinned 8192^3 packed layouts; runtime cost unmeasured"
+  expected_dominant_cost: "NVFP4 tensor-core GEMM plus FP16 output traffic"
+  best_case_primary_kpi_improvement_pct: null
+
+evidence:
+  baseline_artifact: "pending exact-SM103 harness run"
+  profile_artifacts: []
+  allocation_or_memory_profile: "setup-only allocations enforced by adapter structure"
+  hardware_counter_artifacts: []
+  static_review_findings:
+    - "r9 depends on a runtime L2-side census and owned tile schedule"
+    - "adapter rejects census/table failure instead of accepting upstream raster fallback"
+    - "both cuBLASLt and fast.cu launch on the active PyTorch CUDA stream"
+
+candidate_optimizations:
+  - "r0-r9 pinned fast.cu ladder, explicitly selected at extension build time"
+  - "r9 L2-side ownership and per-shape tile ordering"
+
+known_issues_or_hypotheses:
+  - "No exact-SM103 runtime measurement is available in the local development environment"
+  - "This native pair uses one resident operand set and does not reproduce the upstream rotating five-round headline protocol"
+
+risk_guardrails:
+  correctness_tests:
+    - "full FP16 cuBLASLt-versus-fast.cu output comparison"
+    - "same packed A/B/SFA/SFB bytes from the caller seed"
+    - "post-timing r9 cluster/L2 placement counter audit"
+  change_windows:
+    - "promote performance claims only after locked-clock repeated comparison plus NCU and NSYS evidence"

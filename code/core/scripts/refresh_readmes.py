@@ -48,6 +48,7 @@ class Entry:
     validation_heading: str = "Validation Checklist"
     extra_sections: Sequence[str] = field(default_factory=tuple)
     notes: Sequence[str] = field(default_factory=tuple)
+    trailing_sections: Sequence[str] = field(default_factory=tuple)
 
 
 def _format_markdown(entry: Entry) -> str:
@@ -97,6 +98,12 @@ def _format_markdown(entry: Entry) -> str:
         lines.append("## Notes")
         for note in entry.notes:
             lines.append(f"- {note}")
+    if entry.trailing_sections:
+        lines.append("")
+        for idx, section in enumerate(entry.trailing_sections):
+            if idx:
+                lines.append("")
+            lines.append(section.strip())
     lines.append("")
     return "\n".join(lines)
 
@@ -404,6 +411,7 @@ def chapter_entry(
         "when you need repeatable artifact capture."
     ),
     validation_heading: str = "Validation Checklist",
+    trailing_sections: Sequence[str] = (),
 ) -> Entry:
     """Create a chapter README entry."""
     return Entry(
@@ -418,6 +426,7 @@ def chapter_entry(
         run_intro=run_intro,
         validation_heading=validation_heading,
         notes=notes,
+        trailing_sections=trailing_sections,
     )
 
 
@@ -659,6 +668,17 @@ WALL_OF_SHAME = dedent(
     | `core/benchmark/contract.py` | BenchmarkContract enforcement |
     """
 ).strip()
+
+FAST_CU_RELATED_SECTION = dedent(
+    """\
+    ## Related fast.cu experiments
+
+    The [fast.cu lab](../labs/fast_cu/README.md) preserves the complete H100 and GB300
+    source progressions and adds native harness pairs, including B200 adaptations.
+    See its [chapter mapping and optimization guide](../labs/fast_cu/optimization_guide.md)
+    for the overlap with this chapter and the SM100 versus SM103 hardware boundaries.
+    """
+)
 
 ENTRIES["README.md"] = Entry(
     title="AI Systems Performance Engineering",
@@ -965,6 +985,7 @@ ENTRIES["labs/README.md"] = Entry(
             | `labs/cutlass_profiler_kernel_selector/` | CUTLASS profiler-based kernel selection | ch06, ch09 |
             | `labs/decode_optimization/` | Decoder hot-path optimization | ch18, ch19 |
             | `labs/dynamic_router/` | Dynamic prefill/decode routing | ch17, ch19 |
+            | `labs/fast_cu/` | Pinned fast.cu H100 GEMM, B200 reduction and wide-store epilogue adaptations, and the complete GB300 NVFP4 ladder; see the [chapter mapping](fast_cu/optimization_guide.md) | ch09, ch10, ch11, ch14 |
             | `labs/flashattention4/` | FlashAttention-4 pipeline co-design, including a [Colfax diary guide](flashattention4/colfax_optimization_diaries.md) to decode S/P ping-pong and backward hdim-64 TMEM de-aliasing | ch10, ch11, ch18 |
             | `labs/flashattention_gluon/` | FlashAttention experimentation | ch18 |
             | `labs/flashinfer_attention/` | FlashInfer block-sparse attention lab | ch16 |
@@ -1972,6 +1993,7 @@ ENTRIES["ch09"] = chapter_entry(
         "`requirements.txt` includes the shared `requirements_latest.txt` pins for PyTorch 2.9.1 and its compatible Triton release.",
         "`optimized_cublaslt_gemm_fp4` is intentionally capability-gated: if cuBLASLt cannot provide the native block-scaled NVFP4 heuristic, the benchmark reports a clean skip instead of silently falling back to a different FP4 mode.",
     ],
+    trailing_sections=[FAST_CU_RELATED_SECTION],
 )
 
 ENTRIES["ch10"] = chapter_entry(
@@ -2077,6 +2099,7 @@ ENTRIES["ch10"] = chapter_entry(
         "`requirements_cufile.txt` holds the optional `cufile` wheel; install it only on hosts with GPUDirect Storage enabled.",
         "The CUTLASS-style warp-specialization pair provides a reference implementation aligned with `sm100_mma_array_warpspecialized` for performance comparison.",
     ],
+    trailing_sections=[FAST_CU_RELATED_SECTION],
 )
 
 ENTRIES["ch11"] = chapter_entry(
@@ -2183,6 +2206,7 @@ ENTRIES["ch11"] = chapter_entry(
         "`warp_specialized_triton.py` provides a Triton analogue for the CUDA concurrency demos so you can compare compiler-generated schedules.",
         "`kv_prefetch_pipeline_enhanced_demo.cu` builds on the DSMEM kernels bundled in this directory so you can study the entire pipeline locally.",
     ],
+    trailing_sections=[FAST_CU_RELATED_SECTION],
 )
 
 ENTRIES["ch12"] = chapter_entry(
@@ -2554,6 +2578,7 @@ ENTRIES["ch14"] = chapter_entry(
         "For repo-native supporting examples that fill the training hot-path gaps without changing this chapter's primary compile narrative, see `labs/training_hotpath`.",
         "`cublas_vs_cutlass` is a supplementary comparison pair. Chapter-native performance claims stay anchored on `model_compile_reduced_precision`, `regional_triton`, and `triton_persistent`.",
     ],
+    trailing_sections=[FAST_CU_RELATED_SECTION],
 )
 
 ENTRIES["ch15"] = chapter_entry(
