@@ -14,6 +14,8 @@ from labs.ozaki_scheme.accuracy_policy import configured_reference_tolerance
 class BaselineOzakiSchemeBenchmark(CudaBinaryBenchmark):
     """Native FP64 accuracy anchor for the Ozaki scheme lab."""
 
+    ncu_profile_nvtx_include = "compute_kernel:profile"
+
     def __init__(self) -> None:
         self._checksum_tolerance = configured_reference_tolerance()
         self._shape = (4096, 4096, 4096)

@@ -40,7 +40,7 @@ from labs.train_distributed.training_utils.utils import (
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--steps", type=int, default=50, help="Number of optimization steps.")
+    parser.add_argument("--steps", type=int, default=50, help="Maximum number of training microbatches.")
     parser.add_argument("--batch-size", type=int, default=16, help="Per-rank microbatch size.")
     parser.add_argument("--grad-accum", type=int, default=1, help="Gradient accumulation steps.")
     parser.add_argument("--learning-rate", type=float, default=2e-4, help="AdamW learning rate.")
@@ -77,7 +77,7 @@ def main():
     # below so removing the reducer does not change seeded input order.
     use_ddp = world_size > 1
     tokenizer = build_tokenizer()
-    dataset = get_dataset()["train"]
+    dataset = get_dataset(tokenizer=tokenizer)["train"]
 
     dataloader = build_dataloader(
         dataset,
@@ -147,7 +147,7 @@ def main():
         if step % 10 == 0 and is_main:
             if progress is None:
                 raise RuntimeError("Training progress buffer was not initialized")
-            progress.record(step=step, loss=loss, tokens=batch["input_ids"].numel())
+            progress.record(step=step, loss=outputs.loss.detach(), tokens=batch["input_ids"].numel())
 
     torch.cuda.synchronize(device)
     total_time = perf_counter() - start_time

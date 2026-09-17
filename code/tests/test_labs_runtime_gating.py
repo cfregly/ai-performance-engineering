@@ -8,7 +8,8 @@ import pytest
 import torch
 import torch.nn as nn
 
-from core.harness.benchmark_harness import ExecutionMode
+from core.harness.benchmark_harness import BenchmarkConfig, ExecutionMode
+from core.harness.run_benchmarks import _apply_preferred_ncu_profile_overrides
 from labs.kv_cache_compression import kv_cache_common
 from labs.kv_cache_compression.baseline_kv_cache import BaselineKVCacheBenchmark
 from labs.kv_cache_compression.kv_cache_common import (
@@ -58,14 +59,33 @@ def test_kv_cache_benchmark_defaults_keep_single_gpu_shape_bounded() -> None:
     assert bench.decode_steps == 128
 
 
+@pytest.mark.parametrize("benchmark_cls", [BaselineKVCacheBenchmark, OptimizedKVCacheNVFP4Benchmark])
+@pytest.mark.parametrize("explicit_replay", [False, True])
+def test_kv_cache_full_range_profiling_preserves_explicit_replay_selection(
+    benchmark_cls, explicit_replay: bool,
+) -> None:
+    config = BenchmarkConfig(
+        ncu_replay_mode="kernel",
+        ncu_replay_mode_override=explicit_replay,
+        ncu_metric_set="minimal",
+    )
+
+    selected = _apply_preferred_ncu_profile_overrides(config, benchmark_cls())
+
+    assert selected.ncu_replay_mode == ("kernel" if explicit_replay else "app-range")
+    assert selected.ncu_replay_mode_override is True
+    assert selected.ncu_metric_set == "minimal"
+    assert config.ncu_replay_mode == "kernel"
+    assert config.ncu_replay_mode_override is explicit_replay
+
+
 def test_kv_cache_compression_benchmarks_overwrite_without_full_cache_reset() -> None:
     for benchmark_cls in (BaselineKVCacheBenchmark, OptimizedKVCacheNVFP4Benchmark):
         benchmark_source = inspect.getsource(benchmark_cls.benchmark_fn)
         assert "reset_cache(self.cache)" not in benchmark_source
         assert "torch.inference_mode()" in benchmark_source
         assert "torch.no_grad()" not in benchmark_source
-        assert "for prefill, offset in self._prefill_groups:" in benchmark_source
-        assert "for decode, offset in self._decode_groups:" in benchmark_source
+        assert "self._run_token_groups()" in benchmark_source
         assert "offset += prefill.shape[1]" not in benchmark_source
         assert "offset += decode.shape[1]" not in benchmark_source
 
@@ -77,10 +97,15 @@ def test_kv_cache_compression_benchmarks_overwrite_without_full_cache_reset() ->
         assert "reset_cache(self.cache)" not in source
         assert "torch.inference_mode()" in source
         assert "torch.no_grad()" not in source
-        assert "for prefill, offset in self._prefill_groups:" in source
-        assert "for decode, offset in self._decode_groups:" in source
+        assert "self._run_token_groups()" in source
         assert "offset += prefill.shape[1]" not in source
         assert "offset += decode.shape[1]" not in source
+
+    run_groups_source = inspect.getsource(BaselineKVCacheBenchmark._run_token_groups)
+    assert "for prefill, offset in self._prefill_groups:" in run_groups_source
+    assert "for decode, offset in self._decode_groups:" in run_groups_source
+    assert "offset += prefill.shape[1]" not in run_groups_source
+    assert "offset += decode.shape[1]" not in run_groups_source
 
     setup_source = inspect.getsource(BaselineKVCacheBenchmark._setup_with_recipe)
     teardown_source = inspect.getsource(BaselineKVCacheBenchmark.teardown)
@@ -255,6 +280,71 @@ class _DummyLinear(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.layer(x)
+
+
+class _WeightCacheTrackingLinear(_DummyLinear):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.first_microbatch_calls: list[bool | None] = []
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        *,
+        is_first_microbatch: bool | None = None,
+    ) -> torch.Tensor:
+        self.first_microbatch_calls.append(is_first_microbatch)
+        return super().forward(x)
+
+
+@pytest.mark.parametrize(
+    "benchmark_cls",
+    (BaselineKVCacheBenchmark, OptimizedKVCacheNVFP4Benchmark),
+)
+def test_kv_cache_quantized_weights_refresh_once_per_complete_iteration(benchmark_cls) -> None:
+    device = torch.device("cpu")
+    benchmark = benchmark_cls()
+    benchmark.model = KVCacheAttention(
+        hidden_dim=4,
+        num_heads=1,
+        linear_cls=_WeightCacheTrackingLinear,
+        layernorm_cls=_DummyLayerNorm,
+        params_dtype=torch.float32,
+        device=device,
+    )
+    benchmark.cache = allocate_kv_cache(
+        batch_size=1,
+        total_tokens=130,
+        num_heads=1,
+        head_dim=4,
+        device=device,
+        dtype=torch.float32,
+    )
+    benchmark.cache.cache_k.fill_(float("nan"))
+    benchmark.cache.cache_v.fill_(float("nan"))
+    tokens = torch.arange(520, dtype=torch.float32, device=device).reshape(1, 130, 4)
+    benchmark._prefill_groups = [
+        (tokens[:, 0:1], 0),
+        (tokens[:, 1:2], 1),
+    ]
+    benchmark._decode_groups = [
+        (tokens[:, offset : offset + 1], offset)
+        for offset in range(2, 130)
+    ]
+
+    with torch.inference_mode():
+        benchmark._run_token_groups()
+        first_cache_k = benchmark.cache.cache_k.clone()
+        first_cache_v = benchmark.cache.cache_v.clone()
+        benchmark._run_token_groups()
+
+    expected_iteration = [True, *([False] * 129)]
+    assert benchmark.model.qkv.first_microbatch_calls == expected_iteration * 2
+    assert benchmark.model.proj.first_microbatch_calls == expected_iteration * 2
+    torch.testing.assert_close(benchmark.cache.cache_k, first_cache_k, rtol=0, atol=0)
+    torch.testing.assert_close(benchmark.cache.cache_v, first_cache_v, rtol=0, atol=0)
+    assert torch.isfinite(benchmark.cache.cache_k).all()
+    assert torch.isfinite(benchmark.cache.cache_v).all()
 
 
 def test_kv_cache_attention_routes_through_sdpa(monkeypatch: pytest.MonkeyPatch) -> None:

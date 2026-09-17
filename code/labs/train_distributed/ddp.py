@@ -6,16 +6,16 @@ import argparse
 import sys
 
 import labs.train_distributed.baseline_ddp as baseline_single_run
-import labs.train_distributed.optimized_ddp as optimized_single_run
-import labs.train_distributed.baseline_ddp_multigpu as baseline_multi_run
-import labs.train_distributed.optimized_ddp_multigpu as optimized_multi_run
 import labs.train_distributed.baseline_ddp_flash as baseline_flash_single_run
-import labs.train_distributed.optimized_ddp_flash as optimized_flash_single_run
 import labs.train_distributed.baseline_ddp_flash_multigpu as baseline_flash_multi_run
+import labs.train_distributed.baseline_ddp_multigpu as baseline_multi_run
+import labs.train_distributed.optimized_ddp as optimized_single_run
+import labs.train_distributed.optimized_ddp_flash as optimized_flash_single_run
 import labs.train_distributed.optimized_ddp_flash_multigpu as optimized_flash_multi_run
+import labs.train_distributed.optimized_ddp_multigpu as optimized_multi_run
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description="DDP training examples.")
     parser.add_argument(
         "--mode",
@@ -29,7 +29,30 @@ def main():
         default="single",
         help="Select the single-GPU or multi-GPU implementation.",
     )
-    args, remaining = parser.parse_known_args()
+    parser.add_argument(
+        "--overlap-optimizer",
+        action="store_true",
+        help=(
+            "Enable grouped AdamW/backward overlap for the optimized multigpu arm; "
+            "the paired baseline remains synchronous."
+        ),
+    )
+    args, remaining = parser.parse_known_args(argv)
+
+    if args.overlap_optimizer:
+        if args.variant != "multigpu" or args.mode not in {"baseline", "optimized"}:
+            parser.error(
+                "--overlap-optimizer is supported only by the baseline/optimized "
+                "multigpu comparison"
+            )
+        if args.mode == "optimized":
+            remaining.append("--overlap-optimizer")
+        else:
+            print(
+                "[ddp] --overlap-optimizer applies to the optimized arm; "
+                "the baseline arm remains synchronous.",
+                flush=True,
+            )
 
     # Let the chosen script parse its own CLI flags.
     sys.argv = [sys.argv[0]] + remaining

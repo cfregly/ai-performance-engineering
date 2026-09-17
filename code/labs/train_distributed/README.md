@@ -1,10 +1,10 @@
 # Lab - Distributed Training Playbook
 
 ## Summary
-Collects distributed-training recipes: DDP, FSDP, ZeRO-1/2/3, symmetric memory and flash-attention-aware all-reduce handling. Direct training scripts remain available; generic torchrun-wrapper benchmark qualification is currently unsupported.
+Collects distributed-training recipes: DDP, FSDP, ZeRO-1/2/3, symmetric memory and flash-attention-aware all-reduce handling. Direct training scripts remain available. Plain DDP and ZeRO-2 have dedicated child-result contracts; wrappers without a contract remain unsupported.
 
 ## Generic wrapper verification unavailable
-The shared `training_utils/torchrun_harness.py` wrapper formerly verified an unrelated parent-side Linear model before launching the real child. That surrogate has been removed. Its factories and configuration remain discoverable, but harness execution and verification now stop explicitly before launch until child-produced training results and an independent reference are implemented. A failed launch-spec getter is propagated rather than replaced with a fallback script. Direct training entrypoints are unchanged; executing them alone is not correctness or performance acceptance. The separate ZeRO training tests do not supply a verification protocol for other wrappers.
+The shared `training_utils/torchrun_harness.py` wrapper formerly verified an unrelated parent-side Linear model before launching the real child. That surrogate has been removed. Factories without a dedicated child-result contract remain discoverable, but their harness execution and verification stop explicitly before launch. Plain DDP publishes complete post-training logits and loss from the actual final batch and a changed input, with separately executed forwards through the same unwrapped trained weights. That checks the forward wrapper; it is not independent proof of the optimizer updates. ZeRO-2 has a separate result adapter. A failed launch-spec getter is propagated rather than replaced with a fallback script. Direct training entrypoints are unchanged; executing them alone is not correctness or performance acceptance. The separate ZeRO training tests do not supply a verification protocol for other wrappers.
 
 ## Training runtime prerequisites
 The Hugging Face examples need `datasets` and `accelerate` in the Python
@@ -28,6 +28,83 @@ exited successfully; this does not make their generic wrappers qualified
 benchmarks. See the [dated validation checkpoint](../../../docs/reviews/2026-09-06-codebase-repair-checkpoint.md)
 for the source identity, retained failures and execution limits. Direct
 `torchrun` commands work without Slurm.
+
+## DDP accumulation
+In the optimized DDP and FlashAttention DDP entrypoints, `--steps` caps consumed
+microbatches, up to the available data. `--grad-accum` groups them into optimizer
+updates. A final partial group uses its actual size and still updates the model;
+for example, `--steps 3 --grad-accum 2` performs two optimizer updates. Both
+forward and backward stay inside the same gradient synchronization context.
+
+The plain optimized multi-GPU DDP path also accepts the explicit
+`--overlap-optimizer` experiment. It updates fused AdamW parameter buckets on a
+dedicated CUDA stream after each DDP all-reduce. The synchronous optimizer stays
+the default. The opt-in requires exactly two ranks, `--grad-accum 1`, and no
+`--compile`; requesting it outside that scope fails before model construction.
+The paired baseline remains synchronous. A three-update exact gate matched all
+parameters and AdamW state. The retained two-B200, full-epoch, two-seed A/B/B/A
+screen matched complete inputs, logits, and losses, while training-loop speedup
+was `1.023626x` geometric mean. Whole-process ratios were mixed, so this is a
+scoped loop result rather than an end-to-end speedup claim.
+
+The DDP result transport retains all four full output/reference mappings.
+After full reference checks, byte-identical references share serialized tensor
+storage; distinct values, including signed zeros, keep their own storage. The
+1 GiB per-rank file limit remains enforced. This avoids redundant full-logit
+files without reducing the batch, output coverage, or accuracy requirements.
+
+The public two-B200 three-update comparison passes full input/output checks
+with this transport. Its short-run ratio is 0.929x, so it is a correctness
+integration check, not a new speedup claim. The synchronous path remains the
+default. See the [retained result](../../../docs/reviews/2026-09-08-b200-remaining-followthrough.md#ddp-public-integration-bounded-full-output-transport).
+
+For this target, the harness maps `--iterations 3` to child `--steps 3`; the
+fixed `--grad-accum 1` therefore performs three optimizer updates per rank. Run
+the public integration check with:
+
+```bash
+python -m cli.aisp bench run --targets labs/train_distributed:ddp_multigpu \
+  --launch-via torchrun --nproc-per-node 2 --iterations 3 --warmup 0 \
+  --profile none --validity-profile portable \
+  --target-extra-arg 'labs/train_distributed:ddp_multigpu=--overlap-optimizer'
+```
+
+## FSDP training semantics
+In the FSDP and FSDP2 entrypoints, `--steps` counts optimizer updates. Each
+update consumes `--grad-accum` full per-rank microbatches, continuing into
+another data epoch when necessary. For example, `--steps 3 --grad-accum 2`
+consumes six microbatches and performs three updates. Empty per-rank loaders fail
+explicitly.
+
+Packed and synthetic labels already contain the next token at each input
+position. The shared training helper computes cross-entropy against these
+targets directly, avoiding a second causal shift inside the model. Direct runs
+seed model initialization and data order with 42; harness-owned seeds are
+preserved. Synthetic data uses a separate generator so data creation does not
+change model initialization.
+
+Model weights use BF16 while rotary-position frequency buffers stay in FP32.
+Device placement preserves those buffer dtypes, and FSDP1's mixed-precision
+policy also keeps buffers in FP32. Rounding inverse frequencies to BF16 before
+the rotary calculation introduces position-dependent errors that grow with
+sequence length.
+
+The FSDP and FSDP2 entrypoints report synchronized milliseconds per optimizer
+update on rank 0, using the slowest rank's complete training interval. This
+includes data loading, transfers, forward, backward, optimizer updates, and
+training logging; it excludes model startup and teardown. The optimized paths
+retain their FlashAttention, resharding, FP8, and fused AdamW behavior where
+supported.
+
+For reproducible FlashAttention 2 training checks, explicitly set
+`FLASH_ATTENTION_DETERMINISTIC=1` for both compared runs. A fixed model/data seed
+alone does not make the default FlashAttention backward pass bitwise repeatable.
+Keep this setting consistent across compared runs and record it with timings.
+Matching an independent model with the same attention backend does not establish
+bitwise equality with eager attention or an application-level accuracy budget.
+These direct-run diagnostics do not enable the generic wrapper's child-result
+verification for either FSDP family; the wrappers remain fail-closed until they
+publish actual trained outputs and an independent reference.
 
 ## Problem
 Distributed training has too many "optimized" labels that mean different things. This lab is here to keep DDP compression, pipeline schedules, and symmetric-memory training as separate benchmarked choices so you can see what actually helps on the current stack.
@@ -110,7 +187,7 @@ python -m pytest -q tests/test_audit_wave1_zero2_parity.py tests/test_audit_wave
 
 ## Notes
 - Inspect `python -m cli.aisp bench run --help` and `training_utils/torchrun_harness.py` for the supported launcher configuration; use the allocated topology and preserve launcher arguments with results.
-- FSDP/FSDP2 benchmarks default to `labs/train_distributed/data/tinystories_packed_seq128.jsonl` plus `labs/train_distributed/data/tinyllama_config.json`, with `AISP_TINYSTORIES_LAYERS=4` to keep the model small. Override with `AISP_TINYSTORIES_PACKED_PATH`, `AISP_TINYSTORIES_LOCAL_PATH`, `AISP_TINYSTORIES_CONFIG_PATH`, or `AISP_TINYSTORIES_LAYERS`.
+- FSDP and FSDP2 wrappers select `labs/train_distributed/data/tinystories_packed_seq1024.jsonl` and `labs/train_distributed/data/tinyllama_config.json`. FSDP selects 22 layers for single-GPU and 12 for multi-GPU; FSDP2 selects eight layers, per-rank microbatch size two, and accumulation two. Override direct-run inputs with `AISP_TINYSTORIES_PACKED_PATH`, `AISP_TINYSTORIES_LOCAL_PATH`, `AISP_TINYSTORIES_CONFIG_PATH`, or `AISP_TINYSTORIES_LAYERS`.
 - Scale up by increasing `AISP_TINYSTORIES_LAYERS` or swapping to a larger config and pairing it with a packed dataset that matches the new sequence length.
 - Set `AISP_FSDP_DISABLE_FP8=1` to keep the minimal BF16 path; unset it when you want to exercise the FP8 conversion on larger workloads.
 - The generic `fsdp2` wrapper retains metadata but rejects harness execution. Direct script execution is not a substitute for a child-result contract or multi-GPU correctness evidence.

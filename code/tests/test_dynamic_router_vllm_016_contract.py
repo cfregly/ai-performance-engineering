@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 from functools import partial
 from types import SimpleNamespace
 
@@ -151,6 +152,7 @@ def _args() -> SimpleNamespace:
         decode_requests=1,
         continue_requests=1,
         prefill_ctx_thresh=3,
+        long_spillover_limit=0,
         use_v1_core_loop=False,
     )
 
@@ -167,7 +169,9 @@ def _topology() -> TopologySnapshot:
 def test_wrapper_uses_vllm_016_engine_and_request_signatures(vllm_016_api: None) -> None:
     wrapper = vllm_runner._VllmWrapper("gpu1", 1, "/models/local-test-model")
     request = vllm_runner.Request(req_id="req-0", prompt_tokens=4, expected_new_tokens=2)
-    runtime = vllm_runner._RequestRuntime(request, "gpu1", admitted_at=10.0)
+    runtime = vllm_runner._RequestRuntime(
+        request, "gpu1", admitted_at=10.0, admitted_monotonic=100.0,
+    )
 
     wrapper.add_request(runtime)
 
@@ -195,6 +199,104 @@ def test_attention_backend_cli_is_explicit(monkeypatch: pytest.MonkeyPatch) -> N
     assert vllm_runner._parse_cli_args().attention_backend == "TRITON_ATTN"
     monkeypatch.setattr(vllm_runner.sys, "argv", ["router"])
     assert vllm_runner._parse_cli_args().attention_backend is None
+
+
+def test_long_spillover_cli_is_bounded_opt_in() -> None:
+    assert vllm_runner.parse_vllm_target_overrides([]).long_spillover_limit == 0
+    assert (
+        vllm_runner.parse_vllm_target_overrides(
+            ["--long-spillover-limit", "1"]
+        ).long_spillover_limit
+        == 1
+    )
+    with pytest.raises(ValueError, match="long-spillover-limit must be non-negative"):
+        vllm_runner.parse_vllm_target_overrides(
+            ["--long-spillover-limit", "-1"]
+        )
+
+
+def test_uuid_cuda_visibility_fails_before_cuda_or_engine_construction(
+    vllm_016_api: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    visible = (
+        "GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd,"
+        "GPU-b4de3d1a-a4fd-27e2-688b-dd8bfb31bfbb"
+    )
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", visible)
+    monkeypatch.setattr(
+        vllm_runner.torch.cuda,
+        "is_available",
+        lambda: pytest.fail("UUID visibility must fail before CUDA inspection"),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"Pinned vLLM .* does not accept GPU UUID tokens.*"
+            r"same UUIDs to numeric physical indices.*same order"
+        ),
+    ):
+        vllm_runner.create_dual_pool_vllm_session(
+            "dual",
+            topology_snapshot=_topology(),
+            cli_args=_args(),
+        )
+
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == visible
+    assert _FakeEngineArgs.created == []
+    assert _FakeLLMEngine.created == []
+
+
+def test_mig_cuda_visibility_rejects_parent_gpu_substitution(
+    vllm_016_api: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    visible = "MIG-GPU-7f4a68da-6dbf-a5df-0493-5f3f6e7786fd/1/0"
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", visible)
+    monkeypatch.setattr(
+        vllm_runner.torch.cuda,
+        "is_available",
+        lambda: pytest.fail("MIG visibility must fail before CUDA inspection"),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"Pinned vLLM .* does not support MIG UUID tokens.*"
+            r"Keep the MIG allocation unchanged.*do not replace it with the parent GPU"
+        ),
+    ):
+        vllm_runner.create_dual_pool_vllm_session(
+            "dual",
+            topology_snapshot=_topology(),
+            cli_args=_args(),
+        )
+
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == visible
+    assert _FakeEngineArgs.created == []
+    assert _FakeLLMEngine.created == []
+
+
+@pytest.mark.parametrize("visible", [None, "0", "0,1", "7,3"])
+def test_numeric_or_unset_cuda_visibility_is_preserved(
+    monkeypatch: pytest.MonkeyPatch,
+    visible: str | None,
+) -> None:
+    if visible is None:
+        monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    else:
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", visible)
+    monkeypatch.setattr(vllm_runner.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(vllm_runner.torch.cuda, "device_count", lambda: 2)
+
+    assert (
+        vllm_runner._require_vllm_host(
+            workload_label="vLLM visibility contract", minimum_gpus=2
+        )
+        == 2
+    )
+    assert os.environ.get("CUDA_VISIBLE_DEVICES") == visible
 
 
 def test_pinned_api_mismatch_fails_explicitly_without_fallback(
@@ -257,6 +359,250 @@ def test_all_four_benchmark_call_paths_use_current_vllm_api(
         "cuda:1",
     }
     assert sum(len(engine.add_calls) for engine in _FakeLLMEngine.created) == expected_requests
+
+
+def test_optimized_routing_uses_run_local_admission_depth_without_cuda_polling(
+    vllm_016_api: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    synchronize_calls: list[int] = []
+    monkeypatch.setattr(
+        vllm_runner.torch.cuda,
+        "synchronize",
+        lambda index: synchronize_calls.append(index),
+    )
+    args = _args()
+    args.req_count = 4
+
+    for _ in range(2):
+        first_new_engine = len(_FakeLLMEngine.created)
+        summary = vllm_runner.run_vllm_routing_with_topology(
+            "optimized",
+            topology_snapshot=_topology(),
+            cli_args=args,
+            prompt_token_ids=vllm_runner.build_prompt_token_ids([64] * args.req_count),
+        )
+        new_engines = _FakeLLMEngine.created[first_new_engine:]
+        requests_by_device = {
+            str(engine.config.device_config.device): [
+                call["request_id"] for call in engine.add_calls
+            ]
+            for engine in new_engines
+        }
+
+        assert requests_by_device == {
+            "cuda:0": ["session-0000-req-0", "session-0000-req-2"],
+            "cuda:1": ["session-0000-req-1", "session-0000-req-3"],
+        }
+        assert summary["requests"] == summary["completed"] == 4
+        assert summary["requests_admitted_gpu0"] == 2
+        assert summary["requests_admitted_gpu1"] == 2
+        assert len(summary[vllm_runner.VERIFICATION_OUTPUT_KEY]) == 8
+
+    assert synchronize_calls == []
+
+
+@pytest.mark.parametrize(
+    (
+        "mode",
+        "decode_gpus",
+        "spillover_limit",
+        "expected_counts",
+        "expected_prefill_counts",
+        "expected_decode_counts",
+        "expected_pool_counts",
+        "expected_actual_spillover",
+    ),
+    [
+        (
+            "shared",
+            "0,1",
+            0,
+            {"cuda:0": 51, "cuda:1": 51},
+            {"cuda:0": 3, "cuda:1": 3},
+            {"cuda:0": 48, "cuda:1": 48},
+            (2, 2),
+            0,
+        ),
+        (
+            "shared",
+            "0,1",
+            1,
+            {"cuda:0": 51, "cuda:1": 51},
+            {"cuda:0": 3, "cuda:1": 3},
+            {"cuda:0": 48, "cuda:1": 48},
+            (2, 2),
+            0,
+        ),
+        (
+            "dual",
+            "1",
+            0,
+            {"cuda:0": 6, "cuda:1": 96},
+            {"cuda:0": 6, "cuda:1": 0},
+            {"cuda:0": 0, "cuda:1": 96},
+            (1, 1),
+            0,
+        ),
+        (
+            "dual",
+            "1",
+            1,
+            {"cuda:0": 5, "cuda:1": 97},
+            {"cuda:0": 5, "cuda:1": 1},
+            {"cuda:0": 0, "cuda:1": 96},
+            (1, 1),
+            1,
+        ),
+    ],
+)
+def test_dual_pool_uses_run_local_admission_depth_across_reused_runs(
+    vllm_016_api: None,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    decode_gpus: str,
+    spillover_limit: int,
+    expected_counts: dict[str, int],
+    expected_prefill_counts: dict[str, int],
+    expected_decode_counts: dict[str, int],
+    expected_pool_counts: tuple[int, int],
+    expected_actual_spillover: int,
+) -> None:
+    args = _args()
+    args.decode_gpus = decode_gpus
+    args.long_spillover_limit = spillover_limit
+    args.long_prompt_tokens = 4096
+    args.short_prompt_tokens = 128
+    args.prefill_burst = 6
+    args.decode_requests = 48
+    args.continue_requests = 48
+    args.prefill_ctx_thresh = 2048
+    prompt_lengths = vllm_runner.dual_pool_prompt_lengths(args)
+    prompt_token_ids = vllm_runner.build_prompt_token_ids(prompt_lengths)
+    session = vllm_runner.create_dual_pool_vllm_session(
+        mode,
+        topology_snapshot=_topology(),
+        cli_args=args,
+        warmup_runs=1,
+    )
+    for wrapper in session.engines.values():
+        monkeypatch.setattr(
+            wrapper,
+            "snapshot_metrics",
+            lambda **_kwargs: pytest.fail("post-admission snapshot must not run"),
+        )
+
+    try:
+        previous_add_counts = {
+            gpu_id: len(wrapper.engine.add_calls)
+            for gpu_id, wrapper in session.engines.items()
+        }
+        for run_index in range(2):
+            summary = vllm_runner.run_dual_pool_vllm_with_topology(
+                mode,
+                topology_snapshot=_topology(),
+                cli_args=args,
+                prompt_token_ids=prompt_token_ids,
+                engine_session=session,
+            )
+            observed_counts = {}
+            observed_prefill_counts = {}
+            observed_decode_counts = {}
+            for gpu_id, wrapper in session.engines.items():
+                current = len(wrapper.engine.add_calls)
+                device = f"cuda:{wrapper.device_index}"
+                new_calls = wrapper.engine.add_calls[
+                    previous_add_counts[gpu_id] : current
+                ]
+                observed_counts[device] = len(new_calls)
+                observed_prefill_counts[device] = sum(
+                    len(call["prompt"]) == args.long_prompt_tokens
+                    for call in new_calls
+                )
+                observed_decode_counts[device] = sum(
+                    len(call["prompt"]) == args.short_prompt_tokens
+                    for call in new_calls
+                )
+                new_request_ids = [
+                    call["request_id"]
+                    for call in new_calls
+                ]
+                assert all(
+                    request_id.startswith(f"session-{run_index:04d}-")
+                    for request_id in new_request_ids
+                )
+                previous_add_counts[gpu_id] = current
+
+            assert observed_counts == expected_counts
+            assert observed_prefill_counts == expected_prefill_counts
+            assert observed_decode_counts == expected_decode_counts
+            assert summary["requests"] == summary["completed"] == 102
+            for gpu_index in (0, 1):
+                device = f"cuda:{gpu_index}"
+                gpu_id = f"gpu{gpu_index}"
+                assert summary[f"requests_admitted_{gpu_id}"] == expected_counts[device]
+                assert (
+                    summary[f"prefill_requests_admitted_{gpu_id}"]
+                    == expected_prefill_counts[device]
+                )
+                assert (
+                    summary[f"decode_requests_admitted_{gpu_id}"]
+                    == expected_decode_counts[device]
+                )
+            assert (
+                summary["prefill_gpu_count"],
+                summary["decode_gpu_count"],
+            ) == expected_pool_counts
+            assert summary["long_spillover_limit"] == spillover_limit
+            assert summary["long_spillover_requests"] == expected_actual_spillover
+            expected_outputs = []
+            for prompt_length in prompt_lengths:
+                expected_outputs.extend((1, prompt_length))
+            assert summary[vllm_runner.VERIFICATION_OUTPUT_KEY] == expected_outputs
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize(
+    ("call_path", "mode"),
+    [
+        ("dynamic", "baseline"),
+        ("dynamic", "optimized"),
+        ("dual_pool", "shared"),
+        ("dual_pool", "dual"),
+    ],
+)
+def test_blocking_vllm_loops_do_not_add_poll_delay(
+    vllm_016_api: None,
+    monkeypatch: pytest.MonkeyPatch,
+    call_path: str,
+    mode: str,
+) -> None:
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(
+        vllm_runner.time,
+        "sleep",
+        lambda seconds: sleep_calls.append(seconds),
+    )
+    args = _args()
+    if call_path == "dynamic":
+        vllm_runner.run_vllm_routing_with_topology(
+            mode,
+            topology_snapshot=_topology(),
+            cli_args=args,
+            prompt_token_ids=vllm_runner.build_prompt_token_ids([64, 64]),
+        )
+    else:
+        if mode == "dual":
+            args.decode_gpus = "1"
+        vllm_runner.run_dual_pool_vllm_with_topology(
+            mode,
+            topology_snapshot=_topology(),
+            cli_args=args,
+            prompt_token_ids=vllm_runner.build_prompt_token_ids([4, 2, 2]),
+        )
+
+    assert sleep_calls == []
 
 
 def test_explicit_zero_request_groups_do_not_restore_default_work() -> None:
@@ -471,8 +817,16 @@ def test_full_vllm_pair_verification_uses_live_generated_outputs(
     assert result.passed, result.reason
 
 
-def test_v1_direct_loop_completes_required_engine_post_step() -> None:
+def test_v1_direct_loop_completes_required_engine_post_step(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     post_steps: list[bool] = []
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(
+        vllm_runner.time,
+        "sleep",
+        lambda seconds: sleep_calls.append(seconds),
+    )
     wrapper = vllm_runner._VllmV1Wrapper.__new__(vllm_runner._VllmV1Wrapper)
     wrapper._core = SimpleNamespace(
         step_fn=lambda: ({}, False),
@@ -482,6 +836,7 @@ def test_v1_direct_loop_completes_required_engine_post_step() -> None:
 
     assert wrapper.step() == ([], [], 0)
     assert post_steps == [False]
+    assert sleep_calls == [0.0]
 
 
 def test_finished_request_cannot_verify_without_declared_model_output() -> None:
@@ -496,6 +851,7 @@ def test_finished_request_cannot_verify_without_declared_model_output() -> None:
             request,
             "gpu0",
             admitted_at=10.0,
+            admitted_monotonic=10.0,
         )
     }
     wrapper._completed_output_token_ids = {}

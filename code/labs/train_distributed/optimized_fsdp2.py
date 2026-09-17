@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
-
-from core.common.device_utils import resolve_local_rank
+import time
 from contextlib import nullcontext
 from pathlib import Path
 
@@ -15,19 +14,27 @@ from torch.distributed._composable.fsdp import MixedPrecisionPolicy, fully_shard
 from torch.distributed.device_mesh import init_device_mesh
 from torch.utils.data import DataLoader, DistributedSampler
 
+from core.common.device_utils import resolve_local_rank
+
 try:
     from arch_config import prefer_sdpa_backends  # type: ignore
 except Exception:  # pragma: no cover - defensive import
     prefer_sdpa_backends = None  # type: ignore
 
+from labs.train_distributed.training_utils.fsdp_training import (
+    initialize_fsdp_seed,
+    move_fsdp_model_to_device,
+    shifted_causal_lm_loss,
+    validate_fsdp_training_args,
+)
 from labs.train_distributed.training_utils.torchrun_harness import TorchrunScriptBenchmark
 from labs.train_distributed.utils import (
     ThroughputTracker,
     create_collate_fn,
     get_model_flops_per_token,
     gpu_memory_usage,
-    load_tinystories_packed,
     load_tinystories,
+    load_tinystories_packed,
     setup_tokenizer,
 )
 
@@ -65,18 +72,21 @@ def _init_distributed() -> tuple[int, int, int]:
     return rank, world_size, local_rank
 
 
-def _build_dataloader(seq_len: int, micro_batch: int, rank: int, world_size: int):
+def _build_dataloader(
+    seq_len: int, micro_batch: int, rank: int, world_size: int, *, seed: int = 42
+):
     packed_path = os.getenv("AISP_TINYSTORIES_PACKED_PATH")
     if packed_path:
         dataset = load_tinystories_packed(packed_path, seq_len, is_main_process=rank == 0)
     else:
         tokenizer = setup_tokenizer(MODEL_ID)
         dataset = load_tinystories(tokenizer, seq_len, is_main_process=rank == 0)
-    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=True)
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=True, seed=seed)
     dataloader = DataLoader(
         dataset,
         batch_size=micro_batch,
         sampler=sampler,
+        generator=torch.Generator().manual_seed(seed),
         num_workers=0,
         pin_memory=True,
         drop_last=True,
@@ -133,13 +143,20 @@ def main():
         raise RuntimeError("optimized_fsdp2 requires the `transformers` package") from exc
 
     args = parse_args()
+    validate_fsdp_training_args(args)
+    active_seed = initialize_fsdp_seed()
     fp8_enabled = os.getenv("AISP_FSDP_DISABLE_FP8") != "1"
     if fp8_enabled:
         _assert_torchao_available()
 
     rank, world_size, local_rank = _init_distributed()
 
-    dataloader, sampler = _build_dataloader(args.sequence_length, args.micro_batch_size, rank, world_size)
+    dataloader, sampler = _build_dataloader(
+        args.sequence_length, args.micro_batch_size, rank, world_size, seed=active_seed
+    )
+    if len(dataloader) == 0:
+        dist.destroy_process_group()
+        raise ValueError("FSDP2 requires at least one full per-rank microbatch")
     if rank == 0:
         print("[optimized_fsdp2] dataloader ready", flush=True)
 
@@ -171,7 +188,7 @@ def main():
     if rank == 0:
         print("[optimized_fsdp2] model instantiated", flush=True)
 
-    model = model.to(torch.cuda.current_device(), dtype=torch.bfloat16)
+    model = move_fsdp_model_to_device(model, torch.cuda.current_device())
     if fp8_enabled:
         fp8_recipe = Float8LinearConfig(enable_fsdp_float8_all_gather=True)
         model = convert_to_float8_training(model, config=fp8_recipe)
@@ -188,7 +205,7 @@ def main():
         print("[optimized_fsdp2] optimizer ready", flush=True)
 
     flop_per_token = get_model_flops_per_token(model.config, args.sequence_length)
-    tracker = ThroughputTracker(warmup_steps=10)
+    tracker = ThroughputTracker(warmup_steps=5)
 
     total_updates = args.steps
     optimizer_step = 0
@@ -197,14 +214,17 @@ def main():
     is_main = rank == 0
     loss_value_buffer = torch.empty(1, dtype=torch.float64, device=f"cuda:{local_rank}")
 
+    dist.barrier()
+    torch.cuda.synchronize(local_rank)
+    training_start = time.perf_counter()
+
     while optimizer_step < total_updates:
         sampler.set_epoch(epoch)
         for batch in dataloader:
             batch = {k: v.cuda(non_blocking=True) for k, v in batch.items()}
             sdpa_ctx = prefer_sdpa_backends() if prefer_sdpa_backends is not None else nullcontext()
-            with sdpa_ctx, torch.cuda.amp.autocast(dtype=torch.bfloat16):
-                outputs = model(**batch)
-                loss = outputs.loss / args.grad_accum
+            with sdpa_ctx, torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                loss = shifted_causal_lm_loss(model, batch) / args.grad_accum
 
             loss.backward()
             micro_step += 1
@@ -235,6 +255,14 @@ def main():
                 break
 
         epoch += 1
+
+    torch.cuda.synchronize(local_rank)
+    training_ms = (time.perf_counter() - training_start) * 1000.0
+    elapsed = torch.tensor(training_ms, dtype=torch.float64, device=f"cuda:{local_rank}")
+    dist.all_reduce(elapsed, op=dist.ReduceOp.MAX)
+    if is_main:
+        print(f"rank0 time_per_iter_ms: {elapsed.item() / optimizer_step:.9f}", flush=True)
+        print(f"completed_optimizer_steps: {optimizer_step}; completed_microbatches: {micro_step}", flush=True)
 
     dist.barrier()
     if is_main:

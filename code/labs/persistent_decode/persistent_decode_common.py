@@ -96,16 +96,46 @@ def validate_decode_output(inputs: DecodeInputs) -> None:
     actual = inputs.out
     if actual.shape != inputs.q.shape or not torch.isfinite(actual).all():
         raise AssertionError("Decode output has wrong shape or non-finite values")
+    for tensor in (inputs.q, inputs.k, inputs.v):
+        if tensor.shape != actual.shape or tensor.dtype != actual.dtype:
+            raise AssertionError("Decode inputs and output must have matching shapes and dtypes")
+        if not torch.isfinite(tensor).all():
+            raise AssertionError("Decode input has non-finite values")
     if any(actual.untyped_storage().data_ptr() == tensor.untyped_storage().data_ptr()
            for tensor in (inputs.q, inputs.k, inputs.v)):
         raise AssertionError("Decode output aliases an input")
-    reference = ((inputs.q.float() * inputs.k.float()).sum(-1, keepdim=True) * inputs.v.float()).to(actual.dtype)
-    # Retain the existing pair's numerical budget; the complete-output and
-    # dropped-sequence checks must pass before its harness payload is accepted.
+    if actual.dtype == torch.float32:
+        # Independent FP64 oracle. A conservative gamma_(2D+2) bound covers
+        # rounded products, any serial/tree FP32 reduction, and the final
+        # multiply. Scale by sum(abs(q*k)), not abs(sum(q*k)), so cancellation
+        # does not turn a valid accumulation-order difference into a failure.
+        # The normal-minimum term also covers flush-to-zero at intermediate
+        # products/adds. This budget is derived from arithmetic, not a measured
+        # baseline/optimized discrepancy; all checks run outside timing.
+        products = inputs.q.double() * inputs.k.double()
+        values = inputs.v.double()
+        reference = products.sum(-1, keepdim=True) * values
+        operations = 2 * actual.shape[-1] + 2
+        roundoff = torch.finfo(torch.float32).eps / 2
+        if operations * roundoff >= 1:
+            raise AssertionError("Decode reduction is too long for the FP32 error bound")
+        gamma = operations * roundoff / (1 - operations * roundoff)
+        budget = gamma * products.abs().sum(-1, keepdim=True) * values.abs()
+        budget += operations * torch.finfo(torch.float32).tiny * (values.abs() + 1)
+        error = (actual.double() - reference).abs()
+        if (error > budget).any():
+            raise AssertionError(
+                "Decode output exceeds the independent FP32 roundoff budget: "
+                f"max excess={float((error - budget).max()):.6g}"
+            )
+    else:
+        reference = ((inputs.q.float() * inputs.k.float()).sum(-1, keepdim=True) * inputs.v.float()).to(actual.dtype)
+        # Low-precision variants retain their existing policy; this FP32
+        # roundoff bound is not an accuracy claim for fp16 or fake-int4.
+        torch.testing.assert_close(actual, reference, rtol=0.1, atol=1.0)
     for index in range(actual.shape[0]):
         if reference[index].count_nonzero() and not actual[index].count_nonzero():
             raise AssertionError(f"Decode sequence {index} was not computed")
-    torch.testing.assert_close(actual, reference, rtol=0.1, atol=1.0)
 
 
 def build_prefill_decode_verification_buffers(

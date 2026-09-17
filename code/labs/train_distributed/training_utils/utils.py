@@ -155,9 +155,10 @@ def get(key, dm: dist.device_mesh.DeviceMesh | None = None):
     raise ValueError(f"Invalid string: {key}")
 
 
-def get_dataset():
-    """Tokenize a tiny MRPC slice for quick training/debug cycles."""
-    tokenizer = build_tokenizer()
+def get_dataset(*, tokenizer=None):
+    """Tokenize a tiny MRPC slice, reusing a caller-owned tokenizer when supplied."""
+    if tokenizer is None:
+        tokenizer = build_tokenizer()
     try:
         from datasets import load_dataset
         load_err = None
@@ -225,10 +226,87 @@ def get_dataset():
     return dataset
 
 
+def _sequence_length(value) -> int | None:
+    if isinstance(value, str | bytes | dict):
+        return None
+    if isinstance(value, torch.Tensor | np.ndarray) and value.ndim == 0:
+        return None
+    try:
+        return len(value)
+    except TypeError:
+        return None
+
+
+def _select_token_positions(value, positions: list[int]):
+    if isinstance(value, torch.Tensor):
+        return value[positions]
+    if isinstance(value, np.ndarray):
+        return value[positions]
+    if isinstance(value, tuple):
+        return tuple(value[index] for index in positions)
+    return [value[index] for index in positions]
+
+
+def _truncate_fixed_length_feature(feature, max_length: int, truncation_side: str):
+    """Remove existing padding and truncate every token-aligned feature together."""
+    truncated = dict(feature)
+    input_ids = feature.get("input_ids")
+    input_length = _sequence_length(input_ids)
+    if input_length is None:
+        return truncated
+
+    attention_mask = feature.get("attention_mask")
+    if attention_mask is None:
+        token_positions = list(range(input_length))
+    else:
+        mask_length = _sequence_length(attention_mask)
+        if mask_length != input_length:
+            raise ValueError(
+                "input_ids and attention_mask must have identical lengths before collation"
+            )
+        mask_values = (
+            attention_mask.tolist() if hasattr(attention_mask, "tolist") else attention_mask
+        )
+        if any(value not in (0, 1, False, True) for value in mask_values):
+            raise ValueError("attention_mask must contain only zero/one values")
+        token_positions = [index for index, value in enumerate(mask_values) if bool(value)]
+
+    if len(token_positions) > max_length:
+        token_positions = (
+            token_positions[-max_length:]
+            if truncation_side == "left"
+            else token_positions[:max_length]
+        )
+
+    for key, value in feature.items():
+        if _sequence_length(value) == input_length:
+            truncated[key] = _select_token_positions(value, token_positions)
+    return truncated
+
+
 def make_collate_fn(tokenizer, max_length: int | None = None):
+    """Build a tokenizer collator, truncating fixed-length batches before padding.
+
+    Pretokenized datasets may already contain padding beyond ``max_length``.
+    Attention-mask-aware depadding preserves real tokens before applying the
+    tokenizer's truncation side. The tokenizer still controls padding side and
+    rounds the padded length to the existing multiple of eight.
+    """
+    if max_length is not None and (type(max_length) is not int or max_length <= 0):
+        raise ValueError("max_length must be a positive integer or None")
+
     def collate(batch):
+        features = batch
+        if max_length is not None:
+            truncation_side = getattr(tokenizer, "truncation_side", "right")
+            if truncation_side not in {"left", "right"}:
+                raise ValueError("tokenizer.truncation_side must be 'left' or 'right'")
+            features = [
+                _truncate_fixed_length_feature(feature, max_length, truncation_side)
+                for feature in batch
+            ]
         return tokenizer.pad(
-            batch,
+            features,
             padding="max_length" if max_length is not None else "longest",
             max_length=max_length,
             pad_to_multiple_of=8,

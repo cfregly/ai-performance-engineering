@@ -289,6 +289,30 @@ def _assert_sensitivity(
         )
 
 
+def _share_identical_reference_storage(
+    actual: Mapping[str, torch.Tensor], reference: Mapping[str, torch.Tensor]
+) -> dict[str, torch.Tensor]:
+    """Losslessly pack already-validated CPU references for torch.save.
+
+    The independently computed references have already passed the full checks.
+    Only byte-identical tensors share storage; tolerance-close values (including
+    differently signed zeros) retain their own bytes. torch.save/load preserves
+    all named full tensors, and the parent still validates every reference.
+    """
+
+    return {
+        name: (
+            actual[name]
+            if torch.equal(
+                actual[name].reshape(-1).view(torch.uint8),
+                tensor.reshape(-1).view(torch.uint8),
+            )
+            else tensor
+        )
+        for name, tensor in reference.items()
+    }
+
+
 def write_training_child_result(
     *,
     inputs: Mapping[str, torch.Tensor],
@@ -383,6 +407,8 @@ def write_training_child_result(
         label="sensitivity_outputs",
     )
     _assert_sensitivity(primary_inputs, changed_inputs, primary_outputs, changed_outputs)
+    primary_reference = _share_identical_reference_storage(primary_outputs, primary_reference)
+    changed_reference = _share_identical_reference_storage(changed_outputs, changed_reference)
 
     result_dir = Path(environment[RESULT_DIR_ENV])
     if not result_dir.is_dir() or result_dir.is_symlink():
@@ -416,9 +442,13 @@ def write_training_child_result(
         torch.save(payload, handle)
         handle.flush()
         os.fsync(handle.fileno())
-    if temporary.stat().st_size > contract.max_rank_payload_bytes:
+    payload_bytes = temporary.stat().st_size
+    if payload_bytes > contract.max_rank_payload_bytes:
         temporary.unlink(missing_ok=True)
-        raise RuntimeError("Training child-result payload exceeds its declared size limit")
+        raise RuntimeError(
+            "Training child-result payload exceeds its declared size limit: "
+            f"{payload_bytes} bytes > {contract.max_rank_payload_bytes} bytes"
+        )
     os.replace(temporary, destination)
     return destination
 

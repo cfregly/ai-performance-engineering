@@ -100,7 +100,7 @@ class OptimizedNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBen
         self.graph_q = self.inputs.q.clone()
         self.graph_k = self.inputs.k.clone()
         self.graph_v = self.inputs.v.clone()
-        self.graph_out = torch.empty_like(self.inputs.out)
+        self.graph_out = self.inputs.out
 
         torch.cuda.synchronize()
         with torch.cuda.graph(self.decode_graph, stream=self.decode_stream):
@@ -145,7 +145,6 @@ class OptimizedNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBen
             self.graph_k.copy_(self.inputs.k)
             self.graph_v.copy_(self.inputs.v)
             self.decode_graph.replay()
-            self.inputs.out.copy_(self.graph_out)
 
     def benchmark_fn(self) -> None:
         if self.inputs is None or self._output_view is None:

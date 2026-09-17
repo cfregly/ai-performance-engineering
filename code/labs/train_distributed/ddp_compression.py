@@ -224,7 +224,7 @@ def main():
 
     try:
         tokenizer = build_tokenizer()
-        dataset = get_dataset()["train"]
+        dataset = get_dataset(tokenizer=tokenizer)["train"]
         dataloader = build_dataloader(
             dataset,
             tokenizer,

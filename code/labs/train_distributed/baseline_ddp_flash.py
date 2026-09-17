@@ -49,7 +49,7 @@ def main():
     is_main = rank == 0
 
     tokenizer = build_tokenizer()
-    dataset = get_dataset()["train"]
+    dataset = get_dataset(tokenizer=tokenizer)["train"]
     dataloader = build_dataloader(
         dataset,
         tokenizer,

@@ -69,6 +69,11 @@ except Exception as exc:  # pragma: no cover
 class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """FP8 compute benchmark (prefill + decode); the cache itself remains BF16."""
 
+    # Kernel replay times out on this large stateful TE workload. Profile the
+    # complete NVTX range by replaying the application;
+    # an explicit CLI replay-mode selection still takes precedence.
+    preferred_ncu_replay_mode = "app-range"
+
     def __init__(self) -> None:
         super().__init__()
         self.device = None
@@ -183,20 +188,36 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.model is None or self.cache is None or recipe is None:
             return
         with torch.inference_mode(), te_autocast(enabled=True, recipe=recipe, calibrating=True):
-            for prefill, offset in self._prefill_groups:
-                _ = self.model(prefill, self.cache, offset)
-            for decode, offset in self._decode_groups:
-                _ = self.model(decode, self.cache, offset)
+            self._run_token_groups()
 
     def _warmup_runtime(self, recipe) -> None:
         if self.model is None or self.cache is None or recipe is None:
             return
         with torch.inference_mode(), te_autocast(enabled=True, recipe=recipe):
-            for prefill, offset in self._prefill_groups:
-                _ = self.model(prefill, self.cache, offset)
-            for decode, offset in self._decode_groups:
-                _ = self.model(decode, self.cache, offset)
+            self._run_token_groups()
         torch.cuda.synchronize()
+
+    def _run_token_groups(self) -> None:
+        """Run one complete iteration while refreshing immutable weight caches once."""
+        if self.model is None or self.cache is None:
+            raise RuntimeError("Benchmark not initialized")
+        first_group = True
+        for prefill, offset in self._prefill_groups:
+            _ = self.model(
+                prefill,
+                self.cache,
+                offset,
+                is_first_microbatch=first_group,
+            )
+            first_group = False
+        for decode, offset in self._decode_groups:
+            _ = self.model(
+                decode,
+                self.cache,
+                offset,
+                is_first_microbatch=first_group,
+            )
+            first_group = False
 
     def benchmark_fn(self) -> None:
         if (
@@ -208,10 +229,7 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ):
             raise RuntimeError("Benchmark not initialized")
         with torch.inference_mode(), te_autocast(enabled=True, recipe=self.runtime_recipe):
-            for prefill, offset in self._prefill_groups:
-                _ = self.model(prefill, self.cache, offset)
-            for decode, offset in self._decode_groups:
-                _ = self.model(decode, self.cache, offset)
+            self._run_token_groups()
         self._mark_cache_output_ready()
 
     def _mark_cache_output_ready(self) -> None:

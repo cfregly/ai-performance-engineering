@@ -101,7 +101,7 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
             head_dim=self.head_dim, max_steps=self.seq_len, BLOCK_K=self.block_k,
             num_warps=2, num_stages=1,
         )
-        self.prefill_out.copy_((self.inputs.q * self.inputs.k).sum(dim=-1))
+        torch.sum(self.inputs.q * self.inputs.k, dim=-1, out=self.prefill_out)
         torch.cuda.synchronize()
         self._capture_piecewise_graphs()
         self._capture_full_graph()
@@ -110,8 +110,10 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
         # Capture prefill (toy: dot across head_dim per token)
         self.prefill_graph = torch.cuda.CUDAGraph()
         with torch.cuda.graph(self.prefill_graph):
-            qk = (self.inputs.q * self.inputs.k).sum(dim=-1)
-            self.prefill_out.copy_(qk)
+            # Write the reduction directly into its stable graph output. A
+            # temporary reduction followed by copy_ adds a needless memcpy
+            # node whose source is only initialized during graph execution.
+            torch.sum(self.inputs.q * self.inputs.k, dim=-1, out=self.prefill_out)
 
         # Capture persistent decode kernel
         self.decode_graph = torch.cuda.CUDAGraph()
@@ -144,8 +146,7 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
         grid = (min(self.batch, self.num_programs),)
         BLOCK_K = self.block_k
         with torch.cuda.graph(self.full_graph):
-            qk = (self.inputs.q * self.inputs.k).sum(dim=-1)
-            self.prefill_out.copy_(qk)
+            torch.sum(self.inputs.q * self.inputs.k, dim=-1, out=self.prefill_out)
             persistent_decode_kernel[grid](
                 self.inputs.q,
                 self.inputs.k,

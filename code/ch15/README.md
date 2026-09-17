@@ -67,7 +67,7 @@ python -m cli.aisp bench run --targets ch15:kv_cache_nvlink_pool --profile deep_
 | `baseline_continuous_batching_multigpu.py`, `optimized_continuous_batching_multigpu.py` | Multi-GPU continuous batching scheduler for scaled queueing throughput. |
 | `baseline_greedy_sampler.py`, `optimized_greedy_sampler.py`, `greedy_sampler_common.py` | Greedy decode sampler comparison showing that positive-temperature argmax can skip full-vocab softmax materialization. |
 | `baseline_moe_inference.py`, `optimized_moe_inference.py` | Inference-specific MoE workloads that pair router load with communication control. |
-| `baseline_moe_overlap.py`, `optimized_moe_overlap_shared_expert.py`, `baseline_moe_overlap_local_route.py`, `optimized_moe_overlap_local_route.py`, `moe_overlap_local_route_common.py`, `baseline_wide_ep.py`, `optimized_wide_ep.py`, `baseline_moe_dispatch.py`, `optimized_moe_dispatch.py`, `baseline_moe_routing_topology_aware.py`, `optimized_moe_routing_topology_aware.py` | MoE expert-parallel microbenchmarks that now split dispatch-path optimization, direct local routed placement, and topology-aware routing locality so attribution stays clean. |
+| `baseline_moe_comm_exchange.py`, `optimized_moe_comm_exchange_overlap.py`, `optimized_moe_comm_exchange_hierarchical.py`, `moe_comm_exchange_benchmarks.py`, `baseline_moe_overlap.py`, `optimized_moe_overlap_shared_expert.py`, `baseline_moe_overlap_local_route.py`, `optimized_moe_overlap_local_route.py`, `moe_overlap_local_route_common.py`, `baseline_wide_ep.py`, `optimized_wide_ep.py`, `baseline_moe_dispatch.py`, `optimized_moe_dispatch.py`, `baseline_moe_routing_topology_aware.py`, `optimized_moe_routing_topology_aware.py` | MoE expert-parallel microbenchmarks that split exchange overlap and hierarchy, dispatch-path optimization, direct local routed placement, and topology-aware routing locality so attribution stays clean. |
 | `compare.py`, `requirements.txt`, `expectations_{hardware_key}.json`, `Makefile` | Harness entry and dependencies for inference-focused validation. |
 
 ## Running the Benchmarks
@@ -86,6 +86,7 @@ python -m cli.aisp bench run --targets ch15 --profile minimal
 - `python optimized_kv_cache_management.py --validate` confirms eviction + promotion policies keep decode latency within the budget.
 - `python compare.py --examples continuous_batching` (single GPU) and `python compare.py --examples continuous_batching_multigpu` (multi-GPU) show optimized scheduling increases tokens/sec vs naive queue draining.
 - `python -m cli.aisp bench run --targets ch15:greedy_sampler --profile minimal --single-gpu` verifies the direct-logit argmax path matches the full-probability baseline exactly.
+- `python -m cli.aisp bench run --targets ch15:moe_comm_exchange --profile minimal --single-gpu` compares the complete timed output and every token/route input at exact tolerance across the flat, overlap, and hierarchical single-GPU logical-rank paths. Rerun this GPU path after verification changes before treating existing receipts as current-source evidence.
 
 ## Notes
 - `disaggregated_inference_multigpu.py` can run purely in simulation mode; set `--simulate-network` when hardware isn't wired for NVLink pooling.

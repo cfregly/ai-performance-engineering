@@ -348,7 +348,9 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.graph_q = self.inputs.q.clone()
         self.graph_k = self.inputs.k.clone()
         self.graph_v = self.inputs.v.clone()
-        self.graph_out = torch.empty_like(self.inputs.out)
+        # The stable benchmark output is also the graph output; a second
+        # buffer and captured copy add no work needed by the decode example.
+        self.graph_out = self.inputs.out
         self._full_events = {
             "start": torch.cuda.Event(enable_timing=True),
             "end": torch.cuda.Event(enable_timing=True),
@@ -398,7 +400,6 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
             flat_dst = self.prefill_dst.reshape(-1)
             self._tma_ext.tma_copy_tile(flat_src, flat_dst, self.cfg.chunk_k)
             self._decode_body(self.graph_q, self.graph_k, self.graph_v, self.graph_out)
-            self.inputs.out.copy_(self.graph_out)
         torch.cuda.synchronize()
 
     def _decode_body(
@@ -444,8 +445,6 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
             self.graph_k.copy_(self.inputs.k)
             self.graph_v.copy_(self.inputs.v)
             self.decode_graph.replay()
-            # Mirror back to inputs.out so validation stays consistent.
-            self.inputs.out.copy_(self.graph_out)
 
     def benchmark_fn(self) -> None:
         if self.inputs is None or self._output_view is None:

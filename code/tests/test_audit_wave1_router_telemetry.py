@@ -25,6 +25,7 @@ def runtime(name, *, expected_new_tokens=8):
             expected_new_tokens=expected_new_tokens,
         ),
         "gpu0",
+        1_800_000_000.0,
         100.0,
     )
 
@@ -70,6 +71,43 @@ def test_zero_output_does_not_create_a_first_token_sample():
     assert request.observe_cumulative_tokens(2, 102) == (0, None)
     with pytest.raises(RuntimeError, match="Cumulative.*decreased"):
         request.observe_cumulative_tokens(1, 103)
+
+
+@pytest.mark.parametrize("wall_clock_jump", [-3600.0, 3600.0])
+@pytest.mark.parametrize("core_loop", [False, True])
+def test_first_token_duration_ignores_wall_clock_adjustment(monkeypatch, wall_clock_jump, core_loop):
+    """Clock/control seam: invoke the real parser after a simulated engine wait."""
+    from labs.dynamic_router import vllm_runner
+
+    clock = {"monotonic": 100.0, "wall": 1_800_000_000.0}
+    monkeypatch.setattr(vllm_runner.time, "time", lambda: clock["wall"])
+    monkeypatch.setattr(vllm_runner.time, "perf_counter", lambda: clock["monotonic"])
+    cls = vllm_runner._VllmV1Wrapper if core_loop else _VllmWrapper
+    wrapper = cls.__new__(cls)
+    request = runtime("clock", expected_new_tokens=1)
+    wrapper._inflight = {"clock": request}
+    payload = [output("clock", 1, finished=True)]
+
+    def engine_step():
+        clock["wall"] += wall_clock_jump
+        clock["monotonic"] += 0.25
+        return payload
+
+    if core_loop:
+        def core_step():
+            return {0: SimpleNamespace(outputs=engine_step(), timestamp=0, scheduler_stats=None)}, True
+
+        wrapper._core = SimpleNamespace(step_fn=core_step, post_step=lambda **kwargs: None)
+        wrapper.engine = SimpleNamespace(output_processor=SimpleNamespace(
+            process_outputs=lambda outputs, **kwargs: SimpleNamespace(request_outputs=outputs, reqs_to_abort=[]),
+            update_scheduler_stats=lambda stats: None,
+        ))
+    else:
+        wrapper.engine = SimpleNamespace(get_num_unfinished_requests=lambda: 1, step=engine_step)
+
+    assert wrapper.step() == (["clock"], [("clock", 250.0)], 1)
+    assert request.admitted_at == 1_800_000_000.0
+    assert wrapper._completed_output_token_ids == {"clock": (0,)}
 
 
 def test_latency_and_throughput_have_independent_units_and_idle_steps_decay():

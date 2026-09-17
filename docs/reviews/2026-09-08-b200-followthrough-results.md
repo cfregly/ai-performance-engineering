@@ -1,6 +1,13 @@
 # B200 follow-through: serving, arithmetic requirements, and profiler recovery
 
-Status: scoped target validation complete, with no-win outcomes and an unresolved collective-replay limitation. This report extends the [September 7 results](2026-09-07-b200-review-results.md); it does not replace their retained failures or claim that every example is faster.
+Status at this checkpoint: scoped target validation complete, with no-win outcomes and collective replay still unresolved. The subsequent follow-through below recovers all selected NCCL launches; application-range replay remains outside that successful scope. This report extends the [September 7 results](2026-09-07-b200-review-results.md); it does not replace their retained failures or claim that every example is faster.
+
+A subsequent [follow-through audit](2026-09-08-b200-remaining-followthrough.md)
+found that the shared-pool baseline admitted all requests to GPU 0. The dual-pool
+ratios below are retained historical measurements of that uneven placement,
+not fair two-GPU speedup claims. The follow-through report records the admission
+fix, a fair 0.814908x no-win result, real-data one/two-B200 training checks,
+and successful coordinated captures of all selected NCCL launches.
 
 ## Source and execution scope
 
@@ -31,7 +38,7 @@ Remote and local SHA-256 inventories are byte-identical, with inventory digest
 | DDP | Store sampled losses on the device and read the retained history once after training | Exact outputs pass on one and two B200s; no training-throughput win established |
 | Pipeline | Amortize fill/drain boundaries across repeated fixed-weight iterations | 16 B200 runs pass exact outputs; 1.024x iteration / 1.003x process medians with mixed seed results; paired traces pass their exact mechanism contracts |
 | Cache-aware inference | Remove redundant barriers for the exact 1P1D topology; report zero placement opportunities | 16 timing runs and both traces pass; observed median ratio 1.574x from reduced synchronization |
-| vLLM routing and dual pools | Reuse engines; separate startup, five warmups, three wall-clock measurements, and teardown | Final dual-pool run passes exact tokens at 1.472x steady-state; dynamic routing passes exact tokens at 0.885x and is a no-win |
+| vLLM routing and dual pools | Reuse engines; separate startup, five warmups, three wall-clock measurements, and teardown | Historical dual-pool 1.472x result passes exact tokens but uses an uneven baseline; superseded for fair speedup claims. Dynamic routing is a 0.885x no-win |
 | TE FP8 | Expose the same explicit batch-size override in FP16 and FP8 while preserving batch 256 by default | 24 full-output observations show a workload-specific crossover: 0.718x at batch 256, 0.825x at 1024, and 1.279x at 4096 |
 | Arithmetic requirements | Freeze independent numerical ceilings and require nominal, holdout, edge, and shared-reference checks | Fresh KV and Ozaki runs pass correctness; both speed goals fail without a claimed win |
 | Execution hardening | Add explicit operation-placement and declared-destination write-coverage audits | Final 27 B200 tests and a real CUDA audit CLI pass, with no skips |
@@ -154,9 +161,10 @@ all 19,222 captured kernels on device 0. The dual-pool arm splits 15,550 kernels
 onto device 0 and 12,178 onto device 1; kernel-busy interval union falls from
 1.812668 to 1.218329 seconds, and 99.0% of device 1 busy time overlaps device 0.
 Summed GPU duration still rises 5.3% and launches rise 44.3%, while MoE BMM time
-is within 1.8% and attention within 0.5%. This supports concurrent placement,
-not removed arithmetic. Profiled durations are diagnostic; the repeated ordinary
-runs above remain the timing evidence.
+is within 1.8% and attention within 0.5%. These traces expose uneven baseline placement: two engines existed, but only
+one received work. The observed concurrency does not establish a fair two-GPU
+speedup. Profiled durations and the ordinary timings above remain retained
+evidence of that historical execution.
 
 The reused dynamic-routing pair also passes exact token checks and lifecycle
 separation, but is slower: 209.280 ms for the static control versus 236.455 ms
@@ -296,9 +304,10 @@ hardware skips. The remaining hosted post-suite checks also pass locally: five
 shell entrypoints, zero silent-fallback findings, and 936 benchmark files with
 zero contract errors or warnings. The failed hosted receipt remains retained.
 
-Full collective NCU replay still needs a working tool/runtime combination; the
-bounded selected-kernel captures and matched Nsys traces provide the usable
-profiling paths on this stack. DDP and pipeline need a repeatable measured gain
+At this checkpoint collective NCU replay was unresolved. The subsequent
+[follow-through](2026-09-08-b200-remaining-followthrough.md) completes all selected
+NCCL launches through coordinated per-rank kernel replay; earlier application-range
+timeouts remain retained failures. DDP and pipeline need a repeatable measured gain
 before stronger performance claims. Small-batch FP8, dynamic routing, KV, and
 Ozaki remain no-win examples for the measured workloads. The arithmetic budgets
 cover these lab outputs; downstream model-quality acceptance remains a separate

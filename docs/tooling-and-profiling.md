@@ -89,6 +89,49 @@ Use a complete name returned by the installed tool for that device. Kernel
 replay can change cache state and add overhead; record replay settings and do not
 substitute profiled duration for a separately measured end-to-end baseline.
 
+### Two-rank NCCL captures
+
+Collectives that require concurrent ranks can stall under process-tree replay.
+The explicit `core.profiling.ncu_torchrun_capture` command launches one profiler
+per rank, with TCP coordination and lockstep limited to named NCCL NVTX ranges.
+It currently supports one Linux host, two visible GPUs, Nsight Compute 2026.2.1, kernel
+replay, and the repository's five minimal metrics. It runs directly with
+`torchrun`; Slurm is not required.
+
+From a clean checkout's `code/` directory, use the Python environment for the
+workload and set `NCU` to the absolute path of the 2026.2.1 executable. Choose
+unused loopback ports and a new output directory for each attempt:
+
+```bash
+AISP_LOCK_GPU_CLOCKS=1 AISP_RAMP_GPU_CLOCKS=1 \
+CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="$PWD" \
+python -m core.profiling.ncu_torchrun_capture \
+  --label pipeline-nccl --repo-root .. --source "$(git rev-parse HEAD)" \
+  --output-dir /tmp/pipeline-nccl-attempt-01 --ncu "$NCU" \
+  --tcp-port 29601 --timeout-seconds 180 --all-matching-kernels \
+  --nvtx-include 'NCCL@ncclGroupEnd/' --nvtx-include 'NCCL@ncclAllReduce/' \
+  -- python -m torch.distributed.run --nproc_per_node 2 --nnodes 1 \
+  --rdzv_backend c10d --rdzv_endpoint 127.0.0.1:29600 --max_restarts 0 \
+  -m core.harness.torchrun_wrapper --aisp-emit-runtime-provenance \
+  --aisp-target-module core.harness.benchmark_worker \
+  --aisp-expected-torch-seed 42 --aisp-expected-cuda-seed 42 \
+  --module ch04.baseline_pipeline_parallel --callable main \
+  -- --iters 3 --warmup 5 --seed 42
+```
+
+Omit `--all-matching-kernels` for a faster diagnostic of the first matching
+kernel per rank. The selected ranges must be observed in the workload's trace;
+globally matching launch ordinals is unsafe for asymmetric pipeline stages.
+Neither mode captures non-NCCL compute or changes the default benchmark profiler.
+
+The command retains exact arguments, source/tool hashes, logs, rank reports, and
+the owned process-group cleanup result. `CAPTURE_ARTIFACTS_PRESENT` establishes
+artifact creation only. Import both reports to check the selected kernels,
+finite metrics, PID/device identities and runtime receipts; verify numerical
+outputs and ordinary timings separately. See the
+[B200 follow-through report](reviews/2026-09-08-b200-remaining-followthrough.md)
+for measured scope and retained timeout dispositions.
+
 ## Framework traces, HTA and offline analysis
 
 `python -m cli.aisp profile torch` captures framework operators and CPU/CUDA

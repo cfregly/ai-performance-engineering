@@ -165,6 +165,9 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
     parameter_signature_only: bool = True
     _is_deterministic: bool = True
     allowed_benchmark_fn_antipatterns = ("io",)
+    # Opt in only when the Makefile provides <binary>_profile<arch suffix>
+    # and that build marks the complete timed workload with this NVTX range.
+    ncu_profile_nvtx_include: Optional[str] = None
     
     def __init__(
         self,
@@ -201,33 +204,41 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_checksum_pattern = re.compile(self.verify_checksum_regex)
         self._verify_checksum: Optional[float] = None
         self._verify_exec_path: Optional[Path] = None
+        self._profile_exec_path: Optional[Path] = None
         
         self.arch: Optional[str] = None
         self.exec_path: Optional[Path] = None
         self._last_result: Optional[BinaryRunResult] = None
     
     # ------------------------------------------------------------------ Helper API
-    def _build_binary(self, verify_mode: bool = False) -> Path:
+    def _build_binary(self, verify_mode: bool = False, *, profile_mode: bool = False) -> Path:
         """Compile the requested CUDA binary.
         
         Args:
             verify_mode: If True, build with -DVERIFY=1 flag for verification
+            profile_mode: Build a separate NVTX-enabled profiling executable.
             
         Returns:
             Path to the built binary
         """
+        if verify_mode and profile_mode:
+            raise ValueError("Verification and profiling builds must be separate")
         self.arch = detect_supported_arch()
         suffix = ARCH_SUFFIX[self.arch]
         
         # Verify builds get a _verify suffix to keep them separate
         if verify_mode:
             target = f"{self.binary_name}_verify{suffix}"
+        elif profile_mode:
+            target = f"{self.binary_name}_profile{suffix}"
         else:
             target = f"{self.binary_name}{suffix}"
         
         build_cmd = ["make", f"ARCH={self.arch}", target]
         if verify_mode:
             build_cmd.append("VERIFY=1")
+        elif profile_mode:
+            build_cmd.append("NVTX_ENABLED=1")
         
         try:
             completed = _run_subprocess_capture(
@@ -251,12 +262,26 @@ class CudaBinaryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         if verify_mode:
             self._verify_exec_path = path
+        elif profile_mode:
+            self._profile_exec_path = path
         else:
             self.exec_path = path
             if self.require_tma_instructions:
                 require_tma_instructions(self.exec_path)
         
         return path
+
+    def get_ncu_profile_command(self) -> tuple[list[str], str]:
+        """Build the explicitly marked child workload, preserving the timing binary."""
+        selection = self.ncu_profile_nvtx_include
+        if not isinstance(selection, str) or not selection.strip():
+            raise RuntimeError(
+                f"{self.binary_name} needs an explicit ncu_profile_nvtx_include "
+                "and a separate NVTX-enabled _profile build; a Python parent "
+                "range cannot select CUDA kernels in a compiled child process."
+            )
+        executable = self._build_binary(profile_mode=True)
+        return [str(executable), *map(str, self.run_args)], selection
     
     def _build_binary_verify(self) -> Path:
         """Build the verify-mode binary with -DVERIFY=1.

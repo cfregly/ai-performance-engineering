@@ -71,9 +71,6 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._group_offsets: Optional[torch.Tensor] = None
         self._group_ranges: Optional[list[tuple[int, int]]] = None
         self._comm_stream: Optional[torch.cuda.Stream] = None
-        self._verify_probe: Optional[torch.Tensor] = None
-        self._verify_meta: Optional[torch.Tensor] = None
-        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
 
     def setup(self) -> None:
@@ -150,18 +147,6 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for idx in range(group_offsets_host.numel() - 1)
         ]
         self._comm_stream = torch.cuda.Stream(device=self.device)
-
-        probe_cols = min(256, self.hidden_size)
-        self._verify_probe = torch.empty((1, 1, probe_cols), dtype=self.inputs.dtype, pin_memory=True)
-        self._verify_probe.copy_(
-            self.inputs[:1, :1, :probe_cols],
-            non_blocking=False,
-        )
-        self._verify_meta = torch.tensor(
-            [int(self.logical_world_size), int(self.ranks_per_group), int(self.num_experts)],
-            dtype=torch.int64,
-        )
-        self._verify_output_buffer = torch.empty((2, 2, 256), dtype=torch.float32)
 
         for _ in range(3):
             with torch.inference_mode():
@@ -271,20 +256,16 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if (
             self.output is None
-            or self._verify_probe is None
-            or self._verify_meta is None
-            or self._verify_output_buffer is None
+            or self.inputs is None
+            or self.expert_ids is None
         ):
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
-        output_slice = self.output[
-            : self._verify_output_buffer.shape[0],
-            : self._verify_output_buffer.shape[1],
-            : self._verify_output_buffer.shape[2],
-        ].detach()
-        self._verify_output_buffer.copy_(output_slice, non_blocking=False)
         self._set_verification_payload(
-            inputs={"probe": self._verify_probe, "routing": self._verify_meta},
-            output=self._verify_output_buffer,
+            inputs={
+                "tokens": self.inputs.detach(),
+                "expert_ids": self.expert_ids.detach(),
+            },
+            output=self.output.detach(),
             batch_size=int(self.batch),
             parameter_count=self._payload_parameter_count,
             precision_flags={
@@ -324,9 +305,6 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._group_offsets = None
         self._group_ranges = None
         self._comm_stream = None
-        self._verify_probe = None
-        self._verify_meta = None
-        self._verify_output_buffer = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
@@ -351,4 +329,9 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def validate_result(self) -> Optional[str]:
         if self.output is None:
             return "Output not produced"
+        expected_shape = (self.batch, self.seq, self.hidden_size)
+        if tuple(self.output.shape) != expected_shape:
+            return f"Output shape {tuple(self.output.shape)} does not match {expected_shape}"
+        if not torch.isfinite(self.output).all():
+            return "Output contains non-finite values"
         return None
