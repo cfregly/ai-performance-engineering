@@ -348,6 +348,34 @@ def test_setup_vllm_runtime_dependency_pins_match_base_requirements() -> None:
     }
 
 
+def test_vllm_dependency_constraint_preserves_the_exact_cuda_build(tmp_path: Path) -> None:
+    from packaging.requirements import Requirement
+    from packaging.version import Version
+
+    setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+    install = setup.split(
+        'echo "Installing pinned vLLM runtime dependencies', 1
+    )[1].split("python3 <<PY", 1)[0]
+    constraint_setup = "VLLM_DEPS_CONSTRAINTS=" + install.split(
+        "VLLM_DEPS_CONSTRAINTS=", 1
+    )[1].split("if ! pip_install", 1)[0]
+    # Execute the real constraint-generation shell without invoking setup's
+    # privileged installation. Exercise pip's PEP 440 matching semantics.
+    result = subprocess.run(
+        ["/bin/bash", "-c", 'set -e\nPYTORCH_TORCH_VERSION="2.9.1+cu130"\n'
+         + constraint_setup + '\ncat "$VLLM_DEPS_CONSTRAINTS"'],
+        env={**os.environ, "TMPDIR": str(tmp_path)},
+        text=True, capture_output=True, check=True,
+    )
+    requirement = Requirement(result.stdout.strip())
+    assert requirement.name == "torch"
+    assert Version("2.9.1+cu130") in requirement.specifier
+    for other_build in ("2.9.1", "2.9.1+cpu", "2.9.1+cu128", "2.10.0+cu130"):
+        assert Version(other_build) not in requirement.specifier
+    assert '--constraint "${VLLM_DEPS_CONSTRAINTS}"' in install
+    assert '--extra-index-url "${PYTORCH_CU130_INDEX}"' in install
+
+
 def test_setup_fallback_cli_pins_match_base_requirements() -> None:
     setup = SETUP_SCRIPT.read_text(encoding="utf-8")
 

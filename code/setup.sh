@@ -2883,10 +2883,19 @@ else
 fi
 
 echo "Installing pinned vLLM runtime dependencies (required when vLLM is installed with --no-deps)..."
-if ! pip_install --no-cache-dir --upgrade --ignore-installed "${VLLM_RUNTIME_DEPS[@]}"; then
+# Preserve the selected CUDA torch build while dependencies such as xgrammar
+# resolve their own torch requirement. Keep the local +cu130 tag: constraining
+# only X.Y.Z also permits a different build from PyPI.
+VLLM_DEPS_CONSTRAINTS="$(mktemp -t aisp-vllm-deps.XXXXXX)"
+printf 'torch==%s\n' "${PYTORCH_TORCH_VERSION}" > "${VLLM_DEPS_CONSTRAINTS}"
+if ! pip_install --no-cache-dir --upgrade --ignore-installed \
+    --extra-index-url "${PYTORCH_CU130_INDEX}" \
+    --constraint "${VLLM_DEPS_CONSTRAINTS}" "${VLLM_RUNTIME_DEPS[@]}"; then
+    rm -f "${VLLM_DEPS_CONSTRAINTS}"
     echo "ERROR: Failed to install pinned vLLM runtime dependencies."
     exit 1
 fi
+rm -f "${VLLM_DEPS_CONSTRAINTS}"
 
 python3 <<PY
 import importlib
