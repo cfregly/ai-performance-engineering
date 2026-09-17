@@ -54,6 +54,8 @@ python -m cli.aisp bench list-targets --chapter labs/moe_cuda
 
 | Lab | Summary | Suggested Chapters |
 | --- | --- | --- |
+| `labs/prefix_scan/` | Inclusive scan with hierarchical and decoupled-look-back variants | ch06, ch07, ch09 |
+| `labs/nvfp4_quantization/` | Three fused quantization operation pairs with six workload configurations and shared NVFP4 scale layout | ch09, ch19 |
 | `labs/nvfp4_gemv/` | GPUMODE `nvfp4_gemv` challenge workspace | ch06, ch10 |
 | `labs/nvfp4_gemm/` | GPUMODE `nvfp4_gemm` challenge workspace | ch06, ch09, ch10 |
 | `labs/async_input_pipeline/` | Async CPU->GPU input overlap | ch02, ch05, ch11 |

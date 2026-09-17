@@ -1,0 +1,163 @@
+# Evidence contract for recompilation_demo.py. This is a diagnostic intake, not
+# a baseline/optimized benchmark or a source of speedup claims.
+
+objective:
+  primary_kpi: p99_latency_ms
+  secondary_kpis:
+    - backend_compile_submissions_per_serving_run
+    - explicit_eager_fallback_requests
+    - strict_rejected_requests
+    - output_correctness
+
+benchmark:
+  layer: component
+  grade: realism
+  variable_under_test: compiler_recompilation_policy
+  classification: compiler_lifecycle_diagnostic
+  comparable_baseline_optimized_pair: false
+  reason_not_a_pair: >-
+    Default compilation and post-warmup compiler policy depend on cold in-process
+    Dynamo state, so each scenario must run in a fresh process rather than share a
+    benchmark-pair lifecycle.
+
+workload:
+  type: inference
+  model: RowwiseInferenceModel, float32, 8 input features, 4 output features
+  prompt_or_seq_len:
+    p50: null
+    p95: null
+    max: null
+  batch_shape:
+    p50: 2
+    p95: 4
+    max: 4
+  input_signatures:
+    warmup:
+      - batch 0 contiguous
+      - batch 1 contiguous
+      - batch 2 contiguous
+      - batch 4 contiguous
+      - batch 2 strided
+    late_unseen:
+      - batch 3 strided
+  constraints:
+    - eval mode and inference_mode for eager and compiled execution
+    - complete output compared with the same eager model and weights
+    - fullgraph true and dynamic false expose exact shape and stride guards
+    - no RNG mutation or generated test data
+
+slos:
+  latency_ms:
+    p50: null
+    p95: null
+    p99: null
+  availability: null
+  cost_budget: diagnostic only
+
+environment:
+  default_contract:
+    device: cpu
+    backend: eager
+    interpretation: graph-routing diagnostic, not performance evidence
+  opt_in_contract:
+    device: cuda
+    backend: inductor
+    gates:
+      - torch.cuda.is_available must be true
+      - PyTorch build must expose a CUDA runtime
+      - no CPU or eager substitution
+  hardware:
+    gpu: [runtime_observed, 1, runtime_observed]
+    cpu: runtime_observed
+    ram_gb: null
+    storage: not on measured path
+    interconnect: [not_applicable]
+    topology: single process per isolated scenario
+  software:
+    os: runtime_observed
+    kernel: runtime_observed
+    driver: runtime_observed_for_cuda
+    cuda: runtime_observed
+    pytorch: 2.9_or_later
+    triton: runtime_observed_for_inductor
+    frameworks: [torch.compile]
+    nccl: not_applicable
+    container_orchestrator: not_applicable
+  data_pipeline:
+    - deterministic tensors are materialized before each timed model invocation
+
+current_baseline:
+  time_to_train_hours: null
+  mfu_pct: null
+  scaling_efficiency_pct: null
+  tokens_per_second: null
+  ttft_ms: null
+  p50_ms: measured_by_default_compile_scenario
+  p99_ms: measured_by_default_compile_scenario
+  jitter_cv_pct: null
+  gpu_util_percent: null
+  mem_bw_percent: null
+  nic_gbps: null
+  goodput_percent: null
+  cost_per_token_usd: null
+  cost_per_request_usd: null
+
+hot_path_model:
+  path: ch14.recompilation_demo:RowwiseInferenceModel.forward
+  phase: end_to_end
+  invocation_frequency: per_request
+  invocations_per_primary_unit: 1
+  estimated_costs:
+    bytes_read: runtime_and_signature_dependent
+    bytes_written: runtime_and_signature_dependent
+    host_device_bytes: 0_after_input_materialization
+    allocations_or_materializations: output_tensor_plus_compiler_runtime_state
+    kernel_launches: backend_and_signature_dependent
+    synchronizations_or_locks: 2_cuda_synchronizations_per_timed_request
+    api_process_or_rpc_crossings: 0_within_worker
+    storage_or_network_operations: 0
+  operation_cost_source: fresh-process host wall time and callable-backend counters
+  expected_dominant_cost: synchronous compilation for a new guarded signature
+  best_case_primary_kpi_improvement_pct: null
+
+evidence:
+  baseline_artifact: optional CLI JSON report
+  profile_artifacts: []
+  allocation_or_memory_profile: ""
+  hardware_counter_artifacts: []
+  static_review_findings:
+    - fixed-shape steady-state measurements omit recompile spikes
+    - warmup iteration count alone does not establish signature coverage
+    - eager backend timings cannot support a performance claim
+
+candidate_optimizations:
+  - representative shape and layout warmup
+  - strict fail_on_recompile admission after warmup
+  - explicitly accepted and counted eager_on_recompile fallback
+
+known_issues_or_hypotheses:
+  - dynamic shapes may reduce shape variants but retain other guards
+  - zero and singleton dimensions can create distinct compiler behavior
+  - persistent code caches do not restore all in-process guard state
+  - per-request CUDA synchronization changes production overlap
+
+risk_guardrails:
+  correctness_tests:
+    - every successful compiled or fallback output matches eager output
+    - warmed signatures submit zero new graphs under strict policy
+    - a late unseen signature visibly fails under strict policy
+    - explicit eager_on_recompile returns correct output with zero new submissions
+  change_windows: []
+  fallback_policy: explicit_eager_on_recompile_only
+  implicit_fallback: forbidden
+  compiler_error_suppression: forbidden
+
+measurement_contract:
+  setup: torch.compile wrapper creation is reported separately
+  warmup: every warmup invocation is timed and reported separately
+  serving: p50, p95, p99, and max include every attempted request
+  failures: strict rejections remain in serving latency and request counts
+  fallbacks: eager fallbacks remain in serving latency and request counts
+  process_isolation: one fresh child process per scenario
+  speedup_claim: none
+

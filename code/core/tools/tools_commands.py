@@ -39,6 +39,12 @@ class ToolSpec:
 
 
 TOOLS: Dict[str, ToolSpec] = {
+    "serving-trace": ToolSpec(
+        name="serving-trace",
+        script_path=REPO_ROOT / "core" / "analysis" / "serving_trace.py",
+        description="Compute TTFT, TPOT, token gaps and SLO goodput from request timestamp JSONL.",
+        module_name="core.analysis.serving_trace",
+    ),
     "kv-cache": ToolSpec(
         name="kv-cache",
         script_path=REPO_ROOT / "core" / "scripts" / "utilities" / "kv_cache_calc.py",

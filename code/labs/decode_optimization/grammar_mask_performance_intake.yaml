@@ -1,0 +1,29 @@
+objective:
+  primary_kpi: cpu_policy_latency_ms
+benchmark:
+  layer: component
+  grade: source study; target performance unmeasured
+  variable_under_test: uncached versus compiled token masks
+workload:
+  shape: 1024 state queries across a 1257-token vocabulary
+environment:
+  hardware: CPU explicitly selected; this is not LLM execution
+current_baseline:
+  timing_artifact: null
+  status: no accepted target-host timing
+hot_path_model:
+  path: code/labs/decode_optimization/grammar_mask_benchmark.py
+  phase: repeated CPU mask queries
+  invocation_frequency: once per policy decision
+  estimated_costs: Uncached queries traverse token bytes per state; compiled masks store state-by-vocabulary
+    decisions for reuse. Compilation time is reported separately.
+  operation_cost_source: source-level operation counts; no hardware latency assumed
+phases:
+  setup: input generation, scratch allocation, optional compilation; grammar precompile time exposed
+  warmup: owned by repository harness
+  steady_state: actual kernel/policy/codec; full output retained
+  verification: independent reference and complete output check after timing
+evidence:
+  correctness_test: tests/test_serving_policies.py
+  gpu_execution: not executed on development Mac
+  speedup_claim: false

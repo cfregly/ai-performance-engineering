@@ -50,6 +50,13 @@ class DemoSpec:
 
 
 DEMOS: Dict[str, DemoSpec] = {
+    "ch14-recompilation": DemoSpec(
+        name="ch14-recompilation",
+        script_path=REPO_ROOT / "ch14" / "recompilation_demo.py",
+        description="Chapter 14 compiler warmup, guard-miss policy, and request-latency diagnostic.",
+        launch_via=LaunchVia.PYTHON,
+        module_name="ch14.recompilation_demo",
+    ),
     "ch10-tma-multicast": DemoSpec(
         name="ch10-tma-multicast",
         script_path=REPO_ROOT / "ch10" / "tma_multicast_tool.py",

@@ -12,12 +12,9 @@ import time
 
 import torch
 import torch.nn as nn
-import triton.testing
-from contextlib import nullcontext
 from core.utils.compile_utils import compile_model, enable_tf32
 from core.harness.arch_config import prefer_sdpa_backends
 
-from ch14.torch_compile_large_model import create_model
 
 # Quick mode removed; always run full demo
 
@@ -44,14 +41,11 @@ def configure_for_blackwell_peak_performance():
     torch._inductor.config.epilogue_fusion = True
     print("Inductor configuration applied")
     
-    try:
-        torch.compiler.set_stance("eager_on_recompile")
-        print("torch.compiler.set_stance → eager_on_recompile")
-    except AttributeError:
-        print("torch.compiler.set_stance not available; skipping.")
+    # Do not install a process-wide eager fallback: it can hide guard misses
+    # (and prevent initial compilation) in a purported compiled measurement.
+    # Warm up with the default stance, then fail on unexpected recompilation.
     
     os.environ['TRITON_CUDNN_ALGOS'] = '1'
-    os.environ['TRITON_ALWAYS_COMPILE'] = '1'
     os.environ['CUDA_LAUNCH_BLOCKING'] = '0'
     os.environ['TORCH_CUDNN_V8_API_ENABLED'] = '1'
     
@@ -105,6 +99,8 @@ class OptimizedTransformerBlock(nn.Module):
 
 def benchmark_with_proper_warmup(model, x, name):
     """Benchmark using Triton's testing framework with automatic warmup."""
+    import triton.testing
+
     print(f"\nBenchmarking: {name}")
     sdpa_ctx_factory = prefer_sdpa_backends
 
@@ -124,6 +120,9 @@ def benchmark_with_proper_warmup(model, x, name):
 
 def main():
     """Demonstrate torch.compile usage for Blackwell."""
+    if not torch.cuda.is_available():
+        raise RuntimeError("SKIPPED: the Blackwell compiler example requires CUDA")
+    from ch14.torch_compile_large_model import create_model
     configure_for_blackwell_peak_performance()
     
     # 2. Create model (larger for better compilation benefits)
@@ -170,21 +169,24 @@ def main():
     print("=" * 80)
     warmup_iters = 10
     print(f"Running {warmup_iters} warmup iteration(s) for torch.compile...")
-    with torch.inference_mode():
+    warmup_start = time.perf_counter()
+    with torch.inference_mode(), prefer_sdpa_backends(), torch.compiler.set_stance("default"):
         for i in range(warmup_iters):
             _ = model_compiled(x)
             if (i + 1) % 5 == 0:
                 print(f"  Warmup iteration {i + 1}/{warmup_iters}...")
     torch.cuda.synchronize()
+    print(f"Compilation and warmup wall time: {time.perf_counter() - warmup_start:.3f} s")
     print(" Warmup complete! Now benchmarking...")
     
     # 7. Benchmark compiled mode (after warmup)
     print("\n" + "=" * 80)
     print("COMPILED MODE (after warmup)")
     print("=" * 80)
-    compiled_time, compiled_throughput = benchmark_with_proper_warmup(
-        model_compiled, x, "Compiled Mode"
-    )
+    with torch.compiler.set_stance("fail_on_recompile"):
+        compiled_time, compiled_throughput = benchmark_with_proper_warmup(
+            model_compiled, x, "Compiled Mode"
+        )
     
     # 7. Results
     speedup = eager_time / compiled_time
@@ -217,12 +219,13 @@ def main():
     print("\n" + "=" * 80)
     print("KEY LEARNINGS FOR BOOK")
     print("=" * 80)
-    print("1. Warmup is still required—10 iterations baseline")
+    print("1. Warm up every supported input signature; repetition alone is insufficient")
     print("2. TF32 must be enabled (e.g., torch.set_float32_matmul_precision('high'))")
     print("3. fullgraph=True gives best performance (if possible)")
-    print("4. CUDA graph trees provide additional 15-20% speedup")
+    print("4. Measure CUDA graph trees on the target workload; gains are workload-dependent")
     print("5. Larger models benefit more (aim for >1M parameters)")
     print("6. Static shapes (dynamic=False) allow better optimization")
+    print("7. This fixed-shape diagnostic does not measure variable-request tail latency")
     print("=" * 80)
     
     return speedup

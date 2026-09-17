@@ -3,6 +3,10 @@
 ## Summary
 Decode-focused microbenchmarks that isolate serving-side wins such as pinned memory, streams, compile/graphs, FP8/FP4, decode-only CUDA Graph replay, and HuggingFace cache policy changes without dragging full attention stacks into every comparison.
 
+These fixed-workload comparisons do not establish variable-request serving latency.
+See the [Chapter 14 recompilation guide](../../ch14/recompilation.md) for input
+coverage, guard misses, and explicit eager fallback policy.
+
 ## Problem
 Decode paths die by a thousand cuts: host staging, stream orchestration, cache policy, compile overhead, and kernel schedule all matter. This lab keeps those costs as separate targets so you can see what actually moves TTFT, TPOT, and total decode latency.
 
@@ -55,6 +59,27 @@ python -m cli.aisp bench list-targets --chapter labs/decode_optimization
 python -m cli.aisp bench run --targets labs/decode_optimization --profile none
 python -m cli.aisp demos labs-decode-multigpu --nproc-per-node 4 -- --iters 4 --warmup 1
 ```
+
+## Grammar-derived candidate masks
+
+The existing `decode_candidate_logits` pair starts with a known legal candidate
+set. [token_grammar.py](token_grammar.py) computes that set from a byte DFA and the
+tokenizer's vocabulary bytes. Tokens may span grammar edges or split UTF-8;
+EOS is legal only at accepting states. `mask_logits()` applies the result to
+actual PyTorch logits while preserving allowed odds.
+
+The `grammar_mask` pair compares uncached vocabulary traversal with precompiled
+state masks. Full masks must match; compilation time is exposed separately.
+This covers finite-state constraints and finite alternatives, with general
+context-free parsing outside its contract.
+
+```bash
+python -m cli.aisp bench run --targets labs/decode_optimization:grammar_mask --profile minimal
+python -m pytest tests/test_serving_policies.py -q
+```
+
+The comparison runs CPU policy work; strict benchmark measurements still require
+a supported Linux host. Source: [constrained decoding](https://proceedings.mlr.press/v235/beurer-kellner24a.html).
 
 ## Learning Goals
 - Contrast eager vs pinned/streamed vs compiled/graph decode paths on the same workload.

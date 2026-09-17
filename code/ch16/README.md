@@ -3,6 +3,9 @@
 ## Summary
 Focuses on real-world inference services: paged attention, Flash SDP, FP8 serving, telemetry hooks, schedulers, and Blackwell-friendly load-test harnesses.
 
+For compiled serving, use the [Chapter 14 recompilation guide](../ch14/recompilation.md)
+to define warmup coverage and guard-miss policy before measuring service tail latency.
+
 ## Problem
 Chapter 16 is where "serving optimization" stops being a collection of tricks and becomes a latency budget. The chapter is most useful when it proves which serving-path changes actually improve steady-state latency, scheduling efficiency, or memory behavior under the shared harness.
 
@@ -51,6 +54,28 @@ python -m cli.aisp bench list-targets --chapter ch16
 python -m cli.aisp bench run --targets ch16 --profile minimal
 python -m cli.aisp bench run --targets ch16:flash_sdp --profile deep_dive --single-gpu
 ```
+
+## Token-fair scheduling and serving traces
+
+[fair_scheduler.py](fair_scheduler.py) adds Virtual Token Counter admission to
+the scheduling material: counter lift on client re-entry, input-token charges,
+and charges for output tokens actually produced. `peek()` allows memory admission
+before queue mutation; the caller supplies decode feedback and completion.
+`fair_scheduler` compares linear and heap selection over identical complete
+admission sequences. It measures CPU policy work, without claiming LLM execution.
+
+```bash
+python -m cli.aisp bench run --targets ch16:fair_scheduler --profile minimal
+python -m pytest tests/test_serving_policies.py tests/test_serving_trace.py -q
+python -m cli.aisp tools serving-trace -- --trace requests.jsonl --ttft-ms 250 --tpot-ms 50 --output metrics.json
+```
+
+The CPU policy is usable without CUDA; the main benchmark CLI still skips chapters
+without CUDA, and strict timing validity requires Linux. Existing runtime scheduler
+and vLLM monitoring measurements keep their own event/Prometheus definitions.
+[Serving trace analysis](../core/analysis/serving_trace.md) computes request SLOs from
+observed timestamps and preserves failure details and partial outputs.
+Source: [Virtual Token Counter](https://arxiv.org/abs/2401.00588).
 
 ## Learning Goals
 - Profile large decoder workloads to spot hotspots before deploying models.

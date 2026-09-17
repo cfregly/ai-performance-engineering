@@ -1,0 +1,29 @@
+objective:
+  primary_kpi: kernel_latency_ms
+benchmark:
+  layer: micro
+  grade: source study; target performance unmeasured
+  variable_under_test: materialized versus online fused normalization
+workload:
+  shape: 128 x 8193 FP32 values
+environment:
+  hardware: CUDA/Triton GPU required; CUDA toolkit for look-back
+current_baseline:
+  timing_artifact: null
+  status: no accepted target-host timing
+hot_path_model:
+  path: code/ch09/online_softmax_common.py
+  phase: online normalization and output pass
+  invocation_frequency: one call per vector/matrix
+  estimated_costs: Fusion removes materialized intermediate arrays; online normalization reads input twice
+    and repeats exponentials to reduce storage traffic.
+  operation_cost_source: source-level operation counts; no hardware latency assumed
+phases:
+  setup: input generation, scratch allocation, optional compilation; grammar precompile time exposed
+  warmup: owned by repository harness
+  steady_state: actual kernel/policy/codec; full output retained
+  verification: independent reference and complete output check after timing
+evidence:
+  correctness_test: tests/test_parallel_primitives.py
+  gpu_execution: not executed on development Mac
+  speedup_claim: false

@@ -49,6 +49,24 @@ python -m cli.aisp bench run --targets ch09 --profile minimal
 python -m cli.aisp bench run --targets ch09:cutlass_gemm --profile deep_dive --single-gpu
 ```
 
+## Online softmax normalization
+
+`online_softmax` isolates the running maximum and normalizer already used in
+attention kernels such as [Chapter 18's FlashMLA](../ch18/flashmla_kernel.cu).
+[baseline_online_softmax.py](baseline_online_softmax.py) materializes subtract,
+exp, and reduction intermediates; [optimized_online_softmax.py](optimized_online_softmax.py)
+fuses row normalization in Triton. [online_softmax_common.py](online_softmax_common.py)
+contains the CPU recurrence and full-output verification against FP64 PyTorch softmax.
+
+```bash
+python -m cli.aisp bench run --targets ch09:online_softmax --profile minimal
+python -m pytest tests/test_parallel_primitives.py -q
+```
+
+The pair uses 128 × 8193 FP32 values. Tests include masked initial tiles and ragged
+widths. CUDA/Triton validation remains required; CPU tests are source correctness
+evidence. Source: [online normalizer](https://arxiv.org/abs/1805.02867).
+
 ## Learning Goals
 - Separate compute-bound vs memory-bound behaviors and adjust kernels accordingly.
 - Design micro-tiling schedules that balance register pressure with data reuse.

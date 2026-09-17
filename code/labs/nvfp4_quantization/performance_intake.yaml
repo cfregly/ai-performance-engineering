@@ -1,0 +1,29 @@
+objective:
+  primary_kpi: kernel_latency_ms
+benchmark:
+  layer: micro
+  grade: source study; target performance unmeasured
+  variable_under_test: materialized versus fused quantization stages
+workload:
+  shape: Six BF16 workload configurations across three operations; E2M1 packed values with E4M3/16 scales
+environment:
+  hardware: Blackwell SM100 and Triton required
+current_baseline:
+  timing_artifact: null
+  status: no accepted target-host timing
+hot_path_model:
+  path: code/labs/nvfp4_quantization
+  phase: steady-state kernel replay or end-to-end CPU policy operations
+  invocation_frequency: once per transformed row
+  estimated_costs: Fused kernel reads transform inputs and writes packed output/scales/residual; baseline
+    materializes BF16 and FP32 intermediate arrays.
+  operation_cost_source: source-level operation counts; no hardware latency assumed
+phases:
+  setup: input generation, scratch allocation, optional compilation; grammar precompile time exposed
+  warmup: owned by repository harness
+  steady_state: actual kernel/policy/codec; full output retained
+  verification: independent reference and complete output check after timing
+evidence:
+  correctness_test: tests/test_nvfp4_quantization.py
+  gpu_execution: not executed on development Mac
+  speedup_claim: false
