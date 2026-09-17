@@ -28,6 +28,12 @@ def test_cache_key_tracks_source_headers_and_flags(tmp_path):
     manifest["files"]["gemm.cuh"] = "b" * 64
     assert original != extension_name("fast_cu", [source], ["-O3"], ["-lcuda"], manifest)
 
+    header = tmp_path / "port.cuh"
+    header.write_text("// original port\n")
+    with_header = extension_name("fast_cu", [source, header], [], [], manifest)
+    header.write_text("// changed port\n")
+    assert with_header != extension_name("fast_cu", [source, header], [], [], manifest)
+
 
 def test_extension_name_is_safe_and_sources_required(tmp_path):
     with pytest.raises(ValueError, match="identifier"):

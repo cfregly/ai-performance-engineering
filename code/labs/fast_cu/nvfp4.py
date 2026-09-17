@@ -188,6 +188,10 @@ class FastCuNvfp4Benchmark(VerificationPayloadMixin, BaseBenchmark):
             custom_unit_name="nvfp4_flops",
         )
 
+    def _load_native_module(self):
+        require_nvfp4_runtime()
+        return load_nvfp4_extension(self.rung)
+
     def setup(self) -> None:
         self._verification_payload = None
         self.output = None
@@ -196,8 +200,7 @@ class FastCuNvfp4Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self._native_context = None
         self._native_module = None
         self._setup_gate_passed = False
-        require_nvfp4_runtime()
-        self._native_module = load_nvfp4_extension(self.rung)
+        self._native_module = self._load_native_module()
         self._caller_seed = int(torch.initial_seed())
         m, n, k = self.workload.m, self.workload.n, self.workload.k
         self._output_buffer = torch.empty((m, n), device=self.device, dtype=torch.float16)
