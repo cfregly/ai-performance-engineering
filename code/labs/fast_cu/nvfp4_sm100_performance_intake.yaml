@@ -48,8 +48,8 @@ environment:
     - packed E2M1 values and UE4M3 VEC16 scales remain device resident
 
 current_baseline:
-  p50_ms: null
-  p99_ms: null
+  p50_ms: 0.20716799795627594
+  p99_ms: 0.21347199380397797
   gpu_util_percent: null
   mem_bw_percent: null
   goodput_percent: null
@@ -68,15 +68,15 @@ hot_path_model:
     synchronizations_or_locks: 0
     api_process_or_rpc_crossings: 1
     storage_or_network_operations: 0
-  operation_cost_source: "Analytical counts from the pinned 8192^3 packed layouts. Runtime cost is unmeasured"
+  operation_cost_source: "Analytical counts from the pinned 8192^3 packed layouts. Measured timings and counters are in sm100_validation.json"
   expected_dominant_cost: "NVFP4 tensor-core GEMM plus FP16 output traffic"
   best_case_primary_kpi_improvement_pct: null
 
 evidence:
-  baseline_artifact: "pending exact-SM100 harness run"
-  profile_artifacts: []
+  baseline_artifact: "sm100_validation.json"
+  profile_artifacts: ["sm100_validation.json#profile_digests"]
   allocation_or_memory_profile: "setup-only allocations enforced by adapter structure"
-  hardware_counter_artifacts: []
+  hardware_counter_artifacts: ["sm100_validation.json#harness"]
   static_review_findings:
     - "K64 arithmetic needs different operand descriptors and scale loading from K96"
     - "the port retains two-CTA GEMM, TMA queues, double accumulators, and wide stores"
@@ -87,7 +87,7 @@ candidate_optimizations:
   - "256-bit FP16 stores with identical cache hints to r5"
 
 known_issues_or_hypotheses:
-  - "B200 correctness and performance tests are pending"
+  - "B200 correctness passed. The measured median paired ratio was 1.030x at 8192 cubed, below the 1.05x acceptance threshold"
   - "This native pair uses one resident operand set and does not reproduce the upstream rotating five-round headline protocol"
 
 risk_guardrails:

@@ -76,7 +76,7 @@ execution:
     numa_layout: "record in run manifest"
     pcie_layout: "record in run manifest"
   scheduler_path:
-    platform: bare_metal
+    platform: virtual_machine
     queue_or_scheduler: "repository benchmark queue"
     placement_policy: "exclusive exact-SM100 GPU"
     control_plane_path: "aisp bench run"

@@ -1,4 +1,6 @@
-# Integration validation - 2026-09-16
+# Initial integration validation - 2026-09-16
+
+The subsequent full B200 NVFP4 port is covered in [SM100 validation](sm100_validation.md).
 
 The [validation record](validation.json) contains the B200 results and hashes
 of the CUDA source and reports used for those runs. The
@@ -77,8 +79,7 @@ queue size instead of the undeclared `loc`. The original debug build failed
 on `loc`. The patched full driver compiled in both debug and release modes
 for SM90a. Host-only schedule tests passed six shapes for both headers in
 both builds, including exact queue capacity. No H100 GPU kernel was launched.
-Reproducible tests live in [checks/](checks/README.md). The proposed upstream
-patches remain limited to the three source files.
+Reproducible tests for these three source files live in [checks/](checks/README.md).
 
 ## Failures caught and corrected
 
