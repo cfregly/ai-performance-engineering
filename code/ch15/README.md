@@ -50,6 +50,12 @@ python -m cli.aisp bench run --targets ch15:kv_cache_nvlink_pool --profile deep_
 ```
 
 ## Learning Goals
+
+Use the [serving comparison tool](../labs/serving_comparison/README.md) for fixed
+GPU-budget comparisons across engines and monolithic or phase-disaggregated
+deployments. The tool retains request evidence and separates actual KV handoff
+from whole-request routing.
+
 - Benchmark monolithic vs disaggregated inference paths and quantify fabric costs.
 - Design KV-cache managers that gracefully span local and remote HBM pools.
 - Implement continuous batching and queueing so decode throughput stays high.

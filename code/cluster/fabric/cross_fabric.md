@@ -26,6 +26,13 @@ Management endpoints that are missing or inaccessible produce structured `not_co
 
 ## Fast Interpretation Rules
 
+Use [cross-layer diagnosis](../../core/analysis/cross_layer_diagnosis.md) to test
+whether workload symptoms overlap measured counter changes on a matching path.
+The tool requires interval deltas and a shared clock or a measured clock-skew
+bound. Peak bandwidth ratios alone do not distinguish rank waiting, contention
+and lost overlap.
+
+
 - `runtime_verified` + weak AI workload scaling usually means the runtime path is alive but something about routing, congestion, queueing, or placement still needs work.
 - `full_stack_verified` + weak scaling shifts suspicion toward host/runtime choices, launch shape, or application behavior.
 - `present_unverified` means the hardware is there but the evaluation still lacks enough evidence for a publish-grade claim.

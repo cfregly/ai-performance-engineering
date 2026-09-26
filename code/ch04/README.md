@@ -53,6 +53,13 @@ python -m cli.aisp tools ch04-nixl-tier-handoff -- --mode probe --json
 ```
 
 ## Learning Goals
+
+Use the [collective diagnosis tool](collective_diagnosis.md) to distinguish late
+rank arrival, contention and lost overlap. Pair it with the
+[fabric diagnostics](../cluster/fabric/diagnostics.md) and
+[transport isolation tool](../cluster/fabric/transport.md) when the collective
+microbenchmark itself is slow.
+
 - Benchmark data-parallel and tensor-parallel training loops with and without overlap.
 - Quantify NVLink bandwidth and topology effects when mixing local and disaggregated GPUs.
 - Experiment with NVSHMEM pipelines to reduce host involvement in GPU synchronization.

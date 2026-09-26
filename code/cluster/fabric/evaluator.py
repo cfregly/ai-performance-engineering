@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import os
 import re
@@ -1319,6 +1320,35 @@ def _build_spectrum_scenario_summary(
     }
 
 
+def load_timed_diagnostic_evidence(run_id: str, run_dir: Path) -> dict[str, Any]:
+    """Attach matching timed artifacts without promoting canonical completeness."""
+    from core.analysis.cross_layer_diagnosis import artifact_signals, correlate
+
+    structured = run_dir / "structured"
+    sources: list[dict[str, Any]] = []
+    signals: list[dict[str, Any]] = []
+    for suffix in ("fabric_counter_deltas", "application_signals"):
+        path = structured / f"{run_id}_{suffix}.json"
+        if not path.exists():
+            sources.append({"kind": suffix, "status": "not_collected"})
+            continue
+        content = path.read_bytes()
+        payload = json.loads(content)
+        if not isinstance(payload, dict):
+            raise ValueError(f"Timed diagnostic must be a JSON object: {path.name}")
+        digest = hashlib.sha256(content).hexdigest()
+        if payload.get("run_id") != run_id:
+            raise ValueError(f"Timed diagnostic run ID does not match: {path.name}")
+        rows = artifact_signals(payload)
+        signals.extend({**row, "source_sha256": digest} for row in rows)
+        sources.append({"kind": suffix, "status": payload.get("status", "observed"),
+                        "path": _relative_to_run_dir(run_dir, path), "sha256": digest, "signal_count": len(rows)})
+    report = correlate(signals)
+    report["sources"] = sources
+    report["affects_canonical_completeness"] = False
+    return report
+
+
 def _build_ai_correlation(
     *,
     run_id: str,
@@ -1370,6 +1400,7 @@ def _build_ai_correlation(
         "run_id": run_id,
         "fabric_family": "all",
         "collection_mode": "artifact_correlation",
+        "timed_diagnostics": load_timed_diagnostic_evidence(run_id, run_dir),
         "status": "ok",
         "completeness": capabilities["completeness"],
         "evidence_refs": evidence_refs,

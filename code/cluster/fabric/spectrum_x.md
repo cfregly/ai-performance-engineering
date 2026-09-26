@@ -1,5 +1,12 @@
 # Spectrum-X / RoCE Track
 
+Use the [fabric diagnosis tool](diagnostics.md) for runnable collection of route,
+QoS and timed port evidence. ECMP distributes flows over paths. ECN marks and CNP
+report congestion to rate-control mechanisms. PFC pauses a configured link
+priority. These are different signals and should remain separate in reports.
+Correlate deltas with the workload interval, selected rail and application trace.
+Configured QoS alone does not establish that congestion control worked during a run.
+
 ## What This Track Answers
 
 Use this track when the operator question is: "Is the Ethernet/RDMA fabric configured the way an AI workload expects, and does runtime behavior agree with that configuration?"

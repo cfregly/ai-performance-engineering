@@ -51,6 +51,11 @@ python -m ch03.power_tuning_tool --power-limits 300,350 --iterations 5 --warmup 
 ```
 
 ## Learning Goals
+
+For packet paths, TCP windows, path MTU and retained packet captures, use the
+[network diagnosis tool and guide](network_diagnosis.md). It collects evidence
+and runs explicitly selected probes through `aisp tools network-diagnose`.
+
 - Diagnose CPU and memory affinity issues that throttle GPU pipelines.
 - Harden Docker and Kubernetes environments for sustained GPU throughput on shared clusters.
 - Automate repeatable system tuning via shell scripts so lab machines stay consistent.

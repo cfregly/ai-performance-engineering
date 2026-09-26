@@ -1,5 +1,11 @@
 # InfiniBand Track
 
+Use the [fabric diagnosis tool](diagnostics.md) to retain counters across the
+selected ports and paths, then use [transport isolation](transport.md) to compare
+host buffers, GPU buffers and collectives. Receiver credits and credit-wait
+counters describe a different mechanism from Ethernet PFC. A cumulative counter
+snapshot cannot establish that a workload encountered congestion.
+
 ## What This Track Answers
 
 Use this track when the operator question is: "Is the lossless multi-node fabric actually healthy enough for AI workloads?"
