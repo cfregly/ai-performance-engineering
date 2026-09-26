@@ -1,0 +1,93 @@
+{
+  "assertions": {
+    "bounded_packet_count": {
+      "expected": "1..120",
+      "observed": 62,
+      "passed": true
+    },
+    "closed_port_resets": {
+      "expected_min": 4,
+      "observed": 4,
+      "passed": true
+    },
+    "ipv4_loopback_echo": {
+      "expected_min_each": 2,
+      "passed": true,
+      "replies": 2,
+      "requests": 2
+    },
+    "ipv6_loopback_echo": {
+      "expected_min_each": 2,
+      "passed": true,
+      "replies": 2,
+      "requests": 2
+    },
+    "no_retransmissions": {
+      "expected": 0,
+      "observed": 0,
+      "passed": true
+    },
+    "no_zero_windows": {
+      "expected": 0,
+      "observed": 0,
+      "passed": true
+    },
+    "owned_tcp_syn": {
+      "expected_min": 8,
+      "observed": 8,
+      "passed": true
+    },
+    "owned_tcp_syn_ack": {
+      "expected_min": 4,
+      "observed": 4,
+      "passed": true
+    }
+  },
+  "capture": {
+    "captured_packets": 62,
+    "field_export_sha256": "e1791bb597fcf853978e12e835b9d9facaea617a621eeea8f7f870269d648817",
+    "interface_scope": "all interfaces with protocol and owned-port filters",
+    "packet_limit": 120,
+    "pcap_sha256": "cd5f6a69b52f25844fbef23b9c06e0c04fb7354c5994591883a68bf2bffa7913",
+    "snaplen_bytes": 128,
+    "timeout_seconds": 10
+  },
+  "claim_boundary": "This validates native packet parsing and bounded local diagnostics. It does not prove an external path or identify a remote reset cause.",
+  "classification": "runtime_diagnostic_noncanonical",
+  "cli": {
+    "entrypoint": "aisp tools network-diagnose packets",
+    "native_boolean_values_accepted": [
+      "empty",
+      "False",
+      "True"
+    ],
+    "packet_field_count": 24,
+    "status": "ok",
+    "structured_report_sha256": "be794cb83b139f14448b9bfb0303e8ca768df7bc6001b7fbb6860061187db018"
+  },
+  "neighbor_resolution": {
+    "arp_status": "not_observed_without_neighbor_cache_flush",
+    "existing_ipv4_gateway_requery_attempted": true,
+    "gateway_arp_events": 0,
+    "gateway_echo_reply_observed": true,
+    "ipv6_default_gateway_present": false,
+    "neighbor_cache_flushed": false
+  },
+  "privacy": {
+    "contains_gpu_uuid": false,
+    "contains_hostname": false,
+    "contains_public_or_private_host_ip": false,
+    "raw_addresses_ports_and_packet_bytes_retained_private": true
+  },
+  "schema": "aisp.network-native-packet-validation.v1",
+  "source": {
+    "base_commit": "127f8ad5e439cd0193a3a6a0dfce4fb8c8fe072a",
+    "documentation_note": "The guide was clarified after capture to document accepted native boolean values. The tested parser and regression test bytes are unchanged.",
+    "focused_test_sha256": "b8407f2bbccbaabddb6d02d2befd7b8ec2ae4bde75f97e0694754bc5e12b70b7",
+    "guide_after_documentation_clarification_sha256": "51cf9e9d391641bb72e19b22c4e9dc119354a6236dad8496c59733a54d5220d7",
+    "guide_at_capture_sha256": "17bae25fee74338257a8b50528f32e8483a79876523175305a40ca8ad5f40d92",
+    "network_tool_sha256": "303b4e22bf870263172b5d2904e7747b92ac242cff4b5470cf6d15cfa1df3897",
+    "tested_state": "fixed parser bytes in a modified worktree"
+  },
+  "status": "passed"
+}

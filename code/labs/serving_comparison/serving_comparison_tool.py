@@ -29,7 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--connect-timeout-s",
         type=float,
         default=10.0,
-        help="Serving endpoint connection timeout",
+        help="Serving connection and control-plane request timeout",
     )
     return parser
 

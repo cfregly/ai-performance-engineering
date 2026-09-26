@@ -5,9 +5,11 @@ import math
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 
 import pytest
 
+import ch03.network_diagnosis_tool as network_diagnosis_tool
 from ch03.network_diagnosis_tool import SCHEMA, analyze, bdp_analysis, main, parse_packets, parse_ss
 from core.diagnostics.evidence import capture, write_bundle
 
@@ -31,6 +33,44 @@ def test_ss_preserves_each_socket_and_window_units():
     assert row["congestion_window_bytes"] == 14480
     assert row["rtt_ms"] == 20
     assert row["retransmissions_total"] == 3
+
+
+@pytest.mark.parametrize(
+    ("target", "family", "host_prefix"),
+    [
+        ("192.0.2.2", "-4", "192.0.2.2/32"),
+        ("2001:db8::2", "-6", "2001:db8::2/128"),
+    ],
+)
+def test_collect_scopes_ss_to_address_family_and_exact_host(
+    monkeypatch, target, family, host_prefix
+):
+    captured = []
+
+    def fake_capture(argv, timeout):
+        captured.append(argv)
+        return {"status": "ok", "returncode": 0, "stdout": "[]\n", "stderr": ""}
+
+    monkeypatch.setattr(network_diagnosis_tool.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(network_diagnosis_tool.platform, "node", lambda: "test-host")
+    monkeypatch.setattr(network_diagnosis_tool, "capture", fake_capture)
+    args = SimpleNamespace(
+        target=target,
+        interface=None,
+        bandwidth_gbps=None,
+        window_bytes=None,
+        network_plane="data",
+        timeout=1,
+        probe=False,
+        iperf=False,
+        pcap=None,
+    )
+
+    network_diagnosis_tool.collect(args)
+
+    assert [argv for argv in captured if argv[0] == "ss"] == [
+        ["ss", "-H", "-t", "-i", "-n", "-m", family, "dst", host_prefix]
+    ]
 
 
 def test_route_and_neighbor_explain_gateway_without_inventing_switch_state():
@@ -64,6 +104,70 @@ def test_packet_export_preserves_reset_provenance_and_mtu_signal():
         parse_packets("wrong\theader\n1\t2\n")
 
 
+def test_packet_export_accepts_native_tshark_boolean_format():
+    fields = (
+        "frame.time_epoch\tip.src\tip.dst\ttcp.stream\ttcp.flags.syn\ttcp.flags.ack\t"
+        "tcp.flags.reset\ttcp.analysis.retransmission\ttcp.analysis.zero_window\n"
+        "1\t192.0.2.1\t192.0.2.2\t0\tTrue\tFalse\tFalse\tFalse\tFalse\n"
+        "2\t192.0.2.2\t192.0.2.1\t0\tTrue\tTrue\tFalse\tFalse\tFalse\n"
+        "3\t192.0.2.2\t192.0.2.1\t0\tFalse\tTrue\tTrue\tFalse\tFalse\n"
+        "4\t192.0.2.1\t192.0.2.2\t0\tFalse\tTrue\tFalse\tTrue\tFalse\n"
+        "5\t192.0.2.2\t192.0.2.1\t0\tFalse\tTrue\tFalse\tFalse\tTrue\n"
+    )
+    result = parse_packets(fields)
+    assert result["packets"] == 5
+    assert result["syn"] == 1
+    assert result["syn_ack"] == 1
+    assert result["retransmissions"] == 1
+    assert result["zero_windows"] == 1
+    assert result["resets"] == [{
+        "timestamp_unix_s": 3.0,
+        "source": "192.0.2.2",
+        "destination": "192.0.2.1",
+        "stream": "0",
+    }]
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("1", 1), ("0", 0), ("True", 1), ("FALSE", 0), ("tRuE", 1), ("", 0)],
+)
+def test_packet_export_normalizes_supported_boolean_spellings(value, expected):
+    fields = (
+        "frame.time_epoch\ttcp.flags.syn\ttcp.flags.ack\ttcp.flags.reset\t"
+        "tcp.analysis.retransmission\ttcp.analysis.zero_window\n"
+        f"1\t0\t0\t0\t{value}\t0\n"
+    )
+    assert parse_packets(fields)["retransmissions"] == expected
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "tcp.flags.syn",
+        "tcp.flags.ack",
+        "tcp.flags.reset",
+        "tcp.analysis.retransmission",
+        "tcp.analysis.zero_window",
+    ],
+)
+def test_packet_export_rejects_unexpected_boolean_values(field):
+    header = [
+        "frame.time_epoch",
+        "tcp.flags.syn",
+        "tcp.flags.ack",
+        "tcp.flags.reset",
+        "tcp.analysis.retransmission",
+        "tcp.analysis.zero_window",
+    ]
+    values = ["1", "0", "0", "0", "0", "0"]
+    values[header.index(field)] = "yes"
+    with pytest.raises(ValueError) as error:
+        parse_packets("\t".join(header) + "\n" + "\t".join(values) + "\n")
+    assert field in str(error.value)
+    assert "'yes'" in str(error.value)
+
+
 def test_iperf_receiver_rate_and_sampling(tmp_path):
     raw = {"schema": SCHEMA, "target": "192.0.2.2", "network_plane": "management", "commands": {
         "iperf_1_forward": command(json.dumps({"end": {"sum_received": {"bits_per_second": 1e9}, "sum_sent": {"retransmits": 2}}})),
@@ -92,6 +196,26 @@ def test_packet_walk_counts_neighbor_resolution_and_echo():
     assert report["arp_requests"] == report["arp_replies"] == 1
     assert report["echo_requests"] == report["echo_replies"] == 1
     assert report["arp_events"][0]["ethernet_destination"] == "ff:ff:ff:ff:ff:ff"
+
+
+def test_packet_walk_separates_ipv6_neighbor_discovery_from_echo():
+    fields = (
+        "frame.time_epoch\tipv6.src\tipv6.dst\ttcp.flags.syn\ttcp.flags.reset\t"
+        "icmpv6.type\n"
+        "1\tfe80::1\tff02::1:ff00:2\t\t\t135\n"
+        "2\tfe80::2\tfe80::1\t\t\t136\n"
+        "3\t::1\t::1\t\t\t128\n"
+        "4\t::1\t::1\t\t\t129\n"
+    )
+
+    report = parse_packets(fields)
+
+    assert report["packets"] == 4
+    assert report["neighbor_solicitations"] == 1
+    assert report["neighbor_advertisements"] == 1
+    assert report["echo_requests"] == 1
+    assert report["echo_replies"] == 1
+    assert report["arp_requests"] == report["arp_replies"] == 0
 
 
 def test_network_export_joins_cross_layer_without_inventing_capture_identity():

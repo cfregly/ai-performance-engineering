@@ -1,0 +1,233 @@
+{
+  "artifact_hashes": {
+    "<final-network>/focused-tests.stdout": {
+      "bytes": 99,
+      "sha256": "cf39ad7b778c4e55ba0587dcc368e1292cb9483d662f4a915a227e4013bffb58"
+    },
+    "<final-network>/native-packet-replay/manifest.json": {
+      "bytes": 1129,
+      "sha256": "b8523f1522f2b2cea1595738333dbc9a5e24c60f7220525ff2fd45c103112d62"
+    },
+    "<final-network>/native-packet-replay/raw/network-diagnose.json": {
+      "bytes": 26960,
+      "sha256": "1ff471ca97730cfa1a9b1c173ee1627181a3ec3a36ee6dc36d79feb3f18f497f"
+    },
+    "<final-network>/native-packet-replay/structured/network-diagnose.json": {
+      "bytes": 51964,
+      "sha256": "b95f49eba4c94584e5dafcb79b3d1fde364cce5d0d2903e7d5cd8c45fcba6f44"
+    },
+    "<final-network>/network-ipv4/manifest.json": {
+      "bytes": 1121,
+      "sha256": "b5bbb502082f2dc7c104214843504f4febcbc3151e326ad5d825a2641827724b"
+    },
+    "<final-network>/network-ipv4/raw/network-diagnose.json": {
+      "bytes": 13109,
+      "sha256": "7606f3a8fdd7855df54219e9603b528c16b63466bb0f69884b9ca53b66173a38"
+    },
+    "<final-network>/network-ipv4/structured/network-diagnose.json": {
+      "bytes": 4374,
+      "sha256": "58c14411844a3e7e600f1c7403b33a1662c20b3821111381547a5c04b9f44f2e"
+    },
+    "<final-network>/network-ipv6/manifest.json": {
+      "bytes": 1121,
+      "sha256": "139af9937a5b5fdbd8b81450c388b2232b5e9f75744485e48d9c3a30478fa2f8"
+    },
+    "<final-network>/network-ipv6/raw/network-diagnose.json": {
+      "bytes": 7532,
+      "sha256": "56823a3bd5d2de7f7da0d59c2fb7af71bb4e7060bc21cda503f13b8a151b1e20"
+    },
+    "<final-network>/network-ipv6/structured/network-diagnose.json": {
+      "bytes": 1796,
+      "sha256": "54bc47b497b987f254941460f8c86fbe146ec927f57d992efdf5c826be34cd2b"
+    },
+    "<private-native-field-export>": {
+      "bytes": 21109,
+      "sha256": "e9238c51692c524a01933b18ea7e60aa25b57c2394d8782a812b4d20e5f5bada"
+    }
+  },
+  "claim_boundary": "CPU-only public CLI validation of IPv4 and IPv6 loopback state collection, bounded ping and MTU probes, and retained native TShark field replay. CUDA was hidden. No network setting changed. These results support no external-path or performance claim.",
+  "commands": {
+    "focused_tests": "CUDA_VISIBLE_DEVICES='' python3 -m pytest -q tests/test_network_diagnosis.py",
+    "native_packet_replay": "CUDA_VISIBLE_DEVICES='' python3 -m cli.aisp tools network-diagnose -- packets --input <private-native-field-export> --run-dir <final-network>/native-packet-replay",
+    "network_ipv4": "CUDA_VISIBLE_DEVICES='' python3 -m cli.aisp tools network-diagnose -- collect --target 127.0.0.1 --interface lo --probe --timeout 5 --mtu-bytes 576 1500 9000 --network-plane data --run-dir <final-network>/network-ipv4",
+    "network_ipv6": "CUDA_VISIBLE_DEVICES='' python3 -m cli.aisp tools network-diagnose -- collect --target ::1 --interface lo --probe --timeout 5 --mtu-bytes 1280 1500 9000 --network-plane data --run-dir <final-network>/network-ipv6"
+  },
+  "created_at": "2026-09-26T18:25:15.801463+00:00",
+  "historical_failure_preserved": {
+    "socket_status": "failed",
+    "status": "partial",
+    "structured_artifact": {
+      "bytes": 2031,
+      "sha256": "4d47632cebc583b70a6fd976cb999b4c91534fe97514cf30efe1dad23c6f5692"
+    },
+    "supplemental_receipt": {
+      "bytes": 10088,
+      "sha256": "89c51e1dd0c5b8f1a136c5f5e4e75e43f9901bbce90e5d4c8bcc506f94bab085"
+    }
+  },
+  "privacy": {
+    "absolute_live_paths_removed": true,
+    "contains_gpu_uuid": false,
+    "contains_hostname": false,
+    "contains_mac_address": false,
+    "contains_non_loopback_ip": false,
+    "raw_addresses_and_host_identity_remain_private": true
+  },
+  "results": {
+    "focused_tests": {
+      "passed": 28,
+      "process_exit_code": 0,
+      "scope": "tests/test_network_diagnosis.py",
+      "seconds": 0.49
+    },
+    "native_packet_replay": {
+      "ambient_arp_boundary": "ARP counts describe ambient packets in the bounded retained export. They do not prove an owned gateway exchange.",
+      "arp_replies": 0,
+      "arp_requests": 202,
+      "boolean_field_encodings": {
+        "tcp.analysis.retransmission": {
+          "<empty>": 240
+        },
+        "tcp.analysis.zero_window": {
+          "<empty>": 240
+        },
+        "tcp.flags.ack": {
+          "<empty>": 204,
+          "False": 6,
+          "True": 30
+        },
+        "tcp.flags.reset": {
+          "<empty>": 204,
+          "False": 34,
+          "True": 2
+        },
+        "tcp.flags.syn": {
+          "<empty>": 204,
+          "False": 27,
+          "True": 9
+        }
+      },
+      "echo_replies": 0,
+      "echo_requests": 0,
+      "neighbor_advertisements": 0,
+      "neighbor_solicitations": 0,
+      "packet_too_big": 0,
+      "packets": 240,
+      "process_exit_code": 0,
+      "resets": 2,
+      "retransmissions": 0,
+      "status": "ok",
+      "syn": 6,
+      "syn_ack": 3,
+      "valid_for_performance_claim": false,
+      "zero_windows": 0
+    },
+    "network_ipv4": {
+      "all_requested_commands_ok": true,
+      "mtu_probes": [
+        {
+          "ip_packet_bytes": 576,
+          "source": "mtu_576",
+          "status": "size_passed"
+        },
+        {
+          "ip_packet_bytes": 1500,
+          "source": "mtu_1500",
+          "status": "size_passed"
+        },
+        {
+          "ip_packet_bytes": 9000,
+          "source": "mtu_9000",
+          "status": "size_passed"
+        }
+      ],
+      "ping_status": "ok",
+      "process_exit_code": 0,
+      "route_status": "ok",
+      "rtt_ms": 0.017,
+      "socket_argv": [
+        "ss",
+        "-H",
+        "-t",
+        "-i",
+        "-n",
+        "-m",
+        "-4",
+        "dst",
+        "127.0.0.1/32"
+      ],
+      "socket_returncode": 0,
+      "socket_status": "ok",
+      "status": "ok",
+      "target": "127.0.0.1",
+      "valid_for_performance_claim": false
+    },
+    "network_ipv6": {
+      "all_requested_commands_ok": true,
+      "mtu_probes": [
+        {
+          "ip_packet_bytes": 1280,
+          "source": "mtu_1280",
+          "status": "size_passed"
+        },
+        {
+          "ip_packet_bytes": 1500,
+          "source": "mtu_1500",
+          "status": "size_passed"
+        },
+        {
+          "ip_packet_bytes": 9000,
+          "source": "mtu_9000",
+          "status": "size_passed"
+        }
+      ],
+      "ping_status": "ok",
+      "process_exit_code": 0,
+      "route_status": "ok",
+      "rtt_ms": 0.013,
+      "socket_argv": [
+        "ss",
+        "-H",
+        "-t",
+        "-i",
+        "-n",
+        "-m",
+        "-6",
+        "dst",
+        "::1/128"
+      ],
+      "socket_returncode": 0,
+      "socket_status": "ok",
+      "status": "ok",
+      "target": "::1",
+      "valid_for_performance_claim": false
+    }
+  },
+  "schema": "aisp.diagnostic-final-network-validation.v1",
+  "source_at_run": {
+    "base_commit": "127f8ad5e439cd0193a3a6a0dfce4fb8c8fe072a",
+    "files": {
+      "ch03/network_diagnosis.md": {
+        "bytes": 4933,
+        "sha256": "55ea5d8e1f99f69e6d478517758821b207cb0aebf87d06840afb8b0ab9c52683"
+      },
+      "ch03/network_diagnosis_tool.py": {
+        "bytes": 22214,
+        "sha256": "da790d640774673a00c527d325a29ba2681fc4260b1a09e9fde9ac20043794af"
+      },
+      "cli/aisp.py": {
+        "bytes": 103829,
+        "sha256": "5516b38078659daefd2686b9e1044dd954b976516f3b1e41ee33c22bc6c22665"
+      },
+      "core/tools/tools_commands.py": {
+        "bytes": 13737,
+        "sha256": "a0ab42acf5da9893df118f79efd59fc0625e7608e8a7058fb2069dee0452a057"
+      },
+      "tests/test_network_diagnosis.py": {
+        "bytes": 11519,
+        "sha256": "31c14beaaadb5879ec18f54591ec99137ab2929eedb62ab2812a1f789eca5472"
+      }
+    },
+    "tested_state": "modified working tree with the listed source file hashes"
+  }
+}

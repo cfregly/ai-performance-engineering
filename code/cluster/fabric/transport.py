@@ -107,6 +107,8 @@ def _extract_marked_section(text: str, begin: str, end: str) -> str:
 
 
 def _parse_gpu_matrix(text: str, *, access: bool) -> dict[str, Any]:
+    # Recent nvidia-smi releases underline headers even in captured output.
+    text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
     header: list[str] = []
     rows: dict[str, list[str]] = {}
     for line in text.splitlines():

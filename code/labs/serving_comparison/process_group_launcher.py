@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import signal
@@ -15,8 +16,11 @@ from typing import Any
 SCHEMA = "serving-comparison.process-group.v1"
 
 
-def _load(path: Path) -> list[dict[str, Any]]:
-    raw = json.loads(path.read_text(encoding="utf-8"))
+def _load(path: Path, *, expected_sha256: str | None = None) -> list[dict[str, Any]]:
+    source = path.read_bytes()
+    if expected_sha256 is not None and hashlib.sha256(source).hexdigest() != expected_sha256:
+        raise ValueError("process group spec changed after provenance validation")
+    raw = json.loads(source)
     if not isinstance(raw, dict) or raw.get("schema_version") != SCHEMA:
         raise ValueError(f"process group spec must use {SCHEMA}")
     processes = raw.get("processes")
@@ -81,12 +85,15 @@ def _stop(children: list[subprocess.Popen[bytes]], timeout_s: float) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--spec", type=Path, required=True)
+    parser.add_argument(
+        "--expected-sha256", help="Reject spec bytes that differ from validated provenance"
+    )
     parser.add_argument("--shutdown-timeout-s", type=float, default=20.0)
     args = parser.parse_args(argv)
     if args.shutdown_timeout_s <= 0:
         parser.error("--shutdown-timeout-s must be positive")
     try:
-        declarations = _load(args.spec.resolve())
+        declarations = _load(args.spec.resolve(), expected_sha256=args.expected_sha256)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         parser.error(str(exc))
     stopping = False

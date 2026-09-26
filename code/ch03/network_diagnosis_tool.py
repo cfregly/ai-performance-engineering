@@ -24,6 +24,31 @@ PACKET_FIELDS = ("frame.time_epoch", "ip.src", "ipv6.src", "ip.dst", "ipv6.dst",
                  "icmp.type", "icmp.code", "icmpv6.type", "icmp.mtu", "icmpv6.mtu",
                  "arp.opcode", "arp.src.proto_ipv4", "arp.dst.proto_ipv4", "arp.src.hw_mac",
                  "eth.src", "eth.dst", "ip.ttl", "ipv6.hlim")
+TSHARK_BOOLEAN_FIELDS = frozenset({
+    "tcp.flags.syn",
+    "tcp.flags.ack",
+    "tcp.flags.reset",
+    "tcp.analysis.retransmission",
+    "tcp.analysis.zero_window",
+})
+
+
+def _tshark_boolean(row, field):
+    """Normalize the boolean encodings emitted by tshark field exports."""
+    if field not in TSHARK_BOOLEAN_FIELDS:
+        raise ValueError(f"Unsupported tshark boolean field: {field}")
+    raw = row.get(field)
+    if raw is None:
+        return False
+    value = raw.strip().casefold()
+    if value in {"", "0", "false"}:
+        return False
+    if value in {"1", "true"}:
+        return True
+    raise ValueError(
+        f"Unexpected tshark boolean value for {field}: {raw!r}. "
+        "Expected 1, 0, True, False or an empty field"
+    )
 
 
 def bdp_analysis(bandwidth_gbps, rtt_ms, window_bytes=None):
@@ -78,10 +103,14 @@ def parse_packets(text):
         if not row.get("frame.time_epoch"):
             raise ValueError("Each packet must have a timestamp")
         timestamp = finite_number(float(row["frame.time_epoch"]), "packet timestamp")
-        syn, ack = row.get("tcp.flags.syn") == "1", row.get("tcp.flags.ack") == "1"
+        syn = _tshark_boolean(row, "tcp.flags.syn")
+        ack = _tshark_boolean(row, "tcp.flags.ack")
+        reset = _tshark_boolean(row, "tcp.flags.reset")
+        retransmission = _tshark_boolean(row, "tcp.analysis.retransmission")
+        zero_window = _tshark_boolean(row, "tcp.analysis.zero_window")
         counts["syn_ack" if ack else "syn"] += int(syn)
-        counts["retransmissions"] += int(row.get("tcp.analysis.retransmission", "") not in ("", "0"))
-        counts["zero_windows"] += int(row.get("tcp.analysis.zero_window", "") not in ("", "0"))
+        counts["retransmissions"] += int(retransmission)
+        counts["zero_windows"] += int(zero_window)
         counts["echo_requests"] += int(row.get("icmp.type") == "8" or row.get("icmpv6.type") == "128")
         counts["echo_replies"] += int(row.get("icmp.type") == "0" or row.get("icmpv6.type") == "129")
         counts["neighbor_solicitations"] += int(row.get("icmpv6.type") == "135")
@@ -92,7 +121,7 @@ def parse_packets(text):
             neighbors.append({"timestamp_unix_s": timestamp, "operation": "request" if opcode == "1" else "reply",
                               "sender_ip": row.get("arp.src.proto_ipv4"), "target_ip": row.get("arp.dst.proto_ipv4"),
                               "sender_mac": row.get("arp.src.hw_mac"), "ethernet_destination": row.get("eth.dst")})
-        if row.get("tcp.flags.reset") == "1":
+        if reset:
             resets.append({"timestamp_unix_s": timestamp, "source": row.get("ip.src") or row.get("ipv6.src"),
                            "destination": row.get("ip.dst") or row.get("ipv6.dst"), "stream": row.get("tcp.stream")})
         if (row.get("icmp.type") == "3" and row.get("icmp.code") == "4") or row.get("icmpv6.type") == "2":
@@ -230,7 +259,8 @@ def analyze(snapshot):
 
 
 def collect(args):
-    target = str(ipaddress.ip_address(args.target))
+    target_address = ipaddress.ip_address(args.target)
+    target = str(target_address)
     host = hashlib.sha256(platform.node().encode()).hexdigest()[:12]
     result = {"schema": SCHEMA, "target": target, "collected_unix_s": time.time(),
               "collector": {"host": host, "clock_domain": f"collector_wall_clock:{host}"},
@@ -240,12 +270,13 @@ def collect(args):
     if platform.system() != "Linux":
         result["reason"] = "SKIPPED: live network collection requires Linux and iproute2"
         return result
-    family = "-6" if ":" in target else "-4"
+    family = "-6" if target_address.version == 6 else "-4"
+    socket_target = f"{target}/{target_address.max_prefixlen}"
     commands = result["commands"]
     specs = {"route": ["ip", "-j", family, "route", "get", target],
              "neighbors": ["ip", "-j", family, "neigh", "show"],
              "links": ["ip", "-j", "-s", "link", "show"],
-             "sockets": ["ss", "-H", "-t", "-i", "-n", "-m", "dst", target],
+             "sockets": ["ss", "-H", "-t", "-i", "-n", "-m", family, "dst", socket_target],
              "tcp_settings": ["sysctl", "net.ipv4.tcp_rmem", "net.ipv4.tcp_wmem", "net.ipv4.tcp_window_scaling", "net.ipv4.tcp_mtu_probing"],
              "ip_version": ["ip", "-Version"]}
     if args.interface:

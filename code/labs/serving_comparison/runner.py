@@ -12,6 +12,7 @@ import statistics
 import subprocess
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -105,6 +106,7 @@ def _profile_manifest(profile: ComparisonProfile, trace_path: Path) -> dict[str,
             "tokenizer": profile.tokenizer,
             "precision": profile.precision,
             "seed": profile.seed,
+            "prompt_transport": profile.prompt_transport,
             "sampling": {"temperature": 0, "top_p": 1, "n": 1},
             "admission_max_concurrency": profile.admission_max_concurrency,
         },
@@ -171,7 +173,9 @@ def _dotted_value(document: Any, path: str) -> Any:
     return current
 
 
-async def _verify_identity(client: Any, arm: ArmProfile) -> list[dict[str, Any]]:
+async def _verify_identity(
+    client: Any, arm: ArmProfile, control_timeout_s: float
+) -> list[dict[str, Any]]:
     headers: dict[str, str] = {}
     if arm.api_key_env:
         value = os.environ.get(arm.api_key_env)
@@ -180,7 +184,7 @@ async def _verify_identity(client: Any, arm: ArmProfile) -> list[dict[str, Any]]
         headers["Authorization"] = f"Bearer {value}"
     evidence: list[dict[str, Any]] = []
     for probe in arm.identity_probes:
-        response = await client.get(probe["url"], headers=headers)
+        response = await client.get(probe["url"], headers=headers, timeout=control_timeout_s)
         response.raise_for_status()
         try:
             document = response.json()
@@ -291,6 +295,7 @@ def _snapshot_payload(snapshot: TelemetrySnapshot) -> dict[str, Any]:
         "captured_monotonic_s": snapshot.captured_monotonic_s,
         "captured_unix_s": snapshot.captured_unix_s,
         "values": snapshot.values,
+        "selector_evidence_by_source": snapshot.selector_evidence_by_source,
     }
 
 
@@ -457,8 +462,13 @@ async def _run_replay(
     arm: ArmProfile,
     profile: ComparisonProfile,
     requests: tuple[RequestSpec, ...],
+    artifact_path: Path,
 ) -> protocol.ReplayResult:
     replay = await protocol.replay_trace(client, arm, profile, requests)
+    _write_jsonl(
+        artifact_path,
+        [item.to_dict(replay.wall_offset_s) for item in replay.observations],
+    )
     rejections = _status_rejections(requests, replay.observations)
     if rejections:
         raise ConfigError(f"{arm.arm_id} request status mismatch: {rejections}")
@@ -476,43 +486,68 @@ async def _run_arm_iteration(
     warmups: int,
     output_dir: Path,
     slo: dict[str, float | None],
+    control_timeout_s: float,
 ) -> dict[str, Any]:
     active: ActiveProcess | None = None
     primary_error: BaseException | None = None
     try:
         relative_dir = Path("iterations") / f"repeat-{repeat_index:02d}" / arm.arm_id
+        trace_relative = relative_dir / "requests.jsonl"
+        trace_path = output_dir / trace_relative
         active = await start_arm(client, arm, profile, output_dir / relative_dir)
         allocation = active.allocation_evidence
-        identity = await _verify_identity(client, arm)
+        identity = await _verify_identity(client, arm, control_timeout_s)
         warmup_results: list[dict[str, Any]] = []
         for warmup_index in range(warmups):
-            replay = await _run_replay(client, arm, profile, requests)
+            warmup_relative = relative_dir / f"warmup-{warmup_index:02d}-requests.jsonl"
+            replay = await _run_replay(
+                client,
+                arm,
+                profile,
+                requests,
+                output_dir / warmup_relative,
+            )
             warmup_results.append(
                 {
                     "warmup_index": warmup_index,
                     "duration_seconds": replay.finished_monotonic_s - replay.started_monotonic_s,
                     "statuses": {item.request_id: item.status for item in replay.observations},
+                    "request_trace_artifact": str(warmup_relative),
                 }
             )
 
+        telemetry_dir = output_dir / relative_dir / "telemetry"
+
+        def retain_raw_telemetry(phase: str) -> Callable[[str, str], None]:
+            def retain(source_id: str, text: str) -> None:
+                telemetry_dir.mkdir(parents=True, exist_ok=True)
+                (telemetry_dir / f"{phase}-{source_id}.txt").write_text(text, encoding="utf-8")
+
+            return retain
+
         before: TelemetrySnapshot | None = None
         if arm.architecture == "prefill_decode":
-            before = await capture_pd_telemetry(client, arm)
-        replay = await _run_replay(client, arm, profile, requests)
+            before = await capture_pd_telemetry(
+                client,
+                arm,
+                request_timeout_s=control_timeout_s,
+                raw_sink=retain_raw_telemetry("before"),
+            )
+        replay = await _run_replay(client, arm, profile, requests, trace_path)
         after: TelemetrySnapshot | None = None
         pd_delta: dict[str, float] | None = None
         diagnostics: dict[str, Any] | None = None
         if arm.architecture == "prefill_decode":
-            after = await capture_pd_telemetry(client, arm)
+            after = await capture_pd_telemetry(
+                client,
+                arm,
+                request_timeout_s=control_timeout_s,
+                raw_sink=retain_raw_telemetry("after"),
+            )
             pd_delta = compute_pd_delta(before, after)  # type: ignore[arg-type]
             diagnostics = _diagnostic_result(arm, before, after)  # type: ignore[arg-type]
 
-        trace_relative = relative_dir / "requests.jsonl"
-        trace_path = output_dir / trace_relative
-        rows = [item.to_dict(replay.wall_offset_s) for item in replay.observations]
-        _write_jsonl(trace_path, rows)
         if before is not None and after is not None:
-            telemetry_dir = output_dir / relative_dir / "telemetry"
             _write_json(telemetry_dir / "before.json", _snapshot_payload(before))
             _write_json(telemetry_dir / "after.json", _snapshot_payload(after))
             for source_id, text in before.raw_by_source.items():
@@ -542,8 +577,10 @@ async def _run_arm_iteration(
             "arm_id": arm.arm_id,
             "engine": arm.engine,
             "architecture": arm.architecture,
+            "prompt_transport": profile.prompt_transport,
             "repeat_index": repeat_index,
             "allocation_evidence": allocation,
+            "pd_launch_binding": allocation.get("pd_launch_binding"),
             "identity": identity,
             "warmups": warmup_results,
             "request_trace_artifact": str(trace_relative),
@@ -736,6 +773,7 @@ async def _execute(
                     warmups=warmups,
                     output_dir=output_dir,
                     slo=slo,
+                    control_timeout_s=connect_timeout_s,
                 )
                 iteration["_output_dir"] = str(output_dir)
                 iterations.append(iteration)
@@ -802,6 +840,21 @@ def run_comparison(
         raise ConfigError(f"output directory already exists: {output_dir}")
     profile = load_profile(profile_path)
     requests = load_trace(trace_path)
+    missing_prompt_text = [
+        request.request_id for request in requests if request.prompt_text is None
+    ]
+    unexpected_prompt_text = [
+        request.request_id for request in requests if request.prompt_text is not None
+    ]
+    if profile.prompt_transport == "text_with_token_id_attestation" and missing_prompt_text:
+        raise ConfigError(
+            "text_with_token_id_attestation requires prompt_text for every request: "
+            f"{missing_prompt_text}"
+        )
+    if profile.prompt_transport == "token_ids" and unexpected_prompt_text:
+        raise ConfigError(
+            f"token_ids transport forbids prompt_text fields: {unexpected_prompt_text}"
+        )
     for name, value in {
         "ttft_ms": ttft_ms,
         "tpot_ms": tpot_ms,

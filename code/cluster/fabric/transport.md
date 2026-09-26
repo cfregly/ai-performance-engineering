@@ -14,6 +14,22 @@ The tool does not prepare remote servers or change host, NIC, or switch configur
 
 Client commands run in a new local process group. On timeout, the runner sends TERM and then KILL only to that owned group. It does not use a global process-name kill. Raw evidence records each timeout and termination action.
 
+## NVLink and Network RDMA
+
+NVLink and network RDMA serve different communication paths. A GPU instance can
+expose NVLink between its GPUs without exposing an RDMA-capable network adapter.
+
+| Path | Mechanism | Required device |
+| --- | --- | --- |
+| GPU to GPU within an NVLink domain | GPUDirect P2P over NVLink | GPUs with peer access and an NVLink connection |
+| GPU memory to a network peer | GPUDirect RDMA over InfiniBand or RoCE | An exposed RDMA-capable NIC and a prepared peer |
+
+The `local_p2p` rung tests the first path. The `host_rdma` and `gdr` rungs test
+network paths. An empty `rdma link` result does not mean GPU peer access is absent.
+Check the PCI devices and network driver before treating a missing RDMA adapter
+as a driver problem. See [NVIDIA GPUDirect](https://developer.nvidia.com/gpudirect)
+for the distinction between P2P and RDMA.
+
 ## Prepare Servers
 
 Start one perftest server for each requested client case. Use separate control ports so both can wait while the ladder runs. Match the client HCA, HCA port, payload, iterations, queue-pair count, GPU, and CUDA memory mode.

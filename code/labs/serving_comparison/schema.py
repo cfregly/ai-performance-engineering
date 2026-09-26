@@ -112,6 +112,7 @@ class RequestSpec:
     request_id: str
     arrival_ms: float
     prompt_token_ids: tuple[int, ...]
+    prompt_text: str | None
     max_tokens: int
     deadline_ms: float
     cancel_after_ms: float | None
@@ -154,6 +155,7 @@ class ComparisonProfile:
     tokenizer: str
     precision: str
     seed: int
+    prompt_transport: str
     gpu_budget: int
     gpu_ids: tuple[str, ...]
     clocks_locked: bool
@@ -202,12 +204,8 @@ def _validate_pd_provenance(
     proxy = _object(raw.get("proxy"), f"{location}.proxy")
     implementation = _text(proxy.get("implementation"), f"{location}.proxy.implementation")
     allowed_proxy = {
-        "vllm": {
-            "aisp_vllm_pd_proxy",
-            "vllm_disagg_proxy",
-            "vllm_disagg_proxy_multiturn",
-        },
-        "sglang": {"sglang_model_gateway", "sglang_mini_lb"},
+        "vllm": {"aisp_vllm_pd_proxy"},
+        "sglang": {"sglang_model_gateway"},
     }
     if implementation not in allowed_proxy[engine]:
         raise ConfigError(f"{location}.proxy.implementation is not supported for {engine}")
@@ -271,6 +269,11 @@ def load_profile(path: Path) -> ComparisonProfile:
     tokenizer = _text(workload.get("tokenizer"), "profile.workload.tokenizer")
     precision = _text(workload.get("precision"), "profile.workload.precision")
     seed = _integer(workload.get("seed"), "profile.workload.seed")
+    prompt_transport = workload.get("prompt_transport", "token_ids")
+    if prompt_transport not in {"token_ids", "text_with_token_id_attestation"}:
+        raise ConfigError(
+            "profile.workload.prompt_transport must be token_ids or text_with_token_id_attestation"
+        )
     admission_max_concurrency = _integer(
         workload.get("admission_max_concurrency"),
         "profile.workload.admission_max_concurrency",
@@ -407,17 +410,26 @@ def load_profile(path: Path) -> ComparisonProfile:
         working_directory = lifecycle.get("working_directory", ".")
         if not isinstance(working_directory, str) or not working_directory:
             raise ConfigError(f"{location}.lifecycle.working_directory must be a path string")
+        ready_urls_raw = _list(lifecycle.get("ready_urls"), f"{location}.lifecycle.ready_urls")
+        if not ready_urls_raw:
+            raise ConfigError(f"{location}.lifecycle.ready_urls must not be empty")
+        ready_urls = [
+            _validate_url(
+                _text(url, f"{location}.lifecycle.ready_urls[{ready_index}]"),
+                f"{location}.lifecycle.ready_urls[{ready_index}]",
+                mode,
+            )
+            for ready_index, url in enumerate(ready_urls_raw)
+        ]
+        if len(set(ready_urls)) != len(ready_urls):
+            raise ConfigError(f"{location}.lifecycle.ready_urls contains duplicates")
         normalized_lifecycle: dict[str, Any] = {
             "mode": "local_process",
             "start_command": command,
             "environment": environment,
             "env_passthrough": passthrough,
             "working_directory": str((path.parent / working_directory).resolve()),
-            "ready_url": _validate_url(
-                _text(lifecycle.get("ready_url"), f"{location}.lifecycle.ready_url"),
-                f"{location}.lifecycle.ready_url",
-                mode,
-            ),
+            "ready_urls": ready_urls,
             "gpu_evidence": "nvidia_smi" if mode == "engine" else "process_only",
         }
         normalized_lifecycle["timeout_s"] = _number(
@@ -477,6 +489,16 @@ def load_profile(path: Path) -> ComparisonProfile:
                 mode=mode,
                 location=f"{location}.pd_provenance",
             )
+            if mode == "engine":
+                from .provenance import bind_pd_launch
+
+                provenance["launch_binding"] = bind_pd_launch(
+                    engine=engine,
+                    endpoint=endpoint,
+                    lifecycle=normalized_lifecycle,
+                    provenance=provenance,
+                    model=model,
+                )
             diagnostic_support = _object(
                 arm.get("diagnostic_support"), f"{location}.diagnostic_support"
             )
@@ -549,6 +571,7 @@ def load_profile(path: Path) -> ComparisonProfile:
         tokenizer=tokenizer,
         precision=precision,
         seed=seed,
+        prompt_transport=prompt_transport,
         gpu_budget=gpu_budget,
         gpu_ids=tuple(gpu_ids),
         clocks_locked=clocks_locked,
@@ -586,6 +609,9 @@ def load_trace(path: Path) -> tuple[RequestSpec, ...]:
         prompt = _list(raw.get("prompt_token_ids"), f"{location}.prompt_token_ids")
         if not prompt or any(type(token) is not int or token < 0 for token in prompt):
             raise ConfigError(f"{location}.prompt_token_ids must be nonempty nonnegative integers")
+        prompt_text = raw.get("prompt_text")
+        if prompt_text is not None and (not isinstance(prompt_text, str) or not prompt_text):
+            raise ConfigError(f"{location}.prompt_text must be a nonempty string")
         max_tokens = _integer(raw.get("max_tokens"), f"{location}.max_tokens", positive=True)
         deadline_ms = _number(raw.get("deadline_ms"), f"{location}.deadline_ms", positive=True)
         cancel_after = raw.get("cancel_after_ms")
@@ -613,6 +639,7 @@ def load_trace(path: Path) -> tuple[RequestSpec, ...]:
                 request_id=request_id,
                 arrival_ms=arrival_ms,
                 prompt_token_ids=tuple(prompt),
+                prompt_text=prompt_text,
                 max_tokens=max_tokens,
                 deadline_ms=deadline_ms,
                 cancel_after_ms=cancel_after,

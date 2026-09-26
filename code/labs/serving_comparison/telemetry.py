@@ -6,7 +6,8 @@ import json
 import math
 import re
 import time
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any
 
 from .schema import (
@@ -20,6 +21,10 @@ _PROMETHEUS_LINE = re.compile(
     r"^(?P<name>[a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{(?P<labels>.*)\})?\s+(?P<value>[^\s]+)(?:\s+\d+)?$"
 )
 _PROMETHEUS_LABEL = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)="((?:\\.|[^"\\])*)"')
+_PROMETHEUS_TYPE = re.compile(r"^# TYPE (?P<name>[a-zA-Z_:][a-zA-Z0-9_:]*) (?P<type>[a-z]+)$")
+
+# Streaming requests intentionally allow unbounded reads. Telemetry endpoints do not.
+DEFAULT_TELEMETRY_REQUEST_TIMEOUT_S = 10.0
 
 
 @dataclass(frozen=True)
@@ -28,6 +33,7 @@ class TelemetrySnapshot:
     captured_unix_s: float
     values: dict[str, float]
     raw_by_source: dict[str, str]
+    selector_evidence_by_source: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 def _finite_nonnegative(value: Any, location: str) -> float:
@@ -61,7 +67,9 @@ def _parse_labels(raw: str | None) -> dict[str, str]:
     return labels
 
 
-def _prometheus_samples(text: str) -> list[tuple[str, dict[str, str], float]]:
+def _prometheus_samples(
+    text: str, selected_names: set[str]
+) -> list[tuple[str, dict[str, str], float]]:
     samples: list[tuple[str, dict[str, str], float]] = []
     for line_number, raw_line in enumerate(text.splitlines(), 1):
         line = raw_line.strip()
@@ -70,23 +78,47 @@ def _prometheus_samples(text: str) -> list[tuple[str, dict[str, str], float]]:
         match = _PROMETHEUS_LINE.match(line)
         if not match:
             raise ConfigError(f"Prometheus telemetry line {line_number} is unsupported")
+        sample_name = match.group("name")
+        if sample_name not in selected_names:
+            continue
         try:
             value = float(match.group("value"))
         except ValueError as exc:
             raise ConfigError(f"Prometheus telemetry line {line_number} has a bad value") from exc
         if not math.isfinite(value):
             raise ConfigError(f"Prometheus telemetry line {line_number} is not finite")
-        samples.append((match.group("name"), _parse_labels(match.group("labels")), value))
+        samples.append((sample_name, _parse_labels(match.group("labels")), value))
     return samples
 
 
-def _parse_prometheus_metric(text: str, selector: Any, location: str) -> float:
+def _prometheus_types(text: str, selected_names: set[str]) -> dict[str, str]:
+    types: dict[str, str] = {}
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line.startswith("# TYPE "):
+            continue
+        match = _PROMETHEUS_TYPE.match(line)
+        if match is None or match.group("name") not in selected_names:
+            continue
+        name = match.group("name")
+        metric_type = match.group("type")
+        previous = types.get(name)
+        if previous is not None and previous != metric_type:
+            raise ConfigError(f"Prometheus metric {name} declares conflicting types")
+        types[name] = metric_type
+    return types
+
+
+def _parse_prometheus_metric_with_evidence(
+    text: str, selector: Any, location: str
+) -> tuple[float, dict[str, Any]]:
     if isinstance(selector, str):
         names = [selector]
         labels: dict[str, str] = {}
         reduce = "one"
         scale = 1.0
         offset = 0.0
+        missing_value: float | None = None
     else:
         selector_object = selector if isinstance(selector, dict) else None
         if selector_object is None:
@@ -97,6 +129,10 @@ def _parse_prometheus_metric(text: str, selector: Any, location: str) -> float:
         reduce = selector_object.get("reduce", "one")
         scale = selector_object.get("scale", 1.0)
         offset = selector_object.get("offset", 0.0)
+        raw_missing_value = selector_object.get("missing_value")
+        missing_value = (
+            float(raw_missing_value) if type(raw_missing_value) in (int, float) else None
+        )
         if (
             not names
             or any(not isinstance(name, str) or not name for name in names)
@@ -106,24 +142,68 @@ def _parse_prometheus_metric(text: str, selector: Any, location: str) -> float:
             or type(offset) not in (int, float)
             or not math.isfinite(scale)
             or not math.isfinite(offset)
+            or (raw_missing_value is not None and bool(labels))
+            or (
+                raw_missing_value is not None
+                and (
+                    type(raw_missing_value) not in (int, float)
+                    or not math.isfinite(raw_missing_value)
+                    or raw_missing_value != 0
+                )
+            )
         ):
             raise ConfigError(f"{location} has an invalid Prometheus selector")
         if any(
             not isinstance(key, str) or not isinstance(value, str) for key, value in labels.items()
         ):
             raise ConfigError(f"{location}.labels must map strings to strings")
-    matches = [
-        value
-        for sample_name, sample_labels, value in _prometheus_samples(text)
-        if sample_name in names
-        and all(sample_labels.get(key) == value for key, value in labels.items())
-    ]
+    selected_names = set(names)
+    types = _prometheus_types(text, selected_names)
+    samples = _prometheus_samples(text, selected_names)
+    matches_by_name = {
+        name: [
+            value
+            for sample_name, sample_labels, value in samples
+            if sample_name == name
+            and all(sample_labels.get(key) == value for key, value in labels.items())
+        ]
+        for name in names
+    }
+    missing_names = [name for name, matches in matches_by_name.items() if not matches]
+    if missing_value is not None:
+        unsupported = [name for name in missing_names if types.get(name) != "counter"]
+        if unsupported:
+            raise ConfigError(
+                f"{location} can use missing_value only when exact metric families "
+                f"declare # TYPE counter: {unsupported}"
+            )
+    matches = [value for name in names for value in matches_by_name[name]]
+    matched_sample_count = len(matches)
     if not matches:
-        raise ConfigError(f"{location} selected no Prometheus samples")
-    if reduce == "one" and len(matches) != 1:
+        if missing_value is None:
+            raise ConfigError(f"{location} selected no Prometheus samples")
+        raw_value = missing_value
+    elif reduce == "one" and len(matches) != 1:
         raise ConfigError(f"{location} selected {len(matches)} samples, expected exactly one")
-    raw_value = matches[0] if reduce == "one" else sum(matches)
-    return _finite_nonnegative(raw_value * scale + offset, location)
+    else:
+        raw_value = matches[0] if reduce == "one" else sum(matches)
+    value = _finite_nonnegative(raw_value * scale + offset, location)
+    return value, {
+        "names": names,
+        "labels": labels,
+        "reduce": reduce,
+        "scale": float(scale),
+        "offset": float(offset),
+        "missing_value": missing_value,
+        "missing_names": missing_names,
+        "matched_sample_count": matched_sample_count,
+        "declared_types": {name: types.get(name) for name in names},
+    }
+
+
+def _parse_prometheus_metric(text: str, selector: Any, location: str) -> float:
+    value, _evidence = _parse_prometheus_metric_with_evidence(text, selector, location)
+    return value
 
 
 def _parse_standard_json(
@@ -155,25 +235,46 @@ def _parse_standard_json(
     return values
 
 
-async def capture_pd_telemetry(client: Any, arm: ArmProfile) -> TelemetrySnapshot:
+async def capture_pd_telemetry(
+    client: Any,
+    arm: ArmProfile,
+    *,
+    request_timeout_s: float = DEFAULT_TELEMETRY_REQUEST_TIMEOUT_S,
+    raw_sink: Callable[[str, str], None] | None = None,
+) -> TelemetrySnapshot:
     """Capture every required counter from the configured live endpoints."""
     if arm.architecture != "prefill_decode":
         raise ConfigError(f"{arm.arm_id} is not a P/D arm")
+    if (
+        type(request_timeout_s) not in (int, float)
+        or not math.isfinite(request_timeout_s)
+        or request_timeout_s <= 0
+    ):
+        raise ConfigError("telemetry request timeout must be a finite positive number")
     values: dict[str, float] = {}
     raw_by_source: dict[str, str] = {}
+    selector_evidence_by_source: dict[str, dict[str, Any]] = {}
     for source in arm.telemetry_sources:
-        response = await client.get(source.url)
+        response = await client.get(source.url, timeout=request_timeout_s)
         response.raise_for_status()
         text = response.text
         raw_by_source[source.source_id] = text
+        if raw_sink is not None:
+            raw_sink(source.source_id, text)
         location = f"{arm.arm_id}.telemetry.{source.source_id}"
         if source.format == "standard_json":
             parsed = _parse_standard_json(text, arm, source.metrics, location)
+            selector_evidence_by_source[source.source_id] = {}
         else:
-            parsed = {
-                semantic: _parse_prometheus_metric(text, selector, f"{location}.{semantic}")
-                for semantic, selector in source.metrics.items()
-            }
+            parsed = {}
+            selector_evidence: dict[str, Any] = {}
+            for semantic, selector in source.metrics.items():
+                value, evidence = _parse_prometheus_metric_with_evidence(
+                    text, selector, f"{location}.{semantic}"
+                )
+                parsed[semantic] = value
+                selector_evidence[semantic] = evidence
+            selector_evidence_by_source[source.source_id] = selector_evidence
         overlap = set(values) & set(parsed)
         if overlap:
             raise ConfigError(f"{location} duplicated telemetry semantics: {sorted(overlap)}")
@@ -186,6 +287,7 @@ async def capture_pd_telemetry(client: Any, arm: ArmProfile) -> TelemetrySnapsho
         captured_unix_s=time.time(),
         values=values,
         raw_by_source=raw_by_source,
+        selector_evidence_by_source=selector_evidence_by_source,
     )
 
 
@@ -200,6 +302,11 @@ def compute_pd_delta(before: TelemetrySnapshot, after: TelemetrySnapshot) -> dic
         if change < 0:
             raise ConfigError(f"P/D telemetry counter decreased: {metric}")
         delta[metric] = change
+    transfer_failures = delta["kv_transfer_failures_total"]
+    if transfer_failures > 0:
+        raise ConfigError(
+            f"P/D request interval contains {transfer_failures:g} failed KV transfers"
+        )
     required_activity = REQUIRED_PD_METRICS - {"kv_transfer_failures_total"}
     inactive = sorted(metric for metric in required_activity if delta[metric] <= 0)
     if inactive:

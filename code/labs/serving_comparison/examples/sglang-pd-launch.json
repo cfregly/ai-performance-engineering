@@ -4,35 +4,95 @@
     {
       "name": "sglang-prefill",
       "command": [
-        "python", "-m", "sglang.launch_server",
-        "--model-path", "/models/Meta-Llama-3.1-8B-Instruct",
-        "--served-model-name", "meta-llama/Meta-Llama-3.1-8B-Instruct",
-        "--host", "127.0.0.1", "--port", "8201", "--dtype", "bfloat16",
-        "--max-running-requests", "32", "--enable-metrics",
-        "--disaggregation-mode", "prefill", "--disaggregation-transfer-backend", "nixl"
+        "python",
+        "-m",
+        "sglang.launch_server",
+        "--model-path",
+        "/models/Qwen3-8B",
+        "--served-model-name",
+        "Qwen/Qwen3-8B",
+        "--host",
+        "127.0.0.1",
+        "--dtype",
+        "bfloat16",
+        "--max-running-requests",
+        "3",
+        "--context-length",
+        "4096",
+        "--mem-fraction-static",
+        "0.75",
+        "--disable-cuda-graph",
+        "--enable-metrics",
+        "--port",
+        "8201",
+        "--disaggregation-mode",
+        "prefill",
+        "--disaggregation-transfer-backend",
+        "nixl"
       ],
-      "environment": {"CUDA_VISIBLE_DEVICES": "0"}
+      "environment": {
+        "CUDA_VISIBLE_DEVICES": "0",
+        "SGLANG_DISAGGREGATION_NIXL_BACKEND": "UCX",
+        "SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION": "false"
+      },
+      "working_directory": "../../../../"
     },
     {
       "name": "sglang-decode",
       "command": [
-        "python", "-m", "sglang.launch_server",
-        "--model-path", "/models/Meta-Llama-3.1-8B-Instruct",
-        "--served-model-name", "meta-llama/Meta-Llama-3.1-8B-Instruct",
-        "--host", "127.0.0.1", "--port", "8202", "--dtype", "bfloat16",
-        "--max-running-requests", "32", "--enable-metrics",
-        "--disaggregation-mode", "decode", "--disaggregation-transfer-backend", "nixl"
+        "python",
+        "-m",
+        "sglang.launch_server",
+        "--model-path",
+        "/models/Qwen3-8B",
+        "--served-model-name",
+        "Qwen/Qwen3-8B",
+        "--host",
+        "127.0.0.1",
+        "--dtype",
+        "bfloat16",
+        "--max-running-requests",
+        "3",
+        "--context-length",
+        "4096",
+        "--mem-fraction-static",
+        "0.75",
+        "--disable-cuda-graph",
+        "--enable-metrics",
+        "--port",
+        "8202",
+        "--disaggregation-mode",
+        "decode",
+        "--disaggregation-transfer-backend",
+        "nixl"
       ],
-      "environment": {"CUDA_VISIBLE_DEVICES": "1"}
+      "environment": {
+        "CUDA_VISIBLE_DEVICES": "1",
+        "SGLANG_DISAGGREGATION_NIXL_BACKEND": "UCX",
+        "SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION": "false"
+      },
+      "working_directory": "../../../../"
     },
     {
       "name": "sglang-pd-router",
       "command": [
-        "python", "-m", "sglang_router.launch_router", "--pd-disaggregation",
-        "--prefill", "http://127.0.0.1:8201", "--decode", "http://127.0.0.1:8202",
-        "--host", "127.0.0.1", "--port", "8200"
+        "python",
+        "-m",
+        "sglang_router.launch_router",
+        "--pd-disaggregation",
+        "--prefill",
+        "http://127.0.0.1:8201",
+        "--decode",
+        "http://127.0.0.1:8202",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8200"
       ],
-      "environment": {"CUDA_VISIBLE_DEVICES": ""}
+      "environment": {
+        "CUDA_VISIBLE_DEVICES": ""
+      },
+      "working_directory": "../../../../"
     }
   ]
 }

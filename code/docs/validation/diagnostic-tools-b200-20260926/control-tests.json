@@ -1,0 +1,59 @@
+{
+  "schema": "aisp.diagnostic-control-test-validation.v1",
+  "base_commit": "127f8ad5e439cd0193a3a6a0dfce4fb8c8fe072a",
+  "environment": "Verda B200 host, Python 3.12.3, CUDA_VISIBLE_DEVICES empty",
+  "claim_boundary": "CPU control, parser, protocol, and dispatch regression checks. Real GPU evidence is recorded separately.",
+  "counts": {
+    "tests": 102,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0
+  },
+  "duration_seconds": 29.594,
+  "command": "CUDA_VISIBLE_DEVICES= python3 -m pytest -q tests/test_network_diagnosis.py tests/test_fabric_diagnostics.py tests/test_transport_diagnostics.py tests/test_cross_layer_diagnosis.py tests/test_diagnostic_process.py tests/test_diagnostics_integration.py tests/test_collective_diagnosis.py tests/test_refresh_readmes.py --junitxml=<artifacts>/final-control-tests-v2.xml",
+  "test_files": [
+    {
+      "path": "code/tests/test_network_diagnosis.py",
+      "sha256": "1d7c47ae77b759cf2798bb98e366f63516091ae8e6e592827c310804fbc4ec4a"
+    },
+    {
+      "path": "code/tests/test_fabric_diagnostics.py",
+      "sha256": "36d803d13474adca4e427729479cae93038a169a44f2dc49251347c7acbe71e9"
+    },
+    {
+      "path": "code/tests/test_transport_diagnostics.py",
+      "sha256": "c28c02a9f66c5655dbc054335a86133882e452831d72e08a22df1757b2291520"
+    },
+    {
+      "path": "code/tests/test_cross_layer_diagnosis.py",
+      "sha256": "99a7d68fa404283fe708dd100a36345053fc8bbfe3bd0d4572612fd7f38de60f"
+    },
+    {
+      "path": "code/tests/test_diagnostic_process.py",
+      "sha256": "dfa8202664e8fcbff434f620bd232cb3c964e07c194d53950ce0a952dfb4e4d4"
+    },
+    {
+      "path": "code/tests/test_diagnostics_integration.py",
+      "sha256": "d94c64feaece47f50955f5fe6a1051f813345a6b88cb6b892faaed9573482eee"
+    },
+    {
+      "path": "code/tests/test_collective_diagnosis.py",
+      "sha256": "23b26e4c899cf4ec57394438efa6304632711fa15da514857c1ee7686678c2fa"
+    },
+    {
+      "path": "code/tests/test_refresh_readmes.py",
+      "sha256": "2eeda21cb1ee00b835ad3b5e36cbb790ce4abb4fdb2912b857ab0b6c943ce3e3"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "final-control-tests-v2.xml",
+      "sha256": "792d14e62b979dcb100d8660b1bd1431d73fd734eadbd08d28262f8ff6604c5f"
+    },
+    {
+      "path": "final-control-tests-v2.log",
+      "sha256": "d4a652eec961018d2691e0edc23e751eb071dc0edffe2e3d3171262bb114c2c1"
+    }
+  ],
+  "added_coverage": "Native-style ICMPv6 neighbor solicitation and advertisement fixtures, distinguished from echo events."
+}

@@ -1,0 +1,120 @@
+{
+  "claim_boundary": "Real two-GPU diagnostic validation. The artifacts remain diagnostic_only_noncanonical and do not establish a benchmark speedup or fabric root cause.",
+  "created_at": "2026-09-26T17:18:45.930400+00:00",
+  "default_sweep": {
+    "analysis_sha256": "ad8c9682e18be92f4b56879b6292b9f210a27525d669c582a3139690c8abfdf9",
+    "analysis_status": "completed",
+    "artifact_sha256": "5f35f99d8a8557417950d7a654269423f083290f37755a70991808a008c83b20",
+    "classification": "diagnostic_only_noncanonical",
+    "comparable": 36,
+    "comparisons": 36,
+    "correctness_passed": true,
+    "experiments_per_rank": [
+      48,
+      48
+    ],
+    "groups": 48,
+    "rank_count": 2,
+    "scenario_ratios": {
+      "competing_gpu_workload": {
+        "count": 12,
+        "cuda_ratio": {
+          "max": 1.987062222319671,
+          "median": 1.8350873163583508,
+          "min": 1.5738411690647192
+        },
+        "step_ratio": {
+          "max": 2.4529334315774216,
+          "median": 2.4233727129815175,
+          "min": 2.3684180470878533
+        }
+      },
+      "delayed_rank": {
+        "count": 12,
+        "cuda_ratio": {
+          "max": 34.26861618402242,
+          "median": 30.162769137605316,
+          "min": 17.29409563120829
+        },
+        "step_ratio": {
+          "max": 15.743944526119693,
+          "median": 15.53305825391957,
+          "min": 15.188789015346671
+        }
+      },
+      "forced_dependency": {
+        "count": 12,
+        "cuda_ratio": {
+          "max": 0.2763637849251753,
+          "median": 0.1137722140483172,
+          "min": 0.051212166995003
+        },
+        "step_ratio": {
+          "max": 1.0964639186851113,
+          "median": 1.05567149050446,
+          "min": 1.0495714419865674
+        }
+      }
+    },
+    "signals": 84,
+    "status": "completed"
+  },
+  "focused_tests": {
+    "count": 17,
+    "status": "passed"
+  },
+  "known_warning": "PyTorch 2.13 deprecates reduce_scatter_tensor in favor of reduce_scatter_single. PyTorch 2.8 and 2.9 do not expose the replacement API.",
+  "nsight_systems": {
+    "correctness_passed": true,
+    "nvtx_and_kernel_stats_bytes": 12121,
+    "report_bytes": 1813114,
+    "report_sha256": "2188124831af842dda1af9326563d052db111f91c0be7a3e9b2b33dcfabf4f97",
+    "status": "completed"
+  },
+  "pytorch_profiler": {
+    "analysis_status": "completed",
+    "correctness_passed": true,
+    "groups": 16,
+    "status": "completed",
+    "traces": [
+      {
+        "bytes": 6207645,
+        "file": "collective-diagnosis-rank-0.json",
+        "sha256": "fc6982d23265c3e689e6bece157c451fd406d03d865623c5f2b7bd02e2cb4e88"
+      },
+      {
+        "bytes": 6536842,
+        "file": "collective-diagnosis-rank-1.json",
+        "sha256": "dc1f084c8871fb543d726e52c7a1641656338f23bb280c02347bcaf4a6546607"
+      }
+    ]
+  },
+  "runtime": {
+    "cuda_runtime": "13.0",
+    "device_count": 2,
+    "device_names": [
+      "NVIDIA B200",
+      "NVIDIA B200"
+    ],
+    "torch": "2.13.0+cu130"
+  },
+  "schema": "aisp.collective-diagnosis-b200-validation.v1",
+  "source_at_run": {
+    "commit": "127f8ad5e439cd0193a3a6a0dfce4fb8c8fe072a",
+    "owned_source_diff_bytes": 0,
+    "owned_source_files": [
+      {
+        "path": "code/ch04/collective_diagnosis_tool.py",
+        "sha256": "126326ea4813e6b50a5dddc493621d3a4a59b7084b049a99739a67eaa52ad573",
+        "size_bytes": 68976
+      },
+      {
+        "path": "code/ch04/collective_diagnosis.md",
+        "sha256": "a89d2bc3210a7cb37fa347b22664779137285e2a900f9a3345034902e6f05971",
+        "size_bytes": 7585
+      }
+    ],
+    "owned_source_status": [],
+    "repo_dirty": false
+  }
+}

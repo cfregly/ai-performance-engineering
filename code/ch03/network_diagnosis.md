@@ -45,6 +45,8 @@ hosts require privileges for interface binding. Failed commands remain in the
 report. Management-network throughput must not be presented as RDMA-fabric
 throughput. One flow improving with parallel flows suggests an avenue to test,
 but does not identify whether the constraint is a window, a path or an endpoint.
+Socket collection passes `ss` an explicit address family and an exact host
+prefix. IPv4 targets use `/32`. IPv6 targets use `/128`.
 
 The bandwidth-delay calculator also works without Linux:
 
@@ -64,7 +66,9 @@ For packet analysis, `collect --pcap capture.pcapng` invokes `tshark` and retain
 its field export. `packets --input packets.tsv --run-dir /tmp/packet-analysis`
 analyzes an existing export. The exact field list is `PACKET_FIELDS` in
 [network_diagnosis_tool.py](network_diagnosis_tool.py). Keep the tab-separated
-header and export the first occurrence of each field.
+header and export the first occurrence of each field. Boolean fields accept
+`1`, `0`, `True` and `False` without case sensitivity. An empty field means the
+condition was absent. Any other value fails with the field name and value.
 
 The analyzer reports ARP requests and replies, ICMP echo, IPv6 neighbor discovery,
 SYN, SYN/ACK, retransmissions, zero windows, reset addresses and path-MTU feedback.
