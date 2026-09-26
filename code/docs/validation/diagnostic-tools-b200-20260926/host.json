@@ -1,0 +1,349 @@
+{
+  "schema": "aisp.diagnostic-tools-host-validation.v1",
+  "base_commit": "127f8ad5e439cd0193a3a6a0dfce4fb8c8fe072a",
+  "provider": "Verda",
+  "claim_boundary": "Functional diagnostic validation on a KVM guest. No canonical speedup or network RDMA claim.",
+  "network": {
+    "status": "ok",
+    "traffic_scope": "loopback",
+    "tcp_probes": 4,
+    "all_requested_commands_ok": true,
+    "management_status": "partial",
+    "management_mtu_1500": "ok",
+    "management_mtu_9000": "failed",
+    "native_packets": 2000,
+    "native_syn": 3,
+    "native_syn_ack": 3,
+    "native_echo_requests": 9,
+    "native_echo_replies": 9,
+    "public_cli_packet_analysis": "ok",
+    "public_cli_live_pcap_collection": "ok",
+    "tshark_version": "4.2.2"
+  },
+  "transport": {
+    "fixed_parser_gpu_run_status": "ok",
+    "entrypoint": "aisp tools transport-diagnose",
+    "tcp_run_status": "ok",
+    "native_output_reparsed_with_fix": true,
+    "nvlink_topology": {
+      "0-1": "NV18",
+      "1-0": "NV18"
+    },
+    "peer_read_access": {
+      "0-1": true,
+      "1-0": true
+    },
+    "actual_nccl_channel_transport": "P2P/CUMEM",
+    "nccl_payload_bytes": 8388608,
+    "nccl_correctness_errors_out_of_place": 0,
+    "nccl_correctness_errors_in_place": 0,
+    "native_gpu_run_repeated_after_parser_fix": true
+  },
+  "unavailable_capabilities": {
+    "fabric_status": "unsupported",
+    "rdma_status": "unsupported",
+    "rdma_devices": 0,
+    "network_driver": "virtio_net",
+    "reason": "No RDMA-capable NIC is exposed to this guest and no switch management endpoint or RDMA peer is available."
+  },
+  "cross_layer": {
+    "signals": 91,
+    "correlations": 0,
+    "contextual_measurements": 144,
+    "excluded_pairs": 0
+  },
+  "source_files": [
+    {
+      "path": "code/ch03/network_diagnosis_tool.py",
+      "sha256": "303b4e22bf870263172b5d2904e7747b92ac242cff4b5470cf6d15cfa1df3897"
+    },
+    {
+      "path": "code/cluster/fabric/transport.py",
+      "sha256": "8d8b181c2bbcd5a6a45847071ff7df744e4d952c1f1100d652226a14e4c36f57"
+    },
+    {
+      "path": "code/cluster/fabric/diagnostics.py",
+      "sha256": "57353817c0390363d48318ca547288eeb897961ae888d7f505b65126b0f3c1a2"
+    },
+    {
+      "path": "code/core/analysis/cross_layer_diagnosis.py",
+      "sha256": "4ac52fdd2f8e48c95e9329aa9b4c7e1b65b578ed9947166b7dea0b0cde761f52"
+    },
+    {
+      "path": "code/core/scripts/refresh_readmes.py",
+      "sha256": "02077b2daede492687503b3b678ff4fc97f4040681a775e3d49e2eda0a5c83b0"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "cross-layer-live/manifest.json",
+      "bytes": 1154,
+      "sha256": "c38a573d512a1a94beb168d125d6f44ea3403b8b1a1abda2cfe7afaec8b10874"
+    },
+    {
+      "path": "cross-layer-live/raw/cross-layer-diagnose.json",
+      "bytes": 422880,
+      "sha256": "c04c30b617a6af6aafc13fed6ec132e4fbfe3cae688a5060d7f3b92988cc85de"
+    },
+    {
+      "path": "cross-layer-live/reports/cross-layer-diagnose.md",
+      "bytes": 458,
+      "sha256": "35a905621315fc5e594db21bf1ca6699b6a1fc6dd6dc4092915c45783ffada03"
+    },
+    {
+      "path": "cross-layer-live/structured/cross-layer-diagnose.json",
+      "bytes": 365356,
+      "sha256": "297ce96938be468a2df2e6c4d2e8ebe428d888258ec3ef7ce3de4935bc48e932"
+    },
+    {
+      "path": "fabric-capability/manifest.json",
+      "bytes": 451,
+      "sha256": "c3535e20155c1fc59af96a8e3630446638a7d47cc8923d52dfde3ae5da4b8d7b"
+    },
+    {
+      "path": "fabric-capability/reports/b200-fabric-capability_fabric_diagnostics.md",
+      "bytes": 937,
+      "sha256": "2b581e41c53ddd449f8ffbdbe3c21631da538e142784b198bd5215abd36bcff2"
+    },
+    {
+      "path": "fabric-capability/structured/b200-fabric-capability_fabric_counter_deltas.json",
+      "bytes": 575,
+      "sha256": "1b09523ad2a12e109e5bc72d4558dc8584d02f310158596789e9c884cb2ca811"
+    },
+    {
+      "path": "fabric-capability/structured/b200-fabric-capability_fabric_diagnostics.json",
+      "bytes": 3520,
+      "sha256": "b8ceeec09c03ec4d9b6fcbd0a8a774639796a8b797460b018327f8f0be4a7d92"
+    },
+    {
+      "path": "fabric-capability/structured/b200-fabric-capability_fabric_diagnostics_after.json",
+      "bytes": 939,
+      "sha256": "d075e64d7b335b6cde21daee3c560a9d4da137b67f740a82752b4d5cfcc995ba"
+    },
+    {
+      "path": "fabric-capability/structured/b200-fabric-capability_fabric_diagnostics_before.json",
+      "bytes": 939,
+      "sha256": "9708c0687e1677c31b3a418e5031477e32b8cf56a292c56041007dc9ea21af15"
+    },
+    {
+      "path": "fabric-capability/structured/b200-fabric-capability_fabric_diagnostics_manifest.json",
+      "bytes": 1263,
+      "sha256": "f060cd74481f16202bd273d8cd8b4abde9425ffd686743a6eb374f94fc3e9ac1"
+    },
+    {
+      "path": "focused-control-tests.log",
+      "bytes": 181,
+      "sha256": "ea3c6a4548832b3334b3116c4d42dbf2db4b014625c7d3395fcf8b1b8107e1c9"
+    },
+    {
+      "path": "host-inventory.json",
+      "bytes": 5260,
+      "sha256": "9ee16b54356e132f8e07b1fb9d4fd5fef2f41227e4833d492aee98407c9884bb"
+    },
+    {
+      "path": "network-bounded.pcap",
+      "bytes": 65715301,
+      "sha256": "f0dc7943fa6ab5fec1503aa5efdedb6b837f6281b676148b862df8677e3ba8aa"
+    },
+    {
+      "path": "network-fields.tsv",
+      "bytes": 226069,
+      "sha256": "897b07f5a260b9111521b69c71906ce79883ad047fa0bd4f398e3980b7ed80d2"
+    },
+    {
+      "path": "network-live/manifest.json",
+      "bytes": 1121,
+      "sha256": "8fdeeb8cefcf517db224c98268fb8a4e672a97f04dc90b04d3511076bf1ed3ca"
+    },
+    {
+      "path": "network-live/raw/network-diagnose.json",
+      "bytes": 269704,
+      "sha256": "42d8e9a5bcda2512e3110194bb678f05f856e403c1fbdc3a692d1ae3a54ff02c"
+    },
+    {
+      "path": "network-live/reports/network-diagnose.md",
+      "bytes": 3337,
+      "sha256": "81e84b9e02f253f204f82805013feea77652ad31a5b642c33715ee370026fde3"
+    },
+    {
+      "path": "network-live/structured/network-diagnose.json",
+      "bytes": 154183,
+      "sha256": "aa882a6120fe02f3409119deec154edc774deed805d672e1de307b1b5e8f2112"
+    },
+    {
+      "path": "network-management/manifest.json",
+      "bytes": 1132,
+      "sha256": "1ae5a0dd0f026cc2b1297bd03fe3659a1f621ec1a577925c9ddd37b57c03b8e1"
+    },
+    {
+      "path": "network-management/raw/network-diagnose.json",
+      "bytes": 7946,
+      "sha256": "64c94186d6a25e9b463a879373ed54b31877349c95359f0ebda59181d5d2bd00"
+    },
+    {
+      "path": "network-management/reports/network-diagnose.md",
+      "bytes": 406,
+      "sha256": "86aa0516978ee6740b2222fa91951dcf404c4fa5dca00a08c77e37f01a94b306"
+    },
+    {
+      "path": "network-management/structured/network-diagnose.json",
+      "bytes": 1894,
+      "sha256": "fa0606bc7b987183b32957b09231c7915ae393f069675fe0f612143c0b53dfeb"
+    },
+    {
+      "path": "network-packets-fixed/manifest.json",
+      "bytes": 1129,
+      "sha256": "79247ce800f0a7b565120f1174bc6ecda514622533ae806d32d8e42a574ae8ff"
+    },
+    {
+      "path": "network-packets-fixed/raw/network-diagnose.json",
+      "bytes": 274160,
+      "sha256": "08247cb54381aa7c821b83bab1267da5402128de49ae3200679bd6aa4e1602b1"
+    },
+    {
+      "path": "network-packets-fixed/reports/network-diagnose.md",
+      "bytes": 228,
+      "sha256": "1f4fe8f09b9f620c9905fac9fd5b5a96d2e958310b72c4ae739ec4059defd97f"
+    },
+    {
+      "path": "network-packets-fixed/structured/network-diagnose.json",
+      "bytes": 962,
+      "sha256": "f92261e752a30d3c2a59b0b8c034618b7255859921c9c026dd8890d642bb8472"
+    },
+    {
+      "path": "network-pcap-live/manifest.json",
+      "bytes": 1126,
+      "sha256": "745471ee17dc7b2e88b2d162e634c40db56a771cf4f6ffc208f8e7a2e7c034d5"
+    },
+    {
+      "path": "network-pcap-live/raw/network-diagnose.json",
+      "bytes": 560744,
+      "sha256": "eafb8fc54cecb71c14cdc19d4092ca7c13c86611b6f421b0b27e65e748a96f72"
+    },
+    {
+      "path": "network-pcap-live/reports/network-diagnose.md",
+      "bytes": 382,
+      "sha256": "5b6c7dd2138c0f678eb7b7fc931f03ceda7947800cefedf748f8806f710887e6"
+    },
+    {
+      "path": "network-pcap-live/structured/network-diagnose.json",
+      "bytes": 4824,
+      "sha256": "b53e61a3e0b4363b4876ea177f86e03f5d16fd227e0334bdd7a195680fb45e71"
+    },
+    {
+      "path": "network-receipt.json",
+      "bytes": 1174,
+      "sha256": "6d751c04b765afde39bca6e1047f622a0ca5929d0bb6cca52313c38bc2654746"
+    },
+    {
+      "path": "rdma-capability/manifest.json",
+      "bytes": 454,
+      "sha256": "1b230b7e22d98dd767b9c2888a62b16228076e7e6964644a1c9a75c5f19dc9db"
+    },
+    {
+      "path": "rdma-capability/reports/b200-rdma-capability_transport_diagnostics.md",
+      "bytes": 1040,
+      "sha256": "9a29e8d5747be6b970279f3c48158609454064156bdb669a8941a588700c0779"
+    },
+    {
+      "path": "rdma-capability/structured/b200-rdma-capability_transport_diagnostics.json",
+      "bytes": 3244,
+      "sha256": "4d2956d50c25a0573cec9ebde40f26fdee8c63dae02923864d033af5c4fa83f6"
+    },
+    {
+      "path": "rdma-capability/structured/b200-rdma-capability_transport_diagnostics_manifest.json",
+      "bytes": 666,
+      "sha256": "d80361cd3acf714cbf8ec99485d445736c03169d7365ee50834ae469ee4252ed"
+    },
+    {
+      "path": "transport-gpu-fixed/manifest.json",
+      "bytes": 472,
+      "sha256": "747b43dd9c3c3813bbce635ca06c8af4ccaa840ae405feba0108974d1a9bb54f"
+    },
+    {
+      "path": "transport-gpu-fixed/raw/b200-local-transports-fixed_transport_local_p2p.json",
+      "bytes": 28244,
+      "sha256": "0b4dd3f32d72f619c3eeef402c7586febb9678a26bb873f6d41290c1286b39a6"
+    },
+    {
+      "path": "transport-gpu-fixed/raw/b200-local-transports-fixed_transport_nccl.json",
+      "bytes": 19270,
+      "sha256": "de7d485a62f7f1f49dc8ec2ed26f6c3560e578af390a71678bed6c64e85adab6"
+    },
+    {
+      "path": "transport-gpu-fixed/reports/b200-local-transports-fixed_transport_diagnostics.md",
+      "bytes": 1369,
+      "sha256": "53b281689ce13d52c49da69781c2cf0f0c9f8f3237f76a4f94d0918eeccdcff4"
+    },
+    {
+      "path": "transport-gpu-fixed/structured/b200-local-transports-fixed_transport_diagnostics.json",
+      "bytes": 9358,
+      "sha256": "1a950e3cb065ea2ac3c91afa39671f565ffab82c2bd0d84527f0a73d64059785"
+    },
+    {
+      "path": "transport-gpu-fixed/structured/b200-local-transports-fixed_transport_diagnostics_manifest.json",
+      "bytes": 1076,
+      "sha256": "eb421486e2420c21665000f2fcccc6dfc200a5fe6e6228e70bc28bad6e3c5f2d"
+    },
+    {
+      "path": "transport-gpu/manifest.json",
+      "bytes": 454,
+      "sha256": "fbe9fa807b40b8fef680362a18d6d6d726b4a2a525147d16b70612a3808928de"
+    },
+    {
+      "path": "transport-gpu/raw/b200-local-transports_transport_local_p2p.json",
+      "bytes": 27833,
+      "sha256": "64b49b210fa24e73fef7ec0355825a8624f6e492912cc3953ca27742115f05bf"
+    },
+    {
+      "path": "transport-gpu/raw/b200-local-transports_transport_nccl.json",
+      "bytes": 17374,
+      "sha256": "556059eb4a61ae44fb02aa8e5d8989cded3f0d1f2fa73bf4daf96e99414da787"
+    },
+    {
+      "path": "transport-gpu/reports/b200-local-transports_transport_diagnostics.md",
+      "bytes": 1282,
+      "sha256": "4eb2e224962825b41027264359d33623a9fcdc476e4552ce29f5a476490481ff"
+    },
+    {
+      "path": "transport-gpu/structured/b200-local-transports_transport_diagnostics.json",
+      "bytes": 8990,
+      "sha256": "1b56b75177e6214cf132602b57b29dd64a0e6748c44727b43c41cb0ed90e3448"
+    },
+    {
+      "path": "transport-gpu/structured/b200-local-transports_transport_diagnostics_manifest.json",
+      "bytes": 1046,
+      "sha256": "1df5207294bb110f5bcf5b5c05fa59adfa65721ed3c4e10fba09bca9569d891c"
+    },
+    {
+      "path": "transport-native-reparse.json",
+      "bytes": 397,
+      "sha256": "2faca5786822e693359ef1662a80cf972ab6b6c139fada4829779fecf2c38228"
+    },
+    {
+      "path": "transport-tcp/manifest.json",
+      "bytes": 446,
+      "sha256": "e743b5544626b00a43d570776fadcebb5180a20a11096fb6029698690961b011"
+    },
+    {
+      "path": "transport-tcp/raw/b200-loopback-tcp_transport_iperf.json",
+      "bytes": 7488,
+      "sha256": "6d22f3f3a03dde8ea66d9e44a0b0dad3acec6ac4c629aa3e9d69a27128fe7c99"
+    },
+    {
+      "path": "transport-tcp/reports/b200-loopback-tcp_transport_diagnostics.md",
+      "bytes": 934,
+      "sha256": "947c00f2a6f06ceaae0683097cfb2070305fe289a7e37bb11d6af4d0971d425e"
+    },
+    {
+      "path": "transport-tcp/structured/b200-loopback-tcp_transport_diagnostics.json",
+      "bytes": 4733,
+      "sha256": "6b7e2b7e144cecd83ac2fe3b3befb2de2471f5219fbea00f945a24f4359ce410"
+    },
+    {
+      "path": "transport-tcp/structured/b200-loopback-tcp_transport_diagnostics_manifest.json",
+      "bytes": 838,
+      "sha256": "bbb7c70e248e654cc1ec4d8b5f28d3a1ea45722ff0d9de6bfdc21b8376026383"
+    }
+  ]
+}

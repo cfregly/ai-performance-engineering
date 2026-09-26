@@ -157,9 +157,16 @@ async def _stream_one(
     events: list[dict[str, Any]] = progress["events"]
     saw_done = False
     http_status: int | None = None
+    prompt: str | list[int]
+    if profile.prompt_transport == "text_with_token_id_attestation":
+        if request.prompt_text is None:
+            raise ConfigError(f"{request.request_id} has no prompt_text for text transport")
+        prompt = request.prompt_text
+    else:
+        prompt = list(request.prompt_token_ids)
     payload = {
         "model": profile.model,
-        "prompt": list(request.prompt_token_ids),
+        "prompt": prompt,
         "max_tokens": request.max_tokens,
         "temperature": 0,
         "top_p": 1,
@@ -355,13 +362,19 @@ async def _run_scheduled(
         except TimeoutError:
             finish = time.monotonic()
             cancelled = request.cancel_after_ms is not None
+            prompt_attested = progress["echoed_prompt_token_ids"] == list(request.prompt_token_ids)
+            attestation_failed = (
+                cancelled
+                and profile.prompt_transport == "text_with_token_id_attestation"
+                and not prompt_attested
+            )
             return RequestObservation(
                 request_id=request.request_id,
                 expected_status=request.expected_status,
                 scheduled_arrival_s=scheduled,
                 admitted_s=admitted,
                 finish_s=finish,
-                status="cancelled" if cancelled else "failed",
+                status="cancelled" if cancelled and not attestation_failed else "failed",
                 prompt_token_ids=list(request.prompt_token_ids),
                 echoed_prompt_token_ids=progress["echoed_prompt_token_ids"],
                 output_token_ids=list(progress["output_token_ids"]),
@@ -369,7 +382,13 @@ async def _run_scheduled(
                 finish_reason=progress["finish_reason"],
                 usage=progress["usage"],
                 http_status=progress["http_status"],
-                error="client_cancelled_stream" if cancelled else "deadline_exceeded",
+                error=(
+                    "prompt_token_ids_missing_or_mismatched_before_cancel"
+                    if attestation_failed
+                    else "client_cancelled_stream"
+                    if cancelled
+                    else "deadline_exceeded"
+                ),
                 cancellation={
                     "mechanism": "client_stream_close",
                     "server_cancel_confirmation": False,

@@ -116,12 +116,14 @@ class _Handler(BaseHTTPRequestHandler):
             if not isinstance(payload, dict):
                 raise ValueError("request body must be an object")
             prompt = payload.get("prompt")
-            if (
-                not isinstance(prompt, list)
-                or not prompt
-                or any(type(token) is not int or token < 0 for token in prompt)
-            ):
-                raise ValueError("prompt must contain explicit token ids")
+            text_prompt = isinstance(prompt, str) and bool(prompt)
+            token_prompt = (
+                isinstance(prompt, list)
+                and bool(prompt)
+                and all(type(token) is int and token >= 0 for token in prompt)
+            )
+            if not text_prompt and not token_prompt:
+                raise ValueError("prompt must be nonempty text or explicit token ids")
             if payload.get("stream") is not True or payload.get("return_token_ids") is not True:
                 raise ValueError("stream and return_token_ids must both be true")
         except (ValueError, json.JSONDecodeError) as exc:

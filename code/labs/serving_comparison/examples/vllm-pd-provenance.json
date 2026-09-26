@@ -3,19 +3,34 @@
   "engine": "vllm",
   "architecture": "prefill_decode",
   "request_path": "kv_handoff",
-  "connector": {"name": "NixlConnector", "backend": "nixl"},
-  "proxy": {"implementation": "aisp_vllm_pd_proxy"},
-  "runtime": {"version": "REPLACE_WITH_VLLM_VERSION", "build_id": "REPLACE_WITH_VLLM_BUILD_ID"},
+  "connector": {
+    "name": "NixlConnector",
+    "backend": "nixl"
+  },
+  "proxy": {
+    "implementation": "aisp_vllm_pd_proxy"
+  },
+  "runtime": {
+    "version": "0.26.0",
+    "build_id": "REPLACE_WITH_VLLM_BUILD_ID"
+  },
   "workload": {
-    "model": "meta-llama/Meta-Llama-3.1-8B-Instruct",
-    "tokenizer": "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    "model": "Qwen/Qwen3-8B",
+    "tokenizer": "Qwen/Qwen3-8B",
     "precision": "bf16"
   },
-  "gpu_pools": {"prefill": ["0"], "decode": ["1"]},
+  "gpu_pools": {
+    "prefill": [
+      "0"
+    ],
+    "decode": [
+      "1"
+    ]
+  },
   "endpoints": {
     "prefill": "http://127.0.0.1:8101",
     "decode": "http://127.0.0.1:8102",
     "router": "http://127.0.0.1:8100/v1/completions"
   },
-  "manifest_digest": "sha256:4be95f7b7696fd2dc529eb1d15772631d9de65d31f90cf831661965c6e7d5d91"
+  "manifest_digest": "sha256:582e9270508aba5a6c0ee27d786012c9814ae39bdca8382a8ebbc9cbbd99318c"
 }

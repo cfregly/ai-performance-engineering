@@ -239,6 +239,19 @@ def test_concept_and_recompilation_guidance_survives_regeneration() -> None:
         assert required_content in _format_markdown(ENTRIES[slug]), slug
 
 
+def test_diagnostic_guidance_survives_regeneration() -> None:
+    expected = {
+        "README.md": "[diagnostic tools](docs/diagnostic_tools.md)",
+        "labs/README.md": "[serving comparison lab](serving_comparison/README.md)",
+        "ch03": "[network diagnosis tool and guide](network_diagnosis.md)",
+        "ch04": "[collective diagnosis tool](collective_diagnosis.md)",
+        "ch15": "[serving comparison tool](../labs/serving_comparison/README.md)",
+        "ch17": "[serving comparison tool](../labs/serving_comparison/README.md)",
+    }
+    for slug, required_content in expected.items():
+        assert required_content in _format_markdown(ENTRIES[slug]), slug
+
+
 def test_generator_owned_readme_does_not_read_ignored_history_at_import(tmp_path: Path) -> None:
     generator_path = tmp_path / "core" / "scripts" / "refresh_readmes.py"
     generator_path.parent.mkdir(parents=True)

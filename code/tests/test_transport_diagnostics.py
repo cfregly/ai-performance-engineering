@@ -83,6 +83,26 @@ GPU 0 → GPU 1: 812.50 GB/s
     assert parsed["peer_read_access"]["0-1"] is True
 
 
+def test_native_nvidia_smi_underlined_matrix_headers() -> None:
+    capture = (
+        "__AISP_TOPOLOGY_MATRIX_BEGIN__\n"
+        "\t\x1b[4mGPU0\tGPU1\tCPU Affinity\tNUMA Affinity\tGPU NUMA ID\x1b[0m\n"
+        "GPU0\t X \tNV18\t0-59\t0\t\tN/A\n"
+        "GPU1\tNV18\t X \t0-59\t0\t\tN/A\n"
+        "__AISP_TOPOLOGY_MATRIX_END__\n"
+        "__AISP_P2P_ACCESS_BEGIN__\n"
+        " \t\x1b[4mGPU0\tGPU1\t\x1b[0m\n"
+        " GPU0\tX\tOK\t\n"
+        " GPU1\tOK\tX\t\n"
+        "__AISP_P2P_ACCESS_END__\n"
+        "GPU 0 → GPU 1: 450.65 GB/s\n"
+    )
+    parsed = parse_local_p2p_output(capture)
+    assert parsed is not None
+    assert parsed["topology_links"] == {"0-1": "NV18", "1-0": "NV18"}
+    assert parsed["peer_read_access"] == {"0-1": True, "1-0": True}
+
+
 def test_synthetic_transport_measurement_signal_composes_with_cross_layer(tmp_path: Path) -> None:
     config = TransportConfig(
         run_id="synthetic-transport-run",

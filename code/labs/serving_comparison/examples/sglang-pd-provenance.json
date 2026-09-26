@@ -3,19 +3,34 @@
   "engine": "sglang",
   "architecture": "prefill_decode",
   "request_path": "kv_handoff",
-  "connector": {"name": "NIXL", "backend": "nixl"},
-  "proxy": {"implementation": "sglang_model_gateway"},
-  "runtime": {"version": "REPLACE_WITH_SGLANG_VERSION", "build_id": "REPLACE_WITH_SGLANG_BUILD_ID"},
+  "connector": {
+    "name": "NIXL",
+    "backend": "nixl"
+  },
+  "proxy": {
+    "implementation": "sglang_model_gateway"
+  },
+  "runtime": {
+    "version": "0.5.20",
+    "build_id": "REPLACE_WITH_SGLANG_BUILD_ID"
+  },
   "workload": {
-    "model": "meta-llama/Meta-Llama-3.1-8B-Instruct",
-    "tokenizer": "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    "model": "Qwen/Qwen3-8B",
+    "tokenizer": "Qwen/Qwen3-8B",
     "precision": "bf16"
   },
-  "gpu_pools": {"prefill": ["0"], "decode": ["1"]},
+  "gpu_pools": {
+    "prefill": [
+      "0"
+    ],
+    "decode": [
+      "1"
+    ]
+  },
   "endpoints": {
     "prefill": "http://127.0.0.1:8201",
     "decode": "http://127.0.0.1:8202",
     "router": "http://127.0.0.1:8200/v1/completions"
   },
-  "manifest_digest": "sha256:ead485e409cfe38413f087cff22387dd20a857915bf85a04b97782cfef3f727b"
+  "manifest_digest": "sha256:c23e44b598d9d684c8b3561448f50afca66dea197a5ba54a78698ca720cf8c59"
 }

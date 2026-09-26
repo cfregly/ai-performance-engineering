@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import signal
 import subprocess
@@ -22,6 +23,10 @@ class ActiveProcess:
     stdout_handle: BinaryIO
     stderr_handle: BinaryIO
     allocation_evidence: dict[str, Any]
+
+
+class _AllocationPendingError(RuntimeError):
+    """The owned process group has not allocated the complete fixed fleet yet."""
 
 
 def _run_nvidia_smi(arguments: list[str]) -> str:
@@ -115,6 +120,49 @@ def _resolved_gpu_uuids(profile: ComparisonProfile) -> set[str]:
     return {mapping[gpu_id] for gpu_id in profile.gpu_ids}
 
 
+def _application_clock_evidence(profile: ComparisonProfile) -> dict[str, Any]:
+    mapping = _gpu_uuid_map()
+    missing = sorted(gpu_id for gpu_id in profile.gpu_ids if gpu_id not in mapping)
+    if missing:
+        raise ConfigError(f"fixed GPU ids are not visible to nvidia-smi: {missing}")
+    output = _run_nvidia_smi(
+        [
+            "--query-gpu=uuid,clocks.applications.graphics",
+            "--format=csv,noheader,nounits",
+        ]
+    )
+    observed_by_uuid: dict[str, int] = {}
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        parts = [part.strip() for part in line.split(",", 1)]
+        if len(parts) != 2:
+            raise ConfigError("nvidia-smi returned an invalid application clock row")
+        try:
+            observed_by_uuid[parts[0]] = int(parts[1])
+        except ValueError as exc:
+            raise ConfigError("nvidia-smi returned a nonnumeric application clock") from exc
+    rows: list[dict[str, Any]] = []
+    for gpu_id in profile.gpu_ids:
+        gpu_uuid = mapping[gpu_id]
+        expected_mhz = profile.application_clocks_mhz[gpu_id]
+        observed_mhz = observed_by_uuid.get(gpu_uuid)
+        if observed_mhz != expected_mhz:
+            raise ConfigError(
+                f"GPU {gpu_id} application clock mismatch: "
+                f"expected {expected_mhz} MHz, observed {observed_mhz}"
+            )
+        rows.append(
+            {
+                "gpu_id": gpu_id,
+                "gpu_uuid": gpu_uuid,
+                "expected_mhz": expected_mhz,
+                "observed_mhz": observed_mhz,
+            }
+        )
+    return {"source": "nvidia_smi_applications_graphics", "gpus": rows}
+
+
 def require_fleet_idle(profile: ComparisonProfile) -> dict[str, Any]:
     """Require no compute process on the declared fleet before an engine arm starts."""
     if profile.mode != "engine":
@@ -125,6 +173,7 @@ def require_fleet_idle(profile: ComparisonProfile) -> dict[str, Any]:
             "observed_unix_s": time.time(),
         }
     gpu_uuids = _resolved_gpu_uuids(profile)
+    clock_evidence = _application_clock_evidence(profile)
     occupants = [row for row in _compute_apps() if row["gpu_uuid"] in gpu_uuids]
     if occupants:
         raise ConfigError(
@@ -136,6 +185,7 @@ def require_fleet_idle(profile: ComparisonProfile) -> dict[str, Any]:
         "fixed_gpu_ids": list(profile.gpu_ids),
         "resolved_gpu_uuids": sorted(gpu_uuids),
         "compute_processes": [],
+        "application_clocks": clock_evidence,
         "observed_unix_s": time.time(),
     }
 
@@ -160,7 +210,9 @@ def _active_allocation(
     occupied_uuids = {row["gpu_uuid"] for row in occupants}
     if occupied_uuids != gpu_uuids:
         missing = sorted(gpu_uuids - occupied_uuids)
-        raise ConfigError(f"{arm.arm_id} did not allocate every fixed-fleet GPU: {missing}")
+        raise _AllocationPendingError(
+            f"{arm.arm_id} has not allocated every fixed-fleet GPU: {missing}"
+        )
     return {
         "evidence": "nvidia_smi_process_ownership",
         "root_pid": root_pid,
@@ -168,6 +220,7 @@ def _active_allocation(
         "fixed_gpu_ids": list(profile.gpu_ids),
         "resolved_gpu_uuids": sorted(gpu_uuids),
         "compute_processes": occupants,
+        "application_clocks": _application_clock_evidence(profile),
         "observed_unix_s": time.time(),
     }
 
@@ -179,6 +232,21 @@ async def start_arm(
     artifact_dir: Path,
 ) -> ActiveProcess:
     """Start one declared argv without a shell and verify readiness and GPU custody."""
+    launch_binding: dict[str, Any] | None = None
+    start_command = arm.lifecycle["start_command"]
+    if profile.mode == "engine" and arm.architecture == "prefill_decode":
+        from .provenance import bind_pd_launch
+
+        if arm.pd_provenance is None:
+            raise ConfigError(f"{arm.arm_id} has no P/D provenance")
+        launch_binding = bind_pd_launch(
+            engine=arm.engine,
+            endpoint=arm.endpoint,
+            lifecycle=arm.lifecycle,
+            provenance=arm.pd_provenance,
+            model=profile.model,
+        )
+        start_command = launch_binding["launcher_argv"]
     idle_evidence = require_fleet_idle(profile)
     artifact_dir.mkdir(parents=True, exist_ok=True)
     stdout_handle = (artifact_dir / "server.stdout.log").open("wb")
@@ -192,7 +260,7 @@ async def start_arm(
     environment.update(arm.lifecycle["environment"])
     try:
         process = await asyncio.create_subprocess_exec(
-            *arm.lifecycle["start_command"],
+            *start_command,
             cwd=arm.lifecycle["working_directory"],
             env=environment,
             stdout=stdout_handle,
@@ -205,21 +273,52 @@ async def start_arm(
         raise ConfigError(f"{arm.arm_id} launch failed: {exc}") from exc
     process_group_id = process.pid
     deadline = time.monotonic() + arm.lifecycle["timeout_s"]
-    last_error = "ready endpoint has not responded"
+    readiness_urls = list(
+        dict.fromkeys(
+            [*arm.lifecycle["ready_urls"], *(probe["url"] for probe in arm.identity_probes)]
+        )
+    )
+    last_error = "readiness endpoints have not responded"
     try:
         while time.monotonic() < deadline:
             if process.returncode is not None:
                 raise ConfigError(
                     f"{arm.arm_id} serving process exited before readiness with code {process.returncode}"
                 )
-            try:
-                response = await client.get(arm.lifecycle["ready_url"])
-            except Exception as exc:
-                last_error = str(exc)
-                await asyncio.sleep(0.1)
-                continue
-            if response.status_code < 400:
-                allocation = _active_allocation(profile, arm, process.pid)
+            all_ready = True
+            for url in readiness_urls:
+                remaining_s = deadline - time.monotonic()
+                if remaining_s <= 0:
+                    all_ready = False
+                    break
+                try:
+                    response = await client.get(url, timeout=min(2.0, remaining_s))
+                except Exception as exc:
+                    last_error = f"readiness endpoint {url} failed: {exc}"
+                    all_ready = False
+                    break
+                if response.status_code >= 400:
+                    last_error = f"readiness endpoint {url} returned HTTP {response.status_code}"
+                    all_ready = False
+                    break
+            if all_ready:
+                try:
+                    allocation = _active_allocation(profile, arm, process.pid)
+                except _AllocationPendingError as exc:
+                    last_error = str(exc)
+                    await asyncio.sleep(0.1)
+                    continue
+                if launch_binding is not None:
+                    from .provenance import verify_pd_allocation
+
+                    stdout_handle.flush()
+                    allocation["pd_launch_binding"] = verify_pd_allocation(
+                        launch_binding,
+                        stdout_path=artifact_dir / "server.stdout.log",
+                        allocation=allocation,
+                        gpu_uuid_map=_gpu_uuid_map(),
+                        descendants=_descendants,
+                    )
                 allocation["idle_before_start"] = idle_evidence
                 return ActiveProcess(
                     process=process,
@@ -228,17 +327,43 @@ async def start_arm(
                     stderr_handle=stderr_handle,
                     allocation_evidence=allocation,
                 )
-            last_error = f"ready endpoint returned HTTP {response.status_code}"
             await asyncio.sleep(0.1)
         raise ConfigError(f"{arm.arm_id} did not become ready: {last_error}")
-    except BaseException:
-        await _terminate_process(
-            process,
-            process_group_id,
-            float(arm.lifecycle["shutdown_timeout_s"]),
-        )
+    except BaseException as primary_error:
+        cleanup_errors: list[str] = []
+        try:
+            await _terminate_process(
+                process,
+                process_group_id,
+                float(arm.lifecycle["shutdown_timeout_s"]),
+            )
+        except Exception as exc:
+            cleanup_errors.append(f"process termination failed: {exc}")
+        cleanup_evidence: dict[str, Any] | None = None
+        try:
+            cleanup_evidence = require_fleet_idle(profile)
+        except Exception as exc:
+            cleanup_errors.append(f"fleet release check failed: {exc}")
+        cleanup_payload = {
+            "arm_id": arm.arm_id,
+            "cleanup_complete": not cleanup_errors,
+            "errors": cleanup_errors,
+            "released_allocation": cleanup_evidence,
+        }
+        try:
+            (artifact_dir / "startup-cleanup.json").write_text(
+                json.dumps(cleanup_payload, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            cleanup_errors.append(f"cleanup evidence write failed: {exc}")
         stdout_handle.close()
         stderr_handle.close()
+        if cleanup_errors:
+            raise ConfigError(
+                f"{arm.arm_id} startup failed and cleanup proof was incomplete: "
+                + "; ".join(cleanup_errors)
+            ) from primary_error
         raise
 
 
@@ -281,14 +406,33 @@ async def stop_arm(
     active: ActiveProcess, arm: ArmProfile, profile: ComparisonProfile
 ) -> dict[str, Any]:
     """Stop only the process group launched by this tool and prove fleet release."""
-    await _terminate_process(
-        active.process,
-        active.process_group_id,
-        float(arm.lifecycle["shutdown_timeout_s"]),
-    )
-    active.stdout_handle.close()
-    active.stderr_handle.close()
-    evidence = require_fleet_idle(profile)
+    cleanup_errors: list[str] = []
+    try:
+        await _terminate_process(
+            active.process,
+            active.process_group_id,
+            float(arm.lifecycle["shutdown_timeout_s"]),
+        )
+    except Exception as exc:
+        cleanup_errors.append(f"process termination failed: {exc}")
+    for name, handle in (
+        ("stdout", active.stdout_handle),
+        ("stderr", active.stderr_handle),
+    ):
+        try:
+            handle.close()
+        except OSError as exc:
+            cleanup_errors.append(f"{name} log close failed: {exc}")
+    evidence: dict[str, Any] | None = None
+    try:
+        evidence = require_fleet_idle(profile)
+    except Exception as exc:
+        cleanup_errors.append(f"fleet release check failed: {exc}")
+    if cleanup_errors:
+        raise ConfigError(
+            f"{arm.arm_id} cleanup proof was incomplete: " + "; ".join(cleanup_errors)
+        )
+    assert evidence is not None
     evidence.update(
         {
             "stopped_root_pid": active.process.pid,

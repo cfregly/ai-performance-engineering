@@ -3,8 +3,10 @@
 Validation date: September 26, 2026.
 
 The [six diagnostic tools](diagnostic_tools.md) have runnable source, CLI and MCP
-entrypoints, guides, and focused regression coverage. This record covers source
-and local execution checks. GPU, engine, and fabric qualification remains open.
+entrypoints, guides, and focused regression coverage. This record covers the
+initial source and local execution checks. The later
+[Verda B200 validation](diagnostic_tools_b200_validation.md) records live GPU,
+network, and serving checks and the remaining hardware limits.
 
 ## Source and environment
 
@@ -72,7 +74,7 @@ The CLI bandwidth-delay calculation produced 250,000,000 bytes for 10 Gbit/s and
 200 ms. Live network collection on macOS returned an explicit unsupported result.
 Neither result was presented as a network throughput measurement.
 
-## Hardware qualification
+## Hardware qualification at the initial checkpoint
 
 No live vLLM/SGLang comparison, GPU collective, or RoCE/InfiniBand workload ran on
 this host. A read-only remote GPU inventory attempt stopped at SSH host-key

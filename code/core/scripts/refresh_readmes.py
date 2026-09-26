@@ -38,6 +38,8 @@ class Entry:
     goals: Sequence[str]
     contents: Sequence[Tuple[str, str]]
     validation: Sequence[str]
+    intro: str = ""
+    goals_intro: str = ""
     lead_sections: Sequence[MarkdownSection] = field(default_factory=tuple)
     run: Optional[RunSection] = None
     run_heading: str = "Running the Benchmarks"
@@ -56,6 +58,9 @@ def _format_markdown(entry: Entry) -> str:
     lines: List[str] = []
     lines.append(f"# {entry.title}")
     lines.append("")
+    if entry.intro:
+        lines.append(entry.intro.strip())
+        lines.append("")
     lines.append("## Summary")
     lines.append(entry.summary.strip())
     lines.append("")
@@ -64,6 +69,10 @@ def _format_markdown(entry: Entry) -> str:
         lines.append(section.body.strip())
         lines.append("")
     lines.append("## Learning Goals")
+    if entry.goals_intro:
+        lines.append("")
+        lines.append(entry.goals_intro.strip())
+        lines.append("")
     for goal in entry.goals:
         lines.append(f"- {goal}")
     lines.append("")
@@ -404,6 +413,7 @@ def chapter_entry(
     contents: Sequence[Tuple[str, str]],
     validation: Sequence[str],
     lead_sections: Sequence[MarkdownSection] = (),
+    goals_intro: str = "",
     notes: Sequence[str] = (),
     run_heading: str = "Running the Benchmarks",
     run_intro: str = (
@@ -420,6 +430,7 @@ def chapter_entry(
         goals=goals,
         contents=contents,
         validation=validation,
+        goals_intro=goals_intro,
         lead_sections=lead_sections,
         run=_chapter_run_commands(slug),
         run_heading=run_heading,
@@ -682,6 +693,12 @@ FAST_CU_RELATED_SECTION = dedent(
 
 ENTRIES["README.md"] = Entry(
     title="AI Systems Performance Engineering",
+    intro=dedent(
+        """\
+        For network, fabric, collective and serving investigations, start with the
+        [diagnostic tools](docs/diagnostic_tools.md). Each tool has a CLI entrypoint,
+        retained evidence and a guide for interpreting its results."""
+    ),
     summary=dedent(
         """\
         Reference implementation of high-performance PyTorch, CUDA, and Triton workloads for NVIDIA Blackwell platforms.
@@ -916,6 +933,10 @@ ENTRIES["labs/README.md"] = Entry(
             "How To Read This Directory",
             dedent(
                 """\
+                The [serving comparison lab](serving_comparison/README.md) is a tool and matrix
+                workflow. It compares real serving endpoints under an explicit workload contract.
+                Use `aisp tools serving-compare`, not benchmark-pair discovery.
+
                 There are two useful lab classes in this repo:
 
                 - **Benchmark-pair labs**: these expose harness targets, keep correctness gates, and are the right place to make performance claims.
@@ -1320,6 +1341,12 @@ ENTRIES["ch03"] = chapter_entry(
             ),
         ),
     ],
+    goals_intro=dedent(
+        """\
+        For packet paths, TCP windows, path MTU and retained packet captures, use the
+        [network diagnosis tool and guide](network_diagnosis.md). It collects evidence
+        and runs explicitly selected probes through `aisp tools network-diagnose`."""
+    ),
     goals=[
         "Diagnose CPU and memory affinity issues that throttle GPU pipelines.",
         "Harden Docker and Kubernetes environments for sustained GPU throughput on shared clusters.",
@@ -1428,6 +1455,14 @@ ENTRIES["ch04"] = chapter_entry(
             ),
         ),
     ],
+    goals_intro=dedent(
+        """\
+        Use the [collective diagnosis tool](collective_diagnosis.md) to distinguish late
+        rank arrival, contention and lost overlap. Pair it with the
+        [fabric diagnostics](../cluster/fabric/diagnostics.md) and
+        [transport isolation tool](../cluster/fabric/transport.md) when the collective
+        microbenchmark itself is slow."""
+    ),
     goals=[
         "Benchmark data-parallel and tensor-parallel training loops with and without overlap.",
         "Quantify NVLink bandwidth and topology effects when mixing local and disaggregated GPUs.",
@@ -2685,6 +2720,13 @@ ENTRIES["ch15"] = chapter_entry(
             ),
         ),
     ],
+    goals_intro=dedent(
+        """\
+        Use the [serving comparison tool](../labs/serving_comparison/README.md) for fixed
+        GPU-budget comparisons across engines and monolithic or phase-disaggregated
+        deployments. The tool retains request evidence and separates actual KV handoff
+        from whole-request routing."""
+    ),
     goals=[
         "Benchmark monolithic vs disaggregated inference paths and quantify fabric costs.",
         "Design KV-cache managers that gracefully span local and remote HBM pools.",
@@ -3026,6 +3068,12 @@ ENTRIES["ch17"] = chapter_entry(
             ),
         ),
     ],
+    goals_intro=dedent(
+        """\
+        The [serving comparison tool](../labs/serving_comparison/README.md) adds service
+        request replay, latency objectives and phase-transfer evidence to this chapter's
+        model-level experiments. Use it to compare pool allocations on a fixed GPU set."""
+    ),
     goals=[
         "Implement dynamic routers that react to TTFT, TPOT, and KV-locality metrics.",
         "Profile complete inference stacks (prefill + decode) under realistic synthetic loads.",

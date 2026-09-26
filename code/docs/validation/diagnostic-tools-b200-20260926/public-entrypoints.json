@@ -1,0 +1,262 @@
+{
+  "artifact_hashes": {
+    "<artifacts>/collective/collective-default.json": {
+      "bytes": 1180883,
+      "sha256": "5f35f99d8a8557417950d7a654269423f083290f37755a70991808a008c83b20"
+    },
+    "<artifacts>/collective/collective-nsys.nsys-rep": {
+      "bytes": 1813114,
+      "sha256": "2188124831af842dda1af9326563d052db111f91c0be7a3e9b2b33dcfabf4f97"
+    },
+    "<artifacts>/collective/collective-nsys.sqlite": {
+      "bytes": 5812224,
+      "sha256": "98f9cac4b1825789c643d9f133f8c2419105c27bd7ca24203b364ed0b7b89479"
+    },
+    "<artifacts>/collective/traces-current/collective-diagnosis-rank-0.json": {
+      "bytes": 6207645,
+      "sha256": "fc6982d23265c3e689e6bece157c451fd406d03d865623c5f2b7bd02e2cb4e88"
+    },
+    "<artifacts>/collective/traces-current/collective-diagnosis-rank-1.json": {
+      "bytes": 6536842,
+      "sha256": "dc1f084c8871fb543d726e52c7a1641656338f23bb280c02347bcaf4a6546607"
+    },
+    "<validation>/collective-default-analysis.json": {
+      "bytes": 207162,
+      "sha256": "ad8c9682e18be92f4b56879b6292b9f210a27525d669c582a3139690c8abfdf9"
+    },
+    "<validation>/cross-layer/raw/cross-layer-diagnose.json": {
+      "bytes": 422880,
+      "sha256": "c04c30b617a6af6aafc13fed6ec132e4fbfe3cae688a5060d7f3b92988cc85de"
+    },
+    "<validation>/cross-layer/structured/cross-layer-diagnose.json": {
+      "bytes": 365356,
+      "sha256": "297ce96938be468a2df2e6c4d2e8ebe428d888258ec3ef7ce3de4935bc48e932"
+    },
+    "<validation>/fabric-capability/structured/fabric-counter-deltas.json": {
+      "bytes": 578,
+      "sha256": "8e7b33108e60c3ea57238f2f74e0770ddc72b510c4ca6787823d1f4b91adad7f"
+    },
+    "<validation>/fabric-capability/structured/fabric-diagnostics.json": {
+      "bytes": 3542,
+      "sha256": "6036e1165bfa90ab798713f521f76edd83ead8f78d67c4c662beb3893cd940c7"
+    },
+    "<validation>/network-ipv6/raw/network-diagnose.json": {
+      "bytes": 7608,
+      "sha256": "1041447f0943d9cf3835a8984d6cb8c417128f1e6fc97b8863fe62c7a91a644c"
+    },
+    "<validation>/network-ipv6/structured/network-diagnose.json": {
+      "bytes": 2031,
+      "sha256": "4d47632cebc583b70a6fd976cb999b4c91534fe97514cf30efe1dad23c6f5692"
+    }
+  },
+  "claim_boundary": "CPU-only public CLI dispatch, retained-artifact analysis, IPv6 loopback probing, and unsupported fabric capability detection. CUDA was hidden. This receipt contains no serving or transport rerun result and supports no performance claim.",
+  "commands": {
+    "collective_analyze": "CUDA_VISIBLE_DEVICES='' python3 -m cli.aisp tools collective-diagnose -- analyze <artifacts>/collective/collective-default.json --output <validation>/collective-default-analysis.json --format json",
+    "cross_layer": "CUDA_VISIBLE_DEVICES='' python3 -m cli.aisp tools cross-layer-diagnose -- --input <artifacts>/collective/collective-default-analysis.json --input <artifacts>/network-live/structured/network-diagnose.json --input <artifacts>/transport-gpu/structured/transport-diagnostics.json --input <artifacts>/fabric-capability/structured/fabric-counter-deltas.json --run-dir <validation>/cross-layer",
+    "fabric_capability": "CUDA_VISIBLE_DEVICES='' python3 -m cli.aisp tools fabric-diagnose -- --run-id public-fabric-capability --run-dir <validation>/fabric-capability --family all --interval-seconds 0.1 --timeout-seconds 5",
+    "network_ipv6": "CUDA_VISIBLE_DEVICES='' python3 -m cli.aisp tools network-diagnose -- collect --target ::1 --interface lo --probe --timeout 5 --mtu-bytes 1280 1500 9000 --network-plane data --run-dir <validation>/network-ipv6",
+    "socket_filter_controls": "CUDA_VISIBLE_DEVICES='' ss -H -t -i -n -m dst <IPv6-loopback-filter>"
+  },
+  "created_at": "2026-09-26T18:18:00.983478+00:00",
+  "privacy": {
+    "absolute_live_paths_removed": true,
+    "contains_gpu_uuid": false,
+    "contains_hostname": false,
+    "contains_non_loopback_ip": false,
+    "private_command_logs_excluded": true
+  },
+  "profiling_inspection": {
+    "nsight_systems": {
+      "bytes": 1813114,
+      "distinct_kernel_names": 10,
+      "distinct_nccl_kernel_names": 5,
+      "distinct_nvtx_labels": 42,
+      "kernel_rows": 2166,
+      "nccl_kernel_counts": {
+        "ncclDevKernel_AllGather_RING_LL": 24,
+        "ncclDevKernel_AllReduce_Sum_f32_RING_LL": 80,
+        "ncclDevKernel_Broadcast_RING_LL": 8,
+        "ncclDevKernel_ReduceScatter_Sum_f32_RING_LL": 16,
+        "ncclDevKernel_SendRecv": 16
+      },
+      "nccl_kernel_rows": 144,
+      "nvtx_rows": 218,
+      "sha256": "2188124831af842dda1af9326563d052db111f91c0be7a3e9b2b33dcfabf4f97",
+      "tool_range_collective_counts": {
+        "all_gather": 16,
+        "all_reduce": 16,
+        "all_to_all": 16,
+        "reduce_scatter": 16
+      },
+      "tool_range_distinct_labels": 32,
+      "tool_range_phase_counts": {
+        "measured": 32,
+        "warmup": 32
+      },
+      "tool_range_rows": 64,
+      "tool_range_scenario_counts": {
+        "competing_gpu_workload": 16,
+        "delayed_rank": 16,
+        "forced_dependency": 16,
+        "healthy": 16
+      }
+    },
+    "pytorch_scenario_label_finding": "The PyTorch trace JSON files contain NCCL-named events but no scenario-token labels.",
+    "pytorch_traces": [
+      {
+        "bytes": 6207645,
+        "file": "collective-diagnosis-rank-0.json",
+        "nccl_named_events": {
+          "nccl:_reduce_scatter_base": 24,
+          "nccl:all_gather": 24,
+          "nccl:all_reduce": 24,
+          "nccl:all_reduce_barrier": 96,
+          "nccl:all_to_all": 25
+        },
+        "scenario_token_occurrences": {
+          "competing_gpu_workload": 0,
+          "delayed_rank": 0,
+          "forced_dependency": 0,
+          "healthy": 0
+        },
+        "sha256": "fc6982d23265c3e689e6bece157c451fd406d03d865623c5f2b7bd02e2cb4e88",
+        "trace_events": 19082
+      },
+      {
+        "bytes": 6536842,
+        "file": "collective-diagnosis-rank-1.json",
+        "nccl_named_events": {
+          "nccl:_reduce_scatter_base": 24,
+          "nccl:all_gather": 24,
+          "nccl:all_reduce": 24,
+          "nccl:all_reduce_barrier": 96,
+          "nccl:all_to_all": 25
+        },
+        "scenario_token_occurrences": {
+          "competing_gpu_workload": 0,
+          "delayed_rank": 0,
+          "forced_dependency": 0,
+          "healthy": 0
+        },
+        "sha256": "dc1f084c8871fb543d726e52c7a1641656338f23bb280c02347bcaf4a6546607",
+        "trace_events": 19966
+      }
+    ]
+  },
+  "results": {
+    "collective_analyze": {
+      "classification": "diagnostic_only_noncanonical",
+      "comparisons": 36,
+      "process_exit_code": 0,
+      "signals": 84,
+      "source_run_id": "7b1911baf7d3482f928de7956be87e6b",
+      "status": "completed"
+    },
+    "cross_layer": {
+      "contextual_measurements": 144,
+      "correlations": 0,
+      "excluded_pairs": 0,
+      "process_exit_code": 0,
+      "signals": 91,
+      "status": "partial",
+      "valid_for_performance_claim": false
+    },
+    "fabric_capability": {
+      "after_status": "unsupported",
+      "before_status": "unsupported",
+      "delta_status": "unsupported",
+      "expected_nonzero_exit_for_unsupported": true,
+      "process_exit_code": 2,
+      "status": "unsupported"
+    },
+    "network_ipv6": {
+      "mtu_probes": [
+        {
+          "ip_packet_bytes": 1280,
+          "source": "mtu_1280",
+          "status": "size_passed"
+        },
+        {
+          "ip_packet_bytes": 1500,
+          "source": "mtu_1500",
+          "status": "size_passed"
+        },
+        {
+          "ip_packet_bytes": 9000,
+          "source": "mtu_9000",
+          "status": "size_passed"
+        }
+      ],
+      "ping_status": "ok",
+      "process_exit_code": 0,
+      "route_status": "ok",
+      "rtt_ms": 0.012,
+      "socket_capture_failure": {
+        "argv": [
+          "ss",
+          "-H",
+          "-t",
+          "-i",
+          "-n",
+          "-m",
+          "dst",
+          "::1"
+        ],
+        "reason": "The ss destination filter rejected the bare IPv6 address and could not parse the destination.",
+        "returncode": 1
+      },
+      "socket_capture_status": "failed",
+      "socket_filter_controls": {
+        "bracketed_ipv6_loopback_exit_code": 0,
+        "finding": "Both bracketed and /128 IPv6 filters were accepted. The collector passed the unsupported bare form.",
+        "prefix_ipv6_loopback_exit_code": 0
+      },
+      "status": "partial",
+      "valid_for_performance_claim": false
+    }
+  },
+  "schema": "aisp.diagnostic-public-entrypoint-supplement.v1",
+  "source_commit": "127f8ad5e439cd0193a3a6a0dfce4fb8c8fe072a",
+  "source_files": {
+    "ch03/network_diagnosis.md": {
+      "bytes": 4624,
+      "sha256": "17bae25fee74338257a8b50528f32e8483a79876523175305a40ca8ad5f40d92"
+    },
+    "ch03/network_diagnosis_tool.py": {
+      "bytes": 22086,
+      "sha256": "303b4e22bf870263172b5d2904e7747b92ac242cff4b5470cf6d15cfa1df3897"
+    },
+    "ch04/collective_diagnosis.md": {
+      "bytes": 7585,
+      "sha256": "a89d2bc3210a7cb37fa347b22664779137285e2a900f9a3345034902e6f05971"
+    },
+    "ch04/collective_diagnosis_tool.py": {
+      "bytes": 68976,
+      "sha256": "126326ea4813e6b50a5dddc493621d3a4a59b7084b049a99739a67eaa52ad573"
+    },
+    "cli/aisp.py": {
+      "bytes": 103829,
+      "sha256": "5516b38078659daefd2686b9e1044dd954b976516f3b1e41ee33c22bc6c22665"
+    },
+    "cluster/fabric/diagnostics.md": {
+      "bytes": 7536,
+      "sha256": "60a8e15ccb3575b888bc72af912efda4bf941bca2e6accaf5b0fc9df613074a1"
+    },
+    "cluster/fabric/diagnostics.py": {
+      "bytes": 59703,
+      "sha256": "57353817c0390363d48318ca547288eeb897961ae888d7f505b65126b0f3c1a2"
+    },
+    "core/analysis/cross_layer_diagnosis.md": {
+      "bytes": 2913,
+      "sha256": "d3b80af903102058d5c770420afbc094c173c71f9567a98d093f940610a1c9f9"
+    },
+    "core/analysis/cross_layer_diagnosis.py": {
+      "bytes": 7795,
+      "sha256": "4ac52fdd2f8e48c95e9329aa9b4c7e1b65b578ed9947166b7dea0b0cde761f52"
+    },
+    "core/tools/tools_commands.py": {
+      "bytes": 13737,
+      "sha256": "a0ab42acf5da9893df118f79efd59fc0625e7608e8a7058fb2069dee0452a057"
+    }
+  }
+}

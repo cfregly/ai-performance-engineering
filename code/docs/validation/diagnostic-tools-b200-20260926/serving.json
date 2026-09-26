@@ -1,0 +1,306 @@
+{
+  "artifact_hashes": {
+    "forward": {
+      "manifest_sha256": "1877962e350457fe128d0dd97024971dbb804b4e67afa8f194eebf741ebf86b1",
+      "summary_sha256": "960c0ae1b8c5163a9da5da8595a6e427c40cb7074e7a0991ea2810caed91266d"
+    },
+    "reverse": {
+      "manifest_sha256": "588e769276ce2ad16b376b607e9bf8cf4cc7aa1ad28d557e28fc44365eb0db2d",
+      "summary_sha256": "28eb0f8345fbc0333554e3b8dafcff4a572191dedfea69b03e9360ffafdf7cac"
+    }
+  },
+  "attempts": [
+    {
+      "reason": "launch, readiness, request wire, and parser defects were fixed from real engine failures",
+      "stage": "runtime-bringup",
+      "status": "retained_rejections"
+    },
+    {
+      "reason": "native SGLang failure telemetry capability is absent",
+      "stage": "final-four-arm",
+      "status": "rejected"
+    },
+    {
+      "stage": "supported-forward",
+      "status": "expected_rejection_after_three_accepted_arms"
+    },
+    {
+      "stage": "supported-reverse",
+      "status": "expected_rejection_after_three_accepted_arms"
+    }
+  ],
+  "cleanup": {
+    "all_release_compute_process_counts_zero": true,
+    "arm_release_receipts": [
+      {
+        "application_clock_verified": true,
+        "arm": "vllm-monolithic",
+        "compute_process_count": 0,
+        "run_order": "forward"
+      },
+      {
+        "application_clock_verified": true,
+        "arm": "vllm-prefill-decode",
+        "compute_process_count": 0,
+        "run_order": "forward"
+      },
+      {
+        "application_clock_verified": true,
+        "arm": "sglang-monolithic",
+        "compute_process_count": 0,
+        "run_order": "forward"
+      },
+      {
+        "application_clock_verified": true,
+        "arm": "sglang-prefill-decode",
+        "compute_process_count": 0,
+        "run_order": "forward"
+      },
+      {
+        "application_clock_verified": true,
+        "arm": "vllm-monolithic",
+        "compute_process_count": 0,
+        "run_order": "reverse"
+      },
+      {
+        "application_clock_verified": true,
+        "arm": "vllm-prefill-decode",
+        "compute_process_count": 0,
+        "run_order": "reverse"
+      },
+      {
+        "application_clock_verified": true,
+        "arm": "sglang-monolithic",
+        "compute_process_count": 0,
+        "run_order": "reverse"
+      },
+      {
+        "application_clock_verified": true,
+        "arm": "sglang-prefill-decode",
+        "compute_process_count": 0,
+        "run_order": "reverse"
+      }
+    ],
+    "final_compute_process_count": 0,
+    "final_gpu_state": [
+      {
+        "memory_used_mib": 0,
+        "persistence_mode": "Disabled"
+      },
+      {
+        "memory_used_mib": 0,
+        "persistence_mode": "Disabled"
+      }
+    ],
+    "release_receipt_count": 8
+  },
+  "completed_output_token_mismatches_total": 0,
+  "date": "2026-09-26",
+  "four_arm_matrix_valid": false,
+  "full_matrix_rejection": {
+    "arm": "sglang-prefill-decode",
+    "reason": "SGLang 0.5.20 default multiprocess exporter omits both required native failure counter families and TYPE metadata at zero",
+    "successful_measured_iteration": false
+  },
+  "hardware": {
+    "accelerator": "NVIDIA B200",
+    "gpu_count": 2,
+    "rdma_device_exposed": false,
+    "same_host_interconnect": "NVLink"
+  },
+  "inputs": {
+    "supported_forward_profile_sha256": "5e5fa4fd8f98ff435fec7a4615b499b0a7a8872d7e1c97fada6aec17412a4b89",
+    "supported_reverse_profile_sha256": "428cabd082a5e3474bb22b4a470c04cc33d4b27b1c20a2bcc05e20a2219bb818",
+    "trace_cancellation": {
+      "cancel_after_ms": 2500,
+      "max_tokens": 2048
+    },
+    "trace_sha256": "060782aef8561d7f9928ec94f775919453afc657da26115b43608991dc0d82cc"
+  },
+  "runtime": {
+    "sglang": {
+      "build_id": "env-freeze-sha256:81334dd589adbb469fd4e89d53c61eb1780d35346ff736070b0f9f12e028b9ad",
+      "version": "0.5.20"
+    },
+    "vllm": {
+      "build_id": "sif-sha256:b2c8499e7618f1744724e184311f16aa750496939fd24625c54ab9c7aa3b58a3",
+      "version": "0.26.0"
+    }
+  },
+  "schema_version": "serving-comparison.validation-receipt.v1",
+  "sglang_pd_warmup_only": [
+    {
+      "all_prompt_echoes_exact": true,
+      "cancellation_echo_exact": true,
+      "cancellation_emitted_token_count": 188,
+      "completed_output_mismatches": 0,
+      "native_positive_activity": {
+        "kv_transfer_bytes_total": 28311552.0,
+        "kv_transfer_requests_total": 3.0,
+        "kv_transfer_time_seconds_total": 0.04175780666992068,
+        "prefill_requests_total": 4.0
+      },
+      "raw_metrics_sha256": "42cd646e46849215e893bad62e8553c51d5b79b6dd8d56df01f8f5c1075fe25b",
+      "rejection": "required native failure counter families and TYPE metadata are absent",
+      "required_failure_families_present": false,
+      "run_order": "forward",
+      "warmup_only": true
+    },
+    {
+      "all_prompt_echoes_exact": true,
+      "cancellation_echo_exact": true,
+      "cancellation_emitted_token_count": 192,
+      "completed_output_mismatches": 0,
+      "native_positive_activity": {
+        "kv_transfer_bytes_total": 28311552.0,
+        "kv_transfer_requests_total": 3.0,
+        "kv_transfer_time_seconds_total": 0.04156815679743886,
+        "prefill_requests_total": 4.0
+      },
+      "raw_metrics_sha256": "10854e79e7960b01283e2f1176407758249cdad80b839bcdb68969641146c829",
+      "rejection": "required native failure counter families and TYPE metadata are absent",
+      "required_failure_families_present": false,
+      "run_order": "reverse",
+      "warmup_only": true
+    }
+  ],
+  "source": {
+    "base_commit": "127f8ad5e439",
+    "files": {
+      "code/labs/serving_comparison/README.md": "91319f02547eb4d62821b4e73e2854c89923ea5d51b0d178f64b2166896d214f",
+      "code/labs/serving_comparison/examples/profile.engine.template.json": "e18da009883dd59f467932e0f7cfdc5f7c395f8c04cb4da0ef8f88da90932f77",
+      "code/labs/serving_comparison/examples/request_trace.jsonl": "060782aef8561d7f9928ec94f775919453afc657da26115b43608991dc0d82cc",
+      "code/labs/serving_comparison/examples/sglang-pd-launch.json": "c23e44b598d9d684c8b3561448f50afca66dea197a5ba54a78698ca720cf8c59",
+      "code/labs/serving_comparison/examples/sglang-pd-provenance.json": "ee7f46161609f0cddda58cefc02513b9d756ec06e9405d87e4d906016f7b5b01",
+      "code/labs/serving_comparison/examples/vllm-pd-launch.json": "582e9270508aba5a6c0ee27d786012c9814ae39bdca8382a8ebbc9cbbd99318c",
+      "code/labs/serving_comparison/examples/vllm-pd-provenance.json": "ec8710ee48255f3a903757f8c68fd417c6f02217b31d902a1d68c8e390e0f3f2",
+      "code/labs/serving_comparison/lifecycle.py": "0ef180e0c14c7de8820d53736fdb6ec9c8cab19f8386adabd343e2be26adbf2c",
+      "code/labs/serving_comparison/process_group_launcher.py": "06f283e6dfe859ab0cd9fb64294310d2c5ee0f4209c1afe130d15e82375920a4",
+      "code/labs/serving_comparison/protocol.py": "d46f0f3f143eb5e87cbbc22b313c72d0729ea881a9256cce3020788d18c0f83d",
+      "code/labs/serving_comparison/provenance.py": "ec00ccb54bca90b24e164adc0be2acbf8583291f177d6857c8364af147540add",
+      "code/labs/serving_comparison/runner.py": "ef57b244d56fcdf7871bc2680982bb038bf36a49ca8393e1054f0ba0111d22dd",
+      "code/labs/serving_comparison/schema.py": "f1285b20284f2b9389ccc66493d2cfae87db4c3f2973ceaaca647f4c8cad6a97",
+      "code/labs/serving_comparison/serving_comparison_tool.py": "fd0b562fec541b55e02b7a1a4c10e8d399ec95366af10f00eef74131099a825b",
+      "code/labs/serving_comparison/telemetry.py": "5bf4de4157fe5d0524d72c97e8ffaa803af0bff79c6a1bed677bcb4e26850ef7",
+      "code/labs/serving_comparison/vllm_pd_proxy.py": "313d86e1940bbc505e76c5cbbca8adbc9157b3e28da758c38034bdfc87691b1a",
+      "code/tests/test_serving_comparison.py": "f91aed82a21cee2bd4ce24f6d8923d6cc613cabc63f773afd78dd3a22f1cdc74",
+      "code/tests/test_serving_launch_binding.py": "c53c478a52516472a0f086e0d1eadb6ccb4c2ca8e592561d2a79b3ab8424e78b",
+      "code/tests/test_serving_telemetry_integrity.py": "b56f44d2e94028b73c3c7f3598df7fc5855175578afe7e558254f65bc0940acb"
+    },
+    "tree_sha256": "3548c2901ef205f3ba2c0c504af89772cc0ee1e75ecc70e9f6b78ef91a8bfa16"
+  },
+  "status": "qualified_with_unsupported_arm",
+  "supported_iteration_count": 6,
+  "supported_iterations": [
+    {
+      "accepted": true,
+      "all_prompt_echoes_exact": true,
+      "arm": "vllm-monolithic",
+      "cancellation": {
+        "echo_exact": true,
+        "emitted_token_count": 302,
+        "status": "cancelled"
+      },
+      "completed_output_mismatches": 0,
+      "run_order": "forward"
+    },
+    {
+      "accepted": true,
+      "all_prompt_echoes_exact": true,
+      "arm": "vllm-prefill-decode",
+      "cancellation": {
+        "echo_exact": true,
+        "emitted_token_count": 358,
+        "status": "cancelled"
+      },
+      "completed_output_mismatches": 0,
+      "run_order": "forward"
+    },
+    {
+      "accepted": true,
+      "all_prompt_echoes_exact": true,
+      "arm": "sglang-monolithic",
+      "cancellation": {
+        "echo_exact": true,
+        "emitted_token_count": 153,
+        "status": "cancelled"
+      },
+      "completed_output_mismatches": 0,
+      "run_order": "forward"
+    },
+    {
+      "accepted": true,
+      "all_prompt_echoes_exact": true,
+      "arm": "vllm-monolithic",
+      "cancellation": {
+        "echo_exact": true,
+        "emitted_token_count": 311,
+        "status": "cancelled"
+      },
+      "completed_output_mismatches": 0,
+      "run_order": "reverse"
+    },
+    {
+      "accepted": true,
+      "all_prompt_echoes_exact": true,
+      "arm": "vllm-prefill-decode",
+      "cancellation": {
+        "echo_exact": true,
+        "emitted_token_count": 364,
+        "status": "cancelled"
+      },
+      "completed_output_mismatches": 0,
+      "run_order": "reverse"
+    },
+    {
+      "accepted": true,
+      "all_prompt_echoes_exact": true,
+      "arm": "sglang-monolithic",
+      "cancellation": {
+        "echo_exact": true,
+        "emitted_token_count": 155,
+        "status": "cancelled"
+      },
+      "completed_output_mismatches": 0,
+      "run_order": "reverse"
+    }
+  ],
+  "supported_repetitions_per_arm": 2,
+  "tests": {
+    "command": "PYTHONPATH=code python3 -m pytest -q code/tests/test_serving_comparison.py code/tests/test_serving_launch_binding.py code/tests/test_serving_telemetry_integrity.py",
+    "diff_check": "passed",
+    "duration_seconds": 19.33,
+    "failed": 0,
+    "passed": 41,
+    "py_compile": "passed",
+    "ruff": "passed",
+    "skipped": 0
+  },
+  "valid_for_performance_claim": false,
+  "vllm_pd_intervals": [
+    {
+      "delta": {
+        "decode_requests_total": 2.0,
+        "kv_transfer_failures_total": 0.0,
+        "kv_transfer_requests_total": 3.0,
+        "kv_transfer_time_seconds_total": 0.014357000000000002,
+        "prefill_requests_total": 3.0
+      },
+      "kv_transfer_bytes": 7077888.0,
+      "run_order": "forward",
+      "runtime_pool_allocation_verified": true
+    },
+    {
+      "delta": {
+        "decode_requests_total": 2.0,
+        "kv_transfer_failures_total": 0.0,
+        "kv_transfer_requests_total": 3.0,
+        "kv_transfer_time_seconds_total": 0.015698,
+        "prefill_requests_total": 3.0
+      },
+      "kv_transfer_bytes": 7077888.0,
+      "run_order": "reverse",
+      "runtime_pool_allocation_verified": true
+    }
+  ]
+}

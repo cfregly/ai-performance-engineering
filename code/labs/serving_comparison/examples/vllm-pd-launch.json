@@ -4,34 +4,84 @@
     {
       "name": "vllm-prefill",
       "command": [
-        "vllm", "serve", "/models/Meta-Llama-3.1-8B-Instruct",
-        "--served-model-name", "meta-llama/Meta-Llama-3.1-8B-Instruct",
-        "--host", "127.0.0.1", "--port", "8101", "--dtype", "bfloat16",
-        "--max-num-seqs", "32", "--max-num-queued-reqs", "32",
-        "--kv-transfer-config", "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\",\"kv_buffer_device\":\"cuda\",\"kv_connector_extra_config\":{\"backends\":[\"UCX\"]}}"
+        "vllm",
+        "serve",
+        "/models/Qwen3-8B",
+        "--served-model-name",
+        "Qwen/Qwen3-8B",
+        "--host",
+        "127.0.0.1",
+        "--dtype",
+        "bfloat16",
+        "--max-num-seqs",
+        "3",
+        "--max-model-len",
+        "4096",
+        "--gpu-memory-utilization",
+        "0.75",
+        "--enforce-eager",
+        "--port",
+        "8101",
+        "--kv-transfer-config",
+        "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_producer\",\"kv_load_failure_policy\":\"fail\",\"kv_buffer_device\":\"cuda\",\"kv_connector_extra_config\":{\"backends\":[\"UCX\"]}}"
       ],
-      "environment": {"CUDA_VISIBLE_DEVICES": "0"}
+      "environment": {
+        "CUDA_VISIBLE_DEVICES": "0",
+        "UCX_NET_DEVICES": "all",
+        "VLLM_NIXL_SIDE_CHANNEL_PORT": "5600"
+      },
+      "working_directory": "../../../../"
     },
     {
       "name": "vllm-decode",
       "command": [
-        "vllm", "serve", "/models/Meta-Llama-3.1-8B-Instruct",
-        "--served-model-name", "meta-llama/Meta-Llama-3.1-8B-Instruct",
-        "--host", "127.0.0.1", "--port", "8102", "--dtype", "bfloat16",
-        "--max-num-seqs", "32", "--max-num-queued-reqs", "32",
-        "--kv-transfer-config", "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\",\"kv_buffer_device\":\"cuda\",\"kv_connector_extra_config\":{\"backends\":[\"UCX\"]}}"
+        "vllm",
+        "serve",
+        "/models/Qwen3-8B",
+        "--served-model-name",
+        "Qwen/Qwen3-8B",
+        "--host",
+        "127.0.0.1",
+        "--dtype",
+        "bfloat16",
+        "--max-num-seqs",
+        "3",
+        "--max-model-len",
+        "4096",
+        "--gpu-memory-utilization",
+        "0.75",
+        "--enforce-eager",
+        "--port",
+        "8102",
+        "--kv-transfer-config",
+        "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_consumer\",\"kv_load_failure_policy\":\"fail\",\"kv_buffer_device\":\"cuda\",\"kv_connector_extra_config\":{\"backends\":[\"UCX\"]}}"
       ],
-      "environment": {"CUDA_VISIBLE_DEVICES": "1"}
+      "environment": {
+        "CUDA_VISIBLE_DEVICES": "1",
+        "UCX_NET_DEVICES": "all",
+        "VLLM_NIXL_SIDE_CHANNEL_PORT": "5601"
+      },
+      "working_directory": "../../../../"
     },
     {
       "name": "vllm-pd-proxy",
       "command": [
-        "python", "-m", "labs.serving_comparison.vllm_pd_proxy",
-        "--host", "127.0.0.1", "--port", "8100",
-        "--prefill-url", "http://127.0.0.1:8101",
-        "--decode-url", "http://127.0.0.1:8102"
+        "python",
+        "-m",
+        "labs.serving_comparison.vllm_pd_proxy",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8100",
+        "--prefill-url",
+        "http://127.0.0.1:8101",
+        "--decode-url",
+        "http://127.0.0.1:8102"
       ],
-      "environment": {"CUDA_VISIBLE_DEVICES": ""}
+      "environment": {
+        "CUDA_VISIBLE_DEVICES": ""
+      },
+      "working_directory": "../../../../"
     }
   ]
 }
