@@ -5,6 +5,11 @@ Labs are where the repo stops being chapter-by-chapter pedagogy and starts telli
 Some labs are strict baseline/optimized benchmark pairs. Others are playbooks or matrix harnesses that need a different, more honest doc shape.
 
 ## How To Read This Directory
+
+The [serving comparison lab](serving_comparison/README.md) is a tool and matrix
+workflow. It compares real serving endpoints under an explicit workload contract.
+Use `aisp tools serving-compare`, not benchmark-pair discovery.
+
 There are two useful lab classes in this repo:
 
 - **Benchmark-pair labs**: these expose harness targets, keep correctness gates, and are the right place to make performance claims.

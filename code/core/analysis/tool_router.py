@@ -9,6 +9,11 @@ from core.llm import get_llm_status, llm_call
 
 DEFAULT_SUGGEST_RULES: List[Dict[str, Any]] = [
     {
+        "tool": "tools_diagnostics",
+        "keywords": ["tcp window", "path mtu", "bandwidth delay", "pfc", "ecn", "collective diagnosis", "serving comparison", "cross-layer diagnosis"],
+        "reason": "Run network, fabric, collective or serving diagnostics with retained evidence",
+    },
+    {
         "tool": "benchmark_deep_dive_compare",
         "keywords": [
             "deep_dive",

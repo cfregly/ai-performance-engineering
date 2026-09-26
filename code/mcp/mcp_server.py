@@ -746,6 +746,35 @@ def _run_tools_cli(
     return result
 
 
+def _run_diagnostic_tools_cli(
+    tool: str,
+    tool_args: Optional[List[str]] = None,
+    timeout_seconds: int = 300,
+) -> Dict[str, Any]:
+    """Run a diagnostic CLI and clean up its retained local descendants on timeout."""
+    from core.diagnostics.process import run_owned_process
+
+    args: List[str] = ["tools", tool]
+    if tool_args:
+        args.append("--")
+        args.extend(tool_args)
+    cmd = [sys.executable, "-m", "cli.aisp", *args]
+    result = run_owned_process(
+        cmd,
+        timeout_seconds=timeout_seconds,
+        env=_subprocess_env(),
+        cwd=CODE_ROOT,
+    )
+    returncode = int(result.get("returncode", 0) or 0)
+    if returncode != 0 and not result.get("error"):
+        result["error"] = (
+            result.get("stderr")
+            or result.get("stdout")
+            or f"aisp tools {tool} failed with code {returncode}"
+        )
+    return result
+
+
 def _run_bench_cli(args: List[str], timeout: Optional[int] = _BENCH_CLI_TIMEOUT) -> Dict[str, Any]:
     """Invoke bench CLI and return stdout/stderr/exit code."""
     cmd = [sys.executable, "-m", "core.benchmark.bench_commands", *args]
@@ -10755,6 +10784,44 @@ def tool_hf(params: Dict[str, Any]) -> Dict[str, Any]:
 # =============================================================================
 # TOOLS (NON-BENCHMARK UTILITIES)
 # =============================================================================
+
+from core.tools.tools_commands import DIAGNOSTIC_TOOLS
+
+
+@register_tool(
+    "tools_diagnostics",
+    "Tags: tools, network, fabric, collective, serving, diagnostics. "
+    "Run a diagnostic tool or analyze retained evidence through the same aisp CLI. "
+    "Use args=['--help'] to inspect its contract. Network and fabric collection needs the declared host capabilities. "
+    "Serving replay and transport tests generate load only when explicitly requested by their arguments. "
+    "Diagnostic results are not canonical benchmark speedup evidence.",
+    {
+        "type": "object",
+        "properties": with_context_params({
+            "tool": {"type": "string", "enum": list(DIAGNOSTIC_TOOLS),
+                     "description": "Diagnostic CLI tool to invoke."},
+            "args": {"type": "array", "items": {"type": "string"}, "default": ["--help"],
+                     "description": "Argument vector forwarded unchanged. Paths refer to the server filesystem."},
+            "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 86400, "default": 300,
+                                "description": "Invocation timeout in seconds."},
+        }),
+        "required": ["tool"],
+    },
+)
+def tool_tools_diagnostics(params: Dict[str, Any]) -> Dict[str, Any]:
+    include_context, context_level = extract_context_opts(params)
+    name = params.get("tool")
+    if name not in DIAGNOSTIC_TOOLS:
+        return make_error("Unknown diagnostic tool", include_context, context_level)
+    args = params.get("args", ["--help"])
+    if not isinstance(args, list) or not all(isinstance(value, str) for value in args):
+        return make_error("args must be a list of strings", include_context, context_level)
+    timeout = params.get("timeout_seconds", 300)
+    if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= 86400:
+        return make_error("timeout_seconds must be an integer from 1 through 86400", include_context, context_level)
+    return attach_context_if_requested(
+        _run_diagnostic_tools_cli(name, args, timeout_seconds=timeout), include_context, context_level,
+    )
 
 
 def _extract_tools_cli_args(

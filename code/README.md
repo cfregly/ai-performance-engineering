@@ -1,5 +1,9 @@
 # AI Systems Performance Engineering
 
+For network, fabric, collective and serving investigations, start with the
+[diagnostic tools](docs/diagnostic_tools.md). Each tool has a CLI entrypoint,
+retained evidence and a guide for interpreting its results.
+
 ## Summary
 Reference implementation of high-performance PyTorch, CUDA, and Triton workloads for NVIDIA Blackwell platforms.
 The repository packages 20 focused chapters, advanced labs, and the shared benchmarking harness so you can profile baselines, apply optimizations, and capture artifacts that prove performance gains.

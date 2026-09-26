@@ -1,0 +1,38 @@
+{
+  "schema_version": "serving-comparison.process-group.v1",
+  "processes": [
+    {
+      "name": "sglang-prefill",
+      "command": [
+        "python", "-m", "sglang.launch_server",
+        "--model-path", "/models/Meta-Llama-3.1-8B-Instruct",
+        "--served-model-name", "meta-llama/Meta-Llama-3.1-8B-Instruct",
+        "--host", "127.0.0.1", "--port", "8201", "--dtype", "bfloat16",
+        "--max-running-requests", "32", "--enable-metrics",
+        "--disaggregation-mode", "prefill", "--disaggregation-transfer-backend", "nixl"
+      ],
+      "environment": {"CUDA_VISIBLE_DEVICES": "0"}
+    },
+    {
+      "name": "sglang-decode",
+      "command": [
+        "python", "-m", "sglang.launch_server",
+        "--model-path", "/models/Meta-Llama-3.1-8B-Instruct",
+        "--served-model-name", "meta-llama/Meta-Llama-3.1-8B-Instruct",
+        "--host", "127.0.0.1", "--port", "8202", "--dtype", "bfloat16",
+        "--max-running-requests", "32", "--enable-metrics",
+        "--disaggregation-mode", "decode", "--disaggregation-transfer-backend", "nixl"
+      ],
+      "environment": {"CUDA_VISIBLE_DEVICES": "1"}
+    },
+    {
+      "name": "sglang-pd-router",
+      "command": [
+        "python", "-m", "sglang_router.launch_router", "--pd-disaggregation",
+        "--prefill", "http://127.0.0.1:8201", "--decode", "http://127.0.0.1:8202",
+        "--host", "127.0.0.1", "--port", "8200"
+      ],
+      "environment": {"CUDA_VISIBLE_DEVICES": ""}
+    }
+  ]
+}

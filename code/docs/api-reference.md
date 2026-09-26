@@ -487,6 +487,29 @@ All operations return dictionaries with consistent structure:
 
 ---
 
+## Diagnostic tools
+
+The six network, fabric, transport, collective, serving and cross-layer tools
+share the CLI registry in `core/tools/tools_commands.py`. See the
+[diagnostic tool guide](diagnostic_tools.md) for runnable commands and artifact
+contracts.
+
+MCP exposes the same registry through `tools_diagnostics`:
+
+```json
+{"tool": "network-diagnose", "args": ["--help"], "timeout_seconds": 60}
+```
+
+`tool` is one of `network-diagnose`, `fabric-diagnose`, `transport-diagnose`,
+`collective-diagnose`, `serving-compare` or `cross-layer-diagnose`. `args` is an
+argument vector, defaulting to `--help`. The timeout defaults to 300 seconds and
+must be between 1 and 86400 seconds. Results include the command, exit code,
+stdout, stderr and timeout state. Paths are local to the MCP server. Unsupported
+hardware and missing measurements are not successful benchmark results.
+
+These utilities do not add dashboard endpoints because the dashboard does not
+currently consume them.
+
 ## Best Practices
 
 ### 1. Start with Triage

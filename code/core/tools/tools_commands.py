@@ -39,6 +39,42 @@ class ToolSpec:
 
 
 TOOLS: Dict[str, ToolSpec] = {
+    "network-diagnose": ToolSpec(
+        name="network-diagnose",
+        script_path=REPO_ROOT / "ch03" / "network_diagnosis_tool.py",
+        module_name="ch03.network_diagnosis_tool",
+        description="Inspect TCP, routes, MTU and packet evidence. Live probes require explicit flags.",
+    ),
+    "fabric-diagnose": ToolSpec(
+        name="fabric-diagnose",
+        script_path=REPO_ROOT / "cluster" / "fabric" / "diagnostics.py",
+        module_name="cluster.fabric.diagnostics",
+        description="Sample RoCE and InfiniBand state and analyze timed counter changes.",
+    ),
+    "transport-diagnose": ToolSpec(
+        name="transport-diagnose",
+        script_path=REPO_ROOT / "cluster" / "fabric" / "transport.py",
+        module_name="cluster.fabric.transport",
+        description="Compare local GPU, host RDMA, GPU RDMA and NCCL measurements.",
+    ),
+    "collective-diagnose": ToolSpec(
+        name="collective-diagnose",
+        script_path=REPO_ROOT / "ch04" / "collective_diagnosis_tool.py",
+        module_name="ch04.collective_diagnosis_tool",
+        description="Run or analyze NCCL arrival, contention and overlap diagnostics.",
+    ),
+    "serving-compare": ToolSpec(
+        name="serving-compare",
+        script_path=REPO_ROOT / "labs" / "serving_comparison" / "serving_comparison_tool.py",
+        module_name="labs.serving_comparison.serving_comparison_tool",
+        description="Replay fixed serving workloads across engines and deployment architectures.",
+    ),
+    "cross-layer-diagnose": ToolSpec(
+        name="cross-layer-diagnose",
+        script_path=REPO_ROOT / "core" / "analysis" / "cross_layer_diagnosis.py",
+        module_name="core.analysis.cross_layer_diagnosis",
+        description="Correlate timed application symptoms with matching fabric evidence.",
+    ),
     "serving-trace": ToolSpec(
         name="serving-trace",
         script_path=REPO_ROOT / "core" / "analysis" / "serving_trace.py",
@@ -227,6 +263,12 @@ TOOLS: Dict[str, ToolSpec] = {
         description="Run the Chapter 20 generator + verification workflow utility.",
     ),
 }
+
+# Shared with the MCP surface so the diagnostic tool allowlist cannot drift.
+DIAGNOSTIC_TOOLS = (
+    "network-diagnose", "fabric-diagnose", "transport-diagnose",
+    "collective-diagnose", "serving-compare", "cross-layer-diagnose",
+)
 
 
 def _run_tool(tool: str, tool_args: Optional[List[str]]) -> int:

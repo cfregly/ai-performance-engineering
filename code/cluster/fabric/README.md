@@ -12,6 +12,18 @@ The archived NVIDIA course exports under `nvidia-advanced-networking-for-ai-infr
 
 ## Entry Points
 
+For timed counter collection and transport isolation, use the runnable
+[fabric diagnosis tool](diagnostics.md) and [transport diagnosis tool](transport.md).
+They retain raw commands, parsed signals and explicit unsupported states. The
+command catalog below is an inventory, not proof that those measurements ran.
+
+`fabric-eval` attaches retained `structured/<run_id>_fabric_counter_deltas.json`
+and optional `structured/<run_id>_application_signals.json` to its AI-correlation
+artifact. Both files must declare the same `run_id`. Application signals use the
+[timed signal contract](../../core/analysis/cross_layer_diagnosis.md). Missing
+timed evidence stays unavailable and does not change canonical completeness.
+
+
 Use the dedicated fabric path when the question is "is the fabric healthy, correctly configured, and fast enough for AI workloads?":
 
 ```bash

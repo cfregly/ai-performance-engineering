@@ -178,6 +178,7 @@ CATEGORY_TOOLS: Dict[str, List[str]] = {
         "cluster_validate_field_report",
     ],
     "tools": [
+        "tools_diagnostics",
         "tools_kv_cache",
         "tools_cost_per_token",
         "tools_compare_precision",
@@ -234,6 +235,7 @@ BENCHMARK_SLOW_TOOLS = {
 }
 
 TOOL_PARAMS: Dict[str, Dict[str, Any]] = {
+    "tools_diagnostics": {"tool": "network-diagnose", "args": ["--help"]},
     "optimize": {
         "target": "ch10:atomic_reduction",
         "profile": "minimal",
@@ -813,6 +815,7 @@ def test_gpu_bandwidth_reports_missing_cuda_through_mcp_dispatch(
             ("huggingface search llama", "hf"),
             ("export csv here", "export_csv"),
             ("network status ib", "system_network"),
+            ("path mtu and tcp window diagnosis", "tools_diagnostics"),
             ("topology matrix", "gpu_topology_matrix"),
             ("cloud cost estimate", "cost_estimate"),
             ("llm status", "ai_status"),

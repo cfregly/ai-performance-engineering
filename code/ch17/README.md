@@ -51,6 +51,11 @@ python -m cli.aisp bench run --targets ch17:prefill_decode_disagg_ttft --profile
 ```
 
 ## Learning Goals
+
+The [serving comparison tool](../labs/serving_comparison/README.md) adds service
+request replay, latency objectives and phase-transfer evidence to this chapter's
+model-level experiments. Use it to compare pool allocations on a fixed GPU set.
+
 - Implement dynamic routers that react to TTFT, TPOT, and KV-locality metrics.
 - Profile complete inference stacks (prefill + decode) under realistic synthetic loads.
 - Blend pipeline parallelism with routing logic for long-context workloads.

@@ -1,0 +1,299 @@
+{
+  "schema_version": "serving-comparison.profile.v1",
+  "mode": "engine",
+  "workload": {
+    "workload_id": "llama31-8b-serving-matrix-001",
+    "model": "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    "tokenizer": "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    "precision": "bf16",
+    "seed": 17,
+    "admission_max_concurrency": 32
+  },
+  "correctness": {
+    "policy": "exact_token_ids",
+    "max_token_mismatches": 0
+  },
+  "hardware": {
+    "gpu_budget": 2,
+    "gpus": [
+      {"id": "0", "application_clock_mhz": 1410},
+      {"id": "1", "application_clock_mhz": 1410}
+    ],
+    "clocks_locked": true
+  },
+  "arms": [
+    {
+      "arm_id": "vllm-monolithic",
+      "engine": "vllm",
+      "architecture": "monolithic",
+      "endpoint": "http://127.0.0.1:8000/v1/completions",
+      "runtime": {
+        "version": "REPLACE_WITH_VLLM_VERSION",
+        "build_id": "REPLACE_WITH_VLLM_BUILD_ID"
+      },
+      "gpu_ids": ["0", "1"],
+      "identity": {
+        "probes": [
+          {
+            "url": "http://127.0.0.1:8000/v1/models",
+            "assertions": {"data.0.id": "meta-llama/Meta-Llama-3.1-8B-Instruct"},
+            "proves": ["model"]
+          },
+          {
+            "url": "http://127.0.0.1:8000/version",
+            "assertions": {"version": "REPLACE_WITH_VLLM_VERSION"},
+            "proves": ["runtime_version"]
+          }
+        ]
+      },
+      "lifecycle": {
+        "mode": "local_process",
+        "start_command": [
+          "vllm", "serve", "/models/Meta-Llama-3.1-8B-Instruct",
+          "--served-model-name", "meta-llama/Meta-Llama-3.1-8B-Instruct",
+          "--host", "127.0.0.1", "--port", "8000", "--dtype", "bfloat16",
+          "--tensor-parallel-size", "2", "--max-num-seqs", "32",
+          "--max-num-queued-reqs", "32"
+        ],
+        "environment": {"CUDA_VISIBLE_DEVICES": "0,1"},
+        "working_directory": "../../../../",
+        "ready_url": "http://127.0.0.1:8000/health",
+        "timeout_s": 600,
+        "shutdown_timeout_s": 30
+      },
+      "telemetry_sources": []
+    },
+    {
+      "arm_id": "vllm-prefill-decode",
+      "engine": "vllm",
+      "architecture": "prefill_decode",
+      "endpoint": "http://127.0.0.1:8100/v1/completions",
+      "runtime": {
+        "version": "REPLACE_WITH_VLLM_VERSION",
+        "build_id": "REPLACE_WITH_VLLM_BUILD_ID"
+      },
+      "gpu_ids": ["0", "1"],
+      "identity": {
+        "probes": [
+          {
+            "url": "http://127.0.0.1:8100/v1/models",
+            "assertions": {"data.0.id": "meta-llama/Meta-Llama-3.1-8B-Instruct"},
+            "proves": ["model"]
+          },
+          {
+            "url": "http://127.0.0.1:8100/version",
+            "assertions": {"version": "REPLACE_WITH_VLLM_VERSION"},
+            "proves": ["runtime_version"]
+          }
+        ]
+      },
+      "lifecycle": {
+        "mode": "local_process",
+        "start_command": [
+          "python", "-m", "labs.serving_comparison.process_group_launcher",
+          "--spec", "code/labs/serving_comparison/examples/vllm-pd-launch.json"
+        ],
+        "environment": {"CUDA_VISIBLE_DEVICES": "0,1"},
+        "working_directory": "../../../../",
+        "ready_url": "http://127.0.0.1:8100/health",
+        "timeout_s": 600,
+        "shutdown_timeout_s": 30
+      },
+      "pd_provenance": "vllm-pd-provenance.json",
+      "telemetry_sources": [
+        {
+          "source_id": "prefill-native",
+          "format": "prometheus",
+          "url": "http://127.0.0.1:8101/metrics",
+          "metrics": {
+            "prefill_requests_total": {
+              "name": "vllm:request_success_total",
+              "labels": {"model_name": "meta-llama/Meta-Llama-3.1-8B-Instruct"},
+              "reduce": "sum"
+            }
+          }
+        },
+        {
+          "source_id": "decode-native",
+          "format": "prometheus",
+          "url": "http://127.0.0.1:8102/metrics",
+          "metrics": {
+            "decode_requests_total": {
+              "name": "vllm:request_success_total",
+              "labels": {"model_name": "meta-llama/Meta-Llama-3.1-8B-Instruct"},
+              "reduce": "sum"
+            },
+            "kv_transfer_requests_total": {
+              "name": "vllm:nixl_xfer_time_seconds_count",
+              "reduce": "sum"
+            },
+            "kv_transfer_failures_total": {
+              "name": "vllm:nixl_num_failed_transfers_total",
+              "reduce": "sum"
+            },
+            "kv_transfer_time_seconds_total": {
+              "name": "vllm:nixl_xfer_time_seconds_sum",
+              "reduce": "sum"
+            },
+            "kv_transfer_bytes_total": {
+              "name": "vllm:nixl_bytes_transferred_sum",
+              "reduce": "sum"
+            }
+          }
+        }
+      ],
+      "diagnostic_support": {
+        "kv_transfer_bytes_total": {"status": "measured"},
+        "queue_age_seconds": {
+          "status": "unsupported",
+          "reason": "This template does not derive an interval queue-age statistic from the cumulative histogram."
+        },
+        "prefill_pool_idle_fraction": {
+          "status": "unsupported",
+          "reason": "The pinned vLLM build must expose and validate a pool idle metric before use."
+        },
+        "decode_pool_idle_fraction": {
+          "status": "unsupported",
+          "reason": "The pinned vLLM build must expose and validate a pool idle metric before use."
+        }
+      }
+    },
+    {
+      "arm_id": "sglang-monolithic",
+      "engine": "sglang",
+      "architecture": "monolithic",
+      "endpoint": "http://127.0.0.1:8200/v1/completions",
+      "runtime": {
+        "version": "REPLACE_WITH_SGLANG_VERSION",
+        "build_id": "REPLACE_WITH_SGLANG_BUILD_ID"
+      },
+      "gpu_ids": ["0", "1"],
+      "identity": {
+        "probes": [
+          {
+            "url": "http://127.0.0.1:8200/v1/models",
+            "assertions": {"data.0.id": "meta-llama/Meta-Llama-3.1-8B-Instruct"},
+            "proves": ["model"]
+          },
+          {
+            "url": "http://127.0.0.1:8200/server_info",
+            "assertions": {"version": "REPLACE_WITH_SGLANG_VERSION"},
+            "proves": ["runtime_version"]
+          }
+        ]
+      },
+      "lifecycle": {
+        "mode": "local_process",
+        "start_command": [
+          "python", "-m", "sglang.launch_server",
+          "--model-path", "/models/Meta-Llama-3.1-8B-Instruct",
+          "--served-model-name", "meta-llama/Meta-Llama-3.1-8B-Instruct",
+          "--host", "127.0.0.1", "--port", "8200", "--dtype", "bfloat16",
+          "--tp-size", "2", "--max-running-requests", "32", "--enable-metrics"
+        ],
+        "environment": {"CUDA_VISIBLE_DEVICES": "0,1"},
+        "working_directory": "../../../../",
+        "ready_url": "http://127.0.0.1:8200/health",
+        "timeout_s": 600,
+        "shutdown_timeout_s": 30
+      },
+      "telemetry_sources": []
+    },
+    {
+      "arm_id": "sglang-prefill-decode",
+      "engine": "sglang",
+      "architecture": "prefill_decode",
+      "endpoint": "http://127.0.0.1:8200/v1/completions",
+      "runtime": {
+        "version": "REPLACE_WITH_SGLANG_VERSION",
+        "build_id": "REPLACE_WITH_SGLANG_BUILD_ID"
+      },
+      "gpu_ids": ["0", "1"],
+      "identity": {
+        "probes": [
+          {
+            "url": "http://127.0.0.1:8202/v1/models",
+            "assertions": {"data.0.id": "meta-llama/Meta-Llama-3.1-8B-Instruct"},
+            "proves": ["model"]
+          },
+          {
+            "url": "http://127.0.0.1:8202/server_info",
+            "assertions": {"version": "REPLACE_WITH_SGLANG_VERSION"},
+            "proves": ["runtime_version"]
+          }
+        ]
+      },
+      "lifecycle": {
+        "mode": "local_process",
+        "start_command": [
+          "python", "-m", "labs.serving_comparison.process_group_launcher",
+          "--spec", "code/labs/serving_comparison/examples/sglang-pd-launch.json"
+        ],
+        "environment": {"CUDA_VISIBLE_DEVICES": "0,1"},
+        "working_directory": "../../../../",
+        "ready_url": "http://127.0.0.1:8200/health",
+        "timeout_s": 600,
+        "shutdown_timeout_s": 30
+      },
+      "pd_provenance": "sglang-pd-provenance.json",
+      "telemetry_sources": [
+        {
+          "source_id": "prefill-native",
+          "format": "prometheus",
+          "url": "http://127.0.0.1:8201/metrics",
+          "metrics": {
+            "prefill_requests_total": {
+              "name": "sglang:kv_transfer_latency_ms_count",
+              "reduce": "sum"
+            }
+          }
+        },
+        {
+          "source_id": "decode-native",
+          "format": "prometheus",
+          "url": "http://127.0.0.1:8202/metrics",
+          "metrics": {
+            "decode_requests_total": {
+              "name": "sglang:kv_transfer_latency_ms_count",
+              "reduce": "sum"
+            },
+            "kv_transfer_requests_total": {
+              "name": "sglang:kv_transfer_latency_ms_count",
+              "reduce": "sum"
+            },
+            "kv_transfer_failures_total": {
+              "names": [
+                "sglang:num_bootstrap_failed_reqs_total",
+                "sglang:num_transfer_failed_reqs_total"
+              ],
+              "reduce": "sum"
+            },
+            "kv_transfer_time_seconds_total": {
+              "name": "sglang:kv_transfer_latency_ms_sum",
+              "reduce": "sum",
+              "scale": 0.001
+            }
+          }
+        }
+      ],
+      "diagnostic_support": {
+        "kv_transfer_bytes_total": {
+          "status": "unsupported",
+          "reason": "Current native SGLang P/D metrics expose transfer latency and speed histograms but no exact byte counter."
+        },
+        "queue_age_seconds": {
+          "status": "unsupported",
+          "reason": "Current native P/D queue metrics expose queue depth rather than request queue age."
+        },
+        "prefill_pool_idle_fraction": {
+          "status": "unsupported",
+          "reason": "This template has no validated prefill pool idle fraction metric."
+        },
+        "decode_pool_idle_fraction": {
+          "status": "unsupported",
+          "reason": "This template has no validated decode pool idle fraction metric."
+        }
+      }
+    }
+  ]
+}
