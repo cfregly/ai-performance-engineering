@@ -1,0 +1,1671 @@
+{
+  "final_gpu_state": {
+    "compute_process_count": 0,
+    "gpus": [
+      {
+        "application_memory_mhz": 3996,
+        "application_sm_mhz": 1965,
+        "current_memory_mhz": 3996,
+        "current_sm_mhz": 120,
+        "gpu_index": "0",
+        "persistence_mode": "Disabled"
+      },
+      {
+        "application_memory_mhz": 3996,
+        "application_sm_mhz": 1965,
+        "current_memory_mhz": 3996,
+        "current_sm_mhz": 120,
+        "gpu_index": "1",
+        "persistence_mode": "Disabled"
+      }
+    ]
+  },
+  "final_preparation_validation": {
+    "command": "PYTHONPATH=code python -m cli.aisp tools serving-prepare-runtime -- --package-dir <installed-sglang-package> --output-dir <new-prepared-runtime>",
+    "duration_seconds": 0.4,
+    "failed": 0,
+    "log_sha256": "34e0550608905fd3554e7d224b0298922d61bcfb11c42655a0871f2bfa9bfafa",
+    "manifest_sha256": "52e1fd50f7db04688525b27a849d49777fcbf312425eec238268b92ae93276e5",
+    "matches_gpu_tested_runtime": true,
+    "note": "These preparation tests repeat a subset of the 68 focused tests. They are not 10 additional unique tests.",
+    "output_package_digest": "sha256:5fc92353d09d7ed11cb9d3a25eea1a956d0f0218fb2fa0e30ba76f8c73fd742c",
+    "passed": 10,
+    "reason": "After the GPU source snapshot, the preparation tool changed only to bound error-message lists. Serving runtime source files were unchanged.",
+    "skipped": 0,
+    "source_files": [
+      {
+        "path": "code/labs/serving_comparison/prepare_sglang_runtime_tool.py",
+        "sha256": "909b6433836f119c1db8d07d43de0fc6a4aeda1b34c4d898c77a7cc2044f20f1"
+      },
+      {
+        "path": "code/tests/test_prepare_sglang_runtime.py",
+        "sha256": "91438fe105450061236482a9b866f3daac73a7bc6927b739acc87801371afc93"
+      }
+    ],
+    "test_command": "CUDA_VISIBLE_DEVICES= PYTHONPATH=. python -m pytest -q tests/test_prepare_sglang_runtime.py"
+  },
+  "focused_cpu_tests": {
+    "command": "CUDA_VISIBLE_DEVICES= PYTHONPATH=. python3 -m pytest -q tests/test_serving_failure_sources.py tests/test_serving_telemetry_integrity.py tests/test_serving_comparison.py tests/test_serving_launch_binding.py tests/test_prepare_sglang_runtime.py tests/test_diagnostics_integration.py",
+    "cuda_hidden": true,
+    "duration_seconds": 51.79,
+    "evidence_source": "retained remote pytest log",
+    "failed": 0,
+    "log_sha256": "04b76e4fb6c55bafc81d6f98d1eabed4c777d3bf31791b4fcc4d9ce186fa234f",
+    "passed": 68,
+    "skipped": 0
+  },
+  "full_matrix": {
+    "comparison_valid": true,
+    "completed_output_vectors": {
+      "short-001": {
+        "matching_iterations": 8,
+        "reference_sha256": "60c23e5a8e74de0e5459e2c2a0df1cb832286d587bda4a97b45b15b024ac6554",
+        "reference_token_ids": [
+          425,
+          31924,
+          34950,
+          22670,
+          44378,
+          15024,
+          553,
+          10693,
+          5248,
+          1946,
+          10469,
+          311,
+          387,
+          15233,
+          24303,
+          11,
+          27492,
+          7703,
+          279,
+          49449,
+          315,
+          279,
+          22670,
+          594,
+          15279,
+          24231,
+          16928,
+          323,
+          17719,
+          279,
+          817,
+          83879
+        ],
+        "total_iterations": 8
+      },
+      "short-002": {
+        "matching_iterations": 8,
+        "reference_sha256": "293635e1447e586537faa64d50b606b735e872829ffd045f51b8cfbe2b7c1701",
+        "reference_token_ids": [
+          758,
+          279,
+          2266,
+          315,
+          444,
+          10994,
+          13480,
+          11,
+          855,
+          7559,
+          323,
+          16895,
+          525,
+          1378,
+          34430,
+          315,
+          279,
+          44378,
+          1882,
+          13,
+          42588,
+          483,
+          374,
+          279,
+          2856,
+          10262,
+          1380,
+          279,
+          1614,
+          11364,
+          279,
+          1946
+        ],
+        "total_iterations": 8
+      }
+    },
+    "duration_seconds": 378.11235333420336,
+    "execution_order": [
+      {
+        "arm_ids": [
+          "vllm-monolithic",
+          "vllm-prefill-decode",
+          "sglang-monolithic",
+          "sglang-prefill-decode"
+        ],
+        "repeat_index": 0
+      },
+      {
+        "arm_ids": [
+          "sglang-prefill-decode",
+          "sglang-monolithic",
+          "vllm-prefill-decode",
+          "vllm-monolithic"
+        ],
+        "repeat_index": 1
+      }
+    ],
+    "iterations": [
+      {
+        "architecture": "monolithic",
+        "arm_id": "vllm-monolithic",
+        "cleanup": {
+          "compute_process_count": 0,
+          "returncode": 0
+        },
+        "clock_evidence": [
+          {
+            "expected_mhz": 1965,
+            "gpu_id": "0",
+            "observed_mhz": 1965
+          },
+          {
+            "expected_mhz": 1965,
+            "gpu_id": "1",
+            "observed_mhz": 1965
+          }
+        ],
+        "engine": "vllm",
+        "failure_evidence": null,
+        "kv_transfer_bytes": null,
+        "launch_binding": null,
+        "pd_telemetry_delta": null,
+        "raw_artifact_sha256": {
+          "released-allocation.json": "14f341cbe811d58e39d2372da4c1ca25a9a2bd34e1687cb00f4c8bb3175fc512",
+          "requests.jsonl": "0e0658a7787d4c45ecbf78391a81912d62f7ac76fa8153580b94bc3e21dbc775",
+          "summary.json": "c9e1fb07b9f88c171a99ec8e8d85b44f6b7797405014eac11a1e0a2d57998a41"
+        },
+        "rejections": [],
+        "repeat_index": 0,
+        "request_counts": {
+          "cancelled_requests": 1,
+          "completed_requests": 2,
+          "failed_requests": 0
+        },
+        "requests": [
+          {
+            "admission_to_finish_s": 0.26977041317149997,
+            "arrival_to_admission_s": 3.8738828152418137e-05,
+            "cancellation": null,
+            "error": null,
+            "output_token_count": 32,
+            "output_token_ids_sha256": "60c23e5a8e74de0e5459e2c2a0df1cb832286d587bda4a97b45b15b024ac6554",
+            "prompt_token_ids_exact": true,
+            "request_id": "short-001",
+            "status": "completed"
+          },
+          {
+            "admission_to_finish_s": 0.2726680259220302,
+            "arrival_to_admission_s": 0.0009037991985678673,
+            "cancellation": null,
+            "error": null,
+            "output_token_count": 32,
+            "output_token_ids_sha256": "293635e1447e586537faa64d50b606b735e872829ffd045f51b8cfbe2b7c1701",
+            "prompt_token_ids_exact": true,
+            "request_id": "short-002",
+            "status": "completed"
+          },
+          {
+            "admission_to_finish_s": 2.500577277969569,
+            "arrival_to_admission_s": 0.0008232020772993565,
+            "cancellation": {
+              "mechanism": "client_stream_close",
+              "server_cancel_confirmation": false,
+              "trigger_ms": 2500.0
+            },
+            "error": "client_cancelled_stream",
+            "output_token_count": 311,
+            "output_token_ids_sha256": "a124587e33ee9662fe95b8a47f1cfa0bef3583849aa1b18db991584c35152b83",
+            "prompt_token_ids_exact": true,
+            "request_id": "cancel-003",
+            "status": "cancelled"
+          }
+        ]
+      },
+      {
+        "architecture": "prefill_decode",
+        "arm_id": "vllm-prefill-decode",
+        "cleanup": {
+          "compute_process_count": 0,
+          "returncode": 0
+        },
+        "clock_evidence": [
+          {
+            "expected_mhz": 1965,
+            "gpu_id": "0",
+            "observed_mhz": 1965
+          },
+          {
+            "expected_mhz": 1965,
+            "gpu_id": "1",
+            "observed_mhz": 1965
+          }
+        ],
+        "engine": "vllm",
+        "failure_evidence": {
+          "after_series_by_source": {
+            "decode-native": [
+              {
+                "labels": {
+                  "engine": "0",
+                  "model_name": "Qwen/Qwen3-8B"
+                },
+                "metric": "vllm:nixl_num_failed_transfers_total",
+                "value": 0.0
+              }
+            ]
+          },
+          "after_totals_by_source": {
+            "decode-native": 0.0
+          },
+          "before_series_by_source": {
+            "decode-native": [
+              {
+                "labels": {
+                  "engine": "0",
+                  "model_name": "Qwen/Qwen3-8B"
+                },
+                "metric": "vllm:nixl_num_failed_transfers_total",
+                "value": 0.0
+              }
+            ]
+          },
+          "before_totals_by_source": {
+            "decode-native": 0.0
+          }
+        },
+        "kv_transfer_bytes": {
+          "status": "measured",
+          "value": 7077888.0
+        },
+        "launch_binding": {
+          "roles": {
+            "decode": {
+              "argv_sha256": "1f2bfb2346a116a275049bb2d13e797efd67d5880978e0cc473dab9c97488999",
+              "entrypoint": "vllm.entrypoints.openai.api_server",
+              "gpu_ids": [
+                "1"
+              ]
+            },
+            "prefill": {
+              "argv_sha256": "8186622f47add4b538056b1f5f91f018d224b00b3566169354ae2ee6e14a5edb",
+              "entrypoint": "vllm.entrypoints.openai.api_server",
+              "gpu_ids": [
+                "0"
+              ]
+            },
+            "router": {
+              "argv_sha256": "32200d5253bc92faa2c415501a7d9531c0a5dc7623116c07921bf0fd5d94868f",
+              "entrypoint": "labs.serving_comparison.vllm_pd_proxy",
+              "gpu_ids": []
+            }
+          },
+          "runtime_pool_allocation_verified": true,
+          "sha256": "6eaee47858cf0119b0b3e65e5e5aadc9cc4dd269a063dece4c04338e6829481f"
+        },
+        "pd_telemetry_delta": {
+          "decode_requests_total": 2.0,
+          "kv_transfer_failures_total": 0.0,
+          "kv_transfer_requests_total": 3.0,
+          "kv_transfer_time_seconds_total": 0.01653,
+          "prefill_requests_total": 3.0
+        },
+        "raw_artifact_sha256": {
+          "released-allocation.json": "4dd196b2f7179a9fa05f227714a3ad2ed857f4c0d705e2710a6aea2a8774c4fd",
+          "requests.jsonl": "ea432fd4e50f8fb080ef4e5df4e5ff59d504d789851aaa14b0cfc23715366fc1",
+          "summary.json": "c859bd4d2661da6b5d532f0f34c82ea3ff97944fabfcdba13529baa6a08f411c",
+          "telemetry/after-decode-native.txt": "51a9bb6587bc0cbd580e3b5badedd1c8792a8b54bdd02810874b506179eb81c7",
+          "telemetry/after-prefill-native.txt": "30aef6084be3db8bb127cd621acc70ad5d3267a5c1dab45e41b1163e62ce14b0",
+          "telemetry/after.json": "5f65880fb2d01e0a815ab500245d1e299e5568f1e1ece43fdbeb106299c3a360",
+          "telemetry/before-decode-native.txt": "c0f633ed4dbd2d421adceec8ea8f5aba38b6b6c996cbfd7d8f80ed2d449d49e3",
+          "telemetry/before-prefill-native.txt": "cc7bdbe584b9559e3579dc03b1f12d40a2f49e8b1e67977d8eaf442d70683508",
+          "telemetry/before.json": "088fe10a7e24e7d6b5f1f7c5c75fb138a963e3f2ac234fcebf4c037409653163"
+        },
+        "rejections": [],
+        "repeat_index": 0,
+        "request_counts": {
+          "cancelled_requests": 1,
+          "completed_requests": 2,
+          "failed_requests": 0
+        },
+        "requests": [
+          {
+            "admission_to_finish_s": 0.28879050724208355,
+            "arrival_to_admission_s": 2.411985769867897e-05,
+            "cancellation": null,
+            "error": null,
+            "output_token_count": 32,
+            "output_token_ids_sha256": "60c23e5a8e74de0e5459e2c2a0df1cb832286d587bda4a97b45b15b024ac6554",
+            "prompt_token_ids_exact": true,
+            "request_id": "short-001",
+            "status": "completed"
+          },
+          {
+            "admission_to_finish_s": 0.2955515906214714,
+            "arrival_to_admission_s": 0.0005894131027162075,
+            "cancellation": null,
+            "error": null,
+            "output_token_count": 32,
+            "output_token_ids_sha256": "293635e1447e586537faa64d50b606b735e872829ffd045f51b8cfbe2b7c1701",
+            "prompt_token_ids_exact": true,
+            "request_id": "short-002",
+            "status": "completed"
+          },
+          {
+            "admission_to_finish_s": 2.5008983011357486,
+            "arrival_to_admission_s": 9.797187522053719e-05,
+            "cancellation": {
+              "mechanism": "client_stream_close",
+              "server_cancel_confirmation": false,
+              "trigger_ms": 2500.0
+            },
+            "error": "client_cancelled_stream",
+            "output_token_count": 356,
+            "output_token_ids_sha256": "68daebb205f207d69f5cb631d2d587c6aa9a5854365be14b7d163bf34fe94eca",
+            "prompt_token_ids_exact": true,
+            "request_id": "cancel-003",
+            "status": "cancelled"
+          }
+        ]
+      },
+      {
+        "architecture": "monolithic",
+        "arm_id": "sglang-monolithic",
+        "cleanup": {
+          "compute_process_count": 0,
+          "returncode": -9
+        },
+        "clock_evidence": [
+          {
+            "expected_mhz": 1965,
+            "gpu_id": "0",
+            "observed_mhz": 1965
+          },
+          {
+            "expected_mhz": 1965,
+            "gpu_id": "1",
+            "observed_mhz": 1965
+          }
+        ],
+        "engine": "sglang",
+        "failure_evidence": null,
+        "kv_transfer_bytes": null,
+        "launch_binding": null,
+        "pd_telemetry_delta": null,
+        "raw_artifact_sha256": {
+          "released-allocation.json": "33516710ba039b4fd0e488c52b95e284689b7ba43b2f1a46b7e72e59126e325a",
+          "requests.jsonl": "fa4c284a770e42fc9ca0d2f7c832f6310489d726be053928daaf77c6e47e5aea",
+          "summary.json": "0f61722ef030083aa3a57720501a1679944301e7c1e9dc15e24c85a853f1774a"
+        },
+        "rejections": [],
+        "repeat_index": 0,
+        "request_counts": {
+          "cancelled_requests": 1,
+          "completed_requests": 2,
+          "failed_requests": 0
+        },
+        "requests": [
+          {
+            "admission_to_finish_s": 0.5865904255770147,
+            "arrival_to_admission_s": 3.773113712668419e-05,
+            "cancellation": null,
+            "error": null,
+            "output_token_count": 32,
+            "output_token_ids_sha256": "60c23e5a8e74de0e5459e2c2a0df1cb832286d587bda4a97b45b15b024ac6554",
+            "prompt_token_ids_exact": true,
+            "request_id": "short-001",
+            "status": "completed"
+          },
+          {
+            "admission_to_finish_s": 0.5660359431058168,
+            "arrival_to_admission_s": 0.0005533848889172077,
+            "cancellation": null,
+            "error": null,
+            "output_token_count": 32,
+            "output_token_ids_sha256": "293635e1447e586537faa64d50b606b735e872829ffd045f51b8cfbe2b7c1701",
+            "prompt_token_ids_exact": true,
+            "request_id": "short-002",
+            "status": "completed"
+          },
+          {
+            "admission_to_finish_s": 2.5009037791751325,
+            "arrival_to_admission_s": 0.0009474516846239567,
+            "cancellation": {
+              "mechanism": "client_stream_close",
+              "server_cancel_confirmation": false,
+              "trigger_ms": 2500.0
+            },
+            "error": "client_cancelled_stream",
+            "output_token_count": 153,
+            "output_token_ids_sha256": "a53fcf02077007ef86dac436a304a44b9dc696cd6c31ae2b0b063edb00656e60",
+            "prompt_token_ids_exact": true,
+            "request_id": "cancel-003",
+            "status": "cancelled"
+          }
+        ]
+      },
+      {
+        "architecture": "prefill_decode",
+        "arm_id": "sglang-prefill-decode",
+        "cleanup": {
+          "compute_process_count": 0,
+          "returncode": 0
+        },
+        "clock_evidence": [
+          {
+            "expected_mhz": 1965,
+            "gpu_id": "0",
+            "observed_mhz": 1965
+          },
+          {
+            "expected_mhz": 1965,
+            "gpu_id": "1",
+            "observed_mhz": 1965
+          }
+        ],
+        "engine": "sglang",
+        "failure_evidence": {
+          "after_series_by_source": {
+            "decode-native": [
+              {
+                "labels": {
+                  "engine_type": "decode",
+                  "model_name": "Qwen/Qwen3-8B",
+                  "moe_ep_rank": "0",
+                  "pp_rank": "0",
+                  "tp_rank": "0"
+                },
+                "metric": "sglang:num_bootstrap_failed_reqs_total",
+                "value": 0.0
+              },
+              {
+                "labels": {
+                  "engine_type": "decode",
+                  "model_name": "Qwen/Qwen3-8B",
+                  "moe_ep_rank": "0",
+                  "pp_rank": "0",
+                  "tp_rank": "0"
+                },
+                "metric": "sglang:num_transfer_failed_reqs_total",
+                "value": 0.0
+              }
+            ],
+            "prefill-native": [
+              {
+                "labels": {
+                  "engine_type": "prefill",
+                  "model_name": "Qwen/Qwen3-8B",
+                  "moe_ep_rank": "0",
+                  "pp_rank": "0",
+                  "tp_rank": "0"
+                },
+                "metric": "sglang:num_bootstrap_failed_reqs_total",
+                "value": 0.0
+              },
+              {
+                "labels": {
+                  "engine_type": "prefill",
+                  "model_name": "Qwen/Qwen3-8B",
+                  "moe_ep_rank": "0",
+                  "pp_rank": "0",
+                  "tp_rank": "0"
+                },
+                "metric": "sglang:num_transfer_failed_reqs_total",
+                "value": 0.0
+              }
+            ]
+          },
+          "after_totals_by_source": {
+            "decode-native": 0.0,
+            "prefill-native": 0.0
+          },
+          "before_series_by_source": {
+            "decode-native": [
+              {
+                "labels": {
+                  "engine_type": "decode",
+                  "model_name": "Qwen/Qwen3-8B",
+                  "moe_ep_rank": "0",
+                  "pp_rank": "0",
+                  "tp_rank": "0"
+                },
+                "metric": "sglang:num_bootstrap_failed_reqs_total",
+                "value": 0.0
+              },
+              {
+                "labels": {
+                  "engine_type": "decode",
+                  "model_name": "Qwen/Qwen3-8B",
+                  "moe_ep_rank": "0",
+                  "pp_rank": "0",
+                  "tp_rank": "0"
+                },
+                "metric": "sglang:num_transfer_failed_reqs_total",
+                "value": 0.0
+              }
+            ],
+            "prefill-native": [
+              {
+                "labels": {
+                  "engine_type": "prefill",
+                  "model_name": "Qwen/Qwen3-8B",
+                  "moe_ep_rank": "0",
+                  "pp_rank": "0",
+                  "tp_rank": "0"
+                },
+                "metric": "sglang:num_bootstrap_failed_reqs_total",
+                "value": 0.0
+              },
+              {
+                "labels": {
+                  "engine_type": "prefill",
+                  "model_name": "Qwen/Qwen3-8B",
+                  "moe_ep_rank": "0",
+                  "pp_rank": "0",
+                  "tp_rank": "0"
+                },
+                "metric": "sglang:num_transfer_failed_reqs_total",
+                "value": 0.0
+              }
+            ]
+          },
+          "before_totals_by_source": {
+            "decode-native": 0.0,
+            "prefill-native": 0.0
+          }
+        },
+        "kv_transfer_bytes": {
+          "status": "measured",
+          "value": 28311552.0
+        },
+        "launch_binding": {
+          "roles": {
+            "decode": {
+              "argv_sha256": "72832c3d3a8867f39afda50828ffd77b0b752d4a8147f97594246c1212f3d75a",
+              "entrypoint": "sglang.launch_server",
+              "gpu_ids": [
+                "1"
+              ]
+            },
+            "prefill": {
+              "argv_sha256": "ffc4d9d3b52ed42c83ca254ab6bac830cef2fa2d3d330eb486c04cdb4f9fe7ba",
+              "entrypoint": "sglang.launch_server",
+              "gpu_ids": [
+                "0"
+              ]
+            },
+            "router": {
+              "argv_sha256": "e74cfcb54b37049d8f1b9e03c8ec230acaa9ce4f82312d3637ce2af6cd1f00c2",
+              "entrypoint": "sglang_router.launch_router",
+              "gpu_ids": []
+            }
+          },
+          "runtime_pool_allocation_verified": true,
+          "sha256": "c027bc7c416e278d220785dbf934ab9b67ddefd4bf32e1d6aced2172eb3ae131"
+        },
+        "pd_telemetry_delta": {
+          "decode_requests_total": 3.0,
+          "kv_transfer_failures_total": 0.0,
+          "kv_transfer_requests_total": 3.0,
+          "kv_transfer_time_seconds_total": 0.03337370790541172,
+          "prefill_requests_total": 3.0
+        },
+        "raw_artifact_sha256": {
+          "released-allocation.json": "6979db80641b41831e0b4fde4d01da1a48fa2b6939c25386dc80487d0c561745",
+          "requests.jsonl": "4b90d92b724e1df2011df013609b3a1032d16c78722ad485edc1244dec16d711",
+          "summary.json": "55ce3ff9bb5c88354ab7a2773c50f1706f597ead5d58a0299d6cb2c5da51d8ef",
+          "telemetry/after-decode-native.txt": "92777179c7dba163ce54880cec0f1bd0b5afcdefb4e48d82cdd121b9414b77a7",
+          "telemetry/after-prefill-native.txt": "7d47bfeba995c368b7b3fbce73428474379e76ae29dfdaf5ee5e832c029d393e",
+          "telemetry/after.json": "318208f24d76d209204560b3ad02d5cda090eee2d19ad56802d1c7b9cb4f9a4d",
+          "telemetry/before-decode-native.txt": "721a9fe0a5dafebcbc6cd9de390d8dff31f0da9be6d43bfa15f7eedacfe69d99",
+          "telemetry/before-prefill-native.txt": "c1c409f93c0b2b20f2619b80a1a287eeb6a78d53fe50e2a5ffe052077a303189",
+          "telemetry/before.json": "5bfa5b3d72679247140e26e09d611f1e8ba054ce4aaa9e900527c044f32bc793"
+        },
+        "rejections": [],
+        "repeat_index": 0,
+        "request_counts": {
+          "cancelled_requests": 1,
+          "completed_requests": 2,
+          "failed_requests": 0
+        },
+        "requests": [
+          {
+            "admission_to_finish_s": 0.40332982689142227,
+            "arrival_to_admission_s": 2.8959009796380997e-05,
+            "cancellation": null,
+            "error": null,
+            "output_token_count": 32,
+            "output_token_ids_sha256": "60c23e5a8e74de0e5459e2c2a0df1cb832286d587bda4a97b45b15b024ac6554",
+            "prompt_token_ids_exact": true,
+            "request_id": "short-001",
+            "status": "completed"
+          },
+          {
+            "admission_to_finish_s": 0.39428233122453094,
+            "arrival_to_admission_s": 0.00039049703627824783,
+            "cancellation": null,
+            "error": null,
+            "output_token_count": 32,
+            "output_token_ids_sha256": "293635e1447e586537faa64d50b606b735e872829ffd045f51b8cfbe2b7c1701",
+            "prompt_token_ids_exact": true,
+            "request_id": "short-002",
+            "status": "completed"
+          },
+          {
+            "admission_to_finish_s": 2.5007571796886623,
+            "arrival_to_admission_s": 0.0008171321824193001,
+            "cancellation": {
+              "mechanism": "client_stream_close",
+              "server_cancel_confirmation": false,
+              "trigger_ms": 2500.0
+            },
+            "error": "client_cancelled_stream",
+            "output_token_count": 224,
+            "output_token_ids_sha256": "c68867c42b8a4186caf1ba98433e5a723eed1233c9968301cb3ec3853f585177",
+            "prompt_token_ids_exact": true,
+            "request_id": "cancel-003",
+            "status": "cancelled"
+          }
+        ]
+      },
+      {
+        "architecture": "prefill_decode",
+        "arm_id": "sglang-prefill-decode",
+        "cleanup": {
+          "compute_process_count": 0,
+          "returncode": 0
+        },
+        "clock_evidence": [
+          {
+            "expected_mhz": 1965,
+            "gpu_id": "0",
+            "observed_mhz": 1965
+          },
+          {
+            "expected_mhz": 1965,
+            "gpu_id": "1",
+            "observed_mhz": 1965
+          }
+        ],
+        "engine": "sglang",
+        "failure_evidence": {
+          "after_series_by_source": {
+            "decode-native": [
+              {
+                "labels": {
+                  "engine_type": "decode",
+                  "model_name": "Qwen/Qwen3-8B",
+                  "moe_ep_rank": "0",
+                  "pp_rank": "0",
+                  "tp_rank": "0"
+                },
+                "metric": "sglang:num_bootstrap_failed_reqs_total",
+                "value": 0.0
+              },
+              {
+                "labels": {
+                  "engine_type": "decode",
+                  "model_name": "Qwen/Qwen3-8B",
+                  "moe_ep_rank": "0",
+                  "pp_rank": "0",
+                  "tp_rank": "0"
+                },
+                "metric": "sglang:num_transfer_failed_reqs_total",
+                "value": 0.0
+              }
+            ],
+            "prefill-native": [
+              {
+                "labels": {
+                  "engine_type": "prefill",
+                  "model_name": "Qwen/Qwen3-8B",
+                  "moe_ep_rank": "0",
+                  "pp_rank": "0",
+                  "tp_rank": "0"
+                },
+                "metric": "sglang:num_bootstrap_failed_reqs_total",
+                "value": 0.0
+              },
+              {
+                "labels": {
+                  "engine_type": "prefill",
+                  "model_name": "Qwen/Qwen3-8B",
+                  "moe_ep_rank": "0",
+                  "pp_rank": "0",
+                  "tp_rank": "0"
+                },
+                "metric": "sglang:num_transfer_failed_reqs_total",
+                "value": 0.0
+              }
+            ]
+          },
+          "after_totals_by_source": {
+            "decode-native": 0.0,
+            "prefill-native": 0.0
+          },
+          "before_series_by_source": {
+            "decode-native": [
+              {
+                "labels": {
+                  "engine_type": "decode",
+                  "model_name": "Qwen/Qwen3-8B",
+                  "moe_ep_rank": "0",
+                  "pp_rank": "0",
+                  "tp_rank": "0"
+                },
+                "metric": "sglang:num_bootstrap_failed_reqs_total",
+                "value": 0.0
+              },
+              {
+                "labels": {
+                  "engine_type": "decode",
+                  "model_name": "Qwen/Qwen3-8B",
+                  "moe_ep_rank": "0",
+                  "pp_rank": "0",
+                  "tp_rank": "0"
+                },
+                "metric": "sglang:num_transfer_failed_reqs_total",
+                "value": 0.0
+              }
+            ],
+            "prefill-native": [
+              {
+                "labels": {
+                  "engine_type": "prefill",
+                  "model_name": "Qwen/Qwen3-8B",
+                  "moe_ep_rank": "0",
+                  "pp_rank": "0",
+                  "tp_rank": "0"
+                },
+                "metric": "sglang:num_bootstrap_failed_reqs_total",
+                "value": 0.0
+              },
+              {
+                "labels": {
+                  "engine_type": "prefill",
+                  "model_name": "Qwen/Qwen3-8B",
+                  "moe_ep_rank": "0",
+                  "pp_rank": "0",
+                  "tp_rank": "0"
+                },
+                "metric": "sglang:num_transfer_failed_reqs_total",
+                "value": 0.0
+              }
+            ]
+          },
+          "before_totals_by_source": {
+            "decode-native": 0.0,
+            "prefill-native": 0.0
+          }
+        },
+        "kv_transfer_bytes": {
+          "status": "measured",
+          "value": 28311552.0
+        },
+        "launch_binding": {
+          "roles": {
+            "decode": {
+              "argv_sha256": "72832c3d3a8867f39afda50828ffd77b0b752d4a8147f97594246c1212f3d75a",
+              "entrypoint": "sglang.launch_server",
+              "gpu_ids": [
+                "1"
+              ]
+            },
+            "prefill": {
+              "argv_sha256": "ffc4d9d3b52ed42c83ca254ab6bac830cef2fa2d3d330eb486c04cdb4f9fe7ba",
+              "entrypoint": "sglang.launch_server",
+              "gpu_ids": [
+                "0"
+              ]
+            },
+            "router": {
+              "argv_sha256": "e74cfcb54b37049d8f1b9e03c8ec230acaa9ce4f82312d3637ce2af6cd1f00c2",
+              "entrypoint": "sglang_router.launch_router",
+              "gpu_ids": []
+            }
+          },
+          "runtime_pool_allocation_verified": true,
+          "sha256": "c027bc7c416e278d220785dbf934ab9b67ddefd4bf32e1d6aced2172eb3ae131"
+        },
+        "pd_telemetry_delta": {
+          "decode_requests_total": 3.0,
+          "kv_transfer_failures_total": 0.0,
+          "kv_transfer_requests_total": 3.0,
+          "kv_transfer_time_seconds_total": 0.015737295150756836,
+          "prefill_requests_total": 3.0
+        },
+        "raw_artifact_sha256": {
+          "released-allocation.json": "d7c517750c7d5a49eb03ea8bd5d7591bb246a4507fd4ab298730632ecc72be35",
+          "requests.jsonl": "0131cc8eaab6e2ff3db6b3a16ec4fedd1f2d3fb7f175b03931dd5226fecff4b4",
+          "summary.json": "57844c2deb5fcf21ec2ecc5dcfd1b58e099352501068a847dc370e0b6de52946",
+          "telemetry/after-decode-native.txt": "1020457c32db1cd91fc934943c91017b97f19457dfd846e24d15c4da0b9e9737",
+          "telemetry/after-prefill-native.txt": "7fe09e7dad292d8510bf5625ec509010d06ca64653bd5a99b573a5c54dd82e10",
+          "telemetry/after.json": "06f9b274e21a4b93cd5a25b919fb33c4d892281dc75c6609d94167ba12c9b095",
+          "telemetry/before-decode-native.txt": "8019d0c7d1c71293a7ada60f550cb68bd881c4cd5ba7b0ab0011c7b29899293e",
+          "telemetry/before-prefill-native.txt": "c4ce7ab4318d1ab4f7dc460062156c317a2c63b91e4fb3d4e203945f158edb70",
+          "telemetry/before.json": "c68e2a14f273dec064f36eeefa46e9968828443307d94a88cfafe1681e9122b8"
+        },
+        "rejections": [],
+        "repeat_index": 1,
+        "request_counts": {
+          "cancelled_requests": 1,
+          "completed_requests": 2,
+          "failed_requests": 0
+        },
+        "requests": [
+          {
+            "admission_to_finish_s": 0.3896860717795789,
+            "arrival_to_admission_s": 3.811996430158615e-05,
+            "cancellation": null,
+            "error": null,
+            "output_token_count": 32,
+            "output_token_ids_sha256": "60c23e5a8e74de0e5459e2c2a0df1cb832286d587bda4a97b45b15b024ac6554",
+            "prompt_token_ids_exact": true,
+            "request_id": "short-001",
+            "status": "completed"
+          },
+          {
+            "admission_to_finish_s": 0.39184250496327877,
+            "arrival_to_admission_s": 0.0005378150381147861,
+            "cancellation": null,
+            "error": null,
+            "output_token_count": 32,
+            "output_token_ids_sha256": "293635e1447e586537faa64d50b606b735e872829ffd045f51b8cfbe2b7c1701",
+            "prompt_token_ids_exact": true,
+            "request_id": "short-002",
+            "status": "completed"
+          },
+          {
+            "admission_to_finish_s": 2.500627431087196,
+            "arrival_to_admission_s": 0.0002303197979927063,
+            "cancellation": {
+              "mechanism": "client_stream_close",
+              "server_cancel_confirmation": false,
+              "trigger_ms": 2500.0
+            },
+            "error": "client_cancelled_stream",
+            "output_token_count": 222,
+            "output_token_ids_sha256": "f65a3758d1939a662cb7ef1e0b76392e9740a6e9fa1b26ebea1af595be5dabf5",
+            "prompt_token_ids_exact": true,
+            "request_id": "cancel-003",
+            "status": "cancelled"
+          }
+        ]
+      },
+      {
+        "architecture": "monolithic",
+        "arm_id": "sglang-monolithic",
+        "cleanup": {
+          "compute_process_count": 0,
+          "returncode": -9
+        },
+        "clock_evidence": [
+          {
+            "expected_mhz": 1965,
+            "gpu_id": "0",
+            "observed_mhz": 1965
+          },
+          {
+            "expected_mhz": 1965,
+            "gpu_id": "1",
+            "observed_mhz": 1965
+          }
+        ],
+        "engine": "sglang",
+        "failure_evidence": null,
+        "kv_transfer_bytes": null,
+        "launch_binding": null,
+        "pd_telemetry_delta": null,
+        "raw_artifact_sha256": {
+          "released-allocation.json": "bd1119f73d0cfa525388ff99bd11366413a8da3c8ecc05158a79f50b5b7976ce",
+          "requests.jsonl": "3baa1aefdeb0eddaef57f6433c18024863ec69c82b61b8d6780200d682474d32",
+          "summary.json": "0de58cf298ee1758640c90f9d845248262e97cecbecb42a9fd1af0bc6e191064"
+        },
+        "rejections": [],
+        "repeat_index": 1,
+        "request_counts": {
+          "cancelled_requests": 1,
+          "completed_requests": 2,
+          "failed_requests": 0
+        },
+        "requests": [
+          {
+            "admission_to_finish_s": 0.5843267352320254,
+            "arrival_to_admission_s": 4.0279701352119446e-05,
+            "cancellation": null,
+            "error": null,
+            "output_token_count": 32,
+            "output_token_ids_sha256": "60c23e5a8e74de0e5459e2c2a0df1cb832286d587bda4a97b45b15b024ac6554",
+            "prompt_token_ids_exact": true,
+            "request_id": "short-001",
+            "status": "completed"
+          },
+          {
+            "admission_to_finish_s": 0.5801929081790149,
+            "arrival_to_admission_s": 0.0005900748074054718,
+            "cancellation": null,
+            "error": null,
+            "output_token_count": 32,
+            "output_token_ids_sha256": "293635e1447e586537faa64d50b606b735e872829ffd045f51b8cfbe2b7c1701",
+            "prompt_token_ids_exact": true,
+            "request_id": "short-002",
+            "status": "completed"
+          },
+          {
+            "admission_to_finish_s": 2.5002802121452987,
+            "arrival_to_admission_s": 0.0010329708456993103,
+            "cancellation": {
+              "mechanism": "client_stream_close",
+              "server_cancel_confirmation": false,
+              "trigger_ms": 2500.0
+            },
+            "error": "client_cancelled_stream",
+            "output_token_count": 152,
+            "output_token_ids_sha256": "90e026f9092c266afeb8aaa71f364a0478d9f92164880e2c37c33da08ba9c9a9",
+            "prompt_token_ids_exact": true,
+            "request_id": "cancel-003",
+            "status": "cancelled"
+          }
+        ]
+      },
+      {
+        "architecture": "prefill_decode",
+        "arm_id": "vllm-prefill-decode",
+        "cleanup": {
+          "compute_process_count": 0,
+          "returncode": 0
+        },
+        "clock_evidence": [
+          {
+            "expected_mhz": 1965,
+            "gpu_id": "0",
+            "observed_mhz": 1965
+          },
+          {
+            "expected_mhz": 1965,
+            "gpu_id": "1",
+            "observed_mhz": 1965
+          }
+        ],
+        "engine": "vllm",
+        "failure_evidence": {
+          "after_series_by_source": {
+            "decode-native": [
+              {
+                "labels": {
+                  "engine": "0",
+                  "model_name": "Qwen/Qwen3-8B"
+                },
+                "metric": "vllm:nixl_num_failed_transfers_total",
+                "value": 0.0
+              }
+            ]
+          },
+          "after_totals_by_source": {
+            "decode-native": 0.0
+          },
+          "before_series_by_source": {
+            "decode-native": [
+              {
+                "labels": {
+                  "engine": "0",
+                  "model_name": "Qwen/Qwen3-8B"
+                },
+                "metric": "vllm:nixl_num_failed_transfers_total",
+                "value": 0.0
+              }
+            ]
+          },
+          "before_totals_by_source": {
+            "decode-native": 0.0
+          }
+        },
+        "kv_transfer_bytes": {
+          "status": "measured",
+          "value": 7077888.0
+        },
+        "launch_binding": {
+          "roles": {
+            "decode": {
+              "argv_sha256": "1f2bfb2346a116a275049bb2d13e797efd67d5880978e0cc473dab9c97488999",
+              "entrypoint": "vllm.entrypoints.openai.api_server",
+              "gpu_ids": [
+                "1"
+              ]
+            },
+            "prefill": {
+              "argv_sha256": "8186622f47add4b538056b1f5f91f018d224b00b3566169354ae2ee6e14a5edb",
+              "entrypoint": "vllm.entrypoints.openai.api_server",
+              "gpu_ids": [
+                "0"
+              ]
+            },
+            "router": {
+              "argv_sha256": "32200d5253bc92faa2c415501a7d9531c0a5dc7623116c07921bf0fd5d94868f",
+              "entrypoint": "labs.serving_comparison.vllm_pd_proxy",
+              "gpu_ids": []
+            }
+          },
+          "runtime_pool_allocation_verified": true,
+          "sha256": "6eaee47858cf0119b0b3e65e5e5aadc9cc4dd269a063dece4c04338e6829481f"
+        },
+        "pd_telemetry_delta": {
+          "decode_requests_total": 2.0,
+          "kv_transfer_failures_total": 0.0,
+          "kv_transfer_requests_total": 3.0,
+          "kv_transfer_time_seconds_total": 0.015030000000000002,
+          "prefill_requests_total": 3.0
+        },
+        "raw_artifact_sha256": {
+          "released-allocation.json": "81a2ae2f0daf70b682e0f8a4b4fd6e0590079b14de512dec64bb5a18513a2811",
+          "requests.jsonl": "57a159d0935f94b1563a225ab53776d4a432ed2c3f640b3d35ffc40266402a4b",
+          "summary.json": "e1361f7387dfe3bccb8f35f63794fbe80bab8796880bfd51c64cc805e2c9d15c",
+          "telemetry/after-decode-native.txt": "f3a6c1f2e928779279973100ce2253ff7d8271103816dd64c967aadb7d1ffe40",
+          "telemetry/after-prefill-native.txt": "b1b1a348ee6527b61def5490ff643f5e910f3614d3a6672bb2e9c6b1a497ce6f",
+          "telemetry/after.json": "238b95f87b786aa1525fca735aa213a759c963a5a6e24490e5e86cec0c1a4cf5",
+          "telemetry/before-decode-native.txt": "ed2c3bc6a7c62cfab727422c6b1cffe2fc86ae0e31ca230885de639cba5be8ac",
+          "telemetry/before-prefill-native.txt": "d8a1e6f1ef8c5fd4d177dc5b6c254f7d671ac02bbf4b76f657784f25aaac24c8",
+          "telemetry/before.json": "7590395b65c83cdc0f42885d46c4ea05f4887e92c397887f2eb6ce8c0b735db1"
+        },
+        "rejections": [],
+        "repeat_index": 1,
+        "request_counts": {
+          "cancelled_requests": 1,
+          "completed_requests": 2,
+          "failed_requests": 0
+        },
+        "requests": [
+          {
+            "admission_to_finish_s": 0.2677751970477402,
+            "arrival_to_admission_s": 3.166962414979935e-05,
+            "cancellation": null,
+            "error": null,
+            "output_token_count": 32,
+            "output_token_ids_sha256": "60c23e5a8e74de0e5459e2c2a0df1cb832286d587bda4a97b45b15b024ac6554",
+            "prompt_token_ids_exact": true,
+            "request_id": "short-001",
+            "status": "completed"
+          },
+          {
+            "admission_to_finish_s": 0.28727561607956886,
+            "arrival_to_admission_s": 0.0005865637212991714,
+            "cancellation": null,
+            "error": null,
+            "output_token_count": 32,
+            "output_token_ids_sha256": "293635e1447e586537faa64d50b606b735e872829ffd045f51b8cfbe2b7c1701",
+            "prompt_token_ids_exact": true,
+            "request_id": "short-002",
+            "status": "completed"
+          },
+          {
+            "admission_to_finish_s": 2.500900413841009,
+            "arrival_to_admission_s": 0.00027452874928712845,
+            "cancellation": {
+              "mechanism": "client_stream_close",
+              "server_cancel_confirmation": false,
+              "trigger_ms": 2500.0
+            },
+            "error": "client_cancelled_stream",
+            "output_token_count": 364,
+            "output_token_ids_sha256": "d6d8030d86a4bf4fa47979bb69cef5044f49f2b0da77b3668e7e5cc1bb5a24a6",
+            "prompt_token_ids_exact": true,
+            "request_id": "cancel-003",
+            "status": "cancelled"
+          }
+        ]
+      },
+      {
+        "architecture": "monolithic",
+        "arm_id": "vllm-monolithic",
+        "cleanup": {
+          "compute_process_count": 0,
+          "returncode": 0
+        },
+        "clock_evidence": [
+          {
+            "expected_mhz": 1965,
+            "gpu_id": "0",
+            "observed_mhz": 1965
+          },
+          {
+            "expected_mhz": 1965,
+            "gpu_id": "1",
+            "observed_mhz": 1965
+          }
+        ],
+        "engine": "vllm",
+        "failure_evidence": null,
+        "kv_transfer_bytes": null,
+        "launch_binding": null,
+        "pd_telemetry_delta": null,
+        "raw_artifact_sha256": {
+          "released-allocation.json": "8e76cd6c39360f5be8c058d665c8e58bdd44277c314a03a1e7ab5d11c6615327",
+          "requests.jsonl": "25ebba9806282644e9d0d215e942ade2897b64726e941cc2da7e4042c8bd7a76",
+          "summary.json": "4ebb9785777d79094d534f1181bb560f3634620a8201ebd912c6e4573bce65c4"
+        },
+        "rejections": [],
+        "repeat_index": 1,
+        "request_counts": {
+          "cancelled_requests": 1,
+          "completed_requests": 2,
+          "failed_requests": 0
+        },
+        "requests": [
+          {
+            "admission_to_finish_s": 0.2742296941578388,
+            "arrival_to_admission_s": 2.622883766889572e-05,
+            "cancellation": null,
+            "error": null,
+            "output_token_count": 32,
+            "output_token_ids_sha256": "60c23e5a8e74de0e5459e2c2a0df1cb832286d587bda4a97b45b15b024ac6554",
+            "prompt_token_ids_exact": true,
+            "request_id": "short-001",
+            "status": "completed"
+          },
+          {
+            "admission_to_finish_s": 0.27796262595802546,
+            "arrival_to_admission_s": 0.00039290590211749077,
+            "cancellation": null,
+            "error": null,
+            "output_token_count": 32,
+            "output_token_ids_sha256": "293635e1447e586537faa64d50b606b735e872829ffd045f51b8cfbe2b7c1701",
+            "prompt_token_ids_exact": true,
+            "request_id": "short-002",
+            "status": "completed"
+          },
+          {
+            "admission_to_finish_s": 2.501227828208357,
+            "arrival_to_admission_s": 0.0010411487892270088,
+            "cancellation": {
+              "mechanism": "client_stream_close",
+              "server_cancel_confirmation": false,
+              "trigger_ms": 2500.0
+            },
+            "error": "client_cancelled_stream",
+            "output_token_count": 305,
+            "output_token_ids_sha256": "38960a8341be841d3377ff9ab59fb5ffd6704e2dcab3bce0ad917c619d893bf5",
+            "prompt_token_ids_exact": true,
+            "request_id": "cancel-003",
+            "status": "cancelled"
+          }
+        ]
+      }
+    ],
+    "measured_row_counts": {
+      "cancelled": 8,
+      "completed": 16,
+      "exact_prompt_echo": 24,
+      "failed": 0,
+      "total": 24
+    },
+    "publication_ready": false,
+    "raw_run_artifacts": {
+      "manifest_sha256": "0d8c57ed21c16590c478fc12cc7dac1a987166591feeb22cc371a52a77332f22",
+      "summary_sha256": "dd604d248f35606ae528d0792ed32f8678597e89eab30dfe442336088d03bdef"
+    },
+    "rejections": [],
+    "request_trace_contract": [
+      {
+        "arrival_ms": 0,
+        "cancel_after_ms": null,
+        "deadline_ms": 5000,
+        "expected_status": "completed",
+        "max_tokens": 32,
+        "prompt_token_count": 12,
+        "prompt_token_ids_sha256": "65a93f5775fc18118e4220f35159ec1a17d27f504660c2e13dd4297e74e908a4",
+        "request_id": "short-001"
+      },
+      {
+        "arrival_ms": 20,
+        "cancel_after_ms": null,
+        "deadline_ms": 5000,
+        "expected_status": "completed",
+        "max_tokens": 32,
+        "prompt_token_count": 13,
+        "prompt_token_ids_sha256": "49ea235a2d4b5feaf9e4082efa219d5eb8a8b209b61971965086c187b23c03bc",
+        "request_id": "short-002"
+      },
+      {
+        "arrival_ms": 40,
+        "cancel_after_ms": 2500,
+        "deadline_ms": 5000,
+        "expected_status": "cancelled",
+        "max_tokens": 2048,
+        "prompt_token_count": 20,
+        "prompt_token_ids_sha256": "1e3d3e3f4fc45043b0945a533155d92be86838653fa762fd60647bdd9a5e0862",
+        "request_id": "cancel-003"
+      }
+    ],
+    "runtimes": {
+      "sglang-monolithic": {
+        "architecture": "monolithic",
+        "build_id": "sha256:5fc92353d09d7ed11cb9d3a25eea1a956d0f0218fb2fa0e30ba76f8c73fd742c",
+        "engine": "sglang",
+        "version": "0.5.20"
+      },
+      "sglang-prefill-decode": {
+        "architecture": "prefill_decode",
+        "build_id": "sha256:5fc92353d09d7ed11cb9d3a25eea1a956d0f0218fb2fa0e30ba76f8c73fd742c",
+        "engine": "sglang",
+        "version": "0.5.20"
+      },
+      "vllm-monolithic": {
+        "architecture": "monolithic",
+        "build_id": "sif-sha256:b2c8499e7618f1744724e184311f16aa750496939fd24625c54ab9c7aa3b58a3",
+        "engine": "vllm",
+        "version": "0.26.0"
+      },
+      "vllm-prefill-decode": {
+        "architecture": "prefill_decode",
+        "build_id": "sif-sha256:b2c8499e7618f1744724e184311f16aa750496939fd24625c54ab9c7aa3b58a3",
+        "engine": "vllm",
+        "version": "0.26.0"
+      }
+    },
+    "source_files": {
+      "profile_sha256": "3f12ea6637091130fca98a6df9c925bcfed3dc1bdbc483734a417925fca163f5",
+      "request_trace_sha256": "060782aef8561d7f9928ec94f775919453afc657da26115b43608991dc0d82cc",
+      "sglang_pd_launch_sha256": "c027bc7c416e278d220785dbf934ab9b67ddefd4bf32e1d6aced2172eb3ae131",
+      "sglang_pd_provenance_sha256": "1a846de88fd8027bd0934862ca208c681ed1c23475a76507b89237ed28c9f4bb",
+      "vllm_pd_launch_sha256": "6eaee47858cf0119b0b3e65e5e5aadc9cc4dd269a063dece4c04338e6829481f",
+      "vllm_pd_provenance_sha256": "381687e503f402c6956f3f64ac4b1fb722bb04070a6c41ee1458ae4ce9ff0ff9"
+    },
+    "status": "complete",
+    "valid_for_performance_claim": false
+  },
+  "limitations": [
+    "The tool marked this run valid for functional comparison and not valid for a performance claim.",
+    "Cancellation is evidenced by client stream closure without server confirmation.",
+    "The SGLang monolithic parents required the bounded SIGKILL fallback during shutdown.",
+    "The P/D connector ran on one host. No RDMA device was exposed to this environment."
+  ],
+  "native_bootstrap_negative": {
+    "accepted": true,
+    "after_series_by_source": {
+      "decode-native": [
+        {
+          "labels": {
+            "engine_type": "decode",
+            "model_name": "Qwen/Qwen3-8B",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "metric": "sglang:num_bootstrap_failed_reqs_total",
+          "value": 1.0
+        },
+        {
+          "labels": {
+            "engine_type": "decode",
+            "model_name": "Qwen/Qwen3-8B",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "metric": "sglang:num_transfer_failed_reqs_total",
+          "value": 0.0
+        }
+      ],
+      "prefill-native": [
+        {
+          "labels": {
+            "engine_type": "prefill",
+            "model_name": "Qwen/Qwen3-8B",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "metric": "sglang:num_bootstrap_failed_reqs_total",
+          "value": 0.0
+        },
+        {
+          "labels": {
+            "engine_type": "prefill",
+            "model_name": "Qwen/Qwen3-8B",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "metric": "sglang:num_transfer_failed_reqs_total",
+          "value": 0.0
+        }
+      ]
+    },
+    "after_totals_by_source": {
+      "decode-native": 1.0,
+      "prefill-native": 0.0
+    },
+    "artifacts": {
+      "after_decode_prom_sha256": "8a1f995a00331575fb53604a0fea7949b37db84a840d2fa42d691b40f15c31cf",
+      "after_prefill_prom_sha256": "c829b17514be26b0afb365d3046e201019803125b4a6a6bd99af3e42b69caee0",
+      "after_snapshot_sha256": "c8e57c807052b923c522688e668c945a60ab030985a52f0877e8189019093630",
+      "before_decode_prom_sha256": "48ea4036f2b8dfce7ccdbcf7657e24a65cc0f48c25bd5894a618ccd93c5c0627",
+      "before_prefill_prom_sha256": "7be85bc4d18118495f5c9865adbb3489e64dd2d63e46b40806fb68f1aa856394",
+      "before_snapshot_sha256": "3c3dd603e3ffaf0c3150f8aeebfccae72628558a1ca0d24353fd5cd49bc6ede4",
+      "cleanup_json_sha256": "85dfd774021997d61cd6ef5239e9b30b3f36017836c99222c0a53c5f2e2197fa",
+      "result_json_sha256": "aa8b8ab70489c6a50e5d74d7ef0bb4084a27bd2700171d3fdd371ad8042b8adf",
+      "strict_gate_rejection_sha256": "83f96a371ffecc55e4186ea5797a71d83ee14c4d41162fac5bc6c960b56bbd08"
+    },
+    "before_series_by_source": {
+      "decode-native": [
+        {
+          "labels": {
+            "engine_type": "decode",
+            "model_name": "Qwen/Qwen3-8B",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "metric": "sglang:num_bootstrap_failed_reqs_total",
+          "value": 0.0
+        },
+        {
+          "labels": {
+            "engine_type": "decode",
+            "model_name": "Qwen/Qwen3-8B",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "metric": "sglang:num_transfer_failed_reqs_total",
+          "value": 0.0
+        }
+      ],
+      "prefill-native": [
+        {
+          "labels": {
+            "engine_type": "prefill",
+            "model_name": "Qwen/Qwen3-8B",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "metric": "sglang:num_bootstrap_failed_reqs_total",
+          "value": 0.0
+        },
+        {
+          "labels": {
+            "engine_type": "prefill",
+            "model_name": "Qwen/Qwen3-8B",
+            "moe_ep_rank": "0",
+            "pp_rank": "0",
+            "tp_rank": "0"
+          },
+          "metric": "sglang:num_transfer_failed_reqs_total",
+          "value": 0.0
+        }
+      ]
+    },
+    "before_totals_by_source": {
+      "decode-native": 0.0,
+      "prefill-native": 0.0
+    },
+    "cleanup": {
+      "compute_process_count": 0,
+      "returncode": 0
+    },
+    "failure_counter_deltas_by_source": {
+      "decode-native": 1.0,
+      "prefill-native": 0.0
+    },
+    "strict_gate_rejection": {
+      "exception_type": "ConfigError",
+      "message": "P/D request interval contains 1 failed KV transfers at decode-native, series [\"sglang:num_bootstrap_failed_reqs_total\",[[\"engine_type\",\"decode\"],[\"model_name\",\"Qwen/Qwen3-8B\"],[\"moe_ep_rank\",\"0\"],[\"pp_rank\",\"0\"],[\"tp_rank\",\"0\"]]]"
+    },
+    "tracked_hashes_unchanged": true
+  },
+  "native_cpu_counter_probes": {
+    "initial_setup_attempt": {
+      "reason": "CPU platform selection was not enabled",
+      "status": "stopped_before_collector_construction"
+    },
+    "original_runtime": {
+      "accepted": true,
+      "after": {
+        "sglang:num_bootstrap_failed_reqs_total": {
+          "sample_count": 1,
+          "samples": [
+            {
+              "line": "sglang:num_bootstrap_failed_reqs_total{engine_type=\"prefill\",model_name=\"native-counter-probe\",moe_ep_rank=\"0\",pp_rank=\"0\",tp_rank=\"0\"} 1.0",
+              "value": 1.0
+            }
+          ],
+          "sum": 1.0,
+          "type_counter": true
+        },
+        "sglang:num_transfer_failed_reqs_total": {
+          "sample_count": 1,
+          "samples": [
+            {
+              "line": "sglang:num_transfer_failed_reqs_total{engine_type=\"prefill\",model_name=\"native-counter-probe\",moe_ep_rank=\"0\",pp_rank=\"0\",tp_rank=\"0\"} 1.0",
+              "value": 1.0
+            }
+          ],
+          "sum": 1.0,
+          "type_counter": true
+        }
+      },
+      "artifacts": {
+        "after_prom_sha256": "061c6c919ebe7cccbf43c283ddf14a75a2ad11f62899fa0cefc1b776209aac85",
+        "before_prom_sha256": "0beedbd9c362a3fa6a8363c51753d2386b8e5b562d1ed70847f081b8fdf1246c",
+        "result_json_sha256": "a63a7c42580690c50bcc371cf93abf32ef26c3712f4fbb94d03c96e193b43e86"
+      },
+      "before": {
+        "sglang:num_bootstrap_failed_reqs_total": {
+          "sample_count": 0,
+          "samples": [],
+          "sum": 0,
+          "type_counter": false
+        },
+        "sglang:num_transfer_failed_reqs_total": {
+          "sample_count": 0,
+          "samples": [],
+          "sum": 0,
+          "type_counter": false
+        }
+      },
+      "collector_sha256": "0d85bbc763f44cec6ac7dbab3a70a5b75cd225b7d1a619994b1100fe4a16f4ff",
+      "expect_before": "absent"
+    },
+    "prepared_runtime": {
+      "accepted": true,
+      "after": {
+        "sglang:num_bootstrap_failed_reqs_total": {
+          "sample_count": 1,
+          "samples": [
+            {
+              "line": "sglang:num_bootstrap_failed_reqs_total{engine_type=\"prefill\",model_name=\"native-counter-probe\",moe_ep_rank=\"0\",pp_rank=\"0\",tp_rank=\"0\"} 1.0",
+              "value": 1.0
+            }
+          ],
+          "sum": 1.0,
+          "type_counter": true
+        },
+        "sglang:num_transfer_failed_reqs_total": {
+          "sample_count": 1,
+          "samples": [
+            {
+              "line": "sglang:num_transfer_failed_reqs_total{engine_type=\"prefill\",model_name=\"native-counter-probe\",moe_ep_rank=\"0\",pp_rank=\"0\",tp_rank=\"0\"} 1.0",
+              "value": 1.0
+            }
+          ],
+          "sum": 1.0,
+          "type_counter": true
+        }
+      },
+      "artifacts": {
+        "after_prom_sha256": "44ead2f6e5dac6a50c15c85c5501e0d536b64be4ef303933ff00719605ffb054",
+        "before_prom_sha256": "ea23c65bcad41cded67943b03f2584024199267ddaf8a866188e09400c0718a8",
+        "result_json_sha256": "3634569e15b9b998b6b16e1f61ccd487de06955519a74aebe982c6014bc2edba"
+      },
+      "before": {
+        "sglang:num_bootstrap_failed_reqs_total": {
+          "sample_count": 1,
+          "samples": [
+            {
+              "line": "sglang:num_bootstrap_failed_reqs_total{engine_type=\"prefill\",model_name=\"native-counter-probe\",moe_ep_rank=\"0\",pp_rank=\"0\",tp_rank=\"0\"} 0.0",
+              "value": 0.0
+            }
+          ],
+          "sum": 0.0,
+          "type_counter": true
+        },
+        "sglang:num_transfer_failed_reqs_total": {
+          "sample_count": 1,
+          "samples": [
+            {
+              "line": "sglang:num_transfer_failed_reqs_total{engine_type=\"prefill\",model_name=\"native-counter-probe\",moe_ep_rank=\"0\",pp_rank=\"0\",tp_rank=\"0\"} 0.0",
+              "value": 0.0
+            }
+          ],
+          "sum": 0.0,
+          "type_counter": true
+        }
+      },
+      "collector_sha256": "6e9975c7a5e7395dfe23cb5233c3b19901d9f46046c9c018c7b217ad48e43378",
+      "expect_before": "zero"
+    },
+    "probe_script_sha256": "caa419ee50d00a5b13c28d7177ab456f4e94c27eed6376821f369dff1d6e5642"
+  },
+  "runtime_code": {
+    "python_files": [
+      {
+        "path": "__init__.py",
+        "sha256": "870b171bf54f731ea0eb6456a31124e8de0efec824cca6bd1e6e76c1e0cd0be5",
+        "size_bytes": 127
+      },
+      {
+        "path": "__main__.py",
+        "sha256": "a2ee11237cf0aba0b2b17bb84e15655deb2108c4ecf7a19761c2736f5a8b7821",
+        "size_bytes": 111
+      },
+      {
+        "path": "lifecycle.py",
+        "sha256": "0ef180e0c14c7de8820d53736fdb6ec9c8cab19f8386adabd343e2be26adbf2c",
+        "size_bytes": 16561
+      },
+      {
+        "path": "prepare_sglang_runtime_tool.py",
+        "sha256": "cada78ef02e031c796a854f88dfe62ae4c71764f08d17622c1ad1cbb0727de0f",
+        "size_bytes": 14110
+      },
+      {
+        "path": "process_group_launcher.py",
+        "sha256": "06f283e6dfe859ab0cd9fb64294310d2c5ee0f4209c1afe130d15e82375920a4",
+        "size_bytes": 6065
+      },
+      {
+        "path": "protocol.py",
+        "sha256": "d46f0f3f143eb5e87cbbc22b313c72d0729ea881a9256cce3020788d18c0f83d",
+        "size_bytes": 17037
+      },
+      {
+        "path": "provenance.py",
+        "sha256": "ec00ccb54bca90b24e164adc0be2acbf8583291f177d6857c8364af147540add",
+        "size_bytes": 11331
+      },
+      {
+        "path": "runner.py",
+        "sha256": "da35070fde780ca3ef79e075f8d238730015bc20109e4ad9502b081910826f04",
+        "size_bytes": 35726
+      },
+      {
+        "path": "schema.py",
+        "sha256": "674cecf2e0cdff4cd4fe60274ae644ab93b7e1915d36e1fe07a2124c62fdb3ca",
+        "size_bytes": 30182
+      },
+      {
+        "path": "serving_comparison_tool.py",
+        "sha256": "fd0b562fec541b55e02b7a1a4c10e8d399ec95366af10f00eef74131099a825b",
+        "size_bytes": 2496
+      },
+      {
+        "path": "telemetry.py",
+        "sha256": "f6b756868dd1f112583faa75944a81fdea1e4a0227ee91bd1bcb44267bfecc9c",
+        "size_bytes": 16870
+      },
+      {
+        "path": "vllm_pd_proxy.py",
+        "sha256": "313d86e1940bbc505e76c5cbbca8adbc9157b3e28da758c38034bdfc87691b1a",
+        "size_bytes": 9236
+      }
+    ],
+    "python_tree_sha256": "1e1da89b3f0606138e1663db4fc98ffd3d16b75a2303bb0c52a3e9a2f5682ddf",
+    "test_files": [
+      {
+        "path": "test_serving_comparison.py",
+        "sha256": "2defa53734761ab5e65c3a4379c332d7fb380b7a5b9e3e48962472972b3e6c5e",
+        "size_bytes": 44552
+      },
+      {
+        "path": "test_serving_failure_sources.py",
+        "sha256": "5e1a8d8c9c98048f83b0b40895bf8a6cd70830ce49aa3ab7af0b9d55ffe4d269",
+        "size_bytes": 11585
+      },
+      {
+        "path": "test_serving_followthrough_engine_lifecycle.py",
+        "sha256": "c6147ee85e50da40b4be1b30fce23304ca1db3d2888fe412d6d0d1f85127b875",
+        "size_bytes": 9674
+      },
+      {
+        "path": "test_serving_launch_binding.py",
+        "sha256": "c53c478a52516472a0f086e0d1eadb6ccb4c2ca8e592561d2a79b3ab8424e78b",
+        "size_bytes": 6949
+      },
+      {
+        "path": "test_serving_policies.py",
+        "sha256": "8951d4d484886ec19ed664cfdaa8a7764aa9181e7761f461bc6fc6762cd049ad",
+        "size_bytes": 6226
+      },
+      {
+        "path": "test_serving_stack.py",
+        "sha256": "94b2f275df89f88c4bb81e814122d7dea9fc33cdd3e82817c761fee6666e2c87",
+        "size_bytes": 2594
+      },
+      {
+        "path": "test_serving_telemetry_integrity.py",
+        "sha256": "b56f44d2e94028b73c3c7f3598df7fc5855175578afe7e558254f65bc0940acb",
+        "size_bytes": 9216
+      },
+      {
+        "path": "test_serving_trace.py",
+        "sha256": "4ed82a9782a2dd59f883f2cdf28b91274f62ed28241b21a4243840a807916dbb",
+        "size_bytes": 4717
+      }
+    ],
+    "test_tree_sha256": "e9500757a508c31560c65c6ee5dcf61d13f8a6926c43bc41af6d43439f069fc0"
+  },
+  "runtime_preparation": {
+    "collector_original_sha256": "sha256:0d85bbc763f44cec6ac7dbab3a70a5b75cd225b7d1a619994b1100fe4a16f4ff",
+    "collector_patched_sha256": "sha256:6e9975c7a5e7395dfe23cb5233c3b19901d9f46046c9c018c7b217ad48e43378",
+    "manifest_sha256": "52e1fd50f7db04688525b27a849d49777fcbf312425eec238268b92ae93276e5",
+    "original_package_digest": "sha256:417c20d218c5b2a7e7816a52e66ee70e7470a4d405965007c9a7402eebfceb38",
+    "output_package_digest": "sha256:5fc92353d09d7ed11cb9d3a25eea1a956d0f0218fb2fa0e30ba76f8c73fd742c",
+    "patch_identity": "sglang-0.5.20-initialize-failure-counter-labels-v1",
+    "runtime_build_id": "sha256:5fc92353d09d7ed11cb9d3a25eea1a956d0f0218fb2fa0e30ba76f8c73fd742c",
+    "sglang_version": "0.5.20"
+  },
+  "schema_version": "aisp.serving-counter-validation.v1",
+  "scope": "functional B200 serving comparison with native failure telemetry",
+  "shutdown_behavior": {
+    "details": "Both measured SGLang monolithic parents received SIGTERM. Their scheduler children exited with signal 15, the parent entered its SIGQUIT diagnostics and kill_process_tree path, and the owned process group exceeded the 45 second shutdown deadline. The lifecycle then used SIGKILL. Both fleet release checks found zero compute processes. The measured requests had already completed.",
+    "prior_baseline_observed": {
+      "forced_termination_returncode": -9,
+      "runs_checked": 2,
+      "same_native_shutdown_sequence": true
+    },
+    "sglang_monolithic_forced_terminations": 2
+  }
+}

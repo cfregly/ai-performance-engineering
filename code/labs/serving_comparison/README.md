@@ -11,9 +11,27 @@ It starts one arm at a time, records streaming observations, validates output to
 
 This is a diagnostic tool. `valid_for_performance_claim` and `publication_ready` are always false. Use the repository benchmark and profiler workflow before making a speedup claim.
 
-## Validated SGLang limit
+## Prepare SGLang failure counters
 
-The checked SGLang 0.5.20 build can complete a real P/D warmup with exact prompt echoes, streamed token ids, client cancellation, and positive NIXL transfer activity. That warmup is not valid measured P/D evidence. Its default multiprocess Prometheus exporter omits both native failure counter families and their `# TYPE` declarations while their value is zero. The strict template therefore rejects SGLang P/D before measurement. A four-arm result remains unqualified until the live endpoint exposes `sglang:num_bootstrap_failed_reqs_total` and `sglang:num_transfer_failed_reqs_total` as native counter families. The source links under Native identity and telemetry identify the checked counter definitions and exporter surface.
+The checked SGLang 0.5.20 collector creates labeled failure counters without initializing their label values. Its multiprocess exporter omits those counters until the first failure. The original B200 runs therefore rejected SGLang P/D before measurement, even though the warmup requests and KV transfers completed.
+
+Prepare an isolated runtime before running this build:
+
+```bash
+PYTHONPATH=code python -m cli.aisp tools serving-prepare-runtime -- \
+  --package-dir /path/to/site-packages/sglang \
+  --output-dir /path/to/sglang-counter-runtime
+```
+
+The tool accepts the checked collector source bytes only. It copies the package and initializes the native label values for `sglang:num_bootstrap_failed_reqs_total` and `sglang:num_transfer_failed_reqs_total` at startup. Their existing failure handlers still increment the same counters. It does not change the installed package, replace missing telemetry with zero, or reset a running counter.
+
+Set `lifecycle.environment.PYTHONPATH` in both SGLang profile entries to `/path/to/sglang-counter-runtime:/path/to/ai-performance-engineering/code`. The process group launcher passes this to its children. If a child launch declares its own `PYTHONPATH`, set that value to the same path. Continue to launch `python -m sglang.launch_server`.
+
+Copy `runtime_build_id` from `runtime-receipt.json` into both SGLang profile entries and the P/D provenance file. The receipt records the source and prepared package digests, plus the changed collector file. Regenerate the launch manifest digest after changing its environment.
+
+The comparison still requires native counter samples or exact counter-family declarations. Missing telemetry, counter resets, and positive failure deltas reject the run. Retire this preparation step when a checked upstream build exports these counters at zero and passes the same zero, increment, and serving tests.
+
+The [Verda B200 validation](../../docs/sglang_failure_counter_validation.md) records the native failure probe and the completed two-repeat, four-arm comparison.
 
 ## Run it
 
@@ -79,11 +97,13 @@ Prometheus telemetry selectors accept `name` or `names`, exact label filters, `r
 | --- | --- | --- |
 | Transfer requests | `vllm:nixl_xfer_time_seconds_count` | `sglang:kv_transfer_latency_ms_count` |
 | Transfer time | `vllm:nixl_xfer_time_seconds_sum` | `sglang:kv_transfer_latency_ms_sum`, scaled from ms |
-| Transfer failures | `vllm:nixl_num_failed_transfers_total` | `sglang:num_bootstrap_failed_reqs_total` plus `sglang:num_transfer_failed_reqs_total` |
+| Transfer failures | `vllm:nixl_num_failed_transfers_total` | Both native failure counters from each SGLang worker endpoint |
 | Transfer bytes | `vllm:nixl_bytes_transferred_sum` | `sglang:kv_transfer_total_mb_sum`, scaled by 1,048,576 bytes per MiB |
 | Phase requests | `vllm:request_success_total` on the separate P and D endpoints | `sglang:num_requests_total` on the separate P and D endpoints |
 
-SGLang emits its NIXL transfer latency, failure, and byte metrics on the prefill endpoint. The decode endpoint supplies decode request activity. The required P/D gate is positive transfer request count, transfer time, prefill activity, and decode activity. The failed-transfer delta must remain zero. Transfer bytes, server queue age, and per-pool idle fractions are diagnostics with an explicit `measured` or `unsupported` state. Missing required evidence rejects the run. An unsupported optional signal stays visible and never becomes zero.
+SGLang emits its NIXL transfer latency and byte metrics on the prefill endpoint. The decode endpoint supplies decode request activity. Both endpoints can record bootstrap and transfer failures, so both declare `kv_transfer_failures_total`. The tool reports their sum and preserves each selected metric name, label set, and value. It checks every counter series before using that sum. A reset cannot hide a new failure in another series. Other telemetry semantics must have one source.
+
+The required P/D gate is positive transfer request count, transfer time, prefill activity, and decode activity. Each failed-transfer delta must remain zero. The tool retains parsed snapshots and raw scrapes before checking interval validity, including rejected intervals. Transfer bytes, server queue age, and per-pool idle fractions are diagnostics with an explicit `measured` or `unsupported` state. Missing required evidence rejects the run. An unsupported optional signal stays visible and never becomes zero.
 
 The validated same-host setup used NIXL over UCX without an RDMA device. Its evidence covers same-host GPU transfer only. It does not establish cross-node RDMA behavior or performance.
 

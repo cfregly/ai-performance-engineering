@@ -69,6 +69,12 @@ TOOLS: Dict[str, ToolSpec] = {
         module_name="labs.serving_comparison.serving_comparison_tool",
         description="Replay fixed serving workloads across engines and deployment architectures.",
     ),
+    "serving-prepare-runtime": ToolSpec(
+        name="serving-prepare-runtime",
+        script_path=REPO_ROOT / "labs" / "serving_comparison" / "prepare_sglang_runtime_tool.py",
+        module_name="labs.serving_comparison.prepare_sglang_runtime_tool",
+        description="Create an isolated SGLang package with native failure counters initialized.",
+    ),
     "cross-layer-diagnose": ToolSpec(
         name="cross-layer-diagnose",
         script_path=REPO_ROOT / "core" / "analysis" / "cross_layer_diagnosis.py",
@@ -267,7 +273,7 @@ TOOLS: Dict[str, ToolSpec] = {
 # Shared with the MCP surface so the diagnostic tool allowlist cannot drift.
 DIAGNOSTIC_TOOLS = (
     "network-diagnose", "fabric-diagnose", "transport-diagnose",
-    "collective-diagnose", "serving-compare", "cross-layer-diagnose",
+    "collective-diagnose", "serving-compare", "serving-prepare-runtime", "cross-layer-diagnose",
 )
 
 

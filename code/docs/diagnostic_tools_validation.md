@@ -7,6 +7,8 @@ entrypoints, guides, and focused regression coverage. This record covers the
 initial source and local execution checks. The later
 [Verda B200 validation](diagnostic_tools_b200_validation.md) records live GPU,
 network, and serving checks and the remaining hardware limits.
+The [SGLang counter follow-up](sglang_failure_counter_validation.md) records the
+native metrics fix and completed four-arm serving comparison.
 
 ## Source and environment
 

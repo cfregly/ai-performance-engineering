@@ -13,6 +13,7 @@ checks and the remaining hardware qualification.
 | Is the limit in host RDMA, GPU RDMA or collectives? | `aisp tools transport-diagnose` | [Transport diagnosis](../cluster/fabric/transport.md) |
 | Are collectives waiting, contending or losing overlap? | `aisp tools collective-diagnose` | [Collective diagnosis](../ch04/collective_diagnosis.md) |
 | Which engine and serving architecture meets the workload's latency objectives? | `aisp tools serving-compare` | [Serving comparison](../labs/serving_comparison/README.md) |
+| How do I expose the supported SGLang build's native failure counters before its first failure? | `aisp tools serving-prepare-runtime` | [Runtime preparation](../labs/serving_comparison/README.md#prepare-sglang-failure-counters) |
 | Does a workload symptom coincide with fabric evidence? | `aisp tools cross-layer-diagnose` | [Cross-layer diagnosis](../core/analysis/cross_layer_diagnosis.md) |
 
 Run from `code/`. Inspect a tool's exact arguments through the same public entrypoint:
@@ -23,6 +24,7 @@ python -m cli.aisp tools fabric-diagnose -- --help
 python -m cli.aisp tools transport-diagnose -- --help
 python -m cli.aisp tools collective-diagnose -- --help
 python -m cli.aisp tools serving-compare -- --help
+python -m cli.aisp tools serving-prepare-runtime -- --help
 python -m cli.aisp tools cross-layer-diagnose -- --help
 ```
 

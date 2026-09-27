@@ -10794,6 +10794,7 @@ from core.tools.tools_commands import DIAGNOSTIC_TOOLS
     "Run a diagnostic tool or analyze retained evidence through the same aisp CLI. "
     "Use args=['--help'] to inspect its contract. Network and fabric collection needs the declared host capabilities. "
     "Serving replay and transport tests generate load only when explicitly requested by their arguments. "
+    "serving-prepare-runtime writes a new isolated SGLang package and leaves the installed package unchanged. "
     "Diagnostic results are not canonical benchmark speedup evidence.",
     {
         "type": "object",

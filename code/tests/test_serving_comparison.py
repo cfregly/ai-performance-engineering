@@ -41,6 +41,7 @@ parser.add_argument("--connector")
 parser.add_argument("--multi-token", action="store_true")
 parser.add_argument("--identity-delay-s", type=float, default=0.0)
 parser.add_argument("--hang-identity-after-ready", action="store_true")
+parser.add_argument("--kv-transfer-failure", action="store_true")
 args = parser.parse_args()
 started = time.monotonic()
 identity_requests = {"/version": 0, "/v1/models": 0}
@@ -116,6 +117,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("Content-Length", "0"))
         request = json.loads(self.rfile.read(length))
+        if args.kv_transfer_failure and args.architecture == "prefill_decode":
+            values["kv_transfer_failures_total"] += 1
         wire_prompt = request["prompt"]
         prompt = text_prompt_ids[wire_prompt] if isinstance(wire_prompt, str) else wire_prompt
         if args.architecture == "prefill_decode":
@@ -1088,6 +1091,35 @@ def test_vllm_pd_proxy_performs_real_handoff_and_fails_closed(tmp_path: Path) ->
         decode_server.server_close()
 
 
+def test_rejected_transfer_retains_parsed_counter_snapshots(tmp_path: Path) -> None:
+    profile, trace = _write_inputs(tmp_path)
+    document = json.loads(profile.read_text())
+    pd_arm = next(arm for arm in document["arms"] if arm["architecture"] == "prefill_decode")
+    pd_arm["lifecycle"]["start_command"].append("--kv-transfer-failure")
+    profile.write_text(json.dumps(document))
+    output = tmp_path / "failed-transfer-output"
+    result = run_comparison(
+        profile_path=profile,
+        trace_path=trace,
+        output_dir=output,
+        repeats=2,
+        warmups=0,
+        ttft_ms=1000,
+        tpot_ms=1000,
+        max_itl_ms=1000,
+    )
+    assert result["status"] == "rejected"
+    assert any("failed KV transfers" in reason for reason in result["rejections"])
+    telemetry = output / "iterations/repeat-00" / pd_arm["arm_id"] / "telemetry"
+    before = json.loads((telemetry / "before.json").read_text())
+    after = json.loads((telemetry / "after.json").read_text())
+    assert before["failure_counters_by_source"] == {"fixture": 0}
+    assert after["failure_counters_by_source"]["fixture"] > 0
+    assert after["failure_series_by_source"]["fixture"]["values.kv_transfer_failures_total"] > 0
+    assert (telemetry / "before-fixture.txt").exists()
+    assert (telemetry / "after-fixture.txt").exists()
+
+
 def test_shipped_engine_profile_and_launch_digests_are_valid() -> None:
     repository = Path(__file__).resolve().parents[2]
     examples = repository / "code/labs/serving_comparison/examples"
@@ -1120,7 +1152,13 @@ def test_shipped_engine_profile_and_launch_digests_are_valid() -> None:
     sources = {source.source_id: source for source in sglang_pd.telemetry_sources}
     assert "kv_transfer_requests_total" in sources["prefill-native"].metrics
     assert "kv_transfer_requests_total" not in sources["decode-native"].metrics
-    assert sources["prefill-native"].metrics["kv_transfer_failures_total"]["missing_value"] == 0
+    for source_id in ("prefill-native", "decode-native"):
+        selector = sources[source_id].metrics["kv_transfer_failures_total"]
+        assert selector["names"] == [
+            "sglang:num_bootstrap_failed_reqs_total",
+            "sglang:num_transfer_failed_reqs_total",
+        ]
+        assert "missing_value" not in selector
     assert sources["prefill-native"].metrics["kv_transfer_bytes_total"] == {
         "name": "sglang:kv_transfer_total_mb_sum",
         "reduce": "sum",
