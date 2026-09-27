@@ -34,6 +34,8 @@ class TelemetrySnapshot:
     values: dict[str, float]
     raw_by_source: dict[str, str]
     selector_evidence_by_source: dict[str, dict[str, Any]] = field(default_factory=dict)
+    failure_counters_by_source: dict[str, float] = field(default_factory=dict)
+    failure_series_by_source: dict[str, dict[str, float]] = field(default_factory=dict)
 
 
 def _finite_nonnegative(value: Any, location: str) -> float:
@@ -170,6 +172,8 @@ def _parse_prometheus_metric_with_evidence(
         for name in names
     }
     missing_names = [name for name, matches in matches_by_name.items() if not matches]
+    if missing_names and missing_value is None and len(missing_names) != len(names):
+        raise ConfigError(f"{location} is missing required Prometheus samples: {missing_names}")
     if missing_value is not None:
         unsupported = [name for name in missing_names if types.get(name) != "counter"]
         if unsupported:
@@ -204,6 +208,19 @@ def _parse_prometheus_metric_with_evidence(
 def _parse_prometheus_metric(text: str, selector: Any, location: str) -> float:
     value, _evidence = _parse_prometheus_metric_with_evidence(text, selector, location)
     return value
+
+
+def _failure_series(text: str, evidence: dict[str, Any], location: str) -> dict[str, float]:
+    """Keep each selected counter's name and labels before any reduction."""
+    result: dict[str, float] = {}
+    for name, labels, value in _prometheus_samples(text, set(evidence["names"])):
+        if not all(labels.get(key) == expected for key, expected in evidence["labels"].items()):
+            continue
+        key = json.dumps([name, sorted(labels.items())], separators=(",", ":"))
+        if key in result:
+            raise ConfigError(f"{location} contains a duplicate failure counter series: {key}")
+        result[key] = _finite_nonnegative(value, f"{location}.{key}")
+    return result
 
 
 def _parse_standard_json(
@@ -254,7 +271,11 @@ async def capture_pd_telemetry(
     values: dict[str, float] = {}
     raw_by_source: dict[str, str] = {}
     selector_evidence_by_source: dict[str, dict[str, Any]] = {}
+    failure_counters_by_source: dict[str, float] = {}
+    failure_series_by_source: dict[str, dict[str, float]] = {}
     for source in arm.telemetry_sources:
+        if source.source_id in raw_by_source:
+            raise ConfigError(f"{arm.arm_id} has duplicate telemetry source ids")
         response = await client.get(source.url, timeout=request_timeout_s)
         response.raise_for_status()
         text = response.text
@@ -265,6 +286,12 @@ async def capture_pd_telemetry(
         if source.format == "standard_json":
             parsed = _parse_standard_json(text, arm, source.metrics, location)
             selector_evidence_by_source[source.source_id] = {}
+            if "kv_transfer_failures_total" in parsed:
+                failure_series_by_source[source.source_id] = {
+                    source.metrics["kv_transfer_failures_total"]: parsed[
+                        "kv_transfer_failures_total"
+                    ]
+                }
         else:
             parsed = {}
             selector_evidence: dict[str, Any] = {}
@@ -274,11 +301,20 @@ async def capture_pd_telemetry(
                 )
                 parsed[semantic] = value
                 selector_evidence[semantic] = evidence
+                if semantic == "kv_transfer_failures_total":
+                    failure_series_by_source[source.source_id] = _failure_series(
+                        text, evidence, location
+                    )
             selector_evidence_by_source[source.source_id] = selector_evidence
-        overlap = set(values) & set(parsed)
+        overlap = (set(values) & set(parsed)) - {"kv_transfer_failures_total"}
         if overlap:
             raise ConfigError(f"{location} duplicated telemetry semantics: {sorted(overlap)}")
-        values.update(parsed)
+        for semantic, value in parsed.items():
+            if semantic == "kv_transfer_failures_total":
+                failure_counters_by_source[source.source_id] = value
+                values[semantic] = values.get(semantic, 0.0) + value
+            else:
+                values[semantic] = value
     missing = REQUIRED_PD_METRICS - set(values)
     if missing:
         raise ConfigError(f"{arm.arm_id} live telemetry is missing {sorted(missing)}")
@@ -288,11 +324,46 @@ async def capture_pd_telemetry(
         values=values,
         raw_by_source=raw_by_source,
         selector_evidence_by_source=selector_evidence_by_source,
+        failure_counters_by_source=failure_counters_by_source,
+        failure_series_by_source=failure_series_by_source,
     )
 
 
 def compute_pd_delta(before: TelemetrySnapshot, after: TelemetrySnapshot) -> dict[str, float]:
     """Compute a strict interval delta and require observed phase handoff activity."""
+    if before.failure_series_by_source.keys() != after.failure_series_by_source.keys():
+        raise ConfigError("P/D failure counter series sources changed during the interval")
+    for source_id, previous_series in before.failure_series_by_source.items():
+        current_series = after.failure_series_by_source[source_id]
+        if previous_series.keys() - current_series.keys():
+            raise ConfigError(f"P/D failure counter series disappeared at {source_id}")
+        for series_id, current in current_series.items():
+            if series_id not in previous_series:
+                if current > 0:
+                    raise ConfigError(
+                        f"P/D interval has a new nonzero failure series at {source_id}"
+                    )
+                continue
+            change = current - previous_series[series_id]
+            if change < 0:
+                raise ConfigError(
+                    f"P/D telemetry counter decreased: {source_id} KV failure series {series_id}"
+                )
+            if change > 0:
+                raise ConfigError(
+                    f"P/D request interval contains {change:g} failed KV transfers at "
+                    f"{source_id}, series {series_id}"
+                )
+    if before.failure_counters_by_source.keys() != after.failure_counters_by_source.keys():
+        raise ConfigError("P/D failure telemetry sources changed during the interval")
+    for source_id, previous in before.failure_counters_by_source.items():
+        change = after.failure_counters_by_source[source_id] - previous
+        if change < 0:
+            raise ConfigError(f"P/D telemetry counter decreased: {source_id} KV failures")
+        if change > 0:
+            raise ConfigError(
+                f"P/D request interval contains {change:g} failed KV transfers at {source_id}"
+            )
     missing = (REQUIRED_PD_METRICS - set(before.values)) | (REQUIRED_PD_METRICS - set(after.values))
     if missing:
         raise ConfigError(f"P/D telemetry snapshots are missing {sorted(missing)}")

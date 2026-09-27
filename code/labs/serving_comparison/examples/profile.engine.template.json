@@ -411,8 +411,7 @@
                 "sglang:num_bootstrap_failed_reqs_total",
                 "sglang:num_transfer_failed_reqs_total"
               ],
-              "reduce": "sum",
-              "missing_value": 0
+              "reduce": "sum"
             },
             "kv_transfer_time_seconds_total": {
               "name": "sglang:kv_transfer_latency_ms_sum",
@@ -433,6 +432,13 @@
           "metrics": {
             "decode_requests_total": {
               "name": "sglang:num_requests_total",
+              "reduce": "sum"
+            },
+            "kv_transfer_failures_total": {
+              "names": [
+                "sglang:num_bootstrap_failed_reqs_total",
+                "sglang:num_transfer_failed_reqs_total"
+              ],
               "reduce": "sum"
             }
           }

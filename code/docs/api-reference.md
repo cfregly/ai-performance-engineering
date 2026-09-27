@@ -501,11 +501,18 @@ MCP exposes the same registry through `tools_diagnostics`:
 ```
 
 `tool` is one of `network-diagnose`, `fabric-diagnose`, `transport-diagnose`,
-`collective-diagnose`, `serving-compare` or `cross-layer-diagnose`. `args` is an
+`collective-diagnose`, `serving-compare`, `serving-prepare-runtime` or
+`cross-layer-diagnose`. `args` is an
 argument vector, defaulting to `--help`. The timeout defaults to 300 seconds and
 must be between 1 and 86400 seconds. Results include the command, exit code,
 stdout, stderr and timeout state. Paths are local to the MCP server. Unsupported
 hardware and missing measurements are not successful benchmark results.
+
+`serving-prepare-runtime` takes `--package-dir` and `--output-dir`. It copies the
+supported SGLang package into a new directory and initializes its native P/D
+failure counters. It rejects unknown collector source bytes and existing output
+directories. It leaves the installed package unchanged and records both package
+digests. See the [serving guide](../labs/serving_comparison/README.md) before use.
 
 These utilities do not add dashboard endpoints because the dashboard does not
 currently consume them.

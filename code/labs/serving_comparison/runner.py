@@ -296,6 +296,8 @@ def _snapshot_payload(snapshot: TelemetrySnapshot) -> dict[str, Any]:
         "captured_unix_s": snapshot.captured_unix_s,
         "values": snapshot.values,
         "selector_evidence_by_source": snapshot.selector_evidence_by_source,
+        "failure_counters_by_source": snapshot.failure_counters_by_source,
+        "failure_series_by_source": snapshot.failure_series_by_source,
     }
 
 
@@ -533,6 +535,7 @@ async def _run_arm_iteration(
                 request_timeout_s=control_timeout_s,
                 raw_sink=retain_raw_telemetry("before"),
             )
+            _write_json(telemetry_dir / "before.json", _snapshot_payload(before))
         replay = await _run_replay(client, arm, profile, requests, trace_path)
         after: TelemetrySnapshot | None = None
         pd_delta: dict[str, float] | None = None
@@ -544,12 +547,11 @@ async def _run_arm_iteration(
                 request_timeout_s=control_timeout_s,
                 raw_sink=retain_raw_telemetry("after"),
             )
+            _write_json(telemetry_dir / "after.json", _snapshot_payload(after))
             pd_delta = compute_pd_delta(before, after)  # type: ignore[arg-type]
             diagnostics = _diagnostic_result(arm, before, after)  # type: ignore[arg-type]
 
         if before is not None and after is not None:
-            _write_json(telemetry_dir / "before.json", _snapshot_payload(before))
-            _write_json(telemetry_dir / "after.json", _snapshot_payload(after))
             for source_id, text in before.raw_by_source.items():
                 (telemetry_dir / f"before-{source_id}.txt").write_text(text, encoding="utf-8")
             for source_id, text in after.raw_by_source.items():

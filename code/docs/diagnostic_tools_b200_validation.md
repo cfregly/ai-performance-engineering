@@ -2,13 +2,15 @@
 
 Validation date: September 26, 2026.
 
+The [SGLang counter follow-up](sglang_failure_counter_validation.md) fixes the missing native metrics and completes the four-arm serving comparison on the same B200s. This report retains the original validation stage and its receipts.
+
 These are functional diagnostic checks on two NVIDIA B200 GPUs. They do not establish a canonical benchmark speedup. The initial implementation was merged at `127f8ad5e439cd0193a3a6a0dfce4fb8c8fe072a`. Source hashes in the receipts identify fixes tested after that commit.
 
 ## Environment
 
 The target was a Verda KVM instance with two B200 GPUs, 183,359 MiB each, and an NV18 link. The host used Python 3.12.3, PyTorch 2.13.0 with CUDA 13.0, and NVIDIA driver 580.173.02. GPU workloads ran sequentially in an isolated source checkout. The process table was empty before each GPU handoff.
 
-The guest exposes a virtio network adapter and no RDMA NIC. PCI enumeration, `rdma link`, and `/sys/class/infiniband` agreed. NCCL reported no InfiniBand device and used P2P/CUMEM for local GPU data channels. No network RDMA, GPUDirect RDMA, or switch-fabric performance was measured. The full four-arm serving comparison also remains unqualified because the tested SGLang build does not expose required native failure-counter evidence.
+The guest exposes a virtio network adapter and no RDMA NIC. PCI enumeration, `rdma link`, and `/sys/class/infiniband` agreed. NCCL reported no InfiniBand device and used P2P/CUMEM for local GPU data channels. No network RDMA, GPUDirect RDMA, or switch-fabric performance was measured. At this validation stage, the four-arm serving comparison was unqualified because the unmodified SGLang build did not expose required native failure-counter evidence.
 
 Verda documents ordinary B200 instances with NVLink and Instant Clusters with InfiniBand. See [B200 configurations](https://verda.com/b200) and [cluster networking](https://docs.verda.com/clusters/instant-clusters/). These checks qualify the observed instance capabilities, not every Verda product.
 

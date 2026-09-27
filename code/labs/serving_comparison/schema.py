@@ -455,7 +455,7 @@ def load_profile(path: Path) -> ComparisonProfile:
                 raise ConfigError(f"{source_location}.format is unsupported")
             metrics = _object(source.get("metrics"), f"{source_location}.metrics")
             unknown = set(metrics) - (REQUIRED_PD_METRICS | OPTIONAL_PD_DIAGNOSTICS)
-            duplicate = set(metrics) & covered_metrics
+            duplicate = (set(metrics) & covered_metrics) - {"kv_transfer_failures_total"}
             if unknown or duplicate:
                 raise ConfigError(f"{source_location}.metrics has unknown or duplicate semantics")
             covered_metrics.update(metrics)
@@ -471,6 +471,11 @@ def load_profile(path: Path) -> ComparisonProfile:
                     metrics=metrics,
                 )
             )
+
+        if len({source.source_id for source in sources}) != len(sources):
+            raise ConfigError(f"{location}.telemetry_sources has duplicate source ids")
+        if len({source.url for source in sources}) != len(sources):
+            raise ConfigError(f"{location}.telemetry_sources has duplicate endpoint URLs")
 
         provenance_path: Path | None = None
         provenance: dict[str, Any] | None = None
@@ -489,6 +494,18 @@ def load_profile(path: Path) -> ComparisonProfile:
                 mode=mode,
                 location=f"{location}.pd_provenance",
             )
+            if engine == "sglang" and mode == "engine":
+                failure_urls = {
+                    source.url.rstrip("/")
+                    for source in sources
+                    if "kv_transfer_failures_total" in source.metrics
+                }
+                for role in ("prefill", "decode"):
+                    metrics_url = provenance["endpoints"][role].rstrip("/") + "/metrics"
+                    if metrics_url not in failure_urls:
+                        raise ConfigError(
+                            f"{location} requires native failure counters from {role} /metrics"
+                        )
             if mode == "engine":
                 from .provenance import bind_pd_launch
 
