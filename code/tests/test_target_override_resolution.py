@@ -116,6 +116,14 @@ def test_subprocess_worker_import_receives_target_extra_args(tmp_path, monkeypat
             class ImportArgBenchmark(BaseBenchmark):
                 allow_cpu = True
 
+                def apply_target_overrides(self, argv):
+                    # The worker presents the same values as sys.argv while it
+                    # imports this module. The hook declares that the override
+                    # is accepted and checks that both readings agree.
+                    hook_args, unknown = parser.parse_known_args(argv)
+                    if unknown or hook_args.scale != import_args.scale:
+                        raise ValueError(f"override {argv} does not match the import-time arguments")
+
                 def setup(self):
                     self.input = torch.arange(4, dtype=torch.float32)
                     self.output = None

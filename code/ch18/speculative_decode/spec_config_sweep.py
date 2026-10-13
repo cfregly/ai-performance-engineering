@@ -77,7 +77,10 @@ def main() -> None:
 
     for cfg_path in config_paths:
         bench = VLLMMoEInferenceBenchmark()
-        bench.spec_config_path = cfg_path
+        # The subprocess harness hands the timed child only simple public attributes
+        # (str, int, float, bool, None, list, dict). A Path would be dropped and the
+        # child would silently load the default speculator config instead.
+        bench.spec_config_path = str(cfg_path)
         bench.graph_mode = GraphMode.EAGER
         bench.enable_graphs = False
 
@@ -87,13 +90,21 @@ def main() -> None:
 
         harness = BenchmarkHarness(mode=BenchmarkMode.CUSTOM, config=cfg)
         run_result = harness.benchmark(bench)
-        metrics = run_result.custom_metrics or {}
+        # A failed run has no metrics. Stop instead of recording it as zeros.
+        if run_result.errors or run_result.timing is None:
+            raise RuntimeError(
+                f"Speculator config sweep failed for {cfg_path}:\n"
+                + "\n".join(run_result.errors or ["no timing samples"])
+            )
+        metrics = run_result.custom_metrics
+        if not metrics:
+            raise RuntimeError(f"Speculator config sweep for {cfg_path} reported no custom metrics")
         results[cfg_path.name] = {
-            "accept_rate": float(metrics.get("optimized_moe.spec_accept_rate", 0.0)),
-            "chunk_size": float(metrics.get("optimized_moe.spec_chunk_size", 0.0)),
-            "throughput_tok_s": float(metrics.get("optimized_moe.throughput_tok_s", 0.0)),
-            "ttft_mean_ms": float(metrics.get("optimized_moe.ttft_mean_ms", 0.0)),
-            "tpot_mean_ms": float(metrics.get("optimized_moe.tpot_mean_ms", 0.0)),
+            "accept_rate": float(metrics["optimized_moe.spec_accept_rate"]),
+            "chunk_size": float(metrics["optimized_moe.spec_chunk_size"]),
+            "throughput_tok_s": float(metrics["optimized_moe.throughput_tok_s"]),
+            "ttft_mean_ms": float(metrics["optimized_moe.ttft_mean_ms"]),
+            "tpot_mean_ms": float(metrics["optimized_moe.tpot_mean_ms"]),
         }
 
     payload = {

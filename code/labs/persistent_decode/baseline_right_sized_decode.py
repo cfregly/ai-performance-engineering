@@ -4,22 +4,37 @@ This is the harness-comparable baseline for `optimized_right_sized_decode.py`.
 
 Baseline behavior:
 - Always runs the naive per-token decode loop (one step at a time).
-- Still honors the `--tier/--quantization` knobs so the *workload* matches the
-  optimized variant, but does not select optimized backends (Triton/graphs).
+- Honors the `--tier/--quantization/--block-k/--num-programs` knobs so the
+  *workload* matches the optimized variant, but does not select optimized
+  backends (Triton/graphs).
+
+Pass the knobs with `--target-extra-arg labs/persistent_decode:right_sized_decode="--tier large"`.
+The harness hands them to apply_target_overrides. Any other argument raises
+ValueError, which fails the target.
 """
 
 from __future__ import annotations
 
 import argparse
-from typing import List, Tuple
+from typing import List
 
 from core.harness.benchmark_harness import BaseBenchmark
 from labs.persistent_decode.baseline_persistent_decode import BaselinePersistentDecodeBenchmark
-from labs.persistent_decode.persistent_decode_common import DecodeOptions, set_decode_options
+from labs.persistent_decode.persistent_decode_common import (
+    DecodeOptions,
+    decode_options_scope,
+    parse_right_sized_overrides,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Right-sized decode baseline flags", add_help=False)
+    p = argparse.ArgumentParser(
+        prog="right_sized_decode",
+        description="Right-sized decode baseline flags",
+        add_help=False,
+        allow_abbrev=False,
+        exit_on_error=False,
+    )
     p.add_argument("--tier", choices=["small", "medium", "large"], default="medium", help="Decode tier sizing preset")
     p.add_argument("--quantization", choices=["fp32", "fp16", "int4"], default="fp32", help="Decode quantization mode")
     p.add_argument("--block-k", type=int, default=None, help="Override BLOCK_K (defaults depend on tier)")
@@ -27,25 +42,26 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def _parse_cli() -> Tuple[argparse.Namespace, List[str]]:
-    parser = _build_parser()
-    args, unknown = parser.parse_known_args()
-    return args, unknown
+class RightSizedBaselineDecodeBenchmark(BaselinePersistentDecodeBenchmark):
+    """Naive per-token decode at the tier and quantization chosen by target overrides."""
 
+    def __init__(self) -> None:
+        self._configure(DecodeOptions())
 
-_CLI_ARGS, _CLI_UNKNOWN = _parse_cli()
+    def _configure(self, options: DecodeOptions) -> None:
+        """Rebuild every field the parent constructor derives from the decode options."""
+        self.decode_options = options
+        with decode_options_scope(options):
+            BaselinePersistentDecodeBenchmark.__init__(self)
 
-set_decode_options(
-    DecodeOptions(
-        tier=_CLI_ARGS.tier,
-        quantization=_CLI_ARGS.quantization,
-        block_k=_CLI_ARGS.block_k,
-        num_programs=_CLI_ARGS.num_programs,
-    )
-)
+    def apply_target_overrides(self, argv: List[str]) -> None:
+        self._configure(parse_right_sized_overrides(_build_parser(), argv, target="right_sized_decode baseline"))
+
+    def setup(self) -> None:
+        # build_inputs reads the shapes and quantization from the installed options.
+        with decode_options_scope(self.decode_options):
+            super().setup()
 
 
 def get_benchmark() -> BaseBenchmark:
-    return BaselinePersistentDecodeBenchmark()
-
-
+    return RightSizedBaselineDecodeBenchmark()

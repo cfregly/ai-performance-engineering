@@ -10,7 +10,6 @@ import torch
 from torch.nn import functional
 
 import ch02.nvlink_c2c_bandwidth_benchmark as nvlink_bandwidth
-import ch02.optimized_grace_coherent_memory as grace_coherent
 import ch04.ddp_nvlink_overlap as ddp_nvlink_overlap
 import ch04.multi_node_blackwell as multi_node_blackwell
 import ch04.optimizer_central_nvlink as optimizer_central_nvlink
@@ -46,39 +45,6 @@ def test_nvlink_bandwidth_converts_mib_payloads_to_decimal_gb_per_second() -> No
 
     assert bandwidth == pytest.approx(1.073741824)
     assert bidirectional == pytest.approx(1.073741824)
-
-
-def test_resident_grace_path_reports_zero_explicit_transfer_bytes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class _ResidentImpl:
-        strategy = "zero_copy"
-        is_grace_blackwell = True
-
-        def __init__(self, *, size_mb: int, iterations: int) -> None:
-            self.size_mb = size_mb
-            self.iterations = iterations
-
-        def run_step(self) -> float:
-            return 0.25
-
-    monkeypatch.setattr(grace_coherent, "OptimizedGraceCoherentMemory", _ResidentImpl)
-    benchmark = grace_coherent.OptimizedGraceCoherentMemoryBenchmark(
-        size_mb=8,
-        iterations=1,
-    )
-
-    benchmark.benchmark_fn()
-    metrics = benchmark.get_custom_metrics()
-
-    assert benchmark.get_workload_metadata().bytes_per_iteration == 0.0
-    assert benchmark.bandwidth_gb_s is None
-    assert metrics == {
-        "coherent_memory.explicit_transfer_bytes": 0.0,
-        "coherent_memory.resident_elements": float(8 * 1024 * 1024 // 4),
-        "coherent_memory.resident_compute": 1.0,
-    }
-    assert not any(key.startswith("transfer.") for key in metrics)
 
 
 def test_ddp_nvlink_validates_only_the_root_routes_without_manual_enable(

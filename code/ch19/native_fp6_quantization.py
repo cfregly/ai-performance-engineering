@@ -21,10 +21,18 @@ Performance on B200:
   (~9 PFLOPS with structured sparsity)
 - Model capacity: up to 2.67x as many packed weights as FP16
 
+What this demo measures:
+- Weights are stored bit-packed, 3 bytes per 4 weights, so the reported
+  memory is the real size of the stored tensors.
+- The forward pass unpacks and dequantizes the weights to FP16/BF16 and
+  runs F.linear in that dtype. It never issues FP6 tensor core
+  instructions, so its latency says nothing about the FP6 tensor core
+  throughput quoted above.
+
 Requirements:
 - PyTorch 2.10+ with CUDA 13.0
-- Blackwell GPU (B200/B300)
-- torch._scaled_mm support
+- Blackwell GPU (B200/B300) for the hardware context above. The demo
+  itself also runs on other GPUs and on CPU.
 
 """
 import time
@@ -112,7 +120,7 @@ class FP6Tensor:
         
         # Quantize to FP6 range [-16, 16]
         # FP6 has limited precision, round to nearest representable value
-        # For now, simulate with int8 representation (will be packed later)
+        # Holds one 6-bit code per uint8 until the packing step below
         quantized = self._round_to_fp6(scaled_data)
         
         # Pack 4 FP6 values into 3 bytes (4 * 6 bits = 24 bits)
@@ -140,55 +148,71 @@ class FP6Tensor:
     
     def _pack_fp6(self, quantized: torch.Tensor) -> torch.Tensor:
         """
-        Pack 4 FP6 values (6 bits each) into 3 bytes.
-        
+        Pack 4 6-bit codes into 3 bytes.
+
         Layout: AAAAAA BBBBBB CCCCCC DDDDDD -> 3 bytes
         Byte 0: AAAAAABB
         Byte 1: BBBBCCCC
         Byte 2: CCDDDDDD
+
+        The last group is zero-padded when the element count is not a
+        multiple of 4. Returns a flat uint8 tensor of 3 bytes per group.
         """
+        if quantized.dtype != torch.uint8:
+            raise TypeError(f"_pack_fp6 expects uint8 6-bit codes, got {quantized.dtype}")
         flat = quantized.flatten()
-        
+
         # Pad to multiple of 4
         remainder = flat.numel() % 4
         if remainder != 0:
             padding = 4 - remainder
             flat = F.pad(flat, (0, padding))
-        
-        # Reshape to groups of 4
-        groups = flat.reshape(-1, 4)
-        
-        # Pack into 3 bytes per group
-        # This is simplified - real implementation would use bit operations
-        packed = groups  # Placeholder: would pack to 3 bytes in production
-        
-        return packed
-    
+
+        a, b, c, d = flat.reshape(-1, 4).unbind(dim=1)
+        packed = torch.stack(
+            (
+                (a << 2) | (b >> 4),
+                ((b & 0x0F) << 4) | (c >> 2),
+                ((c & 0x03) << 6) | d,
+            ),
+            dim=1,
+        )
+        return packed.flatten()
+
     def dequantize(self) -> torch.Tensor:
         """Dequantize FP6 tensor back to FP16/BF16."""
         # Unpack 3 bytes to 4 FP6 values
-        unpacked = self._unpack_fp6(self.quantized_data)
-        
+        unpacked = self._unpack_fp6(self.quantized_data, self.shape.numel())
+
         # Convert FP6 int representation back to float
         data = (unpacked.float() * 32.0 / 63.0) - 16.0
-        
+
         # Scale back to original range
         data = data * self.scales
-        
+
         # Reshape to original shape
         data = data.reshape(self.shape)
-        
+
         return data.to(self.dtype)
-    
-    def _unpack_fp6(self, packed: torch.Tensor) -> torch.Tensor:
-        """Unpack 3 bytes to 4 FP6 values."""
-        # Placeholder: would unpack bit-packed data in production
-        return packed.flatten()
-    
+
+    def _unpack_fp6(self, packed: torch.Tensor, numel: int) -> torch.Tensor:
+        """Unpack each 3-byte group into 4 6-bit codes and drop the padding."""
+        b0, b1, b2 = packed.reshape(-1, 3).unbind(dim=1)
+        codes = torch.stack(
+            (
+                b0 >> 2,
+                ((b0 & 0x03) << 4) | (b1 >> 4),
+                ((b1 & 0x0F) << 2) | (b2 >> 6),
+                b2 & 0x3F,
+            ),
+            dim=1,
+        )
+        return codes.flatten()[:numel]
+
     def memory_usage(self) -> int:
-        """Return memory usage in bytes."""
-        # 6 bits per element = 0.75 bytes per element
-        return int(self.shape.numel() * 0.75) + self.scales.numel() * self.scales.element_size()
+        """Return the bytes held by the packed codes and the scale tensor."""
+        packed_bytes = self.quantized_data.numel() * self.quantized_data.element_size()
+        return packed_bytes + self.scales.numel() * self.scales.element_size()
 
 
 # ============================================================================
@@ -198,12 +222,12 @@ class FP6Tensor:
 class FP6Linear(nn.Module):
     """
     Linear layer with FP6 weight quantization for Blackwell.
-    
+
     Features:
-    - FP6 weight storage (50% memory vs FP16)
+    - Packed 6-bit weight storage (62.5% less weight memory than FP16)
     - FP16/BF16 activation
-    - Native Blackwell tensor core support
-    - Dynamic dequantization during forward pass
+    - Dynamic dequantization during forward pass. The matmul runs in
+      FP16/BF16, not on FP6 tensor cores.
     """
     
     def __init__(self, in_features: int, out_features: int, bias: bool = True,
@@ -235,8 +259,9 @@ class FP6Linear(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass with FP6 weights.
-        
-        On Blackwell, this uses native FP6 tensor cores for acceleration.
+
+        Unpacks and dequantizes the weights, then runs F.linear in the
+        activation dtype. No FP6 tensor core instructions run on any GPU.
         """
         if self.weight_fp6 is None:
             raise RuntimeError("Call quantize() before forward pass")
@@ -267,7 +292,8 @@ class FP6MLP(nn.Module):
     """
     Multi-layer perceptron with FP6 quantized weights.
     
-    Suitable for transformer FFN layers with 50% memory savings.
+    Suitable for transformer FFN layers. Packed 6-bit weights use 62.5%
+    less memory than FP16 weights.
     """
     
     def __init__(
@@ -318,32 +344,39 @@ def _layer_total_bytes(layer: nn.Module) -> Tuple[int, dict]:
     return total, {"total_bytes": total}
 
 
+def _mlp_total_bytes(mlp: FP6MLP) -> int:
+    return sum(_layer_total_bytes(layer)[0] for layer in (mlp.fc1, mlp.fc2))
+
+
 # ============================================================================
 # Benchmarking and Validation
 # ============================================================================
 
-def benchmark_fp6_vs_fp16():
+def benchmark_fp6_vs_fp16(
+    *,
+    batch_size: int = 128,
+    seq_len: int = 512,
+    d_model: int = 2048,
+    d_ff: int = 8192,
+):
     """
     Benchmark FP6 quantization vs FP16 baseline.
-    
+
     Metrics:
-    - Memory usage
+    - Weight and bias storage of each MLP
     - Inference latency
     - Quantization overhead
     - Numerical accuracy
+
+    Without CUDA, each size is capped at the CPU limits below.
     """
     print("=" * 80)
     print("FP6 Quantization Benchmark (Blackwell B200)")
     print("=" * 80)
-    
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     dtype = torch.float16
-    
-    # Test configuration
-    batch_size = 128
-    seq_len = 512
-    d_model = 2048
-    d_ff = 8192
+
     warmup_iters = 10 if torch.cuda.is_available() else 2
     benchmark_iters = 100 if torch.cuda.is_available() else 5
 
@@ -371,13 +404,11 @@ def benchmark_fp6_vs_fp16():
     mlp_fp16 = FP6MLP(d_model, d_ff, dtype=dtype, use_fp6=False).to(device)
     
     output_fp16, time_fp16 = _benchmark_forward(mlp_fp16, x, warmup_iters, benchmark_iters)
-    
-    mem_fp16 = torch.cuda.memory_allocated() / 1024**2 if torch.cuda.is_available() else (
-        sum(p.numel() * p.element_size() for p in mlp_fp16.parameters()) / 1024**2
-    )
-    
+
+    mem_fp16 = _mlp_total_bytes(mlp_fp16) / 1024**2
+
     print(f"  Latency: {time_fp16 * 1000:.2f} ms")
-    print(f"  Memory: {mem_fp16:.2f} MB")
+    print(f"  Weight+bias memory: {mem_fp16:.2f} MiB")
     print(f"  Throughput: {batch_size * seq_len / time_fp16 / 1e6:.2f} M tokens/sec")
     
     # FP6 quantized
@@ -388,13 +419,11 @@ def benchmark_fp6_vs_fp16():
     mlp_fp6.quantize()
     
     output_fp6, time_fp6 = _benchmark_forward(mlp_fp6, x, warmup_iters, benchmark_iters)
-    
-    mem_fp6 = torch.cuda.memory_allocated() / 1024**2 if torch.cuda.is_available() else (
-        sum(p.numel() * p.element_size() for p in mlp_fp6.parameters()) / 1024**2
-    )
-    
+
+    mem_fp6 = _mlp_total_bytes(mlp_fp6) / 1024**2
+
     print(f"  Latency: {time_fp6 * 1000:.2f} ms")
-    print(f"  Memory: {mem_fp6:.2f} MB")
+    print(f"  Weight+bias memory: {mem_fp6:.2f} MiB")
     print(f"  Throughput: {batch_size * seq_len / time_fp6 / 1e6:.2f} M tokens/sec")
     
     # Numerical accuracy
@@ -406,7 +435,7 @@ def benchmark_fp6_vs_fp16():
     print("Comparison")
     print("=" * 80)
     print(f"  Speedup: {time_fp16 / time_fp6:.2f}x")
-    print(f"  Memory savings: {(1 - mem_fp6 / mem_fp16) * 100:.1f}%")
+    print(f"  Weight+bias memory savings: {(1 - mem_fp6 / mem_fp16) * 100:.1f}%")
     print(f"  Absolute error: {error:.6f}")
     print(f"  Relative error: {rel_error * 100:.2f}%")
     
@@ -417,24 +446,26 @@ def benchmark_fp6_vs_fp16():
     print("\n" + "=" * 80)
     print("Memory Breakdown (FC1 layer)")
     print("=" * 80)
-    print(f"  FP16 weights: {fp16_bytes / 1024**2:.2f} MB")
-    print(f"  FP6 weights:  {fp6_bytes / 1024**2:.2f} MB")
+    print(f"  FP16 weights: {fp16_bytes / 1024**2:.2f} MiB")
+    print(f"  FP6 weights:  {fp6_bytes / 1024**2:.2f} MiB")
     print(f"  Compression: {fp16_bytes / fp6_bytes:.2f}x")
-    
+
     print("\n" + "=" * 80)
     print("Summary")
     print("=" * 80)
-    print("FP6 Benefits on Blackwell B200:")
-    print("  50% memory savings vs FP16 (2x model capacity)")
-    print("  25% memory savings vs FP8 (1.33x model capacity)")
-    print(f"  {time_fp16 / time_fp6:.2f}x speedup from reduced memory bandwidth")
+    print("FP6 weight storage:")
+    print("  62.5% less weight memory than FP16 (up to 2.67x model capacity)")
+    print("  25% less weight memory than FP8 (up to 1.33x model capacity)")
+    print(f"  Measured FP16/FP6 latency ratio: {time_fp16 / time_fp6:.2f}x")
+    print("  The FP6 path dequantizes weights to FP16 on every forward pass, so this")
+    print("  ratio includes that overhead and does not measure FP6 tensor core throughput")
     print("  ~12.5% relative error (acceptable for most tasks)")
-    print("  Native tensor core support on Blackwell")
-    
+    print("  Blackwell tensor cores support FP6 natively, but this demo does not call them")
+
     if is_blackwell():
-        print("\n[OK] Running on Blackwell - FP6 tensor cores active!")
+        print("\nRunning on Blackwell. The matmuls above still ran in FP16, not on FP6 tensor cores.")
     else:
-        print("\nWARNING: Not running on Blackwell - performance may be suboptimal")
+        print("\nNot running on Blackwell. The storage savings above are the same on any device.")
 
 
 def test_fp6_accuracy():
@@ -473,6 +504,20 @@ def test_fp6_accuracy():
         print(f"  Compression ratio: {data.numel() * 2 / fp6_tensor.memory_usage():.2f}x")
 
 
+def print_key_takeaways() -> None:
+    print("\nKey Takeaways:")
+    print("  1. Packed FP6 weights use 62.5% less memory than FP16 (6 vs 16 bits)")
+    print("  2. ~12.5% relative error is acceptable for most tasks")
+    print("  3. Blackwell's tensor cores natively accelerate FP6, at the same rate as FP8 on B200")
+    print("  4. Ideal for large model inference and training")
+    print("  5. Can fit up to 2.67x as many weights as FP16 in the same memory")
+    print("\nUse Cases:")
+    print("  • Large language model inference (100B+ parameters)")
+    print("  • Multi-modal models with memory constraints")
+    print("  • Fine-tuning with limited GPU memory")
+    print("  • Serving multiple models simultaneously")
+
+
 # ============================================================================
 # Main
 # ============================================================================
@@ -504,14 +549,4 @@ if __name__ == "__main__":
     print("\n" + "=" * 80)
     print("FP6 Quantization Complete")
     print("=" * 80)
-    print("\nKey Takeaways:")
-    print("  1. FP6 provides 50% memory savings vs FP16")
-    print("  2. ~12.5% relative error is acceptable for most tasks")
-    print("  3. Blackwell's tensor cores natively accelerate FP6")
-    print("  4. Ideal for large model inference and training")
-    print("  5. Can fit 2x larger models in same memory")
-    print("\nUse Cases:")
-    print("  • Large language model inference (100B+ parameters)")
-    print("  • Multi-modal models with memory constraints")
-    print("  • Fine-tuning with limited GPU memory")
-    print("  • Serving multiple models simultaneously")
+    print_key_takeaways()

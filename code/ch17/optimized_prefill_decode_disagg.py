@@ -163,6 +163,11 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 token_event_count = self._tpot_event_count
                 with torch.cuda.stream(self.decode_stream):
                     self.decode_stream.wait_event(self._decode_ready)
+                    # The prefill stream or setup allocated this state, and the
+                    # handoff below drops its last reference. Without this mark
+                    # the allocator can give its memory to the next prefill
+                    # before this decode has read it.
+                    token_output.record_stream(self.decode_stream)
                     for token_start, token_end in token_event_pairs:
                         token_start.record(self.decode_stream)
                         token_output = self.model.decode_step(token_output)
@@ -217,7 +222,16 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
-            output_tolerance=(0.1, 1.0),
+            # This arm runs the same bf16 kernels on the same prompt as the
+            # baseline and must reproduce its output exactly, even though its
+            # decode overlaps the next prefill on another stream. cuBLAS
+            # documents bitwise-identical results across concurrent streams
+            # only when each stream has its own workspace, which PyTorch
+            # provides. No GPU run has checked exact equality for this pair yet.
+            # If the outputs differ, change the model instead of loosening this
+            # tolerance. A one-ULP change in the prefill state moves the 16-step
+            # output about as far as a different prompt does.
+            output_tolerance=(0.0, 0.0),
         )
 
     def get_custom_streams(self):

@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Optimized: coherent-memory transfers with stable placement and async staging."""
+"""Optimized: zero-copy update of a pinned host buffer over NVLink-C2C.
+
+The baseline stages each iteration through pageable H2D and D2H copies. Here the
+GPU reads and writes the same host buffer in place, so the data still starts and
+ends in host memory but no staging copies run.
+"""
 
 import ctypes
 import os
@@ -10,6 +15,7 @@ from typing import Any, Dict, List, Optional
 import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.common.grace_platform import host_link_flags
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -18,13 +24,14 @@ from core.harness.benchmark_harness import (
     WorkloadMetadata,
 )
 from core.utils.logger import get_logger
+from core.utils.pinned_host_view import pinned_host_cuda_view
 
 logger = get_logger(__name__)
 
 _CUDA_SKIP_REASON = "SKIPPED: grace_coherent_memory requires CUDA"
 _GRACE_SKIP_REASON = (
     "SKIPPED: grace_coherent_memory requires Grace-Blackwell coherent memory support "
-    "(GB200/GB300 on Grace CPU hosts)."
+    "(the CUDA driver must report an NVLink-C2C host link to a Grace CPU, as on GB200 and GB300)."
 )
 
 
@@ -95,11 +102,9 @@ def _cpus_for_numa_node(numa_node: int) -> List[int]:
 
 
 class OptimizedGraceCoherentMemory:
-    """Optimized coherent memory with cache-aware access patterns."""
+    """GPU updates a pinned host buffer in place, with no staging copies."""
 
-    # Thresholds based on Grace-Blackwell coherency fabric performance
-    ZERO_COPY_THRESHOLD_MB = 4  # Use zero-copy for <4MB
-    ASYNC_THRESHOLD_MB = 64  # Use async pinned for 4-64MB
+    strategy = "zero_copy"
 
     def __init__(self, size_mb: int = 256, iterations: int = 100):
         if not torch.cuda.is_available():
@@ -113,36 +118,19 @@ class OptimizedGraceCoherentMemory:
         if not self.is_grace_blackwell:
             raise RuntimeError(_GRACE_SKIP_REASON)
 
-        # Select optimal strategy based on size
-        self.strategy = self._select_strategy()
-        logger.info(f"Selected strategy: {self.strategy} for {size_mb}MB")
-
     def _detect_grace_blackwell(self) -> bool:
-        """Detect if running on Grace-Blackwell platform."""
-        try:
-            import platform
+        """Return whether the CUDA driver puts this GPU on an NVLink-C2C host link to Grace.
 
-            props = torch.cuda.get_device_properties(0)
-            is_arm_host = platform.machine() in ("aarch64", "arm64")
-            # Grace-Blackwell coherent memory needs a Grace (ARM) host paired with
-            # a Blackwell-class GPU. GB200/GB300 GPUs report CC 10.x (B200=10.0,
-            # B300=10.3); GB10 reports CC 12.x. A non-Grace (x86) B200/B300 host has
-            # no NVLink-C2C coherent fabric, so the ARM host check is the
-            # discriminator. The old CC==12.1 check wrongly skipped real GB300.
-            if is_arm_host and props.major >= 10:
-                return True
-        except Exception as e:
-            logger.debug(f"Grace-Blackwell detection failed: {e}")
-
-        return False
-
-    def _select_strategy(self) -> str:
-        """Select optimal transfer strategy based on size."""
-        # The current PyTorch implementation keeps the buffer resident on the GPU and
-        # performs no CPU access or explicit H2D/D2H transfer.  Keep the historical
-        # strategy identifier for compatibility, but report it as resident compute rather
-        # than an NVLink bandwidth measurement.
-        return "zero_copy"
+        Compute capability cannot decide this. GB200 and GB300 GPUs report SM
+        10.0 and 10.3, the same as B200 and B300 GPUs on PCIe in x86 servers.
+        The zero-copy step reads pinned host memory over the link, so it does
+        not need the driver's pageable-memory (ATS) flag. Driver query errors
+        propagate.
+        """
+        device_index = torch.cuda.current_device()
+        props = torch.cuda.get_device_properties(device_index)
+        nvlink_c2c, _ = host_link_flags(props, device_index)
+        return nvlink_c2c
 
     def _bind_numa_node(self):
         """Bind to NUMA node closest to GPU (Grace-Blackwell specific)."""
@@ -177,52 +165,29 @@ class OptimizedGraceCoherentMemory:
             logger.debug(f"NUMA memory binding skipped: {e}")
 
     def setup(self):
-        """Initialize data structures with optimal memory type."""
+        """Allocate the pinned host buffer and its zero-copy GPU view."""
         num_elements = (self.size_mb * 1024 * 1024) // 4  # float32
 
         # Bind to optimal NUMA node
         self._bind_numa_node()
 
-        if self.strategy == "zero_copy":
-            # GPU-resident buffer: setup performs one initialization copy, while run_step()
-            # performs only in-place device compute.  No per-iteration interconnect bytes
-            # are attributed to this path.
-            cpu_init = torch.randn(num_elements, dtype=torch.float32)
-            self.gpu_data = cpu_init.to(self.device)
-            # Keep the legacy attribute used by verification; this is a device alias, not
-            # a host tensor or evidence of a coherent CPU access.
-            self.cpu_data = self.gpu_data
-            logger.info(
-                f"Using resident GPU buffer with no per-step explicit transfer ({self.size_mb}MB)"
-            )
-
-        elif self.strategy == "async_pinned":
-            # Pinned memory with async copies
-            self.cpu_data = torch.randn(num_elements, dtype=torch.float32).pin_memory()
-            self.gpu_data = torch.zeros(num_elements, dtype=torch.float32, device=self.device)
-
-            # Create stream for async copies
-            self.stream = torch.cuda.Stream()
-            logger.info(f"Using async pinned memory ({self.size_mb}MB)")
+        device = torch.device("cuda", torch.cuda.current_device())
+        # Same RNG draw as the baseline's pageable host buffer, then pinned so the
+        # GPU can address it directly.
+        self.cpu_data = torch.randn(num_elements, dtype=torch.float32).pin_memory()
+        self.gpu_data = pinned_host_cuda_view(self.cpu_data, device)
+        self._one = torch.ones((), dtype=torch.float32, device=device)
+        logger.info(f"Using zero-copy pinned host buffer ({self.size_mb}MB)")
 
     def run_step(self) -> float:
-        """Execute one transfer step using the selected coherent-memory strategy."""
+        """Compute ``2x + 1`` on the host buffer with one GPU pass and no copies."""
         torch.cuda.synchronize()
         start = time.perf_counter()
 
-        if self.strategy == "zero_copy":
-            self.gpu_data.mul_(2.0).add_(1.0)
-
-        elif self.strategy == "async_pinned":
-            current_stream = torch.cuda.current_stream()
-            with torch.cuda.stream(self.stream):
-                self.gpu_data.copy_(self.cpu_data, non_blocking=True)
-            current_stream.wait_stream(self.stream)
-            self.gpu_data.mul_(2.0).add_(1.0)
-            self.stream.wait_stream(current_stream)
-            with torch.cuda.stream(self.stream):
-                self.cpu_data.copy_(self.gpu_data, non_blocking=True)
-            self.stream.synchronize()
+        # One fused pass reads each element across the CPU-GPU link once and
+        # writes it back once. Separate mul_ and add_ calls would cross it twice.
+        # 2x is exact in fp32, so this matches the baseline's mul_ then add_ bit for bit.
+        torch.add(self._one, self.gpu_data, alpha=2.0, out=self.gpu_data)
 
         torch.cuda.synchronize()
         end = time.perf_counter()
@@ -230,10 +195,9 @@ class OptimizedGraceCoherentMemory:
 
     def cleanup(self):
         """Clean up resources."""
-        del self.cpu_data
         del self.gpu_data
-        if hasattr(self, "stream"):
-            del self.stream
+        del self.cpu_data
+        del self._one
         torch.cuda.empty_cache()
 
 
@@ -248,10 +212,9 @@ class OptimizedGraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
             size_mb=size_mb,
             iterations=iterations,
         )
-        # The resident zero-copy path performs an in-place GPU operation and
-        # issues no explicit interconnect transfer.  Only the async-pinned path
-        # moves one H2D and one D2H payload per iteration.
-        bytes_per_iter = 0 if self._impl.strategy == "zero_copy" else size_mb * 1024 * 1024 * 2
+        # Each step reads the whole host buffer across the CPU-GPU link and writes
+        # it back, the same payload as the baseline's H2D plus D2H copies.
+        bytes_per_iter = size_mb * 1024 * 1024 * 2
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
             bytes_per_iteration=float(bytes_per_iter),
@@ -263,8 +226,7 @@ class OptimizedGraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
         self._verify_output_buffer: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
-        # Seed FIRST for deterministic verification
-
+        # Inputs use the RNG already seeded by the harness.
         self._impl.setup()
         self._verify_output_buffer = torch.empty_like(self._impl.cpu_data[:1000])
         self.register_workload_metadata(
@@ -272,24 +234,14 @@ class OptimizedGraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
             bytes_per_iteration=self._workload.bytes_per_iteration,
         )
 
-        # Ensure gpu_data has actual values for verification (strategies other than
-        # zero_copy start with zeros in gpu_data before the first copy in run())
-        if self._impl.strategy != "zero_copy":
-            self._impl.gpu_data.copy_(self._impl.cpu_data, non_blocking=False)
-            torch.cuda.synchronize()
-
     def benchmark_fn(self) -> None:
         elapsed = self._impl.run_step()
         self.elapsed_s = elapsed
-        if self._impl.strategy == "zero_copy":
-            self.bandwidth_gb_s = None
-        else:
-            transferred_bytes = self._impl.size_mb * 1024 * 1024 * 2
-            self.bandwidth_gb_s = transferred_bytes / elapsed / 1e9
+        self.bandwidth_gb_s = self._workload.bytes_per_iteration / elapsed / 1e9
         self.output = None
 
     def capture_verification_payload(self) -> None:
-        # Compare the post-step tensor used by each strategy.
+        # Compare the host buffer, which is where the baseline also leaves its result.
         if self.output is None:
             if self._verify_output_buffer is None:
                 raise RuntimeError("setup() must be called before verification")
@@ -334,32 +286,15 @@ class OptimizedGraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
 
-    def get_custom_streams(self) -> List["torch.cuda.Stream"]:
-        streams: List["torch.cuda.Stream"] = []
-        for name in ("stream",):
-            stream = getattr(self._impl, name, None)
-            if stream is not None:
-                streams.append(stream)
-        return streams
-
     def get_custom_metrics(self) -> Optional[dict]:
-        """Return metrics without inventing bytes for the resident path."""
-        if self._impl.strategy == "zero_copy":
-            resident_elements = (self.size_mb * 1024 * 1024) // 4
-            return {
-                "coherent_memory.explicit_transfer_bytes": 0.0,
-                "coherent_memory.resident_elements": float(resident_elements),
-                "coherent_memory.resident_compute": 1.0,
-            }
-
-        from core.benchmark.metrics import compute_memory_transfer_metrics
-
-        bytes_transferred = float(self.size_mb * 1024 * 1024 * 2)
-        return compute_memory_transfer_metrics(
-            bytes_transferred=bytes_transferred,
-            elapsed_ms=(self.elapsed_s or 0.001) * 1000.0,
-            transfer_type="nvlink" if self._impl.is_grace_blackwell else "pcie",
-        )
+        """Return the bytes each step moves across the CPU-GPU link."""
+        # core.benchmark.metrics has no NVLink-C2C peak, and its NVLink peak is the
+        # GPU-to-GPU link, so this reports achieved bandwidth without an efficiency.
+        bytes_moved = self._workload.bytes_per_iteration
+        metrics = {"transfer.bytes": bytes_moved}
+        if self.elapsed_s is not None:
+            metrics["transfer.achieved_gbps"] = bytes_moved / self.elapsed_s / 1e9
+        return metrics
 
     def validate_result(self) -> Optional[str]:
         if self.elapsed_s is None:

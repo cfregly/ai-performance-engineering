@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import argparse
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from functools import partial
-from typing import Optional, Tuple
+from typing import Iterator, Optional, Sequence, Tuple
 
 import torch
 from core.benchmark.verification import InputSignature, PrecisionFlags
@@ -51,6 +53,54 @@ def set_decode_options(opts: DecodeOptions) -> None:
 
 def get_decode_options() -> DecodeOptions:
     return _OPTIONS
+
+
+@contextmanager
+def decode_options_scope(options: DecodeOptions) -> Iterator[None]:
+    """Install ``options`` for the duration of the block, then restore the previous ones.
+
+    The right-sized targets keep their own options and install them only while
+    the shared helpers read them. A --target-extra-arg override therefore never
+    leaks into another persistent decode target that runs in the same process.
+    """
+    previous = _OPTIONS
+    set_decode_options(options)
+    try:
+        yield
+    finally:
+        set_decode_options(previous)
+
+
+def parse_right_sized_overrides(
+    parser: argparse.ArgumentParser,
+    argv: Sequence[str],
+    *,
+    target: str,
+) -> DecodeOptions:
+    """Parse a right-sized target's --target-extra-arg values with its own parser.
+
+    The parser must be built with exit_on_error=False. An unknown argument, an
+    invalid value or an invalid tier profile raises ValueError, so the harness
+    fails the target instead of timing the defaults.
+    """
+    try:
+        args, unknown = parser.parse_known_args(list(argv))
+    except argparse.ArgumentError as exc:
+        raise ValueError(f"Invalid {target} override {list(argv)}: {exc}") from exc
+    if unknown:
+        raise ValueError(f"Unsupported {target} override {unknown}. Accepted: {parser.format_usage().strip()}")
+    options = DecodeOptions(
+        tier=args.tier,
+        quantization=args.quantization,
+        block_k=args.block_k,
+        num_programs=args.num_programs,
+    )
+    with decode_options_scope(options):
+        try:
+            get_decode_profile()
+        except ValueError as exc:
+            raise ValueError(f"Invalid {target} override {list(argv)}: {exc}") from exc
+    return options
 
 
 def get_decode_profile() -> DecodeProfile:

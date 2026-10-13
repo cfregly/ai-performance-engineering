@@ -25,7 +25,7 @@
 // Zero-copy kernel: Direct CPU memory access from GPU
 // On GB10, this reads its coherent LPDDR5X unified system memory.
 __global__ void zero_copy_process_kernel(
-    const float* __restrict__ cpu_input,   // CPU memory (via NVLink-C2C)
+    const float* __restrict__ cpu_input,   // Pinned system memory, read in place
     float* __restrict__ gpu_output,         // GPU-accessible output allocation
     int n) {
     

@@ -855,9 +855,33 @@ class SpeculativeDecoder:
         vocab = ["the", "a", "is", "was", "in", "on", "at", "to", "for", "with"]
         return np.random.choice(vocab)
 
+def _even_contiguous_range(total: int, parts: int, index: int) -> Tuple[int, int]:
+    """Return the half-open [start, end) slice that part ``index`` owns.
+
+    Slice sizes differ by at most one, so every item is owned exactly once.
+    Parts beyond ``total`` get an empty slice.
+    """
+    base, remainder = divmod(total, parts)
+    start = index * base + min(index, remainder)
+    end = start + base + (1 if index < remainder else 0)
+    return start, end
+
+
+def _describe_owned_range(noun: str, start: int, end: int, total: int, parts: int) -> str:
+    """Describe a slice from _even_contiguous_range with inclusive bounds."""
+    if start == end:
+        return f"no {noun} ({total} {noun} across {parts} GPUs)"
+    if end - start == 1:
+        return f"{noun[:-1]} {start} (1 of {total})"
+    return f"{noun} {start}-{end - 1} ({end - start} of {total})"
+
+
 class ParallelismManager:
     """Manages different parallelism strategies."""
     
+    # Matches the six attention and six FFN blocks built by the prefill model.
+    NUM_TRANSFORMER_LAYERS = 6
+
     def __init__(self, config: InferenceConfig):
         self.config = config
         self.strategy = None
@@ -868,7 +892,7 @@ class ParallelismManager:
 
         # Tensor parallelism shards each layer's tensors while every rank
         # participates in every transformer layer.
-        num_transformer_layers = 6
+        num_transformer_layers = self.NUM_TRANSFORMER_LAYERS
         for gpu_id in range(self.config.num_gpus):
             print(
                 f"GPU {gpu_id}: Tensor shard {gpu_id + 1}/{self.config.num_gpus} "
@@ -878,28 +902,24 @@ class ParallelismManager:
     def setup_pipeline_parallelism(self):
         """Setup pipeline parallelism across GPUs."""
         print("Setting up pipeline parallelism...")
-        
-        # Each GPU handles different stages
-        stages_per_gpu = 1
-        
-        for gpu_id in range(self.config.num_gpus):
-            stage_start = gpu_id * stages_per_gpu
-            stage_end = stage_start + stages_per_gpu
-            
-            print(f"GPU {gpu_id}: Pipeline stages {stage_start}-{stage_end}")
-            
+
+        # Each GPU is one pipeline stage that owns whole, consecutive layers.
+        num_gpus = self.config.num_gpus
+        for gpu_id in range(num_gpus):
+            start, end = _even_contiguous_range(self.NUM_TRANSFORMER_LAYERS, num_gpus, gpu_id)
+            layers = _describe_owned_range("layers", start, end, self.NUM_TRANSFORMER_LAYERS, num_gpus)
+            print(f"GPU {gpu_id}: Pipeline stage {gpu_id + 1}/{num_gpus} with {layers}")
+
     def setup_expert_parallelism(self):
         """Setup expert parallelism for MoE."""
         print("Setting up expert parallelism...")
-        
-        experts_per_gpu = self.config.num_experts // self.config.num_gpus
-        
-        for gpu_id in range(self.config.num_gpus):
-            start_expert = gpu_id * experts_per_gpu
-            end_expert = start_expert + experts_per_gpu
-            
-            print(f"GPU {gpu_id}: Experts {start_expert}-{end_expert}")
-            
+
+        num_experts = self.config.num_experts
+        num_gpus = self.config.num_gpus
+        for gpu_id in range(num_gpus):
+            start, end = _even_contiguous_range(num_experts, num_gpus, gpu_id)
+            print(f"GPU {gpu_id}: Holds {_describe_owned_range('experts', start, end, num_experts, num_gpus)}")
+
     def setup_data_parallelism(self):
         """Setup data parallelism."""
         print("Setting up data parallelism...")
@@ -912,14 +932,12 @@ class ParallelismManager:
         """Setup context parallelism for long sequences."""
         print("Setting up context parallelism...")
         
-        # Split sequence across GPUs
-        tokens_per_gpu = self.config.sequence_length // self.config.num_gpus
-        
-        for gpu_id in range(self.config.num_gpus):
-            start_token = gpu_id * tokens_per_gpu
-            end_token = start_token + tokens_per_gpu
-            
-            print(f"GPU {gpu_id}: Tokens {start_token}-{end_token}")
+        # Split the sequence into consecutive token slices, one per GPU
+        sequence_length = self.config.sequence_length
+        num_gpus = self.config.num_gpus
+        for gpu_id in range(num_gpus):
+            start, end = _even_contiguous_range(sequence_length, num_gpus, gpu_id)
+            print(f"GPU {gpu_id}: Holds {_describe_owned_range('tokens', start, end, sequence_length, num_gpus)}")
 
 def benchmark_inference_system():
     """Benchmark the disaggregated inference system."""

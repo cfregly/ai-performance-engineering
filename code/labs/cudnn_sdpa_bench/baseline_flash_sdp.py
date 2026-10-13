@@ -15,23 +15,43 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
-_CLI_BACKEND: Optional[str] = None
 _BACKEND_CHOICES = ("auto", "cudnn", "flash", "math")
+_BASELINE_BACKEND = "math"
+# The harness passes one target's --target-extra-arg to both variants, so a
+# shared --backend flag would time one backend against itself. Each variant
+# reads only its own flag.
+_SIDE_BACKEND_FLAGS = {"baseline": "--baseline-backend", "optimized": "--optimized-backend"}
 
 
-def _resolve_backend(cli_choice: Optional[str] = None) -> str:
-    """Resolve backend selection from an explicit CLI choice or default to auto."""
-    if cli_choice is None:
-        return "auto"
-    choice = cli_choice.lower()
-    if choice not in _BACKEND_CHOICES:
-        raise ValueError(f"Unknown SDPA backend: {cli_choice}")
-    return choice
+def _resolve_backend(choice: str) -> str:
+    """Resolve an explicit backend choice. There is no implicit default."""
+    resolved = choice.lower()
+    if resolved not in _BACKEND_CHOICES:
+        raise ValueError(f"Unknown SDPA backend: {choice}")
+    return resolved
 
 
-def _select_backend(requested: Optional[str]) -> str:
-    """Preserve explicit backend intent; actual dispatch must succeed or raise."""
-    return _resolve_backend(requested).lower()
+def _select_backend(requested: str) -> str:
+    """Preserve explicit backend intent. Actual dispatch must succeed or raise."""
+    return _resolve_backend(requested)
+
+
+def _parse_backend_overrides(argv: list[str]) -> dict[str, Optional[str]]:
+    """Return the backend each variant requests and reject any other argument.
+
+    A bare --backend is rejected, because the harness would apply it to both
+    variants and time one backend against itself.
+    """
+    parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False, exit_on_error=False)
+    for side, flag in _SIDE_BACKEND_FLAGS.items():
+        parser.add_argument(flag, dest=side, default=None)
+    args, unknown = parser.parse_known_args(argv)
+    if unknown:
+        raise ValueError(
+            f"Unsupported cudnn_sdpa_bench override {unknown}. "
+            "Use --baseline-backend and --optimized-backend."
+        )
+    return {side: None if value is None else _select_backend(value) for side, value in vars(args).items()}
 
 
 def _sdpa_context(backend: str):
@@ -51,7 +71,7 @@ def _sdpa_context(backend: str):
     if backend != "auto":
         raise ValueError(f"Unknown SDPA backend: {backend}")
 
-    # Auto allows cuDNN, Flash, and efficient attention; PyTorch chooses dispatch.
+    # Auto allows cuDNN, Flash, and efficient attention. PyTorch chooses the dispatch.
     preference = []
     for name in ("CUDNN_ATTENTION", "FLASH_ATTENTION", "EFFICIENT_ATTENTION"):
         if hasattr(SDPBackend, name):
@@ -94,9 +114,9 @@ class SDPAAttentionModule(nn.Module):
 
 
 class FlashSDPLabBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Runs SDPA attention with selectable backend for cuDNN versus Flash comparisons."""
+    """Runs SDPA attention with one explicit backend, so each variant times a known kernel path."""
 
-    def __init__(self, backend: Optional[str] = None):
+    def __init__(self, backend: str):
         super().__init__()
         self.model: Optional[SDPAAttentionModule] = None
         self.inputs: Optional[torch.Tensor] = None
@@ -104,7 +124,7 @@ class FlashSDPLabBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.seq_len = 256
         self.batch = 8
         self.hidden = 512
-        self.backend = _select_backend(backend or _CLI_BACKEND)
+        self.backend = _select_backend(backend)
         tokens = self.batch * self.seq_len
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch),
@@ -202,30 +222,12 @@ class FlashSDPLabBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def get_custom_metrics(self) -> Optional[dict]:
         return {"backend": self.backend}
 
-    # Harness hook: apply per-target CLI args (e.g., --backend cudnn)
+    # Harness hook: apply per-target CLI args such as --baseline-backend cudnn.
     def apply_target_overrides(self, argv: List[str]) -> None:
-        parser = argparse.ArgumentParser(add_help=False)
-        parser.add_argument(
-            "--backend",
-            choices=_BACKEND_CHOICES,
-            default=None,
-            help="Select SDP backend: auto (cuDNN->Flash), cudnn, flash, or math",
-        )
-        args, _ = parser.parse_known_args(argv)
-        if args.backend:
-            self.backend = _select_backend(args.backend)
+        backend = _parse_backend_overrides(argv)["baseline"]
+        if backend is not None:
+            self.backend = backend
+
 
 def get_benchmark() -> BaseBenchmark:
-    return FlashSDPLabBenchmark()
-
-
-def _parse_cli_backend(argv: Optional[list[str]] = None) -> Optional[str]:
-    parser = argparse.ArgumentParser(description="cuDNN vs Flash SDP lab")
-    parser.add_argument(
-        "--backend",
-        choices=_BACKEND_CHOICES,
-        default=None,
-        help="Select SDP backend: auto (cuDNN->Flash), cudnn, flash, or math",
-    )
-    args, _ = parser.parse_known_args(argv)
-    return args.backend
+    return FlashSDPLabBenchmark(backend=_BASELINE_BACKEND)

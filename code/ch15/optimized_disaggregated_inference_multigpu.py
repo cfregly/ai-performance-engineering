@@ -4,7 +4,7 @@ Chapter 15: Disaggregated Inference (Optimized)
 
 Optimizations:
 - Overlap prefill and decode by pipelining KV transfers per request.
-- Use non-blocking device transfers in the local verification path.
+- Use non-blocking device transfers in the in-process local path.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ class OptimizedDisaggregatedInferenceMultiGPUBenchmark(_DisaggregatedInferenceMu
         "chapter_alignment": "native",
         "chapter_native_exemplar": True,
         "timed_launch_mode": "torchrun_multi_gpu",
-        "verification_mode": "local_multi_device_surrogate",
+        "verification_mode": "timed_torchrun_rank_outputs",
         "shared_harness_layout": "baseline_owned_shared_base",
         "shared_harness_owner": "ch15/baseline_disaggregated_inference_multigpu.py",
         "execution_pattern": "overlapped_prefill_decode_pipeline",

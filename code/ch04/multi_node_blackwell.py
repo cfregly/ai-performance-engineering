@@ -3,7 +3,7 @@
 Chapter 4: Multi-GPU and Multi-Node Training
 
 Demonstrates multi-node distributed training optimizations for Blackwell 
-B200/B300 GPUs with NVLink-C2C and NCCL. Includes tensor parallelism, 
+B200/B300 GPUs with NVLink and NCCL. Includes tensor parallelism, 
 FSDP, and gradient compression for multi-node scaling.
 
 NOTE: This file uses F.scaled_dot_product_attention (SDPA), which is covered
@@ -17,6 +17,7 @@ from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
 import os
 
 from core.common.device_utils import resolve_local_rank
+from core.common.grace_platform import host_grace_soc_id, host_link_flags
 
 from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
 import torch
@@ -38,17 +39,14 @@ import time
 # ============================================================================
 
 def detect_gb200_gb300() -> bool:
-    """Detect if running on GB200/GB300 Grace-Blackwell Superchip."""
-    try:
-        import platform
-        if platform.machine() == 'aarch64':
-            with open('/proc/cpuinfo', 'r') as f:
-                cpuinfo = f.read()
-                if 'ARM' in cpuinfo or 'Neoverse' in cpuinfo:
-                    return True
-    except FileNotFoundError:
-        pass  # /proc/cpuinfo doesn't exist (not Linux)
-    return False
+    """Return whether the host CPU is NVIDIA Grace, as in GB200 and GB300 systems.
+
+    Grace identity comes from the NVIDIA SoC ID in sysfs. Arm core names in
+    /proc/cpuinfo cannot identify Grace, because other vendors ship the same
+    Neoverse cores. Whether a GPU reaches Grace over NVLink-C2C is a separate
+    question that the CUDA driver answers for each GPU.
+    """
+    return host_grace_soc_id() is not None
 
 def setup_multigpu_optimized(
     backend: str = "nccl",
@@ -145,7 +143,7 @@ def setup_blackwell_distributed(
         os.environ.setdefault("NCCL_IB_DISABLE", "0")  # Enable InfiniBand if available
         os.environ.setdefault("NCCL_NET_GDR_LEVEL", "5")  # GPU Direct RDMA
         os.environ.setdefault("NCCL_P2P_LEVEL", "NVL")  # NVLink for intra-node
-        os.environ.setdefault("NCCL_NVLS_ENABLE", "1")  # NVLink-C2C
+        os.environ.setdefault("NCCL_NVLS_ENABLE", "1")  # NVLink SHARP (NVLS) collectives
         os.environ.setdefault("NCCL_PROTO", "Simple")  # Protocol
         
         # Optimize for larger nodes
@@ -169,13 +167,15 @@ def setup_blackwell_distributed(
             print(f"NCCL Configuration for Blackwell ({local_world_size} GPU node)")
             print("=" * 70)
             print(f" P2P Level: {os.environ.get('NCCL_P2P_LEVEL', 'default')}")
-            print(f" NVLS (NVLink-C2C): {os.environ.get('NCCL_NVLS_ENABLE', '0')}")
+            print(f" NVLS (NVLink SHARP): {os.environ.get('NCCL_NVLS_ENABLE', '0')}")
             print(f" Algorithms: {os.environ.get('NCCL_ALGO', 'default')}")
             print(f" Channels per peer: {os.environ.get('NCCL_NCHANNELS_PER_NET_PEER', 'default')}")
             print(f" Buffer size: {int(os.environ.get('NCCL_BUFFSIZE', '2097152')) / 1024 / 1024:.1f} MB")
             if detect_gb200_gb300():
-                print(" GB200/GB300 Grace-Blackwell detected")
-                print(" → CPU-GPU: 900 GB/s NVLink-C2C")
+                print(" NVIDIA Grace CPU detected")
+                nvlink_c2c, _ = host_link_flags(torch.cuda.get_device_properties(local_rank), local_rank)
+                if nvlink_c2c:
+                    print(" → CPU-GPU: NVLink-C2C, 900 GB/s bidirectional spec peak (not measured here)")
             print("=" * 70)
         
         if rank == 0:
@@ -373,7 +373,7 @@ def apply_tensor_parallelism(
 ) -> nn.Module:
     """
     Apply tensor parallelism to model using PyTorch 2.10 API.
-    Optimized for intra-node parallelism via NVLink-C2C.
+    Optimized for intra-node parallelism over GPU-to-GPU NVLink.
     """
     tp_mesh = device_mesh["tp"]
     tp_size = tp_mesh.size()

@@ -34,10 +34,9 @@ def _read_jsonl(path: Path) -> List[Dict]:
     rows: List[Dict] = []
     with path.open(encoding="utf-8") as f:
         for line in f:
-            try:
+            # A malformed row raises. Skipping it would drop that window's drops and tokens.
+            if line.strip():
                 rows.append(json.loads(line))
-            except Exception:
-                continue
     return rows
 
 
@@ -78,10 +77,10 @@ def _load_run(run_dir: Path) -> Dict:
     drop_token_total = 0.0
     drop_counts_complete = True
     for row in moe_router_rows:
-        drop_total += float(row.get("drops", 0.0))
-        if "total_tokens" not in row:
+        if "drops" not in row or "total_tokens" not in row:
             drop_counts_complete = False
             continue
+        drop_total += float(row["drops"])
         drop_token_total += float(row["total_tokens"])
     drop_rate = (
         drop_total / drop_token_total
@@ -147,7 +146,15 @@ def _print_table(runs: List[Dict], args: argparse.Namespace, baseline: Dict | No
         delta_str = ""
         if baseline and baseline is not r:
             delta_str = f" | Δacc={r['acc']-baseline['acc']:+.3f}"
-        print(f"- {r['dir'].name}: {status} (ttft<= {ttft_cap}ms, decode<= {decode_cap}ms){delta_str}")
+        drop_note = ""
+        if math.isnan(r["drop_rate"]):
+            drop_note = (
+                " | drop rate unknown: every moe_router.jsonl row needs drops and total_tokens"
+            )
+        print(
+            f"- {r['dir'].name}: {status} (ttft<= {ttft_cap}ms, decode<= {decode_cap}ms)"
+            f"{delta_str}{drop_note}"
+        )
 
 
 def _maybe_plot(runs: List[Dict], out: Path) -> None:

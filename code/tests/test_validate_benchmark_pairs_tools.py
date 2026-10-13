@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import ast
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -14,8 +16,10 @@ import torch
 from core.benchmark.verification import InputSignature
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark
+from core.optimization.symmetric_memory_patch import symmetric_memory_available
 from core.scripts.ci.check_verification_compliance import check_file_compliance
 from core.scripts.validate_benchmark_pairs import (
+    PairValidationResult,
     discover_benchmark_pairs,
     get_input_signature_safe,
     validate_all_pairs,
@@ -23,6 +27,12 @@ from core.scripts.validate_benchmark_pairs import (
 )
 
 _DISTRIBUTED_ENV_KEYS = ("RANK", "WORLD_SIZE", "LOCAL_RANK", "MASTER_ADDR", "MASTER_PORT")
+_TORCHRUN_WORKER_REFUSAL = "SKIPPED: signature capture requires a torchrun worker result"
+_PAIR_SKIP_DETAILS = re.compile(
+    r"SKIPPED: (?:both benchmarks reported SKIPPED\. )?"
+    r"baseline_error=(?P<baseline>.+), optimized_error=(?P<optimized>.+)",
+    re.DOTALL,
+)
 
 
 def _subprocess_env_without_distributed() -> dict[str, str]:
@@ -30,6 +40,22 @@ def _subprocess_env_without_distributed() -> dict[str, str]:
     for key in _DISTRIBUTED_ENV_KEYS:
         env.pop(key, None)
     return env
+
+
+def _assert_both_sides_skipped_for(result: PairValidationResult, reason: str) -> None:
+    assert result.skipped is True, result.to_dict()
+    assert result.valid is False
+    assert not result.baseline_has_signature
+    assert not result.optimized_has_signature
+    assert result.error is not None
+    # validate_pair joins the repr of each side's error into one message.
+    # Check each side on its own so that one side cannot report the reason for
+    # both.
+    details = _PAIR_SKIP_DETAILS.fullmatch(result.error)
+    assert details is not None, result.error
+    for side in ("baseline", "optimized"):
+        side_error = ast.literal_eval(details.group(side))
+        assert reason in side_error, f"{side}_error={side_error!r}"
 
 
 class _DummyPayloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -154,7 +180,19 @@ def test_ci_compliance_checker_accepts_imported_benchmark_base_inheritance(tmp_p
 
 
 def test_ch04_torchrun_multigpu_pairs_skip_cleanly_on_single_gpu_hosts() -> None:
+    """On a multi-GPU host, standalone validation refuses these torchrun wrappers.
+
+    ``validate_benchmark_pairs`` refuses signature capture for every
+    ``launch_via=torchrun`` wrapper. Under ``aisp bench run``, these four pairs
+    get their signature from the parent-side ``_prepare_verification_payload()``
+    that ``get_torchrun_spec()`` calls, not from a worker result.
+    """
     repo_root = Path(__file__).resolve().parents[1]
+    gpu_count = torch.cuda.device_count()
+    if gpu_count < 2:
+        expected_reason = f"SKIPPED: Requires >= 2 GPUs (found {gpu_count} GPU)"
+    else:
+        expected_reason = _TORCHRUN_WORKER_REFUSAL
     cases = [
         (
             "pipeline_parallel_multigpu_1f1b",
@@ -185,17 +223,14 @@ def test_ch04_torchrun_multigpu_pairs_skip_cleanly_on_single_gpu_hosts() -> None
             repo_root / "ch04" / baseline_name,
             repo_root / "ch04" / optimized_name,
         )
-        if torch.cuda.device_count() < 2:
-            assert result.skipped is True
-            assert result.error is not None and "SKIPPED" in result.error
-        elif result.skipped:
-            assert result.error is not None and "SKIPPED" in result.error
-        else:
-            assert result.valid is True
-            assert result.error is None
+        _assert_both_sides_skipped_for(result, expected_reason)
 
 
-def test_ch04_no_overlap_pair_requires_distributed_launch_context() -> None:
+def test_ch04_no_overlap_pair_requires_distributed_launch_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for key in _DISTRIBUTED_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
     repo_root = Path(__file__).resolve().parents[1]
     result = validate_pair(
         "ch04",
@@ -204,13 +239,13 @@ def test_ch04_no_overlap_pair_requires_distributed_launch_context() -> None:
         repo_root / "ch04" / "optimized_no_overlap.py",
     )
 
-    if torch.cuda.device_count() < 2:
-        assert result.skipped is True
-        assert result.error is not None and "SKIPPED" in result.error
+    gpu_count = torch.cuda.device_count()
+    if gpu_count < 2:
+        _assert_both_sides_skipped_for(
+            result, f"SKIPPED: Requires >= 2 GPUs (found {gpu_count} GPU)"
+        )
     else:
-        assert result.skipped is True
-        assert result.error is not None
-        assert "torchrun/distributed launch context" in result.error
+        _assert_both_sides_skipped_for(result, "requires torchrun/distributed launch context")
 
 
 def test_ch04_no_overlap_torchrun_specs_use_public_target_names() -> None:
@@ -469,7 +504,18 @@ def test_ch04_nvshmem_workers_emit_explicit_skips_on_unsupported_hosts() -> None
         )
 
 
-def test_ch04_nvshmem_pairs_skip_cleanly_on_single_gpu_or_missing_symmem() -> None:
+def test_ch04_nvshmem_pairs_skip_cleanly_on_single_gpu_or_missing_symmem(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each host state has exactly one accepted skip reason.
+
+    On a multi-GPU host with symmetric memory, standalone validation refuses
+    these torchrun wrappers because their signatures come only from the worker
+    result. ``aisp bench run`` validates these pairs on such hosts.
+    """
+    # The wrappers pick a torchrun launch only outside a distributed launch.
+    for key in _DISTRIBUTED_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
     repo_root = Path(__file__).resolve().parents[1]
     cases = [
         (
@@ -492,20 +538,12 @@ def test_ch04_nvshmem_pairs_skip_cleanly_on_single_gpu_or_missing_symmem() -> No
             repo_root / "ch04" / optimized_name,
         )
         if torch.cuda.device_count() < 2:
-            assert result.skipped is True
-            assert result.error is not None and "SKIPPED" in result.error
-        elif result.skipped:
-            assert result.error is not None and "SKIPPED" in result.error
-            assert (
-                "requires NVSHMEM or SymmetricMemory support" in result.error
-                or "requires a torchrun worker result" in result.error
-            )
+            expected_reason = f"SKIPPED: {example_name} requires >=2 GPUs"
+        elif not symmetric_memory_available():
+            expected_reason = f"SKIPPED: {example_name} requires NVSHMEM or SymmetricMemory support"
         else:
-            assert result.valid, result.to_dict()
-            assert result.baseline_has_signature and result.optimized_has_signature
-            assert result.signatures_match
-            assert not result.mismatches
-            assert result.error is None
+            expected_reason = _TORCHRUN_WORKER_REFUSAL
+        _assert_both_sides_skipped_for(result, expected_reason)
 
 
 def test_validate_all_pairs_timeout_kills_isolated_pair_descendants(tmp_path: Path) -> None:

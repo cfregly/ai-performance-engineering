@@ -29,6 +29,8 @@ from typing import Any, Dict
 import torch
 import torch.distributed as dist
 
+from core.common.grace_platform import host_grace_soc_id, host_link_flags
+
 
 def _ib_devices_present() -> bool:
     if os.environ.get("NCCL_IB_HCA"):
@@ -286,8 +288,12 @@ def configure_nccl_for_gb200_gb300(verbose: bool = True) -> Dict[str, str]:
     GB200/GB300 Architecture:
     - Grace CPU: 72 ARM Neoverse V2 cores
     - CPU Memory: 480GB-1TB LPDDR5X
-    - NVLink-C2C: 900 GB/s coherent CPU-GPU bandwidth
+    - NVLink-C2C: 900 GB/s bidirectional spec peak between Grace and each GPU
     - Unified memory address space (CPU + GPU)
+
+    The verbose printout describes the Grace CPU only when the host reports an
+    NVIDIA SoC ID, and names NVLink-C2C only when the CUDA driver reports it
+    for every visible GPU.
 
     Args:
         verbose: Print configuration details
@@ -324,17 +330,32 @@ def configure_nccl_for_gb200_gb300(verbose: bool = True) -> Dict[str, str]:
     env_vars["NCCL_IB_GID_INDEX"] = "3"
 
     if verbose:
+        grace_soc_id = host_grace_soc_id()
         print("=" * 80)
         print("NCCL Configuration for GB200/GB300 Grace-Blackwell Superchip")
         print("=" * 80)
-        print("\nGrace CPU Specifications:")
-        print("  Architecture: ARM Neoverse V2")
-        print("  Cores: 72 (144 threads)")
-        print("  Memory: 480GB-1TB LPDDR5X")
-        print("  CPU-GPU: 900 GB/s (NVLink-C2C)")
+        if grace_soc_id is None:
+            print("\nThis host reports no NVIDIA SoC ID, so its CPU is not NVIDIA Grace.")
+        else:
+            print(f"\nGrace CPU Specifications (SoC ID {grace_soc_id}):")
+            print("  Architecture: ARM Neoverse V2")
+            print("  Cores: 72 per Grace CPU, one thread per core")
+            print("  Memory: 480GB-1TB LPDDR5X")
+            if _every_gpu_on_nvlink_c2c():
+                print("  CPU-GPU: NVLink-C2C, 900 GB/s bidirectional spec peak (not measured here)")
         print("=" * 80)
 
     return env_vars
+
+
+def _every_gpu_on_nvlink_c2c() -> bool:
+    """Return whether the CUDA driver reports an NVLink-C2C host link for every visible GPU."""
+    if not torch.cuda.is_available():
+        return False
+    count = torch.cuda.device_count()
+    return count > 0 and all(
+        host_link_flags(torch.cuda.get_device_properties(index), index)[0] for index in range(count)
+    )
 
 
 def detect_b200_multigpu_topology() -> Dict[str, Any]:
@@ -352,6 +373,7 @@ def detect_b200_multigpu_topology() -> Dict[str, Any]:
         "is_b200_multigpu": False,
         "has_nvswitch": False,
         "has_grace_cpu": False,
+        "grace_soc_id": None,
         "nvlink_topology": "unknown",
         "gpus": [],
     }
@@ -399,17 +421,11 @@ def detect_b200_multigpu_topology() -> Dict[str, Any]:
         else:
             info["nvlink_topology"] = "direct_nvlink_pairs"
 
-    # Check for Grace CPU (GB200/GB300)
-    try:
-        import platform
-
-        if platform.machine() == "aarch64":
-            with open("/proc/cpuinfo", "r") as f:
-                cpuinfo = f.read()
-                if "ARM" in cpuinfo or "Neoverse" in cpuinfo:
-                    info["has_grace_cpu"] = True
-    except FileNotFoundError:
-        pass  # /proc/cpuinfo doesn't exist (not Linux)
+    # Grace identity comes from the NVIDIA SoC ID in sysfs. Arm core names in
+    # /proc/cpuinfo cannot identify Grace, because other vendors ship the same
+    # Neoverse cores.
+    info["grace_soc_id"] = host_grace_soc_id()
+    info["has_grace_cpu"] = info["grace_soc_id"] is not None
 
     return info
 
@@ -441,7 +457,7 @@ def print_multigpu_topology() -> None:
             print("  ℹ Direct NVLink pairs")
 
         if info["has_grace_cpu"]:
-            print("\n✓ Grace CPU detected (GB200/GB300 Superchip)")
+            print(f"\n✓ NVIDIA Grace CPU detected (SoC ID {info['grace_soc_id']})")
         else:
             print("\nℹ Standard B200 configuration (PCIe or NVLink only)")
 

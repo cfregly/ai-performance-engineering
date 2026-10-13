@@ -19,7 +19,7 @@ Based on Chapter 16 content and SGLang's prefix caching design.
 """
 
 from typing import List, Dict, Optional, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from contextlib import nullcontext
 
 
@@ -31,18 +31,51 @@ def _attention_core(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.
     return torch.matmul(weights, v)
 
 
+class _FilledRows:
+    """Number of written rows in one key/value allocation, shared by all its views."""
+
+    __slots__ = ("count",)
+
+    def __init__(self, count: int) -> None:
+        self.count = count
+
+
 @dataclass
 class KVCache:
-    """Represents a KV cache tensor pair for a specific prefix."""
+    """A prefix view of the first ``seq_len`` rows of a key/value allocation.
+
+    Several radix-tree nodes can view one allocation at different lengths.
+    Rows below the shared ``filled`` mark are never rewritten, so every view
+    keeps its contents. Views that share an allocation must come from
+    ``clone_ref()`` or ``append()`` so that they share the mark.
+    """
     keys: torch.Tensor      # [capacity, num_heads, head_dim]
     values: torch.Tensor    # [capacity, num_heads, head_dim]
     seq_len: int
     ref_count: int = 1
     capacity: int = 0
+    filled: Optional[_FilledRows] = field(default=None, repr=False, compare=False)
 
     def __post_init__(self):
         if self.capacity == 0:
             self.capacity = self.keys.size(0)
+        if self.capacity != self.keys.size(0):
+            raise ValueError(
+                f"KVCache capacity {self.capacity} does not match key rows {self.keys.size(0)}"
+            )
+        if self.values.shape != self.keys.shape:
+            raise ValueError(
+                f"KVCache values shape {tuple(self.values.shape)} does not match "
+                f"keys shape {tuple(self.keys.shape)}"
+            )
+        if not 0 <= self.seq_len <= self.capacity:
+            raise ValueError(f"KVCache seq_len {self.seq_len} is outside [0, {self.capacity}]")
+        if self.filled is None:
+            self.filled = _FilledRows(self.seq_len)
+        elif self.filled.count < self.seq_len:
+            raise ValueError(
+                f"KVCache seq_len {self.seq_len} exceeds the {self.filled.count} written rows"
+            )
 
     @property
     def key_view(self) -> torch.Tensor:
@@ -61,16 +94,38 @@ class KVCache:
             seq_len=self.seq_len,
             ref_count=self.ref_count,
             capacity=self.capacity,
+            filled=self.filled,
         )
 
     def append(self, k: torch.Tensor, v: torch.Tensor) -> "KVCache":
-        """Append through copy-on-write so sibling prefixes remain immutable."""
+        """Return a view extended by ``k`` and ``v`` without rewriting any written row.
+
+        A view that ends at the filled mark owns the unused rows after it and
+        writes them in place. A view that ends before the mark is a branch
+        point whose next rows already belong to another view, so it copies its
+        prefix into a new allocation. Capacity doubles only when it runs out,
+        so a token-by-token loop does amortized O(1) work per token.
+        """
         append_len = k.size(0)
+        if v.size(0) != append_len:
+            raise ValueError(f"KVCache append got {append_len} key rows and {v.size(0)} value rows")
         new_seq_len = self.seq_len + append_len
-        # A cached prefix can be referenced by multiple radix-tree branches.
-        # Treat its storage as immutable and allocate a private extension even
-        # when unused capacity remains; otherwise one branch corrupts siblings.
-        new_capacity = max(new_seq_len, max(1, self.capacity) * 2)
+        if self.seq_len == self.filled.count and new_seq_len <= self.capacity:
+            self.keys[self.seq_len:new_seq_len].copy_(k)
+            self.values[self.seq_len:new_seq_len].copy_(v)
+            self.filled.count = new_seq_len
+            return KVCache(
+                keys=self.keys,
+                values=self.values,
+                seq_len=new_seq_len,
+                capacity=self.capacity,
+                filled=self.filled,
+            )
+
+        if new_seq_len <= self.capacity:
+            new_capacity = self.capacity
+        else:
+            new_capacity = max(new_seq_len, 2 * self.capacity)
         new_keys = torch.empty(
             new_capacity,
             *self.keys.shape[1:],

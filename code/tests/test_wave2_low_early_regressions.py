@@ -10,6 +10,7 @@ import pytest
 
 from ch02 import cpu_gpu_topology_aware
 from ch04 import dist_allreduce
+from core.common import grace_platform
 
 CODE = Path(__file__).resolve().parents[1]
 
@@ -32,7 +33,10 @@ def test_w2_097_fp32_fusion_uses_strict_output_tolerance() -> None:
     assert "output_tolerance=(0.5, 0.5)" not in text
 
 
-def _patch_arm_cpu_probe(monkeypatch: pytest.MonkeyPatch, cpuinfo: str) -> None:
+def _patch_arm_cpu_probe(monkeypatch: pytest.MonkeyPatch, cpuinfo: str, soc_bus_dir: Path) -> None:
+    # Grace identity is read from sysfs through core.common.grace_platform, so the
+    # tests point it at a temporary tree and never read the real host's SoC IDs.
+    monkeypatch.setattr(grace_platform, "_SOC_BUS_DIR", soc_bus_dir)
     monkeypatch.setattr(cpu_gpu_topology_aware.platform, "machine", lambda: "aarch64")
     monkeypatch.setattr(cpu_gpu_topology_aware.platform, "processor", lambda: "")
     monkeypatch.setattr(
@@ -55,8 +59,9 @@ def _patch_arm_cpu_probe(monkeypatch: pytest.MonkeyPatch, cpuinfo: str) -> None:
 
 def test_w2_098_generic_neoverse_cpu_is_not_classified_as_grace(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    _patch_arm_cpu_probe(monkeypatch, "model name : ARM Neoverse V2\n")
+    _patch_arm_cpu_probe(monkeypatch, "model name : ARM Neoverse V2\n", tmp_path / "soc")
 
     info = cpu_gpu_topology_aware.detect_cpu_info()
 
@@ -64,21 +69,32 @@ def test_w2_098_generic_neoverse_cpu_is_not_classified_as_grace(
     assert info["is_grace"] is False
 
 
-def test_w2_098_explicit_nvidia_grace_cpu_is_classified_as_grace(
+def test_w2_098_nvidia_soc_id_is_classified_as_grace(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    _patch_arm_cpu_probe(monkeypatch, "model name : NVIDIA Grace CPU\n")
+    soc0 = tmp_path / "soc" / "soc0"
+    soc0.mkdir(parents=True)
+    (soc0 / "soc_id").write_text("jep106:036b:0241\n", encoding="utf-8")
+    # arm64 kernels print no model-name line, only Arm core identifiers.
+    _patch_arm_cpu_probe(monkeypatch, "CPU implementer\t: 0x41\nCPU part\t: 0xd4f\n", tmp_path / "soc")
 
     info = cpu_gpu_topology_aware.detect_cpu_info()
 
     assert info["cpu_type"] == "NVIDIA Grace"
     assert info["is_grace"] is True
+    assert info["soc_id"] == "jep106:036b:0241"
+    links = {link: 44.712 for link in range(10)}
     interconnect = cpu_gpu_topology_aware.detect_interconnect_type(
         info,
-        {"family": "Blackwell", "nvlink_capable": False},
+        {"family": "Blackwell", "nvlink_capable": False, "c2c_links_gbps": links},
     )
-    assert interconnect == "NVLink-C2C (detected; bandwidth unmeasured)"
+    assert interconnect == "NVLink-C2C (10 links up, bandwidth unmeasured)"
     assert "900 GB/s" not in interconnect
+    assert "NVLink-C2C" not in cpu_gpu_topology_aware.detect_interconnect_type(
+        info,
+        {"family": "Blackwell", "nvlink_capable": False, "c2c_links_gbps": {}},
+    )
 
 
 def test_w2_099_nccl_allows_one_local_gpu_in_a_multi_node_job(
@@ -166,10 +182,11 @@ def test_w2_103_through_w2_106_cuda_descriptions_match_the_code() -> None:
     assert "single-matrix" not in cublaslt_fp4_header
     assert "LayoutB=RowMajor" in cutlass_fp16_header
     assert "LayoutB=ColumnMajor" not in cutlass_fp16_header
-    assert "16x16 shared-memory tiled matmul" in tiled
+    assert "register micro-tile per thread" in tiled
     assert "Register-tiled" not in tiled
     honest_description = (
-        "Naive and 16x16 shared-memory tiled matmuls with per-thread scalar accumulation."
+        "Naive matmul and a 128x128 shared-memory tiled matmul in which each thread "
+        "accumulates an 8x8 register micro-tile."
     )
     assert honest_description in readme
     assert honest_description in readme_generator

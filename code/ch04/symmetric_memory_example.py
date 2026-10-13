@@ -21,6 +21,7 @@ import torch.distributed as dist
 from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
 from ch04.nvshmem_child_result import NVSHMEMWorkloadResult
 from core.common.device_utils import resolve_local_rank
+from core.common.grace_platform import host_grace_soc_id, host_link_flags
 from core.optimization.symmetric_memory_patch import (
     SymmetricMemoryBackend,
     create_symmetric_memory_handle,
@@ -32,6 +33,8 @@ TRADITIONAL_RING_NVTX_RANGE = "transfer_sync:symmetric_memory_traditional_ring"
 SYMMETRIC_RING_NVTX_RANGE = "transfer_sync:symmetric_memory_direct_ring"
 TRADITIONAL_RING_TRANSPORT_BACKEND = "NCCL"
 SYMMETRIC_RING_TRANSPORT_BACKEND = "CUDA"
+# NVIDIA specifies NVLink-C2C at 900 GB/s bidirectional, so one copy direction peaks at 450 GB/s.
+_C2C_PEAK_PER_DIRECTION_GBPS = 450.0
 
 
 def _make_rank_generator(
@@ -86,22 +89,32 @@ def setup_distributed():
 
 
 def detect_gb200_gb300() -> bool:
-    """Detect if running on GB200/GB300 Grace-Blackwell Superchip."""
-    import platform
-    if platform.machine() != 'aarch64':
-        return False
-    with open('/proc/cpuinfo', 'r') as f:
-        cpuinfo = f.read()
-        return 'ARM' in cpuinfo or 'Neoverse' in cpuinfo
+    """Return whether the host CPU is NVIDIA Grace, as in GB200 and GB300 systems.
+
+    Grace identity comes from the NVIDIA SoC ID in sysfs. Arm core names in
+    /proc/cpuinfo cannot identify Grace, because other vendors ship the same
+    Neoverse cores. Whether a GPU reaches Grace over NVLink-C2C is a separate
+    question that _gpus_on_nvlink_c2c asks the CUDA driver.
+    """
+    return host_grace_soc_id() is not None
+
+
+def _gpus_on_nvlink_c2c(device_indexes) -> bool:
+    """Return whether the CUDA driver reports an NVLink-C2C host link for each listed GPU."""
+    indexes = list(device_indexes)
+    return bool(indexes) and all(
+        host_link_flags(torch.cuda.get_device_properties(index), index)[0] for index in indexes
+    )
 
 
 def enable_nvlink_c2c_optimizations() -> None:
     """
-    Enable NVLink-C2C optimizations for Blackwell (NEW).
-    
-    Blackwell B200/B300 features NVLink-C2C (Chip-to-Chip) providing
-    900 GB/s CPU-GPU bandwidth. This function configures peer access
-    and memory hints for optimal performance.
+    Report GPU peer access and, on Grace superchips, the NVLink-C2C host link.
+
+    GB200 and GB300 attach each Blackwell GPU to a Grace CPU over NVLink-C2C,
+    with a 900 GB/s bidirectional spec peak. B200 and B300 GPUs in x86 servers
+    reach the host over PCIe. The NVLink-C2C lines print only when the host CPU
+    is Grace and the CUDA driver reports NVLink-C2C for every GPU.
     """
     if not torch.cuda.is_available():
         return
@@ -110,13 +123,13 @@ def enable_nvlink_c2c_optimizations() -> None:
     if num_gpus < 2:
         return
     
-    is_grace_blackwell = detect_gb200_gb300()
+    is_grace_blackwell = detect_gb200_gb300() and _gpus_on_nvlink_c2c(range(num_gpus))
     
     print("\n" + "=" * 80)
     if is_grace_blackwell:
         print("NVLink-C2C Configuration for GB200/GB300 Grace-Blackwell")
     else:
-        print("NVLink-C2C Configuration for Blackwell")
+        print("GPU Peer Access Configuration for Blackwell (no NVLink-C2C host link reported)")
     print("=" * 80)
     
     # 1. Enable peer access between all GPU pairs
@@ -141,14 +154,15 @@ def enable_nvlink_c2c_optimizations() -> None:
     # 3. Set memory pool attributes (if using stream-ordered allocator)
     # Note: This is configured via CUDA driver - no PyTorch API needed
     
-    print("\nNVLink-C2C Features:")
     if is_grace_blackwell:
-        print("  GB200/GB300 detected:")
-        print("    - CPU-GPU: ~900 GB/s (coherent)")
+        print("\nNVLink-C2C Features:")
+        print("  Grace CPU with an NVLink-C2C host link on every GPU:")
+        print("    - CPU-GPU: NVLink-C2C, 900 GB/s bidirectional spec peak (coherent, not measured here)")
         print("    - GPU-GPU: 1800 GB/s NVLink 5.0")
         print("    - Unified memory address space")
         print("    - Grace CPU: 72 ARM cores")
     else:
+        print("\nNVLink Features:")
         print("  - GPU-GPU: ~900 GB/s per pair")
         print("  - Optimal for: Large parameter transfers, peer communication")
     
@@ -529,29 +543,36 @@ def demonstrate_gb200_unified_memory() -> None:
     
     GB200/GB300 provides:
     - Coherent CPU-GPU address space
-    - 900 GB/s CPU↔GPU bandwidth via NVLink-C2C
+    - NVLink-C2C between Grace and each GPU, 900 GB/s bidirectional spec peak
     - Zero-copy CPU-GPU transfers
+
+    The demo runs only when the host CPU is Grace and the CUDA driver reports
+    NVLink-C2C for GPU 0, the GPU it copies to.
     """
     if not torch.cuda.is_available():
         print("CUDA not available")
         return
     
     is_grace = detect_gb200_gb300()
+    gpu0_on_c2c = is_grace and _gpus_on_nvlink_c2c([0])
     
     print("\n" + "=" * 80)
     print("GB200/GB300 Unified Memory Demonstration")
     print("=" * 80)
     
-    if not is_grace:
-        print("⚠ Not running on GB200/GB300 Grace-Blackwell")
+    if not gpu0_on_c2c:
+        if is_grace:
+            print("⚠ GPU 0 has no NVLink-C2C host link to the Grace CPU")
+        else:
+            print("⚠ Not running on an NVIDIA Grace CPU")
         print("  This demo will show concepts that apply when Grace CPU is available")
         print("=" * 80)
         return
     
-    print("GB200/GB300 detected!")
+    print("NVIDIA Grace CPU with NVLink-C2C on GPU 0 detected")
     print("\nKey Features:")
     print("  1. Coherent CPU-GPU memory")
-    print("  2. 900 GB/s NVLink-C2C bandwidth")
+    print(f"  2. NVLink-C2C: 900 GB/s bidirectional, {_C2C_PEAK_PER_DIRECTION_GBPS:.0f} GB/s per direction (spec peak)")
     print("  3. Zero-copy data transfers")
     print("  4. Optimal for CPU preprocessing + GPU compute")
     
@@ -586,8 +607,9 @@ def demonstrate_gb200_unified_memory() -> None:
     print(f"\nCPU→GPU Transfer:")
     print(f"  Time: {transfer_time:.2f} ms")
     print(f"  Bandwidth: {bandwidth:.2f} GB/s")
-    print(f"  Expected on GB200/GB300: ~800 GB/s")
-    print(f"  Efficiency: {(bandwidth / 800) * 100:.1f}%")
+    # This is a one-way copy, so it is compared with the per-direction peak.
+    print(f"  NVLink-C2C spec peak: {_C2C_PEAK_PER_DIRECTION_GBPS:.0f} GB/s per direction (not measured here)")
+    print(f"  Share of the per-direction peak: {(bandwidth / _C2C_PEAK_PER_DIRECTION_GBPS) * 100:.1f}%")
     
     print("\nUse Cases for GB200/GB300:")
     print("  CPU data loading → Grace memory → GPU training")

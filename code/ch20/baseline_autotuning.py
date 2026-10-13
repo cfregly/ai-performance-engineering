@@ -28,10 +28,10 @@ class BaselineAutotuningBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Use a pointwise-heavy workload so kernel-fusion wins are visible above noise.
         self.batch = 1024
         self.hidden_dim = 4096
-        tokens = self.batch * self.hidden_dim
+        # Each input row is one token. hidden_dim is its feature width, not a token count.
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch),
-            tokens_per_iteration=float(tokens),
+            tokens_per_iteration=float(self.batch),
         )
         self._verify_input: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None

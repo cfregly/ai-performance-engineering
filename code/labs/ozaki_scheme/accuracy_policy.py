@@ -36,6 +36,12 @@ QUALIFICATION_RECEIPTS = [
 # in aggregate and two steps at the worst output. Checksum tolerances are only
 # secondary harness bounds, derived with Cauchy-Schwarz from the full-array L2
 # ceiling and |a|,|b| <= input_scale: limit * m*n*k*input_scale^2.
+# At the recorded workload these bounds (2147.48 dynamic, 16.78 fixed) are about
+# 24,600 and 190 times the standard deviation of the expected signed checksum,
+# which is about 0.09 (sqrt(m*n*k) * input_scale^2 / 3 for uniform inputs). Even
+# the fixed bound accepts an all-zero output, so the pair comparison cannot
+# detect an accuracy regression. The executable's full-array gate is the
+# accuracy check.
 ENGINEERING_CEILINGS = {
     "dynamic": {
         "relative_l2": 2.0**-5,

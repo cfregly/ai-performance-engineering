@@ -13,6 +13,7 @@ import torch
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
+from ch16.baseline_runtime_scheduler import RUNTIME_SCHEDULER_OUTPUT_TOLERANCE
 from ch16.runtime_scheduler_common import RuntimeSchedulerWorkload, SchedulerScenario
 
 
@@ -133,7 +134,7 @@ class OptimizedRuntimeSchedulerBenchmark(VerificationPayloadMixin, BaseBenchmark
                 "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
-            output_tolerance=(0.1, 1.0),
+            output_tolerance=RUNTIME_SCHEDULER_OUTPUT_TOLERANCE,
         )
 
     def get_custom_metrics(self) -> Optional[dict]:

@@ -1,21 +1,21 @@
-// optimized_tma_copy.cu -- Pipeline-staged neighbor copy with a real 2D TMA path.
+// optimized_tma_copy.cu -- Descriptor-backed 2D TMA tiled-neighbor transform.
 //
-// This file demonstrates:
-// 1. Pipeline-staged 1D neighbor copies with cuda::pipeline
-// 2. A descriptor-backed 2D tiled-neighbor transform when CUDA 13+/TMA support is present
+// Times descriptor_tma_2d_copy_kernel on a 4096x4096 float32 matrix split into
+// 64x64 tiles. Each output blends its element with the elements 1 and 64 places
+// later in the tile's row-major order, clamped to the tile's last element.
+// baseline_tma_copy.cu times the same transform with scalar global loads.
 //
-// BEFORE (manual tiling):
-//     for (tile_y) for (tile_x):
-//         for (i in tile): load element[y+i][x+j]
-//     Many small, potentially uncoalesced loads
+// BEFORE (baseline_tma_copy.cu):
+//     each thread issues three scalar global loads per output
+//     and one scalar global store
 //
-// AFTER (pipeline-staged copy):
-//     cuda::pipeline overlaps global-memory fetch with the neighbor combine step
-//     Shared-memory staging reduces redundant reads and amortizes latency
+// AFTER (this file):
+//     one TMA load copies the whole tile into shared memory
+//     the neighbor taps read shared memory
+//     one TMA store writes the finished tile back
 //
-// The 1D path stays focused on async pipeline staging. The 2D path now requires
-// real CUtensorMap descriptor support and fails fast if tensor maps are not
-// usable on the current runtime.
+// The binary requires real CUtensorMap descriptor support and exits with
+// SKIPPED if tensor maps are not usable on the current runtime.
 
 #include <cooperative_groups.h>
 #include <cuda/pipeline>
@@ -57,14 +57,7 @@ namespace cg = cooperative_groups;
 
 namespace {
 
-constexpr int kThreadsPerBlock = 256;
-constexpr int kValuesPerThread = 8;
-constexpr int kTileElems = kThreadsPerBlock * kValuesPerThread;  // 2048 elements
 constexpr int kLookahead = 64;
-constexpr int kStages = 2;
-constexpr int kStageSpan = kTileElems + kLookahead;
-constexpr int kElements = 1 << 25;
-constexpr bool kValidateOutput = false;
 
 __host__ __device__ __forceinline__ float combine_values(float center, float near_val, float far_val) {
     return fmaf(far_val, 0.125f, fmaf(near_val, 0.25f, center * 0.75f));
@@ -99,6 +92,7 @@ float tiled_neighbor_reference_at(
         input[global_index(far)]);
 }
 
+// Not launched. The benchmark times only descriptor_tma_2d_copy_kernel.
 template <int TILE_M, int TILE_N>
 __global__ void async_pipeline_2d_copy_kernel(
     const float* __restrict__ src,
@@ -308,142 +302,91 @@ __global__ void descriptor_tma_2d_copy_kernel(
 }
 #endif
 
-__global__ void tma_neighbor_copy_kernel(const float* __restrict__ src,
-                                         float* __restrict__ dst,
-                                         int n,
-                                         int total_tiles) {
-#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
-    const int tiles_per_block = (total_tiles + gridDim.x - 1) / gridDim.x;
-    const int first_tile = blockIdx.x * tiles_per_block;
-    const int tiles_to_process = min(tiles_per_block, max(total_tiles - first_tile, 0));
-    if (tiles_to_process <= 0) {
-        return;
+#if TMA_CUDA13_AVAILABLE
+// The timed 4096x4096 shape is square and tile-aligned, so its full-output check
+// cannot see a width/height swap in the tensor-map helper or a partial-tile bug.
+// This shape has more columns than rows and partial tiles on both edges.
+constexpr int kValidationRows2D = 200;
+constexpr int kValidationColumns2D = 328;
+
+float tma_2d_validation_input(int row, int column) {
+    return static_cast<float>((row * 131 + column * 17) % 1024) / 128.0f;
+}
+
+bool validate_tma_2d_non_square(PFN_cuTensorMapEncodeTiled_v12000 encode) {
+    NVTX_RANGE("verify");
+    const int rows = kValidationRows2D;
+    const int columns = kValidationColumns2D;
+    const std::size_t elements = static_cast<std::size_t>(rows) * columns;
+    const std::size_t bytes = elements * sizeof(float);
+
+    std::vector<float> input(elements);
+    for (int row = 0; row < rows; ++row) {
+        for (int column = 0; column < columns; ++column) {
+            input[static_cast<std::size_t>(row) * columns + column] =
+                tma_2d_validation_input(row, column);
+        }
     }
 
-    extern __shared__ float shared[];
-    float* stage_buffers[kStages];
-    for (int stage = 0; stage < kStages; ++stage) {
-        stage_buffers[stage] = shared + stage * kStageSpan;
+    float* d_input = nullptr;
+    float* d_output = nullptr;
+    CUDA_CHECK(cudaMalloc(&d_input, bytes));
+    CUDA_CHECK(cudaMalloc(&d_output, bytes));
+    CUDA_CHECK(cudaMemcpy(d_input, input.data(), bytes, cudaMemcpyHostToDevice));
+    // All-ones bytes are a float NaN, so any element the kernel skips fails the comparison.
+    CUDA_CHECK(cudaMemset(d_output, 0xFF, bytes));
+
+    CUtensorMap input_desc{};
+    CUtensorMap output_desc{};
+    const bool encoded =
+        cuda_tma::make_2d_tensor_map(
+            input_desc, encode, d_input, columns, rows, columns,
+            kTile2D_N, kTile2D_M, CU_TENSOR_MAP_SWIZZLE_NONE) &&
+        cuda_tma::make_2d_tensor_map(
+            output_desc, encode, d_output, columns, rows, columns,
+            kTile2D_N, kTile2D_M, CU_TENSOR_MAP_SWIZZLE_NONE);
+    if (!encoded) {
+        std::fprintf(stderr,
+                     "2D TMA non-square validation could not encode %dx%d tensor maps.\n",
+                     rows,
+                     columns);
+        CUDA_CHECK(cudaFree(d_input));
+        CUDA_CHECK(cudaFree(d_output));
+        return false;
     }
 
-    cg::thread_block block = cg::this_thread_block();
-    __shared__ alignas(cuda::pipeline_shared_state<cuda::thread_scope_block, kStages>)
-        unsigned char pipeline_storage[sizeof(cuda::pipeline_shared_state<cuda::thread_scope_block, kStages>)];
-    auto* pipeline_state =
-        reinterpret_cast<cuda::pipeline_shared_state<cuda::thread_scope_block, kStages>*>(pipeline_storage);
-    if (threadIdx.x == 0) {
-        new (pipeline_state) cuda::pipeline_shared_state<cuda::thread_scope_block, kStages>();
-    }
-    block.sync();
-    auto pipe = cuda::make_pipeline(block, pipeline_state);
+    const dim3 block(16, 16);
+    const dim3 grid((columns + kTile2D_N - 1) / kTile2D_N, (rows + kTile2D_M - 1) / kTile2D_M);
+    descriptor_tma_2d_copy_kernel<kTile2D_M, kTile2D_N><<<grid, block>>>(
+        input_desc, output_desc, d_output, rows, columns, columns);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
 
-    auto enqueue_tile = [&](int stage, int tile_idx) -> bool {
-        if (tile_idx >= first_tile + tiles_to_process) {
+    std::vector<float> output(elements);
+    CUDA_CHECK(cudaMemcpy(output.data(), d_output, bytes, cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaFree(d_input));
+    CUDA_CHECK(cudaFree(d_output));
+
+    for (std::size_t index = 0; index < elements; ++index) {
+        const float reference = tiled_neighbor_reference_at(input, rows, columns, index);
+        if (output[index] != reference) {
+            std::fprintf(stderr,
+                         "2D TMA non-square (%dx%d) mismatch at row %zu column %zu: "
+                         "got %.9g expected %.9g\n",
+                         rows,
+                         columns,
+                         index / static_cast<std::size_t>(columns),
+                         index % static_cast<std::size_t>(columns),
+                         static_cast<double>(output[index]),
+                         static_cast<double>(reference));
             return false;
         }
-        const int global_offset = tile_idx * kTileElems;
-        if (global_offset >= n) {
-            return false;
-        }
-        const int remaining = n - global_offset;
-        const int stage_elems = remaining > kStageSpan ? kStageSpan : remaining;
-        pipe.producer_acquire();
-        cuda::memcpy_async(
-            block,
-            stage_buffers[stage],
-            src + global_offset,
-            static_cast<size_t>(stage_elems) * sizeof(float),
-            pipe);
-        pipe.producer_commit();
-        return true;
-    };
-
-    int stage_tile[kStages];
-    bool stage_ready[kStages] = {false, false};
-    int next_tile = first_tile;
-    for (int stage = 0; stage < kStages; ++stage) {
-        stage_tile[stage] = next_tile;
-        stage_ready[stage] = enqueue_tile(stage, next_tile);
-        if (stage_ready[stage]) {
-            ++next_tile;
-        }
     }
-
-    int tiles_processed = 0;
-    int current_stage = 0;
-    while (tiles_processed < tiles_to_process) {
-        if (!stage_ready[current_stage]) {
-            current_stage = (current_stage + 1) % kStages;
-            continue;
-        }
-
-        pipe.consumer_wait();
-        block.sync();
-
-        const int tile_idx = stage_tile[current_stage];
-        const int global_offset = tile_idx * kTileElems;
-        const int stage_valid = min(kStageSpan, n - global_offset);
-        if (stage_valid > 0) {
-            const int max_elem = min(kTileElems, n - global_offset);
-            float* tile_ptr = stage_buffers[current_stage];
-            const int stage_limit = stage_valid - 1;
-
-            for (int base = threadIdx.x * kValuesPerThread;
-                 base < max_elem;
-                 base += blockDim.x * kValuesPerThread) {
-#pragma unroll
-                for (int i = 0; i < kValuesPerThread; ++i) {
-                    const int local_idx = base + i;
-                    if (local_idx >= max_elem) {
-                        break;
-                    }
-                    const int global_idx = global_offset + local_idx;
-                    if (global_idx >= n) {
-                        continue;
-                    }
-                    const float center = tile_ptr[local_idx];
-                    const int near_local = (local_idx + 1 <= stage_limit) ? (local_idx + 1) : stage_limit;
-                    int far_local = local_idx + kLookahead;
-                    if (far_local > stage_limit) {
-                        far_local = stage_limit;
-                    }
-                    const float near_val = tile_ptr[near_local];
-                    const float far_val = tile_ptr[far_local];
-                    dst[global_idx] = combine_values(center, near_val, far_val);
-                }
-            }
-        }
-
-        pipe.consumer_release();
-        stage_ready[current_stage] = false;
-        ++tiles_processed;
-
-        if (next_tile < first_tile + tiles_to_process) {
-            stage_tile[current_stage] = next_tile;
-            stage_ready[current_stage] = enqueue_tile(current_stage, next_tile);
-            if (stage_ready[current_stage]) {
-                ++next_tile;
-            }
-        }
-
-        current_stage = (current_stage + 1) % kStages;
-    }
-#else
-    (void)src;
-    (void)dst;
-    (void)n;
-    (void)total_tiles;
+    std::printf("2D TMA non-square validation passed (%dx%d, tile=%dx%d)\n",
+                rows, columns, kTile2D_M, kTile2D_N);
+    return true;
+}
 #endif
-}
-
-float checksum(const std::vector<float>& data) {
-    double sum = 0.0;
-    for (float v : data) {
-        NVTX_RANGE("verify");
-        sum += static_cast<double>(v);
-    }
-    return static_cast<float>(sum / static_cast<double>(data.size()));
-}
 
 }  // namespace
 
@@ -470,7 +413,9 @@ bool benchmark_tma_2d(cudaDeviceProp& prop) {
         h_matrix[i] = static_cast<float>(i % 1000) / 1000.0f;
     }
     CUDA_CHECK(cudaMemcpy(d_mat_src, h_matrix.data(), matrix_bytes, cudaMemcpyHostToDevice));
-    
+    // All-ones bytes are a float NaN, so any element the kernel skips fails the full-output check.
+    CUDA_CHECK(cudaMemset(d_mat_dst, 0xFF, matrix_bytes));
+
     dim3 block2d(16, 16);  // 256 threads per block
     dim3 grid2d((N + kTile2D_N - 1) / kTile2D_N,
                 (M + kTile2D_M - 1) / kTile2D_M);
@@ -508,6 +453,12 @@ bool benchmark_tma_2d(cudaDeviceProp& prop) {
         CUDA_CHECK(cudaFree(d_mat_src));
         CUDA_CHECK(cudaFree(d_mat_dst));
         return false;
+    }
+    if (!validate_tma_2d_non_square(encode)) {
+        std::fprintf(stderr, "2D TMA validation failed.\n");
+        CUDA_CHECK(cudaFree(d_mat_src));
+        CUDA_CHECK(cudaFree(d_mat_dst));
+        std::exit(EXIT_FAILURE);
     }
     descriptor_tma_2d_copy_kernel<kTile2D_M, kTile2D_N><<<grid2d, block2d>>>(in_desc, out_desc, d_mat_dst, M, N, N);
     CUDA_CHECK(cudaGetLastError());
@@ -550,7 +501,16 @@ bool benchmark_tma_2d(cudaDeviceProp& prop) {
     float tma2d_ms = 0.0f;
     CUDA_CHECK(cudaEventElapsedTime(&tma2d_ms, start2d, stop2d));
     const float avg_tma2d_ms = tma2d_ms / kIterations2D;
-    
+
+    CUDA_CHECK(cudaEventDestroy(start2d));
+    CUDA_CHECK(cudaEventDestroy(stop2d));
+    CUDA_CHECK(cudaFree(d_mat_src));
+    CUDA_CHECK(cudaFree(d_mat_dst));
+    if (!copy_ok) {
+        std::fprintf(stderr, "2D TMA validation failed.\n");
+        std::exit(EXIT_FAILURE);
+    }
+
     // Calculate bandwidth
     const double bytes_transferred = 2.0 * matrix_bytes;  // Read + Write
     const double bandwidth_gbps = (bytes_transferred / 1e9) / (avg_tma2d_ms / 1000.0);
@@ -569,15 +529,12 @@ bool benchmark_tma_2d(cudaDeviceProp& prop) {
                 M, N, kTile2D_M, kTile2D_N, avg_tma2d_ms);
     std::printf("  Achieved bandwidth: %.1f GB/s (%.1f%% of peak)\n",
                 bandwidth_gbps, efficiency);
-    
-    CUDA_CHECK(cudaEventDestroy(start2d));
-    CUDA_CHECK(cudaEventDestroy(stop2d));
-    CUDA_CHECK(cudaFree(d_mat_src));
-    CUDA_CHECK(cudaFree(d_mat_dst));
-    if (!copy_ok) {
-        std::fprintf(stderr, "2D TMA validation failed.\n");
-        std::exit(EXIT_FAILURE);
-    }
+    std::printf("TIME_MS: %.6f\n", avg_tma2d_ms);
+#ifdef VERIFY
+    float verify_checksum = 0.0f;
+    VERIFY_CHECKSUM(h_matrix_out.data(), M * N, &verify_checksum);
+    VERIFY_PRINT_CHECKSUM(verify_checksum);
+#endif
     return true;
 }
 
@@ -590,92 +547,9 @@ int main() {
         return 3;
     }
 
-    std::printf("=== Pipeline-Staged Copy Benchmarks (SM %d.%d) ===\n\n", prop.major, prop.minor);
-    std::printf("--- Pipeline-Staged Neighbor Copy Benchmark ---\n");
-
-    const size_t bytes = static_cast<size_t>(kElements) * sizeof(float);
-
-    float *d_src = nullptr, *d_dst = nullptr;
-    CUDA_CHECK(cudaMalloc(&d_src, bytes));
-    CUDA_CHECK(cudaMalloc(&d_dst, bytes));
-
-    std::vector<float> h_input(kElements);
-    for (int i = 0; i < kElements; ++i) {
-        NVTX_RANGE("setup");
-        h_input[i] = static_cast<float>((i % 1024) - 512) / 128.0f;
-    }
-    CUDA_CHECK(cudaMemcpy(d_src, h_input.data(), bytes, cudaMemcpyHostToDevice));
-
-    const int total_tiles = (kElements + kTileElems - 1) / kTileElems;
-    const int max_blocks = 2 * prop.multiProcessorCount;
-    const int grid = std::min(total_tiles, max_blocks);
-    const size_t shared_bytes = static_cast<size_t>(kStages) * kStageSpan * sizeof(float);
-
-    tma_neighbor_copy_kernel<<<grid, kThreadsPerBlock, shared_bytes>>>(
-        d_src, d_dst, kElements, total_tiles);
-    CUDA_CHECK(cudaGetLastError());
-    CUDA_CHECK(cudaDeviceSynchronize());
-
-    cudaEvent_t start, stop;
-    CUDA_CHECK(cudaEventCreate(&start));
-    CUDA_CHECK(cudaEventCreate(&stop));
-
-    constexpr int kIterations = 20;
-    CUDA_CHECK(cudaEventRecord(start));
-    for (int iter = 0; iter < kIterations; ++iter) {
-        NVTX_RANGE("compute_kernel:tma_neighbor_copy_kernel:smem");
-        tma_neighbor_copy_kernel<<<grid, kThreadsPerBlock, shared_bytes>>>(
-            d_src, d_dst, kElements, total_tiles);
-        CUDA_CHECK(cudaGetLastError());
-    }
-    CUDA_CHECK(cudaEventRecord(stop));
-    CUDA_CHECK(cudaEventSynchronize(stop));
-
-    float total_ms = 0.0f;
-    CUDA_CHECK(cudaEventElapsedTime(&total_ms, start, stop));
-    const float avg_ms = total_ms / kIterations;
-    std::printf("Pipeline-staged neighbor copy (optimized, non-TMA): %.3f ms\n", avg_ms);
-
-    std::vector<float> h_output(kElements);
-    CUDA_CHECK(cudaMemcpy(h_output.data(), d_dst, bytes, cudaMemcpyDeviceToHost));
-
-    if (kValidateOutput) {
-        std::vector<float> h_reference(kElements);
-        for (int i = 0; i < kElements; ++i) {
-            NVTX_RANGE("verify");
-            const int near_idx = (i + 1 < kElements) ? (i + 1) : (kElements - 1);
-            const int far_idx = (i + kLookahead < kElements) ? (i + kLookahead) : (kElements - 1);
-            h_reference[i] = combine_values(h_input[i], h_input[near_idx], h_input[far_idx]);
-        }
-
-        float max_error = 0.0f;
-        for (int i = 0; i < kElements; ++i) {
-            NVTX_RANGE("verify");
-            max_error = std::max(max_error, std::abs(h_reference[i] - h_output[i]));
-        }
-        std::printf("Output checksum: %.6f (max error %.6f)\n", checksum(h_output), max_error);
-    } else {
-        std::printf("Output checksum: %.6f\n", checksum(h_output));
-    }
-#ifdef VERIFY
-    float verify_checksum = 0.0f;
-    VERIFY_CHECKSUM(h_output.data(), kElements, &verify_checksum);
-    VERIFY_PRINT_CHECKSUM(verify_checksum);
-#endif
-
-    CUDA_CHECK(cudaEventDestroy(start));
-    CUDA_CHECK(cudaEventDestroy(stop));
-    CUDA_CHECK(cudaFree(d_src));
-    CUDA_CHECK(cudaFree(d_dst));
-
-    // Run TMA 2D benchmark (from PERFORMANCE_OPTIMIZATION_ANALYSIS.md)
+    std::printf("=== Descriptor-Backed 2D TMA Benchmark (SM %d.%d) ===\n", prop.major, prop.minor);
     if (!benchmark_tma_2d(prop)) {
         return 3;
     }
-
-    std::printf("\n=== Summary ===\n");
-    std::printf("TMA 1D: Good for streaming linear data\n");
-    std::printf("TMA 2D: Better for tiled access patterns (attention, GEMM)\n");
-    
     return 0;
 }

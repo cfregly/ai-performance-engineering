@@ -208,8 +208,11 @@ int main() {
     CUBLASLT_CHECK(cublasLtMatmulDescSetAttribute(matmulDesc, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, &d_A_scales_ptr, sizeof(d_A_scales_ptr)));
     CUBLASLT_CHECK(cublasLtMatmulDescSetAttribute(matmulDesc, CUBLASLT_MATMUL_DESC_B_SCALE_POINTER, &d_B_scales_ptr, sizeof(d_B_scales_ptr)));
 
+    // With transa=T, cuBLASLt reads A as the column-major K x M matrix, which is
+    // row-major [M, K] storage. With transb=N, it reads B as the column-major
+    // K x N matrix, which is the K-major B^T [N, K] storage built above.
     cublasLtMatrixLayout_t layoutA, layoutB, layoutC;
-    CUBLASLT_CHECK(cublasLtMatrixLayoutCreate(&layoutA, CUDA_R_4F_E2M1, kM, kK, kM));
+    CUBLASLT_CHECK(cublasLtMatrixLayoutCreate(&layoutA, CUDA_R_4F_E2M1, kK, kM, kK));
     CUBLASLT_CHECK(cublasLtMatrixLayoutCreate(&layoutB, CUDA_R_4F_E2M1, kK, kN, kK));
     CUBLASLT_CHECK(cublasLtMatrixLayoutCreate(&layoutC, CUDA_R_16F, kM, kN, kM));
 

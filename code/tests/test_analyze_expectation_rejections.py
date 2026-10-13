@@ -73,6 +73,7 @@ def test_render_expectation_rejection_ledger_falls_back_to_stored_provenance(tmp
                 "delta_pct": -40.0,
                 "baseline_time_ms": 10.0,
                 "optimized_time_ms": 8.333333,
+                "new_provenance": {"hardware_key": "b200"},
             }
         ],
     )
@@ -171,6 +172,7 @@ def test_render_expectation_rejection_ledger_surfaces_stored_expectation_warning
                 "new_score": 1.2,
                 "delta": -0.8,
                 "delta_pct": -40.0,
+                "new_provenance": {"hardware_key": "b200"},
             }
         ],
     )
@@ -231,6 +233,7 @@ def test_analyze_expectation_rejections_cli_supports_repo_root_override(tmp_path
                 "new_score": 1.2,
                 "delta": -0.8,
                 "delta_pct": -40.0,
+                "new_provenance": {"hardware_key": "b200"},
             }
         ],
     )
@@ -321,6 +324,7 @@ def test_render_expectation_rejection_ledger_merges_multiple_comparison_runs(tmp
                 "new_score": 1.2,
                 "delta": -0.8,
                 "delta_pct": -40.0,
+                "new_provenance": {"hardware_key": "b200"},
             },
             {
                 "event_type": "expectation_update",
@@ -332,6 +336,7 @@ def test_render_expectation_rejection_ledger_merges_multiple_comparison_runs(tmp
                 "new_score": 5.8,
                 "delta": 1.3,
                 "delta_pct": 28.9,
+                "new_provenance": {"hardware_key": "b200"},
             },
         ],
     )
@@ -348,6 +353,7 @@ def test_render_expectation_rejection_ledger_merges_multiple_comparison_runs(tmp
                 "new_score": 1.18,
                 "delta": -0.82,
                 "delta_pct": -41.0,
+                "new_provenance": {"hardware_key": "b200"},
             }
         ],
     )
@@ -364,6 +370,7 @@ def test_render_expectation_rejection_ledger_merges_multiple_comparison_runs(tmp
                 "new_score": 4.9,
                 "delta": 0.4,
                 "delta_pct": 8.9,
+                "new_provenance": {"hardware_key": "b200"},
             }
         ],
     )

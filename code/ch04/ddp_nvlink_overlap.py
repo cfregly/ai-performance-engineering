@@ -3,7 +3,12 @@
 Topology- and overlap-aware DDP-style loop. Validates peer access, reorders
 gradient buckets by device distance (lowest ID first as a proxy), and overlaps
 gradient transfer with computation using a dedicated communication stream.
-Falls back to single-GPU if only one device is present.
+Each iteration sums the reduced gradients of every microbatch and applies one
+replica-averaged update to every model.
+
+Requires at least two GPUs and peer access in both directions between cuda:0
+and every other GPU. With fewer GPUs, or without one of those peer routes,
+setup() raises a SKIPPED: diagnostic. There is no single-GPU mode.
 """
 
 from __future__ import annotations
@@ -19,7 +24,10 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 
 
 def _require_root_peer_access() -> None:
-    """Require each bidirectional root route; PyTorch enables P2P internally."""
+    """Raise SKIPPED: unless cuda:0 and every other GPU can access each other as peers.
+
+    PyTorch enables the peer mappings itself on the first cross-device copy.
+    """
     num = torch.cuda.device_count()
     skip_if_insufficient_gpus(2)
     for peer in range(1, num):
@@ -88,12 +96,14 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
             requests_per_iteration=float(self.batch_size * self.microbatches),
             tokens_per_iteration=float(tokens),
         )
-        self.comm_stream = torch.cuda.Stream(device=self.root_device)
+        # Created in setup() after the GPU checks so that get_benchmark() works on
+        # any host and setup() can report SKIPPED: instead of a CUDA error.
+        self.comm_stream: Optional[torch.cuda.Stream] = None
 
     def setup(self) -> None:
         _require_root_peer_access()
+        self.comm_stream = torch.cuda.Stream(device=self.root_device)
         num = torch.cuda.device_count()
-        skip_if_insufficient_gpus(2)
         for rank in range(num):
             device = f"cuda:{rank}"
             self.models.append(nn.Linear(self.hidden, self.hidden).to(device))
@@ -222,12 +232,13 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
                 self._slot_counts != self._expected_slot_counts
                 or not self._model_update_groups
                 or self._aggregate_grad is None
+                or self.comm_stream is None
             ):
                 raise RuntimeError("Gradient reduction slots not initialized")
             grads = self._grad_slots
             ordered_grads = self._ordered_grad_slots
             reduction_results = self._reduction_results
-            # Process microbatches; overlap reduction of previous with compute of next
+            # Process microbatches. Each reduction overlaps the compute of the next microbatch.
             for micro in self._microbatch_range:
                 for model_idx, model, x in self._micro_model_groups[micro]:
                     y = model(x)
@@ -313,6 +324,7 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._grad_scale = 1.0
         self.output = None
         self._verify_output_buffer = None
+        self.comm_stream = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

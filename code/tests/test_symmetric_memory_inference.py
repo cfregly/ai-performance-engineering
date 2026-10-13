@@ -27,8 +27,19 @@ def _setup_env(world_size: int, port: int, rank: int) -> None:
     os.environ["LOCAL_RANK"] = str(rank)
 
 
-def _kv_worker(rank: int, world_size: int, seq_len: int, port: int) -> None:
+def _init_nccl_process_group(world_size: int, port: int, rank: int) -> None:
     _setup_env(world_size, port, rank)
+    from ch16.symmetric_memory_inference import init_distributed
+
+    init_distributed()
+    backend = dist.get_backend()
+    if backend != "nccl":
+        dist.destroy_process_group()
+        raise RuntimeError(f"Symmetric-memory demo workers must run on NCCL, got backend {backend!r}")
+
+
+def _kv_worker(rank: int, world_size: int, seq_len: int, port: int) -> None:
+    _init_nccl_process_group(world_size, port, rank)
     from ch16.symmetric_memory_inference import demo_kv_cache
 
     demo_kv_cache(batch_size=2, seq_len=seq_len)
@@ -37,7 +48,7 @@ def _kv_worker(rank: int, world_size: int, seq_len: int, port: int) -> None:
 
 
 def _multi_model_worker(rank: int, world_size: int, size_mb: int, port: int) -> None:
-    _setup_env(world_size, port, rank)
+    _init_nccl_process_group(world_size, port, rank)
     from ch16.symmetric_memory_inference import demo_multi_model
 
     demo_multi_model(size_mb=size_mb)
@@ -46,7 +57,7 @@ def _multi_model_worker(rank: int, world_size: int, size_mb: int, port: int) -> 
 
 
 def _speculative_worker(rank: int, world_size: int, steps: int, port: int) -> None:
-    _setup_env(world_size, port, rank)
+    _init_nccl_process_group(world_size, port, rank)
     from ch16.symmetric_memory_inference import demo_speculative
 
     demo_speculative(num_steps=steps)
@@ -54,36 +65,36 @@ def _speculative_worker(rank: int, world_size: int, steps: int, port: int) -> No
         dist.destroy_process_group()
 
 
-@pytest.mark.skipif(not dist.is_available(), reason="torch.distributed not available")
-def test_kv_cache_demo_runs_on_gloo():
+@pytest.mark.skipif(not dist.is_available(), reason="SKIPPED: torch.distributed is not available")
+def test_kv_cache_demo_runs_on_nccl():
     from ch16.symmetric_memory_inference import symmetric_memory_available
 
     if not symmetric_memory_available() or torch.cuda.device_count() < 2:
-        pytest.skip("Symmetric-memory demo requires runtime support and at least two GPUs")
+        pytest.skip("SKIPPED: the symmetric-memory demo needs runtime support and at least two GPUs")
 
     world_size = 2
     port = _find_free_port()
     spawn(_kv_worker, args=(world_size, 16, port), nprocs=world_size, join=True)
 
 
-@pytest.mark.skipif(not dist.is_available(), reason="torch.distributed not available")
-def test_multi_model_demo_runs_on_gloo():
+@pytest.mark.skipif(not dist.is_available(), reason="SKIPPED: torch.distributed is not available")
+def test_multi_model_demo_runs_on_nccl():
     from ch16.symmetric_memory_inference import symmetric_memory_available
 
     if not symmetric_memory_available() or torch.cuda.device_count() < 2:
-        pytest.skip("Symmetric-memory demo requires runtime support and at least two GPUs")
+        pytest.skip("SKIPPED: the symmetric-memory demo needs runtime support and at least two GPUs")
 
     world_size = 2
     port = _find_free_port()
     spawn(_multi_model_worker, args=(world_size, 2, port), nprocs=world_size, join=True)
 
 
-@pytest.mark.skipif(not dist.is_available(), reason="torch.distributed not available")
-def test_speculative_demo_runs_on_gloo():
+@pytest.mark.skipif(not dist.is_available(), reason="SKIPPED: torch.distributed is not available")
+def test_speculative_demo_runs_on_nccl():
     from ch16.symmetric_memory_inference import symmetric_memory_available
 
     if not symmetric_memory_available() or torch.cuda.device_count() < 2:
-        pytest.skip("Symmetric-memory demo requires runtime support and at least two GPUs")
+        pytest.skip("SKIPPED: the symmetric-memory demo needs runtime support and at least two GPUs")
 
     world_size = 2
     port = _find_free_port()

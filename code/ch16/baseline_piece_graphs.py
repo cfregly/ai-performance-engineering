@@ -23,6 +23,17 @@ from ch16.piece_graphs_model import RegionalPieceGraph  # noqa: E402
 
 GraphCacheEntry = Tuple["torch.cuda.CUDAGraph", torch.Tensor, torch.Tensor]
 
+# Both sides capture the same FP16 operations on the same seeded weights and
+# input. The optimized side splits the forward into a head graph and a tail graph
+# joined by an FP16 buffer, which holds the values the whole-model graph passes
+# between those layers. On the CPU the whole forward and the split forward match
+# bit for bit. The output has a standard deviation near 0.6 and a peak near 2.9.
+# Three CPU attention paths differ from each other and from an FP64 forward by up
+# to 0.0032, which uses under 15% of this bound. The bound rejects an all-zero
+# output and one scaled by 0.9. The optimized file imports this bound because the
+# harness rejects an optimized tolerance that is looser than the baseline's.
+PIECE_GRAPHS_OUTPUT_TOLERANCE = (2e-2, 2e-2)
+
 
 class BaselinePieceGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Monolithic graph capture baseline for piece-graphs."""
@@ -120,7 +131,7 @@ class BaselinePieceGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
-            output_tolerance=(0.1, 1.0),
+            output_tolerance=PIECE_GRAPHS_OUTPUT_TOLERANCE,
         )
 
     def teardown(self) -> None:

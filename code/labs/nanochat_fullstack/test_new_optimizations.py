@@ -9,7 +9,7 @@ from unittest import SkipTest
 
 import torch
 
-import labs.nanochat_fullstack
+import labs.nanochat_fullstack  # noqa: F401  (registers the top-level nanochat package)
 from nanochat.engine import Engine, KVCache
 from nanochat.gpt import GPT, GPTConfig
 
@@ -76,7 +76,9 @@ def test_cta_backend():
 def _compare_decode(config):
     device = _require_cuda()
     model = _model(config, device)
-    engine = Engine(model, tokenizer=None, enable_batch_decode=False)
+    # This check compares side-stream decode with eager decode. Engine compiles by
+    # default on Blackwell, which would change the mode to side_stream_torch_compile.
+    engine = Engine(model, tokenizer=None, enable_batch_decode=False, allow_compile=False)
     assert engine.enable_persistent_decode and engine._persistent_stream is not None
     assert engine.reuse_ids_buffer
     cached = engine._get_or_create_persistent_buffer("test", (2, 64), torch.float32, device)

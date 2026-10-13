@@ -41,7 +41,6 @@ class BaselineDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchma
         self.out_proj: Optional[nn.Linear] = None
         self.inputs: Optional[torch.Tensor] = None
         self.dtype = torch.float16
-        self._verify_input: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self._causal_mask: Optional[torch.Tensor] = None
         self._enable_nvtx = False
@@ -84,7 +83,6 @@ class BaselineDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchma
         )
         pos = torch.arange(self.max_seq_len, device=self.device)
         self._causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)
-        self._verify_input = self.inputs.detach().clone()
         self._verify_output_buffer = torch.empty(
             self.batch_size,
             self.max_seq_len,
@@ -134,17 +132,17 @@ class BaselineDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchma
         with nvtx_range("baseline_dense_attention_flash", enable=self._enable_nvtx):
             with torch.inference_mode():
                 self.output = self._forward_naive()
-        if self._verify_input is None:
-            raise RuntimeError("Verification input missing")
 
     def capture_verification_payload(self) -> None:
-        if self.output is None or self._verify_input is None or self._verify_output_buffer is None:
+        if self.output is None or self.inputs is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         self._verify_output_buffer.copy_(self.output)
+        # Declare the tensor that benchmark_fn reads. The jitter check perturbs the
+        # declared input, so a separate copy would leave the output unchanged.
         self._set_verification_payload(
-            inputs={"input": self._verify_input},
+            inputs={"input": self.inputs},
             output=self._verify_output_buffer,
-            batch_size=self._verify_input.shape[0],
+            batch_size=self.inputs.shape[0],
             parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": True,

@@ -15,7 +15,7 @@ Blackwell B200 dense Tensor Core capabilities (per GPU):
 
 Architecture support:
 - B200: Full FP8 support
-- Other Blackwell GPUs: capability-gated native FP8 path; no B200 utilization denominator
+- Other Blackwell GPUs: capability-gated native FP8 path, without a B200 utilization denominator
 - Older: Explicitly unsupported by this native-FP8 benchmark
 """
 
@@ -238,19 +238,16 @@ def main() -> int:
     print("Benchmark 2: FP16 Compiled (torch.compile)")
     print("=" * 80)
     
-    try:
-        time_fp16 = benchmark_matmul(fp16_matmul_compiled, x_fp16, w_fp16, 
-                                     name="FP16 Compiled", warmup=50, iters=200)
-        tflops_fp16 = (flops / 1e12) / (time_fp16 / 1000.0)
-        
-        print(f"Time:       {time_fp16:.3f} ms")
-        print(f"TFLOPS:     {tflops_fp16:.2f}")
-        print(f"Speedup:    {time_fp32 / time_fp16:.2f}x vs FP32\n")
-    except Exception as e:
-        print(f"Failed to compile: {e}\n")
-        time_fp16 = None
-        tflops_fp16 = None
-    
+    # The FP8 speedup is reported against this FP16 result, so a compile or
+    # runtime failure here must stop the run instead of dropping the comparison.
+    time_fp16 = benchmark_matmul(fp16_matmul_compiled, x_fp16, w_fp16,
+                                 name="FP16 Compiled", warmup=50, iters=200)
+    tflops_fp16 = (flops / 1e12) / (time_fp16 / 1000.0)
+
+    print(f"Time:       {time_fp16:.3f} ms")
+    print(f"TFLOPS:     {tflops_fp16:.2f}")
+    print(f"Speedup:    {time_fp32 / time_fp16:.2f}x vs FP32\n")
+
     # ========================================================================
     # Benchmark 3: FP8 naive (no compile)
     # ========================================================================
@@ -282,10 +279,8 @@ def main() -> int:
         print(f"Time:       {time_fp8_compiled:.3f} ms")
         print(f"TFLOPS:     {tflops_fp8:.2f}")
         print(f"Speedup:    {time_fp32 / time_fp8_compiled:.2f}x vs FP32")
-        
-        if time_fp16:
-            print(f"Speedup:    {time_fp16 / time_fp8_compiled:.2f}x vs FP16")
-        
+        print(f"Speedup:    {time_fp16 / time_fp8_compiled:.2f}x vs FP16")
+
         if peak_fp8_tflops is not None:
             print(
                 f"HW Util:    {(tflops_fp8 / peak_fp8_tflops) * 100:.1f}% "
@@ -309,9 +304,8 @@ def main() -> int:
     print("-" * 80)
     print(f"{'FP32 Baseline':<25} {time_fp32:<12.3f} {tflops_fp32:<10.2f} {'1.00x':<10}")
     
-    if time_fp16:
-        print(f"{'FP16 Compiled':<25} {time_fp16:<12.3f} {tflops_fp16:<10.2f} {f'{time_fp32/time_fp16:.2f}x':<10}")
-    
+    print(f"{'FP16 Compiled':<25} {time_fp16:<12.3f} {tflops_fp16:<10.2f} {f'{time_fp32/time_fp16:.2f}x':<10}")
+
     print(f"{'FP8 Naive':<25} {time_fp8_naive:<12.3f} {'N/A':<10} {f'{time_fp32/time_fp8_naive:.2f}x':<10}")
     
     if time_fp8_compiled:

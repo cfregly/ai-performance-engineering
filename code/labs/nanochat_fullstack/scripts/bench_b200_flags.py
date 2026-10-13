@@ -2,13 +2,14 @@
 Quick B200 inference micro-benchmark to toggle feature flags one by one.
 
 Runs a prefill + decode loop for a fixed prompt length and reports tokens/sec.
-Defaults keep all new features off; each mode enables one more flag so you can
-see the incremental benefit on Blackwell (B200).
+Defaults keep all new features off. Each mode enables one more flag so you can
+see the incremental benefit on Blackwell (B200). Every mode decodes through
+Engine with torch.compile off, so compilation does not differ between rows.
 """
 
 import argparse
 import time
-from typing import Callable, Dict, Tuple
+from typing import Any, Callable, Dict, Tuple
 
 import torch
 
@@ -86,6 +87,30 @@ def configure_mode(mode: str, config) -> Dict[str, bool]:
     return enabled
 
 
+def build_sweep_engine(model, tokenizer) -> Engine:
+    """Build the decode Engine for one mode with torch.compile held off."""
+    return Engine(model, tokenizer, enable_batch_decode=False, allow_compile=False)
+
+
+def require_isolated_decode(engine: Engine, config) -> Dict[str, Any]:
+    """Fail unless decode ran uncompiled on the path the mode's flags request.
+
+    Returns the Engine compile diagnostics for the result row.
+    """
+    expected_execution = "side_stream" if config.enable_persistent_decode else "eager"
+    if engine.decode_execution_mode != expected_execution:
+        raise RuntimeError(
+            f"Requested {expected_execution} decode, observed {engine.decode_execution_mode}"
+        )
+    diagnostics = engine.get_compile_diagnostics()
+    if diagnostics["status"] != "disabled":
+        raise RuntimeError(
+            "B200 flag sweep rows must run without torch.compile, "
+            f"observed compile status {diagnostics['status']}"
+        )
+    return diagnostics
+
+
 @torch.inference_mode()
 def bench_once(
     model,
@@ -93,7 +118,7 @@ def bench_once(
     prompt_len: int,
     decode_len: int,
     device: torch.device,
-    engine: Engine | None = None,
+    engine: Engine,
 ) -> Tuple[float, float]:
     """
     Run one prefill + decode sweep and return (prefill_tok_s, decode_tok_s).
@@ -124,10 +149,7 @@ def bench_once(
 
     def _run_decode() -> None:
         for step_ids in decode_token_steps:
-            if engine is None:
-                _ = model(step_ids, kv_cache=kv_cache)
-            else:
-                _ = engine._execute_decode(step_ids, kv_cache)
+            _ = engine._execute_decode(step_ids, kv_cache)
 
     decode_seconds = _time_cuda_region_seconds(_run_decode)
     decode_tok_s = (batch_size * decode_len) / decode_seconds
@@ -154,9 +176,7 @@ def run_benchmark(args):
                 block.attn._init_flash3()
                 if not block.attn.use_flash3 or block.attn.flash3_fn is None:
                     raise RuntimeError(f"{mode} requested FA3, but its backend is unavailable: {block.attn.flash3_error}")
-        engine = None
-        if getattr(model.config, "enable_persistent_decode", False) or getattr(model.config, "use_cuda_graphs", False):
-            engine = Engine(model, tokenizer, enable_batch_decode=False)
+        engine = build_sweep_engine(model, tokenizer)
         # Warmup
         _ = bench_once(model, args.batch_size, args.prompt_len, args.decode_len, device, engine=engine)
         prefill_total = 0.0
@@ -172,11 +192,13 @@ def run_benchmark(args):
             )
             prefill_total += prefill_tok_s
             decode_total += decode_tok_s
+        compile_diagnostics = require_isolated_decode(engine, model.config)
         results.append(
             dict(
                 mode=mode,
                 enabled=enabled,
-                decode_execution=engine.decode_execution_mode if engine else "eager",
+                decode_execution=engine.decode_execution_mode,
+                compile_status=compile_diagnostics["status"],
                 timing="synchronized_wall_seconds_including_host_submission",
                 prefill_tok_s=prefill_total / args.iters,
                 decode_tok_s=decode_total / args.iters,
@@ -209,7 +231,8 @@ def main():
         prefill_gain = (res["prefill_tok_s"] / base_prefill - 1.0) * 100 if base_prefill else 0.0
         decode_gain = (res["decode_tok_s"] / base_decode - 1.0) * 100 if base_decode else 0.0
         print(
-            f"{res['mode']:>12} | execution: {res['decode_execution']} | flags: {flag_str:<35} | prefill {res['prefill_tok_s']:.1f} tok/s ({prefill_gain:+.1f}%) | "
+            f"{res['mode']:>12} | execution: {res['decode_execution']} | torch.compile: {res['compile_status']} | "
+            f"flags: {flag_str:<35} | prefill {res['prefill_tok_s']:.1f} tok/s ({prefill_gain:+.1f}%) | "
             f"decode {res['decode_tok_s']:.1f} tok/s ({decode_gain:+.1f}%)"
         )
 

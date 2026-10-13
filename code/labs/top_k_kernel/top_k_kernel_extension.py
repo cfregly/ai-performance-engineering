@@ -12,7 +12,7 @@ _EXTENSION_DIR = Path(__file__).parent
 
 @lru_cache()
 def load_top_k_kernel_extension():
-    """Load the SM100 CUTLASS GEMM helper used by the CUDA Top-K variant."""
+    """Load the CUTLASS SM80 tensor-op GEMM helper that scores the forward CUDA Top-K path."""
 
     return load_cuda_extension(
         extension_name="top_k_kernel_cutlass_ext",

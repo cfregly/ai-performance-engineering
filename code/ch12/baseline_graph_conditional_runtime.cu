@@ -83,9 +83,10 @@ int main() {
     // Check graph support
     bool supports_graphs = (prop.major >= 7 && prop.minor >= 5) || prop.major >= 8;
     if (!supports_graphs) {
-        std::printf("CUDA Graphs require compute capability 7.5+\n");
-        std::printf("TIME_MS: 0.0\n");
-        return 0;
+        // Exit code 3 plus a SKIPPED: line is the harness skip contract, as in the
+        // optimized binary. Never report a 0.0 ms time for work that did not run.
+        std::printf("SKIPPED: CUDA Graphs require compute capability 7.5+\n");
+        return 3;
     }
     
     // Allocate memory

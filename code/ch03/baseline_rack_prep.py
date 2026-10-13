@@ -1,8 +1,15 @@
-"""Rack-prep baseline: topology-unaware pageable staging."""
+"""Rack-prep baseline: topology-unaware pageable staging.
+
+Both rack_prep variants accept the same --target-extra-arg flags: --apply,
+--reserve and --nic. The baseline is the topology-unaware control, so it never
+binds CPUs or writes IRQ/RPS/XPS affinity. It records the requested values and
+uses --nic only to choose which NICs its snapshot describes.
+"""
 
 from __future__ import annotations
 
-from typing import List, Optional
+import argparse
+from typing import List, Optional, Sequence
 import os
 
 import torch
@@ -17,6 +24,52 @@ from core.harness.benchmark_harness import (
 
 from ch03.grace_blackwell_topology import NICInfo, discover_nics, format_cpulist
 
+DEFAULT_RESERVE_CORES = 2
+
+
+def build_rack_prep_override_parser() -> argparse.ArgumentParser:
+    """Return the parser for the --target-extra-arg flags both rack_prep variants accept."""
+    parser = argparse.ArgumentParser(prog="rack_prep", add_help=False, allow_abbrev=False, exit_on_error=False)
+    parser.add_argument("--apply", action="store_true", help="Apply IRQ/RPS/XPS affinity on setup (root required).")
+    parser.add_argument(
+        "--reserve",
+        type=int,
+        default=DEFAULT_RESERVE_CORES,
+        help="Number of local CPUs to reserve for system tasks.",
+    )
+    parser.add_argument("--nic", action="append", default=None, help="NIC(s) to prefer (first found will be primary). Repeatable.")
+    return parser
+
+
+def parse_rack_prep_overrides(argv: Sequence[str]) -> argparse.Namespace:
+    """Parse rack_prep --target-extra-arg values.
+
+    An unknown argument, an invalid value, a negative --reserve or an empty
+    --nic raises ValueError, so the harness fails the target.
+    """
+    parser = build_rack_prep_override_parser()
+    try:
+        args, unknown = parser.parse_known_args(list(argv))
+    except argparse.ArgumentError as exc:
+        raise ValueError(f"Invalid rack_prep override {list(argv)}: {exc}") from exc
+    if unknown:
+        raise ValueError(f"Unsupported rack_prep override {unknown}. Accepted: {parser.format_usage().strip()}")
+    if args.reserve < 0:
+        raise ValueError(f"--reserve must be zero or more CPUs, got {args.reserve}")
+    args.nic = list(args.nic or [])
+    if any(not name.strip() for name in args.nic):
+        raise ValueError("--nic needs a NIC name")
+    return args
+
+
+def discover_requested_nics(names: Sequence[str]) -> List[NICInfo]:
+    """Return NIC metadata. Every NIC named with --nic must exist."""
+    nics = discover_nics(list(names) or None)
+    missing = sorted(set(names) - {nic.name for nic in nics})
+    if missing:
+        raise RuntimeError(f"NIC(s) requested with --nic were not found under /sys/class/net: {', '.join(missing)}")
+    return nics
+
 
 class BaselineRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Stages a NIC-style batch without locality hints or overlap."""
@@ -29,6 +82,10 @@ class BaselineRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.device_batch: Optional[torch.Tensor] = None
         self.norm: Optional[nn.Module] = None
         self.nic_snapshot: List[NICInfo] = []
+        # Requested through --target-extra-arg. The baseline applies none of them.
+        self.apply_affinity = False
+        self.reserve_cores = DEFAULT_RESERVE_CORES
+        self.preferred_nics: List[str] = []
         self.output: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
@@ -40,7 +97,7 @@ class BaselineRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        self.nic_snapshot = discover_nics()
+        self.nic_snapshot = discover_requested_nics(self.preferred_nics)
         self.host_batch = torch.randn(self.seq_len, self.hidden_size, dtype=torch.float32)
         self.device_batch = torch.empty_like(self.host_batch, device=self.device)
         self.norm = nn.LayerNorm(self.hidden_size, device=self.device)
@@ -96,6 +153,14 @@ class BaselineRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
             return None
         summaries = [f"{n.name}:numa={n.numa_node},cpus={format_cpulist(n.local_cpus)}" for n in self.nic_snapshot]
         return {"nic_layouts": len(self.nic_snapshot), "nic_summary": ";".join(summaries)}
+
+
+    def apply_target_overrides(self, argv: List[str]) -> None:
+        """Accept the rack_prep flags. Unknown or invalid flags raise ValueError."""
+        args = parse_rack_prep_overrides(argv)
+        self.apply_affinity = args.apply
+        self.reserve_cores = args.reserve
+        self.preferred_nics = args.nic
 
 
 def get_benchmark() -> BaseBenchmark:

@@ -5,21 +5,31 @@ Chapter 15: Disaggregated Inference
 This benchmark models a disaggregated prefill/decode pipeline across multiple GPUs.
 Baseline behavior is serialized: prefill completes for all requests before decode starts.
 The optimized pair overlaps prefill and decode via pipelined transfers.
+
+Torchrun launches verify the timed ranks. Each decode rank starts from its
+prefill rank's weights and publishes its final timed outputs. Its prefill rank
+recomputes prefill and decode for the same prompts after timing ends. The parent
+requires the two to match exactly, then compares baseline and optimized decode
+outputs. In-process runs (setup() and benchmark_fn()) verify the local
+multi-device path instead.
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import shutil
+import tempfile
 import time
-from dataclasses import dataclass
+import uuid
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import torch
 import torch.distributed as dist
 
-from core.benchmark.verification import PrecisionFlags  # noqa: E402
+from core.benchmark.verification import InputSignature, PrecisionFlags  # noqa: E402
 from core.benchmark.verification_mixin import VerificationPayloadMixin  # noqa: E402
 from core.harness import benchmark_worker
 from core.harness.benchmark_harness import (  # noqa: E402
@@ -39,6 +49,20 @@ from core.utils.worker_seed import apply_worker_seed
 
 BASELINE_PROFILE_NVTX_RANGE = "compute_kernel:disaggregated_inference_serialized_pipeline"
 OPTIMIZED_PROFILE_NVTX_RANGE = "compute_kernel:disaggregated_inference_overlapped_pipeline"
+
+DECODE_OUTPUT_TOLERANCE = (0.0, 0.0)
+TORCHRUN_RESULT_CALLBACK = "consume_torchrun_rank_results"
+TORCHRUN_RESULT_DIR_ENV = "AISP_CH15_DISAGG_RESULT_DIR"
+TORCHRUN_RESULT_TOKEN_ENV = "AISP_CH15_DISAGG_RESULT_TOKEN"
+TORCHRUN_RESULT_LABEL_ENV = "AISP_CH15_DISAGG_RESULT_LABEL"
+# The harness sets this only for launches that bind a result callback.
+TORCHRUN_LAUNCH_WALL_NS_ENV = "AISP_TORCHRUN_RESULT_LAUNCH_WALL_NS"
+TORCHRUN_RESULT_SCHEMA = "aisp.ch15-disaggregated-inference-multigpu.rank-result.v1"
+_RESULT_DTYPES = {
+    str(torch.bfloat16): torch.bfloat16,
+    str(torch.float16): torch.float16,
+    str(torch.float32): torch.float32,
+}
 
 
 @dataclass(frozen=True)
@@ -137,6 +161,28 @@ def _init_distributed() -> Tuple[int, int, torch.device]:
     return rank, world_size, torch.device(f"cuda:{local_rank}")
 
 
+def _build_pair_groups(num_pairs: int) -> List[Any]:
+    """Create one process group per (prefill rank, decode rank) pair."""
+    if num_pairs <= 0:
+        raise ValueError(f"num_pairs must be positive, got {num_pairs}")
+    return [dist.new_group(ranks=[idx, idx + num_pairs]) for idx in range(num_pairs)]
+
+
+def _share_prefill_weights(model: SimpleMoEGPT, *, prefill_rank: int, group: Any) -> None:
+    """Overwrite the decode rank's weights with its prefill rank's weights.
+
+    Both ranks of a pair call this with the pair's group. prefill_rank is the
+    global rank that sends. The local path does the same with load_state_dict().
+    The post-timing check compares a decode rank's output with its prefill
+    rank's recompute, so both ranks must hold the same weights. Matching seeds
+    alone gives equal weights only when both GPUs run the same initialization
+    kernels.
+    """
+    with torch.no_grad():
+        for tensor in model.state_dict().values():
+            dist.broadcast(tensor, src=prefill_rank, group=group)
+
+
 def _run_prefill(
     cfg: DisaggConfig,
     model: SimpleMoEGPT,
@@ -173,22 +219,53 @@ def _run_prefill(
     return kv_chunks, seed_chunks
 
 
+def _kv_position_weights(context_window: int, device: torch.device) -> torch.Tensor:
+    """Return fp32 pooling weights proportional to t + 1 that sum to one."""
+    if context_window <= 0:
+        raise ValueError(f"context_window must be positive, got {context_window}")
+    return torch.arange(
+        1,
+        context_window + 1,
+        device=device,
+        dtype=torch.float32,
+    ).mul_(2.0 / (context_window * (context_window + 1)))
+
+
 def _transferred_kv_context(
     kv_cache: torch.Tensor,
     context_window: int,
+    *,
+    position_weights: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Reduce the transferred prompt state into decode context and a verification signal."""
+    """Pool the transferred prompt state into decode context and a verification signal.
+
+    Position t of the window gets weight proportional to t + 1, so later prompt
+    tokens count more and the pooled context depends on token order. A plain
+    mean would let a transfer that permutes positions inside the window pass
+    verification unchanged. Per-request loops pass weights from
+    _kv_position_weights() so they are built once per call, not per request.
+    """
     if kv_cache.ndim != 3:
         raise ValueError("kv_cache must have shape (batch, sequence, hidden)")
     if context_window <= 0 or context_window > kv_cache.size(1):
         raise ValueError(
             f"context_window must be in [1, {kv_cache.size(1)}], got {context_window}"
         )
-    context_fp32 = kv_cache[:, :context_window].mean(
-        dim=1,
-        keepdim=True,
-        dtype=torch.float32,
-    )
+    if position_weights is None:
+        position_weights = _kv_position_weights(context_window, kv_cache.device)
+    elif (
+        position_weights.shape != (context_window,)
+        or position_weights.dtype != torch.float32
+        or position_weights.device != kv_cache.device
+    ):
+        raise ValueError(
+            "position_weights must be a float32 tensor of shape "
+            f"({context_window},) on {kv_cache.device}"
+        )
+    # Mixed-dtype multiply promotes to fp32 in one kernel and one temporary.
+    context_fp32 = (
+        kv_cache[:, :context_window] * position_weights.view(1, context_window, 1)
+    ).sum(dim=1, keepdim=True)
     return context_fp32.to(dtype=kv_cache.dtype), context_fp32
 
 
@@ -273,6 +350,7 @@ def _run_decode(
     if outputs is None or len(outputs) != len(kv_chunks):
         outputs = _allocate_decode_outputs(cfg, device)
     with torch.inference_mode():
+        position_weights = _kv_position_weights(cfg.context_window, device)
         for output_idx, (kv_prompt, seed_tokens) in enumerate(zip(kv_chunks, seed_chunks)):
             request_kv_cache = kv_cache
             if request_kv_cache is None:
@@ -287,6 +365,7 @@ def _run_decode(
             kv_context, context_fp32 = _transferred_kv_context(
                 request_kv_cache,
                 cfg.context_window,
+                position_weights=position_weights,
             )
             tokens = seed_tokens
             for step in range(cfg.decode_tokens):
@@ -304,6 +383,264 @@ def _run_decode(
             )
             outputs[output_idx] = tokens
     return outputs
+
+
+def _build_prefill_reference_output(
+    cfg: DisaggConfig,
+    model: SimpleMoEGPT,
+    prompts: torch.Tensor,
+    device: torch.device,
+) -> torch.Tensor:
+    """Recompute prefill and decode for every request on the sending rank, after timing."""
+    expected_shape = (cfg.requests_per_rank, cfg.batch_size, cfg.context_window)
+    if tuple(prompts.shape) != expected_shape:
+        raise RuntimeError(
+            f"Reference prompts have shape {tuple(prompts.shape)}, expected {expected_shape}"
+        )
+    kv_chunks, seed_chunks = _run_prefill(cfg, model, prompts)
+    return torch.cat(_run_decode(cfg, model, kv_chunks, seed_chunks, device), dim=0)
+
+
+@dataclass(frozen=True)
+class _TorchrunResultContract:
+    """Workload identity that every torchrun rank result must repeat."""
+
+    label: str
+    world_size: int
+    vocab_size: int
+    hidden_size: int
+    ffn_size: int
+    num_layers: int
+    num_moe_layers: int
+    num_experts: int
+    top_k: int
+    batch_size: int
+    requests_per_rank: int
+    context_window: int
+    decode_tokens: int
+    dtype: str
+    iterations: int
+    warmup: int
+
+    @property
+    def num_pairs(self) -> int:
+        return self.world_size // 2
+
+    def validate(self) -> None:
+        if not isinstance(self.label, str) or not self.label:
+            raise ValueError("Disaggregated result label must be a non-empty string")
+        for name in (
+            "world_size",
+            "vocab_size",
+            "hidden_size",
+            "ffn_size",
+            "num_layers",
+            "num_experts",
+            "top_k",
+            "batch_size",
+            "requests_per_rank",
+            "context_window",
+            "decode_tokens",
+            "iterations",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"Disaggregated result {name} must be a positive integer")
+        for name in ("num_moe_layers", "warmup"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"Disaggregated result {name} must be a non-negative integer")
+        if self.world_size % 2 != 0:
+            raise ValueError("Disaggregated result world_size must be even")
+        if self.dtype not in _RESULT_DTYPES:
+            raise ValueError(f"Unsupported disaggregated result dtype: {self.dtype!r}")
+
+    def to_dict(self) -> Dict[str, Any]:
+        self.validate()
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, payload: Any) -> _TorchrunResultContract:
+        if not isinstance(payload, dict):
+            raise TypeError("Disaggregated result contract must be a dictionary")
+        try:
+            contract = cls(**payload)
+        except TypeError as exc:
+            raise ValueError("Invalid disaggregated result contract fields") from exc
+        contract.validate()
+        return contract
+
+    def disagg_config(self) -> DisaggConfig:
+        return DisaggConfig(
+            vocab_size=self.vocab_size,
+            hidden_size=self.hidden_size,
+            ffn_size=self.ffn_size,
+            num_layers=self.num_layers,
+            num_moe_layers=self.num_moe_layers,
+            num_experts=self.num_experts,
+            top_k=self.top_k,
+            batch_size=self.batch_size,
+            requests_per_rank=self.requests_per_rank,
+            context_window=self.context_window,
+            decode_tokens=self.decode_tokens,
+            dtype=_RESULT_DTYPES[self.dtype],
+        )
+
+
+def _make_torchrun_result_contract(
+    cfg: DisaggConfig,
+    *,
+    label: str,
+    world_size: int,
+    iterations: int,
+    warmup: int,
+) -> _TorchrunResultContract:
+    contract = _TorchrunResultContract(
+        label=label,
+        world_size=int(world_size),
+        vocab_size=cfg.vocab_size,
+        hidden_size=cfg.hidden_size,
+        ffn_size=cfg.ffn_size,
+        num_layers=cfg.num_layers,
+        num_moe_layers=cfg.num_moe_layers,
+        num_experts=cfg.num_experts,
+        top_k=cfg.top_k,
+        batch_size=cfg.batch_size,
+        requests_per_rank=cfg.requests_per_rank,
+        context_window=cfg.context_window,
+        decode_tokens=cfg.decode_tokens,
+        dtype=str(cfg.dtype),
+        iterations=int(iterations),
+        warmup=int(warmup),
+    )
+    contract.validate()
+    return contract
+
+
+def _torchrun_input_signature(contract: _TorchrunResultContract, *, tf32: bool) -> InputSignature:
+    """Describe the same workload fields as the in-process verification payload."""
+    rows = contract.num_pairs * contract.requests_per_rank * contract.batch_size
+    dtype = _RESULT_DTYPES[contract.dtype]
+    meta_model = SimpleMoEGPT(
+        _build_moe_config(contract.disagg_config()),
+        device=torch.device("meta"),
+    )
+    per_model_parameters = sum(p.numel() for p in meta_model.parameters())
+    return InputSignature(
+        shapes={
+            "prompt": (contract.requests_per_rank, contract.batch_size, contract.context_window),
+            "decode_tokens": (contract.decode_tokens,),
+            "hidden_size": (contract.hidden_size,),
+            "num_layers": (contract.num_layers,),
+            "num_experts": (contract.num_experts,),
+            "output": (rows, contract.hidden_size + 1),
+        },
+        dtypes={
+            "prompt": str(torch.int64),
+            "decode_tokens": str(torch.float32),
+            "hidden_size": str(torch.float32),
+            "num_layers": str(torch.float32),
+            "num_experts": str(torch.float32),
+            "output": str(torch.float32),
+        },
+        batch_size=rows,
+        parameter_count=contract.world_size * per_model_parameters,
+        precision_flags=PrecisionFlags(
+            fp16=dtype == torch.float16,
+            bf16=dtype == torch.bfloat16,
+            tf32=tf32,
+        ),
+        world_size=contract.world_size,
+        pipeline_stages=2,
+        pipeline_stage_boundaries=[
+            (0, contract.num_pairs - 1),
+            (contract.num_pairs, contract.world_size - 1),
+        ],
+        per_rank_batch_size=contract.requests_per_rank,
+        collective_type="send_recv",
+    )
+
+
+def _check_rank_result_tensors(
+    contract: _TorchrunResultContract,
+    *,
+    rank: int,
+    output: Any,
+    prompts: Any,
+) -> None:
+    output_shape = (contract.requests_per_rank * contract.batch_size, contract.hidden_size + 1)
+    if (
+        not isinstance(output, torch.Tensor)
+        or output.dtype != torch.float32
+        or tuple(output.shape) != output_shape
+        or not bool(torch.isfinite(output).all())
+    ):
+        raise RuntimeError(
+            f"Rank {rank} verification output must be finite float32 with shape {output_shape}"
+        )
+    if rank != 0:
+        if prompts is not None:
+            raise RuntimeError(f"Only rank 0 publishes prompts, but rank {rank} did")
+        return
+    prompt_shape = (contract.requests_per_rank, contract.batch_size, contract.context_window)
+    if (
+        not isinstance(prompts, torch.Tensor)
+        or prompts.dtype != torch.int64
+        or tuple(prompts.shape) != prompt_shape
+        or bool((prompts < 0).any())
+        or bool((prompts >= contract.vocab_size).any())
+    ):
+        raise RuntimeError(
+            f"Rank 0 must publish int64 prompts with shape {prompt_shape} "
+            f"and token ids below {contract.vocab_size}"
+        )
+
+
+def _write_torchrun_rank_result(
+    contract: _TorchrunResultContract,
+    *,
+    rank: int,
+    output: torch.Tensor,
+    prompts: Optional[torch.Tensor],
+) -> bool:
+    """Atomically publish one rank's verification result for a callback-bound launch."""
+    launch_wall_ns = os.environ.get(TORCHRUN_LAUNCH_WALL_NS_ENV)
+    if not launch_wall_ns:
+        return False
+    result_dir_value = os.environ.get(TORCHRUN_RESULT_DIR_ENV)
+    token = os.environ.get(TORCHRUN_RESULT_TOKEN_ENV)
+    expected_label = os.environ.get(TORCHRUN_RESULT_LABEL_ENV)
+    if not all((result_dir_value, token, expected_label)):
+        raise RuntimeError("Disaggregated torchrun result environment is incomplete")
+    contract.validate()
+    if expected_label != contract.label:
+        raise RuntimeError(
+            f"Result label {expected_label!r} does not match worker label {contract.label!r}"
+        )
+    if isinstance(rank, bool) or not isinstance(rank, int) or not 0 <= rank < contract.world_size:
+        raise RuntimeError(f"Invalid disaggregated result rank: {rank!r}")
+    _check_rank_result_tensors(contract, rank=rank, output=output, prompts=prompts)
+    result_dir = Path(cast(str, result_dir_value))
+    if result_dir.is_symlink() or not result_dir.is_dir():
+        raise RuntimeError(f"Disaggregated result directory must be a regular directory: {result_dir}")
+    payload = {
+        "schema": TORCHRUN_RESULT_SCHEMA,
+        "token": token,
+        "label": contract.label,
+        "rank": rank,
+        "role": "prefill" if rank < contract.num_pairs else "decode",
+        "contract": contract.to_dict(),
+        "launch_wall_ns": int(launch_wall_ns),
+        "created_wall_ns": time.time_ns(),
+        "tf32": bool(torch.backends.cuda.matmul.allow_tf32),
+        "output": output.detach().to(device="cpu").contiguous(),
+        "prompts": None if prompts is None else prompts.detach().to(device="cpu").contiguous(),
+    }
+    temporary = result_dir / f".rank-{rank}-{os.getpid()}.tmp"
+    destination = result_dir / f"rank-{rank}.pt"
+    torch.save(payload, temporary)
+    os.replace(temporary, destination)
+    return True
 
 
 def _run_torchrun_worker(
@@ -331,9 +668,7 @@ def _run_torchrun_worker(
     is_prefill = rank < num_pairs
     pair_id = rank if is_prefill else rank - num_pairs
     peer_rank = pair_id + num_pairs if is_prefill else pair_id
-    pair_groups = [
-        dist.new_group(ranks=[idx, idx + num_pairs]) for idx in range(num_pairs)
-    ]
+    pair_groups = _build_pair_groups(num_pairs)
     device_index = 0 if device.index is None else int(device.index)
     comm_stream = torch.cuda.Stream(device=device, priority=1)
 
@@ -379,6 +714,7 @@ def _run_torchrun_worker(
 
     moe_cfg = _build_moe_config(cfg)
     model = SimpleMoEGPT(moe_cfg, device=device).eval()
+    _share_prefill_weights(model, prefill_rank=pair_id, group=pair_groups[pair_id])
 
     prompts: Optional[torch.Tensor] = None
     send_kv_bufs: List[torch.Tensor] = []
@@ -424,6 +760,7 @@ def _run_torchrun_worker(
         [None] * cfg.requests_per_rank if (not is_prefill and overlap) else []
     )
     decode_kv_cache: Optional[torch.Tensor] = None
+    decode_position_weights: Optional[torch.Tensor] = None
     decode_outputs: List[torch.Tensor] = []
     if not is_prefill:
         recv_kv_bufs = [
@@ -449,6 +786,7 @@ def _run_torchrun_worker(
             cfg.dtype,
             device,
         )
+        decode_position_weights = _kv_position_weights(cfg.context_window, device)
         decode_outputs = _allocate_decode_outputs(cfg, device)
 
     def run_iteration() -> List[torch.Tensor]:
@@ -501,7 +839,12 @@ def _run_torchrun_worker(
             return []
 
         if overlap:
-            if not recv_kv_bufs or not recv_seed_bufs or decode_kv_cache is None:
+            if (
+                not recv_kv_bufs
+                or not recv_seed_bufs
+                or decode_kv_cache is None
+                or decode_position_weights is None
+            ):
                 raise RuntimeError("Overlap buffers not initialized")
             outputs = decode_outputs
             if len(outputs) != cfg.requests_per_rank:
@@ -525,6 +868,7 @@ def _run_torchrun_worker(
                     kv_context, context_fp32 = _transferred_kv_context(
                         decode_kv_cache,
                         cfg.context_window,
+                        position_weights=decode_position_weights,
                     )
                     tokens = recv_seed_bufs[req_idx]
                     for step in range(cfg.decode_tokens):
@@ -571,13 +915,38 @@ def _run_torchrun_worker(
     torch.cuda.synchronize(device)
     _barrier()
 
+    last_outputs: List[torch.Tensor] = []
     with nvtx_range(profile_nvtx_range, enable=True):
         start = time.perf_counter()
         for _ in range(max(iters, 1)):
-            run_iteration()
+            last_outputs = run_iteration()
         torch.cuda.synchronize(device)
         _barrier()
         elapsed = time.perf_counter() - start
+
+    if os.environ.get(TORCHRUN_LAUNCH_WALL_NS_ENV):
+        contract = _make_torchrun_result_contract(
+            cfg,
+            label=label,
+            world_size=world_size,
+            iterations=iters,
+            warmup=warmup,
+        )
+        if is_prefill:
+            if prompts is None:
+                raise RuntimeError("Prefill prompts are unavailable for verification")
+            rank_output = _build_prefill_reference_output(cfg, model, prompts, device)
+        else:
+            if len(last_outputs) != cfg.requests_per_rank:
+                raise RuntimeError("Timed decode outputs do not cover every request")
+            rank_output = torch.cat(last_outputs, dim=0)
+        _write_torchrun_rank_result(
+            contract,
+            rank=rank,
+            output=rank_output,
+            prompts=prompts if rank == 0 else None,
+        )
+        _barrier()
 
     if rank == 0:
         total_requests = cfg.requests_per_rank * num_pairs * cfg.batch_size
@@ -601,6 +970,8 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
         "AISP_NCU_PROFILE_DECODE": "8",
         "AISP_NCU_PROFILE_BATCH": "1",
     }
+    _torchrun_result_context: Optional[Dict[str, Any]] = None
+    _torchrun_result_bundle: Optional[Dict[str, Any]] = None
 
     def __init__(
         self,
@@ -648,6 +1019,9 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
             return torch.empty(shape, device="cpu", dtype=torch.float32)
 
     def setup(self) -> None:
+        # An in-process run verifies its own local outputs. It must never
+        # report results that an earlier torchrun launch left on this instance.
+        self._clear_torchrun_rank_results()
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA required for multi-GPU disaggregation")
         if torch.cuda.device_count() < self.world_size:
@@ -846,7 +1220,7 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
             batch_size=int(self._output.shape[0]),
             parameter_count=int(self._param_count),
             precision_flags=PrecisionFlags(bf16=True, tf32=tf32_enabled),
-            output_tolerance=(0.0, 0.0),
+            output_tolerance=DECODE_OUTPUT_TOLERANCE,
             signature_overrides={
                 "world_size": self.world_size,
                 "pipeline_stages": 2,
@@ -860,17 +1234,10 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
         )
 
     def _prepare_verification_payload(self) -> None:
-        if hasattr(self, "_subprocess_verify_output"):
+        if self._torchrun_result_context is not None:
+            self.require_torchrun_rank_results()
             return
-        self.setup()
-        try:
-            self.benchmark_fn()
-            self.capture_verification_payload()
-            self._subprocess_verify_output = self.get_verify_output()
-            self._subprocess_output_tolerance = self.get_output_tolerance()
-            self._subprocess_input_signature = self.get_input_signature()
-        finally:
-            self.teardown()
+        self.capture_verification_payload()
 
     def teardown(self) -> None:
         self._pairs = []
@@ -903,27 +1270,228 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
         )
 
     def get_torchrun_spec(self, config: Optional[BenchmarkConfig] = None) -> TorchrunLaunchSpec:
-        self._prepare_verification_payload()
+        effective_config = config or self.get_config()
+        if int(effective_config.nnodes or 1) != 1:
+            raise RuntimeError("Disaggregated rank-result transport requires nnodes == 1")
+        nproc_per_node = int(effective_config.nproc_per_node or self.world_size)
+        if nproc_per_node != self.world_size:
+            raise RuntimeError(
+                f"Disaggregated rank-result transport expects {self.world_size} ranks, "
+                f"got nproc_per_node={nproc_per_node}"
+            )
+        contract = _make_torchrun_result_contract(
+            _apply_profile_overrides(DisaggConfig()),
+            label=self.label,
+            world_size=nproc_per_node,
+            iterations=int(effective_config.iterations or 0),
+            warmup=int(effective_config.warmup or 0),
+        )
+        result_env = self._prepare_torchrun_rank_results(contract)
         master_port = os.environ.get("MASTER_PORT", "29515")
         return TorchrunLaunchSpec(
             timing_source="rank0_time_per_iter_ms",
-            timing_iterations_per_sample=max(int((config or self.get_config()).iterations), 1),
+            timing_iterations_per_sample=contract.iterations,
             script_path=Path(benchmark_worker.__file__).resolve(),
             script_args=["--module", self.worker_module, "--callable", "main", "--"],
             env={
                 "OMP_NUM_THREADS": "1",
                 "MASTER_PORT": master_port,
                 "TORCH_NCCL_SHOW_EAGER_INIT_P2P_SERIALIZATION_WARNING": "0",
+                **result_env,
             },
             parse_rank0_only=True,
             multi_gpu_required=True,
             name=self.label,
+            result_callback=TORCHRUN_RESULT_CALLBACK,
             config_arg_map={
                 "iterations": "--iters",
                 "warmup": "--warmup",
                 "seed": "--seed",
             },
         )
+
+    def _clear_torchrun_rank_results(self) -> None:
+        """Drop the launch context and every verification result from a torchrun launch."""
+        self._torchrun_result_context = None
+        self._torchrun_result_bundle = None
+        for attribute in (
+            "_subprocess_verify_inputs",
+            "_subprocess_verify_output",
+            "_subprocess_output_tolerance",
+            "_subprocess_input_signature",
+        ):
+            if attribute in vars(self):
+                delattr(self, attribute)
+
+    def _prepare_torchrun_rank_results(self, contract: _TorchrunResultContract) -> Dict[str, str]:
+        """Create a fresh result directory and token for one torchrun launch."""
+        contract.validate()
+        self._clear_torchrun_rank_results()
+        result_dir = Path(tempfile.mkdtemp(prefix="aisp-ch15-disagg-result-"))
+        token = uuid.uuid4().hex
+        self._torchrun_result_context = {
+            "result_dir": result_dir,
+            "token": token,
+            "contract": contract,
+            "retention": "pending-rank-results",
+        }
+        return {
+            TORCHRUN_RESULT_DIR_ENV: str(result_dir),
+            TORCHRUN_RESULT_TOKEN_ENV: token,
+            TORCHRUN_RESULT_LABEL_ENV: contract.label,
+        }
+
+    def consume_torchrun_rank_results(
+        self,
+        *,
+        launch_wall_ns: int,
+        finish_wall_ns: int,
+        returncode: int,
+        **_: Any,
+    ) -> None:
+        """Validate every rank result from this launch and expose the timed decode outputs."""
+        context = self._torchrun_result_context
+        if context is None:
+            raise RuntimeError("Disaggregated rank-result callback has no launch context")
+        result_dir = cast(Path, context["result_dir"])
+        context["retention"] = "retained-invalid-rank-result"
+        if returncode != 0:
+            context["retention"] = "retained-child-failure"
+            raise RuntimeError(
+                "Disaggregated rank results require a clean torchrun exit. "
+                f"Artifacts retained at {result_dir}"
+            )
+        expected = cast(_TorchrunResultContract, context["contract"])
+        paths = sorted(result_dir.glob("rank-*.pt"))
+        if len(paths) != expected.world_size:
+            context["retention"] = "retained-incomplete-rank-quorum"
+            raise RuntimeError(
+                "Disaggregated rank-result quorum is incomplete: "
+                f"expected {expected.world_size}, found {len(paths)}. "
+                f"Artifacts retained at {result_dir}"
+            )
+
+        payloads: Dict[int, Dict[str, Any]] = {}
+        for path in paths:
+            if path.is_symlink() or not path.is_file():
+                raise RuntimeError(f"Disaggregated rank result must be a regular file: {path}")
+            payload = torch.load(path, map_location="cpu", weights_only=True)
+            if not isinstance(payload, dict) or payload.get("schema") != TORCHRUN_RESULT_SCHEMA:
+                raise RuntimeError(f"Invalid disaggregated rank-result payload at {path}")
+            if payload.get("token") != context["token"]:
+                raise RuntimeError(f"Disaggregated rank-result token mismatch at {path}")
+            if payload.get("label") != expected.label:
+                raise RuntimeError(f"Disaggregated rank-result label mismatch at {path}")
+            if _TorchrunResultContract.from_dict(payload.get("contract")) != expected:
+                raise RuntimeError(f"Disaggregated rank-result workload mismatch at {path}")
+            rank = payload.get("rank")
+            if (
+                isinstance(rank, bool)
+                or not isinstance(rank, int)
+                or not 0 <= rank < expected.world_size
+                or rank in payloads
+            ):
+                raise RuntimeError(f"Invalid or duplicate disaggregated rank at {path}")
+            if path.name != f"rank-{rank}.pt":
+                raise RuntimeError(f"Disaggregated rank-result filename does not match rank at {path}")
+            created_wall_ns = payload.get("created_wall_ns")
+            if not isinstance(created_wall_ns, int) or not (
+                launch_wall_ns <= created_wall_ns <= finish_wall_ns
+            ):
+                raise RuntimeError(f"Stale disaggregated rank result at {path}")
+            if payload.get("launch_wall_ns") != launch_wall_ns:
+                raise RuntimeError(f"Disaggregated rank-result launch identity mismatch at {path}")
+            expected_role = "prefill" if rank < expected.num_pairs else "decode"
+            if payload.get("role") != expected_role:
+                raise RuntimeError(f"Disaggregated rank-result role mismatch at {path}")
+            if not isinstance(payload.get("tf32"), bool):
+                raise RuntimeError(f"Disaggregated rank-result TF32 state is missing at {path}")
+            _check_rank_result_tensors(
+                expected,
+                rank=rank,
+                output=payload.get("output"),
+                prompts=payload.get("prompts"),
+            )
+            payloads[rank] = payload
+
+        tf32_states = {bool(payload["tf32"]) for payload in payloads.values()}
+        if len(tf32_states) != 1:
+            raise RuntimeError("Disaggregated ranks ran with different TF32 settings")
+        timed_outputs: List[torch.Tensor] = []
+        for pair_id in range(expected.num_pairs):
+            decode_rank = pair_id + expected.num_pairs
+            timed = cast(torch.Tensor, payloads[decode_rank]["output"])
+            try:
+                torch.testing.assert_close(
+                    timed,
+                    cast(torch.Tensor, payloads[pair_id]["output"]),
+                    rtol=DECODE_OUTPUT_TOLERANCE[0],
+                    atol=DECODE_OUTPUT_TOLERANCE[1],
+                )
+            except AssertionError as exc:
+                raise RuntimeError(
+                    f"Timed decode output on rank {decode_rank} differs from the reference "
+                    f"that prefill rank {pair_id} recomputed, so the KV handoff or the "
+                    f"decode path changed the result. Artifacts retained at {result_dir}"
+                ) from exc
+            timed_outputs.append(timed)
+
+        signature = _torchrun_input_signature(expected, tf32=tf32_states.pop())
+        signature_errors = signature.validate(strict=True)
+        if signature_errors:
+            raise RuntimeError(
+                f"Invalid disaggregated rank-result input signature: {signature_errors[0]}"
+            )
+        verify_output = torch.cat(timed_outputs, dim=0)
+        self._subprocess_verify_inputs = {
+            "prompt": cast(torch.Tensor, payloads[0]["prompts"]),
+            "decode_tokens": torch.zeros((expected.decode_tokens,), dtype=torch.float32),
+            "hidden_size": torch.zeros((expected.hidden_size,), dtype=torch.float32),
+            "num_layers": torch.zeros((expected.num_layers,), dtype=torch.float32),
+            "num_experts": torch.zeros((expected.num_experts,), dtype=torch.float32),
+        }
+        self._subprocess_verify_output = verify_output
+        self._subprocess_output_tolerance = DECODE_OUTPUT_TOLERANCE
+        self._subprocess_input_signature = signature
+        self._torchrun_result_bundle = {
+            "contract": expected,
+            "timed_output": verify_output,
+        }
+        try:
+            shutil.rmtree(result_dir)
+        except OSError:
+            context["retention"] = "retained-cleanup-failure"
+        else:
+            context["retention"] = "cleaned-after-success"
+
+    def require_torchrun_rank_results(self) -> None:
+        if self._torchrun_result_bundle is None:
+            context = self._torchrun_result_context
+            retained = context.get("result_dir") if context else "unavailable"
+            raise RuntimeError(
+                "Disaggregated verification requires fresh results from every timed "
+                f"torchrun rank. Retained path: {retained}"
+            )
+
+    def get_verify_inputs(self) -> Dict[str, torch.Tensor]:
+        if self._torchrun_result_bundle is not None:
+            return dict(self._subprocess_verify_inputs)
+        return super().get_verify_inputs()
+
+    def get_verify_output(self) -> torch.Tensor:
+        if self._torchrun_result_bundle is not None:
+            return self._subprocess_verify_output.detach().clone()
+        return super().get_verify_output()
+
+    def get_input_signature(self) -> InputSignature:
+        if self._torchrun_result_bundle is not None:
+            return self._subprocess_input_signature
+        return super().get_input_signature()
+
+    def get_output_tolerance(self) -> Tuple[float, float]:
+        if self._torchrun_result_bundle is not None:
+            return self._subprocess_output_tolerance
+        return super().get_output_tolerance()
 
 
 
@@ -936,7 +1504,7 @@ class BaselineDisaggregatedInferenceMultiGPUBenchmark(_DisaggregatedInferenceMul
         "chapter_alignment": "native",
         "chapter_native_exemplar": True,
         "timed_launch_mode": "torchrun_multi_gpu",
-        "verification_mode": "local_multi_device_surrogate",
+        "verification_mode": "timed_torchrun_rank_outputs",
         "shared_harness_layout": "baseline_owned_shared_base",
         "shared_harness_owner": "ch15/baseline_disaggregated_inference_multigpu.py",
         "execution_pattern": "serialized_prefill_then_decode",

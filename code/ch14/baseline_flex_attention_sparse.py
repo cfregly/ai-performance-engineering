@@ -15,6 +15,48 @@ import torch.nn as nn
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
+# Outputs of this workload have a standard deviation near 0.03. In a CPU
+# emulation of both bf16 paths, matched masks differ by under 1e-3 while a
+# one-key change in the window moves sampled outputs by about 1e-2.
+SPARSE_ATTENTION_OUTPUT_TOLERANCE = (3e-2, 3e-3)
+
+
+def sliding_window_causal_allowed(
+    q_idx: torch.Tensor,
+    kv_idx: torch.Tensor,
+    window_size: int,
+) -> torch.Tensor:
+    """Return where a query may attend a key in the paired sliding-window workload.
+
+    Each query attends itself and the previous ``window_size - 1`` keys, so every
+    query past the first window attends exactly ``window_size`` keys. The dense
+    baseline mask and the FlexAttention block mask both use this predicate.
+    """
+    return (q_idx >= kv_idx) & ((q_idx - kv_idx) < window_size)
+
+
+def dense_sliding_window_causal_mask(
+    seq_len: int,
+    window_size: int,
+    device: torch.device,
+) -> torch.Tensor:
+    """Build the [1, 1, S, S] boolean mask that the dense baseline applies."""
+    idx = torch.arange(seq_len, device=device)
+    allowed = sliding_window_causal_allowed(idx[:, None], idx[None, :], window_size)
+    return allowed.unsqueeze(0).unsqueeze(0)
+
+
+def verification_row_slice(seq_len: int, rows: int) -> slice:
+    """Select ``rows`` evenly spaced query rows for the verification payload.
+
+    Rows inside the first window attend the same keys even when the window
+    size is off by one, so the sample must also cover later rows.
+    """
+    if rows <= 0 or rows > seq_len:
+        raise ValueError(f"rows must be in [1, {seq_len}], got {rows}")
+    stride = seq_len // rows
+    return slice(stride - 1, stride * rows, stride)
+
 
 class DenseMaskedSlidingWindowAttention(nn.Module):
     """Sliding-window causal attention implemented with dense masking."""
@@ -53,6 +95,7 @@ class BaselineFlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchma
         self.allowed_mask: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._verify_rows: Optional[slice] = None
         self.parameter_count: int = 0
 
         self.batch_size = 1
@@ -85,11 +128,11 @@ class BaselineFlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchma
         ).to(self.device, dtype=self.dtype)
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
 
-        idx = torch.arange(self.seq_len, device=self.device)
-        q_idx = idx[:, None]
-        kv_idx = idx[None, :]
-        self.allowed_mask = (q_idx >= kv_idx) & ((q_idx - kv_idx) <= self.window_size)
-        self.allowed_mask = self.allowed_mask.unsqueeze(0).unsqueeze(0)  # [1, 1, S, S]
+        self.allowed_mask = dense_sliding_window_causal_mask(
+            self.seq_len,
+            self.window_size,
+            self.device,
+        )
 
         self.x = torch.randn(self.batch_size, self.seq_len, self.embed_dim, device=self.device, dtype=self.dtype)
         self._verify_output_buffer = torch.empty(
@@ -99,6 +142,7 @@ class BaselineFlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchma
             device=self.device,
             dtype=torch.float32,
         )
+        self._verify_rows = verification_row_slice(self.seq_len, self._verify_output_buffer.shape[1])
 
         for _ in range(3):
             with torch.inference_mode():
@@ -114,11 +158,16 @@ class BaselineFlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchma
             raise RuntimeError("benchmark_fn() must produce output")
 
     def capture_verification_payload(self) -> None:
-        if self.x is None or self.output is None or self._verify_output_buffer is None:
+        if (
+            self.x is None
+            or self.output is None
+            or self._verify_output_buffer is None
+            or self._verify_rows is None
+        ):
             raise RuntimeError("capture_verification_payload() requires completed run")
         output_slice = self.output[
             : self._verify_output_buffer.shape[0],
-            : self._verify_output_buffer.shape[1],
+            self._verify_rows,
             : self._verify_output_buffer.shape[2],
         ]
         self._verify_output_buffer.copy_(output_slice)
@@ -133,7 +182,7 @@ class BaselineFlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchma
                 "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
             },
-            output_tolerance=(0.1, 1.0),
+            output_tolerance=SPARSE_ATTENTION_OUTPUT_TOLERANCE,
         )
 
     def teardown(self) -> None:
@@ -142,6 +191,7 @@ class BaselineFlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchma
         self.allowed_mask = None
         self.output = None
         self._verify_output_buffer = None
+        self._verify_rows = None
         torch.cuda.empty_cache()
         super().teardown()
 

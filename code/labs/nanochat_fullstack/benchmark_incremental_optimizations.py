@@ -5,6 +5,8 @@ Incremental Optimization Benchmark for NanoChat
 Measures the performance impact of enabling each optimization one by one.
 Tests inference (prefill + decode). Engine features execute through Engine;
 unavailable requested backends fail instead of producing mislabeled timings.
+Every row keeps torch.compile off. The use_cuda_graphs rows cannot compile, so
+compiling only the other rows would credit compiler effects to a row's flag.
 
 Usage:
     python -m labs.nanochat_fullstack.benchmark_incremental_optimizations
@@ -38,6 +40,7 @@ class BenchmarkResult:
     description: str
     decode_execution: str = "not_run"
     decode_attention: str = "not_run"
+    compile_status: str = "not_run"
     improvement_vs_baseline: float = 0.0
     cumulative_improvement: float = 0.0
 
@@ -51,6 +54,7 @@ class IncrementalBenchmark:
             raise ValueError("warmup and iterations must both be positive")
         self.last_decode_execution = "not_run"
         self.last_decode_attention = "not_run"
+        self.last_compile_status = "not_run"
         self.batch_size = 4
         self.prompt_len = 256
         self.decode_len = 64
@@ -107,7 +111,7 @@ class IncrementalBenchmark:
         """Benchmark prefill + decode performance."""
         model = self.create_model(config_overrides)
         cfg = model.config
-        engine = Engine(model, tokenizer=None, enable_batch_decode=False)
+        engine = Engine(model, tokenizer=None, enable_batch_decode=False, allow_compile=False)
         if cfg.use_cuda_graphs or cfg.enable_persistent_decode:
             if self.device.type != "cuda":
                 raise RuntimeError("Requested CUDA graph/side-stream benchmark requires a CUDA device")
@@ -191,9 +195,16 @@ class IncrementalBenchmark:
         decode_tok_s = (self.batch_size * self.decode_len) / decode_time
         self.last_decode_execution = engine.decode_execution_mode
         self.last_decode_attention = "sdpa_full_capacity_mask" if cfg.use_cuda_graphs else "model_backend_preferences"
+        self.last_compile_status = engine.get_compile_diagnostics()["status"]
         expected_execution = "cuda_graph" if cfg.use_cuda_graphs else ("side_stream" if cfg.enable_persistent_decode else "eager")
         if self.last_decode_execution != expected_execution:
             raise RuntimeError(f"Requested {expected_execution}, observed {self.last_decode_execution}")
+        expected_compile = "manual_graphs" if cfg.use_cuda_graphs else "disabled"
+        if self.last_compile_status != expected_compile:
+            raise RuntimeError(
+                f"Every row must run without torch.compile: expected compile status "
+                f"{expected_compile}, observed {self.last_compile_status}"
+            )
         
         total_time = prefill_time + decode_time
         
@@ -389,6 +400,7 @@ class IncrementalBenchmark:
                     description=config.description,
                     decode_execution=self.last_decode_execution,
                     decode_attention=self.last_decode_attention,
+                    compile_status=self.last_compile_status,
                     improvement_vs_baseline=improvement_vs_baseline,
                     cumulative_improvement=cumulative_improvement,
                 )
@@ -398,6 +410,7 @@ class IncrementalBenchmark:
                 print(f"    Decode:  {decode_tok_s:>8.1f} tok/s")
                 print(f"    Execution: {self.last_decode_execution}; synchronized wall timing includes host submission")
                 print(f"    Decode attention: {self.last_decode_attention}")
+                print(f"    torch.compile: {self.last_compile_status}")
                 print(f"    Total:   {total_time:>8.3f}s")
                 if baseline_total is not None and i > 0:
                     print(f"    Speedup: {cumulative_improvement:>7.1f}% vs baseline")
@@ -496,14 +509,14 @@ def main():
             f.write(f"**Iterations**: {benchmark.iterations}\n\n")
             
             f.write("## Summary Table\n\n")
-            f.write("Timing: synchronized wall latency including host submission; graph capture is excluded from steady-state decode.\n\n")
-            f.write("| Optimization | Category | Execution | Decode attention | Prefill (tok/s) | Decode (tok/s) | Total (sec) | Speedup vs Baseline |\n")
-            f.write("|--------------|----------|-----------|------------------|-----------------|----------------|-------------|---------------------|\n")
+            f.write("Timing: synchronized wall latency including host submission. Graph capture is excluded from steady-state decode. torch.compile is off in every row.\n\n")
+            f.write("| Optimization | Category | Execution | Decode attention | torch.compile | Prefill (tok/s) | Decode (tok/s) | Total (sec) | Speedup vs Baseline |\n")
+            f.write("|--------------|----------|-----------|------------------|---------------|-----------------|----------------|-------------|---------------------|\n")
             
             for result in results:
                 speedup = f"{result.cumulative_improvement:+.1f}%" if result.cumulative_improvement != 0 else "baseline"
-                f.write(f"| {result.name} | {result.category} | {result.decode_execution} | {result.decode_attention} | {result.prefill_tok_s:.1f} | "
-                       f"{result.decode_tok_s:.1f} | {result.total_time:.3f} | {speedup} |\n")
+                f.write(f"| {result.name} | {result.category} | {result.decode_execution} | {result.decode_attention} | {result.compile_status} | "
+                       f"{result.prefill_tok_s:.1f} | {result.decode_tok_s:.1f} | {result.total_time:.3f} | {speedup} |\n")
             
             if len(results) > 1:
                 baseline = results[0]

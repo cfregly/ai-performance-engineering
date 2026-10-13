@@ -1159,7 +1159,7 @@
         "baseline_throughput.requests_per_s": 104.10422479227672,
         "baseline_throughput.samples_per_s": null,
         "baseline_throughput.schemaVersion": "1.0",
-        "baseline_throughput.tokens_per_s": 109161191.61578636,
+        "baseline_throughput.tokens_per_s": 53301.36309364568,
         "baseline_time_ms": 38.42303237915039,
         "best_memory_savings_pct": -0.9635847613732497,
         "best_memory_savings_ratio": 0.9904561158000612,
@@ -1174,7 +1174,7 @@
         "best_optimized_throughput.requests_per_s": 648.2035940119631,
         "best_optimized_throughput.samples_per_s": null,
         "best_optimized_throughput.schemaVersion": "1.0",
-        "best_optimized_throughput.tokens_per_s": 679690731.7946882,
+        "best_optimized_throughput.tokens_per_s": 331880.2401341251,
         "best_optimized_time_ms": 6.170900681439568,
         "best_speedup": 6.226486920250828,
         "is_regression": false

@@ -1,21 +1,36 @@
-"""Right-sized decode benchmark target with flag-based tier and quantization controls."""
+"""Right-sized decode benchmark target with flag-based tier and quantization controls.
+
+The target times the persistent Triton decode kernel. Pass the knobs with
+`--target-extra-arg labs/persistent_decode:right_sized_decode="--tier large --num-programs 1"`.
+The harness hands them to apply_target_overrides. Any other argument raises
+ValueError, which fails the target. The CUDA graphs backend is a separate
+target, labs/persistent_decode:persistent_decode_graphs, because the harness
+builds the benchmark before it applies overrides, so an override cannot change
+which benchmark class runs.
+"""
 
 from __future__ import annotations
 
 import argparse
-from typing import List, Tuple
+from typing import List
 
 from core.harness.benchmark_harness import BaseBenchmark
-from labs.persistent_decode.optimized_persistent_decode_graphs import (
-    GraphMode,
-    OptimizedPersistentDecodeGraphsBenchmark,
-)
 from labs.persistent_decode.optimized_persistent_decode_triton import OptimizedPersistentDecodeTritonBenchmark
-from labs.persistent_decode.persistent_decode_common import DecodeOptions, set_decode_options
+from labs.persistent_decode.persistent_decode_common import (
+    DecodeOptions,
+    decode_options_scope,
+    parse_right_sized_overrides,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Right-sized decode benchmark flags", add_help=False)
+    p = argparse.ArgumentParser(
+        prog="right_sized_decode",
+        description="Right-sized decode benchmark flags",
+        add_help=False,
+        allow_abbrev=False,
+        exit_on_error=False,
+    )
     p.add_argument("--tier", choices=["small", "medium", "large"], default="medium", help="Decode tier sizing preset")
     p.add_argument(
         "--quantization",
@@ -25,43 +40,29 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--block-k", type=int, default=None, help="Override BLOCK_K (defaults depend on tier)")
     p.add_argument("--num-programs", type=int, default=None, help="Override number of Triton programs")
-    p.add_argument(
-        "--backend",
-        choices=["triton", "graphs"],
-        default="triton",
-        help="Select the backend target for this lab",
-    )
-    p.add_argument(
-        "--graph-mode",
-        choices=[m.value for m in GraphMode],
-        default=GraphMode.FULL_AND_PIECEWISE.value,
-        help="Graph capture mode when using the graphs backend",
-    )
     return p
 
 
-def _parse_cli() -> Tuple[argparse.Namespace, List[str]]:
-    parser = _build_parser()
-    args, unknown = parser.parse_known_args()
-    return args, unknown
+class RightSizedTritonDecodeBenchmark(OptimizedPersistentDecodeTritonBenchmark):
+    """Persistent Triton decode at the tier, quantization and launch shape chosen by target overrides."""
 
+    def __init__(self) -> None:
+        self._configure(DecodeOptions())
 
-_CLI_ARGS, _CLI_UNKNOWN = _parse_cli()
+    def _configure(self, options: DecodeOptions) -> None:
+        """Rebuild every field the parent constructor derives from the decode options."""
+        self.decode_options = options
+        with decode_options_scope(options):
+            OptimizedPersistentDecodeTritonBenchmark.__init__(self)
 
-set_decode_options(
-    DecodeOptions(
-        tier=_CLI_ARGS.tier,
-        quantization=_CLI_ARGS.quantization,
-        block_k=_CLI_ARGS.block_k,
-        num_programs=_CLI_ARGS.num_programs,
-    )
-)
+    def apply_target_overrides(self, argv: List[str]) -> None:
+        self._configure(parse_right_sized_overrides(_build_parser(), argv, target="right_sized_decode optimized"))
+
+    def setup(self) -> None:
+        # build_inputs reads the shapes and quantization from the installed options.
+        with decode_options_scope(self.decode_options):
+            super().setup()
 
 
 def get_benchmark() -> BaseBenchmark:
-    if _CLI_ARGS.backend == "graphs":
-        mode = GraphMode.from_str(_CLI_ARGS.graph_mode)
-        return OptimizedPersistentDecodeGraphsBenchmark(graph_mode=mode)
-    return OptimizedPersistentDecodeTritonBenchmark()
-
-
+    return RightSizedTritonDecodeBenchmark()

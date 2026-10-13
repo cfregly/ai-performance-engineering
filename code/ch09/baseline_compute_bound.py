@@ -1,4 +1,12 @@
-"""baseline_compute_bound.py - Compute-bound kernel baseline."""
+"""baseline_compute_bound.py - Vector MLP baseline for the compute_bound pair.
+
+The input is one FP16 vector, so both linear layers run as GEMVs. Each weight
+is read for a single multiply-add, which gives about 1 FLOP per byte. That is
+8x baseline_memory_bound's 0.125 FLOP/byte, but it is still below the roofline
+ridge point, so get_custom_metrics() reports roofline.is_compute_bound = 0.
+The fused optimized_memory_bound arm models 16 FLOP/byte, which is higher
+than this chain.
+"""
 
 from __future__ import annotations
 
@@ -16,7 +24,7 @@ from core.harness.benchmark_harness import (  # noqa: E402
 
 
 class BaselineComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Compute-heavy kernel to illustrate high arithmetic intensity."""
+    """Eager vector MLP chain at about 1 FLOP/byte, below the ridge point."""
 
     def __init__(self):
         super().__init__()
@@ -28,7 +36,7 @@ class BaselineComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.N = 4096
         self._repeat_range = range(self.repeats)
         self._payload_parameter_count = 0
-        # Compute-bound benchmark - fixed dimensions for roofline analysis
+        # Fixed dimensions for roofline analysis
         tokens = self.N * self.repeats
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.repeats),
@@ -86,10 +94,12 @@ class BaselineComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return self._workload
 
     def get_custom_metrics(self) -> Optional[dict]:
-        """Return compute-bound analysis metrics using the centralized helper.
-        
-        These metrics help understand WHY the kernel is compute-bound
-        and HOW to improve tensor core utilization.
+        """Return roofline metrics using the centralized helper.
+
+        The intensity is about 1 FLOP per byte, below the ridge point, so the
+        roofline places this chain on the memory-bandwidth side. Moving it
+        toward the compute roof requires reusing each weight across more input
+        vectors, which turns the GEMVs into GEMMs.
         """
         from core.benchmark.metrics import compute_roofline_metrics
         

@@ -473,6 +473,38 @@ def _dtype_from_string(name: str) -> torch.dtype:
     raise ValueError(f"Unsupported dtype '{name}'")
 
 
+def _throughput_summary(
+    *,
+    mode: str,
+    tokens_per_rank: int,
+    per_iter_ms: float,
+    world_size: int,
+) -> str:
+    """Format tokens/s for one GPU or for every rank in the process group.
+
+    Distributed mode gives each rank its own batch, so the aggregate rate
+    counts world_size batches per slowest-rank iteration.
+    """
+    if tokens_per_rank <= 0:
+        raise ValueError("tokens_per_rank must be positive")
+    if not per_iter_ms > 0.0:
+        raise RuntimeError(f"Measured per-iteration time must be positive, got {per_iter_ms!r} ms")
+    per_rank_tokens_per_s = tokens_per_rank / (per_iter_ms / 1000.0)
+    if mode == "local":
+        if world_size != 1:
+            raise ValueError("local mode runs on exactly one GPU")
+        return f"{per_rank_tokens_per_s:,.0f} tok/s"
+    if mode == "distributed":
+        if world_size < 2:
+            raise ValueError("distributed mode requires world_size >= 2")
+        aggregate_tokens_per_s = per_rank_tokens_per_s * world_size
+        return (
+            f"{per_rank_tokens_per_s:,.0f} tok/s per rank, "
+            f"{aggregate_tokens_per_s:,.0f} tok/s across {world_size} ranks"
+        )
+    raise ValueError(f"Unsupported mode '{mode}'")
+
+
 def main() -> None:
     args = _parse_args()
     dtype = _dtype_from_string(args.dtype)
@@ -528,11 +560,15 @@ def main() -> None:
         per_iter_ms = scalar_tensor_to_float(t)
 
     if is_rank0:
-        total_tokens = args.batch * args.seq
-        tokens_per_s = (total_tokens / (per_iter_ms / 1000.0)) if per_iter_ms > 0 else 0.0
+        throughput = _throughput_summary(
+            mode=args.mode,
+            tokens_per_rank=args.batch * args.seq,
+            per_iter_ms=per_iter_ms,
+            world_size=ctx.world_size if ctx is not None else 1,
+        )
         print(
             f"expert_parallelism:{args.mode} batch={args.batch} seq={args.seq} hidden={args.hidden_dim} "
-            f"experts={args.num_experts} dtype={args.dtype} -> {per_iter_ms:.3f} ms/iter, {tokens_per_s:,.0f} tok/s"
+            f"experts={args.num_experts} dtype={args.dtype} -> {per_iter_ms:.3f} ms/iter, {throughput}"
         )
 
 

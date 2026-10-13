@@ -186,16 +186,22 @@ def test_w2_119_tma_dispatch_handles_every_selected_tile_shape() -> None:
 def test_w2_120_grace_coherence_requires_a_grace_host(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from core.common import grace_platform
     from core.scripts.utilities import probe_hardware_capabilities as probe
 
-    cc12 = SimpleNamespace(major=12)
-    monkeypatch.setattr(probe, "_is_grace_host", lambda: False)
-    assert probe._has_grace_coherence(cc12) is False
-    assert "NVLink-C2C" not in probe._build_features(cc12)
-
-    monkeypatch.setattr(probe, "_is_grace_host", lambda: True)
-    assert probe._has_grace_coherence(cc12) is True
-    assert "NVLink-C2C" in probe._build_features(cc12)
+    # The probe takes the host link from core.common.grace_platform, which asks
+    # the CUDA driver. Only the machine name and the driver query are replaced.
+    gb200 = SimpleNamespace(major=10, minor=0)
+    monkeypatch.setattr(grace_platform.platform, "machine", lambda: "x86_64")
+    assert probe._host_link_flags(gb200, 0) == (False, False)
+    monkeypatch.setattr(grace_platform.platform, "machine", lambda: "aarch64")
+    monkeypatch.setattr(grace_platform, "_cuda_driver_attribute", lambda _index, _attr: 0)
+    assert probe._host_link_flags(gb200, 0) == (False, False)
+    monkeypatch.setattr(grace_platform, "_cuda_driver_attribute", lambda _index, _attr: 1)
+    assert probe._host_link_flags(gb200, 0) == (True, True)
+    assert "NVLink-C2C" in probe._build_features(gb200, nvlink_c2c=True, grace_coherence=True)
+    rtx = SimpleNamespace(major=12, minor=0)
+    assert "NVLink-C2C" not in probe._build_features(rtx, nvlink_c2c=False, grace_coherence=False)
 
 
 def test_w2_121_dashboard_treats_nvidia_memory_units_as_mib() -> None:

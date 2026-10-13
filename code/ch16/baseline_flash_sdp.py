@@ -13,13 +13,22 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
+# Outputs of this workload have a standard deviation near 0.04 and a peak near 0.17.
+# In an FP16 run on the CPU, the naive and fused paths differed by at most 1.2e-4.
+# This bound rejects an all-zero output and one scaled by 0.9. The optimized file
+# must declare this same bound because the harness rejects an optimized tolerance
+# that is looser than the baseline's.
+FLASH_SDP_OUTPUT_TOLERANCE = (1e-2, 1e-3)
+
 
 def ensure_flash_sdp_available() -> None:
     """Fail fast by actually invoking the Flash kernel."""
     if not torch.cuda.is_available():
         raise RuntimeError("Flash SDP benchmark requires a CUDA device.")
     try:
-        q = torch.randn(1, 1, 4, 64, device="cuda", dtype=torch.float16)
+        # A constant probe leaves the seeded RNG untouched, so the inputs drawn
+        # after this call match on both sides of the pair.
+        q = torch.ones(1, 1, 4, 64, device="cuda", dtype=torch.float16)
         with sdpa_kernel([SDPBackend.FLASH_ATTENTION]):
             with torch.inference_mode():
                 _ = F.scaled_dot_product_attention(q, q, q, is_causal=False)
@@ -72,7 +81,6 @@ class BaselineFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             tokens_per_iteration=float(tokens),
         )
         self.output = None
-        self._verify_input: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self._enable_nvtx = False
         self._payload_parameter_count = 0
@@ -82,6 +90,7 @@ class BaselineFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
+        ensure_flash_sdp_available()
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
         # Baseline: naive attention without Flash SDP
@@ -89,7 +98,6 @@ class BaselineFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.device, dtype=torch.float16
         )
         self.inputs = torch.randn(self.batch, self.seq_len, self.hidden, device=self.device, dtype=torch.float16)
-        self._verify_input = self.inputs.detach().clone()
         self._verify_output_buffer = torch.empty(
             self.batch,
             self.seq_len,
@@ -109,17 +117,17 @@ class BaselineFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with nvtx_range("naive_attention_baseline", enable=self._enable_nvtx):
             with torch.inference_mode():
                 self.output = self.model(self.inputs)
-        if self._verify_input is None:
-            raise RuntimeError("Verification input missing")
 
     def capture_verification_payload(self) -> None:
-        if self.output is None or self._verify_input is None or self._verify_output_buffer is None:
+        if self.output is None or self.inputs is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         self._verify_output_buffer.copy_(self.output)
+        # Declare the tensor that benchmark_fn reads. The jitter check perturbs the
+        # declared input, so a separate copy would leave the output unchanged.
         self._set_verification_payload(
-            inputs={"input": self._verify_input},
+            inputs={"input": self.inputs},
             output=self._verify_output_buffer,
-            batch_size=self._verify_input.shape[0],
+            batch_size=self.inputs.shape[0],
             parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": True,
@@ -127,7 +135,7 @@ class BaselineFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "fp8": False,
                 "tf32": torch.backends.cuda.matmul.allow_tf32,
             },
-            output_tolerance=(0.1, 1.0),
+            output_tolerance=FLASH_SDP_OUTPUT_TOLERANCE,
         )
 
     def teardown(self) -> None:

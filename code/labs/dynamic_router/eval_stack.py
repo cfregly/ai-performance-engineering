@@ -8,7 +8,7 @@ It is not a comparable benchmark target and emits a consistent artifact layout:
   quality.jsonl       # per-item exact-match results
   latency.jsonl       # TTFT + decode latency samples
   tps_goodput.json    # throughput + goodput summary
-  moe_router.jsonl    # router entropy / margin / drops per window
+  moe_router.jsonl    # drops, total_tokens, mean entropy and margin per window
   moe_traffic.jsonl   # per-expert histogram snapshots
   sys_meta.json       # config for the run
 """
@@ -173,6 +173,36 @@ def _summarize_quality_rows(rows: Sequence[Dict]) -> Dict:
     return {"per_task": per_task_summary, "avg_accuracy": avg_acc}
 
 
+def _router_row_counts(row: Dict, index: int) -> Tuple[float, float]:
+    """Return ``(drops, total_tokens)`` for one moe_router.jsonl row."""
+    counts: List[float] = []
+    for key in ("drops", "total_tokens"):
+        if key not in row:
+            raise ValueError(
+                f"moe_router.jsonl row {index} lacks {key!r}. Every row must report the "
+                "drops and total_tokens it covers. A per-token row uses total_tokens=1."
+            )
+        value = row[key]
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or value < 0
+        ):
+            raise ValueError(
+                f"moe_router.jsonl row {index} has {key}={value!r}. "
+                "Expected a finite, non-negative count."
+            )
+        counts.append(float(value))
+    drops, tokens = counts
+    if drops > tokens:
+        raise ValueError(
+            f"moe_router.jsonl row {index} reports drops={drops:g}, "
+            f"which exceeds total_tokens={tokens:g}."
+        )
+    return drops, tokens
+
+
 def _summarize_moe(
     moe_router_rows: Sequence[Dict],
     moe_traffic_rows: Sequence[Dict],
@@ -187,31 +217,38 @@ def _summarize_moe(
         last_hist = [0] * experts
         imbalance = 0.0
 
-    # Drops may be per-token or per-window; support both.
+    if not moe_router_rows:
+        raise ValueError(
+            "The token drop rate needs moe_router.jsonl rows with drops and total_tokens."
+        )
     dropped_tokens = 0.0
     total_tokens = 0.0
     entropy_total = 0.0
-    entropy_count = 0
+    entropy_tokens = 0.0
     margin_total = 0.0
-    margin_count = 0
-    for row in moe_router_rows:
-        dropped_tokens += float(row.get("drops", 0))
-        total_tokens += float(row.get("total_tokens", 0.0))
+    margin_tokens = 0.0
+    for index, row in enumerate(moe_router_rows):
+        drops, tokens = _router_row_counts(row, index)
+        dropped_tokens += drops
+        total_tokens += tokens
+        # Window rows carry per-window means. Weighting by tokens gives the per-token mean.
         if "entropy" in row:
-            entropy_total += float(row["entropy"])
-            entropy_count += 1
+            entropy_total += float(row["entropy"]) * tokens
+            entropy_tokens += tokens
         if "margin" in row:
-            margin_total += float(row.get("margin", 0.0))
-            margin_count += 1
-    if total_tokens <= 0 and moe_router_rows:
-        total_tokens = float(len(moe_router_rows))
+            margin_total += float(row["margin"]) * tokens
+            margin_tokens += tokens
+    if total_tokens <= 0:
+        raise ValueError(
+            "moe_router.jsonl rows report zero total_tokens, so the token drop rate is undefined."
+        )
 
-    drop_rate = (dropped_tokens / total_tokens) if total_tokens > 0 else 0.0
+    drop_rate = dropped_tokens / total_tokens
     return {
         "token_drop_rate": drop_rate,
         "imbalance_cv": imbalance,
-        "entropy": entropy_total / entropy_count if entropy_count else 0.0,
-        "gate_margin": margin_total / margin_count if margin_count else 0.0,
+        "entropy": entropy_total / entropy_tokens if entropy_tokens else 0.0,
+        "gate_margin": margin_total / margin_tokens if margin_tokens else 0.0,
     }
 
 
@@ -641,6 +678,8 @@ class CheapEvalStack:
         window = 0
         window_tokens = 0
         window_drops = 0
+        window_entropy_total = 0.0
+        window_margin_total = 0.0
         tokens_per_window = 64
         total_steps = max(self.cfg.request_count * 20, tokens_per_window)
 
@@ -674,13 +713,15 @@ class CheapEvalStack:
             dropped_tokens += 1 if drop_event else 0
             window_tokens += 1
             window_drops += 1 if drop_event else 0
+            window_entropy_total += entropy
+            window_margin_total += margin
 
             if (step + 1) % tokens_per_window == 0:
                 router_rows.append(
                     {
                         "step": step,
-                        "entropy": entropy,
-                        "margin": margin,
+                        "entropy": window_entropy_total / window_tokens,
+                        "margin": window_margin_total / window_tokens,
                         "drops": window_drops,
                         "total_tokens": window_tokens,
                     }
@@ -695,13 +736,15 @@ class CheapEvalStack:
                 window += 1
                 window_tokens = 0
                 window_drops = 0
+                window_entropy_total = 0.0
+                window_margin_total = 0.0
 
         if window_tokens:
             router_rows.append(
                 {
                     "step": total_steps - 1,
-                    "entropy": entropy,
-                    "margin": margin,
+                    "entropy": window_entropy_total / window_tokens,
+                    "margin": window_margin_total / window_tokens,
                     "drops": window_drops,
                     "total_tokens": window_tokens,
                 }
