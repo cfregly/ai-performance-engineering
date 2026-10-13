@@ -9,16 +9,19 @@
 #   2. Python 3.12
 #   3. CUDA 13.0.2 toolkit + cuBLAS 13.1.0.3 (Update 2) repository
 #   4. The canonical PyTorch/Triton stack pinned in requirements_latest.txt
-#      (torch==2.9.1+cu130, triton==3.5.1) for CUDA 13.0.2; versions are
-#      single-sourced from requirements_latest.txt, not the nightly defaults below
-#   5. NVIDIA Nsight Systems 2025.3.2 (for timeline profiling)
-#   6. NVIDIA Nsight Compute 2025.3.1 (for kernel metrics)
-#   7. All Python dependencies from requirements_latest.txt
-#   8. System tools (numactl, perf, htop, etc.)
-#   9. Configures NVIDIA drivers for profiling
+#      (torch==2.9.1+cu130, triton==3.5.1) for CUDA 13.0.2. The script reads
+#      these pins from requirements_latest.txt. Its fallback defaults match them.
+#   5. NVIDIA Nsight Systems 2026.3.2 (for timeline profiling)
+#   6. NVIDIA Nsight Compute 2026.2.1 (for kernel metrics), the version that
+#      core/profiling/ncu_torchrun_capture.py accepts
+#   7. CMake and ninja from the pip pins in requirements_latest.txt
+#   8. All Python dependencies from requirements_latest.txt
+#   9. System tools (numactl, perf, htop, etc.)
+#  10. Configures NVIDIA drivers for profiling
 #
 # Requirements:
-#   - Ubuntu 22.04+ (tested on 22.04)
+#   - Ubuntu 22.04 or 24.04 on x86_64 (tested on 22.04). NVIDIA publishes the
+#     CUDA 13.0.2 and Nsight packages below for both releases, not for 20.04.
 #   - NVIDIA B200/B300 GPU (or compatible)
 #   - sudo/root access
 #   - Internet connection
@@ -38,7 +41,10 @@
 #   - Upgrades Python to 3.12 for the pinned PyTorch stack
 #   - Auto-upgrades NVIDIA driver to 580+ if needed (will prompt reboot)
 #   - Installs CUDA 13.0.2 toolkit and libraries
-#   - Installs latest Nsight tools (2025.x)
+#   - Installs pinned Nsight Systems 2026.3.2 and Nsight Compute 2026.2.1 and puts
+#     them ahead of the CUDA toolkit's bundled 2025.3.x copies on PATH
+#   - Installs the pinned CMake and ninja wheels and stops if CMake is older
+#     than the newest cmake_minimum_required in first-party CMakeLists.txt files
 #   - Installs pinned PyTorch CUDA 13 wheels (no source build)
 #   - Removes conflicting system packages (python3-optree, etc.)
 #   - Installs nvidia-ml-py (replaces deprecated pynvml)
@@ -206,8 +212,9 @@ echo "  • NVIDIA Driver 580.126.09 (auto-upgrade if needed)"
 echo "  • Python 3.12 for the pinned PyTorch stack"
 echo "  • CUDA 13.0.2 toolkit + cuBLAS 13.1.0.3 (Update 2) repository"
 echo "  • PyTorch CUDA 13 wheels pinned by requirements_latest.txt"
-echo "  • NVIDIA Nsight Systems 2025.3.2 (latest)"
-echo "  • NVIDIA Nsight Compute 2025.3.1 (latest)"
+echo "  • NVIDIA Nsight Systems 2026.3.2"
+echo "  • NVIDIA Nsight Compute 2026.2.1"
+echo "  • CMake and ninja pinned by requirements_latest.txt"
 echo "  • All project dependencies"
 echo "  • System tools (numactl, perf, etc.)"
 echo ""
@@ -263,6 +270,7 @@ VLLM_WHEEL_DIR="${THIRD_PARTY_DIR}/wheels"
 VLLM_WHEEL_INFO_PATH="${VLLM_WHEEL_INFO_PATH:-${VLLM_WHEEL_DIR}/vllm-build-info.json}"
 VLLM_WHEEL_ARCH="$(uname -m)"
 VLLM_PIN_FILE="${VLLM_PIN_FILE:-${PROJECT_ROOT}/vllm_no_deps.pin}"
+REQUIREMENTS_FILE="${PROJECT_ROOT}/requirements_latest.txt"
 VLLM_EXTRA_INDEX_URL=""
 VLLM_PIP_SPEC=""
 FLASHINFER_EXPECTED_VERSION="${FLASHINFER_EXPECTED_VERSION:-0.6.3}"
@@ -534,6 +542,112 @@ pip_wheel() {
 
 pip_show() {
     pip_cmd show "$@"
+}
+
+requirements_pin() {
+    local package="$1"
+    local version
+    version="$(sed -n -E "s/^${package}==([^[:space:]#]+).*/\1/p" "${REQUIREMENTS_FILE}" | head -n 1)"
+    if [ -z "${version}" ]; then
+        echo "ERROR: ${REQUIREMENTS_FILE} must pin ${package} with an exact == version." >&2
+        return 1
+    fi
+    printf '%s\n' "${version}"
+}
+
+# The floor is the newest cmake_minimum_required in tracked CMakeLists.txt files
+# outside third_party. The pin check proves the pip CMake wins the PATH lookup.
+require_cmake_toolchain() {
+    local pinned_version="$1"
+    local cmake_bin
+    if ! cmake_bin="$(command -v cmake)"; then
+        echo "ERROR: cmake is not on PATH after installing cmake==${pinned_version}." >&2
+        exit 1
+    fi
+    if ! AISP_CMAKE_BIN="${cmake_bin}" \
+        AISP_CMAKE_PINNED_VERSION="${pinned_version}" \
+        AISP_REPOSITORY_ROOT="${REPOSITORY_ROOT}" \
+        python3 - <<'PY'
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path, PurePosixPath
+
+root = Path(os.environ["AISP_REPOSITORY_ROOT"])
+cmake_bin = os.environ["AISP_CMAKE_BIN"]
+pinned = os.environ["AISP_CMAKE_PINNED_VERSION"]
+
+
+def version_key(text):
+    return tuple(int(part) for part in text.split("."))
+
+
+listing = subprocess.run(
+    ["git", "-C", str(root), "ls-files", "-z", "--", ":(glob)**/CMakeLists.txt"],
+    capture_output=True, text=True, check=False,
+)
+if listing.returncode != 0:
+    sys.exit(
+        f"ERROR: Cannot list tracked CMakeLists.txt files in {root}: {listing.stderr.strip()}\n"
+        "       Run setup.sh from a git checkout so it can find the first-party CMake floor."
+    )
+declaration = re.compile(
+    r"^\s*cmake_minimum_required\s*\(\s*VERSION\s+([0-9]+(?:\.[0-9]+)*)",
+    re.IGNORECASE | re.MULTILINE,
+)
+floor = None
+for relative in filter(None, listing.stdout.split("\0")):
+    if "third_party" in PurePosixPath(relative).parts:
+        continue
+    for match in declaration.finditer((root / relative).read_text(encoding="utf-8")):
+        if floor is None or version_key(match.group(1)) > version_key(floor[0]):
+            floor = (match.group(1), relative)
+if floor is None:
+    sys.exit(f"ERROR: No first-party cmake_minimum_required declaration found in {root}.")
+required, source = floor
+
+probe = subprocess.run([cmake_bin, "--version"], capture_output=True, text=True, check=False)
+found = re.match(r"cmake version ([0-9]+(?:\.[0-9]+)*)", probe.stdout)
+if probe.returncode != 0 or found is None:
+    sys.exit(f"ERROR: Cannot read the version of {cmake_bin}: {(probe.stdout + probe.stderr).strip()}")
+installed = found.group(1)
+if version_key(installed) < version_key(required):
+    sys.exit(
+        f"ERROR: {cmake_bin} is CMake {installed}, but {source} requires "
+        f"cmake_minimum_required {required}."
+    )
+if version_key(installed)[:3] != version_key(pinned)[:3]:
+    sys.exit(
+        f"ERROR: {cmake_bin} is CMake {installed}, not the cmake=={pinned} pin from "
+        "requirements_latest.txt. Put the pinned CMake first on PATH."
+    )
+print(f"CMake {installed} at {cmake_bin} meets cmake_minimum_required {required} ({source}).")
+PY
+    then
+        exit 1
+    fi
+}
+
+# core/profiling/ncu_torchrun_capture.py accepts only its qualified NCU version,
+# and the harness runs nsys and ncu by name, so PATH must resolve the pinned copies.
+require_pinned_nsight_tools() {
+    local nsys_bin ncu_bin nsys_output ncu_output
+    if ! nsys_bin="$(command -v nsys)" || ! ncu_bin="$(command -v ncu)"; then
+        echo "ERROR: nsys and ncu must be on PATH after installing Nsight Systems ${NSYS_VERSION} and Nsight Compute ${NCU_VERSION}." >&2
+        exit 1
+    fi
+    nsys_output="$("${nsys_bin}" --version 2>&1 | head -n 1 || true)"
+    ncu_output="$("${ncu_bin}" --version 2>&1 | grep -m 1 '^Version' || true)"
+    if [[ "${nsys_output}" != *" ${NSYS_VERSION}"* ]]; then
+        echo "ERROR: ${nsys_bin} reports '${nsys_output}', not the pinned Nsight Systems ${NSYS_VERSION}." >&2
+        exit 1
+    fi
+    if [[ "${ncu_output}" != "Version ${NCU_VERSION}"* ]]; then
+        echo "ERROR: ${ncu_bin} reports '${ncu_output}', not the pinned Nsight Compute ${NCU_VERSION}." >&2
+        exit 1
+    fi
+    echo "Nsight Systems ${NSYS_VERSION} (${nsys_bin}) and Nsight Compute ${NCU_VERSION} (${ncu_bin}) are first on PATH."
 }
 
 # Ensure a tool is reachable by adding a symlink in /usr/local/bin if found elsewhere.
@@ -959,9 +1073,17 @@ fi
 UBUNTU_VERSION=$(lsb_release -rs)
 echo "Detected Ubuntu version: $UBUNTU_VERSION"
 
-if [[ "$UBUNTU_VERSION" != "22.04" && "$UBUNTU_VERSION" != "20.04" ]]; then
-    echo "Warning: This script is tested on Ubuntu 22.04. Other versions may work but are not guaranteed."
-fi
+case "${UBUNTU_VERSION}" in
+    22.04) ;;
+    24.04)
+        echo "Warning: This script is tested on Ubuntu 22.04. Ubuntu 24.04 uses NVIDIA's ubuntu2404 CUDA repository and is not yet validated here."
+        ;;
+    *)
+        echo "ERROR: Ubuntu ${UBUNTU_VERSION} is not supported. This script installs CUDA ${CUDA_FULL_VERSION} from NVIDIA's Ubuntu 22.04 or 24.04 repository." >&2
+        exit 1
+        ;;
+esac
+CUDA_REPO_DISTRO="ubuntu${UBUNTU_VERSION//./}"
 
 echo ""
 echo "Configuring inotify watch limit for large workspaces..."
@@ -1165,10 +1287,10 @@ echo ""
 echo "Adding NVIDIA CUDA ${CUDA_SHORT_VERSION} repository..."
 
 # Check if CUDA repository is already configured
-if [ ! -f /usr/share/keyrings/cuda-archive-keyring.gpg ] && [ ! -f /etc/apt/sources.list.d/cuda-ubuntu2204-x86_64.list ]; then
+if [ ! -f /usr/share/keyrings/cuda-archive-keyring.gpg ] && [ ! -f "/etc/apt/sources.list.d/cuda-${CUDA_REPO_DISTRO}-x86_64.list" ]; then
     CUDA_REPO_PKG="cuda-keyring_1.1-1_all.deb"
     if [ ! -f "/tmp/$CUDA_REPO_PKG" ]; then
-        wget -P /tmp https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/$CUDA_REPO_PKG
+        wget -P /tmp "https://developer.download.nvidia.com/compute/cuda/repos/${CUDA_REPO_DISTRO}/x86_64/$CUDA_REPO_PKG"
     fi
     dpkg -i /tmp/$CUDA_REPO_PKG
     echo "NVIDIA CUDA repository added"
@@ -1427,9 +1549,10 @@ apt-mark hold libcudnn9-cuda-13 libcudnn9-dev-cuda-13 libcudnn9-headers-cuda-13
 echo "Updating ldconfig cache..."
 ldconfig 2>/dev/null || true
 
-# Install NVSHMEM 3.4.5 for CUDA 13 (enables SymmetricMemory fast paths)
+# Install NVSHMEM for CUDA 13 (enables SymmetricMemory fast paths). These apt
+# packages are unpinned, so the CUDA repository's current release is installed.
 echo ""
-echo "Installing NVSHMEM 3.4.5 runtime and headers (CUDA 13)..."
+echo "Installing NVSHMEM runtime and headers (CUDA 13)..."
 apt install -y nvshmem-cuda-13 libnvshmem3-cuda-13 libnvshmem3-dev-cuda-13 libnvshmem3-static-cuda-13
 # Fix packaging bug that leaves nvshmem_transport_ibgda.so.3 alternative pointing at a non-existent file
 nvshmem_alt_file="/var/lib/dpkg/alternatives/nvshmem"
@@ -1580,9 +1703,9 @@ if ! command -v compute-sanitizer &> /dev/null; then
     fi
 fi
 
-# Install latest NVIDIA Nsight Systems and Compute
+# Install pinned NVIDIA Nsight Systems and Compute
 echo ""
-echo "Installing latest NVIDIA Nsight Systems and Compute..."
+echo "Installing pinned NVIDIA Nsight Systems and Compute..."
 
 # Update apt to ensure latest packages are available
 apt update -qq
@@ -1592,58 +1715,42 @@ TEMP_DIR="/tmp/nsight_install"
 mkdir -p "$TEMP_DIR"
 cd "$TEMP_DIR"
 
-# Install Nsight Systems and set binary alternative  
-echo "Installing Nsight Systems (pinned 2025.3.2)..."
-NSYS_VERSION="2025.3.2"
+# Install Nsight Systems and set binary alternative
+NSYS_VERSION="2026.3.2"
+echo "Installing Nsight Systems (pinned ${NSYS_VERSION})..."
 apt install -y --upgrade "nsight-systems-${NSYS_VERSION}"
-# Try multiple possible locations
+NSYS_BIN=""
 for bin_path in "/opt/nvidia/nsight-systems/${NSYS_VERSION}/bin/nsys" "/opt/nvidia/nsight-systems/${NSYS_VERSION}/nsys"; do
     if [[ -x "$bin_path" ]]; then
         NSYS_BIN="$bin_path"
         break
     fi
 done
-if [[ -n "$NSYS_BIN" ]] && [[ -x "$NSYS_BIN" ]]; then
-    update-alternatives --install /usr/local/bin/nsys nsys "$NSYS_BIN" 50
-    update-alternatives --set nsys "$NSYS_BIN"
-    echo "Nsight Systems pinned to ${NSYS_VERSION} (${NSYS_BIN})"
-else
-    echo "Nsight Systems binary not found"
+if [[ -z "$NSYS_BIN" ]]; then
+    echo "ERROR: Nsight Systems ${NSYS_VERSION} binary not found under /opt/nvidia/nsight-systems/${NSYS_VERSION}." >&2
+    exit 1
 fi
-# Fallback: ensure nsys is reachable even if alternatives fail or install path changes
-if ! ensure_tool_on_path "nsys" \
-    "/opt/nvidia/nsight-systems/${NSYS_VERSION}/bin" \
-    "/opt/nvidia/nsight-systems/${NSYS_VERSION}" \
-    "/opt/nvidia/nsight-systems/"*/bin \
-    "/usr/local/cuda-*/bin" \
-    "/usr/local/cuda/bin"; then
-    echo "Nsight Systems still not on PATH; please verify installation."
-fi
+update-alternatives --install /usr/local/bin/nsys nsys "$NSYS_BIN" 50
+update-alternatives --set nsys "$NSYS_BIN"
+echo "Nsight Systems pinned to ${NSYS_VERSION} (${NSYS_BIN})"
 
 # Install Nsight Compute and set binary alternative
-echo "Installing Nsight Compute (pinned 2025.3.1)..."
-NCU_VERSION="2025.3.1"
+NCU_VERSION="2026.2.1"
+echo "Installing Nsight Compute (pinned ${NCU_VERSION})..."
 apt install -y --upgrade "nsight-compute-${NCU_VERSION}"
 NCU_BIN="/opt/nvidia/nsight-compute/${NCU_VERSION}/ncu"
-if [[ -x "$NCU_BIN" ]]; then
-    update-alternatives --install /usr/local/bin/ncu ncu "$NCU_BIN" 50
-    update-alternatives --set ncu "$NCU_BIN"
-    echo "Nsight Compute pinned to ${NCU_VERSION} (${NCU_BIN})"
-else
-    echo "Nsight Compute binary not found at ${NCU_BIN}"
+if [[ ! -x "$NCU_BIN" ]]; then
+    echo "ERROR: Nsight Compute ${NCU_VERSION} binary not found at ${NCU_BIN}." >&2
+    exit 1
 fi
-# Fallback: ensure ncu is reachable even if alternatives fail or install path changes
-if ! ensure_tool_on_path "ncu" \
-    "/opt/nvidia/nsight-compute/${NCU_VERSION}" \
-    "/opt/nvidia/nsight-compute/${NCU_VERSION}/bin" \
-    "/opt/nvidia/nsight-compute/"*/bin \
-    "/usr/local/cuda-*/bin" \
-    "/usr/local/cuda/bin"; then
-    echo "Nsight Compute still not on PATH; please verify installation."
-fi
+update-alternatives --install /usr/local/bin/ncu ncu "$NCU_BIN" 50
+update-alternatives --set ncu "$NCU_BIN"
+echo "Nsight Compute pinned to ${NCU_VERSION} (${NCU_BIN})"
 
-# Nsight tools are already in PATH when installed via apt
-echo "Nsight tools installed and available in PATH"
+# The CUDA 13.0 toolkit packages also install Nsight Compute 2025.3.1 and Nsight
+# Systems 2025.3.2. Every PATH entry that adds ${CUDA_HOME_DIR}/bin must put the
+# pinned Nsight directories ahead of it.
+NSIGHT_BIN_PATH="$(dirname "${NSYS_BIN}"):$(dirname "${NCU_BIN}")"
 
 # Configure PATH and LD_LIBRARY_PATH for CUDA environment
 echo ""
@@ -1653,13 +1760,17 @@ if ! grep -q "${CUDA_HOME_DIR}/bin" /etc/environment; then
     sed -i "s|PATH=\"\(.*\)\"|PATH=\"${CUDA_HOME_DIR}/bin:\1\"|" /etc/environment
     echo "Added CUDA ${CUDA_SHORT_VERSION} to system PATH"
 fi
+if ! grep -qF "PATH=\"${NSIGHT_BIN_PATH}:" /etc/environment; then
+    sed -i "s|PATH=\"\(.*\)\"|PATH=\"${NSIGHT_BIN_PATH}:\1\"|" /etc/environment
+    echo "Added pinned Nsight tools ahead of CUDA ${CUDA_SHORT_VERSION} in system PATH"
+fi
 
 # Create profile.d script for CUDA
 CUDA_PROFILE_SCRIPT="/etc/profile.d/cuda-${CUDA_SHORT_VERSION}.sh"
 cat > "${CUDA_PROFILE_SCRIPT}" <<PROFILE_EOF
 # CUDA ${CUDA_SHORT_VERSION} environment variables
 export CUDA_HOME=${CUDA_HOME_DIR}
-export PATH=${CUDA_HOME_DIR}/bin:\$PATH
+export PATH=${NSIGHT_BIN_PATH}:${CUDA_HOME_DIR}/bin:\$PATH
 export CUDA_PATH=${CUDA_HOME_DIR}
 
 # Runtime library policy:
@@ -1682,7 +1793,8 @@ source "${CUDA_PROFILE_SCRIPT}"
 
 # Persist CUDA toolchain settings for the remainder of the script
 export CUDA_HOME="${CUDA_HOME_DIR}"
-export PATH="$CUDA_HOME/bin:$PATH"
+export PATH="${NSIGHT_BIN_PATH}:$CUDA_HOME/bin:$PATH"
+require_pinned_nsight_tools
 
 export AISP_CUDNN_RUNTIME_POLICY="${AISP_CUDNN_RUNTIME_POLICY:-auto}"
 export LD_LIBRARY_PATH="${CUDA_HOME_DIR}/lib64:${CUDA_HOME_DIR}/lib64/stubs${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
@@ -1773,7 +1885,6 @@ apt install -y \
     linux-tools-generic \
     "linux-tools-${KERNEL_RELEASE}" \
     gdb \
-    cmake \
     rustc \
     cargo \
     perf-tools-unstable \
@@ -1803,10 +1914,19 @@ echo ""
 echo "Installing detect-secrets (system-wide)..."
 pip_install --no-cache-dir --upgrade --ignore-installed detect-secrets
 
-# Install ninja (required for PyTorch CUDA extensions)
+# Install the CMake and ninja pins (required for CUDA extensions and CMake builds)
 echo ""
-echo "Installing ninja (required for CUDA extensions)..."
-pip_install --no-cache-dir --upgrade --ignore-installed ninja==1.13.0
+REQ_CMAKE_VERSION="$(requirements_pin cmake)"
+REQ_NINJA_VERSION="$(requirements_pin ninja)"
+echo "Installing build tools pinned in requirements_latest.txt (cmake==${REQ_CMAKE_VERSION}, ninja==${REQ_NINJA_VERSION})..."
+pip_install --no-cache-dir --upgrade --ignore-installed \
+    "cmake==${REQ_CMAKE_VERSION}" \
+    "ninja==${REQ_NINJA_VERSION}"
+# Ubuntu's apt CMake (3.22 on 22.04, 3.28 on 24.04) is older than the repository's
+# CMake floor. The pip CMake must win every later lookup, including TE builds.
+CMAKE_PIP_BIN_DIR="$(python3 -c 'import cmake; print(cmake.CMAKE_BIN_DIR)')"
+export PATH="${CMAKE_PIP_BIN_DIR}:${PATH}"
+require_cmake_toolchain "${REQ_CMAKE_VERSION}"
 
 # Force remove ALL existing torch installations (CPU and CUDA) to prevent conflicts
 echo ""
@@ -1823,7 +1943,7 @@ pip_install --no-cache-dir --upgrade --ignore-installed \
     click==8.1.7 \
     pydantic==2.12.4 \
     pydantic-core==2.41.5 \
-    hypothesis==6.138.0 \
+    hypothesis==6.148.2 \
     typing-extensions==4.15.0 \
     typer==0.15.4
 
@@ -1840,9 +1960,6 @@ echo ""
 echo ""
 echo "Installing project dependencies..."
 pip_uninstall -y torchvision >/dev/null 2>&1 || true
-
-# Use the updated requirements file with pinned versions
-REQUIREMENTS_FILE="$PROJECT_ROOT/requirements_latest.txt"
 
 # Single-source serving stack pins from requirements_latest.txt and the
 # separately installed ABI-bound vLLM pin manifest.
@@ -3048,28 +3165,24 @@ fi
 echo ""
 echo "Checking Nsight tools..."
 if command -v nsys &> /dev/null; then
-    NSYS_VERSION=$(nsys --version 2>/dev/null | head -1)
-    echo "Nsight Systems: $NSYS_VERSION"
-    # Check if it's a recent 2025 version
-    if echo "$NSYS_VERSION" | grep -q "2025"; then
-        echo "  Recent 2025 version installed!"
+    NSYS_VERSION_OUTPUT="$(nsys --version 2>/dev/null | head -1)"
+    echo "Nsight Systems: ${NSYS_VERSION_OUTPUT}"
+    if [[ "${NSYS_VERSION_OUTPUT}" == *" ${NSYS_VERSION}"* ]]; then
+        echo "  Matches the pinned ${NSYS_VERSION} install"
     else
-        echo "  May not be the latest version (expected: 2025.x.x)"
+        echo "  WARNING: expected the pinned Nsight Systems ${NSYS_VERSION} on PATH"
     fi
 else
     echo "Nsight Systems not found"
 fi
 
 if command -v ncu &> /dev/null; then
-    NCU_VERSION=$(ncu --version 2>/dev/null | head -1)
-    echo "Nsight Compute: $NCU_VERSION"
-    # Check if it's 2025.3.1 or a recent 2025 version
-    if echo "$NCU_VERSION" | grep -qE "2025\.3\.1|2025\.3\.[2-9]|2025\.[4-9]"; then
-        echo "  Latest version installed (2025.3.1 or newer)!"
-    elif echo "$NCU_VERSION" | grep -q "2025"; then
-        echo "  Recent 2025 version installed!"
+    NCU_VERSION_OUTPUT="$(ncu --version 2>/dev/null | grep -m 1 '^Version' || true)"
+    echo "Nsight Compute: ${NCU_VERSION_OUTPUT}"
+    if [[ "${NCU_VERSION_OUTPUT}" == "Version ${NCU_VERSION}"* ]]; then
+        echo "  Matches the pinned ${NCU_VERSION} install"
     else
-        echo "  May not be the latest version (expected: 2025.3.1 or newer)"
+        echo "  WARNING: expected the pinned Nsight Compute ${NCU_VERSION} on PATH"
     fi
 else
     echo "Nsight Compute not found"
@@ -3202,7 +3315,7 @@ export TORCH_LOGS="+dynamo"
 
 # CUDA paths
 export CUDA_HOME="${CUDA_HOME_DIR}"
-export PATH=${CUDA_HOME_DIR}/bin:\$PATH
+export PATH=${NSIGHT_BIN_PATH}:${CUDA_HOME_DIR}/bin:\$PATH
 export AISP_CUDNN_RUNTIME_POLICY="\${AISP_CUDNN_RUNTIME_POLICY:-auto}"
 export LD_LIBRARY_PATH="\${CUDA_HOME_DIR}/lib64:\${CUDA_HOME_DIR}/lib64/stubs\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
 
@@ -3957,10 +4070,11 @@ echo "Installed:"
 echo "  • PyTorch ${PYTORCH_TORCH_VERSION} CUDA wheel from ${PYTORCH_CU130_INDEX}"
 echo "  • CUDA ${CUDA_FULL_VERSION} toolchain and development tools"
 echo "  • NCCL ${NCCL_SHORT_VERSION} (Blackwell-optimized with NVLS support)"
-echo "  • NVSHMEM 3.4.5 runtime and headers (CUDA 13)"
+echo "  • NVSHMEM runtime and headers (CUDA 13)"
 echo "  • GPUDirect Storage (GDS) tools, drivers, kvikio library, and boot-time nvidia-fs load config"
-echo "  • NVIDIA Nsight Systems (latest available)"
-echo "  • NVIDIA Nsight Compute (latest available)"
+echo "  • NVIDIA Nsight Systems ${NSYS_VERSION}"
+echo "  • NVIDIA Nsight Compute ${NCU_VERSION}"
+echo "  • CMake ${REQ_CMAKE_VERSION} and ninja ${REQ_NINJA_VERSION} (pip wheels pinned in requirements_latest.txt)"
 echo "  • All project dependencies"
 echo "  • System performance tools (numactl, perf, etc.)"
 echo ""
@@ -3974,6 +4088,7 @@ echo ""
 echo "Post-Run Checklist:"
 echo "  • Verify Python runtime:          python --version  (expect 3.12.x)"
 echo "  • Verify CUDA compiler:           nvcc --version    (expect release 13.0.88 / Update 2)"
+echo "  • Verify CMake:                   cmake --version   (expect ${REQ_CMAKE_VERSION})"
 echo "  • Verify driver & GPU status:     nvidia-smi        (expect driver ${REQUIRED_DRIVER_VERSION})"
 echo "  • Storage: Configure GDS-supported storage (NVMe, BeeGFS, NFS, WekaFS, etc.) and validate with /usr/local/cuda/gds/tools/gdscheck -p"
 echo "  • Verify PyTorch arch coverage:   python - <<'PY'"

@@ -54,7 +54,8 @@ nsys stats timeline_attempt_01.nsys-rep
 ```
 
 On Linux, `cuda,nvtx,osrt` are supported trace categories in
-[Nsight Systems 2025.3](https://archive.docs.nvidia.com/nsight-systems/2025.3/UserGuide/index.html).
+[Nsight Systems 2026.3](https://archive.docs.nvidia.com/nsight-systems/2026.3/UserGuide/index.html),
+the version `code/setup.sh` installs.
 `triton` is not a trace category: Triton-generated CUDA kernels appear in the CUDA
 timeline. Add library/NCCL tracing only if the installed version advertises it.
 The timeline can expose stream dependencies, transfers and idle gaps; verify that
