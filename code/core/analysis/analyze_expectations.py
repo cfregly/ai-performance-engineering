@@ -179,7 +179,10 @@ def classify_entry(
             return None
         if not any(_file_exists(repo_root, chapter_name, opt_file) for opt_file in opt_files):
             return None
-    if status in {"failed", "failed_error", "failed_regression", "failed_no_speedup"}:
+    # The harness counts every failed_* status as a failure (failed_verification,
+    # failed_profiler, failed_expectation_invalid and the rest), so none of them
+    # is graded by its speedup.
+    if status == "failed" or status.startswith("failed_"):
         severity = "fail"
     elif status == "skipped":
         severity = "skipped"

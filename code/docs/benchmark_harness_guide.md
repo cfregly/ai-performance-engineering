@@ -57,7 +57,7 @@ ch*/baseline_*.py  →  ch*/optimized_*.py
 python -m cli.aisp bench run
 ```
 
-Use `--accept-regressions` when you intentionally want to refresh expectation files on improvements only, or `--update-expectations` to force-write observed metrics even if they are slower (full refresh). The harness will surface **SKIPPED** for known hardware gaps like DSMEM-only cluster kernels on GB10, NVFP4-only trainers on non-FP4 parts, or TF32 being disabled via the new helper APIs—those no longer count as failures.
+Use `--accept-regressions` to write expectation entries even when they regress, as long as the run's git commit, hardware key, profile, execution environment, validity profile and `--target-extra-arg` values match the stored entry. Use `--update-expectations` to write observed metrics even if they are slower or their provenance differs (full refresh). No flag stores timing whose mean exceeds its p75, or its median when no p75 is recorded, by more than 1.25x. Absolute throughput fields such as `bytes_per_s` are regression-checked with the same 25% tolerance as the speedup. A run whose expectation update is refused for invalid evidence is reported as `failed_expectation_invalid`. The harness will surface **SKIPPED** for known hardware gaps like DSMEM-only cluster kernels on GB10, NVFP4-only trainers on non-FP4 parts, or TF32 being disabled via the new helper APIs—those no longer count as failures.
 
 ---
 
@@ -95,7 +95,7 @@ Use `--accept-regressions` when you intentionally want to refresh expectation fi
 #### Torchrun launch (multi-GPU)
 - Enable with `--launch-via torchrun` plus `--nproc-per-node`, optional `--nnodes/--rdzv-backend/--rdzv-endpoint`.
 - Harness records `world_size`/`launch_via` in results and only parses rank0-style output (duplicate rank logs are deduped).
-- Forward env vars via `--torchrun-env CUDA_VISIBLE_DEVICES=0,1` and per-target overrides with `--target-extra-arg target="--flag value"`.
+- Forward env vars via `--torchrun-env CUDA_VISIBLE_DEVICES=0,1` and per-target overrides with `--target-extra-arg target="--flag value"`. A torchrun launch passes those overrides to the launched script. Any other target receives them through its `apply_target_overrides` hook. A target without a hook fails instead of ignoring them, and an error raised by the hook fails the target.
 - Multi-GPU targets (`multi_gpu_required=True`) return `SKIPPED` instead of hanging when launched with a single process.
 - Example: `PYTHONPATH=. python -m cli.aisp bench run --targets labs/train_distributed:ddp_multigpu --launch-via torchrun --nproc-per-node 2 --target-extra-arg 'labs/train_distributed:ddp_multigpu=--compile'`.
 
@@ -595,7 +595,7 @@ python -m cli.aisp bench run --targets ch13
 python -m cli.aisp bench run --reproducible
 ```
 
-**Result**: All seeds set to 42, deterministic algorithms enabled; expect matching outputs at the cost of slower kernels and possible op errors if deterministic paths are missing.
+**Result**: All seeds are set to 42 and deterministic algorithms are on, including for benchmarks whose own `get_config` leaves them off. Expect matching outputs at the cost of slower kernels, and errors from ops that have no deterministic implementation.
 
 ### Example 3: Extended Timeouts for Slow Systems
 

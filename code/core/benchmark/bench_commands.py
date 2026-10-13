@@ -118,6 +118,7 @@ from core.benchmark.artifact_manager import (
     validate_run_id,
 )
 from core.benchmark.defaults import BenchmarkDefaults, get_defaults, set_defaults
+from core.benchmark.expectations import UPDATE_EXPECTATIONS_HELP_TEXT
 from core.benchmark.run_manifest import get_git_info, get_gpu_state
 from core.harness.validity_profile import (
     VALIDITY_PROFILE_CHOICES,
@@ -739,6 +740,7 @@ def _isolated_benchmark_failure_result(
             "failed_verification": 0,
             "failed_regression": 0,
             "failed_no_speedup": 0,
+            "failed_expectation_invalid": 0,
             "failed_generic": 0,
             "failed_other": 0,
             "skipped_hardware": 0,
@@ -1619,6 +1621,7 @@ def _execute_benchmarks(
                     "failed_verification",
                     "failed_regression",
                     "failed_no_speedup",
+                    "failed_expectation_invalid",
                     "failed_generic",
                     "failed_other",
                 )
@@ -1837,7 +1840,7 @@ if TYPER_AVAILABLE:
         update_expectations: bool = Option(
             False,
             "--update-expectations",
-            help="Force-write observed metrics into expectation files (overrides regressions). Useful for refreshing baselines on new hardware.",
+            help=f"{UPDATE_EXPECTATIONS_HELP_TEXT} Useful for refreshing baselines on new hardware.",
         ),
         allow_portable_expectations_update: bool = Option(
             False,
@@ -1872,7 +1875,10 @@ if TYPER_AVAILABLE:
         target_extra_args: Optional[List[str]] = Option(
             None,
             "--target-extra-arg",
-            help='Per-target extra args, format: target="--flag value". Repeatable.',
+            help=(
+                'Per-target extra args, format: target="--flag value". Repeatable. '
+                "A torchrun launch passes them to the launched script. Any other target must accept them in an apply_target_overrides hook, or the run fails."
+            ),
         ),
         # LLM analysis and patching options
         llm_analysis: bool = Option(
@@ -2161,7 +2167,7 @@ if TYPER_AVAILABLE:
         update_expectations: bool = Option(
             False,
             "--update-expectations",
-            help="Force-write observed metrics into expectation files (overrides regressions). Useful for refreshing baselines on new hardware.",
+            help=f"{UPDATE_EXPECTATIONS_HELP_TEXT} Useful for refreshing baselines on new hardware.",
         ),
         allow_mixed_provenance: bool = Option(
             False,
@@ -2357,7 +2363,7 @@ if TYPER_AVAILABLE:
         update_expectations: bool = Option(
             False,
             "--update-expectations",
-            help="Force-write observed metrics into expectation files (overrides regressions). Useful for refreshing baselines on new hardware.",
+            help=f"{UPDATE_EXPECTATIONS_HELP_TEXT} Useful for refreshing baselines on new hardware.",
         ),
         allow_mixed_provenance: bool = Option(
             False,
@@ -2591,7 +2597,7 @@ if TYPER_AVAILABLE:
         update_expectations: bool = Option(
             True,
             "--update-expectations/--no-update-expectations",
-            help="Force-write observed metrics into expectation files (recommended).",
+            help=f"{UPDATE_EXPECTATIONS_HELP_TEXT} (recommended)",
         ),
         validity_profile: str = Option(
             "strict",

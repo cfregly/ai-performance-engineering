@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from functools import lru_cache
 from typing import Tuple
-import os
 
 try:
     import torch
@@ -82,8 +81,11 @@ def blackwell_tma_support_status() -> Tuple[bool, str]:
     cap = detect_capabilities()
     if cap is None:
         return False, "CUDA device not available"
-    if cap.architecture not in {"blackwell", "blackwell_ultra", "grace_blackwell"}:
-        return False, f"requires Blackwell/Grace-Blackwell, found {cap.architecture}"
+    # Capability-probe labels: "blackwell" is SM 10.x below 10.3 and SM 11.x,
+    # "blackwell_ultra" is SM 10.3, "blackwell_consumer" is SM 12.0 (GeForce RTX 50
+    # and RTX PRO) and "grace_blackwell" is SM 12.1 (GB10).
+    if cap.architecture not in {"blackwell", "blackwell_ultra", "blackwell_consumer", "grace_blackwell"}:
+        return False, f"requires a Blackwell-family GPU (SM 10.x, 11.x or 12.x), found {cap.architecture}"
     if not cap.tma_ready:
         return False, (
             f"{cap.device_name} ({cap.sm_version}) hardware supports TMA but the "

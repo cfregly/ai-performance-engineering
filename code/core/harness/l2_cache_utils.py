@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import functools
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional
 
 try:
     import torch
@@ -69,9 +69,17 @@ class L2CacheInfo:
     
 
 def _get_architecture_from_compute_capability(major: int, minor: int) -> str:
-    """Map compute capability to architecture name."""
-    if major >= 12:
-        return "grace_blackwell"
+    """Map compute capability to architecture name.
+
+    SM 12.x labels match the capability probe and core.harness.arch_config.
+    Capabilities newer than SM 12.x are not assigned a family.
+    """
+    if (major, minor) == (12, 1):
+        return "grace_blackwell"  # GB10
+    elif major == 12:
+        return "blackwell_consumer"  # GeForce RTX 50 and RTX PRO
+    elif major > 12:
+        return "unknown"
     elif major >= 10:
         return "blackwell"
     elif major >= 9:

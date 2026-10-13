@@ -107,7 +107,7 @@ def test_get_software_info_surfaces_runtime_warnings(tmp_path: Path) -> None:
 def test_get_dependency_health_surfaces_parse_and_symlink_warnings(tmp_path: Path) -> None:
     cutlass_root = tmp_path / "third_party" / "cutlass" / "include" / "cutlass"
     cutlass_root.mkdir(parents=True)
-    (cutlass_root / "version.h").write_text("CUTLASS_VERSION_MAJOR ???\n", encoding="utf-8")
+    (cutlass_root / "version.h").write_text("#define CUTLASS_MAJOR ???\n", encoding="utf-8")
 
     te_root = tmp_path / "transformer_engine"
     cutlass_link = te_root / "csrc" / "cutlass"

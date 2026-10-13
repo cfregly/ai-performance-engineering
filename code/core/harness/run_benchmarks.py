@@ -20,7 +20,7 @@ import argparse
 import csv
 import shlex
 import re
-from typing import Dict, List, Any, Optional, Set, Tuple, Iterator, Sequence
+from typing import Dict, List, Any, Mapping, Optional, Set, Tuple, Iterator, Sequence
 from datetime import datetime
 from collections import defaultdict
 import statistics
@@ -117,7 +117,11 @@ from core.benchmark.expectations import (
     ExpectationsStore,
     ExpectationEntry,
     RunProvenance,
+    INVALID_EVIDENCE_ISSUE_TYPES,
+    NON_OVERRIDABLE_ISSUE_TYPES,
+    UPDATE_EXPECTATIONS_HELP_TEXT,
     METRIC_DIRECTIONS,
+    THROUGHPUT_METRIC_DIRECTIONS,
     detect_expectation_key,
     select_best_optimization,
     compute_speedup,
@@ -727,6 +731,35 @@ def format_time_ms(time_ms: float) -> str:
         return f"{time_ms:.2f}"
 
 
+def _format_optional_time_ms(time_ms: Optional[float]) -> str:
+    if time_ms is None:
+        return "n/a"
+    return f"{format_time_ms(time_ms)}ms"
+
+
+def _record_timing_fields(
+    target: Dict[str, Any],
+    prefix: str,
+    *,
+    median_ms: float,
+    percentiles: Mapping[float, float],
+    p90_ms: Optional[float] = None,
+) -> None:
+    """Record one side's median, p75 and p90 into ``target`` under ``prefix``.
+
+    A percentile the run did not compute is left out, never recorded as 0.
+    Expectation writes compare the mean with the p75, or with the median when
+    the configured percentiles omit 75.
+    """
+    target[f"{prefix}median_ms"] = median_ms
+    p75 = percentiles.get(75.0)
+    if p75 is not None:
+        target[f"{prefix}p75_ms"] = p75
+    p90 = p90_ms if p90_ms is not None else percentiles.get(90.0)
+    if p90 is not None:
+        target[f"{prefix}p90_ms"] = p90
+
+
 def format_throughput_summary(throughput_obj: Optional[Any]) -> str:
     """Pretty print throughput metrics for logs."""
     if throughput_obj is None:
@@ -761,13 +794,7 @@ def serialize_throughput(throughput_obj: Optional[Any]) -> Optional[Dict[str, An
     return None
 
 
-EXPECTATION_THROUGHPUT_FIELDS: Tuple[str, ...] = (
-    "requests_per_s",
-    "tokens_per_s",
-    "samples_per_s",
-    "goodput",
-    "latency_ms",
-)
+EXPECTATION_THROUGHPUT_FIELDS: Tuple[str, ...] = tuple(THROUGHPUT_METRIC_DIRECTIONS)
 
 
 def expectation_example_key(example_name: str, bench_type: str) -> str:
@@ -1231,6 +1258,7 @@ def collect_expectation_metrics(result_entry: Dict[str, Any]) -> Tuple[Dict[str,
     # Capture baseline metrics
     baseline_time = result_entry.get("baseline_time_ms")
     _capture_metric(metrics, "baseline_time_ms", baseline_time)
+    _capture_metric(metrics, "baseline_median_ms", result_entry.get("baseline_median_ms"))
     _capture_metric(metrics, "baseline_p75_ms", result_entry.get("baseline_p75_ms"))
     _capture_metric(metrics, "baseline_p90_ms", result_entry.get("baseline_p90_ms"))
 
@@ -1245,6 +1273,7 @@ def collect_expectation_metrics(result_entry: Dict[str, Any]) -> Tuple[Dict[str,
     if best_opt:
         optimized_time = best_opt.get("time_ms")
         _capture_metric(metrics, "best_optimized_time_ms", optimized_time)
+        _capture_metric(metrics, "best_optimized_median_ms", best_opt.get("median_ms"))
         _capture_metric(metrics, "best_optimized_p75_ms", best_opt.get("p75_ms"))
         _capture_metric(metrics, "best_optimized_p90_ms", best_opt.get("p90_ms"))
         _capture_payload(metrics, "best_optimized_throughput", best_opt.get("throughput"))
@@ -5146,13 +5175,21 @@ def _compute_locked_fields(
     cli_nsys_timeout_provided: bool = False,
     cli_ncu_timeout_provided: bool = False,
     enable_profiling: bool,
+    reproducible: bool = False,
 ) -> Set[str]:
-    """Compute run-level config fields that benchmarks may not override."""
+    """Compute run-level config fields that benchmarks may not override.
+
+    With reproducible set, seed and deterministic are locked, so a benchmark's
+    own BenchmarkConfig, which carries deterministic=False by default, cannot
+    undo --reproducible.
+    """
     locked_fields: Set[str] = set()
     if cli_iterations_provided:
         locked_fields.add("iterations")
     if cli_warmup_provided:
         locked_fields.add("warmup")
+    if reproducible:
+        locked_fields.update({"seed", "deterministic"})
     if cli_ncu_replay_mode_provided:
         locked_fields.add("ncu_replay_mode")
         locked_fields.add("ncu_replay_mode_override")
@@ -5397,6 +5434,92 @@ def _update_expectation_entry_after_profiler_gate(
             ],
         }
     return update_result, payload
+
+
+def _expectation_entry_from_result(
+    result_entry: Dict[str, Any],
+    best_opt: Dict[str, Any],
+    *,
+    example_key: str,
+    default_type: str,
+    provenance: RunProvenance,
+) -> ExpectationEntry:
+    return ExpectationEntry(
+        example=result_entry.get("example", example_key),
+        type=result_entry.get("type", default_type),
+        optimization_goal=result_entry.get("optimization_goal", "speed"),
+        baseline_time_ms=float(result_entry.get("baseline_time_ms") or 0.0),
+        best_optimized_time_ms=float(best_opt.get("time_ms") or 0.0),
+        provenance=provenance,
+        baseline_memory_mb=result_entry.get("baseline_memory_mb"),
+        best_optimized_memory_mb=best_opt.get("memory_mb"),
+        baseline_p75_ms=result_entry.get("baseline_p75_ms"),
+        baseline_p90_ms=result_entry.get("baseline_p90_ms"),
+        best_optimized_p75_ms=best_opt.get("p75_ms"),
+        best_optimized_p90_ms=best_opt.get("p90_ms"),
+        baseline_median_ms=result_entry.get("baseline_median_ms"),
+        best_optimized_median_ms=best_opt.get("median_ms"),
+        baseline_throughput=result_entry.get("baseline_throughput"),
+        best_optimized_throughput=best_opt.get("throughput"),
+        best_optimization_name=best_opt.get("technique") or best_opt.get("file"),
+        best_optimization_file=best_opt.get("file"),
+        best_optimization_technique=best_opt.get("technique"),
+        minimum_required_speedup=_coerce_positive_float(result_entry.get("minimum_required_speedup")),
+    )
+
+
+def _expectation_rejection_status(update_result: Optional[Any]) -> Optional[str]:
+    """Return the failed status that a rejected expectation update forces.
+
+    A regression takes precedence, so a real slowdown is reported as
+    failed_regression even when the same run also has outlier timing. A
+    rejection for invalid evidence (outlier timing, a missing tracked metric
+    or missing memory metrics) fails the benchmark because its reported
+    result comes from that same evidence. A provenance-only rejection returns
+    None, because every run on a new commit gets one. update_entry stops at a
+    provenance mismatch before it compares scores, so a preview run on a new
+    commit reports no regression unless --allow-mixed-provenance is set.
+    """
+    if update_result is None or update_result.status != "rejected":
+        return None
+    issue_types = {issue.issue_type for issue in update_result.validation_issues}
+    if "regression" in issue_types:
+        return "failed_regression"
+    if issue_types & INVALID_EVIDENCE_ISSUE_TYPES:
+        return "failed_expectation_invalid"
+    return None
+
+
+def _classify_benchmark_status(
+    result_entry: Dict[str, Any],
+    update_result: Optional[Any],
+    *,
+    profiler_failures: Sequence[str],
+) -> str:
+    """Return the final status of a benchmark that has a measured optimization.
+
+    A required profiler failure comes first. A rejected expectation update
+    comes next (see _expectation_rejection_status). The minimum-speedup
+    contract is checked last.
+    """
+    if profiler_failures:
+        return "failed_profiler"
+    rejection_status = _expectation_rejection_status(update_result)
+    if rejection_status is not None:
+        return rejection_status
+    if _should_fail_no_speedup(result_entry):
+        return "failed_no_speedup"
+    return "succeeded"
+
+
+def _expectation_preview_message(update_result: Any) -> str:
+    issue_types = {issue.issue_type for issue in update_result.validation_issues}
+    if issue_types & NON_OVERRIDABLE_ISSUE_TYPES:
+        return f"{update_result.message} (preview only. No write flag stores this entry.)"
+    return (
+        f"{update_result.message} (preview only. Rerun with --update-expectations, "
+        "--accept-regressions or --allow-mixed-provenance to write the file.)"
+    )
 
 
 def _test_chapter_impl(
@@ -5833,6 +5956,7 @@ def _test_chapter_impl(
         cli_nsys_timeout_provided=nsys_timeout_seconds is not None,
         cli_ncu_timeout_provided=ncu_timeout_seconds is not None,
         enable_profiling=enable_profiling,
+        reproducible=reproducible,
     )
 
     def _resolve_required_world_size(benchmark_obj: Any, cfg: BenchmarkConfig) -> tuple[int, bool]:
@@ -6361,15 +6485,18 @@ def _test_chapter_impl(
                     logger.info(mem_str)
                 if baseline_timing and baseline_timing.percentiles:
                     p99 = baseline_timing.percentiles.get(99.0, 0)
-                    p75 = baseline_timing.percentiles.get(75.0, 0)
+                    p75 = baseline_timing.percentiles.get(75.0)
                     p50 = baseline_timing.percentiles.get(50.0, baseline_timing.median_ms if baseline_timing else 0)
-                    logger.info(f"      📈 Percentiles: p99={format_time_ms(p99)}ms, p75={format_time_ms(p75)}ms, p50={format_time_ms(p50)}ms")
+                    logger.info(f"      📈 Percentiles: p99={format_time_ms(p99)}ms, p75={_format_optional_time_ms(p75)}, p50={format_time_ms(p50)}ms")
                     result_entry['baseline_percentiles'] = dict(baseline_timing.percentiles)
-                    if p75 is not None:
-                        result_entry['baseline_p75_ms'] = p75
-                    p90 = baseline_timing.p90_ms or baseline_timing.percentiles.get(90.0)
-                    if p90 is not None:
-                        result_entry['baseline_p90_ms'] = p90
+                if baseline_timing:
+                    _record_timing_fields(
+                        result_entry,
+                        "baseline_",
+                        median_ms=baseline_timing.median_ms,
+                        percentiles=baseline_timing.percentiles,
+                        p90_ms=baseline_timing.p90_ms,
+                    )
                 baseline_throughput = baseline_result.throughput
                 throughput_summary = format_throughput_summary(baseline_throughput)
                 if throughput_summary:
@@ -7239,20 +7366,16 @@ def _test_chapter_impl(
                     elif opt_used_compile:
                         logger.info("        🚀 torch.compile enabled (reduce-overhead)")
                     
-                    opt_p75 = None
-                    opt_p90 = None
                     if optimized_timing and optimized_timing.percentiles:
                         p99 = optimized_timing.percentiles.get(99.0, 0)
-                        p75 = optimized_timing.percentiles.get(75.0, 0)
+                        p75 = optimized_timing.percentiles.get(75.0)
                         p50 = optimized_timing.percentiles.get(50.0, optimized_timing.median_ms if optimized_timing else 0)
-                        opt_p75 = p75
-                        opt_p90 = optimized_timing.p90_ms or optimized_timing.percentiles.get(90.0)
                         p99_speedup = ""
                         if baseline_timing and baseline_timing.percentiles and 99.0 in baseline_timing.percentiles:
                             p99_baseline = baseline_timing.percentiles[99.0]
                             if p99_baseline > 0:
                                 p99_speedup = f" ({p99_baseline/p99:.2f}x)" if p99 > 0 else ""
-                        logger.info(f"        📈 Percentiles: p99={format_time_ms(p99)}ms{p99_speedup}, p75={format_time_ms(p75)}ms, p50={format_time_ms(p50)}ms")
+                        logger.info(f"        📈 Percentiles: p99={format_time_ms(p99)}ms{p99_speedup}, p75={_format_optional_time_ms(p75)}, p50={format_time_ms(p50)}ms")
                     
                     opt_gpu_metrics = getattr(optimized_result, "gpu_metrics", None)
                     if opt_gpu_metrics:
@@ -7389,10 +7512,14 @@ def _test_chapter_impl(
                             if memory_savings_pct > result_entry.get('best_memory_savings_pct', 0):
                                 result_entry['best_memory_savings_pct'] = memory_savings_pct
                     
-                    if opt_p75 is not None:
-                        opt_result['p75_ms'] = opt_p75
-                    if opt_p90 is not None:
-                        opt_result['p90_ms'] = opt_p90
+                    if optimized_timing:
+                        _record_timing_fields(
+                            opt_result,
+                            "",
+                            median_ms=optimized_timing.median_ms,
+                            percentiles=optimized_timing.percentiles,
+                            p90_ms=optimized_timing.p90_ms,
+                        )
                     if opt_gpu_metrics:
                         opt_result['gpu_metrics'] = opt_gpu_metrics
                     if optimized_custom_metrics:
@@ -8365,26 +8492,15 @@ def _test_chapter_impl(
                         execution_environment=execution_environment.kind,
                         validity_profile=validity_profile,
                         dmi_product_name=execution_environment.dmi_product_name,
+                        # Both variants receive the same --target-extra-arg values.
+                        target_override_argv=_resolve_target_override_argv(baseline_config),
                     )
-                    entry = ExpectationEntry(
-                        example=result_entry.get("example", example_key),
-                        type=result_entry.get("type", "python"),
-                        optimization_goal=result_entry.get("optimization_goal", "speed"),
-                        baseline_time_ms=float(result_entry.get("baseline_time_ms") or 0.0),
-                        best_optimized_time_ms=float(best_opt.get("time_ms") or 0.0),
+                    entry = _expectation_entry_from_result(
+                        result_entry,
+                        best_opt,
+                        example_key=example_key,
+                        default_type="python",
                         provenance=provenance,
-                        baseline_memory_mb=result_entry.get("baseline_memory_mb"),
-                        best_optimized_memory_mb=best_opt.get("memory_mb"),
-                        baseline_p75_ms=result_entry.get("baseline_p75_ms"),
-                        baseline_p90_ms=result_entry.get("baseline_p90_ms"),
-                        best_optimized_p75_ms=best_opt.get("p75_ms"),
-                        best_optimized_p90_ms=best_opt.get("p90_ms"),
-                        baseline_throughput=result_entry.get("baseline_throughput"),
-                        best_optimized_throughput=best_opt.get("throughput"),
-                        best_optimization_name=best_opt.get("technique") or best_opt.get("file"),
-                        best_optimization_file=best_opt.get("file"),
-                        best_optimization_technique=best_opt.get("technique"),
-                        minimum_required_speedup=_coerce_positive_float(result_entry.get("minimum_required_speedup")),
                     )
                     update_result = None
                     if expectation_validation_enabled:
@@ -8410,10 +8526,8 @@ def _test_chapter_impl(
                                 logger.info("    Expectations: %s", update_result.message)
                             else:
                                 result_entry["expectation"]["persisted"] = False
-                                result_entry["expectation"]["message"] = (
-                                    f"{update_result.message} (preview only; rerun with "
-                                    "--update-expectations/--accept-regressions/--allow-mixed-provenance "
-                                    "to write the file.)"
+                                result_entry["expectation"]["message"] = _expectation_preview_message(
+                                    update_result
                                 )
                                 logger.info("    Expectations (preview): %s", update_result.message)
                             log_expectation_delta(
@@ -8437,12 +8551,10 @@ def _test_chapter_impl(
                             "validation_issues": [],
                         }
 
-                is_rejected_regression = bool(
-                    update_result
-                    and update_result.status == "rejected"
-                    and any(issue.issue_type == "regression" for issue in update_result.validation_issues)
+                benchmark_status = _classify_benchmark_status(
+                    result_entry, update_result, profiler_failures=profiler_failures
                 )
-                if profiler_failures:
+                if benchmark_status == "failed_profiler":
                     result_entry["status"] = "failed_profiler"
                     result_entry["error"] = _format_required_profiler_failure(
                         profiler_failures,
@@ -8450,7 +8562,7 @@ def _test_chapter_impl(
                     )
                     logger.warning("    WARNING: %s", result_entry["error"])
                     failed_error += 1
-                elif is_rejected_regression:
+                elif benchmark_status == "failed_regression":
                     regression_metrics = None
                     if best_opt and isinstance(best_opt, dict):
                         regression_metrics = best_opt.get("gpu_metrics")
@@ -8465,9 +8577,13 @@ def _test_chapter_impl(
                         live_metrics = _query_gpu_telemetry_for_profile(validity_profile)
                         logger.warning("    🌡️ GPU telemetry during regression: %s", format_gpu_telemetry(live_metrics))
                     result_entry['status'] = 'failed_regression'
-                    result_entry["error"] = update_result.message if update_result else "Expectation regression detected"
+                    result_entry["error"] = update_result.message
                     failed_regression += 1
-                elif _should_fail_no_speedup(result_entry):
+                elif benchmark_status == "failed_expectation_invalid":
+                    result_entry["status"] = "failed_expectation_invalid"
+                    result_entry["error"] = update_result.message
+                    logger.warning("    WARNING: %s", result_entry["error"])
+                elif benchmark_status == "failed_no_speedup":
                     result_entry["status"] = "failed_no_speedup"
                     result_entry["error"] = _format_failed_no_speedup(result_entry)
                     failed_no_speedup += 1
@@ -8731,15 +8847,16 @@ def _test_chapter_impl(
             )
             if baseline_result.percentiles:
                 p99 = baseline_result.percentiles.get(99.0, 0)
-                p75 = baseline_result.percentiles.get(75.0, 0)
+                p75 = baseline_result.percentiles.get(75.0)
                 p50 = baseline_result.percentiles.get(50.0, baseline_result.median_ms)
-                logger.info(f"      📈 Percentiles: p99={format_time_ms(p99)}ms, p75={format_time_ms(p75)}ms, p50={format_time_ms(p50)}ms")
+                logger.info(f"      📈 Percentiles: p99={format_time_ms(p99)}ms, p75={_format_optional_time_ms(p75)}, p50={format_time_ms(p50)}ms")
                 result_entry['baseline_percentiles'] = dict(baseline_result.percentiles)
-                if p75 is not None:
-                    result_entry['baseline_p75_ms'] = p75
-                p90 = baseline_result.percentiles.get(90.0)
-                if p90 is not None:
-                    result_entry['baseline_p90_ms'] = p90
+            _record_timing_fields(
+                result_entry,
+                "baseline_",
+                median_ms=baseline_result.median_ms,
+                percentiles=baseline_result.percentiles,
+            )
 
             baseline_gpu_metrics = getattr(baseline_result, "gpu_metrics", None)
             if not baseline_gpu_metrics:
@@ -9220,20 +9337,16 @@ def _test_chapter_impl(
                     f"std={format_time_ms(optimized_result.std_ms)}ms"
                 )
 
-                opt_p75 = None
-                opt_p90 = None
                 if optimized_result.percentiles:
                     p99 = optimized_result.percentiles.get(99.0, 0)
-                    p75 = optimized_result.percentiles.get(75.0, 0)
+                    p75 = optimized_result.percentiles.get(75.0)
                     p50 = optimized_result.percentiles.get(50.0, optimized_result.median_ms)
-                    opt_p75 = p75
-                    opt_p90 = optimized_result.percentiles.get(90.0)
                     p99_speedup = ""
                     if baseline_result.percentiles and 99.0 in baseline_result.percentiles:
                         p99_baseline = baseline_result.percentiles[99.0]
                         if p99_baseline > 0:
                             p99_speedup = f" ({p99_baseline/p99:.2f}x)" if p99 > 0 else ""
-                    logger.info(f"        📈 Percentiles: p99={format_time_ms(p99)}ms{p99_speedup}, p75={format_time_ms(p75)}ms, p50={format_time_ms(p50)}ms")
+                    logger.info(f"        📈 Percentiles: p99={format_time_ms(p99)}ms{p99_speedup}, p75={_format_optional_time_ms(p75)}, p50={format_time_ms(p50)}ms")
 
                 # Visual speedup bar (always show for consistency, same as Python)
                 bar_length = 40
@@ -9261,10 +9374,12 @@ def _test_chapter_impl(
                     'speedup': speedup,
                     'optimization_goal': str(result_entry.get("optimization_goal") or "speed").strip().lower(),
                 }
-                if opt_p75 is not None:
-                    opt_result['p75_ms'] = opt_p75
-                if opt_p90 is not None:
-                    opt_result['p90_ms'] = opt_p90
+                _record_timing_fields(
+                    opt_result,
+                    "",
+                    median_ms=optimized_result.median_ms,
+                    percentiles=optimized_result.percentiles,
+                )
                 cuda_opt_gpu_metrics = getattr(optimized_result, "gpu_metrics", None)
                 if not cuda_opt_gpu_metrics:
                     cuda_opt_gpu_metrics = _query_gpu_telemetry_for_profile(validity_profile)
@@ -9869,25 +9984,12 @@ def _test_chapter_impl(
                         validity_profile=validity_profile,
                         dmi_product_name=execution_environment.dmi_product_name,
                     )
-                    entry = ExpectationEntry(
-                        example=result_entry.get("example", example_key),
-                        type=result_entry.get("type", "cuda"),
-                        optimization_goal=result_entry.get("optimization_goal", "speed"),
-                        baseline_time_ms=float(result_entry.get("baseline_time_ms") or 0.0),
-                        best_optimized_time_ms=float(best_opt.get("time_ms") or 0.0),
+                    entry = _expectation_entry_from_result(
+                        result_entry,
+                        best_opt,
+                        example_key=example_key,
+                        default_type="cuda",
                         provenance=provenance,
-                        baseline_memory_mb=result_entry.get("baseline_memory_mb"),
-                        best_optimized_memory_mb=best_opt.get("memory_mb"),
-                        baseline_p75_ms=result_entry.get("baseline_p75_ms"),
-                        baseline_p90_ms=result_entry.get("baseline_p90_ms"),
-                        best_optimized_p75_ms=best_opt.get("p75_ms"),
-                        best_optimized_p90_ms=best_opt.get("p90_ms"),
-                        baseline_throughput=result_entry.get("baseline_throughput"),
-                        best_optimized_throughput=best_opt.get("throughput"),
-                        best_optimization_name=best_opt.get("technique") or best_opt.get("file"),
-                        best_optimization_file=best_opt.get("file"),
-                        best_optimization_technique=best_opt.get("technique"),
-                        minimum_required_speedup=_coerce_positive_float(result_entry.get("minimum_required_speedup")),
                     )
                     update_result = None
                     if expectation_validation_enabled:
@@ -9913,10 +10015,8 @@ def _test_chapter_impl(
                                 logger.info("    Expectations: %s", update_result.message)
                             else:
                                 result_entry["expectation"]["persisted"] = False
-                                result_entry["expectation"]["message"] = (
-                                    f"{update_result.message} (preview only; rerun with "
-                                    "--update-expectations/--accept-regressions/--allow-mixed-provenance "
-                                    "to write the file.)"
+                                result_entry["expectation"]["message"] = _expectation_preview_message(
+                                    update_result
                                 )
                                 logger.info("    Expectations (preview): %s", update_result.message)
                             log_expectation_delta(
@@ -9940,12 +10040,10 @@ def _test_chapter_impl(
                             "validation_issues": [],
                         }
 
-                is_rejected_regression = bool(
-                    update_result
-                    and update_result.status == "rejected"
-                    and any(issue.issue_type == "regression" for issue in update_result.validation_issues)
+                benchmark_status = _classify_benchmark_status(
+                    result_entry, update_result, profiler_failures=profiler_failures
                 )
-                if profiler_failures:
+                if benchmark_status == "failed_profiler":
                     result_entry["status"] = "failed_profiler"
                     result_entry["error"] = _format_required_profiler_failure(
                         profiler_failures,
@@ -9953,7 +10051,7 @@ def _test_chapter_impl(
                     )
                     logger.warning("    WARNING: %s", result_entry["error"])
                     failed_error += 1
-                elif is_rejected_regression:
+                elif benchmark_status == "failed_regression":
                     regression_metrics = None
                     if best_opt and isinstance(best_opt, dict):
                         regression_metrics = best_opt.get("gpu_metrics")
@@ -9977,11 +10075,13 @@ def _test_chapter_impl(
                             format_gpu_telemetry(live_metrics),
                         )
                     result_entry["status"] = "failed_regression"
-                    result_entry["error"] = (
-                        update_result.message if update_result else "Expectation regression detected"
-                    )
+                    result_entry["error"] = update_result.message
                     failed_regression += 1
-                elif _should_fail_no_speedup(result_entry):
+                elif benchmark_status == "failed_expectation_invalid":
+                    result_entry["status"] = "failed_expectation_invalid"
+                    result_entry["error"] = update_result.message
+                    logger.warning("    WARNING: %s", result_entry["error"])
+                elif benchmark_status == "failed_no_speedup":
                     result_entry["status"] = "failed_no_speedup"
                     result_entry["error"] = _format_failed_no_speedup(result_entry)
                     failed_no_speedup += 1
@@ -10465,6 +10565,7 @@ def _test_chapter_impl(
     failed_regression_final = final_status_counts.get("failed_regression", 0)
     failed_no_speedup_final = final_status_counts.get("failed_no_speedup", 0)
     failed_profiler_final = final_status_counts.get("failed_profiler", 0)
+    failed_expectation_invalid_final = final_status_counts.get("failed_expectation_invalid", 0)
     failed_plain_final = final_status_counts.get("failed", 0)
     total_failed = sum(
         count for status, count in final_status_counts.items() if status == "failed" or status.startswith("failed_")
@@ -10477,6 +10578,7 @@ def _test_chapter_impl(
         - failed_regression_final
         - failed_no_speedup_final
         - failed_profiler_final
+        - failed_expectation_invalid_final
         - failed_plain_final,
     )
     total_skipped = final_status_counts.get("skipped", 0)
@@ -10487,7 +10589,8 @@ def _test_chapter_impl(
         f"Benchmarks: {len(benchmark_results)} | Succeeded: {successful_final} | "
         f"Failed: {total_failed} (errors={failed_error_final}, verification={failed_verification_final}, "
         f"regressions={failed_regression_final}, no_speedup={failed_no_speedup_final}, "
-        f"profiler={failed_profiler_final}, generic={failed_plain_final}, "
+        f"profiler={failed_profiler_final}, expectation_invalid={failed_expectation_invalid_final}, "
+        f"generic={failed_plain_final}, "
         f"other={failed_other_final}) | "
         f"Skipped: {total_skipped} (HW: {skipped_hw}, Dist: {skipped_distributed}) | "
         f"Informational: {informational_skipped}"
@@ -10511,6 +10614,7 @@ def _test_chapter_impl(
         failed_regression=failed_regression_final,
         failed_no_speedup=failed_no_speedup_final,
         failed_profiler=failed_profiler_final,
+        failed_expectation_invalid=failed_expectation_invalid_final,
         failed_generic=failed_plain_final,
         failed_other=failed_other_final,
         skipped_hardware=skipped_hw,
@@ -10534,6 +10638,7 @@ def _test_chapter_impl(
             'failed_verification': failed_verification_final,
             'failed_regression': failed_regression_final,
             'failed_no_speedup': failed_no_speedup_final,
+            'failed_expectation_invalid': failed_expectation_invalid_final,
             'failed_generic': failed_plain_final,
             'failed_other': failed_other_final,
             'skipped_hardware': skipped_hw,
@@ -12313,6 +12418,9 @@ def generate_markdown_report(
         total_informational = sum(r['summary'].get('informational', 0) for r in results)
         total_regressions = sum(r['summary'].get('failed_regression', 0) for r in results)
         total_failed_no_speedup = sum(r['summary'].get('failed_no_speedup', 0) for r in results)
+        total_failed_expectation_invalid = sum(
+            r['summary'].get('failed_expectation_invalid', 0) for r in results
+        )
         total_failed_errors = sum(r['summary'].get('failed_error', 0) for r in results)
         total_failed_verification = sum(r['summary'].get('failed_verification', 0) for r in results)
         total_failed_generic = sum(r['summary'].get('failed_generic', 0) for r in results)
@@ -12325,6 +12433,7 @@ def generate_markdown_report(
         f.write(f"  - Verification: {total_failed_verification}\n")
         f.write(f"  - Regressions: {total_regressions}\n")
         f.write(f"  - No speedup (below required speed-goal contract): {total_failed_no_speedup}\n")
+        f.write(f"  - Expectation evidence refused: {total_failed_expectation_invalid}\n")
         f.write(f"  - Generic: {total_failed_generic}\n")
         f.write(f"  - Other failed_*: {total_failed_other}\n")
         f.write(f"- **Informational (not benchmarked):** {total_informational}\n")
@@ -12451,6 +12560,8 @@ def generate_markdown_report(
                     f.write(f"- Regression: {bench.get('error', 'Expectation regression detected')}\n")
                 elif bench_status == 'failed_no_speedup':
                     f.write(f"- No speedup: {bench.get('error', _format_failed_no_speedup(bench))}\n")
+                elif bench_status == 'failed_expectation_invalid':
+                    f.write(f"- Expectation evidence refused: {bench['error']}\n")
                 elif bench_status == 'skipped':
                     f.write(f"- WARNING: **SKIPPED**: {bench.get('skip_reason', bench.get('error', 'Hardware/software limitation'))}\n")
                 else:
@@ -12786,7 +12897,7 @@ def _preflight_target_coverage_and_assets(
                 issues.append(
                     "labs_trtllm_phi_3_5_moe: missing model assets at "
                     f"{model_path}. Remediation: set AISP_PHI35_MOE_MODEL_PATH or pass "
-                    "--target-extra-arg labs/trtllm_phi_3_5_moe:optimized_trtllm_phi_3_5_moe=\"--model-path /path/to/model\". "
+                    "--target-extra-arg labs/trtllm_phi_3_5_moe:trtllm_phi_3_5_moe=\"--model-path /path/to/model\". "
                     f"Canonical repo default: {_phi35_default_model_path()}."
                 )
 
@@ -12796,7 +12907,7 @@ def _preflight_target_coverage_and_assets(
                 issues.append(
                     "labs_trtllm_phi_3_5_moe: missing TensorRT-LLM engine artifacts at "
                     f"{engine_path}. Remediation: set AISP_PHI35_MOE_ENGINE_PATH or pass "
-                    "--target-extra-arg labs/trtllm_phi_3_5_moe:optimized_trtllm_phi_3_5_moe=\"--engine-path /path/to/engine_dir_or_plan\". "
+                    "--target-extra-arg labs/trtllm_phi_3_5_moe:trtllm_phi_3_5_moe=\"--engine-path /path/to/engine_dir_or_plan\". "
                     f"Canonical repo defaults: {defaults_hint}."
                 )
 
@@ -12871,7 +12982,7 @@ def main():
     parser.add_argument(
         '--update-expectations',
         action='store_true',
-        help='Force-write observed metrics into expectation files (overrides regressions and provenance checks).'
+        help=UPDATE_EXPECTATIONS_HELP_TEXT,
     )
     parser.add_argument(
         '--allow-mixed-provenance',
@@ -12918,7 +13029,10 @@ def main():
         '--target-extra-arg',
         action='append',
         default=None,
-        help='Per-target extra args, format: target="--flag value" (repeatable).'
+        help=(
+            'Per-target extra args, format: target="--flag value" (repeatable). '
+            "A torchrun launch passes them to the launched script. Any other target must accept them in an apply_target_overrides hook, or the run fails."
+        ),
     )
     parser.add_argument(
         '--only-cuda',
@@ -13299,6 +13413,9 @@ def main():
     total_failed_verification = sum(r['summary'].get('failed_verification', 0) for r in all_results)
     total_failed_regressions = sum(r['summary'].get('failed_regression', 0) for r in all_results)
     total_failed_no_speedup = sum(r['summary'].get('failed_no_speedup', 0) for r in all_results)
+    total_failed_expectation_invalid = sum(
+        r['summary'].get('failed_expectation_invalid', 0) for r in all_results
+    )
     total_failed_generic = sum(r['summary'].get('failed_generic', 0) for r in all_results)
     total_failed_other = sum(r['summary'].get('failed_other', 0) for r in all_results)
     total_skipped_hw = sum(r['summary'].get('skipped_hardware', 0) for r in all_results)
@@ -13309,6 +13426,7 @@ def main():
     logger.info(
         f"Failed: {total_failed} (errors={total_failed_errors}, verification={total_failed_verification}, "
         f"regressions={total_failed_regressions}, no_speedup={total_failed_no_speedup}, "
+        f"expectation_invalid={total_failed_expectation_invalid}, "
         f"generic={total_failed_generic}, other={total_failed_other})"
     )
     logger.info(f"Informational (not benchmarked): {total_informational}")
@@ -13323,6 +13441,7 @@ def main():
         total_failed_verification=total_failed_verification,
         total_failed_regressions=total_failed_regressions,
         total_failed_no_speedup=total_failed_no_speedup,
+        total_failed_expectation_invalid=total_failed_expectation_invalid,
         total_failed_generic=total_failed_generic,
         total_failed_other=total_failed_other,
         total_skipped_hardware=total_skipped_hw,

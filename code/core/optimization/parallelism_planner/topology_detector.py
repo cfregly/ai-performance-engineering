@@ -13,7 +13,6 @@ Detects the real hardware topology including:
 from __future__ import annotations
 
 import json
-import os
 import re
 import subprocess
 from copy import deepcopy
@@ -26,6 +25,30 @@ try:
 except ImportError:
     torch = None
 
+from core.common.grace_platform import host_grace_soc_id, host_link_flags
+
+
+def gpu_architecture_for_capability(major: int, minor: int) -> str:
+    """Return the planner's GPU family label for one compute capability.
+
+    Compute capability names the GPU instruction set, not the host platform.
+    SM 10.0 and 10.3 are the datacenter Blackwell GPUs used in B200/GB200 and
+    B300/GB300 systems. SM 12.x is the GeForce RTX 50, RTX PRO and
+    GB10 / DGX Spark family, not a GB200/GB300 Superchip GPU. Grace pairing
+    and NVLink-C2C are reported by CPU detection, never by this label.
+    Unlisted capabilities keep their raw sm_XY label instead of borrowing a
+    neighboring family.
+    """
+    if (major, minor) in ((10, 0), (10, 3)):
+        return "blackwell"
+    if major == 12:
+        return "blackwell_sm12x"
+    if major == 9:
+        return "hopper"
+    if major == 8:
+        return "ampere"
+    return f"sm_{major}{minor}"
+
 
 @dataclass
 class GPUInfo:
@@ -35,7 +58,7 @@ class GPUInfo:
     compute_capability: str
     memory_gb: float
     num_sms: int
-    architecture: str  # hopper, blackwell, ampere, etc.
+    architecture: str  # See gpu_architecture_for_capability.
     nvlink_capable: bool
     numa_node: Optional[int] = None
     pcie_bus_id: Optional[str] = None
@@ -77,9 +100,9 @@ class TopologyInfo:
     numa_distance_matrix: List[List[int]]  # NUMA distances
     
     # CPU info
-    cpu_type: str  # x86_64, aarch64 (Grace)
-    is_grace_cpu: bool
-    has_nvlink_c2c: bool  # NVLink Chip-to-Chip (Grace-Blackwell)
+    cpu_type: str  # platform.machine(), such as x86_64 or aarch64
+    is_grace_cpu: bool  # NVIDIA SoC ID in sysfs
+    has_nvlink_c2c: bool  # CUDA driver reports an NVLink-C2C host link for every GPU
 
     # Locality detection status
     gpu_numa_status: str = "unknown"  # unknown, partial, complete, synthetic
@@ -291,7 +314,7 @@ class TopologyDetector:
         numa_nodes, gpu_numa_mapping, numa_distance, gpu_numa_status = self._detect_numa(num_gpus)
         
         # Detect CPU type
-        cpu_type, is_grace, has_c2c = self._detect_cpu()
+        cpu_type, is_grace, has_c2c = self._detect_cpu(num_gpus)
         
         # Detect network interfaces
         network_ifs, has_ib, has_rdma = self._detect_network()
@@ -330,19 +353,8 @@ class TopologyDetector:
         
         for i in range(num_gpus):
             props = torch.cuda.get_device_properties(i)
-            
-            # Determine architecture
-            if props.major >= 12:
-                arch = "grace_blackwell"
-            elif props.major >= 10:
-                arch = "blackwell"
-            elif props.major >= 9:
-                arch = "hopper"
-            elif props.major >= 8:
-                arch = "ampere"
-            else:
-                arch = f"sm_{props.major}{props.minor}"
-            
+            arch = gpu_architecture_for_capability(props.major, props.minor)
+
             # Check NVLink capability (Volta+)
             nvlink_capable = props.major >= 7
             
@@ -521,25 +533,22 @@ class TopologyDetector:
         
         return distances
     
-    def _detect_cpu(self) -> Tuple[str, bool, bool]:
-        """Detect CPU type and Grace-specific features."""
+    def _detect_cpu(self, num_gpus: int) -> Tuple[str, bool, bool]:
+        """Return the CPU type, NVIDIA Grace identity and NVLink-C2C host-link status.
+
+        Grace identity comes from the NVIDIA SoC ID in sysfs. NVLink-C2C is
+        reported only when the CUDA driver puts every GPU on an NVLink-C2C host
+        link, because a Grace server can also hold PCIe GPUs. See
+        core.common.grace_platform.
+        """
         import platform
-        
+
         cpu_type = platform.machine()
-        is_grace = False
-        has_c2c = False
-        
-        # Check for Grace CPU (ARM + specific identifiers)
-        if cpu_type == "aarch64":
-            try:
-                with open("/proc/cpuinfo", "r") as f:
-                    cpuinfo = f.read().lower()
-                    if "grace" in cpuinfo or "nvidia" in cpuinfo:
-                        is_grace = True
-                        has_c2c = True  # Grace-Blackwell has NVLink-C2C
-            except Exception:
-                pass
-        
+        is_grace = host_grace_soc_id() is not None
+        has_c2c = num_gpus > 0 and all(
+            host_link_flags(torch.cuda.get_device_properties(index), index)[0]
+            for index in range(num_gpus)
+        )
         return cpu_type, is_grace, has_c2c
     
     def _detect_network(self) -> Tuple[List[Dict[str, Any]], bool, bool]:

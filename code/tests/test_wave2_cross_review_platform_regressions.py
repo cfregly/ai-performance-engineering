@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 
+from core.common import grace_platform
 from core.diagnostics import microbench
 from core.scripts.utilities import probe_hardware_capabilities as capability_probe
 from monitoring.cluster_monitor import ClusterAggregator, NodeMetrics, SystemCollector
@@ -75,26 +76,17 @@ def test_gpu_memory_diagnostic_binds_state_and_work_to_current_device(
     assert result["gpu_name"] == "device-cuda:3"
 
 
-def test_grace_host_detection_requires_explicit_identity(
+def test_grace_c2c_detection_uses_the_driver_link_report(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(capability_probe.platform, "machine", lambda: "aarch64")
-    monkeypatch.setattr(
-        capability_probe,
-        "_read_grace_host_identity",
-        lambda: "arm neoverse v2 server",
-    )
-    assert capability_probe._is_grace_host() is False
-
-    monkeypatch.setattr(
-        capability_probe,
-        "_read_grace_host_identity",
-        lambda: "nvidia grace cpu superchip",
-    )
-    assert capability_probe._is_grace_host() is True
-
-    monkeypatch.setattr(capability_probe.platform, "machine", lambda: "x86_64")
-    assert capability_probe._is_grace_host() is False
+    gb200 = SimpleNamespace(major=10, minor=0)
+    monkeypatch.setattr(grace_platform.platform, "machine", lambda: "aarch64")
+    monkeypatch.setattr(grace_platform, "_cuda_driver_attribute", lambda _index, _attr: 0)
+    assert capability_probe._host_link_flags(gb200, 0) == (False, False)
+    monkeypatch.setattr(grace_platform, "_cuda_driver_attribute", lambda _index, _attr: 1)
+    assert capability_probe._host_link_flags(gb200, 0) == (True, True)
+    monkeypatch.setattr(grace_platform.platform, "machine", lambda: "x86_64")
+    assert capability_probe._host_link_flags(gb200, 0) == (False, False)
 
 
 def test_generated_arch_fallback_does_not_infer_grace_from_compute_capability() -> None:

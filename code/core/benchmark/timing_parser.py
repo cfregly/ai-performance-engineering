@@ -35,22 +35,70 @@ _TIME_PATTERNS: List[Tuple[re.Pattern, float]] = [
 ]
 
 
+def _parse_custom_time_ms(stdout: str, custom_regex: str) -> float:
+    """Return the time captured by custom_regex, or raise ValueError.
+
+    The default patterns pick the last time-like value in stdout, which can
+    belong to a different kernel than the one a wrapper declares. A custom
+    regex therefore never falls back to them.
+    """
+    try:
+        pattern = re.compile(custom_regex)
+    except re.error as exc:
+        raise ValueError(f"time_regex {custom_regex!r} does not compile: {exc}") from exc
+    if pattern.groups != 1:
+        raise ValueError(
+            f"time_regex {custom_regex!r} must have exactly one capture group for the "
+            f"time value, but it has {pattern.groups}."
+        )
+    match = pattern.search(stdout)
+    if match is None:
+        raise ValueError(
+            f"time_regex {custom_regex!r} did not match the binary output.\n"
+            f"stdout:\n{stdout}"
+        )
+    captured = match.group(1)
+    if captured is None:
+        raise ValueError(
+            f"time_regex {custom_regex!r} matched {match.group(0)!r}, but its capture "
+            "group did not take part in the match."
+        )
+    try:
+        time_ms = float(captured)
+    except ValueError as exc:
+        raise ValueError(
+            f"time_regex {custom_regex!r} captured {captured!r}, which is not a number."
+        ) from exc
+    if not math.isfinite(time_ms):
+        raise ValueError(
+            f"time_regex {custom_regex!r} captured {captured!r}, which is not a finite number."
+        )
+    return time_ms
+
+
 def parse_kernel_time_ms(stdout: str, custom_regex: Optional[str] = None) -> Optional[float]:
     """Parse kernel timing from CUDA executable stdout.
-    
-    Supports multiple time units (ms, us/μs, s) and returns the value in milliseconds.
-    Returns the LAST matching time value, as executables often print multiple lines
-    and the final timing is usually the benchmark result.
-    
+
+    Without custom_regex, supports multiple time units (ms, us/μs, s) and returns
+    the value in milliseconds. Returns the LAST matching time value, as executables
+    often print multiple lines and the final timing is usually the benchmark result.
+
     Args:
         stdout: The stdout text from a CUDA executable
-        custom_regex: Optional custom regex pattern with one capture group for the time value.
-                     The captured value is assumed to be in milliseconds.
+        custom_regex: Optional regex with exactly one capture group for the time value,
+                     in milliseconds. When it is set, it is the only pattern used and
+                     its first match is returned. If it does not compile, does not have
+                     exactly one capture group, does not match, or captures a value that
+                     is not a finite number, ValueError is raised. It never falls back
+                     to the default patterns.
                      Example: r"TIME_MS:\\s*([0-9.]+)"
-    
+
     Returns:
-        Parsed time in milliseconds, or None if no timing found.
-        
+        Parsed time in milliseconds. Without custom_regex, None if no timing is found.
+
+    Raises:
+        ValueError: custom_regex is set and does not yield a finite time.
+
     Examples:
         >>> parse_kernel_time_ms("Kernel: 2.3074 ms")
         2.3074
@@ -61,16 +109,9 @@ def parse_kernel_time_ms(stdout: str, custom_regex: Optional[str] = None) -> Opt
         >>> parse_kernel_time_ms("TIME_MS: 1.234", r"TIME_MS:\\s*([0-9.]+)")
         1.234
     """
-    # If custom regex provided, try it first
-    if custom_regex:
-        try:
-            pattern = re.compile(custom_regex)
-            match = pattern.search(stdout)
-            if match:
-                return float(match.group(1))
-        except (re.error, ValueError, IndexError):
-            pass  # Fall through to default patterns
-    
+    if custom_regex is not None:
+        return _parse_custom_time_ms(stdout, custom_regex)
+
     matches: List[Tuple[int, float]] = []
     
     for pattern, multiplier in _TIME_PATTERNS:

@@ -58,25 +58,34 @@ def allocate_kv_cache(
 
 
 def env_override_int(name: str, default: int) -> int:
-    """Read integer override from environment, falling back to default."""
+    """Read an integer override from the environment.
+
+    Returns default only when the variable is unset. A value that does not parse
+    as an integer raises ValueError, so a typo cannot silently run the default
+    workload under a requested size.
+    """
     value = os.getenv(name)
     if value is None:
         return default
     try:
         return int(value)
-    except (TypeError, ValueError):
-        return default
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer, got {value!r}") from exc
 
 
 def env_override_float(name: str, default: float) -> float:
-    """Read float override from environment, falling back to default."""
+    """Read a float override from the environment.
+
+    Returns default only when the variable is unset. A value that does not parse
+    as a float raises ValueError instead of silently falling back to default.
+    """
     value = os.getenv(name)
     if value is None:
         return default
     try:
         return float(value)
-    except (TypeError, ValueError):
-        return default
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number, got {value!r}") from exc
 
 
 @dataclass

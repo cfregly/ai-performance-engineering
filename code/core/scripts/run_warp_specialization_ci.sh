@@ -1,21 +1,19 @@
 #!/usr/bin/env bash
-# Run warp specialization comparison tests in CI mode with longer iterations.
-# This script ensures CI-style settings regardless of the calling environment.
+# Run the warp specialization benchmark comparison with CI loop counts.
+# WARP_SPEC_CI_ITERATIONS and WARP_SPEC_CI_WARMUP set the counts. Explicit
+# --iterations or --warmup arguments override them because argparse keeps the
+# last value it sees.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# Force CI mode so tests/test_warp_specialization.py picks high-iteration loops
-export CI=1
-
-# Set warp-specialization specific knobs for CI mode via CLI flags
-# Note: WARP_SPEC_CI_* env vars are no longer supported - use CLI flags instead
-# Allow override via env vars for backward compatibility, but prefer CLI flags
 ITERATIONS="${WARP_SPEC_CI_ITERATIONS:-50}"
 WARMUP="${WARP_SPEC_CI_WARMUP:-5}"
 
-"${PYTHON:-python3}" "${REPO_ROOT}/tests/test_warp_specialization.py" \
+# Run as a module from code/ so the chapter and core packages import.
+cd "${REPO_ROOT}"
+"${PYTHON:-python3}" -m tests.test_warp_specialization \
     --iterations "${ITERATIONS}" \
     --warmup "${WARMUP}" \
     "$@"

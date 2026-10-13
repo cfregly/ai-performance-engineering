@@ -27,6 +27,8 @@ echo "Step 1: Configuring NCCL for NVLink mesh..."
 echo ""
 
 # Critical: Enable NVLink (was incorrectly disabled before)
+# NCCL finds NVLink through topology discovery. It has no environment switch
+# that turns NVLink or NVLink-C2C on.
 export NCCL_P2P_LEVEL=NVL
 export NCCL_P2P_DISABLE=0
 export NCCL_IB_DISABLE=1
@@ -35,7 +37,6 @@ export NCCL_NET_GDR_LEVEL=5
 export NCCL_NVLS_ENABLE=1
 export NCCL_PROTO=Simple
 export NCCL_ALGO=Tree,Ring,NVLS
-export NCCL_NVLINK_TCE_ENABLE=1
 export NCCL_NCHANNELS_PER_NET_PEER=8
 
 echo "NCCL Configuration:"
