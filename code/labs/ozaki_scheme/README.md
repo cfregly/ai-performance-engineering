@@ -51,13 +51,19 @@ reference before returning an accepted timing. Small edge cohorts can instead us
 CPU long-double GEMM in `accuracy.h`, which fails closed when `long double` is not wider
 than FP64. The comparator rejects non-finite values and overlapping reference storage,
 then reports relative L2 and maximum absolute error normalized by the largest reference
-magnitude. The Python checksum comparison remains secondary and cannot replace the
-full-array check.
+magnitude.
+
+The harness also compares one signed checksum per binary, but that comparison is not
+accuracy evidence. Its tolerances in `accuracy_policy.json` are worst-case bounds derived
+from the relative L2 ceilings: `2147.48` for dynamic and `16.78` for fixed. At this
+workload the checksum has a standard deviation of only about `0.09`
+(`sqrt(m*n*k) * input_scale^2 / 3` for uniform inputs), so even the fixed bound accepts
+an all-zero output. Only the executable's full-array check gates accuracy.
 
 [`ACCURACY_REQUIREMENTS.md`](ACCURACY_REQUIREMENTS.md) records the predeclared policy,
 rationale, nominal and holdout seeds, independent-reference edge cohorts, exact B200
 commands, and claim boundary. The dynamic path is capped at relative L2 `2^-5` and
-normalized maximum error `2^-4`; fixed-12 is capped at `2^-12` and `2^-11`. These are
+normalized maximum error `2^-4`. Fixed-12 is capped at `2^-12` and `2^-11`. These are
 lab arithmetic requirements, not FP64-equivalence or application-quality guarantees.
 `accuracy_policy.py` rejects any configured limit above the checked-in source ceiling.
 
@@ -80,7 +86,7 @@ exponents and a profiler bug that selected the Python parent's NVTX range instea
 of the compiled child's work. Source `0361e22d4` passes the public CLI in minimal
 and roofline modes. The ordinary timings measure **5.777–5.793x dynamic** and
 **7.727–7.762x fixed** at the recorded workload and clocks. These speeds use the
-predeclared arithmetic budgets above; they do not establish FP64 equivalence.
+predeclared arithmetic budgets above. They do not establish FP64 equivalence.
 
 NCU selects the complete ten-GEMM loop in a separate NVTX-enabled build: ten
 native, 80 dynamic, and 40 fixed kernels, all with the required finite counters.

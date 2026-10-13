@@ -1,5 +1,14 @@
 # GB300 software_pipelining lab: TMA bulk-copy pipeline (B38 lever)
 
+> **Status (2026-10-12, W2-091):** `optimized_tile_pipeline_tma_kernel` and its
+> sm_90+ dispatch in `launch_common` were removed. The lab pair now differs only in
+> serialized versus two-stage `cuda::pipeline` scheduling, with matched tile size
+> (1024 floats), block size (256 threads), float4 width and math. The numbers below
+> compared the TMA kernel (2048-float tiles, 544-thread blocks) with the older
+> baseline. They are historical and do not describe the current lab. The "What was
+> done", "Final config" and "Exact diff" sections describe code that is no longer
+> shipped, including the TMA notes string in `optimized_tile_pipeline.py`.
+
 **Verdict: WIN.** Kernel 83.0us -> 60.5us (1.37x kernel-level), 4850 -> 6653 GB/s
 (60.6% -> 83.2% of the 8.0 TB/s HBM3e peak). Harness wall 144.0us -> 123.0/126.0us
 (two reps), pair speedup 2.16x -> 2.60x/2.46x vs the untouched baseline arm,

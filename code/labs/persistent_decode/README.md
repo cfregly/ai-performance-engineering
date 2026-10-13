@@ -75,12 +75,12 @@ python -m cli.aisp bench list-targets --chapter labs/persistent_decode
 python -m cli.aisp bench run --targets labs/persistent_decode --profile minimal
 ```
 - Targets follow the `labs/persistent_decode:<workload>` naming convention listed by `list-targets`.
-- Use `--target-extra-arg labs/persistent_decode:<workload>="--flag value"` to sweep schedule knobs.
+- `--target-extra-arg labs/persistent_decode:<workload>="--flag value"` passes arguments to one target. The harness fails the target unless the benchmark defines `apply_target_overrides` or launches through torchrun.
 - Run only on an allocated, authorized target after its correctness gates pass. Canonical GPU measurements require bare metal; an explicitly approved virtualized run must preserve clock/provenance evidence and remain noncanonical.
 - Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.
 
 ## Validation Checklist
-- Check every sequence and token, including `--tier large --num-programs 1` and `8`; grid-stride scheduling must not drop the final sequences.
+- Check every sequence and token of `right_sized_decode` with `--target-extra-arg labs/persistent_decode:right_sized_decode="--tier large --num-programs 1"`, then again with `--num-programs 8`. Grid-stride scheduling must not drop the final sequences.
 - Run CUDA racecheck/synccheck for the shared reduction and repeated eager-versus-reference comparisons.
 - Run `python -m pytest tests/test_audit_wave1_prefill_full_output.py -q` for complete payload controls and seven capability-gated actual CUDA cases. The CUDA cases change all inputs on a caller stream before each launch and cover full and piecewise graphs; CPU passes do not qualify GPU execution.
 - For pinned staging, verify host-buffer reuse waits for DMA completion and device-buffer reuse waits for prior attention consumers; cover memmap, direct pinned views, both streams and host-worker modes.
@@ -92,6 +92,7 @@ python -m cli.aisp bench run --targets labs/persistent_decode --profile minimal
 ## Notes
 - `tma_extension.py` exposes `load_async_copy()`; `load_native_tma()` and the old target filenames remain compatibility aliases. No TMA performance or capability claim follows from those names.
 - Historical timings and expectation files predate these correctness fixes; requalify them on the target.
+- `right_sized_decode` accepts `--tier {small,medium,large}`, `--quantization {fp32,fp16,int4}`, `--block-k N` and `--num-programs N`. Any other argument fails the target. The CUDA graphs backend is the separate `persistent_decode_graphs` target.
 - Set `TORCH_COMPILE_MODE` or `TMA_TILE_SIZE` via env vars before invoking the harness to sweep tile sizes.
 - `tma_extension.py` caches builds under `~/.cache/torch_extensions`; clean the cache when switching CUDA versions.
 - `nvlink_offload` remains a transport-comparison benchmark and `paged_kv_offload` stays a real speed benchmark with a small local contract; use `paged_kv_offload_prefetch` when you want the lab's canonical KV-offload overlap benchmark.

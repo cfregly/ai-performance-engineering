@@ -70,7 +70,7 @@ python -m cli.aisp bench list-targets --chapter labs/moe_cuda
 python -m cli.aisp bench run --targets labs/moe_cuda --profile minimal
 ```
 - Targets follow the `labs/moe_cuda:<workload>` naming convention listed by `list-targets`.
-- Use `--target-extra-arg labs/moe_cuda:<workload>="--flag value"` to sweep schedule knobs.
+- `--target-extra-arg labs/moe_cuda:<workload>="--flag value"` passes arguments to one target. The harness fails the target unless the benchmark defines `apply_target_overrides` or launches through torchrun.
 - Benchmark validity profile defaults to strict. Virtualization is warning-only; use `--validity-profile portable` for broader compatibility on hardware-limited environments.
 - Portable runs do not write expectation files unless `--allow-portable-expectations-update` is also provided.
 

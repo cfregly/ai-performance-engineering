@@ -75,8 +75,8 @@ evidence. Source: [online normalizer](https://arxiv.org/abs/1805.02867).
 ## Directory Layout
 | Path | Description |
 | --- | --- |
-| `baseline_compute_bound.py`, `optimized_compute_bound.py`, `baseline_memory_bound.py`, `optimized_memory_bound.py` | Reference kernels that isolate compute vs bandwidth ceilings and demonstrate tuning strategies. |
-| `baseline_micro_tiling_matmul.cu`, `baseline_micro_tiling_matmul.py`, `optimized_micro_tiling_matmul.cu`, `optimized_micro_tiling_matmul.py` | Naive and 16x16 shared-memory tiled matmuls with per-thread scalar accumulation. |
+| `baseline_compute_bound.py`, `optimized_compute_bound.py`, `baseline_memory_bound.py`, `optimized_memory_bound.py` | Roofline reference pairs. compute_bound is a batch-1 FP16 GEMV chain modeled at about 1 FLOP/byte in both arms, below the ridge point. memory_bound runs 64 FP32 multiply-add passes. Its baseline arm models 0.125 FLOP/byte, and its fused optimized arm models 16 FLOP/byte, which is above the FP32 ridge point on B200 but not on H100. |
+| `baseline_micro_tiling_matmul.cu`, `baseline_micro_tiling_matmul.py`, `optimized_micro_tiling_matmul.cu`, `optimized_micro_tiling_matmul.py` | Naive matmul and a 128x128 shared-memory tiled matmul in which each thread accumulates an 8x8 register micro-tile. |
 | `baseline_cublaslt_gemm.cu`, `baseline_cublaslt_gemm.py`, `optimized_cublaslt_gemm.cu`, `optimized_cublaslt_gemm.py`, `tcgen05_pipelined.cu` | cuBLASLt-driven matmuls and tcgen05 pipeline kernels showcasing tcgen05 lowering and occupancy tuning. |
 | `baseline_cublaslt_gemm_fp4.cu`, `baseline_cublaslt_gemm_fp4.py`, `optimized_cublaslt_gemm_fp4.cu`, `optimized_cublaslt_gemm_fp4.py` | FP4 comparison path: naive block-scaled FP4 baseline vs native cuBLASLt NVFP4 when the driver/toolchain exposes the required heuristic. |
 | `baseline_fused_l2norm.cu`, `baseline_fused_l2norm.py`, `optimized_fused_l2norm.cu`, `optimized_fused_l2norm.py`, `fusedL2Norm/` | Fusion examples that merge L2 norm + scaling while staying numerically stable. |
@@ -96,7 +96,7 @@ python -m cli.aisp bench run --targets ch09 --profile minimal
 - Expectation baselines live next to each chapter in `expectations_{hardware_key}.json`; refresh with `--update-expectations` after validating new hardware. In portable mode, add `--allow-portable-expectations-update` to write expectation files explicitly.
 
 ## Validation Checklist
-- `python -m cli.aisp bench run --targets ch09:compute_bound ch09:memory_bound --profile minimal` reports much higher arithmetic intensity for the compute-bound path than the memory-bound path, matching the roofline plots.
+- `python -m cli.aisp bench run --targets ch09:compute_bound ch09:memory_bound --profile minimal` reports `roofline.arithmetic_intensity` of about 1 FLOP/byte for both compute_bound arms, 0.125 for baseline_memory_bound and 16 for the fused optimized_memory_bound. Only the fused memory_bound arm crosses its ridge point, and only on B200 (`roofline.is_compute_bound` = 1).
 - `python -m cli.aisp bench run --targets ch09:cublaslt_gemm --profile minimal` confirms the optimized path improving throughput over the baseline on the same device.
 - `python -m ch09.compare --examples fused_l2norm` confirms numerically identical outputs before and after fusion.
 
