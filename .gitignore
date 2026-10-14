@@ -58,3 +58,6 @@ code/third_party/pytorch-src/
 code/vendor/pytorch-src/
 *.json.bak
 .claude/settings.local.json
+
+# Generated per-machine autotune results (founder-approved untrack, 2026-10-14)
+code/labs/custom_vs_cublas/.autotune_cache.json
