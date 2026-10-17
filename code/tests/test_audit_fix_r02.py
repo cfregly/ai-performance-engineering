@@ -32,6 +32,8 @@ def _load_test_worker(rank: int, rendezvous: str, output_dir: str) -> None:
     )
     report: dict[str, object] = {"rank": rank, "status": "FAIL"}
     try:
+        assert not torch.cuda.is_available()
+        assert dist.get_backend() == "gloo"
         if rank == 1:
             # Rank 1's clock runs fast, so its own deadline passes after a
             # quarter of rank 0's run. Only the load-test module sees this clock.
@@ -84,6 +86,8 @@ def _load_test_worker(rank: int, rendezvous: str, output_dir: str) -> None:
         aggregate = load_test.aggregate_results(local)
         report.update(
             status="PASS",
+            backend=dist.get_backend(),
+            device=str(server.device),
             broadcast_calls=broadcast_calls,
             local_elapsed=local["elapsed"],
             stats={
@@ -110,7 +114,13 @@ def _load_test_worker(rank: int, rendezvous: str, output_dir: str) -> None:
     not dist.is_available() or not dist.is_gloo_available(),
     reason="Actual Gloo backend required",
 )
-def test_w2_022_load_test_ranks_stop_on_rank0_deadline(tmp_path: Path) -> None:
+def test_w2_022_load_test_ranks_stop_on_rank0_deadline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # This exercises deadline coordination with real CPU Gloo ranks. Spawned
+    # workers must keep that device selection even when the parent has CUDA.
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
     context = torch.multiprocessing.spawn(
         _load_test_worker,
         args=((tmp_path / "rendezvous").as_uri(), str(tmp_path)),
@@ -130,6 +140,8 @@ def test_w2_022_load_test_ranks_stop_on_rank0_deadline(tmp_path: Path) -> None:
 
     reports = [json.loads((tmp_path / f"rank-{rank}.json").read_text()) for rank in range(2)]
     assert [report["status"] for report in reports] == ["PASS", "PASS"], reports
+    assert [report["backend"] for report in reports] == ["gloo", "gloo"]
+    assert [report["device"] for report in reports] == ["cpu", "cpu"]
     rank0, rank1 = reports
     # Rank 1's own clock passed the deadline long before the loop ended, so it
     # stayed in the loop only because it followed rank 0's stop decision.

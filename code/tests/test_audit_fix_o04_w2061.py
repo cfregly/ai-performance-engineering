@@ -302,6 +302,66 @@ def test_pipeline_generate_matches_greedy_recompute(plain_storage: None) -> None
     assert pipeline.kv_cache._layer_seq_lens_host == [[expected_length]] * model.num_layers
 
 
+@pytest.mark.parametrize("batch_size", [1, 2])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+@pytest.mark.parametrize(
+    "device",
+    [
+        "cpu",
+        pytest.param(
+            "cuda",
+            marks=pytest.mark.skipif(
+                not torch.cuda.is_available(),
+                reason="SKIPPED: CUDA GPU required for CUDA argmax buffer coverage",
+            ),
+        ),
+    ],
+)
+def test_pipeline_argmax_handles_strided_logits_and_reuses_output_buffers(
+    plain_storage: None,
+    batch_size: int,
+    dtype: torch.dtype,
+    device: str,
+) -> None:
+    model = _decoder_stack(window_size=3, device=device).to(dtype=dtype)
+    pipeline = blackwell.BlackwellInferencePipeline(
+        model,
+        max_batch_size=2,
+        max_seq_len=4,
+        compile=False,
+    )
+    vocab_size = 13
+
+    def strided_logits(winners: torch.Tensor) -> torch.Tensor:
+        storage = torch.full(
+            (batch_size, 1, vocab_size),
+            -4,
+            dtype=dtype,
+            device=device,
+        )
+        rows = torch.arange(batch_size, device=device)
+        storage[rows, 0, winners] = 4
+        logits = storage[:, -1, :]
+        assert logits.stride() == (vocab_size, 1)
+        return logits
+
+    first_expected = torch.arange(batch_size, device=device, dtype=torch.long) + 2
+    first_tokens = pipeline._next_token_from_logits(strided_logits(first_expected)).clone()
+    values_ptr = pipeline._next_token_values.data_ptr()
+    tokens_ptr = pipeline._next_token_buffer.data_ptr()
+
+    torch.testing.assert_close(first_tokens, first_expected[:, None], rtol=0, atol=0)
+    assert pipeline._next_token_values.is_contiguous()
+    assert pipeline._next_token_values.stride() == pipeline._next_token_buffer.stride()
+
+    second_expected = first_expected + 3
+    second_tokens = pipeline._next_token_from_logits(strided_logits(second_expected))
+
+    torch.testing.assert_close(second_tokens, second_expected[:, None], rtol=0, atol=0)
+    assert pipeline._next_token_values.data_ptr() == values_ptr
+    assert pipeline._next_token_buffer.data_ptr() == tokens_ptr
+
+
 class _MiswiredDecoderStack(_CacheAwareDecoderStack):
     """Accepts kv_cache through **kwargs but does not give each layer its own slot."""
 

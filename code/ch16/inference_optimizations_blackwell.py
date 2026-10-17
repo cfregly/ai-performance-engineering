@@ -937,7 +937,11 @@ class BlackwellInferencePipeline:
             or self._next_token_values.dtype != logits_last.dtype
             or self._next_token_values.size(0) < batch_size
         ):
-            self._next_token_values = torch.empty_like(logits_last[:, :1])
+            self._next_token_values = torch.empty(
+                self._next_token_buffer.shape,
+                dtype=logits_last.dtype,
+                device=logits_last.device,
+            )
         values = self._next_token_values[:batch_size]
         tokens = self._next_token_buffer[:batch_size]
         torch.max(logits_last, dim=-1, keepdim=True, out=(values, tokens))
