@@ -13220,7 +13220,7 @@ def test_nanochat_prefix_causal_mask_avoids_zero_fill_and_tril_allocations() -> 
         maxsplit=1,
     )[0]
     prefix_section = source.split("def _prefix_causal_mask_for", maxsplit=1)[1].split(
-        "def _flash3_attention",
+        "def _flash_attn_varlen_attention",
         maxsplit=1,
     )[0]
 
@@ -13406,15 +13406,19 @@ def test_nanochat_clustered_attention_fallback_uses_native_sdpa_gqa(monkeypatch:
     from labs.nanochat_fullstack.nanochat.kernels import clustered_attention as clustered_attention_module
 
     source = inspect.getsource(clustered_attention_module.clustered_attention)
-    flash3_source = inspect.getsource(clustered_attention_module._flash3_clustered)
+    flash_attn_varlen_source = inspect.getsource(clustered_attention_module._flash_attn_varlen)
     cu_seqlens_source = inspect.getsource(clustered_attention_module._cu_seqlens_for)
+    assert "num_sm_clusters" not in inspect.signature(
+        clustered_attention_module.clustered_attention
+    ).parameters
     assert "repeat_interleave" not in source
-    assert "repeat_interleave" not in flash3_source
-    assert "inspect.signature" not in flash3_source
-    assert "_flash3_accepts_clusters" in flash3_source
-    assert "cu_q = _cu_seqlens_for(B, Tq, q.device)" in flash3_source
-    assert "cu_k = _cu_seqlens_for(B, Tk, q.device)" in flash3_source
-    assert "torch.arange(0, (B + 1)" not in flash3_source
+    assert "repeat_interleave" not in flash_attn_varlen_source
+    assert "inspect.signature" not in flash_attn_varlen_source
+    assert '"flash_attn_2_cuda"' in flash_attn_varlen_source
+    assert "num_sm_clusters" not in flash_attn_varlen_source
+    assert "cu_q = _cu_seqlens_for(B, Tq, q.device)" in flash_attn_varlen_source
+    assert "cu_k = _cu_seqlens_for(B, Tk, q.device)" in flash_attn_varlen_source
+    assert "torch.arange(0, (B + 1)" not in flash_attn_varlen_source
     assert "_CU_SEQLENS_CACHE.get(key)" in cu_seqlens_source
     assert "enable_gqa=enable_gqa" in source
 

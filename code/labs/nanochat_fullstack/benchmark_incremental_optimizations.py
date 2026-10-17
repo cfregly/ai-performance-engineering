@@ -115,13 +115,13 @@ class IncrementalBenchmark:
         if cfg.use_cuda_graphs or cfg.enable_persistent_decode:
             if self.device.type != "cuda":
                 raise RuntimeError("Requested CUDA graph/side-stream benchmark requires a CUDA device")
-        if cfg.use_flash3 and any(not b.attn.use_flash3 or b.attn.flash3_fn is None for b in model.transformer.h):
-            raise RuntimeError("Requested FA3 benchmark backend is unavailable")
-        if cfg.use_cta_clustering and any(
-            not b.attn._flash3_accepts_clusters or self.prompt_len < b.attn.cta_cluster_seq_threshold
-            for b in model.transformer.h
+        if cfg.use_flash_attn_varlen and any(
+            not block.attn.use_flash_attn_varlen
+            or block.attn.flash_attn_varlen_fn is None
+            or block.attn.flash_attn_varlen_backend != "flash_attn_2_cuda"
+            for block in model.transformer.h
         ):
-            raise RuntimeError("Requested CTA clustering benchmark requires an active cluster-capable FA3 backend")
+            raise RuntimeError("Requested FlashAttention 2 varlen benchmark backend is unavailable")
         
         # Prepare inputs
         prompt = torch.randint(0, self.vocab_size, (self.batch_size, self.prompt_len), 
@@ -194,7 +194,14 @@ class IncrementalBenchmark:
         decode_time = decode_time_total / self.iterations
         decode_tok_s = (self.batch_size * self.decode_len) / decode_time
         self.last_decode_execution = engine.decode_execution_mode
-        self.last_decode_attention = "sdpa_full_capacity_mask" if cfg.use_cuda_graphs else "model_backend_preferences"
+        if cfg.use_cuda_graphs:
+            self.last_decode_attention = "sdpa_full_capacity_mask"
+        elif cfg.use_flash_attn_varlen:
+            self.last_decode_attention = "flash_attn_2_cuda"
+        elif cfg.use_flash_sdp:
+            self.last_decode_attention = "torch_sdpa"
+        else:
+            self.last_decode_attention = "torch_math_sdpa"
         self.last_compile_status = engine.get_compile_diagnostics()["status"]
         expected_execution = "cuda_graph" if cfg.use_cuda_graphs else ("side_stream" if cfg.enable_persistent_decode else "eager")
         if self.last_decode_execution != expected_execution:
@@ -225,9 +232,8 @@ class IncrementalBenchmark:
                 name="Baseline",
                 flags={
                     'use_flash_sdp': False,
-                    'use_flash3': False,
+                    'use_flash_attn_varlen': False,
                     'use_padded_attention': False,
-                    'use_cta_clustering': False,
                     'kv_block_size': None,
                     'kv_page_size': None,
                     'enable_persistent_decode': False,
@@ -242,9 +248,8 @@ class IncrementalBenchmark:
                 name="+ use_flash_sdp",
                 flags={
                     'use_flash_sdp': True,
-                    'use_flash3': False,
+                    'use_flash_attn_varlen': False,
                     'use_padded_attention': False,
-                    'use_cta_clustering': False,
                     'kv_block_size': None,
                     'kv_page_size': None,
                     'enable_persistent_decode': False,
@@ -256,12 +261,11 @@ class IncrementalBenchmark:
                 category="Attention"
             ),
             BenchmarkConfig(
-                name="+ use_flash3",
+                name="flash_attn_varlen",
                 flags={
                     'use_flash_sdp': True,
-                    'use_flash3': True,
+                    'use_flash_attn_varlen': True,
                     'use_padded_attention': False,
-                    'use_cta_clustering': False,
                     'kv_block_size': None,
                     'kv_page_size': None,
                     'enable_persistent_decode': False,
@@ -269,16 +273,15 @@ class IncrementalBenchmark:
                     'use_te_weight_only': False,
                     'use_fp32_logits': True,
                 },
-                description="Enable FlashAttention-3 varlen kernels",
+                description="Enable the pinned FlashAttention 2 varlen callable",
                 category="Attention"
             ),
             BenchmarkConfig(
-                name="+ kv_block_size",
+                name="flash_attn_varlen_aligned_cache",
                 flags={
                     'use_flash_sdp': True,
-                    'use_flash3': True,
+                    'use_flash_attn_varlen': True,
                     'use_padded_attention': False,
-                    'use_cta_clustering': False,
                     'kv_block_size': 32,
                     'kv_page_size': 1024,
                     'enable_persistent_decode': False,
@@ -286,37 +289,15 @@ class IncrementalBenchmark:
                     'use_te_weight_only': False,
                     'use_fp32_logits': True,
                 },
-                description="Enable KV cache blocking (TMA hints)",
+                description="Round contiguous KV cache capacity to configured boundaries",
                 category="KV Cache"
-            ),
-            BenchmarkConfig(
-                name="+ use_cta_clustering",
-                flags={
-                    'use_flash_sdp': True,
-                    'use_flash3': True,
-                    'use_padded_attention': False,
-                    'use_cta_clustering': True,
-                    'cta_cluster_size': 2,
-                    'cta_cluster_seq_threshold': 128,  # Low threshold for testing
-                    'kv_block_size': 32,
-                    'kv_page_size': 1024,
-                    'enable_persistent_decode': False,
-                    'use_cuda_graphs': False,
-                    'use_te_weight_only': False,
-                    'use_fp32_logits': True,
-                },
-                description="Enable CTA clustering for attention",
-                category="Attention"
             ),
             BenchmarkConfig(
                 name="+ enable_persistent_decode",
                 flags={
                     'use_flash_sdp': True,
-                    'use_flash3': True,
+                    'use_flash_attn_varlen': True,
                     'use_padded_attention': False,
-                    'use_cta_clustering': True,
-                    'cta_cluster_size': 2,
-                    'cta_cluster_seq_threshold': 128,
                     'kv_block_size': 32,
                     'kv_page_size': 1024,
                     'enable_persistent_decode': True,
@@ -324,18 +305,15 @@ class IncrementalBenchmark:
                     'use_te_weight_only': False,
                     'use_fp32_logits': True,
                 },
-                description="Enable persistent decode (streams + buffers)",
+                description="Enable side-stream decode with reusable buffers",
                 category="Inference"
             ),
             BenchmarkConfig(
                 name="+ use_cuda_graphs",
                 flags={
                     'use_flash_sdp': True,
-                    'use_flash3': True,
+                    'use_flash_attn_varlen': True,
                     'use_padded_attention': False,
-                    'use_cta_clustering': True,
-                    'cta_cluster_size': 2,
-                    'cta_cluster_seq_threshold': 128,
                     'kv_block_size': 32,
                     'kv_page_size': 1024,
                     'enable_persistent_decode': True,
@@ -350,11 +328,8 @@ class IncrementalBenchmark:
                 name="+ use_fp32_logits=False",
                 flags={
                     'use_flash_sdp': True,
-                    'use_flash3': True,
+                    'use_flash_attn_varlen': True,
                     'use_padded_attention': False,
-                    'use_cta_clustering': True,
-                    'cta_cluster_size': 2,
-                    'cta_cluster_seq_threshold': 128,
                     'kv_block_size': 32,
                     'kv_page_size': 1024,
                     'enable_persistent_decode': True,

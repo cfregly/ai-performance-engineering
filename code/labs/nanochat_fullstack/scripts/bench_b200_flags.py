@@ -16,6 +16,14 @@ import torch
 from nanochat.checkpoint_manager import load_model
 from nanochat.engine import Engine, KVCache
 
+BENCHMARK_MODES = (
+    "baseline",
+    "flash_sdp",
+    "flash_attn_varlen",
+    "flash_attn_varlen_aligned_cache",
+    "persistent",
+)
+
 
 def _time_cuda_region_seconds(fn: Callable[[], None]) -> float:
     # End-to-end region latency includes host submission and all CUDA streams.
@@ -28,7 +36,7 @@ def _time_cuda_region_seconds(fn: Callable[[], None]) -> float:
     return time.perf_counter() - start
 
 
-def configure_mode(mode: str, config) -> Dict[str, bool]:
+def configure_mode(mode: str, config) -> Dict[str, Any]:
     """
     Set torch SDP backends and model config for a benchmark mode.
     Returns a dict describing which flags were enabled.
@@ -40,48 +48,50 @@ def configure_mode(mode: str, config) -> Dict[str, bool]:
     config.kv_page_size = None
     # Explicitly set global SDP kernel preferences for reproducibility.
     if mode == "baseline":
-        # Math-only fallback, FA3 off.
+        # Math-only SDPA control.
         torch.backends.cuda.enable_flash_sdp(False)
         torch.backends.cuda.enable_mem_efficient_sdp(False)
         torch.backends.cuda.enable_math_sdp(True)
         config.use_flash_sdp = False
-        config.use_flash3 = False
+        config.use_flash_attn_varlen = False
     elif mode == "flash_sdp":
-        # Torch SDP (FlashAttention-2/torch flash) on, FA3 off.
+        # Torch SDPA preferences on, external FlashAttention varlen off.
         torch.backends.cuda.enable_flash_sdp(True)
         torch.backends.cuda.enable_mem_efficient_sdp(True)
         torch.backends.cuda.enable_math_sdp(True)
         config.use_flash_sdp = True
-        config.use_flash3 = False
+        config.use_flash_attn_varlen = False
         enabled["use_flash_sdp"] = True
-    elif mode == "flash3":
-        # FlashAttention-3 varlen path on (TMA/TMEM on B200).
+    elif mode == "flash_attn_varlen":
+        # External FlashAttention 2 varlen callable from the pinned dependency.
         torch.backends.cuda.enable_flash_sdp(True)
         torch.backends.cuda.enable_mem_efficient_sdp(True)
         torch.backends.cuda.enable_math_sdp(True)
         config.use_flash_sdp = True
-        config.use_flash3 = True
-        enabled["use_flash3"] = True
-    elif mode == "flash3_block":
-        # FA3 plus block/paged KV cache layout (staging hint for TMA).
+        config.use_flash_attn_varlen = True
+        enabled["use_flash_attn_varlen"] = True
+    elif mode == "flash_attn_varlen_aligned_cache":
+        # The KV tensors remain contiguous. These values only round capacity.
         torch.backends.cuda.enable_flash_sdp(True)
         torch.backends.cuda.enable_mem_efficient_sdp(True)
         torch.backends.cuda.enable_math_sdp(True)
         config.use_flash_sdp = True
-        config.use_flash3 = True
+        config.use_flash_attn_varlen = True
         config.kv_block_size = config.kv_block_size or 32
         config.kv_page_size = config.kv_page_size or 1024
-        enabled["use_flash3"] = True
+        enabled["use_flash_attn_varlen"] = True
         enabled["kv_block_size"] = config.kv_block_size
+        enabled["kv_page_size"] = config.kv_page_size
+        enabled["kv_cache_layout"] = "contiguous"
     elif mode == "persistent":
         torch.backends.cuda.enable_flash_sdp(True)
         torch.backends.cuda.enable_mem_efficient_sdp(True)
         torch.backends.cuda.enable_math_sdp(True)
         config.use_flash_sdp = True
-        config.use_flash3 = True
+        config.use_flash_attn_varlen = True
         config.enable_persistent_decode = True
         enabled["enable_persistent_decode"] = True
-        enabled["use_flash3"] = True
+        enabled["use_flash_attn_varlen"] = True
     else:
         raise ValueError(f"Unknown mode: {mode}")
     return enabled
@@ -163,19 +173,31 @@ def run_benchmark(args):
     model, tokenizer, _ = load_model("sft", device=device, phase="eval")
     model.to(dtype=args.dtype, device=device)
 
-    modes = ["baseline", "flash_sdp", "flash3", "flash3_block", "persistent"]
     results = []
-    for mode in modes:
+    for mode in BENCHMARK_MODES:
         enabled = configure_mode(mode, model.config)
         # Attention modules cache flags at construction; changing config alone
         # does not activate a different attention backend on a loaded model.
         for block in model.transformer.h:
             block.attn.use_flash_sdp = model.config.use_flash_sdp
-            block.attn.use_flash3 = model.config.use_flash3
-            if model.config.use_flash3:
-                block.attn._init_flash3()
-                if not block.attn.use_flash3 or block.attn.flash3_fn is None:
-                    raise RuntimeError(f"{mode} requested FA3, but its backend is unavailable: {block.attn.flash3_error}")
+            block.attn.use_flash_attn_varlen = model.config.use_flash_attn_varlen
+            if model.config.use_flash_attn_varlen:
+                block.attn._init_flash_attn_varlen()
+                if (
+                    not block.attn.use_flash_attn_varlen
+                    or block.attn.flash_attn_varlen_fn is None
+                    or block.attn.flash_attn_varlen_backend != "flash_attn_2_cuda"
+                ):
+                    raise RuntimeError(
+                        f"{mode} requested the pinned FlashAttention 2 varlen backend, "
+                        f"but it is unavailable: {block.attn.flash_attn_varlen_error}"
+                    )
+        if model.config.use_flash_attn_varlen:
+            attention_backend = "flash_attn_2_cuda"
+        elif mode == "baseline":
+            attention_backend = "torch_math_sdpa"
+        else:
+            attention_backend = "torch_sdpa"
         engine = build_sweep_engine(model, tokenizer)
         # Warmup
         _ = bench_once(model, args.batch_size, args.prompt_len, args.decode_len, device, engine=engine)
@@ -197,6 +219,7 @@ def run_benchmark(args):
             dict(
                 mode=mode,
                 enabled=enabled,
+                attention_backend=attention_backend,
                 decode_execution=engine.decode_execution_mode,
                 compile_status=compile_diagnostics["status"],
                 timing="synchronized_wall_seconds_including_host_submission",
@@ -231,7 +254,8 @@ def main():
         prefill_gain = (res["prefill_tok_s"] / base_prefill - 1.0) * 100 if base_prefill else 0.0
         decode_gain = (res["decode_tok_s"] / base_decode - 1.0) * 100 if base_decode else 0.0
         print(
-            f"{res['mode']:>12} | execution: {res['decode_execution']} | torch.compile: {res['compile_status']} | "
+            f"{res['mode']:>36} | backend: {res['attention_backend']} | "
+            f"execution: {res['decode_execution']} | torch.compile: {res['compile_status']} | "
             f"flags: {flag_str:<35} | prefill {res['prefill_tok_s']:.1f} tok/s ({prefill_gain:+.1f}%) | "
             f"decode {res['decode_tok_s']:.1f} tok/s ({decode_gain:+.1f}%)"
         )

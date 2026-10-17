@@ -6,6 +6,8 @@ import re
 import glob
 import json
 import logging
+from dataclasses import fields
+
 import torch
 
 from nanochat.common import get_base_dir
@@ -16,9 +18,58 @@ from nanochat.common import setup_default_logging
 # Set up logging
 setup_default_logging()
 logger = logging.getLogger(__name__)
+
+_LEGACY_FA2_ENABLE_KEY = "use_flash3"
+_LEGACY_INERT_MODEL_CONFIG_KEYS = frozenset(
+    {
+        "flash3_block_size",
+        "use_cta_clustering",
+        "cta_cluster_size",
+        "cta_cluster_seq_threshold",
+    }
+)
+_MODEL_CONFIG_MIGRATION_KEY = "model_config_schema_migration"
+
+
 def log0(message):
     if int(os.environ.get('RANK', 0)) == 0:
         logger.info(message)
+
+
+def _normalize_checkpoint_model_config(model_config):
+    """Normalize the exact prior NanoChat config schema at the load boundary."""
+    if not isinstance(model_config, dict):
+        raise TypeError("Checkpoint model_config must be a JSON object")
+
+    current_keys = {field.name for field in fields(GPTConfig)}
+    known_keys = current_keys | {_LEGACY_FA2_ENABLE_KEY} | _LEGACY_INERT_MODEL_CONFIG_KEYS
+    unknown_keys = sorted(set(model_config) - known_keys)
+    if unknown_keys:
+        raise ValueError(
+            "Unsupported checkpoint model_config keys: " + ", ".join(unknown_keys)
+        )
+    if _LEGACY_FA2_ENABLE_KEY in model_config and "use_flash_attn_varlen" in model_config:
+        raise ValueError(
+            "Ambiguous checkpoint model_config contains both use_flash3 and "
+            "use_flash_attn_varlen"
+        )
+
+    normalized = dict(model_config)
+    actions = []
+    if _LEGACY_FA2_ENABLE_KEY in normalized:
+        normalized["use_flash_attn_varlen"] = normalized.pop(_LEGACY_FA2_ENABLE_KEY)
+        actions.append("mapped use_flash3 to use_flash_attn_varlen")
+
+    discarded = sorted(_LEGACY_INERT_MODEL_CONFIG_KEYS & normalized.keys())
+    for key in discarded:
+        normalized.pop(key)
+    if discarded:
+        actions.append("discarded inert metadata " + ", ".join(discarded))
+
+    if not actions:
+        return normalized, None
+    note = "NanoChat checkpoint schema migration: " + ". ".join(actions)
+    return normalized, note
 
 def save_checkpoint(checkpoint_dir, step, model_data, optimizer_data, meta_data, rank=0):
     if rank == 0:
@@ -72,7 +123,18 @@ def build_model(checkpoint_dir, step, device, phase):
         }
     # Hack: fix torch compile issue, which prepends all keys with _orig_mod.
     model_data = {k.removeprefix("_orig_mod."): v for k, v in model_data.items()}
-    model_config_kwargs = meta_data["model_config"]
+    model_config_kwargs, migration_note = _normalize_checkpoint_model_config(
+        meta_data["model_config"]
+    )
+    if migration_note is not None:
+        if _MODEL_CONFIG_MIGRATION_KEY in meta_data:
+            raise ValueError(
+                f"Ambiguous checkpoint metadata already contains {_MODEL_CONFIG_MIGRATION_KEY}"
+            )
+        log0(migration_note)
+        meta_data = dict(meta_data)
+        meta_data["model_config"] = model_config_kwargs
+        meta_data[_MODEL_CONFIG_MIGRATION_KEY] = migration_note
     log0(f"Building model with config: {model_config_kwargs}")
     model_config = GPTConfig(**model_config_kwargs)
     with torch.device("meta"):

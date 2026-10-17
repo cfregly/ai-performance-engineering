@@ -24,8 +24,7 @@ def _small_model(device="cpu", **flags) -> GPT:
         n_kv_head=2,
         n_embd=16,
         use_flash_sdp=False,
-        use_flash3=False,
-        use_cta_clustering=False,
+        use_flash_attn_varlen=False,
         **flags,
     )
     return GPT(config).to(device).eval()
@@ -101,7 +100,7 @@ def _tiny_incremental_benchmark():
         "n_head": 2,
         "n_kv_head": 2,
         "n_embd": 16,
-        "use_flash3": False,
+        "use_flash_attn_varlen": False,
         "use_flash_sdp": False,
     }
     return benchmark, flags
@@ -153,6 +152,45 @@ def test_b200_sweep_engine_holds_compile_off_and_reports_it(monkeypatch) -> None
     diagnostics = bench_b200_flags.require_isolated_decode(engine, model.config)
     assert diagnostics["status"] == "disabled"
     assert diagnostics["reason"] == "Engine(allow_compile=False)"
+
+
+def test_b200_sweep_uses_truthful_fa2_varlen_mode_names_and_cache_metadata() -> None:
+    config_fields = GPTConfig.__dataclass_fields__
+    assert "use_flash_attn_varlen" in config_fields
+    assert "use_flash3" not in config_fields
+    assert "flash3_block_size" not in config_fields
+    assert "use_cta_clustering" not in config_fields
+    assert bench_b200_flags.BENCHMARK_MODES == (
+        "baseline",
+        "flash_sdp",
+        "flash_attn_varlen",
+        "flash_attn_varlen_aligned_cache",
+        "persistent",
+    )
+    config = GPTConfig(use_flash_attn_varlen=False)
+
+    enabled = bench_b200_flags.configure_mode("flash_attn_varlen", config)
+    assert config.use_flash_attn_varlen
+    assert enabled == {"use_flash_attn_varlen": True}
+
+    enabled = bench_b200_flags.configure_mode("flash_attn_varlen_aligned_cache", config)
+    assert config.use_flash_attn_varlen
+    assert enabled == {
+        "use_flash_attn_varlen": True,
+        "kv_block_size": 32,
+        "kv_page_size": 1024,
+        "kv_cache_layout": "contiguous",
+    }
+
+    enabled = bench_b200_flags.configure_mode("persistent", config)
+    assert config.use_flash_attn_varlen
+    assert config.enable_persistent_decode
+    assert config.kv_block_size is None
+    assert config.kv_page_size is None
+    assert enabled == {
+        "enable_persistent_decode": True,
+        "use_flash_attn_varlen": True,
+    }
 
 
 def test_b200_sweep_rejects_compiled_decode(monkeypatch, compile_reset) -> None:

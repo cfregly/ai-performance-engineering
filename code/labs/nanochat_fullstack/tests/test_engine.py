@@ -4,6 +4,8 @@ Test Engine class. Example run:
 python -m pytest tests/test_engine.py -v
 """
 
+import sys
+
 import torch
 import torch.nn.functional as F
 from pathlib import Path
@@ -330,7 +332,7 @@ def test_gpt_generate_ids_buffer_reuses_larger_storage():
         n_head=2,
         n_kv_head=2,
         n_embd=8,
-        use_flash3=False,
+        use_flash_attn_varlen=False,
     )
     model = GPT(config)
 
@@ -665,7 +667,7 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     assert "full_active_rows = (" in sample_section
     assert "len(active_rows) == batch_size" in sample_section
     assert "host_tokens = self._sample_host_token_buffer(flat_tokens.numel(), flat_tokens.device)" in token_list_section
-    assert "host_tokens.copy_(flat_tokens, non_blocking=flat_tokens.device.type == \"cuda\")" in token_list_section
+    assert "host_tokens.copy_(flat_tokens, non_blocking=False)" in token_list_section
     assert "return host_tokens.tolist()" in token_list_section
     assert "[int(token) for token in host_tokens.tolist()]" not in token_list_section
     assert "device_tokens.copy_(flat_tokens)" not in token_list_section
@@ -682,7 +684,7 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     assert "active_logits = logits.index_select(0, active_indices)" not in sample_section
     assert "sampled_tokens = [pad_id] * logits.size(0)" not in sample_section
     assert "sampled_device[sample_idx].copy_(next_id[0, 0])" in sample_section
-    assert "sampled_host.copy_(sampled_device, non_blocking=sampled_device.device.type == \"cuda\")" in sample_section
+    assert "sampled_host.copy_(sampled_device, non_blocking=False)" in sample_section
     assert "sampled_tokens[idx] = next_id[0, 0].item()" not in sample_section
     assert "sampled_tokens[idx] = int(token)" not in sample_section
     assert "next_ids[:, 0].tolist()" not in sample_section
@@ -805,7 +807,7 @@ def test_gpt_generate_prompt_copy_reuses_ids_buffer():
         n_head=2,
         n_kv_head=2,
         n_embd=8,
-        use_flash3=False,
+        use_flash_attn_varlen=False,
     )
     model = GPT(config)
     ids = model._generate_ids_buffer(4, torch.device("cpu"))
@@ -948,7 +950,7 @@ def test_attention_reuses_cu_seqlens_buffers():
         n_head=2,
         n_kv_head=2,
         n_embd=8,
-        use_flash3=False,
+        use_flash_attn_varlen=False,
     )
     attn = CausalSelfAttention(config, layer_idx=0)
 
@@ -964,23 +966,87 @@ def test_attention_reuses_cu_seqlens_buffers():
     torch.testing.assert_close(cu_q_grown, torch.tensor([0, 5, 10], dtype=torch.int32))
 
 
-def test_flash3_gqa_expansion_avoids_repeat_interleave_hot_path():
+def test_flash_attn_varlen_dispatch_identifies_fa2_and_expands_gqa(monkeypatch):
     x = torch.arange(1 * 2 * 3 * 4, dtype=torch.float32).view(1, 2, 3, 4)
 
     expanded = _expand_gqa_kv_heads(x, 2)
 
     torch.testing.assert_close(expanded, x.repeat_interleave(2, dim=1))
 
-    source = Path(__file__).resolve().parents[1] / "nanochat" / "gpt.py"
-    gpt_source = source.read_text(encoding="utf-8")
-    flash3_section = gpt_source.split("def _flash3_attention", maxsplit=1)[1].split(
-        "def forward(self, x, cos_sin",
-        maxsplit=1,
-    )[0]
+    calls = {}
 
-    assert "repeat_interleave" not in flash3_section
-    assert "inspect.signature" not in flash3_section
-    assert "self._flash3_accepts_clusters" in flash3_section
+    def fake_varlen(q, k, v, cu_q, cu_k, max_q, max_k, *, dropout_p, causal):
+        calls.update(
+            q_shape=tuple(q.shape),
+            k_shape=tuple(k.shape),
+            v_shape=tuple(v.shape),
+            cu_q=cu_q.clone(),
+            cu_k=cu_k.clone(),
+            max_q=max_q,
+            max_k=max_k,
+            dropout_p=dropout_p,
+            causal=causal,
+        )
+        return q.clone()
+
+    interface = SimpleNamespace(
+        flash_attn_gpu=SimpleNamespace(__name__="flash_attn_2_cuda"),
+        flash_attn_varlen_func=fake_varlen,
+    )
+    monkeypatch.setitem(sys.modules, "flash_attn", SimpleNamespace(flash_attn_interface=interface))
+    config = GPTConfig(
+        sequence_len=8,
+        vocab_size=32,
+        n_layer=1,
+        n_head=2,
+        n_kv_head=1,
+        n_embd=8,
+        use_flash_attn_varlen=False,
+    )
+    attn = CausalSelfAttention(config, layer_idx=0)
+    attn.use_flash_attn_varlen = True
+    attn._init_flash_attn_varlen()
+
+    q = torch.randn(1, 2, 3, 4)
+    k = torch.randn(1, 1, 3, 4)
+    v = torch.randn(1, 1, 3, 4)
+    output = attn._flash_attn_varlen_attention(q, k, v, kv_cache=None, enable_gqa=True)
+
+    assert attn.flash_attn_varlen_backend == "flash_attn_2_cuda"
+    assert attn.flash_attn_varlen_fn is fake_varlen
+    assert output.shape == q.shape
+    assert calls["q_shape"] == (3, 2, 4)
+    assert calls["k_shape"] == calls["v_shape"] == (3, 2, 4)
+    torch.testing.assert_close(calls["cu_q"], torch.tensor([0, 3], dtype=torch.int32))
+    torch.testing.assert_close(calls["cu_k"], torch.tensor([0, 3], dtype=torch.int32))
+    assert calls["max_q"] == calls["max_k"] == 3
+    assert calls["dropout_p"] == 0.0
+    assert calls["causal"] is True
+
+
+def test_flash_attn_varlen_rejects_a_different_extension_backend(monkeypatch):
+    interface = SimpleNamespace(
+        flash_attn_gpu=SimpleNamespace(__name__="flash_attn_3_cuda"),
+        flash_attn_varlen_func=lambda *args, **kwargs: None,
+    )
+    monkeypatch.setitem(sys.modules, "flash_attn", SimpleNamespace(flash_attn_interface=interface))
+    config = GPTConfig(
+        sequence_len=8,
+        vocab_size=32,
+        n_layer=1,
+        n_head=2,
+        n_kv_head=2,
+        n_embd=8,
+        use_flash_attn_varlen=False,
+    )
+    attn = CausalSelfAttention(config, layer_idx=0)
+    attn.use_flash_attn_varlen = True
+    attn._init_flash_attn_varlen()
+
+    assert not attn.use_flash_attn_varlen
+    assert attn.flash_attn_varlen_fn is None
+    assert attn.flash_attn_varlen_backend is None
+    assert "observed flash_attn_3_cuda" in attn.flash_attn_varlen_error
 
 
 def test_attention_reuses_causal_mask_buffers():
@@ -991,7 +1057,7 @@ def test_attention_reuses_causal_mask_buffers():
         n_head=2,
         n_kv_head=2,
         n_embd=8,
-        use_flash3=False,
+        use_flash_attn_varlen=False,
     )
     attn = CausalSelfAttention(config, layer_idx=0)
 
@@ -1046,7 +1112,7 @@ def test_attention_reuses_padded_mask_buffer_and_skips_decode_causal_mask():
         n_head=2,
         n_kv_head=2,
         n_embd=8,
-        use_flash3=False,
+        use_flash_attn_varlen=False,
         use_padded_attention=True,
     )
     attn = CausalSelfAttention(config, layer_idx=0)
@@ -1108,7 +1174,7 @@ def test_attention_reuses_rotary_buffers_for_inference():
         n_head=2,
         n_kv_head=2,
         n_embd=8,
-        use_flash3=False,
+        use_flash_attn_varlen=False,
     )
     attn = CausalSelfAttention(config, layer_idx=0)
     q = torch.empty(1, 2, 2, 4)

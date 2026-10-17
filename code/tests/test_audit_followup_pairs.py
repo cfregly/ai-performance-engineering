@@ -60,7 +60,7 @@ def test_nanochat_side_stream_check_builds_an_uncompiled_engine(
     for config in (
         lab_checks._config(enable_persistent_decode=True),
         lab_checks._config(
-            use_cta_clustering=True, cta_cluster_seq_threshold=8, enable_persistent_decode=True
+            use_flash_attn_varlen=True, enable_persistent_decode=True
         ),
     ):
         with pytest.raises(_StopAfterEngine):

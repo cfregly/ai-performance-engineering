@@ -106,7 +106,7 @@ class KVCache:
         self.graph_attention_mask = None
 
     def _round_seq_len(self, seq_len):
-        """Round sequence length to block/page boundaries to align with TMA paging."""
+        """Round contiguous cache capacity to the configured alignment boundaries."""
         rounded = seq_len
         if self.block_size is not None and self.block_size > 0:
             rounded = ((rounded + self.block_size - 1) // self.block_size) * self.block_size
@@ -220,7 +220,7 @@ class KVCache:
         )
 
     def get_blocked_kv(self, layer_idx):
-        """Return block-major view for TMA/TMEM kernels."""
+        """Return a block-major view of the contiguous cache allocation."""
         if self.block_size is None or self.kv_cache is None:
             return None
         total_tokens = self.get_pos()

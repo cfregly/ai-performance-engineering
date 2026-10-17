@@ -14,7 +14,6 @@ except ImportError:
     _EFFICIENT_BACKENDS = []
     _NEW_SDPA_API = False
 
-_FLASH3_ACCEPTS_CLUSTERS: bool | None = None
 _CU_SEQLENS_CACHE: dict[tuple[int, int, torch.device], torch.Tensor] = {}
 
 
@@ -37,18 +36,6 @@ def _expand_gqa_heads(x: torch.Tensor, repeat: int) -> torch.Tensor:
     )
 
 
-def _flash3_accepts_clusters(flash3_fn) -> bool:
-    global _FLASH3_ACCEPTS_CLUSTERS
-    if _FLASH3_ACCEPTS_CLUSTERS is None:
-        try:
-            import inspect
-
-            _FLASH3_ACCEPTS_CLUSTERS = "num_sm_clusters" in inspect.signature(flash3_fn).parameters
-        except Exception:
-            _FLASH3_ACCEPTS_CLUSTERS = False
-    return _FLASH3_ACCEPTS_CLUSTERS
-
-
 def _cu_seqlens_for(batch: int, seq_len: int, device: torch.device) -> torch.Tensor:
     key = (batch, seq_len, device)
     cached = _CU_SEQLENS_CACHE.get(key)
@@ -58,7 +45,7 @@ def _cu_seqlens_for(batch: int, seq_len: int, device: torch.device) -> torch.Ten
     return cached
 
 
-def _flash3_clustered(q, k, v, causal: bool, num_sm_clusters: int | None, enable_gqa: bool):
+def _flash_attn_varlen(q, k, v, causal: bool, enable_gqa: bool):
     # q,k,v: (B, H, T, D)
     if enable_gqa and q.size(1) != k.size(1):
         repeat_k = q.size(1) // k.size(1)
@@ -73,15 +60,12 @@ def _flash3_clustered(q, k, v, causal: bool, num_sm_clusters: int | None, enable
     cu_k = _cu_seqlens_for(B, Tk, q.device)
 
     try:
-        from flash_attn.flash_attn_interface import flash_attn_varlen_func  # type: ignore
+        from flash_attn import flash_attn_interface  # type: ignore
 
-        kwargs = dict(
-            dropout_p=0.0,
-            causal=causal,
-        )
-        if num_sm_clusters is not None and _flash3_accepts_clusters(flash_attn_varlen_func):
-            kwargs["num_sm_clusters"] = num_sm_clusters
-        out = flash_attn_varlen_func(  # type: ignore[misc]
+        backend = getattr(flash_attn_interface, "flash_attn_gpu", None)
+        if getattr(backend, "__name__", None) != "flash_attn_2_cuda":
+            return None
+        out = flash_attn_interface.flash_attn_varlen_func(  # type: ignore[misc]
             q_flat,
             k_flat,
             v_flat,
@@ -89,7 +73,8 @@ def _flash3_clustered(q, k, v, causal: bool, num_sm_clusters: int | None, enable
             cu_k,
             Tq,
             Tk,
-            **kwargs,
+            dropout_p=0.0,
+            causal=causal,
         )
         return out.view(B, Tq, Hq, D).transpose(1, 2).contiguous()
     except Exception:
@@ -102,24 +87,19 @@ def clustered_attention(
     v: torch.Tensor,
     attn_mask: torch.Tensor | None,
     causal: bool,
-    num_sm_clusters: int | None = None,
     enable_gqa: bool = False,
 ):
-    """
-    Clustered attention entry point.
-    - Tries FlashAttention-3 varlen with num_sm_clusters if available.
-    - Falls back to SDPA.
-    """
-    # Masks are not supported in FA3 varlen path; fall back to SDPA when provided.
+    """Reference attention path using pinned FA2 varlen or native SDPA."""
+    # Masks are not supported by this varlen call. Use SDPA when one is present.
     use_mask = attn_mask is not None
     if (
         not use_mask
         and q.is_cuda
         and q.dtype in (torch.float16, torch.bfloat16)
     ):
-        fa3_out = _flash3_clustered(q, k, v, causal=causal, num_sm_clusters=num_sm_clusters, enable_gqa=enable_gqa)
-        if fa3_out is not None:
-            return fa3_out
+        varlen_out = _flash_attn_varlen(q, k, v, causal=causal, enable_gqa=enable_gqa)
+        if varlen_out is not None:
+            return varlen_out
 
     # SDPA fallback
     # attn_mask semantics: True=keep, False=mask
