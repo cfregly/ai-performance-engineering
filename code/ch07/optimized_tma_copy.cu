@@ -514,7 +514,7 @@ bool benchmark_tma_2d(cudaDeviceProp& prop) {
     // Calculate bandwidth
     const double bytes_transferred = 2.0 * matrix_bytes;  // Read + Write
     const double bandwidth_gbps = (bytes_transferred / 1e9) / (avg_tma2d_ms / 1000.0);
-    
+
     std::printf("%s (%dx%d, tile=%dx%d): %.3f ms\n",
                 "Descriptor-backed 2D TMA tiled-neighbor transform",
                 M, N, kTile2D_M, kTile2D_N, avg_tma2d_ms);
