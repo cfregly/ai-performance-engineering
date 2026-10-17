@@ -567,8 +567,11 @@ def test_real_binary_passes_its_output_check_and_prints_one_time_ms_line(
 
 def test_real_optimized_bandwidth_line_matches_the_declared_bytes() -> None:
     benchmark = _run_real(OptimizedTMACopyBenchmark)
-    bandwidth = re.search(r"Achieved bandwidth: ([0-9.]+) GB/s", benchmark.last_stdout or "")
-    assert bandwidth is not None
+    bandwidth = re.search(
+        r"Effective requested read-plus-write bandwidth: ([0-9.]+) GB/s",
+        benchmark.last_stdout or "",
+    )
+    assert bandwidth is not None, benchmark.last_stdout
 
     declared_gbps = (
         benchmark.get_workload_metadata().bytes_per_iteration
