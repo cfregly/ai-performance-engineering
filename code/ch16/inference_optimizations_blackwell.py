@@ -85,8 +85,8 @@ def _sliding_window_causal_mask(
     q_idx,
     kv_idx,
     *,
-    query_start: int,
-    window_size: int,
+    query_start: int | torch.Tensor,
+    window_size: int | torch.Tensor,
 ):
     """Return whether an absolute KV position is visible to a query."""
     query_position = q_idx + query_start
@@ -647,14 +647,23 @@ class OptimizedDecoderLayer(nn.Module):
         cache_key = (int(batch_size), int(self.num_heads), int(seq_len), int(total_len), device)
         block_mask = self._block_mask_cache.get(cache_key)
         if block_mask is None:
-            query_start = total_len - seq_len
+            query_start = torch.scalar_tensor(
+                total_len - seq_len,
+                dtype=torch.int64,
+                device=device,
+            )
+            window_size = torch.scalar_tensor(
+                self.window_size,
+                dtype=torch.int64,
+                device=device,
+            )
 
             def sliding_window_with_cache(b, h, q_idx, kv_idx):
                 return _sliding_window_causal_mask(
                     q_idx,
                     kv_idx,
                     query_start=query_start,
-                    window_size=self.window_size,
+                    window_size=window_size,
                 )
 
             block_mask = create_block_mask(

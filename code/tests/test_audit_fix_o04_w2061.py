@@ -248,6 +248,74 @@ def _cached_and_recomputed_logits(
     return pairs
 
 
+def test_compiled_flex_attention_bounds_dynamic_decode_recompilation(
+    plain_storage: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise the guard sequence that exhausted the shared compile cache on B200."""
+    from torch._dynamo.utils import counters
+
+    torch._dynamo.reset()
+    counters.clear()
+    compiled_flex_attention = torch.compile(
+        blackwell._flex_attention_wrapper,
+        backend="eager",
+        fullgraph=True,
+        dynamic=True,
+    )
+    monkeypatch.setattr(blackwell, "_FLEX_ATTENTION_FN", compiled_flex_attention)
+
+    prompt = torch.tensor([[3, 7, 1, 12, 5]])
+    decode_steps = 12
+    try:
+        for window_size in (3, 64):
+            model = _decoder_stack(
+                window_size=window_size,
+                d_model=CUDA_D_MODEL,
+                use_flex_attention=True,
+            )
+            cache = _cache(
+                num_layers=model.num_layers,
+                max_batch_size=1,
+                max_seq_len=prompt.size(1) + decode_steps,
+                num_heads=model.num_heads,
+                head_dim=model.d_model // model.num_heads,
+            )
+            for cached, reference in _cached_and_recomputed_logits(
+                model,
+                cache,
+                prompt,
+                decode_steps,
+            ):
+                torch.testing.assert_close(cached, reference)
+
+        model = _decoder_stack(
+            window_size=64,
+            d_model=CUDA_D_MODEL,
+            use_flex_attention=True,
+        ).to(torch.bfloat16)
+        pipeline = blackwell.BlackwellInferencePipeline(
+            model,
+            max_seq_len=prompt.size(1) + decode_steps,
+            compile=False,
+        )
+        generated = pipeline.generate(prompt, max_new_tokens=decode_steps)
+        assert generated.shape == (1, prompt.size(1) + decode_steps)
+
+        pipeline.kv_cache.clear()
+        for cached, reference in _cached_and_recomputed_logits(
+            model,
+            pipeline.kv_cache,
+            prompt,
+            decode_steps,
+        ):
+            torch.testing.assert_close(cached, reference)
+        unique_graphs = counters["stats"]["unique_graphs"]
+        assert 1 <= unique_graphs <= 8
+    finally:
+        torch._dynamo.reset()
+
+
 @pytest.mark.parametrize("window_size", [2, 64])
 @pytest.mark.parametrize("headroom", [0, 32])
 def test_cached_decode_matches_full_recompute_for_every_layer(
