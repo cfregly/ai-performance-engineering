@@ -3,9 +3,9 @@ Inference Optimization Suite for Blackwell B200/B300
 ====================================================
 
 This module provides comprehensive inference optimizations leveraging:
-- PyTorch 2.10 FlexAttention
+- PyTorch FlexAttention
 - FP8 quantization for Blackwell
-- Dynamic batching with conditional CUDA graphs
+- Dynamic batching with dynamic-shape compilation
 - KV cache optimization for long context
 - Speculative decoding
 
@@ -17,7 +17,7 @@ Performance Targets (B200):
 - <10ms latency per token
 
 Requirements:
-- PyTorch 2.10+
+- PyTorch
 - Blackwell B200/B300
 - CUDA 13.0+
 
@@ -57,13 +57,25 @@ else:
     _flex_attention_wrapper = None
 
 
-if _flex_attention_wrapper is not None:
-    _FLEX_ATTENTION_FN = compile_callable(
-        _flex_attention_wrapper,
-        mode="reduce-overhead",
+def _compile_dynamic_flex_attention(fn):
+    # Decode changes the K/V length on every step. On the pinned PyTorch 2.9
+    # stack, CUDA Graph Trees tried to copy a length-7 input into a captured
+    # length-6 buffer before attention ran. Keep full-graph Inductor compilation
+    # and disable capture only for this dynamic region. Retire this policy only
+    # after test_cuda_flex_attention_cached_decode_matches_full_recompute passes
+    # 12 increasing K/V lengths with graph capture enabled.
+    return compile_callable(
+        fn,
+        mode=None,
         fullgraph=True,
         dynamic=True,
+        backend="inductor",
+        options={"triton.cudagraphs": False},
     )
+
+
+if _flex_attention_wrapper is not None:
+    _FLEX_ATTENTION_FN = _compile_dynamic_flex_attention(_flex_attention_wrapper)
 else:
     _FLEX_ATTENTION_FN = None
 
@@ -797,7 +809,7 @@ class BlackwellInferencePipeline:
     Features:
     - FlexAttention with sliding window
     - FP8 quantized KV cache
-    - torch.compile with CUDA graphs
+    - torch.compile with dynamic shapes
     - Dynamic batching
 
     Model contract:
@@ -871,20 +883,19 @@ class BlackwellInferencePipeline:
         self._next_token_buffer: Optional[torch.Tensor] = None
         self._next_token_values: Optional[torch.Tensor] = None
         self._generated_token_buffer: Optional[torch.Tensor] = None
-        # Compile model with torch.compile (PyTorch 2.10)
+        # Compile the model with torch.compile. The KV length changes
+        # on every decode step, so the pipeline uses max autotuning without CUDA
+        # Graph Trees. Retire this policy only after the compile=True case in
+        # test_cuda_fp8_cache_serves_a_bf16_model_through_the_pipeline passes
+        # with graph capture enabled.
         if compile:
             print("Compiling model with torch.compile...")
             self.model = compile_model(
                 self.model,
-                mode="max-autotune",
+                mode="max-autotune-no-cudagraphs",
                 fullgraph=False,
                 dynamic=True,
                 backend="inductor",
-                options={
-                    "triton.cudagraphs": True,
-                    "triton.cudagraph_trees": True,
-                    "max_autotune_gemm_backends": "TRITON,CUTLASS,ATen",
-                },
             )
             print(" Model compiled")
         
@@ -1070,10 +1081,10 @@ class BlackwellInferencePipeline:
         if FP8_AVAILABLE:
             print(f"\n FP8 KV cache enabled (50% memory savings)")
         
-        print(f" FlexAttention (2x faster than baseline)")
+        print(f" FlexAttention enabled")
         
         if self.compiled:
-            print(f" torch.compile with CUDA graphs")
+            print(f" torch.compile with dynamic shapes")
 
 
 # ============================================================================

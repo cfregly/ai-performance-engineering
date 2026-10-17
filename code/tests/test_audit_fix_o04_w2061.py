@@ -229,22 +229,24 @@ def _decoder_stack(
 
 
 def _cached_and_recomputed_logits(
-    model: _CacheAwareDecoderStack,
+    model: nn.Module,
     cache: blackwell.DynamicQuantizedKVCache,
     prompt: torch.Tensor,
     decode_steps: int,
+    reference_model: nn.Module | None = None,
 ) -> list[tuple[torch.Tensor, torch.Tensor]]:
     """Return (cached, full recompute) logits for the prefill and each decoded position."""
+    reference_model = model if reference_model is None else reference_model
     pairs = []
     with torch.inference_mode():
         logits = model(prompt, kv_cache=cache)
-        pairs.append((logits.clone(), model(prompt)))
+        pairs.append((logits.clone(), reference_model(prompt)))
         sequence = prompt
         for _ in range(decode_steps):
             next_token = logits[:, -1:].argmax(dim=-1)
             sequence = torch.cat([sequence, next_token], dim=1)
             logits = model(next_token, kv_cache=cache)
-            pairs.append((logits.clone(), model(sequence)[:, -1:]))
+            pairs.append((logits.clone(), reference_model(sequence)[:, -1:]))
     return pairs
 
 
@@ -314,6 +316,57 @@ def test_compiled_flex_attention_bounds_dynamic_decode_recompilation(
         assert 1 <= unique_graphs <= 8
     finally:
         torch._dynamo.reset()
+
+
+def test_dynamic_decode_compile_policy_disables_cuda_graph_capture(
+    plain_storage: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep Inductor compilation while excluding changing K/V shapes from graph replay."""
+    callable_calls: list[tuple[object, dict[str, object]]] = []
+    model_calls: list[tuple[nn.Module, dict[str, object]]] = []
+
+    def record_callable(fn, **kwargs):
+        callable_calls.append((fn, kwargs))
+        return fn
+
+    def record_model(module, **kwargs):
+        model_calls.append((module, kwargs))
+        return module
+
+    def marker() -> None:
+        return None
+    monkeypatch.setattr(blackwell, "compile_callable", record_callable)
+    assert blackwell._compile_dynamic_flex_attention(marker) is marker
+    assert callable_calls == [
+        (
+            marker,
+            {
+                "mode": None,
+                "fullgraph": True,
+                "dynamic": True,
+                "backend": "inductor",
+                "options": {"triton.cudagraphs": False},
+            },
+        )
+    ]
+
+    monkeypatch.setattr(blackwell, "compile_model", record_model)
+    model = _decoder_stack(window_size=3)
+    pipeline = blackwell.BlackwellInferencePipeline(model, max_seq_len=17, compile=True)
+
+    assert pipeline.model is model
+    assert model_calls == [
+        (
+            model,
+            {
+                "mode": "max-autotune-no-cudagraphs",
+                "fullgraph": False,
+                "dynamic": True,
+                "backend": "inductor",
+            },
+        )
+    ]
 
 
 @pytest.mark.parametrize("window_size", [2, 64])
@@ -575,8 +628,8 @@ def test_comparison_demo_runs_with_matching_dtype_and_fresh_prefills(
 ) -> None:
     """Run the demo on CPU with its CUDA timing, sync and compile seams replaced.
 
-    FlexAttention is compiled for CUDA graphs, so the layer uses its SDPA path
-    here. The real demo needs the B200 run recorded with this fix.
+    FlexAttention's compiled CUDA kernel is unavailable in this CPU orchestration
+    test, so the layer uses its SDPA path. The real demo needs a B200 run.
     """
     timed_iterations: list[int] = []
 
@@ -674,7 +727,7 @@ def test_multigpu_shard_benchmark_runs_fresh_prefills_and_reports_the_slowest_ra
     monkeypatch.setattr(blackwell.dist, "all_reduce", all_reduce_with_slower_peer)
     monkeypatch.setattr(blackwell.dist, "destroy_process_group", lambda: destroyed.append(True))
     monkeypatch.setattr(blackwell, "DynamicQuantizedKVCache", RecordingCache)
-    # FlexAttention is compiled for CUDA graphs, so the layer uses its SDPA path here.
+    # The compiled CUDA kernel is unavailable in this CPU orchestration test.
     monkeypatch.setattr(blackwell, "_FLEX_ATTENTION_FN", None)
 
     # The cache holds exactly one prefill, so a missing clear() overflows on the second call.
@@ -735,7 +788,9 @@ def test_cuda_flex_attention_cached_decode_matches_full_recompute(
     model = _decoder_stack(window_size=3, d_model=CUDA_D_MODEL, device="cuda", use_flex_attention=True)
     assert all(layer.flex_attention_fn is not None for layer in model.layers)
     prompt = torch.tensor([[3, 7, 1, 12, 5]], device="cuda")
-    decode_steps = 4
+    # This exceeds the default eight-entry Dynamo cache and exercises twelve
+    # increasing K/V lengths without CUDA Graph Trees replay.
+    decode_steps = 12
     cache = _cache(
         num_layers=model.num_layers,
         max_batch_size=1,
@@ -780,7 +835,8 @@ def test_cuda_fp8_cache_serves_every_layer(ieee_fp32_matmul: None) -> None:
 
 
 @requires_cuda
-def test_cuda_fp8_cache_serves_a_bf16_model_through_the_pipeline() -> None:
+@pytest.mark.parametrize("compile_model", [False, True], ids=["eager-model", "compiled-model"])
+def test_cuda_fp8_cache_serves_a_bf16_model_through_the_pipeline(compile_model: bool) -> None:
     if not blackwell.FP8_AVAILABLE:
         pytest.skip("SKIPPED: this PyTorch build has no float8_e4m3fn dtype")
     model = _decoder_stack(
@@ -790,11 +846,11 @@ def test_cuda_fp8_cache_serves_a_bf16_model_through_the_pipeline() -> None:
         use_flex_attention=True,
     ).to(torch.bfloat16)
     prompt = torch.tensor([[3, 7, 1, 12, 5]], device="cuda")
-    decode_steps = 4
+    decode_steps = 12
     pipeline = blackwell.BlackwellInferencePipeline(
         model,
         max_seq_len=prompt.size(1) + decode_steps,
-        compile=False,
+        compile=compile_model,
     )
     assert pipeline.kv_cache.cache.dtype == torch.float8_e4m3fn
     assert pipeline.kv_cache.compute_dtype == torch.bfloat16
@@ -803,7 +859,13 @@ def test_cuda_fp8_cache_serves_a_bf16_model_through_the_pipeline() -> None:
     assert generated.shape == (1, prompt.size(1) + decode_steps)
 
     pipeline.kv_cache.clear()
-    for cached, reference in _cached_and_recomputed_logits(model, pipeline.kv_cache, prompt, decode_steps):
+    for cached, reference in _cached_and_recomputed_logits(
+        pipeline.model,
+        pipeline.kv_cache,
+        prompt,
+        decode_steps,
+        reference_model=model,
+    ):
         assert cached.dtype == torch.bfloat16
         relative_error = float((cached.float() - reference.float()).norm() / reference.float().norm())
         # Emulating E4M3 K/V rounding on CPU for this bf16 model moved these
