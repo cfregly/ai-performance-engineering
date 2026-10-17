@@ -689,6 +689,77 @@ def test_nccl_topology_grace_flag_needs_the_nvidia_soc_id(
 
 
 @pytest.mark.parametrize(
+    ("name", "major", "minor", "is_b200"),
+    [
+        ("NVIDIA B200", 10, 0, True),
+        ("NVIDIA GB200", 10, 0, False),
+        ("NVIDIA B300", 10, 3, False),
+        ("NVIDIA RTX PRO 6000 Blackwell", 12, 0, False),
+        ("NVIDIA GB10", 12, 1, False),
+    ],
+)
+def test_topology_reports_detected_resources_without_inventing_fabric(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    name: str,
+    major: int,
+    minor: int,
+    is_b200: bool,
+) -> None:
+    # Enumeration is a metadata seam. This test does not run or qualify a benchmark.
+    _fake_cuda(monkeypatch, count=4, major=major, minor=minor, name=name)
+    monkeypatch.setattr(nccl_config, "host_grace_soc_id", lambda: None)
+    monkeypatch.setattr(torch.cuda, "can_device_access_peer", lambda a, b: True)
+
+    info = nccl_config.detect_b200_multigpu_topology()
+    assert info["is_b200_multigpu"] is is_b200
+    assert info["all_to_all_peer_access"] is True
+    assert info["has_nvswitch"] is None
+    assert info["nvlink_topology"] == "unknown"
+
+    nccl_config.print_multigpu_topology()
+    printed = capsys.readouterr().out
+    assert name in printed
+    assert f"Memory: {4 * 96 * 1024**3 / 1e9:.2f} GB" in printed
+    assert "NVSwitch detected" not in printed
+    assert "TB/s aggregate" not in printed
+    assert "HBM3e" not in printed
+
+
+def test_peer_access_summary_uses_actual_four_gpu_resources(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _fake_cuda(monkeypatch, count=4, major=12, minor=0, name="NVIDIA RTX PRO 6000 Blackwell")
+    monkeypatch.setattr(symmetric_memory, "detect_gb200_gb300", lambda: False)
+    monkeypatch.setattr(torch.cuda, "set_device", lambda index: None)
+    monkeypatch.setattr(torch.cuda, "can_device_access_peer", lambda a, b: True)
+    monkeypatch.setattr(torch.cuda, "set_per_process_memory_fraction", lambda fraction: None)
+
+    symmetric_memory.enable_nvlink_c2c_optimizations()
+    printed = capsys.readouterr().out
+    assert "NVIDIA RTX PRO 6000 Blackwell" in printed
+    assert f"Total memory: {4 * 96 * 1024**3 / 1e9:.2f} GB" in printed
+    assert "4x B200" not in printed
+    assert "0.72 TB HBM3e" not in printed
+    assert "31.2 TB/s" not in printed
+    assert "900 GB/s per pair" not in printed
+    assert "GPU Peer Access Features:" in printed
+
+
+def test_single_gpu_topology_printout_stops_at_the_multigpu_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _fake_cuda(monkeypatch, count=1, major=10, minor=0, name="NVIDIA B200")
+    nccl_config.print_multigpu_topology()
+    printed = capsys.readouterr().out
+    assert "Expected >=2 GPUs, found 1" in printed
+    assert "Detected resources:" not in printed
+    assert "Memory: 0.00 GB" not in printed
+
+
+@pytest.mark.parametrize(
     ("soc_id", "c2c", "present", "absent"),
     [
         (
@@ -755,7 +826,7 @@ def test_multi_node_setup_prints_the_c2c_peak_only_with_driver_evidence(
         ),
         (
             False,
-            ("GPU Peer Access Configuration for Blackwell (no NVLink-C2C host link reported)", "NVLink Features:"),
+            ("GPU Peer Access Configuration for Blackwell (no NVLink-C2C host link reported)", "GPU Peer Access Features:"),
             ("CPU-GPU", "NVLink-C2C Features"),
         ),
     ],
@@ -919,4 +990,3 @@ def test_ch12_enhanced_conditional_graph_labels_gb10_only_for_sm121() -> None:
     assert "is_sm12x ? \"Grace-Blackwell GB10\"" not in source
     assert "prop.major >= 12" not in source
     assert 'std::printf("SKIPPED: CUDA Graphs require compute capability 7.5 or newer\\n");' in source
-

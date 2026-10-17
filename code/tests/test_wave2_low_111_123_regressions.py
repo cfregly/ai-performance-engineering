@@ -70,18 +70,17 @@ def test_w2_113_block_sparse_sparsity_counts_every_local_block() -> None:
     assert attention._calculate_sparsity() == pytest.approx(44.0)
 
 
-def test_w2_114_fp6_header_uses_packed_storage_and_b200_dense_rates() -> None:
+def test_w2_114_historical_fp6_path_truthfully_describes_int6_proxy() -> None:
     source = (CODE_ROOT / "ch19" / "native_fp6_quantization.py").read_text(
         encoding="utf-8"
     )
     header = source.split('"""', 2)[1]
 
-    assert "62.5% vs FP16" in header
-    assert "~4.5 PFLOPS dense for either FP6 or FP8" in header
-    assert "~9 PFLOPS with structured sparsity" in header
-    assert "up to 2.67x as many packed weights as FP16" in header
-    assert "~1400 TFLOPS" not in header
-    assert "~1200 FP8" not in header
+    assert "uniform signed integer quantization" in header
+    assert "not FP6 E3M2" in header
+    assert "not a native FP6 kernel" in header
+    assert "PFLOPS" not in header
+    assert "acceptable for most tasks" not in source
 
 
 def test_w2_115_moe_metadata_counts_rows_as_tokens() -> None:

@@ -34,7 +34,7 @@ exit 0
 """
 
 _TORCHRUN_STUB = """#!/bin/bash
-env > "${LAUNCH_ENV_CAPTURE}"
+env | grep '^NCCL_' > "${LAUNCH_ENV_CAPTURE}"
 exit 0
 """
 
@@ -136,6 +136,10 @@ def test_inference_server_nccl_benchmark_launch_has_no_fabricated_nccl_controls(
     assert "NCCL_P2P_DISABLE=0" in system_info
     _assert_no_fabricated_controls(system_info)
     _assert_no_fabricated_controls((output_dir / "BENCHMARK_SUMMARY.md").read_text())
+    summary = (output_dir / "BENCHMARK_SUMMARY.md").read_text()
+    assert "They do not prove that NCCL selected NVLink" in summary
+    assert "No parsed metrics are available" in summary
+    assert "Full NVLink bandwidth" not in summary
 
 
 @pytest.mark.parametrize(

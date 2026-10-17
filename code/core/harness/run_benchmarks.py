@@ -126,6 +126,7 @@ from core.benchmark.expectations import (
     select_best_optimization,
     compute_speedup,
 )
+from core.benchmark.target_overrides import normalize_target_label, parse_target_extra_args
 from core.discovery import chapter_slug, resolve_target_chapters, is_cuda_binary_benchmark_file
 from core.utils.python_entrypoints import build_python_entry_command, build_repo_python_env
 
@@ -12836,8 +12837,11 @@ def _preflight_target_coverage_and_assets(
     only_python: bool,
     target_extra_args: Dict[str, List[str]],
     enforce_external_assets: bool = True,
+    validate_target_overrides: bool = True,
 ) -> List[str]:
     issues: List[str] = []
+
+    selected_targets: Dict[str, str] = {}
 
     for chapter_dir in chapter_dirs:
         chapter_id = chapter_slug(chapter_dir, repo_root)
@@ -12863,11 +12867,22 @@ def _preflight_target_coverage_and_assets(
             elif only_python:
                 python_pairs = [pair for pair in python_pairs if pair not in cuda_wrapped_pairs]
 
+        for baseline_path, _optimized_paths, example_name in python_pairs:
+            label = normalize_target_label(f"{chapter_name}:{example_name}")
+            selected_targets[label] = (
+                "CUDA binary wrapper" if _is_cuda_wrapper(baseline_path) else "Python benchmark"
+            )
+
         cuda_pairs = discover_cuda_benchmarks(chapter_dir)
         if example_filters:
             cuda_pairs = [pair for pair in cuda_pairs if pair[2] in example_filters]
         if only_python:
             cuda_pairs = []
+
+        for _baseline_path, _optimized_paths, example_name in cuda_pairs:
+            selected_targets[normalize_target_label(f"{chapter_name}:{example_name}")] = (
+                "CUDA binary"
+            )
 
         total = len(python_pairs) + len(cuda_pairs)
         if total == 0:
@@ -12909,6 +12924,21 @@ def _preflight_target_coverage_and_assets(
                     f"{engine_path}. Remediation: set AISP_PHI35_MOE_ENGINE_PATH or pass "
                     "--target-extra-arg labs/trtllm_phi_3_5_moe:trtllm_phi_3_5_moe=\"--engine-path /path/to/engine_dir_or_plan\". "
                     f"Canonical repo defaults: {defaults_hint}."
+                )
+
+    if validate_target_overrides:
+        for target_label in target_extra_args:
+            normalized_label = normalize_target_label(target_label)
+            target_kind = selected_targets.get(normalized_label)
+            if target_kind is None:
+                issues.append(
+                    f"--target-extra-arg target {target_label!r} does not match any selected benchmark."
+                )
+            elif target_kind.startswith("CUDA binary"):
+                issues.append(
+                    f"--target-extra-arg target {target_label!r} selects a {target_kind}, which does "
+                    "not accept executable arguments. Remove the override or add an explicit "
+                    "apply_target_overrides implementation."
                 )
 
     return issues
@@ -13145,12 +13175,11 @@ def main():
     # Refresh benchmark defaults.
     defaults = BenchmarkDefaults()
     set_defaults(defaults)
-    extra_arg_map: Dict[str, List[str]] = {}
-    for entry in args.target_extra_arg or []:
-        target, sep, payload = entry.partition("=")
-        if not sep or not target or not payload:
-            continue
-        extra_arg_map[target.strip()] = shlex.split(payload)
+    try:
+        extra_arg_map = parse_target_extra_args(args.target_extra_arg)
+    except ValueError as exc:
+        logger.error("ERROR: %s", exc)
+        return 1
     
     logger.info("=" * 80)
     logger.info("TESTING ALL BENCHMARKS")

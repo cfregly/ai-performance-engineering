@@ -371,7 +371,8 @@ def detect_b200_multigpu_topology() -> Dict[str, Any]:
     info: Dict[str, Any] = {
         "num_gpus": num_gpus,
         "is_b200_multigpu": False,
-        "has_nvswitch": False,
+        "has_nvswitch": None,
+        "all_to_all_peer_access": False,
         "has_grace_cpu": False,
         "grace_soc_id": None,
         "nvlink_topology": "unknown",
@@ -382,23 +383,26 @@ def detect_b200_multigpu_topology() -> Dict[str, Any]:
         info["warning"] = f"Expected >=2 GPUs, found {num_gpus}"
         return info
 
-    # Check if all GPUs are Blackwell B200
-    all_blackwell = True
+    # Compute capability alone does not identify a B200 model.
+    all_b200 = True
     for i in range(num_gpus):
         props = torch.cuda.get_device_properties(i)
         is_blackwell = props.major in (10, 12)
-        all_blackwell = all_blackwell and is_blackwell
+        all_b200 = all_b200 and (
+            props.major == 10 and props.minor == 0 and "B200" in props.name.split()
+        )
         info["gpus"].append(
             {
                 "id": i,
                 "name": props.name,
                 "compute_capability": f"{props.major}.{props.minor}",
                 "total_memory_gb": props.total_memory / 1e9,
+                "sm_count": props.multi_processor_count,
                 "is_blackwell": is_blackwell,
             }
         )
 
-    info["is_b200_multigpu"] = all_blackwell
+    info["is_b200_multigpu"] = all_b200
 
     # Check P2P access pattern to infer topology
     if num_gpus >= 2:
@@ -413,13 +417,10 @@ def detect_b200_multigpu_topology() -> Dict[str, Any]:
                     row.append(True)
             p2p_matrix.append(row)
 
-        # Check if all-to-all (NVSwitch) or partial (direct NVLink)
+        # Peer access can use PCIe and does not identify NVLink or NVSwitch.
         all_connected = all(all(row) for row in p2p_matrix)
-        info["has_nvswitch"] = all_connected
-        if all_connected:
-            info["nvlink_topology"] = "nvswitch_all_to_all"
-        else:
-            info["nvlink_topology"] = "direct_nvlink_pairs"
+        info["all_to_all_peer_access"] = all_connected
+        info["peer_access_matrix"] = p2p_matrix
 
     # Grace identity comes from the NVIDIA SoC ID in sysfs. Arm core names in
     # /proc/cpuinfo cannot identify Grace, because other vendors ship the same
@@ -444,27 +445,22 @@ def print_multigpu_topology() -> None:
 
     if "warning" in info:
         print(f"⚠ Warning: {info['warning']}")
+        return
 
     print(f"Number of GPUs: {info['num_gpus']}")
     status = "✓ Yes" if info["is_b200_multigpu"] else "✗ No"
-    print(f"B200/GB multi-GPU Configuration: {status}")
+    print(f"B200 multi-GPU configuration: {status}")
+    print(f"All-to-all peer access: {info['all_to_all_peer_access']}")
+    print("Physical NVLink/NVSwitch topology is not established by peer access")
 
-    if info["is_b200_multigpu"]:
-        print(f"\nTopology: {info['nvlink_topology']}")
-        if info["has_nvswitch"]:
-            print("  ✓ NVSwitch detected (all-to-all connectivity)")
-        else:
-            print("  ℹ Direct NVLink pairs")
+    if info["has_grace_cpu"]:
+        print(f"\n✓ NVIDIA Grace CPU detected (SoC ID {info['grace_soc_id']})")
 
-        if info["has_grace_cpu"]:
-            print(f"\n✓ NVIDIA Grace CPU detected (SoC ID {info['grace_soc_id']})")
-        else:
-            print("\nℹ Standard B200 configuration (PCIe or NVLink only)")
-
-        print(f"\nTotal Resources:")
-        print(f"  SMs: {148 * info['num_gpus']} (148 per GPU)")
-        print(f"  Memory: {180 * info['num_gpus']} GB HBM3e")
-        print(f"  Bandwidth: {7.8 * info['num_gpus']:.1f} TB/s aggregate")
+    print("\nDetected resources:")
+    print(f"  Devices: {', '.join(gpu['name'] for gpu in info['gpus'])}")
+    print(f"  SMs: {sum(gpu['sm_count'] for gpu in info['gpus'])}")
+    print(f"  Memory: {sum(gpu['total_memory_gb'] for gpu in info['gpus']):.2f} GB")
+    print("  Aggregate bandwidth is not measured by this topology check")
 
     print("=" * 80)
 

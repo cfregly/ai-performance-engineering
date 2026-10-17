@@ -158,19 +158,19 @@ def enable_nvlink_c2c_optimizations() -> None:
         print("\nNVLink-C2C Features:")
         print("  Grace CPU with an NVLink-C2C host link on every GPU:")
         print("    - CPU-GPU: NVLink-C2C, 900 GB/s bidirectional spec peak (coherent, not measured here)")
-        print("    - GPU-GPU: 1800 GB/s NVLink 5.0")
+        print("    - GPU-GPU fabric and bandwidth require a separate topology probe")
         print("    - Unified memory address space")
         print("    - Grace CPU: 72 ARM cores")
     else:
-        print("\nNVLink Features:")
-        print("  - GPU-GPU: ~900 GB/s per pair")
-        print("  - Optimal for: Large parameter transfers, peer communication")
-    
-    if num_gpus == 4:
-        print(f"\n4x B200 Configuration:")
-        print(f"  - Total SMs: 592")
-        print(f"  - Total Memory: 0.72 TB HBM3e")
-        print(f"  - Aggregate Bandwidth: 31.2 TB/s")
+        print("\nGPU Peer Access Features:")
+        print("  - Physical NVLink/NVSwitch fabric and bandwidth are not established here")
+
+    properties = [torch.cuda.get_device_properties(index) for index in range(num_gpus)]
+    print(f"\nDetected resources across {num_gpus} GPUs:")
+    print(f"  - Devices: {', '.join(props.name for props in properties)}")
+    print(f"  - Total SMs: {sum(props.multi_processor_count for props in properties)}")
+    print(f"  - Total memory: {sum(props.total_memory for props in properties) / 1e9:.2f} GB")
+    print("  - Aggregate bandwidth is not measured by this configuration check")
     
     print("=" * 80)
 

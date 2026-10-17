@@ -3,7 +3,7 @@
 Chapter 4: Multi-GPU and Multi-Node Training
 
 Demonstrates multi-node distributed training optimizations for Blackwell 
-B200/B300 GPUs with NVLink and NCCL. Includes tensor parallelism, 
+B200/B300 GPUs with NVLink and NCCL. Includes tensor parallelism,
 FSDP, and gradient compression for multi-node scaling.
 
 NOTE: This file uses F.scaled_dot_product_attention (SDPA), which is covered

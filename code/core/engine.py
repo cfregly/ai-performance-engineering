@@ -502,7 +502,8 @@ def _llm_bottleneck_analysis(profile_result: Dict[str, Any], focus: str) -> Dict
     prompt = (
         f"Focus area: {focus}\n"
         f"Trace: {profile_result.get('trace_path')}\n"
-        f"Total traced time (us): {profile_result.get('total_time_us')}\n"
+        "Summed trace-event duration (us): "
+        f"{profile_result.get('total_time_us')}\n"
         f"Rule-based findings:\n{json.dumps(findings, indent=2)}\n\n"
         "Explain the most likely root cause of these findings for the focus area. "
         "Name the next measurement or change to try, and say which finding supports it."

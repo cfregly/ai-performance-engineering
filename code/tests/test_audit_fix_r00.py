@@ -430,6 +430,7 @@ def _write_torch_capture(bench_root: Path) -> Path:
         / "target" / "target_20261013_000000"
     )
     events = [
+        {"ph": "X", "name": "train_step", "cat": "python_function", "dur": 1000},
         {"ph": "X", "name": "ampere_sgemm_128x64_nn", "cat": "kernel", "dur": 600},
         {"ph": "X", "name": "Memcpy HtoD (Pageable -> Device)", "cat": "gpu_memcpy", "dur": 300},
         {"ph": "X", "name": "elementwise_kernel", "cat": "kernel", "dur": 100},
@@ -468,12 +469,24 @@ def test_w2_033_profile_mode_skips_newer_manifest_and_summary_json(trace_core: P
     assert "error" not in profile
     assert profile["trace_path"] == str(trace_core)
     assert profile["trace_path"].endswith("trace.json")
-    assert profile["trace_event_count"] == 4
-    assert profile["total_time_us"] == 1000
+    assert profile["trace_event_count"] == 5
+    assert profile["total_time_us"] == 2000
+    assert profile["duration_basis"] == (
+        "Sum of complete trace-event durations. Overlapping and nested events can be counted "
+        "more than once"
+    )
     assert profile["bottlenecks"]
     types = {(entry["type"], entry.get("kernel_name")) for entry in profile["bottlenecks"]}
     assert ("memory_transfer", None) in types
+    memory_transfer = next(
+        entry for entry in profile["bottlenecks"] if entry["type"] == "memory_transfer"
+    )
+    assert memory_transfer["representative_events"] == ["Memcpy HtoD (Pageable -> Device)"]
     assert ("hot_kernel", "ampere_sgemm_128x64_nn") in types
+    assert ("hot_kernel", "train_step") not in types
+    assert ("hot_kernel", "Memcpy HtoD (Pageable -> Device)") not in types
+    assert all("execution time" not in entry["description"] for entry in profile["bottlenecks"])
+    assert all("GPU time" not in entry["description"] for entry in profile["bottlenecks"])
     # The trace does not say which GPU recorded it.
     assert profile["hardware"]["name"] == "Unknown"
 

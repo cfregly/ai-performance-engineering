@@ -535,7 +535,7 @@ def print_grace_system_info() -> None:
             print(f"    Compute capability: {props.major}.{props.minor}")
             print(f"    Memory: {props.total_memory / 1e9:.0f} GB{memory_type}")
             print(f"    SMs: {props.multi_processor_count}")
-    
+
     # NVLink-C2C claims need driver-reported C2C links on every GPU.
     if c2c_by_gpu and not all(c2c_by_gpu.values()):
         print("\nNVLink-C2C: not reported up on every GPU, so no C2C features are claimed")

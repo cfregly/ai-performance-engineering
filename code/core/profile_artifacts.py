@@ -426,6 +426,17 @@ def load_kernel_breakdown(flame_data: Dict[str, Any] | None = None) -> Dict[str,
     all_kernels: List[Dict[str, Any]] = []
     for category in flame.get("children", []):
         cat_name = category.get("name", "other")
+        # PyTorch Chrome traces use the ``kernel`` category for GPU kernels.
+        # CPU operators, runtime calls and memory transfers are also complete
+        # trace events, but reporting them as kernels produces false GPU-time
+        # findings in analyze_bottlenecks.
+        category_tokens = {
+            token.strip().lower()
+            for token in str(cat_name).replace(";", ",").split(",")
+            if token.strip()
+        }
+        if not category_tokens.intersection({"kernel", "gpu_kernel", "cuda_kernel"}):
+            continue
         for kernel in category.get("children", []):
             all_kernels.append(
                 {

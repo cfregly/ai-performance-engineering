@@ -119,6 +119,7 @@ from core.benchmark.artifact_manager import (
 )
 from core.benchmark.defaults import BenchmarkDefaults, get_defaults, set_defaults
 from core.benchmark.expectations import UPDATE_EXPECTATIONS_HELP_TEXT
+from core.benchmark.target_overrides import parse_target_extra_args
 from core.benchmark.run_manifest import get_git_info, get_gpu_state
 from core.harness.validity_profile import (
     VALIDITY_PROFILE_CHOICES,
@@ -308,13 +309,7 @@ def _validate_deep_dive_mode(mode: str | None) -> str:
 
 def _parse_target_extra_args(entries: Optional[List[str]]) -> Dict[str, List[str]]:
     """Parse --target-extra-arg entries of the form target="--flag value"."""
-    parsed: Dict[str, List[str]] = {}
-    for entry in entries or []:
-        target, sep, args = entry.partition("=")
-        if not sep or not target or not args:
-            continue
-        parsed[target.strip()] = shlex.split(args)
-    return parsed
+    return parse_target_extra_args(entries)
 
 
 def _apply_suite_timeout(seconds: Optional[int]):
@@ -1014,6 +1009,18 @@ def _execute_benchmarks(
             enforce_external_assets=preflight_enforces_external_assets,
         )
     else:
+        preflight_issues = [
+            issue
+            for issue in _preflight_target_coverage_and_assets(
+                chapter_dirs,
+                chapter_filters,
+                only_cuda=bool(only_cuda),
+                only_python=bool(only_python),
+                target_extra_args=parsed_extra_args,
+                enforce_external_assets=False,
+            )
+            if issue.startswith("--target-extra-arg")
+        ]
         for chapter_dir, only_examples in execution_units:
             chapter_id = chapter_slug(
                 chapter_dir,
@@ -1028,6 +1035,7 @@ def _execute_benchmarks(
                 only_python=bool(only_python),
                 target_extra_args=parsed_extra_args,
                 enforce_external_assets=preflight_enforces_external_assets,
+                validate_target_overrides=False,
             )
             if unit_issues:
                 unit_key = (
@@ -1036,7 +1044,6 @@ def _execute_benchmarks(
                 )
                 isolated_preflight_issues[unit_key] = list(unit_issues)
 
-        preflight_issues = []
         if len(isolated_preflight_issues) == len(execution_units) and all(
             not only_examples for _, only_examples in execution_units
         ):
